@@ -18,6 +18,16 @@
     padding: 8px 16px;
 }
 
+.component-view-mode {
+    display: flex;
+    align-items: center;
+    align-self: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin: -8px 0 12px;
+}
+
 /* Basic Info */
 .basic-info-block {
     margin-top: 12px;
@@ -412,7 +422,7 @@
     gap: 4px;
 }
 
-.bottom-info .source-non-canon {
+.bottom-info .source-note {
     color: var(--text-color-secondary);            
     font-weight: normal;
     font-size: 0.9em;
@@ -440,9 +450,18 @@
 
 .features-list,
 .grav-list,
-.ammo-list {
+.ammo-list,
+.additional-components-list {
     margin-bottom: 8px;
     line-height: 1.5;
+}
+
+.additional-components-list {
+    display: none;
+}
+
+.additional-components-list.weapons-additional-components-list {
+    display: block;
 }
 
 .ammo-pill {
@@ -482,6 +501,14 @@
 
     .component-rect {
         max-width: 100%;
+    }
+
+    .additional-component-rect {
+        display: none;
+    }
+
+    .additional-components-list {
+        display: block;
     }
 
     .cargo-list {

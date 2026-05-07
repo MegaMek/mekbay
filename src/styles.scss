@@ -1294,14 +1294,41 @@ hr.divider {
     background: #292313;
 }
 
-/* Ammo: #CCCCCC, background: #272727, inbetween: #999999 */
-.ammo {
+/* Bomb: #CC2222, background: #271111, inbetween: #992222 */
+.ammo-bomb {
+    --type-color: #c22;
+    border-left: 5px solid var(--type-color);
+    border-top: 1px solid #922;
+    border-right: 1px solid #922;
+    border-bottom: 1px solid #922;
+    background: #271111;
+}
+
+/* Chemical: #7BA3A0, background: #1a2524, inbetween: #4d7370 */
+.ammo-chemical {
+    --type-color: #7BA3A0;
+    border-left: 5px solid var(--type-color);
+    border-top: 1px solid #4d7370;
+    border-right: 1px solid #4d7370;
+    border-bottom: 1px solid #4d7370;
+    background: #1a2524;
+}
+
+/* Special: #CCCCCC, background: #272727, inbetween: #999999 */
+.ammo-special {
     --type-color: #ccc;
     border-left: 5px solid var(--type-color);
     border-top: 1px solid #999;
     border-right: 1px solid #999;
     border-bottom: 1px solid #999;
     background: #272727;
+}
+
+.ammo {
+    border-left-style: double;
+    border-top-style: solid;
+    border-right-style: solid;
+    border-bottom-style: solid;
 }
 
 /* Misc: #7BA3A0, background: #1a2524, inbetween: #4d7370 */

@@ -111,10 +111,13 @@ import {
     type AdvFilterConfig,
     type AdvOptionsTelemetrySnapshot,
     AdvFilterType,
+    BOOLEAN_FILTERS,
+    type BooleanFilterConfig,
     type FilterState,
     DROPDOWN_FILTERS,
     getMegaMekRaritySortAvailabilitySources,
     isMegaMekRaritySortKey,
+    normalizeTriStateBooleanFilterValue,
     RANGE_FILTERS,
     type DropdownFilterConfig,
     type RangeFilterConfig,
@@ -214,6 +217,16 @@ export class UnitSearchFiltersService {
         const gs = this.gameService.currentGameSystem();
         const availabilitySource = this.optionsService.options().availabilitySource;
         return RANGE_FILTERS.filter(f => (
+            (!f.game || f.game === gs)
+            && isFilterAvailableForAvailabilitySource(f, availabilitySource)
+        ));
+    });
+
+    /** Boolean filter configs for current game system */
+    readonly booleanConfigs = computed((): readonly BooleanFilterConfig[] => {
+        const gs = this.gameService.currentGameSystem();
+        const availabilitySource = this.optionsService.options().availabilitySource;
+        return BOOLEAN_FILTERS.filter(f => (
             (!f.game || f.game === gs)
             && isFilterAvailableForAvailabilitySource(f, availabilitySource)
         ));
@@ -3164,6 +3177,8 @@ export class UnitSearchFiltersService {
 
         if (conf.type === AdvFilterType.DROPDOWN && conf.multistate) {
             value = normalizeMultiStateSelection(value);
+        } else if (conf.type === AdvFilterType.BOOLEAN) {
+            value = normalizeTriStateBooleanFilterValue(value);
         }
 
         let interacted = true;
@@ -3172,7 +3187,8 @@ export class UnitSearchFiltersService {
 
         if (conf.type === AdvFilterType.RANGE) {
             // For range filters, check which boundaries the value matches.
-            const availableRange = this.advOptions()[key]?.options;
+            const option = this.advOptions()[key];
+            const availableRange = option?.type === 'range' ? option.options : undefined;
             if (availableRange) {
                 atLeftBoundary = value[0] === availableRange[0];
                 atRightBoundary = value[1] === availableRange[1];
@@ -3194,6 +3210,8 @@ export class UnitSearchFiltersService {
                     interacted = false;
                 }
             }
+        } else if (conf.type === AdvFilterType.BOOLEAN && value === null) {
+            interacted = false;
         }
 
         // Determine if we should sync this filter to semantic text:
@@ -3227,10 +3245,13 @@ export class UnitSearchFiltersService {
         if (shouldSyncToText) {
             // Remove the semantic token for this filter by passing non-interacted.
             // Use the available range as the value so boundary checks produce no token text.
-            const availableRange = this.advOptions()[key]?.options as [number, number] | undefined;
+            const option = this.advOptions()[key];
+            const availableRange = option?.type === 'range' ? option.options : undefined;
             const resetValue = conf.type === AdvFilterType.RANGE
                 ? (availableRange || this.totalRangesCache[key] || [0, 0])
-                : [];
+                : conf.type === AdvFilterType.BOOLEAN
+                    ? null
+                    : [];
             this.updateSemanticTextForFilter(key, resetValue, false, conf);
         } else {
             // Remove from filterState

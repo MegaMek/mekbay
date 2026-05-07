@@ -1,0 +1,112 @@
+:host {
+    --mode-switch-track-width: 44px;
+    --mode-switch-track-height: 22px;
+    --mode-switch-track-background: #0003;
+    --mode-switch-track-border: 2px solid #d8d8d8;
+    --mode-switch-track-border-radius: 0;
+    --mode-switch-track-hover-border-color: #fff;
+    --mode-switch-track-transition: border-color 0.12s ease-out;
+    --mode-switch-thumb-width: 16px;
+    --mode-switch-thumb-height: 12px;
+    --mode-switch-thumb-top: 3px;
+    --mode-switch-thumb-left: 3px;
+    --mode-switch-thumb-translate: 19px;
+    --mode-switch-thumb-border-radius: 0;
+    --mode-switch-thumb-color: #fff;
+    --mode-switch-thumb-active-color: var(--mode-switch-thumb-color);
+    --mode-switch-thumb-transition: transform 0.12s ease-out, background-color 0.12s ease-out;
+    display: inline-flex;
+    align-items: center;
+}
+
+
+:host(.mode-switch-game-system) {
+    --mode-switch-thumb-color: var(--bt-yellow);
+    --mode-switch-thumb-active-color: #d22027;
+}
+
+:host(.mode-switch-disabled) {
+    --mode-switch-track-border: 2px solid #7a7a7a;
+    --mode-switch-thumb-color: #7a7a7a;
+    --mode-switch-thumb-active-color: #7a7a7a;
+    opacity: 0.55;
+}
+
+.mode-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+:host(.mode-switch-no-labels) .mode-switch {
+    gap: 0;
+}
+
+.mode-switch-label-button,
+.mode-switch-control {
+    border: 0;
+    background: transparent;
+    font: inherit;
+    cursor: pointer;
+}
+
+.mode-switch-label-button {
+    color: #6f6f6f;
+    padding: 0;
+    font-weight: 700;
+    line-height: 22px;
+    text-transform: uppercase;
+}
+
+.mode-switch-label-button.active {
+    color: var(--text-color);
+}
+
+.mode-switch-label-button:not(.active):not(:disabled):hover {
+    color: var(--text-color);
+}
+
+.mode-switch-control {
+    position: relative;
+    width: var(--mode-switch-track-width);
+    height: var(--mode-switch-track-height);
+    box-sizing: border-box;
+    border: var(--mode-switch-track-border);
+    border-radius: var(--mode-switch-track-border-radius);
+    background: var(--mode-switch-track-background);
+    padding: 0;
+    transition: var(--mode-switch-track-transition);
+}
+
+.mode-switch-control:not(:disabled):hover {
+    border-color: var(--mode-switch-track-hover-border-color);
+}
+
+.mode-switch-control:disabled,
+.mode-switch-label-button:disabled {
+    cursor: default;
+}
+
+.mode-switch-thumb {
+    position: absolute;
+    top: var(--mode-switch-thumb-top);
+    left: var(--mode-switch-thumb-left);
+    width: var(--mode-switch-thumb-width);
+    height: var(--mode-switch-thumb-height);
+    border-radius: var(--mode-switch-thumb-border-radius);
+    background: var(--mode-switch-thumb-color);
+    transition: var(--mode-switch-thumb-transition);
+}
+
+:host(.mode-switch-active-right) .mode-switch-thumb {
+    transform: translateX(var(--mode-switch-thumb-translate));
+    background: var(--mode-switch-thumb-active-color);
+}
+
+:host(.mode-switch-disabled) .mode-switch-control {
+    border-color: #7a7a7a;
+}
+
+:host(.mode-switch-disabled) .mode-switch-thumb {
+    background: #7a7a7a;
+}

@@ -48,6 +48,7 @@ import { OptionsService } from './services/options.service';
 import { OptionsDialogComponent } from './components/options-dialog/options-dialog.component';
 import { SidebarComponent } from './components/sidebar/sidebar.component';
 import { ConnectionStatusBadgeComponent } from './components/connection-status-badge/connection-status-badge.component';
+import { ModeSwitchComponent } from './components/mode-switch/mode-switch.component';
 import { LicenseDialogComponent } from './components/license-dialog/license-dialog.component';
 import { ToastsComponent } from './components/toasts/toasts.component';
 import { SavedSearchesService } from './services/saved-searches.service';
@@ -85,6 +86,7 @@ const SW_UPDATE_RELOAD_HASH_STORAGE_KEY = 'mekbay:sw-update-reload-hash';
     UpdateButtonComponent,
     SidebarComponent,
     ConnectionStatusBadgeComponent,
+    ModeSwitchComponent,
     UnitSearchComponent,
     OverlayModule,
     PortalModule

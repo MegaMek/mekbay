@@ -191,6 +191,8 @@ export class MultiSelectDropdownComponent {
             .map(s => ({ state: s, count: counts.get(s)! }));
     });
 
+    singleSelectedOption = computed(() => this.selectedOptions()[0] ?? null);
+
     maxHeightOptions = computed(() => {
         if (!this.isOpen()) {
             return MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK;

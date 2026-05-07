@@ -1,13 +1,43 @@
 :host {
     display: flex;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .force-tags {
     display: flex;
-    flex-wrap: wrap-reverse;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: flex-end;
     gap: 4px;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.force-tags.full {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    justify-content: stretch;
+    width: 100%;
+}
+
+.force-tags.full.readonly {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.force-tags.full .add-tag-btn {
+    align-self: start;
 }
 
 .tag {

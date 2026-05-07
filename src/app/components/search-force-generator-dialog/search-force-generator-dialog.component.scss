@@ -497,13 +497,6 @@
             filter: grayscale(100%);
         }
 
-        .switch-track {
-            background-color: rgba(255, 255, 255, 0.1);
-        }
-
-        .switch-thumb {
-            background-color: transparent;
-        }
     }
 }
 
@@ -572,50 +565,6 @@
     display: flex;
     align-items: center;
     flex: 0 0 auto;
-}
-
-.switch-track {
-    width: 40px;
-    height: 20px;
-    background-color: rgba(255, 255, 255, 0.2);
-    border-radius: 10px;
-    position: relative;
-    cursor: pointer;
-    transition: background-color 0.3s ease;
-
-    .gameSystemSelector:not(.loading) &.as-active {
-        .switch-thumb {
-            transform: translateX(20px);
-            background-color: #d22027;
-        }
-    }
-
-    @media (max-width: 460px) {
-        width: 36px;
-        height: 18px;
-
-        .gameSystemSelector:not(.loading) &.as-active {
-            .switch-thumb {
-                transform: translateX(18px);
-            }
-        }
-    }
-}
-
-.switch-thumb {
-    width: 16px;
-    height: 16px;
-    background-color: var(--bt-yellow);
-    border-radius: 50%;
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    transition: transform 0.3s ease, background-color 0.3s ease;
-
-    @media (max-width: 460px) {
-        width: 14px;
-        height: 14px;
-    }
 }
 
 :host ::ng-deep .generator-dropdown .label {
@@ -852,6 +801,10 @@
 
     .field-pair {
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    .field-pair.mobile-two-column {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .controls-panel,

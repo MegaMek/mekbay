@@ -112,12 +112,16 @@
 .force-header {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
+    grid-template-areas:
+        "main info"
+        "tags tags";
+    gap: 4px 8px;
     align-items: start;
     position: relative;
 }
 
 .force-header-main {
+    grid-area: main;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -141,7 +145,10 @@
     border: 1px solid #811313;
 }
 
+.toe-info,
+.org-info,
 .force-info {
+    grid-area: info;
     display: flex;
     flex-direction: row;
     align-items: center;
@@ -153,13 +160,17 @@
     justify-content: flex-end;
 }
 
-.timestamp {
-    color: var(--text-color-secondary);
-    font-size: 0.8em;
+.toe-info .timestamp,
+.org-info .timestamp {
+    color: var(--text-color-tertiary);
+    font-size: 0.9em;
     text-align: right;
 }
 
-.hangar-force-bv {
+.force-info .timestamp {
+    color: var(--text-color-tertiary);
+    font-size: 0.7em;
+    text-align: right;
     flex: 0 0 100%;
 }
 
@@ -186,7 +197,11 @@
 }
 
 .force-entry-tags {
-    max-width: min(360px, 100%);
+    grid-area: tags;
+    justify-self: stretch;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
 }
 
 .variant-name {
@@ -197,8 +212,9 @@
 }
 
 .force-bv {
-    color: var(--text-color-secondary);
-    font-size: 0.8em;
+    color: var(--text-color);
+    font-size: 0.85em;
+    font-weight: 600;
 }
 
 .save-state-icon {
@@ -577,10 +593,26 @@
 @media (max-width: 720px) {
     .force-header {
         grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+            "main"
+            "info"
+            "tags";
     }
 
+    .toe-info,
+    .org-info,
     .force-info {
-        margin-left: auto;
+        justify-content: flex-start;
+        margin-left: 0;
+        text-align: left;
+    }
+
+    .force-info .timestamp {
+        flex-basis: auto;
+
+        &::before {
+            content: ' · ';
+        }
     }
 
 }

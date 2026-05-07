@@ -79,32 +79,31 @@
                                 </div>
                             </div>
                             <div class="force-info">
-                                <force-tags
-                                    class="force-entry-tags"
-                                    [force]="force"
-                                    [mode]="'full'"
-                                    [editable]="!!force.instanceId && force.owned"
-                                    [tagsVersion]="forceTagsVersion()"
-                                    (tagClick)="onForceTagClick($event)">
-                                </force-tags>
                                 <span class="game-type-badge" [class.as]="force.type === 'as'">{{ getGameTypeLabel(force.type) }}</span>
                                 @if (force.local) {
                                     <img src="/images/floppy.svg" class="save-state-icon" alt="Saved locally" title="Stored locally" />
                                 }
                                 <img [src]="force.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'" class="save-state-icon" alt="Cloud status"
                                     title="{{ force.cloud ? 'Stored online' : 'Not stored online' }}" />
-
-                                <span class="timestamp">{{ force.timestamp | formatTimestamp }}</span>
                                 @if (force.type === 'as') {
                                     @if (force.pv && force.pv > 0) {
-                                        <span class="force-bv hangar-force-bv">PV: {{ force.pv | number }}</span>
+                                        <span class="force-bv">PV: {{ force.pv | number }}</span>
                                     }
                                 } @else {
                                     @if (force.bv && force.bv > 0) {
-                                        <span class="force-bv hangar-force-bv">BV: {{ force.bv | number }}</span>
+                                        <span class="force-bv">BV: {{ force.bv | number }}</span>
                                     }
                                 }
+                                <span class="timestamp">{{ force.timestamp | formatTimestamp }}</span>
                             </div>
+                            <force-tags
+                                class="force-entry-tags"
+                                [force]="force"
+                                [mode]="'full'"
+                                [editable]="!!force.instanceId && force.owned"
+                                [tagsVersion]="forceTagsVersion()"
+                                (tagClick)="onForceTagClick($event)">
+                            </force-tags>
                         </div>
                         @if (hasVisibleNote(force.note)) {
                             @let noteIsExpandable = isForceNoteExpandable(force);
@@ -256,7 +255,7 @@
                                     </button>
                                 </span>
                             </div>
-                            <div class="force-info">
+                            <div class="toe-info">
                                 @for (gt of op.gameTypes; track gt) {
                                     <span class="game-type-badge" [class.as]="gt === 'as'">{{ gt === 'as' ? 'AS' : 'CBT' }}</span>
                                 }
@@ -318,7 +317,7 @@
                                 }
                                 <div class="force-name">{{ org.name || 'Unnamed Organization' }}</div>
                             </div>
-                            <div class="force-info">
+                            <div class="org-info">
                                 @if (org.local) {
                                     <img src="/images/floppy.svg" class="save-state-icon" alt="Saved locally" title="Stored locally" />
                                 }

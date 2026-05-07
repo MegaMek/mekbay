@@ -36,6 +36,7 @@ import { CommonModule } from '@angular/common';
 import type { Unit, PublicTagInfo, UnitTagEntry } from '../../models/units.model';
 import { PublicTagsService } from '../../services/public-tags.service';
 import { TagsService } from '../../services/tags.service';
+import { naturalCompare } from '../../utils/sort.util';
 
 /** Event data emitted when the tag button is clicked */
 export interface TagClickEvent {
@@ -75,19 +76,24 @@ export class UnitTagsComponent {
     /** Quantity-aware name tags for full-mode rendering */
     nameTagEntries = computed((): UnitTagEntry[] => {
         this.tagsService.version();
-        return [...(this.unit()._nameTags ?? [])];
+        const tags = [...(this.unit()._nameTags ?? [])];
+        return this.mode() === 'full' ? tags.sort((left, right) => naturalCompare(left.tag, right.tag)) : tags;
     });
 
     /** Quantity-aware chassis tags for full-mode rendering */
     chassisTagEntries = computed((): UnitTagEntry[] => {
         this.tagsService.version();
-        return [...(this.unit()._chassisTags ?? [])];
+        const tags = [...(this.unit()._chassisTags ?? [])];
+        return this.mode() === 'full' ? tags.sort((left, right) => naturalCompare(left.tag, right.tag)) : tags;
     });
 
     /** Public tags from other users (temporary or subscribed) */
     publicTags = computed((): PublicTagInfo[] => {
         this.publicTagsService.version(); // dependency for public tags updates
-        return this.publicTagsService.getPublicTagsForUnit(this.unit());
+        const tags = this.publicTagsService.getPublicTagsForUnit(this.unit());
+        return this.mode() === 'full'
+            ? [...tags].sort((left, right) => naturalCompare(left.tag, right.tag) || naturalCompare(left.publicId, right.publicId))
+            : tags;
     });
 
     totalTagCount = computed(() => this.nameTagEntries().length + this.chassisTagEntries().length + this.publicTags().length);

@@ -43,7 +43,7 @@ import {
 } from '../components/force-tag-selector/force-tag-selector.component';
 import type { ForceTaggableEntry } from '../components/force-tags/force-tags.component';
 import { InputDialogComponent, type InputDialogData } from '../components/input-dialog/input-dialog.component';
-import { sanitizeForceTags } from '../models/force-serialization';
+import { sanitizeForceTagLabels, sanitizeForceTags } from '../models/force-serialization';
 import { DataService } from './data.service';
 import { DialogsService } from './dialogs.service';
 import { ForceBuilderService } from './force-builder.service';
@@ -151,7 +151,7 @@ export class ForceTaggingService {
     private collectAvailableTags(forces: ForceTaggableEntry[], availableTags?: readonly string[]): string[] {
         const labels = new Map<string, string>();
         const addTags = (tags: readonly string[] | null | undefined) => {
-            for (const tag of sanitizeForceTags(tags ?? [])) {
+            for (const tag of sanitizeForceTagLabels(tags ?? [])) {
                 const key = tag.toLocaleLowerCase();
                 if (!labels.has(key)) {
                     labels.set(key, tag);

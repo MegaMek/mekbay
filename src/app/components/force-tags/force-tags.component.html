@@ -1,9 +1,11 @@
 @if (shouldRender()) {
 <div class="force-tags" [class.compact]="mode() === 'compact'" [class.full]="mode() === 'full'" [class.readonly]="!canEdit()">
     @if (mode() === 'full') {
+        <div class="tag-list">
         @for (tag of forceTags(); track $index) {
             <span class="tag tag-force">{{ tag }}</span>
         }
+        </div>
     }
     @if (canEdit()) {
         <a class="add-tag-btn" (click)="onTagClick($event)" title="Add tag" aria-label="Add tag">

@@ -41,18 +41,15 @@
         </svg>
         }
     </button>
-    <button type="button" class="bt-button card-view-btn square"
-        (click)="cycleViewMode()"
-        [title]="currentViewModeTitle()"
-        [attr.aria-label]="currentViewModeTitle()">
-        @if (viewMode() === 'chassis') {
-        <!-- Chassis view -->
+    <ng-template #viewModeIcon let-mode="mode">
+        @switch (mode) {
+        @case ('chassis') {
         <svg width="24px" height="24px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
             <path d="M2 20h1v1H1v-2h1zm20 0h-1v1h2v-2h-1zM1 5h1V4h1V3H1zm1 2H1v2h1zm0 4H1v2h1zm20-2h1V7h-1zm0 4h1v-2h-1zM2 15H1v2h1zm20 2h1v-2h-1zM5 4h2V3H5zm6 0V3H9v1zm2 0h2V3h-2zm6-1h-2v1h2zM5 21h2v-1H5zm4 0h2v-1H9zm4 0h2v-1h-2zm4 0h2v-1h-2zm4-17h1v1h1V3h-2zm-1 4v2a1.001 1.001 0 0 1-1 1H5a1.001 1.001 0 0 1-1-1V8a1.001 1.001 0 0 1 1-1h14a1.001 1.001 0 0 1 1 1zm-.999 2H19V8H5v2h14m1 4v2a1.001 1.001 0 0 1-1 1H5a1.001 1.001 0 0 1-1-1v-2a1.001 1.001 0 0 1 1-1h14a1.001 1.001 0 0 1 1 1zm-.999 2H19v-2H5v2h14"/>
         </svg>
-        } @else if (viewMode() === 'card') {
-        <!-- Card view -->
-        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+        }
+        @case ('card') {
+        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5"
             stroke-linecap="arcs" stroke-linejoin="arcs" xmlns="http://www.w3.org/2000/svg">
             <rect x="2" y="4.5" width="20" height="15"/>
             <line x1="4.5" y1="8" x2="12" y2="8"/>
@@ -60,18 +57,70 @@
             <line x1="4.5" y1="16" x2="10" y2="16"/>
             <rect x="14.5" y="8" width="4" height="4"/>
         </svg>
-        } @else if (viewMode() === 'table') {
-        <!-- Table view -->
+        }
+        @case ('table') {
         <svg width="24px" height="24px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
             <path d="M21.167 22H2V2h19.167v20zM15.333 20.333H19.5V17h-4.167v3.333zM9.5 20.333h4.167V17H9.5v3.333zM3.667 20.333h4.167V17H3.667v3.333zM15.333 15.333H19.5V7h-4.167v3.333H19.5V12h-4.167v3.333zM9.5 15.333h4.167V12H9.5v3.333zM3.667 15.333h4.167V12H3.667v3.333zM9.5 10.333h4.167V7H9.5v3.333zM3.667 10.333h4.167V7H3.667v3.333zM3.667 5.333H19.5V3.667H3.667v1.666z" />
         </svg>
-        } @else {
-        <!-- List view -->
-        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="arcs" />
+        }
+        @default {
+        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M23 3C23 1.89543 22.1046 1 21 1H3C1.89543 1 1 1.89543 1 3V5C1 6.10457 1.89543 7 3 7H21C22.1046 7 23 6.10457 23 5V3ZM21 3H3V5H21V3Z"/>
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M23 11C23 9.89543 22.1046 9 21 9H3C1.89543 9 1 9.89543 1 11V13C1 14.1046 1.89543 15 3 15H21C22.1046 15 23 14.1046 23 13V11ZM21 11H3V13H21V11Z"/>
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M23 19C23 17.8954 22.1046 17 21 17H3C1.89543 17 1 17.8954 1 19V21C1 22.1046 1.89543 23 3 23H21C22.1046 23 23 22.1046 23 21V19ZM21 19H3V21H21V19Z"/>
         </svg>
         }
+        }
+    </ng-template>
+    <button type="button" class="bt-button card-view-btn view-mode-btn square"
+        cdkOverlayOrigin #viewModeOrigin="cdkOverlayOrigin"
+        (click)="toggleViewModeMenu($event)"
+        [class.active]="viewModeMenuOpen()"
+        [title]="currentViewModeTitle()"
+        [attr.aria-label]="currentViewModeTitle()"
+        aria-haspopup="menu"
+        [attr.aria-expanded]="viewModeMenuOpen()">
+        <ng-container [ngTemplateOutlet]="viewModeIcon" [ngTemplateOutletContext]="{ mode: viewMode() }"></ng-container>
     </button>
+    <ng-template
+        cdkConnectedOverlay
+        [cdkConnectedOverlayOrigin]="viewModeOrigin"
+        [cdkConnectedOverlayOpen]="viewModeMenuOpen()"
+        [cdkConnectedOverlayPositions]="viewModeMenuPositions"
+        [cdkConnectedOverlayPush]="true"
+        [cdkConnectedOverlayFlexibleDimensions]="false"
+        [cdkConnectedOverlayViewportMargin]="4"
+        [cdkConnectedOverlayHasBackdrop]="true"
+        [cdkConnectedOverlayBackdropClass]="'cdk-overlay-transparent-backdrop'"
+        [cdkConnectedOverlayPanelClass]="'view-mode-menu-overlay-pane'"
+        [cdkConnectedOverlayScrollStrategy]="viewModeMenuScrollStrategy"
+        (backdropClick)="closeViewModeMenu()"
+        (detach)="closeViewModeMenu()">
+        <div class="view-mode-menu framed-borders has-shadow" role="menu" (click)="$event.stopPropagation()">
+            @for (option of viewModeOptions(); track option.mode) {
+            <button type="button" class="view-mode-option"
+                role="menuitemradio"
+                [class.active]="option.mode === viewMode()"
+                [class.disabled]="option.disabled"
+                [disabled]="option.disabled"
+                [attr.aria-checked]="option.mode === viewMode()"
+                [attr.aria-disabled]="option.disabled"
+                [title]="option.disabledReason || option.label"
+                (click)="selectViewMode(option.mode, $event)">
+                <span class="view-mode-option-icon">
+                    <ng-container [ngTemplateOutlet]="viewModeIcon" [ngTemplateOutletContext]="{ mode: option.mode }"></ng-container>
+                </span>
+                <span class="view-mode-option-copy">
+                    <span class="view-mode-option-label">{{ option.label }}</span>
+                    <span class="view-mode-option-caption">{{ option.caption }}</span>
+                </span>
+                @if (option.willExpand) {
+                <span class="view-mode-option-hint">EXPANDS</span>
+                }
+            </button>
+            }
+        </div>
+    </ng-template>
     <!-- Adv button on left when filters are on left side -->
     @if (this.expandedView() && this.filtersOnLeft()) {
     <button #advBtn class="bt-button adv-btn square" [class.active]="isAdvActive()"
@@ -123,19 +172,23 @@
 <!-- Results Container -->
 <div #resultsContainer class="results-container"
     [class.expanded]="this.expandedView()"
+    [class.css-anchor-positioned]="supportsCssAnchorPositioning"
+    [class.has-results]="this.filtersService.filteredUnits().length > 0"
     [class.with-details-panel]="showInlinePanel()"
     [hidden]="!this.filtersService.isDataReady() || !resultsVisible()"
-    [style.top]="this.expandedView() ? expandedWrapperStyle().top : resultsDropdownStyle().top"
+    [style.top]="supportsCssAnchorPositioning ? null : (this.expandedView() ? expandedWrapperStyle().top : resultsDropdownStyle().top)"
     [style.left]="this.expandedView() ? expandedWrapperStyle().left : null"
     [style.right]="this.expandedView() ? expandedWrapperStyle().right : null"
     [style.bottom]="this.expandedView() ? expandedWrapperStyle().bottom : null"
-    [style.width]="this.expandedView() ? null : resultsDropdownStyle().width"
-    [style.height]="this.expandedView() ? null : resultsDropdownStyle().height"
+    [style.width]="this.expandedView() || supportsCssAnchorPositioning ? null : resultsDropdownStyle().width"
+    [style.height]="this.expandedView() || supportsCssAnchorPositioning ? null : resultsDropdownStyle().height"
     [style.flex-direction]="this.expandedView() ? expandedWrapperStyle().flexDirection : null">
 
     <!-- Inline Details Panel (visible when screen permits in expanded view) -->
     @if (showInlinePanel()) {
     <unit-details-panel class="inline-details-panel framed-borders" [unit]="inlinePanelUnit()"
+        [prevUnit]="inlinePanelPrevUnit()"
+        [nextUnit]="inlinePanelNextUnit()"
         [gunnerySkill]="this.filtersService.pilotGunnerySkill()"
         [pilotingSkill]="this.filtersService.pilotPilotingSkill()"
         [hasPrev]="inlinePanelHasPrev()"
@@ -188,7 +241,7 @@
                         longPress
                         [class.selected]="isUnitSelected(unit)"
                         [class.active]="activeIndex() === getCardUnitIndex(rowIndex, columnIndex)"
-                        (pointerenter)="activeIndex.set(getCardUnitIndex(rowIndex, columnIndex))"
+                        (pointerenter)="onResultPointerEnter(getCardUnitIndex(rowIndex, columnIndex))"
                         (shortPress)="onUnitCardClick(unit, $event)"
                         (longPress)="multiSelectUnit(unit)">
                         <alpha-strike-card
@@ -282,7 +335,7 @@
                     [class.selected]="isUnitSelected(unit)"
                     [class.active]="activeIndex() === i"
                     [class.panel-selected]="showInlinePanel() && inlinePanelUnit()?.name === unit.name"
-                    (pointerenter)="activeIndex.set(i)">
+                    (pointerenter)="onResultPointerEnter(i)">
 
                     @if (this.expandedView()) {
                         <!-- Expanded View Cards -->
@@ -399,12 +452,12 @@
                             }
                         </button>
                     </div>
-                    <button type="button square" class="bt-button generate-force-btn" (click)="showGenerateForceDialog()">
+                    <button type="button square" class="bt-button generate-force-btn" (click)="showGenerateForceDialog()" title="Generate Force from Search Results" aria-label="Generate Force from Search Results">
                         <svg fill="currentColor" width="24px" height="24px" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
                             <path d="M30.8,2.29A.49.49,0,0,0,30.35,2H16.42a.5.5,0,0,0-.42.23l-10.71,17A.49.49,0,0,0,5.7,20h7.67L6.6,33.25a.52.52,0,0,0,.46.75h3a.5.5,0,0,0,.37-.16L28,14.85a.5.5,0,0,0-.37-.85H20.89L30.72,2.82A.49.49,0,0,0,30.8,2.29Z"></path>
                         </svg>
                     </button>
-                    <button class="bt-button square" (click)="openShareSearch($event)" title="Share Search Results">
+                    <button class="bt-button square" (click)="openShareSearch($event)" title="Share Search Results" aria-label="Share Search Results">
                         <svg width="24px" height="24px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
                             <path fill-rule="evenodd" clip-rule="evenodd"
                                 d="M13.803 5.33333C13.803 3.49238 15.3022 2 17.1515 2C19.0008 2 20.5 3.49238 20.5 5.33333C20.5 7.17428 19.0008 8.66667 17.1515 8.66667C16.2177 8.66667 15.3738 8.28596 14.7671 7.67347L10.1317 10.8295C10.1745 11.0425 10.197 11.2625 10.197 11.4872C10.197 11.9322 10.109 12.3576 9.94959 12.7464L15.0323 16.0858C15.6092 15.6161 16.3473 15.3333 17.1515 15.3333C19.0008 15.3333 20.5 16.8257 20.5 18.6667C20.5 20.5076 19.0008 22 17.1515 22C15.3022 22 13.803 20.5076 13.803 18.6667C13.803 18.1845 13.9062 17.7255 14.0917 17.3111L9.05007 13.9987C8.46196 14.5098 7.6916 14.8205 6.84848 14.8205C4.99917 14.8205 3.5 13.3281 3.5 11.4872C3.5 9.64623 4.99917 8.15385 6.84848 8.15385C7.9119 8.15385 8.85853 8.64725 9.47145 9.41518L13.9639 6.35642C13.8594 6.03359 13.803 5.6896 13.803 5.33333Z" />
@@ -429,10 +482,14 @@
 </div>
 }
 <div #advPanel class="adv-panel framed-borders has-shadow" [hidden]="!advOpen()"
-    [style.left]="advPanelStyle().left"
-    [style.top]="advPanelStyle().top"
+    [class.css-anchor-positioned]="supportsCssAnchorPositioning"
+    [class.filters-left]="this.expandedView() && filtersOnLeft()"
+    [class.anchor-below]="supportsCssAnchorPositioning && advPanelAnchoredBelow()"
+    [class.two-column-panel]="advPanelStyle().columnsCount === 2"
+    [style.left]="supportsCssAnchorPositioning ? null : advPanelStyle().left"
+    [style.top]="supportsCssAnchorPositioning ? null : advPanelStyle().top"
     [style.width]="advPanelStyle().width"
-    [style.height]="advPanelStyle().height"
+    [style.height]="supportsCssAnchorPositioning ? null : advPanelStyle().height"
     [class.docked]="advPanelDocked()" [class.docked-left]="advPanelDocked() && filtersOnLeft()">
     <div class="adv-panel-header" [class.two-columns]="advPanelStyle().columnsCount === 2">
         <div class="adv-panel-actions">

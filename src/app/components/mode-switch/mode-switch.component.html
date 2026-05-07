@@ -1,0 +1,15 @@
+<div class="mode-switch" role="group" [attr.aria-label]="ariaLabel()">
+    @if (showLabels()) {
+        <button type="button" class="mode-switch-label-button" [class.active]="!selectedRight()"
+            [disabled]="disabled()" [attr.aria-pressed]="!selectedRight()" (click)="selectRight(false)">{{ leftLabel() }}</button>
+    }
+    <button type="button" class="mode-switch-control"
+        [disabled]="disabled()" [attr.aria-pressed]="selectedRight()" [attr.aria-label]="switchAriaLabel()"
+        (click)="toggle()">
+        <span class="mode-switch-thumb"></span>
+    </button>
+    @if (showLabels()) {
+        <button type="button" class="mode-switch-label-button" [class.active]="selectedRight()"
+            [disabled]="disabled()" [attr.aria-pressed]="selectedRight()" (click)="selectRight(true)">{{ rightLabel() }}</button>
+    }
+</div>

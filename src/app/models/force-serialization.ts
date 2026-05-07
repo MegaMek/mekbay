@@ -44,7 +44,17 @@ export const FORCE_NOTE_MAX_LENGTH = 2000;
 export const FORCE_TAG_MAX_LENGTH = 48;
 export const FORCE_TAG_MAX_COUNT = 32;
 
-export function sanitizeForceTags(tags: readonly string[] | null | undefined): string[] {
+export function sanitizeForceTagLabel(rawTag: unknown): string | null {
+    if (typeof rawTag !== 'string') {
+        return null;
+    }
+
+    const sanitizedTag = rawTag.trim().replace(/\s+/g, ' ').slice(0, FORCE_TAG_MAX_LENGTH);
+    return sanitizedTag.length > 0 ? sanitizedTag : null;
+}
+
+/** Sanitizes a force tag label catalog without applying the per-force tag count limit. */
+export function sanitizeForceTagLabels(tags: readonly string[] | null | undefined): string[] {
     if (!Array.isArray(tags) || tags.length === 0) {
         return [];
     }
@@ -53,11 +63,7 @@ export function sanitizeForceTags(tags: readonly string[] | null | undefined): s
     const seen = new Set<string>();
 
     for (const rawTag of tags) {
-        if (typeof rawTag !== 'string') {
-            continue;
-        }
-
-        const sanitizedTag = rawTag.trim().replace(/\s+/g, ' ').slice(0, FORCE_TAG_MAX_LENGTH);
+        const sanitizedTag = sanitizeForceTagLabel(rawTag);
         if (!sanitizedTag) {
             continue;
         }
@@ -69,13 +75,13 @@ export function sanitizeForceTags(tags: readonly string[] | null | undefined): s
 
         seen.add(normalizedTag);
         sanitizedTags.push(sanitizedTag);
-
-        if (sanitizedTags.length >= FORCE_TAG_MAX_COUNT) {
-            break;
-        }
     }
 
     return sanitizedTags;
+}
+
+export function sanitizeForceTags(tags: readonly string[] | null | undefined): string[] {
+    return sanitizeForceTagLabels(tags).slice(0, FORCE_TAG_MAX_COUNT);
 }
 
 export interface LocationData {

@@ -35,7 +35,7 @@ import type { MultiState, MultiStateSelection } from '../components/multi-select
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import type { GameSystem } from '../models/common.model';
 import { getAvailableDropdownValuesMap, type UnitSearchDropdownValuesDependencies } from './unit-search-dropdown-values.util';
-import { AdvFilterType, type FilterState, SORT_OPTIONS } from '../services/unit-search-filters.model';
+import { AdvFilterType, normalizeTriStateBooleanFilterValue, type FilterState, SORT_OPTIONS } from '../services/unit-search-filters.model';
 import { getAdvancedFilterConfigByKey } from './unit-search-filter-config.util';
 import { parseValues } from './semantic-filter.util';
 import { normalizeMultiStateSelection } from './unit-search-shared.util';
@@ -156,6 +156,11 @@ function generateCompactFiltersParam(state: FilterState): string | null {
         if (conf.type === AdvFilterType.RANGE) {
             const [min, max] = filterState.value;
             parts.push(`${key}:${min}-${max}`);
+        } else if (conf.type === AdvFilterType.BOOLEAN) {
+            const value = normalizeTriStateBooleanFilterValue(filterState.value);
+            if (value !== null) {
+                parts.push(`${key}:${value === 'or' ? 'yes' : 'no'}`);
+            }
         } else if (conf.type === AdvFilterType.DROPDOWN) {
             if (conf.multistate) {
                 const selection = normalizeMultiStateSelection(filterState.value);
@@ -248,6 +253,14 @@ function parseCompactFiltersFromUrl(
                         interactedWith: true,
                     };
                 }
+            }
+        } else if (conf.type === AdvFilterType.BOOLEAN) {
+            const value = normalizeTriStateBooleanFilterValue(valueStr);
+            if (value !== null) {
+                filterState[key] = {
+                    value,
+                    interactedWith: true,
+                };
             }
         } else if (conf.type === AdvFilterType.DROPDOWN) {
             const availableValuesMap = dropdownValuesDependencies

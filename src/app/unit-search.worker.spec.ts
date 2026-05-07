@@ -107,4 +107,47 @@ describe('unit-search worker', () => {
 
         expect(result.unitNames).toEqual([]);
     });
+
+    it('filters canon and published record sheet status from worker execution queries', () => {
+        const publishedCanon = createUnit('Published Canon');
+        publishedCanon.canon = true;
+        publishedCanon.published = ['RS:3050'];
+
+        const unpublishedNonCanon = createUnit('Unpublished Non-Canon');
+        unpublishedNonCanon.canon = false;
+        unpublishedNonCanon.published = [];
+
+        const runtime = __test__.hydrateCorpus({
+            corpusVersion: '1:0',
+            units: [publishedCanon, unpublishedNonCanon],
+            indexes: {
+                canon: {
+                    yes: ['Published Canon'],
+                    no: ['Unpublished Non-Canon'],
+                },
+                published: {
+                    yes: ['Published Canon'],
+                    no: ['Unpublished Non-Canon'],
+                },
+            },
+            factionEraIndex: {},
+        });
+        const baseRequest = createRequest();
+
+        expect(__test__.buildResultMessage(runtime, {
+            ...baseRequest,
+            executionQuery: 'published:yes',
+            telemetryQuery: 'published:yes',
+        }).unitNames).toEqual(['Published Canon']);
+        expect(__test__.buildResultMessage(runtime, {
+            ...baseRequest,
+            executionQuery: 'published:no',
+            telemetryQuery: 'published:no',
+        }).unitNames).toEqual(['Unpublished Non-Canon']);
+        expect(__test__.buildResultMessage(runtime, {
+            ...baseRequest,
+            executionQuery: 'canon:no',
+            telemetryQuery: 'canon:no',
+        }).unitNames).toEqual(['Unpublished Non-Canon']);
+    });
 });

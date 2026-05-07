@@ -32,7 +32,7 @@
  */
 
 import type { GameSystem } from '../models/common.model';
-import { AdvFilterType, ADVANCED_FILTERS, type AdvFilterConfig } from '../services/unit-search-filters.model';
+import { AdvFilterType, ADVANCED_FILTERS, getBooleanFilterSemanticExpression, normalizeTriStateBooleanFilterValue, parseBooleanFilterSemanticValue, type AdvFilterConfig, type TriStateBooleanFilterValue } from '../services/unit-search-filters.model';
 import type { CountOperator, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { getAdvancedFilterConfigByKey } from './unit-search-filter-config.util';
 import { isEmbeddedApostrophe, normalizeMultiStateSelection } from './unit-search-shared.util';
@@ -478,7 +478,35 @@ export function tokensToFilterState(
         const conf = semanticKeyMap.get(field);
         if (!conf) continue;
 
-        if (conf.type === AdvFilterType.RANGE) {
+        if (conf.type === AdvFilterType.BOOLEAN) {
+            let positiveSelected = false;
+            let negativeSelected = false;
+
+            for (const token of fieldTokens) {
+                for (const value of token.values) {
+                    const parsedValue = parseBooleanFilterSemanticValue(value);
+                    if (parsedValue === null) {
+                        continue;
+                    }
+
+                    const expectedValue = token.operator === '!=' ? !parsedValue : parsedValue;
+                    if (expectedValue) {
+                        positiveSelected = true;
+                    } else {
+                        negativeSelected = true;
+                    }
+                }
+            }
+
+            if (positiveSelected || negativeSelected) {
+                const value: TriStateBooleanFilterValue = positiveSelected ? 'or' : 'not';
+                filterState[conf.key] = {
+                    value,
+                    interactedWith: true,
+                    semanticOnly: positiveSelected && negativeSelected ? true : undefined,
+                };
+            }
+        } else if (conf.type === AdvFilterType.RANGE) {
             // Handle range filters with support for multiple ranges (OR logic) and exclusions
             const totalRange = totalRanges[conf.key] || [0, 100];
             
@@ -911,7 +939,13 @@ export function filterStateToSemanticText(
 
         const semanticKey = conf.semanticKey || conf.key;
 
-        if (conf.type === AdvFilterType.RANGE) {
+        if (conf.type === AdvFilterType.BOOLEAN) {
+            const value = normalizeTriStateBooleanFilterValue(state.value);
+            const expression = getBooleanFilterSemanticExpression(conf, value);
+            if (expression) {
+                parts.push(expression);
+            }
+        } else if (conf.type === AdvFilterType.RANGE) {
             const [min, max] = state.value as [number, number];
             const totalRange = totalRanges[key] || [0, 100];
             const extState = state as SemanticFilterState[string];

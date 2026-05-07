@@ -48,6 +48,17 @@
         </div>
     </section>
 
+    <section class="guide-section">
+        <h3>Boolean Filters</h3>
+        <div class="examples">
+            <div class="example"><code class="allow-select" (click)="appendToSearch('canon:yes')">canon:yes</code><span class="desc">&rarr; Canon units</span></div>
+            <div class="example"><code class="allow-select" (click)="appendToSearch('canon:no')">canon:no</code><span class="desc">&rarr; Non-canon units</span></div>
+            <div class="example"><code class="allow-select" (click)="appendToSearch('published:yes')">published:yes</code><span class="desc">&rarr; Has a published record sheet</span></div>
+            <div class="example"><code class="allow-select" (click)="appendToSearch('published:no')">published:no</code><span class="desc">&rarr; No published record sheet</span></div>
+        </div>
+        <p class="note"><strong>Aliases:</strong> Use <code>yes</code>, <code>true</code>, or <code>y</code> for positive values; use <code>no</code>, <code>false</code>, or <code>n</code> for negative values.</p>
+    </section>
+
     <!-- Multistate Filters -->
     @if (multistateFilters().length > 0) {
     <section class="guide-section">
@@ -160,6 +171,16 @@
             }
         </div>
 
+        <h4>Boolean Fields</h4>
+        <div class="filter-list">
+            @for (f of cbtBooleanFilters(); track f.key) {
+                <div class="filter-item">
+                    <code>{{ f.key }}</code>
+                    <span class="filter-label">{{ f.label }}</span>
+                </div>
+            }
+        </div>
+
         <h4>Range Fields</h4>
         <div class="filter-list">
             @for (f of cbtRangeFilters(); track f.key) {
@@ -178,6 +199,16 @@
         <h4>Dropdown Fields</h4>
         <div class="filter-list">
             @for (f of asDropdownFilters(); track f.key) {
+                <div class="filter-item">
+                    <code>{{ f.key }}</code>
+                    <span class="filter-label">{{ f.label }}</span>
+                </div>
+            }
+        </div>
+
+        <h4>Boolean Fields</h4>
+        <div class="filter-list">
+            @for (f of asBooleanFilters(); track f.key) {
                 <div class="filter-item">
                     <code>{{ f.key }}</code>
                     <span class="filter-label">{{ f.label }}</span>

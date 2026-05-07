@@ -43,10 +43,11 @@ import { createForcePreviewEntryFromForce, getForcePreviewUnitEntries, type Forc
 import type { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { AvailabilitySource } from '../../models/options.model';
 import type { Unit } from '../../models/units.model';
-import { DROPDOWN_FILTERS, RANGE_FILTERS } from '../../services/unit-search-filters.model';
+import { BOOLEAN_FILTERS, DROPDOWN_FILTERS, RANGE_FILTERS } from '../../services/unit-search-filters.model';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { ForcePreviewPanelComponent } from '../force-preview-panel/force-preview-panel.component';
 import { ForceRadarPanelComponent } from '../force-radar-panel/force-radar-panel.component';
+import { ModeSwitchComponent } from '../mode-switch/mode-switch.component';
 import { MultiSelectDropdownComponent, type MultiStateSelection } from '../multi-select-dropdown/multi-select-dropdown.component';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { TooltipDirective } from '../../directives/tooltip.directive';
@@ -107,6 +108,7 @@ type GeneratorDialogTab = 'configuration' | 'preview';
         BaseDialogComponent,
         ForcePreviewPanelComponent,
         ForceRadarPanelComponent,
+        ModeSwitchComponent,
         MultiSelectDropdownComponent,
         RangeSliderComponent,
         SyntaxInputComponent,
@@ -229,7 +231,7 @@ export class SearchForceGeneratorDialogComponent {
         const filterState = this.filtersService.effectiveFilterState();
         const otherGameSystem = this.otherAdvPanelFilterGameSystem();
 
-        return [...DROPDOWN_FILTERS, ...RANGE_FILTERS].some((filter) => (
+        return [...BOOLEAN_FILTERS, ...DROPDOWN_FILTERS, ...RANGE_FILTERS].some((filter) => (
             filter.game === otherGameSystem && filterState[filter.key]?.interactedWith
         ));
     });
@@ -237,7 +239,7 @@ export class SearchForceGeneratorDialogComponent {
         const hasSearchText = this.filtersService.searchText().trim().length > 0;
         const filterState = this.filtersService.effectiveFilterState();
         const excludedKeys = new Set(this.additionalFiltersExcludedKeys());
-        const hasActiveAdvancedFilters = [...DROPDOWN_FILTERS, ...RANGE_FILTERS].some((filter) => (
+        const hasActiveAdvancedFilters = [...BOOLEAN_FILTERS, ...DROPDOWN_FILTERS, ...RANGE_FILTERS].some((filter) => (
             !excludedKeys.has(filter.key) && filterState[filter.key]?.interactedWith
         ));
 
@@ -912,6 +914,14 @@ export class SearchForceGeneratorDialogComponent {
         if (option.type === 'range') {
             const [min, max] = option.value;
             return `${option.label} ${option.displayText ?? `${min}-${max}`}`;
+        }
+
+        if (option.type === 'boolean') {
+            return option.value === 'or'
+                ? `${option.label} Yes`
+                : option.value === 'not'
+                    ? `${option.label} No`
+                    : '';
         }
 
         if (option.displayText) {

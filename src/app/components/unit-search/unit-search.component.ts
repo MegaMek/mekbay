@@ -47,7 +47,7 @@ import { type HighlightToken, tokenizeForHighlight } from '../../utils/semantic-
 import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
 import type { Unit } from '../../models/units.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
-import { Overlay, type OverlayRef } from '@angular/cdk/overlay';
+import { Overlay, OverlayModule, type ConnectedPosition, type OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { firstValueFrom } from 'rxjs';
@@ -77,6 +77,7 @@ import { SavedSearchesService } from '../../services/saved-searches.service';
 import { generateUUID } from '../../services/ws.service';
 import { GameSystem } from '../../models/common.model';
 import { AS_TYPE_DISPLAY_NAMES, DROPDOWN_FILTERS, RANGE_FILTERS } from '../../services/unit-search-filters.model';
+import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 import { UnitDetailsPanelComponent } from '../unit-details-panel/unit-details-panel.component';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
@@ -102,10 +103,26 @@ export interface ChassisGroup {
     units: Unit[];
 }
 
+type UnitSearchViewMode = 'list' | 'card' | 'chassis' | 'table';
+
+interface ViewModeOptionConfig {
+    mode: UnitSearchViewMode;
+    label: string;
+    caption: string;
+    gameSystem?: GameSystem;
+    requiresExpanded?: boolean;
+}
+
+interface ViewModeOption extends ViewModeOptionConfig {
+    disabled: boolean;
+    disabledReason: string | null;
+    willExpand: boolean;
+}
+
 @Component({
     selector: 'unit-search',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, LongPressDirective, TooltipDirective, AdjustedPV, FormatNumberPipe, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, UnitSearchAdvancedFiltersComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent],
+    imports: [CommonModule, ScrollingModule, OverlayModule, LongPressDirective, TooltipDirective, AdjustedPV, FormatNumberPipe, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, UnitSearchAdvancedFiltersComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent],
     templateUrl: './unit-search.component.html',
     styleUrl: './unit-search.component.scss',
     host: {
@@ -114,6 +131,28 @@ export interface ChassisGroup {
     }
 })
 export class UnitSearchComponent {
+    private static supportsCssAnchorPositioning(): boolean {
+        const css = globalThis.CSS;
+        return !!css?.supports
+            && css.supports('position-anchor: --unit-searchbar')
+            && css.supports('top: anchor(bottom)')
+            && css.supports('width: anchor-size(width)');
+    }
+
+    private static readonly VIEW_MODE_MENU_POSITIONS: ConnectedPosition[] = [
+        { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+        { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
+        { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+        { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+    ];
+
+    private static readonly VIEW_MODE_OPTIONS: readonly ViewModeOptionConfig[] = [
+        { mode: 'list', label: 'List View', caption: 'Result cards' },
+        { mode: 'card', label: 'Card View', caption: 'Alpha Strike cards', gameSystem: GameSystem.ALPHA_STRIKE },
+        { mode: 'chassis', label: 'Chassis View', caption: 'Grouped chassis' },
+        { mode: 'table', label: 'Table View', caption: 'Expanded table', requiresExpanded: true },
+    ];
+
     readonly gameSystemEnum = GameSystem;
     layoutService = inject(LayoutService);
     filtersService = inject(UnitSearchFiltersService);
@@ -131,12 +170,14 @@ export class UnitSearchComponent {
     private optionsService = inject(OptionsService);
     private taggingService = inject(TaggingService);
     private savedSearchesService = inject(SavedSearchesService);
+    private keyboardShortcutService = inject(KeyboardShortcutService);
 
     readonly useHex = computed(() => this.optionsService.options().ASUseHex);
     readonly cardStyle = computed(() => this.optionsService.options().ASCardStyle);
     readonly megaMekAvailabilitySourceSelected = computed(() => this.optionsService.options().availabilitySource === 'megamek');
     /** Whether the layout is filters-list-panel (filters on left) */
     readonly filtersOnLeft = computed(() => this.optionsService.options().unitSearchExpandedViewLayout === 'filters-list-panel');
+    readonly supportsCssAnchorPositioning = UnitSearchComponent.supportsCssAnchorPositioning();
 
     public readonly SORT_OPTIONS = SORT_OPTIONS;
     readonly unitTypeDisplayNames = AS_TYPE_DISPLAY_NAMES;
@@ -171,9 +212,11 @@ export class UnitSearchComponent {
     private searchDebounceTimer: any;
     private heightTrackingDebounceTimer: any;
     private readonly SEARCH_DEBOUNCE_MS = 300;
+    private resultPointerHoverSuppressedUntil = 0;
 
     private static readonly CHORD_ACTIVATE_KEY = 'f';
     private static readonly CHORD_TIMEOUT_MS = 1500;
+    private static readonly RESULT_POINTER_HOVER_SUPPRESSION_MS = 160;
     private static readonly FILTER_CHORD_BINDINGS: { key: string; filterKey: string }[] = [
         // Alpha Strike
         { key: 'p', filterKey: 'as.PV' },
@@ -255,6 +298,7 @@ export class UnitSearchComponent {
     advPanelDocked = computed(() => this.expandedView() && this.advOpen() && this.layoutService.windowWidth() >= 900);
     advPanelUserColumns = signal<1 | 2 | null>(null);
     focused = signal(false);
+    viewModeMenuOpen = signal(false);
     activeIndex = signal<number | null>(null);
     selectedUnits = signal<Set<string>>(new Set());
     private unitDetailsDialogOpen = signal(false);
@@ -266,7 +310,7 @@ export class UnitSearchComponent {
       * - 'chassis' : compact chassis-grouped view
       * - 'table'   : expanded table view
       */
-     viewMode = signal<'list' | 'card' | 'chassis' | 'table'>(this.optionsService.options().unitSearchViewMode);
+    viewMode = signal<UnitSearchViewMode>(this.optionsService.options().unitSearchViewMode);
 
 
 
@@ -309,6 +353,24 @@ export class UnitSearchComponent {
         if (mode === 'card') return 'Card View';
         if (mode === 'table') return 'Table View';
         return 'List View';
+    });
+
+    readonly viewModeMenuPositions = UnitSearchComponent.VIEW_MODE_MENU_POSITIONS;
+    readonly viewModeMenuScrollStrategy = this.overlay.scrollStrategies.reposition();
+
+    readonly viewModeOptions = computed((): ViewModeOption[] => {
+        const gameSystem = this.gameSystem();
+        const expanded = this.expandedView();
+
+        return UnitSearchComponent.VIEW_MODE_OPTIONS.map(option => {
+            const disabled = option.gameSystem != null && option.gameSystem !== gameSystem;
+            return {
+                ...option,
+                disabled,
+                disabledReason: disabled ? `${option.label} is unavailable in the current game system` : null,
+                willExpand: !disabled && !!option.requiresExpanded && !expanded,
+            };
+        });
     });
 
     /**
@@ -363,10 +425,23 @@ export class UnitSearchComponent {
     /** Whether there is a previous unit to navigate to in the inline panel */
     inlinePanelHasPrev = computed(() => this.inlinePanelIndex() > 0);
 
+    /** Previous unit preview for the inline details panel */
+    inlinePanelPrevUnit = computed(() => {
+        const index = this.inlinePanelIndex();
+        return index > 0 ? this.filtersService.filteredUnits()[index - 1] ?? null : null;
+    });
+
     /** Whether there is a next unit to navigate to in the inline panel */
     inlinePanelHasNext = computed(() => {
         const index = this.inlinePanelIndex();
         return index >= 0 && index < this.filtersService.filteredUnits().length - 1;
+    });
+
+    /** Next unit preview for the inline details panel */
+    inlinePanelNextUnit = computed(() => {
+        const index = this.inlinePanelIndex();
+        const units = this.filtersService.filteredUnits();
+        return index >= 0 && index < units.length - 1 ? units[index + 1] ?? null : null;
     });
 
     /** Keys already visible in the chassis view (PV for AS, BV for CBT) */
@@ -637,7 +712,7 @@ export class UnitSearchComponent {
             columns.push({
                 id: 'tags',
                 header: 'Tags',
-                track: '120px',
+                track: '230px',
                 cellTemplate: tagsCell,
                 headerClass: 'as-th-tags',
                 cellClass: 'as-td-tags',
@@ -801,7 +876,7 @@ export class UnitSearchComponent {
             {
                 id: 'tags',
                 header: 'Tags',
-                track: '120px',
+                track: '230px',
                 cellTemplate: tagsCell,
                 headerClass: 'as-th-tags',
                 cellClass: 'as-td-tags',
@@ -830,6 +905,7 @@ export class UnitSearchComponent {
         height: '100%',
         columnsCount: 1,
     });
+    readonly advPanelAnchoredBelow = signal(false);
     resultsDropdownStyle = signal<{ top: string, width: string, height: string }>({
         top: '0px',
         width: '100%',
@@ -938,6 +1014,12 @@ export class UnitSearchComponent {
     private advPanelDragStartWidth = 0;
 
     constructor() {
+        this.keyboardShortcutService.register({
+            id: 'unit-search-results',
+            active: () => this.resultsVisible() && this.filtersService.filteredUnits().length > 0,
+            handle: (event) => this.handleSearchResultsShortcutKeyDown(event),
+        }, this.destroyRef);
+
         // Track panel visibility for flicker prevention (must be a plain boolean, not a signal,
         // so the computed reads it as a snapshot without creating a reactive dependency)
         effect(() => {
@@ -1350,6 +1432,7 @@ export class UnitSearchComponent {
     public closeAllPanels() {
         this.focused.set(false);
         this.advOpen.set(false);
+        this.viewModeMenuOpen.set(false);
         this.activeIndex.set(null);
         this.blurInput();
     }
@@ -1406,6 +1489,10 @@ export class UnitSearchComponent {
     }
 
     updateResultsDropdownPosition() {
+        if (this.supportsCssAnchorPositioning && !this.expandedView()) {
+            return;
+        }
+
         const gap = 4;
 
         const { top: safeTop, bottom: safeBottom } = this.layoutService.getSafeAreaInsets();
@@ -1478,6 +1565,7 @@ export class UnitSearchComponent {
             }
         }
         let panelWidth = columns === 2 ? doublePanelWidth : singlePanelWidth;
+        const opensBelow = !this.advPanelDocked() && spaceAvailable < panelWidth;
 
         let left: number;
         let top: number;
@@ -1516,6 +1604,7 @@ export class UnitSearchComponent {
             height: `${availableHeight}px`,
             columnsCount: columns
         });
+        this.advPanelAnchoredBelow.set(opensBelow);
     }
 
     setAdvFilter(key: string, value: any) {
@@ -1597,7 +1686,10 @@ export class UnitSearchComponent {
         }
         if (event.key === 'Escape') {
             event.stopPropagation();
-            if (this.advOpen()) {
+            if (this.viewModeMenuOpen()) {
+                this.closeViewModeMenu();
+                return;
+            } else if (this.advOpen()) {
                 this.closeAdvPanel();
                 this.focusInput();
                 return;
@@ -1618,20 +1710,11 @@ export class UnitSearchComponent {
             switch (event.key) {
                 case 'ArrowDown':
                     event.preventDefault();
-                    const nextIndex = currentActiveIndex !== null ? Math.min(currentActiveIndex + 1, items.length - 1) : 0;
-                    this.activeIndex.set(nextIndex);
-                    this.scrollToIndex(nextIndex);
+                    this.navigateSearchResults('next', items);
                     break;
                 case 'ArrowUp':
                     event.preventDefault();
-                    if (currentActiveIndex !== null && currentActiveIndex > 0) {
-                        const prevIndex = currentActiveIndex - 1;
-                        this.activeIndex.set(prevIndex);
-                        this.scrollToIndex(prevIndex);
-                    } else {
-                        this.activeIndex.set(null);
-                        this.focusInput();
-                    }
+                    this.navigateSearchResults('previous', items);
                     break;
                 case 'Enter':
                     event.preventDefault();
@@ -1645,15 +1728,83 @@ export class UnitSearchComponent {
         }
     }
 
-    private scrollToIndex(index: number) {
-        this.currentViewport()?.scrollToIndex(this.getViewportItemIndex(index), 'smooth');
+    private handleSearchResultsShortcutKeyDown(event: KeyboardEvent): boolean {
+        if (event.ctrlKey || event.altKey || event.metaKey) return false;
+
+        if (event.key === 'ArrowDown') {
+            return this.navigateSearchResults('next');
+        } else if (event.key === 'ArrowUp') {
+            return this.navigateSearchResults('previous');
+        }
+
+        return false;
+    }
+
+    private navigateSearchResults(direction: 'next' | 'previous', items = this.filtersService.filteredUnits()): boolean {
+        if (items.length === 0) return false;
+
+        this.suppressResultPointerHover();
+        const currentActiveIndex = this.activeIndex();
+        if (direction === 'next') {
+            const nextIndex = currentActiveIndex !== null ? Math.min(currentActiveIndex + 1, items.length - 1) : 0;
+            if (nextIndex === currentActiveIndex) return true;
+
+            this.selectResultIndex(nextIndex, items, 'auto');
+            return true;
+        }
+
+        if (currentActiveIndex !== null && currentActiveIndex > 0) {
+            const prevIndex = currentActiveIndex - 1;
+            this.selectResultIndex(prevIndex, items, 'auto');
+        } else {
+            if (currentActiveIndex !== null) {
+                this.setActiveResultIndex(null, items);
+            }
+            this.focusInput();
+        }
+        return true;
+    }
+
+    onResultPointerEnter(index: number): void {
+        if (this.shouldIgnoreResultPointerHover()) return;
+
+        this.activeIndex.set(index);
+    }
+
+    private suppressResultPointerHover(): void {
+        this.resultPointerHoverSuppressedUntil = Date.now() + UnitSearchComponent.RESULT_POINTER_HOVER_SUPPRESSION_MS;
+    }
+
+    private shouldIgnoreResultPointerHover(): boolean {
+        return Date.now() < this.resultPointerHoverSuppressedUntil;
+    }
+
+    private selectResultIndex(index: number, items = this.filtersService.filteredUnits(), behavior: ScrollBehavior = 'smooth'): void {
+        this.suppressResultPointerHover();
+        this.setActiveResultIndex(index, items);
+        this.scrollToMakeVisible(index, behavior);
+    }
+
+    private setActiveResultIndex(index: number | null, items = this.filtersService.filteredUnits()): void {
+        this.activeIndex.set(index);
+
+        if (index !== null) {
+            const unit = items[index];
+            if (unit) {
+                this.inlinePanelUnit.set(unit);
+            }
+        }
+    }
+
+    private scrollToIndex(index: number, behavior: ScrollBehavior = 'smooth') {
+        this.currentViewport()?.scrollToIndex(this.getViewportItemIndex(index), behavior);
     }
 
     /**
      * Scroll to make the item at the given index visible, but only if it's not already visible.
      * If scrolling is needed, positions the item at the nearest edge (top or bottom).
      */
-    private scrollToMakeVisible(index: number) {
+    private scrollToMakeVisible(index: number, behavior: ScrollBehavior = 'smooth') {
         const vp = this.currentViewport();
         if (!vp) return;
         const viewportIndex = this.getViewportItemIndex(index);
@@ -1664,7 +1815,7 @@ export class UnitSearchComponent {
         // Check if the item is within the rendered range
         if (viewportIndex < renderedRange.start || viewportIndex >= renderedRange.end) {
             // Item is not rendered at all, need to scroll to it
-            vp.scrollToIndex(viewportIndex, 'smooth');
+            vp.scrollToIndex(viewportIndex, behavior);
             return;
         }
 
@@ -1674,7 +1825,7 @@ export class UnitSearchComponent {
 
         if (localIndex < 0 || localIndex >= items.length) {
             // Safety fallback
-            vp.scrollToIndex(viewportIndex, 'smooth');
+            vp.scrollToIndex(viewportIndex, behavior);
             return;
         }
 
@@ -1696,11 +1847,11 @@ export class UnitSearchComponent {
         if (isAbove) {
             // Item is above the visible area - scroll up by the exact amount needed
             const scrollAmount = vpRect.top - itemRect.top;
-            vp.scrollToOffset(currentOffset - scrollAmount, 'smooth');
+            vp.scrollToOffset(currentOffset - scrollAmount, behavior);
         } else {
             // Item is below the visible area - scroll down by the exact amount needed
             const scrollAmount = itemRect.bottom - vpRect.bottom;
-            vp.scrollToOffset(currentOffset + scrollAmount, 'smooth');
+            vp.scrollToOffset(currentOffset + scrollAmount, behavior);
         }
     }
 
@@ -1772,13 +1923,7 @@ export class UnitSearchComponent {
 
         // Track navigation within the dialog to keep activeIndex in sync
         const indexChangeSub = ref.componentInstance?.indexChange.subscribe((newIndex: number) => {
-            this.activeIndex.set(newIndex);
-            this.scrollToMakeVisible(newIndex);
-            // Fetch fresh to avoid closure over stale filteredUnits
-            const currentFilteredUnits = this.filtersService.filteredUnits();
-            if (newIndex < currentFilteredUnits.length) {
-                this.inlinePanelUnit.set(currentFilteredUnits[newIndex]);
-            }
+            this.selectResultIndex(newIndex, this.filtersService.filteredUnits(), 'auto');
         });
 
         const addSub = ref.componentInstance?.add.subscribe(() => {
@@ -1847,7 +1992,7 @@ export class UnitSearchComponent {
     }
 
     onUnitTableRowPointerEnter(event: DataTableRowPointerEnterEvent<Unit>): void {
-        this.activeIndex.set(event.index);
+        this.onResultPointerEnter(event.index);
     }
 
     isSortActive(...keysOrGroups: string[]): boolean {
@@ -2202,10 +2347,7 @@ export class UnitSearchComponent {
     onInlinePanelPrev(): void {
         const index = this.inlinePanelIndex();
         if (index > 0) {
-            const prevUnit = this.filtersService.filteredUnits()[index - 1];
-            this.inlinePanelUnit.set(prevUnit);
-            this.activeIndex.set(index - 1);
-            this.scrollToMakeVisible(index - 1);
+            this.selectResultIndex(index - 1, this.filtersService.filteredUnits(), 'auto');
         }
     }
 
@@ -2214,10 +2356,7 @@ export class UnitSearchComponent {
         const index = this.inlinePanelIndex();
         const filteredUnits = this.filtersService.filteredUnits();
         if (index >= 0 && index < filteredUnits.length - 1) {
-            const nextUnit = filteredUnits[index + 1];
-            this.inlinePanelUnit.set(nextUnit);
-            this.activeIndex.set(index + 1);
-            this.scrollToMakeVisible(index + 1);
+            this.selectResultIndex(index + 1, filteredUnits, 'auto');
         }
     }
 
@@ -2300,7 +2439,7 @@ export class UnitSearchComponent {
         return this.resultsDataTable()?.getViewport() ?? this.viewport();
     }
 
-    private normalizeViewMode(viewMode: 'list' | 'card' | 'chassis' | 'table'): 'list' | 'card' | 'chassis' | 'table' {
+    private normalizeViewMode(viewMode: UnitSearchViewMode): UnitSearchViewMode {
         if (!this.gameService.isAlphaStrike() && viewMode === 'card') {
             return 'list';
         }
@@ -2310,10 +2449,32 @@ export class UnitSearchComponent {
         return viewMode;
     }
 
-    private setViewMode(viewMode: 'list' | 'card' | 'chassis' | 'table') {
+    private setViewMode(viewMode: UnitSearchViewMode) {
         const normalizedViewMode = this.normalizeViewMode(viewMode);
         this.viewMode.set(normalizedViewMode);
         void this.optionsService.setOption('unitSearchViewMode', normalizedViewMode);
+    }
+
+    toggleViewModeMenu(event: MouseEvent) {
+        event.stopPropagation();
+        this.viewModeMenuOpen.update(open => !open);
+    }
+
+    closeViewModeMenu() {
+        this.viewModeMenuOpen.set(false);
+    }
+
+    selectViewMode(viewMode: UnitSearchViewMode, event?: MouseEvent) {
+        event?.stopPropagation();
+        const option = this.viewModeOptions().find(item => item.mode === viewMode);
+        if (!option || option.disabled) return;
+
+        if (option.requiresExpanded && !this.expandedView()) {
+            this.expandedView.set(true);
+        }
+
+        this.setViewMode(viewMode);
+        this.closeViewModeMenu();
     }
 
     toggleExpandedView() {
@@ -2332,55 +2493,6 @@ export class UnitSearchComponent {
         this.immediateSearchText.set('');
         this.filtersService.setSearchText('');
         this.activeIndex.set(null);
-    }
-
-    /**
-     * Cycle through view modes.
-     * AS:  list → card → chassis → table → list
-        * CBT: list → chassis → table → list
-     */
-    cycleViewMode() {
-        const current = this.viewMode();
-        const isAS = this.gameService.isAlphaStrike();
-        const isExpanded = this.expandedView();
-        if (isAS) {
-            // Compact: list → card → chassis → list
-            // Expanded: list → card → chassis → table → list
-            if (!isExpanded) {
-                this.setViewMode(
-                    current === 'list'
-                        ? 'card'
-                        : current === 'card'
-                            ? 'chassis'
-                            : 'list'
-                );
-                return;
-            }
-
-            // list → card → chassis → table → list
-            this.setViewMode(
-                current === 'list'
-                    ? 'card'
-                    : current === 'card'
-                        ? 'chassis'
-                        : current === 'chassis'
-                            ? 'table'
-                            : 'list'
-            );
-        } else {
-            if (!isExpanded) {
-                this.setViewMode(current === 'list' ? 'chassis' : 'list');
-                return;
-            }
-
-            this.setViewMode(
-                current === 'list'
-                    ? 'chassis'
-                    : current === 'chassis'
-                        ? 'table'
-                        : 'list'
-            );
-        }
     }
 
     /**

@@ -58,7 +58,7 @@
  */
 
 import type { GameSystem } from '../models/common.model';
-import { ADVANCED_FILTERS, type AdvFilterConfig, AdvFilterType, type AvailabilityFilterScope } from '../services/unit-search-filters.model';
+import { ADVANCED_FILTERS, type AdvFilterConfig, AdvFilterType, type AvailabilityFilterScope, getBooleanFilterUnitValue, parseBooleanFilterSemanticValue } from '../services/unit-search-filters.model';
 import { type SemanticOperator, type SemanticToken, buildSemanticKeyMap, VIRTUAL_SEMANTIC_KEYS, parseValues, parseValueWithQuantity, type QuantityConstraint } from './semantic-filter.util';
 import { normalizeLooseText, wildcardToRegex } from './string.util';
 import { usesIndexedDropdownUniverse } from './unit-search-filter-config.util';
@@ -352,6 +352,9 @@ function tryParseFilterToken(
     } else if (input[i] === '=') {
         operator = '=';
         i += 1;
+    } else if (input[i] === ':' && conf?.type === AdvFilterType.BOOLEAN) {
+        operator = '=';
+        i += 1;
     } else if (input[i] === '>') {
         operator = '>';
         i += 1;
@@ -370,7 +373,14 @@ function tryParseFilterToken(
         }
     }
 
-    if (operator === '==' && (!conf || (conf.type !== AdvFilterType.DROPDOWN && conf.type !== AdvFilterType.SEMANTIC))) {
+    if (conf && conf.type === AdvFilterType.BOOLEAN) {
+        const validBooleanOperators: SemanticOperator[] = ['=', '==', '!='];
+        if (!validBooleanOperators.includes(operator)) {
+            return null;
+        }
+    }
+
+    if (operator === '==' && (!conf || (conf.type !== AdvFilterType.DROPDOWN && conf.type !== AdvFilterType.SEMANTIC && conf.type !== AdvFilterType.BOOLEAN))) {
         return null;
     }
     
@@ -1605,6 +1615,8 @@ function evaluateSingleFilterConfig(
     // Handle different filter types
     if (conf.type === AdvFilterType.RANGE) {
         return evaluateRangeFilter(unitValue, operator, parsedRangeValues, conf);
+    } else if (conf.type === AdvFilterType.BOOLEAN) {
+        return evaluateBooleanFilter(unitValue, operator, values, conf);
     } else if (conf.type === AdvFilterType.DROPDOWN) {
         return evaluateDropdownFilter(unit, unitValue, operator, values, conf, context);
     } else if (conf.type === AdvFilterType.SEMANTIC) {
@@ -1612,6 +1624,32 @@ function evaluateSingleFilterConfig(
     }
     
     return true;
+}
+
+function evaluateBooleanFilter(
+    unitValue: any,
+    operator: SemanticOperator,
+    values: string[],
+    conf: AdvFilterConfig,
+): boolean {
+    const actualValue = getBooleanFilterUnitValue(conf, unitValue);
+    const expectedValues = values
+        .map(value => parseBooleanFilterSemanticValue(value))
+        .filter((value): value is boolean => value !== null);
+
+    if (expectedValues.length === 0) {
+        return operator === '!=';
+    }
+
+    if (operator === '!=') {
+        return expectedValues.every(expectedValue => actualValue !== expectedValue);
+    }
+
+    if (operator === '&=') {
+        return expectedValues.every(expectedValue => actualValue === expectedValue);
+    }
+
+    return expectedValues.some(expectedValue => actualValue === expectedValue);
 }
 
 /**
@@ -1700,6 +1738,10 @@ function buildIndexedCandidateSetForConfig(
     if (!context.getIndexedUnitIds || !context.getIndexedFilterValues) {
         return null;
     }
+    if (conf.type === AdvFilterType.BOOLEAN) {
+        return buildIndexedBooleanCandidateSet(conf, operator, values, context, activeScope);
+    }
+
     if (conf.type !== AdvFilterType.DROPDOWN || conf.countable) {
         return null;
     }
@@ -1767,6 +1809,58 @@ function buildIndexedCandidateSetForConfig(
     }
 
     return null;
+}
+
+function buildIndexedBooleanCandidateSet(
+    conf: AdvFilterConfig,
+    operator: SemanticOperator,
+    values: string[],
+    context: EvaluatorContext,
+    activeScope?: AvailabilityFilterScope,
+): Set<string | number> | null {
+    if (operator === '&=') {
+        return null;
+    }
+
+    const indexedValues = context.getIndexedFilterValues?.(conf.key) ?? [];
+    if (indexedValues.length === 0) {
+        return null;
+    }
+
+    const parsedValues = values
+        .map(value => parseBooleanFilterSemanticValue(value))
+        .filter((value): value is boolean => value !== null);
+    if (parsedValues.length === 0) {
+        return null;
+    }
+
+    const expectedValues = new Set(parsedValues);
+    const targetValues = new Set<boolean>();
+    if (operator === '!=') {
+        for (const value of [true, false]) {
+            if (!expectedValues.has(value)) {
+                targetValues.add(value);
+            }
+        }
+    } else {
+        for (const value of expectedValues) {
+            targetValues.add(value);
+        }
+    }
+
+    const candidateIds = new Set<string | number>();
+    for (const targetValue of targetValues) {
+        const indexedIds = context.getIndexedUnitIds?.(conf.key, targetValue ? 'yes' : 'no', activeScope);
+        if (!indexedIds) {
+            continue;
+        }
+
+        for (const unitId of indexedIds) {
+            candidateIds.add(unitId);
+        }
+    }
+
+    return candidateIds;
 }
 
 function getIndexedCandidateIdsForFilter(

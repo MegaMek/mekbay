@@ -40,7 +40,7 @@ import { removeAccents } from '../utils/string.util';
 import { naturalCompare } from '../utils/sort.util';
 import { getMergedTags, getUnitSourceFilterValues } from '../utils/unit-search-shared.util';
 import { calculateWeightedMaxRange, getMaxRangeFromComponents } from '../utils/unit-range.util';
-import { AS_MOVEMENT_MODE_DISPLAY_NAMES } from './unit-search-filters.model';
+import { AS_MOVEMENT_MODE_DISPLAY_NAMES, BOOLEAN_FILTERS, getBooleanFilterUnitValue } from './unit-search-filters.model';
 import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot } from '../utils/unit-search-worker-protocol.util';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 
@@ -329,6 +329,9 @@ export class UnitSearchIndexService {
             this.addSearchIndexValues('features', unit.features ?? [], unit.name);
             this.addSearchIndexValues('quirks', unit.quirks ?? [], unit.name);
             this.addSearchIndexValues('_tags', getMergedTags(unit), unit.name);
+            for (const filter of BOOLEAN_FILTERS) {
+                this.addSearchIndexValue(filter.key, getBooleanFilterUnitValue(filter, unit[filter.key as keyof Unit]) ? 'yes' : 'no', unit.name);
+            }
         }
 
         for (const era of eras) {

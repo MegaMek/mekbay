@@ -28,6 +28,41 @@ function createDropdownDependencies(): UnitSearchDropdownValuesDependencies {
 }
 
 describe('unit search URL filters', () => {
+    it('round-trips boolean filters in compact filters', () => {
+        const filterState: FilterState = {
+            canon: {
+                value: 'or',
+                interactedWith: true,
+            },
+            published: {
+                value: 'not',
+                interactedWith: true,
+            },
+        };
+
+        const queryParameters = buildUnitSearchQueryParameters({
+            searchText: '',
+            filterState,
+            semanticKeys: new Set<string>(),
+            selectedSort: '',
+            selectedSortDirection: 'asc',
+            expanded: false,
+            gunnery: DEFAULT_GUNNERY_SKILL,
+            piloting: DEFAULT_PILOTING_SKILL,
+            bvLimit: 0,
+            publicTagsParam: null,
+        });
+
+        expect(queryParameters.filters).toBe('canon:yes|published:no');
+
+        const parsed = parseAndValidateCompactFiltersFromUrl(
+            queryParameters.filters!,
+            createDropdownDependencies(),
+        );
+
+        expect(parsed).toEqual(filterState);
+    });
+
     it('quotes separator-heavy dropdown values when building filters params', () => {
         const filterState: FilterState = {
             'as.specials': {
