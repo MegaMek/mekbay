@@ -917,7 +917,7 @@ describe('semantic filter exclusivity', () => {
         expect(zeroResult.names).toEqual(['zero-slots']);
     });
 
-    it('orders Alpha Strike 0-star slots between 0 and 1', () => {
+    it('treats Alpha Strike 0-star as greater than 0 and less than 1 for comparisons', () => {
         const units: ASSpecialTestUnit[] = [
             { id: 1, name: 'zero', specials: ['FLK0/0/0'] },
             { id: 2, name: 'zero-star', specials: ['FLK0*/0*/0*'] },
