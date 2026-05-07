@@ -93,7 +93,8 @@ export class FloatingOverlayService {
                 { originX: 'start', originY: 'top', overlayX: 'end', overlayY: 'top', offsetX: -6, offsetY: 0 },
             ])
             .withFlexibleDimensions(false)
-            .withPush(true);
+            .withPush(true)
+            .withViewportMargin(6);
     }
 
     private ensureZIndex() {
