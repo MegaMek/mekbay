@@ -1108,10 +1108,37 @@ type ParsedRangeValue =
     | { type: 'range'; min: number; max: number }
     | { type: 'single'; num: number };
 
+type SpecialSlotOperator = '=' | '!=' | '>' | '<' | '>=' | '<=';
+
+interface SpecialSlotValue {
+    text: string;
+    rank: number;
+}
+
+type SpecialQueryToken =
+    | { type: 'literal'; text: string }
+    | { type: 'slot'; matcher: SpecialSlotMatcher };
+
+type SpecialTargetToken =
+    | { type: 'literal'; text: string }
+    | { type: 'slot'; value: SpecialSlotValue | null };
+
+type SpecialSlotMatcher =
+    | { type: 'any' }
+    | { type: 'missing' }
+    | { type: 'comparison'; operator: SpecialSlotOperator; value: SpecialSlotValue }
+    | { type: 'set'; values: readonly SpecialSlotValue[] };
+
+interface ParsedSpecialQuery {
+    tokens: SpecialQueryToken[];
+}
+
 const RANGE_VALUE_PATTERN = /^(-?\d+(?:\.\d+)?)[-~](-?\d+(?:\.\d+)?)$/;
+const SPECIAL_EXPLICIT_NUMERIC_QUERY_PATTERN = /(?:>=|<=|!=|>|<|=)\s*-?\d|\[[^\]]+\]/;
 const FILTER_CONFIGS_BY_SEMANTIC_KEY = new Map<string, AdvFilterConfig[]>();
 const sortedFilterConfigsCache = new WeakMap<EvaluatorContext, Map<string, readonly AdvFilterConfig[]>>();
 const parsedRangeValuesCache = new WeakMap<SemanticToken, ParsedRangeValue[]>();
+const parsedSpecialQueryCache = new Map<string, ParsedSpecialQuery | null>();
 
 for (const filterConfig of ADVANCED_FILTERS) {
     const semanticKey = filterConfig.semanticKey || filterConfig.key;
@@ -1738,6 +1765,9 @@ function buildIndexedCandidateSetForConfig(
     if (!context.getIndexedUnitIds || !context.getIndexedFilterValues) {
         return null;
     }
+    if (conf.key === 'as.specials') {
+        return null;
+    }
     if (conf.type === AdvFilterType.BOOLEAN) {
         return buildIndexedBooleanCandidateSet(conf, operator, values, context, activeScope);
     }
@@ -2225,6 +2255,440 @@ function checkQuantityConstraint(
     );
 }
 
+function splitASSpecialArguments(content: string): string[] {
+    const result: string[] = [];
+    let current = '';
+    let depth = 0;
+
+    for (const char of content) {
+        if (char === '(') {
+            depth++;
+            current += char;
+            continue;
+        }
+
+        if (char === ')') {
+            depth--;
+            current += char;
+            continue;
+        }
+
+        if (char === ',' && depth === 0) {
+            if (current.trim()) {
+                result.push(current.trim());
+            }
+            current = '';
+            continue;
+        }
+
+        current += char;
+    }
+
+    if (current.trim()) {
+        result.push(current.trim());
+    }
+
+    return result;
+}
+
+function isTurretDamagePattern(content: string): boolean {
+    return /^(?:-|\d+(?:\.\d+)?\*?)(?:\/(?:-|\d+(?:\.\d+)?\*?))+$/.test(content.replace(/\s+/g, ''));
+}
+
+function addASSpecialSearchValues(value: string, target: string[]): void {
+    const trimmedValue = value.trim();
+    if (!trimmedValue) {
+        return;
+    }
+
+    target.push(trimmedValue);
+
+    const compositeMatch = trimmedValue.match(/^TUR\s*\((.*)\)$/i);
+    if (!compositeMatch) {
+        return;
+    }
+
+    for (const part of splitASSpecialArguments(compositeMatch[1])) {
+        const trimmedPart = part.trim();
+        if (!trimmedPart || isTurretDamagePattern(trimmedPart)) {
+            continue;
+        }
+        target.push(trimmedPart);
+    }
+}
+
+function getASSpecialSearchValues(unitValue: any): string[] {
+    if (unitValue == null) {
+        return [];
+    }
+
+    const rawValues = Array.isArray(unitValue) ? unitValue : [unitValue];
+    const searchValues: string[] = [];
+    for (const rawValue of rawValues) {
+        addASSpecialSearchValues(String(rawValue), searchValues);
+    }
+    return searchValues;
+}
+
+function normalizeSpecialNumericText(value: string): string {
+    return value.replace(/\s+/g, '').toUpperCase();
+}
+
+function shouldParseSpecialNumericQuery(value: string): boolean {
+    const text = normalizeSpecialNumericText(value);
+    if (SPECIAL_EXPLICIT_NUMERIC_QUERY_PATTERN.test(text) || text.includes('0*')) {
+        return true;
+    }
+
+    if (text.includes('*')) {
+        return false;
+    }
+
+    return /-?\d/.test(text);
+}
+
+function flushSpecialLiteral<T extends SpecialQueryToken | SpecialTargetToken>(
+    tokens: T[],
+    literal: string,
+): void {
+    if (literal) {
+        tokens.push({ type: 'literal', text: literal } as T);
+    }
+}
+
+function parseSpecialSlotValue(text: string, start: number): { value: SpecialSlotValue; end: number } | null {
+    const match = text.slice(start).match(/^-?\d+(?:\.\d+)?/);
+    if (!match) {
+        return null;
+    }
+
+    const numericValue = Number(match[0]);
+    if (!Number.isFinite(numericValue)) {
+        return null;
+    }
+
+    const end = start + match[0].length;
+    if (match[0] === '0' && text[end] === '*') {
+        return { value: { text: '0*', rank: 0.5 }, end: end + 1 };
+    }
+
+    return { value: { text: match[0], rank: numericValue }, end };
+}
+
+function readSpecialSlotOperator(text: string, start: number): { operator: SpecialSlotOperator; end: number } | null {
+    const twoCharOperator = text.slice(start, start + 2);
+    if (twoCharOperator === '>=' || twoCharOperator === '<=' || twoCharOperator === '!=') {
+        return { operator: twoCharOperator, end: start + 2 };
+    }
+
+    const oneCharOperator = text[start];
+    if (oneCharOperator === '>' || oneCharOperator === '<' || oneCharOperator === '=') {
+        return { operator: oneCharOperator, end: start + 1 };
+    }
+
+    return null;
+}
+
+function parseSpecialNumberSet(text: string, start: number): { values: SpecialSlotValue[]; end: number } | null {
+    if (text[start] !== '[') {
+        return null;
+    }
+
+    const end = text.indexOf(']', start + 1);
+    if (end === -1) {
+        return null;
+    }
+
+    const values: SpecialSlotValue[] = [];
+    for (const part of text.slice(start + 1, end).split(',')) {
+        const trimmedPart = part.trim();
+        if (!trimmedPart) {
+            return null;
+        }
+        const slotValue = parseSpecialSlotValue(trimmedPart, 0);
+        if (!slotValue || slotValue.end !== trimmedPart.length) {
+            return null;
+        }
+        values.push(slotValue.value);
+    }
+
+    return values.length > 0 ? { values, end: end + 1 } : null;
+}
+
+function isMissingSpecialSlot(text: string, index: number): boolean {
+    if (text[index] !== '-') {
+        return false;
+    }
+
+    const previous = index === 0 ? '' : text[index - 1];
+    const next = index + 1 >= text.length ? '' : text[index + 1];
+    const hasSlotBoundaryBefore = index === 0 || previous === '/' || previous === '(' || previous === ',';
+    const hasSlotBoundaryAfter = index + 1 >= text.length || next === '/' || next === ')' || next === ',';
+    return hasSlotBoundaryBefore && hasSlotBoundaryAfter;
+}
+
+function parseSpecialQuery(value: string): ParsedSpecialQuery | null {
+    if (!shouldParseSpecialNumericQuery(value)) {
+        return null;
+    }
+
+    const cached = parsedSpecialQueryCache.get(value);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const text = normalizeSpecialNumericText(value);
+    const tokens: SpecialQueryToken[] = [];
+    let literal = '';
+    let index = 0;
+
+    while (index < text.length) {
+        const set = parseSpecialNumberSet(text, index);
+        if (set) {
+            flushSpecialLiteral(tokens, literal);
+            literal = '';
+            tokens.push({ type: 'slot', matcher: { type: 'set', values: set.values } });
+            index = set.end;
+            continue;
+        }
+
+        const operator = readSpecialSlotOperator(text, index);
+        if (operator) {
+            const slotValue = parseSpecialSlotValue(text, operator.end);
+            if (!slotValue) {
+                parsedSpecialQueryCache.set(value, null);
+                return null;
+            }
+
+            flushSpecialLiteral(tokens, literal);
+            literal = '';
+            tokens.push({
+                type: 'slot',
+                matcher: {
+                    type: 'comparison',
+                    operator: operator.operator,
+                    value: slotValue.value,
+                },
+            });
+            index = slotValue.end;
+            continue;
+        }
+
+        if (text[index] === '*') {
+            flushSpecialLiteral(tokens, literal);
+            literal = '';
+            tokens.push({ type: 'slot', matcher: { type: 'any' } });
+            index++;
+            continue;
+        }
+
+        if (isMissingSpecialSlot(text, index)) {
+            flushSpecialLiteral(tokens, literal);
+            literal = '';
+            tokens.push({ type: 'slot', matcher: { type: 'missing' } });
+            index++;
+            continue;
+        }
+
+        const slotValue = parseSpecialSlotValue(text, index);
+        if (slotValue) {
+            flushSpecialLiteral(tokens, literal);
+            literal = '';
+            tokens.push({
+                type: 'slot',
+                matcher: {
+                    type: 'comparison',
+                    operator: '=',
+                    value: slotValue.value,
+                },
+            });
+            index = slotValue.end;
+            continue;
+        }
+
+        literal += text[index];
+        index++;
+    }
+
+    flushSpecialLiteral(tokens, literal);
+
+    const hasSlotMatcher = tokens.some(token => token.type === 'slot');
+    const parsed = hasSlotMatcher ? { tokens } : null;
+    parsedSpecialQueryCache.set(value, parsed);
+    return parsed;
+}
+
+function parseSpecialTarget(value: string): SpecialTargetToken[] {
+    const text = normalizeSpecialNumericText(value);
+    const tokens: SpecialTargetToken[] = [];
+    let literal = '';
+    let index = 0;
+
+    while (index < text.length) {
+        if (isMissingSpecialSlot(text, index)) {
+            flushSpecialLiteral(tokens, literal);
+            literal = '';
+            tokens.push({ type: 'slot', value: null });
+            index++;
+            continue;
+        }
+
+        const slotValue = parseSpecialSlotValue(text, index);
+        if (slotValue) {
+            flushSpecialLiteral(tokens, literal);
+            literal = '';
+            tokens.push({ type: 'slot', value: slotValue.value });
+            index = slotValue.end;
+            continue;
+        }
+
+        literal += text[index];
+        index++;
+    }
+
+    flushSpecialLiteral(tokens, literal);
+    return tokens;
+}
+
+function specialSlotValuesEqual(left: SpecialSlotValue, right: SpecialSlotValue): boolean {
+    if (left.text === '0*' || right.text === '0*') {
+        return left.text === right.text;
+    }
+
+    return left.rank === right.rank;
+}
+
+function compareSpecialSlotValues(left: SpecialSlotValue, right: SpecialSlotValue, operator: SpecialSlotOperator): boolean {
+    switch (operator) {
+        case '=':
+            return specialSlotValuesEqual(left, right);
+        case '!=':
+            return !specialSlotValuesEqual(left, right);
+        case '>':
+            return left.rank > right.rank;
+        case '<':
+            return left.rank < right.rank;
+        case '>=':
+            return left.rank >= right.rank;
+        case '<=':
+            return left.rank <= right.rank;
+    }
+}
+
+function specialSlotMatches(slotValue: SpecialSlotValue | null, matcher: SpecialSlotMatcher): boolean {
+    if (matcher.type === 'any') {
+        return true;
+    }
+
+    if (matcher.type === 'missing') {
+        return slotValue === null;
+    }
+
+    if (slotValue === null) {
+        return false;
+    }
+
+    if (matcher.type === 'set') {
+        return matcher.values.some(value => specialSlotValuesEqual(value, slotValue));
+    }
+
+    return compareSpecialSlotValues(slotValue, matcher.value, matcher.operator);
+}
+
+function hasOnlyTrailingSpecialSlots(tokens: SpecialTargetToken[], start: number): boolean {
+    let index = start;
+    while (index < tokens.length) {
+        const separator = tokens[index];
+        if (separator?.type !== 'literal' || separator.text !== '/') {
+            return false;
+        }
+        index++;
+
+        if (tokens[index]?.type !== 'slot') {
+            return false;
+        }
+        index++;
+    }
+
+    return true;
+}
+
+function specialNumericQueryMatches(value: string, query: ParsedSpecialQuery): boolean {
+    const targetTokens = parseSpecialTarget(value);
+    let targetIndex = 0;
+
+    for (const queryToken of query.tokens) {
+        const targetToken = targetTokens[targetIndex];
+        if (!targetToken) {
+            return false;
+        }
+
+        if (queryToken.type === 'literal') {
+            if (targetToken.type !== 'literal' || targetToken.text !== queryToken.text) {
+                return false;
+            }
+            targetIndex++;
+            continue;
+        }
+
+        if (targetToken.type !== 'slot' || !specialSlotMatches(targetToken.value, queryToken.matcher)) {
+            return false;
+        }
+        targetIndex++;
+    }
+
+    return targetIndex === targetTokens.length || hasOnlyTrailingSpecialSlots(targetTokens, targetIndex);
+}
+
+function asSpecialMatchesQuery(value: string, queryValue: string): boolean {
+    const numericQuery = parseSpecialQuery(queryValue);
+    if (numericQuery) {
+        return specialNumericQueryMatches(value, numericQuery);
+    }
+
+    if (queryValue.includes('*')) {
+        return wildcardToRegex(queryValue).test(value);
+    }
+
+    return value.toLowerCase() === queryValue.toLowerCase();
+}
+
+function evaluateASSpecialsFilter(
+    unitValue: any,
+    operator: SemanticOperator,
+    values: string[],
+): boolean {
+    const topLevelValues = unitValue == null ? [] : (Array.isArray(unitValue) ? unitValue : [unitValue]).map(value => String(value));
+    const searchValues = getASSpecialSearchValues(unitValue);
+
+    if (searchValues.length === 0) {
+        return operator === '!=';
+    }
+
+    if (operator === '&=') {
+        return values.every(value => searchValues.some(special => asSpecialMatchesQuery(special, value)));
+    }
+
+    if (operator === '==') {
+        return topLevelValues.length > 0 && topLevelValues.every(special => (
+            values.some(value => asSpecialMatchesQuery(special, value))
+        ));
+    }
+
+    for (const value of values) {
+        const matches = searchValues.some(special => asSpecialMatchesQuery(special, value));
+        if (operator === '!=') {
+            if (matches) {
+                return false;
+            }
+        } else if (matches) {
+            return true;
+        }
+    }
+
+    return operator === '!=';
+}
+
 /**
  * Evaluate a dropdown filter (string matching with quantity support).
  */
@@ -2236,6 +2700,10 @@ function evaluateDropdownFilter(
     conf: AdvFilterConfig,
     context: EvaluatorContext
 ): boolean {
+    if (conf.key === 'as.specials') {
+        return evaluateASSpecialsFilter(unitValue, operator, values);
+    }
+
     if (unitValue == null) return operator === '!=';
     
     // Normalize unit value(s) to array

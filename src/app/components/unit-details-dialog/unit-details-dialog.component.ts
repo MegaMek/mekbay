@@ -117,7 +117,8 @@ export class UnitDetailsDialogComponent {
     change = output<{ oldUnit: ForceUnit; newUnit: Unit }>();
     indexChange = output<number>();
     baseDialogRef = viewChild('baseDialog', { read: ElementRef });
-    incomingPanelRef = viewChild<ElementRef>('incomingPanel');
+    currentPanelRef = viewChild<ElementRef<HTMLElement>>('currentPanel');
+    incomingPanelRef = viewChild<ElementRef<HTMLElement>>('incomingPanel');
     shareButtonInActions = computed(() => this.layoutService.windowWidth() > 600);
 
     /** Computed property to determine if we're in change mode */
@@ -198,6 +199,7 @@ export class UnitDetailsDialogComponent {
     // Real-time swipe following state
     isSwiping = signal(false);
     swipeDeltaX = signal(0); // Raw swipe delta for header calculation
+    incomingPanelScrollTop = signal(0);
 
     // CSS custom properties for panel positions
     currentPanelOffset = signal('0');
@@ -365,8 +367,7 @@ export class UnitDetailsDialogComponent {
     private navigateToUnit(newIndex: number, swipeDirection: 'left' | 'right') {
         this.floatingOverlayService.hide();
 
-        // Set incoming unit
-        this.incomingUnit.set(this.getUnitAtIndex(newIndex));
+        this.prepareIncomingUnit(this.getUnitAtIndex(newIndex));
         this.isSwiping.set(false);
 
         // Set initial positions for animation
@@ -394,7 +395,7 @@ export class UnitDetailsDialogComponent {
 
             await this.waitForTransitionEnd();
             // After animation completes, update the actual unit
-            this.unitIndex.set(newIndex);
+            this.commitSwipeToIndex(newIndex);
             this.isSwipeAnimating.set(false);
             this.currentPanelOffset.set('0');
             this.incomingPanelOffset.set('100%');
@@ -666,6 +667,7 @@ export class UnitDetailsDialogComponent {
         this.floatingOverlayService.hide();
         this.isSwiping.set(true);
         this.swipeDeltaX.set(0);
+        this.incomingPanelScrollTop.set(this.currentPanelScrollTop());
         this.currentPanelOffset.set('0');
         this.incomingUnit.set(null);
     }
@@ -683,7 +685,7 @@ export class UnitDetailsDialogComponent {
             // Swiping right - show previous unit coming from the left
             const prevUnit = this.getUnitAtIndex(this.unitIndex() - 1);
             if (this.incomingUnit() !== prevUnit) {
-                this.incomingUnit.set(prevUnit);
+                this.prepareIncomingUnit(prevUnit);
             }
             // Current panel moves right by deltaX
             this.currentPanelOffset.set(`${deltaX}px`);
@@ -693,7 +695,7 @@ export class UnitDetailsDialogComponent {
             // Swiping left - show next unit coming from the right
             const nextUnit = this.getUnitAtIndex(this.unitIndex() + 1);
             if (this.incomingUnit() !== nextUnit) {
-                this.incomingUnit.set(nextUnit);
+                this.prepareIncomingUnit(nextUnit);
             }
             // Current panel moves left by deltaX (negative)
             this.currentPanelOffset.set(`${deltaX}px`);
@@ -810,8 +812,42 @@ export class UnitDetailsDialogComponent {
         await this.waitForTransitionEnd();
 
         // Now update the index - this triggers re-render of current panel with new unit
-        this.unitIndex.set(newIndex);
+        this.commitSwipeToIndex(newIndex);
         setTimeout(() => this.resetSwipeState(), 100);
+    }
+
+    private prepareIncomingUnit(unit: Unit): void {
+        this.incomingPanelScrollTop.set(this.currentPanelScrollTop());
+        this.incomingUnit.set(unit);
+        requestAnimationFrame(() => this.syncIncomingPanelScrollTop());
+    }
+
+    private currentPanelScrollTop(): number {
+        return this.currentPanelRef()?.nativeElement.scrollTop ?? 0;
+    }
+
+    private syncIncomingPanelScrollTop(): void {
+        const panel = this.incomingPanelRef()?.nativeElement;
+        if (!panel) return;
+
+        panel.scrollTop = Math.max(0, Math.min(this.incomingPanelScrollTop(), panel.scrollHeight - panel.clientHeight));
+        this.incomingPanelScrollTop.set(panel.scrollTop);
+    }
+
+    private commitSwipeToIndex(newIndex: number): void {
+        this.syncIncomingPanelScrollTop();
+        const scrollTop = this.incomingPanelScrollTop();
+        this.unitIndex.set(newIndex);
+        const currentPanel = this.currentPanelRef()?.nativeElement;
+        if (currentPanel) {
+            currentPanel.scrollTop = scrollTop;
+        }
+        requestAnimationFrame(() => {
+            const panel = this.currentPanelRef()?.nativeElement;
+            if (panel) {
+                panel.scrollTop = scrollTop;
+            }
+        });
     }
 
     private resetSwipeState(): void {

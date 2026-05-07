@@ -39,6 +39,20 @@ import { isEmbeddedApostrophe, normalizeMultiStateSelection } from './unit-searc
 
 // Cache for semantic key maps
 const semanticKeyMapCache = new Map<GameSystem, Map<string, AdvFilterConfig>>();
+const AS_SPECIALS_EXPLICIT_NUMERIC_SEMANTIC_PATTERN = /(?:>=|<=|!=|>|<|=)\s*-?\d|\[[^\]]+\]/;
+
+function isASSpecialsNumericSemanticValue(value: string): boolean {
+    const normalized = value.replace(/\s+/g, '').toUpperCase();
+    if (AS_SPECIALS_EXPLICIT_NUMERIC_SEMANTIC_PATTERN.test(normalized) || normalized.includes('0*')) {
+        return true;
+    }
+
+    if (normalized.includes('*')) {
+        return false;
+    }
+
+    return /-?\d/.test(normalized);
+}
 
 /*
  * Author: Drake
@@ -257,6 +271,7 @@ export function parseValues(valueStr: string): string[] {
     const values: string[] = [];
     let current = '';
     let inQuote: '"' | "'" | null = null;
+    let bracketDepth = 0;
     let i = 0;
 
     while (i < valueStr.length) {
@@ -281,7 +296,13 @@ export function parseValues(valueStr: string): string[] {
         } else if (char === '"' || (char === "'" && !isEmbeddedApostrophe(valueStr, i))) {
             // Start of quoted string
             inQuote = char;
-        } else if (char === ',') {
+        } else if (char === '[') {
+            bracketDepth++;
+            current += char;
+        } else if (char === ']' && bracketDepth > 0) {
+            bracketDepth--;
+            current += char;
+        } else if (char === ',' && bracketDepth === 0) {
             // Value separator
             if (current.trim()) {
                 values.push(current.trim());
@@ -675,8 +696,9 @@ export function tokensToFilterState(
                     }
 
                     for (const val of token.values) {
+                        const isASSpecialsNumericSemantic = conf.key === 'as.specials' && isASSpecialsNumericSemanticValue(val);
                         // Check if this is a wildcard pattern
-                        if (val.includes('*')) {
+                        if (val.includes('*') && !isASSpecialsNumericSemantic) {
                             wildcardPatterns.push({ pattern: val, state });
                             semanticOnly = true;
                         } else if (conf.countable) {
@@ -704,6 +726,9 @@ export function tokensToFilterState(
                             // If no constraint, it means "has at least one" which is the default
                         } else {
                             // Regular value (non-countable)
+                            if (isASSpecialsNumericSemantic) {
+                                semanticOnly = true;
+                            }
                             const normalizedVal = normalizeValue(val);
                             // If already exists, update state with priority: not > and > or
                             if (selection[normalizedVal]) {
