@@ -46,6 +46,11 @@ jobs:
 
       - name: Upload Folder
         run: |
+          INDEX_CSR_PUT=""
+          if [ -f ./dist/browser/index.csr.html ]; then
+            INDEX_CSR_PUT="put -O ./mekbay_next/ ./dist/browser/index.csr.html;"
+          fi
+
           lftp -c "set cmd:fail-exit yes;
           set ftp:list-options -a;
           set net:max-retries 3;
@@ -53,7 +58,7 @@ jobs:
           open -u ${{ secrets.FTP_USER }},${{ secrets.FTP_PASSWORD }} ${{ secrets.FTP_HOST }};
           mirror --parallel=20 -R --transfer-all --no-perms --verbose --exclude-glob index.html --exclude-glob index.csr.html --exclude-glob ngsw.json ./dist/browser/ ./mekbay_next/;
           put -O ./mekbay_next/ ./dist/browser/index.html;
-          put -O ./mekbay_next/ ./dist/browser/index.csr.html;
+          ${INDEX_CSR_PUT}
           put -O ./mekbay_next/ ./dist/browser/ngsw.json;"
 
       - name: Cleanup Old Build Files
