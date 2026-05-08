@@ -152,7 +152,7 @@ export interface RenameGroupDialogResult {
                 <svg class="expand-icon" width="16" height="16" viewBox="0 0 10 10" fill="currentColor"><path d="M3 1l5 4-5 4z"/></svg>
               </summary>
               <div class="selected-formation-details">
-                <formation-info [formation]="formation" [gameSystem]="data.group.force.gameSystem" [unitCount]="data.group.units().length" [isValid]="isSelectedFormationValid()" [requirementsFiltered]="isSelectedFormationRequirementsFiltered()" [requirementsFilterNotice]="selectedFormationRequirementsFilterNotice()"></formation-info>
+                <formation-info [formation]="formation" [gameSystem]="data.group.force.gameSystem" [unitCount]="data.group.units().length" [isValid]="isSelectedFormationValid()" [requirementsFiltered]="isSelectedFormationRequirementsFiltered()" [requirementsFilterCompositionName]="selectedFormationRequirementsFilterCompositionName()" [requirementsFilterNotice]="selectedFormationRequirementsFilterNotice()"></formation-info>
               </div>
             </details>
             }
@@ -364,6 +364,7 @@ export class RenameGroupDialogComponent {
                   displayName: FormationNamerUtil.composeFormationDisplayName(def, this.data.group, match?.requirementsFiltered ?? false),
                     isValid: !!match,
                   requirementsFiltered: match?.requirementsFiltered ?? false,
+                  requirementsFilterCompositionName: match?.requirementsFilterCompositionName,
                   requirementsFilterNotice: match?.requirementsFilterNotice,
                 };
             });
@@ -387,6 +388,12 @@ export class RenameGroupDialogComponent {
       const sel = this.selectedFormation();
       if (!sel || isNoFormation(sel)) return undefined;
       return this.formationDisplayList.find(f => f.definition.id === sel.id && f.isValid)?.requirementsFilterNotice;
+    });
+
+    selectedFormationRequirementsFilterCompositionName = computed<string | undefined>(() => {
+      const sel = this.selectedFormation();
+      if (!sel || isNoFormation(sel)) return undefined;
+      return this.formationDisplayList.find(f => f.definition.id === sel.id && f.isValid)?.requirementsFilterCompositionName;
     });
 
     /** Placeholder name based on the currently selected formation. */

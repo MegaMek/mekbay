@@ -197,5 +197,6 @@ export interface FormationMatch {
      * groups from the resolved organization while checking requirements.
      */
     requirementsFiltered: boolean;
+    requirementsFilterCompositionName?: string;
     requirementsFilterNotice?: string;
 }

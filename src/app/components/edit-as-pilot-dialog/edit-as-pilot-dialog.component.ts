@@ -964,11 +964,23 @@ export class EditASPilotDialogComponent {
         return `${this.getFormationSelectionLabel(effect)}. ${this.getFormationDistributionLabel(effect)}.`;
     }
 
+    getFormationRequirementsFilterNotice(
+        preview: FormationAssignmentPreview,
+        fallback = 'Some structurally attached units are ignored when checking formation bonus eligibility.',
+    ): string {
+        const notice = preview.requirementsFilterNotice ?? fallback;
+        return preview.requirementsFilterCompositionName
+            ? `${preview.requirementsFilterCompositionName}: ${notice}`
+            : notice;
+    }
+
     getFormationEffectUnavailableText(effect: FormationEffectPreview): string {
         const preview = this.formationPreview();
         if (preview && !preview.eligibleUnitIds.includes(this.data.unitId)) {
-            return preview.requirementsFilterNotice
-                ?? 'This unit is excluded from formation bonus eligibility by the group structure.';
+            return this.getFormationRequirementsFilterNotice(
+                preview,
+                'This unit is excluded from formation bonus eligibility by the group structure.',
+            );
         }
 
         if (effect.descriptor.group.excludeCommander && this.selectedFormationCommander()) {
