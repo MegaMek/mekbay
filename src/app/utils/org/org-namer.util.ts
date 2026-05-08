@@ -210,6 +210,10 @@ function getGroupDisplayLabel(group: GroupSizeResult): string {
 		return group.foreignDisplayName;
 	}
 
+	if (group.displayName) {
+		return `${group.modifierKey}${group.displayName}`;
+	}
+
 	if (group.type) {
 		return `${group.modifierKey}${group.type}`;
 	}

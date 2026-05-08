@@ -205,6 +205,34 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
         }));
     });
 
+    it('uses Draconis Combine Air Lance metadata to ignore only the AF Lance child group', () => {
+        const faction = createFaction('Draconis Combine', 'Inner Sphere');
+        const bmUnits = Array.from({ length: 4 }, (_, index) => createUnit(index + 1, `BM-${index + 1}`, 'Mek', 'BattleMek', 'BM'));
+        const afUnits = Array.from({ length: 2 }, (_, index) => createUnit(index + 201, `AF-${index + 1}`, 'Aero', 'Aerospace Fighter', 'AF'));
+        const group = createTestGroup(
+            [...bmUnits, ...afUnits],
+            [createResolvedGroup({
+                name: 'Air Lance',
+                type: 'Air Lance',
+                countsAsType: 'Lance',
+                tier: 1.5,
+                children: [
+                    createResolvedGroup({ name: 'Lance', type: 'Aero Lance', displayName: 'Lance', tier: 1, units: afUnits }),
+                    createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: bmUnits }),
+                ],
+            })],
+            faction,
+        );
+
+        const match = LanceTypeIdentifierUtil.isFormationValidForGroup(bmOnlyLanceFormation, group);
+
+        expect(match).toEqual(jasmine.objectContaining({
+            definition: bmOnlyLanceFormation,
+            requirementsFiltered: true,
+            requirementsFilterNotice: 'Aerospace Lance child groups are ignored for formation requirements.',
+        }));
+    });
+
     it('marks filtered matches even when the full Nova unit list also satisfies the validator', () => {
         const faction = createFaction('Clan Test', 'HW Clan');
         const bmUnits = Array.from({ length: 5 }, (_, index) => createUnit(index + 1, `BM-${index + 1}`, 'Mek', 'BattleMek', 'BM'));
