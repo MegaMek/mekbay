@@ -112,7 +112,7 @@ export interface ResolvedEffectGroup {
 
             @if (requirementsFiltered()) {
                 <div class="formation-filter-warning">
-                    <span><strong>Filtered requirements:</strong> {{ requirementsFilterNotice() || 'Some structurally attached units are ignored when checking this formation. Formation bonuses apply only to the matching portion of the group.' }}</span>
+                    <span><strong>{{ requirementsFilterCompositionName() || 'Group composition' }}:</strong> {{ requirementsFilterNotice() || 'Some structurally attached units are ignored when checking this formation. Formation bonuses apply only to the matching portion of the group.' }}</span>
                 </div>
             }
 
@@ -433,6 +433,8 @@ export class FormationInfoComponent {
     isValid = input<boolean | undefined>(undefined);
     /** Whether organization-level units were ignored while checking requirements. */
     requirementsFiltered = input<boolean>(false);
+    /** Optional org composition name that caused requirement filtering. */
+    requirementsFilterCompositionName = input<string | undefined>(undefined);
     /** Optional notice describing which structural units were ignored. */
     requirementsFilterNotice = input<string | undefined>(undefined);
     /** Whether to show the formation name header. Defaults to true. */

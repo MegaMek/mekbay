@@ -57,12 +57,14 @@ import { MULFACTION_MERCENARY } from '../models/mulfactions.model';
 
 interface FormationIdentificationOptions {
     readonly filteredUnits?: ForceUnit[];
+    readonly requirementsFilterCompositionName?: string;
     readonly requirementsFilterNotice?: string;
 }
 
 export interface FormationRequirementsFilterContext {
     readonly filteredUnits?: ForceUnit[];
     readonly requirementsFiltered: boolean;
+    readonly requirementsFilterCompositionName?: string;
     readonly requirementsFilterNotice?: string;
 }
 
@@ -144,6 +146,10 @@ export class LanceTypeIdentifierUtil {
         return ignoredUnits;
     }
 
+    private static getRequirementsFilterCompositionName(group: GroupSizeResult): string {
+        return group.foreignDisplayName ?? group.name;
+    }
+
     private static getRequirementsFilterContext(group: UnitGroup<ForceUnit>): FormationIdentificationOptions {
         const targetForce = group.force;
         if (!targetForce) {
@@ -186,6 +192,7 @@ export class LanceTypeIdentifierUtil {
 
         return {
             filteredUnits,
+            requirementsFilterCompositionName: this.getRequirementsFilterCompositionName(resolvedGroup),
             requirementsFilterNotice: matchedRule.formationMatching.notice,
         };
     }
@@ -195,6 +202,7 @@ export class LanceTypeIdentifierUtil {
         return {
             filteredUnits: context.filteredUnits,
             requirementsFiltered: !!context.filteredUnits,
+            requirementsFilterCompositionName: context.requirementsFilterCompositionName,
             requirementsFilterNotice: context.requirementsFilterNotice,
         };
     }
@@ -302,6 +310,7 @@ export class LanceTypeIdentifierUtil {
                 const existingMatch = resultById.get(definition.id);
                 if (existingMatch) {
                     existingMatch.requirementsFiltered = true;
+                    existingMatch.requirementsFilterCompositionName = options.requirementsFilterCompositionName;
                     existingMatch.requirementsFilterNotice = options.requirementsFilterNotice;
                     continue;
                 }
@@ -309,6 +318,7 @@ export class LanceTypeIdentifierUtil {
                 const filteredMatch: FormationMatch = {
                     definition,
                     requirementsFiltered: true,
+                    requirementsFilterCompositionName: options.requirementsFilterCompositionName,
                     requirementsFilterNotice: options.requirementsFilterNotice,
                 };
                 results.push(filteredMatch);
@@ -352,6 +362,7 @@ export class LanceTypeIdentifierUtil {
             return {
                 definition,
                 requirementsFiltered: true,
+                requirementsFilterCompositionName: filterContext.requirementsFilterCompositionName,
                 requirementsFilterNotice: filterContext.requirementsFilterNotice,
             };
         }

@@ -144,8 +144,7 @@
             @if (formationPreview(); as preview) {
             @if (preview.requirementsFiltered) {
             <div class="ability-limits-info">
-                {{ preview.requirementsFilterNotice || 'Some structurally attached units are ignored when checking
-                formation bonus eligibility.' }}
+                {{ getFormationRequirementsFilterNotice(preview) }}
             </div>
             }
 

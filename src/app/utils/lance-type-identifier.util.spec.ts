@@ -10,6 +10,8 @@ import { FormationNamerUtil } from './formation-namer.util';
 import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
 import type { GroupSizeResult } from './org/org-types';
 
+const NOVA_REQUIREMENTS_FILTER_NOTICE = 'Battle Armor child groups are ignored for formation requirements. Mounted infantry in a Nova Formation may make weapon attacks. These mounted attacks use the attacker movement modifier of the transport along with an additional +2 Target Number modifier for being mounted.';
+
 function createUnit(
     id: number,
     name: string,
@@ -172,7 +174,8 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
             jasmine.objectContaining({
                 definition: bmOnlyStarFormation,
                 requirementsFiltered: true,
-                requirementsFilterNotice: 'Battle Armor child groups are ignored for formation requirements.',
+                requirementsFilterCompositionName: 'Nova',
+                requirementsFilterNotice: NOVA_REQUIREMENTS_FILTER_NOTICE,
             }),
         ]);
     });
@@ -201,6 +204,7 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
         expect(match).toEqual(jasmine.objectContaining({
             definition: bmOnlyLanceFormation,
             requirementsFiltered: true,
+            requirementsFilterCompositionName: 'Air Lance',
             requirementsFilterNotice: 'Flight child groups are ignored for formation requirements.',
         }));
     });
@@ -229,6 +233,7 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
         expect(match).toEqual(jasmine.objectContaining({
             definition: bmOnlyLanceFormation,
             requirementsFiltered: true,
+            requirementsFilterCompositionName: 'Air Lance',
             requirementsFilterNotice: 'Aerospace Lance child groups are ignored for formation requirements.',
         }));
     });
@@ -257,7 +262,8 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
         expect(match).toEqual(jasmine.objectContaining({
             definition: bmHeavyFormation,
             requirementsFiltered: true,
-            requirementsFilterNotice: 'Battle Armor child groups are ignored for formation requirements.',
+            requirementsFilterCompositionName: 'Nova',
+            requirementsFilterNotice: NOVA_REQUIREMENTS_FILTER_NOTICE,
         }));
     });
 
@@ -283,6 +289,7 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
         expect(match).toEqual(jasmine.objectContaining({
             definition: bmOnlyLanceFormation,
             requirementsFiltered: true,
+            requirementsFilterCompositionName: 'Augmented Lance',
             requirementsFilterNotice: 'Transported units are ignored for formation requirements.',
         }));
     });

@@ -45,6 +45,8 @@ export interface FormationDisplayItem {
     isValid: boolean;
     /** Whether this formation required organization-level requirement filtering. */
     requirementsFiltered: boolean;
+    /** Optional org composition name that caused requirement filtering. */
+    requirementsFilterCompositionName?: string;
     /** Optional notice describing which structural units were ignored. */
     requirementsFilterNotice?: string;
 }
@@ -88,7 +90,7 @@ export interface FormationDisplayItem {
                         </div>
                         @if (expandedId() === item.definition.id) {
                             <div class="formation-option-details">
-                                <formation-info [formation]="item.definition" [gameSystem]="gameSystem()" [showTitle]="false" [isValid]="true" [requirementsFiltered]="item.requirementsFiltered" [requirementsFilterNotice]="item.requirementsFilterNotice"></formation-info>
+                                <formation-info [formation]="item.definition" [gameSystem]="gameSystem()" [showTitle]="false" [isValid]="true" [requirementsFiltered]="item.requirementsFiltered" [requirementsFilterCompositionName]="item.requirementsFilterCompositionName" [requirementsFilterNotice]="item.requirementsFilterNotice"></formation-info>
                             </div>
                         }
                     </div>
@@ -117,7 +119,7 @@ export interface FormationDisplayItem {
                         </div>
                         @if (expandedId() === item.definition.id) {
                             <div class="formation-option-details">
-                                <formation-info [formation]="item.definition" [gameSystem]="gameSystem()" [showTitle]="false" [isValid]="false" [requirementsFiltered]="item.requirementsFiltered" [requirementsFilterNotice]="item.requirementsFilterNotice"></formation-info>
+                                <formation-info [formation]="item.definition" [gameSystem]="gameSystem()" [showTitle]="false" [isValid]="false" [requirementsFiltered]="item.requirementsFiltered" [requirementsFilterCompositionName]="item.requirementsFilterCompositionName" [requirementsFilterNotice]="item.requirementsFilterNotice"></formation-info>
                             </div>
                         }
                     </div>

@@ -78,6 +78,7 @@ export interface FormationAssignmentPreview {
     readonly formation: FormationTypeDefinition | null;
     readonly commanderUnitId: string | null;
     readonly requirementsFiltered: boolean;
+    readonly requirementsFilterCompositionName?: string;
     readonly requirementsFilterNotice?: string;
     readonly eligibleUnitIds: readonly string[];
     readonly assignmentsByUnitId: ReadonlyMap<string, readonly string[]>;
@@ -532,6 +533,7 @@ export class FormationAbilityAssignmentUtil {
             formation,
             commanderUnitId,
             requirementsFiltered: filterContext.requirementsFiltered,
+            requirementsFilterCompositionName: filterContext.requirementsFilterCompositionName,
             requirementsFilterNotice: filterContext.requirementsFilterNotice,
             eligibleUnitIds: baseEligibleUnits.map((unit) => unit.id),
             assignmentsByUnitId: frozenAssignments,

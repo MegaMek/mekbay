@@ -56,6 +56,8 @@ export interface FormationInfoDialogData {
     isValid?: boolean;
     /** Whether organization-level units were ignored while checking requirements */
     requirementsFiltered?: boolean;
+    /** Optional org composition name that caused requirement filtering */
+    requirementsFilterCompositionName?: string;
     /** Optional notice describing which structural units were ignored */
     requirementsFilterNotice?: string;
 }
@@ -72,7 +74,7 @@ export interface FormationInfoDialogData {
         <div class="content">
             <h2 dialog-title>{{ data.formationDisplayName || data.formation.name }}</h2>
             <div dialog-content>
-                <formation-info [formation]="data.formation" [gameSystem]="data.gameSystem" [unitCount]="data.unitCount" [isValid]="data.isValid" [requirementsFiltered]="data.requirementsFiltered ?? false" [requirementsFilterNotice]="data.requirementsFilterNotice" [showTitle]="false"></formation-info>
+                <formation-info [formation]="data.formation" [gameSystem]="data.gameSystem" [unitCount]="data.unitCount" [isValid]="data.isValid" [requirementsFiltered]="data.requirementsFiltered ?? false" [requirementsFilterCompositionName]="data.requirementsFilterCompositionName" [requirementsFilterNotice]="data.requirementsFilterNotice" [showTitle]="false"></formation-info>
             </div>
             <div dialog-actions>
                 <button (click)="close()" class="bt-button">DISMISS</button>

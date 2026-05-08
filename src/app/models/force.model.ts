@@ -365,6 +365,10 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     formationRequirementsFilterNotice = computed<string | null>(() => {
         return this._formationMatch()?.requirementsFilterNotice ?? null;
     });
+
+    formationRequirementsFilterCompositionName = computed<string | null>(() => {
+        return this._formationMatch()?.requirementsFilterCompositionName ?? null;
+    });
 }
 
 export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
