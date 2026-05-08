@@ -221,24 +221,6 @@ function cbtIsOnlyCombatVehicles(units: ForceUnit[]): boolean {
 
 export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
 
-    // ─── Air Lance ───────────────────────────────────────────────────────
-    // TODO: Implement when we will support group of groups.
-    // {
-    //     id: 'air-lance',
-    //     name: 'Air',
-    //     description: 'Lance of ground units plus two aerospace/conventional fighters',
-    //     effectDescription: 'No additional bonus ability is granted by this formation.',
-    //     techBase: 'Special',
-    //     minUnits: 3,
-    //     rulesRef: [{ book: Rulebook.CO, page: 61 }, { book: Rulebook.ASCE, page: 121 }],
-    //     ...
-    // },
-
-    // ─── Anti-'Mech Lance ────────────────────────────────────────────────
-    //
-    // Requirements: All units must be infantry.
-    // Bonus Ability: Distracting Swarm: units swarming an enemy cause +1 TN modifier.
-    //
     {
         id: 'anti-mech-lance',
         name: 'Anti-\'Mech',
