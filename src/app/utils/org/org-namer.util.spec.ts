@@ -82,6 +82,14 @@ describe('org-namer.util', () => {
 		expect(result.name).toBe('4 Units');
 	});
 
+	it('uses display names for groups with internal-only org types', () => {
+		const result = getOrgFromResolvedGroups([
+			createGroup({ name: 'Lance', type: 'Aero Lance', displayName: 'Lance', tier: 1 }),
+		]);
+
+		expect(result.name).toBe('Lance');
+	});
+
 	it('keeps higher-tier groups ahead of repeated zero-tier buckets', () => {
 		const result = getOrgFromResolvedGroups([
 			createGroup({ name: 'Reinforced Lance', type: 'Lance', modifierKey: 'Reinforced ', tier: 1 }),

@@ -23,6 +23,8 @@ import {
     COMSTAR_CORE_ORG,
     COMSTAR_LEVEL_I_FROM_SQUADS,
     COMSTAR_LEVEL_II,
+    DC_AIR_LANCE,
+    DC_LANCE,
     IS_AIR_LANCE,
     IS_BA_PLATOON,
     IS_BA_SQUAD,
@@ -1064,6 +1066,21 @@ describe('org-solver.util', () => {
         expect(result.leftoverCount).toBe(0);
     });
 
+    it('materializes Draconis Combine Aero Lance internally while displaying as Lance', () => {
+        const result = materializeLeafCountRule(DC_LANCE, compileUnitFactsList([
+            createUnit('Aero 1', 'Aero', 'Aerospace Fighter'),
+            createUnit('Aero 2', 'Aero', 'Aerospace Fighter'),
+        ]));
+
+        expect(result.groups).toEqual([
+            jasmine.objectContaining({
+                name: 'Lance',
+                type: 'Aero Lance',
+                displayName: 'Lance',
+            }),
+        ]);
+    });
+
     it('evaluates Air Lance from one Flight and one Lance', () => {
         const groups = [
             createFlight('Flight A', ['A1', 'A2']),
@@ -1076,6 +1093,49 @@ describe('org-solver.util', () => {
             { modifierKey: '', perGroupCount: 2, copies: 1, tier: 1.5, compositionIndex: 0 },
         ]);
         expect(result.leftoverCount).toBe(0);
+    });
+
+    it('evaluates Draconis Combine Air Lance from one AF Lance and one BM Lance', () => {
+        const aeroLance: GroupSizeResult = {
+            name: 'Lance',
+            type: 'Aero Lance',
+            displayName: 'Lance',
+            modifierKey: '',
+            countsAsType: null,
+            tier: 1,
+            units: ['A1', 'A2'].map((unitName) => createUnit(unitName, 'Aero', 'Aerospace Fighter')),
+        };
+        const groups = [
+            aeroLance,
+            createLance('BattleMek Lance', ['L1', 'L2', 'L3', 'L4']),
+        ].map((group) => compileGroupFacts(group));
+
+        const result = evaluateComposedCountRule(DC_AIR_LANCE, groups);
+
+        expect(result.emitted).toEqual([
+            { modifierKey: '', perGroupCount: 2, copies: 1, tier: 1.5, compositionIndex: 0 },
+        ]);
+        expect(result.leftoverCount).toBe(0);
+    });
+
+    it('does not treat Draconis Combine Aero Lance as a generic IS Company lance child', () => {
+        const aeroLance: GroupSizeResult = {
+            name: 'Lance',
+            type: 'Aero Lance',
+            displayName: 'Lance',
+            modifierKey: '',
+            countsAsType: null,
+            tier: 1,
+            units: ['A1', 'A2'].map((unitName) => createUnit(unitName, 'Aero', 'Aerospace Fighter')),
+        };
+        const groups = [
+            aeroLance,
+            createLance('BattleMek Lance', ['L1', 'L2', 'L3', 'L4']),
+        ].map((group) => compileGroupFacts(group));
+
+        const result = evaluateComposedCountRule(IS_COMPANY, groups);
+
+        expect(result.emitted).toEqual([]);
     });
 
     it('rejects Air Lance when the lance child includes non-BM units', () => {

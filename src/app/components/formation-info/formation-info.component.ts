@@ -32,7 +32,7 @@
  */
 
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
-import { formationInheritsParentEffects, type FormationTypeDefinition, type FormationEffectGroup } from '../../utils/formation-type.model';
+import { formationInheritsParentEffects, resolveFormationGameSystemText, type FormationTypeDefinition, type FormationEffectGroup } from '../../utils/formation-type.model';
 import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
 import { type PilotAbility, PILOT_ABILITIES, getAbilityDetails, formatSummaryMovement } from '../../models/pilot-abilities.model';
 import { type CommandAbility, COMMAND_ABILITIES } from '../../models/command-abilities.model';
@@ -116,10 +116,10 @@ export interface ResolvedEffectGroup {
                 </div>
             }
 
-            @if (def.effectDescription) {
+            @if (effectDescriptionText(); as effectText) {
                 <div class="effect-section">
                     <div class="effect-label">Formation Bonus</div>
-                    <div class="effect-description">{{ def.effectDescription }}</div>
+                    <div class="effect-description" [innerHTML]="effectText"></div>
 
                     @if (def.rulesRef) {
                         <div class="rules-references">
@@ -438,6 +438,12 @@ export class FormationInfoComponent {
     /** Whether to show the formation name header. Defaults to true. */
     showTitle = input<boolean>(true);
     readonly formatRuleReference = formatRulesReference;
+
+    /** Resolved formation bonus text for the current formation & game system. */
+    effectDescriptionText = computed<string | null>(() => {
+        const effectDescription = resolveFormationGameSystemText(this.formation()?.effectDescription, this.gameSystem());
+        return effectDescription ? formatSummaryMovement(effectDescription, this.optionsService.options().ASUseHex) : null;
+    });
 
     /** Resolved requirements text for the current formation & game system. */
     requirementsText = computed<string | null>(() => {

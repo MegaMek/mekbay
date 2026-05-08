@@ -60,6 +60,7 @@ export type OrgType =
     | 'Flight'
     | 'Squadron'
     | 'Wing'
+    | 'Aero Lance'
     | 'Lance'
     | 'Air Lance'
     | 'Company'
@@ -137,6 +138,7 @@ export interface GroupSizeResult {
     isFragment?: boolean;
     provenance?: OrgGroupProvenance;
     foreignDisplayName?: string;
+    displayName?: string;
     children?: GroupSizeResult[];
     units?: Unit[];
     unitAllocations?: GroupUnitAllocation[];
@@ -356,6 +358,7 @@ export interface OrgConstraintSpec {
 
 export interface OrgRuleMetadata {
     readonly type: OrgType;
+    readonly displayName?: string;
     readonly modifiers: Record<string, number | OrgTypeModifier>;
     readonly commandRank?: string;
     readonly tier: number;

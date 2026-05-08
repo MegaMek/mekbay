@@ -87,6 +87,8 @@ export interface FormationEffectGroup {
     excludeCommander?: boolean;
 }
 
+export type FormationGameSystemText = string | ((gameSystem: GameSystem) => string);
+
 
 export interface FormationTypeDefinition {
     id: string;
@@ -95,7 +97,8 @@ export interface FormationTypeDefinition {
     /** Alternative formation names that should count as a whole-phrase match in custom group names. */
     nameAliases?: string[];
     description: string;
-    effectDescription?: string;
+    /** Human-readable formation bonus text, optionally specialized per game system. */
+    effectDescription?: FormationGameSystemText;
     /** Whether this formation explicitly inherits parent effect groups and parent requirement display. Defaults to false. */
     inheritParentEffects?: boolean;
     /** Structured SPA distribution rules for this formation's bonus ability. */
@@ -173,6 +176,15 @@ export function isNoFormation(def: FormationTypeDefinition | null | undefined): 
 /** Returns `true` when this formation explicitly opts into inheriting parent effects. */
 export function formationInheritsParentEffects(def: FormationTypeDefinition | null | undefined): boolean {
     return def?.inheritParentEffects === true;
+}
+
+export function resolveFormationGameSystemText(
+    text: FormationGameSystemText | null | undefined,
+    gameSystem: GameSystem,
+): string | null {
+    if (!text) return null;
+    const resolvedText = typeof text === 'function' ? text(gameSystem) : text;
+    return resolvedText || null;
 }
 
 /**

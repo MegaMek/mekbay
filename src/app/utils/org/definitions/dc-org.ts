@@ -10,7 +10,6 @@ import {
     IS_BA_SQUAD,
     IS_COMPANY,
     IS_LANCE,
-    IS_AIR_LANCE,
     IS_PLATOON,
     IS_REGIMENT,
     IS_BRIGADE,
@@ -19,7 +18,8 @@ import {
 
 export const DC_LANCE: OrgLeafCountRule = {
     kind: 'leaf-count',
-    type: 'Lance',
+    type: 'Aero Lance',
+    displayName: 'Lance',
     priority: 1,
     modifiers: { '': 2, 'Reinforced ': 3 },
     commandRank: 'Lieutenant',
@@ -35,8 +35,27 @@ export const DC_FLIGHT: OrgComposedCountRule = {
     modifiers: { 'Under-Strength ': 2, '': 3, 'Reinforced ': 4 },
     commandRank: 'Captain',
     tier: 2,
-    childRoles: [{ matches: ['Lance'], onlyUnitTypes: ['AF'] }],
+    childRoles: [{ matches: ['Aero Lance'] }],
     childBucketBy: 'promotionBasic',
+};
+
+export const DC_AIR_LANCE: OrgComposedCountRule = {
+    kind: 'composed-count',
+    type: 'Air Lance',
+    priority: 1,
+    countsAs: 'Lance',
+    modifiers: { '': 2 },
+    commandRank: 'Lieutenant',
+    tier: 1.5,
+    formationMatching: {
+        ignoredChildRoles: [{ matches: ['Aero Lance'] }],
+        notice: 'Aerospace Lance child groups are ignored for formation requirements.',
+    },
+    childRoles: [
+        { matches: ['Aero Lance'], min: 1 },
+        { matches: ['Lance'], min: 1, onlyUnitTypes: ['BM'] },
+    ],
+    childBucketBy: 'promotionWithUnitKinds',
 };
 
 export const DC_COMPANY: OrgComposedCountRule = {
@@ -70,7 +89,7 @@ export const DC_CORE_ORG: OrgDefinition = {
         IS_PLATOON,
         IS_UNIT,
         IS_LANCE,
-        IS_AIR_LANCE,
+        DC_AIR_LANCE,
         IS_COMPANY,
         IS_BATTALION,
         IS_REGIMENT,

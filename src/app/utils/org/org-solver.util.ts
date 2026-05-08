@@ -780,6 +780,10 @@ function makeGroupName(type: string | null, modifierKey: string): string {
     return `${modifierKey}${type ?? 'Force'}`;
 }
 
+function getRuleDisplayName(rule: Pick<OrgRuleDefinition, 'type' | 'displayName'>): string {
+    return rule.displayName ?? rule.type;
+}
+
 function createLeafGroup(
     rule: OrgLeafCountRule | OrgLeafPatternRule,
     modifierStep: ModifierStep,
@@ -787,8 +791,9 @@ function createLeafGroup(
     formationMatchingIgnoredUnits: readonly Unit[] = [],
 ): GroupSizeResult {
     return {
-        name: makeGroupName(rule.type, modifierStep.modifierKey),
+        name: makeGroupName(getRuleDisplayName(rule), modifierStep.modifierKey),
         type: rule.type,
+        displayName: rule.displayName,
         modifierKey: modifierStep.modifierKey,
         countsAsType: rule.countsAs ?? null,
         tier: modifierStep.tier,
@@ -833,8 +838,9 @@ function createComposedGroup(
     children: readonly GroupSizeResult[],
 ): GroupSizeResult {
     return {
-        name: makeGroupName(rule.type, modifierStep.modifierKey),
+        name: makeGroupName(getRuleDisplayName(rule), modifierStep.modifierKey),
         type: rule.type,
+        displayName: rule.displayName,
         modifierKey: modifierStep.modifierKey,
         countsAsType: rule.countsAs ?? null,
         tier: modifierStep.tier,
@@ -852,10 +858,12 @@ function createAtomicGroupTemplate(
     tier: number,
     tag: GroupSizeResult['tag'],
     priority: GroupSizeResult['priority'],
+    displayName?: string,
 ): GroupSizeResult {
     return {
-        name: makeGroupName(type, modifierKey),
+        name: makeGroupName(displayName ?? type, modifierKey),
         type: type as GroupSizeResult['type'],
+        displayName,
         modifierKey,
         countsAsType,
         tier,
@@ -977,6 +985,7 @@ function createAbstractLeafGroupRecord(
         modifierStep.tier,
         rule.tag,
         rule.priority,
+        rule.displayName,
     );
     const facts = buildAbstractGroupFactsFromUnits(template, units);
 
@@ -1030,6 +1039,7 @@ function createAbstractCIParentRecord(
         modifierStep.tier,
         rule.tag,
         rule.priority,
+        rule.displayName,
     );
     const facts = buildAbstractGroupFactsFromUnits(template, units, allocations);
 
@@ -1241,8 +1251,9 @@ function createCIParentGroup(
 ): GroupSizeResult {
     const unitAllocations = aggregateTokenAllocations(tokens);
     return {
-        name: makeGroupName(rule.type, modifierStep.modifierKey),
+        name: makeGroupName(getRuleDisplayName(rule), modifierStep.modifierKey),
         type: rule.type,
+        displayName: rule.displayName,
         modifierKey: modifierStep.modifierKey,
         countsAsType: rule.countsAs ?? null,
         tier: modifierStep.tier,
@@ -4584,7 +4595,8 @@ function createUpdatedParentRecord(
                 const baseGroup = parentRecord.materialize();
                 updatedRecord.materializedGroup = {
                     ...baseGroup,
-                    name: makeGroupName(rule.type, modifierStep.modifierKey),
+                    name: makeGroupName(getRuleDisplayName(rule), modifierStep.modifierKey),
+                    displayName: rule.displayName,
                     modifierKey: modifierStep.modifierKey,
                     tier: modifierStep.tier,
                     children: [
@@ -5310,8 +5322,9 @@ function createSyntheticGroupForRule(
     modifierStep: ModifierStep,
 ): GroupSizeResult {
     return {
-        name: makeGroupName(rule.type, modifierStep.modifierKey),
+        name: makeGroupName(getRuleDisplayName(rule), modifierStep.modifierKey),
         type: rule.type,
+        displayName: rule.displayName,
         modifierKey: modifierStep.modifierKey,
         countsAsType: rule.countsAs ?? null,
         tier: modifierStep.tier,
@@ -5337,8 +5350,9 @@ function createAbstractProducedGroupTemplate(
     modifierStep: ModifierStep,
 ): GroupSizeResult {
     return {
-        name: makeGroupName(rule.type, modifierStep.modifierKey),
+        name: makeGroupName(getRuleDisplayName(rule), modifierStep.modifierKey),
         type: rule.type,
+        displayName: rule.displayName,
         modifierKey: modifierStep.modifierKey,
         countsAsType: rule.countsAs ?? null,
         tier: modifierStep.tier,

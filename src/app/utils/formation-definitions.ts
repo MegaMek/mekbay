@@ -128,6 +128,17 @@ function findIdenticalPairs(units: ForceUnit[]): ForceUnit[][] {
     return pairs;
 }
 
+function bloodStalkerFormationEffectDescription(formationName: string): (gameSystem: GameSystem) => string {
+    return (gameSystem) => {
+        const isAs = gameSystem === GameSystem.ALPHA_STRIKE;
+        if (isAs) {
+            return `75% of the units receive the Blood Stalker SPA. The ${formationName} may choose an enemy formation rather than a single unit as the Blood Stalker target. All members must choose the same enemy formation.`;
+        } else {
+            return `75% of the units receive the Blood Stalker SPA.`;    
+        }
+    };
+}
+
 // ── CBT helper functions ─────────────────────────────────────────────────────
 
 function cbtGetWeightClass(unit: Unit): number {
@@ -946,7 +957,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         id: 'pursuit-lance',
         name: 'Pursuit',
         description: 'Fast scout hunters with firepower',
-        effectDescription: '75% of the units receive the Blood Stalker SPA. The Pursuit Lance may choose an enemy Formation rather than a single unit as the Blood Stalker target. All members must choose the same enemy Formation.',
+        effectDescription: bloodStalkerFormationEffectDescription('Pursuit Lance'),
         effectGroups: [{
             abilityIds: ['blood_stalker'],
             selection: 'all',
@@ -982,7 +993,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         id: 'probe-lance',
         name: 'Probe',
         description: 'Mobile reconnaissance force',
-        effectDescription: '75% of the units receive the Blood Stalker SPA. The Pursuit Lance may choose an enemy Formation rather than a single unit as the Blood Stalker target. All members must choose the same enemy Formation.',
+        effectDescription: bloodStalkerFormationEffectDescription('Probe Lance'),
         effectGroups: [{
             abilityIds: ['blood_stalker'],
             selection: 'all',
@@ -1017,7 +1028,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         id: 'sweep-lance',
         name: 'Sweep',
         description: 'Fast medium-range sweeping force',
-        effectDescription: '75% of the units receive the Blood Stalker SPA. The Pursuit Lance may choose an enemy Formation rather than a single unit as the Blood Stalker target. All members must choose the same enemy Formation.',
+        effectDescription: bloodStalkerFormationEffectDescription('Sweep Lance'),
         effectGroups: [{
             abilityIds: ['blood_stalker'],
             selection: 'all',
