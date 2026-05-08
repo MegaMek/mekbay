@@ -2,8 +2,10 @@ import {
     formationInheritsParentEffects,
     formationNameMatchesGroupName,
     getFormationNameMatchStrings,
+    resolveFormationGameSystemText,
     type FormationTypeDefinition,
 } from './formation-type.model';
+import { GameSystem } from '../models/common.model';
 
 function createFormation(overrides: Partial<FormationTypeDefinition> = {}): FormationTypeDefinition {
     return {
@@ -71,5 +73,21 @@ describe('formationInheritsParentEffects', () => {
 
     it('returns true only when inheritParentEffects is explicitly enabled', () => {
         expect(formationInheritsParentEffects(createFormation({ inheritParentEffects: true }))).toBeTrue();
+    });
+});
+
+describe('resolveFormationGameSystemText', () => {
+    it('returns static text unchanged', () => {
+        expect(resolveFormationGameSystemText('Static bonus text.', GameSystem.ALPHA_STRIKE))
+            .toBe('Static bonus text.');
+    });
+
+    it('resolves callback text using the provided game system', () => {
+        const text = resolveFormationGameSystemText(
+            gameSystem => gameSystem === GameSystem.ALPHA_STRIKE ? 'Alpha Strike bonus.' : 'Classic bonus.',
+            GameSystem.CLASSIC,
+        );
+
+        expect(text).toBe('Classic bonus.');
     });
 });
