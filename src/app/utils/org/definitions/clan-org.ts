@@ -103,7 +103,7 @@ export const CLAN_NOVA: OrgComposedPatternRule = {
     tier: 1.9,
     formationMatching: {
         ignoredChildRoles: [{ matches: ['Star'], onlyUnitTypes: ['BA'] }],
-        notice: 'Battle Armor child groups are ignored for formation requirements.',
+        notice: 'Battle Armor child groups are ignored for formation requirements. Mounted infantry in a Nova Formation may make weapon attacks. These mounted attacks use the attacker movement modifier of the transport along with an additional +2 Target Number modifier for being mounted.',
     },
     childRoles: [
         { matches: ['Star'], min: 1, max: 1, onlyUnitTypes: ['BA'] },
