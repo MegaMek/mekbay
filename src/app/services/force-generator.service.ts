@@ -2101,11 +2101,10 @@ export class ForceGeneratorService implements OnDestroy {
 
         if (targetFormationContext) {
             const targetAttemptBudget = this.createAttemptBudget(candidates.length, minUnitCount, maxUnitCount);
-            const maxTargetAttempts = Math.max(targetAttemptBudget.minAttempts, Math.min(24, targetAttemptBudget.maxAttempts));
             const targetSearchStartedAt = getForceGeneratorNow();
             const targetSearchDeadline = this.createSearchDeadline(targetSearchStartedAt, FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS);
             let targetAttemptDurationEstimateMs = 0;
-            let targetAttemptLimit = Math.min(targetAttemptBudget.minAttempts, maxTargetAttempts);
+            let targetAttemptLimit = targetAttemptBudget.minAttempts;
             let targetAttemptsTried = 0;
             let bestTargetAttempt: ForceGenerationSelectionAttempt | null = null;
             let bestTargetRank: ForceGenerationTargetAttemptRank | null = null;
@@ -2191,15 +2190,12 @@ export class ForceGeneratorService implements OnDestroy {
 
                 const attemptDurationMs = Math.max(0.05, getForceGeneratorNow() - attemptStartedAt);
                 targetAttemptDurationEstimateMs = this.updateAttemptDurationEstimate(targetAttemptDurationEstimateMs, attemptDurationMs, targetAttemptsTried);
-                targetAttemptLimit = Math.min(
-                    maxTargetAttempts,
-                    this.resolveAttemptLimit(
-                        targetAttemptBudget,
-                        targetAttemptsTried,
-                        targetAttemptDurationEstimateMs,
-                        getForceGeneratorNow() - targetSearchStartedAt,
-                        false,
-                    ),
+                targetAttemptLimit = this.resolveAttemptLimit(
+                    targetAttemptBudget,
+                    targetAttemptsTried,
+                    targetAttemptDurationEstimateMs,
+                    getForceGeneratorNow() - targetSearchStartedAt,
+                    false,
                 );
             }
 
@@ -2223,11 +2219,10 @@ export class ForceGeneratorService implements OnDestroy {
 
         if (targetFormationSetContext) {
             const targetAttemptBudget = this.createAttemptBudget(candidates.length, minUnitCount, maxUnitCount);
-            const maxTargetAttempts = Math.max(targetAttemptBudget.minAttempts, Math.min(24, targetAttemptBudget.maxAttempts));
             const targetSearchStartedAt = getForceGeneratorNow();
             const targetSearchDeadline = this.createSearchDeadline(targetSearchStartedAt, FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS);
             let targetAttemptDurationEstimateMs = 0;
-            let targetAttemptLimit = Math.min(targetAttemptBudget.minAttempts, maxTargetAttempts);
+            let targetAttemptLimit = targetAttemptBudget.minAttempts;
             let targetAttemptsTried = 0;
             let bestTargetAttempt: ForceGenerationSelectionAttempt | null = null;
             let bestTargetEvaluation: ForceGenerationTargetFormationSetAttemptEvaluation | null = null;
@@ -2293,15 +2288,12 @@ export class ForceGeneratorService implements OnDestroy {
 
                 const attemptDurationMs = Math.max(0.05, getForceGeneratorNow() - attemptStartedAt);
                 targetAttemptDurationEstimateMs = this.updateAttemptDurationEstimate(targetAttemptDurationEstimateMs, attemptDurationMs, targetAttemptsTried);
-                targetAttemptLimit = Math.min(
-                    maxTargetAttempts,
-                    this.resolveAttemptLimit(
-                        targetAttemptBudget,
-                        targetAttemptsTried,
-                        targetAttemptDurationEstimateMs,
-                        getForceGeneratorNow() - targetSearchStartedAt,
-                        bestTargetEvaluation !== null && bestTargetEvaluation.rank.satisfiedTargetCount > 0,
-                    ),
+                targetAttemptLimit = this.resolveAttemptLimit(
+                    targetAttemptBudget,
+                    targetAttemptsTried,
+                    targetAttemptDurationEstimateMs,
+                    getForceGeneratorNow() - targetSearchStartedAt,
+                    bestTargetEvaluation !== null && bestTargetEvaluation.rank.satisfiedTargetCount > 0,
                 );
             }
 
@@ -5016,10 +5008,16 @@ export class ForceGeneratorService implements OnDestroy {
             return note;
         }
 
+        const roundedElapsedMs = attemptsElapsedMs === undefined
+            ? undefined
+            : Math.max(0, Math.round(attemptsElapsedMs));
         const elapsedNote = attemptsElapsedMs === undefined
             ? ''
-            : ` in ${Math.max(0, Math.round(attemptsElapsedMs))}ms`;
-        return `${note} Attempts tried: ${attemptsTried}${elapsedNote}.`;
+            : ` in ${roundedElapsedMs}ms`;
+        const searchWindowNote = roundedElapsedMs !== undefined && roundedElapsedMs >= FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS
+            ? ' Search window expired.'
+            : '';
+        return `${note} Attempts tried: ${attemptsTried}${elapsedNote}.${searchWindowNote}`;
     }
 
     private getFormationDeficitScore(evaluation: FormationEvaluation | null): number {
