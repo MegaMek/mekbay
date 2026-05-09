@@ -204,14 +204,8 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 62 }, { book: Rulebook.ASCE, page: 118 }],
         requirements: (gameSystem) => {
-            let assaultLanceReqs = '';
-            if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                assaultLanceReqs = 'Minimum 3 units. At least 3 units Size 3+. No Size 1 units. All armor ≥ 5. 75% must have medium-range damage ≥ 3. At least 1 Juggernaut or 2 Snipers.';
-            } else {
-                assaultLanceReqs = 'Minimum 3 units. At least 3 heavy or assault. No light units. All armor ≥ 135 points. 75% must deal 25+ damage at 7 hexes. At least 1 Juggernaut or 2 Snipers.';
-            }
             const move = gameSystem === GameSystem.ALPHA_STRIKE ? '[[10]]+ or any jump capability' : 'walk ≥ 5 or jump > 0';
-            return `${assaultLanceReqs} All units must have ${move}.`;
+            return `Must meet Assault Lance requirements. All units must have ${move}.`;
         },
     },
 
@@ -380,11 +374,8 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 63 }, { book: Rulebook.FMK, page: 87 }],
-        requirements: (gameSystem) => {
-            if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                return 'Minimum 3 units. 50% must be Size 3+. At least 3 Brawler, Sniper, or Skirmisher roles. Vehicle formations require 2 matched pairs of Size 3+ units.';
-            }
-            return `Minimum 3 units. 50% must be heavy or assault. At least 3 Brawler, Sniper, or Skirmisher roles. Vehicle formations require 2 matched pairs of heavy units.`;
+        requirements: (gameSystem) => {            
+            return 'Must meet Battle Lance requirements.';
         },
     },
 
@@ -519,9 +510,9 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.CO, page: 64 }, { book: Rulebook.ASCE, page: 119 }],
         requirements: (gameSystem) => {
             if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                return 'Minimum 3 units. 75% must have the Missile Boat or Sniper role. At least 2 units with FLK, AC, or ART specials.';
+                return 'Minimum 3 units. Must meet Fire Lance requirements. At least 2 units with FLK, AC, or ART specials.';
             }
-            return 'Minimum 3 units. 75% must have the Missile Boat or Sniper role. At least 2 units with an LBX autocannon, standard autocannon, artillery weapon, or Anti-Aircraft Targeting quirk.';
+            return 'Minimum 3 units. Must meet Fire Lance requirements. At least 2 units with an LBX autocannon, standard autocannon, artillery weapon, or Anti-Aircraft Targeting quirk.';
         },
     },
 
