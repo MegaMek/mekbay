@@ -421,7 +421,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.CO, page: 62 }, { book: Rulebook.ASCE, page: 117 }],
         requirements: (gameSystem) => {
             if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                return 'Minimum 3 units. 50% must be Size 3+. At least 3 Brawler, Sniper, or Skirmisher roles. Vehicle formations require 2 matched pairs of Size 3 units.';
+                return 'Minimum 3 units. 50% must be Size 3+. At least 3 Brawler, Sniper, or Skirmisher roles. Vehicle formations require 2 matched pairs of Size 3+ units.';
             }
             return `Minimum 3 units. 50% must be heavy or assault. At least 3 Brawler, Sniper, or Skirmisher roles. Vehicle formations require 2 matched pairs of heavy units.`;
         },
@@ -528,7 +528,7 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         rulesRef: [{ book: Rulebook.CO, page: 63 }, { book: Rulebook.ASCE, page: 118 }],
         requirements: (gameSystem) => {
             if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                return 'Minimum 3 units. 50% must be Size 3+. No Size 1 units. Vehicle formations require 2 matched pairs of Size 3 units.';
+                return 'Minimum 3 units. 50% must be Size 3+. No Size 1 units. Vehicle formations require 2 matched pairs of Size 3+ units.';
             }
             return 'Minimum 3 units. 50% must be heavy or assault. No light units. Vehicle formations require 2 matched pairs of heavy units.';
         },
