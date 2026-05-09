@@ -1080,7 +1080,12 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         expect(resolveGenerationContextSpy).toHaveBeenCalledWith(
             [],
-            { crossEraAvailabilityInMultiEraSelection: true },
+            jasmine.objectContaining({
+                crossEraAvailabilityInMultiEraSelection: true,
+                gameSystem: component.gameSystem(),
+                targetFormationId: undefined,
+                targetFormations: [],
+            }),
         );
     });
 

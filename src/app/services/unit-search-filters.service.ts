@@ -58,7 +58,7 @@ import { GameService } from './game.service';
 import { UrlStateService } from './url-state.service';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
 import { filterStateToSemanticText, tokensToFilterState, type WildcardPattern } from '../utils/semantic-filter.util';
-import { parseSemanticQueryAST, type ParseResult, type ParseError, isComplexQuery } from '../utils/semantic-filter-ast.util';
+import { parseSemanticQueryAST, stripSemanticFieldsFromParseResult, type ParseResult, type ParseError, isComplexQuery } from '../utils/semantic-filter-ast.util';
 import { getSnapshotForcePackNames, type AdvOptionsContextSnapshot } from '../utils/unit-search-adv-options.util';
 import { buildUnitSearchAdvOptions } from '../utils/unit-search-adv-options-builder.util';
 import type { UnitSearchDropdownValuesDependencies } from '../utils/unit-search-dropdown-values.util';
@@ -91,7 +91,14 @@ import {
 } from '../utils/unit-search-worker-request.util';
 import { buildWorkerSearchTelemetrySnapshot, hydrateWorkerResultUnits } from '../utils/unit-search-worker-result.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
+import type { ForceUnit } from '../models/force-unit.model';
 import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
+import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
+import { FormationRequirementEngine } from '../utils/formation-requirement-engine.util';
+import type { FormationSearchTarget } from '../utils/formation-requirement.model';
+import { getFormationDefinitions } from '../utils/formation-blueprints';
+import { getFormationNameMatchStrings, type FormationTypeDefinition } from '../utils/formation-type.model';
+import { normalizeLooseText } from '../utils/string.util';
 import { UserStateService } from './userState.service';
 import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
@@ -114,6 +121,7 @@ import {
     BOOLEAN_FILTERS,
     type BooleanFilterConfig,
     type FilterState,
+    FORMATION_TARGET_FILTER_KEY,
     DROPDOWN_FILTERS,
     getMegaMekRaritySortAvailabilitySources,
     isMegaMekRaritySortKey,
@@ -131,6 +139,7 @@ const MEGAMEK_WORKER_CONTEXT_FILTER_KEYS = new Set(['era', 'faction']);
 const MEGAMEK_WORKER_AVAILABILITY_FILTER_KEYS = new Set(['availabilityFrom', 'availabilityRarity']);
 const MEGAMEK_WORKER_AVAILABILITY_SEMANTIC_FIELDS = new Set(['from', 'rarity']);
 const MEGAMEK_WORKER_SEMANTIC_FIELDS = new Set(['era', 'faction', 'from', 'rarity']);
+const FORMATION_TARGET_SEMANTIC_FIELDS = new Set(['formation']);
 
 /** Check if any element in sourceSet exists in targetSet. */
 function setHasAny<T>(sourceSet: ReadonlySet<T>, targetSet: ReadonlySet<T>): boolean {
@@ -258,6 +267,9 @@ export class UnitSearchFiltersService {
     readonly advOptionsTelemetry = this.advOptionsTelemetryState.asReadonly();
     private readonly workerSearchEnabled = signal(this.canUseSearchWorker());
     private readonly rawWorkerResultUnitsState = signal<Unit[]>([]);
+    private readonly formationTargetState = signal<FormationSearchTarget | null>(null);
+    readonly formationTarget = this.formationTargetState.asReadonly();
+    private readonly formationTargetExistingUnitsState = signal<readonly ForceUnit[]>([]);
     private advOptionsTelemetryPublishVersion = 0;
     private lastSearchTelemetryLogKey = '';
     private readonly slowSearchTelemetryThresholdMs = 75;
@@ -279,6 +291,42 @@ export class UnitSearchFiltersService {
             requestId: currentRequest.requestId + 1,
             exitExpandedView: !!options.exitExpandedView,
         });
+    }
+
+    setFormationTarget(target: FormationSearchTarget | null): void {
+        if (target) {
+            this.formationTargetExistingUnitsState.set(target.existingUnits);
+        }
+        this.formationTargetState.set(target);
+    }
+
+    setFormationTargetExistingUnits(existingUnits: readonly ForceUnit[]): void {
+        this.formationTargetExistingUnitsState.set(existingUnits);
+    }
+
+    selectFormationTarget(target: FormationSearchTarget | null): void {
+        const shouldSyncToText = this.autoConvertToSemantic() || this.semanticFilterKeys().has(FORMATION_TARGET_FILTER_KEY);
+        const conf = getAdvancedFilterConfigByKey(FORMATION_TARGET_FILTER_KEY);
+
+        if (shouldSyncToText && conf) {
+            if (target) {
+                this.formationTargetExistingUnitsState.set(target.existingUnits);
+            }
+
+            const semanticValue = target
+                ? this.getFormationTargetSemanticValue(target.formationId, target.gameSystem)
+                : '';
+            this.updateSemanticTextForFilter(
+                FORMATION_TARGET_FILTER_KEY,
+                semanticValue ? [semanticValue] : [],
+                !!semanticValue,
+                conf,
+            );
+            this.formationTargetState.set(null);
+            return;
+        }
+
+        this.setFormationTarget(target);
     }
 
     /**
@@ -395,6 +443,10 @@ export class UnitSearchFiltersService {
         return getSemanticFilterKeysFromParsed(this.semanticParsedAST());
     });
 
+    private hasSemanticFormationTarget(): boolean {
+        return this.semanticFilterKeys().has(FORMATION_TARGET_FILTER_KEY);
+    }
+
     private getSemanticStateDependencies(): UnitSearchSemanticStateDependencies {
         return {
             getDropdownOptionUniverse: (filterKey: string) => this.dataService.getDropdownOptionUniverse(filterKey).map(option => option.name),
@@ -467,6 +519,10 @@ export class UnitSearchFiltersService {
     }
 
     private shouldForceMegaMekSyncSearch(): boolean {
+        if (this.hasSemanticFormationTarget()) {
+            return true;
+        }
+
         const availabilitySource = this.optionsService.options().availabilitySource;
 
         if (this.isComplexQuery()) {
@@ -499,7 +555,7 @@ export class UnitSearchFiltersService {
     }
 
     private getWorkerFilterState(state: FilterState): FilterState {
-        const workerState: FilterState = { ...state };
+        const workerState: FilterState = this.stripFormationTargetFilterState(state);
         for (const key of Object.keys(workerState)) {
             if (this.shouldStripFilterFromWorker(key)) {
                 delete workerState[key];
@@ -1485,6 +1541,15 @@ export class UnitSearchFiltersService {
         );
     });
 
+    readonly semanticFormationTargetId = computed((): string | null => {
+        const state = this.semanticFilterState()[FORMATION_TARGET_FILTER_KEY];
+        if (!state?.interactedWith || !Array.isArray(state.value) || state.value.length !== 1 || state.wildcardPatterns?.length) {
+            return null;
+        }
+
+        return this.resolveFormationTargetDefinition(state.value[0], this.gameService.currentGameSystem())?.id ?? null;
+    });
+
     /**
      * Effective filter state - combines manual filterState with semantic filters.
      * - For filters in semantic text: semantic state is used (it's the source of truth)
@@ -1597,15 +1662,23 @@ export class UnitSearchFiltersService {
         return result;
     }
 
+    private stripFormationTargetFilterState(state: FilterState): FilterState {
+        const stripped = { ...state };
+        delete stripped[FORMATION_TARGET_FILTER_KEY];
+        return stripped;
+    }
+
     private buildWorkerSearchRequest(corpusVersion: string): UnitSearchWorkerQueryRequest {
         const gameSystem = this.gameService.currentGameSystem();
         const workerFilterState = this.getWorkerFilterState(this.getApplicableFilterState(this.effectiveFilterState()));
-        const executionQuery = buildWorkerExecutionQuery({
-            effectiveFilterState: workerFilterState,
-            effectiveTextSearch: this.effectiveTextSearch(),
-            gameSystem,
-            totalRangesCache: this.totalRangesCache,
-        });
+        const executionQuery = this.isComplexQuery()
+            ? this.searchText().trim()
+            : buildWorkerExecutionQuery({
+                effectiveFilterState: workerFilterState,
+                effectiveTextSearch: this.effectiveTextSearch(),
+                gameSystem,
+                totalRangesCache: this.totalRangesCache,
+            });
 
         this.searchRequestRevision += 1;
 
@@ -1665,7 +1738,8 @@ export class UnitSearchFiltersService {
         const telemetryStages = [...result.stages];
         const stageCountBeforePostProcessing = telemetryStages.length;
         const postFilteredResults = this.applyWorkerPostFilters(hydratedResults, telemetryStages);
-        const sortedResults = this.sortHydratedWorkerResults(postFilteredResults, telemetryStages);
+        const formationFilteredResults = this.applyFormationTargetFilter(postFilteredResults, telemetryStages);
+        const sortedResults = this.sortHydratedWorkerResults(formationFilteredResults, telemetryStages);
         const cappedResults = this.applyRemainingBudgetLimit(sortedResults, telemetryStages);
         const addedTelemetryMs = telemetryStages
             .slice(stageCountBeforePostProcessing)
@@ -1707,6 +1781,157 @@ export class UnitSearchFiltersService {
             applyPostFilters,
             (value) => value.length,
         );
+    }
+
+    private applyFormationTargetFilter(units: Unit[], telemetryStages?: SearchTelemetryStage[]): Unit[] {
+        if (this.hasSemanticFormationTarget()) {
+            return units;
+        }
+
+        const target = this.formationTargetState();
+        if (!target || units.length === 0) {
+            return units;
+        }
+
+        const definition = LanceTypeIdentifierUtil.getDefinitionById(target.formationId, target.gameSystem);
+        if (!definition || !FormationRequirementEngine.hasBlueprint(definition.id)) {
+            return units;
+        }
+
+        const applyTargetFilter = () => units.filter(unit => {
+            const candidate = this.createFormationCandidateForceUnit(unit, target);
+            return FormationRequirementEngine.evaluateSearchCandidate(
+                definition,
+                target.existingUnits,
+                candidate,
+                target.gameSystem,
+                { maxUnits: target.maxUnits ?? definition.maxUnits },
+            ).allowed;
+        });
+
+        if (!telemetryStages) {
+            return applyTargetFilter();
+        }
+
+        return measureStage(
+            telemetryStages,
+            'formation-target-filter',
+            units.length,
+            applyTargetFilter,
+            (value) => value.length,
+        );
+    }
+
+    private createFormationCandidateForceUnit(unit: Unit, target: FormationSearchTarget): ForceUnit {
+        const baseForce = target.existingUnits[0]?.force ?? {
+            faction: () => null,
+            era: () => null,
+            techBase: () => '',
+            gameSystem: target.gameSystem,
+        };
+
+        return {
+            force: baseForce,
+            getUnit: () => unit,
+            getBv: () => 0,
+            pilotSkill: () => this.pilotGunnerySkill(),
+            gunnerySkill: () => this.pilotGunnerySkill(),
+        } as unknown as ForceUnit;
+    }
+
+    private getFormationTargetExistingUnits(): readonly ForceUnit[] {
+        return this.formationTargetState()?.existingUnits ?? this.formationTargetExistingUnitsState();
+    }
+
+    private getFormationTargetDefinitions(gameSystem: GameSystem): FormationTypeDefinition[] {
+        const definitions: FormationTypeDefinition[] = [];
+        const seen = new Set<string>();
+
+        for (const definition of getFormationDefinitions()) {
+            if (!FormationRequirementEngine.hasBlueprint(definition.id)) {
+                continue;
+            }
+
+            const resolved = LanceTypeIdentifierUtil.getDefinitionById(definition.id, gameSystem);
+            if (!resolved || seen.has(resolved.id)) {
+                continue;
+            }
+
+            definitions.push(resolved);
+            seen.add(resolved.id);
+        }
+
+        return definitions;
+    }
+
+    private getFormationTargetSemanticNames(gameSystem: GameSystem): string[] {
+        const names = new Set<string>();
+        for (const definition of this.getFormationTargetDefinitions(gameSystem)) {
+            for (const name of getFormationNameMatchStrings(definition)) {
+                names.add(name);
+            }
+        }
+        return Array.from(names);
+    }
+
+    private resolveFormationTargetDefinition(value: string, gameSystem: GameSystem): FormationTypeDefinition | null {
+        const normalizedValue = value.trim().toLowerCase();
+        const looseValue = normalizeLooseText(value);
+        if (!normalizedValue) {
+            return null;
+        }
+
+        const definitions = this.getFormationTargetDefinitions(gameSystem);
+        for (const definition of definitions) {
+            if (definition.id.toLowerCase() === normalizedValue) {
+                return definition;
+            }
+            if (getFormationNameMatchStrings(definition).some(name => name.toLowerCase() === normalizedValue)) {
+                return definition;
+            }
+        }
+
+        if (!looseValue) {
+            return null;
+        }
+
+        for (const definition of definitions) {
+            if (normalizeLooseText(definition.id) === looseValue) {
+                return definition;
+            }
+            if (getFormationNameMatchStrings(definition).some(name => normalizeLooseText(name) === looseValue)) {
+                return definition;
+            }
+        }
+
+        return null;
+    }
+
+    private getFormationTargetSemanticValue(formationId: string, gameSystem: GameSystem): string {
+        return LanceTypeIdentifierUtil.getDefinitionById(formationId, gameSystem)?.name ?? formationId;
+    }
+
+    private unitMatchesFormationTarget(unit: Unit, formationName: string, gameSystem: GameSystem): boolean {
+        const definition = this.resolveFormationTargetDefinition(formationName, gameSystem);
+        if (!definition || !FormationRequirementEngine.hasBlueprint(definition.id)) {
+            return false;
+        }
+
+        const target: FormationSearchTarget = {
+            formationId: definition.id,
+            existingUnits: this.getFormationTargetExistingUnits(),
+            gameSystem,
+            minUnits: definition.minUnits,
+            maxUnits: definition.maxUnits,
+        };
+        const candidate = this.createFormationCandidateForceUnit(unit, target);
+        return FormationRequirementEngine.evaluateSearchCandidate(
+            definition,
+            target.existingUnits,
+            candidate,
+            gameSystem,
+            { maxUnits: target.maxUnits ?? definition.maxUnits },
+        ).allowed;
     }
 
     private getPendingWorkerFallbackUnits(): Unit[] | null {
@@ -2867,7 +3092,7 @@ export class UnitSearchFiltersService {
         };
     }
 
-    private executeSyncSearch(): {
+    private executeSyncSearch(options: { ignoreFormationTarget?: boolean } = {}): {
         execution: ReturnType<typeof executeUnitSearch>;
         parseTelemetry: SearchTelemetryStage[];
     } {
@@ -2890,6 +3115,9 @@ export class UnitSearchFiltersService {
             this.units.length,
             () => this.semanticParsedAST(),
         );
+        const executionParsedQuery = options.ignoreFormationTarget
+            ? stripSemanticFieldsFromParseResult(parsedQuery, FORMATION_TARGET_SEMANTIC_FIELDS)
+            : parsedQuery;
         const megaMekRaritySortScope = this.megaMekRaritySortScope();
         const megaMekRaritySortContext = this.megaMekRaritySortContext();
         const megaMekRaritySortScoreResolver = megaMekRaritySortContext === null
@@ -2898,9 +3126,9 @@ export class UnitSearchFiltersService {
 
         const execution = executeUnitSearch({
             units: this.units,
-            parsedQuery,
+            parsedQuery: executionParsedQuery,
             searchTokens: this.searchTokens(),
-            uiOnlyFilterState: this.getUiOnlyFilterState(this.getApplicableFilterState(this.filterState()), this.semanticFilterKeys()),
+            uiOnlyFilterState: this.stripFormationTargetFilterState(this.getUiOnlyFilterState(this.getApplicableFilterState(this.filterState()), this.semanticFilterKeys())),
             uiOnlyFilterDependencies: this.getUnitFilterKernelDependencies(),
             gameSystem: this.gameService.currentGameSystem(),
             sortKey: this.selectedSort(),
@@ -2914,10 +3142,12 @@ export class UnitSearchFiltersService {
             unitMatchesAvailabilityFrom: (unit: Unit, availabilityFromName: string, scope?: AvailabilityFilterScope) => this.unitMatchesAvailabilityFrom(unit, availabilityFromName, scope),
             unitMatchesAvailabilityRarity: (unit: Unit, rarityName: string, scope?: AvailabilityFilterScope) => this.unitMatchesAvailabilityRarity(unit, rarityName, scope),
             unitBelongsToForcePack: (unit: Unit, packName: string) => this.unitBelongsToForcePack(unit, packName),
+            unitMatchesFormationTarget: (unit: Unit, formationName: string) => this.unitMatchesFormationTarget(unit, formationName, this.gameService.currentGameSystem()),
             getAllEraNames: () => this.dataService.getEras().map(era => era.name),
             getAllFactionNames: () => this.dataService.getFactions().map(faction => faction.name),
             getAllAvailabilityFromNames: () => [...MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS],
             getAllAvailabilityRarityNames: () => [...MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS],
+            getAllFormationNames: () => this.getFormationTargetSemanticNames(this.gameService.currentGameSystem()),
             getDisplayName: (filterKey: string, value: string) => {
                 const conf = getAdvancedFilterConfigByKey(filterKey);
                 const fn = conf?.displayNameFn ?? this.displayNameFns[filterKey];
@@ -2938,11 +3168,14 @@ export class UnitSearchFiltersService {
     }
 
     private readonly uncappedSyncSearch = computed(() => this.executeSyncSearch());
+    private readonly uncappedSyncSearchIgnoringFormationTarget = computed(() => this.executeSyncSearch({ ignoreFormationTarget: true }));
 
     syncFilteredUnits = computed(() => {
         const { execution, parseTelemetry } = this.uncappedSyncSearch();
         const budgetTelemetry: SearchTelemetryStage[] = [];
-        const cappedResults = this.applyRemainingBudgetLimit(execution.results, budgetTelemetry);
+        const formationTelemetry: SearchTelemetryStage[] = [];
+        const formationFilteredResults = this.applyFormationTargetFilter(execution.results, formationTelemetry);
+        const cappedResults = this.applyRemainingBudgetLimit(formationFilteredResults, budgetTelemetry);
 
         this.updateSearchTelemetry({
             timestamp: Date.now(),
@@ -2953,7 +3186,7 @@ export class UnitSearchFiltersService {
             sortKey: this.selectedSort(),
             sortDirection: this.selectedSortDirection(),
             isComplex: execution.isComplex,
-            stages: [...parseTelemetry, ...execution.telemetryStages, ...budgetTelemetry],
+            stages: [...parseTelemetry, ...execution.telemetryStages, ...formationTelemetry, ...budgetTelemetry],
             totalMs: execution.totalMs,
         });
 
@@ -2968,16 +3201,25 @@ export class UnitSearchFiltersService {
                 return pendingFallback;
             }
 
-            return this.uncappedWorkerFilteredUnits();
+            return this.uncappedWorkerEligibleUnits();
         }
 
-        return this.uncappedSyncSearch().execution.results;
+        return this.hasSemanticFormationTarget()
+            ? this.uncappedSyncSearchIgnoringFormationTarget().execution.results
+            : this.uncappedSyncSearch().execution.results;
+    });
+
+    private readonly uncappedWorkerEligibleUnits = computed(() => {
+        const hydratedResults = this.rawWorkerResultUnitsState();
+        const postFilteredResults = this.applyWorkerPostFilters(hydratedResults);
+        return this.sortHydratedWorkerResults(postFilteredResults);
     });
 
     private readonly uncappedWorkerFilteredUnits = computed(() => {
         const hydratedResults = this.rawWorkerResultUnitsState();
         const postFilteredResults = this.applyWorkerPostFilters(hydratedResults);
-        return this.sortHydratedWorkerResults(postFilteredResults);
+        const formationFilteredResults = this.applyFormationTargetFilter(postFilteredResults);
+        return this.sortHydratedWorkerResults(formationFilteredResults);
     });
 
     filteredUnits = computed(() => {
@@ -2987,7 +3229,7 @@ export class UnitSearchFiltersService {
 
         const pendingFallback = this.getPendingWorkerFallbackUnits();
         if (pendingFallback) {
-            return this.applyRemainingBudgetLimit(pendingFallback);
+            return this.applyRemainingBudgetLimit(this.applyFormationTargetFilter(pendingFallback));
         }
 
         return this.applyRemainingBudgetLimit(this.uncappedWorkerFilteredUnits());
@@ -2996,7 +3238,7 @@ export class UnitSearchFiltersService {
     // Advanced filter options
     advOptions = computed(() => {
         if (!this.isDataReady()) return {};
-        const state = this.getApplicableFilterState(this.effectiveFilterState());
+        const state = this.stripFormationTargetFilterState(this.getApplicableFilterState(this.effectiveFilterState()));
         this.tagsVersion();
 
         const advOptionsResult = buildUnitSearchAdvOptions({

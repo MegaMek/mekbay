@@ -115,36 +115,13 @@ function createTestGroup(
     } as unknown as UnitGroup<ForceUnit>;
 }
 
+function realFormation(id: string): FormationTypeDefinition {
+    const definition = LanceTypeIdentifierUtil.getDefinitionById(id, GameSystem.ALPHA_STRIKE);
+    expect(definition).not.toBeNull();
+    return definition!;
+}
+
 describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () => {
-    const bmOnlyStarFormation: FormationTypeDefinition = {
-        id: 'test-bm-only-star',
-        name: 'Test BM Star',
-        description: 'Test formation that only matches five BattleMeks.',
-        minUnits: 5,
-        validator: (units, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
-            && units.length === 5
-            && units.every((unit) => unit.getUnit().as?.TP === 'BM'),
-    };
-
-    const bmOnlyLanceFormation: FormationTypeDefinition = {
-        id: 'test-bm-only-lance',
-        name: 'Test BM Lance',
-        description: 'Test formation that only matches four BattleMeks.',
-        minUnits: 4,
-        validator: (units, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
-            && units.length === 4
-            && units.every((unit) => unit.getUnit().as?.TP === 'BM'),
-    };
-
-    const bmHeavyFormation: FormationTypeDefinition = {
-        id: 'test-bm-heavy-formation',
-        name: 'Test BM Heavy Formation',
-        description: 'Test formation that still passes on the full list but should be marked filtered when structural units are ignored.',
-        minUnits: 3,
-        validator: (units, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
-            && units.filter((unit) => unit.getUnit().as?.TP === 'BM').length >= 3,
-    };
-
     it('uses Nova org metadata to ignore only the Battle Armor child star', () => {
         const faction = createFaction('Clan Test', 'HW Clan');
         const bmUnits = Array.from({ length: 5 }, (_, index) => createUnit(index + 1, `BM-${index + 1}`, 'Mek', 'BattleMek', 'BM'));
@@ -164,25 +141,20 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
             faction,
         );
 
-        spyOn(LanceTypeIdentifierUtil, 'identifyLanceTypes').and.callFake((units, _techBase, _factionName, gameSystem) => (
-            bmOnlyStarFormation.validator?.(units, gameSystem) ? [bmOnlyStarFormation] : []
-        ));
-
         const matches = FormationNamerUtil.getAvailableFormationDefinitions(group);
+        const match = matches.find(candidate => candidate.definition.id === 'ranger-lance');
 
-        expect(matches).toEqual([
-            jasmine.objectContaining({
-                definition: bmOnlyStarFormation,
-                requirementsFiltered: true,
-                requirementsFilterCompositionName: 'Nova',
-                requirementsFilterNotice: NOVA_REQUIREMENTS_FILTER_NOTICE,
-            }),
-        ]);
+        expect(match).toEqual(jasmine.objectContaining({
+            definition: realFormation('ranger-lance'),
+            requirementsFiltered: true,
+            requirementsFilterCompositionName: 'Nova',
+            requirementsFilterNotice: NOVA_REQUIREMENTS_FILTER_NOTICE,
+        }));
     });
 
     it('uses Air Lance org metadata to ignore the Flight child group', () => {
         const faction = createFaction('Federated Suns', 'Inner Sphere');
-        const bmUnits = Array.from({ length: 4 }, (_, index) => createUnit(index + 1, `BM-${index + 1}`, 'Mek', 'BattleMek', 'BM'));
+        const bmUnits = Array.from({ length: 4 }, (_, index) => createUnit(index + 1, `BM-${index + 1}`, 'Mek', 'BattleMek', 'BM', { chassis: 'Panther' }));
         const flightUnits = Array.from({ length: 2 }, (_, index) => createUnit(index + 201, `AF-${index + 1}`, 'Aero', 'Aerospace Fighter', 'AF'));
         const group = createTestGroup(
             [...bmUnits, ...flightUnits],
@@ -199,10 +171,11 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
             faction,
         );
 
-        const match = LanceTypeIdentifierUtil.isFormationValidForGroup(bmOnlyLanceFormation, group);
+        const definition = realFormation('order-lance');
+        const match = LanceTypeIdentifierUtil.isFormationValidForGroup(definition, group);
 
         expect(match).toEqual(jasmine.objectContaining({
-            definition: bmOnlyLanceFormation,
+            definition,
             requirementsFiltered: true,
             requirementsFilterCompositionName: 'Air Lance',
             requirementsFilterNotice: 'Flight child groups are ignored for formation requirements.',
@@ -211,7 +184,7 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
 
     it('uses Draconis Combine Air Lance metadata to ignore only the AF Lance child group', () => {
         const faction = createFaction('Draconis Combine', 'Inner Sphere');
-        const bmUnits = Array.from({ length: 4 }, (_, index) => createUnit(index + 1, `BM-${index + 1}`, 'Mek', 'BattleMek', 'BM'));
+        const bmUnits = Array.from({ length: 4 }, (_, index) => createUnit(index + 1, `BM-${index + 1}`, 'Mek', 'BattleMek', 'BM', { chassis: 'Panther' }));
         const afUnits = Array.from({ length: 2 }, (_, index) => createUnit(index + 201, `AF-${index + 1}`, 'Aero', 'Aerospace Fighter', 'AF'));
         const group = createTestGroup(
             [...bmUnits, ...afUnits],
@@ -228,17 +201,18 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
             faction,
         );
 
-        const match = LanceTypeIdentifierUtil.isFormationValidForGroup(bmOnlyLanceFormation, group);
+        const definition = realFormation('order-lance');
+        const match = LanceTypeIdentifierUtil.isFormationValidForGroup(definition, group);
 
         expect(match).toEqual(jasmine.objectContaining({
-            definition: bmOnlyLanceFormation,
+            definition,
             requirementsFiltered: true,
             requirementsFilterCompositionName: 'Air Lance',
             requirementsFilterNotice: 'Aerospace Lance child groups are ignored for formation requirements.',
         }));
     });
 
-    it('marks filtered matches even when the full Nova unit list also satisfies the validator', () => {
+    it('marks filtered matches even when the full Nova unit list also satisfies the requirements', () => {
         const faction = createFaction('Clan Test', 'HW Clan');
         const bmUnits = Array.from({ length: 5 }, (_, index) => createUnit(index + 1, `BM-${index + 1}`, 'Mek', 'BattleMek', 'BM'));
         const baUnits = Array.from({ length: 5 }, (_, index) => createUnit(index + 101, `BA-${index + 1}`, 'Infantry', 'Battle Armor', 'BA'));
@@ -257,10 +231,11 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
             faction,
         );
 
-        const match = LanceTypeIdentifierUtil.isFormationValidForGroup(bmHeavyFormation, group);
+        const definition = realFormation('ranger-lance');
+        const match = LanceTypeIdentifierUtil.isFormationValidForGroup(definition, group);
 
         expect(match).toEqual(jasmine.objectContaining({
-            definition: bmHeavyFormation,
+            definition,
             requirementsFiltered: true,
             requirementsFilterCompositionName: 'Nova',
             requirementsFilterNotice: NOVA_REQUIREMENTS_FILTER_NOTICE,
@@ -269,7 +244,7 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
 
     it('uses Augmented Lance metadata to ignore solver-supplied transported units', () => {
         const faction = createFaction('Capellan Confederation', 'Inner Sphere');
-        const bmUnits = Array.from({ length: 4 }, (_, index) => createUnit(index + 1, `BM-${index + 1}`, 'Mek', 'BattleMek', 'BM'));
+        const bmUnits = Array.from({ length: 4 }, (_, index) => createUnit(index + 1, `BM-${index + 1}`, 'Mek', 'BattleMek', 'BM', { chassis: 'Panther' }));
         const baUnits = Array.from({ length: 2 }, (_, index) => createUnit(index + 201, `BA-${index + 1}`, 'Infantry', 'Battle Armor', 'BA'));
         const group = createTestGroup(
             [...bmUnits, ...baUnits],
@@ -284,10 +259,11 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
             faction,
         );
 
-        const match = LanceTypeIdentifierUtil.isFormationValidForGroup(bmOnlyLanceFormation, group);
+        const definition = realFormation('order-lance');
+        const match = LanceTypeIdentifierUtil.isFormationValidForGroup(definition, group);
 
         expect(match).toEqual(jasmine.objectContaining({
-            definition: bmOnlyLanceFormation,
+            definition,
             requirementsFiltered: true,
             requirementsFilterCompositionName: 'Augmented Lance',
             requirementsFilterNotice: 'Transported units are ignored for formation requirements.',
@@ -296,7 +272,7 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
 
     it('does not apply requirement filtering when the group resolves to multiple top-level organizations', () => {
         const faction = createFaction('Clan Test', 'HW Clan');
-        const bmUnits = Array.from({ length: 5 }, (_, index) => createUnit(index + 1, `BM-${index + 1}`, 'Mek', 'BattleMek', 'BM'));
+        const bmUnits = Array.from({ length: 5 }, (_, index) => createUnit(index + 1, `BM-${index + 1}`, 'Mek', 'BattleMek', 'BM', { chassis: 'Panther' }));
         const baUnits = Array.from({ length: 5 }, (_, index) => createUnit(index + 101, `BA-${index + 1}`, 'Infantry', 'Battle Armor', 'BA'));
         const extraPointUnit = createUnit(999, 'PM-1', 'ProtoMek', 'ProtoMek', 'PM');
         const group = createTestGroup(
@@ -317,7 +293,7 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
             faction,
         );
 
-        const match = LanceTypeIdentifierUtil.isFormationValidForGroup(bmOnlyStarFormation, group);
+        const match = LanceTypeIdentifierUtil.isFormationValidForGroup(realFormation('order-lance'), group);
 
         expect(match).toBeNull();
     });

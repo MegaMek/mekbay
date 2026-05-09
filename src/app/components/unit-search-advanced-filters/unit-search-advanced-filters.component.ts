@@ -32,17 +32,22 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { GameSystem } from '../../models/common.model';
 import { DialogsService } from '../../services/dialogs.service';
+import { ForceBuilderService } from '../../services/force-builder.service';
 import { OptionsService } from '../../services/options.service';
 import { BOOLEAN_FILTERS, DROPDOWN_FILTERS, RANGE_FILTERS } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
+import { getFormationDefinitions } from '../../utils/formation-blueprints';
+import { FormationRequirementEngine } from '../../utils/formation-requirement-engine.util';
+import type { FormationSearchTarget } from '../../utils/formation-requirement.model';
+import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
 import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
-import { MultiSelectDropdownComponent } from '../multi-select-dropdown/multi-select-dropdown.component';
+import { MultiSelectDropdownComponent, type DropdownOption, type MultiStateSelection } from '../multi-select-dropdown/multi-select-dropdown.component';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { SemanticGuideComponent } from '../semantic-guide/semantic-guide.component';
 import { TriStateFilterCheckboxComponent } from '../tri-state-filter-checkbox/tri-state-filter-checkbox.component';
@@ -71,14 +76,39 @@ export class UnitSearchAdvancedFiltersComponent {
     readonly excludedFilterKeys = input<readonly string[]>([]);
     readonly columnsCount = input<number>(1);
     readonly showAvailabilitySourceDisclaimer = input(true);
+    readonly showFormationTargetFilter = input(false);
 
     readonly filtersService = inject(UnitSearchFiltersService);
+    private readonly forceBuilderService = inject(ForceBuilderService);
     private readonly optionsService = inject(OptionsService);
     private readonly dialogsService = inject(DialogsService);
 
     readonly isComplexQuery = this.filtersService.isComplexQuery;
     readonly megaMekAvailabilitySourceSelected = computed(() => this.optionsService.options().availabilitySource === 'megamek');
     readonly gridTemplateColumns = computed(() => this.columnsCount() === 2 ? '1fr 1fr' : '1fr');
+    readonly formationTargetOptions = computed<DropdownOption[]>(() => [
+        { name: '', displayName: 'Any' },
+        ...getFormationDefinitions()
+            .filter((definition) => FormationRequirementEngine.hasBlueprint(definition.id))
+            .filter((definition) => LanceTypeIdentifierUtil.getDefinitionById(definition.id, this.filterGameSystem()) !== null)
+            .map((definition) => ({ name: definition.id, displayName: definition.name })),
+    ]);
+    readonly selectedFormationTarget = computed<string[]>(() => {
+        const options = this.formationTargetOptions();
+        const semanticTargetId = this.filtersService.semanticFormationTargetId();
+        if (semanticTargetId && options.some((option) => option.name === semanticTargetId)) {
+            return [semanticTargetId];
+        }
+
+        const target = this.filtersService.formationTarget();
+        if (!target) {
+            return [];
+        }
+
+        return options.some((option) => option.name === target.formationId)
+            ? [target.formationId]
+            : [];
+    });
 
     private readonly excludedKeySet = computed(() => new Set(this.excludedFilterKeys()));
 
@@ -118,8 +148,90 @@ export class UnitSearchAdvancedFiltersComponent {
         ));
     });
 
+    constructor() {
+        effect(() => {
+            if (!this.showFormationTargetFilter()) {
+                return;
+            }
+
+            const existingUnits = this.selectedFormationTargetGroupUnits();
+            untracked(() => this.filtersService.setFormationTargetExistingUnits(existingUnits));
+        });
+
+        effect(() => {
+            if (!this.showFormationTargetFilter()) {
+                return;
+            }
+
+            const currentTarget = this.filtersService.formationTarget();
+            if (!currentTarget) {
+                return;
+            }
+
+            const nextTarget = this.buildFormationSearchTarget(currentTarget.formationId);
+            if (!this.formationTargetsEqual(currentTarget, nextTarget)) {
+                untracked(() => this.filtersService.setFormationTarget(nextTarget));
+            }
+        });
+    }
+
     setAdvFilter(key: string, value: unknown): void {
         this.filtersService.setFilter(key, value);
+    }
+
+    onFormationTargetSelectionChange(selection: MultiStateSelection | readonly string[]): void {
+        const formationId = this.getSelectedFormationId(selection);
+        this.filtersService.selectFormationTarget(formationId ? this.buildFormationSearchTarget(formationId) : null);
+    }
+
+    private getSelectedFormationId(selection: MultiStateSelection | readonly string[]): string {
+        if (Array.isArray(selection)) {
+            return selection[0] ?? '';
+        }
+
+        return Object.values(selection).find((option) => option.state !== false)?.name ?? '';
+    }
+
+    private buildFormationSearchTarget(formationId: string): FormationSearchTarget | null {
+        if (!formationId || !this.formationTargetOptions().some((option) => option.name === formationId)) {
+            return null;
+        }
+
+        const gameSystem = this.filterGameSystem();
+        const definition = LanceTypeIdentifierUtil.getDefinitionById(formationId, gameSystem);
+        if (!definition) {
+            return null;
+        }
+
+        return {
+            formationId,
+            existingUnits: this.selectedFormationTargetGroupUnits(),
+            gameSystem,
+            minUnits: definition.minUnits,
+            maxUnits: definition.maxUnits,
+        };
+    }
+
+    private selectedFormationTargetGroupUnits() {
+        const selectedUnit = this.forceBuilderService.selectedUnit();
+        return selectedUnit?.getGroup()?.units() ?? [];
+    }
+
+    private formationTargetsEqual(left: FormationSearchTarget | null, right: FormationSearchTarget | null): boolean {
+        if (left === right) {
+            return true;
+        }
+
+        if (!left || !right) {
+            return false;
+        }
+
+        return left.formationId === right.formationId
+            && left.gameSystem === right.gameSystem
+            && left.minUnits === right.minUnits
+            && left.maxUnits === right.maxUnits
+            && left.existingUnits.length === right.existingUnits.length
+            && left.existingUnits.every((unit, index) => unit === right.existingUnits[index]);
     }
 
     async openRangeValueDialog(filterKey: string, currentValue: number[], availableRange: [number, number]): Promise<void> {

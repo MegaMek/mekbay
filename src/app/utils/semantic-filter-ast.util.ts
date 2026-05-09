@@ -58,7 +58,7 @@
  */
 
 import type { GameSystem } from '../models/common.model';
-import { ADVANCED_FILTERS, type AdvFilterConfig, AdvFilterType, type AvailabilityFilterScope, getBooleanFilterUnitValue, parseBooleanFilterSemanticValue } from '../services/unit-search-filters.model';
+import { ADVANCED_FILTERS, type AdvFilterConfig, AdvFilterType, type AvailabilityFilterScope, FORMATION_TARGET_FILTER_KEY, getBooleanFilterUnitValue, parseBooleanFilterSemanticValue } from '../services/unit-search-filters.model';
 import { type SemanticOperator, type SemanticToken, buildSemanticKeyMap, VIRTUAL_SEMANTIC_KEYS, parseValues, parseValueWithQuantity, type QuantityConstraint } from './semantic-filter.util';
 import { normalizeLooseText, wildcardToRegex } from './string.util';
 import { usesIndexedDropdownUniverse } from './unit-search-filter-config.util';
@@ -759,6 +759,57 @@ export function parseSemanticQueryAST(input: string, gameSystem: GameSystem, ret
     return result;
 }
 
+function emptyTrueGroup(start: number, end: number): GroupASTNode {
+    return { type: 'group', operator: 'AND', start, end, children: [] };
+}
+
+function stripSemanticFieldNode(node: ASTNode, fields: ReadonlySet<string>): { node: ASTNode; alwaysTrue: boolean } {
+    if (node.type === 'filter') {
+        return fields.has(node.token.field)
+            ? { node: emptyTrueGroup(node.start, node.end), alwaysTrue: true }
+            : { node, alwaysTrue: false };
+    }
+
+    if (node.type !== 'group') {
+        return { node, alwaysTrue: false };
+    }
+
+    const strippedChildren = node.children.map(child => stripSemanticFieldNode(child, fields));
+    if (node.operator === 'OR' && strippedChildren.some(child => child.alwaysTrue)) {
+        return { node: emptyTrueGroup(node.start, node.end), alwaysTrue: true };
+    }
+
+    const children = strippedChildren
+        .filter(child => !child.alwaysTrue)
+        .map(child => child.node);
+
+    if (children.length === 0) {
+        return { node: emptyTrueGroup(node.start, node.end), alwaysTrue: true };
+    }
+
+    return {
+        node: { ...node, children },
+        alwaysTrue: false,
+    };
+}
+
+export function stripSemanticFieldsFromParseResult(parsed: ParseResult, fields: ReadonlySet<string>): ParseResult {
+    if (fields.size === 0) {
+        return parsed;
+    }
+
+    const strippedRoot = stripSemanticFieldNode(parsed.ast, fields).node;
+    const ast = strippedRoot.type === 'group'
+        ? strippedRoot
+        : { type: 'group', operator: 'AND', start: strippedRoot.start, end: strippedRoot.end, children: [strippedRoot] } as GroupASTNode;
+
+    return {
+        ...parsed,
+        ast,
+        tokens: parsed.tokens.filter(token => !fields.has(token.field)),
+    };
+}
+
 /**
  * Validate a semantic query and return errors for highlighting.
  * Returns an array of errors with positions for UI highlighting.
@@ -1082,6 +1133,10 @@ export interface EvaluatorContext {
     unitBelongsToForcePack?: (unit: any, packName: string) => boolean;
     /** Get all force pack names (for wildcard expansion) */
     getAllForcePackNames?: () => string[];
+    /** Check if adding a unit would preserve a target formation search. */
+    unitMatchesFormationTarget?: (unit: any, formationName: string) => boolean;
+    /** Get all formation target names (for wildcard expansion). */
+    getAllFormationNames?: () => string[];
     /** 
      * Get AS movement values filtered by active motive selection.
      * Returns array of movement values to check for range filtering.
@@ -2028,6 +2083,9 @@ function evaluateExternalFilter(
     } else if (conf.key === 'forcePack' && context.unitBelongsToForcePack) {
         checkMembership = (name: string) => context.unitBelongsToForcePack!(unit, name);
         getAllNames = context.getAllForcePackNames;
+    } else if (conf.key === FORMATION_TARGET_FILTER_KEY && context.unitMatchesFormationTarget) {
+        checkMembership = (name: string) => context.unitMatchesFormationTarget!(unit, name);
+        getAllNames = context.getAllFormationNames;
     } else {
         // External filter handler not provided, pass through
         return true;

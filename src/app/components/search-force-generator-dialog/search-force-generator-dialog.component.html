@@ -84,7 +84,6 @@
                             <input class="bt-input field-input" type="number" min="1" [max]="MAX_UNITS" step="1" [value]="maxUnitCount()" (blur)="onMaxUnitCountBlur($event)" />
                         </div>
                     </div>
-
                     <div class="field-pair mobile-two-column span-all">
                         <div class="form-fields">
                             <label class="field-label">{{ budgetMinimumFieldLabel() }}</label>
@@ -204,6 +203,21 @@
                             [displayText]="tagsFilter()?.displayText"
                             [displayItems]="tagsFilter()?.displayItems"
                             (selectionChange)="onTagsSelectionChange($event)">
+                        </multi-select-dropdown>
+                    </div>
+
+                    <div class="form-fields span-all">
+                        <label class="field-label" for="force-generator-target-formation">Target Formations</label>
+                        <multi-select-dropdown
+                            id="force-generator-target-formation"
+                            class="generator-dropdown target-formation-dropdown"
+                            [label]="''"
+                            [options]="targetFormationOptions()"
+                            [selected]="targetFormationSelection()"
+                            [multistate]="true"
+                            [stateCycle]="targetFormationStateCycle"
+                            [countable]="true"
+                            (selectionChange)="onTargetFormationSelectionChange($event)">
                         </multi-select-dropdown>
                     </div>
 
@@ -360,6 +374,7 @@
                                         [filterGameSystem]="advPanelFilterGameSystem()"
                                         [excludedFilterKeys]="additionalFiltersExcludedKeys()"
                                         [columnsCount]="1"
+                                        [showFormationTargetFilter]="false"
                                         [showAvailabilitySourceDisclaimer]="true">
                                     </unit-search-advanced-filters>
                                 </div>

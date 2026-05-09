@@ -61,6 +61,9 @@ import type { Unit } from '../models/units.model';
 import { resolveOrgDefinition } from '../utils/org/org-registry.util';
 import { resolveFromGroups, resolveFromUnits } from '../utils/org/org-solver.util';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
+import { FormationRequirementEngine } from '../utils/formation-requirement-engine.util';
+import type { FormationEvaluation, FormationSearchDecision } from '../utils/formation-requirement.model';
+import type { FormationTypeDefinition } from '../utils/formation-type.model';
 import { collectGroupUnits } from '../utils/org/org-facts.util';
 import type { GroupSizeResult, OrgDefinition, OrgRuleDefinition, OrgType } from '../utils/org/org-types';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
@@ -77,11 +80,13 @@ import { UnitSearchFiltersService } from './unit-search-filters.service';
  * Author: Drake
  */
 const LOG_ATTEMPTS = false;
+const FORCE_GENERATION_OPTIMIZE_SELECTED_SKILLS_FOR_BUDGET = true;
+const FORCE_GENERATION_SKILL_OPTIMIZATION_STATE_LIMIT = 5_000;
 const DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT = 1;
 const FORCE_GENERATION_PRODUCTION_SOURCE_ROLL_WEIGHT = 5;
 const FORCE_GENERATION_SALVAGE_SOURCE_ROLL_WEIGHT = 1;
 const IMPLICIT_MULTI_FACTION_EXCLUDED_IDS = new Set<number>([MULFACTION_EXTINCT]);
-const FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS = 200;
+const FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS = 300;
 export const FORCE_GENERATION_MIN_PILOT_SKILL = 0;
 export const FORCE_GENERATION_MAX_PILOT_SKILL = 8;
 export const DEFAULT_FORCE_GENERATION_MAX_CBT_SKILL_DELTA = 1;
@@ -291,6 +296,36 @@ interface ForceGenerationSelectionAttempt {
     selectionSteps: ForceGenerationSelectionStep[];
     rulesetProfile: ForceGenerationRulesetProfile | null;
     structureEvaluation?: ForceGenerationStructureEvaluation;
+    targetFormationGroups?: ForceGenerationTargetFormationCandidateGroup[];
+}
+
+interface ForceGenerationTargetFormationContext {
+    definition: FormationTypeDefinition;
+    minUnitCount: number;
+    maxUnitCount: number;
+}
+
+interface ForceGenerationTargetFormationInstanceContext {
+    definition: FormationTypeDefinition;
+    preferredUnitCount: number;
+}
+
+interface ForceGenerationTargetFormationSetContext {
+    selections: ForceGenerationTargetFormationSelection[];
+    instances: ForceGenerationTargetFormationInstanceContext[];
+}
+
+interface ForceGenerationTargetFormationCandidateGroup {
+    formationId: string;
+    unitIndexes: number[];
+}
+
+interface ForceGenerationTargetFormationSetAttemptEvaluation {
+    rank: ForceGenerationTargetAttemptRank;
+    allTargetsSatisfied: boolean;
+    budgetValid: boolean;
+    unitCountValid: boolean;
+    message: string;
 }
 
 interface ForceGenerationSelectionPreparation {
@@ -306,6 +341,28 @@ interface ForceGenerationAttemptBudget {
     minAttempts: number;
     maxAttempts: number;
     targetDurationMs: number;
+}
+
+interface ForceGenerationSearchDeadline {
+    expiresAtMs: number;
+}
+
+interface ForceGenerationSkillBudgetPlanningCosts {
+    minCostByCandidate: ReadonlyMap<ForceGenerationCandidateUnit, number>;
+    maxCostByCandidate: ReadonlyMap<ForceGenerationCandidateUnit, number>;
+}
+
+interface ForceGenerationSkillOptimizationState {
+    totalCost: number;
+    selectedCandidates: ForceGenerationCandidateUnit[];
+}
+
+interface ForceGenerationTargetAttemptRank {
+    satisfiedTargetCount: number;
+    requestedTargetCount: number;
+    formationDeficitScore: number;
+    budgetDistance: number;
+    unitCountDistance: number;
 }
 
 interface ForceGenerationSkillSettings {
@@ -338,6 +395,19 @@ export interface ForceGenerationPreview {
     faction: Faction | null;
     era: Era | null;
     explanationLines: string[];
+    targetFormationId?: string;
+    targetFormations?: ForceGenerationTargetFormationSelection[];
+    targetFormationGroups?: ForceGenerationTargetFormationPreviewGroup[];
+}
+
+export interface ForceGenerationTargetFormationSelection {
+    formationId: string;
+    count: number;
+}
+
+export interface ForceGenerationTargetFormationPreviewGroup {
+    formationId: string;
+    unitIndexes: number[];
 }
 
 export interface ForceGenerationRequest {
@@ -353,6 +423,8 @@ export interface ForceGenerationRequest {
     lockedUnits?: readonly GeneratedForceUnit[];
     preventDuplicateChassis?: boolean;
     useTaggedQuantities?: boolean;
+    targetFormationId?: string;
+    targetFormations?: readonly ForceGenerationTargetFormationSelection[];
 }
 
 export interface ForceGenerationSkillRange {
@@ -373,6 +445,9 @@ export interface ForceGenerationBudgetRange {
 
 export interface ForceGenerationContextOptions {
     crossEraAvailabilityInMultiEraSelection?: boolean;
+    gameSystem?: GameSystem;
+    targetFormationId?: string;
+    targetFormations?: readonly ForceGenerationTargetFormationSelection[];
 }
 
 export interface ForceGenerationContext {
@@ -384,6 +459,8 @@ export interface ForceGenerationContext {
     useAvailabilityEraScope?: boolean;
     availablePairCount: number;
     ruleset: MegaMekRulesetRecord | null;
+    explicitFactionSelection?: boolean;
+    targetFormationFactionInferred?: boolean;
 }
 
 export interface GeneratedForceUnit {
@@ -555,6 +632,22 @@ function combinePreviewGroupPlans(plans: readonly PreviewGroupPlan[]): PreviewGr
     };
 }
 
+function getPreviewGroupRegularityScore(group: GroupSizeResult): number {
+    if (!group.type || group.tier < PREVIEW_GROUP_SPLIT_MIN_TIER) {
+        return 0;
+    }
+
+    if (group.modifierKey === '') {
+        return 2;
+    }
+
+    if (group.modifierKey === 'Half ' || group.modifierKey === 'Short ' || group.modifierKey === 'Under-Strength ') {
+        return -1;
+    }
+
+    return 0;
+}
+
 function isBetterPreviewGroupPlan(candidate: PreviewGroupPlan, incumbent: PreviewGroupPlan | null): boolean {
     if (!incumbent) {
         return true;
@@ -667,9 +760,9 @@ function createPreviewLeafGroupPlan(
             previewGroup: createGeneratedPreviewGroup(orderedGeneratedUnits, context.gameSystem, formationId),
             firstUnitIndex: getGeneratedUnitFirstIndex(orderedGeneratedUnits, unitIndexByGeneratedUnit),
         }],
-        score: bestMatch
+        score: (bestMatch
             ? LanceTypeIdentifierUtil.getFormationPriorityWeight(bestMatch.definition, context.factionName)
-            : 0,
+            : 0) + getPreviewGroupRegularityScore(resolvedGroup),
         formationCount: formationId ? 1 : 0,
     };
 }
@@ -1216,6 +1309,7 @@ function getOrderedCandidateCostTotalExcluding(
     orderedCandidates: readonly ForceGenerationCandidateUnit[],
     excludedCandidate: ForceGenerationCandidateUnit,
     count: number,
+    getCost: (candidate: ForceGenerationCandidateUnit) => number = (candidate) => candidate.cost,
 ): number {
     if (count <= 0 || orderedCandidates.length <= 1) {
         return 0;
@@ -1229,7 +1323,7 @@ function getOrderedCandidateCostTotalExcluding(
             continue;
         }
 
-        total += candidate.cost;
+        total += getCost(candidate);
         includedCount += 1;
         if (includedCount >= boundedCount) {
             break;
@@ -1737,13 +1831,20 @@ export class ForceGeneratorService implements OnDestroy {
             excludedEraIds,
             excludedFactionIds,
         );
-        const forceFaction = selectedFactions.length > 0
-            ? this.pickForceFaction(selectedFactions, availablePairs)
-            : this.dataService.getFactionById(MULFACTION_MERCENARY) ?? null;
+        const targetFormationFaction = this.resolveTargetFormationContextFaction(
+            options,
+            selectedFactions,
+            excludedFactionIds,
+            availablePairs,
+        );
+        const forceFaction = targetFormationFaction
+            ?? (selectedFactions.length > 0
+                ? this.pickForceFaction(selectedFactions, availablePairs)
+                : this.dataService.getFactionById(MULFACTION_MERCENARY) ?? null);
         const forceEra = this.resolveContextEra(
             selectedEras,
             excludedEraIds,
-            selectedFactions.length > 0 ? forceFaction : null,
+            selectedFactions.length > 0 || targetFormationFaction ? forceFaction : null,
             availablePairs,
             crossEraAvailabilityInMultiEraSelection,
         );
@@ -1753,13 +1854,17 @@ export class ForceGeneratorService implements OnDestroy {
             forceEra,
             crossEraAvailabilityInMultiEraSelection,
         );
-        const availabilityFactionIds = this.resolveAvailabilityFactionIds(
-            selectedFactions,
-            excludedFactionIds,
-            availablePairs,
-            availabilityEraIds,
-        );
-        const useAvailabilityFactionScope = this.shouldUseAvailabilityFactionScopeFromFilters(selectedFactions, availabilityFactionIds);
+        const availabilityFactionIds = targetFormationFaction
+            ? [targetFormationFaction.id]
+            : this.resolveAvailabilityFactionIds(
+                selectedFactions,
+                excludedFactionIds,
+                availablePairs,
+                availabilityEraIds,
+            );
+        const useAvailabilityFactionScope = targetFormationFaction
+            ? false
+            : this.shouldUseAvailabilityFactionScopeFromFilters(selectedFactions, availabilityFactionIds);
         const useAvailabilityEraScope = this.shouldUseAvailabilityEraScopeFromFilters(
             selectedEras,
             availabilityEraIds,
@@ -1776,17 +1881,42 @@ export class ForceGeneratorService implements OnDestroy {
             useAvailabilityEraScope,
             availablePairCount: availablePairs.length,
             ruleset: rulesetContext.primary,
+            explicitFactionSelection: selectedFactions.length === 1,
+            targetFormationFactionInferred: targetFormationFaction !== null,
         };
     }
 
     public buildPreview(options: ForceGenerationRequest): ForceGenerationPreview {
         const eligibleUnits = options.eligibleUnits ?? this.filtersService.filteredUnits();
-        const minUnitCount = Math.min(FORCE_MAX_UNITS, Math.max(1, Math.floor(options.minUnitCount)));
-        const maxUnitCount = Math.min(FORCE_MAX_UNITS, Math.max(minUnitCount, Math.floor(options.maxUnitCount)));
+        const requestedMinUnitCount = Math.min(FORCE_MAX_UNITS, Math.max(1, Math.floor(options.minUnitCount)));
+        const requestedMaxUnitCount = Math.min(FORCE_MAX_UNITS, Math.max(requestedMinUnitCount, Math.floor(options.maxUnitCount)));
+        const requestedTargetFormations = this.resolveRequestedTargetFormations(options);
+        const useMultiTargetFormation = requestedTargetFormations.length > 1
+            || requestedTargetFormations.some((targetFormation) => targetFormation.count > 1);
+        const targetFormationContext = !useMultiTargetFormation
+            ? this.resolveTargetFormationContext(options, requestedMinUnitCount, requestedMaxUnitCount, requestedTargetFormations)
+            : null;
+        const targetFormationSetContext = useMultiTargetFormation
+            ? this.resolveTargetFormationSetContext(options, requestedTargetFormations)
+            : null;
+        const minUnitCount = targetFormationContext?.minUnitCount ?? requestedMinUnitCount;
+        const maxUnitCount = targetFormationContext?.maxUnitCount ?? requestedMaxUnitCount;
         const budgetRange = this.normalizeBudgetRange(options.budgetRange);
         const skillSettings = resolveForceGenerationSkillSettings(options);
         const hasVariableSkillSettings = hasVariableForceGenerationSkillSettings(options.gameSystem, skillSettings);
         const availabilityWeightCache = this.resolveAvailabilityWeightCache(eligibleUnits, options.context);
+
+        if (requestedTargetFormations.length > 0 && !targetFormationContext && !targetFormationSetContext) {
+            return this.buildEmptyPreview(
+                options,
+                eligibleUnits.length,
+                0,
+                budgetRange,
+                requestedMinUnitCount,
+                requestedMaxUnitCount,
+                'The selected target formation is not available for the current ruleset.',
+            );
+        }
         const lockedCandidates = (options.lockedUnits ?? []).map((lockedUnit, index) => this.createCandidateUnit(
             lockedUnit.unit,
             options.context,
@@ -1969,6 +2099,249 @@ export class ForceGeneratorService implements OnDestroy {
                     maxUnitCount,
                 ));
 
+        if (targetFormationContext) {
+            const targetAttemptBudget = this.createAttemptBudget(candidates.length, minUnitCount, maxUnitCount);
+            const maxTargetAttempts = Math.max(targetAttemptBudget.minAttempts, Math.min(24, targetAttemptBudget.maxAttempts));
+            const targetSearchStartedAt = getForceGeneratorNow();
+            const targetSearchDeadline = this.createSearchDeadline(targetSearchStartedAt, FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS);
+            let targetAttemptDurationEstimateMs = 0;
+            let targetAttemptLimit = Math.min(targetAttemptBudget.minAttempts, maxTargetAttempts);
+            let targetAttemptsTried = 0;
+            let bestTargetAttempt: ForceGenerationSelectionAttempt | null = null;
+            let bestTargetRank: ForceGenerationTargetAttemptRank | null = null;
+
+            for (let attempt = 0; attempt < targetAttemptLimit; attempt += 1) {
+                if (this.hasSearchDeadlineExpired(targetSearchDeadline)) {
+                    break;
+                }
+                const attemptStartedAt = getForceGeneratorNow();
+                targetAttemptsTried = attempt + 1;
+                const targetAttempt = this.buildTargetedFormationSelection(
+                    candidates,
+                    options,
+                    targetFormationContext.definition,
+                    budgetRange,
+                    minUnitCount,
+                    maxUnitCount,
+                    lockedCandidates,
+                    options.preventDuplicateChassis === true,
+                    skillSettings,
+                    selectionPreparation,
+                    targetSearchDeadline,
+                );
+                const targetEvaluationBeforeSkillOptimization = FormationRequirementEngine.evaluateDefinition(
+                    targetFormationContext.definition,
+                    this.createFormationForceUnitsForCandidates(targetAttempt.selectedCandidates, options),
+                    options.gameSystem,
+                );
+                const formationValidBeforeSkillOptimization = targetEvaluationBeforeSkillOptimization?.valid === true
+                    && targetAttempt.selectedCandidates.length >= minUnitCount
+                    && targetAttempt.selectedCandidates.length <= maxUnitCount;
+                const optimizedTargetAttempt = formationValidBeforeSkillOptimization
+                    ? this.optimizeSelectionAttemptSkillsForBudget(
+                        targetAttempt,
+                        options.gameSystem,
+                        skillSettings,
+                        budgetRange,
+                    )
+                    : targetAttempt;
+                const targetTotalCost = optimizedTargetAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
+                const targetEvaluation = FormationRequirementEngine.evaluateDefinition(
+                    targetFormationContext.definition,
+                    this.createFormationForceUnitsForCandidates(optimizedTargetAttempt.selectedCandidates, options),
+                    options.gameSystem,
+                );
+                const formationValid = targetEvaluation?.valid === true
+                    && optimizedTargetAttempt.selectedCandidates.length >= minUnitCount
+                    && optimizedTargetAttempt.selectedCandidates.length <= maxUnitCount;
+                const targetValid = formationValid && this.isBudgetWithinRange(targetTotalCost, budgetRange);
+                const targetRank: ForceGenerationTargetAttemptRank = {
+                    satisfiedTargetCount: formationValid ? 1 : 0,
+                    requestedTargetCount: 1,
+                    formationDeficitScore: this.getFormationDeficitScore(targetEvaluation),
+                    budgetDistance: this.getBudgetRangeDistance(targetTotalCost, budgetRange),
+                    unitCountDistance: this.getUnitCountRangeDistance(targetAttempt.selectedCandidates.length, minUnitCount, maxUnitCount),
+                };
+
+                if (this.isTargetFormationAttemptBetter(targetRank, bestTargetRank)) {
+                    bestTargetAttempt = optimizedTargetAttempt;
+                    bestTargetRank = targetRank;
+                }
+
+                if (targetValid) {
+                    return this.buildPreviewFromSelectionAttempt(
+                        options,
+                        eligibleUnits.length,
+                        availableCandidateCapacity,
+                        budgetRange,
+                        minUnitCount,
+                        maxUnitCount,
+                        optimizedTargetAttempt,
+                        null,
+                        undefined,
+                        candidates,
+                        targetAttemptsTried,
+                        getForceGeneratorNow() - targetSearchStartedAt,
+                    );
+                }
+
+                if (this.hasSearchDeadlineExpired(targetSearchDeadline)) {
+                    break;
+                }
+
+                const attemptDurationMs = Math.max(0.05, getForceGeneratorNow() - attemptStartedAt);
+                targetAttemptDurationEstimateMs = this.updateAttemptDurationEstimate(targetAttemptDurationEstimateMs, attemptDurationMs, targetAttemptsTried);
+                targetAttemptLimit = Math.min(
+                    maxTargetAttempts,
+                    this.resolveAttemptLimit(
+                        targetAttemptBudget,
+                        targetAttemptsTried,
+                        targetAttemptDurationEstimateMs,
+                        getForceGeneratorNow() - targetSearchStartedAt,
+                        false,
+                    ),
+                );
+            }
+
+            const targetMessage = `Unable to complete ${targetFormationContext.definition.name} within the selected filters, budget, and locked units.`;
+
+            return this.buildPreviewFromSelectionAttempt(
+                options,
+                eligibleUnits.length,
+                availableCandidateCapacity,
+                budgetRange,
+                minUnitCount,
+                maxUnitCount,
+                bestTargetAttempt ?? this.createSelectionAttemptFromCandidates(lockedCandidates, selectionPreparation?.rulesetProfile ?? null),
+                targetMessage,
+                targetMessage,
+                candidates,
+                targetAttemptsTried,
+                getForceGeneratorNow() - targetSearchStartedAt,
+            );
+        }
+
+        if (targetFormationSetContext) {
+            const targetAttemptBudget = this.createAttemptBudget(candidates.length, minUnitCount, maxUnitCount);
+            const maxTargetAttempts = Math.max(targetAttemptBudget.minAttempts, Math.min(24, targetAttemptBudget.maxAttempts));
+            const targetSearchStartedAt = getForceGeneratorNow();
+            const targetSearchDeadline = this.createSearchDeadline(targetSearchStartedAt, FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS);
+            let targetAttemptDurationEstimateMs = 0;
+            let targetAttemptLimit = Math.min(targetAttemptBudget.minAttempts, maxTargetAttempts);
+            let targetAttemptsTried = 0;
+            let bestTargetAttempt: ForceGenerationSelectionAttempt | null = null;
+            let bestTargetEvaluation: ForceGenerationTargetFormationSetAttemptEvaluation | null = null;
+
+            for (let attempt = 0; attempt < targetAttemptLimit; attempt += 1) {
+                if (this.hasSearchDeadlineExpired(targetSearchDeadline)) {
+                    break;
+                }
+                const attemptStartedAt = getForceGeneratorNow();
+                targetAttemptsTried = attempt + 1;
+                const targetAttempt = this.buildMultiTargetedFormationSelection(
+                    candidates,
+                    options,
+                    targetFormationSetContext,
+                    budgetRange,
+                    minUnitCount,
+                    maxUnitCount,
+                    lockedCandidates,
+                    options.preventDuplicateChassis === true,
+                    skillSettings,
+                    targetSearchDeadline,
+                );
+                const optimizedTargetAttempt = this.optimizeSelectionAttemptSkillsForBudget(
+                    targetAttempt,
+                    options.gameSystem,
+                    skillSettings,
+                    budgetRange,
+                );
+                const targetEvaluation = this.evaluateTargetFormationSetAttempt(
+                    optimizedTargetAttempt,
+                    options,
+                    targetFormationSetContext,
+                    budgetRange,
+                    minUnitCount,
+                    maxUnitCount,
+                );
+
+                if (this.isTargetFormationAttemptBetter(targetEvaluation.rank, bestTargetEvaluation?.rank ?? null)) {
+                    bestTargetAttempt = optimizedTargetAttempt;
+                    bestTargetEvaluation = targetEvaluation;
+                }
+
+                if (targetEvaluation.allTargetsSatisfied && targetEvaluation.budgetValid && targetEvaluation.unitCountValid) {
+                    return this.buildPreviewFromSelectionAttempt(
+                        options,
+                        eligibleUnits.length,
+                        availableCandidateCapacity,
+                        budgetRange,
+                        minUnitCount,
+                        maxUnitCount,
+                        optimizedTargetAttempt,
+                        null,
+                        undefined,
+                        candidates,
+                        targetAttemptsTried,
+                        getForceGeneratorNow() - targetSearchStartedAt,
+                    );
+                }
+
+                if (this.hasSearchDeadlineExpired(targetSearchDeadline)) {
+                    break;
+                }
+
+                const attemptDurationMs = Math.max(0.05, getForceGeneratorNow() - attemptStartedAt);
+                targetAttemptDurationEstimateMs = this.updateAttemptDurationEstimate(targetAttemptDurationEstimateMs, attemptDurationMs, targetAttemptsTried);
+                targetAttemptLimit = Math.min(
+                    maxTargetAttempts,
+                    this.resolveAttemptLimit(
+                        targetAttemptBudget,
+                        targetAttemptsTried,
+                        targetAttemptDurationEstimateMs,
+                        getForceGeneratorNow() - targetSearchStartedAt,
+                        bestTargetEvaluation !== null && bestTargetEvaluation.rank.satisfiedTargetCount > 0,
+                    ),
+                );
+            }
+
+            const fallbackAttempt = bestTargetAttempt
+                ?? this.createSelectionAttemptFromCandidates(lockedCandidates, selectionPreparation?.rulesetProfile ?? null);
+            const fallbackEvaluation = bestTargetEvaluation
+                ?? this.evaluateTargetFormationSetAttempt(
+                    fallbackAttempt,
+                    options,
+                    targetFormationSetContext,
+                    budgetRange,
+                    minUnitCount,
+                    maxUnitCount,
+                );
+            const partialTargetSuccess = fallbackEvaluation.rank.satisfiedTargetCount > 0
+                && fallbackEvaluation.budgetValid
+                && fallbackEvaluation.unitCountValid;
+            const targetFormationError = fallbackEvaluation.allTargetsSatisfied || partialTargetSuccess
+                ? null
+                : fallbackEvaluation.message;
+            const targetFormationResultNote = fallbackEvaluation.allTargetsSatisfied
+                ? undefined
+                : fallbackEvaluation.message;
+
+            return this.buildPreviewFromSelectionAttempt(
+                options,
+                eligibleUnits.length,
+                availableCandidateCapacity,
+                budgetRange,
+                minUnitCount,
+                maxUnitCount,
+                fallbackAttempt,
+                targetFormationError,
+                targetFormationResultNote,
+                candidates,
+                targetAttemptsTried,
+                getForceGeneratorNow() - targetSearchStartedAt,
+            );
+        }
+
         if (this.isFirstCompatibleResultBudgetRequest(options.budgetRange)) {
             const firstCompatibleCandidates = this.createSkillAdjustedCandidatesForAttempt(
                 candidates,
@@ -2047,11 +2420,18 @@ export class ForceGeneratorService implements OnDestroy {
         const successfulAttempts: ForceGenerationSuccessfulAttemptLog[] = [];
         let attemptDurationEstimateMs = 0;
         let attemptLimit = attemptBudget.minAttempts;
+        let attemptsTried = 0;
 
         for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
             const attemptStartedAt = getForceGeneratorNow();
+            attemptsTried = attempt + 1;
             const attemptCandidates = this.createSkillAdjustedCandidatesForAttempt(
                 candidates,
+                options.gameSystem,
+                skillSettings,
+            );
+            const attemptSkillBudgetPlanningCosts = this.createSkillBudgetPlanningCosts(
+                attemptCandidates,
                 options.gameSystem,
                 skillSettings,
             );
@@ -2064,7 +2444,7 @@ export class ForceGeneratorService implements OnDestroy {
                     maxUnitCount,
                 )
                 : selectionPreparation;
-            const selectionAttempt = this.buildCandidateSelection(
+            const rawSelectionAttempt = this.buildCandidateSelection(
                 attemptCandidates,
                 options.context,
                 budgetRange,
@@ -2074,6 +2454,13 @@ export class ForceGeneratorService implements OnDestroy {
                 lockedCandidates,
                 options.preventDuplicateChassis === true,
                 attemptSelectionPreparation,
+                attemptSkillBudgetPlanningCosts,
+            );
+            const selectionAttempt = this.optimizeSelectionAttemptSkillsForBudget(
+                rawSelectionAttempt,
+                options.gameSystem,
+                skillSettings,
+                budgetRange,
             );
             const totalCost = selectionAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
             const attemptExceedsMax = Number.isFinite(budgetRange.max) && totalCost > budgetRange.max;
@@ -2223,6 +2610,8 @@ export class ForceGeneratorService implements OnDestroy {
                     ? `No attempt stayed at or below the selected ${budgetLabel} maximum, so the lowest-total force in the requested unit-count range was returned.`
                     : 'No force matched the full budget and unit-count constraints, so the nearest force toward the target was returned.',
                 candidates,
+                attemptsTried,
+                    getForceGeneratorNow() - searchStartedAt,
             );
         }
 
@@ -2235,6 +2624,8 @@ export class ForceGeneratorService implements OnDestroy {
             maxUnitCount,
             'Unable to build a force within the selected BV/PV range and unit count constraints.',
             candidates,
+            attemptsTried,
+            getForceGeneratorNow() - searchStartedAt,
         );
     }
 
@@ -2260,7 +2651,7 @@ export class ForceGeneratorService implements OnDestroy {
         const faction = preview.faction ?? null;
         const era = preview.era ?? null;
         const resolvedName = name?.trim() || ForceNamerUtil.generateForceNameForFaction(faction);
-        const previewGroups = buildPreviewGroups(preview.units, {
+        const previewGroupContext = {
             faction: preview.faction
                 ?? this.dataService.getFactionById(MULFACTION_MERCENARY)
                 ?? DEFAULT_PREVIEW_FORCE_FACTION,
@@ -2269,7 +2660,20 @@ export class ForceGeneratorService implements OnDestroy {
             factionName: preview.faction?.name
                 ?? this.dataService.getFactionById(MULFACTION_MERCENARY)?.name
                 ?? DEFAULT_PREVIEW_FORCE_FACTION.name,
-        });
+        };
+        const targetPreviewGroups = this.buildTargetFormationPreviewGroups(
+            preview.units,
+            previewGroupContext,
+            preview.targetFormationGroups,
+        );
+        const previewGroups = targetPreviewGroups
+            ?? (preview.targetFormationId && this.isGeneratedPreviewValidForFormation(
+                preview.units,
+                previewGroupContext,
+                preview.targetFormationId,
+            )
+                ? [createGeneratedPreviewGroup(preview.units, preview.gameSystem, preview.targetFormationId)]
+                : buildPreviewGroups(preview.units, previewGroupContext));
 
         const previewEntry: ForcePreviewEntry = {
             instanceId: '',
@@ -2489,6 +2893,101 @@ export class ForceGeneratorService implements OnDestroy {
                     && !excludedFactionIds.has(faction.id);
             })
             .map((faction) => faction.id);
+    }
+
+    private resolveTargetFormationContextFaction(
+        options: ForceGenerationContextOptions,
+        selectedFactions: readonly Faction[],
+        excludedFactionIds: ReadonlySet<number>,
+        availablePairs: readonly ForceGenerationAvailabilityPair[],
+    ): Faction | null {
+        if (!options.gameSystem || selectedFactions.length === 1) {
+            return null;
+        }
+
+        const definition = this.resolveFirstExclusiveTargetFormationDefinition(options, options.gameSystem);
+        if (!definition) {
+            return null;
+        }
+
+        const candidateFactions = this.resolveExclusiveTargetFormationFactions(
+            definition,
+            selectedFactions,
+            excludedFactionIds,
+            availablePairs,
+        );
+
+        return candidateFactions[0] ?? null;
+    }
+
+    private resolveFirstExclusiveTargetFormationDefinition(
+        options: Pick<ForceGenerationContextOptions, 'targetFormationId' | 'targetFormations'>,
+        gameSystem: GameSystem,
+    ): FormationTypeDefinition | null {
+        for (const targetFormation of this.resolveRawTargetFormationSelections(options)) {
+            const definition = LanceTypeIdentifierUtil.getDefinitionById(targetFormation.formationId, gameSystem);
+            if (definition?.exclusiveFaction?.length) {
+                return definition;
+            }
+        }
+
+        return null;
+    }
+
+    private resolveRawTargetFormationSelections(
+        options: Pick<ForceGenerationContextOptions, 'targetFormationId' | 'targetFormations'>,
+    ): readonly ForceGenerationTargetFormationSelection[] {
+        return options.targetFormations?.length
+            ? options.targetFormations
+            : options.targetFormationId
+                ? [{ formationId: options.targetFormationId, count: 1 }]
+                : [];
+    }
+
+    private resolveExclusiveTargetFormationFactions(
+        definition: FormationTypeDefinition,
+        selectedFactions: readonly Faction[],
+        excludedFactionIds: ReadonlySet<number>,
+        availablePairs: readonly ForceGenerationAvailabilityPair[],
+    ): Faction[] {
+        const availableFactionIds = new Set(availablePairs.map((pair) => pair.factionId));
+        const candidateFactions = selectedFactions.length > 0 ? selectedFactions : this.dataService.getFactions();
+        const matchingFactions = this.sortFactionsByExclusiveTargetOrder(
+            candidateFactions.filter((faction) => (
+                !excludedFactionIds.has(faction.id)
+                    && LanceTypeIdentifierUtil.isFormationAvailableForFaction(definition, faction.name)
+            )),
+            definition,
+        );
+        const availableMatchingFactions = matchingFactions.filter((faction) => availableFactionIds.has(faction.id));
+
+        return availableMatchingFactions.length > 0 ? availableMatchingFactions : matchingFactions;
+    }
+
+    private sortFactionsByExclusiveTargetOrder(
+        factions: readonly Faction[],
+        definition: FormationTypeDefinition,
+    ): Faction[] {
+        const exclusiveFactionNames = definition.exclusiveFaction ?? [];
+
+        return [...factions].sort((left, right) => {
+            const leftIndex = this.getExclusiveFactionOrderIndex(left, exclusiveFactionNames);
+            const rightIndex = this.getExclusiveFactionOrderIndex(right, exclusiveFactionNames);
+            if (leftIndex !== rightIndex) {
+                return leftIndex - rightIndex;
+            }
+
+            return left.name.localeCompare(right.name);
+        });
+    }
+
+    private getExclusiveFactionOrderIndex(faction: Faction, exclusiveFactionNames: readonly string[]): number {
+        const factionName = faction.name.toLocaleLowerCase();
+        const index = exclusiveFactionNames.findIndex((exclusiveFactionName) => (
+            factionName.includes(exclusiveFactionName.toLocaleLowerCase())
+        ));
+
+        return index >= 0 ? index : Number.MAX_SAFE_INTEGER;
     }
 
     private shouldUseAvailabilityEraScopeFromFilters(
@@ -3074,6 +3573,188 @@ export class ForceGeneratorService implements OnDestroy {
             gunnery: skillPair.gunnery,
             piloting: skillPair.piloting,
         };
+    }
+
+    private createSkillAdjustedCandidateOptions(
+        candidate: ForceGenerationCandidateUnit,
+        gameSystem: GameSystem,
+        skillSettings: ForceGenerationSkillSettings,
+    ): ForceGenerationCandidateUnit[] {
+        if (candidate.locked || !hasVariableForceGenerationSkillSettings(gameSystem, skillSettings)) {
+            return [candidate];
+        }
+
+        const options: ForceGenerationCandidateUnit[] = [];
+        const optionKeys = new Set<string>();
+        if (gameSystem === GameSystem.ALPHA_STRIKE) {
+            for (let skill = skillSettings.gunnery.min; skill <= skillSettings.gunnery.max; skill += 1) {
+                const adjustedCandidate = this.createCandidateWithSpecificSkills(
+                    candidate,
+                    gameSystem,
+                    skill,
+                    skillSettings.piloting.min,
+                );
+                const optionKey = `${adjustedCandidate.cost}:${adjustedCandidate.skill ?? ''}`;
+                if (!optionKeys.has(optionKey)) {
+                    optionKeys.add(optionKey);
+                    options.push(adjustedCandidate);
+                }
+            }
+        } else {
+            for (const skillPair of getForceGenerationClassicSkillPairs(skillSettings, candidate.unit)) {
+                const adjustedCandidate = this.createCandidateWithSpecificSkills(
+                    candidate,
+                    gameSystem,
+                    skillPair.gunnery,
+                    skillPair.piloting,
+                );
+                const optionKey = `${adjustedCandidate.cost}:${adjustedCandidate.gunnery ?? ''}:${adjustedCandidate.piloting ?? ''}`;
+                if (!optionKeys.has(optionKey)) {
+                    optionKeys.add(optionKey);
+                    options.push(adjustedCandidate);
+                }
+            }
+        }
+
+        return options.length > 0 ? options : [candidate];
+    }
+
+    private createSkillBudgetPlanningCosts(
+        candidates: readonly ForceGenerationCandidateUnit[],
+        gameSystem: GameSystem,
+        skillSettings: ForceGenerationSkillSettings,
+    ): ForceGenerationSkillBudgetPlanningCosts | undefined {
+        if (!FORCE_GENERATION_OPTIMIZE_SELECTED_SKILLS_FOR_BUDGET || !hasVariableForceGenerationSkillSettings(gameSystem, skillSettings)) {
+            return undefined;
+        }
+
+        const minCostByCandidate = new Map<ForceGenerationCandidateUnit, number>();
+        const maxCostByCandidate = new Map<ForceGenerationCandidateUnit, number>();
+        for (const candidate of candidates) {
+            const options = this.createSkillAdjustedCandidateOptions(candidate, gameSystem, skillSettings);
+            minCostByCandidate.set(candidate, Math.min(...options.map(option => option.cost)));
+            maxCostByCandidate.set(candidate, Math.max(...options.map(option => option.cost)));
+        }
+
+        return { minCostByCandidate, maxCostByCandidate };
+    }
+
+    private getSkillPlanningCost(
+        candidate: ForceGenerationCandidateUnit,
+        planningCosts: ForceGenerationSkillBudgetPlanningCosts | undefined,
+        kind: 'min' | 'max',
+    ): number {
+        const costByCandidate = kind === 'min'
+            ? planningCosts?.minCostByCandidate
+            : planningCosts?.maxCostByCandidate;
+        return costByCandidate?.get(candidate) ?? candidate.cost;
+    }
+
+    private canSkillAdjustedSelectionReachBudgetRange(
+        minTotalCost: number,
+        maxTotalCost: number,
+        budgetRange: { min: number; max: number },
+    ): boolean {
+        return maxTotalCost >= budgetRange.min && minTotalCost <= budgetRange.max;
+    }
+
+    private optimizeSelectionAttemptSkillsForBudget(
+        selectionAttempt: ForceGenerationSelectionAttempt,
+        gameSystem: GameSystem,
+        skillSettings: ForceGenerationSkillSettings,
+        budgetRange: { min: number; max: number },
+    ): ForceGenerationSelectionAttempt {
+        if (
+            !FORCE_GENERATION_OPTIMIZE_SELECTED_SKILLS_FOR_BUDGET
+            || !hasVariableForceGenerationSkillSettings(gameSystem, skillSettings)
+            || selectionAttempt.selectedCandidates.length === 0
+        ) {
+            return selectionAttempt;
+        }
+
+        const originalTotalCost = selectionAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
+        const originalState: ForceGenerationSkillOptimizationState = {
+            totalCost: originalTotalCost,
+            selectedCandidates: selectionAttempt.selectedCandidates,
+        };
+        const skillOptionsByCandidate = selectionAttempt.selectedCandidates.map((candidate) => (
+            this.createSkillAdjustedCandidateOptions(candidate, gameSystem, skillSettings)
+        ));
+        let states: ForceGenerationSkillOptimizationState[] = [{ totalCost: 0, selectedCandidates: [] }];
+
+        for (const candidateOptions of skillOptionsByCandidate) {
+            const nextStatesByCost = new Map<number, ForceGenerationSkillOptimizationState>();
+            for (const state of states) {
+                for (const candidateOption of candidateOptions) {
+                    const nextTotalCost = state.totalCost + candidateOption.cost;
+                    if (nextStatesByCost.has(nextTotalCost)) {
+                        continue;
+                    }
+                    nextStatesByCost.set(nextTotalCost, {
+                        totalCost: nextTotalCost,
+                        selectedCandidates: [...state.selectedCandidates, candidateOption],
+                    });
+                }
+            }
+
+            states = this.pruneSkillOptimizationStates([...nextStatesByCost.values()], budgetRange);
+        }
+
+        const bestState = states.reduce((best, state) => (
+            this.compareSkillOptimizationStates(state, best, budgetRange) < 0 ? state : best
+        ), originalState);
+        if (this.compareSkillOptimizationStates(bestState, originalState, budgetRange) >= 0) {
+            return selectionAttempt;
+        }
+
+        return {
+            ...selectionAttempt,
+            selectedCandidates: bestState.selectedCandidates,
+            selectionSteps: selectionAttempt.selectionSteps.map((step, index) => {
+                const candidate = bestState.selectedCandidates[index];
+                return {
+                    ...step,
+                    cost: candidate?.cost ?? step.cost,
+                    skill: candidate?.skill,
+                    gunnery: candidate?.gunnery,
+                    piloting: candidate?.piloting,
+                };
+            }),
+        };
+    }
+
+    private pruneSkillOptimizationStates(
+        states: ForceGenerationSkillOptimizationState[],
+        budgetRange: { min: number; max: number },
+    ): ForceGenerationSkillOptimizationState[] {
+        if (states.length <= FORCE_GENERATION_SKILL_OPTIMIZATION_STATE_LIMIT) {
+            return states;
+        }
+
+        return states
+            .sort((left, right) => this.compareSkillOptimizationStates(left, right, budgetRange))
+            .slice(0, FORCE_GENERATION_SKILL_OPTIMIZATION_STATE_LIMIT);
+    }
+
+    private compareSkillOptimizationStates(
+        left: ForceGenerationSkillOptimizationState,
+        right: ForceGenerationSkillOptimizationState,
+        budgetRange: { min: number; max: number },
+    ): number {
+        const leftInRange = this.isBudgetWithinRange(left.totalCost, budgetRange);
+        const rightInRange = this.isBudgetWithinRange(right.totalCost, budgetRange);
+        if (leftInRange !== rightInRange) {
+            return leftInRange ? -1 : 1;
+        }
+
+        const leftDistance = this.getBudgetRangeDistance(left.totalCost, budgetRange);
+        const rightDistance = this.getBudgetRangeDistance(right.totalCost, budgetRange);
+        if (leftDistance !== rightDistance) {
+            return leftDistance - rightDistance;
+        }
+
+        return Math.abs(left.totalCost - this.getBudgetTarget(budgetRange))
+            - Math.abs(right.totalCost - this.getBudgetTarget(budgetRange));
     }
 
     private createCandidateWithSpecificSkills(
@@ -3918,6 +4599,8 @@ export class ForceGeneratorService implements OnDestroy {
         lockedUnitCount: number,
         preventDuplicateChassis: boolean,
         availabilitySourceCandidates: readonly ForceGenerationCandidateUnit[] = [],
+        attemptsTried?: number,
+        attemptsElapsedMs?: number,
     ): string[] {
         const lines: string[] = [];
         const budgetLabel = gameSystem === GameSystem.ALPHA_STRIKE ? 'PV' : 'BV';
@@ -3995,7 +4678,7 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         if (error) {
-            lines.push(`Result note: ${error}`);
+            lines.push(`Result note: ${this.formatGenerationResultNote(error, attemptsTried, attemptsElapsedMs)}`);
         }
 
         return lines;
@@ -4060,6 +4743,8 @@ export class ForceGeneratorService implements OnDestroy {
         error: string | null,
         resultNote?: string,
         availabilitySourceCandidates: readonly ForceGenerationCandidateUnit[] = [],
+        attemptsTried?: number,
+        attemptsElapsedMs?: number,
     ): ForceGenerationPreview {
         if (!selectionAttempt.structureEvaluation) {
             const structureEvaluation = this.evaluateSelectionStructure(selectionAttempt, options.context);
@@ -4070,6 +4755,11 @@ export class ForceGeneratorService implements OnDestroy {
 
         const totalCost = selectionAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
         const units = selectionAttempt.selectedCandidates.map((candidate, index) => this.createGeneratedUnit(candidate, index));
+        const targetFormations = this.resolveRequestedTargetFormations(options);
+        const targetFormationId = targetFormations.length === 1 && targetFormations[0].count === 1
+            ? targetFormations[0].formationId
+            : undefined;
+        const targetFormationGroups = this.cloneTargetFormationPreviewGroups(selectionAttempt.targetFormationGroups);
         const explanationLines = this.buildPreviewExplanation(
             options.gameSystem,
             eligibleUnitCount,
@@ -4084,11 +4774,14 @@ export class ForceGeneratorService implements OnDestroy {
             (options.lockedUnits ?? []).length,
             options.preventDuplicateChassis === true,
             availabilitySourceCandidates,
+            error ? attemptsTried ?? 0 : attemptsTried,
+            attemptsElapsedMs,
         );
 
         if (resultNote && resultNote !== error) {
-            explanationLines.push(`Result note: ${resultNote}`);
+            explanationLines.push(`Result note: ${this.formatGenerationResultNote(resultNote, attemptsTried, attemptsElapsedMs)}`);
         }
+        this.addTargetFormationExplanation(options, explanationLines);
 
         return {
             gameSystem: options.gameSystem,
@@ -4098,6 +4791,9 @@ export class ForceGeneratorService implements OnDestroy {
             era: options.context.forceEra,
             explanationLines,
             error,
+            targetFormationId,
+            targetFormations: targetFormations.length > 0 ? targetFormations : undefined,
+            targetFormationGroups,
         };
     }
 
@@ -4110,30 +4806,174 @@ export class ForceGeneratorService implements OnDestroy {
         maxUnitCount: number,
         error: string,
         availabilitySourceCandidates: readonly ForceGenerationCandidateUnit[] = [],
+        attemptsTried = 0,
+        attemptsElapsedMs?: number,
     ): ForceGenerationPreview {
+        const explanationLines = this.buildPreviewExplanation(
+            options.gameSystem,
+            eligibleUnitCount,
+            candidateUnitCount,
+            options.context,
+            budgetRange,
+            minUnitCount,
+            maxUnitCount,
+            resolveForceGenerationSkillSettings(options),
+            null,
+            error,
+            (options.lockedUnits ?? []).length,
+            options.preventDuplicateChassis === true,
+            availabilitySourceCandidates,
+            attemptsTried,
+            attemptsElapsedMs,
+        );
+        this.addTargetFormationExplanation(options, explanationLines);
+
+        const targetFormations = this.resolveRequestedTargetFormations(options);
+        const targetFormationId = targetFormations.length === 1 && targetFormations[0].count === 1
+            ? targetFormations[0].formationId
+            : undefined;
+
         return {
             gameSystem: options.gameSystem,
             units: [],
             totalCost: 0,
             faction: options.context.forceFaction,
             era: options.context.forceEra,
-            explanationLines: this.buildPreviewExplanation(
-                options.gameSystem,
-                eligibleUnitCount,
-                candidateUnitCount,
-                options.context,
-                budgetRange,
-                minUnitCount,
-                maxUnitCount,
-                resolveForceGenerationSkillSettings(options),
-                null,
-                error,
-                (options.lockedUnits ?? []).length,
-                options.preventDuplicateChassis === true,
-                availabilitySourceCandidates,
-            ),
+            explanationLines,
             error,
+            targetFormationId,
+            targetFormations: targetFormations.length > 0 ? targetFormations : undefined,
         };
+    }
+
+    private cloneTargetFormationPreviewGroups(
+        groups: readonly ForceGenerationTargetFormationCandidateGroup[] | undefined,
+    ): ForceGenerationTargetFormationPreviewGroup[] | undefined {
+        if (!groups?.length) {
+            return undefined;
+        }
+
+        return groups.map((group) => ({
+            formationId: group.formationId,
+            unitIndexes: [...group.unitIndexes],
+        }));
+    }
+
+    private isGeneratedPreviewValidForFormation(
+        generatedUnits: readonly GeneratedForceUnit[],
+        context: PreviewGroupPlanContext,
+        formationId: string,
+    ): boolean {
+        const definition = LanceTypeIdentifierUtil.getDefinitionById(formationId, context.gameSystem);
+        if (!definition) {
+            return false;
+        }
+
+        const techBase = getUnitsAverageTechBase(generatedUnits.map((generatedUnit) => generatedUnit.unit));
+        const forceContext = {
+            faction: () => context.faction,
+            era: () => context.era,
+            techBase: () => techBase,
+            gameSystem: context.gameSystem,
+        };
+        const forceUnits = generatedUnits.map((generatedUnit) => createPreviewForceUnitStub(generatedUnit, forceContext));
+        return LanceTypeIdentifierUtil.isValid(definition, forceUnits, context.gameSystem);
+    }
+
+    private buildTargetFormationPreviewGroups(
+        generatedUnits: readonly GeneratedForceUnit[],
+        context: PreviewGroupPlanContext,
+        targetGroups: readonly ForceGenerationTargetFormationPreviewGroup[] | undefined,
+    ): ForcePreviewGroup[] | null {
+        if (!targetGroups?.length) {
+            return null;
+        }
+
+        const usedUnitIndexes = new Set<number>();
+        const previewGroups: ForcePreviewGroup[] = [];
+
+        for (const targetGroup of targetGroups) {
+            const groupUnits: GeneratedForceUnit[] = [];
+            for (const unitIndex of targetGroup.unitIndexes) {
+                if (unitIndex < 0 || unitIndex >= generatedUnits.length || usedUnitIndexes.has(unitIndex)) {
+                    return null;
+                }
+                usedUnitIndexes.add(unitIndex);
+                groupUnits.push(generatedUnits[unitIndex]);
+            }
+
+            if (groupUnits.length === 0 || !this.isGeneratedPreviewValidForFormation(groupUnits, context, targetGroup.formationId)) {
+                return null;
+            }
+
+            previewGroups.push(createGeneratedPreviewGroup(groupUnits, context.gameSystem, targetGroup.formationId));
+        }
+
+        const remainingUnits = generatedUnits.filter((_, index) => !usedUnitIndexes.has(index));
+        return remainingUnits.length > 0
+            ? [...previewGroups, ...buildPreviewGroups(remainingUnits, context)]
+            : previewGroups;
+    }
+
+    private addTargetFormationExplanation(options: ForceGenerationRequest, lines: string[]): string[] {
+        const targetFormations = this.resolveRequestedTargetFormations(options);
+        if (targetFormations.length === 0) {
+            return lines;
+        }
+
+        if (targetFormations.length === 1 && targetFormations[0].count === 1) {
+            const definition = LanceTypeIdentifierUtil.getDefinitionById(targetFormations[0].formationId, options.gameSystem);
+            if (definition) {
+                lines.splice(Math.min(2, lines.length), 0, `Target formation: ${definition.name}.`);
+            }
+            return lines;
+        }
+
+        const summary = this.formatTargetFormationSelections(targetFormations, options.gameSystem);
+        if (summary) {
+            lines.splice(Math.min(2, lines.length), 0, `Target formations: ${summary}.`);
+        }
+
+        return lines;
+    }
+
+    private formatTargetFormationSelections(
+        targetFormations: readonly ForceGenerationTargetFormationSelection[],
+        gameSystem: GameSystem,
+    ): string {
+        return targetFormations
+            .map((targetFormation) => {
+                const definition = LanceTypeIdentifierUtil.getDefinitionById(targetFormation.formationId, gameSystem);
+                if (!definition) {
+                    return '';
+                }
+                return targetFormation.count > 1
+                    ? `${targetFormation.count} ${definition.name}`
+                    : definition.name;
+            })
+            .filter((entry) => entry.length > 0)
+            .join(', ');
+    }
+
+    private formatTargetFormationInstances(
+        groups: readonly ForceGenerationTargetFormationCandidateGroup[],
+        gameSystem: GameSystem,
+    ): string {
+        const countsByFormationId = new Map<string, number>();
+        for (const group of groups) {
+            countsByFormationId.set(group.formationId, (countsByFormationId.get(group.formationId) ?? 0) + 1);
+        }
+
+        return [...countsByFormationId.entries()]
+            .map(([formationId, count]) => {
+                const definition = LanceTypeIdentifierUtil.getDefinitionById(formationId, gameSystem);
+                if (!definition) {
+                    return '';
+                }
+                return count > 1 ? `${count} ${definition.name}` : definition.name;
+            })
+            .filter((entry) => entry.length > 0)
+            .join(', ');
     }
 
     private clearGenerationCaches(): void {
@@ -4169,6 +5009,46 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         return 0;
+    }
+
+    private formatGenerationResultNote(note: string, attemptsTried?: number, attemptsElapsedMs?: number): string {
+        if (attemptsTried === undefined) {
+            return note;
+        }
+
+        const elapsedNote = attemptsElapsedMs === undefined
+            ? ''
+            : ` in ${Math.max(0, Math.round(attemptsElapsedMs))}ms`;
+        return `${note} Attempts tried: ${attemptsTried}${elapsedNote}.`;
+    }
+
+    private getFormationDeficitScore(evaluation: FormationEvaluation | null): number {
+        if (!evaluation) {
+            return Number.POSITIVE_INFINITY;
+        }
+
+        return FormationRequirementEngine.getDeficits(evaluation)
+            .reduce((sum, deficit) => sum + deficit.needed, 0);
+    }
+
+    private isTargetFormationAttemptBetter(
+        current: ForceGenerationTargetAttemptRank,
+        best: ForceGenerationTargetAttemptRank | null,
+    ): boolean {
+        if (!best) {
+            return true;
+        }
+        if (current.satisfiedTargetCount !== best.satisfiedTargetCount) {
+            return current.satisfiedTargetCount > best.satisfiedTargetCount;
+        }
+        if (current.formationDeficitScore !== best.formationDeficitScore) {
+            return current.formationDeficitScore < best.formationDeficitScore;
+        }
+        if (current.unitCountDistance !== best.unitCountDistance) {
+            return current.unitCountDistance < best.unitCountDistance;
+        }
+
+        return current.budgetDistance < best.budgetDistance;
     }
 
     private createSelectionAttemptFromCandidates(
@@ -4354,6 +5234,14 @@ export class ForceGeneratorService implements OnDestroy {
         return ((currentEstimateMs * (completedAttempts - 1)) + attemptDurationMs) / completedAttempts;
     }
 
+    private createSearchDeadline(startedAtMs: number, durationMs: number): ForceGenerationSearchDeadline {
+        return { expiresAtMs: startedAtMs + Math.max(0, durationMs) };
+    }
+
+    private hasSearchDeadlineExpired(deadline?: ForceGenerationSearchDeadline): boolean {
+        return !!deadline && getForceGeneratorNow() >= deadline.expiresAtMs;
+    }
+
     private resolveAttemptLimit(
         attemptBudget: ForceGenerationAttemptBudget,
         completedAttempts: number,
@@ -4463,6 +5351,849 @@ export class ForceGeneratorService implements OnDestroy {
         );
     }
 
+    private resolveRequestedTargetFormations(options: ForceGenerationRequest): ForceGenerationTargetFormationSelection[] {
+        const targetCountByFormationId = new Map<string, number>();
+
+        for (const rawTarget of this.resolveRawTargetFormationSelections(options)) {
+            const formationId = rawTarget.formationId?.trim();
+            if (!formationId) {
+                continue;
+            }
+            const definition = LanceTypeIdentifierUtil.getDefinitionById(formationId, options.gameSystem);
+            if (!definition || !this.isTargetFormationAvailableForGenerationContext(definition, options.context)) {
+                continue;
+            }
+            const count = Number.isFinite(rawTarget.count)
+                ? Math.max(1, Math.floor(rawTarget.count))
+                : 1;
+            targetCountByFormationId.set(
+                formationId,
+                Math.min(FORCE_MAX_UNITS, (targetCountByFormationId.get(formationId) ?? 0) + count),
+            );
+        }
+
+        return [...targetCountByFormationId.entries()].map(([formationId, count]) => ({ formationId, count }));
+    }
+
+    private isTargetFormationAvailableForGenerationContext(
+        definition: FormationTypeDefinition,
+        context: ForceGenerationContext,
+    ): boolean {
+        if (!context.forceFaction) {
+            return !definition.exclusiveFaction?.length;
+        }
+
+        return LanceTypeIdentifierUtil.isFormationAvailableForFaction(definition, context.forceFaction.name);
+    }
+
+    private resolveTargetFormationContext(
+        options: ForceGenerationRequest,
+        requestedMinUnitCount: number,
+        requestedMaxUnitCount: number,
+        requestedTargetFormations = this.resolveRequestedTargetFormations(options),
+    ): ForceGenerationTargetFormationContext | null {
+        if (requestedTargetFormations.length !== 1 || requestedTargetFormations[0].count !== 1) {
+            return null;
+        }
+
+        const definition = LanceTypeIdentifierUtil.getDefinitionById(requestedTargetFormations[0].formationId, options.gameSystem);
+        if (!definition || !FormationRequirementEngine.hasBlueprint(definition.id)) {
+            return null;
+        }
+
+        const targetMinUnitCount = Math.max(1, definition.minUnits ?? 1);
+        const targetMaxUnitCount = Math.min(FORCE_MAX_UNITS, definition.maxUnits ?? FORCE_MAX_UNITS);
+        const minUnitCount = Math.max(requestedMinUnitCount, targetMinUnitCount);
+        const maxUnitCount = Math.min(requestedMaxUnitCount, targetMaxUnitCount);
+        if (minUnitCount > maxUnitCount) {
+            return null;
+        }
+
+        return {
+            definition,
+            minUnitCount,
+            maxUnitCount,
+        };
+    }
+
+    private resolveTargetFormationSetContext(
+        options: ForceGenerationRequest,
+        requestedTargetFormations: readonly ForceGenerationTargetFormationSelection[],
+    ): ForceGenerationTargetFormationSetContext | null {
+        if (requestedTargetFormations.length === 0) {
+            return null;
+        }
+
+        const selections: ForceGenerationTargetFormationSelection[] = [];
+        const instances: ForceGenerationTargetFormationInstanceContext[] = [];
+
+        for (const targetFormation of requestedTargetFormations) {
+            const definition = LanceTypeIdentifierUtil.getDefinitionById(targetFormation.formationId, options.gameSystem);
+            if (!definition || !FormationRequirementEngine.hasBlueprint(definition.id)) {
+                return null;
+            }
+
+            const count = Math.min(FORCE_MAX_UNITS, Math.max(1, Math.floor(targetFormation.count)));
+            selections.push({ formationId: definition.id, count });
+            for (let index = 0; index < count; index += 1) {
+                instances.push({
+                    definition,
+                    preferredUnitCount: this.getPreferredTargetFormationUnitCount(definition),
+                });
+            }
+        }
+
+        return instances.length > 0 ? { selections, instances } : null;
+    }
+
+    private getPreferredTargetFormationUnitCount(
+        definition: FormationTypeDefinition,
+        options?: Pick<ForceGenerationRequest, 'context'>,
+        candidates: readonly ForceGenerationCandidateUnit[] = [],
+    ): number {
+        const minUnitCount = Math.max(1, definition.minUnits ?? 1);
+        const maxUnitCount = Math.min(FORCE_MAX_UNITS, definition.maxUnits ?? FORCE_MAX_UNITS);
+        const regularOrgUnitCount = options
+            ? this.resolveRegularOrgTargetUnitCount(options.context, candidates, minUnitCount, maxUnitCount)
+            : null;
+        if (regularOrgUnitCount !== null) {
+            return regularOrgUnitCount;
+        }
+
+        const nominalUnitCount = definition.id.endsWith('-star')
+            ? 5
+            : definition.id.endsWith('-squadron')
+                ? 6
+                : definition.id.endsWith('-lance')
+                    ? 4
+                    : minUnitCount;
+
+        return Math.min(maxUnitCount, Math.max(minUnitCount, nominalUnitCount));
+    }
+
+    private resolveRegularOrgTargetUnitCount(
+        context: ForceGenerationContext,
+        candidates: readonly ForceGenerationCandidateUnit[],
+        minUnitCount: number,
+        maxUnitCount: number,
+    ): number | null {
+        if (!context.forceFaction || candidates.length < minUnitCount) {
+            return null;
+        }
+
+        const maxProbeUnitCount = Math.min(maxUnitCount, FORCE_MAX_UNITS, 12);
+        for (const candidateBucket of this.getRegularOrgProbeCandidateBuckets(candidates)) {
+            const bucketMaxProbeUnitCount = Math.min(maxProbeUnitCount, candidateBucket.length);
+            for (let unitCount = minUnitCount; unitCount <= bucketMaxProbeUnitCount; unitCount += 1) {
+                const sampleUnits = candidateBucket.slice(0, unitCount).map((candidate) => candidate.unit);
+                const resolvedGroups = resolveFromUnits(sampleUnits, context.forceFaction, context.forceEra);
+                if (resolvedGroups.length !== 1) {
+                    continue;
+                }
+
+                const resolvedGroup = resolvedGroups[0];
+                if (
+                    resolvedGroup.modifierKey === ''
+                    && resolvedGroup.tier >= PREVIEW_GROUP_SPLIT_MIN_TIER
+                    && collectGroupUnits(resolvedGroup).length === unitCount
+                ) {
+                    return unitCount;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private getRegularOrgProbeCandidateBuckets(
+        candidates: readonly ForceGenerationCandidateUnit[],
+    ): ForceGenerationCandidateUnit[][] {
+        const bucketsByUnitKind = new Map<string, ForceGenerationCandidateUnit[]>();
+
+        for (const candidate of candidates) {
+            const key = [
+                candidate.unit.as?.TP ?? candidate.unit.type,
+                candidate.unit.type,
+                candidate.unit.subtype,
+                candidate.unit.moveType,
+            ].join('|');
+            const bucket = bucketsByUnitKind.get(key) ?? [];
+            bucket.push(candidate);
+            bucketsByUnitKind.set(key, bucket);
+        }
+
+        return [...bucketsByUnitKind.values()].sort((left, right) => right.length - left.length);
+    }
+
+    private createFormationForceUnitsForCandidates(
+        candidates: readonly ForceGenerationCandidateUnit[],
+        options: ForceGenerationRequest,
+    ): ForceUnit[] {
+        const techBase = getUnitsAverageTechBase(candidates.map((candidate) => candidate.unit));
+        const forceContext = {
+            faction: () => options.context.forceFaction,
+            era: () => options.context.forceEra,
+            techBase: () => techBase,
+            gameSystem: options.gameSystem,
+        };
+
+        return candidates.map((candidate) => ({
+            force: forceContext,
+            getUnit: () => candidate.unit,
+            getBv: () => candidate.cost,
+            pilotSkill: () => candidate.skill ?? candidate.gunnery ?? 4,
+            gunnerySkill: () => candidate.gunnery ?? candidate.skill ?? 4,
+        } as unknown as ForceUnit));
+    }
+
+    private evaluateTargetFormationCandidate(
+        definition: FormationTypeDefinition,
+        selectedCandidates: readonly ForceGenerationCandidateUnit[],
+        candidate: ForceGenerationCandidateUnit,
+        options: ForceGenerationRequest,
+        maxUnitCount: number,
+    ): FormationSearchDecision {
+        const currentUnits = this.createFormationForceUnitsForCandidates(selectedCandidates, options);
+        const nextUnits = this.createFormationForceUnitsForCandidates([...selectedCandidates, candidate], options);
+        const candidateUnit = nextUnits[nextUnits.length - 1];
+
+        return FormationRequirementEngine.evaluateSearchCandidate(
+            definition,
+            currentUnits,
+            candidateUnit,
+            options.gameSystem,
+            { maxUnits: maxUnitCount },
+        );
+    }
+
+    private buildTargetedFormationSelection(
+        candidates: readonly ForceGenerationCandidateUnit[],
+        options: ForceGenerationRequest,
+        definition: FormationTypeDefinition,
+        budgetRange: { min: number; max: number },
+        minUnitCount: number,
+        maxUnitCount: number,
+        preselectedCandidates: readonly ForceGenerationCandidateUnit[],
+        preventDuplicateChassis: boolean,
+        skillSettings: ForceGenerationSkillSettings,
+        selectionPreparation?: ForceGenerationSelectionPreparation,
+        deadline?: ForceGenerationSearchDeadline,
+    ): ForceGenerationSelectionAttempt {
+        const attemptCandidates = hasVariableForceGenerationSkillSettings(options.gameSystem, skillSettings)
+            ? this.createSkillAdjustedCandidatesForAttempt(candidates, options.gameSystem, skillSettings)
+            : candidates;
+        const skillBudgetPlanningCosts = this.createSkillBudgetPlanningCosts(
+            attemptCandidates,
+            options.gameSystem,
+            skillSettings,
+        );
+        const preparedSelection = selectionPreparation ?? this.prepareSelectionPreparation(
+            attemptCandidates,
+            preselectedCandidates,
+            options.context,
+            minUnitCount,
+            maxUnitCount,
+        );
+        const rulesetProfile = preparedSelection.rulesetProfile;
+        const selectedCandidates: ForceGenerationCandidateUnit[] = [...preselectedCandidates];
+        const selectionSteps: ForceGenerationSelectionStep[] = preselectedCandidates.map((candidate) => {
+            return this.createSelectionStep(candidate, rulesetProfile, {}, preparedSelection);
+        });
+        const remainingCandidates = [...preparedSelection.selectableCandidates];
+        const lowestCostRemainingCandidates = skillBudgetPlanningCosts
+            ? [...preparedSelection.selectableCandidates].sort((left, right) => (
+                this.getSkillPlanningCost(left, skillBudgetPlanningCosts, 'min') - this.getSkillPlanningCost(right, skillBudgetPlanningCosts, 'min')
+            ))
+            : [...preparedSelection.lowestCostCandidates];
+        const highestCostRemainingCandidates = skillBudgetPlanningCosts
+            ? [...preparedSelection.selectableCandidates].sort((left, right) => (
+                this.getSkillPlanningCost(right, skillBudgetPlanningCosts, 'max') - this.getSkillPlanningCost(left, skillBudgetPlanningCosts, 'max')
+            ))
+            : [...preparedSelection.highestCostCandidates];
+        const selectedChassisKeys = new Set(
+            selectedCandidates
+                .map((candidate) => buildDuplicateChassisKey(candidate.unit))
+                .filter((key) => key.length > 0),
+        );
+        const selectedTaggedQuantityCounts = new Map<string, number>();
+        for (const candidate of selectedCandidates) {
+            if (candidate.taggedQuantityCapKey) {
+                selectedTaggedQuantityCounts.set(
+                    candidate.taggedQuantityCapKey,
+                    (selectedTaggedQuantityCounts.get(candidate.taggedQuantityCapKey) ?? 0) + 1,
+                );
+            }
+        }
+
+        let totalCost = selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
+        let minimumSkillAdjustedTotalCost = selectedCandidates.reduce((sum, candidate) => (
+            sum + this.getSkillPlanningCost(candidate, skillBudgetPlanningCosts, 'min')
+        ), 0);
+        let maximumSkillAdjustedTotalCost = selectedCandidates.reduce((sum, candidate) => (
+            sum + this.getSkillPlanningCost(candidate, skillBudgetPlanningCosts, 'max')
+        ), 0);
+        const preferredSelectionUnitCount = this.getPreferredSelectionUnitCount(
+            rulesetProfile?.preferredUnitCount,
+            minUnitCount,
+            maxUnitCount,
+        );
+
+        while (selectedCandidates.length < maxUnitCount && !this.hasSearchDeadlineExpired(deadline)) {
+            const currentEvaluation = FormationRequirementEngine.evaluateDefinition(
+                definition,
+                this.createFormationForceUnitsForCandidates(selectedCandidates, options),
+                options.gameSystem,
+            );
+            const currentValid = currentEvaluation?.valid === true
+                && selectedCandidates.length >= minUnitCount
+                && selectedCandidates.length <= maxUnitCount;
+            if (currentValid && (
+                this.isBudgetWithinRange(totalCost, budgetRange)
+                || this.canSkillAdjustedSelectionReachBudgetRange(minimumSkillAdjustedTotalCost, maximumSkillAdjustedTotalCost, budgetRange)
+            )) {
+                break;
+            }
+            if (currentEvaluation && FormationRequirementEngine.hasHardConstraintViolations(currentEvaluation)) {
+                break;
+            }
+
+            const remainingCandidateCountAfterPick = remainingCandidates.length - 1;
+            const requiredAfterPick = Math.max(0, minUnitCount - selectedCandidates.length - 1);
+            if (requiredAfterPick > remainingCandidateCountAfterPick) {
+                break;
+            }
+
+            const remainingSlotsAfterPick = maxUnitCount - selectedCandidates.length - 1;
+            const budgetFeasibleCandidates = remainingCandidates.filter((candidate) => {
+                const nextMinimumTotal = minimumSkillAdjustedTotalCost + this.getSkillPlanningCost(candidate, skillBudgetPlanningCosts, 'min');
+                if (nextMinimumTotal > budgetRange.max) {
+                    return false;
+                }
+
+                const minimumRemainingTotal = getOrderedCandidateCostTotalExcluding(
+                    lowestCostRemainingCandidates,
+                    candidate,
+                    requiredAfterPick,
+                    (remainingCandidate) => this.getSkillPlanningCost(remainingCandidate, skillBudgetPlanningCosts, 'min'),
+                );
+                if (nextMinimumTotal + minimumRemainingTotal > budgetRange.max) {
+                    return false;
+                }
+
+                const nextMaximumTotal = maximumSkillAdjustedTotalCost + this.getSkillPlanningCost(candidate, skillBudgetPlanningCosts, 'max');
+                const maximumRemainingTotal = getOrderedCandidateCostTotalExcluding(
+                    highestCostRemainingCandidates,
+                    candidate,
+                    remainingSlotsAfterPick,
+                    (remainingCandidate) => this.getSkillPlanningCost(remainingCandidate, skillBudgetPlanningCosts, 'max'),
+                );
+                return nextMaximumTotal + maximumRemainingTotal >= budgetRange.min;
+            });
+
+            const cappedCandidatePool = budgetFeasibleCandidates.filter((candidate) => {
+                if (!candidate.taggedQuantityCapKey) {
+                    return true;
+                }
+
+                const quantityCap = Math.max(1, candidate.taggedQuantityCap ?? 1);
+                return (selectedTaggedQuantityCounts.get(candidate.taggedQuantityCapKey) ?? 0) < quantityCap;
+            });
+            const duplicateFilteredCandidatePool = preventDuplicateChassis
+                ? cappedCandidatePool.filter((candidate) => {
+                    const chassisKey = buildDuplicateChassisKey(candidate.unit);
+                    return chassisKey.length === 0 || !selectedChassisKeys.has(chassisKey);
+                })
+                : cappedCandidatePool;
+
+            const formationCandidateDecisions: Array<{ candidate: ForceGenerationCandidateUnit; decision: FormationSearchDecision }> = [];
+            for (const candidate of duplicateFilteredCandidatePool) {
+                if (this.hasSearchDeadlineExpired(deadline)) {
+                    break;
+                }
+
+                const decision = this.evaluateTargetFormationCandidate(definition, selectedCandidates, candidate, options, maxUnitCount);
+                if (decision.allowed) {
+                    formationCandidateDecisions.push({ candidate, decision });
+                }
+            }
+            if (formationCandidateDecisions.length === 0) {
+                break;
+            }
+
+            const improvingCandidateDecisions = currentValid
+                ? formationCandidateDecisions
+                : formationCandidateDecisions.filter((entry) => entry.decision.fillsDeficit);
+            const candidateDecisions = improvingCandidateDecisions.length > 0
+                ? improvingCandidateDecisions
+                : formationCandidateDecisions;
+            const candidateDecisionByUnit = new Map(candidateDecisions.map((entry) => [entry.candidate, entry.decision]));
+            const pickableCandidates = candidateDecisions.map((entry) => entry.candidate);
+            const nextPick = this.pickNextCandidate(
+                pickableCandidates,
+                rulesetProfile,
+                totalCost,
+                budgetRange,
+                selectedCandidates.length,
+                preferredSelectionUnitCount,
+                preparedSelection,
+            );
+            const nextCandidate = nextPick.candidate;
+            if (!candidateDecisionByUnit.has(nextCandidate)) {
+                break;
+            }
+
+            selectedCandidates.push(nextCandidate);
+            totalCost += nextCandidate.cost;
+            minimumSkillAdjustedTotalCost += this.getSkillPlanningCost(nextCandidate, skillBudgetPlanningCosts, 'min');
+            maximumSkillAdjustedTotalCost += this.getSkillPlanningCost(nextCandidate, skillBudgetPlanningCosts, 'max');
+            remainingCandidates.splice(remainingCandidates.indexOf(nextCandidate), 1);
+            const lowestCostIndex = lowestCostRemainingCandidates.indexOf(nextCandidate);
+            if (lowestCostIndex >= 0) {
+                lowestCostRemainingCandidates.splice(lowestCostIndex, 1);
+            }
+            const highestCostIndex = highestCostRemainingCandidates.indexOf(nextCandidate);
+            if (highestCostIndex >= 0) {
+                highestCostRemainingCandidates.splice(highestCostIndex, 1);
+            }
+
+            const chassisKey = buildDuplicateChassisKey(nextCandidate.unit);
+            if (chassisKey.length > 0) {
+                selectedChassisKeys.add(chassisKey);
+            }
+            if (nextCandidate.taggedQuantityCapKey) {
+                selectedTaggedQuantityCounts.set(
+                    nextCandidate.taggedQuantityCapKey,
+                    (selectedTaggedQuantityCounts.get(nextCandidate.taggedQuantityCapKey) ?? 0) + 1,
+                );
+            }
+
+            selectionSteps.push(this.createSelectionStep(nextCandidate, rulesetProfile, {
+                rolledSource: nextPick.rolledSource,
+                source: nextPick.source,
+                usedFallbackSource: nextPick.usedFallbackSource,
+            }, preparedSelection));
+        }
+
+        return {
+            selectedCandidates,
+            selectionSteps,
+            rulesetProfile,
+        };
+    }
+
+    private buildTargetFormationGroupSelection(
+        candidates: readonly ForceGenerationCandidateUnit[],
+        options: ForceGenerationRequest,
+        definition: FormationTypeDefinition,
+        budgetRange: { min: number; max: number },
+        groupUnitCount: number,
+        preventDuplicateChassis: boolean,
+        baseSelectedCandidates: readonly ForceGenerationCandidateUnit[] = [],
+        minTotalUnitCount = groupUnitCount,
+        skillBudgetPlanningCosts?: ForceGenerationSkillBudgetPlanningCosts,
+        deadline?: ForceGenerationSearchDeadline,
+    ): ForceGenerationSelectionAttempt {
+        const selectedCandidates: ForceGenerationCandidateUnit[] = [];
+        const remainingCandidates: ForceGenerationCandidateUnit[] = [...candidates];
+        const baseSelectedUnitCount = baseSelectedCandidates.length;
+        const baseMinimumTotalCost = baseSelectedCandidates.reduce((sum, candidate) => (
+            sum + this.getSkillPlanningCost(candidate, skillBudgetPlanningCosts, 'min')
+        ), 0);
+
+        while (selectedCandidates.length < groupUnitCount && !this.hasSearchDeadlineExpired(deadline)) {
+            const currentEvaluation = FormationRequirementEngine.evaluateDefinition(
+                definition,
+                this.createFormationForceUnitsForCandidates(selectedCandidates, options),
+                options.gameSystem,
+            );
+            if (currentEvaluation && FormationRequirementEngine.hasHardConstraintViolations(currentEvaluation)) {
+                break;
+            }
+
+            const localCandidatePool = this.filterAvailableTargetFormationCandidates(
+                remainingCandidates,
+                selectedCandidates,
+                preventDuplicateChassis,
+            );
+            const candidateSearchDecisions: Array<{ candidate: ForceGenerationCandidateUnit; decision: FormationSearchDecision }> = [];
+            for (const candidate of localCandidatePool) {
+                if (this.hasSearchDeadlineExpired(deadline)) {
+                    break;
+                }
+
+                const decision = this.evaluateTargetFormationCandidate(definition, selectedCandidates, candidate, options, groupUnitCount);
+                if (this.canTargetFormationGroupPickReachMinimumUnitsWithinBudget(
+                    candidate,
+                    localCandidatePool,
+                    budgetRange,
+                    baseMinimumTotalCost,
+                    selectedCandidates,
+                    baseSelectedUnitCount,
+                    minTotalUnitCount,
+                    skillBudgetPlanningCosts,
+                )) {
+                    candidateSearchDecisions.push({ candidate, decision });
+                }
+            }
+            const formationCandidateDecisions = candidateSearchDecisions.filter((entry) => entry.decision.allowed);
+            const fallbackCandidateDecisions = formationCandidateDecisions.length > 0
+                ? formationCandidateDecisions
+                : candidateSearchDecisions.filter((entry) => !entry.decision.violatesHardConstraint);
+            if (fallbackCandidateDecisions.length === 0) {
+                break;
+            }
+
+            const currentValid = currentEvaluation?.valid === true;
+            const improvingCandidateDecisions = currentValid
+                ? []
+                : fallbackCandidateDecisions.filter((entry) => entry.decision.fillsDeficit);
+            const candidateDecisions = improvingCandidateDecisions.length > 0
+                ? improvingCandidateDecisions
+                : fallbackCandidateDecisions;
+            const candidateDecisionByUnit = new Map(candidateDecisions.map((entry) => [entry.candidate, entry.decision]));
+            const selectedMinimumTotalCost = selectedCandidates.reduce((sum, candidate) => (
+                sum + this.getSkillPlanningCost(candidate, skillBudgetPlanningCosts, 'min')
+            ), 0);
+            const nextPick = this.pickNextCandidate(
+                candidateDecisions.map((entry) => entry.candidate),
+                null,
+                baseMinimumTotalCost + selectedMinimumTotalCost,
+                budgetRange,
+                baseSelectedUnitCount + selectedCandidates.length,
+                minTotalUnitCount,
+            );
+            const nextCandidate = nextPick.candidate;
+            if (!candidateDecisionByUnit.has(nextCandidate)) {
+                break;
+            }
+
+            selectedCandidates.push(nextCandidate);
+            const remainingIndex = remainingCandidates.indexOf(nextCandidate);
+            if (remainingIndex >= 0) {
+                remainingCandidates.splice(remainingIndex, 1);
+            }
+        }
+
+        return this.createSelectionAttemptFromCandidates(selectedCandidates, null);
+    }
+
+    private canTargetFormationGroupPickReachMinimumUnitsWithinBudget(
+        candidate: ForceGenerationCandidateUnit,
+        candidatePool: readonly ForceGenerationCandidateUnit[],
+        budgetRange: { min: number; max: number },
+        baseMinimumTotalCost: number,
+        selectedGroupCandidates: readonly ForceGenerationCandidateUnit[],
+        baseSelectedUnitCount: number,
+        minTotalUnitCount: number,
+        skillBudgetPlanningCosts?: ForceGenerationSkillBudgetPlanningCosts,
+    ): boolean {
+        if (!Number.isFinite(budgetRange.max)) {
+            return true;
+        }
+
+        const selectedGroupMinimumTotalCost = selectedGroupCandidates.reduce((sum, selectedCandidate) => (
+            sum + this.getSkillPlanningCost(selectedCandidate, skillBudgetPlanningCosts, 'min')
+        ), 0);
+        const nextMinimumTotalCost = baseMinimumTotalCost
+            + selectedGroupMinimumTotalCost
+            + this.getSkillPlanningCost(candidate, skillBudgetPlanningCosts, 'min');
+        if (nextMinimumTotalCost > budgetRange.max) {
+            return false;
+        }
+
+        const nextUnitCount = baseSelectedUnitCount + selectedGroupCandidates.length + 1;
+        const requiredAfterPick = Math.max(0, minTotalUnitCount - nextUnitCount);
+        if (requiredAfterPick === 0) {
+            return true;
+        }
+
+        if (candidatePool.length - 1 < requiredAfterPick) {
+            return false;
+        }
+
+        const lowestCostCandidatePool = [...candidatePool].sort((left, right) => (
+            this.getSkillPlanningCost(left, skillBudgetPlanningCosts, 'min')
+            - this.getSkillPlanningCost(right, skillBudgetPlanningCosts, 'min')
+        ));
+        const minimumRemainingTotalCost = getOrderedCandidateCostTotalExcluding(
+            lowestCostCandidatePool,
+            candidate,
+            requiredAfterPick,
+            (remainingCandidate) => this.getSkillPlanningCost(remainingCandidate, skillBudgetPlanningCosts, 'min'),
+        );
+
+        return nextMinimumTotalCost + minimumRemainingTotalCost <= budgetRange.max;
+    }
+
+    private buildMultiTargetedFormationSelection(
+        candidates: readonly ForceGenerationCandidateUnit[],
+        options: ForceGenerationRequest,
+        targetFormationSetContext: ForceGenerationTargetFormationSetContext,
+        budgetRange: { min: number; max: number },
+        minUnitCount: number,
+        maxUnitCount: number,
+        lockedCandidates: readonly ForceGenerationCandidateUnit[],
+        preventDuplicateChassis: boolean,
+        skillSettings: ForceGenerationSkillSettings,
+        deadline?: ForceGenerationSearchDeadline,
+    ): ForceGenerationSelectionAttempt {
+        const selectedCandidates: ForceGenerationCandidateUnit[] = [...lockedCandidates];
+        const targetFormationGroups: ForceGenerationTargetFormationCandidateGroup[] = [];
+        const orderedTargetInstances = this.rotateTargetFormationInstances(targetFormationSetContext.instances);
+        const skillBudgetPlanningCosts = this.createSkillBudgetPlanningCosts(
+            candidates,
+            options.gameSystem,
+            skillSettings,
+        );
+
+        for (const [targetIndex, targetInstance] of orderedTargetInstances.entries()) {
+            if (this.hasSearchDeadlineExpired(deadline)) {
+                break;
+            }
+
+            const remainingSlots = maxUnitCount - selectedCandidates.length;
+            const remainingTargetMinimumUnits = this.getTargetFormationMinimumUnitTotal(orderedTargetInstances.slice(targetIndex + 1));
+            const preferredUnitCount = this.getPreferredTargetFormationUnitCount(targetInstance.definition, options, candidates);
+            const groupUnitCount = this.resolveTargetFormationGroupUnitCount(
+                targetInstance,
+                remainingSlots,
+                remainingTargetMinimumUnits,
+                preferredUnitCount,
+            );
+            if (groupUnitCount <= 0) {
+                continue;
+            }
+
+            const availableCandidates = this.filterAvailableTargetFormationCandidates(
+                candidates,
+                selectedCandidates,
+                preventDuplicateChassis,
+            );
+            if (availableCandidates.length + selectedCandidates.length < selectedCandidates.length + groupUnitCount) {
+                continue;
+            }
+
+            const groupAttempt = this.buildTargetFormationGroupSelection(
+                availableCandidates,
+                options,
+                targetInstance.definition,
+                budgetRange,
+                groupUnitCount,
+                preventDuplicateChassis,
+                selectedCandidates,
+                minUnitCount,
+                skillBudgetPlanningCosts,
+                deadline,
+            );
+            const groupEvaluation = FormationRequirementEngine.evaluateDefinition(
+                targetInstance.definition,
+                this.createFormationForceUnitsForCandidates(groupAttempt.selectedCandidates, options),
+                options.gameSystem,
+            );
+            const groupValid = groupEvaluation?.valid === true
+                && groupAttempt.selectedCandidates.length === groupUnitCount;
+            if (!groupValid) {
+                continue;
+            }
+
+            const startIndex = selectedCandidates.length;
+            selectedCandidates.push(...groupAttempt.selectedCandidates);
+            targetFormationGroups.push({
+                formationId: targetInstance.definition.id,
+                unitIndexes: groupAttempt.selectedCandidates.map((_, index) => startIndex + index),
+            });
+        }
+
+        const totalCost = selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
+        const shouldFill = selectedCandidates.length < minUnitCount
+            || (!this.isBudgetWithinRange(totalCost, budgetRange) && selectedCandidates.length < maxUnitCount);
+        if (shouldFill && !this.hasSearchDeadlineExpired(deadline)) {
+            const availableCandidates = this.filterAvailableTargetFormationCandidates(
+                candidates,
+                selectedCandidates,
+                preventDuplicateChassis,
+            );
+            const fillAttempt = this.buildCandidateSelection(
+                availableCandidates,
+                options.context,
+                budgetRange,
+                minUnitCount,
+                maxUnitCount,
+                false,
+                selectedCandidates,
+                preventDuplicateChassis,
+                undefined,
+                skillBudgetPlanningCosts,
+                deadline,
+            );
+            return {
+                ...fillAttempt,
+                targetFormationGroups,
+            };
+        }
+
+        return {
+            ...this.createSelectionAttemptFromCandidates(selectedCandidates, null),
+            targetFormationGroups,
+        };
+    }
+
+    private rotateTargetFormationInstances(
+        instances: readonly ForceGenerationTargetFormationInstanceContext[],
+    ): ForceGenerationTargetFormationInstanceContext[] {
+        if (instances.length <= 1) {
+            return [...instances];
+        }
+
+        const startIndex = Math.floor(Math.random() * instances.length);
+        return [...instances.slice(startIndex), ...instances.slice(0, startIndex)];
+    }
+
+    private getTargetFormationMinimumUnitTotal(
+        instances: readonly ForceGenerationTargetFormationInstanceContext[],
+    ): number {
+        return instances.reduce((sum, instance) => (
+            sum + Math.max(1, instance.definition.minUnits ?? 1)
+        ), 0);
+    }
+
+    private resolveTargetFormationGroupUnitCount(
+        targetInstance: ForceGenerationTargetFormationInstanceContext,
+        remainingSlots: number,
+        remainingTargetMinimumUnits: number,
+        preferredTargetUnitCount = targetInstance.preferredUnitCount,
+    ): number {
+        const minUnitCount = Math.max(1, targetInstance.definition.minUnits ?? 1);
+        const maxUnitCount = Math.min(FORCE_MAX_UNITS, targetInstance.definition.maxUnits ?? FORCE_MAX_UNITS);
+        if (remainingSlots < minUnitCount) {
+            return 0;
+        }
+
+        const preferredUnitCount = Math.min(maxUnitCount, Math.max(minUnitCount, preferredTargetUnitCount));
+        const maxCurrentUnitsWhilePreservingOtherTargets = remainingSlots - remainingTargetMinimumUnits;
+        const resolvedUnitCount = maxCurrentUnitsWhilePreservingOtherTargets >= minUnitCount
+            ? Math.min(preferredUnitCount, maxCurrentUnitsWhilePreservingOtherTargets)
+            : minUnitCount;
+
+        return Math.min(maxUnitCount, resolvedUnitCount);
+    }
+
+    private filterAvailableTargetFormationCandidates(
+        candidates: readonly ForceGenerationCandidateUnit[],
+        selectedCandidates: readonly ForceGenerationCandidateUnit[],
+        preventDuplicateChassis: boolean,
+    ): ForceGenerationCandidateUnit[] {
+        const selectedCandidateSet = new Set(selectedCandidates);
+        const selectedUnitNames = new Set(selectedCandidates.map((candidate) => candidate.unit.name));
+        const selectedLockKeys = new Set(
+            selectedCandidates
+                .map((candidate) => candidate.lockKey)
+                .filter((lockKey): lockKey is string => !!lockKey),
+        );
+        const selectedTaggedQuantityCounts = new Map<string, number>();
+        const selectedChassisKeys = new Set<string>();
+
+        for (const selectedCandidate of selectedCandidates) {
+            if (selectedCandidate.taggedQuantityCapKey) {
+                selectedTaggedQuantityCounts.set(
+                    selectedCandidate.taggedQuantityCapKey,
+                    (selectedTaggedQuantityCounts.get(selectedCandidate.taggedQuantityCapKey) ?? 0) + 1,
+                );
+            }
+            const chassisKey = buildDuplicateChassisKey(selectedCandidate.unit);
+            if (chassisKey.length > 0) {
+                selectedChassisKeys.add(chassisKey);
+            }
+        }
+
+        return candidates.filter((candidate) => {
+            if (selectedCandidateSet.has(candidate)) {
+                return false;
+            }
+            if (candidate.lockKey && selectedLockKeys.has(candidate.lockKey)) {
+                return false;
+            }
+            if (candidate.taggedQuantityCapKey) {
+                const quantityCap = Math.max(1, candidate.taggedQuantityCap ?? 1);
+                if ((selectedTaggedQuantityCounts.get(candidate.taggedQuantityCapKey) ?? 0) >= quantityCap) {
+                    return false;
+                }
+            } else if (selectedUnitNames.has(candidate.unit.name)) {
+                return false;
+            }
+            if (preventDuplicateChassis) {
+                const chassisKey = buildDuplicateChassisKey(candidate.unit);
+                if (chassisKey.length > 0 && selectedChassisKeys.has(chassisKey)) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+    }
+
+    private evaluateTargetFormationSetAttempt(
+        selectionAttempt: ForceGenerationSelectionAttempt,
+        options: ForceGenerationRequest,
+        targetFormationSetContext: ForceGenerationTargetFormationSetContext,
+        budgetRange: { min: number; max: number },
+        minUnitCount: number,
+        maxUnitCount: number,
+    ): ForceGenerationTargetFormationSetAttemptEvaluation {
+        const groups = selectionAttempt.targetFormationGroups ?? [];
+        let satisfiedTargetCount = 0;
+        let formationDeficitScore = 0;
+
+        for (const group of groups) {
+            const definition = LanceTypeIdentifierUtil.getDefinitionById(group.formationId, options.gameSystem);
+            const groupCandidates = group.unitIndexes
+                .map((unitIndex) => selectionAttempt.selectedCandidates[unitIndex])
+                .filter((candidate): candidate is ForceGenerationCandidateUnit => candidate !== undefined);
+            const evaluation = definition
+                ? FormationRequirementEngine.evaluateDefinition(
+                    definition,
+                    this.createFormationForceUnitsForCandidates(groupCandidates, options),
+                    options.gameSystem,
+                )
+                : null;
+
+            if (evaluation?.valid === true) {
+                satisfiedTargetCount += 1;
+            } else {
+                formationDeficitScore += this.getFormationDeficitScore(evaluation);
+            }
+        }
+
+        for (let index = satisfiedTargetCount; index < targetFormationSetContext.instances.length; index += 1) {
+            formationDeficitScore += Math.max(1, targetFormationSetContext.instances[index].definition.minUnits ?? 1);
+        }
+
+        const totalCost = selectionAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
+        const budgetDistance = this.getBudgetRangeDistance(totalCost, budgetRange);
+        const unitCountDistance = this.getUnitCountRangeDistance(selectionAttempt.selectedCandidates.length, minUnitCount, maxUnitCount);
+        const requestedTargetCount = targetFormationSetContext.instances.length;
+        const achievedSummary = this.formatTargetFormationInstances(groups.slice(0, satisfiedTargetCount), options.gameSystem);
+        const message = satisfiedTargetCount === requestedTargetCount
+            ? `Target formations achieved: ${achievedSummary || `${satisfiedTargetCount} of ${requestedTargetCount}`}.`
+            : satisfiedTargetCount > 0
+                ? `Target formations achieved: ${satisfiedTargetCount} of ${requestedTargetCount} requested${achievedSummary ? ` (${achievedSummary})` : ''}.`
+                : 'Unable to complete any requested target formation within the selected filters, budget, and locked units.';
+
+        return {
+            rank: {
+                satisfiedTargetCount,
+                requestedTargetCount,
+                formationDeficitScore,
+                budgetDistance,
+                unitCountDistance,
+            },
+            allTargetsSatisfied: satisfiedTargetCount === requestedTargetCount,
+            budgetValid: budgetDistance === 0,
+            unitCountValid: unitCountDistance === 0,
+            message,
+        };
+    }
+
     private pickNextCandidate(
         candidates: readonly ForceGenerationCandidateUnit[],
         rulesetProfile: ForceGenerationRulesetProfile | null,
@@ -4519,6 +6250,8 @@ export class ForceGeneratorService implements OnDestroy {
         preselectedCandidates: readonly ForceGenerationCandidateUnit[] = [],
         preventDuplicateChassis = false,
         selectionPreparation?: ForceGenerationSelectionPreparation,
+        skillBudgetPlanningCosts?: ForceGenerationSkillBudgetPlanningCosts,
+        deadline?: ForceGenerationSearchDeadline,
     ): ForceGenerationSelectionAttempt {
         const preparedSelection = selectionPreparation ?? this.prepareSelectionPreparation(
             candidates,
@@ -4529,13 +6262,27 @@ export class ForceGeneratorService implements OnDestroy {
         );
         const rulesetProfile = preparedSelection.rulesetProfile;
         const remainingCandidates = [...preparedSelection.selectableCandidates];
-        const lowestCostRemainingCandidates = [...preparedSelection.lowestCostCandidates];
-        const highestCostRemainingCandidates = [...preparedSelection.highestCostCandidates];
+        const lowestCostRemainingCandidates = skillBudgetPlanningCosts
+            ? [...preparedSelection.selectableCandidates].sort((left, right) => (
+                this.getSkillPlanningCost(left, skillBudgetPlanningCosts, 'min') - this.getSkillPlanningCost(right, skillBudgetPlanningCosts, 'min')
+            ))
+            : [...preparedSelection.lowestCostCandidates];
+        const highestCostRemainingCandidates = skillBudgetPlanningCosts
+            ? [...preparedSelection.selectableCandidates].sort((left, right) => (
+                this.getSkillPlanningCost(right, skillBudgetPlanningCosts, 'max') - this.getSkillPlanningCost(left, skillBudgetPlanningCosts, 'max')
+            ))
+            : [...preparedSelection.highestCostCandidates];
         const selectedCandidates: ForceGenerationCandidateUnit[] = [...preselectedCandidates];
         const selectionSteps: ForceGenerationSelectionStep[] = preselectedCandidates.map((candidate) => {
             return this.createSelectionStep(candidate, rulesetProfile, {}, preparedSelection);
         });
         let totalCost = selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
+        let minimumSkillAdjustedTotalCost = selectedCandidates.reduce((sum, candidate) => (
+            sum + this.getSkillPlanningCost(candidate, skillBudgetPlanningCosts, 'min')
+        ), 0);
+        let maximumSkillAdjustedTotalCost = selectedCandidates.reduce((sum, candidate) => (
+            sum + this.getSkillPlanningCost(candidate, skillBudgetPlanningCosts, 'max')
+        ), 0);
         const preferredSelectionUnitCount = this.getPreferredSelectionUnitCount(
             rulesetProfile?.preferredUnitCount,
             minUnitCount,
@@ -4560,14 +6307,17 @@ export class ForceGeneratorService implements OnDestroy {
             );
         }
 
-        while (selectedCandidates.length < maxUnitCount) {
+        while (selectedCandidates.length < maxUnitCount && !this.hasSearchDeadlineExpired(deadline)) {
             if (
                 selectedCandidates.length >= minUnitCount
                 && (
                     (
-                        this.isBudgetWithinRange(totalCost, budgetRange)
+                        (
+                            this.isBudgetWithinRange(totalCost, budgetRange)
+                            || this.canSkillAdjustedSelectionReachBudgetRange(minimumSkillAdjustedTotalCost, maximumSkillAdjustedTotalCost, budgetRange)
+                        )
                         && ((preferredSelectionUnitCount !== undefined && selectedCandidates.length >= preferredSelectionUnitCount)
-                            || (preferredSelectionUnitCount === undefined && totalCost >= targetBudget))
+                            || (preferredSelectionUnitCount === undefined && maximumSkillAdjustedTotalCost >= targetBudget))
                     )
                     || (useOverMaxFallbackSelection && totalCost > budgetRange.max)
                 )
@@ -4584,8 +6334,8 @@ export class ForceGeneratorService implements OnDestroy {
             const remainingSlotsAfterPick = maxUnitCount - selectedCandidates.length - 1;
 
             const underMaxCandidates = remainingCandidates.filter((candidate) => {
-                const nextTotal = totalCost + candidate.cost;
-                if (nextTotal > budgetRange.max) {
+                const nextMinimumTotal = minimumSkillAdjustedTotalCost + this.getSkillPlanningCost(candidate, skillBudgetPlanningCosts, 'min');
+                if (nextMinimumTotal > budgetRange.max) {
                     return false;
                 }
 
@@ -4593,8 +6343,9 @@ export class ForceGeneratorService implements OnDestroy {
                     lowestCostRemainingCandidates,
                     candidate,
                     requiredAfterPick,
+                    (remainingCandidate) => this.getSkillPlanningCost(remainingCandidate, skillBudgetPlanningCosts, 'min'),
                 );
-                if (nextTotal + minimumRemainingTotal > budgetRange.max) {
+                if (nextMinimumTotal + minimumRemainingTotal > budgetRange.max) {
                     return false;
                 }
 
@@ -4602,14 +6353,15 @@ export class ForceGeneratorService implements OnDestroy {
             });
 
             const feasibleCandidates = underMaxCandidates.filter((candidate) => {
-                const nextTotal = totalCost + candidate.cost;
+                const nextMaximumTotal = maximumSkillAdjustedTotalCost + this.getSkillPlanningCost(candidate, skillBudgetPlanningCosts, 'max');
 
                 const maximumRemainingTotal = getOrderedCandidateCostTotalExcluding(
                     highestCostRemainingCandidates,
                     candidate,
                     remainingSlotsAfterPick,
+                    (remainingCandidate) => this.getSkillPlanningCost(remainingCandidate, skillBudgetPlanningCosts, 'max'),
                 );
-                return nextTotal + maximumRemainingTotal >= budgetRange.min;
+                return nextMaximumTotal + maximumRemainingTotal >= budgetRange.min;
             });
 
             const candidatePool = feasibleCandidates.length > 0
@@ -4650,6 +6402,8 @@ export class ForceGeneratorService implements OnDestroy {
             const nextCandidate = nextPick.candidate;
             selectedCandidates.push(nextCandidate);
             totalCost += nextCandidate.cost;
+            minimumSkillAdjustedTotalCost += this.getSkillPlanningCost(nextCandidate, skillBudgetPlanningCosts, 'min');
+            maximumSkillAdjustedTotalCost += this.getSkillPlanningCost(nextCandidate, skillBudgetPlanningCosts, 'max');
             remainingCandidates.splice(remainingCandidates.indexOf(nextCandidate), 1);
             const lowestCostIndex = lowestCostRemainingCandidates.indexOf(nextCandidate);
             if (lowestCostIndex >= 0) {

@@ -2,6 +2,7 @@ import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import type { Eras } from '../models/eras.model';
+import type { ForceUnit } from '../models/force-unit.model';
 import type { MULFactions } from '../models/mulfactions.model';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import type { AvailabilitySource } from '../models/options.model';
@@ -27,7 +28,7 @@ import {
     usesIndexedDropdownUniverse,
 } from '../utils/unit-search-filter-config.util';
 import { MEGAMEK_AVAILABILITY_UNKNOWN, type MegaMekWeightedAvailabilityRecord } from '../models/megamek/availability.model';
-import { MEGAMEK_RARITY_PRODUCTION_SORT_KEY } from './unit-search-filters.model';
+import { FORMATION_TARGET_FILTER_KEY, MEGAMEK_RARITY_PRODUCTION_SORT_KEY } from './unit-search-filters.model';
 import { SEARCH_WORKER_FACTORY } from '../utils/unit-search-worker-factory.util';
 import type { SearchWorkerLike } from '../utils/unit-search-worker-client.util';
 import type { UnitSearchWorkerResponseMessage } from '../utils/unit-search-worker-protocol.util';
@@ -684,6 +685,137 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
         expect(service.forceGeneratorEligibleUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
+    });
+
+    it('filters normal search results by an active formation target while generator eligibility ignores it', () => {
+        const bundle = createStandaloneBundle();
+        const existingUnit = bundle.units.units[0];
+        const { service } = createService(bundle);
+        const force = {
+            faction: () => null,
+            era: () => null,
+            techBase: () => 'Inner Sphere',
+            gameSystem: GameSystem.ALPHA_STRIKE,
+        };
+        const existingForceUnit = {
+            force,
+            getUnit: () => existingUnit,
+            getBv: () => 0,
+            pilotSkill: () => 4,
+            gunnerySkill: () => 4,
+        } as unknown as ForceUnit;
+
+        service.setFormationTarget({
+            formationId: 'order-lance',
+            existingUnits: [existingForceUnit],
+            gameSystem: GameSystem.ALPHA_STRIKE,
+        });
+
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
+        expect(service.forceGeneratorEligibleUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
+    });
+
+    it('filters normal search results by a semantic formation target while generator eligibility ignores it', () => {
+        const bundle = createStandaloneBundle();
+        const existingUnit = bundle.units.units[0];
+        const { service, gameServiceStub } = createService(bundle);
+        const force = {
+            faction: () => null,
+            era: () => null,
+            techBase: () => 'Inner Sphere',
+            gameSystem: GameSystem.ALPHA_STRIKE,
+        };
+        const existingForceUnit = {
+            force,
+            getUnit: () => existingUnit,
+            getBv: () => 0,
+            pilotSkill: () => 4,
+            gunnerySkill: () => 4,
+        } as unknown as ForceUnit;
+
+        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        service.setFormationTargetExistingUnits([existingForceUnit]);
+        service.setSearchText('formation=Order');
+
+        expect(service.semanticFilterKeys().has(FORMATION_TARGET_FILTER_KEY)).toBeTrue();
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
+        expect(service.forceGeneratorEligibleUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
+    });
+
+    it('ignores the active formation target for worker-backed generator eligibility', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        const existingUnit = bundle.units.units[0];
+        const { service } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        const force = {
+            faction: () => null,
+            era: () => null,
+            techBase: () => 'Inner Sphere',
+            gameSystem: GameSystem.ALPHA_STRIKE,
+        };
+        const existingForceUnit = {
+            force,
+            getUnit: () => existingUnit,
+            getBv: () => 0,
+            pilotSkill: () => 4,
+            gunnerySkill: () => 4,
+        } as unknown as ForceUnit;
+
+        await flushAsyncWork();
+
+        service.setFormationTarget({
+            formationId: 'order-lance',
+            existingUnits: [existingForceUnit],
+            gameSystem: GameSystem.ALPHA_STRIKE,
+        });
+        service.searchText.set('Test');
+        service.filteredUnits();
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+
+        (service as any).searchWorkerClient.submit(snapshot, request);
+        const initMessage = worker.messages.at(-1) as any;
+        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
+        await flushAsyncWork();
+
+        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        worker.emit({
+            type: 'result',
+            revision: executeMessage.request.revision,
+            corpusVersion: executeMessage.request.corpusVersion,
+            telemetryQuery: executeMessage.request.telemetryQuery,
+            unitNames: bundle.units.units.map((unit) => unit.name),
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
+        expect(service.forceGeneratorEligibleUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
+    });
+
+    it('preserves complex OR semantic queries for worker execution', async () => {
+        const bundle = createStandaloneBundle();
+        const { service, gameServiceStub } = createService(bundle, {
+            workerFactory: () => new FakeSearchWorker(),
+        });
+
+        await flushAsyncWork();
+
+        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        service.searchText.set('pv>0 or pv<0');
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+
+        expect(request.executionQuery).toBe('pv>0 or pv<0');
+        expect(request.telemetryQuery).toBe('pv>0 or pv<0');
     });
 
     it('distinguishes force packs by subtype when chassis and type match', () => {
