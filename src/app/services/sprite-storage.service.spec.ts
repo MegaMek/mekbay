@@ -44,6 +44,25 @@ const CASED_MANIFEST: SpriteManifest = {
     },
 };
 
+const UPDATED_MANIFEST: SpriteManifest = {
+    types: {
+        mek: {
+            url: 'sprites/mek.png',
+            width: 168,
+            height: 72,
+        },
+    },
+    icons: {
+        'units/mek.png': {
+            type: 'mek',
+            x: 84,
+            y: 0,
+            w: 84,
+            h: 72,
+        },
+    },
+};
+
 const TEST_BLOB = new Blob(['sprite-bytes'], { type: 'image/png' });
 
 async function settleAsyncWork(): Promise<void> {
@@ -168,7 +187,7 @@ describe('SpriteStorageService', () => {
 
         httpMock.expectOne('sprites/unit-icons.hash').flush('new-hash');
         await settleAsyncWork();
-        httpMock.expectOne('sprites/unit-icons.json').flush(TEST_MANIFEST);
+        httpMock.expectOne('sprites/unit-icons.json').flush(UPDATED_MANIFEST);
         await settleAsyncWork();
         httpMock.expectOne('sprites/mek.png').error(new ProgressEvent('error'));
         await waitForLoadingToFinish(service);
