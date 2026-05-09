@@ -225,6 +225,28 @@ describe('MultiSelectDropdownComponent', () => {
         expect(fixture.nativeElement.querySelector('.remove-pill')).toBeNull();
     });
 
+    it('can restrict multistate toggles to selected and unselected only', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        let emittedSelection: unknown;
+        fixture.componentInstance.selectionChange.subscribe((selection) => {
+            emittedSelection = selection;
+        });
+
+        fixture.componentRef.setInput('multistate', true);
+        fixture.componentRef.setInput('stateCycle', ['or']);
+        fixture.componentRef.setInput('selected', {});
+        fixture.detectChanges();
+
+        fixture.componentInstance.onOptionToggle('Option 1');
+        expect((emittedSelection as MultiStateSelection)['Option 1']?.state).toBe('or');
+
+        fixture.componentRef.setInput('selected', emittedSelection);
+        fixture.detectChanges();
+
+        fixture.componentInstance.onOptionToggle('Option 1');
+        expect(emittedSelection).toEqual({});
+    });
+
     xit('preserves scroll position when toggling an item in the virtualized list', async () => {
         const fixture = TestBed.createComponent(TestHostComponent);
         fixture.componentInstance.options.set(createOptions(140));
