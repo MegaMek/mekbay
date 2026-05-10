@@ -1258,6 +1258,59 @@ describe('ForceGeneratorService', () => {
         expect(preview.explanationLines.join('\n')).not.toContain('Target formations achieved');
     });
 
+    it('keeps capped multi-target formation budget reachability checks bounded for large candidate pools', () => {
+        const era = createEra(3028, 'Late Succession War - Renaissance');
+        const faction = createFaction(MULFACTION_MERCENARY, 'Mercenary');
+        registerEraAndFaction(era, faction);
+        const commandUnits = [
+            createUnit({ id: 1, name: 'Capped Command Sniper', role: 'Sniper', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgL: 1, _dmgM: 2 } } as Unit['as'] }),
+            createUnit({ id: 2, name: 'Capped Command Missile', role: 'Missile Boat', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgL: 1, _dmgM: 2 } } as Unit['as'] }),
+            createUnit({ id: 3, name: 'Capped Command Brawler', role: 'Brawler', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgL: 1, _dmgM: 2 } } as Unit['as'] }),
+            createUnit({ id: 4, name: 'Capped Command Scout', role: 'Scout', as: { TP: 'BM', SZ: 2, PV: 10, Arm: 4, dmg: { _dmgL: 1, _dmgM: 2 } } as Unit['as'] }),
+        ];
+        const directFireUnits = [
+            createUnit({ id: 10, name: 'Capped Direct Fire A', role: 'Sniper', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgL: 2, _dmgM: 3 } } as Unit['as'] }),
+            createUnit({ id: 11, name: 'Capped Direct Fire B', role: 'Sniper', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgL: 2, _dmgM: 3 } } as Unit['as'] }),
+            createUnit({ id: 12, name: 'Capped Direct Fire C', role: 'Brawler', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgL: 2, _dmgM: 3 } } as Unit['as'] }),
+            createUnit({ id: 13, name: 'Capped Direct Fire D', role: 'Skirmisher', as: { TP: 'BM', SZ: 3, PV: 10, Arm: 5, dmg: { _dmgL: 2, _dmgM: 3 } } as Unit['as'] }),
+        ];
+        const fillerUnits = Array.from({ length: 320 }, (_, index) => createUnit({
+            id: 1000 + index,
+            name: `Capped Filler ${index + 1}`,
+            role: 'Transport',
+            as: { TP: 'BM', SZ: 1, PV: 10, Arm: 1, dmg: { _dmgL: 0, _dmgM: 1 } } as Unit['as'],
+        }));
+        const eligibleUnits = [...commandUnits, ...directFireUnits, ...fillerUnits];
+        for (const unit of eligibleUnits) {
+            units.push(unit);
+            addMegaMekAvailability(unit, faction, era);
+        }
+
+        const reachabilityContextSpy = spyOn(service as any, 'createTargetFormationBudgetReachabilityContext').and.callThrough();
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits,
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 120, max: 120 },
+            minUnitCount: 12,
+            maxUnitCount: 12,
+            gunnery: 4,
+            piloting: 5,
+            targetFormations: [
+                { formationId: 'command-lance', count: 1 },
+                { formationId: 'direct-fire-lance', count: 1 },
+            ],
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.length).toBe(12);
+        expect(preview.totalCost).toBe(120);
+        expect(preview.targetFormationGroups?.map((group) => group.formationId)).toEqual(['command-lance', 'direct-fire-lance']);
+        expect(reachabilityContextSpy.calls.count()).toBeLessThan(30);
+    });
+
     it('ignores faction-exclusive target formations outside the generation faction', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Clan Jade Falcon');
@@ -2363,6 +2416,32 @@ describe('ForceGeneratorService', () => {
         expect(preview.error).toBeNull();
         expect(preview.units[0].unit).toBe(salvageUnit);
         expect(preview.explanationLines.some((line) => line.includes('Shadow Hawk SHD-2H: salvage pick'))).toBeTrue();
+    });
+
+    it('does not weight equally available candidate rolls by cost', () => {
+        const cheapUnit = createUnit({ id: 1, name: 'Cheap Equal Availability', as: { PV: 10 } as Unit['as'] });
+        const expensiveUnit = createUnit({ id: 2, name: 'Expensive Equal Availability', as: { PV: 90 } as Unit['as'] });
+        const cheapCandidate = {
+            unit: cheapUnit,
+            requisitionWeight: 10,
+            salvageWeight: 0,
+            cost: 10,
+            locked: false,
+            megaMekUnitType: 'Mek',
+        };
+        const expensiveCandidate = {
+            unit: expensiveUnit,
+            requisitionWeight: 10,
+            salvageWeight: 0,
+            cost: 90,
+            locked: false,
+            megaMekUnitType: 'Mek',
+        };
+        spyOn(Math, 'random').and.returnValues(0.99, 0.45);
+
+        const pick = (service as any).pickNextCandidate([cheapCandidate, expensiveCandidate], null);
+
+        expect(pick.candidate).toBe(cheapCandidate);
     });
 
     it('includes a readable explanation for the generated picks', () => {
