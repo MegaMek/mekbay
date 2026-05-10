@@ -42,8 +42,6 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { OptionsService } from '../../services/options.service';
 import { BOOLEAN_FILTERS, DROPDOWN_FILTERS, RANGE_FILTERS } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
-import { getFormationDefinitions } from '../../utils/formation-blueprints';
-import { FormationRequirementEngine } from '../../utils/formation-requirement-engine.util';
 import type { FormationSearchTarget } from '../../utils/formation-requirement.model';
 import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
 import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
@@ -86,13 +84,7 @@ export class UnitSearchAdvancedFiltersComponent {
     readonly isComplexQuery = this.filtersService.isComplexQuery;
     readonly megaMekAvailabilitySourceSelected = computed(() => this.optionsService.options().availabilitySource === 'megamek');
     readonly gridTemplateColumns = computed(() => this.columnsCount() === 2 ? '1fr 1fr' : '1fr');
-    readonly formationTargetOptions = computed<DropdownOption[]>(() => [
-        { name: '', displayName: 'Any' },
-        ...getFormationDefinitions()
-            .filter((definition) => FormationRequirementEngine.hasBlueprint(definition.id))
-            .filter((definition) => LanceTypeIdentifierUtil.getDefinitionById(definition.id, this.filterGameSystem()) !== null)
-            .map((definition) => ({ name: definition.id, displayName: definition.name })),
-    ]);
+    readonly formationTargetOptions = computed<DropdownOption[]>(() => this.filtersService.getFormationTargetOptions(this.filterGameSystem()));
     readonly selectedFormationTarget = computed<string[]>(() => {
         const options = this.formationTargetOptions();
         const semanticTargetId = this.filtersService.semanticFormationTargetId();

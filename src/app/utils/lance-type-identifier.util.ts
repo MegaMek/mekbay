@@ -35,9 +35,10 @@ import type { ForceUnit } from '../models/force-unit.model';
 import { GameSystem } from '../models/common.model';
 import { type Faction } from '../models/factions.model';
 import type { Unit } from '../models/units.model';
-import { type FormationTypeDefinition, type FormationMatch, NO_FORMATION, NO_FORMATION_ID } from './formation-type.model';
+import { type FormationTypeDefinition, type FormationMatch, getFormationNameMatchStrings, NO_FORMATION, NO_FORMATION_ID } from './formation-type.model';
 import { getFormationDefinition, getFormationDefinitions } from './formation-blueprints';
 import { FormationRequirementEngine } from './formation-requirement-engine.util';
+import { normalizeLooseText } from './string.util';
 import type { UnitGroup } from '../models/force.model';
 import { collectGroupUnits, compileGroupFacts } from './org/org-facts.util';
 import { groupMatchesChildRole } from './org/org-role-match.util';
@@ -208,6 +209,46 @@ export class LanceTypeIdentifierUtil {
             return null;
         }
         return definition;
+    }
+
+    public static resolveDefinition(value: string, gameSystem?: GameSystem): FormationTypeDefinition | null {
+        const normalizedValue = value.trim().toLowerCase();
+        if (!normalizedValue) {
+            return null;
+        }
+
+        if (normalizedValue === NO_FORMATION_ID) {
+            return NO_FORMATION;
+        }
+
+        const definitions = getFormationDefinitions().filter((definition) => (
+            gameSystem === undefined || FormationRequirementEngine.hasBlueprint(definition.id)
+        ));
+
+        for (const definition of definitions) {
+            if (definition.id.toLowerCase() === normalizedValue) {
+                return definition;
+            }
+            if (getFormationNameMatchStrings(definition).some(name => name.toLowerCase() === normalizedValue)) {
+                return definition;
+            }
+        }
+
+        const looseValue = normalizeLooseText(value);
+        if (!looseValue) {
+            return null;
+        }
+
+        for (const definition of definitions) {
+            if (normalizeLooseText(definition.id) === looseValue) {
+                return definition;
+            }
+            if (getFormationNameMatchStrings(definition).some(name => normalizeLooseText(name) === looseValue)) {
+                return definition;
+            }
+        }
+
+        return null;
     }
 
     public static getFormationName(formationId: string | undefined): string | null {

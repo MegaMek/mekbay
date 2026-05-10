@@ -76,6 +76,7 @@ import { FormationRequirementEngine } from '../../utils/formation-requirement-en
 import type { FormationTypeDefinition } from '../../utils/formation-type.model';
 import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
 import { type HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
+import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
 import { normalizeMultiStateSelection } from '../../utils/unit-search-shared.util';
 import { SyntaxInputComponent } from '../syntax-input/syntax-input.component';
 
@@ -191,7 +192,7 @@ export class SearchForceGeneratorDialogComponent {
         const filterKey = this.unitTypeFilterKey();
         return filterKey ? this.getDropdownFilter(filterKey) : null;
     });
-    readonly subtypeFilter = computed(() => this.getDropdownFilter('subtype'));
+    readonly subtypeFilter = computed(() => this.gameSystem() === GameSystem.CLASSIC ? this.getDropdownFilter('subtype') : null);
     readonly tagsFilter = computed(() => this.getDropdownFilter('_tags'));
     readonly selectedEraValues = computed(() => this.getSelectedMultiStateValues(this.eraFilter()));
     readonly selectedFactionValues = computed(() => this.getSelectedMultiStateValues(this.factionFilter()));
@@ -221,7 +222,7 @@ export class SearchForceGeneratorDialogComponent {
         return this.gameSystem() === GameSystem.CLASSIC
             && (this.pilotingSkillRangeActive() || this.maxPilotSkillDeltaActive());
     });
-    readonly additionalFiltersExcludedKeys = computed(() => {
+    private readonly primaryDialogFilterKeys = computed(() => {
         const excludedKeys = new Set<string>(['era', 'faction', '_tags']);
         const unitTypeFilterKey = this.unitTypeFilterKey();
         if (unitTypeFilterKey) {
@@ -233,21 +234,30 @@ export class SearchForceGeneratorDialogComponent {
 
         return [...excludedKeys];
     });
+    readonly additionalFiltersExcludedKeys = computed(() => this.primaryDialogFilterKeys());
     readonly otherAdvPanelFilterGameSystem = computed(() => this.getOtherGameSystem(this.advPanelFilterGameSystem()));
     readonly otherAdvPanelFilterGameSystemHasActiveFilters = computed(() => {
         const filterState = this.filtersService.effectiveFilterState();
         const otherGameSystem = this.otherAdvPanelFilterGameSystem();
+        const excludedKeys = new Set(this.primaryDialogFilterKeys());
+        const availabilitySource = this.optionsService.options().availabilitySource;
 
         return [...BOOLEAN_FILTERS, ...DROPDOWN_FILTERS, ...RANGE_FILTERS].some((filter) => (
-            filter.game === otherGameSystem && filterState[filter.key]?.interactedWith
+            filter.game === otherGameSystem
+            && !excludedKeys.has(filter.key)
+            && isFilterAvailableForAvailabilitySource(filter, availabilitySource)
+            && filterState[filter.key]?.interactedWith
         ));
     });
     readonly additionalFiltersHasActiveSettings = computed(() => {
         const hasSearchText = this.filtersService.searchText().trim().length > 0;
         const filterState = this.filtersService.effectiveFilterState();
-        const excludedKeys = new Set(this.additionalFiltersExcludedKeys());
+        const excludedKeys = new Set(this.primaryDialogFilterKeys());
+        const availabilitySource = this.optionsService.options().availabilitySource;
         const hasActiveAdvancedFilters = [...BOOLEAN_FILTERS, ...DROPDOWN_FILTERS, ...RANGE_FILTERS].some((filter) => (
-            !excludedKeys.has(filter.key) && filterState[filter.key]?.interactedWith
+            !excludedKeys.has(filter.key)
+            && isFilterAvailableForAvailabilitySource(filter, availabilitySource)
+            && filterState[filter.key]?.interactedWith
         ));
 
         return hasSearchText || hasActiveAdvancedFilters;
@@ -266,7 +276,11 @@ export class SearchForceGeneratorDialogComponent {
         .filter((definition) => FormationRequirementEngine.hasBlueprint(definition.id))
         .filter((definition) => LanceTypeIdentifierUtil.getDefinitionById(definition.id, this.gameSystem()) !== null)
         .filter((definition) => this.isTargetFormationAvailableForSelectedFactions(definition))
-        .map((definition) => ({ name: definition.id, displayName: definition.name })));
+        .map((definition) => ({ name: definition.id, displayName: definition.name }))
+        .sort((left, right) => (
+            (left.displayName ?? left.name).localeCompare(right.displayName ?? right.name)
+            || left.name.localeCompare(right.name)
+        )));
     readonly targetFormations = computed<ForceGenerationTargetFormationSelection[]>(() => {
         const availableFormationIds = new Set(this.targetFormationOptions().map((option) => option.name));
         return Object.values(this.targetFormationSelection())
@@ -595,7 +609,7 @@ export class SearchForceGeneratorDialogComponent {
             this.gameSystem(),
             this.forceGeneratorService.resolveBudgetRangeForEditedMin(
                 this.budgetRange(),
-                this.parseNumericValue(event, this.budgetRange().min),
+                this.parseNumericValue(event, 0),
             ),
         );
     }
@@ -992,13 +1006,8 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     private resolveUnitTypeFilterKey(): UnitTypeFilterKey | null {
-        if (this.getDropdownFilter('type')) {
-            return 'type';
-        }
-        if (this.getDropdownFilter('as.TP')) {
-            return 'as.TP';
-        }
-        return null;
+        const filterKey = this.gameSystem() === GameSystem.ALPHA_STRIKE ? 'as.TP' : 'type';
+        return this.getDropdownFilter(filterKey) ? filterKey : null;
     }
 
     private getOtherGameSystem(gameSystem: GameSystem): GameSystem {

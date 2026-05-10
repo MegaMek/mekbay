@@ -774,6 +774,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.units.length).toBe(1);
         expect(preview.units[0].unit).toBe(knownUnit);
         expect(preview.totalCost).toBe(5);
+        expect(preview.explanationLines.join('\n')).toMatch(/Search effort: Attempts tried: \d+ in \d+ms\./);
         const rulesetGuidanceIndex = preview.explanationLines.findIndex((line) => line.includes('Ruleset guidance: none resolved, so picks used weighted search only.'));
         const sourceRollOddsIndex = preview.explanationLines.findIndex((line) => line.includes('Source roll odds: requisition'));
         expect(sourceRollOddsIndex).toBeGreaterThan(rulesetGuidanceIndex);
@@ -810,8 +811,55 @@ describe('ForceGeneratorService', () => {
         expect(preview.error).toBeNull();
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Panther A', 'Panther B', 'Panther C']);
         expect(preview.explanationLines.join('\n')).toContain('Target formation: Order.');
+        expect(preview.explanationLines.join('\n')).toMatch(/Search effort: Attempts tried: \d+ in \d+ms\./);
         const previewEntry = service.createForcePreviewEntry(preview);
         expect(previewEntry?.groups[0]?.formationId).toBe('order-lance');
+    });
+
+    it('resolves loose target formation names and completes matched pairs without tag quantities', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Capellan Confederation');
+        registerEraAndFaction(era, faction);
+        const vedette = createUnit({
+            id: 1,
+            name: 'Vedette',
+            chassis: 'Vedette',
+            type: 'Tank',
+            subtype: 'Combat Vehicle',
+            role: 'Sniper',
+            as: { TP: 'CV', SZ: 2, PV: 5 },
+        });
+        const goblin = createUnit({
+            id: 2,
+            name: 'Goblin',
+            chassis: 'Goblin',
+            type: 'Tank',
+            subtype: 'Combat Vehicle',
+            role: 'Scout',
+            as: { TP: 'CV', SZ: 2, PV: 5 },
+        });
+        for (const unit of [vedette, goblin]) {
+            units.push(unit);
+            addMegaMekAvailability(unit, faction, era);
+        }
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [vedette, goblin],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 20 },
+            minUnitCount: 3,
+            maxUnitCount: 3,
+            gunnery: 4,
+            piloting: 5,
+            targetFormationId: 'vehicle-command',
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.targetFormationId).toBe('vehicle-command-lance');
+        expect(preview.explanationLines.join('\n')).toContain('Target formation: Vehicle Command.');
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Vedette', 'Vedette', 'Vedette']);
     });
 
     it('prioritizes Artillery Fire equipment deficits over generic unit count progress', () => {
@@ -889,10 +937,10 @@ describe('ForceGeneratorService', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Capellan Confederation');
         registerEraAndFaction(era, faction);
-        const lineA = createUnit({ id: 1, name: 'Line A', as: { TP: 'BM', PV: 40 } });
-        const lineB = createUnit({ id: 2, name: 'Line B', as: { TP: 'BM', PV: 40 } });
-        const lineC = createUnit({ id: 3, name: 'Line C', as: { TP: 'BM', PV: 40 } });
-        const artilleryA = createUnit({ id: 4, name: 'Artillery A', as: { TP: 'BM', PV: 40, specials: ['ART-LT'] } });
+        const lineA = createUnit({ id: 1, name: 'Line A', chassis: 'Line A', as: { TP: 'BM', PV: 40 } });
+        const lineB = createUnit({ id: 2, name: 'Line B', chassis: 'Line B', as: { TP: 'BM', PV: 40 } });
+        const lineC = createUnit({ id: 3, name: 'Line C', chassis: 'Line C', as: { TP: 'BM', PV: 40 } });
+        const artilleryA = createUnit({ id: 4, name: 'Artillery A', chassis: 'Artillery A', as: { TP: 'BM', PV: 40, specials: ['ART-LT'] } });
         for (const unit of [lineA, lineB, lineC, artilleryA]) {
             units.push(unit);
             addMegaMekAvailability(unit, faction, era);
@@ -909,10 +957,11 @@ describe('ForceGeneratorService', () => {
             gunnery: 4,
             piloting: 5,
             targetFormationId: 'artillery-fire-lance',
+            preventDuplicateChassis: true,
         });
 
         expect(preview.error).toContain('Unable to complete Artillery Fire');
-        expect(preview.explanationLines.join('\n')).toMatch(/Result note: Unable to complete Artillery Fire.*Attempts tried: [2-9]\d* in \d+ms\./);
+        expect(preview.explanationLines.join('\n')).toMatch(/Result note: Unable to complete Artillery Fire.*Attempts tried: \d+ in \d+ms\. Search window expired\./);
     });
 
     it('builds separate target formation groups when two requested formations fit the unit cap', () => {
@@ -2475,8 +2524,8 @@ describe('ForceGeneratorService', () => {
 
         expect(preview.error).toBeNull();
         expect(preview.units.length).toBe(4);
-        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Unit 1', 'Unit 2', 'Unit 3', 'Unit 4']);
-        expect(preview.totalCost).toBe(22);
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Unit 1', 'Unit 1', 'Unit 1', 'Unit 1']);
+        expect(preview.totalCost).toBe(16);
         expect(preview.explanationLines.some((line) => line.includes('lowest-total force in the requested unit-count range was returned'))).toBeTrue();
         expect(service.createForceEntry(preview)).not.toBeNull();
     });
@@ -2606,9 +2655,63 @@ describe('ForceGeneratorService', () => {
             preventDuplicateChassis: true,
         });
 
-        expect(duplicatePreview.units.map((unit) => unit.unit.name)).toEqual(['Atlas Prime', 'Atlas Alt']);
+        expect(duplicatePreview.units.map((unit) => unit.unit.name)).toEqual(['Atlas Prime', 'Atlas Prime']);
         expect(uniquePreview.units.map((unit) => unit.unit.name)).toEqual(['Atlas Prime', 'Locust']);
         expect(uniquePreview.explanationLines).toContain('Duplicate chassis prevention: enabled.');
+    });
+
+    it('reuses the same availability-positive unit when duplicate and tag caps are inactive', () => {
+        const era = createEra(3150, 'Late Republic');
+        const faction = createFaction(10, 'Mercenary');
+        registerEraAndFaction(era, faction);
+        const crab27b = createUnit({
+            id: 1,
+            name: 'Crab CRB-27b',
+            chassis: 'Crab',
+            model: 'CRB-27b',
+            as: { PV: 50 } as Unit['as'],
+        });
+        const crab27 = createUnit({
+            id: 2,
+            name: 'Crab CRB-27',
+            chassis: 'Crab',
+            model: 'CRB-27',
+            as: { PV: 50 } as Unit['as'],
+        });
+        const crab27sl = createUnit({
+            id: 3,
+            name: 'Crab CRB-27sl',
+            chassis: 'Crab',
+            model: 'CRB-27sl',
+            as: { PV: 50 } as Unit['as'],
+        });
+        for (const unit of [crab27b, crab27, crab27sl]) {
+            units.push(unit);
+            addMegaMekAvailability(unit, faction, era);
+        }
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [crab27b, crab27, crab27sl],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 200, max: 0 },
+            minUnitCount: 4,
+            maxUnitCount: 4,
+            gunnery: 4,
+            piloting: 5,
+            preventDuplicateChassis: false,
+            useTaggedQuantities: false,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual([
+            'Crab CRB-27b',
+            'Crab CRB-27b',
+            'Crab CRB-27b',
+            'Crab CRB-27b',
+        ]);
+        expect(preview.explanationLines[0]).toContain('Eligible units: 3 units. Availability-positive candidates: 3 units. Target: 4-4 units');
     });
 
     it('uses chassis and type for duplicate chassis prevention', () => {
@@ -2868,7 +2971,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.error).not.toBeNull();
     });
 
-    it('does not apply tagged quantity caps when only negative tags are selected', () => {
+    it('ignores tagged quantity mode when only negative tags are selected', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
         const unitA = createUnit({
@@ -2904,8 +3007,8 @@ describe('ForceGeneratorService', () => {
             useTaggedQuantities: true,
         });
 
-        expect(preview.units).toEqual([]);
-        expect(preview.error).not.toBeNull();
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Unit A', 'Unit A']);
     });
 
     it('creates a preview force entry even when the preview contains an error but still has units', () => {
@@ -3097,7 +3200,7 @@ describe('ForceGeneratorService', () => {
         ]);
     });
 
-    it('keeps retrying until the no-match search window expires', () => {
+    it('returns a fallback when no exact budget match exists', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
         const lightUnit = createUnit({ id: 1, name: 'Light Unit', as: { PV: 4 } as Unit['as'] });
@@ -3108,7 +3211,7 @@ describe('ForceGeneratorService', () => {
 
         let nowValue = 0;
         spyOn(performance, 'now').and.callFake(() => {
-            nowValue += 8;
+            nowValue += 0.1;
             return nowValue;
         });
 
@@ -3124,10 +3227,10 @@ describe('ForceGeneratorService', () => {
         });
 
         expect(preview.error).toBeNull();
-        expect(preview.units.length).toBe(1);
+        expect(preview.units.length).toBe(2);
         expect(service.createForceEntry(preview)).not.toBeNull();
-        expect(buildSelectionSpy.calls.count()).toBeGreaterThan(8);
-        expect(buildSelectionSpy.calls.count()).toBeLessThan(12);
+        expect(buildSelectionSpy.calls.count()).toBeGreaterThan(0);
+        expect(buildSelectionSpy.calls.count()).toBeLessThan(16);
     });
 
     it('returns the highest failed attempt that does not exceed the target even if another attempt is closer on unit count', () => {
@@ -3255,9 +3358,9 @@ describe('ForceGeneratorService', () => {
     it('uses ruleset preferences to bias additional unit selection', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const seedUnit = createUnit({ id: 1, name: 'Seed', role: 'skirmisher', weightClass: 'Medium', as: { PV: 4 } as Unit['as'] });
-        const commandUnit = createUnit({ id: 2, name: 'Command', role: 'command', weightClass: 'Heavy', as: { PV: 4 } as Unit['as'] });
-        const scoutUnit = createUnit({ id: 3, name: 'Scout', role: 'scout', weightClass: 'Light', as: { PV: 4 } as Unit['as'] });
+        const seedUnit = createUnit({ id: 1, name: 'Seed', chassis: 'Seed', role: 'skirmisher', weightClass: 'Medium', as: { PV: 4 } as Unit['as'] });
+        const commandUnit = createUnit({ id: 2, name: 'Command', chassis: 'Command', role: 'command', weightClass: 'Heavy', as: { PV: 4 } as Unit['as'] });
+        const scoutUnit = createUnit({ id: 3, name: 'Scout', chassis: 'Scout', role: 'scout', weightClass: 'Light', as: { PV: 4 } as Unit['as'] });
         const ruleset: MegaMekRulesetRecord = {
             factionKey: 'FS',
             indexes: {
@@ -3291,6 +3394,7 @@ describe('ForceGeneratorService', () => {
             maxUnitCount: 2,
             gunnery: 4,
             piloting: 5,
+            preventDuplicateChassis: true,
         } as const;
 
         const randomSpy = spyOn(Math, 'random');

@@ -62,7 +62,8 @@ import { resolveOrgDefinition } from '../utils/org/org-registry.util';
 import { resolveFromGroups, resolveFromUnits } from '../utils/org/org-solver.util';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationRequirementEngine } from '../utils/formation-requirement-engine.util';
-import type { FormationEvaluation, FormationSearchDecision } from '../utils/formation-requirement.model';
+import type { FormationConstraint, FormationEvaluation, FormationSearchDecision } from '../utils/formation-requirement.model';
+import { getFormationBlueprint } from '../utils/formation-blueprints';
 import type { FormationTypeDefinition } from '../utils/formation-type.model';
 import { collectGroupUnits } from '../utils/org/org-facts.util';
 import type { GroupSizeResult, OrgDefinition, OrgRuleDefinition, OrgType } from '../utils/org/org-types';
@@ -1333,6 +1334,21 @@ function getOrderedCandidateCostTotalExcluding(
     return total;
 }
 
+function getReusableCandidateCostTotal(
+    orderedCandidates: readonly ForceGenerationCandidateUnit[],
+    count: number,
+    getCost: (candidate: ForceGenerationCandidateUnit) => number = (candidate) => candidate.cost,
+): number {
+    if (count <= 0) {
+        return 0;
+    }
+    if (orderedCandidates.length === 0) {
+        return Number.POSITIVE_INFINITY;
+    }
+
+    return getCost(orderedCandidates[0]) * count;
+}
+
 function getPreferredOrgTypeForEchelon(echelon: string | undefined): OrgType | undefined {
     return echelon ? ECHELON_TO_ORG_TYPE.get(echelon) : undefined;
 }
@@ -1932,6 +1948,7 @@ export class ForceGeneratorService implements OnDestroy {
             ? this.resolveTaggedQuantityCaps(eligibleUnits, maxUnitCount)
             : null;
         const useTaggedQuantityCaps = (taggedQuantityCaps?.capByKey.size ?? 0) > 0;
+        const allowUnlimitedDuplicateUnits = options.preventDuplicateChassis !== true && !useTaggedQuantityCaps;
         const lockedTaggedQuantityCounts = useTaggedQuantityCaps && taggedQuantityCaps
             ? this.countTaggedQuantityCandidates(lockedCandidates, taggedQuantityCaps)
             : new Map<string, number>();
@@ -1958,6 +1975,14 @@ export class ForceGeneratorService implements OnDestroy {
                 maxUnitCount,
             )
             : [...skillCompatibleCandidates];
+        const availableMatchedPairCopyCapacity = targetFormationContext && !useTaggedQuantityCaps && !allowUnlimitedDuplicateUnits
+            ? this.countMatchedPairCopyCapacity(
+                targetFormationContext.definition,
+                [...lockedCandidates, ...availabilityCandidates],
+                options,
+                maxUnitCount,
+            )
+            : 0;
         const availableUnitCapacity = useTaggedQuantityCaps
             ? lockedCandidates.length + this.countTaggedQuantityCapacity(
                 eligibleUnits,
@@ -1966,7 +1991,9 @@ export class ForceGeneratorService implements OnDestroy {
                 lockedTaggedQuantityCounts,
                 maxUnitCount,
             )
-            : unlockedEligibleUnits.length + lockedCandidates.length;
+            : allowUnlimitedDuplicateUnits
+                ? (eligibleUnits.length > 0 ? maxUnitCount : lockedCandidates.length)
+                : unlockedEligibleUnits.length + lockedCandidates.length + availableMatchedPairCopyCapacity;
 
         if (availableUnitCapacity < minUnitCount) {
             const message = lockedCandidates.length > 0
@@ -2039,11 +2066,23 @@ export class ForceGeneratorService implements OnDestroy {
                 lockedTaggedQuantityCounts,
                 maxUnitCount,
             )
-            : candidates.length + lockedCandidates.length;
+            : candidates.length
+                + lockedCandidates.length
+                + (targetFormationContext && !allowUnlimitedDuplicateUnits
+                    ? this.countMatchedPairCopyCapacity(
+                        targetFormationContext.definition,
+                        [...lockedCandidates, ...skillCompatibleCandidates],
+                        options,
+                        maxUnitCount,
+                    )
+                    : 0);
+        const selectableCandidateCapacity = allowUnlimitedDuplicateUnits
+            ? (skillCompatibleCandidates.length > 0 ? maxUnitCount : lockedCandidates.length)
+            : availableCandidateCapacity;
 
-        if (availableCandidateCapacity < minUnitCount) {
+        if (selectableCandidateCapacity < minUnitCount) {
             const message = lockedCandidates.length > 0
-                ? `Only ${availableCandidateCapacity} total units are available after preserving ${lockedCandidates.length} locked ${lockedCandidates.length === 1 ? 'unit' : 'units'}.`
+                ? `Only ${selectableCandidateCapacity} total units are available after preserving ${lockedCandidates.length} locked ${lockedCandidates.length === 1 ? 'unit' : 'units'}.`
                 : candidates.length < availabilityCandidates.length
                     ? `Only ${candidates.length} availability-positive units can satisfy the selected skill ranges with max delta ${skillSettings.maxDelta}.`
                     : this.getPositiveAvailabilityMessage(candidates.length, options.context);
@@ -2052,7 +2091,7 @@ export class ForceGeneratorService implements OnDestroy {
                 return this.buildPreviewFromSelectionAttempt(
                     options,
                     eligibleUnits.length,
-                    availableCandidateCapacity,
+                    selectableCandidateCapacity,
                     budgetRange,
                     minUnitCount,
                     maxUnitCount,
@@ -2066,7 +2105,7 @@ export class ForceGeneratorService implements OnDestroy {
             return this.buildEmptyPreview(
                 options,
                 eligibleUnits.length,
-                availableCandidateCapacity,
+                selectableCandidateCapacity,
                 budgetRange,
                 minUnitCount,
                 maxUnitCount,
@@ -2335,6 +2374,7 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         if (this.isFirstCompatibleResultBudgetRequest(options.budgetRange)) {
+            const firstCompatibleSearchStartedAt = getForceGeneratorNow();
             const firstCompatibleCandidates = this.createSkillAdjustedCandidatesForAttempt(
                 candidates,
                 options.gameSystem,
@@ -2371,6 +2411,8 @@ export class ForceGeneratorService implements OnDestroy {
                 null,
                 'Budget 0/0 requested, so the first compatible result was returned.',
                 candidates,
+                1,
+                getForceGeneratorNow() - firstCompatibleSearchStartedAt,
             );
         }
 
@@ -2391,9 +2433,12 @@ export class ForceGeneratorService implements OnDestroy {
             ))
             : effectiveFallbackCandidates;
         const candidateCosts = costPlanningCandidates.map((candidate) => candidate.cost);
+        const minimumRequiredCandidateCost = allowUnlimitedDuplicateUnits && candidateCosts.length > 0
+            ? Math.min(...candidateCosts) * remainingMinUnitCount
+            : getMinimumMetricTotal(candidateCosts, remainingMinUnitCount);
         const noUnderMaxForcePossible = Number.isFinite(budgetRange.max)
             && (lockedTotalCost > budgetRange.max
-                || lockedTotalCost + getMinimumMetricTotal(candidateCosts, remainingMinUnitCount) > budgetRange.max);
+                || lockedTotalCost + minimumRequiredCandidateCost > budgetRange.max);
 
         const attemptBudget = this.createAttemptBudget(candidates.length, minUnitCount, maxUnitCount);
         const searchStartedAt = getForceGeneratorNow();
@@ -2548,6 +2593,8 @@ export class ForceGeneratorService implements OnDestroy {
                         null,
                         undefined,
                         candidates,
+                        attemptsTried,
+                        getForceGeneratorNow() - searchStartedAt,
                     );
                 }
             }
@@ -2584,6 +2631,8 @@ export class ForceGeneratorService implements OnDestroy {
                 null,
                 undefined,
                 candidates,
+                attemptsTried,
+                getForceGeneratorNow() - searchStartedAt,
             );
         }
 
@@ -2603,7 +2652,7 @@ export class ForceGeneratorService implements OnDestroy {
                     : 'No force matched the full budget and unit-count constraints, so the nearest force toward the target was returned.',
                 candidates,
                 attemptsTried,
-                    getForceGeneratorNow() - searchStartedAt,
+                getForceGeneratorNow() - searchStartedAt,
             );
         }
 
@@ -2917,7 +2966,7 @@ export class ForceGeneratorService implements OnDestroy {
         gameSystem: GameSystem,
     ): FormationTypeDefinition | null {
         for (const targetFormation of this.resolveRawTargetFormationSelections(options)) {
-            const definition = LanceTypeIdentifierUtil.getDefinitionById(targetFormation.formationId, gameSystem);
+            const definition = LanceTypeIdentifierUtil.resolveDefinition(targetFormation.formationId, gameSystem);
             if (definition?.exclusiveFaction?.length) {
                 return definition;
             }
@@ -4669,6 +4718,13 @@ export class ForceGeneratorService implements OnDestroy {
             );
         }
 
+        if (!error) {
+            const searchEffortNote = this.formatGenerationSearchEffortNote(attemptsTried, attemptsElapsedMs);
+            if (searchEffortNote) {
+                lines.push(`Search effort: ${searchEffortNote}`);
+            }
+        }
+
         if (error) {
             lines.push(`Result note: ${this.formatGenerationResultNote(error, attemptsTried, attemptsElapsedMs)}`);
         }
@@ -5004,10 +5060,14 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private formatGenerationResultNote(note: string, attemptsTried?: number, attemptsElapsedMs?: number): string {
-        if (attemptsTried === undefined) {
-            return note;
-        }
+        const searchEffortNote = this.formatGenerationSearchEffortNote(attemptsTried, attemptsElapsedMs);
+        return searchEffortNote ? `${note} ${searchEffortNote}` : note;
+    }
 
+    private formatGenerationSearchEffortNote(attemptsTried?: number, attemptsElapsedMs?: number): string | null {
+        if (attemptsTried === undefined) {
+            return null;
+        }
         const roundedElapsedMs = attemptsElapsedMs === undefined
             ? undefined
             : Math.max(0, Math.round(attemptsElapsedMs));
@@ -5017,7 +5077,7 @@ export class ForceGeneratorService implements OnDestroy {
         const searchWindowNote = roundedElapsedMs !== undefined && roundedElapsedMs >= FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS
             ? ' Search window expired.'
             : '';
-        return `${note} Attempts tried: ${attemptsTried}${elapsedNote}.${searchWindowNote}`;
+        return `Attempts tried: ${attemptsTried}${elapsedNote}.${searchWindowNote}`;
     }
 
     private getFormationDeficitScore(evaluation: FormationEvaluation | null): number {
@@ -5357,7 +5417,7 @@ export class ForceGeneratorService implements OnDestroy {
             if (!formationId) {
                 continue;
             }
-            const definition = LanceTypeIdentifierUtil.getDefinitionById(formationId, options.gameSystem);
+            const definition = LanceTypeIdentifierUtil.resolveDefinition(formationId, options.gameSystem);
             if (!definition || !this.isTargetFormationAvailableForGenerationContext(definition, options.context)) {
                 continue;
             }
@@ -5365,8 +5425,8 @@ export class ForceGeneratorService implements OnDestroy {
                 ? Math.max(1, Math.floor(rawTarget.count))
                 : 1;
             targetCountByFormationId.set(
-                formationId,
-                Math.min(FORCE_MAX_UNITS, (targetCountByFormationId.get(formationId) ?? 0) + count),
+                definition.id,
+                Math.min(FORCE_MAX_UNITS, (targetCountByFormationId.get(definition.id) ?? 0) + count),
             );
         }
 
@@ -5635,6 +5695,48 @@ export class ForceGeneratorService implements OnDestroy {
             minUnitCount,
             maxUnitCount,
         );
+        const removeRemainingCandidate = (candidate: ForceGenerationCandidateUnit): void => {
+            const remainingIndex = remainingCandidates.indexOf(candidate);
+            if (remainingIndex >= 0) {
+                remainingCandidates.splice(remainingIndex, 1);
+            }
+            const lowestCostIndex = lowestCostRemainingCandidates.indexOf(candidate);
+            if (lowestCostIndex >= 0) {
+                lowestCostRemainingCandidates.splice(lowestCostIndex, 1);
+            }
+            const highestCostIndex = highestCostRemainingCandidates.indexOf(candidate);
+            if (highestCostIndex >= 0) {
+                highestCostRemainingCandidates.splice(highestCostIndex, 1);
+            }
+        };
+        const addSelectedCandidate = (
+            candidate: ForceGenerationCandidateUnit,
+            stepOverrides: Partial<Pick<ForceGenerationSelectionStep, 'rolledSource' | 'source' | 'usedFallbackSource'>>,
+            removeFromRemaining: boolean,
+        ): void => {
+            selectedCandidates.push(candidate);
+            totalCost += candidate.cost;
+            minimumSkillAdjustedTotalCost += this.getSkillPlanningCost(candidate, skillBudgetPlanningCosts, 'min');
+            maximumSkillAdjustedTotalCost += this.getSkillPlanningCost(candidate, skillBudgetPlanningCosts, 'max');
+            if (removeFromRemaining) {
+                removeRemainingCandidate(candidate);
+            }
+
+            const chassisKey = buildDuplicateChassisKey(candidate.unit);
+            if (chassisKey.length > 0) {
+                selectedChassisKeys.add(chassisKey);
+            }
+            if (candidate.taggedQuantityCapKey) {
+                selectedTaggedQuantityCounts.set(
+                    candidate.taggedQuantityCapKey,
+                    (selectedTaggedQuantityCounts.get(candidate.taggedQuantityCapKey) ?? 0) + 1,
+                );
+            }
+
+            selectionSteps.push(this.createSelectionStep(candidate, rulesetProfile, stepOverrides, preparedSelection));
+        };
+        const hasMatchedPairConstraints = this.getMatchedPairConstraintIds(definition.id).size > 0;
+        const allowUnlimitedDuplicateUnits = this.canReuseCandidateCopies(preventDuplicateChassis, candidates);
 
         while (selectedCandidates.length < maxUnitCount && !this.hasSearchDeadlineExpired(deadline)) {
             const currentEvaluation = FormationRequirementEngine.evaluateDefinition(
@@ -5655,9 +5757,30 @@ export class ForceGeneratorService implements OnDestroy {
                 break;
             }
 
+            const matchedPairCandidate = preventDuplicateChassis
+                ? null
+                : this.findMatchedPairCompletionCandidate(
+                    definition,
+                    selectedCandidates,
+                    options,
+                    maxUnitCount,
+                    currentEvaluation,
+                    selectedTaggedQuantityCounts,
+                    budgetRange,
+                    totalCost,
+                );
+            if (matchedPairCandidate) {
+                const source = this.getPreferredAvailabilitySource(matchedPairCandidate);
+                addSelectedCandidate(matchedPairCandidate, {
+                    rolledSource: source,
+                    source,
+                }, false);
+                continue;
+            }
+
             const remainingCandidateCountAfterPick = remainingCandidates.length - 1;
             const requiredAfterPick = Math.max(0, minUnitCount - selectedCandidates.length - 1);
-            if (requiredAfterPick > remainingCandidateCountAfterPick) {
+            if (!allowUnlimitedDuplicateUnits && !hasMatchedPairConstraints && requiredAfterPick > remainingCandidateCountAfterPick) {
                 break;
             }
 
@@ -5668,23 +5791,35 @@ export class ForceGeneratorService implements OnDestroy {
                     return false;
                 }
 
-                const minimumRemainingTotal = getOrderedCandidateCostTotalExcluding(
-                    lowestCostRemainingCandidates,
-                    candidate,
-                    requiredAfterPick,
-                    (remainingCandidate) => this.getSkillPlanningCost(remainingCandidate, skillBudgetPlanningCosts, 'min'),
-                );
+                const minimumRemainingTotal = allowUnlimitedDuplicateUnits
+                    ? getReusableCandidateCostTotal(
+                        lowestCostRemainingCandidates,
+                        requiredAfterPick,
+                        (remainingCandidate) => this.getSkillPlanningCost(remainingCandidate, skillBudgetPlanningCosts, 'min'),
+                    )
+                    : getOrderedCandidateCostTotalExcluding(
+                        lowestCostRemainingCandidates,
+                        candidate,
+                        requiredAfterPick,
+                        (remainingCandidate) => this.getSkillPlanningCost(remainingCandidate, skillBudgetPlanningCosts, 'min'),
+                    );
                 if (nextMinimumTotal + minimumRemainingTotal > budgetRange.max) {
                     return false;
                 }
 
                 const nextMaximumTotal = maximumSkillAdjustedTotalCost + this.getSkillPlanningCost(candidate, skillBudgetPlanningCosts, 'max');
-                const maximumRemainingTotal = getOrderedCandidateCostTotalExcluding(
-                    highestCostRemainingCandidates,
-                    candidate,
-                    remainingSlotsAfterPick,
-                    (remainingCandidate) => this.getSkillPlanningCost(remainingCandidate, skillBudgetPlanningCosts, 'max'),
-                );
+                const maximumRemainingTotal = allowUnlimitedDuplicateUnits
+                    ? getReusableCandidateCostTotal(
+                        highestCostRemainingCandidates,
+                        remainingSlotsAfterPick,
+                        (remainingCandidate) => this.getSkillPlanningCost(remainingCandidate, skillBudgetPlanningCosts, 'max'),
+                    )
+                    : getOrderedCandidateCostTotalExcluding(
+                        highestCostRemainingCandidates,
+                        candidate,
+                        remainingSlotsAfterPick,
+                        (remainingCandidate) => this.getSkillPlanningCost(remainingCandidate, skillBudgetPlanningCosts, 'max'),
+                    );
                 return nextMaximumTotal + maximumRemainingTotal >= budgetRange.min;
             });
 
@@ -5740,36 +5875,11 @@ export class ForceGeneratorService implements OnDestroy {
                 break;
             }
 
-            selectedCandidates.push(nextCandidate);
-            totalCost += nextCandidate.cost;
-            minimumSkillAdjustedTotalCost += this.getSkillPlanningCost(nextCandidate, skillBudgetPlanningCosts, 'min');
-            maximumSkillAdjustedTotalCost += this.getSkillPlanningCost(nextCandidate, skillBudgetPlanningCosts, 'max');
-            remainingCandidates.splice(remainingCandidates.indexOf(nextCandidate), 1);
-            const lowestCostIndex = lowestCostRemainingCandidates.indexOf(nextCandidate);
-            if (lowestCostIndex >= 0) {
-                lowestCostRemainingCandidates.splice(lowestCostIndex, 1);
-            }
-            const highestCostIndex = highestCostRemainingCandidates.indexOf(nextCandidate);
-            if (highestCostIndex >= 0) {
-                highestCostRemainingCandidates.splice(highestCostIndex, 1);
-            }
-
-            const chassisKey = buildDuplicateChassisKey(nextCandidate.unit);
-            if (chassisKey.length > 0) {
-                selectedChassisKeys.add(chassisKey);
-            }
-            if (nextCandidate.taggedQuantityCapKey) {
-                selectedTaggedQuantityCounts.set(
-                    nextCandidate.taggedQuantityCapKey,
-                    (selectedTaggedQuantityCounts.get(nextCandidate.taggedQuantityCapKey) ?? 0) + 1,
-                );
-            }
-
-            selectionSteps.push(this.createSelectionStep(nextCandidate, rulesetProfile, {
+            addSelectedCandidate(nextCandidate, {
                 rolledSource: nextPick.rolledSource,
                 source: nextPick.source,
                 usedFallbackSource: nextPick.usedFallbackSource,
-            }, preparedSelection));
+            }, !allowUnlimitedDuplicateUnits);
         }
 
         return {
@@ -5777,6 +5887,208 @@ export class ForceGeneratorService implements OnDestroy {
             selectionSteps,
             rulesetProfile,
         };
+    }
+
+    private findMatchedPairCompletionCandidate(
+        definition: FormationTypeDefinition,
+        selectedCandidates: readonly ForceGenerationCandidateUnit[],
+        options: ForceGenerationRequest,
+        maxUnitCount: number,
+        currentEvaluation: FormationEvaluation | null,
+        selectedTaggedQuantityCounts: ReadonlyMap<string, number>,
+        budgetRange: { min: number; max: number },
+        currentTotalCost: number,
+    ): ForceGenerationCandidateUnit | null {
+        if (selectedCandidates.length === 0 || selectedCandidates.length + 1 > maxUnitCount) {
+            return null;
+        }
+
+        const matchedPairConstraintIds = this.getMatchedPairConstraintIds(definition.id);
+        if (matchedPairConstraintIds.size === 0) {
+            return null;
+        }
+
+        const current = this.evaluateTargetFormationConstraints(definition, selectedCandidates, options)
+            ?? currentEvaluation;
+        if (!current || current.valid) {
+            return null;
+        }
+
+        for (let index = selectedCandidates.length - 1; index >= 0; index -= 1) {
+            const selectedCandidate = selectedCandidates[index];
+            if (!this.hasPositiveAvailability(selectedCandidate)
+                || !this.hasTaggedQuantityCapacity(selectedCandidate, selectedTaggedQuantityCounts)) {
+                continue;
+            }
+
+            const matchedPairCandidate = this.createMatchedPairCandidateCopy(selectedCandidate);
+            if (Number.isFinite(budgetRange.max) && currentTotalCost + matchedPairCandidate.cost > budgetRange.max) {
+                continue;
+            }
+
+            const decision = this.evaluateTargetFormationCandidate(
+                definition,
+                selectedCandidates,
+                matchedPairCandidate,
+                options,
+                maxUnitCount,
+            );
+            if (!decision.allowed) {
+                continue;
+            }
+
+            const nextEvaluation = this.evaluateTargetFormationConstraints(
+                definition,
+                [...selectedCandidates, matchedPairCandidate],
+                options,
+            );
+            if (nextEvaluation && this.improvesMatchedPairRequirement(current, nextEvaluation, matchedPairConstraintIds)) {
+                return matchedPairCandidate;
+            }
+        }
+
+        return null;
+    }
+
+    private evaluateTargetFormationConstraints(
+        definition: FormationTypeDefinition,
+        candidates: readonly ForceGenerationCandidateUnit[],
+        options: ForceGenerationRequest,
+    ): FormationEvaluation | null {
+        return FormationRequirementEngine.evaluateDefinition(
+            { ...definition, minUnits: 0 },
+            this.createFormationForceUnitsForCandidates(candidates, options),
+            options.gameSystem,
+        );
+    }
+
+    private countMatchedPairCopyCapacity(
+        definition: FormationTypeDefinition,
+        candidates: readonly ForceGenerationCandidateUnit[],
+        options: ForceGenerationRequest,
+        maxUnitCount: number,
+    ): number {
+        let capacity = 0;
+        const countedUnitNames = new Set<string>();
+
+        for (const candidate of candidates) {
+            if (countedUnitNames.has(candidate.unit.name)) {
+                continue;
+            }
+            countedUnitNames.add(candidate.unit.name);
+
+            const currentEvaluation = FormationRequirementEngine.evaluateDefinition(
+                definition,
+                this.createFormationForceUnitsForCandidates([candidate], options),
+                options.gameSystem,
+            );
+            if (this.findMatchedPairCompletionCandidate(
+                definition,
+                [candidate],
+                options,
+                maxUnitCount,
+                currentEvaluation,
+                this.countTaggedQuantitySelections([candidate]),
+                { min: 0, max: Number.POSITIVE_INFINITY },
+                candidate.cost,
+            )) {
+                capacity += 1;
+            }
+        }
+
+        return capacity;
+    }
+
+    private getMatchedPairConstraintIds(formationId: string): Set<string> {
+        const result = new Set<string>();
+        this.collectMatchedPairConstraintIds(getFormationBlueprint(formationId)?.constraints ?? [], result);
+        return result;
+    }
+
+    private collectMatchedPairConstraintIds(
+        constraints: readonly FormationConstraint[],
+        result: Set<string>,
+    ): void {
+        for (const constraint of constraints) {
+            if (constraint.kind === 'matched-pairs-min') {
+                result.add(constraint.id);
+                continue;
+            }
+            if (constraint.kind === 'all-of' || constraint.kind === 'any-of' || constraint.kind === 'conditional') {
+                this.collectMatchedPairConstraintIds(constraint.constraints, result);
+            }
+        }
+    }
+
+    private improvesMatchedPairRequirement(
+        currentEvaluation: FormationEvaluation,
+        nextEvaluation: FormationEvaluation,
+        matchedPairConstraintIds: ReadonlySet<string>,
+    ): boolean {
+        for (const constraintId of matchedPairConstraintIds) {
+            const currentConstraint = currentEvaluation.constraints.find((constraint) => constraint.constraintId === constraintId);
+            const nextConstraint = nextEvaluation.constraints.find((constraint) => constraint.constraintId === constraintId);
+            if (!currentConstraint || !nextConstraint || currentConstraint.satisfied) {
+                continue;
+            }
+
+            if (nextConstraint.satisfied || (nextConstraint.actual ?? 0) > (currentConstraint.actual ?? 0)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private hasPositiveAvailability(candidate: ForceGenerationCandidateUnit): boolean {
+        return candidate.requisitionWeight > 0 || candidate.salvageWeight > 0;
+    }
+
+    private hasTaggedQuantityCapacity(
+        candidate: ForceGenerationCandidateUnit,
+        selectedTaggedQuantityCounts: ReadonlyMap<string, number>,
+    ): boolean {
+        if (!candidate.taggedQuantityCapKey) {
+            return true;
+        }
+
+        const quantityCap = Math.max(1, candidate.taggedQuantityCap ?? 1);
+        return (selectedTaggedQuantityCounts.get(candidate.taggedQuantityCapKey) ?? 0) < quantityCap;
+    }
+
+    private canReuseCandidateCopies(
+        preventDuplicateChassis: boolean,
+        candidates: readonly ForceGenerationCandidateUnit[],
+    ): boolean {
+        return !preventDuplicateChassis && candidates.every((candidate) => !candidate.taggedQuantityCapKey);
+    }
+
+    private countTaggedQuantitySelections(
+        candidates: readonly ForceGenerationCandidateUnit[],
+    ): Map<string, number> {
+        const counts = new Map<string, number>();
+        for (const candidate of candidates) {
+            if (!candidate.taggedQuantityCapKey) {
+                continue;
+            }
+
+            counts.set(candidate.taggedQuantityCapKey, (counts.get(candidate.taggedQuantityCapKey) ?? 0) + 1);
+        }
+        return counts;
+    }
+
+    private createMatchedPairCandidateCopy(candidate: ForceGenerationCandidateUnit): ForceGenerationCandidateUnit {
+        return {
+            ...candidate,
+            alias: undefined,
+            commander: undefined,
+            lockKey: undefined,
+            locked: false,
+        };
+    }
+
+    private getPreferredAvailabilitySource(candidate: ForceGenerationCandidateUnit): ForceGenerationAvailabilitySource {
+        return candidate.requisitionWeight > 0 ? 'requisition' : 'salvage';
     }
 
     private buildTargetFormationGroupSelection(
@@ -5794,6 +6106,7 @@ export class ForceGeneratorService implements OnDestroy {
         const selectedCandidates: ForceGenerationCandidateUnit[] = [];
         const remainingCandidates: ForceGenerationCandidateUnit[] = [...candidates];
         const baseSelectedUnitCount = baseSelectedCandidates.length;
+        const allowUnlimitedDuplicateUnits = this.canReuseCandidateCopies(preventDuplicateChassis, candidates);
         const baseMinimumTotalCost = baseSelectedCandidates.reduce((sum, candidate) => (
             sum + this.getSkillPlanningCost(candidate, skillBudgetPlanningCosts, 'min')
         ), 0);
@@ -5808,10 +6121,40 @@ export class ForceGeneratorService implements OnDestroy {
                 break;
             }
 
+            const matchedPairCandidate = preventDuplicateChassis
+                ? null
+                : this.findMatchedPairCompletionCandidate(
+                    definition,
+                    selectedCandidates,
+                    options,
+                    groupUnitCount,
+                    currentEvaluation,
+                    this.countTaggedQuantitySelections(selectedCandidates),
+                    budgetRange,
+                    baseMinimumTotalCost + selectedCandidates.reduce((sum, selectedCandidate) => (
+                        sum + this.getSkillPlanningCost(selectedCandidate, skillBudgetPlanningCosts, 'min')
+                    ), 0),
+                );
+            if (matchedPairCandidate && this.canTargetFormationGroupPickReachMinimumUnitsWithinBudget(
+                matchedPairCandidate,
+                [matchedPairCandidate, ...remainingCandidates],
+                budgetRange,
+                baseMinimumTotalCost,
+                selectedCandidates,
+                baseSelectedUnitCount,
+                minTotalUnitCount,
+                skillBudgetPlanningCosts,
+                allowUnlimitedDuplicateUnits,
+            )) {
+                selectedCandidates.push(matchedPairCandidate);
+                continue;
+            }
+
             const localCandidatePool = this.filterAvailableTargetFormationCandidates(
                 remainingCandidates,
                 selectedCandidates,
                 preventDuplicateChassis,
+                allowUnlimitedDuplicateUnits,
             );
             const candidateSearchDecisions: Array<{ candidate: ForceGenerationCandidateUnit; decision: FormationSearchDecision }> = [];
             for (const candidate of localCandidatePool) {
@@ -5829,6 +6172,7 @@ export class ForceGeneratorService implements OnDestroy {
                     baseSelectedUnitCount,
                     minTotalUnitCount,
                     skillBudgetPlanningCosts,
+                    allowUnlimitedDuplicateUnits,
                 )) {
                     candidateSearchDecisions.push({ candidate, decision });
                 }
@@ -5866,9 +6210,11 @@ export class ForceGeneratorService implements OnDestroy {
             }
 
             selectedCandidates.push(nextCandidate);
-            const remainingIndex = remainingCandidates.indexOf(nextCandidate);
-            if (remainingIndex >= 0) {
-                remainingCandidates.splice(remainingIndex, 1);
+            if (!allowUnlimitedDuplicateUnits) {
+                const remainingIndex = remainingCandidates.indexOf(nextCandidate);
+                if (remainingIndex >= 0) {
+                    remainingCandidates.splice(remainingIndex, 1);
+                }
             }
         }
 
@@ -5884,6 +6230,7 @@ export class ForceGeneratorService implements OnDestroy {
         baseSelectedUnitCount: number,
         minTotalUnitCount: number,
         skillBudgetPlanningCosts?: ForceGenerationSkillBudgetPlanningCosts,
+        allowUnlimitedDuplicateUnits = false,
     ): boolean {
         if (!Number.isFinite(budgetRange.max)) {
             return true;
@@ -5905,7 +6252,7 @@ export class ForceGeneratorService implements OnDestroy {
             return true;
         }
 
-        if (candidatePool.length - 1 < requiredAfterPick) {
+        if (!allowUnlimitedDuplicateUnits && candidatePool.length - 1 < requiredAfterPick) {
             return false;
         }
 
@@ -5913,12 +6260,18 @@ export class ForceGeneratorService implements OnDestroy {
             this.getSkillPlanningCost(left, skillBudgetPlanningCosts, 'min')
             - this.getSkillPlanningCost(right, skillBudgetPlanningCosts, 'min')
         ));
-        const minimumRemainingTotalCost = getOrderedCandidateCostTotalExcluding(
-            lowestCostCandidatePool,
-            candidate,
-            requiredAfterPick,
-            (remainingCandidate) => this.getSkillPlanningCost(remainingCandidate, skillBudgetPlanningCosts, 'min'),
-        );
+        const minimumRemainingTotalCost = allowUnlimitedDuplicateUnits
+            ? getReusableCandidateCostTotal(
+                lowestCostCandidatePool,
+                requiredAfterPick,
+                (remainingCandidate) => this.getSkillPlanningCost(remainingCandidate, skillBudgetPlanningCosts, 'min'),
+            )
+            : getOrderedCandidateCostTotalExcluding(
+                lowestCostCandidatePool,
+                candidate,
+                requiredAfterPick,
+                (remainingCandidate) => this.getSkillPlanningCost(remainingCandidate, skillBudgetPlanningCosts, 'min'),
+            );
 
         return nextMinimumTotalCost + minimumRemainingTotalCost <= budgetRange.max;
     }
@@ -5943,6 +6296,7 @@ export class ForceGeneratorService implements OnDestroy {
             options.gameSystem,
             skillSettings,
         );
+        const allowUnlimitedDuplicateUnits = this.canReuseCandidateCopies(preventDuplicateChassis, candidates);
 
         for (const [targetIndex, targetInstance] of orderedTargetInstances.entries()) {
             if (this.hasSearchDeadlineExpired(deadline)) {
@@ -5966,8 +6320,9 @@ export class ForceGeneratorService implements OnDestroy {
                 candidates,
                 selectedCandidates,
                 preventDuplicateChassis,
+                allowUnlimitedDuplicateUnits,
             );
-            if (availableCandidates.length + selectedCandidates.length < selectedCandidates.length + groupUnitCount) {
+            if (!allowUnlimitedDuplicateUnits && availableCandidates.length + selectedCandidates.length < selectedCandidates.length + groupUnitCount) {
                 continue;
             }
 
@@ -6010,6 +6365,7 @@ export class ForceGeneratorService implements OnDestroy {
                 candidates,
                 selectedCandidates,
                 preventDuplicateChassis,
+                allowUnlimitedDuplicateUnits,
             );
             const fillAttempt = this.buildCandidateSelection(
                 availableCandidates,
@@ -6080,6 +6436,7 @@ export class ForceGeneratorService implements OnDestroy {
         candidates: readonly ForceGenerationCandidateUnit[],
         selectedCandidates: readonly ForceGenerationCandidateUnit[],
         preventDuplicateChassis: boolean,
+        allowUnlimitedDuplicateUnits = false,
     ): ForceGenerationCandidateUnit[] {
         const selectedCandidateSet = new Set(selectedCandidates);
         const selectedUnitNames = new Set(selectedCandidates.map((candidate) => candidate.unit.name));
@@ -6105,7 +6462,7 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         return candidates.filter((candidate) => {
-            if (selectedCandidateSet.has(candidate)) {
+            if (!allowUnlimitedDuplicateUnits && selectedCandidateSet.has(candidate)) {
                 return false;
             }
             if (candidate.lockKey && selectedLockKeys.has(candidate.lockKey)) {
@@ -6116,7 +6473,7 @@ export class ForceGeneratorService implements OnDestroy {
                 if ((selectedTaggedQuantityCounts.get(candidate.taggedQuantityCapKey) ?? 0) >= quantityCap) {
                     return false;
                 }
-            } else if (selectedUnitNames.has(candidate.unit.name)) {
+            } else if (!allowUnlimitedDuplicateUnits && selectedUnitNames.has(candidate.unit.name)) {
                 return false;
             }
             if (preventDuplicateChassis) {
@@ -6304,6 +6661,7 @@ export class ForceGeneratorService implements OnDestroy {
                 (selectedTaggedQuantityCounts.get(candidate.taggedQuantityCapKey) ?? 0) + 1,
             );
         }
+        const allowUnlimitedDuplicateUnits = this.canReuseCandidateCopies(preventDuplicateChassis, candidates);
 
         while (selectedCandidates.length < maxUnitCount && !this.hasSearchDeadlineExpired(deadline)) {
             if (
@@ -6325,7 +6683,7 @@ export class ForceGeneratorService implements OnDestroy {
 
             const remainingCandidateCountAfterPick = remainingCandidates.length - 1;
             const requiredAfterPick = Math.max(0, minUnitCount - selectedCandidates.length - 1);
-            if (requiredAfterPick > remainingCandidateCountAfterPick) {
+            if (!allowUnlimitedDuplicateUnits && requiredAfterPick > remainingCandidateCountAfterPick) {
                 break;
             }
 
@@ -6337,12 +6695,18 @@ export class ForceGeneratorService implements OnDestroy {
                     return false;
                 }
 
-                const minimumRemainingTotal = getOrderedCandidateCostTotalExcluding(
-                    lowestCostRemainingCandidates,
-                    candidate,
-                    requiredAfterPick,
-                    (remainingCandidate) => this.getSkillPlanningCost(remainingCandidate, skillBudgetPlanningCosts, 'min'),
-                );
+                const minimumRemainingTotal = allowUnlimitedDuplicateUnits
+                    ? getReusableCandidateCostTotal(
+                        lowestCostRemainingCandidates,
+                        requiredAfterPick,
+                        (remainingCandidate) => this.getSkillPlanningCost(remainingCandidate, skillBudgetPlanningCosts, 'min'),
+                    )
+                    : getOrderedCandidateCostTotalExcluding(
+                        lowestCostRemainingCandidates,
+                        candidate,
+                        requiredAfterPick,
+                        (remainingCandidate) => this.getSkillPlanningCost(remainingCandidate, skillBudgetPlanningCosts, 'min'),
+                    );
                 if (nextMinimumTotal + minimumRemainingTotal > budgetRange.max) {
                     return false;
                 }
@@ -6353,12 +6717,18 @@ export class ForceGeneratorService implements OnDestroy {
             const feasibleCandidates = underMaxCandidates.filter((candidate) => {
                 const nextMaximumTotal = maximumSkillAdjustedTotalCost + this.getSkillPlanningCost(candidate, skillBudgetPlanningCosts, 'max');
 
-                const maximumRemainingTotal = getOrderedCandidateCostTotalExcluding(
-                    highestCostRemainingCandidates,
-                    candidate,
-                    remainingSlotsAfterPick,
-                    (remainingCandidate) => this.getSkillPlanningCost(remainingCandidate, skillBudgetPlanningCosts, 'max'),
-                );
+                const maximumRemainingTotal = allowUnlimitedDuplicateUnits
+                    ? getReusableCandidateCostTotal(
+                        highestCostRemainingCandidates,
+                        remainingSlotsAfterPick,
+                        (remainingCandidate) => this.getSkillPlanningCost(remainingCandidate, skillBudgetPlanningCosts, 'max'),
+                    )
+                    : getOrderedCandidateCostTotalExcluding(
+                        highestCostRemainingCandidates,
+                        candidate,
+                        remainingSlotsAfterPick,
+                        (remainingCandidate) => this.getSkillPlanningCost(remainingCandidate, skillBudgetPlanningCosts, 'max'),
+                    );
                 return nextMaximumTotal + maximumRemainingTotal >= budgetRange.min;
             });
 
@@ -6402,14 +6772,16 @@ export class ForceGeneratorService implements OnDestroy {
             totalCost += nextCandidate.cost;
             minimumSkillAdjustedTotalCost += this.getSkillPlanningCost(nextCandidate, skillBudgetPlanningCosts, 'min');
             maximumSkillAdjustedTotalCost += this.getSkillPlanningCost(nextCandidate, skillBudgetPlanningCosts, 'max');
-            remainingCandidates.splice(remainingCandidates.indexOf(nextCandidate), 1);
-            const lowestCostIndex = lowestCostRemainingCandidates.indexOf(nextCandidate);
-            if (lowestCostIndex >= 0) {
-                lowestCostRemainingCandidates.splice(lowestCostIndex, 1);
-            }
-            const highestCostIndex = highestCostRemainingCandidates.indexOf(nextCandidate);
-            if (highestCostIndex >= 0) {
-                highestCostRemainingCandidates.splice(highestCostIndex, 1);
+            if (!allowUnlimitedDuplicateUnits) {
+                remainingCandidates.splice(remainingCandidates.indexOf(nextCandidate), 1);
+                const lowestCostIndex = lowestCostRemainingCandidates.indexOf(nextCandidate);
+                if (lowestCostIndex >= 0) {
+                    lowestCostRemainingCandidates.splice(lowestCostIndex, 1);
+                }
+                const highestCostIndex = highestCostRemainingCandidates.indexOf(nextCandidate);
+                if (highestCostIndex >= 0) {
+                    highestCostRemainingCandidates.splice(highestCostIndex, 1);
+                }
             }
             const chassisKey = buildDuplicateChassisKey(nextCandidate.unit);
             if (chassisKey.length > 0) {
