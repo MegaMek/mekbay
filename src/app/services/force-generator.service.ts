@@ -353,6 +353,10 @@ interface ForceGenerationSkillBudgetPlanningCosts {
     maxCostByCandidate: ReadonlyMap<ForceGenerationCandidateUnit, number>;
 }
 
+interface ForceGenerationTargetFormationBudgetReachabilityContext {
+    lowestCostCandidatePool: readonly ForceGenerationCandidateUnit[];
+}
+
 interface ForceGenerationSkillOptimizationState {
     totalCost: number;
     selectedCandidates: ForceGenerationCandidateUnit[];
@@ -2206,6 +2210,16 @@ export class ForceGeneratorService implements OnDestroy {
                     bestTargetRank = targetRank;
                 }
 
+                this.logTargetFormationAttemptDiagnostics(
+                    'single',
+                    attempt + 1,
+                    optimizedTargetAttempt.selectedCandidates,
+                    targetRank,
+                    budgetRange,
+                    null,
+                    this.hasSearchDeadlineExpired(targetSearchDeadline),
+                );
+
                 if (targetValid) {
                     return this.buildPreviewFromSelectionAttempt(
                         options,
@@ -2303,6 +2317,16 @@ export class ForceGeneratorService implements OnDestroy {
                     bestTargetAttempt = optimizedTargetAttempt;
                     bestTargetEvaluation = targetEvaluation;
                 }
+
+                this.logTargetFormationAttemptDiagnostics(
+                    'multi',
+                    attempt + 1,
+                    optimizedTargetAttempt.selectedCandidates,
+                    targetEvaluation.rank,
+                    budgetRange,
+                    targetEvaluation.message,
+                    this.hasSearchDeadlineExpired(targetSearchDeadline),
+                );
 
                 if (targetEvaluation.allTargetsSatisfied && targetEvaluation.budgetValid && targetEvaluation.unitCountValid) {
                     return this.buildPreviewFromSelectionAttempt(
@@ -5342,38 +5366,6 @@ export class ForceGeneratorService implements OnDestroy {
         return budgetRange.min;
     }
 
-    private getBudgetProgressScore(
-        nextTotal: number,
-        budgetRange: { min: number; max: number },
-        targetBudget: number,
-        nextUnitCount: number,
-        preferredUnitCount?: number,
-    ): number {
-        let score: number;
-
-        if (budgetRange.min > 0 && nextTotal < budgetRange.min) {
-            const denominator = Math.max(1, budgetRange.min);
-            score = 1 + ((denominator - Math.min(denominator, budgetRange.min - nextTotal)) / denominator);
-        } else if (!Number.isFinite(targetBudget) || targetBudget <= 0) {
-            score = 1;
-        } else {
-            const span = Number.isFinite(budgetRange.max)
-                ? Math.max(1, budgetRange.max - budgetRange.min)
-                : Math.max(1, targetBudget);
-            score = 1 + ((span - Math.min(span, Math.abs(targetBudget - nextTotal))) / span);
-        }
-
-        if (preferredUnitCount !== undefined && preferredUnitCount > 0 && Number.isFinite(targetBudget) && targetBudget > 0) {
-            const boundedPreferredCount = Math.max(1, preferredUnitCount);
-            const boundedStepCount = Math.min(nextUnitCount, boundedPreferredCount);
-            const expectedTotal = targetBudget * (boundedStepCount / boundedPreferredCount);
-            const denominator = Math.max(1, expectedTotal);
-            score *= 1 + ((denominator - Math.min(denominator, Math.abs(expectedTotal - nextTotal))) / denominator);
-        }
-
-        return score;
-    }
-
     private getAvailabilityWeightForSource(
         candidate: ForceGenerationCandidateUnit,
         source: ForceGenerationAvailabilitySource,
@@ -5610,14 +5602,15 @@ export class ForceGeneratorService implements OnDestroy {
         candidate: ForceGenerationCandidateUnit,
         options: ForceGenerationRequest,
         maxUnitCount: number,
+        currentUnits?: readonly ForceUnit[],
     ): FormationSearchDecision {
-        const currentUnits = this.createFormationForceUnitsForCandidates(selectedCandidates, options);
+        const resolvedCurrentUnits = currentUnits ?? this.createFormationForceUnitsForCandidates(selectedCandidates, options);
         const nextUnits = this.createFormationForceUnitsForCandidates([...selectedCandidates, candidate], options);
         const candidateUnit = nextUnits[nextUnits.length - 1];
 
         return FormationRequirementEngine.evaluateSearchCandidate(
             definition,
-            currentUnits,
+            resolvedCurrentUnits,
             candidateUnit,
             options.gameSystem,
             { maxUnits: maxUnitCount },
@@ -5690,11 +5683,6 @@ export class ForceGeneratorService implements OnDestroy {
         let maximumSkillAdjustedTotalCost = selectedCandidates.reduce((sum, candidate) => (
             sum + this.getSkillPlanningCost(candidate, skillBudgetPlanningCosts, 'max')
         ), 0);
-        const preferredSelectionUnitCount = this.getPreferredSelectionUnitCount(
-            rulesetProfile?.preferredUnitCount,
-            minUnitCount,
-            maxUnitCount,
-        );
         const removeRemainingCandidate = (candidate: ForceGenerationCandidateUnit): void => {
             const remainingIndex = remainingCandidates.indexOf(candidate);
             if (remainingIndex >= 0) {
@@ -5864,10 +5852,6 @@ export class ForceGeneratorService implements OnDestroy {
             const nextPick = this.pickNextCandidate(
                 pickableCandidates,
                 rulesetProfile,
-                totalCost,
-                budgetRange,
-                selectedCandidates.length,
-                preferredSelectionUnitCount,
                 preparedSelection,
             );
             const nextCandidate = nextPick.candidate;
@@ -6091,6 +6075,18 @@ export class ForceGeneratorService implements OnDestroy {
         return candidate.requisitionWeight > 0 ? 'requisition' : 'salvage';
     }
 
+    private createTargetFormationBudgetReachabilityContext(
+        candidatePool: readonly ForceGenerationCandidateUnit[],
+        skillBudgetPlanningCosts?: ForceGenerationSkillBudgetPlanningCosts,
+    ): ForceGenerationTargetFormationBudgetReachabilityContext {
+        return {
+            lowestCostCandidatePool: [...candidatePool].sort((left, right) => (
+                this.getSkillPlanningCost(left, skillBudgetPlanningCosts, 'min')
+                - this.getSkillPlanningCost(right, skillBudgetPlanningCosts, 'min')
+            )),
+        };
+    }
+
     private buildTargetFormationGroupSelection(
         candidates: readonly ForceGenerationCandidateUnit[],
         options: ForceGenerationRequest,
@@ -6110,6 +6106,10 @@ export class ForceGeneratorService implements OnDestroy {
         const baseMinimumTotalCost = baseSelectedCandidates.reduce((sum, candidate) => (
             sum + this.getSkillPlanningCost(candidate, skillBudgetPlanningCosts, 'min')
         ), 0);
+        const groupSearchStartedAt = LOG_ATTEMPTS ? getForceGeneratorNow() : 0;
+        let budgetReachabilityChecks = 0;
+        let budgetReachabilitySorts = 0;
+        let candidateEvaluationCount = 0;
 
         while (selectedCandidates.length < groupUnitCount && !this.hasSearchDeadlineExpired(deadline)) {
             const currentEvaluation = FormationRequirementEngine.evaluateDefinition(
@@ -6135,9 +6135,21 @@ export class ForceGeneratorService implements OnDestroy {
                         sum + this.getSkillPlanningCost(selectedCandidate, skillBudgetPlanningCosts, 'min')
                     ), 0),
                 );
+            const matchedPairCandidatePool = matchedPairCandidate
+                ? [matchedPairCandidate, ...remainingCandidates]
+                : [];
+            const matchedPairReachabilityContext = matchedPairCandidate && Number.isFinite(budgetRange.max)
+                ? this.createTargetFormationBudgetReachabilityContext(matchedPairCandidatePool, skillBudgetPlanningCosts)
+                : undefined;
+            if (matchedPairReachabilityContext) {
+                budgetReachabilitySorts += 1;
+            }
+            if (matchedPairCandidate) {
+                budgetReachabilityChecks += 1;
+            }
             if (matchedPairCandidate && this.canTargetFormationGroupPickReachMinimumUnitsWithinBudget(
                 matchedPairCandidate,
-                [matchedPairCandidate, ...remainingCandidates],
+                matchedPairCandidatePool,
                 budgetRange,
                 baseMinimumTotalCost,
                 selectedCandidates,
@@ -6145,6 +6157,7 @@ export class ForceGeneratorService implements OnDestroy {
                 minTotalUnitCount,
                 skillBudgetPlanningCosts,
                 allowUnlimitedDuplicateUnits,
+                matchedPairReachabilityContext,
             )) {
                 selectedCandidates.push(matchedPairCandidate);
                 continue;
@@ -6156,14 +6169,21 @@ export class ForceGeneratorService implements OnDestroy {
                 preventDuplicateChassis,
                 allowUnlimitedDuplicateUnits,
             );
+            const reachabilityContext = Number.isFinite(budgetRange.max)
+                ? this.createTargetFormationBudgetReachabilityContext(localCandidatePool, skillBudgetPlanningCosts)
+                : undefined;
+            if (reachabilityContext) {
+                budgetReachabilitySorts += 1;
+            }
             const candidateSearchDecisions: Array<{ candidate: ForceGenerationCandidateUnit; decision: FormationSearchDecision }> = [];
+            const currentForceUnits = this.createFormationForceUnitsForCandidates(selectedCandidates, options);
             for (const candidate of localCandidatePool) {
                 if (this.hasSearchDeadlineExpired(deadline)) {
                     break;
                 }
 
-                const decision = this.evaluateTargetFormationCandidate(definition, selectedCandidates, candidate, options, groupUnitCount);
-                if (this.canTargetFormationGroupPickReachMinimumUnitsWithinBudget(
+                budgetReachabilityChecks += 1;
+                if (!this.canTargetFormationGroupPickReachMinimumUnitsWithinBudget(
                     candidate,
                     localCandidatePool,
                     budgetRange,
@@ -6173,9 +6193,14 @@ export class ForceGeneratorService implements OnDestroy {
                     minTotalUnitCount,
                     skillBudgetPlanningCosts,
                     allowUnlimitedDuplicateUnits,
+                    reachabilityContext,
                 )) {
-                    candidateSearchDecisions.push({ candidate, decision });
+                    continue;
                 }
+
+                candidateEvaluationCount += 1;
+                const decision = this.evaluateTargetFormationCandidate(definition, selectedCandidates, candidate, options, groupUnitCount, currentForceUnits);
+                candidateSearchDecisions.push({ candidate, decision });
             }
             const formationCandidateDecisions = candidateSearchDecisions.filter((entry) => entry.decision.allowed);
             const fallbackCandidateDecisions = formationCandidateDecisions.length > 0
@@ -6193,16 +6218,9 @@ export class ForceGeneratorService implements OnDestroy {
                 ? improvingCandidateDecisions
                 : fallbackCandidateDecisions;
             const candidateDecisionByUnit = new Map(candidateDecisions.map((entry) => [entry.candidate, entry.decision]));
-            const selectedMinimumTotalCost = selectedCandidates.reduce((sum, candidate) => (
-                sum + this.getSkillPlanningCost(candidate, skillBudgetPlanningCosts, 'min')
-            ), 0);
             const nextPick = this.pickNextCandidate(
                 candidateDecisions.map((entry) => entry.candidate),
                 null,
-                baseMinimumTotalCost + selectedMinimumTotalCost,
-                budgetRange,
-                baseSelectedUnitCount + selectedCandidates.length,
-                minTotalUnitCount,
             );
             const nextCandidate = nextPick.candidate;
             if (!candidateDecisionByUnit.has(nextCandidate)) {
@@ -6218,6 +6236,17 @@ export class ForceGeneratorService implements OnDestroy {
             }
         }
 
+        this.logTargetFormationGroupSelectionDiagnostics(
+            definition,
+            candidates.length,
+            selectedCandidates.length,
+            budgetReachabilityChecks,
+            budgetReachabilitySorts,
+            candidateEvaluationCount,
+            this.hasSearchDeadlineExpired(deadline),
+            LOG_ATTEMPTS ? getForceGeneratorNow() - groupSearchStartedAt : 0,
+        );
+
         return this.createSelectionAttemptFromCandidates(selectedCandidates, null);
     }
 
@@ -6231,6 +6260,7 @@ export class ForceGeneratorService implements OnDestroy {
         minTotalUnitCount: number,
         skillBudgetPlanningCosts?: ForceGenerationSkillBudgetPlanningCosts,
         allowUnlimitedDuplicateUnits = false,
+        reachabilityContext?: ForceGenerationTargetFormationBudgetReachabilityContext,
     ): boolean {
         if (!Number.isFinite(budgetRange.max)) {
             return true;
@@ -6256,10 +6286,8 @@ export class ForceGeneratorService implements OnDestroy {
             return false;
         }
 
-        const lowestCostCandidatePool = [...candidatePool].sort((left, right) => (
-            this.getSkillPlanningCost(left, skillBudgetPlanningCosts, 'min')
-            - this.getSkillPlanningCost(right, skillBudgetPlanningCosts, 'min')
-        ));
+        const lowestCostCandidatePool = reachabilityContext?.lowestCostCandidatePool
+            ?? this.createTargetFormationBudgetReachabilityContext(candidatePool, skillBudgetPlanningCosts).lowestCostCandidatePool;
         const minimumRemainingTotalCost = allowUnlimitedDuplicateUnits
             ? getReusableCandidateCostTotal(
                 lowestCostCandidatePool,
@@ -6274,6 +6302,60 @@ export class ForceGeneratorService implements OnDestroy {
             );
 
         return nextMinimumTotalCost + minimumRemainingTotalCost <= budgetRange.max;
+    }
+
+    private logTargetFormationGroupSelectionDiagnostics(
+        definition: FormationTypeDefinition,
+        availableCandidateCount: number,
+        selectedCandidateCount: number,
+        budgetReachabilityChecks: number,
+        budgetReachabilitySorts: number,
+        candidateEvaluationCount: number,
+        deadlineExpired: boolean,
+        elapsedMs: number,
+    ): void {
+        if (!LOG_ATTEMPTS || typeof console === 'undefined' || typeof console.log !== 'function') {
+            return;
+        }
+
+        console.log('[ForceGenerator] Target formation group selection', {
+            formationId: definition.id,
+            formationName: definition.name,
+            availableCandidateCount,
+            selectedCandidateCount,
+            budgetReachabilityChecks,
+            budgetReachabilitySorts,
+            candidateEvaluationCount,
+            deadlineExpired,
+            elapsedMs: Math.round(elapsedMs),
+        });
+    }
+
+    private logTargetFormationAttemptDiagnostics(
+        mode: 'single' | 'multi',
+        attemptNumber: number,
+        selectedCandidates: readonly ForceGenerationCandidateUnit[],
+        rank: ForceGenerationTargetAttemptRank,
+        budgetRange: { min: number; max: number },
+        message: string | null,
+        deadlineExpired: boolean,
+    ): void {
+        if (!LOG_ATTEMPTS || typeof console === 'undefined' || typeof console.log !== 'function') {
+            return;
+        }
+
+        const totalCost = selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
+        console.log('[ForceGenerator] Target formation attempt', {
+            mode,
+            attemptNumber,
+            selectedUnitCount: selectedCandidates.length,
+            totalCost,
+            budgetMin: budgetRange.min,
+            budgetMax: Number.isFinite(budgetRange.max) ? budgetRange.max : null,
+            rank,
+            message,
+            deadlineExpired,
+        });
     }
 
     private buildMultiTargetedFormationSelection(
@@ -6552,10 +6634,6 @@ export class ForceGeneratorService implements OnDestroy {
     private pickNextCandidate(
         candidates: readonly ForceGenerationCandidateUnit[],
         rulesetProfile: ForceGenerationRulesetProfile | null,
-        totalCost: number,
-        budgetRange: { min: number; max: number },
-        currentUnitCount: number,
-        preferredUnitCount?: number,
         selectionPreparation?: ForceGenerationSelectionPreparation,
     ): {
         candidate: ForceGenerationCandidateUnit;
@@ -6573,21 +6651,13 @@ export class ForceGeneratorService implements OnDestroy {
                 ? alternateCandidates
                 : candidates;
         const weightedSource = sourceCandidates.length > 0 ? source : alternateCandidates.length > 0 ? alternateSource : source;
-        const targetBudget = this.getBudgetTarget(budgetRange);
 
         return {
             candidate: pickWeightedRandomEntry(weightedCandidates, (candidate) => {
                 const availabilityWeight = Math.max(0.05, this.getAvailabilityWeightForSource(candidate, weightedSource));
-                const budgetScore = this.getBudgetProgressScore(
-                    totalCost + candidate.cost,
-                    budgetRange,
-                    targetBudget,
-                    currentUnitCount + 1,
-                    preferredUnitCount,
-                );
                 const rulesetScore = selectionPreparation?.rulesetScoreByCandidate.get(candidate)
                     ?? this.getRulesetMatchScore(candidate, rulesetProfile);
-                return availabilityWeight * budgetScore * rulesetScore;
+                return availabilityWeight * rulesetScore;
             }),
             rolledSource: source,
             source: weightedSource,
@@ -6761,10 +6831,6 @@ export class ForceGeneratorService implements OnDestroy {
             const nextPick = this.pickNextCandidate(
                 chassisFilteredCandidatePool,
                 rulesetProfile,
-                totalCost,
-                budgetRange,
-                selectedCandidates.length,
-                preferredSelectionUnitCount,
                 preparedSelection,
             );
             const nextCandidate = nextPick.candidate;
