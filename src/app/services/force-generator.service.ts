@@ -3405,7 +3405,7 @@ export class ForceGeneratorService implements OnDestroy {
         const counts = new Map<string, number>();
 
         for (const candidate of candidates) {
-            const capKey = taggedQuantityCaps.keyByUnitName.get(candidate.unit.name);
+            const capKey = this.resolveTaggedQuantityCapKeyForUnit(candidate.unit, taggedQuantityCaps);
             if (!capKey) {
                 continue;
             }
@@ -3577,6 +3577,24 @@ export class ForceGeneratorService implements OnDestroy {
         return Math.min(maxUnitCount, Math.max(1, taggedQuantityCaps.capByKey.get(capKey) ?? 1));
     }
 
+    private resolveTaggedQuantityCapKeyForUnit(
+        unit: Unit,
+        taggedQuantityCaps: ForceGenerationTaggedQuantityCaps,
+    ): string | null {
+        const mappedKey = taggedQuantityCaps.keyByUnitName.get(unit.name);
+        if (mappedKey) {
+            return mappedKey;
+        }
+
+        const chassisKey = buildTaggedQuantityChassisKey(unit);
+        if (taggedQuantityCaps.capByKey.has(chassisKey)) {
+            return chassisKey;
+        }
+
+        const unitKey = buildTaggedQuantityUnitKey(unit);
+        return taggedQuantityCaps.capByKey.has(unitKey) ? unitKey : null;
+    }
+
     private getAvailableTaggedQuantityCopies(
         capKey: string,
         taggedQuantityCaps: ForceGenerationTaggedQuantityCaps,
@@ -3599,7 +3617,7 @@ export class ForceGeneratorService implements OnDestroy {
         let capacity = 0;
 
         for (const item of items) {
-            const capKey = taggedQuantityCaps.keyByUnitName.get(getUnit(item).name);
+            const capKey = this.resolveTaggedQuantityCapKeyForUnit(getUnit(item), taggedQuantityCaps);
             if (!capKey || countedKeys.has(capKey)) {
                 continue;
             }
@@ -3625,7 +3643,7 @@ export class ForceGeneratorService implements OnDestroy {
         const expandedCandidates: ForceGenerationCandidateUnit[] = [];
 
         for (const candidate of candidates) {
-            const capKey = taggedQuantityCaps.keyByUnitName.get(candidate.unit.name);
+            const capKey = this.resolveTaggedQuantityCapKeyForUnit(candidate.unit, taggedQuantityCaps);
             const availableCopies = capKey
                 ? this.getAvailableTaggedQuantityCopies(
                     capKey,

@@ -3139,6 +3139,82 @@ describe('ForceGeneratorService', () => {
         expect(preview.units.filter((unit) => unit.unit.chassis === 'Wasp')).toHaveSize(1);
     });
 
+    it('subtracts locked matching units from shared tagged quantity caps even when they are not in eligible units', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const lockedLocust = createUnit({
+            id: 99,
+            name: 'Locust Locked LCT-L',
+            chassis: 'Locust',
+            model: 'LCT-L',
+            type: 'Mek',
+            as: { PV: 1 } as Unit['as'],
+            _nameTags: [{ tag: 'owned', quantity: 1 }],
+        });
+        const locustA = createUnit({
+            id: 1,
+            name: 'Locust LCT-A',
+            chassis: 'Locust',
+            model: 'LCT-A',
+            type: 'Mek',
+            as: { PV: 1 } as Unit['as'],
+            _nameTags: [{ tag: 'owned', quantity: 2 }],
+        });
+        const locustB = createUnit({
+            id: 2,
+            name: 'Locust LCT-B',
+            chassis: 'Locust',
+            model: 'LCT-B',
+            type: 'Mek',
+            as: { PV: 1 } as Unit['as'],
+            _nameTags: [{ tag: 'owned', quantity: 1 }],
+        });
+        const wasp = createUnit({
+            id: 3,
+            name: 'Wasp WSP-1A',
+            chassis: 'Wasp',
+            model: 'WSP-1A',
+            type: 'Mek',
+            as: { PV: 1 } as Unit['as'],
+            _nameTags: [{ tag: 'owned', quantity: 2 }],
+        });
+
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            _tags: {
+                interactedWith: true,
+                value: {
+                    owned: { name: 'owned', state: 'or', count: 1 },
+                },
+            },
+        });
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [locustA, locustB, wasp],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 100 },
+            minUnitCount: 3,
+            maxUnitCount: 3,
+            gunnery: 4,
+            piloting: 5,
+            preventDuplicateChassis: false,
+            useTaggedQuantities: true,
+            useUnitTagsAsChassisTags: true,
+            lockedUnits: [{
+                unit: lockedLocust,
+                cost: 1,
+                skill: 4,
+                lockKey: 'locked-locust',
+            }],
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units).toHaveSize(3);
+        expect(preview.units.filter((unit) => unit.unit.chassis === 'Locust')).toHaveSize(2);
+        expect(preview.units.filter((unit) => unit.unit.chassis === 'Wasp')).toHaveSize(1);
+    });
+
     it('ignores negative tag quantities when resolving exact-unit duplicate caps', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');

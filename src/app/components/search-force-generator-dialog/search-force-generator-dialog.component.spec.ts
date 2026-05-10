@@ -844,10 +844,13 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(serializeSpy).not.toHaveBeenCalled();
         expect(component.canImportCurrentForce()).toBeTrue();
         expect(component.lockedUnitKeys().size).toBe(2);
-        expect(component.lockedUnitKeys().has('u-1')).toBeTrue();
-        expect(component.lockedUnitKeys().has('u-2')).toBeTrue();
+        const previewLockKeys = preview.units.map((unit) => unit.lockKey);
+        expect(previewLockKeys.every((lockKey) => !!lockKey)).toBeTrue();
+        expect(previewLockKeys).toHaveSize(2);
+        expect(new Set(previewLockKeys).size).toBe(2);
+        expect(previewLockKeys.every((lockKey) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(lockKey!))).toBeTrue();
+        expect(previewLockKeys.every((lockKey) => component.lockedUnitKeys().has(lockKey!))).toBeTrue();
         expect(preview.units.map((unit) => unit.unit.name)).toEqual([atlas.name, locust.name]);
-        expect(preview.units.map((unit) => unit.lockKey)).toEqual(['u-1', 'u-2']);
         expect(preview.explanationLines).toContain('Imported current force into preview. Press REROLL to generate a new result for the current settings.');
         expect(buildPreviewSpy).not.toHaveBeenCalled();
         expect(sendWsMessageSpy).not.toHaveBeenCalled();
