@@ -3008,6 +3008,137 @@ describe('ForceGeneratorService', () => {
         expect(preview.units.filter((unit) => unit.unit.chassis === 'Crab')).toHaveSize(4);
     });
 
+    it('can share selected unit-tag quantities across variants by chassis key', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const locust20 = createUnit({
+            id: 1,
+            name: 'Locust LCT-20',
+            chassis: 'Locust',
+            model: 'LCT-20',
+            type: 'Mek',
+            as: { PV: 1 } as Unit['as'],
+            _nameTags: [{ tag: 'owned', quantity: 1 }],
+        });
+        const locust21 = createUnit({
+            id: 2,
+            name: 'Locust LCT-21',
+            chassis: 'Locust',
+            model: 'LCT-21',
+            type: 'Mek',
+            as: { PV: 1 } as Unit['as'],
+            _nameTags: [{ tag: 'owned', quantity: 2 }],
+        });
+        const locust22 = createUnit({
+            id: 3,
+            name: 'Locust LCT-22',
+            chassis: 'Locust',
+            model: 'LCT-22',
+            type: 'Mek',
+            as: { PV: 1 } as Unit['as'],
+            _nameTags: [{ tag: 'owned', quantity: 1 }],
+        });
+        const wasp = createUnit({
+            id: 4,
+            name: 'Wasp WSP-1A',
+            chassis: 'Wasp',
+            model: 'WSP-1A',
+            type: 'Mek',
+            as: { PV: 1 } as Unit['as'],
+            _nameTags: [{ tag: 'owned', quantity: 2 }],
+        });
+
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            _tags: {
+                interactedWith: true,
+                value: {
+                    owned: { name: 'owned', state: 'or', count: 1 },
+                },
+            },
+        });
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [locust20, locust21, locust22, wasp],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 100 },
+            minUnitCount: 4,
+            maxUnitCount: 4,
+            gunnery: 4,
+            piloting: 5,
+            preventDuplicateChassis: false,
+            useTaggedQuantities: true,
+            useUnitTagsAsChassisTags: true,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.filter((unit) => unit.unit.chassis === 'Locust')).toHaveSize(2);
+        expect(preview.units.filter((unit) => unit.unit.chassis === 'Wasp')).toHaveSize(2);
+    });
+
+    it('uses the highest shared cap when selected unit and chassis tags mix', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const locustA = createUnit({
+            id: 1,
+            name: 'Locust LCT-A',
+            chassis: 'Locust',
+            model: 'LCT-A',
+            type: 'Mek',
+            as: { PV: 1 } as Unit['as'],
+            _nameTags: [{ tag: 'owned', quantity: 2 }],
+            _chassisTags: [{ tag: 'owned', quantity: 1 }],
+        });
+        const locustB = createUnit({
+            id: 2,
+            name: 'Locust LCT-B',
+            chassis: 'Locust',
+            model: 'LCT-B',
+            type: 'Mek',
+            as: { PV: 1 } as Unit['as'],
+            _nameTags: [{ tag: 'owned', quantity: 1 }],
+            _chassisTags: [{ tag: 'owned', quantity: 1 }],
+        });
+        const wasp = createUnit({
+            id: 3,
+            name: 'Wasp WSP-1A',
+            chassis: 'Wasp',
+            model: 'WSP-1A',
+            type: 'Mek',
+            as: { PV: 1 } as Unit['as'],
+            _nameTags: [{ tag: 'owned', quantity: 1 }],
+        });
+
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            _tags: {
+                interactedWith: true,
+                value: {
+                    owned: { name: 'owned', state: 'or', count: 1 },
+                },
+            },
+        });
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [locustA, locustB, wasp],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 100 },
+            minUnitCount: 3,
+            maxUnitCount: 3,
+            gunnery: 4,
+            piloting: 5,
+            preventDuplicateChassis: false,
+            useTaggedQuantities: true,
+            useUnitTagsAsChassisTags: true,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.filter((unit) => unit.unit.chassis === 'Locust')).toHaveSize(2);
+        expect(preview.units.filter((unit) => unit.unit.chassis === 'Wasp')).toHaveSize(1);
+    });
+
     it('ignores negative tag quantities when resolving exact-unit duplicate caps', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');

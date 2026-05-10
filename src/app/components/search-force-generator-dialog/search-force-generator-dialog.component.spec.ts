@@ -53,6 +53,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
             forceGenLastMaxPilotSkillDelta: 1,
             forceGenPreventDuplicateChassis: false,
             forceGenUseTaggedQuantities: false,
+            forceGenUseUnitTagsAsChassisTags: false,
         });
 
         setOptionSpy = jasmine.createSpy('setOption').and.callFake((key: string, value: unknown) => {
@@ -415,6 +416,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
             ...options,
             forceGenPreventDuplicateChassis: true,
             forceGenUseTaggedQuantities: true,
+            forceGenUseUnitTagsAsChassisTags: true,
         }));
 
         const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
@@ -424,6 +426,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         const dialog = fixture.componentInstance;
         expect(dialog.preventDuplicateChassis()).toBeTrue();
         expect(dialog.useTaggedQuantities()).toBeFalse();
+        expect(dialog.useUnitTagsAsChassisTags()).toBeTrue();
     });
 
     it('uses uncapped force-generator eligible units for preview requests', () => {
@@ -992,6 +995,40 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(buildPreviewSpy.calls.mostRecent().args[0].useTaggedQuantities).toBeTrue();
     });
 
+    it('renders the unit-tags-as-chassis checkbox only when tagged quantities are active', async () => {
+        const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        expect(fixture.nativeElement.querySelector('.unit-tags-as-chassis-option')).toBeNull();
+
+        fixture.componentInstance.onUseTaggedQuantitiesChange({
+            target: { checked: true },
+        } as unknown as Event);
+        fixture.detectChanges();
+
+        expect(fixture.nativeElement.querySelector('.unit-tags-as-chassis-option')).not.toBeNull();
+    });
+
+    it('stores and forwards the unit-tags-as-chassis checkbox state', () => {
+        component.onUseTaggedQuantitiesChange({
+            target: { checked: true },
+        } as unknown as Event);
+        setOptionSpy.calls.reset();
+
+        component.onUseUnitTagsAsChassisTagsChange({
+            target: { checked: true },
+        } as unknown as Event);
+
+        expect(buildPreviewSpy).not.toHaveBeenCalled();
+        expect(setOptionSpy).toHaveBeenCalledOnceWith('forceGenUseUnitTagsAsChassisTags', true);
+
+        component.reroll();
+
+        expect(buildPreviewSpy.calls.mostRecent().args[0].useTaggedQuantities).toBeTrue();
+        expect(buildPreviewSpy.calls.mostRecent().args[0].useUnitTagsAsChassisTags).toBeTrue();
+    });
+
     it('unchecks duplicate-chassis prevention when tagged quantities is checked', () => {
         component.onPreventDuplicateChassisChange({
             target: { checked: true },
@@ -1222,7 +1259,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(dialogCloseSpy.calls.mostRecent().args[0].config.crossEraAvailabilityInMultiEraSelection).toBeTrue();
     });
 
-    it('includes the tagged-quantities checkbox state in the submitted config', () => {
+    it('includes tagged-quantity checkbox states in the submitted config', () => {
         const atlas = createEmptyUnit({
             id: 4,
             name: 'Atlas AS7-D',
@@ -1232,6 +1269,9 @@ describe('SearchForceGeneratorDialogComponent', () => {
         });
 
         component.onUseTaggedQuantitiesChange({
+            target: { checked: true },
+        } as unknown as Event);
+        component.onUseUnitTagsAsChassisTagsChange({
             target: { checked: true },
         } as unknown as Event);
 
@@ -1260,6 +1300,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         expect(dialogCloseSpy).toHaveBeenCalledTimes(1);
         expect(dialogCloseSpy.calls.mostRecent().args[0].config.useTaggedQuantities).toBeTrue();
+        expect(dialogCloseSpy.calls.mostRecent().args[0].config.useUnitTagsAsChassisTags).toBeTrue();
     });
 
     it('renders pilot skill range controls and sends them to preview generation', async () => {

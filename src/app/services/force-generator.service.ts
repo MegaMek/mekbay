@@ -76,6 +76,7 @@ import { normalizeMultiStateSelection } from '../utils/unit-search-shared.util';
 import { DataService } from './data.service';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
+import { TagsService } from './tags.service';
 
 /**
  * Author: Drake
@@ -428,6 +429,7 @@ export interface ForceGenerationRequest {
     lockedUnits?: readonly GeneratedForceUnit[];
     preventDuplicateChassis?: boolean;
     useTaggedQuantities?: boolean;
+    useUnitTagsAsChassisTags?: boolean;
     targetFormationId?: string;
     targetFormations?: readonly ForceGenerationTargetFormationSelection[];
 }
@@ -1509,7 +1511,7 @@ function buildTaggedQuantityUnitKey(unit: Unit): string {
 }
 
 function buildTaggedQuantityChassisKey(unit: Unit): string {
-    const chassisKey = buildDuplicateChassisKey(unit);
+    const chassisKey = normalizeSelectionKey(TagsService.getChassisTagKey(unit));
     return chassisKey.length > 0 ? `chassis:${chassisKey}` : buildTaggedQuantityUnitKey(unit);
 }
 
@@ -1949,7 +1951,7 @@ export class ForceGeneratorService implements OnDestroy {
         ));
         const lockedUnitNames = new Set(lockedCandidates.map((candidate) => candidate.unit.name));
         const taggedQuantityCaps = options.useTaggedQuantities === true && options.preventDuplicateChassis !== true
-            ? this.resolveTaggedQuantityCaps(eligibleUnits, maxUnitCount)
+            ? this.resolveTaggedQuantityCaps(eligibleUnits, maxUnitCount, options.useUnitTagsAsChassisTags === true)
             : null;
         const useTaggedQuantityCaps = (taggedQuantityCaps?.capByKey.size ?? 0) > 0;
         const allowUnlimitedDuplicateUnits = options.preventDuplicateChassis !== true && !useTaggedQuantityCaps;
@@ -3406,6 +3408,7 @@ export class ForceGeneratorService implements OnDestroy {
     private resolveTaggedQuantityCaps(
         eligibleUnits: readonly Unit[],
         maxUnitCount: number,
+        useUnitTagsAsChassisTags = false,
     ): ForceGenerationTaggedQuantityCaps {
         const selectedTagKeys = this.resolvePositiveTaggedQuantityFilterKeys(eligibleUnits);
         if (selectedTagKeys.size === 0) {
@@ -3413,6 +3416,10 @@ export class ForceGeneratorService implements OnDestroy {
                 capByKey: new Map<string, number>(),
                 keyByUnitName: new Map<string, string>(),
             };
+        }
+
+        if (useUnitTagsAsChassisTags) {
+            return this.resolveChassisSharedTaggedQuantityCaps(eligibleUnits, selectedTagKeys, maxUnitCount);
         }
 
         const capByKey = new Map<string, number>();
@@ -3425,6 +3432,32 @@ export class ForceGeneratorService implements OnDestroy {
                 };
             keyByUnitName.set(unit.name, resolvedCap.key);
             capByKey.set(resolvedCap.key, Math.max(capByKey.get(resolvedCap.key) ?? 1, resolvedCap.cap));
+        }
+
+        return {
+            capByKey,
+            keyByUnitName,
+        };
+    }
+
+    private resolveChassisSharedTaggedQuantityCaps(
+        eligibleUnits: readonly Unit[],
+        selectedTagKeys: ReadonlySet<string>,
+        maxUnitCount: number,
+    ): ForceGenerationTaggedQuantityCaps {
+        const capByKey = new Map<string, number>();
+        const keyByUnitName = new Map<string, string>();
+
+        for (const unit of eligibleUnits) {
+            const chassisQuantityCap = this.getTaggedQuantityCapFromEntries(unit._chassisTags, selectedTagKeys, maxUnitCount);
+            const unitQuantityCap = this.getTaggedQuantityCapFromEntries(unit._nameTags, selectedTagKeys, maxUnitCount);
+            const resolvedCap = Math.max(chassisQuantityCap, unitQuantityCap);
+            const resolvedKey = resolvedCap > 0
+                ? buildTaggedQuantityChassisKey(unit)
+                : buildTaggedQuantityUnitKey(unit);
+
+            keyByUnitName.set(unit.name, resolvedKey);
+            capByKey.set(resolvedKey, Math.max(capByKey.get(resolvedKey) ?? 1, resolvedCap || 1));
         }
 
         return {
@@ -3477,19 +3510,7 @@ export class ForceGeneratorService implements OnDestroy {
         selectedTagKeys: ReadonlySet<string>,
         maxUnitCount: number,
     ): { key: string; cap: number } | null {
-        let chassisQuantityCap = 0;
-        let unitQuantityCap = 0;
-
-        for (const tagEntry of unit._chassisTags ?? []) {
-            if (!selectedTagKeys.has(normalizeSelectionKey(tagEntry.tag))) {
-                continue;
-            }
-
-            chassisQuantityCap = Math.max(
-                chassisQuantityCap,
-                this.normalizeTaggedQuantityCap(tagEntry.quantity, maxUnitCount),
-            );
-        }
+        const chassisQuantityCap = this.getTaggedQuantityCapFromEntries(unit._chassisTags, selectedTagKeys, maxUnitCount);
 
         if (chassisQuantityCap > 0) {
             return {
@@ -3498,16 +3519,7 @@ export class ForceGeneratorService implements OnDestroy {
             };
         }
 
-        for (const tagEntry of unit._nameTags ?? []) {
-            if (!selectedTagKeys.has(normalizeSelectionKey(tagEntry.tag))) {
-                continue;
-            }
-
-            unitQuantityCap = Math.max(
-                unitQuantityCap,
-                this.normalizeTaggedQuantityCap(tagEntry.quantity, maxUnitCount),
-            );
-        }
+        const unitQuantityCap = this.getTaggedQuantityCapFromEntries(unit._nameTags, selectedTagKeys, maxUnitCount);
 
         if (unitQuantityCap > 0) {
             return {
@@ -3517,6 +3529,26 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         return null;
+    }
+
+    private getTaggedQuantityCapFromEntries(
+        tagEntries: readonly { tag: string; quantity?: number }[] | undefined,
+        selectedTagKeys: ReadonlySet<string>,
+        maxUnitCount: number,
+    ): number {
+        let quantityCap = 0;
+        for (const tagEntry of tagEntries ?? []) {
+            if (!selectedTagKeys.has(normalizeSelectionKey(tagEntry.tag))) {
+                continue;
+            }
+
+            quantityCap = Math.max(
+                quantityCap,
+                this.normalizeTaggedQuantityCap(tagEntry.quantity, maxUnitCount),
+            );
+        }
+
+        return quantityCap;
     }
 
     private normalizeTaggedQuantityCap(quantity: number | undefined, maxUnitCount: number): number {

@@ -85,6 +85,7 @@ const DEFAULT_OPTIONS: Options = {
     forceGenLastMaxPilotSkillDelta: 1,
     forceGenPreventDuplicateChassis: false,
     forceGenUseTaggedQuantities: false,
+    forceGenUseUnitTagsAsChassisTags: false,
 };
 
 @Injectable({ providedIn: 'root' })
@@ -132,6 +133,7 @@ export class OptionsService {
         forceGenLastMaxPilotSkillDelta: DEFAULT_OPTIONS.forceGenLastMaxPilotSkillDelta,
         forceGenPreventDuplicateChassis: DEFAULT_OPTIONS.forceGenPreventDuplicateChassis,
         forceGenUseTaggedQuantities: DEFAULT_OPTIONS.forceGenUseTaggedQuantities,
+        forceGenUseUnitTagsAsChassisTags: DEFAULT_OPTIONS.forceGenUseUnitTagsAsChassisTags,
     });
 
     constructor() {
@@ -183,6 +185,7 @@ export class OptionsService {
             forceGenLastMaxPilotSkillDelta: saved?.forceGenLastMaxPilotSkillDelta ?? DEFAULT_OPTIONS.forceGenLastMaxPilotSkillDelta,
             forceGenPreventDuplicateChassis: saved?.forceGenPreventDuplicateChassis ?? DEFAULT_OPTIONS.forceGenPreventDuplicateChassis,
             forceGenUseTaggedQuantities: saved?.forceGenUseTaggedQuantities ?? DEFAULT_OPTIONS.forceGenUseTaggedQuantities,
+            forceGenUseUnitTagsAsChassisTags: saved?.forceGenUseUnitTagsAsChassisTags ?? DEFAULT_OPTIONS.forceGenUseUnitTagsAsChassisTags,
         });
     }
 

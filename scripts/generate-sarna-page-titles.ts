@@ -58,7 +58,7 @@ const VEHICLE_CATEGORIES = [
 
 const UNIT_TYPE_CATEGORIES = {
     Mek: [
-        'BattleMechs'
+        '\'Mechs'
     ],
     Aero: [
         'Aerospace_Fighter_classes',
