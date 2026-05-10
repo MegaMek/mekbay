@@ -110,6 +110,8 @@ const OPTIONS_VIEW_DEFINITIONS_BY_ID = new Map<OptionsViewId, OptionsViewDefinit
 );
 
 const TOP_LEVEL_OPTIONS_VIEWS = OPTIONS_VIEW_DEFINITIONS.filter(view => !view.parentId);
+const FORCE_GEN_FAILURE_SEARCH_WINDOW_MIN_MS = 300;
+const FORCE_GEN_FAILURE_SEARCH_WINDOW_MAX_MS = 5000;
 
 /*
  * Author: Drake
@@ -465,6 +467,18 @@ export class OptionsDialogComponent {
     onVehiclesCriticalHitTableChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'default' | 'scouringSands';
         this.optionsService.setOption('ASVehiclesCriticalHitTable', value);
+    }
+
+    onForceGenFailureSearchWindowMsChange(event: Event) {
+        const input = event.target as HTMLInputElement;
+        const currentValue = this.optionsService.options().forceGenFailureSearchWindowMs;
+        const parsedValue = Number.parseInt(input.value, 10);
+        const nextValue = Number.isFinite(parsedValue)
+            ? Math.min(FORCE_GEN_FAILURE_SEARCH_WINDOW_MAX_MS, Math.max(FORCE_GEN_FAILURE_SEARCH_WINDOW_MIN_MS, parsedValue))
+            : currentValue;
+
+        input.value = `${nextValue}`;
+        this.optionsService.setOption('forceGenFailureSearchWindowMs', nextValue);
     }
 
     selectAll(event: FocusEvent) {

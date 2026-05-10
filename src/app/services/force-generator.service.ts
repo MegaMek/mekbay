@@ -74,6 +74,7 @@ import { ForceNamerUtil } from '../utils/force-namer.util';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
 import { normalizeMultiStateSelection } from '../utils/unit-search-shared.util';
 import { DataService } from './data.service';
+import { OptionsService } from './options.service';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 import { TagsService } from './tags.service';
@@ -89,7 +90,9 @@ const DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT = 1;
 const FORCE_GENERATION_PRODUCTION_SOURCE_ROLL_WEIGHT = 5;
 const FORCE_GENERATION_SALVAGE_SOURCE_ROLL_WEIGHT = 1;
 const IMPLICIT_MULTI_FACTION_EXCLUDED_IDS = new Set<number>([MULFACTION_EXTINCT]);
-const FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS = 300;
+const DEFAULT_FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS = 300;
+const MIN_FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS = 300;
+const MAX_FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS = 5000;
 export const FORCE_GENERATION_MIN_PILOT_SKILL = 0;
 export const FORCE_GENERATION_MAX_PILOT_SKILL = 8;
 export const DEFAULT_FORCE_GENERATION_MAX_CBT_SKILL_DELTA = 1;
@@ -1701,6 +1704,7 @@ function toMegaMekMotive(unit: Unit): string | undefined {
 @Injectable()
 export class ForceGeneratorService implements OnDestroy {
     private readonly dataService = inject(DataService);
+    private readonly optionsService = inject(OptionsService);
     private readonly filtersService = inject(UnitSearchFiltersService);
     private readonly unitAvailabilitySource = inject(UnitAvailabilitySourceService);
     private availabilityWeightCache: ForceGenerationAvailabilityWeightCache | null = null;
@@ -2146,9 +2150,10 @@ export class ForceGeneratorService implements OnDestroy {
                 ));
 
         if (targetFormationContext) {
+            const failureSearchWindowMs = this.resolveFailureSearchWindowMs();
             const targetAttemptBudget = this.createAttemptBudget(candidates.length, minUnitCount, maxUnitCount);
             const targetSearchStartedAt = getForceGeneratorNow();
-            const targetSearchDeadline = this.createSearchDeadline(targetSearchStartedAt, FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS);
+            const targetSearchDeadline = this.createSearchDeadline(targetSearchStartedAt, failureSearchWindowMs);
             let targetAttemptDurationEstimateMs = 0;
             let targetAttemptLimit = targetAttemptBudget.minAttempts;
             let targetAttemptsTried = 0;
@@ -2252,6 +2257,7 @@ export class ForceGeneratorService implements OnDestroy {
                     targetAttemptDurationEstimateMs,
                     getForceGeneratorNow() - targetSearchStartedAt,
                     false,
+                    failureSearchWindowMs,
                 );
             }
 
@@ -2274,9 +2280,10 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         if (targetFormationSetContext) {
+            const failureSearchWindowMs = this.resolveFailureSearchWindowMs();
             const targetAttemptBudget = this.createAttemptBudget(candidates.length, minUnitCount, maxUnitCount);
             const targetSearchStartedAt = getForceGeneratorNow();
-            const targetSearchDeadline = this.createSearchDeadline(targetSearchStartedAt, FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS);
+            const targetSearchDeadline = this.createSearchDeadline(targetSearchStartedAt, failureSearchWindowMs);
             let targetAttemptDurationEstimateMs = 0;
             let targetAttemptLimit = targetAttemptBudget.minAttempts;
             let targetAttemptsTried = 0;
@@ -2360,6 +2367,7 @@ export class ForceGeneratorService implements OnDestroy {
                     targetAttemptDurationEstimateMs,
                     getForceGeneratorNow() - targetSearchStartedAt,
                     bestTargetEvaluation !== null && bestTargetEvaluation.rank.satisfiedTargetCount > 0,
+                    failureSearchWindowMs,
                 );
             }
 
@@ -2482,6 +2490,7 @@ export class ForceGeneratorService implements OnDestroy {
         let bestValidMidpointDistance = Number.POSITIVE_INFINITY;
         let bestValidStructureScore = Number.NEGATIVE_INFINITY;
         const successfulAttempts: ForceGenerationSuccessfulAttemptLog[] = [];
+        const failureSearchWindowMs = this.resolveFailureSearchWindowMs();
         let attemptDurationEstimateMs = 0;
         let attemptLimit = attemptBudget.minAttempts;
         let attemptsTried = 0;
@@ -2634,6 +2643,7 @@ export class ForceGeneratorService implements OnDestroy {
                 attemptDurationEstimateMs,
                 getForceGeneratorNow() - searchStartedAt,
                 bestValidAttempt !== null,
+                failureSearchWindowMs,
             );
         }
 
@@ -5125,13 +5135,14 @@ export class ForceGeneratorService implements OnDestroy {
         if (attemptsTried === undefined) {
             return null;
         }
+        const failureSearchWindowMs = this.resolveFailureSearchWindowMs();
         const roundedElapsedMs = attemptsElapsedMs === undefined
             ? undefined
             : Math.max(0, Math.round(attemptsElapsedMs));
         const elapsedNote = attemptsElapsedMs === undefined
             ? ''
             : ` in ${roundedElapsedMs}ms`;
-        const searchWindowNote = roundedElapsedMs !== undefined && roundedElapsedMs >= FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS
+        const searchWindowNote = roundedElapsedMs !== undefined && roundedElapsedMs >= failureSearchWindowMs
             ? ' Search window expired.'
             : '';
         return `Attempts tried: ${attemptsTried}${elapsedNote}.${searchWindowNote}`;
@@ -5357,12 +5368,25 @@ export class ForceGeneratorService implements OnDestroy {
         return !!deadline && getForceGeneratorNow() >= deadline.expiresAtMs;
     }
 
+    private resolveFailureSearchWindowMs(): number {
+        const configuredMs = this.optionsService.options().forceGenFailureSearchWindowMs;
+        const normalizedMs = Number.isFinite(configuredMs)
+            ? Math.floor(configuredMs)
+            : DEFAULT_FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS;
+
+        return Math.min(
+            MAX_FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS,
+            Math.max(MIN_FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS, normalizedMs),
+        );
+    }
+
     private resolveAttemptLimit(
         attemptBudget: ForceGenerationAttemptBudget,
         completedAttempts: number,
         attemptDurationEstimateMs: number,
         elapsedMs: number,
         hasValidAttempt: boolean,
+        failureSearchWindowMs: number,
     ): number {
         if (completedAttempts < attemptBudget.minAttempts) {
             return attemptBudget.minAttempts;
@@ -5370,7 +5394,7 @@ export class ForceGeneratorService implements OnDestroy {
 
         const targetDurationMs = hasValidAttempt
             ? attemptBudget.targetDurationMs
-            : FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS;
+            : failureSearchWindowMs;
         const maxAttempts = hasValidAttempt ? attemptBudget.maxAttempts : Number.MAX_SAFE_INTEGER;
 
         if (completedAttempts >= maxAttempts) {

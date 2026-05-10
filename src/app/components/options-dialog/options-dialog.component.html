@@ -581,6 +581,24 @@
                 </div>
                 }
             </div>
+            <div class="option-col">
+                <div class="option-row">
+                    <label for="forceGenFailureSearchWindowMs">Force generator search window (ms):</label>
+                    <input
+                        id="forceGenFailureSearchWindowMs"
+                        class="bt-input force-gen-search-window-input"
+                        type="number"
+                        min="300"
+                        max="5000"
+                        step="50"
+                        [value]="optionsService.options().forceGenFailureSearchWindowMs"
+                        (change)="onForceGenFailureSearchWindowMsChange($event)" />
+                </div>
+                <div class="description">
+                    <p>Controls how long the force generator keeps searching before stopping when no valid force is found.</p>
+                    <p>Range: 300 to 5000 milliseconds.</p>
+                </div>
+            </div>
             <hr />
             <div class="option-col">
                 <div class="option-row">

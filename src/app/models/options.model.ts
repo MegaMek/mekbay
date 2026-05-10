@@ -84,6 +84,7 @@ export interface Options {
     forceGenLastPilotingSkillMin: number;
     forceGenLastPilotingSkillMax: number;
     forceGenLastMaxPilotSkillDelta: number;
+    forceGenFailureSearchWindowMs: number;
     forceGenPreventDuplicateChassis: boolean;
     forceGenUseTaggedQuantities: boolean;
     forceGenUseUnitTagsAsChassisTags: boolean;
