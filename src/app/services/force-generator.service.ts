@@ -1914,6 +1914,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     public buildPreview(options: ForceGenerationRequest): ForceGenerationPreview {
+        const previewStartedAt = getForceGeneratorNow();
         const eligibleUnits = options.eligibleUnits ?? this.filtersService.filteredUnits();
         const requestedMinUnitCount = Math.min(FORCE_MAX_UNITS, Math.max(1, Math.floor(options.minUnitCount)));
         const requestedMaxUnitCount = Math.min(FORCE_MAX_UNITS, Math.max(requestedMinUnitCount, Math.floor(options.maxUnitCount)));
@@ -2241,7 +2242,7 @@ export class ForceGeneratorService implements OnDestroy {
                         undefined,
                         candidates,
                         targetAttemptsTried,
-                        getForceGeneratorNow() - targetSearchStartedAt,
+                        getForceGeneratorNow() - previewStartedAt,
                     );
                 }
 
@@ -2275,7 +2276,7 @@ export class ForceGeneratorService implements OnDestroy {
                 targetMessage,
                 candidates,
                 targetAttemptsTried,
-                getForceGeneratorNow() - targetSearchStartedAt,
+                getForceGeneratorNow() - previewStartedAt,
             );
         }
 
@@ -2351,7 +2352,7 @@ export class ForceGeneratorService implements OnDestroy {
                         undefined,
                         candidates,
                         targetAttemptsTried,
-                        getForceGeneratorNow() - targetSearchStartedAt,
+                        getForceGeneratorNow() - previewStartedAt,
                     );
                 }
 
@@ -2366,7 +2367,10 @@ export class ForceGeneratorService implements OnDestroy {
                     targetAttemptsTried,
                     targetAttemptDurationEstimateMs,
                     getForceGeneratorNow() - targetSearchStartedAt,
-                    bestTargetEvaluation !== null && bestTargetEvaluation.rank.satisfiedTargetCount > 0,
+                    bestTargetEvaluation !== null
+                        && bestTargetEvaluation.allTargetsSatisfied
+                        && bestTargetEvaluation.budgetValid
+                        && bestTargetEvaluation.unitCountValid,
                     failureSearchWindowMs,
                 );
             }
@@ -2382,13 +2386,13 @@ export class ForceGeneratorService implements OnDestroy {
                     minUnitCount,
                     maxUnitCount,
                 );
-            const partialTargetSuccess = fallbackEvaluation.rank.satisfiedTargetCount > 0
+            const fullyValidTargetSuccess = fallbackEvaluation.allTargetsSatisfied
                 && fallbackEvaluation.budgetValid
                 && fallbackEvaluation.unitCountValid;
-            const targetFormationError = fallbackEvaluation.allTargetsSatisfied || partialTargetSuccess
+            const targetFormationError = fullyValidTargetSuccess
                 ? null
                 : fallbackEvaluation.message;
-            const targetFormationResultNote = fallbackEvaluation.allTargetsSatisfied
+            const targetFormationResultNote = fullyValidTargetSuccess
                 ? undefined
                 : fallbackEvaluation.message;
 
@@ -2404,7 +2408,7 @@ export class ForceGeneratorService implements OnDestroy {
                 targetFormationResultNote,
                 candidates,
                 targetAttemptsTried,
-                getForceGeneratorNow() - targetSearchStartedAt,
+                getForceGeneratorNow() - previewStartedAt,
             );
         }
 
@@ -2447,7 +2451,7 @@ export class ForceGeneratorService implements OnDestroy {
                 'Budget 0/0 requested, so the first compatible result was returned.',
                 candidates,
                 1,
-                getForceGeneratorNow() - firstCompatibleSearchStartedAt,
+                getForceGeneratorNow() - previewStartedAt,
             );
         }
 
@@ -2630,7 +2634,7 @@ export class ForceGeneratorService implements OnDestroy {
                         undefined,
                         candidates,
                         attemptsTried,
-                        getForceGeneratorNow() - searchStartedAt,
+                        getForceGeneratorNow() - previewStartedAt,
                     );
                 }
             }
@@ -2669,7 +2673,7 @@ export class ForceGeneratorService implements OnDestroy {
                 undefined,
                 candidates,
                 attemptsTried,
-                getForceGeneratorNow() - searchStartedAt,
+                getForceGeneratorNow() - previewStartedAt,
             );
         }
 
@@ -2689,7 +2693,7 @@ export class ForceGeneratorService implements OnDestroy {
                     : 'No force matched the full budget and unit-count constraints, so the nearest force toward the target was returned.',
                 candidates,
                 attemptsTried,
-                getForceGeneratorNow() - searchStartedAt,
+                getForceGeneratorNow() - previewStartedAt,
             );
         }
 
@@ -2703,7 +2707,7 @@ export class ForceGeneratorService implements OnDestroy {
             'Unable to build a force within the selected BV/PV range and unit count constraints.',
             candidates,
             attemptsTried,
-            getForceGeneratorNow() - searchStartedAt,
+                getForceGeneratorNow() - previewStartedAt,
         );
     }
 
@@ -5144,6 +5148,18 @@ export class ForceGeneratorService implements OnDestroy {
         return 0;
     }
 
+    private getFormattedBudgetRange(budgetRange: { min: number; max: number }): string {
+        const formattedMin = budgetRange.min.toLocaleString();
+        if (!Number.isFinite(budgetRange.max)) {
+            return `${formattedMin}+`;
+        }
+
+        const formattedMax = budgetRange.max.toLocaleString();
+        return budgetRange.min === budgetRange.max
+            ? formattedMin
+            : `${formattedMin}-${formattedMax}`;
+    }
+
     private formatGenerationResultNote(note: string, attemptsTried?: number, attemptsElapsedMs?: number): string {
         const searchEffortNote = this.formatGenerationSearchEffortNote(attemptsTried, attemptsElapsedMs);
         return searchEffortNote ? `${note} ${searchEffortNote}` : note;
@@ -6682,14 +6698,26 @@ export class ForceGeneratorService implements OnDestroy {
 
         const totalCost = selectionAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
         const budgetDistance = this.getBudgetRangeDistance(totalCost, budgetRange);
+        const budgetValid = budgetDistance === 0;
         const unitCountDistance = this.getUnitCountRangeDistance(selectionAttempt.selectedCandidates.length, minUnitCount, maxUnitCount);
+        const unitCountValid = unitCountDistance === 0;
         const requestedTargetCount = targetFormationSetContext.instances.length;
         const achievedSummary = this.formatTargetFormationInstances(groups.slice(0, satisfiedTargetCount), options.gameSystem);
-        const message = satisfiedTargetCount === requestedTargetCount
+        const baseMessage = satisfiedTargetCount === requestedTargetCount
             ? `Target formations achieved: ${achievedSummary || `${satisfiedTargetCount} of ${requestedTargetCount}`}.`
             : satisfiedTargetCount > 0
                 ? `Target formations achieved: ${satisfiedTargetCount} of ${requestedTargetCount} requested${achievedSummary ? ` (${achievedSummary})` : ''}.`
                 : 'Unable to complete any requested target formation within the selected filters, budget, and locked units.';
+        const budgetLabel = options.gameSystem === GameSystem.ALPHA_STRIKE ? 'PV' : 'BV';
+        const budgetIssue = budgetValid
+            ? null
+            : `Budget mismatch: ${totalCost.toLocaleString()} ${budgetLabel} is outside ${this.getFormattedBudgetRange(budgetRange)}.`;
+        const unitCountIssue = unitCountValid
+            ? null
+            : `Unit count mismatch: ${selectionAttempt.selectedCandidates.length} is outside ${minUnitCount}-${maxUnitCount}.`;
+        const message = [baseMessage, budgetIssue, unitCountIssue]
+            .filter((entry): entry is string => !!entry)
+            .join(' ');
 
         return {
             rank: {
@@ -6700,8 +6728,8 @@ export class ForceGeneratorService implements OnDestroy {
                 unitCountDistance,
             },
             allTargetsSatisfied: satisfiedTargetCount === requestedTargetCount,
-            budgetValid: budgetDistance === 0,
-            unitCountValid: unitCountDistance === 0,
+            budgetValid,
+            unitCountValid,
             message,
         };
     }

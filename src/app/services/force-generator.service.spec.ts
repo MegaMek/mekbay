@@ -1040,7 +1040,7 @@ describe('ForceGeneratorService', () => {
             ],
         });
 
-        expect(preview.error).toBeNull();
+        expect(preview.error).toContain('Target formations achieved: 1 of 2 requested');
         expect(preview.units.length).toBe(4);
         expect(preview.targetFormationGroups?.map((group) => group.formationId)).toEqual(['command-lance']);
         expect(preview.explanationLines.join('\n')).toContain('Target formations achieved: 1 of 2 requested (Command).');
@@ -1090,7 +1090,7 @@ describe('ForceGeneratorService', () => {
             ],
         });
 
-        expect(preview.error).toBeNull();
+        expect(preview.error).toContain('Target formations achieved: 2 of 5 requested');
         expect(preview.units.length).toBe(8);
         expect(preview.targetFormations).toEqual([
             { formationId: 'command-lance', count: 1 },
@@ -1170,10 +1170,10 @@ describe('ForceGeneratorService', () => {
             ],
         });
 
-        expect(underBudgetPreview.error).toBeNull();
+        expect(underBudgetPreview.error).toContain('Budget mismatch');
         expect(underBudgetPreview.units.length).toBe(20);
         expect(underBudgetPreview.totalCost).toBe(800);
-        expect(underBudgetPreview.explanationLines.join('\n')).not.toContain('Target formations achieved');
+        expect(underBudgetPreview.explanationLines.join('\n')).toContain('Target formations achieved');
     });
 
     it('fills additional units after multi-target formations to reach the requested unit range', () => {
@@ -1491,7 +1491,7 @@ describe('ForceGeneratorService', () => {
             ],
         });
 
-        expect(preview.error).toBeNull();
+        expect(preview.error).toContain('Target formations achieved: 1 of 3 requested');
         expect(preview.units.length).toBe(5);
         expect(preview.targetFormationGroups?.map((group) => group.formationId)).toEqual(['assault-lance']);
         expect(preview.targetFormationGroups?.[0]?.unitIndexes.length).toBe(3);
