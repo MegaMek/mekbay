@@ -67,7 +67,7 @@ import {
 } from '../../services/force-generator.service';
 import { GameService } from '../../services/game.service';
 import { OptionsService } from '../../services/options.service';
-import { WsService } from '../../services/ws.service';
+import { generateUUID, WsService } from '../../services/ws.service';
 import type { AdvFilterOptions, DropdownFilterOptions } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { resolveDropdownNamesFromFilter } from '../../utils/filter-name-resolution.util';
@@ -693,7 +693,7 @@ export class SearchForceGeneratorDialogComponent {
 
         const importedPreviewEntry = createForcePreviewEntryFromForce(currentForce);
         const importedUnits = getForcePreviewUnitEntries(importedPreviewEntry)
-            .map((unitEntry, index) => this.toLockedGeneratedUnit(unitEntry, index))
+            .map((unitEntry) => this.toLockedGeneratedUnit(unitEntry))
             .filter((unit): unit is GeneratedForceUnit => unit !== null);
 
         this.lockedUnits.set(importedUnits);
@@ -1355,7 +1355,7 @@ export class SearchForceGeneratorDialogComponent {
         };
     }
 
-    private toLockedGeneratedUnit(unitEntry: ForcePreviewUnit, index: number): GeneratedForceUnit | null {
+    private toLockedGeneratedUnit(unitEntry: ForcePreviewUnit): GeneratedForceUnit | null {
         if (!unitEntry.unit) {
             return null;
         }
@@ -1386,7 +1386,7 @@ export class SearchForceGeneratorDialogComponent {
             piloting,
             alias: unitEntry.alias,
             commander: unitEntry.commander,
-            lockKey: unitEntry.lockKey ?? `imported:${index}:${unitEntry.unit.name}`,
+            lockKey: unitEntry.lockKey ?? generateUUID(),
         };
     }
 }

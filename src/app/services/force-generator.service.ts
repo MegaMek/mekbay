@@ -77,6 +77,7 @@ import { DataService } from './data.service';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 import { TagsService } from './tags.service';
+import { generateUUID } from './ws.service';
 
 /**
  * Author: Drake
@@ -1939,13 +1940,13 @@ export class ForceGeneratorService implements OnDestroy {
                 'The selected target formation is not available for the current ruleset.',
             );
         }
-        const lockedCandidates = (options.lockedUnits ?? []).map((lockedUnit, index) => this.createCandidateUnit(
+        const lockedCandidates = (options.lockedUnits ?? []).map((lockedUnit) => this.createCandidateUnit(
             lockedUnit.unit,
             options.context,
             options,
             {
                 ...lockedUnit,
-                lockKey: lockedUnit.lockKey ?? `locked:${index}:${lockedUnit.unit.name}`,
+                lockKey: lockedUnit.lockKey ?? generateUUID(),
             },
             availabilityWeightCache,
         ));
@@ -4669,7 +4670,7 @@ export class ForceGeneratorService implements OnDestroy {
         };
     }
 
-    private createGeneratedUnit(candidate: ForceGenerationCandidateUnit, index: number): GeneratedForceUnit {
+    private createGeneratedUnit(candidate: ForceGenerationCandidateUnit): GeneratedForceUnit {
         return {
             unit: candidate.unit,
             cost: candidate.cost,
@@ -4678,7 +4679,7 @@ export class ForceGeneratorService implements OnDestroy {
             piloting: candidate.piloting,
             alias: candidate.alias,
             commander: candidate.commander,
-            lockKey: candidate.lockKey ?? `generated:${index}:${candidate.unit.name}`,
+            lockKey: candidate.lockKey ?? generateUUID(),
         };
     }
 
@@ -4858,7 +4859,7 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         const totalCost = selectionAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
-        const units = selectionAttempt.selectedCandidates.map((candidate, index) => this.createGeneratedUnit(candidate, index));
+        const units = selectionAttempt.selectedCandidates.map((candidate) => this.createGeneratedUnit(candidate));
         const targetFormations = this.resolveRequestedTargetFormations(options);
         const targetFormationId = targetFormations.length === 1 && targetFormations[0].count === 1
             ? targetFormations[0].formationId
