@@ -40,6 +40,20 @@
       </div>
     }
 
+    @if (showFormationTargetFilter()) {
+    <div class="filter-row formation-target-filter-row">
+        <multi-select-dropdown class="dropdown formation-target-dropdown"
+            [label]="'Formation'"
+            [options]="formationTargetOptions()"
+            [selected]="selectedFormationTarget()"
+            [multiselect]="false"
+            (selectionChange)="onFormationTargetSelectionChange($event)">
+        </multi-select-dropdown>
+    </div>
+    <div class="filter-row formation-target-filter-row">
+    </div>
+    }
+
     @for (conf of rangeFilters(); track conf.key) {
       @let rangeOpts = $any(filtersService.advOptions()[conf.key]);
       <div class="filter-row" [class.semantic-only]="rangeOpts?.semanticOnly">

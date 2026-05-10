@@ -57,7 +57,7 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import type { TagClickEvent } from '../unit-tags/unit-tags.component';
 import { AbilityInfoDialogComponent, type AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
 import { isMegaMekRaritySortKey, SORT_OPTIONS } from '../../services/unit-search-filters.model';
-import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
+import { getFormationDefinition } from '../../utils/formation-blueprints';
 import { formationInheritsParentEffects } from '../../utils/formation-type.model';
 import { TaggingService } from '../../services/tagging.service';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
@@ -673,7 +673,7 @@ export class ForceOverviewDialogComponent {
         const showParentRequirements = formationInheritsParentEffects(formation) && !!formation.parent;
 
         if (showParentRequirements) {
-            const parent = FORMATION_DEFINITIONS.find(d => d.id === formation.parent);
+            const parent = getFormationDefinition(formation.parent!);
             if (parent?.requirements) {
                 const parentReq = parent.requirements(group.force.gameSystem);
                 if (parentReq) parts.push(this.buildFormationRequirementTooltipLine(parent.name, parentReq));

@@ -18,7 +18,10 @@
             } @else if (!semanticOnly() && selectedOptions().length === 0) {
                 <span class="placeholder">Any</span>
             } @else if (!multiselect() && singleSelectedOption(); as selectedOption) {
-                <span class="single-selected-value">{{ getDisplayName(selectedOption.name) }}</span>
+                <span class="single-selected-value pill or">
+                    {{ getDisplayName(selectedOption.name) }}
+                    <button type="button" class="remove-pill" (click)="removeOption(selectedOption.name, $event)">&#10005;</button>
+                </span>
             } @else if (compressedPills(); as compressed) {
                 @for (cp of compressed; track cp.state) {
                     <span class="pill"

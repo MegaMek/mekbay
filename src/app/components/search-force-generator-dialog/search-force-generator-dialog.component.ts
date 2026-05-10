@@ -48,7 +48,7 @@ import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { ForcePreviewPanelComponent } from '../force-preview-panel/force-preview-panel.component';
 import { ForceRadarPanelComponent } from '../force-radar-panel/force-radar-panel.component';
 import { ModeSwitchComponent } from '../mode-switch/mode-switch.component';
-import { MultiSelectDropdownComponent, type MultiStateSelection } from '../multi-select-dropdown/multi-select-dropdown.component';
+import { MultiSelectDropdownComponent, type DropdownOption, type MultiStateSelection } from '../multi-select-dropdown/multi-select-dropdown.component';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { UnitSearchAdvancedFiltersComponent } from '../unit-search-advanced-filters/unit-search-advanced-filters.component';
@@ -62,6 +62,7 @@ import {
     type ForceGenerationPreview,
     type ForceGenerationSkillRange,
     type ForceGenerationSkillRanges,
+    type ForceGenerationTargetFormationSelection,
     type GeneratedForceUnit,
 } from '../../services/force-generator.service';
 import { GameService } from '../../services/game.service';
@@ -70,7 +71,12 @@ import { WsService } from '../../services/ws.service';
 import type { AdvFilterOptions, DropdownFilterOptions } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { resolveDropdownNamesFromFilter } from '../../utils/filter-name-resolution.util';
+import { getFormationDefinitions } from '../../utils/formation-blueprints';
+import { FormationRequirementEngine } from '../../utils/formation-requirement-engine.util';
+import type { FormationTypeDefinition } from '../../utils/formation-type.model';
+import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
 import { type HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
+import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
 import { normalizeMultiStateSelection } from '../../utils/unit-search-shared.util';
 import { SyntaxInputComponent } from '../syntax-input/syntax-input.component';
 
@@ -87,6 +93,8 @@ export interface SearchForceGeneratorDialogConfig {
     crossEraAvailabilityInMultiEraSelection: boolean;
     preventDuplicateChassis: boolean;
     useTaggedQuantities: boolean;
+    targetFormationId?: string;
+    targetFormations?: readonly ForceGenerationTargetFormationSelection[];
 }
 
 export interface SearchForceGeneratorDialogResult {
@@ -184,7 +192,7 @@ export class SearchForceGeneratorDialogComponent {
         const filterKey = this.unitTypeFilterKey();
         return filterKey ? this.getDropdownFilter(filterKey) : null;
     });
-    readonly subtypeFilter = computed(() => this.getDropdownFilter('subtype'));
+    readonly subtypeFilter = computed(() => this.gameSystem() === GameSystem.CLASSIC ? this.getDropdownFilter('subtype') : null);
     readonly tagsFilter = computed(() => this.getDropdownFilter('_tags'));
     readonly selectedEraValues = computed(() => this.getSelectedMultiStateValues(this.eraFilter()));
     readonly selectedFactionValues = computed(() => this.getSelectedMultiStateValues(this.factionFilter()));
@@ -214,7 +222,7 @@ export class SearchForceGeneratorDialogComponent {
         return this.gameSystem() === GameSystem.CLASSIC
             && (this.pilotingSkillRangeActive() || this.maxPilotSkillDeltaActive());
     });
-    readonly additionalFiltersExcludedKeys = computed(() => {
+    private readonly primaryDialogFilterKeys = computed(() => {
         const excludedKeys = new Set<string>(['era', 'faction', '_tags']);
         const unitTypeFilterKey = this.unitTypeFilterKey();
         if (unitTypeFilterKey) {
@@ -226,21 +234,30 @@ export class SearchForceGeneratorDialogComponent {
 
         return [...excludedKeys];
     });
+    readonly additionalFiltersExcludedKeys = computed(() => this.primaryDialogFilterKeys());
     readonly otherAdvPanelFilterGameSystem = computed(() => this.getOtherGameSystem(this.advPanelFilterGameSystem()));
     readonly otherAdvPanelFilterGameSystemHasActiveFilters = computed(() => {
         const filterState = this.filtersService.effectiveFilterState();
         const otherGameSystem = this.otherAdvPanelFilterGameSystem();
+        const excludedKeys = new Set(this.primaryDialogFilterKeys());
+        const availabilitySource = this.optionsService.options().availabilitySource;
 
         return [...BOOLEAN_FILTERS, ...DROPDOWN_FILTERS, ...RANGE_FILTERS].some((filter) => (
-            filter.game === otherGameSystem && filterState[filter.key]?.interactedWith
+            filter.game === otherGameSystem
+            && !excludedKeys.has(filter.key)
+            && isFilterAvailableForAvailabilitySource(filter, availabilitySource)
+            && filterState[filter.key]?.interactedWith
         ));
     });
     readonly additionalFiltersHasActiveSettings = computed(() => {
         const hasSearchText = this.filtersService.searchText().trim().length > 0;
         const filterState = this.filtersService.effectiveFilterState();
-        const excludedKeys = new Set(this.additionalFiltersExcludedKeys());
+        const excludedKeys = new Set(this.primaryDialogFilterKeys());
+        const availabilitySource = this.optionsService.options().availabilitySource;
         const hasActiveAdvancedFilters = [...BOOLEAN_FILTERS, ...DROPDOWN_FILTERS, ...RANGE_FILTERS].some((filter) => (
-            !excludedKeys.has(filter.key) && filterState[filter.key]?.interactedWith
+            !excludedKeys.has(filter.key)
+            && isFilterAvailableForAvailabilitySource(filter, availabilitySource)
+            && filterState[filter.key]?.interactedWith
         ));
 
         return hasSearchText || hasActiveAdvancedFilters;
@@ -253,6 +270,33 @@ export class SearchForceGeneratorDialogComponent {
     });
     readonly currentForce = this.forceBuilderService.smartCurrentForce;
     readonly canImportCurrentForce = computed(() => (this.currentForce()?.units().length ?? 0) > 0);
+    readonly targetFormationSelection = signal<MultiStateSelection>({});
+    readonly targetFormationStateCycle = ['or'] as const;
+    readonly targetFormationOptions = computed<DropdownOption[]>(() => getFormationDefinitions()
+        .filter((definition) => FormationRequirementEngine.hasBlueprint(definition.id))
+        .filter((definition) => LanceTypeIdentifierUtil.getDefinitionById(definition.id, this.gameSystem()) !== null)
+        .filter((definition) => this.isTargetFormationAvailableForSelectedFactions(definition))
+        .map((definition) => ({ name: definition.id, displayName: definition.name }))
+        .sort((left, right) => (
+            (left.displayName ?? left.name).localeCompare(right.displayName ?? right.name)
+            || left.name.localeCompare(right.name)
+        )));
+    readonly targetFormations = computed<ForceGenerationTargetFormationSelection[]>(() => {
+        const availableFormationIds = new Set(this.targetFormationOptions().map((option) => option.name));
+        return Object.values(this.targetFormationSelection())
+            .filter((selection) => selection.state === 'or' && availableFormationIds.has(selection.name))
+            .map((selection) => ({
+                formationId: selection.name,
+                count: Math.max(1, Math.floor(selection.count || 1)),
+            }));
+    });
+    readonly targetFormationId = computed(() => {
+        const targetFormations = this.targetFormations();
+        return targetFormations.length === 1 && targetFormations[0].count === 1
+            ? targetFormations[0].formationId
+            : '';
+    });
+    readonly targetFormationSummary = computed(() => this.formatTargetFormationSummary(this.targetFormations()));
     readonly preventDuplicateChassis = signal(this.initialOptions.forceGenPreventDuplicateChassis);
     readonly useTaggedQuantities = signal(
         this.initialOptions.forceGenUseTaggedQuantities && !this.initialOptions.forceGenPreventDuplicateChassis,
@@ -284,6 +328,11 @@ export class SearchForceGeneratorDialogComponent {
         const filterSummary = this.summarizeActiveFilters();
         if (filterSummary.length > 0) {
             lines.push(`Filters: ${filterSummary}`);
+        }
+
+        const targetFormationSummary = this.targetFormationSummary();
+        if (targetFormationSummary) {
+            lines.push(`Target Formations: ${targetFormationSummary}`);
         }
 
         const skillLabel = this.gameSystem() === GameSystem.ALPHA_STRIKE
@@ -334,6 +383,8 @@ export class SearchForceGeneratorDialogComponent {
             skillRanges,
             minUnitCount: this.minUnitCount(),
             maxUnitCount: this.maxUnitCount(),
+            targetFormationId: this.targetFormationId() || undefined,
+            targetFormations: this.targetFormations(),
         };
     });
     readonly mobileTab = signal<GeneratorDialogTab>('configuration');
@@ -370,6 +421,23 @@ export class SearchForceGeneratorDialogComponent {
         effect(() => {
             if (!this.crossEraAvailabilityToggleEnabled()) {
                 untracked(() => this.crossEraAvailabilityInMultiEraSelection.set(false));
+            }
+        });
+
+        effect(() => {
+            const availableFormationIds = new Set(this.targetFormationOptions().map((option) => option.name));
+            const currentSelection = this.targetFormationSelection();
+            const nextSelection: MultiStateSelection = {};
+            for (const [formationId, selection] of Object.entries(currentSelection)) {
+                if (availableFormationIds.has(formationId) && (selection.state === 'or' || selection.state === 'and')) {
+                    nextSelection[formationId] = {
+                        ...selection,
+                        state: selection.state === 'and' ? 'or' : selection.state,
+                    };
+                }
+            }
+            if (JSON.stringify(nextSelection) !== JSON.stringify(currentSelection)) {
+                untracked(() => this.targetFormationSelection.set(nextSelection));
             }
         });
     }
@@ -518,12 +586,30 @@ export class SearchForceGeneratorDialogComponent {
         );
     }
 
+    onTargetFormationSelectionChange(selection: MultiStateSelection | readonly string[]): void {
+        const availableFormationIds = new Set(this.targetFormationOptions().map((option) => option.name));
+        const normalizedSelection = normalizeMultiStateSelection(selection);
+        const nextSelection: MultiStateSelection = {};
+
+        for (const [formationId, targetSelection] of Object.entries(normalizedSelection)) {
+            if ((targetSelection.state === 'or' || targetSelection.state === 'and') && availableFormationIds.has(formationId)) {
+                nextSelection[formationId] = {
+                    name: formationId,
+                    state: 'or',
+                    count: Math.max(1, Math.floor(targetSelection.count || 1)),
+                };
+            }
+        }
+
+        this.targetFormationSelection.set(nextSelection);
+    }
+
     onBudgetMinChange(event: Event): void {
         this.setBudgetRangeForSystem(
             this.gameSystem(),
             this.forceGeneratorService.resolveBudgetRangeForEditedMin(
                 this.budgetRange(),
-                this.parseNumericValue(event, this.budgetRange().min),
+                this.parseNumericValue(event, 0),
             ),
         );
     }
@@ -636,6 +722,8 @@ export class SearchForceGeneratorDialogComponent {
                 crossEraAvailabilityInMultiEraSelection: this.crossEraAvailabilityInMultiEraSelection(),
                 preventDuplicateChassis: this.preventDuplicateChassis(),
                 useTaggedQuantities: this.useTaggedQuantities(),
+                targetFormationId: this.targetFormationId() || undefined,
+                targetFormations: this.targetFormations(),
             },
             totalCost: preview.totalCost,
         });
@@ -666,6 +754,50 @@ export class SearchForceGeneratorDialogComponent {
         return Array.isArray(option?.value) ? [...option.value] : [];
     }
 
+    private formatTargetFormationSummary(targetFormations: readonly ForceGenerationTargetFormationSelection[]): string {
+        if (targetFormations.length === 0) {
+            return '';
+        }
+
+        const displayNameByFormationId = new Map(this.targetFormationOptions().map((option) => [
+            option.name,
+            option.displayName ?? option.name,
+        ]));
+
+        return targetFormations
+            .map((targetFormation) => {
+                const displayName = displayNameByFormationId.get(targetFormation.formationId);
+                if (!displayName) {
+                    return '';
+                }
+                return targetFormation.count > 1
+                    ? `${targetFormation.count} ${displayName}`
+                    : displayName;
+            })
+            .filter((entry) => entry.length > 0)
+            .join(', ');
+    }
+
+    private isTargetFormationAvailableForSelectedFactions(definition: FormationTypeDefinition): boolean {
+        const factionFilter = this.factionFilter();
+        if (!factionFilter) {
+            return true;
+        }
+
+        const resolvedFactionNames = resolveDropdownNamesFromFilter(
+            this.selectedFactionValues(),
+            factionFilter.options.map((entry) => entry.name),
+        );
+        const positiveFactionNames = [...new Set([...resolvedFactionNames.or, ...resolvedFactionNames.and])];
+        if (positiveFactionNames.length === 0) {
+            return true;
+        }
+
+        return positiveFactionNames.some((factionName) => (
+            LanceTypeIdentifierUtil.isFormationAvailableForFaction(definition, factionName)
+        ));
+    }
+
     private countPositiveMultiStateSelections(option: DropdownFilterOptions | null): number {
         if (!option) {
             return 0;
@@ -693,6 +825,9 @@ export class SearchForceGeneratorDialogComponent {
             eligibleUnits,
             context: this.forceGeneratorService.resolveGenerationContext(eligibleUnits, {
                 crossEraAvailabilityInMultiEraSelection: this.crossEraAvailabilityInMultiEraSelection(),
+                gameSystem: settings.gameSystem,
+                targetFormationId: settings.targetFormationId,
+                targetFormations: settings.targetFormations,
             }),
             gameSystem: settings.gameSystem,
             budgetRange: settings.budgetRange,
@@ -704,6 +839,8 @@ export class SearchForceGeneratorDialogComponent {
             lockedUnits,
             preventDuplicateChassis: this.preventDuplicateChassis(),
             useTaggedQuantities: this.useTaggedQuantities(),
+            targetFormationId: settings.targetFormationId,
+            targetFormations: settings.targetFormations,
         });
     }
 
@@ -724,6 +861,8 @@ export class SearchForceGeneratorDialogComponent {
             faction: null,
             era: null,
             explanationLines: [],
+            targetFormationId: this.targetFormationId() || undefined,
+            targetFormations: this.targetFormations(),
         };
     }
 
@@ -745,6 +884,9 @@ export class SearchForceGeneratorDialogComponent {
             faction: storedPreview.faction,
             era: storedPreview.era,
             explanationLines: storedPreview.explanationLines,
+            targetFormationId: storedPreview.targetFormationId,
+            targetFormations: storedPreview.targetFormations,
+            targetFormationGroups: storedPreview.targetFormationGroups,
         };
     }
 
@@ -773,6 +915,8 @@ export class SearchForceGeneratorDialogComponent {
             faction: options.faction ?? null,
             era: options.era ?? null,
             explanationLines: [...(options.explanationLines ?? [])],
+            targetFormationId: this.targetFormationId() || undefined,
+            targetFormations: this.targetFormations(),
         };
     }
 
@@ -862,13 +1006,8 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     private resolveUnitTypeFilterKey(): UnitTypeFilterKey | null {
-        if (this.getDropdownFilter('type')) {
-            return 'type';
-        }
-        if (this.getDropdownFilter('as.TP')) {
-            return 'as.TP';
-        }
-        return null;
+        const filterKey = this.gameSystem() === GameSystem.ALPHA_STRIKE ? 'as.TP' : 'type';
+        return this.getDropdownFilter(filterKey) ? filterKey : null;
     }
 
     private getOtherGameSystem(gameSystem: GameSystem): GameSystem {

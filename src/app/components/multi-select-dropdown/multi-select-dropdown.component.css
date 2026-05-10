@@ -43,16 +43,6 @@
     white-space: nowrap;
 }
 
-.single-selected-value {
-    min-width: 0;
-    color: var(--text-color);
-    font-size: 0.9em;
-    line-height: 1.2;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 .pill {
     background-color: var(--bt-yellow-background);
     color: var(--bt-yellow);

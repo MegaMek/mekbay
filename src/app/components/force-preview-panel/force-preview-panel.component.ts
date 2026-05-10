@@ -65,8 +65,9 @@ import {
     NOTE_PREVIEW_LINE_COUNT,
     hasVisibleNoteText,
 } from '../../utils/note-preview.util';
-import { NO_FORMATION_ID } from '../../utils/formation-type.model';
+import { formationNameMatchesGroupName, NO_FORMATION_ID, type FormationTypeDefinition } from '../../utils/formation-type.model';
 import { getOrgFromForce, getOrgFromGroup } from '../../utils/org/org-namer.util';
+import { FormationInfoDialogComponent, type FormationInfoDialogData } from '../formation-info-dialog/formation-info-dialog.component';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { ForceTagsComponent, type ForceTagClickEvent } from '../force-tags/force-tags.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
@@ -167,7 +168,10 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
             <div class="unit-scroll">
                 @for (gd of groupDisplayData(); track gd.group) {
                 <div class="unit-group">
-                    <div class="group-name">{{ gd.name }}
+                    <div class="group-name">
+                        @if (gd.name) {
+                            <span>{{ gd.name }}</span>
+                        }
                         @if (gd.formationName; as formationName) {
                             @if (gd.name) { <span class="group-sep">·</span> }
                             <span class="group-formation">{{ formationName }}</span>
@@ -175,6 +179,16 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
                         @if (gd.orgName; as orgName) {
                             @if (gd.name || gd.formationName) { <span class="group-sep">·</span> }
                             <span class="group-org">{{ orgName }}</span>
+                        }
+                        @if (gd.formation; as formation) {
+                            <button
+                                class="btn-formation-info"
+                                type="button"
+                                title="Formation info"
+                                [attr.aria-label]="'Formation info: ' + formation.name"
+                                (click)="showFormationInfo($event, gd.group, formation, gd.formationDisplayName)">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                            </button>
                         }
                     </div>
                     <div class="units">
@@ -478,6 +492,28 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
             font-size: 0.8em;
             color: var(--text-color-secondary);
             text-align: left;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0 2px;
+        }
+
+        .btn-formation-info {
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: none;
+            border: none;
+            color: var(--text-color-tertiary);
+            cursor: pointer;
+            padding: 2px;
+            border-radius: 50%;
+            transition: color 0.15s;
+        }
+
+        .btn-formation-info:hover {
+            color: var(--bt-yellow);
         }
 
         .units {
@@ -766,22 +802,27 @@ export class ForcePreviewPanelComponent {
         return !!entry.instanceId && entry.owned;
     });
 
-    readonly groupDisplayData = computed(() => this.force().groups.map((group: ForcePreviewGroup) => {
-        const sizeResult = getOrgFromGroup(group);
-        const orgName = sizeResult.name && sizeResult.name !== 'Force' ? sizeResult.name : null;
+    readonly groupDisplayData = computed(() => {
+        const entry = this.force();
+        return entry.groups.map((group: ForcePreviewGroup) => {
+            const sizeResult = getOrgFromGroup(group);
+            const orgName = sizeResult.name && sizeResult.name !== 'Force' ? sizeResult.name : null;
+            const formation = this.getPreviewFormation(group, entry.type);
+            const formationDisplayName = formation ? this.getPreviewFormationDisplayName(formation, orgName) : null;
+            const displayOrgName = formation ? null : orgName;
 
-        const name = group.name || LanceTypeIdentifierUtil.getFormationName(group.formationId) || '';
+            const name = group.name || formationDisplayName || '';
 
-        let formationName: string | null = null;
-        if (group.formationId && group.formationId !== NO_FORMATION_ID && group.name) {
-            const candidateFormationName = LanceTypeIdentifierUtil.getFormationName(group.formationId);
-            if (candidateFormationName && !group.name.includes(candidateFormationName)) {
-                formationName = candidateFormationName;
+            let formationName: string | null = null;
+            if (formation && formationDisplayName && group.name) {
+                if (!formationNameMatchesGroupName(formation, group.name)) {
+                    formationName = formationDisplayName;
+                }
             }
-        }
 
-        return { group, name, orgName, formationName };
-    }));
+            return { group, name, orgName: displayOrgName, formationName, formation, formationDisplayName };
+        });
+    });
 
     constructor() {
         effect((onCleanup) => {
@@ -871,8 +912,51 @@ export class ForcePreviewPanelComponent {
         });
     }
 
+    showFormationInfo(
+        event: MouseEvent,
+        group: ForcePreviewGroup,
+        formation: FormationTypeDefinition,
+        formationDisplayName: string | null,
+    ): void {
+        event.stopPropagation();
+        this.dialogsService.createDialog(FormationInfoDialogComponent, {
+            data: {
+                formation,
+                gameSystem: this.force().type,
+                formationDisplayName: formationDisplayName ?? formation.name,
+                unitCount: group.units.length,
+            } satisfies FormationInfoDialogData,
+        });
+    }
+
     onUnitHover(loadForceUnit: ForcePreviewUnit | null): void {
         this.hoveredUnitChange.emit(loadForceUnit?.unit ? loadForceUnit : null);
+    }
+
+    private getPreviewFormation(
+        group: ForcePreviewGroup,
+        gameSystem: ForcePreviewEntry['type'],
+    ): FormationTypeDefinition | null {
+        if (!group.formationId || group.formationId === NO_FORMATION_ID) {
+            return null;
+        }
+
+        return LanceTypeIdentifierUtil.getDefinitionById(group.formationId, gameSystem);
+    }
+
+    private getPreviewFormationDisplayName(
+        formation: FormationTypeDefinition,
+        orgName: string | null,
+    ): string {
+        if (!orgName || formation.name.includes(orgName)) {
+            return formation.name;
+        }
+
+        if (orgName.includes('Level')) {
+            return `${orgName} - ${formation.name}`;
+        }
+
+        return `${formation.name} ${orgName}`;
     }
 
     isLocked(loadForceUnit: ForcePreviewUnit): boolean {

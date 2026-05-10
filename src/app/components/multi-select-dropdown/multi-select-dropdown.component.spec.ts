@@ -208,8 +208,13 @@ describe('MultiSelectDropdownComponent', () => {
         expect(placeholder).toBeNull();
     });
 
-    it('renders single-select values as plain text instead of removable pills', () => {
+    it('renders single-select values with a clear button that unsets the selection', () => {
         const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        let emittedSelection: unknown;
+
+        fixture.componentInstance.selectionChange.subscribe((selection) => {
+            emittedSelection = selection;
+        });
 
         fixture.componentRef.setInput('multiselect', false);
         fixture.componentRef.setInput('options', [
@@ -219,10 +224,14 @@ describe('MultiSelectDropdownComponent', () => {
         fixture.detectChanges();
 
         const selectedValue = fixture.nativeElement.querySelector('.single-selected-value') as HTMLElement | null;
+        const clearButton = fixture.nativeElement.querySelector('.single-selected-value .remove-pill') as HTMLButtonElement | null;
 
-        expect(selectedValue?.textContent?.trim()).toBe('Inner Sphere');
-        expect(fixture.nativeElement.querySelector('.pill')).toBeNull();
-        expect(fixture.nativeElement.querySelector('.remove-pill')).toBeNull();
+        expect(selectedValue?.textContent).toContain('Inner Sphere');
+        expect(clearButton).not.toBeNull();
+
+        clearButton!.click();
+
+        expect(emittedSelection).toEqual([]);
     });
 
     it('can restrict multistate toggles to selected and unselected only', () => {

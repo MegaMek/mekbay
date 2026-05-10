@@ -33,7 +33,7 @@
 
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { formationInheritsParentEffects, resolveFormationGameSystemText, type FormationTypeDefinition, type FormationEffectGroup } from '../../utils/formation-type.model';
-import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
+import { getFormationDefinition } from '../../utils/formation-blueprints';
 import { type PilotAbility, PILOT_ABILITIES, getAbilityDetails, formatSummaryMovement } from '../../models/pilot-abilities.model';
 import { type CommandAbility, COMMAND_ABILITIES } from '../../models/command-abilities.model';
 import { GameSystem, formatRulesReference, type RulesReference } from '../../models/common.model';
@@ -459,7 +459,7 @@ export class FormationInfoComponent {
     private parentFormation = computed<FormationTypeDefinition | null>(() => {
         const def = this.formation();
         if (!formationInheritsParentEffects(def) || !def?.parent) return null;
-        return FORMATION_DEFINITIONS.find(d => d.id === def.parent) ?? null;
+        return getFormationDefinition(def.parent);
     });
 
     /** Resolved parent requirements text. */

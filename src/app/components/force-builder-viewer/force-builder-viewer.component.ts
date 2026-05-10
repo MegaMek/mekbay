@@ -47,7 +47,7 @@ import { UnitBlockComponent } from '../unit-block/unit-block.component';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { ToastService } from '../../services/toast.service';
 import { formatSummaryMovement } from '../../models/pilot-abilities.model';
-import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
+import { getFormationDefinition } from '../../utils/formation-blueprints';
 import { formationInheritsParentEffects } from '../../utils/formation-type.model';
 import { DataService } from '../../services/data.service';
 import { UnitAvailabilitySourceService } from '../../services/unit-availability-source.service';
@@ -809,7 +809,7 @@ export class ForceBuilderViewerComponent {
         const showParentRequirements = formationInheritsParentEffects(formation) && !!formation.parent;
 
         if (showParentRequirements) {
-            const parent = FORMATION_DEFINITIONS.find(d => d.id === formation.parent);
+            const parent = getFormationDefinition(formation.parent!);
             if (parent?.requirements) {
                 const parentReq = parent.requirements(group.force.gameSystem);
                 if (parentReq) parts.push(this.buildFormationRequirementTooltipLine(parent.name, parentReq));

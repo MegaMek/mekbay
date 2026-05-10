@@ -2,6 +2,7 @@ import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import type { Eras } from '../models/eras.model';
+import type { ForceUnit } from '../models/force-unit.model';
 import type { MULFactions } from '../models/mulfactions.model';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import type { AvailabilitySource } from '../models/options.model';
@@ -27,7 +28,7 @@ import {
     usesIndexedDropdownUniverse,
 } from '../utils/unit-search-filter-config.util';
 import { MEGAMEK_AVAILABILITY_UNKNOWN, type MegaMekWeightedAvailabilityRecord } from '../models/megamek/availability.model';
-import { MEGAMEK_RARITY_PRODUCTION_SORT_KEY } from './unit-search-filters.model';
+import { FORMATION_TARGET_FILTER_KEY, MEGAMEK_RARITY_PRODUCTION_SORT_KEY } from './unit-search-filters.model';
 import { SEARCH_WORKER_FACTORY } from '../utils/unit-search-worker-factory.util';
 import type { SearchWorkerLike } from '../utils/unit-search-worker-client.util';
 import type { UnitSearchWorkerResponseMessage } from '../utils/unit-search-worker-protocol.util';
@@ -357,6 +358,70 @@ function createStandaloneBundle(): BenchmarkBundle {
     };
 }
 
+const FREE_WORLDS_LEAGUE_FACTION = 'Free Worlds League';
+const FEDERATED_SUNS_FACTION = 'Federated Suns';
+
+type NamedAvailabilityOption = { name: string; available?: boolean };
+
+function createFormationFactionBundle(): BenchmarkBundle {
+    const bundle = createStandaloneBundle();
+    bundle.factions.factions = [
+        {
+            id: 1,
+            name: FREE_WORLDS_LEAGUE_FACTION,
+            group: 'Inner Sphere',
+            img: '',
+            eras: { 1: new Set([1]) },
+        },
+        {
+            id: 2,
+            name: FEDERATED_SUNS_FACTION,
+            group: 'Inner Sphere',
+            img: '',
+            eras: { 1: new Set([2]) },
+        },
+    ];
+    return bundle;
+}
+
+function createFormationExistingForceUnit(unit: Unit, gameSystem: GameSystem = GameSystem.ALPHA_STRIKE): ForceUnit {
+    return {
+        force: {
+            faction: () => null,
+            era: () => null,
+            techBase: () => 'Inner Sphere',
+            gameSystem,
+        },
+        getUnit: () => unit,
+        getBv: () => 0,
+        pilotSkill: () => 4,
+        gunnerySkill: () => 4,
+    } as unknown as ForceUnit;
+}
+
+function namedAvailabilityOptions(options: readonly (number | NamedAvailabilityOption)[]): NamedAvailabilityOption[] {
+    return options.filter((option): option is NamedAvailabilityOption => typeof option !== 'number');
+}
+
+function expectOptionAvailability(
+    options: readonly (number | NamedAvailabilityOption)[],
+    name: string,
+    available: boolean,
+): void {
+    expect(namedAvailabilityOptions(options).find((option) => option.name === name))
+        .toEqual(jasmine.objectContaining({ name, available }));
+}
+
+function setFactionFilter(service: UnitSearchFiltersService, factionName: string): void {
+    service.setFilter('faction', {
+        [factionName]: {
+            name: factionName,
+            state: 'or',
+            count: 1,
+        },
+    });
+}
+
 function buildSyntheticMegaMekRarityBenchmarkScenario(targetCount: number): SyntheticMegaMekRarityBenchmarkScenario {
     const bundle = buildBenchmarkBundle(createStandaloneBundle(), targetCount);
     let expectedTopScore = -1;
@@ -684,6 +749,206 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
         expect(service.forceGeneratorEligibleUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
+    });
+
+    it('filters normal search results by an active formation target while generator eligibility ignores it', () => {
+        const bundle = createStandaloneBundle();
+        const { service } = createService(bundle);
+        const existingForceUnit = createFormationExistingForceUnit(bundle.units.units[0]);
+
+        service.setFormationTarget({
+            formationId: 'order-lance',
+            existingUnits: [existingForceUnit],
+            gameSystem: GameSystem.ALPHA_STRIKE,
+        });
+
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
+        expect(service.forceGeneratorEligibleUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
+    });
+
+    it('clears the active formation target when filters are reset', () => {
+        const bundle = createStandaloneBundle();
+        const { service } = createService(bundle);
+        const existingForceUnit = createFormationExistingForceUnit(bundle.units.units[0]);
+
+        service.setFormationTarget({
+            formationId: 'order-lance',
+            existingUnits: [existingForceUnit],
+            gameSystem: GameSystem.ALPHA_STRIKE,
+        });
+
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
+
+        service.resetFilters();
+
+        expect(service.formationTarget()).toBeNull();
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
+    });
+
+    it('replaces a manual formation target when formation is entered as semantic search text', () => {
+        const bundle = createStandaloneBundle();
+        const { service, gameServiceStub } = createService(bundle);
+        const existingForceUnit = createFormationExistingForceUnit(bundle.units.units[0]);
+
+        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        service.setFormationTarget({
+            formationId: 'assault-lance',
+            existingUnits: [existingForceUnit],
+            gameSystem: GameSystem.ALPHA_STRIKE,
+        });
+
+        service.setSearchText('formation=Order');
+
+        expect(service.semanticFormationTargetId()).toBe('order-lance');
+        expect(service.formationTarget()).toBeNull();
+
+        service.setSearchText('');
+
+        expect(service.semanticFormationTargetId()).toBeNull();
+        expect(service.formationTarget()).toBeNull();
+    });
+
+    it('filters normal search results by a semantic formation target while generator eligibility ignores it', () => {
+        const bundle = createStandaloneBundle();
+        const { service, gameServiceStub } = createService(bundle);
+        const existingForceUnit = createFormationExistingForceUnit(bundle.units.units[0]);
+
+        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        service.setFormationTargetExistingUnits([existingForceUnit]);
+        service.setSearchText('formation=Order');
+
+        expect(service.semanticFilterKeys().has(FORMATION_TARGET_FILTER_KEY)).toBeTrue();
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
+        expect(service.forceGeneratorEligibleUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
+    });
+
+    it('limits faction dropdown availability by manual and semantic formation targets', () => {
+        const createAlphaStrikeService = () => {
+            const created = createService(createFormationFactionBundle());
+            created.gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+            return created.service;
+        };
+
+        let service = createAlphaStrikeService();
+        service.setFormationTarget({ formationId: 'anvil-lance', existingUnits: [], gameSystem: GameSystem.ALPHA_STRIKE });
+
+        expectOptionAvailability(service.advOptions()['faction']?.options ?? [], FREE_WORLDS_LEAGUE_FACTION, true);
+        expectOptionAvailability(service.advOptions()['faction']?.options ?? [], FEDERATED_SUNS_FACTION, false);
+
+        service = createAlphaStrikeService();
+        service.setSearchText('formation=Anvil');
+
+        expect(service.semanticFormationTargetId()).toBe('anvil-lance');
+        expectOptionAvailability(service.advOptions()['faction']?.options ?? [], FREE_WORLDS_LEAGUE_FACTION, true);
+        expectOptionAvailability(service.advOptions()['faction']?.options ?? [], FEDERATED_SUNS_FACTION, false);
+    });
+
+    it('limits formation dropdown availability by manual and semantic faction filters', () => {
+        const { service } = createService(createFormationFactionBundle());
+        const expectFormationAvailability = (formationId: string, available: boolean) => {
+            expect(service.getFormationTargetOptions(GameSystem.ALPHA_STRIKE).find((option) => option.name === formationId))
+                .toEqual(jasmine.objectContaining({ name: formationId, available }));
+        };
+
+        setFactionFilter(service, FEDERATED_SUNS_FACTION);
+
+        expectFormationAvailability('assault-lance', true);
+        expectFormationAvailability('rifle-lance', true);
+        expectFormationAvailability('anvil-lance', false);
+
+        setFactionFilter(service, FREE_WORLDS_LEAGUE_FACTION);
+
+        expectFormationAvailability('assault-lance', true);
+        expectFormationAvailability('anvil-lance', true);
+        expectFormationAvailability('rifle-lance', false);
+
+        const semanticService = createService(createFormationFactionBundle()).service;
+        semanticService.setSearchText(`faction="${FEDERATED_SUNS_FACTION}"`);
+        const expectSemanticFormationAvailability = (formationId: string, available: boolean) => {
+            expect(semanticService.getFormationTargetOptions(GameSystem.ALPHA_STRIKE).find((option) => option.name === formationId))
+                .toEqual(jasmine.objectContaining({ name: formationId, available }));
+        };
+
+        expectSemanticFormationAvailability('rifle-lance', true);
+        expectSemanticFormationAvailability('anvil-lance', false);
+    });
+
+    it('sorts formation target options alphabetically and resolves loose semantic names', () => {
+        const { service, gameServiceStub } = createService(createStandaloneBundle());
+        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+
+        const displayNames = service.getFormationTargetOptions(GameSystem.ALPHA_STRIKE)
+            .slice(1)
+            .map((option) => option.displayName ?? option.name);
+
+        expect(displayNames).toEqual([...displayNames].sort((left, right) => left.localeCompare(right)));
+
+        service.setSearchText('formation=vehicle-command');
+
+        expect(service.semanticFormationTargetId()).toBe('vehicle-command-lance');
+    });
+
+    it('ignores the active formation target for worker-backed generator eligibility', async () => {
+        const worker = new FakeSearchWorker();
+        const bundle = createStandaloneBundle();
+        const { service } = createService(bundle, {
+            workerFactory: () => worker,
+        });
+        const existingForceUnit = createFormationExistingForceUnit(bundle.units.units[0]);
+
+        await flushAsyncWork();
+
+        service.setFormationTarget({
+            formationId: 'order-lance',
+            existingUnits: [existingForceUnit],
+            gameSystem: GameSystem.ALPHA_STRIKE,
+        });
+        service.searchText.set('Test');
+        service.filteredUnits();
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const snapshot = (service as any).getWorkerCorpusSnapshot(corpusVersion);
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+
+        (service as any).searchWorkerClient.submit(snapshot, request);
+        const initMessage = worker.messages.at(-1) as any;
+        worker.emit({ type: 'ready', corpusVersion: initMessage.snapshot.corpusVersion });
+        await flushAsyncWork();
+
+        const executeMessage = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
+        worker.emit({
+            type: 'result',
+            revision: executeMessage.request.revision,
+            corpusVersion: executeMessage.request.corpusVersion,
+            telemetryQuery: executeMessage.request.telemetryQuery,
+            unitNames: bundle.units.units.map((unit) => unit.name),
+            stages: [],
+            totalMs: 1,
+            unitCount: bundle.units.units.length,
+            isComplex: false,
+        });
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
+        expect(service.forceGeneratorEligibleUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
+    });
+
+    it('preserves complex OR semantic queries for worker execution', async () => {
+        const bundle = createStandaloneBundle();
+        const { service, gameServiceStub } = createService(bundle, {
+            workerFactory: () => new FakeSearchWorker(),
+        });
+
+        await flushAsyncWork();
+
+        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        service.searchText.set('pv>0 or pv<0');
+
+        const corpusVersion = (service as any).getWorkerCorpusVersion();
+        const request = (service as any).buildWorkerSearchRequest(corpusVersion);
+
+        expect(request.executionQuery).toBe('pv>0 or pv<0');
+        expect(request.telemetryQuery).toBe('pv>0 or pv<0');
     });
 
     it('distinguishes force packs by subtype when chassis and type match', () => {
@@ -3903,6 +4168,76 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(dragoons).toEqual(jasmine.objectContaining({ name: "Wolf's Dragoons", available: true }));
         expect(mercenary).toEqual(jasmine.objectContaining({ name: 'Mercenary', available: true }));
         expect(clanWolf).toEqual(jasmine.objectContaining({ name: 'Clan Wolf', available: false }));
+    });
+
+    it('keeps MegaMek faction self and co-matches available for multistate AND selections', () => {
+        const bundle = createStandaloneBundle();
+        bundle.factions.factions = [
+            {
+                id: 1,
+                name: 'Free Worlds League',
+                group: 'Inner Sphere',
+                img: '',
+                eras: { 1: new Set([1]) },
+            },
+            {
+                id: 2,
+                name: 'Mercenary',
+                group: 'Mercenary',
+                img: '',
+                eras: { 1: new Set([1]) },
+            },
+            {
+                id: 3,
+                name: 'Draconis Combine',
+                group: 'Inner Sphere',
+                img: '',
+                eras: { 1: new Set([2]) },
+            },
+        ];
+
+        const { dataService, service, optionsServiceStub } = createService(bundle);
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: bundle.units.units[0].name,
+                e: {
+                    '1': {
+                        '1': [45, 0],
+                        '2': [45, 0],
+                    },
+                },
+            },
+            {
+                n: bundle.units.units[1].name,
+                e: {
+                    '1': {
+                        '3': [45, 0],
+                    },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+        service.setFilter('faction', {
+            'Free Worlds League': {
+                name: 'Free Worlds League',
+                state: 'and',
+                count: 1,
+            },
+        });
+
+        const factionOptions = service.advOptions()['faction']?.options ?? [];
+        const namedFactionOptions = factionOptions.filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
+
+        expect(namedFactionOptions.find((option) => option.name === 'Free Worlds League')).toEqual(jasmine.objectContaining({ available: true }));
+        expect(namedFactionOptions.find((option) => option.name === 'Mercenary')).toEqual(jasmine.objectContaining({ available: true }));
+        expect(namedFactionOptions.find((option) => option.name === 'Draconis Combine')).toEqual(jasmine.objectContaining({ available: false }));
     });
 
     it('keeps indexed source self and co-matches available for multistate AND selections', () => {

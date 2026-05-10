@@ -9,6 +9,7 @@ import { DialogsService } from '../../services/dialogs.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { OptionsService } from '../../services/options.service';
 import { ToastService } from '../../services/toast.service';
+import { FormationInfoDialogComponent, type FormationInfoDialogData } from '../formation-info-dialog/formation-info-dialog.component';
 import { ForcePreviewPanelComponent } from '../force-preview-panel/force-preview-panel.component';
 import { ForceEntryPreviewDialogComponent } from './force-entry-preview-dialog.component';
 
@@ -77,7 +78,7 @@ describe('ForceEntryPreviewDialogComponent', () => {
         const fixture = TestBed.createComponent(ForceEntryPreviewDialogComponent);
         fixture.detectChanges();
 
-        return { fixture };
+        return { fixture, dialogsServiceStub };
     }
 
     async function waitForClampMeasurement() {
@@ -116,6 +117,37 @@ describe('ForceEntryPreviewDialogComponent', () => {
 
         expect(previewPanel.displayMode()).toBe('both');
         expect(previewPanel.effectiveUnitDisplayName()).toBe('both');
+    });
+
+    it('opens the formation info dialog from preview group headings', async () => {
+        const { fixture, dialogsServiceStub } = await render(createForceEntry({
+            groups: [{
+                name: 'First Group',
+                formationId: 'battle-lance',
+                units: createUnitEntries(4),
+            }],
+        }));
+        const previewHost = fixture.debugElement.query(By.directive(ForcePreviewPanelComponent))
+            .nativeElement as HTMLElement;
+
+        const formationInfoButton = previewHost.querySelector('.btn-formation-info') as HTMLButtonElement | null;
+
+        expect(formationInfoButton).not.toBeNull();
+
+        formationInfoButton?.click();
+        fixture.detectChanges();
+
+        expect(dialogsServiceStub.createDialog).toHaveBeenCalledTimes(1);
+        const [component, dialogOptions] = dialogsServiceStub.createDialog.calls.mostRecent().args as [
+            unknown,
+            { data: FormationInfoDialogData },
+        ];
+
+        expect(component).toBe(FormationInfoDialogComponent);
+        expect(dialogOptions.data.formation.id).toBe('battle-lance');
+        expect(dialogOptions.data.gameSystem).toBe(GameSystem.CLASSIC);
+        expect(dialogOptions.data.formationDisplayName).toBe('Battle');
+        expect(dialogOptions.data.unitCount).toBe(4);
     });
 
     it('pins the preview summary and scrolls the unit list inside the panel', async () => {

@@ -675,17 +675,56 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(setFilterSpy).toHaveBeenCalledWith('subtype', ['Combat Vehicle']);
     });
 
-    it('keeps shared filter mappings stable when the generator mode changes locally', () => {
+    it('uses the local generator mode for unit type and subtype filters', () => {
+        expect(component.additionalFiltersExcludedKeys()).toContain('type');
+        expect(component.additionalFiltersExcludedKeys()).toContain('subtype');
+        expect(component.additionalFiltersExcludedKeys()).not.toContain('as.TP');
+
         component.setGameSystem(GameSystem.ALPHA_STRIKE);
 
         expect(component.gameSystem()).toBe(GameSystem.ALPHA_STRIKE);
         expect(gameSystemSignal()).toBe(GameSystem.CLASSIC);
-        expect(component.selectedUnitTypeValues()).toEqual(['Mek']);
-        expect(component.selectedSubtypeValues()).toEqual(['BattleMek']);
+        expect(component.selectedUnitTypeValues()).toEqual(['BM']);
+        expect(component.selectedSubtypeValues()).toEqual([]);
+        expect(component.additionalFiltersExcludedKeys()).toContain('as.TP');
+        expect(component.additionalFiltersExcludedKeys()).not.toContain('type');
+        expect(component.additionalFiltersExcludedKeys()).not.toContain('subtype');
 
-        component.onUnitTypeSelectionChange(['Tank']);
+        component.onUnitTypeSelectionChange(['CV']);
 
-        expect(setFilterSpy).toHaveBeenCalledWith('type', ['Tank']);
+        expect(setFilterSpy).toHaveBeenCalledWith('as.TP', ['CV']);
+    });
+
+    it('highlights the advanced system toggle only for active filters hidden behind it', () => {
+        component.advPanelFilterGameSystem.set(GameSystem.ALPHA_STRIKE);
+        effectiveFilterStateSignal.set({
+            type: { interactedWith: true },
+            subtype: { interactedWith: true },
+        });
+
+        expect(component.otherAdvPanelFilterGameSystem()).toBe(GameSystem.CLASSIC);
+        expect(component.otherAdvPanelFilterGameSystemHasActiveFilters()).toBeFalse();
+
+        component.advPanelFilterGameSystem.set(GameSystem.CLASSIC);
+        effectiveFilterStateSignal.set({
+            'as.TP': { interactedWith: true },
+        });
+
+        expect(component.otherAdvPanelFilterGameSystem()).toBe(GameSystem.ALPHA_STRIKE);
+        expect(component.otherAdvPanelFilterGameSystemHasActiveFilters()).toBeTrue();
+
+        component.setGameSystem(GameSystem.ALPHA_STRIKE);
+
+        expect(component.otherAdvPanelFilterGameSystemHasActiveFilters()).toBeFalse();
+
+        component.advPanelFilterGameSystem.set(GameSystem.ALPHA_STRIKE);
+        effectiveFilterStateSignal.set({
+            type: { interactedWith: true },
+            subtype: { interactedWith: true },
+        });
+
+        expect(component.otherAdvPanelFilterGameSystem()).toBe(GameSystem.CLASSIC);
+        expect(component.otherAdvPanelFilterGameSystemHasActiveFilters()).toBeTrue();
     });
 
     it('uses the local generator mode for preview requests without changing the global game system', () => {
@@ -1080,7 +1119,12 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         expect(resolveGenerationContextSpy).toHaveBeenCalledWith(
             [],
-            { crossEraAvailabilityInMultiEraSelection: true },
+            jasmine.objectContaining({
+                crossEraAvailabilityInMultiEraSelection: true,
+                gameSystem: component.gameSystem(),
+                targetFormationId: undefined,
+                targetFormations: [],
+            }),
         );
     });
 
