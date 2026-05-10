@@ -310,7 +310,7 @@ export class SearchForceGeneratorDialogComponent {
         'Uses selected tag quantities as copy limits during force generation. Unit-variant tags stay exact-unit by default; chassis tags already apply to all variants of the same chassis/type.'
     ));
     readonly useUnitTagsAsChassisTagsTooltip = computed(() => (
-        'When tagged quantities are enabled, unit-variant tag quantities are grouped by chassis and type instead of by exact unit. Variants sharing that chassis share one pool, and if a chassis tag and a unit-variant tag pool both apply, the larger cap wins.'
+        'Unit-variant tag quantities are grouped by chassis and type instead of by exact unit. Variants sharing that chassis share one pool, and if a chassis tag and a unit-variant tag pool both apply, the larger cap wins.'
     ));
     private readonly lockedUnits = signal<GeneratedForceUnit[]>([]);
     readonly lockedUnitKeys = computed(() => {
