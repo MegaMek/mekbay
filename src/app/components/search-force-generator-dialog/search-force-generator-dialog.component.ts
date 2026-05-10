@@ -93,6 +93,7 @@ export interface SearchForceGeneratorDialogConfig {
     crossEraAvailabilityInMultiEraSelection: boolean;
     preventDuplicateChassis: boolean;
     useTaggedQuantities: boolean;
+    useUnitTagsAsChassisTags: boolean;
     targetFormationId?: string;
     targetFormations?: readonly ForceGenerationTargetFormationSelection[];
 }
@@ -301,6 +302,16 @@ export class SearchForceGeneratorDialogComponent {
     readonly useTaggedQuantities = signal(
         this.initialOptions.forceGenUseTaggedQuantities && !this.initialOptions.forceGenPreventDuplicateChassis,
     );
+    readonly useUnitTagsAsChassisTags = signal(this.initialOptions.forceGenUseUnitTagsAsChassisTags);
+    readonly preventDuplicateChassisTooltip = computed(() => (
+        'Blocks additional copies that share the same chassis and type as an already selected unit. Useful when you want one variant per chassis pair.'
+    ));
+    readonly useTaggedQuantitiesTooltip = computed(() => (
+        'Uses selected tag quantities as copy limits during force generation. Unit-variant tags stay exact-unit by default; chassis tags already apply to all variants of the same chassis/type.'
+    ));
+    readonly useUnitTagsAsChassisTagsTooltip = computed(() => (
+        'When tagged quantities are enabled, unit-variant tag quantities are grouped by chassis and type instead of by exact unit. Variants sharing that chassis share one pool, and if a chassis tag and a unit-variant tag pool both apply, the larger cap wins.'
+    ));
     private readonly lockedUnits = signal<GeneratedForceUnit[]>([]);
     readonly lockedUnitKeys = computed(() => {
         return new Set(
@@ -579,6 +590,14 @@ export class SearchForceGeneratorDialogComponent {
         }
     }
 
+    onUseUnitTagsAsChassisTagsChange(event: Event): void {
+        const checked = (event.target as HTMLInputElement).checked;
+        if (this.useUnitTagsAsChassisTags() !== checked) {
+            this.useUnitTagsAsChassisTags.set(checked);
+            void this.optionsService.setOption('forceGenUseUnitTagsAsChassisTags', checked);
+        }
+    }
+
     onCrossEraAvailabilityInMultiEraSelectionChange(event: Event): void {
         const target = event.target as HTMLInputElement;
         this.crossEraAvailabilityInMultiEraSelection.set(
@@ -722,6 +741,7 @@ export class SearchForceGeneratorDialogComponent {
                 crossEraAvailabilityInMultiEraSelection: this.crossEraAvailabilityInMultiEraSelection(),
                 preventDuplicateChassis: this.preventDuplicateChassis(),
                 useTaggedQuantities: this.useTaggedQuantities(),
+                useUnitTagsAsChassisTags: this.useTaggedQuantities() && this.useUnitTagsAsChassisTags(),
                 targetFormationId: this.targetFormationId() || undefined,
                 targetFormations: this.targetFormations(),
             },
@@ -839,6 +859,7 @@ export class SearchForceGeneratorDialogComponent {
             lockedUnits,
             preventDuplicateChassis: this.preventDuplicateChassis(),
             useTaggedQuantities: this.useTaggedQuantities(),
+            useUnitTagsAsChassisTags: this.useTaggedQuantities() && this.useUnitTagsAsChassisTags(),
             targetFormationId: settings.targetFormationId,
             targetFormations: settings.targetFormations,
         });

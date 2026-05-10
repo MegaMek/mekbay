@@ -390,7 +390,7 @@
                                     type="checkbox"
                                     [checked]="preventDuplicateChassis()"
                                     (change)="onPreventDuplicateChassisChange($event)" />
-                                <span class="generator-option-label">Prevent Duplicate Chassis</span>
+                                <span class="generator-option-label" [tooltip]="preventDuplicateChassisTooltip()">Prevent Duplicate Chassis</span>
                             </label>
 
                             <label class="generator-option">
@@ -399,8 +399,19 @@
                                     type="checkbox"
                                     [checked]="useTaggedQuantities()"
                                     (change)="onUseTaggedQuantitiesChange($event)" />
-                                <span class="generator-option-label">Limit to tagged quantities</span>
+                                <span class="generator-option-label" [tooltip]="useTaggedQuantitiesTooltip()">Limit to tagged quantities</span>
                             </label>
+
+                            @if (useTaggedQuantities()) {
+                                <label class="generator-option unit-tags-as-chassis-option">
+                                    <input
+                                        class="bt-checkbox"
+                                        type="checkbox"
+                                        [checked]="useUnitTagsAsChassisTags()"
+                                        (change)="onUseUnitTagsAsChassisTagsChange($event)" />
+                                    <span class="generator-option-label" [tooltip]="useUnitTagsAsChassisTagsTooltip()">Use Unit tags as Chassis tags</span>
+                                </label>
+                            }
                         </div>
                     </div>
 

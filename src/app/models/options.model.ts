@@ -86,4 +86,5 @@ export interface Options {
     forceGenLastMaxPilotSkillDelta: number;
     forceGenPreventDuplicateChassis: boolean;
     forceGenUseTaggedQuantities: boolean;
+    forceGenUseUnitTagsAsChassisTags: boolean;
 }
