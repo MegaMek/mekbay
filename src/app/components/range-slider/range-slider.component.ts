@@ -119,9 +119,7 @@ export class RangeSliderComponent {
         effect(() => {
             if (this.isSingleValueMode()) {
                 const val = this.singleValue() ?? this.min();
-                const newValue = Math.max(this.min(), Math.min(val, this.max()));
-                this.left.set(this.min());
-                this.right.set(this.alignToStep(newValue));
+                this.setSingleValue(val);
                 return;
             }
 
