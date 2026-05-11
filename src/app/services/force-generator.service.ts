@@ -2892,6 +2892,15 @@ export class ForceGeneratorService implements OnDestroy {
             return null;
         }
 
+        return this.createForceEntryFromPreviewEntry(previewEntry);
+    }
+
+    public createForceEntryFromPreviewEntry(previewEntry: ForcePreviewEntry): LoadForceEntry | null {
+        const hasUnits = previewEntry.groups.some((group) => group.units.some((unit) => unit.unit));
+        if (!hasUnits) {
+            return null;
+        }
+
         return new LoadForceEntry({
             ...previewEntry,
             instanceId: `generated-${Date.now()}-${Math.round(Math.random() * 1_000_000)}`,

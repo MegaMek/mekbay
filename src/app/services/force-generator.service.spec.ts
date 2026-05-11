@@ -9,6 +9,7 @@ import type { MegaMekRulesetRecord } from '../models/megamek/rulesets.model';
 import { MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../models/mulfactions.model';
 import type { AvailabilitySource } from '../models/options.model';
 import type { Unit } from '../models/units.model';
+import type { ForcePreviewEntry } from '../models/force-preview.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { DataService } from './data.service';
 import type { ForceGenerationContext } from './force-generator.service';
@@ -3345,6 +3346,44 @@ describe('ForceGeneratorService', () => {
         };
 
         expect(service.createForceEntry(preview)).not.toBeNull();
+    });
+
+    it('creates a load entry from an already-rendered preview entry without rebuilding groups', () => {
+        const faction = createFaction(10, 'Federated Suns');
+        const era = createEra(3150, 'ilClan');
+        const unit = createUnit({ id: 1, name: 'Light Fire Unit', as: { PV: 6 } as Unit['as'] });
+        const previewEntry = {
+            instanceId: 'preview-entry',
+            timestamp: '2026-05-11T00:00:00.000Z',
+            type: GameSystem.ALPHA_STRIKE,
+            owned: true,
+            cloud: false,
+            local: false,
+            missing: false,
+            name: 'Rendered Force',
+            faction,
+            era,
+            pv: 6,
+            groups: [{
+                name: 'Light Fire',
+                formationId: 'light-fire-lance',
+                units: [{ unit, destroyed: false, skill: 4 }],
+            }],
+        } as ForcePreviewEntry;
+
+        const entry = service.createForceEntryFromPreviewEntry(previewEntry);
+
+        expect(entry).not.toBeNull();
+        expect(entry!.name).toBe('Rendered Force');
+        expect(entry!.faction).toBe(faction);
+        expect(entry!.era).toBe(era);
+        expect(entry!.groups[0]).toEqual(jasmine.objectContaining({
+            name: 'Light Fire',
+            formationId: 'light-fire-lance',
+            force: entry,
+        }));
+        expect(entry!.groups[0]).not.toBe(previewEntry.groups[0]);
+        expect(entry!.groups[0].units[0].unit).toBe(unit);
     });
 
     it('splits a generated company into lance groups and picks the best formation layout', () => {

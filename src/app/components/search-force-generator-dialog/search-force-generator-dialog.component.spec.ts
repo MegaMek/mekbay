@@ -26,6 +26,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
     let setPilotSkillsSpy: jasmine.Spy;
     let buildPreviewSpy: jasmine.Spy;
     let createForceEntrySpy: jasmine.Spy;
+    let createForceEntryFromPreviewEntrySpy: jasmine.Spy;
     let createForcePreviewEntrySpy: jasmine.Spy;
     let resolveGenerationContextSpy: jasmine.Spy;
     let resolveInitialBudgetDefaultsSpy: jasmine.Spy;
@@ -220,6 +221,20 @@ describe('SearchForceGeneratorDialogComponent', () => {
                 }],
             } as LoadForceEntry;
         });
+        createForceEntryFromPreviewEntrySpy = jasmine.createSpy('createForceEntryFromPreviewEntry').and.callFake((previewEntry: ForcePreviewEntry) => {
+            if (previewEntry.groups.length === 0) {
+                return null;
+            }
+
+            return {
+                ...previewEntry,
+                groups: previewEntry.groups.map((group) => ({
+                    name: group.name,
+                    formationId: group.formationId,
+                    units: group.units.map((unit) => ({ ...unit })),
+                })),
+            } as LoadForceEntry;
+        });
 
         const forceGeneratorServiceMock = {
             resolveInitialBudgetDefaults: resolveInitialBudgetDefaultsSpy,
@@ -283,6 +298,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
             buildPreview: buildPreviewSpy,
             createForcePreviewEntry: createForcePreviewEntrySpy,
             createForceEntry: createForceEntrySpy,
+            createForceEntryFromPreviewEntry: createForceEntryFromPreviewEntrySpy,
             getBudgetMetric: (unit: Unit, gameSystem: GameSystem) => {
                 return gameSystem === GameSystem.ALPHA_STRIKE ? unit.as?.PV ?? 0 : unit.bv ?? 0;
             },
@@ -455,6 +471,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(buildPreviewSpy.calls.mostRecent().args[0].eligibleUnits).toEqual([limitedUnit, extraEligibleUnit]);
         expect(createForcePreviewEntrySpy).toHaveBeenCalled();
         expect(createForceEntrySpy).not.toHaveBeenCalled();
+        expect(createForceEntryFromPreviewEntrySpy).not.toHaveBeenCalled();
     });
 
     it('does not lower the min units while typing a larger max until blur', async () => {
@@ -856,7 +873,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(sendWsMessageSpy).not.toHaveBeenCalled();
     });
 
-    it('uses the preview adapter for rendering and the load entry adapter only on submit', () => {
+    it('submits the rendered preview entry without rebuilding its groups', () => {
         const atlas = createEmptyUnit({
             id: 4,
             name: 'Atlas AS7-D',
@@ -882,10 +899,11 @@ describe('SearchForceGeneratorDialogComponent', () => {
         });
 
         component.reroll();
-        component.previewEntry();
+        const renderedEntry = component.previewEntry();
 
         expect(createForcePreviewEntrySpy).toHaveBeenCalledTimes(1);
         expect(createForceEntrySpy).not.toHaveBeenCalled();
+        expect(createForceEntryFromPreviewEntrySpy).not.toHaveBeenCalled();
 
         component.minUnitCount.set(1);
         component.maxUnitCount.set(1);
@@ -893,7 +911,8 @@ describe('SearchForceGeneratorDialogComponent', () => {
         component.classicBudgetMax.set(0);
         component.submit();
 
-        expect(createForceEntrySpy).toHaveBeenCalledTimes(1);
+        expect(createForceEntrySpy).not.toHaveBeenCalled();
+        expect(createForceEntryFromPreviewEntrySpy).toHaveBeenCalledOnceWith(renderedEntry);
         expect(dialogCloseSpy).toHaveBeenCalledTimes(1);
     });
 
