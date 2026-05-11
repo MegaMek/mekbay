@@ -4996,16 +4996,16 @@ export class ForceGeneratorService implements OnDestroy {
             );
         }
 
-        if (!error) {
-            const searchEffortNote = this.formatGenerationSearchEffortNote(attemptsTried, attemptsElapsedMs);
-            if (searchEffortNote) {
-                lines.push(`Search effort: ${searchEffortNote}`);
+        const searchEffortNote = this.formatGenerationSearchEffortNote(attemptsTried, attemptsElapsedMs);
+        if (searchEffortNote) {
+            lines.push(`Search effort: ${searchEffortNote}`);
+            if (!error) {
                 lines.push(`Formation effort: ${this.formatFormationComputationEffortNote()}`);
             }
         }
 
         if (error) {
-            lines.push(`Result note: ${this.formatGenerationResultNote(error, attemptsTried, attemptsElapsedMs)}`);
+            lines.push(`Result note: ${error}`);
         }
 
         return lines;
@@ -5106,7 +5106,7 @@ export class ForceGeneratorService implements OnDestroy {
         );
 
         if (resultNote && resultNote !== error) {
-            explanationLines.push(`Result note: ${this.formatGenerationResultNote(resultNote, attemptsTried, attemptsElapsedMs)}`);
+            explanationLines.push(`Result note: ${resultNote}`);
         }
         this.addTargetFormationExplanation(options, explanationLines);
 
@@ -5375,11 +5375,6 @@ export class ForceGeneratorService implements OnDestroy {
             : `${formattedMin}-${formattedMax}`;
     }
 
-    private formatGenerationResultNote(note: string, attemptsTried?: number, attemptsElapsedMs?: number): string {
-        const searchEffortNote = this.formatGenerationSearchEffortNote(attemptsTried, attemptsElapsedMs);
-        return searchEffortNote ? `${note} ${searchEffortNote}` : note;
-    }
-
     private formatGenerationSearchEffortNote(attemptsTried?: number, attemptsElapsedMs?: number): string | null {
         if (attemptsTried === undefined) {
             return null;
@@ -5394,7 +5389,7 @@ export class ForceGeneratorService implements OnDestroy {
         const searchWindowNote = roundedElapsedMs !== undefined && roundedElapsedMs >= failureSearchWindowMs
             ? ' Search window expired.'
             : '';
-        return `Attempts tried: ${attemptsTried}${elapsedNote}.${searchWindowNote}`;
+        return `${attemptsTried} attempts tried ${elapsedNote}.${searchWindowNote}`;
     }
 
     private formatFormationComputationEffortNote(): string {

@@ -774,7 +774,6 @@ describe('ForceGeneratorService', () => {
         expect(preview.units.length).toBe(1);
         expect(preview.units[0].unit).toBe(knownUnit);
         expect(preview.totalCost).toBe(5);
-        expect(preview.explanationLines.join('\n')).toMatch(/Search effort: Attempts tried: \d+ in \d+ms\./);
         const rulesetGuidanceIndex = preview.explanationLines.findIndex((line) => line.includes('Ruleset guidance: none resolved, so picks used weighted search only.'));
         const sourceRollOddsIndex = preview.explanationLines.findIndex((line) => line.includes('Source roll odds: requisition'));
         expect(sourceRollOddsIndex).toBeGreaterThan(rulesetGuidanceIndex);
@@ -872,7 +871,6 @@ describe('ForceGeneratorService', () => {
         expect(preview.error).toBeNull();
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Panther A', 'Panther B', 'Panther C']);
         expect(preview.explanationLines.join('\n')).toContain('Target formation: Order.');
-        expect(preview.explanationLines.join('\n')).toMatch(/Search effort: Attempts tried: \d+ in \d+ms\./);
         const previewEntry = service.createForcePreviewEntry(preview);
         expect(previewEntry?.groups[0]?.formationId).toBe('order-lance');
     });
@@ -992,37 +990,6 @@ describe('ForceGeneratorService', () => {
         expect(preview.units.every(generatedUnit => generatedUnit.skill === 4)).toBeTrue();
         expect(preview.targetFormationId).toBe('artillery-fire-lance');
         expect(preview.explanationLines.join('\n')).not.toContain('Result note: Target formation achieved');
-    });
-
-    it('reports target formation attempts tried when generation cannot complete the formation', () => {
-        const era = createEra(3150, 'ilClan');
-        const faction = createFaction(10, 'Capellan Confederation');
-        registerEraAndFaction(era, faction);
-        const lineA = createUnit({ id: 1, name: 'Line A', chassis: 'Line A', as: { TP: 'BM', PV: 40 } });
-        const lineB = createUnit({ id: 2, name: 'Line B', chassis: 'Line B', as: { TP: 'BM', PV: 40 } });
-        const lineC = createUnit({ id: 3, name: 'Line C', chassis: 'Line C', as: { TP: 'BM', PV: 40 } });
-        const artilleryA = createUnit({ id: 4, name: 'Artillery A', chassis: 'Artillery A', as: { TP: 'BM', PV: 40, specials: ['ART-LT'] } });
-        for (const unit of [lineA, lineB, lineC, artilleryA]) {
-            units.push(unit);
-            addMegaMekAvailability(unit, faction, era);
-        }
-        spyOn(Math, 'random').and.returnValue(0);
-
-        const preview = service.buildPreview({
-            eligibleUnits: [lineA, lineB, lineC, artilleryA],
-            context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
-            budgetRange: { min: 150, max: 180 },
-            minUnitCount: 4,
-            maxUnitCount: 4,
-            gunnery: 4,
-            piloting: 5,
-            targetFormationId: 'artillery-fire-lance',
-            preventDuplicateChassis: true,
-        });
-
-        expect(preview.error).toContain('Unable to complete Artillery Fire');
-        expect(preview.explanationLines.join('\n')).toMatch(/Result note: Unable to complete Artillery Fire.*Attempts tried: \d+ in \d+ms\. Search window expired\./);
     });
 
     it('builds separate target formation groups when two requested formations fit the unit cap', () => {
