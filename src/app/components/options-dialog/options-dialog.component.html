@@ -581,6 +581,26 @@
                 </div>
                 }
             </div>
+            <div class="option-col">
+                <div class="option-row force-gen-search-window-row">
+                    <label id="forceGenFailureSearchWindowMsLabel" for="forceGenFailureSearchWindowMs">Force generator search window:</label>
+                    <div class="force-gen-search-window-control">
+                        <range-slider
+                            id="forceGenFailureSearchWindowMs"
+                            [attr.aria-labelledby]="'forceGenFailureSearchWindowMsLabel forceGenFailureSearchWindowMsValue'"
+                            [min]="forceGenFailureSearchWindowMinMs"
+                            [max]="forceGenFailureSearchWindowMaxMs"
+                            [singleValue]="forceGenFailureSearchWindowMs()"
+                            [stepSize]="forceGenFailureSearchWindowStepMs"
+                            (singleValueChange)="onForceGenFailureSearchWindowMsChange($event)">
+                        </range-slider>
+                        <span id="forceGenFailureSearchWindowMsValue" class="force-gen-search-window-value">{{ forceGenFailureSearchWindowMs() }} ms</span>
+                    </div>
+                </div>
+                <div class="description">
+                    <p>Controls how long the force generator keeps searching before stopping when no valid force is found.</p>
+                </div>
+            </div>
             <hr />
             <div class="option-col">
                 <div class="option-row">

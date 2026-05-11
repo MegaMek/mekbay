@@ -17,10 +17,6 @@ import { DataService } from './data.service';
 import { OptionsService } from './options.service';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
 
-function legacyMegaMekScore(score: number): number {
-    return score <= 0 ? 0 : Math.round((score - 0.5) * 10);
-}
-
 function createUnit(overrides: TestUnitOverrides): Unit {
     return createEmptyUnit(overrides);
 }
@@ -424,13 +420,13 @@ describe('UnitAvailabilitySourceService', () => {
         });
         megaMekAvailabilityRecords.push(megaMekAvailabilityByUnitName.get(scopedUnit.name)!);
 
-        expect(service.getMegaMekAvailabilityScore(scopedUnit)).toBe(legacyMegaMekScore(6.6));
+        expect(service.getMegaMekAvailabilityScore(scopedUnit)).toBe(61);
         expect(service.getMegaMekAvailabilityScore(scopedUnit, {
             availabilityFrom: new Set(['Requisition']),
-        })).toBe(legacyMegaMekScore(5));
+        })).toBe(45);
         expect(service.getMegaMekAvailabilityScore(scopedUnit, {
             factionIds: new Set([8]),
-        })).toBe(legacyMegaMekScore(2));
+        })).toBe(15);
         expect(service.getMegaMekAvailabilityScore(scopedUnit, {
             eraIds: new Set([3067]),
             factionIds: new Set([8]),
@@ -660,11 +656,11 @@ describe('UnitAvailabilitySourceService', () => {
         expect(service.getMegaMekAvailabilityScore(unit, {
             ...darkAgeContext,
             availabilityFrom: new Set(['Requisition']),
-        })).toBe(legacyMegaMekScore(1.7));
+        })).toBe(12);
         expect(service.getMegaMekAvailabilityScore(unit, {
             ...darkAgeContext,
             availabilityFrom: new Set(['Salvage']),
-        })).toBe(legacyMegaMekScore(1));
+        })).toBe(5);
         expect(service.unitMatchesAvailabilityRarity(unit, 'Common', darkAgeContext)).toBeFalse();
         expect(service.unitMatchesAvailabilityRarity(unit, 'Very Rare', darkAgeContext)).toBeTrue();
         expect(service.getMegaMekRarityUnitIds('Common', darkAgeContext).has(unit.name)).toBeFalse();
@@ -673,7 +669,7 @@ describe('UnitAvailabilitySourceService', () => {
         expect(service.getMegaMekAvailabilityScore(unit, {
             ...ilClanContext,
             availabilityFrom: new Set(['Requisition']),
-        })).toBe(legacyMegaMekScore(7.6));
+        })).toBe(71);
         expect(service.unitMatchesAvailabilityRarity(unit, 'Common', ilClanContext)).toBeTrue();
     });
 

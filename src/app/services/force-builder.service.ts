@@ -78,6 +78,7 @@ import type { ForceSlot, ForceAlignment } from '../models/force-slot.model';
 import { MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../models/mulfactions.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationAbilityAssignmentUtil } from '../utils/formation-ability-assignment.util';
+import type { FormationTypeDefinition } from '../utils/formation-type.model';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 import type { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { getPositiveDropdownNamesFromFilter } from '../utils/filter-name-resolution.util';
@@ -814,6 +815,7 @@ export class ForceBuilderService {
         });
         this.generateFactionAndForceNameIfNeeded(targetForce, firstUnit);
         if (unitGroup) {
+            this.applyFormationFilterToGroup(unitGroup, firstUnit);
             this.assignFormationIfNeeded(unitGroup);
         }
         return newForceUnit;
@@ -1246,8 +1248,11 @@ export class ForceBuilderService {
             return;
         }
 
+        const formation = respectFilter ? this.pickFormationFromFilter(force.gameSystem) : null;
+        let faction = formation ? this.pickFactionForFormation(formation) : null;
+
         // If respectFilter is true and a faction filter is active, prefer picking from those factions
-        let faction = respectFilter ? this.pickFactionFromFilter() : null;
+        faction ??= respectFilter ? this.pickFactionFromFilter() : null;
 
         if (!faction) {
             const eras = this.dataService.getEras();
@@ -1324,6 +1329,65 @@ export class ForceBuilderService {
             // UnitSearchFiltersService not available, fall through
             return null;
         }
+    }
+
+    private pickFormationFromFilter(gameSystem: GameSystem): FormationTypeDefinition | null {
+        try {
+            const filtersService = this.injector.get(UnitSearchFiltersService);
+            return filtersService.getActiveFormationTargetDefinition(gameSystem);
+        } catch {
+            return null;
+        }
+    }
+
+    private pickFactionForFormation(formation: FormationTypeDefinition): Faction | null {
+        const exclusiveFactionNames = formation.exclusiveFaction ?? [];
+        if (exclusiveFactionNames.length === 0) {
+            return null;
+        }
+
+        const matchingFactions = this.dataService.getFactions()
+            .filter((faction) => faction.id !== MULFACTION_EXTINCT && this.factionMatchesFormation(faction, exclusiveFactionNames))
+            .sort((left, right) => {
+                const leftIndex = this.getFormationFactionOrderIndex(left, exclusiveFactionNames);
+                const rightIndex = this.getFormationFactionOrderIndex(right, exclusiveFactionNames);
+                return leftIndex !== rightIndex
+                    ? leftIndex - rightIndex
+                    : left.name.localeCompare(right.name);
+            });
+
+        return matchingFactions[0] ?? null;
+    }
+
+    private factionMatchesFormation(faction: Faction, exclusiveFactionNames: readonly string[]): boolean {
+        const factionName = faction.name.toLocaleLowerCase();
+        return exclusiveFactionNames.some((exclusiveFactionName) => (
+            factionName.includes(exclusiveFactionName.toLocaleLowerCase())
+        ));
+    }
+
+    private getFormationFactionOrderIndex(faction: Faction, exclusiveFactionNames: readonly string[]): number {
+        const factionName = faction.name.toLocaleLowerCase();
+        const index = exclusiveFactionNames.findIndex((exclusiveFactionName) => (
+            factionName.includes(exclusiveFactionName.toLocaleLowerCase())
+        ));
+
+        return index >= 0 ? index : Number.MAX_SAFE_INTEGER;
+    }
+
+    private applyFormationFilterToGroup(group: UnitGroup, respectFilter: boolean): void {
+        if (!respectFilter || group.formationLock) {
+            return;
+        }
+
+        const formation = this.pickFormationFromFilter(group.force.gameSystem);
+        if (!formation) {
+            return;
+        }
+
+        group.formationHistory.clear();
+        group.formationLock = true;
+        group.formation.set(formation);
     }
 
     public assignFormationIfNeeded(group: UnitGroup) {

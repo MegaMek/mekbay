@@ -50,6 +50,7 @@ export interface DropdownOption {
 }
 
 export type MultiState = false | 'or' | 'and' | 'not';
+type SelectableMultiState = Exclude<MultiState, false>;
 
 /** Operators for quantity constraints on countable filters */
 export type CountOperator = '=' | '!=' | '>' | '<' | '>=' | '<=';
@@ -123,6 +124,7 @@ export class MultiSelectDropdownComponent {
     label = input<string>('');
     multiselect = input<boolean>(true);
     multistate = input<boolean>(false);
+    stateCycle = input<readonly SelectableMultiState[]>(['or', 'and', 'not']);
     countable = input<boolean>(false);
     keepUnavailableVisible = input<boolean>(false);
     semanticOnly = input<boolean>(false);
@@ -697,14 +699,13 @@ export class MultiSelectDropdownComponent {
             const sel = this.selected();
             const currentSelection: MultiStateSelection = (sel && !Array.isArray(sel)) ? { ...sel } : {};
             const current = currentSelection[optionName] || { state: false as MultiState, count: 1 };
-            let nextState: MultiState;
-            switch (current.state) {
-                case false: nextState = 'or'; break;
-                case 'or': nextState = 'and'; break;
-                case 'and': nextState = 'not'; break;
-                case 'not': nextState = false; break;
-                default: nextState = 'or';
-            }
+            const cycle = this.getSelectableStateCycle();
+            const currentIndex = current.state === false ? -1 : cycle.indexOf(current.state);
+            const nextState: MultiState = currentIndex >= 0 && currentIndex < cycle.length - 1
+                ? cycle[currentIndex + 1]
+                : currentIndex === -1
+                    ? cycle[0]
+                    : false;
             if (nextState === false) {
                 delete currentSelection[optionName];
             } else {
@@ -726,6 +727,13 @@ export class MultiSelectDropdownComponent {
         }
         
         this.restoreScrollPosition(restoreState);
+    }
+
+    private getSelectableStateCycle(): readonly SelectableMultiState[] {
+        const states = this.stateCycle().filter((state): state is SelectableMultiState => (
+            state === 'or' || state === 'and' || state === 'not'
+        ));
+        return states.length > 0 ? states : ['or'];
     }
 
     private captureScrollRestoreState(optionName: string): ScrollRestoreState | null {

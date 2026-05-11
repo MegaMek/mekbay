@@ -1,135 +1,101 @@
-/*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
- *
- * This file is part of MekBay.
- *
- * MekBay is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License (GPL),
- * version 3 or (at your option) any later version,
- * as published by the Free Software Foundation.
- *
- * MekBay is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty
- * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
- *
- * A copy of the GPL should have been included with this project;
- * if not, see <https://www.gnu.org/licenses/>.
- *
- * NOTICE: The MegaMek organization is a non-profit group of volunteers
- * creating free software for the BattleTech community.
- *
- * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
- * of The Topps Company, Inc. All Rights Reserved.
- *
- * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
- * InMediaRes Productions, LLC.
- *
- * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
- * Microsoft's "Game Content Usage Rules"
- * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
- * affiliated with Microsoft.
- */
-
-import type { ForceUnit } from '../models/force-unit.model';
-import { CBT_WEIGHT_CLASS_ORDINALS, type Unit, type ASUnitTypeCode } from '../models/units.model';
-import type { FormationTypeDefinition } from './formation-type.model';
 import { GameSystem, Rulebook } from '../models/common.model';
-import { isClan } from './org/org-registry.util';
-import { CBTForceUnit } from '../models/cbt-force-unit.model';
-import { ASForceUnit } from '../models/as-force-unit.model';
+import type { FormationTypeDefinition } from './formation-type.model';
+import type { FormationConstraint, FormationPredicateId, FormationRequirementBlueprint } from './formation-requirement.model';
 
-/*
- * Author: Drake
- *
- * DEPRECATED! Use formation-blueprints.ts instead, which defines blueprints 
- * with a more flexible structure that can be used to generate both requirements and effects.
- * 
- * Unified formation definitions for both Alpha Strike and Classic BattleTech.
- * Each definition carries a `validator(units, gameSystem)` that branches
- * internally when the two systems differ, plus dual rulebook references.
- * Shared metadata (id, name, description, effectDescription, effectGroups,
- * idealRole, …) is defined once.
- */
-
-// ── AS helper functions ──────────────────────────────────────────────────────
-
-const AEROSPACE_MODES = new Set(['a', 'p', 'k']);
-
-function asGetSize(unit: Unit): number {
-    return unit.as?.SZ ?? 0;
+function all(id: string, label: string, predicate: FormationPredicateId): FormationConstraint {
+    return { id, kind: 'all', label, predicate };
 }
 
-function asGetMaxGroundMove(unit: Unit): number {
-    const mvm = unit.as?.MVm;
-    if (!mvm) return 0;
-    let max = 0;
-    for (const [mode, value] of Object.entries(mvm)) {
-        if (mode === 'j' || AEROSPACE_MODES.has(mode)) continue;
-        if (value > max) max = value;
-    }
-    return max;
+function countMin(id: string, label: string, predicate: FormationPredicateId, count: number): FormationConstraint {
+    return { id, kind: 'count-min', label, predicate, count };
 }
 
-function asGetJumpMove(unit: Unit): number {
-    return unit.as?.MVm?.['j'] ?? 0;
+function countMax(id: string, label: string, predicate: FormationPredicateId, count: number): FormationConstraint {
+    return { id, kind: 'count-max', label, predicate, count };
 }
 
-function asGetAnyGroundOrJumpMove(unit: Unit): number {
-    return Math.max(asGetMaxGroundMove(unit), asGetJumpMove(unit));
+function countExact(id: string, label: string, predicate: FormationPredicateId, count: number): FormationConstraint {
+    return { id, kind: 'count-exact', label, predicate, count };
 }
 
-function asIsInfantry(unit: Unit): boolean {
-    const tp = unit.as?.TP;
-    return tp === 'CI' || tp === 'BA' || tp === 'PM';
+function percent(id: string, label: string, predicate: FormationPredicateId, ratio: number): FormationConstraint {
+    return { id, kind: 'percent-min', label, predicate, ratio, rounding: 'ceil' };
 }
 
-function asIsAeroUnit(unit: Unit): boolean {
-    const tp = unit.as?.TP;
-    return tp === 'AF' || tp === 'CF' || tp === 'SC' || tp === 'DS'
-        || tp === 'DA' || tp === 'WS' || tp === 'SS' || tp === 'JS';
+function strictMajority(id: string, label: string, predicate: FormationPredicateId): FormationConstraint {
+    return { id, kind: 'percent-min', label, predicate, ratio: 0.5, rounding: 'strict-majority' };
 }
 
-function asHasSpecial(unit: Unit, prefix: string): boolean {
-    return unit.as?.specials?.some(s => s.startsWith(prefix)) || false;
+function anyOf(id: string, label: string, constraints: readonly FormationConstraint[]): FormationConstraint {
+    return { id, kind: 'any-of', label, constraints };
 }
 
-function asIsOnlyCombatVehicles(units: ForceUnit[]): boolean {
-    return units.every(u => {
-        const tp = u.getUnit().as?.TP;
-        return tp === 'CV' || tp === 'SV';
-    });
+function allOf(id: string, label: string, constraints: readonly FormationConstraint[]): FormationConstraint {
+    return { id, kind: 'all-of', label, constraints };
 }
 
-function isClanForce(units: ForceUnit[]): boolean {
-    const faction = units[0].force.faction();
-    if (!faction) return false;
-    return isClan(faction);
+function conditional(id: string, label: string, when: FormationPredicateId, constraints: readonly FormationConstraint[]): FormationConstraint {
+    return { id, kind: 'conditional', label, when, constraints };
 }
 
-// ── Common helper functions ─────────────────────────────────────────────────────
-
-function countMatchedPairs(units: ForceUnit[]): number {
-    const counts = units.reduce((acc, curr) => {
-        const name = curr.getUnit().name;
-        acc[name] = (acc[name] || 0) + 1;
-        return acc;
-    }, {} as Record<string, number>);
-    return Object.values(counts).filter(count => count >= 2).length;
+function matchedPairs(
+    id: string,
+    label: string,
+    predicate: FormationPredicateId,
+    count: number,
+    onlyWhenAll?: FormationPredicateId,
+): FormationConstraint {
+    return { id, kind: 'matched-pairs-min', label, predicate, count, ...(onlyWhenAll ? { onlyWhenAll } : {}) };
 }
 
-function findIdenticalPairs(units: ForceUnit[]): ForceUnit[][] {
-    const pairs: ForceUnit[][] = [];
-    const seen = new Set<string>();
-    for (const unit of units) {
-        const name = unit.getUnit().name;
-        if (seen.has(name)) {
-            pairs.push([unit, units.find(u => u.getUnit().name === name)!]);
-        }
-        seen.add(name);
-    }
-    return pairs;
+function sameTier(id: string, label: string): FormationConstraint {
+    return {
+        id,
+        kind: 'same-value',
+        label,
+        factByGameSystem: {
+            [GameSystem.ALPHA_STRIKE]: 'asSize',
+            [GameSystem.CLASSIC]: 'cbtWeightClass',
+        },
+    };
 }
+
+function sameChassis(id: string, label: string): FormationConstraint {
+    return {
+        id,
+        kind: 'same-value',
+        label,
+        factByGameSystem: {
+            [GameSystem.ALPHA_STRIKE]: 'chassis',
+            [GameSystem.CLASSIC]: 'chassis',
+        },
+    };
+}
+
+const assaultLanceConstraints: readonly FormationConstraint[] = [
+    countMin('assault-heavy-count', '3 heavy/Size 3+ units', 'heavy-size', 3),
+    countMax('assault-no-light', 'No light/Size 1 units', 'light-size', 0),
+    all('assault-armor', 'All armor threshold', 'assault-armor'),
+    percent('assault-damage', '75% assault damage threshold', 'assault-damage', 0.75),
+    anyOf('assault-role-choice', '1 Juggernaut or 2 Snipers', [
+        countMin('assault-juggernaut', '1 Juggernaut', 'assault-role-juggernaut', 1),
+        countMin('assault-snipers', '2 Snipers', 'assault-role-sniper', 2),
+    ]),
+];
+
+const battleLanceConstraints: readonly FormationConstraint[] = [
+    percent('battle-heavy-percent', '50% heavy/Size 3+ units', 'heavy-size', 0.5),
+    countMin('battle-role-count', '3 Brawler/Sniper/Skirmisher units', 'battle-role', 3),
+    matchedPairs('battle-vehicle-pairs', '2 matched heavy/Size 3+ vehicle pairs', 'heavy-size', 2, 'combat-vehicle'),
+];
+
+const fireLanceConstraints: readonly FormationConstraint[] = [
+    percent('fire-role-percent', '75% Missile Boat/Sniper units', 'fire-role', 0.75),
+];
+
+const clanOnlyConstraints: readonly FormationConstraint[] = [
+    all('clan-force', 'Clan force', 'clan-force'),
+];
 
 function bloodStalkerFormationEffectDescription(formationName: string): (gameSystem: GameSystem) => string {
     return (gameSystem) => {
@@ -137,92 +103,12 @@ function bloodStalkerFormationEffectDescription(formationName: string): (gameSys
         if (isAs) {
             return `75% of the units receive the Blood Stalker SPA. The ${formationName} may choose an enemy formation rather than a single unit as the Blood Stalker target. All members must choose the same enemy formation.`;
         } else {
-            return `75% of the units receive the Blood Stalker SPA.`;    
+            return '75% of the units receive the Blood Stalker SPA.';
         }
     };
 }
 
-// ── CBT helper functions ─────────────────────────────────────────────────────
-
-function cbtGetWeightClass(unit: Unit): number {
-    return CBT_WEIGHT_CLASS_ORDINALS.get(unit.weightClass) ?? -1;
-}
-
-const CBT_LIGHT_WEIGHT_CLASS = CBT_WEIGHT_CLASS_ORDINALS.get('Light') ?? 1;
-const CBT_MEDIUM_WEIGHT_CLASS = CBT_WEIGHT_CLASS_ORDINALS.get('Medium') ?? 2;
-const CBT_HEAVY_WEIGHT_CLASS = CBT_WEIGHT_CLASS_ORDINALS.get('Heavy') ?? 3;
-const CBT_ASSAULT_WEIGHT_CLASS = CBT_WEIGHT_CLASS_ORDINALS.get('Assault') ?? 4;
-
-function cbtIsLightWeight(unit: Unit): boolean {
-    return cbtGetWeightClass(unit) === CBT_LIGHT_WEIGHT_CLASS;
-}
-
-function cbtIsMediumWeight(unit: Unit): boolean {
-    return cbtGetWeightClass(unit) === CBT_MEDIUM_WEIGHT_CLASS;
-}
-
-function cbtIsMediumOrLarger(unit: Unit): boolean {
-    return cbtGetWeightClass(unit) >= CBT_MEDIUM_WEIGHT_CLASS;
-}
-
-function cbtIsLightOrMedium(unit: Unit): boolean {
-    return cbtGetWeightClass(unit) <= CBT_MEDIUM_WEIGHT_CLASS;
-}
-
-function cbtIsHeavyOrLarger(unit: Unit): boolean {
-    return cbtGetWeightClass(unit) >= CBT_HEAVY_WEIGHT_CLASS;
-}
-
-function cbtIsAssaultOrLarger(unit: Unit): boolean {
-    return cbtGetWeightClass(unit) >= CBT_ASSAULT_WEIGHT_CLASS;
-}
-
-function cbtCanDealDamage(unit: Unit, minDamage: number, atRange: number): boolean {
-    if (!unit.comp || unit.comp.length === 0) return false;
-    let totalDamageAtRange = 0;
-    for (const comp of unit.comp) {
-        if (!comp.r) continue;
-        let maxRange = 0;
-        for (const r of comp.r.split('/')) {
-            const parsed = parseInt(r);
-            if (parsed > maxRange) maxRange = parsed;
-        }
-        if (maxRange < atRange) continue;
-        if (comp.d) {
-            const damage = parseInt(comp.d);
-            if (!isNaN(damage)) {
-                totalDamageAtRange += damage;
-                if (totalDamageAtRange >= minDamage) return true;
-            }
-        }
-    }
-    return false;
-}
-
-// Matches both AC and LB-X
-function cbtHasAutocannon(unit: Unit): boolean {
-    return unit.comp?.some(c => c.n?.includes('AC/') || c.n?.includes('LB ') || c.n?.includes('LB-')) || false;
-}
-
-function cbtHasLRM(unit: Unit): boolean {
-    return unit.comp?.some(c => c.n?.includes('LRM')) || false;
-}
-
-function cbtHasSRM(unit: Unit): boolean {
-    return unit.comp?.some(c => c.n?.includes('SRM')) || false;
-}
-
-function cbtHasArtillery(unit: Unit): boolean {
-    return unit.comp?.some(c => c.t === 'A') || false;
-}
-
-function cbtIsOnlyCombatVehicles(units: ForceUnit[]): boolean {
-    return units.every(u => u.getUnit().type === 'Tank' || u.getUnit().type === 'VTOL');
-}
-
-// ── Formation definitions ────────────────────────────────────────────────────
-
-export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
+export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
 
     {
         id: 'anti-mech-lance',
@@ -234,10 +120,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         requirements: (gameSystem) => {
 			const inf = gameSystem === GameSystem.ALPHA_STRIKE ? ' (CI, BA, or PM)' : '';
             return `Minimum 3 units. All units must be Infantry${inf}.`;
-        },
-        validator: (units, gameSystem) => {
-            const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-            return units.every(u => isAS ? asIsInfantry(u.getUnit()) : u.getUnit().type === 'Infantry');
         },
     },
 
@@ -269,26 +151,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             }
             return 'Minimum 3 units. At least 3 heavy or assault. No light units. All armor ≥ 135 points. 75% must deal 25+ damage at 7 hexes. At least 1 Juggernaut or 2 Snipers.';
         },
-        validator: (units, gameSystem) => {
-            const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-            const heavyUnits = units.filter(u =>
-                isAS ? asGetSize(u.getUnit()) >= 3 : cbtIsHeavyOrLarger(u.getUnit()));
-            const hasLight = units.some(u =>
-                isAS ? asGetSize(u.getUnit()) === 1 : cbtIsLightWeight(u.getUnit()));
-            if (heavyUnits.length < 3 || hasLight) return false;
-            if (isAS) {
-                const hasEnoughArmor = units.every(u => (u.getUnit().as?.Arm ?? 0) >= 5);
-                const highMedDmg = units.filter(u => (u.getUnit().as?.dmg?._dmgM ?? 0) >= 3);
-                if (!hasEnoughArmor || highMedDmg.length < Math.ceil(units.length * 0.75)) return false;
-            } else {
-                const hasEnoughArmor = units.every(u => u.getUnit().armor >= 135);
-                const highDamage = units.filter(u => cbtCanDealDamage(u.getUnit(), 25, 7));
-                if (!hasEnoughArmor || highDamage.length < Math.ceil(units.length * 0.75)) return false;
-            }
-            const hasJuggernaut = units.some(u => u.getUnit().role === 'Juggernaut');
-            const sniperCount = units.filter(u => u.getUnit().role === 'Sniper').length;
-            return hasJuggernaut || sniperCount >= 2;
-        },
     },
 
     //
@@ -318,24 +180,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             }
             return 'Minimum 3 units. Free Worlds League only. All medium or heavier. All armor ≥ 105 points. 50% must have autocannons, LRMs, or SRMs.';
         },
-        validator: (units, gameSystem) => {
-            if (gameSystem === GameSystem.ALPHA_STRIKE) {
-            const allMediumOrLarger = units.every(u => asGetSize(u.getUnit()) >= 2);
-            const hasEnoughArmor = units.every(u => (u.getUnit().as?.Arm ?? 0) >= 4);
-            const hasWeapons = units.filter(u =>
-                asHasSpecial(u.getUnit(), 'AC') ||
-                asHasSpecial(u.getUnit(), 'FLK') ||
-                asHasSpecial(u.getUnit(), 'LRM') ||
-                asHasSpecial(u.getUnit(), 'SRM'));
-            return allMediumOrLarger && hasEnoughArmor && hasWeapons.length >= Math.ceil(units.length * 0.5);
-            } else {
-                const allMediumOrLarger = units.every(u => cbtIsMediumOrLarger(u.getUnit()));
-                const hasEnoughArmor = units.every(u => u.getUnit().armor >= 105);
-                const hasWeapons = units.filter(u => cbtHasAutocannon(u.getUnit()) ||
-                    cbtHasLRM(u.getUnit()) || cbtHasSRM(u.getUnit()));
-                return allMediumOrLarger && hasEnoughArmor && hasWeapons.length >= Math.ceil(units.length * 0.5);
-            }
-        },
     },
 
     //
@@ -363,17 +207,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             const move = gameSystem === GameSystem.ALPHA_STRIKE ? '[[10]]+ or any jump capability' : 'walk ≥ 5 or jump > 0';
             return `Must meet Assault Lance requirements. All units must have ${move}.`;
         },
-        validator: (units, gameSystem) => {
-            if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                return units.every(u => {
-                    const groundMove = asGetMaxGroundMove(u.getUnit());
-                    const jumpMove = asGetJumpMove(u.getUnit());
-                    return groundMove >= 10 || jumpMove > 0;
-                });
-            } else {
-                return units.every(u => u.getUnit().walk >= 5 || u.getUnit().jump > 0);
-            }
-        },
     },
 
     //
@@ -396,11 +229,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 62 }, { book: Rulebook.FMD, page: 82 }],
         requirements: () => 'Minimum 3 units. At least 50% must have the Ambusher or Juggernaut role.',
-        validator: (units) => {
-            const count = units.filter(u =>
-                u.getUnit().role === 'Ambusher' || u.getUnit().role === 'Juggernaut');
-            return count.length >= Math.ceil(units.length * 0.5);
-        },
     },
 
     // ─── Battle Lance ────────────────────────────────────────────────────
@@ -428,17 +256,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             }
             return `Minimum 3 units. 50% must be heavy or assault. At least 3 Brawler, Sniper, or Skirmisher roles. Vehicle formations require 2 matched pairs of heavy units.`;
         },
-        validator: (units, gameSystem) => {
-            const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-            const heavyUnits = units.filter(u =>
-                isAS ? asGetSize(u.getUnit()) >= 3 : cbtIsHeavyOrLarger(u.getUnit()));
-            if (isAS ? asIsOnlyCombatVehicles(units) : cbtIsOnlyCombatVehicles(units)) {
-                if (countMatchedPairs(heavyUnits) < 2) return false;
-            }
-            const hasRequiredRoles = units.filter(u =>
-                ['Brawler', 'Sniper', 'Skirmisher'].includes(u.getUnit().role));
-            return heavyUnits.length >= Math.ceil(units.length * 0.5) && hasRequiredRoles.length >= 3;
-        },
     },
 
     //
@@ -461,20 +278,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
                 return 'Minimum 3 units. 75% must be Size 1. No Size 4+ units. At least 1 Scout. Vehicle formations require 2 matched pairs of Size 1 units.';
             }
             return 'Minimum 3 units. 75% must be light. No assault units. At least 1 Scout. Vehicle formations require 2 matched pairs of light units.';
-        },
-        validator: (units, gameSystem) => {
-            const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-            const lightUnits = units.filter(u => isAS
-                ? asGetSize(u.getUnit()) === 1
-                : cbtIsLightWeight(u.getUnit()));
-            const hasAssault = units.some(u => isAS
-                ? asGetSize(u.getUnit()) >= 4
-                : cbtIsAssaultOrLarger(u.getUnit()));
-            if (isAS ? asIsOnlyCombatVehicles(units) : cbtIsOnlyCombatVehicles(units)) {
-                if (countMatchedPairs(lightUnits) < 2) return false;
-            }
-            const hasScout = units.some(u => u.getUnit().role === 'Scout');
-            return lightUnits.length >= Math.ceil(units.length * 0.75) && !hasAssault && hasScout;
         },
     },
 
@@ -499,19 +302,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             }
             return 'Minimum 3 units. 50% must be medium. No assault units. Vehicle formations require 2 matched pairs of medium units.';
         },
-        validator: (units, gameSystem) => {
-            const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-            const mediumUnits = units.filter(u => isAS
-                ? asGetSize(u.getUnit()) === 2
-                : cbtIsMediumWeight(u.getUnit()));
-            const hasAssault = units.some(u => isAS
-                ? asGetSize(u.getUnit()) >= 4
-                : cbtIsAssaultOrLarger(u.getUnit()));
-            if (isAS ? asIsOnlyCombatVehicles(units) : cbtIsOnlyCombatVehicles(units)) {
-                if (countMatchedPairs(mediumUnits) < 2) return false;
-            }
-            return mediumUnits.length >= Math.ceil(units.length * 0.5) && !hasAssault;
-        },
     },
 
     //
@@ -534,18 +324,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
                 return 'Minimum 3 units. 50% must be Size 3+. No Size 1 units. Vehicle formations require 2 matched pairs of Size 3+ units.';
             }
             return 'Minimum 3 units. 50% must be heavy or assault. No light units. Vehicle formations require 2 matched pairs of heavy units.';
-        },
-        validator: (units, gameSystem) => {
-            const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-            const heavyUnits = units.filter(u =>
-                isAS ? asGetSize(u.getUnit()) >= 3 : cbtIsHeavyOrLarger(u.getUnit()));
-            const hasLight = units.some(u => isAS
-                ? asGetSize(u.getUnit()) === 1
-                : cbtIsLightWeight(u.getUnit()));
-            if (isAS ? asIsOnlyCombatVehicles(units) : cbtIsOnlyCombatVehicles(units)) {
-                if (countMatchedPairs(heavyUnits) < 2) return false;
-            }
-            return heavyUnits.length >= Math.ceil(units.length * 0.5) && !hasLight;
         },
     },
 
@@ -574,28 +352,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             }
             return 'Minimum 3 units. Federated Suns only. 75% must be medium or heavy. 50% must have autocannons (including LB-X, Ultra, or Rotary). All units walk ≥ 4.';
         },
-        validator: (units, gameSystem) => {
-            if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                const mediumOrHeavy = units.filter(u => {
-                    const sz = asGetSize(u.getUnit());
-                    return sz >= 2 && sz <= 3;
-                });
-                const withAutocannon = units.filter(u => asHasSpecial(u.getUnit(), 'AC') || asHasSpecial(u.getUnit(), 'FLK'));
-                const allFast = units.every(u => asGetMaxGroundMove(u.getUnit()) >= 8);
-                return mediumOrHeavy.length >= Math.ceil(units.length * 0.75) &&
-                       withAutocannon.length >= Math.ceil(units.length * 0.5) && allFast;
-            } else {
-                if (units.length < 1) return false;
-                const mediumOrHeavy = units.filter(u => {
-                    const weight = cbtGetWeightClass(u.getUnit());
-                    return weight === CBT_MEDIUM_WEIGHT_CLASS || weight === CBT_HEAVY_WEIGHT_CLASS;
-                });
-                const withAutocannon = units.filter(u => cbtHasAutocannon(u.getUnit()));
-                const fastEnough = units.every(u => u.getUnit().walk >= 4);
-                return mediumOrHeavy.length >= Math.ceil(units.length * 0.75) &&
-                       withAutocannon.length >= Math.ceil(units.length * 0.5) && fastEnough;
-            }
-        },
     },
 
     //
@@ -618,19 +374,8 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         }],
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 63 }, { book: Rulebook.FMK, page: 87 }],
-		requirements: (gameSystem) => {
+        requirements: (gameSystem) => {            
             return 'Must meet Battle Lance requirements.';
-        },
-        validator: (units, gameSystem) => {
-            const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-            const heavyUnits = units.filter(u =>
-                isAS ? asGetSize(u.getUnit()) >= 3 : cbtIsHeavyOrLarger(u.getUnit()));
-            if (isAS ? asIsOnlyCombatVehicles(units) : cbtIsOnlyCombatVehicles(units)) {
-                if (countMatchedPairs(heavyUnits) < 2) return false;
-            }
-            const hasRequiredRoles = units.filter(u =>
-                ['Brawler', 'Sniper', 'Skirmisher'].includes(u.getUnit().role));
-            return heavyUnits.length >= Math.ceil(units.length * 0.5) && hasRequiredRoles.length >= 3;
         },
     },
 
@@ -662,13 +407,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 63 }, { book: Rulebook.ASCE, page: 120 }],
         requirements: () => 'Minimum 3 units. 50% must have Sniper, Missile Boat, Skirmisher, or Juggernaut role. At least 1 Brawler, Striker, or Scout.',
-        validator: (units) => {
-            const heavyRoles = units.filter(u =>
-                ['Sniper', 'Missile Boat', 'Skirmisher', 'Juggernaut'].includes(u.getUnit().role));
-            const diverseRoles = units.filter(u =>
-                ['Brawler', 'Striker', 'Scout'].includes(u.getUnit().role));
-            return heavyRoles.length >= Math.ceil(units.length * 0.5) && diverseRoles.length >= 1;
-        },
     },
 
     //
@@ -700,15 +438,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             const tier = gameSystem === GameSystem.ALPHA_STRIKE ? 'Size' : 'weight';
             return `Minimum 3 units. Draconis Combine only. All units must share the same ${tier} class and chassis.`;
         },
-        validator: (units, gameSystem) => {
-            const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-            const firstTier = isAS ? asGetSize(units[0].getUnit()) : cbtGetWeightClass(units[0].getUnit());
-            const sameTier = units.every(u =>
-                (isAS ? asGetSize(u.getUnit()) : cbtGetWeightClass(u.getUnit())) === firstTier);
-            const firstChassis = units[0].getUnit().chassis;
-            const sameChassis = units.every(u => u.getUnit().chassis === firstChassis);
-            return sameTier && sameChassis;
-        },
     },
 
     //
@@ -735,13 +464,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 63 }, { book: Rulebook.ASCE, page: 120 }],
         requirements: () => 'Minimum 3 units. All must be combat vehicles. At least one matched pair with Sniper, Missile Boat, Skirmisher, or Juggernaut role.',
-        validator: (units, gameSystem) => {
-            const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-            if (!(isAS ? asIsOnlyCombatVehicles(units) : cbtIsOnlyCombatVehicles(units))) return false;
-            return findIdenticalPairs(units).some(pair =>
-                pair.every(u =>
-                    ['Sniper', 'Missile Boat', 'Skirmisher', 'Juggernaut'].includes(u.getUnit().role)));
-        },
     },
 
     // ─── Fire Lance ──────────────────────────────────────────────────────
@@ -765,11 +487,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 3,
         rulesRef: [{ book: Rulebook.CO, page: 64 }, { book: Rulebook.ASCE, page: 119 }],
         requirements: () => 'Minimum 3 units. 75% must have the Missile Boat or Sniper role.',
-        validator: (units) => {
-            const count = units.filter(u =>
-                u.getUnit().role === 'Missile Boat' || u.getUnit().role === 'Sniper');
-            return count.length >= Math.ceil(units.length * 0.75);
-        },
     },
 
     //
@@ -797,21 +514,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             }
             return 'Minimum 3 units. Must meet Fire Lance requirements. At least 2 units with an LBX autocannon, standard autocannon, artillery weapon, or Anti-Aircraft Targeting quirk.';
         },
-        validator: (units, gameSystem) => {
-            if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                const qualifyingUnits = units.filter(u =>
-                    asHasSpecial(u.getUnit(), 'FLK') ||
-                    asHasSpecial(u.getUnit(), 'AC') ||
-                    asHasSpecial(u.getUnit(), 'ART'));
-                return qualifyingUnits.length >= 2;
-            } else {
-                const qualifyingUnits = units.filter(u =>
-                    cbtHasAutocannon(u.getUnit()) ||
-                    cbtHasArtillery(u.getUnit()) ||
-                    u.getUnit().quirks.includes('Anti-Aircraft Targeting'));
-                return qualifyingUnits.length >= 2;
-            }
-        },
     },
 
     //
@@ -835,12 +537,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         requirements: (gameSystem) => {
             const artillery = gameSystem === GameSystem.ALPHA_STRIKE ? 'the ART special' : 'artillery weapons';
             return `Minimum 3 units. At least 2 units with ${artillery}.`;
-        },
-        validator: (units, gameSystem) => {
-            const artilleryCount = units.filter(u => gameSystem === GameSystem.ALPHA_STRIKE
-                ? asHasSpecial(u.getUnit(), 'ART')
-                : cbtHasArtillery(u.getUnit())).length;
-            return artilleryCount >= 2;
         },
     },
 
@@ -868,15 +564,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             }
             return 'Minimum 3 units. At least 2 heavy or assault units. All units must deal 10+ damage at 18 hexes.';
         },
-        validator: (units, gameSystem) => {
-            const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-            const heavyUnits = units.filter(u =>
-                isAS ? asGetSize(u.getUnit()) >= 3 : cbtIsHeavyOrLarger(u.getUnit()));
-            const allLongRange = isAS
-                ? units.every(u => (u.getUnit().as?.dmg?._dmgL ?? 0) >= 2)
-                : units.every(u => cbtCanDealDamage(u.getUnit(), 10, 18));
-            return heavyUnits.length >= 2 && allLongRange;
-        },
     },
 
     //
@@ -902,12 +589,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
 			 
             return `Minimum 3 units. At least 3 units with ${indirectFire}.`;
         },
-        validator: (units, gameSystem) => {
-            const indirectCount = units.filter(u => gameSystem === GameSystem.ALPHA_STRIKE
-                ? asHasSpecial(u.getUnit(), 'IF')
-                : (cbtHasLRM(u.getUnit()) || cbtHasArtillery(u.getUnit()))).length;
-            return indirectCount >= 3;
-        },
     },
 
     //
@@ -924,13 +605,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         requirements: (gameSystem) => {
             const noHeavy = gameSystem === GameSystem.ALPHA_STRIKE ? 'Size 3+' : 'heavy or assault';
             return `Minimum 3 units. No ${noHeavy} units. 50% must have the Missile Boat or Sniper role.`;
-        },
-        validator: (units, gameSystem) => {
-            const noHeavy = units.every(u =>
-                (gameSystem === GameSystem.ALPHA_STRIKE ? asGetSize(u.getUnit()) : cbtGetWeightClass(u.getUnit())) < 3);
-            const hasRequiredRoles = units.filter(u =>
-                ['Missile Boat', 'Sniper'].includes(u.getUnit().role));
-            return noHeavy && hasRequiredRoles.length >= Math.ceil(units.length * 0.5);
         },
     },
 
@@ -957,18 +631,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             }
             return 'Minimum 3 units. All light or medium. 75% must have walk ≥ 6. At least 1 unit dealing 5+ damage at 15 hexes.';
         },
-        validator: (units, gameSystem) => {
-            const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-            const allSmallOrMedium = units.every(u =>
-                isAS ? asGetSize(u.getUnit()) <= 2 : cbtIsLightOrMedium(u.getUnit()));
-            const fastUnits = units.filter(u => isAS
-                ? asGetAnyGroundOrJumpMove(u.getUnit()) >= 12
-                : u.getUnit().walk >= 6);
-            const hasRange = isAS
-                ? units.some(u => (u.getUnit().as?.dmg?._dmgM ?? 0) > 1)
-                : units.some(u => cbtCanDealDamage(u.getUnit(), 5, 15));
-            return allSmallOrMedium && fastUnits.length >= Math.ceil(units.length * 0.75) && hasRange;
-        },
     },
 
     //
@@ -992,18 +654,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             }
             return 'Minimum 3 units. No assault units. 75% must have walk ≥ 6. All units must deal 10+ damage at 9 hexes.';
         },
-        validator: (units, gameSystem) => {
-            const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-            const allNotHuge = units.every(u =>
-                (isAS ? asGetSize(u.getUnit()) : cbtGetWeightClass(u.getUnit())) < 4);
-            const fastUnits = units.filter(u => isAS
-                ? asGetAnyGroundOrJumpMove(u.getUnit()) >= 10
-                : u.getUnit().walk >= 6);
-            const allDamage = isAS
-                ? units.every(u => (u.getUnit().as?.dmg?._dmgM ?? 0) >= 2)
-                : units.every(u => cbtCanDealDamage(u.getUnit(), 10, 9));
-            return allNotHuge && fastUnits.length >= Math.ceil(units.length * 0.75) && allDamage;
-        },
     },
 
     //
@@ -1026,18 +676,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
                 return 'Minimum 3 units. All Size ≤ 2. All units must have Move [[10]]+. All units must have short-range damage ≥ 2.';
             }
             return 'Minimum 3 units. All light or medium. All units must have walk ≥ 5. All units must deal 10+ damage at 6 hexes.';
-        },
-        validator: (units, gameSystem) => {
-            const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-            const allSmallOrMedium = units.every(u =>
-                isAS ? asGetSize(u.getUnit()) <= 2 : cbtIsLightOrMedium(u.getUnit()));
-            const allFast = units.every(u => isAS
-                ? asGetAnyGroundOrJumpMove(u.getUnit()) >= 10
-                : u.getUnit().walk >= 5);
-            const allDamage = isAS
-                ? units.every(u => (u.getUnit().as?.dmg?._dmgS ?? 0) >= 2)
-                : units.every(u => cbtCanDealDamage(u.getUnit(), 10, 6));
-            return allSmallOrMedium && allFast && allDamage;
         },
     },
 
@@ -1071,14 +709,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             const fast = gameSystem === GameSystem.ALPHA_STRIKE ? 'Move [[10]]+' : 'walk ≥ 5';
             return `Minimum 3 units. All units must have ${fast}. At least 2 Scout or Striker roles.`;
         },
-        validator: (units, gameSystem) => {
-            const allFast = units.every(u => gameSystem === GameSystem.ALPHA_STRIKE
-                ? asGetAnyGroundOrJumpMove(u.getUnit()) >= 10
-                : u.getUnit().walk >= 5);
-            const scoutOrStriker = units.filter(u =>
-                u.getUnit().role === 'Scout' || u.getUnit().role === 'Striker');
-            return allFast && scoutOrStriker.length >= 2;
-        },
     },
 
     //
@@ -1110,19 +740,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             }
             return 'Minimum 3 units. All walk ≥ 4. At least 2 with walk ≥ 5. At least 1 heavy or assault. At least 2 Scouts.';
         },
-        validator: (units, gameSystem) => {
-            const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-            const allFast = units.every(u => isAS
-                ? asGetAnyGroundOrJumpMove(u.getUnit()) >= 8
-                : u.getUnit().walk >= 4);
-            const veryFast = units.filter(u => isAS
-                ? asGetAnyGroundOrJumpMove(u.getUnit()) >= 10
-                : u.getUnit().walk >= 5);
-            const hasHeavy = units.some(u =>
-                isAS ? asGetSize(u.getUnit()) >= 3 : cbtIsHeavyOrLarger(u.getUnit()));
-            const scoutUnits = units.filter(u => u.getUnit().role === 'Scout');
-            return allFast && veryFast.length >= 2 && hasHeavy && scoutUnits.length >= 2;
-        },
     },
 
     //
@@ -1153,16 +770,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             }
             return 'Minimum 3 units. All light. All walk ≥ 6. All must have the Scout role.';
         },
-        validator: (units, gameSystem) => {
-            const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-            const allLight = units.every(u =>
-                isAS ? asGetSize(u.getUnit()) === 1 : cbtIsLightWeight(u.getUnit()));
-            const allVeryFast = units.every(u => isAS
-                ? asGetAnyGroundOrJumpMove(u.getUnit()) >= 12
-                : u.getUnit().walk >= 6);
-            const allScouts = units.every(u => u.getUnit().role === 'Scout');
-            return allLight && allVeryFast && allScouts;
-        },
     },
 
     // ─── Security Lance ─────────────────────────────────────────────────
@@ -1185,16 +792,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         requirements: (gameSystem) => {
             const assault = gameSystem === GameSystem.ALPHA_STRIKE ? 'Size 4+' : 'assault';
             return `Minimum 3 units. At most 1 ${assault} unit. At least 1 Scout or Striker. At least 1 Sniper or Missile Boat.`;
-        },
-        validator: (units, gameSystem) => {
-            const hasScoutOrStriker = units.some(u =>
-                u.getUnit().role === 'Scout' || u.getUnit().role === 'Striker');
-            const hasSniperOrMissileBoat = units.some(u =>
-                u.getUnit().role === 'Sniper' || u.getUnit().role === 'Missile Boat');
-            const assaultCount = units.filter(u => gameSystem === GameSystem.ALPHA_STRIKE
-                ? asGetSize(u.getUnit()) >= 4
-                : cbtIsAssaultOrLarger(u.getUnit())).length;
-            return assaultCount <= 1 && hasScoutOrStriker && hasSniperOrMissileBoat;
         },
     },
 
@@ -1222,17 +819,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             }
             return 'Minimum 3 units. All walk ≥ 5 or jump ≥ 4. No assault units. 50% must have Striker or Skirmisher role.';
         },
-        validator: (units, gameSystem) => {
-            const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-            const allFast = units.every(u => isAS
-                ? (asGetMaxGroundMove(u.getUnit()) >= 10 || asGetJumpMove(u.getUnit()) >= 8)
-                : (u.getUnit().walk >= 5 || u.getUnit().jump >= 4));
-            const noAssault = units.every(u =>
-                (isAS ? asGetSize(u.getUnit()) : cbtGetWeightClass(u.getUnit())) < 4);
-            const hasRequiredRoles = units.filter(u =>
-                u.getUnit().role === 'Striker' || u.getUnit().role === 'Skirmisher');
-            return allFast && noAssault && hasRequiredRoles.length >= Math.ceil(units.length * 0.5);
-        },
     },
 
     //
@@ -1259,11 +845,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             const fast = gameSystem === GameSystem.ALPHA_STRIKE ? 'Move [[10]]+' : 'walk ≥ 5';
             return `Minimum 3 units. Free Worlds League only. All units must have ${fast}.`;
         },
-        validator: (units, gameSystem) => {
-            return units.every(u => gameSystem === GameSystem.ALPHA_STRIKE
-                ? asGetAnyGroundOrJumpMove(u.getUnit()) >= 10
-                : u.getUnit().walk >= 5);
-        },
     },
 
     //
@@ -1287,20 +868,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
                 return 'Minimum 3 units. All Move [[10]]+. No Size 3+ units. At least 2 with long-range damage > 0. At least 2 Striker or Skirmisher roles.';
             }
             return 'Minimum 3 units. All walk ≥ 5. No heavy or assault units. At least 2 deal 5+ damage at 18 hexes. At least 2 Striker or Skirmisher roles.';
-        },
-        validator: (units, gameSystem) => {
-            const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-            const allFast = units.every(u => isAS
-                ? asGetAnyGroundOrJumpMove(u.getUnit()) >= 10
-                : u.getUnit().walk >= 5);
-            const noHeavy = units.every(u =>
-                (isAS ? asGetSize(u.getUnit()) : cbtGetWeightClass(u.getUnit())) < 3);
-            const hasLongRange = units.filter(u => isAS
-                ? (u.getUnit().as?.dmg?._dmgL ?? 0) > 0
-                : cbtCanDealDamage(u.getUnit(), 5, 18));
-            const hasRequiredRoles = units.filter(u =>
-                u.getUnit().role === 'Striker' || u.getUnit().role === 'Skirmisher');
-            return allFast && noHeavy && hasLongRange.length >= 2 && hasRequiredRoles.length >= 2;
         },
     },
 
@@ -1326,22 +893,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             }
             return 'Minimum 3 units. All walk ≥ 4. At least 3 heavy or assault. No light units. At least 1 deals 5+ damage at 18 hexes. At least 2 Striker or Skirmisher roles.';
         },
-        validator: (units, gameSystem) => {
-            const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-            const allFast = units.every(u => isAS
-                ? asGetAnyGroundOrJumpMove(u.getUnit()) >= 8
-                : u.getUnit().walk >= 4);
-            const heavyUnits = units.filter(u =>
-                isAS ? asGetSize(u.getUnit()) >= 3 : cbtIsHeavyOrLarger(u.getUnit()));
-            const noLight = units.every(u =>
-                isAS ? asGetSize(u.getUnit()) >= 2 : cbtIsMediumOrLarger(u.getUnit()));
-            const hasLongRange = isAS
-                ? units.some(u => (u.getUnit().as?.dmg?._dmgL ?? 0) > 1)
-                : units.some(u => cbtCanDealDamage(u.getUnit(), 5, 18));
-            const hasRequiredRoles = units.filter(u =>
-                u.getUnit().role === 'Striker' || u.getUnit().role === 'Skirmisher');
-            return allFast && heavyUnits.length >= 3 && noLight && hasLongRange && hasRequiredRoles.length >= 2;
-        },
     },
 
     //
@@ -1361,16 +912,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
                 return '5-10 units. All Size 1. All must have medium-range damage < 2.';
             }
             return '5-10 units. All light. All must deal less than 11 damage at 9 hexes.';
-        },
-        validator: (units, gameSystem) => {
-            if (units.length < 5 || units.length > 10) return false;
-            const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-            const allLight = units.every(u =>
-                isAS ? asGetSize(u.getUnit()) === 1 : cbtIsLightWeight(u.getUnit()));
-            const lowDamage = isAS
-                ? units.every(u => (u.getUnit().as?.dmg?._dmgM ?? 0) < 2)
-                : units.every(u => !cbtCanDealDamage(u.getUnit(), 11, 9));
-            return allLight && lowDamage;
         },
     },
 
@@ -1395,10 +936,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             const assault = gameSystem === GameSystem.ALPHA_STRIKE ? 'Size 4+' : 'assault';
             return `Minimum 3 units. No ${assault} units.`;
         },
-        validator: (units, gameSystem) => {
-            return units.every(u =>
-                (gameSystem === GameSystem.ALPHA_STRIKE ? asGetSize(u.getUnit()) : cbtGetWeightClass(u.getUnit())) < 4);
-        },
     },
 
     // ─── Support Lance ───────────────────────────────────────────────────
@@ -1410,7 +947,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         effectDescription: 'Before play, designate one other formation to support. Half the units (round down) receive the same SPAs as the supported formation. SPA count may not exceed the supported formation\'s count.',
         rulesRef: [{ book: Rulebook.CO, page: 66 }, { book: Rulebook.ASCE, page: 121 }],
         requirements: () => 'Minimum 3 units. No additional composition requirements.',
-        validator: (units) => units.length >= 3,
     },
 
     // ─── Urban Combat Lance ──────────────────────────────────────────────
@@ -1436,17 +972,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             const move = gameSystem === GameSystem.ALPHA_STRIKE ? `ground Move ≤ [[8]]+` : 'walk ≤ 4';
             return `Minimum 3 units. 50% must have jump movement or be infantry. 50% must have ${move}.`;
         },
-        validator: (units, gameSystem) => {
-            const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-            const jumpOrInfantry = units.filter(u => isAS
-                ? (asGetJumpMove(u.getUnit()) > 0 || asIsInfantry(u.getUnit()))
-                : (u.getUnit().jump > 0 || u.getUnit().type === 'Infantry'));
-            const slowUnits = units.filter(u => isAS
-                ? asGetMaxGroundMove(u.getUnit()) <= 8
-                : u.getUnit().walk <= 4);
-            return jumpOrInfantry.length >= Math.ceil(units.length * 0.5) &&
-                   slowUnits.length >= Math.ceil(units.length * 0.5);
-        },
     },
 
     // ─── CLAN-EXCLUSIVE FORMATIONS ──────────────────────────────────────────────
@@ -1467,22 +992,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 3,
         rulesRef: [{ book: Rulebook.BOT, page: 27 }],
         requirements: () => 'Clan only. Minimum 2 combat vehicles or BattleMeks. Remainder must be Elementals, combat vehicles, or BattleMeks. Must be at least two different unit types.',
-        validator: (units, gameSystem) => {
-            if (!isClanForce(units)) return false;
-            if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                const BM = units.filter(u => u.getUnit().as?.TP === 'BM').length;
-                const BA = units.filter(u => u.getUnit().as?.TP === 'BA').length;
-                const CV = units.filter(u => u.getUnit().as?.TP === 'CV').length;
-                if (units.length > BM + BA + CV) return false;
-                return (BM >= 2 && (BA > 0 || CV > 0)) || (CV >= 2 && (BM > 0 || BA > 0)); 
-            } else {
-                const BM = units.filter(u => u.getUnit().type === 'Mek').length;
-                const BA = units.filter(u => u.getUnit().subtype === 'Battle Armor').length;
-                const CV = units.filter(u => u.getUnit().type === 'Tank' || u.getUnit().type === 'VTOL' || u.getUnit().type === 'Naval').length;
-                if (units.length > BM + BA + CV) return false;
-                return (BM >= 2 && (BA > 0 || CV > 0)) || (CV >= 2 && (BM > 0 || BA > 0)); 
-            }
-        },
     },
 
     //
@@ -1504,17 +1013,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 3,
         rulesRef: [{ book: Rulebook.BOT, page: 27 }],
         requirements: () => 'Clan only. At least two units in the Formation must be the same model (including the same OmniMek configuration)',
-        validator: (units) => {
-            if (!isClanForce(units)) return false;
-            const seen = new Set<string>();
-            const hasPair = units.some(unit => {
-                const name = unit.getUnit().name;
-                if (seen.has(name)) return true;
-                seen.add(name);
-                return false;
-            });
-            return hasPair;
-        },
     },
 
     //
@@ -1549,26 +1047,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             }
                 return 'Minimum 3 units. All must have Gunnery Skill 3 or lower. Must have 1 Aerospace Point. Others must be Mek or Battle Armor. If Mek, at least 2 units heavy or assault, and no lights.';
         },
-        validator: (units, gameSystem) => {
-            if (!isClanForce(units)) return false;
-            const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-            const skillCheck = units.every(u =>
-            (isAS ? (u as ASForceUnit).pilotSkill() : (u as CBTForceUnit).gunnerySkill()) <= 3);
-            if (!skillCheck) return false;
-            const hasAF = units.filter(u =>
-                (isAS ? u.getUnit().as?.TP === 'AF' : u.getUnit().type === 'Aero')).length;
-            if (hasAF !== 2) return false;
-            const hasBM = units.filter(u =>
-                (isAS ? u.getUnit().as?.TP === 'BM' : u.getUnit().type === 'Mek')).length;
-                if (hasBM > 0) { 
-                    const heavyMeks = units.filter(u => isAS ? (u.getUnit().as?.TP === 'BM' && asGetSize(u.getUnit()) >= 3) : (u.getUnit().type === 'Mek' && cbtIsHeavyOrLarger(u.getUnit()))).length;
-                    const lightMeks = units.some(u => isAS ? (u.getUnit().as?.TP === 'BM' && asGetSize(u.getUnit()) === 1) : (u.getUnit().type === 'Mek' && cbtIsLightWeight(u.getUnit())));
-                    if (heavyMeks < 2 || lightMeks) return false;
-                }
-            const hasBA = units.filter(u =>
-                (isAS ? u.getUnit().as?.TP === 'BA' : u.getUnit().subtype === 'Battle Armor')).length;
-            return hasAF === 2 && (hasBM >= 2 || hasBA >= 1);
-        },
     },
 
     // ─── Aerospace Formations ────────────────────────────────────────────
@@ -1599,10 +1077,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 6,
         rulesRef: [{ book: Rulebook.CO, page: 68 }, { book: Rulebook.ASCE, page: 122 }],
         requirements: () => 'Minimum 6 units. All must be aerospace units. More than 50% must have the Interceptor role.',
-        validator: (units, gameSystem) => {
-            if (!units.every(u => gameSystem === GameSystem.ALPHA_STRIKE ? asIsAeroUnit(u.getUnit()) : u.getUnit().type === 'Aero')) return false;
-            return units.filter(u => u.getUnit().role === 'Interceptor').length > Math.ceil(units.length * 0.5);
-        },
     },
 
     //
@@ -1623,12 +1097,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 6,
         rulesRef: [{ book: Rulebook.CO, page: 67 }, { book: Rulebook.ASCE, page: 122 }],
         requirements: () => 'Minimum 6 units. All must be aerospace units. More than 50% must have the Interceptor or Fast Dogfighter role.',
-        validator: (units, gameSystem) => {
-            if (!units.every(u => gameSystem === GameSystem.ALPHA_STRIKE ? asIsAeroUnit(u.getUnit()) : u.getUnit().type === 'Aero')) return false;
-            const count = units.filter(u =>
-                u.getUnit().role === 'Interceptor' || u.getUnit().role === 'Fast Dogfighter');
-            return count.length > Math.ceil(units.length * 0.5);
-        },
     },
 
     //
@@ -1650,12 +1118,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 6,
         rulesRef: [{ book: Rulebook.CO, page: 68 }, { book: Rulebook.ASCE, page: 122 }],
         requirements: () => 'Minimum 6 units. All must be aerospace units. 50% or more must have the Fire Support role. At least 1 Dogfighter.',
-        validator: (units, gameSystem) => {
-            if (!units.every(u => gameSystem === GameSystem.ALPHA_STRIKE ? asIsAeroUnit(u.getUnit()) : u.getUnit().type === 'Aero')) return false;
-            const fireSupport = units.filter(u => u.getUnit().role === 'Fire Support');
-            const hasDogfighter = units.some(u => u.getUnit().role?.includes('Dogfighter'));
-            return fireSupport.length >= Math.ceil(units.length * 0.5) && hasDogfighter;
-        },
     },
 
     //
@@ -1682,12 +1144,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         minUnits: 6,
         rulesRef: [{ book: Rulebook.CO, page: 68 }, { book: Rulebook.ASCE, page: 122 }],
         requirements: () => 'Minimum 6 units. All must be aerospace units. More than 50% must have an Attack or Dogfighter role.',
-        validator: (units, gameSystem) => {
-            if (!units.every(u => gameSystem === GameSystem.ALPHA_STRIKE ? asIsAeroUnit(u.getUnit()) : u.getUnit().type === 'Aero')) return false;
-            const count = units.filter(u =>
-                u.getUnit().role?.includes('Attack') || u.getUnit().role?.includes('Dogfighter'));
-            return count.length > Math.ceil(units.length * 0.5);
-        },
     },
 
     //
@@ -1709,23 +1165,6 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
         requirements: (gameSystem) => {
             const equipment = gameSystem === GameSystem.ALPHA_STRIKE ? 'EW specials (PRB, AECM, ECM, TAG, etc.)' : 'ECM, BAP, or TAG';
             return `Minimum 6 units. All must be aerospace units. More than 50% must have ${equipment}.`;
-        },
-        validator: (units, gameSystem) => {
-            const isAS = gameSystem === GameSystem.ALPHA_STRIKE;
-            if (!units.every(u => isAS ? asIsAeroUnit(u.getUnit()) : u.getUnit().type === 'Aero')) return false;
-            if (isAS) {
-                const EW_SPECIALS = ['PRB', 'AECM', 'BH', 'ECM', 'LPRB', 'LECM', 'LTAG', 'TAG', 'WAT'];
-                const hasEW = units.filter(u =>
-                    EW_SPECIALS.some(prefix => asHasSpecial(u.getUnit(), prefix)));
-                return hasEW.length > Math.ceil(units.length * 0.5);
-            } else {
-                const hasEWEquipment = units.filter(u => {
-                    const eqList = u.getUnit().comp?.map(c => c.eq) || [];
-                    return eqList.some(eq =>  
-                        eq?.hasAnyFlag(['F_ECM', 'F_BAP', 'F_TAG']))
-                });
-                return hasEWEquipment.length > Math.ceil(units.length * 0.5);
-            }
         },
     },
 
@@ -1750,14 +1189,135 @@ export const FORMATION_DEFINITIONS: FormationTypeDefinition[] = [
             const aerospaceType = gameSystem === GameSystem.ALPHA_STRIKE ? 'type (AF, CF, SC, DS, SV, or DA)' : 'units';
             return `Minimum 6 units. All must be aerospace ${aerospaceType}. 50% or more must have the Transport role.`;
         },
-        validator: (units, gameSystem) => {
-            if (gameSystem === GameSystem.ALPHA_STRIKE) {
-                const allowedTypes: ASUnitTypeCode[] = ['AF', 'CF', 'SC', 'DS', 'SV', 'DA'];
-                if (!units.every(u => allowedTypes.includes(u.getUnit().as?.TP as ASUnitTypeCode))) return false;
-            } else {
-                if (!units.every(u => u.getUnit().type === 'Aero')) return false;
-            }
-            return units.filter(u => u.getUnit().role?.includes('Transport')).length >= Math.ceil(units.length * 0.5);
-        },
     },
 ];
+
+const FORMATION_RUNTIME_DEFINITION_BY_ID = new Map(
+    FORMATION_RUNTIME_DEFINITIONS.map((definition) => [definition.id, definition]),
+);
+
+export function getFormationDefinition(id: string): FormationTypeDefinition | null {
+    return FORMATION_RUNTIME_DEFINITION_BY_ID.get(id) ?? null;
+}
+
+export function getFormationDefinitions(): readonly FormationTypeDefinition[] {
+    return FORMATION_RUNTIME_DEFINITIONS;
+}
+
+export const FORMATION_BLUEPRINTS: Readonly<Record<string, FormationRequirementBlueprint>> = {
+    'anti-mech-lance': { id: 'anti-mech-lance', constraints: [all('anti-mech-all-infantry', 'All infantry units', 'infantry-unit')] },
+    'assault-lance': { id: 'assault-lance', constraints: assaultLanceConstraints },
+    'anvil-lance': {
+        id: 'anvil-lance',
+        constraints: [
+            all('anvil-medium-plus', 'All medium+/Size 2+ units', 'medium-plus-size'),
+            all('anvil-armor', 'All armor threshold', 'anvil-armor'),
+            percent('anvil-weapons', '50% AC/FLK/LRM/SRM units', 'anvil-weapon', 0.5),
+        ],
+    },
+    'fast-assault-lance': { id: 'fast-assault-lance', constraints: [...assaultLanceConstraints, all('fast-assault-move', 'All fast assault movement', 'fast-assault-move')] },
+    'hunter-lance': { id: 'hunter-lance', constraints: [percent('hunter-role-percent', '50% Ambusher/Juggernaut units', 'hunter-role', 0.5)] },
+    'battle-lance': { id: 'battle-lance', constraints: battleLanceConstraints },
+    'light-battle-lance': {
+        id: 'light-battle-lance',
+        constraints: [
+            percent('light-battle-light-percent', '75% light/Size 1 units', 'light-size', 0.75),
+            all('light-battle-no-assault', 'No assault/Size 4+ units', 'ranger-size'),
+            countMin('light-battle-scout', '1 Scout', 'scout-role', 1),
+            matchedPairs('light-battle-vehicle-pairs', '2 matched light vehicle pairs', 'light-size', 2, 'combat-vehicle'),
+        ],
+    },
+    'medium-battle-lance': {
+        id: 'medium-battle-lance',
+        constraints: [
+            percent('medium-battle-medium-percent', '50% medium/Size 2 units', 'medium-size', 0.5),
+            all('medium-battle-no-assault', 'No assault/Size 4+ units', 'ranger-size'),
+            matchedPairs('medium-battle-vehicle-pairs', '2 matched medium vehicle pairs', 'medium-size', 2, 'combat-vehicle'),
+        ],
+    },
+    'heavy-battle-lance': {
+        id: 'heavy-battle-lance',
+        constraints: [
+            percent('heavy-battle-heavy-percent', '50% heavy/Size 3+ units', 'heavy-size', 0.5),
+            countMax('heavy-battle-no-light', 'No light/Size 1 units', 'light-size', 0),
+            matchedPairs('heavy-battle-vehicle-pairs', '2 matched heavy vehicle pairs', 'heavy-size', 2, 'combat-vehicle'),
+        ],
+    },
+    'rifle-lance': {
+        id: 'rifle-lance',
+        constraints: [
+            percent('rifle-medium-heavy', '75% medium/heavy or Size 2-3 units', 'rifle-medium-heavy-size', 0.75),
+            percent('rifle-autocannon', '50% autocannon units', 'rifle-autocannon', 0.5),
+            all('rifle-move', 'All rifle movement threshold', 'rifle-move'),
+        ],
+    },
+    'berserker-lance': { id: 'berserker-lance', constraints: battleLanceConstraints },
+    'command-lance': {
+        id: 'command-lance',
+        constraints: [
+            percent('command-heavy-roles', '50% command heavy roles', 'command-heavy-role', 0.5),
+            countMin('command-diverse-role', '1 Brawler/Striker/Scout', 'command-diverse-role', 1),
+        ],
+    },
+    'order-lance': { id: 'order-lance', constraints: [sameTier('order-same-tier', 'Same Size/weight class'), sameChassis('order-same-chassis', 'Same chassis')] },
+    'vehicle-command-lance': {
+        id: 'vehicle-command-lance',
+        constraints: [
+            all('vehicle-command-all-vehicles', 'All combat vehicles', 'combat-vehicle'),
+            matchedPairs('vehicle-command-command-pair', '1 matched command-role pair', 'command-heavy-role', 1),
+        ],
+    },
+    'fire-lance': { id: 'fire-lance', constraints: fireLanceConstraints },
+    'anti-air-lance': { id: 'anti-air-lance', constraints: [...fireLanceConstraints, countMin('anti-air-equipment-count', '2 anti-air equipped units', 'anti-air-equipment', 2)] },
+    'artillery-fire-lance': { id: 'artillery-fire-lance', constraints: [countMin('artillery-count', '2 artillery units', 'artillery-equipment', 2)] },
+    'direct-fire-lance': { id: 'direct-fire-lance', constraints: [countMin('direct-fire-heavy-count', '2 heavy/Size 3+ units', 'heavy-size', 2), all('direct-fire-damage', 'All direct-fire damage threshold', 'direct-fire-damage')] },
+    'fire-support-lance': { id: 'fire-support-lance', constraints: [countMin('fire-support-equipment-count', '3 indirect-fire units', 'fire-support-equipment', 3)] },
+    'light-fire-lance': { id: 'light-fire-lance', constraints: [countMax('light-fire-no-heavy', 'No heavy/Size 3+ units', 'heavy-size', 0), percent('light-fire-role-percent', '50% Missile Boat/Sniper units', 'light-fire-role', 0.5)] },
+    'pursuit-lance': { id: 'pursuit-lance', constraints: [countMax('pursuit-no-heavy', 'All light-medium/Size <= 2 units', 'heavy-size', 0), percent('pursuit-move-percent', '75% pursuit movement threshold', 'pursuit-move', 0.75), countMin('pursuit-range', '1 medium range damage unit', 'medium-damage-positive', 1)] },
+    'probe-lance': { id: 'probe-lance', constraints: [all('probe-no-assault', 'No assault/Size 4+ units', 'ranger-size'), percent('probe-move-percent', '75% probe movement threshold', 'probe-move', 0.75), all('probe-damage', 'All medium damage threshold', 'medium-damage-2')] },
+    'sweep-lance': { id: 'sweep-lance', constraints: [countMax('sweep-no-heavy', 'All light-medium/Size <= 2 units', 'heavy-size', 0), all('sweep-move', 'All sweep movement threshold', 'sweep-move'), all('sweep-damage', 'All short damage threshold', 'short-damage-2')] },
+    'recon-lance': { id: 'recon-lance', constraints: [all('recon-move', 'All recon movement threshold', 'recon-move'), countMin('recon-role-count', '2 Scout/Striker units', 'scout-or-striker-role', 2)] },
+    'heavy-recon-lance': { id: 'heavy-recon-lance', constraints: [all('heavy-recon-move', 'All heavy recon movement threshold', 'heavy-recon-move'), countMin('heavy-recon-fast-count', '2 faster units', 'recon-move', 2), countMin('heavy-recon-heavy-count', '1 heavy/Size 3+ unit', 'heavy-size', 1), countMin('heavy-recon-scout-count', '2 Scout units', 'scout-role', 2)] },
+    'light-recon-lance': { id: 'light-recon-lance', constraints: [all('light-recon-light', 'All light/Size 1 units', 'light-size'), all('light-recon-fast', 'All very fast units', 'very-fast-move'), all('light-recon-scout', 'All Scout units', 'scout-role')] },
+    'security-lance': { id: 'security-lance', constraints: [countMax('security-assault-max', 'At most 1 assault/Size 4+ unit', 'assault-size', 1), countMin('security-light-role', '1 Scout/Striker', 'security-light-role', 1), countMin('security-heavy-role', '1 Sniper/Missile Boat', 'security-heavy-role', 1)] },
+    'striker-lance': { id: 'striker-lance', constraints: [all('striker-speed', 'All striker movement threshold', 'striker-speed'), countMax('striker-no-assault', 'No assault/Size 4+ units', 'assault-size', 0), percent('striker-role-percent', '50% Striker/Skirmisher units', 'striker-or-skirmisher-role', 0.5)] },
+    'hammer-lance': { id: 'hammer-lance', constraints: [all('hammer-move', 'All hammer movement threshold', 'recon-move')] },
+    'light-striker-lance': { id: 'light-striker-lance', constraints: [all('light-striker-move', 'All light striker movement threshold', 'recon-move'), countMax('light-striker-no-heavy', 'No heavy/Size 3+ units', 'heavy-size', 0), countMin('light-striker-long-damage', '2 long damage units', 'long-damage-positive', 2), countMin('light-striker-role-count', '2 Striker/Skirmisher units', 'striker-or-skirmisher-role', 2)] },
+    'heavy-striker-lance': { id: 'heavy-striker-lance', constraints: [all('heavy-striker-move', 'All heavy striker movement threshold', 'heavy-recon-move'), countMin('heavy-striker-heavy-count', '3 heavy/Size 3+ units', 'heavy-size', 3), countMax('heavy-striker-no-light', 'No light/Size 1 units', 'light-size', 0), countMin('heavy-striker-long-damage', '1 strong long damage unit', 'long-damage-strong', 1), countMin('heavy-striker-role-count', '2 Striker/Skirmisher units', 'striker-or-skirmisher-role', 2)] },
+    horde: { id: 'horde', constraints: [all('horde-all-light', 'All light/Size 1 units', 'light-size'), all('horde-low-damage', 'All low medium-range damage units', 'low-medium-damage')] },
+    'ranger-lance': { id: 'ranger-lance', constraints: [all('ranger-no-assault', 'No assault/Size 4+ units', 'ranger-size')] },
+    'support-lance': { id: 'support-lance', constraints: [] },
+    'urban-lance': { id: 'urban-lance', constraints: [percent('urban-jump-infantry', '50% jump or infantry units', 'jump-or-infantry', 0.5), percent('urban-slow', '50% slow urban units', 'slow-urban-move', 0.5)] },
+    'phalanx-star': {
+        id: 'phalanx-star',
+        constraints: [
+            ...clanOnlyConstraints,
+            all('phalanx-allowed', 'All allowed phalanx unit types', 'phalanx-allowed-unit'),
+            anyOf('phalanx-shape', 'Phalanx combined-arms shape', [
+                allOf('phalanx-bm-core', 'BM/Mek core plus support', [countMin('phalanx-bm-count', '2 BM/Mek units', 'phalanx-bm-or-mek', 2), countMin('phalanx-ba-cv-count', '1 BA/CV unit', 'phalanx-ba-or-cv', 1)]),
+                allOf('phalanx-cv-core', 'CV core plus support', [countMin('phalanx-cv-count', '2 CV units', 'phalanx-cv', 2), countMin('phalanx-bm-ba-count', '1 BM/BA unit', 'phalanx-bm-or-ba', 1)]),
+            ]),
+        ],
+    },
+    'rogue-star': { id: 'rogue-star', constraints: [...clanOnlyConstraints, matchedPairs('rogue-model-pair', 'At least two same model/name units', 'clan-force', 1)] },
+    'strategic-command-star': {
+        id: 'strategic-command-star',
+        constraints: [
+            ...clanOnlyConstraints,
+            all('strategic-skill', 'All skill 3 or lower', 'strategic-skill-3'),
+            countExact('strategic-aero-count', 'Exactly 2 aerospace units', 'strategic-aero', 2),
+            conditional('strategic-mek-conditions', 'BM/Mek heavy and no-light conditions', 'bm-or-mek-unit', [countMin('strategic-heavy-mek-count', '2 heavy BM/Mek units', 'heavy-bm-or-mek', 2), countMax('strategic-light-mek-count', 'No light BM/Mek units', 'light-bm-or-mek', 0)]),
+            anyOf('strategic-core', 'BM/Mek or BA core', [countMin('strategic-bm-count', '2 BM/Mek units', 'bm-or-mek-unit', 2), countMin('strategic-ba-count', '1 BA unit', 'battle-armor-unit', 1)]),
+        ],
+    },
+    'interceptor-squadron': { id: 'interceptor-squadron', constraints: [all('interceptor-all-aerospace', 'All aerospace units', 'aerospace-unit'), strictMajority('interceptor-role-majority', 'Strict majority Interceptor role', 'interceptor-role')] },
+    'aerospace-superiority-squadron': { id: 'aerospace-superiority-squadron', constraints: [all('aerospace-superiority-all-aerospace', 'All aerospace units', 'aerospace-unit'), strictMajority('aerospace-superiority-role-majority', 'Strict majority Interceptor/Fast Dogfighter role', 'aerospace-superiority-role')] },
+    'fire-support-squadron': { id: 'fire-support-squadron', constraints: [all('fire-support-squadron-all-aerospace', 'All aerospace units', 'aerospace-unit'), percent('fire-support-squadron-role', '50% Fire Support role', 'fire-support-role', 0.5), countMin('fire-support-squadron-dogfighter', '1 Dogfighter role', 'dogfighter-role', 1)] },
+    'strike-squadron': { id: 'strike-squadron', constraints: [all('strike-all-aerospace', 'All aerospace units', 'aerospace-unit'), strictMajority('strike-role-majority', 'Strict majority Attack/Dogfighter role', 'attack-or-dogfighter-role')] },
+    'electronic-warfare-squadron': { id: 'electronic-warfare-squadron', constraints: [all('ew-all-aerospace', 'All aerospace units', 'aerospace-unit'), strictMajority('ew-equipment-majority', 'Strict majority EW equipment', 'ew-equipment')] },
+    'transport-squadron': { id: 'transport-squadron', constraints: [all('transport-all-aerospace', 'All transport aerospace units', 'transport-squadron-unit'), percent('transport-role-percent', '50% Transport role', 'transport-role', 0.5)] },
+};
+
+export function getFormationBlueprint(id: string): FormationRequirementBlueprint | null {
+    return FORMATION_BLUEPRINTS[id] ?? null;
+}

@@ -34,6 +34,8 @@
 
 import { Component, signal, computed, type ElementRef, input, output, effect, ChangeDetectionStrategy, viewChild, inject, DestroyRef } from '@angular/core';
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
+
+type SliderThumb = 'min' | 'max' | 'single';
 /*
  * Author: Drake
  */
@@ -58,6 +60,7 @@ export class RangeSliderComponent {
     min = input.required<number>();
     max = input.required<number>();
     value = input<[number, number]>();
+    singleValue = input<number>();
     availableRange = input<[number, number]>();
     interacted = input<boolean>(false);
     curve = input<number>(1); // 1 = linear, >1 = log-like, <1 = exp-like
@@ -69,11 +72,15 @@ export class RangeSliderComponent {
     includeRanges = input<[number, number][] | undefined>();
     
     valueChange = output<[number, number]>();
+    singleValueChange = output<number>();
 
     left = signal(0);
     right = signal(0);
-    dragging = signal<'min' | 'max' | null>(null);
-    focusedThumb = signal<'min' | 'max' | null>(null);
+    dragging = signal<SliderThumb | null>(null);
+    focusedThumb = signal<SliderThumb | null>(null);
+
+    isSingleValueMode = computed(() => this.singleValue() !== undefined);
+    rightThumbKind = computed<SliderThumb>(() => this.isSingleValueMode() ? 'single' : 'max');
 
     isLeftThumbActive = computed(() => {
         const [availableMin,] = this.availableRange() ?? [this.min(), this.max()];
@@ -104,12 +111,18 @@ export class RangeSliderComponent {
     });
 
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
-    leftThumbRef = viewChild.required<ElementRef<HTMLDivElement>>('leftThumb');
+    leftThumbRef = viewChild<ElementRef<HTMLDivElement>>('leftThumb');
     rightThumbRef = viewChild.required<ElementRef<HTMLDivElement>>('rightThumb');
 
     constructor() {
         // Watch for changes to min, max, or value and update internal signals
         effect(() => {
+            if (this.isSingleValueMode()) {
+                const val = this.singleValue() ?? this.min();
+                this.setSingleValue(val);
+                return;
+            }
+
             const val = this.value() ?? [this.min(), this.max()];
             const newLeft = Math.max(this.min(), Math.min(val[0], this.max()));
             const newRight = Math.max(this.min(), Math.min(val[1], this.max()));
@@ -223,7 +236,23 @@ export class RangeSliderComponent {
         return Number(clamped.toFixed(6));
     }
 
-    onThumbFocus(which: 'min' | 'max') {
+    private setSingleValue(value: number) {
+        const [availableMin, availableMax] = this.availableRange() ?? [this.min(), this.max()];
+        const clampedValue = Math.max(availableMin, Math.min(availableMax, value));
+        this.left.set(this.min());
+        this.right.set(this.alignToStep(clampedValue));
+    }
+
+    private emitCurrentValue() {
+        if (this.isSingleValueMode()) {
+            this.singleValueChange.emit(this.right());
+            return;
+        }
+
+        this.valueChange.emit([this.left(), this.right()]);
+    }
+
+    onThumbFocus(which: SliderThumb) {
         this.focusedThumb.set(which);
     }
 
@@ -245,6 +274,18 @@ export class RangeSliderComponent {
         const isSmallRight = event.key === 'ArrowRight';
         const isLargeDown = event.key === 'ArrowDown';
         const isLargeUp = event.key === 'ArrowUp';
+
+        if (this.isSingleValueMode()) {
+            if (isSmallLeft || isLargeDown || isSmallRight || isLargeUp) {
+                const step = (isLargeDown || isLargeUp) ? baseStep * 10 : baseStep;
+                const direction = (isSmallLeft || isLargeDown) ? -1 : 1;
+                event.preventDefault();
+                this.setSingleValue(this.right() + (direction * step));
+                this.emitCurrentValue();
+            }
+
+            return;
+        }
 
         if (isSmallLeft || isLargeDown) {
             const step = isLargeDown ? baseStep * 10 : baseStep;
@@ -277,7 +318,7 @@ export class RangeSliderComponent {
         }
  
         if (changed) {
-            this.valueChange.emit([this.left(), this.right()]);
+            this.emitCurrentValue();
         }
     }
  
@@ -293,6 +334,12 @@ export class RangeSliderComponent {
         const notch = event.deltaY > 0 ? -1 : 1;
         const delta = notch * baseStep;
         let changed = false;
+
+        if (this.isSingleValueMode()) {
+            this.setSingleValue(this.right() + delta);
+            this.emitCurrentValue();
+            return;
+        }
  
         if (focused === 'min') {
             const newValue = this.alignToStep(Math.max(availableMin, Math.min(this.right(), this.left() + delta)));
@@ -311,13 +358,20 @@ export class RangeSliderComponent {
          }
  
          if (changed) {
-             this.valueChange.emit([this.left(), this.right()]);
+             this.emitCurrentValue();
          }
      }
 
-    resetThumb(which: 'min' | 'max', event: Event) {
+    resetThumb(which: SliderThumb, event: Event) {
         event.preventDefault();
         const [availableMin, availableMax] = this.availableRange() ?? [this.min(), this.max()];
+
+        if (this.isSingleValueMode()) {
+            this.setSingleValue(availableMin);
+            this.emitCurrentValue();
+            return;
+        }
+
         if (which === 'min') {
             this.left.set(availableMin);
             if (this.left() > this.right()) {
@@ -329,16 +383,17 @@ export class RangeSliderComponent {
                 this.left.set(this.right());
             }
         }
-        this.valueChange.emit([this.left(), this.right()]);
+        this.emitCurrentValue();
     }
 
-    startDrag(which: 'min' | 'max', event: PointerEvent) {
+    startDrag(which: SliderThumb, event: PointerEvent) {
         if (this.disabled()) return;
         event.preventDefault();
         this.dragging.set(which);
         this.focusedThumb.set(which);
-        const thumbEl = which === 'min' ? this.leftThumbRef().nativeElement : this.rightThumbRef().nativeElement;
-        try { thumbEl.classList.add('dragging'); thumbEl.focus(); } catch (e) { /* ignore */ }
+        const thumbRef = which === 'min' ? this.leftThumbRef() : this.rightThumbRef();
+        const thumbEl = thumbRef?.nativeElement;
+        try { thumbEl?.classList.add('dragging'); thumbEl?.focus(); } catch (e) { /* ignore */ }
         const container = this.containerRef().nativeElement as HTMLElement;
         try { container.classList.add('dragging'); } catch (e) { /* ignore */ }
 
@@ -362,7 +417,9 @@ export class RangeSliderComponent {
         let value = this.percentToValue(percent);
         const [availableMin, availableMax] = this.availableRange() ?? [this.min(), this.max()];
 
-        if (this.dragging() === 'min') {
+        if (this.dragging() === 'single') {
+            this.setSingleValue(value);
+        } else if (this.dragging() === 'min') {
             // Clamp the new value to the available minimum.
             const clampedValue = Math.max(availableMin, value);
             this.left.set(clampedValue);
@@ -387,14 +444,14 @@ export class RangeSliderComponent {
         }
 
         this.debounceTimer = setTimeout(() => {
-            this.valueChange.emit([this.left(), this.right()]);
+            this.emitCurrentValue();
         }, this.DEBOUNCE_TIME_MS);
     };
 
     onDragEnd = (event: PointerEvent) => {
         clearTimeout(this.debounceTimer);
         if (this.dragging()) {
-            this.valueChange.emit([this.left(), this.right()]);
+            this.emitCurrentValue();
         }
         try { (this.containerRef().nativeElement as HTMLElement).classList.remove('dragging'); } catch (e) { /* ignore */ }
         this.dragging.set(null);

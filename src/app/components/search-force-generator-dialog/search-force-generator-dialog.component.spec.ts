@@ -9,7 +9,7 @@ import type { Unit } from '../../models/units.model';
 import { SearchForceGeneratorDialogComponent } from './search-force-generator-dialog.component';
 import { DataService } from '../../services/data.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
-import { ForceGeneratorService } from '../../services/force-generator.service';
+import { ForceGeneratorService, type ForceGenerationPreview } from '../../services/force-generator.service';
 import { GameService } from '../../services/game.service';
 import { OptionsService } from '../../services/options.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -53,6 +53,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
             forceGenLastMaxPilotSkillDelta: 1,
             forceGenPreventDuplicateChassis: false,
             forceGenUseTaggedQuantities: false,
+            forceGenUseUnitTagsAsChassisTags: false,
         });
 
         setOptionSpy = jasmine.createSpy('setOption').and.callFake((key: string, value: unknown) => {
@@ -179,7 +180,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
                 cloud: false,
                 local: false,
                 missing: false,
-                name: 'Generated Preview',
+                name: preview.name ?? 'Generated Preview',
                 faction: preview.faction,
                 era: preview.era,
                 bv: preview.gameSystem === GameSystem.CLASSIC ? preview.totalCost : undefined,
@@ -415,6 +416,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
             ...options,
             forceGenPreventDuplicateChassis: true,
             forceGenUseTaggedQuantities: true,
+            forceGenUseUnitTagsAsChassisTags: true,
         }));
 
         const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
@@ -424,6 +426,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         const dialog = fixture.componentInstance;
         expect(dialog.preventDuplicateChassis()).toBeTrue();
         expect(dialog.useTaggedQuantities()).toBeFalse();
+        expect(dialog.useUnitTagsAsChassisTags()).toBeTrue();
     });
 
     it('uses uncapped force-generator eligible units for preview requests', () => {
@@ -675,17 +678,56 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(setFilterSpy).toHaveBeenCalledWith('subtype', ['Combat Vehicle']);
     });
 
-    it('keeps shared filter mappings stable when the generator mode changes locally', () => {
+    it('uses the local generator mode for unit type and subtype filters', () => {
+        expect(component.additionalFiltersExcludedKeys()).toContain('type');
+        expect(component.additionalFiltersExcludedKeys()).toContain('subtype');
+        expect(component.additionalFiltersExcludedKeys()).not.toContain('as.TP');
+
         component.setGameSystem(GameSystem.ALPHA_STRIKE);
 
         expect(component.gameSystem()).toBe(GameSystem.ALPHA_STRIKE);
         expect(gameSystemSignal()).toBe(GameSystem.CLASSIC);
-        expect(component.selectedUnitTypeValues()).toEqual(['Mek']);
-        expect(component.selectedSubtypeValues()).toEqual(['BattleMek']);
+        expect(component.selectedUnitTypeValues()).toEqual(['BM']);
+        expect(component.selectedSubtypeValues()).toEqual([]);
+        expect(component.additionalFiltersExcludedKeys()).toContain('as.TP');
+        expect(component.additionalFiltersExcludedKeys()).not.toContain('type');
+        expect(component.additionalFiltersExcludedKeys()).not.toContain('subtype');
 
-        component.onUnitTypeSelectionChange(['Tank']);
+        component.onUnitTypeSelectionChange(['CV']);
 
-        expect(setFilterSpy).toHaveBeenCalledWith('type', ['Tank']);
+        expect(setFilterSpy).toHaveBeenCalledWith('as.TP', ['CV']);
+    });
+
+    it('highlights the advanced system toggle only for active filters hidden behind it', () => {
+        component.advPanelFilterGameSystem.set(GameSystem.ALPHA_STRIKE);
+        effectiveFilterStateSignal.set({
+            type: { interactedWith: true },
+            subtype: { interactedWith: true },
+        });
+
+        expect(component.otherAdvPanelFilterGameSystem()).toBe(GameSystem.CLASSIC);
+        expect(component.otherAdvPanelFilterGameSystemHasActiveFilters()).toBeFalse();
+
+        component.advPanelFilterGameSystem.set(GameSystem.CLASSIC);
+        effectiveFilterStateSignal.set({
+            'as.TP': { interactedWith: true },
+        });
+
+        expect(component.otherAdvPanelFilterGameSystem()).toBe(GameSystem.ALPHA_STRIKE);
+        expect(component.otherAdvPanelFilterGameSystemHasActiveFilters()).toBeTrue();
+
+        component.setGameSystem(GameSystem.ALPHA_STRIKE);
+
+        expect(component.otherAdvPanelFilterGameSystemHasActiveFilters()).toBeFalse();
+
+        component.advPanelFilterGameSystem.set(GameSystem.ALPHA_STRIKE);
+        effectiveFilterStateSignal.set({
+            type: { interactedWith: true },
+            subtype: { interactedWith: true },
+        });
+
+        expect(component.otherAdvPanelFilterGameSystem()).toBe(GameSystem.CLASSIC);
+        expect(component.otherAdvPanelFilterGameSystemHasActiveFilters()).toBeTrue();
     });
 
     it('uses the local generator mode for preview requests without changing the global game system', () => {
@@ -802,10 +844,13 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(serializeSpy).not.toHaveBeenCalled();
         expect(component.canImportCurrentForce()).toBeTrue();
         expect(component.lockedUnitKeys().size).toBe(2);
-        expect(component.lockedUnitKeys().has('u-1')).toBeTrue();
-        expect(component.lockedUnitKeys().has('u-2')).toBeTrue();
+        const previewLockKeys = preview.units.map((unit) => unit.lockKey);
+        expect(previewLockKeys.every((lockKey) => !!lockKey)).toBeTrue();
+        expect(previewLockKeys).toHaveSize(2);
+        expect(new Set(previewLockKeys).size).toBe(2);
+        expect(previewLockKeys.every((lockKey) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(lockKey!))).toBeTrue();
+        expect(previewLockKeys.every((lockKey) => component.lockedUnitKeys().has(lockKey!))).toBeTrue();
         expect(preview.units.map((unit) => unit.unit.name)).toEqual([atlas.name, locust.name]);
-        expect(preview.units.map((unit) => unit.lockKey)).toEqual(['u-1', 'u-2']);
         expect(preview.explanationLines).toContain('Imported current force into preview. Press REROLL to generate a new result for the current settings.');
         expect(buildPreviewSpy).not.toHaveBeenCalled();
         expect(sendWsMessageSpy).not.toHaveBeenCalled();
@@ -953,6 +998,40 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(buildPreviewSpy.calls.mostRecent().args[0].useTaggedQuantities).toBeTrue();
     });
 
+    it('renders the unit-tags-as-chassis checkbox only when tagged quantities are active', async () => {
+        const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        expect(fixture.nativeElement.querySelector('.unit-tags-as-chassis-option')).toBeNull();
+
+        fixture.componentInstance.onUseTaggedQuantitiesChange({
+            target: { checked: true },
+        } as unknown as Event);
+        fixture.detectChanges();
+
+        expect(fixture.nativeElement.querySelector('.unit-tags-as-chassis-option')).not.toBeNull();
+    });
+
+    it('stores and forwards the unit-tags-as-chassis checkbox state', () => {
+        component.onUseTaggedQuantitiesChange({
+            target: { checked: true },
+        } as unknown as Event);
+        setOptionSpy.calls.reset();
+
+        component.onUseUnitTagsAsChassisTagsChange({
+            target: { checked: true },
+        } as unknown as Event);
+
+        expect(buildPreviewSpy).not.toHaveBeenCalled();
+        expect(setOptionSpy).toHaveBeenCalledOnceWith('forceGenUseUnitTagsAsChassisTags', true);
+
+        component.reroll();
+
+        expect(buildPreviewSpy.calls.mostRecent().args[0].useTaggedQuantities).toBeTrue();
+        expect(buildPreviewSpy.calls.mostRecent().args[0].useUnitTagsAsChassisTags).toBeTrue();
+    });
+
     it('unchecks duplicate-chassis prevention when tagged quantities is checked', () => {
         component.onPreventDuplicateChassisChange({
             target: { checked: true },
@@ -1080,7 +1159,12 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         expect(resolveGenerationContextSpy).toHaveBeenCalledWith(
             [],
-            { crossEraAvailabilityInMultiEraSelection: true },
+            jasmine.objectContaining({
+                crossEraAvailabilityInMultiEraSelection: true,
+                gameSystem: component.gameSystem(),
+                targetFormationId: undefined,
+                targetFormations: [],
+            }),
         );
     });
 
@@ -1178,7 +1262,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(dialogCloseSpy.calls.mostRecent().args[0].config.crossEraAvailabilityInMultiEraSelection).toBeTrue();
     });
 
-    it('includes the tagged-quantities checkbox state in the submitted config', () => {
+    it('includes tagged-quantity checkbox states in the submitted config', () => {
         const atlas = createEmptyUnit({
             id: 4,
             name: 'Atlas AS7-D',
@@ -1188,6 +1272,9 @@ describe('SearchForceGeneratorDialogComponent', () => {
         });
 
         component.onUseTaggedQuantitiesChange({
+            target: { checked: true },
+        } as unknown as Event);
+        component.onUseUnitTagsAsChassisTagsChange({
             target: { checked: true },
         } as unknown as Event);
 
@@ -1216,6 +1303,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         expect(dialogCloseSpy).toHaveBeenCalledTimes(1);
         expect(dialogCloseSpy.calls.mostRecent().args[0].config.useTaggedQuantities).toBeTrue();
+        expect(dialogCloseSpy.calls.mostRecent().args[0].config.useUnitTagsAsChassisTags).toBeTrue();
     });
 
     it('renders pilot skill range controls and sends them to preview generation', async () => {

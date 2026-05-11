@@ -31,13 +31,15 @@
  * affiliated with Microsoft.
  */
 
-import type { ForceUnit } from '../models/force-unit.model';
 import { GameSystem } from '../models/common.model';
 import { type Faction } from '../models/factions.model';
 import type { Unit } from '../models/units.model';
-import { type FormationTypeDefinition, type FormationMatch, NO_FORMATION, NO_FORMATION_ID } from './formation-type.model';
-import { FORMATION_DEFINITIONS } from './formation-definitions';
-import type { UnitGroup } from '../models/force.model';
+import { type FormationTypeDefinition, type FormationMatch, getFormationNameMatchStrings, NO_FORMATION, NO_FORMATION_ID } from './formation-type.model';
+import { getFormationDefinition, getFormationDefinitions } from './formation-blueprints';
+import { FormationRequirementEngine } from './formation-requirement-engine.util';
+import { normalizeLooseText } from './string.util';
+import type { Era } from '../models/eras.model';
+import type { FormationUnitLike } from './formation-unit-facts.util';
 import { collectGroupUnits, compileGroupFacts } from './org/org-facts.util';
 import { groupMatchesChildRole } from './org/org-role-match.util';
 import { resolveOrgDefinition } from './org/org-registry.util';
@@ -45,6 +47,7 @@ import type {
     GroupSizeResult,
     OrgFormationMatchingSpec,
     OrgRuleDefinition,
+    OrgSizeResult,
 } from './org/org-types';
 import { MULFACTION_MERCENARY } from '../models/mulfactions.model';
 
@@ -52,17 +55,31 @@ import { MULFACTION_MERCENARY } from '../models/mulfactions.model';
  * Author: Drake
  *
  * Unified formation identifier.
- * Uses a single definition list with per-system validators.
+ * Uses migrated requirement blueprints for per-system validation.
  */
 
 interface FormationIdentificationOptions {
-    readonly filteredUnits?: ForceUnit[];
+    readonly filteredUnits?: readonly FormationUnitLike[];
     readonly requirementsFilterCompositionName?: string;
     readonly requirementsFilterNotice?: string;
 }
 
+interface FormationForceLike {
+    readonly gameSystem: GameSystem;
+    faction(): Faction | null;
+    era(): Era | null;
+    techBase(): string;
+}
+
+export interface FormationGroupLike<TUnit extends FormationUnitLike = FormationUnitLike> {
+    readonly force: FormationForceLike | null;
+    readonly formationHistory: ReadonlySet<string>;
+    units(): readonly TUnit[];
+    organizationalResult(): Pick<OrgSizeResult, 'groups'>;
+}
+
 export interface FormationRequirementsFilterContext {
-    readonly filteredUnits?: ForceUnit[];
+    readonly filteredUnits?: readonly FormationUnitLike[];
     readonly requirementsFiltered: boolean;
     readonly requirementsFilterCompositionName?: string;
     readonly requirementsFilterNotice?: string;
@@ -79,37 +96,16 @@ export class LanceTypeIdentifierUtil {
 
     private static validateDefinition(
         definition: FormationTypeDefinition,
-        units: ForceUnit[],
+        units: readonly FormationUnitLike[],
         gameSystem: GameSystem,
     ): boolean {
-        if (definition.parent) {
-            const parentDefinition = FORMATION_DEFINITIONS.find((candidate) => candidate.id === definition.parent);
-            if (!parentDefinition) {
-                console.error(`Parent definition '${definition.parent}' not found for '${definition.id}'`);
-                return false;
-            }
-            if (!this.validateDefinition(parentDefinition, units, gameSystem)) {
-                return false;
-            }
-        }
-
         try {
-            if (definition.minUnits && units.length < definition.minUnits) {
-                return false;
+            const engineEvaluation = FormationRequirementEngine.evaluateDefinition(definition, units, gameSystem);
+            if (engineEvaluation) {
+                return engineEvaluation.valid;
             }
-            if (definition.maxUnits && units.length > definition.maxUnits) {
-                return false;
-            }
-            if (definition.idealRole) {
-                const allMatchIdeal = units.every((unit) => unit.getUnit().role === definition.idealRole);
-                if (allMatchIdeal) {
-                    return true;
-                }
-            }
-            if (!definition.validator) {
-                return false;
-            }
-            return definition.validator(units, gameSystem);
+            console.error(`Formation requirement blueprint '${definition.id}' not found`);
+            return false;
         } catch (error) {
             console.error(`Error validating lance type ${definition.id}:`, error);
             return false;
@@ -150,7 +146,7 @@ export class LanceTypeIdentifierUtil {
         return group.foreignDisplayName ?? group.name;
     }
 
-    private static getRequirementsFilterContext(group: UnitGroup<ForceUnit>): FormationIdentificationOptions {
+    private static getRequirementsFilterContext(group: FormationGroupLike): FormationIdentificationOptions {
         const targetForce = group.force;
         if (!targetForce) {
             return {};
@@ -197,7 +193,7 @@ export class LanceTypeIdentifierUtil {
         };
     }
 
-    public static getRequirementsFilterContextForGroup(group: UnitGroup<ForceUnit>): FormationRequirementsFilterContext {
+    public static getRequirementsFilterContextForGroup(group: FormationGroupLike): FormationRequirementsFilterContext {
         const context = this.getRequirementsFilterContext(group);
         return {
             filteredUnits: context.filteredUnits,
@@ -209,7 +205,7 @@ export class LanceTypeIdentifierUtil {
 
     public static isValid(
         definition: FormationTypeDefinition,
-        units: ForceUnit[],
+        units: readonly FormationUnitLike[],
         gameSystem: GameSystem,
     ): boolean {
         return this.validateDefinition(definition, units, gameSystem);
@@ -220,21 +216,61 @@ export class LanceTypeIdentifierUtil {
             return NO_FORMATION;
         }
 
-        const definition = FORMATION_DEFINITIONS.find((candidate) => candidate.id === id) ?? null;
+        const definition = getFormationDefinition(id);
         if (!definition) {
             return null;
         }
-        if (gameSystem !== undefined && !definition.validator) {
+        if (gameSystem !== undefined && !FormationRequirementEngine.hasBlueprint(definition.id)) {
             return null;
         }
         return definition;
+    }
+
+    public static resolveDefinition(value: string, gameSystem?: GameSystem): FormationTypeDefinition | null {
+        const normalizedValue = value.trim().toLowerCase();
+        if (!normalizedValue) {
+            return null;
+        }
+
+        if (normalizedValue === NO_FORMATION_ID) {
+            return NO_FORMATION;
+        }
+
+        const definitions = getFormationDefinitions().filter((definition) => (
+            gameSystem === undefined || FormationRequirementEngine.hasBlueprint(definition.id)
+        ));
+
+        for (const definition of definitions) {
+            if (definition.id.toLowerCase() === normalizedValue) {
+                return definition;
+            }
+            if (getFormationNameMatchStrings(definition).some(name => name.toLowerCase() === normalizedValue)) {
+                return definition;
+            }
+        }
+
+        const looseValue = normalizeLooseText(value);
+        if (!looseValue) {
+            return null;
+        }
+
+        for (const definition of definitions) {
+            if (normalizeLooseText(definition.id) === looseValue) {
+                return definition;
+            }
+            if (getFormationNameMatchStrings(definition).some(name => normalizeLooseText(name) === looseValue)) {
+                return definition;
+            }
+        }
+
+        return null;
     }
 
     public static getFormationName(formationId: string | undefined): string | null {
         if (!formationId || formationId === NO_FORMATION_ID) {
             return null;
         }
-        return FORMATION_DEFINITIONS.find((definition) => definition.id === formationId)?.name ?? null;
+        return getFormationDefinition(formationId)?.name ?? null;
     }
 
     public static getFormationPriorityWeight(
@@ -242,7 +278,7 @@ export class LanceTypeIdentifierUtil {
         factionName: string,
     ): number {
         let weight = 1;
-        if (definition.exclusiveFaction && definition.exclusiveFaction.some(f => factionName.includes(f))) {
+        if (definition.exclusiveFaction && this.isFormationAvailableForFaction(definition, factionName)) {
             weight *= 5;
         } else if (definition.parent) {
             weight *= 3;
@@ -253,21 +289,35 @@ export class LanceTypeIdentifierUtil {
         return weight;
     }
 
+    public static isFormationAvailableForFaction(
+        definition: FormationTypeDefinition,
+        factionName: string | null | undefined,
+    ): boolean {
+        if (!definition.exclusiveFaction?.length) {
+            return true;
+        }
+
+        const normalizedFactionName = factionName?.trim() ?? '';
+        return normalizedFactionName.length > 0
+            && definition.exclusiveFaction.some(faction => normalizedFactionName.includes(faction));
+    }
+
     public static identifyLanceTypes(
-        units: ForceUnit[],
+        units: readonly FormationUnitLike[],
         techBase: string,
         factionName: string,
         gameSystem: GameSystem,
     ): FormationTypeDefinition[] {
         const matches: FormationTypeDefinition[] = [];
+        const unitCount = units.length;
 
-        for (const definition of FORMATION_DEFINITIONS) {
+        for (const definition of getFormationDefinitions()) {
             try {
-                if (!definition.validator) {
+                if (!FormationRequirementEngine.hasBlueprint(definition.id)) {
                     continue;
                 }
 
-                if (definition.exclusiveFaction && !definition.exclusiveFaction.some(f => factionName.includes(f))) {
+                if (!this.isFormationAvailableForFaction(definition, factionName)) {
                     continue;
                 }
 
@@ -275,6 +325,14 @@ export class LanceTypeIdentifierUtil {
                     && definition.techBase !== 'Special'
                     && techBase !== 'Mixed'
                     && definition.techBase !== techBase) {
+                    continue;
+                }
+
+                if (unitCount < definition.minUnits) {
+                    continue;
+                }
+
+                if (definition.maxUnits !== undefined && unitCount > definition.maxUnits) {
                     continue;
                 }
 
@@ -290,7 +348,7 @@ export class LanceTypeIdentifierUtil {
     }
 
     public static identifyFormations(
-        units: ForceUnit[],
+        units: readonly FormationUnitLike[],
         techBase: string,
         factionName: string,
         gameSystem: GameSystem,
@@ -329,7 +387,7 @@ export class LanceTypeIdentifierUtil {
         return results;
     }
 
-    public static identifyFormationsForGroup(group: UnitGroup<ForceUnit>): FormationMatch[] {
+    public static identifyFormationsForGroup(group: FormationGroupLike): FormationMatch[] {
         const targetForce = group.force;
         if (!targetForce) {
             return [];
@@ -347,7 +405,7 @@ export class LanceTypeIdentifierUtil {
 
     public static isFormationValidForGroup(
         definition: FormationTypeDefinition,
-        group: UnitGroup<ForceUnit>,
+        group: FormationGroupLike,
     ): FormationMatch | null {
         const targetForce = group.force;
         if (!targetForce) {
@@ -378,11 +436,11 @@ export class LanceTypeIdentifierUtil {
     }
 
     public static getBestMatch(
-        units: ForceUnit[],
+        units: readonly FormationUnitLike[],
         techBase: string,
         factionName: string,
         gameSystem: GameSystem,
-        preferredIds?: Set<string>,
+        preferredIds?: ReadonlySet<string>,
         options: FormationIdentificationOptions = {},
     ): FormationMatch | null {
         const matches = this.identifyFormations(units, techBase, factionName, gameSystem, options);
@@ -418,7 +476,7 @@ export class LanceTypeIdentifierUtil {
         return bestMatches[Math.floor(Math.random() * bestMatches.length)];
     }
 
-    public static getBestMatchForGroup(group: UnitGroup<ForceUnit>): FormationMatch | null {
+    public static getBestMatchForGroup(group: FormationGroupLike): FormationMatch | null {
         const targetForce = group.force;
         if (!targetForce) {
             return null;

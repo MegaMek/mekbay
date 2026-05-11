@@ -44,7 +44,8 @@ import { FormationInfoComponent } from '../formation-info/formation-info.compone
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { FormationDropdownPanelComponent, type FormationDisplayItem } from './formation-dropdown-panel.component';
 import { FormationNamerUtil } from '../../utils/formation-namer.util';
-import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
+import { getFormationDefinition, getFormationDefinitions } from '../../utils/formation-blueprints';
+import { FormationRequirementEngine } from '../../utils/formation-requirement-engine.util';
 
 /*
  * Author: Drake
@@ -355,8 +356,8 @@ export class RenameGroupDialogComponent {
     formationDisplayList: FormationDisplayItem[] = (() => {
         const validMatches = FormationNamerUtil.getAvailableFormationDefinitions(this.data.group);
         const validMap = new Map(validMatches.map(m => [m.definition.id, m]));
-        return FORMATION_DEFINITIONS
-            .filter(def => def.validator)
+        return getFormationDefinitions()
+            .filter(def => FormationRequirementEngine.hasBlueprint(def.id))
             .map(def => {
                 const match = validMap.get(def.id);
                 return {
@@ -444,7 +445,7 @@ export class RenameGroupDialogComponent {
     /** Get parent formation requirements text */
     getParentRequirementsText(formation: FormationTypeDefinition): string | null {
       if (!formationInheritsParentEffects(formation) || !formation.parent) return null;
-        const parent = FORMATION_DEFINITIONS.find(d => d.id === formation.parent);
+        const parent = getFormationDefinition(formation.parent);
         if (!parent?.requirements) return null;
         const requirements = parent.requirements(this.data.group.force.gameSystem);
         return requirements ? formatSummaryMovement(requirements, this.optionsService.options().ASUseHex) : null;
@@ -453,7 +454,7 @@ export class RenameGroupDialogComponent {
     /** Get parent formation name */
     getParentFormationName(formation: FormationTypeDefinition): string {
       if (!formationInheritsParentEffects(formation) || !formation.parent) return '';
-        return FORMATION_DEFINITIONS.find(d => d.id === formation.parent)?.name ?? '';
+        return getFormationDefinition(formation.parent)?.name ?? '';
     }
 
     /** Compose a display name for a formation definition */

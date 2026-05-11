@@ -33,6 +33,7 @@
 
 .dialog-body {
     display: flex;
+    position: relative;
     flex: 1 1 auto;
     min-height: 0;
 }
@@ -467,6 +468,11 @@
     min-width: 0;
 }
 
+.target-formation-dropdown {
+    display: block;
+    min-height: 38px;
+}
+
 .bt-select {
     font-size: 1.1em;
     line-height: 1.5em;
@@ -661,6 +667,33 @@
     text-align: center;
     color: var(--text-color-secondary);
     line-height: 1.5;
+}
+
+.force-generation-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    background: rgba(0, 0, 0, 0.5);
+    animation: force-generation-overlay-fade-in 160ms ease-out 300ms forwards;
+}
+
+.force-generation-terminate {
+    min-width: 140px;
+    padding: 20px 32px;
+}
+
+@keyframes force-generation-overlay-fade-in {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
 .preview-inline-error {

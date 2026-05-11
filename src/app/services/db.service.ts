@@ -110,18 +110,12 @@ export interface StoredSheet {
     size: number; // Size of the blob in bytes
 }
 
-/**
- * Tag data keyed by tag name -> unit names array (V2 format)
- * Previously was unit name -> tags array (V1 format)
- */
+/** Tag data keyed by tag label -> unit names array. */
 export interface StoredTags {
     [tagName: string]: string[];
 }
 
-/**
- * Chassis tags keyed by tag name -> chassis key array (V2 format)
- * Previously was chassis|type key -> tags array (V1 format)
- */
+/** Chassis tags keyed by tag label -> chassis key array. */
 export interface StoredChassisTags {
     [tagName: string]: string[];
 }
@@ -179,18 +173,6 @@ export interface TagData {
     /** Format version: 3 for V3 format */
     formatVersion: 3;
     /** Timestamp of last modification for sync purposes */
-    timestamp: number;
-}
-
-/**
- * Legacy V1/V2 tag data format for migration.
- * V1: nameTags = { unitName: [tags] }, chassisTags = { chassisKey: [tags] }
- * V2: nameTags = { tag: [unitNames] }, chassisTags = { tag: [chassisKeys] }
- */
-export interface TagDataLegacy {
-    nameTags: Record<string, string[]>;
-    chassisTags: Record<string, string[]>;
-    formatVersion?: number;
     timestamp: number;
 }
 
@@ -649,66 +631,27 @@ export class DbService {
         return await this.saveDataFromGeneralStore(data, SARNA_PAGE_TITLES_KEY);
     }
 
-    public async getTags(): Promise<StoredTags | null> {
-        return await this.getDataFromStore<StoredTags>('main', TAGS_STORE);
-    }
-
-    public async saveTags(tags: StoredTags): Promise<void> {
-        return await this.saveDataToStore(tags, 'main', TAGS_STORE);
-    }
-
-    public async getChassisTags(): Promise<StoredChassisTags | null> {
-        return await this.getDataFromStore<StoredChassisTags>('chassis', TAGS_STORE);
-    }
-
-    public async saveChassisTags(tags: StoredChassisTags): Promise<void> {
-        return await this.saveDataToStore(tags, 'chassis', TAGS_STORE);
-    }
-
-    public async getTagsTimestamp(): Promise<number | null> {
-        return await this.getDataFromStore<number>('timestamp', TAGS_STORE);
-    }
-
-    public async saveTagsTimestamp(timestamp: number): Promise<void> {
-        return await this.saveDataToStore(timestamp, 'timestamp', TAGS_STORE);
-    }
-
     /**
      * Get all tag data in a single read transaction.
-     * Reads V3 format ('tags' key) if available, otherwise reads legacy V1 format ('main', 'chassis' keys).
-     * Returns null if no data exists, or TagData | TagDataLegacy depending on what's stored.
+     * Returns null if no tag data exists.
      */
-    public async getAllTagData(): Promise<TagData | TagDataLegacy | null> {
+    public async getAllTagData(): Promise<TagData | null> {
         const db = await this.dbPromise;
         if (!db) return null; // Degraded mode
         return new Promise((resolve, reject) => {
             const transaction = db.transaction(TAGS_STORE, 'readonly');
             const store = transaction.objectStore(TAGS_STORE);
 
-            // Try V3 format first
             const tagsRequest = store.get('tags');
-            // Also read legacy keys for migration
-            const mainRequest = store.get('main');
-            const chassisRequest = store.get('chassis');
             const timestampRequest = store.get('timestamp');
-            const formatVersionRequest = store.get('formatVersion');
 
             transaction.oncomplete = () => {
-                // If we have V3 'tags' key, return V3 format
                 if (tagsRequest.result) {
                     resolve({
                         tags: tagsRequest.result,
                         timestamp: timestampRequest.result || 0,
                         formatVersion: 3
                     } as TagData);
-                } else if (mainRequest.result || chassisRequest.result) {
-                    // Legacy V1 format
-                    resolve({
-                        nameTags: mainRequest.result || {},
-                        chassisTags: chassisRequest.result || {},
-                        timestamp: timestampRequest.result || 0,
-                        formatVersion: formatVersionRequest.result
-                    } as TagDataLegacy);
                 } else {
                     resolve(null);
                 }
@@ -717,9 +660,7 @@ export class DbService {
         });
     }
 
-    /**
-     * Save V3 tag data and clean up legacy keys.
-     */
+    /** Save tag data. */
     public async saveAllTagData(data: TagData): Promise<void> {
         const db = await this.dbPromise;
         if (!db) return; // Degraded mode
@@ -727,14 +668,10 @@ export class DbService {
             const transaction = db.transaction(TAGS_STORE, 'readwrite');
             const store = transaction.objectStore(TAGS_STORE);
 
-            // Save V3 format
+            // Save tag data
             store.put(data.tags, 'tags');
             store.put(data.timestamp, 'timestamp');
             store.put(3, 'formatVersion');
-
-            // Delete legacy keys (migration cleanup)
-            store.delete('main');
-            store.delete('chassis');
 
             transaction.oncomplete = () => resolve();
             transaction.onerror = () => reject(transaction.error);
@@ -799,15 +736,11 @@ export class DbService {
                 const currentPending: TagOp[] = pendingRequest.result || [];
                 const newPending = [...currentPending, ...ops];
                 
-                // Save V3 format
+                // Save tag data
                 store.put(tagData.tags, 'tags');
                 store.put(tagData.timestamp, 'timestamp');
                 store.put(3, 'formatVersion');
                 store.put(newPending, 'pendingOps');
-                
-                // Clean up legacy keys if they exist
-                store.delete('main');
-                store.delete('chassis');
             };
 
             transaction.oncomplete = () => resolve();

@@ -3,10 +3,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const MANAGED_BUILD_FILE_PATTERN = /^(?:chunk|main|polyfills|runtime|scripts|styles)-[A-Za-z0-9]+\.(?:js|css)(?:\.map)?$/u;
+const MANAGED_SPRITE_FILE_PATTERN = /\.webp$/iu;
 const SECONDS_PER_DAY = 24 * 60 * 60;
 const DEFAULT_BUILD_DIR = 'dist/browser';
 const DEFAULT_RETENTION_DAYS = 30;
 const DELETE_BATCH_SIZE = 50;
+const SPRITES_DIR_NAME = 'sprites';
 
 function requiredEnv(name) {
     const value = process.env[name]?.trim();
@@ -115,9 +117,9 @@ function getRemoteFiles(remoteDir) {
     return remoteFiles;
 }
 
-function getCleanupCandidates(remoteFiles, currentBuildFiles, cutoffSeconds) {
+function getCleanupCandidates(remoteFiles, currentBuildFiles, managedFilePattern, cutoffSeconds) {
     return remoteFiles
-        .filter((file) => MANAGED_BUILD_FILE_PATTERN.test(file.name))
+    .filter((file) => managedFilePattern.test(file.name))
         .filter((file) => !currentBuildFiles.has(file.name))
         .filter((file) => file.modifiedAtSeconds < cutoffSeconds)
         .sort((left, right) => left.name.localeCompare(right.name));
@@ -130,28 +132,28 @@ function deleteRemoteFiles(remoteDir, files) {
     }
 }
 
-function main() {
-    const buildDir = process.env.BUILD_DIR?.trim() || DEFAULT_BUILD_DIR;
-    const remoteDir = trimTrailingSlash(requiredEnv('FTP_REMOTE_DIR'));
-    const retentionDays = parsePositiveInteger(process.env.FTP_CLEANUP_RETENTION_DAYS, DEFAULT_RETENTION_DAYS);
-    const cutoffSeconds = Math.floor(Date.now() / 1000) - (retentionDays * SECONDS_PER_DAY);
-    const currentBuildFiles = readCurrentBuildFiles(buildDir);
+function cleanupRemoteFiles({ label, localDir, remoteDir, managedFilePattern, retentionDays, cutoffSeconds }) {
+    if (!fs.existsSync(localDir)) {
+        warn(`Local ${label} directory not found for cleanup: ${localDir}`);
+        return;
+    }
 
+    const currentFiles = readCurrentBuildFiles(localDir);
     let remoteFiles;
     try {
         remoteFiles = getRemoteFiles(remoteDir);
     } catch (error) {
-        warn(`Could not list remote files for cleanup: ${describeLftpError(error)}`);
+        warn(`Could not list remote ${label} files for cleanup: ${describeLftpError(error)}`);
         return;
     }
 
-    const cleanupCandidates = getCleanupCandidates(remoteFiles, currentBuildFiles, cutoffSeconds);
+    const cleanupCandidates = getCleanupCandidates(remoteFiles, currentFiles, managedFilePattern, cutoffSeconds);
     if (cleanupCandidates.length === 0) {
-        console.log(`No old Angular build files found for cleanup in ${remoteDir}.`);
+        console.log(`No old ${label} files found for cleanup in ${remoteDir}.`);
         return;
     }
 
-    console.log(`Deleting ${cleanupCandidates.length} Angular build files older than ${retentionDays} days from ${remoteDir}.`);
+    console.log(`Deleting ${cleanupCandidates.length} ${label} files older than ${retentionDays} days from ${remoteDir}.`);
     for (const file of cleanupCandidates.slice(0, 25)) {
         console.log(`cleanup: ${file.name}`);
     }
@@ -163,8 +165,33 @@ function main() {
     try {
         deleteRemoteFiles(remoteDir, cleanupCandidates);
     } catch (error) {
-        warn(`Cleanup did not complete: ${describeLftpError(error)}`);
+        warn(`${label} cleanup did not complete: ${describeLftpError(error)}`);
     }
+}
+
+function main() {
+    const buildDir = process.env.BUILD_DIR?.trim() || DEFAULT_BUILD_DIR;
+    const remoteDir = trimTrailingSlash(requiredEnv('FTP_REMOTE_DIR'));
+    const retentionDays = parsePositiveInteger(process.env.FTP_CLEANUP_RETENTION_DAYS, DEFAULT_RETENTION_DAYS);
+    const cutoffSeconds = Math.floor(Date.now() / 1000) - (retentionDays * SECONDS_PER_DAY);
+
+    cleanupRemoteFiles({
+        label: 'Angular build',
+        localDir: buildDir,
+        remoteDir,
+        managedFilePattern: MANAGED_BUILD_FILE_PATTERN,
+        retentionDays,
+        cutoffSeconds,
+    });
+
+    cleanupRemoteFiles({
+        label: 'sprite sheet',
+        localDir: path.join(buildDir, SPRITES_DIR_NAME),
+        remoteDir: `${remoteDir}/${SPRITES_DIR_NAME}`,
+        managedFilePattern: MANAGED_SPRITE_FILE_PATTERN,
+        retentionDays,
+        cutoffSeconds,
+    });
 }
 
 main();

@@ -84,7 +84,6 @@
                             <input class="bt-input field-input" type="number" min="1" [max]="MAX_UNITS" step="1" [value]="maxUnitCount()" (blur)="onMaxUnitCountBlur($event)" />
                         </div>
                     </div>
-
                     <div class="field-pair mobile-two-column span-all">
                         <div class="form-fields">
                             <label class="field-label">{{ budgetMinimumFieldLabel() }}</label>
@@ -93,7 +92,7 @@
                                 type="number"
                                 min="0"
                                 step="1"
-                                [value]="budgetRange().min"
+                                [value]="budgetRange().min || ''"
                                 (input)="onBudgetMinChange($event)"
                                 placeholder="0" />
                         </div>
@@ -204,6 +203,21 @@
                             [displayText]="tagsFilter()?.displayText"
                             [displayItems]="tagsFilter()?.displayItems"
                             (selectionChange)="onTagsSelectionChange($event)">
+                        </multi-select-dropdown>
+                    </div>
+
+                    <div class="form-fields span-all">
+                        <label class="field-label" for="force-generator-target-formation">Target Formations</label>
+                        <multi-select-dropdown
+                            id="force-generator-target-formation"
+                            class="generator-dropdown target-formation-dropdown"
+                            [label]="''"
+                            [options]="targetFormationOptions()"
+                            [selected]="targetFormationSelection()"
+                            [multistate]="true"
+                            [stateCycle]="targetFormationStateCycle"
+                            [countable]="true"
+                            (selectionChange)="onTargetFormationSelectionChange($event)">
                         </multi-select-dropdown>
                     </div>
 
@@ -360,6 +374,7 @@
                                         [filterGameSystem]="advPanelFilterGameSystem()"
                                         [excludedFilterKeys]="additionalFiltersExcludedKeys()"
                                         [columnsCount]="1"
+                                        [showFormationTargetFilter]="false"
                                         [showAvailabilitySourceDisclaimer]="true">
                                     </unit-search-advanced-filters>
                                 </div>
@@ -375,7 +390,7 @@
                                     type="checkbox"
                                     [checked]="preventDuplicateChassis()"
                                     (change)="onPreventDuplicateChassisChange($event)" />
-                                <span class="generator-option-label">Prevent Duplicate Chassis</span>
+                                <span class="generator-option-label" [tooltip]="preventDuplicateChassisTooltip()">Prevent Duplicate Chassis</span>
                             </label>
 
                             <label class="generator-option">
@@ -384,8 +399,19 @@
                                     type="checkbox"
                                     [checked]="useTaggedQuantities()"
                                     (change)="onUseTaggedQuantitiesChange($event)" />
-                                <span class="generator-option-label">Limit to tagged quantities</span>
+                                <span class="generator-option-label" [tooltip]="useTaggedQuantitiesTooltip()">Limit to tagged quantities</span>
                             </label>
+
+                            @if (useTaggedQuantities()) {
+                                <label class="generator-option unit-tags-as-chassis-option">
+                                    <input
+                                        class="bt-checkbox"
+                                        type="checkbox"
+                                        [checked]="useUnitTagsAsChassisTags()"
+                                        (change)="onUseUnitTagsAsChassisTagsChange($event)" />
+                                    <span class="generator-option-label" [tooltip]="useUnitTagsAsChassisTagsTooltip()">Use Unit-variant tags as Chassis tags</span>
+                                </label>
+                            }
                         </div>
                     </div>
 
@@ -399,7 +425,7 @@
                 </div>
             </section>
 
-            <section class="panel preview-panel">
+            <section class="panel preview-panel" [attr.aria-busy]="forceGenerationInProgress()">
                 <div class="preview-body">
                     @if (previewEntry(); as previewForceEntry) {
                         <div class="preview-layout">
@@ -454,13 +480,26 @@
                         </div>
                     }
                 </div>
+
             </section>
         </div>
+
+        @if (forceGenerationInProgress()) {
+            <div class="force-generation-overlay">
+                <button
+                    class="bt-button force-generation-terminate"
+                    type="button"
+                    [disabled]="forceGenerationTerminateRequested()"
+                    (click)="terminateForceGeneration()">
+                    INTERRUPT GENERATION
+                </button>
+            </div>
+        }
     </div>
 
     <div dialog-footer class="footer">
-        <button class="modal-btn bt-button" type="button" (click)="submit()" [disabled]="previewError() !== null || previewEntry() === null">CREATE</button>
-        <button class="modal-btn bt-button" type="button" (click)="reroll()" [disabled]="eligibleUnits().length === 0">REROLL</button>
+        <button class="modal-btn bt-button" type="button" (click)="submit()" [disabled]="forceGenerationInProgress() || previewError() !== null || previewEntry() === null">CREATE</button>
+        <button class="modal-btn bt-button" type="button" (click)="reroll()" [disabled]="forceGenerationInProgress() || eligibleUnits().length === 0">REROLL</button>
         <button class="modal-btn bt-button" type="button" (click)="dismiss()">DISMISS</button>
     </div>
 </base-dialog>

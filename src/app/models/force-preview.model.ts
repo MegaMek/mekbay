@@ -17,6 +17,7 @@ import type {
     RemoteLoadForceUnit,
 } from './remote-load-force-entry.model';
 import type { Unit } from './units.model';
+import { generateUUID } from '../services/ws.service';
 
 export interface ForcePreviewUnit {
     unit: Unit | undefined;
@@ -62,6 +63,15 @@ function assignForcePreviewUnitField<K extends keyof ForcePreviewUnit>(
     if (value !== undefined) {
         target[key] = value;
     }
+}
+
+function resolveSerializedUnitId(id: string | undefined): string {
+    const normalizedId = id?.trim();
+    if (normalizedId && Number(normalizedId) > 0) {
+        return normalizedId;
+    }
+
+    return generateUUID();
 }
 
 function isASSerializedUnit(unit: SerializedUnit): unit is ASSerializedUnit {
@@ -144,6 +154,7 @@ export function createForcePreviewUnit(
     const previewUnit: ForcePreviewUnit = {
         unit: getUnitByName(raw.unit),
         destroyed: raw.state?.destroyed ?? false,
+        lockKey: generateUUID(),
     };
 
     assignForcePreviewUnitField(previewUnit, 'alias', raw.alias);
@@ -162,7 +173,7 @@ export function createForcePreviewUnitFromSerializedUnit(
     const previewUnit: ForcePreviewUnit = {
         unit: getUnitByName(unit.unit),
         destroyed: unit.state?.destroyed ?? false,
-        lockKey: unit.id,
+        lockKey: resolveSerializedUnitId(unit.id),
     };
 
     assignForcePreviewUnitField(previewUnit, 'alias', unit.alias);
@@ -193,7 +204,7 @@ export function createForcePreviewUnitFromForceUnit(
     const previewUnit: ForcePreviewUnit = {
         unit: forceUnit.getUnit(),
         destroyed: forceUnit.destroyed,
-        lockKey: forceUnit.id,
+        lockKey: resolveSerializedUnitId(forceUnit.id),
     };
 
     assignForcePreviewUnitField(previewUnit, 'alias', forceUnit.alias());

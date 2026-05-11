@@ -309,7 +309,7 @@ export class SpriteStorageService {
                 this.logger.warn(
                     `Sprite refresh incomplete (${result.failedTypes.length} failed: ${failedPreview}${failedSuffix}). Using cached sprite data.`
                 );
-                this.manifest = storedManifest;
+                this.setManifest(storedManifest);
                 await this.loadAllSpritesToCache(storedManifest);
                 return;
             }

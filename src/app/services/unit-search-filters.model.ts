@@ -402,7 +402,10 @@ export interface SemanticFilterConfig {
     label: string;
     semanticKey?: string;
     availabilitySources?: readonly AvailabilitySource[];
+    external?: boolean;
 }
+
+export const FORMATION_TARGET_FILTER_KEY = 'formationTarget';
 
 /** Dropdown filters - separated for clean iteration */
 export const DROPDOWN_FILTERS: readonly DropdownFilterConfig[] = Object.freeze([
@@ -498,6 +501,7 @@ export const RANGE_FILTERS: readonly RangeFilterConfig[] = Object.freeze([
 
 /** Semantic-only filters (not shown in UI, only for query parsing) */
 export const SEMANTIC_FILTERS: readonly SemanticFilterConfig[] = Object.freeze([
+    { key: FORMATION_TARGET_FILTER_KEY, semanticKey: 'formation', label: 'Formation Target', external: true },
     { key: 'name', semanticKey: 'name', label: 'Internal Name' },
     { key: 'id', semanticKey: 'mul', label: 'MUL ID' },
     { key: 'chassis', semanticKey: 'chassis', label: 'Chassis' },

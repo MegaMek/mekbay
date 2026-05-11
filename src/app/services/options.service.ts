@@ -83,8 +83,10 @@ const DEFAULT_OPTIONS: Options = {
     forceGenLastPilotingSkillMin: 5,
     forceGenLastPilotingSkillMax: 5,
     forceGenLastMaxPilotSkillDelta: 1,
+    forceGenFailureSearchWindowMs: 300,
     forceGenPreventDuplicateChassis: false,
     forceGenUseTaggedQuantities: false,
+    forceGenUseUnitTagsAsChassisTags: false,
 };
 
 @Injectable({ providedIn: 'root' })
@@ -130,8 +132,10 @@ export class OptionsService {
         forceGenLastPilotingSkillMin: DEFAULT_OPTIONS.forceGenLastPilotingSkillMin,
         forceGenLastPilotingSkillMax: DEFAULT_OPTIONS.forceGenLastPilotingSkillMax,
         forceGenLastMaxPilotSkillDelta: DEFAULT_OPTIONS.forceGenLastMaxPilotSkillDelta,
+        forceGenFailureSearchWindowMs: DEFAULT_OPTIONS.forceGenFailureSearchWindowMs,
         forceGenPreventDuplicateChassis: DEFAULT_OPTIONS.forceGenPreventDuplicateChassis,
         forceGenUseTaggedQuantities: DEFAULT_OPTIONS.forceGenUseTaggedQuantities,
+        forceGenUseUnitTagsAsChassisTags: DEFAULT_OPTIONS.forceGenUseUnitTagsAsChassisTags,
     });
 
     constructor() {
@@ -181,8 +185,10 @@ export class OptionsService {
             forceGenLastPilotingSkillMin: saved?.forceGenLastPilotingSkillMin ?? DEFAULT_OPTIONS.forceGenLastPilotingSkillMin,
             forceGenLastPilotingSkillMax: saved?.forceGenLastPilotingSkillMax ?? DEFAULT_OPTIONS.forceGenLastPilotingSkillMax,
             forceGenLastMaxPilotSkillDelta: saved?.forceGenLastMaxPilotSkillDelta ?? DEFAULT_OPTIONS.forceGenLastMaxPilotSkillDelta,
+            forceGenFailureSearchWindowMs: saved?.forceGenFailureSearchWindowMs ?? DEFAULT_OPTIONS.forceGenFailureSearchWindowMs,
             forceGenPreventDuplicateChassis: saved?.forceGenPreventDuplicateChassis ?? DEFAULT_OPTIONS.forceGenPreventDuplicateChassis,
             forceGenUseTaggedQuantities: saved?.forceGenUseTaggedQuantities ?? DEFAULT_OPTIONS.forceGenUseTaggedQuantities,
+            forceGenUseUnitTagsAsChassisTags: saved?.forceGenUseUnitTagsAsChassisTags ?? DEFAULT_OPTIONS.forceGenUseUnitTagsAsChassisTags,
         });
     }
 

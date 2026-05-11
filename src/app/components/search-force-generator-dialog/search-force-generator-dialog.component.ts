@@ -48,7 +48,7 @@ import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { ForcePreviewPanelComponent } from '../force-preview-panel/force-preview-panel.component';
 import { ForceRadarPanelComponent } from '../force-radar-panel/force-radar-panel.component';
 import { ModeSwitchComponent } from '../mode-switch/mode-switch.component';
-import { MultiSelectDropdownComponent, type MultiStateSelection } from '../multi-select-dropdown/multi-select-dropdown.component';
+import { MultiSelectDropdownComponent, type DropdownOption, type MultiStateSelection } from '../multi-select-dropdown/multi-select-dropdown.component';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { UnitSearchAdvancedFiltersComponent } from '../unit-search-advanced-filters/unit-search-advanced-filters.component';
@@ -60,17 +60,25 @@ import {
     FORCE_GENERATION_MIN_PILOT_SKILL,
     ForceGeneratorService,
     type ForceGenerationPreview,
+    type ForceGenerationPreviewTask,
+    type ForceGenerationRequest,
     type ForceGenerationSkillRange,
     type ForceGenerationSkillRanges,
+    type ForceGenerationTargetFormationSelection,
     type GeneratedForceUnit,
 } from '../../services/force-generator.service';
 import { GameService } from '../../services/game.service';
 import { OptionsService } from '../../services/options.service';
-import { WsService } from '../../services/ws.service';
+import { generateUUID, WsService } from '../../services/ws.service';
 import type { AdvFilterOptions, DropdownFilterOptions } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { resolveDropdownNamesFromFilter } from '../../utils/filter-name-resolution.util';
+import { getFormationDefinitions } from '../../utils/formation-blueprints';
+import { FormationRequirementEngine } from '../../utils/formation-requirement-engine.util';
+import type { FormationTypeDefinition } from '../../utils/formation-type.model';
+import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
 import { type HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
+import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
 import { normalizeMultiStateSelection } from '../../utils/unit-search-shared.util';
 import { SyntaxInputComponent } from '../syntax-input/syntax-input.component';
 
@@ -87,6 +95,9 @@ export interface SearchForceGeneratorDialogConfig {
     crossEraAvailabilityInMultiEraSelection: boolean;
     preventDuplicateChassis: boolean;
     useTaggedQuantities: boolean;
+    useUnitTagsAsChassisTags: boolean;
+    targetFormationId?: string;
+    targetFormations?: readonly ForceGenerationTargetFormationSelection[];
 }
 
 export interface SearchForceGeneratorDialogResult {
@@ -130,6 +141,8 @@ export class SearchForceGeneratorDialogComponent {
     private readonly optionsService = inject(OptionsService);
     private readonly wsService = inject(WsService);
     readonly filtersService = inject(UnitSearchFiltersService);
+    private activeForceGenerationTask: ForceGenerationPreviewTask | null = null;
+    private activeForceGenerationRunId = 0;
     private readonly initialOptions = this.optionsService.options();
     private readonly initialGameSystem = this.gameService.currentGameSystem();
     private readonly selectedGameSystem = signal<GameSystem>(this.initialGameSystem);
@@ -184,7 +197,7 @@ export class SearchForceGeneratorDialogComponent {
         const filterKey = this.unitTypeFilterKey();
         return filterKey ? this.getDropdownFilter(filterKey) : null;
     });
-    readonly subtypeFilter = computed(() => this.getDropdownFilter('subtype'));
+    readonly subtypeFilter = computed(() => this.gameSystem() === GameSystem.CLASSIC ? this.getDropdownFilter('subtype') : null);
     readonly tagsFilter = computed(() => this.getDropdownFilter('_tags'));
     readonly selectedEraValues = computed(() => this.getSelectedMultiStateValues(this.eraFilter()));
     readonly selectedFactionValues = computed(() => this.getSelectedMultiStateValues(this.factionFilter()));
@@ -214,7 +227,7 @@ export class SearchForceGeneratorDialogComponent {
         return this.gameSystem() === GameSystem.CLASSIC
             && (this.pilotingSkillRangeActive() || this.maxPilotSkillDeltaActive());
     });
-    readonly additionalFiltersExcludedKeys = computed(() => {
+    private readonly primaryDialogFilterKeys = computed(() => {
         const excludedKeys = new Set<string>(['era', 'faction', '_tags']);
         const unitTypeFilterKey = this.unitTypeFilterKey();
         if (unitTypeFilterKey) {
@@ -226,21 +239,30 @@ export class SearchForceGeneratorDialogComponent {
 
         return [...excludedKeys];
     });
+    readonly additionalFiltersExcludedKeys = computed(() => this.primaryDialogFilterKeys());
     readonly otherAdvPanelFilterGameSystem = computed(() => this.getOtherGameSystem(this.advPanelFilterGameSystem()));
     readonly otherAdvPanelFilterGameSystemHasActiveFilters = computed(() => {
         const filterState = this.filtersService.effectiveFilterState();
         const otherGameSystem = this.otherAdvPanelFilterGameSystem();
+        const excludedKeys = new Set(this.primaryDialogFilterKeys());
+        const availabilitySource = this.optionsService.options().availabilitySource;
 
         return [...BOOLEAN_FILTERS, ...DROPDOWN_FILTERS, ...RANGE_FILTERS].some((filter) => (
-            filter.game === otherGameSystem && filterState[filter.key]?.interactedWith
+            filter.game === otherGameSystem
+            && !excludedKeys.has(filter.key)
+            && isFilterAvailableForAvailabilitySource(filter, availabilitySource)
+            && filterState[filter.key]?.interactedWith
         ));
     });
     readonly additionalFiltersHasActiveSettings = computed(() => {
         const hasSearchText = this.filtersService.searchText().trim().length > 0;
         const filterState = this.filtersService.effectiveFilterState();
-        const excludedKeys = new Set(this.additionalFiltersExcludedKeys());
+        const excludedKeys = new Set(this.primaryDialogFilterKeys());
+        const availabilitySource = this.optionsService.options().availabilitySource;
         const hasActiveAdvancedFilters = [...BOOLEAN_FILTERS, ...DROPDOWN_FILTERS, ...RANGE_FILTERS].some((filter) => (
-            !excludedKeys.has(filter.key) && filterState[filter.key]?.interactedWith
+            !excludedKeys.has(filter.key)
+            && isFilterAvailableForAvailabilitySource(filter, availabilitySource)
+            && filterState[filter.key]?.interactedWith
         ));
 
         return hasSearchText || hasActiveAdvancedFilters;
@@ -253,10 +275,47 @@ export class SearchForceGeneratorDialogComponent {
     });
     readonly currentForce = this.forceBuilderService.smartCurrentForce;
     readonly canImportCurrentForce = computed(() => (this.currentForce()?.units().length ?? 0) > 0);
+    readonly targetFormationSelection = signal<MultiStateSelection>({});
+    readonly targetFormationStateCycle = ['or'] as const;
+    readonly targetFormationOptions = computed<DropdownOption[]>(() => getFormationDefinitions()
+        .filter((definition) => FormationRequirementEngine.hasBlueprint(definition.id))
+        .filter((definition) => LanceTypeIdentifierUtil.getDefinitionById(definition.id, this.gameSystem()) !== null)
+        .filter((definition) => this.isTargetFormationAvailableForSelectedFactions(definition))
+        .map((definition) => ({ name: definition.id, displayName: definition.name }))
+        .sort((left, right) => (
+            (left.displayName ?? left.name).localeCompare(right.displayName ?? right.name)
+            || left.name.localeCompare(right.name)
+        )));
+    readonly targetFormations = computed<ForceGenerationTargetFormationSelection[]>(() => {
+        const availableFormationIds = new Set(this.targetFormationOptions().map((option) => option.name));
+        return Object.values(this.targetFormationSelection())
+            .filter((selection) => selection.state === 'or' && availableFormationIds.has(selection.name))
+            .map((selection) => ({
+                formationId: selection.name,
+                count: Math.max(1, Math.floor(selection.count || 1)),
+            }));
+    });
+    readonly targetFormationId = computed(() => {
+        const targetFormations = this.targetFormations();
+        return targetFormations.length === 1 && targetFormations[0].count === 1
+            ? targetFormations[0].formationId
+            : '';
+    });
+    readonly targetFormationSummary = computed(() => this.formatTargetFormationSummary(this.targetFormations()));
     readonly preventDuplicateChassis = signal(this.initialOptions.forceGenPreventDuplicateChassis);
     readonly useTaggedQuantities = signal(
         this.initialOptions.forceGenUseTaggedQuantities && !this.initialOptions.forceGenPreventDuplicateChassis,
     );
+    readonly useUnitTagsAsChassisTags = signal(this.initialOptions.forceGenUseUnitTagsAsChassisTags);
+    readonly preventDuplicateChassisTooltip = computed(() => (
+        'Blocks additional copies that share the same chassis and type as an already selected unit. Useful when you want one variant per chassis pair.'
+    ));
+    readonly useTaggedQuantitiesTooltip = computed(() => (
+        'Uses selected tag quantities as copy limits during force generation. Unit-variant tags stay exact-unit by default; chassis tags already apply to all variants of the same chassis/type.'
+    ));
+    readonly useUnitTagsAsChassisTagsTooltip = computed(() => (
+        'Unit-variant tag quantities are grouped by chassis and type instead of by exact unit. Variants sharing that chassis share one pool, and if a chassis tag and a unit-variant tag pool both apply, the larger cap wins.'
+    ));
     private readonly lockedUnits = signal<GeneratedForceUnit[]>([]);
     readonly lockedUnitKeys = computed(() => {
         return new Set(
@@ -284,6 +343,11 @@ export class SearchForceGeneratorDialogComponent {
         const filterSummary = this.summarizeActiveFilters();
         if (filterSummary.length > 0) {
             lines.push(`Filters: ${filterSummary}`);
+        }
+
+        const targetFormationSummary = this.targetFormationSummary();
+        if (targetFormationSummary) {
+            lines.push(`Target Formations: ${targetFormationSummary}`);
         }
 
         const skillLabel = this.gameSystem() === GameSystem.ALPHA_STRIKE
@@ -334,9 +398,13 @@ export class SearchForceGeneratorDialogComponent {
             skillRanges,
             minUnitCount: this.minUnitCount(),
             maxUnitCount: this.maxUnitCount(),
+            targetFormationId: this.targetFormationId() || undefined,
+            targetFormations: this.targetFormations(),
         };
     });
     readonly mobileTab = signal<GeneratorDialogTab>('configuration');
+    readonly forceGenerationInProgress = signal(false);
+    readonly forceGenerationTerminateRequested = signal(false);
     private readonly previewState = signal<ForceGenerationPreview>(this.createEmptyPreview(
         'Press REROLL to generate a force preview for the current settings.',
     ));
@@ -358,7 +426,8 @@ export class SearchForceGeneratorDialogComponent {
     });
     readonly previewEntry = computed<ForcePreviewEntry | null>(() => {
         const preview = this.preview();
-        return this.forceGeneratorService.createForcePreviewEntry(preview);
+        const entry = this.forceGeneratorService.createForcePreviewEntry(preview);
+        return entry;
     });
 
     constructor() {
@@ -370,6 +439,23 @@ export class SearchForceGeneratorDialogComponent {
         effect(() => {
             if (!this.crossEraAvailabilityToggleEnabled()) {
                 untracked(() => this.crossEraAvailabilityInMultiEraSelection.set(false));
+            }
+        });
+
+        effect(() => {
+            const availableFormationIds = new Set(this.targetFormationOptions().map((option) => option.name));
+            const currentSelection = this.targetFormationSelection();
+            const nextSelection: MultiStateSelection = {};
+            for (const [formationId, selection] of Object.entries(currentSelection)) {
+                if (availableFormationIds.has(formationId) && (selection.state === 'or' || selection.state === 'and')) {
+                    nextSelection[formationId] = {
+                        ...selection,
+                        state: selection.state === 'and' ? 'or' : selection.state,
+                    };
+                }
+            }
+            if (JSON.stringify(nextSelection) !== JSON.stringify(currentSelection)) {
+                untracked(() => this.targetFormationSelection.set(nextSelection));
             }
         });
     }
@@ -511,6 +597,14 @@ export class SearchForceGeneratorDialogComponent {
         }
     }
 
+    onUseUnitTagsAsChassisTagsChange(event: Event): void {
+        const checked = (event.target as HTMLInputElement).checked;
+        if (this.useUnitTagsAsChassisTags() !== checked) {
+            this.useUnitTagsAsChassisTags.set(checked);
+            void this.optionsService.setOption('forceGenUseUnitTagsAsChassisTags', checked);
+        }
+    }
+
     onCrossEraAvailabilityInMultiEraSelectionChange(event: Event): void {
         const target = event.target as HTMLInputElement;
         this.crossEraAvailabilityInMultiEraSelection.set(
@@ -518,12 +612,30 @@ export class SearchForceGeneratorDialogComponent {
         );
     }
 
+    onTargetFormationSelectionChange(selection: MultiStateSelection | readonly string[]): void {
+        const availableFormationIds = new Set(this.targetFormationOptions().map((option) => option.name));
+        const normalizedSelection = normalizeMultiStateSelection(selection);
+        const nextSelection: MultiStateSelection = {};
+
+        for (const [formationId, targetSelection] of Object.entries(normalizedSelection)) {
+            if ((targetSelection.state === 'or' || targetSelection.state === 'and') && availableFormationIds.has(formationId)) {
+                nextSelection[formationId] = {
+                    name: formationId,
+                    state: 'or',
+                    count: Math.max(1, Math.floor(targetSelection.count || 1)),
+                };
+            }
+        }
+
+        this.targetFormationSelection.set(nextSelection);
+    }
+
     onBudgetMinChange(event: Event): void {
         this.setBudgetRangeForSystem(
             this.gameSystem(),
             this.forceGeneratorService.resolveBudgetRangeForEditedMin(
                 this.budgetRange(),
-                this.parseNumericValue(event, this.budgetRange().min),
+                this.parseNumericValue(event, 0),
             ),
         );
     }
@@ -569,12 +681,55 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     reroll(): void {
+        this.cancelActiveForceGeneration();
         this.clearHoveredPreviewUnit();
         this.clearSelectedPreviewUnit();
-        const preview = this.buildGeneratedPreview();
-        this.previewState.set(preview);
         this.mobileTab.set('preview');
-        this.recordForceGeneration(preview);
+
+        const request = this.buildForceGenerationRequest();
+        const buildPreviewAsync = (this.forceGeneratorService as Partial<Pick<ForceGeneratorService, 'buildPreviewAsync'>>)
+            .buildPreviewAsync?.bind(this.forceGeneratorService);
+        if (!buildPreviewAsync) {
+            this.completeGeneratedPreview(this.forceGeneratorService.buildPreview(request));
+            return;
+        }
+
+        const task = buildPreviewAsync(request);
+        if (!task.isAsync) {
+            void task.result.then((preview) => this.completeGeneratedPreview(preview));
+            return;
+        }
+
+        const runId = this.activeForceGenerationRunId + 1;
+        this.activeForceGenerationRunId = runId;
+        this.activeForceGenerationTask = task;
+        this.forceGenerationTerminateRequested.set(false);
+        this.forceGenerationInProgress.set(true);
+
+        void task.result
+            .then((preview) => {
+                if (!this.isActiveForceGenerationTask(task, runId)) {
+                    return;
+                }
+
+                this.completeGeneratedPreview(preview);
+            })
+            .catch(() => {
+                if (!this.isActiveForceGenerationTask(task, runId)) {
+                    return;
+                }
+
+                this.previewState.set(this.createEmptyPreview('Unable to generate a force preview.'));
+            })
+            .finally(() => {
+                if (!this.isActiveForceGenerationTask(task, runId)) {
+                    return;
+                }
+
+                this.activeForceGenerationTask = null;
+                this.forceGenerationInProgress.set(false);
+                this.forceGenerationTerminateRequested.set(false);
+            });
     }
 
     importCurrentForce(): void {
@@ -583,18 +738,20 @@ export class SearchForceGeneratorDialogComponent {
             return;
         }
 
+        this.cancelActiveForceGeneration();
         this.clearHoveredPreviewUnit();
         this.clearSelectedPreviewUnit();
 
         const importedPreviewEntry = createForcePreviewEntryFromForce(currentForce);
         const importedUnits = getForcePreviewUnitEntries(importedPreviewEntry)
-            .map((unitEntry, index) => this.toLockedGeneratedUnit(unitEntry, index))
+            .map((unitEntry) => this.toLockedGeneratedUnit(unitEntry))
             .filter((unit): unit is GeneratedForceUnit => unit !== null);
 
         this.lockedUnits.set(importedUnits);
         this.previewState.set(this.createPreviewFromUnits(importedUnits, {
             faction: importedPreviewEntry.faction,
             era: importedPreviewEntry.era,
+            name: importedPreviewEntry.name,
             explanationLines: ['Imported current force into preview. Press REROLL to generate a new result for the current settings.'],
             error: importedUnits.length === 0 ? 'No units from the current force could be loaded into the preview.' : null,
         }));
@@ -613,7 +770,7 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     submit(): void {
-        if (!this.previewEntry() || this.previewError()) {
+        if (this.forceGenerationInProgress() || !this.previewEntry() || this.previewError()) {
             return;
         }
 
@@ -636,13 +793,26 @@ export class SearchForceGeneratorDialogComponent {
                 crossEraAvailabilityInMultiEraSelection: this.crossEraAvailabilityInMultiEraSelection(),
                 preventDuplicateChassis: this.preventDuplicateChassis(),
                 useTaggedQuantities: this.useTaggedQuantities(),
+                useUnitTagsAsChassisTags: this.useTaggedQuantities() && this.useUnitTagsAsChassisTags(),
+                targetFormationId: this.targetFormationId() || undefined,
+                targetFormations: this.targetFormations(),
             },
             totalCost: preview.totalCost,
         });
     }
 
     dismiss(): void {
+        this.cancelActiveForceGeneration();
         this.dialogRef.close(null);
+    }
+
+    terminateForceGeneration(): void {
+        if (!this.activeForceGenerationTask) {
+            return;
+        }
+
+        this.forceGenerationTerminateRequested.set(true);
+        this.activeForceGenerationTask.terminate();
     }
 
     private clearHoveredPreviewUnit(): void {
@@ -651,6 +821,27 @@ export class SearchForceGeneratorDialogComponent {
 
     private clearSelectedPreviewUnit(): void {
         this.selectedPreviewUnit.set(null);
+    }
+
+    private completeGeneratedPreview(preview: ForceGenerationPreview): void {
+        this.previewState.set(preview);
+        this.recordForceGeneration(preview);
+    }
+
+    private cancelActiveForceGeneration(): void {
+        if (!this.activeForceGenerationTask && !this.forceGenerationInProgress()) {
+            return;
+        }
+
+        this.activeForceGenerationTask?.terminate();
+        this.activeForceGenerationTask = null;
+        this.activeForceGenerationRunId += 1;
+        this.forceGenerationInProgress.set(false);
+        this.forceGenerationTerminateRequested.set(false);
+    }
+
+    private isActiveForceGenerationTask(task: ForceGenerationPreviewTask, runId: number): boolean {
+        return this.activeForceGenerationTask === task && this.activeForceGenerationRunId === runId;
     }
 
     private getDropdownFilter(key: string): DropdownFilterOptions | null {
@@ -666,6 +857,50 @@ export class SearchForceGeneratorDialogComponent {
         return Array.isArray(option?.value) ? [...option.value] : [];
     }
 
+    private formatTargetFormationSummary(targetFormations: readonly ForceGenerationTargetFormationSelection[]): string {
+        if (targetFormations.length === 0) {
+            return '';
+        }
+
+        const displayNameByFormationId = new Map(this.targetFormationOptions().map((option) => [
+            option.name,
+            option.displayName ?? option.name,
+        ]));
+
+        return targetFormations
+            .map((targetFormation) => {
+                const displayName = displayNameByFormationId.get(targetFormation.formationId);
+                if (!displayName) {
+                    return '';
+                }
+                return targetFormation.count > 1
+                    ? `${targetFormation.count} ${displayName}`
+                    : displayName;
+            })
+            .filter((entry) => entry.length > 0)
+            .join(', ');
+    }
+
+    private isTargetFormationAvailableForSelectedFactions(definition: FormationTypeDefinition): boolean {
+        const factionFilter = this.factionFilter();
+        if (!factionFilter) {
+            return true;
+        }
+
+        const resolvedFactionNames = resolveDropdownNamesFromFilter(
+            this.selectedFactionValues(),
+            factionFilter.options.map((entry) => entry.name),
+        );
+        const positiveFactionNames = [...new Set([...resolvedFactionNames.or, ...resolvedFactionNames.and])];
+        if (positiveFactionNames.length === 0) {
+            return true;
+        }
+
+        return positiveFactionNames.some((factionName) => (
+            LanceTypeIdentifierUtil.isFormationAvailableForFaction(definition, factionName)
+        ));
+    }
+
     private countPositiveMultiStateSelections(option: DropdownFilterOptions | null): number {
         if (!option) {
             return 0;
@@ -679,7 +914,7 @@ export class SearchForceGeneratorDialogComponent {
         return new Set([...resolvedNames.or, ...resolvedNames.and]).size;
     }
 
-    private buildGeneratedPreview(): ForceGenerationPreview {
+    private buildForceGenerationRequest(): ForceGenerationRequest {
         const settings = this.generationSettings();
         const eligibleUnits = this.eligibleUnits();
         const lockedUnits = this.resolvePreviewUnits(
@@ -689,10 +924,13 @@ export class SearchForceGeneratorDialogComponent {
             settings.piloting,
         );
 
-        return this.forceGeneratorService.buildPreview({
+        return {
             eligibleUnits,
             context: this.forceGeneratorService.resolveGenerationContext(eligibleUnits, {
                 crossEraAvailabilityInMultiEraSelection: this.crossEraAvailabilityInMultiEraSelection(),
+                gameSystem: settings.gameSystem,
+                targetFormationId: settings.targetFormationId,
+                targetFormations: settings.targetFormations,
             }),
             gameSystem: settings.gameSystem,
             budgetRange: settings.budgetRange,
@@ -704,7 +942,10 @@ export class SearchForceGeneratorDialogComponent {
             lockedUnits,
             preventDuplicateChassis: this.preventDuplicateChassis(),
             useTaggedQuantities: this.useTaggedQuantities(),
-        });
+            useUnitTagsAsChassisTags: this.useTaggedQuantities() && this.useUnitTagsAsChassisTags(),
+            targetFormationId: settings.targetFormationId,
+            targetFormations: settings.targetFormations,
+        };
     }
 
     private recordForceGeneration(preview: ForceGenerationPreview): void {
@@ -718,12 +959,15 @@ export class SearchForceGeneratorDialogComponent {
     private createEmptyPreview(error: string | null = null): ForceGenerationPreview {
         return {
             gameSystem: this.gameSystem(),
+            name: undefined,
             units: [],
             totalCost: 0,
             error,
             faction: null,
             era: null,
             explanationLines: [],
+            targetFormationId: this.targetFormationId() || undefined,
+            targetFormations: this.targetFormations(),
         };
     }
 
@@ -739,12 +983,16 @@ export class SearchForceGeneratorDialogComponent {
 
         return {
             gameSystem: settings.gameSystem,
+            name: storedPreview.name,
             units,
             totalCost,
             error: storedPreview.error,
             faction: storedPreview.faction,
             era: storedPreview.era,
             explanationLines: storedPreview.explanationLines,
+            targetFormationId: storedPreview.targetFormationId,
+            targetFormations: storedPreview.targetFormations,
+            targetFormationGroups: storedPreview.targetFormationGroups,
         };
     }
 
@@ -755,6 +1003,7 @@ export class SearchForceGeneratorDialogComponent {
             era?: Era | null;
             explanationLines?: readonly string[];
             error?: string | null;
+            name?: string;
         } = {},
     ): ForceGenerationPreview {
         const settings = this.previewDisplaySettings();
@@ -767,12 +1016,15 @@ export class SearchForceGeneratorDialogComponent {
 
         return {
             gameSystem: settings.gameSystem,
+            name: options.name,
             units: resolvedUnits,
             totalCost: resolvedUnits.reduce((sum, unit) => sum + unit.cost, 0),
             error: options.error ?? null,
             faction: options.faction ?? null,
             era: options.era ?? null,
             explanationLines: [...(options.explanationLines ?? [])],
+            targetFormationId: this.targetFormationId() || undefined,
+            targetFormations: this.targetFormations(),
         };
     }
 
@@ -862,13 +1114,8 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     private resolveUnitTypeFilterKey(): UnitTypeFilterKey | null {
-        if (this.getDropdownFilter('type')) {
-            return 'type';
-        }
-        if (this.getDropdownFilter('as.TP')) {
-            return 'as.TP';
-        }
-        return null;
+        const filterKey = this.gameSystem() === GameSystem.ALPHA_STRIKE ? 'as.TP' : 'type';
+        return this.getDropdownFilter(filterKey) ? filterKey : null;
     }
 
     private getOtherGameSystem(gameSystem: GameSystem): GameSystem {
@@ -1195,7 +1442,7 @@ export class SearchForceGeneratorDialogComponent {
         };
     }
 
-    private toLockedGeneratedUnit(unitEntry: ForcePreviewUnit, index: number): GeneratedForceUnit | null {
+    private toLockedGeneratedUnit(unitEntry: ForcePreviewUnit): GeneratedForceUnit | null {
         if (!unitEntry.unit) {
             return null;
         }
@@ -1226,7 +1473,7 @@ export class SearchForceGeneratorDialogComponent {
             piloting,
             alias: unitEntry.alias,
             commander: unitEntry.commander,
-            lockKey: unitEntry.lockKey ?? `imported:${index}:${unitEntry.unit.name}`,
+            lockKey: unitEntry.lockKey ?? generateUUID(),
         };
     }
 }

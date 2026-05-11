@@ -326,7 +326,12 @@ describe('DataService', () => {
         expect(entries[0].cloud).toBeTrue();
         expect(entries[0].owned).toBeFalse();
         expect(entries[0].groups[0].formationId).toBe('formation-1');
-        expect(entries[0].groups[0].units[0]).toEqual({ unit: atlas, alias: 'Skull', destroyed: true });
+        expect(entries[0].groups[0].units[0]).toEqual(jasmine.objectContaining({
+            unit: atlas,
+            alias: 'Skull',
+            destroyed: true,
+            lockKey: jasmine.any(String),
+        }));
         expect(entries[1].name).toBe('Cloud Only');
         expect(entries[1].local).toBeFalse();
         expect(entries[1].cloud).toBeTrue();
