@@ -406,6 +406,20 @@ interface ForceGenerationTargetAttemptRank {
     unitCountDistance: number;
 }
 
+interface ForceGenerationTargetSearchAttemptResult {
+    attempt: ForceGenerationSelectionAttempt;
+    rank: ForceGenerationTargetAttemptRank;
+    complete: boolean;
+    message: string | null;
+}
+
+interface ForceGenerationTargetSearchResult {
+    bestAttempt: ForceGenerationSelectionAttempt | null;
+    bestResult: ForceGenerationTargetSearchAttemptResult | null;
+    completeAttempt: ForceGenerationSelectionAttempt | null;
+    attemptsTried: number;
+}
+
 interface ForceGenerationSkillSettings {
     gunnery: ForceGenerationSkillRange;
     piloting: ForceGenerationSkillRange;
@@ -2360,118 +2374,83 @@ export class ForceGeneratorService implements OnDestroy {
                 ));
 
         if (targetFormationContext) {
-            const failureSearchWindowMs = this.resolveFailureSearchWindowMs();
-            const targetAttemptBudget = this.createAttemptBudget(candidates.length, minUnitCount, maxUnitCount);
-            const targetSearchStartedAt = getForceGeneratorNow();
-            const targetSearchDeadline = this.createSearchDeadline(targetSearchStartedAt, failureSearchWindowMs, interruptSignal);
-            let targetAttemptDurationEstimateMs = 0;
-            let targetAttemptLimit = targetAttemptBudget.minAttempts;
-            let targetAttemptsTried = 0;
-            let bestTargetAttempt: ForceGenerationSelectionAttempt | null = null;
-            let bestTargetRank: ForceGenerationTargetAttemptRank | null = null;
-
-            for (let attempt = 0; attempt < targetAttemptLimit; attempt += 1) {
-                if (this.hasSearchDeadlineExpired(targetSearchDeadline)) {
-                    break;
-                }
-                yield;
-                if (interruptSignal && this.hasSearchDeadlineExpired(targetSearchDeadline)) {
-                    break;
-                }
-                const attemptStartedAt = getForceGeneratorNow();
-                targetAttemptsTried = attempt + 1;
-                const targetAttempt = this.buildTargetedFormationSelection(
-                    candidates,
-                    options,
-                    targetFormationContext.definition,
-                    budgetRange,
-                    minUnitCount,
-                    maxUnitCount,
-                    lockedCandidates,
-                    options.preventDuplicateChassis === true,
-                    skillSettings,
-                    selectionPreparation,
-                    targetSearchDeadline,
-                );
-                const targetEvaluationBeforeSkillOptimization = FormationRequirementEngine.evaluateDefinition(
-                    targetFormationContext.definition,
-                    this.createFormationUnitsForCandidates(targetAttempt.selectedCandidates, options),
-                    options.gameSystem,
-                );
-                const formationValidBeforeSkillOptimization = targetEvaluationBeforeSkillOptimization?.valid === true
-                    && targetAttempt.selectedCandidates.length >= minUnitCount
-                    && targetAttempt.selectedCandidates.length <= maxUnitCount;
-                const optimizedTargetAttempt = formationValidBeforeSkillOptimization
-                    ? this.optimizeSelectionAttemptSkillsForBudget(
-                        targetAttempt,
-                        options.gameSystem,
-                        skillSettings,
-                        budgetRange,
-                    )
-                    : targetAttempt;
-                const targetTotalCost = optimizedTargetAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
-                const targetEvaluation = FormationRequirementEngine.evaluateDefinition(
-                    targetFormationContext.definition,
-                    this.createFormationUnitsForCandidates(optimizedTargetAttempt.selectedCandidates, options),
-                    options.gameSystem,
-                );
-                const formationValid = targetEvaluation?.valid === true
-                    && optimizedTargetAttempt.selectedCandidates.length >= minUnitCount
-                    && optimizedTargetAttempt.selectedCandidates.length <= maxUnitCount;
-                const targetValid = formationValid && this.isBudgetWithinRange(targetTotalCost, budgetRange);
-                const targetRank: ForceGenerationTargetAttemptRank = {
-                    satisfiedTargetCount: formationValid ? 1 : 0,
-                    requestedTargetCount: 1,
-                    formationDeficitScore: this.getFormationDeficitScore(targetEvaluation),
-                    budgetDistance: this.getBudgetRangeDistance(targetTotalCost, budgetRange),
-                    unitCountDistance: this.getUnitCountRangeDistance(targetAttempt.selectedCandidates.length, minUnitCount, maxUnitCount),
-                };
-
-                if (this.isTargetFormationAttemptBetter(targetRank, bestTargetRank)) {
-                    bestTargetAttempt = optimizedTargetAttempt;
-                    bestTargetRank = targetRank;
-                }
-
-                this.logTargetFormationAttemptDiagnostics(
-                    'single',
-                    attempt + 1,
-                    optimizedTargetAttempt.selectedCandidates,
-                    targetRank,
-                    budgetRange,
-                    null,
-                    this.hasSearchDeadlineExpired(targetSearchDeadline),
-                );
-
-                if (targetValid) {
-                    return this.buildPreviewFromSelectionAttempt(
+            const targetSearchResult = yield* this.runTargetFormationAttemptSearch({
+                mode: 'single',
+                candidateCount: candidates.length,
+                minUnitCount,
+                maxUnitCount,
+                budgetRange,
+                interruptSignal,
+                runAttempt: (targetSearchDeadline) => {
+                    const targetAttempt = this.buildTargetedFormationSelection(
+                        candidates,
                         options,
-                        eligibleUnits.length,
-                        availableCandidateCapacity,
+                        targetFormationContext.definition,
                         budgetRange,
                         minUnitCount,
                         maxUnitCount,
-                        optimizedTargetAttempt,
-                        null,
-                        undefined,
-                        candidates,
-                        targetAttemptsTried,
-                        getForceGeneratorNow() - previewStartedAt,
+                        lockedCandidates,
+                        options.preventDuplicateChassis === true,
+                        skillSettings,
+                        selectionPreparation,
+                        targetSearchDeadline,
                     );
-                }
+                    const targetEvaluationBeforeSkillOptimization = FormationRequirementEngine.evaluateDefinition(
+                        targetFormationContext.definition,
+                        this.createFormationUnitsForCandidates(targetAttempt.selectedCandidates, options),
+                        options.gameSystem,
+                    );
+                    const formationValidBeforeSkillOptimization = targetEvaluationBeforeSkillOptimization?.valid === true
+                        && targetAttempt.selectedCandidates.length >= minUnitCount
+                        && targetAttempt.selectedCandidates.length <= maxUnitCount;
+                    const optimizedTargetAttempt = formationValidBeforeSkillOptimization
+                        ? this.optimizeSelectionAttemptSkillsForBudget(
+                            targetAttempt,
+                            options.gameSystem,
+                            skillSettings,
+                            budgetRange,
+                        )
+                        : targetAttempt;
+                    const targetTotalCost = optimizedTargetAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
+                    const targetEvaluation = FormationRequirementEngine.evaluateDefinition(
+                        targetFormationContext.definition,
+                        this.createFormationUnitsForCandidates(optimizedTargetAttempt.selectedCandidates, options),
+                        options.gameSystem,
+                    );
+                    const formationValid = targetEvaluation?.valid === true
+                        && optimizedTargetAttempt.selectedCandidates.length >= minUnitCount
+                        && optimizedTargetAttempt.selectedCandidates.length <= maxUnitCount;
+                    const targetValid = formationValid && this.isBudgetWithinRange(targetTotalCost, budgetRange);
 
-                if (this.hasSearchDeadlineExpired(targetSearchDeadline)) {
-                    break;
-                }
+                    return {
+                        attempt: optimizedTargetAttempt,
+                        rank: {
+                            satisfiedTargetCount: formationValid ? 1 : 0,
+                            requestedTargetCount: 1,
+                            formationDeficitScore: this.getFormationDeficitScore(targetEvaluation),
+                            budgetDistance: this.getBudgetRangeDistance(targetTotalCost, budgetRange),
+                            unitCountDistance: this.getUnitCountRangeDistance(targetAttempt.selectedCandidates.length, minUnitCount, maxUnitCount),
+                        },
+                        complete: targetValid,
+                        message: null,
+                    };
+                },
+            });
 
-                const attemptDurationMs = Math.max(0.05, getForceGeneratorNow() - attemptStartedAt);
-                targetAttemptDurationEstimateMs = this.updateAttemptDurationEstimate(targetAttemptDurationEstimateMs, attemptDurationMs, targetAttemptsTried);
-                targetAttemptLimit = this.resolveAttemptLimit(
-                    targetAttemptBudget,
-                    targetAttemptsTried,
-                    targetAttemptDurationEstimateMs,
-                    getForceGeneratorNow() - targetSearchStartedAt,
-                    false,
-                    failureSearchWindowMs,
+            if (targetSearchResult.completeAttempt) {
+                return this.buildPreviewFromSelectionAttempt(
+                    options,
+                    eligibleUnits.length,
+                    availableCandidateCapacity,
+                    budgetRange,
+                    minUnitCount,
+                    maxUnitCount,
+                    targetSearchResult.completeAttempt,
+                    null,
+                    undefined,
+                    candidates,
+                    targetSearchResult.attemptsTried,
+                    getForceGeneratorNow() - previewStartedAt,
                 );
             }
 
@@ -2484,134 +2463,101 @@ export class ForceGeneratorService implements OnDestroy {
                 budgetRange,
                 minUnitCount,
                 maxUnitCount,
-                bestTargetAttempt ?? this.createSelectionAttemptFromCandidates(lockedCandidates, selectionPreparation?.rulesetProfile ?? null),
+                targetSearchResult.bestAttempt ?? this.createSelectionAttemptFromCandidates(lockedCandidates, selectionPreparation?.rulesetProfile ?? null),
                 targetMessage,
                 targetMessage,
                 candidates,
-                targetAttemptsTried,
+                targetSearchResult.attemptsTried,
                 getForceGeneratorNow() - previewStartedAt,
             );
         }
 
         if (targetFormationSetContext) {
-            const failureSearchWindowMs = this.resolveFailureSearchWindowMs();
-            const targetAttemptBudget = this.createAttemptBudget(candidates.length, minUnitCount, maxUnitCount);
-            const targetSearchStartedAt = getForceGeneratorNow();
-            const targetSearchDeadline = this.createSearchDeadline(targetSearchStartedAt, failureSearchWindowMs, interruptSignal);
-            let targetAttemptDurationEstimateMs = 0;
-            let targetAttemptLimit = targetAttemptBudget.minAttempts;
-            let targetAttemptsTried = 0;
-            let bestTargetAttempt: ForceGenerationSelectionAttempt | null = null;
-            let bestTargetEvaluation: ForceGenerationTargetFormationSetAttemptEvaluation | null = null;
-
-            for (let attempt = 0; attempt < targetAttemptLimit; attempt += 1) {
-                if (this.hasSearchDeadlineExpired(targetSearchDeadline)) {
-                    break;
-                }
-                yield;
-                if (interruptSignal && this.hasSearchDeadlineExpired(targetSearchDeadline)) {
-                    break;
-                }
-                const attemptStartedAt = getForceGeneratorNow();
-                targetAttemptsTried = attempt + 1;
-                const targetAttempt = this.buildMultiTargetedFormationSelection(
-                    candidates,
-                    options,
-                    targetFormationSetContext,
-                    budgetRange,
-                    minUnitCount,
-                    maxUnitCount,
-                    lockedCandidates,
-                    options.preventDuplicateChassis === true,
-                    skillSettings,
-                    targetSearchDeadline,
-                );
-                const optimizedTargetAttempt = this.optimizeSelectionAttemptSkillsForBudget(
-                    targetAttempt,
-                    options.gameSystem,
-                    skillSettings,
-                    budgetRange,
-                );
-                const targetEvaluation = this.evaluateTargetFormationSetAttempt(
-                    optimizedTargetAttempt,
-                    options,
-                    targetFormationSetContext,
-                    budgetRange,
-                    minUnitCount,
-                    maxUnitCount,
-                );
-
-                if (this.isTargetFormationAttemptBetter(targetEvaluation.rank, bestTargetEvaluation?.rank ?? null)) {
-                    bestTargetAttempt = optimizedTargetAttempt;
-                    bestTargetEvaluation = targetEvaluation;
-                }
-
-                this.logTargetFormationAttemptDiagnostics(
-                    'multi',
-                    attempt + 1,
-                    optimizedTargetAttempt.selectedCandidates,
-                    targetEvaluation.rank,
-                    budgetRange,
-                    targetEvaluation.message,
-                    this.hasSearchDeadlineExpired(targetSearchDeadline),
-                );
-
-                if (targetEvaluation.allTargetsSatisfied && targetEvaluation.budgetValid && targetEvaluation.unitCountValid) {
-                    return this.buildPreviewFromSelectionAttempt(
+            const targetSearchResult = yield* this.runTargetFormationAttemptSearch({
+                mode: 'multi',
+                candidateCount: candidates.length,
+                minUnitCount,
+                maxUnitCount,
+                budgetRange,
+                interruptSignal,
+                runAttempt: (targetSearchDeadline) => {
+                    const targetAttempt = this.buildMultiTargetedFormationSelection(
+                        candidates,
                         options,
-                        eligibleUnits.length,
-                        availableCandidateCapacity,
+                        targetFormationSetContext,
                         budgetRange,
                         minUnitCount,
                         maxUnitCount,
-                        optimizedTargetAttempt,
-                        null,
-                        undefined,
-                        candidates,
-                        targetAttemptsTried,
-                        getForceGeneratorNow() - previewStartedAt,
+                        lockedCandidates,
+                        options.preventDuplicateChassis === true,
+                        skillSettings,
+                        targetSearchDeadline,
                     );
-                }
+                    const optimizedTargetAttempt = this.optimizeSelectionAttemptSkillsForBudget(
+                        targetAttempt,
+                        options.gameSystem,
+                        skillSettings,
+                        budgetRange,
+                    );
+                    const targetEvaluation = this.evaluateTargetFormationSetAttempt(
+                        optimizedTargetAttempt,
+                        options,
+                        targetFormationSetContext,
+                        budgetRange,
+                        minUnitCount,
+                        maxUnitCount,
+                    );
 
-                if (this.hasSearchDeadlineExpired(targetSearchDeadline)) {
-                    break;
-                }
+                    return {
+                        attempt: optimizedTargetAttempt,
+                        rank: targetEvaluation.rank,
+                        complete: targetEvaluation.allTargetsSatisfied && targetEvaluation.budgetValid && targetEvaluation.unitCountValid,
+                        message: targetEvaluation.message,
+                    };
+                },
+            });
 
-                const attemptDurationMs = Math.max(0.05, getForceGeneratorNow() - attemptStartedAt);
-                targetAttemptDurationEstimateMs = this.updateAttemptDurationEstimate(targetAttemptDurationEstimateMs, attemptDurationMs, targetAttemptsTried);
-                targetAttemptLimit = this.resolveAttemptLimit(
-                    targetAttemptBudget,
-                    targetAttemptsTried,
-                    targetAttemptDurationEstimateMs,
-                    getForceGeneratorNow() - targetSearchStartedAt,
-                    bestTargetEvaluation !== null
-                        && bestTargetEvaluation.allTargetsSatisfied
-                        && bestTargetEvaluation.budgetValid
-                        && bestTargetEvaluation.unitCountValid,
-                    failureSearchWindowMs,
-                );
-            }
-
-            const fallbackAttempt = bestTargetAttempt
-                ?? this.createSelectionAttemptFromCandidates(lockedCandidates, selectionPreparation?.rulesetProfile ?? null);
-            const fallbackEvaluation = bestTargetEvaluation
-                ?? this.evaluateTargetFormationSetAttempt(
-                    fallbackAttempt,
+            if (targetSearchResult.completeAttempt) {
+                return this.buildPreviewFromSelectionAttempt(
                     options,
-                    targetFormationSetContext,
+                    eligibleUnits.length,
+                    availableCandidateCapacity,
                     budgetRange,
                     minUnitCount,
                     maxUnitCount,
+                    targetSearchResult.completeAttempt,
+                    null,
+                    undefined,
+                    candidates,
+                    targetSearchResult.attemptsTried,
+                    getForceGeneratorNow() - previewStartedAt,
                 );
-            const fullyValidTargetSuccess = fallbackEvaluation.allTargetsSatisfied
+            }
+
+            const fallbackAttempt = targetSearchResult.bestAttempt
+                ?? this.createSelectionAttemptFromCandidates(lockedCandidates, selectionPreparation?.rulesetProfile ?? null);
+            const fallbackResult = targetSearchResult.bestResult;
+            const fallbackEvaluation = fallbackResult ? null : this.evaluateTargetFormationSetAttempt(
+                fallbackAttempt,
+                options,
+                targetFormationSetContext,
+                budgetRange,
+                minUnitCount,
+                maxUnitCount,
+            );
+            const fullyValidTargetSuccess = fallbackResult?.complete ?? (
+                fallbackEvaluation !== null
+                && fallbackEvaluation.allTargetsSatisfied
                 && fallbackEvaluation.budgetValid
-                && fallbackEvaluation.unitCountValid;
+                && fallbackEvaluation.unitCountValid
+            );
+            const fallbackMessage = fallbackResult?.message ?? fallbackEvaluation?.message ?? '';
             const targetFormationError = fullyValidTargetSuccess
                 ? null
-                : fallbackEvaluation.message;
+                : fallbackMessage;
             const targetFormationResultNote = fullyValidTargetSuccess
                 ? undefined
-                : fallbackEvaluation.message;
+                : fallbackMessage;
 
             return this.buildPreviewFromSelectionAttempt(
                 options,
@@ -2624,7 +2570,7 @@ export class ForceGeneratorService implements OnDestroy {
                 targetFormationError,
                 targetFormationResultNote,
                 candidates,
-                targetAttemptsTried,
+                targetSearchResult.attemptsTried,
                 getForceGeneratorNow() - previewStartedAt,
             );
         }
@@ -5491,6 +5437,86 @@ export class ForceGeneratorService implements OnDestroy {
     private formatFormationComputationEffortNote(): string {
         const roundedElapsedMs = Math.max(0, Math.round(this.formationComputationElapsedMs));
         return `Structure evaluations: ${this.formationComputationAttempts} in ${roundedElapsedMs}ms.`;
+    }
+
+    private *runTargetFormationAttemptSearch(options: {
+        mode: 'single' | 'multi';
+        candidateCount: number;
+        minUnitCount: number;
+        maxUnitCount: number;
+        budgetRange: { min: number; max: number };
+        interruptSignal?: ForceGenerationInterruptSignal;
+        runAttempt: (deadline: ForceGenerationSearchDeadline) => ForceGenerationTargetSearchAttemptResult;
+    }): Generator<void, ForceGenerationTargetSearchResult, void> {
+        const failureSearchWindowMs = this.resolveFailureSearchWindowMs();
+        const attemptBudget = this.createAttemptBudget(options.candidateCount, options.minUnitCount, options.maxUnitCount);
+        const searchStartedAt = getForceGeneratorNow();
+        const searchDeadline = this.createSearchDeadline(searchStartedAt, failureSearchWindowMs, options.interruptSignal);
+        let attemptDurationEstimateMs = 0;
+        let attemptLimit = attemptBudget.minAttempts;
+        let attemptsTried = 0;
+        let bestAttempt: ForceGenerationSelectionAttempt | null = null;
+        let bestResult: ForceGenerationTargetSearchAttemptResult | null = null;
+
+        for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
+            if (this.hasSearchDeadlineExpired(searchDeadline)) {
+                break;
+            }
+            yield;
+            if (options.interruptSignal && this.hasSearchDeadlineExpired(searchDeadline)) {
+                break;
+            }
+
+            const attemptStartedAt = getForceGeneratorNow();
+            attemptsTried = attempt + 1;
+            const result = options.runAttempt(searchDeadline);
+
+            if (this.isTargetFormationAttemptBetter(result.rank, bestResult?.rank ?? null)) {
+                bestAttempt = result.attempt;
+                bestResult = result;
+            }
+
+            this.logTargetFormationAttemptDiagnostics(
+                options.mode,
+                attempt + 1,
+                result.attempt.selectedCandidates,
+                result.rank,
+                options.budgetRange,
+                result.message,
+                this.hasSearchDeadlineExpired(searchDeadline),
+            );
+
+            if (result.complete) {
+                return {
+                    bestAttempt,
+                    bestResult,
+                    completeAttempt: result.attempt,
+                    attemptsTried,
+                };
+            }
+
+            if (this.hasSearchDeadlineExpired(searchDeadline)) {
+                break;
+            }
+
+            const attemptDurationMs = Math.max(0.05, getForceGeneratorNow() - attemptStartedAt);
+            attemptDurationEstimateMs = this.updateAttemptDurationEstimate(attemptDurationEstimateMs, attemptDurationMs, attemptsTried);
+            attemptLimit = this.resolveAttemptLimit(
+                attemptBudget,
+                attemptsTried,
+                attemptDurationEstimateMs,
+                getForceGeneratorNow() - searchStartedAt,
+                false,
+                failureSearchWindowMs,
+            );
+        }
+
+        return {
+            bestAttempt,
+            bestResult,
+            completeAttempt: null,
+            attemptsTried,
+        };
     }
 
     private getFormationDeficitScore(evaluation: FormationEvaluation | null): number {
