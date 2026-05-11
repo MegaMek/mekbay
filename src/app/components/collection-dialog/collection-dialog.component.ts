@@ -465,6 +465,24 @@ export class CollectionDialogComponent {
 
     readonly selectedHeaderTagLower = computed(() => this.selectedHeaderTag().toLowerCase());
 
+    readonly selectedHeaderTagQuantityTotal = computed(() => {
+        const lowerTag = this.selectedHeaderTagLower();
+        if (!lowerTag) {
+            return 0;
+        }
+
+        let total = 0;
+        for (const row of this.filteredRows()) {
+            for (const tag of row.tags) {
+                if (tag.lowerTag === lowerTag && !tag.pendingRemoval) {
+                    total += tag.quantity;
+                }
+            }
+        }
+
+        return total;
+    });
+
     readonly canUseHeaderTagActions = computed(() => this.selectedHeaderTag().length > 0);
 
     readonly canAddQuickTag = computed(() => {

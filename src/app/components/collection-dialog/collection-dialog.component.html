@@ -25,6 +25,9 @@
             </div>
             <div class="collection-summary">
                 <span>{{ filteredRows().length }}/{{ allRows().length }} entries</span>
+                @if (selectedHeaderTag()) {
+                    <span>{{ selectedHeaderTagQuantityTotal() }} total sum</span>
+                }
             </div>
         </div>
 
