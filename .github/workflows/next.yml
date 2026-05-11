@@ -61,11 +61,11 @@ jobs:
           ${INDEX_CSR_PUT}
           put -O ./mekbay_next/ ./dist/browser/ngsw.json;"
 
-      - name: Cleanup Old Build Files
+      - name: Cleanup Old Build and Sprite Files
         env:
           FTP_USER: ${{ secrets.FTP_USER }}
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
           FTP_HOST: ${{ secrets.FTP_HOST }}
           FTP_REMOTE_DIR: ./mekbay_next
-          FTP_CLEANUP_RETENTION_DAYS: 7
+          FTP_CLEANUP_RETENTION_DAYS: 5
         run: node scripts/cleanup-ftp-build-output.mjs
