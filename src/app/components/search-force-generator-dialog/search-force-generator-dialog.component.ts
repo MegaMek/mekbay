@@ -770,12 +770,13 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     submit(): void {
-        if (this.forceGenerationInProgress() || !this.previewEntry() || this.previewError()) {
+        const previewEntry = this.previewEntry();
+        if (this.forceGenerationInProgress() || !previewEntry || this.previewError()) {
             return;
         }
 
         const preview = this.preview();
-        const forceEntry = this.forceGeneratorService.createForceEntry(preview);
+        const forceEntry = this.forceGeneratorService.createForceEntryFromPreviewEntry(previewEntry);
         if (!forceEntry) {
             return;
         }

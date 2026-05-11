@@ -704,36 +704,65 @@ export class ForceBuilderService {
             return null;
         }
 
-        force.faction.set(entry.faction ?? null);
-        force.era.set(entry.era ?? null);
-        force.groups.set([]);
-
         let firstCreatedUnit: ForceUnit | null = null;
-        for (const groupEntry of entry.groups) {
-            const targetGroup = force.addGroup(groupEntry.name || undefined);
-            for (const loadUnit of groupEntry.units) {
-                if (!loadUnit.unit) {
-                    continue;
+
+        force.loading = true;
+        force.factionLock = true;
+        force.eraLock = true;
+        try {
+            force.faction.set(entry.faction ?? null);
+            force.era.set(entry.era ?? null);
+            force.groups.set([]);
+
+            for (const groupEntry of entry.groups) {
+                const targetGroup = force.addGroup(groupEntry.name || undefined);
+                const previewFormation = groupEntry.formationId
+                    ? LanceTypeIdentifierUtil.getDefinitionById(groupEntry.formationId, entry.type)
+                    : null;
+                targetGroup.formationLock = true;
+                targetGroup.formation.set(previewFormation);
+                for (const loadUnit of groupEntry.units) {
+                    if (!loadUnit.unit) {
+                        continue;
+                    }
+
+                    const createdUnit = await this.addUnit(
+                        loadUnit.unit,
+                        entry.type === GameSystem.ALPHA_STRIKE ? (loadUnit.skill ?? loadUnit.gunnery) : loadUnit.gunnery,
+                        loadUnit.piloting,
+                        targetGroup,
+                        entry.type,
+                    );
+                    if (!createdUnit) {
+                        continue;
+                    }
+
+                    this.applyGeneratedUnitOverrides(createdUnit, loadUnit);
+
+                    firstCreatedUnit ??= createdUnit;
                 }
 
-                const createdUnit = await this.addUnit(
-                    loadUnit.unit,
-                    entry.type === GameSystem.ALPHA_STRIKE ? (loadUnit.skill ?? loadUnit.gunnery) : loadUnit.gunnery,
-                    loadUnit.piloting,
-                    targetGroup,
-                    entry.type,
-                );
-                if (!createdUnit) {
-                    continue;
+                targetGroup.formationHistory.clear();
+                targetGroup.formationLock = undefined;
+                targetGroup.formation.set(previewFormation);
+                if (previewFormation) {
+                    targetGroup.formationHistory.add(previewFormation.id);
                 }
-
-                this.applyGeneratedUnitOverrides(createdUnit, loadUnit);
-
-                firstCreatedUnit ??= createdUnit;
+                this.reconcileASFormationAssignments(targetGroup);
             }
+
+            if (force.name !== entry.name) {
+                force.setName(entry.name, false);
+            }
+            force.faction.set(entry.faction ?? null);
+            force.era.set(entry.era ?? null);
+            force.removeEmptyGroups();
+        } finally {
+            force.factionLock = false;
+            force.eraLock = false;
+            force.loading = false;
         }
 
-        force.removeEmptyGroups();
         this.selectUnit(firstCreatedUnit ?? null);
         return force;
     }
