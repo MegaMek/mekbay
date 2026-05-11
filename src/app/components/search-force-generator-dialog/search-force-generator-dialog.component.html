@@ -425,7 +425,7 @@
                 </div>
             </section>
 
-            <section class="panel preview-panel">
+            <section class="panel preview-panel" [attr.aria-busy]="forceGenerationInProgress()">
                 <div class="preview-body">
                     @if (previewEntry(); as previewForceEntry) {
                         <div class="preview-layout">
@@ -480,13 +480,26 @@
                         </div>
                     }
                 </div>
+
             </section>
         </div>
+
+        @if (forceGenerationInProgress()) {
+            <div class="force-generation-overlay">
+                <button
+                    class="bt-button force-generation-terminate"
+                    type="button"
+                    [disabled]="forceGenerationTerminateRequested()"
+                    (click)="terminateForceGeneration()">
+                    INTERRUPT GENERATION
+                </button>
+            </div>
+        }
     </div>
 
     <div dialog-footer class="footer">
-        <button class="modal-btn bt-button" type="button" (click)="submit()" [disabled]="previewError() !== null || previewEntry() === null">CREATE</button>
-        <button class="modal-btn bt-button" type="button" (click)="reroll()" [disabled]="eligibleUnits().length === 0">REROLL</button>
+        <button class="modal-btn bt-button" type="button" (click)="submit()" [disabled]="forceGenerationInProgress() || previewError() !== null || previewEntry() === null">CREATE</button>
+        <button class="modal-btn bt-button" type="button" (click)="reroll()" [disabled]="forceGenerationInProgress() || eligibleUnits().length === 0">REROLL</button>
         <button class="modal-btn bt-button" type="button" (click)="dismiss()">DISMISS</button>
     </div>
 </base-dialog>

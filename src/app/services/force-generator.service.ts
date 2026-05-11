@@ -92,7 +92,7 @@ const FORCE_GENERATION_SALVAGE_SOURCE_ROLL_WEIGHT = 1;
 const IMPLICIT_MULTI_FACTION_EXCLUDED_IDS = new Set<number>([MULFACTION_EXTINCT]);
 const DEFAULT_FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS = 300;
 const MIN_FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS = 300;
-const MAX_FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS = 5000;
+const MAX_FORCE_GENERATION_FAILURE_SEARCH_WINDOW_MS = 30_000;
 export const FORCE_GENERATION_MIN_PILOT_SKILL = 0;
 export const FORCE_GENERATION_MAX_PILOT_SKILL = 8;
 export const DEFAULT_FORCE_GENERATION_MAX_CBT_SKILL_DELTA = 1;
@@ -375,8 +375,13 @@ interface ForceGenerationAttemptBudget {
     targetDurationMs: number;
 }
 
+interface ForceGenerationInterruptSignal {
+    terminated: boolean;
+}
+
 interface ForceGenerationSearchDeadline {
     expiresAtMs: number;
+    interruptSignal?: ForceGenerationInterruptSignal;
 }
 
 interface ForceGenerationSkillBudgetPlanningCosts {
@@ -435,6 +440,12 @@ export interface ForceGenerationPreview {
     targetFormationId?: string;
     targetFormations?: ForceGenerationTargetFormationSelection[];
     targetFormationGroups?: ForceGenerationTargetFormationPreviewGroup[];
+}
+
+export interface ForceGenerationPreviewTask {
+    isAsync: boolean;
+    result: Promise<ForceGenerationPreview>;
+    terminate(): void;
 }
 
 export interface ForceGenerationTargetFormationSelection {
@@ -2047,6 +2058,69 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     public buildPreview(options: ForceGenerationRequest): ForceGenerationPreview {
+        const generator = this.buildPreviewGenerator(options);
+        let step = generator.next();
+        while (!step.done) {
+            step = generator.next();
+        }
+
+        return step.value;
+    }
+
+    public buildPreviewAsync(options: ForceGenerationRequest): ForceGenerationPreviewTask {
+        if (!this.canRunAsyncForceGeneration()) {
+            const preview = this.buildPreview(options);
+            return {
+                isAsync: false,
+                result: Promise.resolve(preview),
+                terminate: () => undefined,
+            };
+        }
+
+        const interruptSignal: ForceGenerationInterruptSignal = { terminated: false };
+        return {
+            isAsync: true,
+            result: this.runPreviewGeneratorAsync(this.buildPreviewGenerator(options, interruptSignal)),
+            terminate: () => {
+                interruptSignal.terminated = true;
+            },
+        };
+    }
+
+    private canRunAsyncForceGeneration(): boolean {
+        return typeof globalThis.setTimeout === 'function';
+    }
+
+    private runPreviewGeneratorAsync(
+        generator: Generator<void, ForceGenerationPreview, void>,
+    ): Promise<ForceGenerationPreview> {
+        return new Promise((resolve, reject) => {
+            const runNextStep = (): void => {
+                try {
+                    const step = generator.next();
+                    if (step.done) {
+                        resolve(step.value);
+                        return;
+                    }
+
+                    this.schedulePreviewGeneratorStep(runNextStep);
+                } catch (error) {
+                    reject(error);
+                }
+            };
+
+            this.schedulePreviewGeneratorStep(runNextStep);
+        });
+    }
+
+    private schedulePreviewGeneratorStep(callback: () => void): void {
+        globalThis.setTimeout(callback, 0);
+    }
+
+    private *buildPreviewGenerator(
+        options: ForceGenerationRequest,
+        interruptSignal?: ForceGenerationInterruptSignal,
+    ): Generator<void, ForceGenerationPreview, void> {
         const previewStartedAt = getForceGeneratorNow();
         this.formationComputationAttempts = 0;
         this.formationComputationElapsedMs = 0;
@@ -2289,7 +2363,7 @@ export class ForceGeneratorService implements OnDestroy {
             const failureSearchWindowMs = this.resolveFailureSearchWindowMs();
             const targetAttemptBudget = this.createAttemptBudget(candidates.length, minUnitCount, maxUnitCount);
             const targetSearchStartedAt = getForceGeneratorNow();
-            const targetSearchDeadline = this.createSearchDeadline(targetSearchStartedAt, failureSearchWindowMs);
+            const targetSearchDeadline = this.createSearchDeadline(targetSearchStartedAt, failureSearchWindowMs, interruptSignal);
             let targetAttemptDurationEstimateMs = 0;
             let targetAttemptLimit = targetAttemptBudget.minAttempts;
             let targetAttemptsTried = 0;
@@ -2298,6 +2372,10 @@ export class ForceGeneratorService implements OnDestroy {
 
             for (let attempt = 0; attempt < targetAttemptLimit; attempt += 1) {
                 if (this.hasSearchDeadlineExpired(targetSearchDeadline)) {
+                    break;
+                }
+                yield;
+                if (interruptSignal && this.hasSearchDeadlineExpired(targetSearchDeadline)) {
                     break;
                 }
                 const attemptStartedAt = getForceGeneratorNow();
@@ -2419,7 +2497,7 @@ export class ForceGeneratorService implements OnDestroy {
             const failureSearchWindowMs = this.resolveFailureSearchWindowMs();
             const targetAttemptBudget = this.createAttemptBudget(candidates.length, minUnitCount, maxUnitCount);
             const targetSearchStartedAt = getForceGeneratorNow();
-            const targetSearchDeadline = this.createSearchDeadline(targetSearchStartedAt, failureSearchWindowMs);
+            const targetSearchDeadline = this.createSearchDeadline(targetSearchStartedAt, failureSearchWindowMs, interruptSignal);
             let targetAttemptDurationEstimateMs = 0;
             let targetAttemptLimit = targetAttemptBudget.minAttempts;
             let targetAttemptsTried = 0;
@@ -2428,6 +2506,10 @@ export class ForceGeneratorService implements OnDestroy {
 
             for (let attempt = 0; attempt < targetAttemptLimit; attempt += 1) {
                 if (this.hasSearchDeadlineExpired(targetSearchDeadline)) {
+                    break;
+                }
+                yield;
+                if (interruptSignal && this.hasSearchDeadlineExpired(targetSearchDeadline)) {
                     break;
                 }
                 const attemptStartedAt = getForceGeneratorNow();
@@ -2549,6 +2631,7 @@ export class ForceGeneratorService implements OnDestroy {
 
         if (this.isFirstCompatibleResultBudgetRequest(options.budgetRange)) {
             const firstCompatibleSearchStartedAt = getForceGeneratorNow();
+            yield;
             const firstCompatibleCandidates = this.createSkillAdjustedCandidatesForAttempt(
                 candidates,
                 options.gameSystem,
@@ -2630,11 +2713,21 @@ export class ForceGeneratorService implements OnDestroy {
         let bestValidStructureScore = Number.NEGATIVE_INFINITY;
         const successfulAttempts: ForceGenerationSuccessfulAttemptLog[] = [];
         const failureSearchWindowMs = this.resolveFailureSearchWindowMs();
+        const searchDeadline = interruptSignal
+            ? this.createSearchDeadline(0, Number.POSITIVE_INFINITY, interruptSignal)
+            : undefined;
         let attemptDurationEstimateMs = 0;
         let attemptLimit = attemptBudget.minAttempts;
         let attemptsTried = 0;
 
         for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
+            if (this.hasSearchDeadlineExpired(searchDeadline)) {
+                break;
+            }
+            yield;
+            if (this.hasSearchDeadlineExpired(searchDeadline)) {
+                break;
+            }
             const attemptStartedAt = getForceGeneratorNow();
             attemptsTried = attempt + 1;
             const attemptCandidates = this.createSkillAdjustedCandidatesForAttempt(
@@ -2667,6 +2760,7 @@ export class ForceGeneratorService implements OnDestroy {
                 options.preventDuplicateChassis === true,
                 attemptSelectionPreparation,
                 attemptSkillBudgetPlanningCosts,
+                searchDeadline,
             );
             const selectionAttempt = this.optimizeSelectionAttemptSkillsForBudget(
                 rawSelectionAttempt,
@@ -5611,12 +5705,16 @@ export class ForceGeneratorService implements OnDestroy {
         return ((currentEstimateMs * (completedAttempts - 1)) + attemptDurationMs) / completedAttempts;
     }
 
-    private createSearchDeadline(startedAtMs: number, durationMs: number): ForceGenerationSearchDeadline {
-        return { expiresAtMs: startedAtMs + Math.max(0, durationMs) };
+    private createSearchDeadline(
+        startedAtMs: number,
+        durationMs: number,
+        interruptSignal?: ForceGenerationInterruptSignal,
+    ): ForceGenerationSearchDeadline {
+        return { expiresAtMs: startedAtMs + Math.max(0, durationMs), interruptSignal };
     }
 
     private hasSearchDeadlineExpired(deadline?: ForceGenerationSearchDeadline): boolean {
-        return !!deadline && getForceGeneratorNow() >= deadline.expiresAtMs;
+        return !!deadline && (deadline.interruptSignal?.terminated === true || getForceGeneratorNow() >= deadline.expiresAtMs);
     }
 
     private resolveFailureSearchWindowMs(): number {

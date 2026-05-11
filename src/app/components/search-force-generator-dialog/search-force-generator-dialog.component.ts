@@ -60,6 +60,8 @@ import {
     FORCE_GENERATION_MIN_PILOT_SKILL,
     ForceGeneratorService,
     type ForceGenerationPreview,
+    type ForceGenerationPreviewTask,
+    type ForceGenerationRequest,
     type ForceGenerationSkillRange,
     type ForceGenerationSkillRanges,
     type ForceGenerationTargetFormationSelection,
@@ -139,6 +141,8 @@ export class SearchForceGeneratorDialogComponent {
     private readonly optionsService = inject(OptionsService);
     private readonly wsService = inject(WsService);
     readonly filtersService = inject(UnitSearchFiltersService);
+    private activeForceGenerationTask: ForceGenerationPreviewTask | null = null;
+    private activeForceGenerationRunId = 0;
     private readonly initialOptions = this.optionsService.options();
     private readonly initialGameSystem = this.gameService.currentGameSystem();
     private readonly selectedGameSystem = signal<GameSystem>(this.initialGameSystem);
@@ -399,6 +403,8 @@ export class SearchForceGeneratorDialogComponent {
         };
     });
     readonly mobileTab = signal<GeneratorDialogTab>('configuration');
+    readonly forceGenerationInProgress = signal(false);
+    readonly forceGenerationTerminateRequested = signal(false);
     private readonly previewState = signal<ForceGenerationPreview>(this.createEmptyPreview(
         'Press REROLL to generate a force preview for the current settings.',
     ));
@@ -675,12 +681,55 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     reroll(): void {
+        this.cancelActiveForceGeneration();
         this.clearHoveredPreviewUnit();
         this.clearSelectedPreviewUnit();
-        const preview = this.buildGeneratedPreview();
-        this.previewState.set(preview);
         this.mobileTab.set('preview');
-        this.recordForceGeneration(preview);
+
+        const request = this.buildForceGenerationRequest();
+        const buildPreviewAsync = (this.forceGeneratorService as Partial<Pick<ForceGeneratorService, 'buildPreviewAsync'>>)
+            .buildPreviewAsync?.bind(this.forceGeneratorService);
+        if (!buildPreviewAsync) {
+            this.completeGeneratedPreview(this.forceGeneratorService.buildPreview(request));
+            return;
+        }
+
+        const task = buildPreviewAsync(request);
+        if (!task.isAsync) {
+            void task.result.then((preview) => this.completeGeneratedPreview(preview));
+            return;
+        }
+
+        const runId = this.activeForceGenerationRunId + 1;
+        this.activeForceGenerationRunId = runId;
+        this.activeForceGenerationTask = task;
+        this.forceGenerationTerminateRequested.set(false);
+        this.forceGenerationInProgress.set(true);
+
+        void task.result
+            .then((preview) => {
+                if (!this.isActiveForceGenerationTask(task, runId)) {
+                    return;
+                }
+
+                this.completeGeneratedPreview(preview);
+            })
+            .catch(() => {
+                if (!this.isActiveForceGenerationTask(task, runId)) {
+                    return;
+                }
+
+                this.previewState.set(this.createEmptyPreview('Unable to generate a force preview.'));
+            })
+            .finally(() => {
+                if (!this.isActiveForceGenerationTask(task, runId)) {
+                    return;
+                }
+
+                this.activeForceGenerationTask = null;
+                this.forceGenerationInProgress.set(false);
+                this.forceGenerationTerminateRequested.set(false);
+            });
     }
 
     importCurrentForce(): void {
@@ -689,6 +738,7 @@ export class SearchForceGeneratorDialogComponent {
             return;
         }
 
+        this.cancelActiveForceGeneration();
         this.clearHoveredPreviewUnit();
         this.clearSelectedPreviewUnit();
 
@@ -720,7 +770,7 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     submit(): void {
-        if (!this.previewEntry() || this.previewError()) {
+        if (this.forceGenerationInProgress() || !this.previewEntry() || this.previewError()) {
             return;
         }
 
@@ -752,7 +802,17 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     dismiss(): void {
+        this.cancelActiveForceGeneration();
         this.dialogRef.close(null);
+    }
+
+    terminateForceGeneration(): void {
+        if (!this.activeForceGenerationTask) {
+            return;
+        }
+
+        this.forceGenerationTerminateRequested.set(true);
+        this.activeForceGenerationTask.terminate();
     }
 
     private clearHoveredPreviewUnit(): void {
@@ -761,6 +821,27 @@ export class SearchForceGeneratorDialogComponent {
 
     private clearSelectedPreviewUnit(): void {
         this.selectedPreviewUnit.set(null);
+    }
+
+    private completeGeneratedPreview(preview: ForceGenerationPreview): void {
+        this.previewState.set(preview);
+        this.recordForceGeneration(preview);
+    }
+
+    private cancelActiveForceGeneration(): void {
+        if (!this.activeForceGenerationTask && !this.forceGenerationInProgress()) {
+            return;
+        }
+
+        this.activeForceGenerationTask?.terminate();
+        this.activeForceGenerationTask = null;
+        this.activeForceGenerationRunId += 1;
+        this.forceGenerationInProgress.set(false);
+        this.forceGenerationTerminateRequested.set(false);
+    }
+
+    private isActiveForceGenerationTask(task: ForceGenerationPreviewTask, runId: number): boolean {
+        return this.activeForceGenerationTask === task && this.activeForceGenerationRunId === runId;
     }
 
     private getDropdownFilter(key: string): DropdownFilterOptions | null {
@@ -833,7 +914,7 @@ export class SearchForceGeneratorDialogComponent {
         return new Set([...resolvedNames.or, ...resolvedNames.and]).size;
     }
 
-    private buildGeneratedPreview(): ForceGenerationPreview {
+    private buildForceGenerationRequest(): ForceGenerationRequest {
         const settings = this.generationSettings();
         const eligibleUnits = this.eligibleUnits();
         const lockedUnits = this.resolvePreviewUnits(
@@ -843,7 +924,7 @@ export class SearchForceGeneratorDialogComponent {
             settings.piloting,
         );
 
-        return this.forceGeneratorService.buildPreview({
+        return {
             eligibleUnits,
             context: this.forceGeneratorService.resolveGenerationContext(eligibleUnits, {
                 crossEraAvailabilityInMultiEraSelection: this.crossEraAvailabilityInMultiEraSelection(),
@@ -864,7 +945,7 @@ export class SearchForceGeneratorDialogComponent {
             useUnitTagsAsChassisTags: this.useTaggedQuantities() && this.useUnitTagsAsChassisTags(),
             targetFormationId: settings.targetFormationId,
             targetFormations: settings.targetFormations,
-        });
+        };
     }
 
     private recordForceGeneration(preview: ForceGenerationPreview): void {
