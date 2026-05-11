@@ -32,7 +32,7 @@
  */
 
 import { Injectable, inject, signal } from '@angular/core';
-import { DbService, type TagData, type TagDataLegacy, type TagEntry, type UnitTagData, type TagOp, type StoredTags, type StoredChassisTags } from './db.service';
+import { DbService, type TagData, type TagEntry, type UnitTagData, type TagOp, type StoredTags, type StoredChassisTags } from './db.service';
 import { WsService } from './ws.service';
 import { UserStateService } from './userState.service';
 import { LoggerService } from './logger.service';
@@ -120,24 +120,7 @@ export class TagsService {
     public async initialize(): Promise<void> {
         try {
             const data = await this.dbService.getAllTagData();
-            
-            if (!data) {
-                // No data - start fresh with V3
-                this.cachedTagData = this.createEmptyTagData();
-            } else if (data.formatVersion === 3) {
-                // Already V3, use directly
-                this.cachedTagData = data as TagData;
-            } else {
-                // Legacy V1 format - migrate to V3
-                const legacyData = data as TagDataLegacy;
-                this.cachedTagData = this.migrateV1ToV3(
-                    legacyData.nameTags || {},
-                    legacyData.chassisTags || {},
-                    legacyData.timestamp || 0
-                );
-                await this.dbService.saveAllTagData(this.cachedTagData);
-                this.logger.info('Migrated tags from V1 to V3 format');
-            }
+            this.cachedTagData = data ?? this.createEmptyTagData();
             
             this.version.update(v => v + 1);
         } catch (err) {
@@ -150,43 +133,6 @@ export class TagsService {
     private createEmptyTagData(): TagData {
         return { tags: {}, timestamp: 0, formatVersion: 3 };
     }
-    
-    /**
-     * Migrate V1 format to V3 format.
-     * V1: main = { unitName: [tags] }, chassis = { chassisKey: [tags] }
-     * V3: tags = { lowercaseTagId: { label, units: {}, chassis: {} } }
-     */
-    private migrateV1ToV3(
-        nameTags: Record<string, string[]>,
-        chassisTags: Record<string, string[]>,
-        timestamp: number
-    ): TagData {
-        const tags: Record<string, TagEntry> = {};
-        
-        // Convert V1 nameTags: unitName -> [tags]
-        for (const [unitName, tagList] of Object.entries(nameTags)) {
-            for (const tag of tagList) {
-                const tagId = tag.toLowerCase();
-                if (!tags[tagId]) {
-                    tags[tagId] = { label: tag, units: {}, chassis: {} };
-                }
-                tags[tagId].units[unitName] = {};
-            }
-        }
-        
-        // Convert V1 chassisTags: chassisKey -> [tags]
-        for (const [chassisKey, tagList] of Object.entries(chassisTags)) {
-            for (const tag of tagList) {
-                const tagId = tag.toLowerCase();
-                if (!tags[tagId]) {
-                    tags[tagId] = { label: tag, units: {}, chassis: {} };
-                }
-                tags[tagId].chassis[chassisKey] = {};
-            }
-        }
-        
-        return { tags, timestamp, formatVersion: 3 };
-    }
 
     /** Get cached tag data (or load from storage if not cached) */
     public async getTagData(): Promise<TagData> {
@@ -196,14 +142,11 @@ export class TagsService {
         return this.cachedTagData!;
     }
 
-    /** 
-     * Get all name tags in V2-compatible format for UI.
-     * Derives from V3: { tagId: { units: {unitName: {}} } } -> { tag: [unitNames] }
-     */
+    /** Get all name tags keyed by display tag label for UI callers. */
     public getNameTags(): StoredTags {
         if (!this.cachedTagData) return {};
         const result: StoredTags = {};
-        for (const [tagId, entry] of Object.entries(this.cachedTagData.tags)) {
+        for (const entry of Object.values(this.cachedTagData.tags)) {
             const unitNames = Object.keys(entry.units);
             if (unitNames.length > 0) {
                 result[entry.label] = unitNames;
@@ -212,14 +155,11 @@ export class TagsService {
         return result;
     }
 
-    /** 
-     * Get all chassis tags in V2-compatible format for UI.
-     * Derives from V3: { tagId: { chassis: {chassisKey: {}} } } -> { tag: [chassisKeys] }
-     */
+    /** Get all chassis tags keyed by display tag label for UI callers. */
     public getChassisTags(): StoredChassisTags {
         if (!this.cachedTagData) return {};
         const result: StoredChassisTags = {};
-        for (const [tagId, entry] of Object.entries(this.cachedTagData.tags)) {
+        for (const entry of Object.values(this.cachedTagData.tags)) {
             const chassisKeys = Object.keys(entry.chassis);
             if (chassisKeys.length > 0) {
                 result[entry.label] = chassisKeys;
@@ -1009,7 +949,6 @@ export class TagsService {
 
     /**
      * Apply cloud state (either full state or incremental ops).
-     * Server sends V3 format directly to protocol v2+ clients.
      */
     private async applyCloudState(response: any, serverTs: number): Promise<void> {
         if (response.fullState) {
