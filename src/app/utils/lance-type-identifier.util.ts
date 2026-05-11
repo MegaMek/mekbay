@@ -294,6 +294,7 @@ export class LanceTypeIdentifierUtil {
         gameSystem: GameSystem,
     ): FormationTypeDefinition[] {
         const matches: FormationTypeDefinition[] = [];
+        const unitCount = units.length;
 
         for (const definition of getFormationDefinitions()) {
             try {
@@ -309,6 +310,14 @@ export class LanceTypeIdentifierUtil {
                     && definition.techBase !== 'Special'
                     && techBase !== 'Mixed'
                     && definition.techBase !== techBase) {
+                    continue;
+                }
+
+                if (unitCount < definition.minUnits) {
+                    continue;
+                }
+
+                if (definition.maxUnits !== undefined && unitCount > definition.maxUnits) {
                     continue;
                 }
 
