@@ -4996,10 +4996,10 @@ export class ForceGeneratorService implements OnDestroy {
             );
         }
 
-        if (LOG_ATTEMPTS) {
-            const searchEffortNote = this.formatGenerationSearchEffortNote(attemptsTried, attemptsElapsedMs);
-            if (searchEffortNote) {
-                lines.push(`Search effort: ${searchEffortNote}`);
+        const searchEffortNote = this.formatGenerationSearchEffortNote(attemptsTried, attemptsElapsedMs);
+        if (searchEffortNote) {
+            lines.push(`Search effort: ${searchEffortNote}`);
+            if (LOG_ATTEMPTS) {
                 if (!error) {
                     lines.push(`Formation effort: ${this.formatFormationComputationEffortNote()}`);
                 }
