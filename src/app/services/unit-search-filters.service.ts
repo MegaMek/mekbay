@@ -91,11 +91,11 @@ import {
 } from '../utils/unit-search-worker-request.util';
 import { buildWorkerSearchTelemetrySnapshot, hydrateWorkerResultUnits } from '../utils/unit-search-worker-result.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
-import type { ForceUnit } from '../models/force-unit.model';
 import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationRequirementEngine } from '../utils/formation-requirement-engine.util';
 import type { FormationSearchTarget } from '../utils/formation-requirement.model';
+import type { FormationUnitLike } from '../utils/formation-unit-facts.util';
 import { getFormationDefinitions } from '../utils/formation-blueprints';
 import { getFormationNameMatchStrings, type FormationTypeDefinition } from '../utils/formation-type.model';
 import { UserStateService } from './userState.service';
@@ -266,7 +266,7 @@ export class UnitSearchFiltersService {
     readonly advOptionsTelemetry = this.advOptionsTelemetryState.asReadonly();
     private readonly workerSearchEnabled = signal(this.canUseSearchWorker());
     private readonly rawWorkerResultUnitsState = signal<Unit[]>([]);
-    private readonly formationTargetExistingUnitsState = signal<readonly ForceUnit[]>([]);
+    private readonly formationTargetExistingUnitsState = signal<readonly FormationUnitLike[]>([]);
     readonly formationTarget = computed<FormationSearchTarget | null>(() => {
         if (this.hasSemanticFormationTarget()) {
             return null;
@@ -323,7 +323,7 @@ export class UnitSearchFiltersService {
         this.refreshWorkerSearchIfNeeded();
     }
 
-    setFormationTargetExistingUnits(existingUnits: readonly ForceUnit[]): void {
+    setFormationTargetExistingUnits(existingUnits: readonly FormationUnitLike[]): void {
         this.formationTargetExistingUnitsState.set(existingUnits);
     }
 
@@ -1925,7 +1925,7 @@ export class UnitSearchFiltersService {
         }
 
         const applyTargetFilter = () => units.filter(unit => {
-            const candidate = this.createFormationCandidateForceUnit(unit, target);
+            const candidate = this.createFormationCandidateUnit(unit, target);
             return FormationRequirementEngine.evaluateSearchCandidate(
                 definition,
                 target.existingUnits,
@@ -1948,7 +1948,7 @@ export class UnitSearchFiltersService {
         );
     }
 
-    private createFormationCandidateForceUnit(unit: Unit, target: FormationSearchTarget): ForceUnit {
+    private createFormationCandidateUnit(unit: Unit, target: FormationSearchTarget): FormationUnitLike {
         const baseForce = target.existingUnits[0]?.force ?? {
             faction: () => null,
             era: () => null,
@@ -1959,13 +1959,12 @@ export class UnitSearchFiltersService {
         return {
             force: baseForce,
             getUnit: () => unit,
-            getBv: () => 0,
             pilotSkill: () => this.pilotGunnerySkill(),
             gunnerySkill: () => this.pilotGunnerySkill(),
-        } as unknown as ForceUnit;
+        };
     }
 
-    private getFormationTargetExistingUnits(): readonly ForceUnit[] {
+    private getFormationTargetExistingUnits(): readonly FormationUnitLike[] {
         return this.formationTargetExistingUnitsState();
     }
 
@@ -2046,7 +2045,7 @@ export class UnitSearchFiltersService {
             minUnits: definition.minUnits,
             maxUnits: definition.maxUnits,
         };
-        const candidate = this.createFormationCandidateForceUnit(unit, target);
+        const candidate = this.createFormationCandidateUnit(unit, target);
         return FormationRequirementEngine.evaluateSearchCandidate(
             definition,
             target.existingUnits,

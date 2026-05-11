@@ -1,4 +1,4 @@
-import type { ForceUnit } from '../models/force-unit.model';
+import type { Faction } from '../models/factions.model';
 import { CBT_WEIGHT_CLASS_ORDINALS, type Unit } from '../models/units.model';
 
 const AEROSPACE_MODES = new Set(['a', 'p', 'k']);
@@ -9,7 +9,7 @@ const CBT_HEAVY_WEIGHT_CLASS = CBT_WEIGHT_CLASS_ORDINALS.get('Heavy') ?? 3;
 const CBT_ASSAULT_WEIGHT_CLASS = CBT_WEIGHT_CLASS_ORDINALS.get('Assault') ?? 4;
 
 export interface FormationUnitFacts {
-    readonly forceUnit: ForceUnit;
+    readonly forceUnit: FormationUnitLike;
     readonly unit: Unit;
     readonly name: string;
     readonly chassis: string;
@@ -36,6 +36,17 @@ export interface FormationUnitFacts {
     readonly cbtIsAssaultOrLarger: boolean;
     readonly pilotSkill?: number;
     readonly gunnerySkill?: number;
+}
+
+export interface FormationUnitForceContext {
+    faction(): Faction | null;
+}
+
+export interface FormationUnitLike {
+    readonly force: FormationUnitForceContext;
+    getUnit(): Unit;
+    pilotSkill?(): number;
+    gunnerySkill?(): number;
 }
 
 export function asGetMaxGroundMove(unit: Unit): number {
@@ -93,11 +104,11 @@ export function cbtHasArtillery(unit: Unit): boolean {
     return unit.comp?.some(component => component.t === 'A') || false;
 }
 
-export function compileFormationUnitFacts(forceUnit: ForceUnit): FormationUnitFacts {
+export function compileFormationUnitFacts(forceUnit: FormationUnitLike): FormationUnitFacts {
     const unit = forceUnit.getUnit();
     const cbtWeightClass = CBT_WEIGHT_CLASS_ORDINALS.get(unit.weightClass) ?? -1;
-    const pilotSkill = (forceUnit as unknown as { pilotSkill?: () => number }).pilotSkill?.();
-    const gunnerySkill = (forceUnit as unknown as { gunnerySkill?: () => number }).gunnerySkill?.();
+    const pilotSkill = forceUnit.pilotSkill?.();
+    const gunnerySkill = forceUnit.gunnerySkill?.();
     const asGroundMove = asGetMaxGroundMove(unit);
     const asJumpMove = asGetJumpMove(unit);
 

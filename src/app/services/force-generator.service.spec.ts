@@ -779,6 +779,67 @@ describe('ForceGeneratorService', () => {
         const sourceRollOddsIndex = preview.explanationLines.findIndex((line) => line.includes('Source roll odds: requisition'));
         expect(sourceRollOddsIndex).toBeGreaterThan(rulesetGuidanceIndex);
     });
+
+    it('keys MegaMek availability weights by unit name when units share a missing MUL id', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const availableUnit = createUnit({ id: -1, name: 'Name-Keyed Available Unit', as: { PV: 5 } as Unit['as'] });
+        const unavailableUnit = createUnit({ id: -1, name: 'Name-Keyed Unavailable Unit', as: { PV: 6 } as Unit['as'] });
+
+        addMegaMekAvailability(availableUnit, faction, era, 5, 0);
+        addMegaMekAvailability(unavailableUnit, faction, era, 0, 0);
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [availableUnit, unavailableUnit],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 20 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Name-Keyed Available Unit']);
+    });
+
+    it('does not reuse force generation candidate caches across different names that share a missing MUL id', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const firstUnit = createUnit({ id: -1, name: 'Signature Name Unit A', as: { PV: 5 } as Unit['as'] });
+        const secondUnit = createUnit({ id: -1, name: 'Signature Name Unit B', as: { PV: 6 } as Unit['as'] });
+
+        addMegaMekAvailability(firstUnit, faction, era, 5, 0);
+        addMegaMekAvailability(secondUnit, faction, era, 5, 0);
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const baseRequest = {
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 20 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        };
+
+        const firstPreview = service.buildPreview({
+            ...baseRequest,
+            eligibleUnits: [firstUnit],
+        });
+        const secondPreview = service.buildPreview({
+            ...baseRequest,
+            eligibleUnits: [secondUnit],
+        });
+
+        expect(firstPreview.error).toBeNull();
+        expect(secondPreview.error).toBeNull();
+        expect(firstPreview.units.map((unit) => unit.unit.name)).toEqual(['Signature Name Unit A']);
+        expect(secondPreview.units.map((unit) => unit.unit.name)).toEqual(['Signature Name Unit B']);
+    });
+
     it('builds target formation candidates incrementally around locked units', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Draconis Combine');
@@ -1004,8 +1065,11 @@ describe('ForceGeneratorService', () => {
         expect(preview.error).toBeNull();
         expect(preview.units.length).toBe(8);
         expect(preview.targetFormationGroups?.map((group) => group.formationId)).toEqual(['command-lance', 'assault-lance']);
+        expect(preview.targetFormationGroups?.every((group) => group.validatedGameSystem === GameSystem.ALPHA_STRIKE)).toBeTrue();
         expect(preview.explanationLines.join('\n')).not.toContain('Result note: Target formations achieved');
+        const targetValidationSpy = spyOn(service as any, 'isGeneratedPreviewValidForFormation').and.callThrough();
         const previewEntry = service.createForcePreviewEntry(preview);
+        expect(targetValidationSpy).not.toHaveBeenCalled();
         expect(previewEntry?.groups.map((group) => group.formationId)).toEqual(['command-lance', 'assault-lance']);
     });
 

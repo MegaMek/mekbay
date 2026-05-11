@@ -1,10 +1,9 @@
 import { GameSystem } from '../models/common.model';
-import type { ForceUnit } from '../models/force-unit.model';
 import type { FormationTypeDefinition } from './formation-type.model';
 import { getFormationBlueprint } from './formation-blueprints';
 import type { FormationConstraint, FormationConstraintEvaluation, FormationDeficit, FormationEvaluation, FormationRequirementBlueprint, FormationSearchDecision } from './formation-requirement.model';
 import { evaluateFormationPredicate, getFormationFactValue } from './formation-predicates.util';
-import { compileFormationUnitFacts, type FormationUnitFacts } from './formation-unit-facts.util';
+import { compileFormationUnitFacts, type FormationUnitFacts, type FormationUnitLike } from './formation-unit-facts.util';
 
 export class FormationRequirementEngine {
     public static hasBlueprint(formationId: string): boolean {
@@ -13,7 +12,7 @@ export class FormationRequirementEngine {
 
     public static evaluateDefinition(
         definition: FormationTypeDefinition,
-        units: readonly ForceUnit[],
+        units: readonly FormationUnitLike[],
         gameSystem: GameSystem,
     ): FormationEvaluation | null {
         const blueprint = getFormationBlueprint(definition.id);
@@ -27,7 +26,7 @@ export class FormationRequirementEngine {
     public static evaluateBlueprint(
         blueprint: FormationRequirementBlueprint,
         definition: Pick<FormationTypeDefinition, 'id' | 'idealRole' | 'minUnits' | 'maxUnits'>,
-        units: readonly ForceUnit[],
+        units: readonly FormationUnitLike[],
         gameSystem: GameSystem,
     ): FormationEvaluation {
         const unitCountEvaluation = this.evaluateUnitCount(definition, units.length);
@@ -56,8 +55,8 @@ export class FormationRequirementEngine {
 
     public static evaluateSearchCandidate(
         definition: FormationTypeDefinition,
-        currentUnits: readonly ForceUnit[],
-        candidateUnit: ForceUnit,
+        currentUnits: readonly FormationUnitLike[],
+        candidateUnit: FormationUnitLike,
         gameSystem: GameSystem,
         options: { maxUnits?: number } = {},
     ): FormationSearchDecision {
@@ -125,7 +124,7 @@ export class FormationRequirementEngine {
 
     private static evaluateDefinitionForSearch(
         definition: FormationTypeDefinition,
-        units: readonly ForceUnit[],
+        units: readonly FormationUnitLike[],
         gameSystem: GameSystem,
     ): FormationEvaluation | null {
         const blueprint = getFormationBlueprint(definition.id);

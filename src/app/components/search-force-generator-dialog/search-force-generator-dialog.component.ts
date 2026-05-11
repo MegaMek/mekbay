@@ -420,7 +420,8 @@ export class SearchForceGeneratorDialogComponent {
     });
     readonly previewEntry = computed<ForcePreviewEntry | null>(() => {
         const preview = this.preview();
-        return this.forceGeneratorService.createForcePreviewEntry(preview);
+        const entry = this.forceGeneratorService.createForcePreviewEntry(preview);
+        return entry;
     });
 
     constructor() {
@@ -700,6 +701,7 @@ export class SearchForceGeneratorDialogComponent {
         this.previewState.set(this.createPreviewFromUnits(importedUnits, {
             faction: importedPreviewEntry.faction,
             era: importedPreviewEntry.era,
+            name: importedPreviewEntry.name,
             explanationLines: ['Imported current force into preview. Press REROLL to generate a new result for the current settings.'],
             error: importedUnits.length === 0 ? 'No units from the current force could be loaded into the preview.' : null,
         }));
@@ -876,6 +878,7 @@ export class SearchForceGeneratorDialogComponent {
     private createEmptyPreview(error: string | null = null): ForceGenerationPreview {
         return {
             gameSystem: this.gameSystem(),
+            name: undefined,
             units: [],
             totalCost: 0,
             error,
@@ -899,6 +902,7 @@ export class SearchForceGeneratorDialogComponent {
 
         return {
             gameSystem: settings.gameSystem,
+            name: storedPreview.name,
             units,
             totalCost,
             error: storedPreview.error,
@@ -918,6 +922,7 @@ export class SearchForceGeneratorDialogComponent {
             era?: Era | null;
             explanationLines?: readonly string[];
             error?: string | null;
+            name?: string;
         } = {},
     ): ForceGenerationPreview {
         const settings = this.previewDisplaySettings();
@@ -930,6 +935,7 @@ export class SearchForceGeneratorDialogComponent {
 
         return {
             gameSystem: settings.gameSystem,
+            name: options.name,
             units: resolvedUnits,
             totalCost: resolvedUnits.reduce((sum, unit) => sum + unit.cost, 0),
             error: options.error ?? null,

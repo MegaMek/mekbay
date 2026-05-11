@@ -31,7 +31,6 @@
  * affiliated with Microsoft.
  */
 
-import type { ForceUnit } from '../models/force-unit.model';
 import { GameSystem } from '../models/common.model';
 import { type Faction } from '../models/factions.model';
 import type { Unit } from '../models/units.model';
@@ -39,7 +38,8 @@ import { type FormationTypeDefinition, type FormationMatch, getFormationNameMatc
 import { getFormationDefinition, getFormationDefinitions } from './formation-blueprints';
 import { FormationRequirementEngine } from './formation-requirement-engine.util';
 import { normalizeLooseText } from './string.util';
-import type { UnitGroup } from '../models/force.model';
+import type { Era } from '../models/eras.model';
+import type { FormationUnitLike } from './formation-unit-facts.util';
 import { collectGroupUnits, compileGroupFacts } from './org/org-facts.util';
 import { groupMatchesChildRole } from './org/org-role-match.util';
 import { resolveOrgDefinition } from './org/org-registry.util';
@@ -47,6 +47,7 @@ import type {
     GroupSizeResult,
     OrgFormationMatchingSpec,
     OrgRuleDefinition,
+    OrgSizeResult,
 } from './org/org-types';
 import { MULFACTION_MERCENARY } from '../models/mulfactions.model';
 
@@ -58,13 +59,27 @@ import { MULFACTION_MERCENARY } from '../models/mulfactions.model';
  */
 
 interface FormationIdentificationOptions {
-    readonly filteredUnits?: ForceUnit[];
+    readonly filteredUnits?: readonly FormationUnitLike[];
     readonly requirementsFilterCompositionName?: string;
     readonly requirementsFilterNotice?: string;
 }
 
+interface FormationForceLike {
+    readonly gameSystem: GameSystem;
+    faction(): Faction | null;
+    era(): Era | null;
+    techBase(): string;
+}
+
+export interface FormationGroupLike<TUnit extends FormationUnitLike = FormationUnitLike> {
+    readonly force: FormationForceLike | null;
+    readonly formationHistory: ReadonlySet<string>;
+    units(): readonly TUnit[];
+    organizationalResult(): Pick<OrgSizeResult, 'groups'>;
+}
+
 export interface FormationRequirementsFilterContext {
-    readonly filteredUnits?: ForceUnit[];
+    readonly filteredUnits?: readonly FormationUnitLike[];
     readonly requirementsFiltered: boolean;
     readonly requirementsFilterCompositionName?: string;
     readonly requirementsFilterNotice?: string;
@@ -81,7 +96,7 @@ export class LanceTypeIdentifierUtil {
 
     private static validateDefinition(
         definition: FormationTypeDefinition,
-        units: ForceUnit[],
+        units: readonly FormationUnitLike[],
         gameSystem: GameSystem,
     ): boolean {
         try {
@@ -131,7 +146,7 @@ export class LanceTypeIdentifierUtil {
         return group.foreignDisplayName ?? group.name;
     }
 
-    private static getRequirementsFilterContext(group: UnitGroup<ForceUnit>): FormationIdentificationOptions {
+    private static getRequirementsFilterContext(group: FormationGroupLike): FormationIdentificationOptions {
         const targetForce = group.force;
         if (!targetForce) {
             return {};
@@ -178,7 +193,7 @@ export class LanceTypeIdentifierUtil {
         };
     }
 
-    public static getRequirementsFilterContextForGroup(group: UnitGroup<ForceUnit>): FormationRequirementsFilterContext {
+    public static getRequirementsFilterContextForGroup(group: FormationGroupLike): FormationRequirementsFilterContext {
         const context = this.getRequirementsFilterContext(group);
         return {
             filteredUnits: context.filteredUnits,
@@ -190,7 +205,7 @@ export class LanceTypeIdentifierUtil {
 
     public static isValid(
         definition: FormationTypeDefinition,
-        units: ForceUnit[],
+        units: readonly FormationUnitLike[],
         gameSystem: GameSystem,
     ): boolean {
         return this.validateDefinition(definition, units, gameSystem);
@@ -288,7 +303,7 @@ export class LanceTypeIdentifierUtil {
     }
 
     public static identifyLanceTypes(
-        units: ForceUnit[],
+        units: readonly FormationUnitLike[],
         techBase: string,
         factionName: string,
         gameSystem: GameSystem,
@@ -333,7 +348,7 @@ export class LanceTypeIdentifierUtil {
     }
 
     public static identifyFormations(
-        units: ForceUnit[],
+        units: readonly FormationUnitLike[],
         techBase: string,
         factionName: string,
         gameSystem: GameSystem,
@@ -372,7 +387,7 @@ export class LanceTypeIdentifierUtil {
         return results;
     }
 
-    public static identifyFormationsForGroup(group: UnitGroup<ForceUnit>): FormationMatch[] {
+    public static identifyFormationsForGroup(group: FormationGroupLike): FormationMatch[] {
         const targetForce = group.force;
         if (!targetForce) {
             return [];
@@ -390,7 +405,7 @@ export class LanceTypeIdentifierUtil {
 
     public static isFormationValidForGroup(
         definition: FormationTypeDefinition,
-        group: UnitGroup<ForceUnit>,
+        group: FormationGroupLike,
     ): FormationMatch | null {
         const targetForce = group.force;
         if (!targetForce) {
@@ -421,11 +436,11 @@ export class LanceTypeIdentifierUtil {
     }
 
     public static getBestMatch(
-        units: ForceUnit[],
+        units: readonly FormationUnitLike[],
         techBase: string,
         factionName: string,
         gameSystem: GameSystem,
-        preferredIds?: Set<string>,
+        preferredIds?: ReadonlySet<string>,
         options: FormationIdentificationOptions = {},
     ): FormationMatch | null {
         const matches = this.identifyFormations(units, techBase, factionName, gameSystem, options);
@@ -461,7 +476,7 @@ export class LanceTypeIdentifierUtil {
         return bestMatches[Math.floor(Math.random() * bestMatches.length)];
     }
 
-    public static getBestMatchForGroup(group: UnitGroup<ForceUnit>): FormationMatch | null {
+    public static getBestMatchForGroup(group: FormationGroupLike): FormationMatch | null {
         const targetForce = group.force;
         if (!targetForce) {
             return null;

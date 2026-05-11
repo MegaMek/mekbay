@@ -1,5 +1,5 @@
 import type { GameSystem } from '../models/common.model';
-import type { ForceUnit } from '../models/force-unit.model';
+import type { FormationUnitLike } from './formation-unit-facts.util';
 
 export type FormationPredicateId =
     | 'anti-air-equipment'
@@ -178,7 +178,7 @@ export interface FormationSearchDecision {
 
 export interface FormationSearchTarget {
     readonly formationId: string;
-    readonly existingUnits: readonly ForceUnit[];
+    readonly existingUnits: readonly FormationUnitLike[];
     readonly gameSystem: GameSystem;
     readonly minUnits?: number;
     readonly maxUnits?: number;

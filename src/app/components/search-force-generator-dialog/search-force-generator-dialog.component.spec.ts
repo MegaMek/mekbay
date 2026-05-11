@@ -9,7 +9,7 @@ import type { Unit } from '../../models/units.model';
 import { SearchForceGeneratorDialogComponent } from './search-force-generator-dialog.component';
 import { DataService } from '../../services/data.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
-import { ForceGeneratorService } from '../../services/force-generator.service';
+import { ForceGeneratorService, type ForceGenerationPreview } from '../../services/force-generator.service';
 import { GameService } from '../../services/game.service';
 import { OptionsService } from '../../services/options.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -180,7 +180,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
                 cloud: false,
                 local: false,
                 missing: false,
-                name: 'Generated Preview',
+                name: preview.name ?? 'Generated Preview',
                 faction: preview.faction,
                 era: preview.era,
                 bv: preview.gameSystem === GameSystem.CLASSIC ? preview.totalCost : undefined,

@@ -190,7 +190,6 @@ export class UnitAvailabilitySourceService {
     private megaMekAllUnitIds = new Set<AvailabilityUnitKey>();
     private megaMekKnownUnitIds = new Set<AvailabilityUnitKey>();
     private megaMekUnitIdByName = new Map<AvailabilityUnitKey, number>();
-    private megaMekUnitNameById = new Map<number, AvailabilityUnitKey>();
     private megaMekExtinctAllUnitIds = new Set<AvailabilityUnitKey>();
     private megaMekScopedAvailabilityBlocks = new Map<string, MegaMekScopedAvailabilityBlock>();
     private megaMekScopedUnitScoreCache = new Map<string, Map<AvailabilityUnitKey, number>>();
@@ -787,7 +786,6 @@ export class UnitAvailabilitySourceService {
         for (const unit of units) {
             this.megaMekAllUnitIds.add(unit.name);
             this.megaMekUnitIdByName.set(unit.name, unit.id);
-            this.megaMekUnitNameById.set(unit.id, unit.name);
 
             const availabilityRecord = this.dataService.getMegaMekAvailabilityRecordForUnit(unit);
             if (!availabilityRecord) {
@@ -1363,7 +1361,6 @@ export class UnitAvailabilitySourceService {
         this.megaMekAllUnitIds.clear();
         this.megaMekKnownUnitIds.clear();
         this.megaMekUnitIdByName.clear();
-        this.megaMekUnitNameById.clear();
         this.megaMekExtinctAllUnitIds.clear();
         this.megaMekScopedAvailabilityBlocks.clear();
         this.megaMekScopedUnitScoreCache.clear();

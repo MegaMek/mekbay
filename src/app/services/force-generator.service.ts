@@ -52,7 +52,6 @@ import type {
     MegaMekRulesetWhen,
 } from '../models/megamek/rulesets.model';
 import { LoadForceEntry } from '../models/load-force-entry.model';
-import type { ForceUnit } from '../models/force-unit.model';
 import { MAX_UNITS as FORCE_MAX_UNITS } from '../models/force.model';
 import { MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../models/mulfactions.model';
 import type { Options } from '../models/options.model';
@@ -60,11 +59,12 @@ import { getUnitsAverageTechBase } from '../models/tech.model';
 import type { Unit } from '../models/units.model';
 import { resolveOrgDefinition } from '../utils/org/org-registry.util';
 import { resolveFromGroups, resolveFromUnits } from '../utils/org/org-solver.util';
-import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
+import { LanceTypeIdentifierUtil, type FormationGroupLike } from '../utils/lance-type-identifier.util';
 import { FormationRequirementEngine } from '../utils/formation-requirement-engine.util';
 import type { FormationConstraint, FormationEvaluation, FormationSearchDecision } from '../utils/formation-requirement.model';
 import { getFormationBlueprint } from '../utils/formation-blueprints';
 import type { FormationTypeDefinition } from '../utils/formation-type.model';
+import type { FormationUnitLike } from '../utils/formation-unit-facts.util';
 import { collectGroupUnits } from '../utils/org/org-facts.util';
 import type { GroupSizeResult, OrgDefinition, OrgRuleDefinition, OrgType } from '../utils/org/org-types';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
@@ -180,7 +180,7 @@ interface ForceGenerationAvailabilityWeightCache {
     signature: string;
     useMegaMekAvailability: boolean;
     scopeState: ForceGenerationAvailabilityScopeState;
-    weightsByUnitId: Map<number, { requisition: number; salvage: number }>;
+    weightsByUnitName: Map<string, { requisition: number; salvage: number }>;
 }
 
 interface ForceGenerationPreparedCandidateCache {
@@ -334,6 +334,32 @@ interface ForceGenerationTargetFormationSetAttemptEvaluation {
     message: string;
 }
 
+interface ForcePreviewEntryBuildMetrics {
+    totalMs: number;
+    targetGroupBuildMs: number;
+    targetFormationGroupValidationMs: number;
+    targetRemainingGroupBuildMs: number;
+    targetFormationValidationMs: number;
+    fallbackGroupBuildMs: number;
+    previewGroupOrgResolveMs: number;
+    previewGroupFormationMatchMs: number;
+    previewGroupFormationMatchCacheHits: number;
+    previewGroupFormationMatchCacheMisses: number;
+}
+
+interface TargetFormationPreviewGroupBuildResult {
+    groups: ForcePreviewGroup[];
+    validationMs: number;
+    remainingGroupBuildMs: number;
+}
+
+interface PreviewGroupBuildMetrics {
+    orgResolveMs: number;
+    formationMatchMs: number;
+    formationMatchCacheHits: number;
+    formationMatchCacheMisses: number;
+}
+
 interface ForceGenerationSelectionPreparation {
     rulesetProfile: ForceGenerationRulesetProfile | null;
     selectableCandidates: readonly ForceGenerationCandidateUnit[];
@@ -399,6 +425,7 @@ interface ForceGenerationForceNodeSelection {
 
 export interface ForceGenerationPreview {
     gameSystem: GameSystem;
+    name?: string;
     units: GeneratedForceUnit[];
     totalCost: number;
     error: string | null;
@@ -418,6 +445,7 @@ export interface ForceGenerationTargetFormationSelection {
 export interface ForceGenerationTargetFormationPreviewGroup {
     formationId: string;
     unitIndexes: number[];
+    validatedGameSystem?: GameSystem;
 }
 
 export interface ForceGenerationRequest {
@@ -506,6 +534,8 @@ interface PreviewGroupPlanContext {
     era: Era | null;
     gameSystem: GameSystem;
     factionName: string;
+    formationMatchCache: Map<string, ReturnType<typeof LanceTypeIdentifierUtil.getBestMatchForGroup> | null>;
+    metrics: PreviewGroupBuildMetrics;
 }
 
 interface PlannedPreviewGroup {
@@ -589,6 +619,48 @@ function matchesPreviewGroupTemplate(candidate: GroupSizeResult, template: Group
     return candidate.type === template.type
         && candidate.modifierKey === template.modifierKey
         && candidate.countsAsType === template.countsAsType;
+}
+
+function getPreviewTemplateSearchKey(template: PreviewGroupTemplate): string {
+    return `${template.signature}|${template.unitCount}`;
+}
+
+function compareIndexSelections(left: readonly number[], right: readonly number[]): number {
+    const count = Math.min(left.length, right.length);
+    for (let index = 0; index < count; index += 1) {
+        if (left[index] !== right[index]) {
+            return left[index] - right[index];
+        }
+    }
+
+    return left.length - right.length;
+}
+
+function getGeneratedUnitsForSelection(
+    generatedUnits: readonly GeneratedForceUnit[],
+    selectedIndices: readonly number[],
+): readonly GeneratedForceUnit[] {
+    return selectedIndices.map((index) => generatedUnits[index]);
+}
+
+function removeSelectedIndices(
+    remainingIndices: readonly number[],
+    selectedIndices: readonly number[],
+): number[] {
+    const nextRemainingIndices: number[] = [];
+    let selectedCursor = 0;
+
+    for (const remainingIndex of remainingIndices) {
+        while (selectedCursor < selectedIndices.length && selectedIndices[selectedCursor] < remainingIndex) {
+            selectedCursor += 1;
+        }
+
+        if (selectedIndices[selectedCursor] !== remainingIndex) {
+            nextRemainingIndices.push(remainingIndex);
+        }
+    }
+
+    return nextRemainingIndices;
 }
 
 function createGeneratedUnitQueues(generatedUnits: readonly GeneratedForceUnit[]): Map<Unit, GeneratedForceUnit[]> {
@@ -708,7 +780,7 @@ function getGeneratedUnitFirstIndex(
     return firstIndex;
 }
 
-function createPreviewForceUnitStub(
+function createPreviewFormationUnit(
     generatedUnit: GeneratedForceUnit,
     forceContext: {
         faction: () => Faction | null;
@@ -716,14 +788,20 @@ function createPreviewForceUnitStub(
         techBase: () => string;
         gameSystem: GameSystem;
     },
-): ForceUnit {
+): FormationUnitLike {
     return {
         force: forceContext,
         getUnit: () => generatedUnit.unit,
-        getBv: () => generatedUnit.cost,
         pilotSkill: () => generatedUnit.skill ?? generatedUnit.gunnery ?? 4,
         gunnerySkill: () => generatedUnit.gunnery ?? generatedUnit.skill ?? 4,
-    } as unknown as ForceUnit;
+    };
+}
+
+function hasGroupDependentPreviewFormationFiltering(resolvedGroup: GroupSizeResult): boolean {
+    return !!resolvedGroup.type && (
+        (resolvedGroup.children?.length ?? 0) > 0
+        || (resolvedGroup.formationMatchingIgnoredUnits?.length ?? 0) > 0
+    );
 }
 
 function getBestPreviewFormationMatch(
@@ -731,24 +809,34 @@ function getBestPreviewFormationMatch(
     resolvedGroup: GroupSizeResult,
     context: PreviewGroupPlanContext,
 ): ReturnType<typeof LanceTypeIdentifierUtil.getBestMatchForGroup> {
-    const techBase = getUnitsAverageTechBase(generatedUnits.map((generatedUnit) => generatedUnit.unit));
+    const units = generatedUnits.map((generatedUnit) => generatedUnit.unit);
+    const techBase = getUnitsAverageTechBase(units);
     const forceContext = {
         faction: () => context.faction,
         era: () => context.era,
         techBase: () => techBase,
         gameSystem: context.gameSystem,
     };
-    const forceUnits = generatedUnits.map((generatedUnit) => createPreviewForceUnitStub(generatedUnit, forceContext));
-    const group = {
+    const formationUnits = generatedUnits.map((generatedUnit) => createPreviewFormationUnit(generatedUnit, forceContext));
+    if (!hasGroupDependentPreviewFormationFiltering(resolvedGroup)) {
+        return LanceTypeIdentifierUtil.getBestMatch(
+            formationUnits,
+            techBase,
+            context.factionName,
+            context.gameSystem,
+        );
+    }
+
+    const group: FormationGroupLike = {
         force: forceContext,
-        units: () => forceUnits,
+        units: () => formationUnits,
         organizationalResult: () => ({
             name: resolvedGroup.name,
             tier: resolvedGroup.tier,
             groups: [resolvedGroup],
         }),
         formationHistory: new Set<string>(),
-    } as unknown as import('../models/force.model').UnitGroup<ForceUnit>;
+    };
 
     return LanceTypeIdentifierUtil.getBestMatchForGroup(group);
 }
@@ -763,7 +851,23 @@ function createPreviewLeafGroupPlan(
         (unitIndexByGeneratedUnit.get(left) ?? Number.MAX_SAFE_INTEGER)
         - (unitIndexByGeneratedUnit.get(right) ?? Number.MAX_SAFE_INTEGER)
     ));
-    const bestMatch = getBestPreviewFormationMatch(orderedGeneratedUnits, resolvedGroup, context);
+    const orderedUnitIndexes = orderedGeneratedUnits
+        .map((generatedUnit) => unitIndexByGeneratedUnit.get(generatedUnit) ?? Number.MAX_SAFE_INTEGER)
+        .join(',');
+    const formationMatchCacheKey = hasGroupDependentPreviewFormationFiltering(resolvedGroup)
+        ? `${resolvePreviewGroupSignature(resolvedGroup)}:${orderedUnitIndexes}`
+        : `units:${orderedUnitIndexes}`;
+    let bestMatch = context.formationMatchCache.get(formationMatchCacheKey);
+    if (bestMatch === undefined) {
+        const formationMatchStartedAt = getForceGeneratorNow();
+        bestMatch = getBestPreviewFormationMatch(orderedGeneratedUnits, resolvedGroup, context) ?? null;
+        context.metrics.formationMatchMs += Math.max(0, getForceGeneratorNow() - formationMatchStartedAt);
+        context.metrics.formationMatchCacheMisses += 1;
+        context.formationMatchCache.set(formationMatchCacheKey, bestMatch);
+    } else {
+        context.metrics.formationMatchCacheHits += 1;
+    }
+
     const formationId = bestMatch?.definition.id;
 
     return {
@@ -856,9 +960,12 @@ function searchOptimizedPreviewGroupPlan(
     context: PreviewGroupPlanContext,
     unitIndexByGeneratedUnit: ReadonlyMap<GeneratedForceUnit, number>,
     evaluationCache: Map<string, PreviewGroupPlan | null>,
+    generatedUnitsBySelectionCache: Map<string, readonly GeneratedForceUnit[]>,
+    resolvedGroupsBySelectionCache: Map<string, readonly GroupSizeResult[]>,
     searchState: PreviewGroupSearchState,
     templateIndex: number,
     remainingIndices: readonly number[],
+    previousEquivalentTemplateSelection: readonly number[] | null,
 ): PreviewGroupPlan | null {
     if (templateIndex >= templates.length) {
         return remainingIndices.length === 0
@@ -875,8 +982,14 @@ function searchOptimizedPreviewGroupPlan(
     const candidateSelections = templateIndex === templates.length - 1
         ? [remainingIndices]
         : null;
+    const templateSearchKey = getPreviewTemplateSearchKey(template);
 
     const evaluateSelection = (selectedIndices: readonly number[]): boolean => {
+        if (previousEquivalentTemplateSelection
+            && compareIndexSelections(selectedIndices, previousEquivalentTemplateSelection) <= 0) {
+            return false;
+        }
+
         if (searchState.visits >= PREVIEW_GROUP_SEARCH_MAX_VISITS) {
             searchState.aborted = true;
             return true;
@@ -884,21 +997,36 @@ function searchOptimizedPreviewGroupPlan(
 
         searchState.visits += 1;
 
-        const cacheKey = `${template.signature}:${selectedIndices.join(',')}`;
+        const selectionCacheKey = selectedIndices.join(',');
+        const cacheKey = `${template.signature}:${selectionCacheKey}`;
         let childPlan = evaluationCache.get(cacheKey);
         if (childPlan === undefined) {
-            const selectedIndexSet = new Set(selectedIndices);
-            const childGeneratedUnits = generatedUnits.filter((_, index) => selectedIndexSet.has(index));
-            const resolvedChildGroups = resolveFromUnits(
-                childGeneratedUnits.map((generatedUnit) => generatedUnit.unit),
-                context.faction,
-                context.era,
-            );
-            const resolvedChildGroup = resolvedChildGroups.length === 1 && matchesPreviewGroupTemplate(resolvedChildGroups[0], template.group)
-                ? resolvedChildGroups[0]
-                : (!shouldSplitPreviewGroup(template.group) && childGeneratedUnits.length === template.unitCount
-                    ? materializePreviewTemplateLeafGroup(template.group, childGeneratedUnits)
-                    : null);
+            let childGeneratedUnits = generatedUnitsBySelectionCache.get(selectionCacheKey);
+            if (!childGeneratedUnits) {
+                childGeneratedUnits = getGeneratedUnitsForSelection(generatedUnits, selectedIndices);
+                generatedUnitsBySelectionCache.set(selectionCacheKey, childGeneratedUnits);
+            }
+
+            let resolvedChildGroup: GroupSizeResult | null = null;
+            if (!shouldSplitPreviewGroup(template.group) && childGeneratedUnits.length === template.unitCount) {
+                resolvedChildGroup = materializePreviewTemplateLeafGroup(template.group, childGeneratedUnits);
+            } else {
+                let resolvedChildGroups = resolvedGroupsBySelectionCache.get(selectionCacheKey);
+                if (!resolvedChildGroups) {
+                    const childResolveStartedAt = getForceGeneratorNow();
+                    resolvedChildGroups = resolveFromUnits(
+                        childGeneratedUnits.map((generatedUnit) => generatedUnit.unit),
+                        context.faction,
+                        context.era,
+                    );
+                    context.metrics.orgResolveMs += Math.max(0, getForceGeneratorNow() - childResolveStartedAt);
+                    resolvedGroupsBySelectionCache.set(selectionCacheKey, resolvedChildGroups);
+                }
+
+                resolvedChildGroup = resolvedChildGroups.length === 1 && matchesPreviewGroupTemplate(resolvedChildGroups[0], template.group)
+                    ? resolvedChildGroups[0]
+                    : null;
+            }
 
             if (!resolvedChildGroup) {
                 childPlan = null;
@@ -918,17 +1046,22 @@ function searchOptimizedPreviewGroupPlan(
             return false;
         }
 
-        const selectedIndexSet = new Set(selectedIndices);
-        const nextRemainingIndices = remainingIndices.filter((index) => !selectedIndexSet.has(index));
+        const nextRemainingIndices = removeSelectedIndices(remainingIndices, selectedIndices);
+        const nextTemplateSearchKey = templates[templateIndex + 1]
+            ? getPreviewTemplateSearchKey(templates[templateIndex + 1])
+            : null;
         const tailPlan = searchOptimizedPreviewGroupPlan(
             templates,
             generatedUnits,
             context,
             unitIndexByGeneratedUnit,
             evaluationCache,
+            generatedUnitsBySelectionCache,
+            resolvedGroupsBySelectionCache,
             searchState,
             templateIndex + 1,
             nextRemainingIndices,
+            nextTemplateSearchKey === templateSearchKey ? selectedIndices : null,
         );
         if (!tailPlan) {
             return searchState.aborted;
@@ -973,6 +1106,8 @@ function tryBuildOptimizedPreviewPlanForGroups(
     }
 
     const evaluationCache = new Map<string, PreviewGroupPlan | null>();
+    const generatedUnitsBySelectionCache = new Map<string, readonly GeneratedForceUnit[]>();
+    const resolvedGroupsBySelectionCache = new Map<string, readonly GroupSizeResult[]>();
     const searchState: PreviewGroupSearchState = { visits: 0, aborted: false };
 
     return searchOptimizedPreviewGroupPlan(
@@ -981,9 +1116,12 @@ function tryBuildOptimizedPreviewPlanForGroups(
         context,
         unitIndexByGeneratedUnit,
         evaluationCache,
+        generatedUnitsBySelectionCache,
+        resolvedGroupsBySelectionCache,
         searchState,
         0,
         generatedUnits.map((_, index) => index),
+        null,
     );
 }
 
@@ -1028,13 +1166,20 @@ function buildPreviewGroups(
     generatedUnits: readonly GeneratedForceUnit[],
     context: PreviewGroupPlanContext,
 ): ForcePreviewGroup[] {
+    const unitResolveStartedAt = getForceGeneratorNow();
     const resolvedUnitGroups = resolveFromUnits(
         generatedUnits.map((generatedUnit) => generatedUnit.unit),
         context.faction,
         context.era,
     );
+    context.metrics.orgResolveMs += Math.max(0, getForceGeneratorNow() - unitResolveStartedAt);
     const resolvedGroups = resolvedUnitGroups.length > 1
-        ? resolveFromGroups(resolvedUnitGroups, context.faction, context.era)
+        ? (() => {
+            const groupResolveStartedAt = getForceGeneratorNow();
+            const groups = resolveFromGroups(resolvedUnitGroups, context.faction, context.era);
+            context.metrics.orgResolveMs += Math.max(0, getForceGeneratorNow() - groupResolveStartedAt);
+            return groups;
+        })()
         : resolvedUnitGroups;
     const unitIndexByGeneratedUnit = new Map(generatedUnits.map((generatedUnit, index) => [generatedUnit, index]));
     const optimizedTopLevelPlan = tryBuildOptimizedPreviewPlanForGroups(
@@ -1527,23 +1672,8 @@ function serializeForceGenerationCacheIds(ids: readonly number[]): string {
     return [...new Set(ids)].sort((left, right) => left - right).join(',');
 }
 
-function buildForceGenerationUnitListSignature(units: readonly Pick<Unit, 'id'>[]): string {
-    let rollingHash = 0;
-    let weightedSum = 0;
-
-    for (let index = 0; index < units.length; index += 1) {
-        const unitId = units[index].id | 0;
-        rollingHash = (((rollingHash * 33) ^ unitId) | 0);
-        weightedSum = ((weightedSum + ((unitId * (index + 1)) | 0)) | 0);
-    }
-
-    return [
-        units.length,
-        units[0]?.id ?? 'none',
-        units[units.length - 1]?.id ?? 'none',
-        rollingHash >>> 0,
-        weightedSum >>> 0,
-    ].join(':');
+function buildForceGenerationUnitListSignature(units: readonly Pick<Unit, 'name'>[]): string {
+    return [units.length, ...units.map((unit) => unit.name)].join('\u001f');
 }
 
 function getEraReferenceYear(era: Era | null): number | undefined {
@@ -1711,6 +1841,9 @@ export class ForceGeneratorService implements OnDestroy {
     private baseCandidateCache: ForceGenerationBaseCandidateCache | null = null;
     private preparedCandidateCache: ForceGenerationPreparedCandidateCache | null = null;
     private selectionPreparationCache: ForceGenerationSelectionPreparationCache | null = null;
+    private formationComputationAttempts = 0;
+    private formationComputationElapsedMs = 0;
+    private lastPreviewEntryBuildMetrics: ForcePreviewEntryBuildMetrics | null = null;
 
     public ngOnDestroy(): void {
         this.clearGenerationCaches();
@@ -1915,6 +2048,8 @@ export class ForceGeneratorService implements OnDestroy {
 
     public buildPreview(options: ForceGenerationRequest): ForceGenerationPreview {
         const previewStartedAt = getForceGeneratorNow();
+        this.formationComputationAttempts = 0;
+        this.formationComputationElapsedMs = 0;
         const eligibleUnits = options.eligibleUnits ?? this.filtersService.filteredUnits();
         const requestedMinUnitCount = Math.min(FORCE_MAX_UNITS, Math.max(1, Math.floor(options.minUnitCount)));
         const requestedMaxUnitCount = Math.min(FORCE_MAX_UNITS, Math.max(requestedMinUnitCount, Math.floor(options.maxUnitCount)));
@@ -2182,7 +2317,7 @@ export class ForceGeneratorService implements OnDestroy {
                 );
                 const targetEvaluationBeforeSkillOptimization = FormationRequirementEngine.evaluateDefinition(
                     targetFormationContext.definition,
-                    this.createFormationForceUnitsForCandidates(targetAttempt.selectedCandidates, options),
+                    this.createFormationUnitsForCandidates(targetAttempt.selectedCandidates, options),
                     options.gameSystem,
                 );
                 const formationValidBeforeSkillOptimization = targetEvaluationBeforeSkillOptimization?.valid === true
@@ -2199,7 +2334,7 @@ export class ForceGeneratorService implements OnDestroy {
                 const targetTotalCost = optimizedTargetAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
                 const targetEvaluation = FormationRequirementEngine.evaluateDefinition(
                     targetFormationContext.definition,
-                    this.createFormationForceUnitsForCandidates(optimizedTargetAttempt.selectedCandidates, options),
+                    this.createFormationUnitsForCandidates(optimizedTargetAttempt.selectedCandidates, options),
                     options.gameSystem,
                 );
                 const formationValid = targetEvaluation?.valid === true
@@ -2727,12 +2862,20 @@ export class ForceGeneratorService implements OnDestroy {
 
     public createForcePreviewEntry(preview: ForceGenerationPreview, name?: string): ForcePreviewEntry | null {
         if (preview.units.length === 0) {
+            this.lastPreviewEntryBuildMetrics = null;
             return null;
         }
 
+        const previewEntryStartedAt = getForceGeneratorNow();
         const faction = preview.faction ?? null;
         const era = preview.era ?? null;
-        const resolvedName = name?.trim() || ForceNamerUtil.generateForceNameForFaction(faction);
+        const resolvedName = name?.trim() || preview.name?.trim() || ForceNamerUtil.generateForceNameForFaction(faction);
+        const previewGroupBuildMetrics: PreviewGroupBuildMetrics = {
+            orgResolveMs: 0,
+            formationMatchMs: 0,
+            formationMatchCacheHits: 0,
+            formationMatchCacheMisses: 0,
+        };
         const previewGroupContext = {
             faction: preview.faction
                 ?? this.dataService.getFactionById(MULFACTION_MERCENARY)
@@ -2742,20 +2885,41 @@ export class ForceGeneratorService implements OnDestroy {
             factionName: preview.faction?.name
                 ?? this.dataService.getFactionById(MULFACTION_MERCENARY)?.name
                 ?? DEFAULT_PREVIEW_FORCE_FACTION.name,
+            formationMatchCache: new Map<string, ReturnType<typeof LanceTypeIdentifierUtil.getBestMatchForGroup> | null>(),
+            metrics: previewGroupBuildMetrics,
         };
-        const targetPreviewGroups = this.buildTargetFormationPreviewGroups(
+        const targetGroupStartedAt = getForceGeneratorNow();
+        const targetPreviewGroupResult = this.buildTargetFormationPreviewGroups(
             preview.units,
             previewGroupContext,
             preview.targetFormationGroups,
         );
-        const previewGroups = targetPreviewGroups
-            ?? (preview.targetFormationId && this.isGeneratedPreviewValidForFormation(
-                preview.units,
-                previewGroupContext,
-                preview.targetFormationId,
-            )
-                ? [createGeneratedPreviewGroup(preview.units, preview.gameSystem, preview.targetFormationId)]
-                : buildPreviewGroups(preview.units, previewGroupContext));
+        const targetPreviewGroups = targetPreviewGroupResult?.groups ?? null;
+        const targetGroupBuildMs = Math.max(0, getForceGeneratorNow() - targetGroupStartedAt);
+        const targetFormationGroupValidationMs = targetPreviewGroupResult?.validationMs ?? 0;
+        const targetRemainingGroupBuildMs = targetPreviewGroupResult?.remainingGroupBuildMs ?? 0;
+
+        let targetFormationValidationMs = 0;
+        let fallbackGroupBuildMs = 0;
+        const previewGroups = targetPreviewGroups ?? (() => {
+            if (preview.targetFormationId) {
+                const validationStartedAt = getForceGeneratorNow();
+                const isValidTargetFormation = this.isGeneratedPreviewValidForFormation(
+                    preview.units,
+                    previewGroupContext,
+                    preview.targetFormationId,
+                );
+                targetFormationValidationMs = Math.max(0, getForceGeneratorNow() - validationStartedAt);
+                if (isValidTargetFormation) {
+                    return [createGeneratedPreviewGroup(preview.units, preview.gameSystem, preview.targetFormationId)];
+                }
+            }
+
+            const fallbackBuildStartedAt = getForceGeneratorNow();
+            const fallbackGroups = buildPreviewGroups(preview.units, previewGroupContext);
+            fallbackGroupBuildMs = Math.max(0, getForceGeneratorNow() - fallbackBuildStartedAt);
+            return fallbackGroups;
+        })();
 
         const previewEntry: ForcePreviewEntry = {
             instanceId: '',
@@ -2777,7 +2941,24 @@ export class ForceGeneratorService implements OnDestroy {
             group.force = previewEntry;
         }
 
+        this.lastPreviewEntryBuildMetrics = {
+            totalMs: Math.max(0, getForceGeneratorNow() - previewEntryStartedAt),
+            targetGroupBuildMs,
+            targetFormationGroupValidationMs,
+            targetRemainingGroupBuildMs,
+            targetFormationValidationMs,
+            fallbackGroupBuildMs,
+            previewGroupOrgResolveMs: previewGroupBuildMetrics.orgResolveMs,
+            previewGroupFormationMatchMs: previewGroupBuildMetrics.formationMatchMs,
+            previewGroupFormationMatchCacheHits: previewGroupBuildMetrics.formationMatchCacheHits,
+            previewGroupFormationMatchCacheMisses: previewGroupBuildMetrics.formationMatchCacheMisses,
+        };
+
         return previewEntry;
+    }
+
+    public getLastPreviewEntryBuildMetrics(): ForcePreviewEntryBuildMetrics | null {
+        return this.lastPreviewEntryBuildMetrics;
     }
 
     private resolveSelectedEras(): Era[] {
@@ -4006,36 +4187,42 @@ export class ForceGeneratorService implements OnDestroy {
         scopeState: ForceGenerationAvailabilityScopeState,
         eligibleUnits: readonly Unit[],
     ): ForceGenerationAvailabilityWeightCache {
-        const unitById = new Map(eligibleUnits.map((unit) => [unit.id, unit]));
-        const weightsByUnitId = useMegaMekAvailability
+        const unitsByMulId = new Map<number, Unit[]>();
+        for (const unit of eligibleUnits) {
+            const unitsForMulId = unitsByMulId.get(unit.id) ?? [];
+            unitsForMulId.push(unit);
+            unitsByMulId.set(unit.id, unitsForMulId);
+        }
+
+        const weightsByUnitName = useMegaMekAvailability
             ? this.buildMegaMekAvailabilityWeightMap(scopeState, eligibleUnits)
-            : this.buildMulAvailabilityWeightMap(scopeState, eligibleUnits, unitById);
+            : this.buildMulAvailabilityWeightMap(scopeState, eligibleUnits, unitsByMulId);
 
         return {
             signature,
             useMegaMekAvailability,
             scopeState,
-            weightsByUnitId,
+            weightsByUnitName,
         };
     }
 
     private buildMegaMekAvailabilityWeightMap(
         scopeState: ForceGenerationAvailabilityScopeState,
         eligibleUnits: readonly Unit[],
-        exactPairKeysByUnitId?: Map<number, Set<string>>,
+        exactPairKeysByUnitName?: Map<string, Set<string>>,
         includeUnknownForMissingRecords = true,
-    ): Map<number, { requisition: number; salvage: number }> {
-        const weightsByUnitId = new Map<number, { requisition: number; salvage: number }>();
+    ): Map<string, { requisition: number; salvage: number }> {
+        const weightsByUnitName = new Map<string, { requisition: number; salvage: number }>();
         if (scopeState.pairCount <= 0) {
             if (includeUnknownForMissingRecords) {
                 for (const unit of eligibleUnits) {
-                    weightsByUnitId.set(unit.id, {
+                    weightsByUnitName.set(unit.name, {
                         requisition: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
                         salvage: 0,
                     });
                 }
             }
-            return weightsByUnitId;
+            return weightsByUnitName;
         }
 
         const exactEraIdText = scopeState.eraIdTexts.length === 1 ? scopeState.eraIdTexts[0] : null;
@@ -4048,7 +4235,7 @@ export class ForceGeneratorService implements OnDestroy {
             const record = this.dataService.getMegaMekAvailabilityRecordForUnit(unit);
             if (!record) {
                 if (includeUnknownForMissingRecords) {
-                    weightsByUnitId.set(unit.id, {
+                    weightsByUnitName.set(unit.name, {
                         requisition: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
                         salvage: 0,
                     });
@@ -4062,10 +4249,10 @@ export class ForceGeneratorService implements OnDestroy {
                     salvage: record.e[exactEraIdText]?.[exactFactionIdText]?.[1] ?? 0,
                 };
                 const exactValue = record.e[exactEraIdText]?.[exactFactionIdText];
-                weightsByUnitId.set(unit.id, exactWeights);
+                weightsByUnitName.set(unit.name, exactWeights);
 
-                if (exactValue && exactPairKeysByUnitId && exactPairKey !== null) {
-                    exactPairKeysByUnitId.set(unit.id, new Set<string>([exactPairKey]));
+                if (exactValue && exactPairKeysByUnitName && exactPairKey !== null) {
+                    exactPairKeysByUnitName.set(unit.name, new Set<string>([exactPairKey]));
                 }
 
                 continue;
@@ -4086,7 +4273,7 @@ export class ForceGeneratorService implements OnDestroy {
                         continue;
                     }
 
-                    if (exactPairKeysByUnitId) {
+                    if (exactPairKeysByUnitName) {
                         exactPairKeys ??= new Set<string>();
                         exactPairKeys.add(`${eraIdText}:${factionIdText}`);
                     }
@@ -4103,41 +4290,40 @@ export class ForceGeneratorService implements OnDestroy {
                 }
             }
 
-            weightsByUnitId.set(unit.id, {
+            weightsByUnitName.set(unit.name, {
                 requisition: requisitionMax,
                 salvage: salvageMax,
             });
 
-            if (exactPairKeysByUnitId && exactPairKeys && exactPairKeys.size > 0) {
-                exactPairKeysByUnitId.set(unit.id, exactPairKeys);
+            if (exactPairKeysByUnitName && exactPairKeys && exactPairKeys.size > 0) {
+                exactPairKeysByUnitName.set(unit.name, exactPairKeys);
             }
         }
 
-        return weightsByUnitId;
+        return weightsByUnitName;
     }
 
     private buildMulAvailabilityWeightMap(
         scopeState: ForceGenerationAvailabilityScopeState,
         eligibleUnits: readonly Unit[],
-        unitById: ReadonlyMap<number, Unit>,
-    ): Map<number, { requisition: number; salvage: number }> {
+        unitsByMulId: ReadonlyMap<number, readonly Unit[]>,
+    ): Map<string, { requisition: number; salvage: number }> {
         if (scopeState.pairCount <= 0) {
-            const zeroWeightsByUnitId = new Map<number, { requisition: number; salvage: number }>();
+            const zeroWeightsByUnitName = new Map<string, { requisition: number; salvage: number }>();
             for (const unit of eligibleUnits) {
-                zeroWeightsByUnitId.set(unit.id, {
+                zeroWeightsByUnitName.set(unit.name, {
                     requisition: 0,
                     salvage: 0,
                 });
             }
-            return zeroWeightsByUnitId;
+            return zeroWeightsByUnitName;
         }
 
-        const exactPairKeysByUnitId = new Map<number, Set<string>>();
-        const eligibleUnitIds = new Set(eligibleUnits.map((unit) => unit.id));
-        const weightsByUnitId = this.buildMegaMekAvailabilityWeightMap(
+        const exactPairKeysByUnitName = new Map<string, Set<string>>();
+        const weightsByUnitName = this.buildMegaMekAvailabilityWeightMap(
             scopeState,
             eligibleUnits,
-            exactPairKeysByUnitId,
+            exactPairKeysByUnitName,
             false,
         );
 
@@ -4152,56 +4338,60 @@ export class ForceGeneratorService implements OnDestroy {
             const mulUnitIds = this.unitAvailabilitySource.getFactionEraUnitIds(forceFaction, forceEra, 'mul');
             for (const unitIdText of mulUnitIds) {
                 const unitId = Number(unitIdText);
-                if (Number.isNaN(unitId) || !eligibleUnitIds.has(unitId) || exactPairKeysByUnitId.get(unitId)?.has(pairKey)) {
+                const matchingUnits = Number.isNaN(unitId) ? undefined : unitsByMulId.get(unitId);
+                if (!matchingUnits?.length) {
                     continue;
                 }
 
-                const unit = unitById.get(unitId);
-                const exactValue = unit
-                    ? this.dataService.getMegaMekAvailabilityRecordForUnit(unit)?.e[String(pair.eraId)]?.[String(pair.factionId)]
-                    : undefined;
-                if (exactValue !== undefined) {
-                    const weights = weightsByUnitId.get(unitId) ?? {
-                        requisition: 0,
+                for (const unit of matchingUnits) {
+                    if (exactPairKeysByUnitName.get(unit.name)?.has(pairKey)) {
+                        continue;
+                    }
+
+                    const exactValue = this.dataService.getMegaMekAvailabilityRecordForUnit(unit)?.e[String(pair.eraId)]?.[String(pair.factionId)];
+                    if (exactValue !== undefined) {
+                        const weights = weightsByUnitName.get(unit.name) ?? {
+                            requisition: 0,
+                            salvage: 0,
+                        };
+                        const requisition = exactValue[0] ?? 0;
+                        const salvage = exactValue[1] ?? 0;
+                        if (requisition > weights.requisition) {
+                            weights.requisition = requisition;
+                        }
+                        if (salvage > weights.salvage) {
+                            weights.salvage = salvage;
+                        }
+                        weightsByUnitName.set(unit.name, weights);
+                        continue;
+                    }
+
+                    const existingScopedWeights = weightsByUnitName.get(unit.name);
+                    if (existingScopedWeights) {
+                        if (existingScopedWeights.requisition < DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT) {
+                            existingScopedWeights.requisition = DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT;
+                        }
+                        continue;
+                    }
+
+                    weightsByUnitName.set(unit.name, {
+                        requisition: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
                         salvage: 0,
-                    };
-                    const requisition = exactValue[0] ?? 0;
-                    const salvage = exactValue[1] ?? 0;
-                    if (requisition > weights.requisition) {
-                        weights.requisition = requisition;
-                    }
-                    if (salvage > weights.salvage) {
-                        weights.salvage = salvage;
-                    }
-                    weightsByUnitId.set(unitId, weights);
-                    continue;
+                    });
                 }
-
-                const existingScopedWeights = weightsByUnitId.get(unitId);
-                if (existingScopedWeights) {
-                    if (existingScopedWeights.requisition < DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT) {
-                        existingScopedWeights.requisition = DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT;
-                    }
-                    continue;
-                }
-
-                weightsByUnitId.set(unitId, {
-                    requisition: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
-                    salvage: 0,
-                });
             }
         }
 
         for (const unit of eligibleUnits) {
-            if (!weightsByUnitId.has(unit.id)) {
-                weightsByUnitId.set(unit.id, {
+            if (!weightsByUnitName.has(unit.name)) {
+                weightsByUnitName.set(unit.name, {
                     requisition: 0,
                     salvage: 0,
                 });
             }
         }
 
-        return weightsByUnitId;
+        return weightsByUnitName;
     }
 
     private buildAvailabilityScopeState(context: ForceGenerationContext): ForceGenerationAvailabilityScopeState {
@@ -4239,13 +4429,13 @@ export class ForceGeneratorService implements OnDestroy {
         context: ForceGenerationContext,
         availabilityWeightCache?: ForceGenerationAvailabilityWeightCache,
     ): { requisition: number; salvage: number } {
-        const cachedWeights = availabilityWeightCache?.weightsByUnitId.get(unit.id);
+        const cachedWeights = availabilityWeightCache?.weightsByUnitName.get(unit.name);
         if (cachedWeights !== undefined) {
             return cachedWeights;
         }
 
         const computedWeights = this.getAvailabilityWeights(unit, context, availabilityWeightCache?.scopeState);
-        availabilityWeightCache?.weightsByUnitId.set(unit.id, computedWeights);
+        availabilityWeightCache?.weightsByUnitName.set(unit.name, computedWeights);
         return computedWeights;
     }
 
@@ -4295,7 +4485,6 @@ export class ForceGeneratorService implements OnDestroy {
         availabilityWeightCache: ForceGenerationAvailabilityWeightCache,
     ): ForceGenerationPreparedCandidateCache {
         const baseCandidateCache = this.resolveBaseCandidateCache(eligibleUnits, options);
-        const weightsByUnitId = availabilityWeightCache.weightsByUnitId;
         const candidates: ForceGenerationCandidateUnit[] = [];
 
         for (const baseCandidate of baseCandidateCache.candidates) {
@@ -4811,6 +5000,7 @@ export class ForceGeneratorService implements OnDestroy {
             const searchEffortNote = this.formatGenerationSearchEffortNote(attemptsTried, attemptsElapsedMs);
             if (searchEffortNote) {
                 lines.push(`Search effort: ${searchEffortNote}`);
+                lines.push(`Formation effort: ${this.formatFormationComputationEffortNote()}`);
             }
         }
 
@@ -4896,7 +5086,7 @@ export class ForceGeneratorService implements OnDestroy {
         const targetFormationId = targetFormations.length === 1 && targetFormations[0].count === 1
             ? targetFormations[0].formationId
             : undefined;
-        const targetFormationGroups = this.cloneTargetFormationPreviewGroups(selectionAttempt.targetFormationGroups);
+        const targetFormationGroups = this.cloneTargetFormationPreviewGroups(selectionAttempt.targetFormationGroups, options.gameSystem);
         const explanationLines = this.buildPreviewExplanation(
             options.gameSystem,
             eligibleUnitCount,
@@ -4922,6 +5112,7 @@ export class ForceGeneratorService implements OnDestroy {
 
         return {
             gameSystem: options.gameSystem,
+            name: ForceNamerUtil.generateForceNameForFaction(options.context.forceFaction),
             units,
             totalCost,
             faction: options.context.forceFaction,
@@ -4985,6 +5176,7 @@ export class ForceGeneratorService implements OnDestroy {
 
     private cloneTargetFormationPreviewGroups(
         groups: readonly ForceGenerationTargetFormationCandidateGroup[] | undefined,
+        validatedGameSystem?: GameSystem,
     ): ForceGenerationTargetFormationPreviewGroup[] | undefined {
         if (!groups?.length) {
             return undefined;
@@ -4993,6 +5185,7 @@ export class ForceGeneratorService implements OnDestroy {
         return groups.map((group) => ({
             formationId: group.formationId,
             unitIndexes: [...group.unitIndexes],
+            ...(validatedGameSystem ? { validatedGameSystem } : {}),
         }));
     }
 
@@ -5013,21 +5206,23 @@ export class ForceGeneratorService implements OnDestroy {
             techBase: () => techBase,
             gameSystem: context.gameSystem,
         };
-        const forceUnits = generatedUnits.map((generatedUnit) => createPreviewForceUnitStub(generatedUnit, forceContext));
-        return LanceTypeIdentifierUtil.isValid(definition, forceUnits, context.gameSystem);
+        const formationUnits = generatedUnits.map((generatedUnit) => createPreviewFormationUnit(generatedUnit, forceContext));
+        return LanceTypeIdentifierUtil.isValid(definition, formationUnits, context.gameSystem);
     }
 
     private buildTargetFormationPreviewGroups(
         generatedUnits: readonly GeneratedForceUnit[],
         context: PreviewGroupPlanContext,
         targetGroups: readonly ForceGenerationTargetFormationPreviewGroup[] | undefined,
-    ): ForcePreviewGroup[] | null {
+    ): TargetFormationPreviewGroupBuildResult | null {
         if (!targetGroups?.length) {
             return null;
         }
 
         const usedUnitIndexes = new Set<number>();
         const previewGroups: ForcePreviewGroup[] = [];
+        let validationMs = 0;
+        let remainingGroupBuildMs = 0;
 
         for (const targetGroup of targetGroups) {
             const groupUnits: GeneratedForceUnit[] = [];
@@ -5039,17 +5234,37 @@ export class ForceGeneratorService implements OnDestroy {
                 groupUnits.push(generatedUnits[unitIndex]);
             }
 
-            if (groupUnits.length === 0 || !this.isGeneratedPreviewValidForFormation(groupUnits, context, targetGroup.formationId)) {
+            const definition = LanceTypeIdentifierUtil.getDefinitionById(targetGroup.formationId, context.gameSystem);
+            if (groupUnits.length === 0 || !definition) {
                 return null;
+            }
+
+            if (targetGroup.validatedGameSystem !== context.gameSystem) {
+                const validationStartedAt = getForceGeneratorNow();
+                const isValid = this.isGeneratedPreviewValidForFormation(groupUnits, context, targetGroup.formationId);
+                validationMs += Math.max(0, getForceGeneratorNow() - validationStartedAt);
+                if (!isValid) {
+                    return null;
+                }
             }
 
             previewGroups.push(createGeneratedPreviewGroup(groupUnits, context.gameSystem, targetGroup.formationId));
         }
 
         const remainingUnits = generatedUnits.filter((_, index) => !usedUnitIndexes.has(index));
-        return remainingUnits.length > 0
-            ? [...previewGroups, ...buildPreviewGroups(remainingUnits, context)]
-            : previewGroups;
+        if (remainingUnits.length === 0) {
+            return { groups: previewGroups, validationMs, remainingGroupBuildMs };
+        }
+
+        const remainingGroupBuildStartedAt = getForceGeneratorNow();
+        const remainingPreviewGroups = buildPreviewGroups(remainingUnits, context);
+        remainingGroupBuildMs = Math.max(0, getForceGeneratorNow() - remainingGroupBuildStartedAt);
+
+        return {
+            groups: [...previewGroups, ...remainingPreviewGroups],
+            validationMs,
+            remainingGroupBuildMs,
+        };
     }
 
     private addTargetFormationExplanation(options: ForceGenerationRequest, lines: string[]): string[] {
@@ -5180,6 +5395,11 @@ export class ForceGeneratorService implements OnDestroy {
             ? ' Search window expired.'
             : '';
         return `Attempts tried: ${attemptsTried}${elapsedNote}.${searchWindowNote}`;
+    }
+
+    private formatFormationComputationEffortNote(): string {
+        const roundedElapsedMs = Math.max(0, Math.round(this.formationComputationElapsedMs));
+        return `Structure evaluations: ${this.formationComputationAttempts} in ${roundedElapsedMs}ms.`;
     }
 
     private getFormationDeficitScore(evaluation: FormationEvaluation | null): number {
@@ -5666,10 +5886,10 @@ export class ForceGeneratorService implements OnDestroy {
         return [...bucketsByUnitKind.values()].sort((left, right) => right.length - left.length);
     }
 
-    private createFormationForceUnitsForCandidates(
+    private createFormationUnitsForCandidates(
         candidates: readonly ForceGenerationCandidateUnit[],
         options: ForceGenerationRequest,
-    ): ForceUnit[] {
+    ): FormationUnitLike[] {
         const techBase = getUnitsAverageTechBase(candidates.map((candidate) => candidate.unit));
         const forceContext = {
             faction: () => options.context.forceFaction,
@@ -5681,10 +5901,9 @@ export class ForceGeneratorService implements OnDestroy {
         return candidates.map((candidate) => ({
             force: forceContext,
             getUnit: () => candidate.unit,
-            getBv: () => candidate.cost,
             pilotSkill: () => candidate.skill ?? candidate.gunnery ?? 4,
             gunnerySkill: () => candidate.gunnery ?? candidate.skill ?? 4,
-        } as unknown as ForceUnit));
+        }));
     }
 
     private evaluateTargetFormationCandidate(
@@ -5693,10 +5912,10 @@ export class ForceGeneratorService implements OnDestroy {
         candidate: ForceGenerationCandidateUnit,
         options: ForceGenerationRequest,
         maxUnitCount: number,
-        currentUnits?: readonly ForceUnit[],
+        currentUnits?: readonly FormationUnitLike[],
     ): FormationSearchDecision {
-        const resolvedCurrentUnits = currentUnits ?? this.createFormationForceUnitsForCandidates(selectedCandidates, options);
-        const nextUnits = this.createFormationForceUnitsForCandidates([...selectedCandidates, candidate], options);
+        const resolvedCurrentUnits = currentUnits ?? this.createFormationUnitsForCandidates(selectedCandidates, options);
+        const nextUnits = this.createFormationUnitsForCandidates([...selectedCandidates, candidate], options);
         const candidateUnit = nextUnits[nextUnits.length - 1];
 
         return FormationRequirementEngine.evaluateSearchCandidate(
@@ -5820,7 +6039,7 @@ export class ForceGeneratorService implements OnDestroy {
         while (selectedCandidates.length < maxUnitCount && !this.hasSearchDeadlineExpired(deadline)) {
             const currentEvaluation = FormationRequirementEngine.evaluateDefinition(
                 definition,
-                this.createFormationForceUnitsForCandidates(selectedCandidates, options),
+                this.createFormationUnitsForCandidates(selectedCandidates, options),
                 options.gameSystem,
             );
             const currentValid = currentEvaluation?.valid === true
@@ -6032,7 +6251,7 @@ export class ForceGeneratorService implements OnDestroy {
     ): FormationEvaluation | null {
         return FormationRequirementEngine.evaluateDefinition(
             { ...definition, minUnits: 0 },
-            this.createFormationForceUnitsForCandidates(candidates, options),
+            this.createFormationUnitsForCandidates(candidates, options),
             options.gameSystem,
         );
     }
@@ -6054,7 +6273,7 @@ export class ForceGeneratorService implements OnDestroy {
 
             const currentEvaluation = FormationRequirementEngine.evaluateDefinition(
                 definition,
-                this.createFormationForceUnitsForCandidates([candidate], options),
+                this.createFormationUnitsForCandidates([candidate], options),
                 options.gameSystem,
             );
             if (this.findMatchedPairCompletionCandidate(
@@ -6205,7 +6424,7 @@ export class ForceGeneratorService implements OnDestroy {
         while (selectedCandidates.length < groupUnitCount && !this.hasSearchDeadlineExpired(deadline)) {
             const currentEvaluation = FormationRequirementEngine.evaluateDefinition(
                 definition,
-                this.createFormationForceUnitsForCandidates(selectedCandidates, options),
+                this.createFormationUnitsForCandidates(selectedCandidates, options),
                 options.gameSystem,
             );
             if (currentEvaluation && FormationRequirementEngine.hasHardConstraintViolations(currentEvaluation)) {
@@ -6267,7 +6486,7 @@ export class ForceGeneratorService implements OnDestroy {
                 budgetReachabilitySorts += 1;
             }
             const candidateSearchDecisions: Array<{ candidate: ForceGenerationCandidateUnit; decision: FormationSearchDecision }> = [];
-            const currentForceUnits = this.createFormationForceUnitsForCandidates(selectedCandidates, options);
+            const currentFormationUnits = this.createFormationUnitsForCandidates(selectedCandidates, options);
             for (const candidate of localCandidatePool) {
                 if (this.hasSearchDeadlineExpired(deadline)) {
                     break;
@@ -6290,7 +6509,7 @@ export class ForceGeneratorService implements OnDestroy {
                 }
 
                 candidateEvaluationCount += 1;
-                const decision = this.evaluateTargetFormationCandidate(definition, selectedCandidates, candidate, options, groupUnitCount, currentForceUnits);
+                const decision = this.evaluateTargetFormationCandidate(definition, selectedCandidates, candidate, options, groupUnitCount, currentFormationUnits);
                 candidateSearchDecisions.push({ candidate, decision });
             }
             const formationCandidateDecisions = candidateSearchDecisions.filter((entry) => entry.decision.allowed);
@@ -6513,7 +6732,7 @@ export class ForceGeneratorService implements OnDestroy {
             );
             const groupEvaluation = FormationRequirementEngine.evaluateDefinition(
                 targetInstance.definition,
-                this.createFormationForceUnitsForCandidates(groupAttempt.selectedCandidates, options),
+                this.createFormationUnitsForCandidates(groupAttempt.selectedCandidates, options),
                 options.gameSystem,
             );
             const groupValid = groupEvaluation?.valid === true
@@ -6680,7 +6899,7 @@ export class ForceGeneratorService implements OnDestroy {
             const evaluation = definition
                 ? FormationRequirementEngine.evaluateDefinition(
                     definition,
-                    this.createFormationForceUnitsForCandidates(groupCandidates, options),
+                    this.createFormationUnitsForCandidates(groupCandidates, options),
                     options.gameSystem,
                 )
                 : null;
@@ -7927,72 +8146,79 @@ export class ForceGeneratorService implements OnDestroy {
         selectionAttempt: ForceGenerationSelectionAttempt,
         context: ForceGenerationContext,
     ): ForceGenerationStructureEvaluation | null {
-        const preferredOrgType = selectionAttempt.rulesetProfile?.preferredOrgType;
-        if (!preferredOrgType || !context.forceFaction || selectionAttempt.selectedCandidates.length === 0) {
-            return null;
-        }
+        const evaluationStartedAt = getForceGeneratorNow();
+        this.formationComputationAttempts += 1;
 
-        const resolvedGroups = resolveFromUnits(
-            selectionAttempt.selectedCandidates.map((candidate) => candidate.unit),
-            context.forceFaction,
-            context.forceEra,
-        ).sort(compareResolvedOrgGroups);
-        if (resolvedGroups.length === 0) {
+        try {
+            const preferredOrgType = selectionAttempt.rulesetProfile?.preferredOrgType;
+            if (!preferredOrgType || !context.forceFaction || selectionAttempt.selectedCandidates.length === 0) {
+                return null;
+            }
+
+            const resolvedGroups = resolveFromUnits(
+                selectionAttempt.selectedCandidates.map((candidate) => candidate.unit),
+                context.forceFaction,
+                context.forceEra,
+            ).sort(compareResolvedOrgGroups);
+            if (resolvedGroups.length === 0) {
+                return {
+                    score: 0,
+                    perfectMatch: false,
+                    summary: `Resolved org shape: none. Does not match requested ${preferredOrgType}.`,
+                };
+            }
+
+            const topGroup = resolvedGroups[0];
+            const matchedExactGroup = resolvedGroups.find((group) => group.type === preferredOrgType);
+            const matchedCountsAsGroup = matchedExactGroup
+                ? undefined
+                : resolvedGroups.find((group) => group.countsAsType === preferredOrgType);
+            const matchedGroup = matchedExactGroup ?? matchedCountsAsGroup;
+            const exactMatch = topGroup.type === preferredOrgType;
+            const countsAsMatch = topGroup.countsAsType === preferredOrgType;
+            const anyExactMatch = matchedExactGroup !== undefined;
+            const anyCountsAsMatch = matchedCountsAsGroup !== undefined;
+            const preferredUnitCount = selectionAttempt.rulesetProfile?.preferredUnitCount;
+            const unitCountDistance = preferredUnitCount === undefined
+                ? 0
+                : Math.abs(selectionAttempt.selectedCandidates.length - preferredUnitCount);
+
+            let score = 0;
+            if (exactMatch) {
+                score = 4;
+            } else if (countsAsMatch) {
+                score = 3.5;
+            } else if (anyExactMatch) {
+                score = 2.5;
+            } else if (anyCountsAsMatch) {
+                score = 2;
+            }
+
+            score -= unitCountDistance * 0.15;
+            score -= Math.max(0, resolvedGroups.length - 1) * 0.1;
+
+            const relation = exactMatch
+                ? `Matches requested ${preferredOrgType}.`
+                : countsAsMatch
+                    ? `Counts as requested ${preferredOrgType}.`
+                    : anyExactMatch
+                        ? `Matches requested ${preferredOrgType}.`
+                        : anyCountsAsMatch
+                            ? `Counts as requested ${preferredOrgType}.`
+                            : `Does not match requested ${preferredOrgType}.`;
+            const summaryGroup = matchedGroup ?? topGroup;
+            const topGroupNote = matchedGroup && matchedGroup !== topGroup
+                ? ` (top group ${getResolvedOrgGroupLabel(topGroup)})`
+                : '';
+
             return {
-                score: 0,
-                perfectMatch: false,
-                summary: `Resolved org shape: none. Does not match requested ${preferredOrgType}.`,
+                score,
+                perfectMatch: resolvedGroups.length === 1 && (exactMatch || countsAsMatch),
+                summary: `Resolved org shape: ${getResolvedOrgGroupLabel(summaryGroup)}${topGroupNote}. ${relation}`,
             };
+        } finally {
+            this.formationComputationElapsedMs += Math.max(0, getForceGeneratorNow() - evaluationStartedAt);
         }
-
-        const topGroup = resolvedGroups[0];
-        const matchedExactGroup = resolvedGroups.find((group) => group.type === preferredOrgType);
-        const matchedCountsAsGroup = matchedExactGroup
-            ? undefined
-            : resolvedGroups.find((group) => group.countsAsType === preferredOrgType);
-        const matchedGroup = matchedExactGroup ?? matchedCountsAsGroup;
-        const exactMatch = topGroup.type === preferredOrgType;
-        const countsAsMatch = topGroup.countsAsType === preferredOrgType;
-        const anyExactMatch = matchedExactGroup !== undefined;
-        const anyCountsAsMatch = matchedCountsAsGroup !== undefined;
-        const preferredUnitCount = selectionAttempt.rulesetProfile?.preferredUnitCount;
-        const unitCountDistance = preferredUnitCount === undefined
-            ? 0
-            : Math.abs(selectionAttempt.selectedCandidates.length - preferredUnitCount);
-
-        let score = 0;
-        if (exactMatch) {
-            score = 4;
-        } else if (countsAsMatch) {
-            score = 3.5;
-        } else if (anyExactMatch) {
-            score = 2.5;
-        } else if (anyCountsAsMatch) {
-            score = 2;
-        }
-
-        score -= unitCountDistance * 0.15;
-        score -= Math.max(0, resolvedGroups.length - 1) * 0.1;
-
-        const relation = exactMatch
-            ? `Matches requested ${preferredOrgType}.`
-            : countsAsMatch
-                ? `Counts as requested ${preferredOrgType}.`
-                : anyExactMatch
-                    ? `Matches requested ${preferredOrgType}.`
-                    : anyCountsAsMatch
-                        ? `Counts as requested ${preferredOrgType}.`
-                        : `Does not match requested ${preferredOrgType}.`;
-        const summaryGroup = matchedGroup ?? topGroup;
-        const topGroupNote = matchedGroup && matchedGroup !== topGroup
-            ? ` (top group ${getResolvedOrgGroupLabel(topGroup)})`
-            : '';
-
-        return {
-            score,
-            perfectMatch: resolvedGroups.length === 1 && (exactMatch || countsAsMatch),
-            summary: `Resolved org shape: ${getResolvedOrgGroupLabel(summaryGroup)}${topGroupNote}. ${relation}`,
-        };
     }
 
     private getRulesetMatchReasons(
