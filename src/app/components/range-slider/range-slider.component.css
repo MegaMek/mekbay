@@ -62,6 +62,10 @@
     transform: translateY(-50%);
 }
 
+.thumb-single {
+    transform: translate(-50%, -50%);
+}
+
 .slider-container.dragging,
 .slider-container.dragging .thumb,
 .slider-container.dragging .thumb.dragging {

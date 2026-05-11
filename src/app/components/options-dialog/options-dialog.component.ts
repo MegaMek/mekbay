@@ -54,6 +54,7 @@ import { ToastService } from '../../services/toast.service';
 import { AccountAuthService } from '../../services/account-auth.service';
 import { OAuthProviderPickerDialogComponent, type OAuthProviderPickerDialogResult } from '../oauth-provider-picker-dialog/oauth-provider-picker-dialog.component';
 import type { AvailableAuthProvider, LinkedOAuthProvider, OAuthProvider } from '../../models/account-auth.model';
+import { RangeSliderComponent } from '../range-slider/range-slider.component';
 
 type OptionsSectionId = 'General' | 'Account' | 'Tags' | 'Sheets' | 'Alpha Strike' | 'Advanced' | 'Logs';
 type OptionsViewId = OptionsSectionId;
@@ -112,6 +113,7 @@ const OPTIONS_VIEW_DEFINITIONS_BY_ID = new Map<OptionsViewId, OptionsViewDefinit
 const TOP_LEVEL_OPTIONS_VIEWS = OPTIONS_VIEW_DEFINITIONS.filter(view => !view.parentId);
 const FORCE_GEN_FAILURE_SEARCH_WINDOW_MIN_MS = 300;
 const FORCE_GEN_FAILURE_SEARCH_WINDOW_MAX_MS = 5000;
+const FORCE_GEN_FAILURE_SEARCH_WINDOW_STEP_MS = 100;
 
 /*
  * Author: Drake
@@ -120,7 +122,7 @@ const FORCE_GEN_FAILURE_SEARCH_WINDOW_MAX_MS = 5000;
     selector: 'options-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent],
+    imports: [CommonModule, BaseDialogComponent, RangeSliderComponent],
     templateUrl: './options-dialog.component.html',
     styleUrls: ['./options-dialog.component.scss']
 })
@@ -152,6 +154,10 @@ export class OptionsDialogComponent {
     currentViewDefinition = computed(() => this.getViewDefinition(this.currentViewId()));
     currentViewDescription = computed(() => this.currentViewDefinition().description);
     mobileHeaderTitle = computed(() => this.canGoBack() ? this.currentViewDefinition().title : 'Options');
+    forceGenFailureSearchWindowMinMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_MIN_MS;
+    forceGenFailureSearchWindowMaxMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_MAX_MS;
+    forceGenFailureSearchWindowStepMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_STEP_MS;
+    forceGenFailureSearchWindowMs = computed(() => this.normalizeForceGenFailureSearchWindowMs(this.optionsService.options().forceGenFailureSearchWindowMs));
 
     uuidInput = viewChild<ElementRef<HTMLInputElement>>('uuidInput');
     subscriptionInput = viewChild<ElementRef<HTMLInputElement>>('subscriptionInput');
@@ -469,16 +475,17 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('ASVehiclesCriticalHitTable', value);
     }
 
-    onForceGenFailureSearchWindowMsChange(event: Event) {
-        const input = event.target as HTMLInputElement;
-        const currentValue = this.optionsService.options().forceGenFailureSearchWindowMs;
-        const parsedValue = Number.parseInt(input.value, 10);
-        const nextValue = Number.isFinite(parsedValue)
-            ? Math.min(FORCE_GEN_FAILURE_SEARCH_WINDOW_MAX_MS, Math.max(FORCE_GEN_FAILURE_SEARCH_WINDOW_MIN_MS, parsedValue))
-            : currentValue;
-
-        input.value = `${nextValue}`;
+    onForceGenFailureSearchWindowMsChange(value: number) {
+        const nextValue = this.normalizeForceGenFailureSearchWindowMs(value);
         this.optionsService.setOption('forceGenFailureSearchWindowMs', nextValue);
+    }
+
+    private normalizeForceGenFailureSearchWindowMs(value: number): number {
+        const numericValue = Number.isFinite(value) ? value : FORCE_GEN_FAILURE_SEARCH_WINDOW_MIN_MS;
+        const clampedValue = Math.min(FORCE_GEN_FAILURE_SEARCH_WINDOW_MAX_MS, Math.max(FORCE_GEN_FAILURE_SEARCH_WINDOW_MIN_MS, numericValue));
+        const snappedValue = Math.round(clampedValue / FORCE_GEN_FAILURE_SEARCH_WINDOW_STEP_MS) * FORCE_GEN_FAILURE_SEARCH_WINDOW_STEP_MS;
+
+        return Math.min(FORCE_GEN_FAILURE_SEARCH_WINDOW_MAX_MS, Math.max(FORCE_GEN_FAILURE_SEARCH_WINDOW_MIN_MS, snappedValue));
     }
 
     selectAll(event: FocusEvent) {

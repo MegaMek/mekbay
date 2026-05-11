@@ -582,21 +582,24 @@
                 }
             </div>
             <div class="option-col">
-                <div class="option-row">
-                    <label for="forceGenFailureSearchWindowMs">Force generator search window (ms):</label>
-                    <input
-                        id="forceGenFailureSearchWindowMs"
-                        class="bt-input force-gen-search-window-input"
-                        type="number"
-                        min="300"
-                        max="5000"
-                        step="50"
-                        [value]="optionsService.options().forceGenFailureSearchWindowMs"
-                        (change)="onForceGenFailureSearchWindowMsChange($event)" />
+                <div class="option-row force-gen-search-window-row">
+                    <label id="forceGenFailureSearchWindowMsLabel" for="forceGenFailureSearchWindowMs">Force generator search window:</label>
+                    <div class="force-gen-search-window-control">
+                        <range-slider
+                            id="forceGenFailureSearchWindowMs"
+                            [attr.aria-labelledby]="'forceGenFailureSearchWindowMsLabel forceGenFailureSearchWindowMsValue'"
+                            [min]="forceGenFailureSearchWindowMinMs"
+                            [max]="forceGenFailureSearchWindowMaxMs"
+                            [singleValue]="forceGenFailureSearchWindowMs()"
+                            [stepSize]="forceGenFailureSearchWindowStepMs"
+                            (singleValueChange)="onForceGenFailureSearchWindowMsChange($event)">
+                        </range-slider>
+                        <span id="forceGenFailureSearchWindowMsValue" class="force-gen-search-window-value">{{ forceGenFailureSearchWindowMs() }} ms</span>
+                    </div>
                 </div>
                 <div class="description">
                     <p>Controls how long the force generator keeps searching before stopping when no valid force is found.</p>
-                    <p>Range: 300 to 5000 milliseconds.</p>
+                    <p>Range: 300 to 5000 milliseconds in 100 ms increments.</p>
                 </div>
             </div>
             <hr />
