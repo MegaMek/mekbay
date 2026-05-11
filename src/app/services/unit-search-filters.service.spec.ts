@@ -79,10 +79,6 @@ function cloneUnit<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function legacyMegaMekScore(score: number): number {
-    return score <= 0 ? 0 : Math.round((score - 0.5) * 10);
-}
-
 function prepareUnitForSearch(unit: Unit, index: number): Unit {
     const clone = cloneUnit(unit);
     clone.id = index + 1;
@@ -431,8 +427,8 @@ function buildSyntheticMegaMekRarityBenchmarkScenario(targetCount: number): Synt
             return [];
         }
 
-        let requisitionScore = legacyMegaMekScore((index % 10) + 1);
-        let salvageScore = legacyMegaMekScore((((index + 3) % 8) + 1) * 1.2);
+        let requisitionScore = ((index % 10) * 10) + 5;
+        let salvageScore = ((((index + 3) % 8) + 1) * 12) - 5;
 
         if (index % 10 === 0) {
             requisitionScore = 0;
@@ -1946,24 +1942,24 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         service.setFilter('era', ['Dark Age']);
         expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
-            { source: 'Requisition', score: legacyMegaMekScore(2), rarity: 'Very Rare' },
-            { source: 'Salvage', score: legacyMegaMekScore(2), rarity: 'Very Rare' },
+            { source: 'Requisition', score: 15, rarity: 'Very Rare' },
+            { source: 'Salvage', score: 15, rarity: 'Very Rare' },
         ]);
 
         service.setFilter('era', ['ilClan']);
         expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
-            { source: 'Requisition', score: legacyMegaMekScore(7), rarity: 'Common' },
-            { source: 'Salvage', score: legacyMegaMekScore(2), rarity: 'Very Rare' },
+            { source: 'Requisition', score: 65, rarity: 'Common' },
+            { source: 'Salvage', score: 15, rarity: 'Very Rare' },
         ]);
 
         service.setFilter('availabilityFrom', ['Requisition']);
         expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
-            { source: 'Requisition', score: legacyMegaMekScore(7), rarity: 'Common' },
+            { source: 'Requisition', score: 65, rarity: 'Common' },
         ]);
 
         service.setFilter('faction', rasalhagueDominion);
         expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
-            { source: 'Requisition', score: legacyMegaMekScore(2), rarity: 'Very Rare' },
+            { source: 'Requisition', score: 15, rarity: 'Very Rare' },
         ]);
     });
 
@@ -2055,8 +2051,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
         service.setFilter('era', ['Dark Age']);
 
         expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
-            { source: 'Requisition', score: legacyMegaMekScore(2), rarity: 'Very Rare' },
-            { source: 'Salvage', score: legacyMegaMekScore(1), rarity: 'Very Rare' },
+            { source: 'Requisition', score: 15, rarity: 'Very Rare' },
+            { source: 'Salvage', score: 5, rarity: 'Very Rare' },
         ]);
 
         let rarityOptions = service.advOptions()['availabilityRarity']?.options ?? [];
@@ -2154,7 +2150,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(namedAvailabilityFromOptions.find((option) => option.name === 'Unknown')).toEqual(jasmine.objectContaining({ available: true }));
         expect(namedAvailabilityFromOptions.find((option) => option.name === 'Requisition')).toEqual(jasmine.objectContaining({ available: true }));
         expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
-            { source: 'Requisition', score: legacyMegaMekScore(7), rarity: 'Common' },
+            { source: 'Requisition', score: 65, rarity: 'Common' },
         ]);
 
         service.setFilter('availabilityFrom', ['Unknown']);
@@ -2284,9 +2280,9 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         expect(service.filteredUnits().map((unit) => unit.name)).toEqual(['BattleMaster C3']);
         expect(service.getMegaMekAvailabilityBadges(bundle.units.units[0])).toEqual([
-            { source: 'Requisition', score: legacyMegaMekScore(2), rarity: 'Very Rare' },
+            { source: 'Requisition', score: 15, rarity: 'Very Rare' },
         ]);
-        expect(service.getMegaMekRaritySortScore(bundle.units.units[0])).toBe(legacyMegaMekScore(2));
+        expect(service.getMegaMekRaritySortScore(bundle.units.units[0])).toBe(15);
     });
 
     it('keeps units without MegaMek availability data visible by default but excludes them when an availability filter is applied', () => {
