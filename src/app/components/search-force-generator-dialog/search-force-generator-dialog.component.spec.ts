@@ -1213,6 +1213,99 @@ describe('SearchForceGeneratorDialogComponent', () => {
         );
     });
 
+    it('adds a generator-local Random option to the faction dropdown', () => {
+        advOptionsSignal.update((options) => ({
+            ...options,
+            faction: {
+                ...options.faction,
+                options: [
+                    { name: 'Federated Suns' },
+                    { name: 'Lyran Alliance' },
+                ],
+            },
+        }));
+
+        const randomOption = component.targetFormationFactionOptions()[0];
+
+        expect(randomOption).toEqual(jasmine.objectContaining({
+            displayName: 'Random',
+            img: '/images/random.svg',
+            alwaysVisible: true,
+            exclusive: true,
+            stateCycle: ['or'],
+        }));
+    });
+
+    it('keeps Random faction selection out of the real faction filter and forwards it to context resolution', () => {
+        const randomOptionName = component.targetFormationFactionOptions()[0].name;
+
+        component.onFactionSelectionChange({
+            [randomOptionName]: {
+                name: randomOptionName,
+                state: 'or',
+                count: 1,
+            },
+            'Federated Suns': {
+                name: 'Federated Suns',
+                state: 'or',
+                count: 1,
+            },
+        });
+
+        expect(component.randomFactionSelected()).toBeTrue();
+        expect(component.selectedFactionValues()).toEqual({
+            [randomOptionName]: {
+                name: randomOptionName,
+                state: 'or',
+                count: 1,
+            },
+        });
+        expect(setFilterSpy).toHaveBeenCalledOnceWith('faction', {});
+
+        component.reroll();
+
+        expect(resolveGenerationContextSpy).toHaveBeenCalledWith(
+            [],
+            jasmine.objectContaining({
+                randomFaction: true,
+                mergeSelectedFactionAvailability: true,
+            }),
+        );
+    });
+
+    it('forwards disabled selected-faction availability merging to context resolution', () => {
+        advOptionsSignal.update((options) => ({
+            ...options,
+            faction: {
+                ...options.faction,
+                options: [
+                    { name: 'Federated Suns' },
+                    { name: 'Lyran Alliance' },
+                ],
+                value: {
+                    fs: { name: 'Federated Suns', state: 'or' as const, count: 1 },
+                    la: { name: 'Lyran Alliance', state: 'or' as const, count: 1 },
+                },
+                interacted: true,
+            },
+        }));
+
+        expect(component.selectedFactionAvailabilityMergeToggleVisible()).toBeTrue();
+
+        component.onMergeSelectedFactionAvailabilityChange({
+            target: { checked: false },
+        } as unknown as Event);
+        component.reroll();
+
+        expect(resolveGenerationContextSpy).toHaveBeenCalledWith(
+            [],
+            jasmine.objectContaining({
+                randomFaction: false,
+                mergeSelectedFactionAvailability: false,
+            }),
+        );
+    });
+
 
     it('disambiguates duplicate target formation names in the generator dropdown', () => {
         gameSystemSignal.set(GameSystem.ALPHA_STRIKE);

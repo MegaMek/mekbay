@@ -561,6 +561,8 @@ export interface ForceGenerationBudgetRange {
 
 export interface ForceGenerationContextOptions {
     crossEraAvailabilityInMultiEraSelection?: boolean;
+    randomFaction?: boolean;
+    mergeSelectedFactionAvailability?: boolean;
     gameSystem?: GameSystem;
     targetFormationId?: string;
     targetFormations?: readonly ForceGenerationTargetFormationSelection[];
@@ -2134,6 +2136,8 @@ export class ForceGeneratorService implements OnDestroy {
         const selectedFactions = this.resolveSelectedFactions();
         const excludedFactionIds = this.resolveExcludedFactionIds();
         const crossEraAvailabilityInMultiEraSelection = options.crossEraAvailabilityInMultiEraSelection ?? false;
+        const randomFaction = options.randomFaction === true;
+        const mergeSelectedFactionAvailability = options.mergeSelectedFactionAvailability !== false;
         const availablePairs = this.collectPositiveAvailabilityPairs(
             eligibleUnits,
             selectedEras.map((era) => era.id),
@@ -2150,11 +2154,15 @@ export class ForceGeneratorService implements OnDestroy {
         const forceFaction = targetFormationFaction
             ?? (selectedFactions.length > 0
                 ? this.pickForceFaction(selectedFactions, availablePairs)
-                : this.dataService.getFactionById(MULFACTION_MERCENARY) ?? null);
+                : randomFaction
+                    ? this.pickForceFaction(selectedFactions, availablePairs)
+                    : this.dataService.getFactionById(MULFACTION_MERCENARY) ?? null);
+        const useSinglePickedFactionAvailability = randomFaction
+            || (selectedFactions.length > 1 && !mergeSelectedFactionAvailability);
         const forceEra = this.resolveContextEra(
             selectedEras,
             excludedEraIds,
-            selectedFactions.length > 0 || targetFormationFaction ? forceFaction : null,
+            selectedFactions.length > 0 || targetFormationFaction || randomFaction ? forceFaction : null,
             availablePairs,
             crossEraAvailabilityInMultiEraSelection,
         );
@@ -2166,15 +2174,19 @@ export class ForceGeneratorService implements OnDestroy {
         );
         const availabilityFactionIds = targetFormationFaction
             ? [targetFormationFaction.id]
-            : this.resolveAvailabilityFactionIds(
-                selectedFactions,
-                excludedFactionIds,
-                availablePairs,
-                availabilityEraIds,
-            );
+            : useSinglePickedFactionAvailability && forceFaction
+                ? [forceFaction.id]
+                : this.resolveAvailabilityFactionIds(
+                    selectedFactions,
+                    excludedFactionIds,
+                    availablePairs,
+                    availabilityEraIds,
+                );
         const useAvailabilityFactionScope = targetFormationFaction
             ? false
-            : this.shouldUseAvailabilityFactionScopeFromFilters(selectedFactions, availabilityFactionIds);
+            : useSinglePickedFactionAvailability
+                ? false
+                : this.shouldUseAvailabilityFactionScopeFromFilters(selectedFactions, availabilityFactionIds);
         const useAvailabilityEraScope = this.shouldUseAvailabilityEraScopeFromFilters(
             selectedEras,
             availabilityEraIds,
@@ -4254,6 +4266,10 @@ export class ForceGeneratorService implements OnDestroy {
             totalCost: originalTotalCost,
             selectedCandidates: selectionAttempt.selectedCandidates,
         };
+        if (this.isBudgetWithinRange(originalTotalCost, budgetRange)) {
+            return selectionAttempt;
+        }
+
         const skillOptionsByCandidate = selectionAttempt.selectedCandidates.map((candidate, index) => {
             const options = skillOptionResolver
                 ? skillOptionResolver(candidate, index)

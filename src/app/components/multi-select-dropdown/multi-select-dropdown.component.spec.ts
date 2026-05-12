@@ -256,6 +256,49 @@ describe('MultiSelectDropdownComponent', () => {
         expect(emittedSelection).toEqual({});
     });
 
+    it('supports exclusive multistate options with their own state cycle', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        let emittedSelection: unknown;
+        fixture.componentInstance.selectionChange.subscribe((selection) => {
+            emittedSelection = selection;
+        });
+
+        fixture.componentRef.setInput('multistate', true);
+        fixture.componentRef.setInput('options', [
+            { name: 'Random', exclusive: true, stateCycle: ['or'] },
+            { name: 'Federated Suns' },
+        ]);
+        fixture.componentRef.setInput('selected', {
+            'Federated Suns': { name: 'Federated Suns', state: 'and', count: 1 },
+        });
+        fixture.detectChanges();
+
+        fixture.componentInstance.onOptionToggle('Random');
+        expect(emittedSelection).toEqual({
+            Random: { name: 'Random', state: 'or', count: 1 },
+        });
+
+        fixture.componentRef.setInput('selected', emittedSelection);
+        fixture.detectChanges();
+
+        fixture.componentInstance.onOptionToggle('Random');
+        expect(emittedSelection).toEqual({});
+    });
+
+    it('keeps always-visible options in filtered results', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        fixture.componentRef.setInput('options', [
+            { name: 'Random', alwaysVisible: true },
+            { name: 'Federated Suns' },
+        ]);
+        fixture.detectChanges();
+
+        fixture.componentInstance.isOpen.set(true);
+        fixture.componentInstance.filterText.set('clan');
+
+        expect(fixture.componentInstance.filteredOptions().map((option) => option.name)).toEqual(['Random']);
+    });
+
     xit('preserves scroll position when toggling an item in the virtualized list', async () => {
         const fixture = TestBed.createComponent(TestHostComponent);
         fixture.componentInstance.options.set(createOptions(140));

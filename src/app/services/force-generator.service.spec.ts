@@ -434,6 +434,88 @@ describe('ForceGeneratorService', () => {
         expect(context.useAvailabilityFactionScope).toBeTrue();
     });
 
+    it('picks a random available faction and uses only that faction scope when Random faction is requested', () => {
+        const era = createEra(3150, 'ilClan');
+        const federatedSuns = createFaction(10, 'Federated Suns');
+        const lyranAlliance = createFaction(20, 'Lyran Alliance');
+        const mercenary = createFaction(MULFACTION_MERCENARY, 'Mercenary');
+        const unit = createUnit({ name: 'Random Faction Atlas' });
+
+        registerEraAndFaction(era, federatedSuns);
+        factionsByName.set(lyranAlliance.name, lyranAlliance);
+        factionsByName.set(mercenary.name, mercenary);
+        factionsById.set(lyranAlliance.id, lyranAlliance);
+        factionsById.set(mercenary.id, mercenary);
+        megaMekAvailabilityByUnitName.set(unit.name, {
+            e: {
+                '3150': {
+                    '10': [3, 1],
+                    '20': [2, 2],
+                },
+            },
+        });
+
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            era: {
+                interactedWith: true,
+                value: ['ilClan'],
+            },
+            faction: {
+                interactedWith: false,
+                value: {},
+            },
+        });
+        spyOn(Math, 'random').and.returnValue(0.75);
+
+        const context = service.resolveGenerationContext([unit], { randomFaction: true });
+
+        expect(context.forceFaction).toBe(lyranAlliance);
+        expect(context.forceEra).toBe(era);
+        expect(context.availabilityFactionIds).toEqual([20]);
+        expect(context.useAvailabilityFactionScope).toBeFalse();
+    });
+
+    it('uses a single rolled selected faction scope when selected-faction merging is disabled', () => {
+        const era = createEra(3150, 'ilClan');
+        const federatedSuns = createFaction(10, 'Federated Suns');
+        const lyranAlliance = createFaction(20, 'Lyran Alliance');
+        const unit = createUnit({ name: 'No Merge Atlas' });
+
+        registerEraAndFaction(era, federatedSuns);
+        factionsByName.set(lyranAlliance.name, lyranAlliance);
+        factionsById.set(lyranAlliance.id, lyranAlliance);
+        megaMekAvailabilityByUnitName.set(unit.name, {
+            e: {
+                '3150': {
+                    '10': [3, 1],
+                    '20': [2, 2],
+                },
+            },
+        });
+
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            era: {
+                interactedWith: true,
+                value: ['ilClan'],
+            },
+            faction: {
+                interactedWith: true,
+                value: {
+                    fs: { name: 'Federated Suns', state: 'or', count: 1 },
+                    la: { name: 'Lyran Alliance', state: 'or', count: 1 },
+                },
+            },
+        });
+        spyOn(Math, 'random').and.returnValue(0.75);
+
+        const context = service.resolveGenerationContext([unit], { mergeSelectedFactionAvailability: false });
+
+        expect(context.forceFaction).toBe(lyranAlliance);
+        expect(context.forceEra).toBe(era);
+        expect(context.availabilityFactionIds).toEqual([20]);
+        expect(context.useAvailabilityFactionScope).toBeFalse();
+    });
+
     it('limits implicit faction scope to factions with positive availability in the selected era', () => {
         const ilClan = createEra(3150, 'ilClan');
         const jihad = createEra(3067, 'Jihad');
@@ -2073,6 +2155,35 @@ describe('ForceGeneratorService', () => {
         expect(Math.abs((generatedUnit.gunnery ?? 0) - (generatedUnit.piloting ?? 0))).toBeLessThanOrEqual(1);
         expect(preview.explanationLines.some((line) => line.includes('Skill target: Gunnery 0-8, Piloting 0-8, max delta 1.'))).toBeTrue();
         expect(preview.explanationLines.some((line) => line.includes('G/P'))).toBeTrue();
+    });
+
+    it('preserves rolled Classic skills when the selected force is already within budget', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const unit = createUnit({ id: 1, name: 'Budget Valid Skill Range Unit', bv: 1000 });
+
+        spyOn(Math, 'random').and.returnValues(0.99, 0, 0, 0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [unit],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.CLASSIC,
+            budgetRange: { min: 0, max: 20000 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 3,
+            piloting: 3,
+            skillRanges: {
+                gunnery: { min: 3, max: 5 },
+                piloting: { min: 3, max: 5 },
+                maxDelta: 8,
+            },
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.length).toBe(1);
+        expect(preview.units[0].gunnery).toBe(5);
+        expect(preview.units[0].piloting).toBe(5);
     });
 
     it('rejects Classic skill ranges with no valid max-delta pair', () => {
