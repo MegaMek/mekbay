@@ -22,7 +22,7 @@ export function isClan(faction: Faction): boolean {
 	if (getFactionAffinity(faction).includes('Clan')) {
 		return true;
 	}
-	if (faction.name.includes('Escorpi') || faction.name.includes('Scorpion Empire')) {
+	if (faction.name.includes('Escorpi') || faction.name.includes('Scorpion Empire') || faction.name.includes('Dragoons')) {
 		return true;
 	}
 	return false;
