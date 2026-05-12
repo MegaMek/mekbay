@@ -990,6 +990,10 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     private isTargetFormationAvailableForSelectedFactions(definition: FormationTypeDefinition): boolean {
+        if (this.randomFactionSelected()) {
+            return true;
+        }
+
         const factionFilter = this.factionFilter();
         if (!factionFilter) {
             return true;

@@ -1273,6 +1273,33 @@ describe('SearchForceGeneratorDialogComponent', () => {
         );
     });
 
+    it('does not filter faction-specific target formations while Random faction is selected', () => {
+        advOptionsSignal.update((options) => ({
+            ...options,
+            faction: {
+                ...options.faction,
+                options: [
+                    { name: 'Free Worlds League' },
+                    { name: 'Federated Suns' },
+                ],
+            },
+        }));
+        const randomOptionName = component.targetFormationFactionOptions()[0].name;
+
+        component.onFactionSelectionChange({
+            [randomOptionName]: {
+                name: randomOptionName,
+                state: 'or',
+                count: 1,
+            },
+        });
+
+        const formationIds = new Set(component.targetFormationOptions().map((option) => option.name));
+
+        expect(formationIds.has('anvil-lance')).toBeTrue();
+        expect(formationIds.has('rifle-lance')).toBeTrue();
+    });
+
     it('forwards disabled selected-faction availability merging to context resolution', () => {
         advOptionsSignal.update((options) => ({
             ...options,
