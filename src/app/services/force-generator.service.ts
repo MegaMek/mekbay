@@ -2604,9 +2604,10 @@ export class ForceGeneratorService implements OnDestroy {
             selectionSteps: [],
             rulesetProfile: null,
         };
-        let bestAttemptTotalCost = Number.POSITIVE_INFINITY;
         let bestAttemptExceedsMax = true;
         let bestAttemptUnitCountDistance = Number.POSITIVE_INFINITY;
+        let bestAttemptBudgetDistance = Number.POSITIVE_INFINITY;
+        let bestAttemptMidpointDistance = Number.POSITIVE_INFINITY;
         let bestValidAttempt: ForceGenerationSelectionAttempt | null = null;
         let bestValidAttemptNumber: number | null = null;
         let bestValidMidpointDistance = Number.POSITIVE_INFINITY;
@@ -2662,8 +2663,16 @@ export class ForceGeneratorService implements OnDestroy {
                 attemptSkillBudgetPlanningCosts,
                 searchDeadline,
             );
-            const selectionAttempt = this.optimizeSelectionAttemptSkillsForBudget(
+            const minimumFilledSelectionAttempt = this.fillSelectionAttemptToMinimumUnitCount(
                 rawSelectionAttempt,
+                attemptCandidates,
+                minUnitCount,
+                maxUnitCount,
+                options.preventDuplicateChassis === true,
+                attemptSelectionPreparation,
+            );
+            const selectionAttempt = this.optimizeSelectionAttemptSkillsForBudget(
+                minimumFilledSelectionAttempt,
                 options.gameSystem,
                 skillSettings,
                 budgetRange,
@@ -2671,6 +2680,8 @@ export class ForceGeneratorService implements OnDestroy {
             const totalCost = selectionAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
             const attemptExceedsMax = Number.isFinite(budgetRange.max) && totalCost > budgetRange.max;
             const attemptUnitCountDistance = this.getUnitCountRangeDistance(selectionAttempt.selectedCandidates.length, minUnitCount, maxUnitCount);
+            const attemptBudgetDistance = this.getBudgetRangeDistance(totalCost, budgetRange);
+            const attemptMidpointDistance = Math.abs(totalCost - this.getBudgetTarget(budgetRange));
 
             if (
                 bestAttempt.selectedCandidates.length === 0
@@ -2681,20 +2692,25 @@ export class ForceGeneratorService implements OnDestroy {
                 || (
                     attemptExceedsMax === bestAttemptExceedsMax
                     && (
-                        (!attemptExceedsMax && totalCost > bestAttemptTotalCost)
-                        || (attemptExceedsMax && totalCost < bestAttemptTotalCost)
+                        attemptUnitCountDistance < bestAttemptUnitCountDistance
+                        || (
+                            attemptUnitCountDistance === bestAttemptUnitCountDistance
+                            && (
+                                attemptBudgetDistance < bestAttemptBudgetDistance
+                                || (
+                                    attemptBudgetDistance === bestAttemptBudgetDistance
+                                    && attemptMidpointDistance < bestAttemptMidpointDistance
+                                )
+                            )
+                        )
                     )
-                )
-                || (
-                    attemptExceedsMax === bestAttemptExceedsMax
-                    && totalCost === bestAttemptTotalCost
-                    && attemptUnitCountDistance < bestAttemptUnitCountDistance
                 )
             ) {
                 bestAttempt = selectionAttempt;
-                bestAttemptTotalCost = totalCost;
                 bestAttemptExceedsMax = attemptExceedsMax;
                 bestAttemptUnitCountDistance = attemptUnitCountDistance;
+                bestAttemptBudgetDistance = attemptBudgetDistance;
+                bestAttemptMidpointDistance = attemptMidpointDistance;
             }
 
             const isValid = selectionAttempt.selectedCandidates.length >= minUnitCount
@@ -5968,6 +5984,54 @@ export class ForceGeneratorService implements OnDestroy {
         source: ForceGenerationAvailabilitySource,
     ): number {
         return source === 'requisition' ? candidate.requisitionWeight : candidate.salvageWeight;
+    }
+
+    private fillSelectionAttemptToMinimumUnitCount(
+        selectionAttempt: ForceGenerationSelectionAttempt,
+        candidates: readonly ForceGenerationCandidateUnit[],
+        minUnitCount: number,
+        maxUnitCount: number,
+        preventDuplicateChassis: boolean,
+        selectionPreparation?: ForceGenerationSelectionPreparation,
+    ): ForceGenerationSelectionAttempt {
+        if (selectionAttempt.selectedCandidates.length >= minUnitCount) {
+            return selectionAttempt;
+        }
+
+        const selectedCandidates = [...selectionAttempt.selectedCandidates];
+        const selectionSteps = [...selectionAttempt.selectionSteps];
+        const allowUnlimitedDuplicateUnits = this.canReuseCandidateCopies(preventDuplicateChassis, candidates);
+
+        while (selectedCandidates.length < minUnitCount && selectedCandidates.length < maxUnitCount) {
+            const availableCandidates = this.filterAvailableTargetFormationCandidates(
+                candidates,
+                selectedCandidates,
+                preventDuplicateChassis,
+                allowUnlimitedDuplicateUnits,
+            );
+            if (availableCandidates.length === 0) {
+                break;
+            }
+
+            const nextPick = this.pickNextCandidate(
+                availableCandidates,
+                selectionAttempt.rulesetProfile,
+                selectionPreparation,
+            );
+            selectedCandidates.push(nextPick.candidate);
+            selectionSteps.push(this.createSelectionStep(nextPick.candidate, selectionAttempt.rulesetProfile, {
+                rolledSource: nextPick.rolledSource,
+                source: nextPick.source,
+                usedFallbackSource: nextPick.usedFallbackSource,
+            }, selectionPreparation));
+        }
+
+        return {
+            ...selectionAttempt,
+            selectedCandidates,
+            selectionSteps,
+            candidatePoolStarved: selectedCandidates.length < minUnitCount,
+        };
     }
 
     private getAvailabilitySourceRollWeight(source: ForceGenerationAvailabilitySource): number {
