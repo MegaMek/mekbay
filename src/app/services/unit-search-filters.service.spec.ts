@@ -2,6 +2,7 @@ import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import type { Eras } from '../models/eras.model';
+import type { Faction } from '../models/factions.model';
 import type { ForceUnit } from '../models/force-unit.model';
 import type { MULFactions } from '../models/mulfactions.model';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
@@ -359,6 +360,14 @@ const FEDERATED_SUNS_FACTION = 'Federated Suns';
 const CLAN_WOLF_FACTION = 'Clan Wolf';
 const RASALHAGUE_DOMINION_FACTION = 'Rasalhague Dominion';
 
+const CLAN_WOLF_TEST_FACTION: Faction = {
+    id: 3,
+    name: CLAN_WOLF_FACTION,
+    group: 'IS Clan',
+    img: '',
+    eras: {},
+};
+
 type NamedAvailabilityOption = { name: string; available?: boolean };
 
 function createFormationFactionBundle(): BenchmarkBundle {
@@ -396,18 +405,136 @@ function createFormationFactionBundle(): BenchmarkBundle {
     return bundle;
 }
 
-function createFormationExistingForceUnit(unit: Unit, gameSystem: GameSystem = GameSystem.ALPHA_STRIKE): ForceUnit {
+function createStrategicCommandBundle(): BenchmarkBundle {
+    const firstAerospace = createTestUnit({
+        id: 1,
+        name: 'Batu Prime',
+        chassis: 'Batu',
+        type: 'Aero',
+        subtype: 'Aerospace Fighter',
+        role: 'Interceptor',
+        as: {
+            ...createTestUnit({}).as,
+            TP: 'AF',
+            SZ: 3,
+            MVm: { a: 20 },
+        },
+    });
+    const secondAerospace = createTestUnit({
+        id: 2,
+        name: 'Visigoth Prime',
+        chassis: 'Visigoth',
+        type: 'Aero',
+        subtype: 'Aerospace Fighter',
+        role: 'Fast Dogfighter',
+        as: {
+            ...createTestUnit({}).as,
+            TP: 'AF',
+            SZ: 3,
+            MVm: { a: 22 },
+        },
+    });
+    const heavyMek = createTestUnit({
+        id: 3,
+        name: 'Timber Wolf Prime',
+        chassis: 'Timber Wolf',
+        weightClass: 'Heavy',
+        type: 'Mek',
+        subtype: 'BattleMek',
+        as: {
+            ...createTestUnit({}).as,
+            TP: 'BM',
+            SZ: 3,
+        },
+    });
+    const battleArmor = createTestUnit({
+        id: 4,
+        name: 'Elemental Point',
+        chassis: 'Elemental',
+        type: 'Infantry',
+        subtype: 'Battle Armor',
+        as: {
+            ...createTestUnit({}).as,
+            TP: 'BA',
+            SZ: 1,
+        },
+    });
+    const lightMek = createTestUnit({
+        id: 5,
+        name: 'Adder Prime',
+        chassis: 'Adder',
+        weightClass: 'Light',
+        type: 'Mek',
+        subtype: 'BattleMek',
+        as: {
+            ...createTestUnit({}).as,
+            TP: 'BM',
+            SZ: 1,
+        },
+    });
+    const tank = createTestUnit({
+        id: 6,
+        name: 'Vedette Tank',
+        chassis: 'Vedette',
+        type: 'Tank',
+        subtype: 'Combat Vehicle',
+        as: {
+            ...createTestUnit({}).as,
+            TP: 'CV',
+            SZ: 2,
+        },
+    });
+
+    return {
+        units: {
+            version: 'test',
+            etag: 'test',
+            units: [firstAerospace, secondAerospace, heavyMek, battleArmor, lightMek, tank],
+        },
+        eras: {
+            version: 'test',
+            etag: 'test',
+            eras: [{
+                id: 1,
+                name: 'Clan Invasion',
+                img: '',
+                years: {
+                    from: 3050,
+                    to: 3100,
+                },
+                units: [1, 2, 3, 4, 5, 6],
+                factions: [],
+            }],
+        },
+        factions: {
+            version: 'test',
+            etag: 'test',
+            factions: [{
+                ...CLAN_WOLF_TEST_FACTION,
+                eras: {
+                    1: new Set([1, 2, 3, 4, 5, 6]),
+                },
+            }],
+        },
+    };
+}
+
+function createFormationExistingForceUnit(
+    unit: Unit,
+    gameSystem: GameSystem = GameSystem.ALPHA_STRIKE,
+    options: { faction?: Faction; pilotSkill?: number; gunnerySkill?: number } = {},
+): ForceUnit {
     return {
         force: {
-            faction: () => null,
+            faction: () => options.faction ?? null,
             era: () => null,
             techBase: () => 'Inner Sphere',
             gameSystem,
         },
         getUnit: () => unit,
         getBv: () => 0,
-        pilotSkill: () => 4,
-        gunnerySkill: () => 4,
+        pilotSkill: () => options.pilotSkill ?? 4,
+        gunnerySkill: () => options.gunnerySkill ?? 4,
     } as unknown as ForceUnit;
 }
 
@@ -832,6 +959,28 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.semanticFilterKeys().has(FORMATION_TARGET_FILTER_KEY)).toBeTrue();
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
         expect(service.forceGeneratorEligibleUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
+    });
+
+    it('does not let unassigned catalog skills block Strategic Command formation filtering', () => {
+        const bundle = createStrategicCommandBundle();
+        const { service, gameServiceStub } = createService(bundle);
+        const existingUnits = [
+            createFormationExistingForceUnit(bundle.units.units[0], GameSystem.ALPHA_STRIKE, { faction: CLAN_WOLF_TEST_FACTION, pilotSkill: 4, gunnerySkill: 4 }),
+            createFormationExistingForceUnit(bundle.units.units[1], GameSystem.ALPHA_STRIKE, { faction: CLAN_WOLF_TEST_FACTION, pilotSkill: 4, gunnerySkill: 4 }),
+        ];
+
+        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        service.setFormationTarget({
+            formationId: 'strategic-command-star',
+            existingUnits,
+            gameSystem: GameSystem.ALPHA_STRIKE,
+        });
+
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Elemental Point', 'Timber Wolf Prime']);
+
+        service.setSearchText('formation="Strategic Command"');
+
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Elemental Point', 'Timber Wolf Prime']);
     });
 
     it('limits faction dropdown availability by manual and semantic formation targets', () => {

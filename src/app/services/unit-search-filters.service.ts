@@ -166,6 +166,8 @@ interface UnitSearchClosePanelsRequest {
 
 @Injectable({ providedIn: 'root' })
 export class UnitSearchFiltersService {
+    private static readonly FORMATION_SEARCH_ASSIGNED_SKILL = 0;
+
     dataService = inject(DataService);
     optionsService = inject(OptionsService);
     gameService = inject(GameService);
@@ -2074,11 +2076,12 @@ export class UnitSearchFiltersService {
             return units;
         }
 
+        const existingUnits = this.createFormationSearchUnits(target.existingUnits);
         const applyTargetFilter = () => units.filter(unit => {
             const candidate = this.createFormationCandidateUnit(unit, target);
             return FormationRequirementEngine.evaluateSearchCandidate(
                 definition,
-                target.existingUnits,
+                existingUnits,
                 candidate,
                 target.gameSystem,
                 { maxUnits: target.maxUnits ?? definition.maxUnits },
@@ -2106,11 +2109,22 @@ export class UnitSearchFiltersService {
             gameSystem: target.gameSystem,
         };
 
-        return {
+        return this.createFormationSearchUnit({
             force: baseForce,
             getUnit: () => unit,
-            pilotSkill: () => this.pilotGunnerySkill(),
-            gunnerySkill: () => this.pilotGunnerySkill(),
+        });
+    }
+
+    private createFormationSearchUnits(units: readonly FormationUnitLike[]): readonly FormationUnitLike[] {
+        return units.map(unit => this.createFormationSearchUnit(unit));
+    }
+
+    private createFormationSearchUnit(unit: FormationUnitLike): FormationUnitLike {
+        return {
+            force: unit.force,
+            getUnit: () => unit.getUnit(),
+            pilotSkill: () => UnitSearchFiltersService.FORMATION_SEARCH_ASSIGNED_SKILL,
+            gunnerySkill: () => UnitSearchFiltersService.FORMATION_SEARCH_ASSIGNED_SKILL,
         };
     }
 
@@ -2195,10 +2209,11 @@ export class UnitSearchFiltersService {
             minUnits: definition.minUnits,
             maxUnits: definition.maxUnits,
         };
+        const existingUnits = this.createFormationSearchUnits(target.existingUnits);
         const candidate = this.createFormationCandidateUnit(unit, target);
         return FormationRequirementEngine.evaluateSearchCandidate(
             definition,
-            target.existingUnits,
+            existingUnits,
             candidate,
             gameSystem,
             { maxUnits: target.maxUnits ?? definition.maxUnits },
