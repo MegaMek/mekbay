@@ -46,6 +46,7 @@ import type {
     MegaMekRulesetNodeBase,
     MegaMekRulesetOptionGroup,
     MegaMekRulesetOptionNode,
+    MegaMekRulesetRankNode,
     MegaMekRulesetRecord,
     MegaMekRulesetRuleGroup,
     MegaMekRulesetSubforceGroup,
@@ -200,6 +201,19 @@ interface ForceGenerationRulesetTemplate {
     fluffNames: Set<string>;
 }
 
+interface ForceGenerationRulesetCommanderPreference {
+    role: 'co' | 'xo';
+    rank: string;
+    title?: string;
+    position?: number;
+    unitType?: string;
+}
+
+interface ForceGenerationRulesetCommanderAssignment {
+    candidate: ForceGenerationCandidateUnit;
+    preference: ForceGenerationRulesetCommanderPreference;
+}
+
 interface RulesetGenerationCohesion {
     mode: string;
     chassis?: string;
@@ -318,6 +332,7 @@ interface ForceGenerationRulesetProfile {
     preferredNames: Set<string>;
     preferredFluffNames: Set<string>;
     commanderUnitTypes: Set<string>;
+    commanders: ForceGenerationRulesetCommanderPreference[];
     templates: ForceGenerationRulesetTemplate[];
     explanationNotes: string[];
 }
@@ -589,6 +604,10 @@ export interface GeneratedForceUnit {
     piloting?: number;
     alias?: string;
     commander?: boolean;
+    commanderRole?: 'co' | 'xo';
+    commanderRank?: string;
+    commanderTitle?: string;
+    commanderPosition?: number;
     lockKey?: string;
 }
 
@@ -5180,7 +5199,10 @@ export class ForceGeneratorService implements OnDestroy {
         };
     }
 
-    private createGeneratedUnit(candidate: ForceGenerationCandidateUnit, commander = false): GeneratedForceUnit {
+    private createGeneratedUnit(
+        candidate: ForceGenerationCandidateUnit,
+        commanderAssignment?: ForceGenerationRulesetCommanderPreference,
+    ): GeneratedForceUnit {
         return {
             unit: candidate.unit,
             cost: candidate.cost,
@@ -5188,27 +5210,52 @@ export class ForceGeneratorService implements OnDestroy {
             gunnery: candidate.gunnery,
             piloting: candidate.piloting,
             alias: candidate.alias,
-            commander: commander || candidate.commander,
+            commander: !!commanderAssignment || candidate.commander,
+            commanderRole: commanderAssignment?.role,
+            commanderRank: commanderAssignment?.rank,
+            commanderTitle: commanderAssignment?.title,
+            commanderPosition: commanderAssignment?.position,
             lockKey: candidate.lockKey ?? generateUUID(),
         };
     }
 
-    private resolveRulesetCommanderCandidate(
+    private resolveRulesetCommanderAssignment(
         selectionAttempt: ForceGenerationSelectionAttempt,
-    ): ForceGenerationCandidateUnit | null {
+    ): ForceGenerationRulesetCommanderAssignment | null {
         if (selectionAttempt.selectedCandidates.length === 0
             || selectionAttempt.selectedCandidates.some((candidate) => candidate.commander)) {
             return null;
         }
 
-        const commanderUnitTypes = selectionAttempt.rulesetProfile?.commanderUnitTypes;
-        if (!commanderUnitTypes || commanderUnitTypes.size === 0) {
+        const commanders = selectionAttempt.rulesetProfile?.commanders ?? [];
+        if (commanders.length === 0) {
             return null;
         }
 
-        return selectionAttempt.selectedCandidates.find((candidate) => {
-            return commanderUnitTypes.has(normalizeRulesetToken(candidate.megaMekUnitType));
-        }) ?? selectionAttempt.selectedCandidates[0];
+        const commanderPreference = commanders.find((preference) => preference.role === 'co') ?? commanders[0];
+        return {
+            candidate: this.resolveRulesetCommanderCandidate(selectionAttempt.selectedCandidates, commanderPreference),
+            preference: commanderPreference,
+        };
+    }
+
+    private resolveRulesetCommanderCandidate(
+        candidates: readonly ForceGenerationCandidateUnit[],
+        commanderPreference: ForceGenerationRulesetCommanderPreference,
+    ): ForceGenerationCandidateUnit {
+        const matchesUnitType = (candidate: ForceGenerationCandidateUnit): boolean => {
+            return !commanderPreference.unitType
+                || normalizeRulesetToken(candidate.megaMekUnitType) === normalizeRulesetToken(commanderPreference.unitType);
+        };
+        const positionCandidate = commanderPreference.position && commanderPreference.position > 0
+            ? candidates[commanderPreference.position - 1]
+            : undefined;
+
+        if (positionCandidate && matchesUnitType(positionCandidate)) {
+            return positionCandidate;
+        }
+
+        return candidates.find(matchesUnitType) ?? positionCandidate ?? candidates[0];
     }
 
     private buildPreviewExplanation(
@@ -5399,9 +5446,12 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         const totalCost = selectionAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
-        const rulesetCommanderCandidate = this.resolveRulesetCommanderCandidate(selectionAttempt);
+        const rulesetCommanderAssignment = this.resolveRulesetCommanderAssignment(selectionAttempt);
         const units = selectionAttempt.selectedCandidates.map((candidate) => {
-            return this.createGeneratedUnit(candidate, candidate === rulesetCommanderCandidate);
+            return this.createGeneratedUnit(
+                candidate,
+                candidate === rulesetCommanderAssignment?.candidate ? rulesetCommanderAssignment.preference : undefined,
+            );
         });
         const targetFormations = this.resolveRequestedTargetFormations(options);
         const targetFormationId = targetFormations.length === 1 && targetFormations[0].count === 1
@@ -6603,7 +6653,11 @@ export class ForceGeneratorService implements OnDestroy {
                 ? improvingCandidateDecisions
                 : formationCandidateDecisions;
             const candidateDecisionByUnit = new Map(candidateDecisions.map((entry) => [entry.candidate, entry.decision]));
-            const pickableCandidates = candidateDecisions.map((entry) => entry.candidate);
+            const pickableCandidates = this.getRulesetTemplateCandidatePool(
+                candidateDecisions.map((entry) => entry.candidate),
+                selectedCandidates,
+                rulesetProfile,
+            );
             const nextPick = this.pickNextCandidate(
                 pickableCandidates,
                 rulesetProfile,
@@ -7506,6 +7560,75 @@ export class ForceGeneratorService implements OnDestroy {
         };
     }
 
+    private getRulesetTemplateCandidatePool(
+        candidates: readonly ForceGenerationCandidateUnit[],
+        selectedCandidates: readonly ForceGenerationCandidateUnit[],
+        rulesetProfile: ForceGenerationRulesetProfile | null,
+    ): readonly ForceGenerationCandidateUnit[] {
+        const template = this.getNextUnfilledRulesetTemplate(rulesetProfile, selectedCandidates);
+        if (!template) {
+            return candidates;
+        }
+
+        const matchingCandidates = candidates.filter((candidate) => this.candidateMatchesRulesetTemplate(candidate, template));
+        return matchingCandidates.length > 0 ? matchingCandidates : candidates;
+    }
+
+    private getNextUnfilledRulesetTemplate(
+        rulesetProfile: ForceGenerationRulesetProfile | null,
+        selectedCandidates: readonly ForceGenerationCandidateUnit[],
+    ): ForceGenerationRulesetTemplate | null {
+        if (!rulesetProfile || rulesetProfile.templates.length === 0) {
+            return null;
+        }
+
+        const remainingTemplates = rulesetProfile.templates.filter((template) => this.isRulesetTemplateConstrained(template));
+        for (const selectedCandidate of selectedCandidates) {
+            const templateIndex = remainingTemplates.findIndex((template) => this.candidateMatchesRulesetTemplate(selectedCandidate, template));
+            if (templateIndex >= 0) {
+                remainingTemplates.splice(templateIndex, 1);
+            }
+        }
+
+        return remainingTemplates[0] ?? null;
+    }
+
+    private candidateMatchesRulesetTemplate(
+        candidate: ForceGenerationCandidateUnit,
+        template: ForceGenerationRulesetTemplate,
+    ): boolean {
+        if (template.unitTypes.size > 0 && !template.unitTypes.has(normalizeRulesetToken(candidate.megaMekUnitType))) {
+            return false;
+        }
+        if (template.weightClasses.size > 0
+            && (!candidate.megaMekWeightClass || !template.weightClasses.has(normalizeRulesetToken(candidate.megaMekWeightClass)))) {
+            return false;
+        }
+        if (template.roles.size > 0 && (!candidate.role || !template.roles.has(normalizeRulesetToken(candidate.role)))) {
+            return false;
+        }
+        if (template.motives.size > 0 && (!candidate.motive || !template.motives.has(normalizeRulesetToken(candidate.motive)))) {
+            return false;
+        }
+        if (template.chassis.size > 0 && !this.matchesPreferredCandidateValues(template.chassis, [candidate.unit.chassis])) {
+            return false;
+        }
+        if (template.variants.size > 0 && !this.matchesPreferredCandidateValues(template.variants, [candidate.unit.model])) {
+            return false;
+        }
+        if (template.models.size > 0 && !this.matchesPreferredCandidateValues(template.models, this.getRulesetCandidateModelValues(candidate))) {
+            return false;
+        }
+        if (template.names.size > 0 && !this.matchesPreferredCandidateValues(template.names, this.getRulesetCandidateNameValues(candidate))) {
+            return false;
+        }
+        if (template.fluffNames.size > 0 && !this.matchesPreferredCandidateValues(template.fluffNames, this.getRulesetCandidateNameValues(candidate))) {
+            return false;
+        }
+
+        return true;
+    }
+
     private pickNextCandidate(
         candidates: readonly ForceGenerationCandidateUnit[],
         rulesetProfile: ForceGenerationRulesetProfile | null,
@@ -7705,8 +7828,14 @@ export class ForceGeneratorService implements OnDestroy {
                 break;
             }
 
-            const nextPick = this.pickNextCandidate(
+            const rulesetCandidatePool = this.getRulesetTemplateCandidatePool(
                 chassisFilteredCandidatePool,
+                selectedCandidates,
+                rulesetProfile,
+            );
+
+            const nextPick = this.pickNextCandidate(
+                rulesetCandidatePool,
                 rulesetProfile,
                 preparedSelection,
             );
@@ -7841,6 +7970,7 @@ export class ForceGeneratorService implements OnDestroy {
             preferredNames: new Set<string>(),
             preferredFluffNames: new Set<string>(),
             commanderUnitTypes: new Set<string>(),
+            commanders: [],
             templates: [],
             explanationNotes: [],
         };
@@ -8434,8 +8564,13 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         const commanderNode = (forceNode.co ?? []).find((node) => this.matchesRulesetWhen(node.when, currentMatchContext));
-        if (commanderNode?.unitType) {
-            this.addRulesetValues(profile.commanderUnitTypes, [commanderNode.unitType]);
+        if (commanderNode) {
+            this.addRulesetCommanderPreference(profile, 'co', commanderNode);
+        }
+
+        const executiveNode = (forceNode.xo ?? []).find((node) => this.matchesRulesetWhen(node.when, currentMatchContext));
+        if (executiveNode) {
+            this.addRulesetCommanderPreference(profile, 'xo', executiveNode);
         }
     }
 
@@ -8679,7 +8814,6 @@ export class ForceGeneratorService implements OnDestroy {
                 continue;
             }
 
-            this.mergeRulesetNodeIntoProfile(profile, subforceGroup.assign);
             const groupChildMatchContext = this.applyRulesetNodeToMatchContext(matchContext, subforceGroup.assign);
             const groupGenerateMode = resolveRulesetGenerateMode(subforceGroup.generate, inheritedGenerateMode);
             const groupCohesion = this.resolveRulesetGenerationCohesion(
@@ -8772,9 +8906,6 @@ export class ForceGeneratorService implements OnDestroy {
             return 0;
         }
 
-        this.mergeRulesetNodeIntoProfile(profile, node);
-        this.mergeRulesetNodeIntoProfile(profile, node.assign);
-
         const nodeRulesetContext = this.resolveSwitchedRulesetContext(
             baseRulesetContext,
             forceEra,
@@ -8795,11 +8926,6 @@ export class ForceGeneratorService implements OnDestroy {
             nodeGenerateMode,
             inheritedCohesion,
         );
-        const template = this.createRulesetTemplate(node, nodeGenerateMode, nodeCohesion, childMatchContext);
-        for (let index = 0; template && index < repeatCount && templateCount < limit; index += 1) {
-            profile.templates.push(template);
-            templateCount += 1;
-        }
 
         const visitationKey = [
             nodeRulesetContext.primary?.factionKey ?? 'none',
@@ -8809,28 +8935,39 @@ export class ForceGeneratorService implements OnDestroy {
             childMatchContext.role ?? '',
             childMatchContext.motive ?? '',
         ].join('|');
-        if (visited.has(visitationKey) || nodeRulesetContext.chain.length === 0) {
+        const canVisitChildRuleset = !visited.has(visitationKey) && nodeRulesetContext.chain.length > 0;
+        const childForceNode = canVisitChildRuleset
+            ? this.findMatchingForceNode(nodeRulesetContext.chain, childMatchContext)
+            : undefined;
+
+        const template = this.createRulesetTemplate(node, nodeGenerateMode, nodeCohesion, childMatchContext)
+            ?? this.createEmptyRulesetTemplate(nodeGenerateMode);
+        if (childForceNode) {
+            this.mergeRulesetForceNodeIntoTemplate(template, childForceNode, childMatchContext);
+        }
+        for (let index = 0; this.isRulesetTemplateConstrained(template) && index < repeatCount && templateCount < limit; index += 1) {
+            profile.templates.push(template);
+            templateCount += 1;
+        }
+
+        if (!canVisitChildRuleset || !childForceNode) {
             return templateCount;
         }
 
         visited.add(visitationKey);
-        const childForceNode = this.findMatchingForceNode(nodeRulesetContext.chain, childMatchContext);
-        if (childForceNode) {
-            this.applyForceNodeToProfile(profile, childForceNode, childMatchContext);
-            templateCount += this.collectRulesetTemplates(
-                profile,
-                candidates,
-                childForceNode,
-                childMatchContext,
-                nodeRulesetContext,
-                forceEra,
-                limit - templateCount,
-                depth,
-                visited,
-                nodeGenerateMode,
-                nodeCohesion,
-            );
-        }
+        templateCount += this.collectRulesetTemplates(
+            profile,
+            candidates,
+            childForceNode,
+            childMatchContext,
+            nodeRulesetContext,
+            forceEra,
+            limit - templateCount,
+            depth,
+            visited,
+            nodeGenerateMode,
+            nodeCohesion,
+        );
         visited.delete(visitationKey);
 
         return templateCount;
@@ -8970,50 +9107,75 @@ export class ForceGeneratorService implements OnDestroy {
         return true;
     }
 
+    private mergeRulesetForceNodeIntoTemplate(
+        template: ForceGenerationRulesetTemplate,
+        forceNode: MegaMekRulesetForceNode,
+        matchContext: RulesetMatchContext,
+    ): void {
+        this.mergeRulesetWhenIntoTemplate(template, forceNode.when);
+        this.mergeRulesetNodeIntoTemplate(template, forceNode.assign);
+        let currentMatchContext = this.applyRulesetNodeToMatchContext(matchContext, forceNode.assign);
+        currentMatchContext = this.mergeRulesetGroupIntoTemplate(template, forceNode.unitType, currentMatchContext);
+        currentMatchContext = this.mergeRulesetGroupIntoTemplate(template, forceNode.weightClass, currentMatchContext);
+        currentMatchContext = this.mergeRulesetGroupIntoTemplate(template, forceNode.chassis, currentMatchContext);
+        currentMatchContext = this.mergeRulesetGroupIntoTemplate(template, forceNode.variant, currentMatchContext);
+        currentMatchContext = this.mergeRulesetGroupIntoTemplate(template, forceNode.formation, currentMatchContext);
+        currentMatchContext = this.mergeRulesetGroupIntoTemplate(template, forceNode.role, currentMatchContext);
+        currentMatchContext = this.mergeRulesetGroupIntoTemplate(template, forceNode.motive, currentMatchContext);
+        currentMatchContext = this.mergeRulesetGroupIntoTemplate(template, forceNode.flags, currentMatchContext);
+
+        for (const ruleGroup of forceNode.ruleGroup ?? []) {
+            if (!this.matchesRulesetWhen(ruleGroup.when, currentMatchContext)) {
+                continue;
+            }
+
+            currentMatchContext = this.mergeRulesetGroupIntoTemplate(template, ruleGroup.unitType, currentMatchContext);
+            currentMatchContext = this.mergeRulesetGroupIntoTemplate(template, ruleGroup.weightClass, currentMatchContext);
+            currentMatchContext = this.mergeRulesetGroupIntoTemplate(template, ruleGroup.chassis, currentMatchContext);
+            currentMatchContext = this.mergeRulesetGroupIntoTemplate(template, ruleGroup.variant, currentMatchContext);
+            currentMatchContext = this.mergeRulesetGroupIntoTemplate(template, ruleGroup.formation, currentMatchContext);
+            currentMatchContext = this.mergeRulesetGroupIntoTemplate(template, ruleGroup.role, currentMatchContext);
+            currentMatchContext = this.mergeRulesetGroupIntoTemplate(template, ruleGroup.motive, currentMatchContext);
+            currentMatchContext = this.mergeRulesetGroupIntoTemplate(template, ruleGroup.flags, currentMatchContext);
+        }
+    }
+
+    private mergeRulesetGroupIntoTemplate(
+        template: ForceGenerationRulesetTemplate,
+        groupNode: MegaMekRulesetOptionGroup | undefined,
+        matchContext: RulesetMatchContext,
+    ): RulesetMatchContext {
+        if (!groupNode || !this.matchesRulesetWhen(groupNode.when, matchContext)) {
+            return matchContext;
+        }
+
+        this.mergeRulesetNodeIntoTemplate(template, groupNode);
+        let nextMatchContext = this.applyRulesetNodeToMatchContext(matchContext, groupNode);
+        const matchingOptions = (groupNode.options ?? [])
+            .filter((option) => this.matchesRulesetWhen(option.when, nextMatchContext));
+        if (matchingOptions.length === 0) {
+            return nextMatchContext;
+        }
+
+        const selectedOption = pickWeightedRandomEntry(matchingOptions, (option) => getRulesetOptionWeight(option));
+        this.mergeRulesetWhenIntoTemplate(template, selectedOption.when);
+        this.mergeRulesetNodeIntoTemplate(template, selectedOption);
+        this.mergeRulesetNodeIntoTemplate(template, selectedOption.assign);
+        nextMatchContext = this.applyRulesetWhenToMatchContext(nextMatchContext, selectedOption.when);
+        nextMatchContext = this.applyRulesetNodeToMatchContext(nextMatchContext, selectedOption);
+        return this.applyRulesetNodeToMatchContext(nextMatchContext, selectedOption.assign);
+    }
+
     private createRulesetTemplate(
         node: MegaMekRulesetSubforceNode,
         generationMode?: string,
         cohesion?: RulesetGenerationCohesion,
         matchContext?: RulesetMatchContext,
     ): ForceGenerationRulesetTemplate | null {
-        const template: ForceGenerationRulesetTemplate = {
-            generationMode,
-            unitTypes: new Set<string>(),
-            weightClasses: new Set<string>(),
-            formations: new Set<string>(),
-            roles: new Set<string>(),
-            motives: new Set<string>(),
-            chassis: new Set<string>(),
-            models: new Set<string>(),
-            variants: new Set<string>(),
-            names: new Set<string>(),
-            fluffNames: new Set<string>(),
-        };
+        const template = this.createEmptyRulesetTemplate(generationMode);
 
-        this.addRulesetValues(template.unitTypes, node.unitTypes ?? []);
-        this.addRulesetValues(template.weightClasses, node.weightClasses ?? []);
-        this.addRulesetValues(template.formations, node.formations ?? []);
-        this.addRulesetValues(template.roles, node.roles ?? []);
-        this.addRulesetValues(template.motives, node.motives ?? []);
-        this.addRulesetValues(template.chassis, node.chassis ?? []);
-        this.addRulesetValues(template.models, node.models ?? []);
-        this.addRulesetValues(template.models, node.model ? [node.model] : []);
-        this.addRulesetValues(template.variants, node.variants ?? []);
-        this.addRulesetValues(template.names, node.name ? [node.name] : []);
-        this.addRulesetValues(template.fluffNames, node.fluffName ? [node.fluffName] : []);
-
-        const assignedNode = node.assign;
-        this.addRulesetValues(template.unitTypes, assignedNode?.unitTypes ?? []);
-        this.addRulesetValues(template.weightClasses, assignedNode?.weightClasses ?? []);
-        this.addRulesetValues(template.formations, assignedNode?.formations ?? []);
-        this.addRulesetValues(template.roles, assignedNode?.roles ?? []);
-        this.addRulesetValues(template.motives, assignedNode?.motives ?? []);
-        this.addRulesetValues(template.chassis, assignedNode?.chassis ?? []);
-        this.addRulesetValues(template.models, assignedNode?.models ?? []);
-        this.addRulesetValues(template.models, assignedNode?.model ? [assignedNode.model] : []);
-        this.addRulesetValues(template.variants, assignedNode?.variants ?? []);
-        this.addRulesetValues(template.names, assignedNode?.name ? [assignedNode.name] : []);
-        this.addRulesetValues(template.fluffNames, assignedNode?.fluffName ? [assignedNode.fluffName] : []);
+        this.mergeRulesetNodeIntoTemplate(template, node);
+        this.mergeRulesetNodeIntoTemplate(template, node.assign);
 
         this.addRulesetValues(template.unitTypes, matchContext?.unitType ? [matchContext.unitType] : []);
         this.addRulesetValues(template.weightClasses, matchContext?.weightClass ? [matchContext.weightClass] : []);
@@ -9028,6 +9190,62 @@ export class ForceGeneratorService implements OnDestroy {
             this.addRulesetValues(template.chassis, [cohesion.chassis]);
         }
 
+        return this.isRulesetTemplateConstrained(template) ? template : null;
+    }
+
+    private createEmptyRulesetTemplate(generationMode?: string): ForceGenerationRulesetTemplate {
+        return {
+            generationMode,
+            unitTypes: new Set<string>(),
+            weightClasses: new Set<string>(),
+            formations: new Set<string>(),
+            roles: new Set<string>(),
+            motives: new Set<string>(),
+            chassis: new Set<string>(),
+            models: new Set<string>(),
+            variants: new Set<string>(),
+            names: new Set<string>(),
+            fluffNames: new Set<string>(),
+        };
+    }
+
+    private mergeRulesetNodeIntoTemplate(
+        template: ForceGenerationRulesetTemplate,
+        node: RulesetPreferenceSource | undefined,
+    ): void {
+        if (!node) {
+            return;
+        }
+
+        this.addRulesetValues(template.unitTypes, node.unitTypes ?? []);
+        this.addRulesetValues(template.weightClasses, node.weightClasses ?? []);
+        this.addRulesetValues(template.formations, node.formations ?? []);
+        this.addRulesetValues(template.roles, node.roles ?? []);
+        this.addRulesetValues(template.motives, node.motives ?? []);
+        this.addRulesetValues(template.chassis, node.chassis ?? []);
+        this.addRulesetValues(template.models, node.models ?? []);
+        this.addRulesetValues(template.models, node.model ? [node.model] : []);
+        this.addRulesetValues(template.variants, node.variants ?? []);
+        this.addRulesetValues(template.names, node.name ? [node.name] : []);
+        this.addRulesetValues(template.fluffNames, node.fluffName ? [node.fluffName] : []);
+    }
+
+    private mergeRulesetWhenIntoTemplate(
+        template: ForceGenerationRulesetTemplate,
+        when: MegaMekRulesetWhen | undefined,
+    ): void {
+        if (!when) {
+            return;
+        }
+
+        this.addRulesetValues(template.unitTypes, getPositiveRulesetValues(when.unitTypes));
+        this.addRulesetValues(template.weightClasses, getPositiveRulesetValues(when.weightClasses));
+        this.addRulesetValues(template.formations, getPositiveRulesetValues(when.formations));
+        this.addRulesetValues(template.roles, getPositiveRulesetValues(when.roles));
+        this.addRulesetValues(template.motives, getPositiveRulesetValues(when.motives));
+    }
+
+    private isRulesetTemplateConstrained(template: ForceGenerationRulesetTemplate): boolean {
         return template.unitTypes.size > 0
             || template.weightClasses.size > 0
             || template.formations.size > 0
@@ -9037,14 +9255,42 @@ export class ForceGeneratorService implements OnDestroy {
             || template.models.size > 0
             || template.variants.size > 0
             || template.names.size > 0
-            || template.fluffNames.size > 0
-            ? template
-            : null;
+            || template.fluffNames.size > 0;
     }
 
     private addRulesetValues(target: Set<string>, values: readonly RulesetStringValue[]): void {
         for (const value of values) {
-            target.add(normalizeRulesetToken(getRulesetStringValue(value)));
+            const rawValue = getRulesetStringValue(value);
+            const normalizedValue = normalizeRulesetToken(rawValue.startsWith('+') || rawValue.startsWith('-')
+                ? rawValue.slice(1)
+                : rawValue);
+            if (!normalizedValue) {
+                continue;
+            }
+
+            if (rawValue.startsWith('-')) {
+                target.delete(normalizedValue);
+            } else {
+                target.add(normalizedValue);
+            }
+        }
+    }
+
+    private addRulesetCommanderPreference(
+        profile: ForceGenerationRulesetProfile,
+        role: 'co' | 'xo',
+        commanderNode: MegaMekRulesetRankNode,
+    ): void {
+        const preference: ForceGenerationRulesetCommanderPreference = {
+            role,
+            rank: commanderNode.rank,
+            title: commanderNode.title,
+            position: commanderNode.position,
+            unitType: commanderNode.unitType,
+        };
+        profile.commanders.push(preference);
+        if (commanderNode.unitType) {
+            this.addRulesetValues(profile.commanderUnitTypes, [commanderNode.unitType]);
         }
     }
 

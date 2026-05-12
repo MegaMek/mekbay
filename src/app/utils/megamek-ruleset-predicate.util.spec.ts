@@ -81,8 +81,179 @@ describe('MegaMek ruleset predicate evaluator', () => {
         expect(matchesMegaMekRulesetWhen({
             expressions: { ifEschelon: '%COMPANY%^|%LANCE%^' },
         }, {
-            echelon: 'COMPANY^',
+            echelon: 'COMPANY',
+            augmented: true,
         })).toBeTrue();
+        expect(matchesMegaMekRulesetWhen({
+            expressions: { ifEschelon: '%COMPANY%^|%LANCE%^' },
+        }, {
+            echelon: 'COMPANY',
+            augmented: false,
+        })).toBeFalse();
+    });
+
+    it('evaluates every raw predicate for both acceptance and rejection', () => {
+        const cases: Array<{
+            label: string;
+            when: MegaMekRulesetWhen;
+            passingContext: Parameters<typeof matchesMegaMekRulesetWhen>[1];
+            failingContext: Parameters<typeof matchesMegaMekRulesetWhen>[1];
+        }> = [
+            {
+                label: 'ifUnitType',
+                when: { expressions: { ifUnitType: 'Mek|Tank' } },
+                passingContext: { unitType: 'Mek' },
+                failingContext: { unitType: 'AeroSpaceFighter' },
+            },
+            {
+                label: 'ifWeightClass',
+                when: { expressions: { ifWeightClass: 'H|A' } },
+                passingContext: { weightClass: 'H' },
+                failingContext: { weightClass: 'M' },
+            },
+            {
+                label: 'ifRating',
+                when: { expressions: { ifRating: 'A|B' } },
+                passingContext: { rating: 'B' },
+                failingContext: { rating: 'C' },
+            },
+            {
+                label: 'ifEschelon',
+                when: { expressions: { ifEschelon: '%COMPANY%^|%LANCE%' } },
+                passingContext: { echelon: 'COMPANY', augmented: true },
+                failingContext: { echelon: 'COMPANY', augmented: false },
+            },
+            {
+                label: 'ifFormation',
+                when: { expressions: { ifFormation: 'assault|strike' } },
+                passingContext: { formation: 'strike' },
+                failingContext: { formation: 'cavalry' },
+            },
+            {
+                label: 'ifRole',
+                when: { expressions: { ifRole: 'command,recon|fire' } },
+                passingContext: { roles: ['command', 'recon'] },
+                failingContext: { roles: ['command', 'urban'] },
+            },
+            {
+                label: 'ifMotive',
+                when: { expressions: { ifMotive: 'tracked|wheeled' } },
+                passingContext: { motives: ['tracked'] },
+                failingContext: { motives: ['hover'] },
+            },
+            {
+                label: 'ifAugmented',
+                when: { expressions: { ifAugmented: '1' } },
+                passingContext: { augmented: true },
+                failingContext: { augmented: false },
+            },
+            {
+                label: 'ifDateBetween',
+                when: { expressions: { ifDateBetween: '3025,3050|3075,' } },
+                passingContext: { year: 3039 },
+                failingContext: { year: 3060 },
+            },
+            {
+                label: 'ifYearBetween',
+                when: { expressions: { ifYearBetween: ',3050' } },
+                passingContext: { year: 3025 },
+                failingContext: { year: 3067 },
+            },
+            {
+                label: 'ifTopLevel',
+                when: { expressions: { ifTopLevel: '1' } },
+                passingContext: { topLevel: true },
+                failingContext: { topLevel: false },
+            },
+            {
+                label: 'ifName',
+                when: { expressions: { ifName: 'Alpha Galaxy|Beta Galaxy' } },
+                passingContext: { name: 'Beta Galaxy' },
+                failingContext: { name: 'Gamma Galaxy' },
+            },
+            {
+                label: 'ifFaction',
+                when: { expressions: { ifFaction: 'CC|FS' } },
+                passingContext: { factionKey: 'CC' },
+                failingContext: { factionKey: 'DC' },
+            },
+            {
+                label: 'ifFlags',
+                when: { expressions: { ifFlags: 'elite,recon|command' } },
+                passingContext: { flags: ['elite', 'command'] },
+                failingContext: { flags: ['elite'] },
+            },
+            {
+                label: 'ifIndex',
+                when: { expressions: { ifIndex: '!0' } },
+                passingContext: { index: 2 },
+                failingContext: { index: 0 },
+            },
+        ];
+
+        for (const testCase of cases) {
+            expect(matchesMegaMekRulesetWhen(testCase.when, testCase.passingContext)).withContext(`${testCase.label} accepts`).toBeTrue();
+            expect(matchesMegaMekRulesetWhen(testCase.when, testCase.failingContext)).withContext(`${testCase.label} rejects`).toBeFalse();
+        }
+    });
+
+    it('evaluates every normalized fallback predicate for both acceptance and rejection', () => {
+        const baseWhen: MegaMekRulesetWhen = {
+            fromYear: 3025,
+            toYear: 3050,
+            unitTypes: ['Mek'],
+            weightClasses: ['H'],
+            ratings: ['A'],
+            formations: ['assault'],
+            roles: ['command'],
+            motives: ['tracked'],
+            factions: ['CC'],
+            names: ['Warhammer WHM-6R'],
+            indexes: ['2'],
+            topLevel: true,
+            augmented: true,
+            flags: ['elite'],
+            echelons: [{ code: 'COMPANY', augmented: true }],
+        };
+        const passingContext = {
+            year: 3039,
+            unitType: 'Mek',
+            weightClass: 'H',
+            rating: 'A',
+            formation: 'assault',
+            role: 'command',
+            motive: 'tracked',
+            factionKey: 'CC',
+            name: 'Warhammer WHM-6R',
+            index: 2,
+            topLevel: true,
+            augmented: true,
+            flags: ['elite'],
+            echelon: 'COMPANY',
+        };
+
+        expect(matchesMegaMekRulesetWhen(baseWhen, passingContext)).toBeTrue();
+
+        const failingContexts = [
+            { year: 3060 },
+            { unitType: 'Tank' },
+            { weightClass: 'M' },
+            { rating: 'B' },
+            { formation: 'strike' },
+            { role: 'recon' },
+            { motive: 'hover' },
+            { factionKey: 'FS' },
+            { name: 'Locust LCT-1V' },
+            { index: 3 },
+            { topLevel: false },
+            { augmented: false },
+            { flags: ['green'] },
+            { echelon: 'LANCE' },
+        ];
+
+        for (const failingPatch of failingContexts) {
+            expect(matchesMegaMekRulesetWhen(baseWhen, { ...passingContext, ...failingPatch })).withContext(JSON.stringify(failingPatch)).toBeFalse();
+        }
     });
 
     it('keeps MegaMek ifName negation semantics for unnamed descriptors', () => {

@@ -73,7 +73,7 @@ function normalizeRulesetsData(
     if (isMegaMekRulesetsData(data)) {
         return {
             etag,
-            version: data.version ?? CURRENT_RULESET_SCHEMA_VERSION,
+            version: data.version,
             rulesets: data.rulesets.map((record) => normalizeRulesetRecord(record)),
         };
     }
@@ -89,6 +89,12 @@ function isMegaMekRulesetsData(
     data: MegaMekRulesetsData | MegaMekRulesetRecord[],
 ): data is MegaMekRulesetsData {
     return 'etag' in data && 'rulesets' in data;
+}
+
+function assertCurrentRulesetSchemaVersion(data: MegaMekRulesetsData | MegaMekRulesetRecord[]): void {
+    if (isMegaMekRulesetsData(data) && data.version !== CURRENT_RULESET_SCHEMA_VERSION) {
+        throw new Error(`unsupported ruleset schema version ${data.version}; expected ${CURRENT_RULESET_SCHEMA_VERSION}`);
+    }
 }
 
 @Injectable({
@@ -129,6 +135,7 @@ export class MegaMekRulesetsCatalogService extends CatalogBaseService<MegaMekRul
     }
 
     protected override hydrate(data: MegaMekRulesetsData | MegaMekRulesetRecord[]): void {
+        assertCurrentRulesetSchemaVersion(data);
         const wrappedData = normalizeRulesetsData(data, isMegaMekRulesetsData(data) ? data.etag : '');
 
         this.rulesets = wrappedData.rulesets;
@@ -149,6 +156,7 @@ export class MegaMekRulesetsCatalogService extends CatalogBaseService<MegaMekRul
     }
 
     protected override getDatasetSize(data: MegaMekRulesetsData | MegaMekRulesetRecord[]): number {
+        assertCurrentRulesetSchemaVersion(data);
         return normalizeRulesetsData(data, '').rulesets.length;
     }
 }

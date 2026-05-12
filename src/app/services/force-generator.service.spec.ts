@@ -4843,7 +4843,7 @@ describe('ForceGeneratorService', () => {
             piloting: 5,
         });
 
-        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Seed', 'Clan Command']);
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Clan Command', 'Seed']);
         expect(preview.explanationLines.some((line) => line.includes('Nested subforce rules switched to CLAN.'))).toBeTrue();
     });
 
@@ -4934,7 +4934,7 @@ describe('ForceGeneratorService', () => {
             piloting: 5,
         });
 
-        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Seed', 'Parent Command']);
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Parent Command', 'Seed']);
         expect(preview.explanationLines.some((line) => line.includes('Nested subforce rules switched to CLAN.'))).toBeTrue();
     });
 
@@ -5003,6 +5003,190 @@ describe('ForceGeneratorService', () => {
 
         expect(preview.error).toBeNull();
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Atlas AS7-D']);
+    });
+
+    it('matches augmented raw echelon predicates through the ruleset runtime', () => {
+        const era = createEra(3062, 'Civil War', 3062, 3062);
+        const faction = createFaction(10, 'Capellan Confederation');
+        const atlas = createUnit({ id: 1, name: 'BMAtlas_AS7D', chassis: 'Atlas', model: 'AS7-D', role: 'juggernaut', as: { PV: 5 } as Unit['as'] });
+        const ruleset: MegaMekRulesetRecord = {
+            factionKey: 'CC',
+            indexes: { forceIndexesByEchelon: { COMPANY: [0] } },
+            forceCount: 1,
+            defaults: {
+                echelon: [{ echelon: { code: 'COMPANY', augmented: true } }],
+            },
+            forces: [
+                {
+                    echelon: { code: 'COMPANY' },
+                    when: {
+                        expressions: {
+                            ifEschelon: '%COMPANY%^',
+                        },
+                    },
+                    assign: { roles: ['command'] },
+                },
+            ],
+        };
+        const candidates = [{
+            unit: atlas,
+            requisitionWeight: 10,
+            salvageWeight: 0,
+            cost: 5,
+            locked: false,
+            megaMekUnitType: 'Mek',
+            role: atlas.role,
+        }];
+
+        registerMegaMekRuleset(faction, ruleset);
+
+        const profile = (service as any).buildRulesetProfile(
+            candidates,
+            createContext(faction, era),
+            1,
+            12,
+        );
+
+        expect(profile).not.toBeNull();
+        expect(profile.selectedEchelon).toBe('COMPANY');
+        expect(profile.preferredRoles.has('command')).toBeTrue();
+        expect(profile.explanationNotes.some((note: string) => note.includes('no matching force node'))).toBeFalse();
+    });
+
+    it('rejects non-matching raw predicates before applying force-node assertions', () => {
+        const era = createEra(3050, 'Clan Invasion', 3050, 3050);
+        const faction = createFaction(10, 'Draconis Combine');
+        const thunderbolt = createUnit({ id: 1, name: 'BMThunderbolt_TDR5S', chassis: 'Thunderbolt', model: 'TDR-5S', role: 'brawler', as: { PV: 5 } as Unit['as'] });
+        const ruleset: MegaMekRulesetRecord = {
+            factionKey: 'DC',
+            indexes: { forceIndexesByEchelon: { LANCE: [0, 1] } },
+            forceCount: 2,
+            forces: [
+                {
+                    echelon: { code: 'LANCE' },
+                    when: { expressions: { ifUnitType: 'Tank' } },
+                    assign: { roles: ['command'] },
+                },
+                {
+                    echelon: { code: 'LANCE' },
+                    when: { expressions: { ifUnitType: 'Mek' } },
+                    assign: { roles: ['brawler'] },
+                },
+            ],
+        };
+        const candidates = [{
+            unit: thunderbolt,
+            requisitionWeight: 10,
+            salvageWeight: 0,
+            cost: 5,
+            locked: false,
+            megaMekUnitType: 'Mek',
+            role: thunderbolt.role,
+        }];
+
+        registerMegaMekRuleset(faction, ruleset);
+
+        const profile = (service as any).buildRulesetProfile(
+            candidates,
+            createContext(faction, era),
+            1,
+            4,
+        );
+
+        expect(profile.preferredRoles.has('command')).toBeFalse();
+        expect(profile.preferredRoles.has('brawler')).toBeTrue();
+    });
+
+    it('normalizes add and remove assertions before storing ruleset preferences', () => {
+        const era = createEra(3058, 'Civil War', 3058, 3058);
+        const faction = createFaction(10, 'Clan Coyote');
+        const warhammer = createUnit({ id: 1, name: 'BMWarhammer_WHM6R', chassis: 'Warhammer', model: 'WHM-6R', role: 'brawler', as: { PV: 5 } as Unit['as'] });
+        const ruleset: MegaMekRulesetRecord = {
+            factionKey: 'CCO',
+            assign: {
+                roles: ['scout'],
+                flags: ['testTrinary'],
+            },
+            indexes: { forceIndexesByEchelon: { STAR: [0] } },
+            forceCount: 1,
+            forces: [
+                {
+                    echelon: { code: 'STAR' },
+                    assign: {
+                        roles: ['-scout', '+command'],
+                        flags: ['-testTrinary', '+elite'],
+                    },
+                },
+            ],
+        };
+        const candidates = [{
+            unit: warhammer,
+            requisitionWeight: 10,
+            salvageWeight: 0,
+            cost: 5,
+            locked: false,
+            megaMekUnitType: 'Mek',
+            role: warhammer.role,
+        }];
+
+        registerMegaMekRuleset(faction, ruleset);
+
+        const profile = (service as any).buildRulesetProfile(
+            candidates,
+            createContext(faction, era),
+            1,
+            5,
+        );
+
+        expect(profile.preferredRoles.has('command')).toBeTrue();
+        expect(profile.preferredRoles.has('+command')).toBeFalse();
+        expect(profile.preferredRoles.has('scout')).toBeFalse();
+        expect(profile.preferredFlags.has('elite')).toBeTrue();
+        expect(profile.preferredFlags.has('+elite')).toBeFalse();
+        expect(profile.preferredFlags.has('testtrinary')).toBeFalse();
+    });
+
+    it('keeps heterogeneous subforce constraints as slot templates instead of global filters', () => {
+        const era = createEra(3025, 'Late Succession War', 3025, 3025);
+        const faction = createFaction(10, 'Federated Suns');
+        const atlas = createUnit({ id: 1, name: 'BMAtlas_AS7D', chassis: 'Atlas', model: 'AS7-D', role: 'juggernaut', as: { PV: 5 } as Unit['as'] });
+        const locust = createUnit({ id: 2, name: 'BMLocust_LCT1V', chassis: 'Locust', model: 'LCT-1V', role: 'scout', weightClass: 'Light', as: { PV: 5 } as Unit['as'] });
+        const ruleset: MegaMekRulesetRecord = {
+            factionKey: 'FS',
+            indexes: { forceIndexesByEchelon: { LANCE: [0] } },
+            forceCount: 1,
+            forces: [
+                {
+                    echelon: { code: 'LANCE' },
+                    subforces: [
+                        {
+                            subforces: [
+                                { count: 1, chassis: ['Atlas'] },
+                                { count: 1, variants: ['LCT-1V'] },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        };
+
+        registerMegaMekRuleset(faction, ruleset);
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [atlas, locust],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 10, max: 10 },
+            minUnitCount: 2,
+            maxUnitCount: 2,
+            gunnery: 4,
+            piloting: 5,
+            preventDuplicateChassis: true,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['BMAtlas_AS7D', 'BMLocust_LCT1V']);
     });
 
     it('uses TOC rating and flag options when matching force nodes', () => {
@@ -5211,7 +5395,8 @@ describe('ForceGeneratorService', () => {
             forces: [
                 {
                     echelon: { code: 'LANCE' },
-                    co: [{ rank: '32', unitType: 'AeroSpaceFighter' }],
+                    co: [{ rank: '32', title: 'Star Captain', position: 2, unitType: 'AeroSpaceFighter' }],
+                    xo: [{ rank: '28', title: 'Star Commander', position: 1, unitType: 'Mek' }],
                 },
             ],
         };
@@ -5232,8 +5417,24 @@ describe('ForceGeneratorService', () => {
         });
 
         expect(preview.error).toBeNull();
-        expect(preview.units.find((unit) => unit.unit.name === 'Command Fighter')?.commander).toBeTrue();
+        const commandFighter = preview.units.find((unit) => unit.unit.name === 'Command Fighter');
+        expect(commandFighter?.commander).toBeTrue();
+        expect(commandFighter?.commanderRole).toBe('co');
+        expect(commandFighter?.commanderRank).toBe('32');
+        expect(commandFighter?.commanderTitle).toBe('Star Captain');
+        expect(commandFighter?.commanderPosition).toBe(2);
         expect(preview.units.find((unit) => unit.unit.name === 'Line Mek')?.commander).not.toBeTrue();
+
+        const profile = (service as any).buildRulesetProfile(
+            [],
+            createContext(faction, era),
+            1,
+            2,
+        );
+        expect(profile.commanders).toEqual([
+            jasmine.objectContaining({ role: 'co', rank: '32', title: 'Star Captain', position: 2, unitType: 'AeroSpaceFighter' }),
+            jasmine.objectContaining({ role: 'xo', rank: '28', title: 'Star Commander', position: 1, unitType: 'Mek' }),
+        ]);
     });
 
     it('prefers a lance-shaped valid force over a company-shaped valid force when the ruleset selects LANCE', () => {

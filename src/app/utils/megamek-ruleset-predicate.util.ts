@@ -158,7 +158,7 @@ function matchesMegaMekRulesetExpression(
         case 'ifRating':
             return matchesMegaMekRulesetStringExpression(context.rating, normalizedExpression);
         case 'ifEschelon':
-            return matchesMegaMekRulesetStringExpression(context.echelon, normalizedExpression);
+            return matchesMegaMekRulesetStringExpression(getContextEchelonCode(context), normalizedExpression);
         case 'ifFormation':
             return matchesMegaMekRulesetStringExpression(context.formation, normalizedExpression);
         case 'ifRole':
@@ -196,6 +196,14 @@ function normalizeRulesetExpression(
     return expression.replace(/%([A-Z_]+)%([+\-^])?/gu, (_match, code: string, suffix: string | undefined) => {
         return `${code}${suffix ?? ''}`;
     });
+}
+
+function getContextEchelonCode(context: MegaMekRulesetPredicateContext): string | null | undefined {
+    if (!context.echelon) {
+        return context.echelon;
+    }
+
+    return context.augmented ? `${context.echelon}^` : context.echelon;
 }
 
 function matchesMegaMekRulesetNameExpression(
