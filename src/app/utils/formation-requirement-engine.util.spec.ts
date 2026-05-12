@@ -267,10 +267,53 @@ describe('FormationRequirementEngine', () => {
             faction: CLAN_FACTION,
             pilotSkill: index === 0 ? 4 : 3,
         }));
+        const warshipUnits = [
+            ...validUnits,
+            createForceUnit(createUnit(6, 'Vincent Corvette', { type: 'Aero', subtype: 'WarShip', as: { TP: 'WS', SZ: 5 } }), GameSystem.ALPHA_STRIKE, { faction: CLAN_FACTION, pilotSkill: 3 }),
+        ];
+        const industrialMekUnits = [
+            createForceUnit(createUnit(7, 'Visigoth II', { type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF' } }), GameSystem.ALPHA_STRIKE, { faction: CLAN_FACTION, pilotSkill: 3 }),
+            createForceUnit(createUnit(8, 'Batu II', { type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF' } }), GameSystem.ALPHA_STRIKE, { faction: CLAN_FACTION, pilotSkill: 3 }),
+            createForceUnit(createUnit(9, 'IndustrialMech A', { weightClass: 'Heavy', as: { TP: 'IM', SZ: 3 } }), GameSystem.ALPHA_STRIKE, { faction: CLAN_FACTION, pilotSkill: 3 }),
+            createForceUnit(createUnit(10, 'IndustrialMech B', { weightClass: 'Assault', as: { TP: 'IM', SZ: 4 } }), GameSystem.ALPHA_STRIKE, { faction: CLAN_FACTION, pilotSkill: 3 }),
+        ];
 
         expect(LanceTypeIdentifierUtil.isValid(definition('strategic-command-star'), validUnits, GameSystem.ALPHA_STRIKE)).toBeTrue();
         expect(LanceTypeIdentifierUtil.isValid(definition('strategic-command-star'), oneAeroUnit, GameSystem.ALPHA_STRIKE)).toBeFalse();
         expect(LanceTypeIdentifierUtil.isValid(definition('strategic-command-star'), lowSkillUnits, GameSystem.ALPHA_STRIKE)).toBeFalse();
+        expect(LanceTypeIdentifierUtil.isValid(definition('strategic-command-star'), warshipUnits, GameSystem.ALPHA_STRIKE)).toBeFalse();
+        expect(LanceTypeIdentifierUtil.isValid(definition('strategic-command-star'), industrialMekUnits, GameSystem.ALPHA_STRIKE)).toBeFalse();
+    });
+
+    it('allows Strategic Command search to pick a first heavy Mek setup unit', () => {
+        const definitionUnderTest = definition('strategic-command-star');
+        const currentUnits = [
+            createForceUnit(createUnit(1, 'Visigoth', { type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF' } }), GameSystem.ALPHA_STRIKE, { faction: CLAN_FACTION, pilotSkill: 3 }),
+            createForceUnit(createUnit(2, 'Batu', { type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF' } }), GameSystem.ALPHA_STRIKE, { faction: CLAN_FACTION, pilotSkill: 3 }),
+        ];
+        const heavyMek = createForceUnit(createUnit(3, 'Timber Wolf', { weightClass: 'Heavy', as: { TP: 'BM', SZ: 3 } }), GameSystem.ALPHA_STRIKE, { faction: CLAN_FACTION, pilotSkill: 3 });
+        const lightMek = createForceUnit(createUnit(4, 'Adder', { weightClass: 'Light', as: { TP: 'BM', SZ: 1 } }), GameSystem.ALPHA_STRIKE, { faction: CLAN_FACTION, pilotSkill: 3 });
+
+        expect(FormationRequirementEngine.evaluateSearchCandidate(definitionUnderTest, currentUnits, heavyMek, GameSystem.ALPHA_STRIKE, { maxUnits: 12 }).allowed).toBeTrue();
+        expect(FormationRequirementEngine.evaluateSearchCandidate(definitionUnderTest, currentUnits, lightMek, GameSystem.ALPHA_STRIKE, { maxUnits: 12 }).allowed).toBeFalse();
+    });
+
+    it('guides Strategic Command search away from extra aerospace after the AF requirement is met', () => {
+        const definitionUnderTest = definition('strategic-command-star');
+        const currentUnits = [
+            createForceUnit(createUnit(1, 'Visigoth', { type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF' } }), GameSystem.ALPHA_STRIKE, { faction: CLAN_FACTION, pilotSkill: 3 }),
+            createForceUnit(createUnit(2, 'Batu', { type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF' } }), GameSystem.ALPHA_STRIKE, { faction: CLAN_FACTION, pilotSkill: 3 }),
+        ];
+
+        const filter = FormationRequirementEngine.getSearchCandidatePredicateFilter(definitionUnderTest, currentUnits, GameSystem.ALPHA_STRIKE);
+
+        expect(filter.requiredPredicates).toEqual(jasmine.arrayContaining(['clan-force', 'strategic-skill-3', 'aerospace-fighter-bm-ba-unit']));
+        expect(filter.helpfulPredicates).toEqual(jasmine.arrayContaining(['bm-or-mek-unit', 'battle-armor-unit']));
+        expect(filter.forbiddenPredicates).toContain('strategic-aero');
+        expect(filter.conditionalForbiddenPredicates).toContain(jasmine.objectContaining({
+            when: 'bm-or-mek-unit',
+            predicate: 'light-bm-or-mek',
+        }));
     });
 
     it('validates Phalanx Star allowed unit types and combined-arms shape', () => {

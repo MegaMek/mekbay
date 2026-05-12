@@ -96,6 +96,7 @@ const fireLanceConstraints: readonly FormationConstraint[] = [
 const clanOnlyConstraints: readonly FormationConstraint[] = [
     all('clan-force', 'Clan force', 'clan-force'),
 ];
+const CLAN_EXCLUSIVE_FACTIONS = ['Clan'];
 
 function bloodStalkerFormationEffectDescription(formationName: string): (gameSystem: GameSystem) => string {
     return (gameSystem) => {
@@ -989,6 +990,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
             selection: 'all',
             distribution: 'shared-pool',
         }],
+        exclusiveFaction: CLAN_EXCLUSIVE_FACTIONS,
         minUnits: 3,
         rulesRef: [{ book: Rulebook.BOT, page: 27 }],
         requirements: () => 'Clan only. Minimum 2 combat vehicles or BattleMeks. Remainder must be Elementals, combat vehicles, or BattleMeks. Must be at least two different unit types.',
@@ -1010,6 +1012,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
             count: 2,
             perTurn: true,
         }],
+        exclusiveFaction: CLAN_EXCLUSIVE_FACTIONS,
         minUnits: 3,
         rulesRef: [{ book: Rulebook.BOT, page: 27 }],
         requirements: () => 'Clan only. At least two units in the Formation must be the same model (including the same OmniMek configuration)',
@@ -1039,6 +1042,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinition[] = [
                 distribution: 'commander',
             },
         ],
+        exclusiveFaction: CLAN_EXCLUSIVE_FACTIONS,
         minUnits: 3,
         rulesRef: [{ book: Rulebook.BOT, page: 27 }],
         requirements: (gameSystem) => {
@@ -1305,6 +1309,7 @@ export const FORMATION_BLUEPRINTS: Readonly<Record<string, FormationRequirementB
         constraints: [
             ...clanOnlyConstraints,
             all('strategic-skill', 'All skill 3 or lower', 'strategic-skill-3'),
+            all('strategic-allowed', 'All strategic command unit types', 'aerospace-fighter-bm-ba-unit'),
             countExact('strategic-aero-count', 'Exactly 2 aerospace units', 'strategic-aero', 2),
             conditional('strategic-mek-conditions', 'BM/Mek heavy and no-light conditions', 'bm-or-mek-unit', [countMin('strategic-heavy-mek-count', '2 heavy BM/Mek units', 'heavy-bm-or-mek', 2), countMax('strategic-light-mek-count', 'No light BM/Mek units', 'light-bm-or-mek', 0)]),
             anyOf('strategic-core', 'BM/Mek or BA core', [countMin('strategic-bm-count', '2 BM/Mek units', 'bm-or-mek-unit', 2), countMin('strategic-ba-count', '1 BA unit', 'battle-armor-unit', 1)]),

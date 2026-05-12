@@ -1,6 +1,7 @@
 import {
     formationInheritsParentEffects,
     formationNameMatchesGroupName,
+    getFormationDropdownDisplayName,
     getFormationNameMatchStrings,
     resolveFormationGameSystemText,
     type FormationTypeDefinition,
@@ -63,6 +64,20 @@ describe('getFormationNameMatchStrings', () => {
             'Light Striker',
             'Light Cavalry',
         ]);
+    });
+});
+
+describe('getFormationDropdownDisplayName', () => {
+    it('adds an Aero suffix for squadron dropdown options', () => {
+        expect(getFormationDropdownDisplayName(createFormation({ id: 'fire-support-squadron', name: 'Fire Support' })))
+            .toBe('Fire Support [Aero]');
+        expect(getFormationDropdownDisplayName(createFormation({ id: 'interceptor-squadron', name: 'Interceptor' })))
+            .toBe('Interceptor [Aero]');
+    });
+
+    it('leaves non-squadron dropdown options unchanged', () => {
+        expect(getFormationDropdownDisplayName(createFormation({ id: 'fire-support-lance', name: 'Fire Support' })))
+            .toBe('Fire Support');
     });
 });
 

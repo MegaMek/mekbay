@@ -155,6 +155,12 @@ export function getFormationNameMatchStrings(definition: FormationTypeDefinition
     ].map(normalizeFormationNameMatchText).filter(Boolean))];
 }
 
+export function getFormationDropdownDisplayName(definition: FormationTypeDefinition): string {
+    return definition.id.endsWith('-squadron')
+        ? `${definition.name} [Aero]`
+        : definition.name;
+}
+
 export function formationNameMatchesGroupName(definition: FormationTypeDefinition, groupName: string): boolean {
     const normalizedGroupName = normalizeFormationNameMatchText(groupName);
     if (!normalizedGroupName) return false;

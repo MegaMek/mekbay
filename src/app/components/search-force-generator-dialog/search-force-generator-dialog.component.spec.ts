@@ -1187,6 +1187,19 @@ describe('SearchForceGeneratorDialogComponent', () => {
         );
     });
 
+
+    it('disambiguates duplicate target formation names in the generator dropdown', () => {
+        gameSystemSignal.set(GameSystem.ALPHA_STRIKE);
+
+        const displayNameById = new Map(component.targetFormationOptions().map((option) => [
+            option.name,
+            option.displayName ?? option.name,
+        ]));
+
+        expect(displayNameById.get('fire-support-lance')).toBe('Fire Support');
+        expect(displayNameById.get('fire-support-squadron')).toBe('Fire Support [Aero]');
+        expect(displayNameById.get('interceptor-squadron')).toBe('Interceptor [Aero]');
+    });
     it('keeps using the last committed budget range until the max field blurs', async () => {
         const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
         await fixture.whenStable();

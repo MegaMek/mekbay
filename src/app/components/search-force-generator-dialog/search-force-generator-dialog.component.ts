@@ -75,7 +75,7 @@ import { UnitSearchFiltersService } from '../../services/unit-search-filters.ser
 import { resolveDropdownNamesFromFilter } from '../../utils/filter-name-resolution.util';
 import { getFormationDefinitions } from '../../utils/formation-blueprints';
 import { FormationRequirementEngine } from '../../utils/formation-requirement-engine.util';
-import type { FormationTypeDefinition } from '../../utils/formation-type.model';
+import { getFormationDropdownDisplayName, type FormationTypeDefinition } from '../../utils/formation-type.model';
 import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
 import { type HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
 import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
@@ -277,15 +277,22 @@ export class SearchForceGeneratorDialogComponent {
     readonly canImportCurrentForce = computed(() => (this.currentForce()?.units().length ?? 0) > 0);
     readonly targetFormationSelection = signal<MultiStateSelection>({});
     readonly targetFormationStateCycle = ['or'] as const;
-    readonly targetFormationOptions = computed<DropdownOption[]>(() => getFormationDefinitions()
-        .filter((definition) => FormationRequirementEngine.hasBlueprint(definition.id))
-        .filter((definition) => LanceTypeIdentifierUtil.getDefinitionById(definition.id, this.gameSystem()) !== null)
-        .filter((definition) => this.isTargetFormationAvailableForSelectedFactions(definition))
-        .map((definition) => ({ name: definition.id, displayName: definition.name }))
-        .sort((left, right) => (
-            (left.displayName ?? left.name).localeCompare(right.displayName ?? right.name)
-            || left.name.localeCompare(right.name)
-        )));
+    readonly targetFormationOptions = computed<DropdownOption[]>(() => {
+        const definitions = getFormationDefinitions()
+            .filter((definition) => FormationRequirementEngine.hasBlueprint(definition.id))
+            .filter((definition) => LanceTypeIdentifierUtil.getDefinitionById(definition.id, this.gameSystem()) !== null)
+            .filter((definition) => this.isTargetFormationAvailableForSelectedFactions(definition));
+
+        return definitions
+            .map((definition) => ({
+                name: definition.id,
+                displayName: getFormationDropdownDisplayName(definition),
+            }))
+            .sort((left, right) => (
+                (left.displayName ?? left.name).localeCompare(right.displayName ?? right.name)
+                || left.name.localeCompare(right.name)
+            ));
+    });
     readonly targetFormations = computed<ForceGenerationTargetFormationSelection[]>(() => {
         const availableFormationIds = new Set(this.targetFormationOptions().map((option) => option.name));
         return Object.values(this.targetFormationSelection())
@@ -898,7 +905,10 @@ export class SearchForceGeneratorDialogComponent {
         }
 
         return positiveFactionNames.some((factionName) => (
-            LanceTypeIdentifierUtil.isFormationAvailableForFaction(definition, factionName)
+            LanceTypeIdentifierUtil.isFormationAvailableForFaction(
+                definition,
+                this.dataService.getFactionByName(factionName) ?? factionName,
+            )
         ));
     }
 

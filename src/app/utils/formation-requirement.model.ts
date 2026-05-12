@@ -11,6 +11,7 @@ export type FormationPredicateId =
     | 'assault-role-juggernaut'
     | 'assault-role-sniper'
     | 'assault-size'
+    | 'aerospace-fighter-bm-ba-unit'
     | 'aerospace-unit'
     | 'aerospace-superiority-role'
     | 'attack-or-dogfighter-role'
@@ -139,11 +140,14 @@ export interface FormationSameValueConstraint extends FormationConstraintBase {
 
 export interface FormationConstraintEvaluation {
     readonly constraintId: string;
+    readonly kind?: FormationConstraint['kind'];
     readonly label: string;
     readonly satisfied: boolean;
+    readonly predicate?: FormationPredicateId;
     readonly actual?: number;
     readonly required?: number;
     readonly reason?: string;
+    readonly childEvaluations?: readonly FormationConstraintEvaluation[];
 }
 
 export interface FormationEvaluation {
@@ -160,6 +164,18 @@ export interface FormationDeficit {
     readonly label: string;
     readonly needed: number;
     readonly predicate?: FormationPredicateId;
+}
+
+export interface FormationConditionalForbiddenPredicate {
+    readonly when: FormationPredicateId;
+    readonly predicate: FormationPredicateId;
+}
+
+export interface FormationCandidatePredicateFilter {
+    readonly requiredPredicates: readonly FormationPredicateId[];
+    readonly helpfulPredicates: readonly FormationPredicateId[];
+    readonly forbiddenPredicates: readonly FormationPredicateId[];
+    readonly conditionalForbiddenPredicates: readonly FormationConditionalForbiddenPredicate[];
 }
 
 export interface FormationTargetRange {

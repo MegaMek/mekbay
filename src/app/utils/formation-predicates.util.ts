@@ -52,6 +52,9 @@ export const FORMATION_PREDICATES: Readonly<Record<FormationPredicateId, Formati
     'assault-role-juggernaut': (facts) => facts.role === 'Juggernaut',
     'assault-role-sniper': (facts) => facts.role === 'Sniper',
     'assault-size': (facts, gameSystem) => asOrCbt(gameSystem, facts.asSize >= 4, facts.cbtIsAssaultOrLarger),
+    'aerospace-fighter-bm-ba-unit': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+        ? facts.asType === 'AF' || facts.asType === 'BM' || facts.asType === 'BA'
+        : facts.unit.type === 'Aero' || facts.unit.type === 'Mek' || facts.unit.subtype === 'Battle Armor',
     'aerospace-unit': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
         ? AEROSPACE_AS_TYPES.has(facts.asType ?? '')
         : facts.unit.type === 'Aero',

@@ -97,7 +97,7 @@ import { FormationRequirementEngine } from '../utils/formation-requirement-engin
 import type { FormationSearchTarget } from '../utils/formation-requirement.model';
 import type { FormationUnitLike } from '../utils/formation-unit-facts.util';
 import { getFormationDefinitions } from '../utils/formation-blueprints';
-import { getFormationNameMatchStrings, type FormationTypeDefinition } from '../utils/formation-type.model';
+import { getFormationDropdownDisplayName, getFormationNameMatchStrings, type FormationTypeDefinition } from '../utils/formation-type.model';
 import { UserStateService } from './userState.service';
 import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
@@ -1657,11 +1657,12 @@ export class UnitSearchFiltersService {
 
     getFormationTargetOptions(gameSystem: GameSystem): DropdownOption[] {
         const activeFactionNames = this.getPositiveFactionNames(this.effectiveFilterState()['faction']);
+        const definitions = this.getFormationTargetDefinitions(gameSystem);
         return [
             { name: '', displayName: 'Any' },
-            ...this.getFormationTargetDefinitions(gameSystem).map((definition) => ({
+            ...definitions.map((definition) => ({
                 name: definition.id,
-                displayName: definition.name,
+                displayName: getFormationDropdownDisplayName(definition),
                 available: this.isFormationAvailableForAnyFaction(definition, activeFactionNames),
             })),
         ];
@@ -1673,7 +1674,10 @@ export class UnitSearchFiltersService {
     ): boolean {
         return !definition?.exclusiveFaction?.length
             || factionNames.length === 0
-            || factionNames.some((factionName) => LanceTypeIdentifierUtil.isFormationAvailableForFaction(definition, factionName));
+            || factionNames.some((factionName) => LanceTypeIdentifierUtil.isFormationAvailableForFaction(
+                definition,
+                this.dataService.getFactionByName(factionName) ?? factionName,
+            ));
     }
 
     /**

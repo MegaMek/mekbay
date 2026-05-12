@@ -42,7 +42,7 @@ import type { Era } from '../models/eras.model';
 import type { FormationUnitLike } from './formation-unit-facts.util';
 import { collectGroupUnits, compileGroupFacts } from './org/org-facts.util';
 import { groupMatchesChildRole } from './org/org-role-match.util';
-import { resolveOrgDefinition } from './org/org-registry.util';
+import { isClan, resolveOrgDefinition } from './org/org-registry.util';
 import type {
     GroupSizeResult,
     OrgFormationMatchingSpec,
@@ -70,6 +70,8 @@ interface FormationForceLike {
     era(): Era | null;
     techBase(): string;
 }
+
+type FormationFactionReference = Faction | string | null | undefined;
 
 export interface FormationGroupLike<TUnit extends FormationUnitLike = FormationUnitLike> {
     readonly force: FormationForceLike | null;
@@ -275,10 +277,10 @@ export class LanceTypeIdentifierUtil {
 
     public static getFormationPriorityWeight(
         definition: FormationTypeDefinition,
-        factionName: string,
+        faction: FormationFactionReference,
     ): number {
         let weight = 1;
-        if (definition.exclusiveFaction && this.isFormationAvailableForFaction(definition, factionName)) {
+        if (definition.exclusiveFaction && this.isFormationAvailableForFaction(definition, faction)) {
             weight *= 5;
         } else if (definition.parent) {
             weight *= 3;
@@ -289,23 +291,44 @@ export class LanceTypeIdentifierUtil {
         return weight;
     }
 
+    private static getFactionName(faction: FormationFactionReference): string {
+        return typeof faction === 'string'
+            ? faction
+            : faction?.name ?? '';
+    }
+
+    private static isExclusiveFactionMatch(
+        faction: FormationFactionReference,
+        exclusiveFactionName: string,
+    ): boolean {
+        const normalizedExclusiveFactionName = exclusiveFactionName.trim().toLocaleLowerCase();
+        if (!normalizedExclusiveFactionName) {
+            return false;
+        }
+
+        if (normalizedExclusiveFactionName === 'clan' && typeof faction !== 'string' && faction && isClan(faction)) {
+            return true;
+        }
+
+        return this.getFactionName(faction).toLocaleLowerCase().includes(normalizedExclusiveFactionName);
+    }
+
     public static isFormationAvailableForFaction(
         definition: FormationTypeDefinition,
-        factionName: string | null | undefined,
+        faction: FormationFactionReference,
     ): boolean {
         if (!definition.exclusiveFaction?.length) {
             return true;
         }
 
-        const normalizedFactionName = factionName?.trim() ?? '';
-        return normalizedFactionName.length > 0
-            && definition.exclusiveFaction.some(faction => normalizedFactionName.includes(faction));
+        return this.getFactionName(faction).trim().length > 0
+            && definition.exclusiveFaction.some(exclusiveFactionName => this.isExclusiveFactionMatch(faction, exclusiveFactionName));
     }
 
     public static identifyLanceTypes(
         units: readonly FormationUnitLike[],
         techBase: string,
-        factionName: string,
+        faction: FormationFactionReference,
         gameSystem: GameSystem,
     ): FormationTypeDefinition[] {
         const matches: FormationTypeDefinition[] = [];
@@ -317,7 +340,7 @@ export class LanceTypeIdentifierUtil {
                     continue;
                 }
 
-                if (!this.isFormationAvailableForFaction(definition, factionName)) {
+                if (!this.isFormationAvailableForFaction(definition, faction)) {
                     continue;
                 }
 
@@ -350,11 +373,11 @@ export class LanceTypeIdentifierUtil {
     public static identifyFormations(
         units: readonly FormationUnitLike[],
         techBase: string,
-        factionName: string,
+        faction: FormationFactionReference,
         gameSystem: GameSystem,
         options: FormationIdentificationOptions = {},
     ): FormationMatch[] {
-        const standardMatches = this.identifyLanceTypes(units, techBase, factionName, gameSystem);
+        const standardMatches = this.identifyLanceTypes(units, techBase, faction, gameSystem);
         const results: FormationMatch[] = standardMatches.map((definition) => ({
             definition,
             requirementsFiltered: false,
@@ -363,7 +386,7 @@ export class LanceTypeIdentifierUtil {
 
         const filteredUnits = options.filteredUnits;
         if (filteredUnits && filteredUnits.length > 0 && filteredUnits.length < units.length) {
-            const filteredMatches = this.identifyLanceTypes(filteredUnits, techBase, factionName, gameSystem);
+            const filteredMatches = this.identifyLanceTypes(filteredUnits, techBase, faction, gameSystem);
             for (const definition of filteredMatches) {
                 const existingMatch = resultById.get(definition.id);
                 if (existingMatch) {
@@ -393,11 +416,11 @@ export class LanceTypeIdentifierUtil {
             return [];
         }
 
-        const factionName = targetForce.faction()?.name ?? 'Mercenary';
+        const faction = targetForce.faction() ?? 'Mercenary';
         return this.identifyFormations(
             group.units(),
             targetForce.techBase(),
-            factionName,
+            faction,
             targetForce.gameSystem,
             this.getRequirementsFilterContext(group),
         );
@@ -438,12 +461,12 @@ export class LanceTypeIdentifierUtil {
     public static getBestMatch(
         units: readonly FormationUnitLike[],
         techBase: string,
-        factionName: string,
+        faction: FormationFactionReference,
         gameSystem: GameSystem,
         preferredIds?: ReadonlySet<string>,
         options: FormationIdentificationOptions = {},
     ): FormationMatch | null {
-        const matches = this.identifyFormations(units, techBase, factionName, gameSystem, options);
+        const matches = this.identifyFormations(units, techBase, faction, gameSystem, options);
         if (matches.length === 0) {
             return null;
         }
@@ -452,7 +475,7 @@ export class LanceTypeIdentifierUtil {
         let bestWeight = -1;
 
         for (const match of matches) {
-            const weight = this.getFormationPriorityWeight(match.definition, factionName);
+            const weight = this.getFormationPriorityWeight(match.definition, faction);
 
             if (weight > bestWeight) {
                 bestWeight = weight;
@@ -482,11 +505,11 @@ export class LanceTypeIdentifierUtil {
             return null;
         }
 
-        const factionName = targetForce.faction()?.name ?? 'Mercenary';
+        const faction = targetForce.faction() ?? 'Mercenary';
         return this.getBestMatch(
             group.units(),
             targetForce.techBase(),
-            factionName,
+            faction,
             targetForce.gameSystem,
             group.formationHistory,
             this.getRequirementsFilterContext(group),

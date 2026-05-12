@@ -356,6 +356,8 @@ function createStandaloneBundle(): BenchmarkBundle {
 
 const FREE_WORLDS_LEAGUE_FACTION = 'Free Worlds League';
 const FEDERATED_SUNS_FACTION = 'Federated Suns';
+const CLAN_WOLF_FACTION = 'Clan Wolf';
+const RASALHAGUE_DOMINION_FACTION = 'Rasalhague Dominion';
 
 type NamedAvailabilityOption = { name: string; available?: boolean };
 
@@ -375,6 +377,20 @@ function createFormationFactionBundle(): BenchmarkBundle {
             group: 'Inner Sphere',
             img: '',
             eras: { 1: new Set([2]) },
+        },
+        {
+            id: 3,
+            name: CLAN_WOLF_FACTION,
+            group: 'IS Clan',
+            img: '',
+            eras: { 1: new Set([1]) },
+        },
+        {
+            id: 4,
+            name: RASALHAGUE_DOMINION_FACTION,
+            group: 'IS Clan',
+            img: '',
+            eras: { 1: new Set([1]) },
         },
     ];
     return bundle;
@@ -869,15 +885,56 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expectSemanticFormationAvailability('anvil-lance', false);
     });
 
+    it('limits Clan-only formation availability to Clan faction filters', () => {
+        const { service } = createService(createFormationFactionBundle());
+        const expectFormationAvailability = (formationId: string, available: boolean) => {
+            expect(service.getFormationTargetOptions(GameSystem.ALPHA_STRIKE).find((option) => option.name === formationId))
+                .toEqual(jasmine.objectContaining({ name: formationId, available }));
+        };
+
+        setFactionFilter(service, FEDERATED_SUNS_FACTION);
+
+        expectFormationAvailability('phalanx-star', false);
+        expectFormationAvailability('strategic-command-star', false);
+
+        setFactionFilter(service, CLAN_WOLF_FACTION);
+
+        expectFormationAvailability('phalanx-star', true);
+        expectFormationAvailability('strategic-command-star', true);
+
+        setFactionFilter(service, RASALHAGUE_DOMINION_FACTION);
+
+        expectFormationAvailability('phalanx-star', true);
+        expectFormationAvailability('strategic-command-star', true);
+    });
+
+    it('limits faction dropdown availability by Clan-only formation targets', () => {
+        const { service, gameServiceStub } = createService(createFormationFactionBundle());
+        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+
+        service.setFormationTarget({ formationId: 'phalanx-star', existingUnits: [], gameSystem: GameSystem.ALPHA_STRIKE });
+
+        expectOptionAvailability(service.advOptions()['faction']?.options ?? [], FEDERATED_SUNS_FACTION, false);
+        expectOptionAvailability(service.advOptions()['faction']?.options ?? [], CLAN_WOLF_FACTION, true);
+        expectOptionAvailability(service.advOptions()['faction']?.options ?? [], RASALHAGUE_DOMINION_FACTION, true);
+    });
+
     it('sorts formation target options alphabetically and resolves loose semantic names', () => {
         const { service, gameServiceStub } = createService(createStandaloneBundle());
         gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
 
-        const displayNames = service.getFormationTargetOptions(GameSystem.ALPHA_STRIKE)
+        const formationTargetOptions = service.getFormationTargetOptions(GameSystem.ALPHA_STRIKE);
+        const displayNames = formationTargetOptions
             .slice(1)
             .map((option) => option.displayName ?? option.name);
 
         expect(displayNames).toEqual([...displayNames].sort((left, right) => left.localeCompare(right)));
+        expect(formationTargetOptions.find((option) => option.name === 'fire-support-lance')?.displayName)
+            .toBe('Fire Support');
+        expect(formationTargetOptions.find((option) => option.name === 'fire-support-squadron')?.displayName)
+            .toBe('Fire Support [Aero]');
+        expect(formationTargetOptions.find((option) => option.name === 'interceptor-squadron')?.displayName)
+            .toBe('Interceptor [Aero]');
 
         service.setSearchText('formation=vehicle-command');
 
