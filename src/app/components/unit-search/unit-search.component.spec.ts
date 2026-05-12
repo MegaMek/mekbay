@@ -27,6 +27,7 @@ describe('UnitSearchComponent card virtualization', () => {
     const filteredUnitsSignal = signal<Unit[]>([]);
     const currentGameSystemSignal = signal(GameSystem.ALPHA_STRIKE);
     const closePanelsRequestSignal = signal({ requestId: 0, exitExpandedView: false });
+    const isSearchSettledSignal = signal(true);
     let openDialogs: unknown[];
     const optionsSignal = signal({
         ASUseHex: false,
@@ -50,12 +51,14 @@ describe('UnitSearchComponent card virtualization', () => {
         selectedSortDirection: signal<'asc' | 'desc'>('asc'),
         closePanelsRequest: closePanelsRequestSignal,
         filteredUnits: () => filteredUnitsSignal(),
+        isSearchSettled: () => isSearchSettledSignal(),
         isDataReady: () => true,
         searchTokens: () => [],
         isComplexQuery: () => false,
         filterState: () => ({}),
         advOptions: () => ({}),
         resetFilters: jasmine.createSpy('resetFilters'),
+        setSearchText: jasmine.createSpy('setSearchText'),
         setSortDirection: jasmine.createSpy('setSortDirection'),
         setSortOrder: jasmine.createSpy('setSortOrder'),
         setFilter: jasmine.createSpy('setFilter'),
@@ -156,11 +159,17 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.expandedView.set(false);
         filtersServiceStub.advOpen.set(false);
         filtersServiceStub.searchText.set('');
+        isSearchSettledSignal.set(true);
         filtersServiceStub.bvPvLimit.set(0);
         filtersServiceStub.selectedSort.set('name');
         filtersServiceStub.selectedSortDirection.set('asc');
         closePanelsRequestSignal.set({ requestId: 0, exitExpandedView: false });
         filtersServiceStub.requestClosePanels.calls.reset();
+        filtersServiceStub.setSearchText.calls.reset();
+        filtersServiceStub.setSearchText.and.callFake((text: string) => {
+            filtersServiceStub.searchText.set(text);
+            return text;
+        });
         filtersServiceStub.getMegaMekAvailabilityBadges.and.returnValue([]);
         filtersServiceStub.getMegaMekRaritySortScore.and.returnValue(0);
         dialogsServiceStub.createDialog.calls.reset();
@@ -421,6 +430,68 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(component.activeIndex()).toBe(2);
         expect(component.inlinePanelUnit()?.name).toBe('Unit 3');
         expect(scrollToMakeVisible).toHaveBeenCalledWith(2, 'auto');
+    });
+
+    it('queues Enter until a debounced search commits before opening a result', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const previousUnit = createUnit('Atlas');
+        const nextUnit = createUnit('Catapult');
+
+        dialogsServiceStub.createDialog.and.returnValue({ closed: NEVER });
+        filtersServiceStub.setSearchText.and.callFake((text: string) => {
+            filtersServiceStub.searchText.set(text);
+            isSearchSettledSignal.set(false);
+            return text;
+        });
+        filtersServiceStub.searchText.set('atlas');
+        filteredUnitsSignal.set([previousUnit]);
+        fixture.detectChanges();
+
+        component.setSearch('catapult');
+        const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
+        component.onKeydown(event);
+
+        expect(event.defaultPrevented).toBeTrue();
+        expect(dialogsServiceStub.createDialog).not.toHaveBeenCalled();
+
+        filteredUnitsSignal.set([nextUnit]);
+        isSearchSettledSignal.set(true);
+        fixture.detectChanges();
+
+        expect(filtersServiceStub.setSearchText).toHaveBeenCalledWith('catapult');
+        expect(dialogsServiceStub.createDialog).toHaveBeenCalledTimes(1);
+        const dialogConfig = dialogsServiceStub.createDialog.calls.mostRecent().args[1] as any;
+        expect(dialogConfig.data.unitList).toEqual([nextUnit]);
+        expect(dialogConfig.data.unitIndex).toBe(0);
+    });
+
+    it('queues Enter until worker results settle before opening a result', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const previousUnit = createUnit('Atlas');
+        const nextUnit = createUnit('Catapult');
+
+        dialogsServiceStub.createDialog.and.returnValue({ closed: NEVER });
+        filtersServiceStub.searchText.set('atlas');
+        filteredUnitsSignal.set([previousUnit]);
+        isSearchSettledSignal.set(false);
+        fixture.detectChanges();
+
+        const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
+        component.onKeydown(event);
+
+        expect(event.defaultPrevented).toBeTrue();
+        expect(dialogsServiceStub.createDialog).not.toHaveBeenCalled();
+
+        filteredUnitsSignal.set([nextUnit]);
+        isSearchSettledSignal.set(true);
+        fixture.detectChanges();
+
+        expect(dialogsServiceStub.createDialog).toHaveBeenCalledTimes(1);
+        const dialogConfig = dialogsServiceStub.createDialog.calls.mostRecent().args[1] as any;
+        expect(dialogConfig.data.unitList).toEqual([nextUnit]);
+        expect(dialogConfig.data.unitIndex).toBe(0);
     });
 
     it('does not navigate search results while a dialog is on top', () => {

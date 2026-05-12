@@ -213,6 +213,7 @@ export class UnitSearchComponent {
     private heightTrackingDebounceTimer: any;
     private readonly SEARCH_DEBOUNCE_MS = 300;
     private resultPointerHoverSuppressedUntil = 0;
+    private pendingSearchText: string | null = null;
 
     private static readonly CHORD_ACTIVATE_KEY = 'f';
     private static readonly CHORD_TIMEOUT_MS = 1500;
@@ -264,6 +265,8 @@ export class UnitSearchComponent {
     private favoritesDialogActive = false;
     /** Immediate input value for instant highlighting (not debounced). */
     readonly immediateSearchText = signal('');
+    private readonly searchCommitPending = signal(false);
+    private readonly pendingResultOpenRequest = signal(false);
 
     syntaxInput = viewChild<SyntaxInputComponent>('syntaxInput');
     advBtn = viewChild.required<ElementRef<HTMLButtonElement>>('advBtn');
@@ -1052,6 +1055,16 @@ export class UnitSearchComponent {
                 }
             });
         });
+        effect(() => {
+            if (!this.pendingResultOpenRequest()) return;
+            if (this.isResultOpenBlockedByPendingSearch()) return;
+
+            const items = this.filtersService.filteredUnits();
+            untracked(() => {
+                this.pendingResultOpenRequest.set(false);
+                this.openCurrentSearchResult(items);
+            });
+        });
         // Keep the filters service in sync with the current force total BV/PV
         effect(() => {
             const force = this.forceBuilderService.smartCurrentForce();
@@ -1430,6 +1443,7 @@ export class UnitSearchComponent {
     }
 
     public closeAllPanels() {
+        this.pendingResultOpenRequest.set(false);
         this.focused.set(false);
         this.advOpen.set(false);
         this.viewModeMenuOpen.set(false);
@@ -1467,14 +1481,33 @@ export class UnitSearchComponent {
     setSearch(val: string) {
         // Update immediately for instant highlighting
         this.immediateSearchText.set(val);
+        this.activeIndex.set(null);
+        this.pendingResultOpenRequest.set(false);
         // Debounce the actual search/filtering
         if (this.searchDebounceTimer) {
             clearTimeout(this.searchDebounceTimer);
         }
-        this.searchDebounceTimer = setTimeout(() => {
-            this.filtersService.setSearchText(val);
-            this.activeIndex.set(null);
-        }, this.SEARCH_DEBOUNCE_MS);
+        this.pendingSearchText = val;
+        this.searchCommitPending.set(true);
+        this.searchDebounceTimer = setTimeout(() => this.flushPendingSearch(), this.SEARCH_DEBOUNCE_MS);
+    }
+
+    private flushPendingSearch() {
+        if (this.searchDebounceTimer) {
+            clearTimeout(this.searchDebounceTimer);
+            this.searchDebounceTimer = undefined;
+        }
+
+        if (this.pendingSearchText === null) {
+            this.searchCommitPending.set(false);
+            return;
+        }
+
+        const nextSearchText = this.pendingSearchText;
+        this.pendingSearchText = null;
+        this.filtersService.setSearchText(nextSearchText);
+        this.activeIndex.set(null);
+        this.searchCommitPending.set(false);
     }
 
     closeAdvPanel() {
@@ -1686,6 +1719,7 @@ export class UnitSearchComponent {
         }
         if (event.key === 'Escape') {
             event.stopPropagation();
+            this.pendingResultOpenRequest.set(false);
             if (this.viewModeMenuOpen()) {
                 this.closeViewModeMenu();
                 return;
@@ -1703,10 +1737,15 @@ export class UnitSearchComponent {
             }
             return;
         }
-        if (['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key)) {
+        if (event.key === 'Enter') {
+            if (this.requestOpenCurrentSearchResult()) {
+                event.preventDefault();
+            }
+            return;
+        }
+        if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
             const items = this.filtersService.filteredUnits();
             if (items.length === 0) return;
-            const currentActiveIndex = this.activeIndex();
             switch (event.key) {
                 case 'ArrowDown':
                     event.preventDefault();
@@ -1716,16 +1755,34 @@ export class UnitSearchComponent {
                     event.preventDefault();
                     this.navigateSearchResults('previous', items);
                     break;
-                case 'Enter':
-                    event.preventDefault();
-                    if (currentActiveIndex !== null) {
-                        this.showUnitDetails(items[currentActiveIndex]);
-                    } else if (items.length > 0) {
-                        this.showUnitDetails(items[0]);
-                    }
-                    break;
             }
         }
+    }
+
+    private isResultOpenBlockedByPendingSearch(): boolean {
+        return this.searchCommitPending() || !this.filtersService.isSearchSettled();
+    }
+
+    private requestOpenCurrentSearchResult(): boolean {
+        this.flushPendingSearch();
+
+        if (this.isResultOpenBlockedByPendingSearch()) {
+            this.pendingResultOpenRequest.set(true);
+            return true;
+        }
+
+        return this.openCurrentSearchResult();
+    }
+
+    private openCurrentSearchResult(items = this.filtersService.filteredUnits()): boolean {
+        if (items.length === 0) return false;
+
+        const currentActiveIndex = this.activeIndex();
+        const index = currentActiveIndex !== null && currentActiveIndex >= 0 && currentActiveIndex < items.length
+            ? currentActiveIndex
+            : 0;
+        this.showUnitDetails(items[index]);
+        return true;
     }
 
     private handleSearchResultsShortcutKeyDown(event: KeyboardEvent): boolean {
@@ -2490,6 +2547,13 @@ export class UnitSearchComponent {
     }
 
     clearSearch() {
+        if (this.searchDebounceTimer) {
+            clearTimeout(this.searchDebounceTimer);
+            this.searchDebounceTimer = undefined;
+        }
+        this.pendingSearchText = null;
+        this.searchCommitPending.set(false);
+        this.pendingResultOpenRequest.set(false);
         this.immediateSearchText.set('');
         this.filtersService.setSearchText('');
         this.activeIndex.set(null);
