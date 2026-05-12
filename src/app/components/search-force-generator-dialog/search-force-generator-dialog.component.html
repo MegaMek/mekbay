@@ -143,17 +143,32 @@
 
                         <div class="form-fields span-all">
                             <label class="field-label">Faction</label>
-                            <multi-select-dropdown
-                                class="generator-dropdown"
-                                [label]="''"
-                                [options]="targetFormationFactionOptions()"
-                                [selected]="selectedFactionValues()"
-                                [multistate]="true"
-                                [semanticOnly]="factionFilter()?.semanticOnly ?? false"
-                                [displayText]="factionFilter()?.displayText"
-                                [displayItems]="factionFilter()?.displayItems"
-                                (selectionChange)="onFactionSelectionChange($event)">
-                            </multi-select-dropdown>
+                            <div class="dropdown-option-row">
+                                <multi-select-dropdown
+                                    class="generator-dropdown"
+                                    [label]="''"
+                                    [options]="targetFormationFactionOptions()"
+                                    [selected]="selectedFactionValues()"
+                                    [multistate]="true"
+                                    [semanticOnly]="factionFilter()?.semanticOnly ?? false"
+                                    [displayText]="factionFilter()?.displayText"
+                                    [displayItems]="factionFilter()?.displayItems"
+                                    (selectionChange)="onFactionSelectionChange($event)">
+                                </multi-select-dropdown>
+
+                                @if (selectedFactionAvailabilityMergeToggleVisible()) {
+                                    <label
+                                        class="generator-option generator-option-inline"
+                                        [tooltip]="mergeSelectedFactionAvailabilityTooltip()">
+                                        <input
+                                            class="bt-checkbox"
+                                            type="checkbox"
+                                            [checked]="mergeSelectedFactionAvailability()"
+                                            (change)="onMergeSelectedFactionAvailabilityChange($event)" />
+                                        <span class="generator-option-label">Merge</span>
+                                    </label>
+                                }
+                            </div>
                         </div>
                     </div>
 

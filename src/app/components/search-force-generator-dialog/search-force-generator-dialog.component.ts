@@ -93,6 +93,8 @@ export interface SearchForceGeneratorDialogConfig {
     maxUnitCount: number;
     skillRanges: ForceGenerationSkillRanges;
     crossEraAvailabilityInMultiEraSelection: boolean;
+    randomFaction: boolean;
+    mergeSelectedFactionAvailability: boolean;
     preventDuplicateChassis: boolean;
     useTaggedQuantities: boolean;
     useUnitTagsAsChassisTags: boolean;
@@ -110,6 +112,7 @@ type MultiStateFilterKey = 'era' | 'faction' | '_tags';
 type UnitTypeFilterKey = 'type' | 'as.TP';
 type GeneratorDialogTab = 'configuration' | 'preview';
 type FormationTargetDropdownFilterKey = 'era' | 'faction';
+const RANDOM_FACTION_OPTION_NAME = '__force-generator-random-faction__';
 type FormationTargetDropdownOptionsProvider = UnitSearchFiltersService & {
     getDropdownOptionsForFormationTarget?: (
         filterKey: FormationTargetDropdownFilterKey,
@@ -207,14 +210,39 @@ export class SearchForceGeneratorDialogComponent {
     readonly subtypeFilter = computed(() => this.gameSystem() === GameSystem.CLASSIC ? this.getDropdownFilter('subtype') : null);
     readonly tagsFilter = computed(() => this.getDropdownFilter('_tags'));
     readonly targetFormationEraOptions = computed(() => this.getDropdownOptionsForTargetFormation('era', this.eraFilter()));
-    readonly targetFormationFactionOptions = computed(() => this.getDropdownOptionsForTargetFormation('faction', this.factionFilter()));
+    readonly randomFactionOption: DropdownOption = {
+        name: RANDOM_FACTION_OPTION_NAME,
+        displayName: 'Random',
+        img: '/images/random.svg',
+        alwaysVisible: true,
+        exclusive: true,
+        stateCycle: ['or'],
+    };
+    readonly targetFormationFactionOptions = computed(() => [
+        this.randomFactionOption,
+        ...this.getDropdownOptionsForTargetFormation('faction', this.factionFilter()),
+    ]);
     readonly selectedEraValues = computed(() => this.getSelectedMultiStateValues(this.eraFilter()));
-    readonly selectedFactionValues = computed(() => this.getSelectedMultiStateValues(this.factionFilter()));
+    readonly selectedFactionValues = computed<MultiStateSelection>(() => this.randomFactionSelected()
+        ? {
+            [RANDOM_FACTION_OPTION_NAME]: {
+                name: RANDOM_FACTION_OPTION_NAME,
+                state: 'or' as const,
+                count: 1,
+            },
+        }
+        : this.getSelectedMultiStateValues(this.factionFilter()));
     readonly selectedUnitTypeValues = computed(() => this.getSelectedDropdownValues(this.unitTypeFilter()));
     readonly selectedSubtypeValues = computed(() => this.getSelectedDropdownValues(this.subtypeFilter()));
     readonly selectedTagValues = computed(() => this.getSelectedMultiStateValues(this.tagsFilter()));
     readonly crossEraAvailabilityInMultiEraSelection = signal(false);
+    readonly randomFactionSelected = signal(false);
+    readonly mergeSelectedFactionAvailability = signal(true);
     readonly positiveEraSelectionCount = computed(() => this.countPositiveMultiStateSelections(this.eraFilter()));
+    readonly positiveFactionSelectionCount = computed(() => this.countPositiveMultiStateSelections(this.factionFilter()));
+    readonly selectedFactionAvailabilityMergeToggleVisible = computed(() => (
+        !this.randomFactionSelected() && this.positiveFactionSelectionCount() > 1
+    ));
     readonly crossEraAvailabilityToggleEnabled = computed(() => {
         const positiveEraSelectionCount = this.positiveEraSelectionCount();
         return positiveEraSelectionCount === 0 || positiveEraSelectionCount > 1;
@@ -225,6 +253,9 @@ export class SearchForceGeneratorDialogComponent {
             ? baseMessage
             : `${baseMessage} Available only when no positive era is selected or when multiple eras are selected.`;
     });
+    readonly mergeSelectedFactionAvailabilityTooltip = computed(() => (
+        'When enabled, availability uses max P/S across selected factions. When disabled, generation rolls one selected faction and uses only that faction\'s weights.'
+    ));
     readonly advPanelFilterGameSystem = signal<GameSystem>(this.initialGameSystem);
     readonly pilotSkillsOpen = signal(false);
     readonly additionalFiltersOpen = signal(false);
@@ -569,7 +600,17 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     onFactionSelectionChange(selection: MultiStateSelection | readonly string[]): void {
-        this.setMultiStateFilter('faction', selection);
+        const normalizedSelection = normalizeMultiStateSelection(selection);
+        const randomSelection = normalizedSelection[RANDOM_FACTION_OPTION_NAME];
+        if (randomSelection?.state !== undefined && randomSelection.state !== false) {
+            this.randomFactionSelected.set(true);
+            this.filtersService.setFilter('faction', {});
+            return;
+        }
+
+        delete normalizedSelection[RANDOM_FACTION_OPTION_NAME];
+        this.randomFactionSelected.set(false);
+        this.setMultiStateFilter('faction', normalizedSelection);
     }
 
     onUnitTypeSelectionChange(selection: MultiStateSelection | readonly string[]): void {
@@ -636,6 +677,10 @@ export class SearchForceGeneratorDialogComponent {
         this.crossEraAvailabilityInMultiEraSelection.set(
             this.crossEraAvailabilityToggleEnabled() && target.checked,
         );
+    }
+
+    onMergeSelectedFactionAvailabilityChange(event: Event): void {
+        this.mergeSelectedFactionAvailability.set((event.target as HTMLInputElement).checked);
     }
 
     onTargetFormationSelectionChange(selection: MultiStateSelection | readonly string[]): void {
@@ -818,6 +863,8 @@ export class SearchForceGeneratorDialogComponent {
                 maxUnitCount: this.maxUnitCount(),
                 skillRanges: this.forceGenerationSkillRanges(),
                 crossEraAvailabilityInMultiEraSelection: this.crossEraAvailabilityInMultiEraSelection(),
+                randomFaction: this.randomFactionSelected(),
+                mergeSelectedFactionAvailability: this.mergeSelectedFactionAvailability(),
                 preventDuplicateChassis: this.preventDuplicateChassis(),
                 useTaggedQuantities: this.useTaggedQuantities(),
                 useUnitTagsAsChassisTags: this.useTaggedQuantities() && this.useUnitTagsAsChassisTags(),
@@ -993,6 +1040,8 @@ export class SearchForceGeneratorDialogComponent {
             searchSettings: this.buildSearchSettingsExplanationLines(),
             context: this.forceGeneratorService.resolveGenerationContext(eligibleUnits, {
                 crossEraAvailabilityInMultiEraSelection: this.crossEraAvailabilityInMultiEraSelection(),
+                randomFaction: this.randomFactionSelected(),
+                mergeSelectedFactionAvailability: this.mergeSelectedFactionAvailability(),
                 gameSystem: settings.gameSystem,
                 targetFormationId: settings.targetFormationId,
                 targetFormations: settings.targetFormations,
@@ -1212,6 +1261,7 @@ export class SearchForceGeneratorDialogComponent {
         const settings = [
             searchText.length > 0 ? `query "${searchText}"` : null,
             `filters ${filterSettingsSummary}`,
+            this.formatFactionGenerationModeSummary(),
         ].filter((setting): setting is string => setting !== null);
 
         return [`Search settings: ${settings.join('; ')}.`];
@@ -1276,6 +1326,18 @@ export class SearchForceGeneratorDialogComponent {
         const visibleSelections = activeSelections.slice(0, 2);
         const hiddenCount = activeSelections.length - visibleSelections.length;
         return `${option.label} ${visibleSelections.join(', ')}${hiddenCount > 0 ? ` +${hiddenCount}` : ''}`;
+    }
+
+    private formatFactionGenerationModeSummary(): string | null {
+        if (this.randomFactionSelected()) {
+            return 'Faction mode: Random';
+        }
+
+        if (this.positiveFactionSelectionCount() > 1 && !this.mergeSelectedFactionAvailability()) {
+            return 'Faction mode: Random selected faction';
+        }
+
+        return null;
     }
 
     private setBudgetRangeForSystem(gameSystem: GameSystem, range: { min: number; max: number }): void {
