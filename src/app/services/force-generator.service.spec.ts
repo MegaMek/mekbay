@@ -3150,6 +3150,90 @@ describe('ForceGeneratorService', () => {
         expect(preview.explanationLines.some((line) => line.includes('No force matched the full budget and unit-count constraints'))).toBeTrue();
     });
 
+    it('completes an underfilled unreachable-budget fallback with a remaining legal candidate', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const candidateUnits = Array.from({ length: 15 }, (_, index) => createUnit({
+            id: index + 1,
+            name: index === 14 ? 'Pouncer Candidate' : `Fallback Unit ${index + 1}`,
+            chassis: index === 14 ? 'Pouncer' : `Fallback ${index + 1}`,
+            as: { PV: index === 14 ? 37 : 40 } as Unit['as'],
+        }));
+        const makeCandidate = (unit: Unit) => ({
+            unit,
+            requisitionWeight: 1,
+            salvageWeight: 0,
+            cost: unit.as.PV,
+            locked: false,
+            megaMekUnitType: 'Mek',
+        });
+        const shortAttempt = {
+            selectedCandidates: candidateUnits.slice(0, 14).map((unit) => makeCandidate(unit)),
+            selectionSteps: [],
+            rulesetProfile: null,
+            candidatePoolStarved: true,
+        };
+        const buildSelectionSpy = spyOn<any>(service, 'buildCandidateSelection').and.returnValue(shortAttempt);
+
+        const preview = service.buildPreview({
+            eligibleUnits: candidateUnits,
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 730, max: 0 },
+            minUnitCount: 15,
+            maxUnitCount: 15,
+            gunnery: 4,
+            piloting: 5,
+            preventDuplicateChassis: true,
+        });
+
+        expect(buildSelectionSpy).toHaveBeenCalled();
+        expect(preview.error).toBeNull();
+        expect(preview.units).toHaveSize(15);
+        expect(preview.units[14].unit.name).toBe('Pouncer Candidate');
+        expect(preview.totalCost).toBe(597);
+        expect(preview.explanationLines.some((line) => line.includes('No force matched the full budget and unit-count constraints'))).toBeTrue();
+    });
+
+    it('can fill an unreachable-budget fallback with a salvage-only candidate', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const requisitionUnit = createUnit({
+            id: 1,
+            name: 'Requisition Unit',
+            chassis: 'Requisition',
+            as: { PV: 50 } as Unit['as'],
+        });
+        const salvageUnit = createUnit({
+            id: 2,
+            name: 'Salvage Unit',
+            chassis: 'Salvage',
+            as: { PV: 20 } as Unit['as'],
+        });
+        registerEraAndFaction(era, faction);
+        addMegaMekAvailability(requisitionUnit, faction, era, 5, 0);
+        addMegaMekAvailability(salvageUnit, faction, era, 0, 5);
+
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [requisitionUnit, salvageUnit],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 100, max: 0 },
+            minUnitCount: 2,
+            maxUnitCount: 2,
+            gunnery: 4,
+            piloting: 5,
+            preventDuplicateChassis: true,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Requisition Unit', 'Salvage Unit']);
+        expect(preview.totalCost).toBe(70);
+        expect(preview.explanationLines.some((line) => line.includes('No force matched the full budget and unit-count constraints'))).toBeTrue();
+    });
+
     it('returns the lowest-total compatible force in the requested unit-count range when nothing can stay at or below the maximum budget', () => {
         const era = createEra(3025, 'Succession Wars');
         const faction = createFaction(10, 'Capellan Confederation');
@@ -3517,8 +3601,7 @@ describe('ForceGeneratorService', () => {
             _tags: {
                 interactedWith: true,
                 value: {
-                    owned: { name: 'owned', state: 'or', count: 1 },
-                    painted: { name: 'painted', state: 'or', count: 1 },
+                    owned: { name: 'owned', state: 'and', count: 1 },
                     test: { name: 'test', state: 'not', count: 1 },
                 },
             },
@@ -4277,7 +4360,7 @@ describe('ForceGeneratorService', () => {
         expect(buildSelectionSpy.calls.count()).toBeLessThan(16);
     });
 
-    it('returns the highest failed attempt that does not exceed the target even if another attempt is closer on unit count', () => {
+    it('prefers a unit-count-complete failed attempt before budget closeness', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
         const nearBudgetA = createUnit({ id: 1, name: 'Near Budget A', as: { PV: 10 } as Unit['as'] });
@@ -4335,8 +4418,13 @@ describe('ForceGeneratorService', () => {
         });
 
         expect(preview.error).toBeNull();
-        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Near Budget A', 'Near Budget B']);
-        expect(preview.totalCost).toBe(19);
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual([
+            'Count Match A',
+            'Count Match B',
+            'Count Match C',
+            'Count Match D',
+        ]);
+        expect(preview.totalCost).toBe(16);
         expect(service.createForceEntry(preview)).not.toBeNull();
     });
 
