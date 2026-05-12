@@ -304,6 +304,7 @@ interface ForceGenerationSelectionAttempt {
     rulesetProfile: ForceGenerationRulesetProfile | null;
     structureEvaluation?: ForceGenerationStructureEvaluation;
     targetFormationGroups?: ForceGenerationTargetFormationCandidateGroup[];
+    candidatePoolStarved?: boolean;
 }
 
 interface ForceGenerationTargetFormationContext {
@@ -2203,7 +2204,6 @@ export class ForceGeneratorService implements OnDestroy {
         const lockedTaggedQuantityCounts = useTaggedQuantityCaps && taggedQuantityCaps
             ? this.countTaggedQuantityCandidates(lockedCandidates, taggedQuantityCaps)
             : new Map<string, number>();
-        const unlockedEligibleUnits = eligibleUnits.filter((unit) => !lockedUnitNames.has(unit.name));
         const preparedCandidateCache = this.resolvePreparedCandidateCache(
             eligibleUnits,
             options.context,
@@ -2226,57 +2226,6 @@ export class ForceGeneratorService implements OnDestroy {
                 maxUnitCount,
             )
             : [...skillCompatibleCandidates];
-        const availableMatchedPairCopyCapacity = targetFormationContext && !useTaggedQuantityCaps && !allowUnlimitedDuplicateUnits
-            ? this.countMatchedPairCopyCapacity(
-                targetFormationContext.definition,
-                [...lockedCandidates, ...availabilityCandidates],
-                options,
-                maxUnitCount,
-            )
-            : 0;
-        const availableUnitCapacity = useTaggedQuantityCaps
-            ? lockedCandidates.length + this.countTaggedQuantityCapacity(
-                eligibleUnits,
-                (unit) => unit,
-                taggedQuantityCaps!,
-                lockedTaggedQuantityCounts,
-                maxUnitCount,
-            )
-            : allowUnlimitedDuplicateUnits
-                ? (eligibleUnits.length > 0 ? maxUnitCount : lockedCandidates.length)
-                : unlockedEligibleUnits.length + lockedCandidates.length + availableMatchedPairCopyCapacity;
-
-        if (availableUnitCapacity < minUnitCount) {
-            const message = lockedCandidates.length > 0
-                ? `Only ${availableUnitCapacity} total units are available after preserving ${lockedCandidates.length} locked ${lockedCandidates.length === 1 ? 'unit' : 'units'}.`
-                : `Only ${eligibleUnits.length} eligible units match the current filters.`;
-
-            if (lockedCandidates.length > 0) {
-                return this.buildPreviewFromSelectionAttempt(
-                    options,
-                    eligibleUnits.length,
-                    availableUnitCapacity,
-                    budgetRange,
-                    minUnitCount,
-                    maxUnitCount,
-                    this.createSelectionAttemptFromCandidates(lockedCandidates, null),
-                    message,
-                    undefined,
-                    candidates,
-                );
-            }
-
-            return this.buildEmptyPreview(
-                options,
-                eligibleUnits.length,
-                availableUnitCapacity,
-                budgetRange,
-                minUnitCount,
-                maxUnitCount,
-                message,
-                candidates,
-            );
-        }
 
         if (!hasValidForceGenerationSkillSettings(options.gameSystem, skillSettings)) {
             const message = `No valid Gunnery/Piloting skill pairs match the selected ranges with max delta ${skillSettings.maxDelta}.`;
@@ -2327,43 +2276,6 @@ export class ForceGeneratorService implements OnDestroy {
                         maxUnitCount,
                     )
                     : 0);
-        const selectableCandidateCapacity = allowUnlimitedDuplicateUnits
-            ? (skillCompatibleCandidates.length > 0 ? maxUnitCount : lockedCandidates.length)
-            : availableCandidateCapacity;
-
-        if (selectableCandidateCapacity < minUnitCount) {
-            const message = lockedCandidates.length > 0
-                ? `Only ${selectableCandidateCapacity} total units are available after preserving ${lockedCandidates.length} locked ${lockedCandidates.length === 1 ? 'unit' : 'units'}.`
-                : candidates.length < availabilityCandidates.length
-                    ? `Only ${candidates.length} availability-positive units can satisfy the selected skill ranges with max delta ${skillSettings.maxDelta}.`
-                    : this.getPositiveAvailabilityMessage(candidates.length, options.context);
-
-            if (lockedCandidates.length > 0) {
-                return this.buildPreviewFromSelectionAttempt(
-                    options,
-                    eligibleUnits.length,
-                    selectableCandidateCapacity,
-                    budgetRange,
-                    minUnitCount,
-                    maxUnitCount,
-                    this.createSelectionAttemptFromCandidates(lockedCandidates, null),
-                    message,
-                    undefined,
-                    candidates,
-                );
-            }
-
-            return this.buildEmptyPreview(
-                options,
-                eligibleUnits.length,
-                selectableCandidateCapacity,
-                budgetRange,
-                minUnitCount,
-                maxUnitCount,
-                message,
-                candidates,
-            );
-        }
 
         const hasResolvedRuleset = this.resolveRulesetContext(options.context.forceFaction, options.context.forceEra).primary !== null;
         const didFilterCandidatesForSkills = candidates.length !== availabilityCandidates.length;
@@ -2629,20 +2541,22 @@ export class ForceGeneratorService implements OnDestroy {
                 options.preventDuplicateChassis === true,
                 firstCompatibleSelectionPreparation,
             );
-            return this.buildPreviewFromSelectionAttempt(
-                options,
-                eligibleUnits.length,
-                availableCandidateCapacity,
-                budgetRange,
-                minUnitCount,
-                maxUnitCount,
-                selectionAttempt,
-                null,
-                'Budget 0/0 requested, so the first compatible result was returned.',
-                candidates,
-                1,
-                getForceGeneratorNow() - previewStartedAt,
-            );
+            if (selectionAttempt.selectedCandidates.length > 0) {
+                return this.buildPreviewFromSelectionAttempt(
+                    options,
+                    eligibleUnits.length,
+                    availableCandidateCapacity,
+                    budgetRange,
+                    minUnitCount,
+                    maxUnitCount,
+                    selectionAttempt,
+                    null,
+                    'Budget 0/0 requested, so the first compatible result was returned.',
+                    candidates,
+                    1,
+                    getForceGeneratorNow() - previewStartedAt,
+                );
+            }
         }
 
         const lockedTotalCost = lockedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
@@ -2840,6 +2754,10 @@ export class ForceGeneratorService implements OnDestroy {
                 }
             }
 
+            if (selectionAttempt.candidatePoolStarved) {
+                break;
+            }
+
             const attemptDurationMs = Math.max(0.05, getForceGeneratorNow() - attemptStartedAt);
             attemptDurationEstimateMs = this.updateAttemptDurationEstimate(attemptDurationEstimateMs, attemptDurationMs, attempt + 1);
             attemptLimit = this.resolveAttemptLimit(
@@ -2898,6 +2816,12 @@ export class ForceGeneratorService implements OnDestroy {
             );
         }
 
+        const emptyFailureMessage = candidates.length === 0
+            ? didFilterCandidatesForSkills
+                ? `Only ${candidates.length} availability-positive units can satisfy the selected skill ranges with max delta ${skillSettings.maxDelta}.`
+                : this.getPositiveAvailabilityMessage(candidates.length, options.context)
+            : 'Unable to build a force within the selected BV/PV range and unit count constraints.';
+
         return this.buildEmptyPreview(
             options,
             eligibleUnits.length,
@@ -2905,7 +2829,7 @@ export class ForceGeneratorService implements OnDestroy {
             budgetRange,
             minUnitCount,
             maxUnitCount,
-            'Unable to build a force within the selected BV/PV range and unit count constraints.',
+            emptyFailureMessage,
             candidates,
             attemptsTried,
                 getForceGeneratorNow() - previewStartedAt,
@@ -5549,6 +5473,10 @@ export class ForceGeneratorService implements OnDestroy {
                 };
             }
 
+            if (result.attempt.candidatePoolStarved) {
+                break;
+            }
+
             if (this.hasSearchDeadlineExpired(searchDeadline)) {
                 break;
             }
@@ -6213,6 +6141,7 @@ export class ForceGeneratorService implements OnDestroy {
         };
         const hasMatchedPairConstraints = this.getMatchedPairConstraintIds(definition.id).size > 0;
         const allowUnlimitedDuplicateUnits = this.canReuseCandidateCopies(preventDuplicateChassis, targetCandidates);
+        let candidatePoolStarved = false;
 
         while (selectedCandidates.length < maxUnitCount && !this.hasSearchDeadlineExpired(deadline)) {
             const currentEvaluation = FormationRequirementEngine.evaluateDefinition(
@@ -6252,12 +6181,7 @@ export class ForceGeneratorService implements OnDestroy {
                 continue;
             }
 
-            const remainingCandidateCountAfterPick = remainingCandidates.length - 1;
             const requiredAfterPick = Math.max(0, minUnitCount - selectedCandidates.length - 1);
-            if (!allowUnlimitedDuplicateUnits && !hasMatchedPairConstraints && requiredAfterPick > remainingCandidateCountAfterPick) {
-                break;
-            }
-
             const remainingSlotsAfterPick = maxUnitCount - selectedCandidates.length - 1;
             const budgetFeasibleCandidates = remainingCandidates.filter((candidate) => {
                 const nextMinimumTotal = minimumSkillAdjustedTotalCost + this.getSkillPlanningCost(candidate, skillBudgetPlanningCosts, 'min');
@@ -6325,6 +6249,15 @@ export class ForceGeneratorService implements OnDestroy {
                     return chassisKey.length === 0 || !selectedChassisKeys.has(chassisKey);
                 })
                 : cappedCandidatePool;
+            if (duplicateFilteredCandidatePool.length === 0) {
+                candidatePoolStarved = this.isCandidatePoolStarved(
+                    preparedSelection.selectableCandidates,
+                    selectedCandidates,
+                    preventDuplicateChassis,
+                    allowUnlimitedDuplicateUnits,
+                );
+                break;
+            }
             const currentFormationUnits = this.createFormationUnitsForCandidates(selectedCandidates, options);
             const searchPredicateFilter = FormationRequirementEngine.getSearchCandidatePredicateFilter(
                 definition,
@@ -6382,6 +6315,7 @@ export class ForceGeneratorService implements OnDestroy {
             selectedCandidates,
             selectionSteps,
             rulesetProfile,
+            candidatePoolStarved,
         };
     }
 
@@ -6558,6 +6492,24 @@ export class ForceGeneratorService implements OnDestroy {
         candidates: readonly ForceGenerationCandidateUnit[],
     ): boolean {
         return !preventDuplicateChassis && candidates.every((candidate) => !candidate.taggedQuantityCapKey);
+    }
+
+    private isCandidatePoolStarved(
+        candidates: readonly ForceGenerationCandidateUnit[],
+        selectedCandidates: readonly ForceGenerationCandidateUnit[],
+        preventDuplicateChassis: boolean,
+        allowUnlimitedDuplicateUnits: boolean,
+    ): boolean {
+        if (candidates.length === 0) {
+            return true;
+        }
+
+        return this.filterAvailableTargetFormationCandidates(
+            candidates,
+            selectedCandidates,
+            preventDuplicateChassis,
+            allowUnlimitedDuplicateUnits,
+        ).length === 0;
     }
 
     private countTaggedQuantitySelections(
@@ -6805,10 +6757,6 @@ export class ForceGeneratorService implements OnDestroy {
             return true;
         }
 
-        if (!allowUnlimitedDuplicateUnits && candidatePool.length - 1 < requiredAfterPick) {
-            return false;
-        }
-
         const lowestCostCandidatePool = reachabilityContext?.lowestCostCandidatePool
             ?? this.createTargetFormationBudgetReachabilityContext(candidatePool, skillBudgetPlanningCosts).lowestCostCandidatePool;
         const minimumRemainingTotalCost = allowUnlimitedDuplicateUnits
@@ -6927,10 +6875,6 @@ export class ForceGeneratorService implements OnDestroy {
                 preventDuplicateChassis,
                 allowUnlimitedDuplicateUnits,
             );
-            if (!allowUnlimitedDuplicateUnits && availableCandidates.length + selectedCandidates.length < selectedCandidates.length + groupUnitCount) {
-                continue;
-            }
-
             const groupAttempt = this.buildTargetFormationGroupSelection(
                 availableCandidates,
                 options,
@@ -7317,6 +7261,7 @@ export class ForceGeneratorService implements OnDestroy {
             );
         }
         const allowUnlimitedDuplicateUnits = this.canReuseCandidateCopies(preventDuplicateChassis, candidates);
+        let candidatePoolStarved = false;
 
         while (selectedCandidates.length < maxUnitCount && !this.hasSearchDeadlineExpired(deadline)) {
             if (
@@ -7336,12 +7281,7 @@ export class ForceGeneratorService implements OnDestroy {
                 break;
             }
 
-            const remainingCandidateCountAfterPick = remainingCandidates.length - 1;
             const requiredAfterPick = Math.max(0, minUnitCount - selectedCandidates.length - 1);
-            if (!allowUnlimitedDuplicateUnits && requiredAfterPick > remainingCandidateCountAfterPick) {
-                break;
-            }
-
             const remainingSlotsAfterPick = maxUnitCount - selectedCandidates.length - 1;
 
             const underMaxCandidates = remainingCandidates.filter((candidate) => {
@@ -7410,6 +7350,12 @@ export class ForceGeneratorService implements OnDestroy {
                 : cappedCandidatePool;
 
             if (chassisFilteredCandidatePool.length === 0) {
+                candidatePoolStarved = this.isCandidatePoolStarved(
+                    preparedSelection.selectableCandidates,
+                    selectedCandidates,
+                    preventDuplicateChassis,
+                    allowUnlimitedDuplicateUnits,
+                );
                 break;
             }
 
@@ -7456,6 +7402,7 @@ export class ForceGeneratorService implements OnDestroy {
             selectedCandidates,
             selectionSteps,
             rulesetProfile,
+            candidatePoolStarved,
         };
     }
 

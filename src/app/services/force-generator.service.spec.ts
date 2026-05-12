@@ -3023,6 +3023,34 @@ describe('ForceGeneratorService', () => {
         expect(uniquePreview.explanationLines).toContain('Prevent Duplicate Chassis: on.');
     });
 
+    it('returns a best-effort force when duplicate chassis prevention exhausts the finite pool below the target', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const atlas = createUnit({ id: 1, name: 'Atlas AS7-D', chassis: 'Atlas', model: 'AS7-D', as: { PV: 6 } as Unit['as'] });
+        const locust = createUnit({ id: 2, name: 'Locust LCT-1V', chassis: 'Locust', model: 'LCT-1V', as: { PV: 4 } as Unit['as'] });
+
+        spyOn(Math, 'random').and.returnValue(0);
+        const buildSelectionSpy = spyOn<any>(service, 'buildCandidateSelection').and.callThrough();
+
+        const preview = service.buildPreview({
+            eligibleUnits: [atlas, locust],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 20 },
+            minUnitCount: 3,
+            maxUnitCount: 3,
+            gunnery: 4,
+            piloting: 5,
+            preventDuplicateChassis: true,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Atlas AS7-D', 'Locust LCT-1V']);
+        expect(preview.explanationLines).toContain('Prevent Duplicate Chassis: on.');
+        expect(preview.explanationLines.some((line) => line.includes('No force matched the full budget and unit-count constraints'))).toBeTrue();
+        expect(buildSelectionSpy.calls.count()).toBe(1);
+    });
+
     it('reuses the same availability-positive unit when duplicate and tag caps are inactive', () => {
         const era = createEra(3150, 'Late Republic');
         const faction = createFaction(10, 'Mercenary');
@@ -3361,6 +3389,70 @@ describe('ForceGeneratorService', () => {
         expect(preview.units.filter((unit) => unit.unit.chassis === 'Wasp')).toHaveSize(2);
     });
 
+    it('returns a best-effort force when unit-name tags shared by chassis exhaust below the target', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const locustA = createUnit({
+            id: 1,
+            name: 'Locust LCT-A',
+            chassis: 'Locust',
+            model: 'LCT-A',
+            type: 'Mek',
+            as: { PV: 1 } as Unit['as'],
+            _nameTags: [{ tag: 'owned', quantity: 2 }],
+        });
+        const locustB = createUnit({
+            id: 2,
+            name: 'Locust LCT-B',
+            chassis: 'Locust',
+            model: 'LCT-B',
+            type: 'Mek',
+            as: { PV: 1 } as Unit['as'],
+            _nameTags: [{ tag: 'owned', quantity: 2 }],
+        });
+        const wasp = createUnit({
+            id: 3,
+            name: 'Wasp WSP-1A',
+            chassis: 'Wasp',
+            model: 'WSP-1A',
+            type: 'Mek',
+            as: { PV: 1 } as Unit['as'],
+            _nameTags: [{ tag: 'owned', quantity: 1 }],
+        });
+
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            _tags: {
+                interactedWith: true,
+                value: {
+                    owned: { name: 'owned', state: 'or', count: 1 },
+                },
+            },
+        });
+        spyOn(Math, 'random').and.returnValue(0);
+        const buildSelectionSpy = spyOn<any>(service, 'buildCandidateSelection').and.callThrough();
+
+        const preview = service.buildPreview({
+            eligibleUnits: [locustA, locustB, wasp],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 100 },
+            minUnitCount: 4,
+            maxUnitCount: 4,
+            gunnery: 4,
+            piloting: 5,
+            preventDuplicateChassis: false,
+            useTaggedQuantities: true,
+            useUnitTagsAsChassisTags: true,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units).toHaveSize(3);
+        expect(preview.units.filter((unit) => unit.unit.chassis === 'Locust')).toHaveSize(2);
+        expect(preview.units.filter((unit) => unit.unit.chassis === 'Wasp')).toHaveSize(1);
+        expect(preview.explanationLines).toContain('Limit to tagged quantities: on; Use Unit-variant tags as Chassis tags: on.');
+        expect(buildSelectionSpy.calls.count()).toBe(1);
+    });
+
     it('uses the highest shared cap when selected unit and chassis tags mix', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
@@ -3499,7 +3591,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.units.filter((unit) => unit.unit.chassis === 'Wasp')).toHaveSize(1);
     });
 
-    it('ignores negative tag quantities when resolving exact-unit duplicate caps', () => {
+    it('stops at selected positive tag quantity caps when the requested count is higher', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
         const unitA = createUnit({
@@ -3523,6 +3615,7 @@ describe('ForceGeneratorService', () => {
                 },
             },
         });
+        const buildSelectionSpy = spyOn<any>(service, 'buildCandidateSelection').and.callThrough();
 
         const preview = service.buildPreview({
             eligibleUnits: [unitA],
@@ -3537,8 +3630,10 @@ describe('ForceGeneratorService', () => {
             useTaggedQuantities: true,
         });
 
-        expect(preview.units).toEqual([]);
-        expect(preview.error).not.toBeNull();
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Unit A']);
+        expect(preview.explanationLines).toContain('Limit to tagged quantities: on.');
+        expect(buildSelectionSpy.calls.count()).toBe(1);
     });
 
     it('ignores tagged quantity mode when only negative tags are selected', () => {
