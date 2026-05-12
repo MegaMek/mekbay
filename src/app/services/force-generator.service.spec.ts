@@ -1567,6 +1567,89 @@ describe('ForceGeneratorService', () => {
         expectClanTargetPreview('strategic-command-star', strategicUnits, { gunnery: 3, piloting: 3 });
     });
 
+    it('randomly chooses between selected compatible exclusive target formation factions', () => {
+        const era = createEra(3150, 'ilClan');
+        const clanJadeFalcon = createFaction(18, 'Clan Jade Falcon', 'IS Clan');
+        const clanWolf = createFaction(24, 'Clan Wolf', 'IS Clan');
+        const strategicUnit = createUnit({ id: 1, name: 'Strategic Shared Candidate', as: { TP: 'BM', SZ: 3, PV: 10 } as Unit['as'] });
+        registerEraAndFaction(era, clanJadeFalcon);
+        registerEraAndFaction(era, clanWolf);
+        units.push(strategicUnit);
+        megaMekAvailabilityByUnitName.set(strategicUnit.name, {
+            e: {
+                [`${era.id}`]: {
+                    [`${clanJadeFalcon.id}`]: [5, 0],
+                    [`${clanWolf.id}`]: [5, 0],
+                },
+            },
+        });
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            era: {
+                interactedWith: true,
+                value: ['ilClan'],
+            },
+            faction: {
+                interactedWith: true,
+                value: {
+                    cjf: { name: 'Clan Jade Falcon', state: 'or', count: 1 },
+                    cw: { name: 'Clan Wolf', state: 'or', count: 1 },
+                },
+            },
+        });
+        spyOn(Math, 'random').and.returnValue(0.75);
+
+        const context = service.resolveGenerationContext([strategicUnit], {
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            targetFormationId: 'strategic-command-star',
+        });
+
+        expect(context.forceFaction).toBe(clanWolf);
+        expect(context.targetFormationFactionInferred).toBeTrue();
+        expect(context.availabilityFactionIds).toEqual([clanWolf.id]);
+        expect(context.forceEra).toBe(era);
+    });
+
+    it('randomly chooses between available compatible exclusive target formation factions when no faction is selected', () => {
+        const ilClan = createEra(3150, 'ilClan');
+        const successionWars = createEra(3025, 'Late Succession Wars');
+        const clanGhostBear = createFaction(17, 'Clan Ghost Bear', 'IS Clan');
+        const clanJadeFalcon = createFaction(18, 'Clan Jade Falcon', 'IS Clan');
+        const clanWolf = createFaction(24, 'Clan Wolf', 'IS Clan');
+        const strategicUnit = createUnit({ id: 1, name: 'Strategic Era Candidate', as: { TP: 'BM', SZ: 3, PV: 10 } as Unit['as'] });
+        registerEraAndFaction(successionWars, clanGhostBear);
+        registerEraAndFaction(ilClan, clanJadeFalcon);
+        registerEraAndFaction(ilClan, clanWolf);
+        units.push(strategicUnit);
+        megaMekAvailabilityByUnitName.set(strategicUnit.name, {
+            e: {
+                [`${successionWars.id}`]: {
+                    [`${clanGhostBear.id}`]: [5, 0],
+                },
+                [`${ilClan.id}`]: {
+                    [`${clanJadeFalcon.id}`]: [5, 0],
+                    [`${clanWolf.id}`]: [5, 0],
+                },
+            },
+        });
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            era: {
+                interactedWith: true,
+                value: ['ilClan'],
+            },
+        });
+        spyOn(Math, 'random').and.returnValue(0.75);
+
+        const context = service.resolveGenerationContext([strategicUnit], {
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            targetFormationId: 'strategic-command-star',
+        });
+
+        expect(context.forceFaction).toBe(clanWolf);
+        expect(context.targetFormationFactionInferred).toBeTrue();
+        expect(context.availabilityFactionIds).toEqual([clanWolf.id]);
+        expect(context.forceEra).toBe(ilClan);
+    });
+
     it('filters invalid Strategic Command target candidates before selection', () => {
         const era = createEra(3150, 'ilClan');
         const clanWolf = createFaction(24, 'Clan Wolf', 'IS Clan');

@@ -3179,7 +3179,9 @@ export class ForceGeneratorService implements OnDestroy {
             availablePairs,
         );
 
-        return candidateFactions[0] ?? null;
+        return candidateFactions.length > 0
+            ? pickWeightedRandomEntry(candidateFactions, () => 1)
+            : null;
     }
 
     private resolveFirstExclusiveTargetFormationDefinition(
