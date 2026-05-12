@@ -1724,6 +1724,153 @@ describe('ForceGeneratorService', () => {
         expect(preview.explanationLines.some((line) => line.includes('Ruleset guidance: Clan Jade Falcon, echelon STAR.'))).toBeTrue();
     });
 
+    it('can build Strategic Command with a BM core when BA candidates are also available', () => {
+        const era = createEra(3150, 'ilClan');
+        const clanWolf = createFaction(24, 'Clan Wolf', 'IS Clan');
+        registerEraAndFaction(era, clanWolf);
+        const eligibleUnits = [
+            createUnit({ id: 1, name: 'Strategic BM A', chassis: 'Strategic BM A', weightClass: 'Heavy', as: { TP: 'BM', SZ: 3, PV: 50 } as Unit['as'] }),
+            createUnit({ id: 2, name: 'Strategic BM B', chassis: 'Strategic BM B', weightClass: 'Assault', as: { TP: 'BM', SZ: 4, PV: 55 } as Unit['as'] }),
+            createUnit({ id: 3, name: 'Strategic Aero A', chassis: 'Strategic Aero A', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 40 } as Unit['as'] }),
+            createUnit({ id: 4, name: 'Strategic Aero B', chassis: 'Strategic Aero B', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 45 } as Unit['as'] }),
+            createUnit({ id: 5, name: 'Strategic BA', chassis: 'Strategic BA', type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA', SZ: 1, PV: 20 } as Unit['as'] }),
+        ];
+        for (const unit of eligibleUnits) {
+            units.push(unit);
+            addMegaMekAvailability(unit, clanWolf, era);
+        }
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits,
+            context: createContext(clanWolf, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 0 },
+            minUnitCount: 4,
+            maxUnitCount: 4,
+            gunnery: 3,
+            piloting: 3,
+            preventDuplicateChassis: true,
+            targetFormationId: 'strategic-command-star',
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.targetFormationId).toBe('strategic-command-star');
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual([
+            'Strategic BM A',
+            'Strategic BM B',
+            'Strategic Aero A',
+            'Strategic Aero B',
+        ]);
+    });
+
+    it('forces Strategic Command target skills to the closest valid value when the requested range misses', () => {
+        const era = createEra(3150, 'ilClan');
+        const clanWolf = createFaction(24, 'Clan Wolf', 'IS Clan');
+        registerEraAndFaction(era, clanWolf);
+        const eligibleUnits = [
+            createUnit({ id: 1, name: 'Skill Forced Aero A', chassis: 'Skill Forced Aero A', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 30 } as Unit['as'] }),
+            createUnit({ id: 2, name: 'Skill Forced Aero B', chassis: 'Skill Forced Aero B', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 30 } as Unit['as'] }),
+            createUnit({ id: 3, name: 'Skill Forced BA', chassis: 'Skill Forced BA', type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA', SZ: 1, PV: 20 } as Unit['as'] }),
+        ];
+        for (const unit of eligibleUnits) {
+            units.push(unit);
+            addMegaMekAvailability(unit, clanWolf, era);
+        }
+        spyOn(Math, 'random').and.returnValue(0.99);
+
+        const preview = service.buildPreview({
+            eligibleUnits,
+            context: createContext(clanWolf, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 0 },
+            minUnitCount: 3,
+            maxUnitCount: 3,
+            gunnery: 5,
+            piloting: 5,
+            skillRanges: {
+                gunnery: { min: 5, max: 8 },
+            },
+            targetFormationId: 'strategic-command-star',
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.targetFormationId).toBe('strategic-command-star');
+        expect(preview.units.map((unit) => unit.skill)).toEqual([3, 3, 3]);
+    });
+
+    it('clips Strategic Command target skills to the valid overlap of the requested range', () => {
+        const era = createEra(3150, 'ilClan');
+        const clanWolf = createFaction(24, 'Clan Wolf', 'IS Clan');
+        registerEraAndFaction(era, clanWolf);
+        const eligibleUnits = [
+            createUnit({ id: 1, name: 'Skill Clipped Aero A', chassis: 'Skill Clipped Aero A', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 30 } as Unit['as'] }),
+            createUnit({ id: 2, name: 'Skill Clipped Aero B', chassis: 'Skill Clipped Aero B', type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF', SZ: 2, PV: 30 } as Unit['as'] }),
+            createUnit({ id: 3, name: 'Skill Clipped BA', chassis: 'Skill Clipped BA', type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA', SZ: 1, PV: 20 } as Unit['as'] }),
+        ];
+        for (const unit of eligibleUnits) {
+            units.push(unit);
+            addMegaMekAvailability(unit, clanWolf, era);
+        }
+        spyOn(Math, 'random').and.returnValue(0.99);
+
+        const preview = service.buildPreview({
+            eligibleUnits,
+            context: createContext(clanWolf, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 0 },
+            minUnitCount: 3,
+            maxUnitCount: 3,
+            gunnery: 0,
+            piloting: 5,
+            skillRanges: {
+                gunnery: { min: 0, max: 8 },
+            },
+            targetFormationId: 'strategic-command-star',
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.targetFormationId).toBe('strategic-command-star');
+        expect(preview.units.every((unit) => (unit.skill ?? 99) <= 3)).toBeTrue();
+        expect(preview.units.some((unit) => unit.skill === 3)).toBeTrue();
+    });
+
+    it('keeps target formation skills unconstrained when the formation has no skill requirement', () => {
+        const era = createEra(3150, 'ilClan');
+        const clanWolf = createFaction(24, 'Clan Wolf', 'IS Clan');
+        registerEraAndFaction(era, clanWolf);
+        const eligibleUnits = [1, 2, 3].map((id) => createUnit({
+            id,
+            name: `Support Skill Unit ${id}`,
+            chassis: `Support Skill Unit ${id}`,
+            as: { TP: 'BM', SZ: 2, PV: 20 } as Unit['as'],
+        }));
+        for (const unit of eligibleUnits) {
+            units.push(unit);
+            addMegaMekAvailability(unit, clanWolf, era);
+        }
+        spyOn(Math, 'random').and.returnValue(0.99);
+
+        const preview = service.buildPreview({
+            eligibleUnits,
+            context: createContext(clanWolf, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 0 },
+            minUnitCount: 3,
+            maxUnitCount: 3,
+            gunnery: 0,
+            piloting: 5,
+            skillRanges: {
+                gunnery: { min: 0, max: 8 },
+            },
+            targetFormationId: 'support-lance',
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.targetFormationId).toBe('support-lance');
+        expect(preview.units.every((unit) => unit.skill === 8)).toBeTrue();
+    });
+
     it('does not let Mek-only ruleset guidance starve Phalanx target formation support units', () => {
         const era = createEra(3150, 'ilClan');
         const clanHellsHorses = createFaction(19, "Clan Hell's Horses", 'IS Clan');

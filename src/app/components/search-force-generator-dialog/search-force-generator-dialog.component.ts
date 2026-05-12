@@ -109,6 +109,13 @@ export interface SearchForceGeneratorDialogResult {
 type MultiStateFilterKey = 'era' | 'faction' | '_tags';
 type UnitTypeFilterKey = 'type' | 'as.TP';
 type GeneratorDialogTab = 'configuration' | 'preview';
+type FormationTargetDropdownFilterKey = 'era' | 'faction';
+type FormationTargetDropdownOptionsProvider = UnitSearchFiltersService & {
+    getDropdownOptionsForFormationTarget?: (
+        filterKey: FormationTargetDropdownFilterKey,
+        definition: FormationTypeDefinition | null,
+    ) => DropdownOption[] | null;
+};
 
 @Component({
     selector: 'search-force-generator-dialog',
@@ -199,6 +206,8 @@ export class SearchForceGeneratorDialogComponent {
     });
     readonly subtypeFilter = computed(() => this.gameSystem() === GameSystem.CLASSIC ? this.getDropdownFilter('subtype') : null);
     readonly tagsFilter = computed(() => this.getDropdownFilter('_tags'));
+    readonly targetFormationEraOptions = computed(() => this.getDropdownOptionsForTargetFormation('era', this.eraFilter()));
+    readonly targetFormationFactionOptions = computed(() => this.getDropdownOptionsForTargetFormation('faction', this.factionFilter()));
     readonly selectedEraValues = computed(() => this.getSelectedMultiStateValues(this.eraFilter()));
     readonly selectedFactionValues = computed(() => this.getSelectedMultiStateValues(this.factionFilter()));
     readonly selectedUnitTypeValues = computed(() => this.getSelectedDropdownValues(this.unitTypeFilter()));
@@ -307,6 +316,16 @@ export class SearchForceGeneratorDialogComponent {
         return targetFormations.length === 1 && targetFormations[0].count === 1
             ? targetFormations[0].formationId
             : '';
+    });
+    readonly targetFormationAvailabilityDefinition = computed<FormationTypeDefinition | null>(() => {
+        for (const targetFormation of this.targetFormations()) {
+            const definition = LanceTypeIdentifierUtil.getDefinitionById(targetFormation.formationId, this.gameSystem());
+            if (definition?.exclusiveFaction?.length) {
+                return definition;
+            }
+        }
+
+        return null;
     });
     readonly targetFormationSummary = computed(() => this.formatTargetFormationSummary(this.targetFormations()));
     readonly preventDuplicateChassis = signal(this.initialOptions.forceGenPreventDuplicateChassis);
@@ -863,6 +882,40 @@ export class SearchForceGeneratorDialogComponent {
 
     private getSelectedDropdownValues(option: DropdownFilterOptions | null): string[] {
         return Array.isArray(option?.value) ? [...option.value] : [];
+    }
+
+    private getDropdownOptionsForTargetFormation(
+        filterKey: FormationTargetDropdownFilterKey,
+        option: DropdownFilterOptions | null,
+    ): DropdownOption[] {
+        const baseOptions = option?.options ?? [];
+        const definition = this.targetFormationAvailabilityDefinition();
+        if (!definition) {
+            return baseOptions;
+        }
+
+        const projectedOptions = (this.filtersService as FormationTargetDropdownOptionsProvider)
+            .getDropdownOptionsForFormationTarget?.(filterKey, definition);
+        if (projectedOptions) {
+            return projectedOptions;
+        }
+
+        return filterKey === 'faction'
+            ? this.getFallbackFactionOptionsForTargetFormation(baseOptions, definition)
+            : baseOptions;
+    }
+
+    private getFallbackFactionOptionsForTargetFormation(
+        options: readonly DropdownOption[],
+        definition: FormationTypeDefinition,
+    ): DropdownOption[] {
+        return options.map((option) => ({
+            ...option,
+            available: option.available !== false && LanceTypeIdentifierUtil.isFormationAvailableForFaction(
+                definition,
+                this.dataService.getFactionByName(option.name) ?? option.name,
+            ),
+        }));
     }
 
     private formatTargetFormationSummary(targetFormations: readonly ForceGenerationTargetFormationSelection[]): string {

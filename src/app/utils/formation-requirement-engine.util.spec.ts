@@ -293,8 +293,10 @@ describe('FormationRequirementEngine', () => {
         ];
         const heavyMek = createForceUnit(createUnit(3, 'Timber Wolf', { weightClass: 'Heavy', as: { TP: 'BM', SZ: 3 } }), GameSystem.ALPHA_STRIKE, { faction: CLAN_FACTION, pilotSkill: 3 });
         const lightMek = createForceUnit(createUnit(4, 'Adder', { weightClass: 'Light', as: { TP: 'BM', SZ: 1 } }), GameSystem.ALPHA_STRIKE, { faction: CLAN_FACTION, pilotSkill: 3 });
+        const heavyMekDecision = FormationRequirementEngine.evaluateSearchCandidate(definitionUnderTest, currentUnits, heavyMek, GameSystem.ALPHA_STRIKE, { maxUnits: 12 });
 
-        expect(FormationRequirementEngine.evaluateSearchCandidate(definitionUnderTest, currentUnits, heavyMek, GameSystem.ALPHA_STRIKE, { maxUnits: 12 }).allowed).toBeTrue();
+        expect(heavyMekDecision.allowed).toBeTrue();
+        expect(heavyMekDecision.fillsDeficit).toBeTrue();
         expect(FormationRequirementEngine.evaluateSearchCandidate(definitionUnderTest, currentUnits, lightMek, GameSystem.ALPHA_STRIKE, { maxUnits: 12 }).allowed).toBeFalse();
     });
 

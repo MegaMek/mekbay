@@ -49,7 +49,7 @@ import { DataService } from './data.service';
 import type { DropdownOption, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { getForcePacks } from '../models/forcepacks.model';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
-import { parseSearchQuery, type SearchTokensGroup } from '../utils/search.util';
+import { matchesSearch, parseSearchQuery, type SearchTokensGroup } from '../utils/search.util';
 import { OptionsService } from './options.service';
 import { LoggerService } from './logger.service';
 import { GameSystem } from '../models/common.model';
@@ -133,6 +133,7 @@ import {
     type SerializedSearchFilter,
 } from './unit-search-filters.model';
 
+const AVAILABILITY_CASCADE_FILTER_KEYS = new Set(['era', 'faction', 'availabilityFrom', 'availabilityRarity']);
 const FORCE_PACK_OPTION_UNIVERSE = getForcePacks().map(pack => ({ name: pack.name }));
 const MEGAMEK_WORKER_CONTEXT_FILTER_KEYS = new Set(['era', 'faction']);
 const MEGAMEK_WORKER_AVAILABILITY_FILTER_KEYS = new Set(['availabilityFrom', 'availabilityRarity']);
@@ -631,10 +632,21 @@ export class UnitSearchFiltersService {
             return [];
         }
 
-        const allFactionNames = this.dataService.getFactions().map(faction => faction.name);
         return getPositiveDropdownNamesFromFilter(
             normalizeMultiStateSelection(filterStateEntry.value),
-            allFactionNames,
+            this.dataService.getFactions().map(faction => faction.name),
+            filterStateEntry.wildcardPatterns,
+        );
+    }
+
+    private resolveFactionNamesFromFilter(filterStateEntry?: FilterState[string]): ResolvedDropdownNames {
+        if (!filterStateEntry?.interactedWith) {
+            return { or: [], and: [], not: [] };
+        }
+
+        return resolveDropdownNamesFromFilter(
+            normalizeMultiStateSelection(filterStateEntry.value),
+            this.dataService.getFactions().map((faction) => faction.name),
             filterStateEntry.wildcardPatterns,
         );
     }
@@ -653,6 +665,63 @@ export class UnitSearchFiltersService {
 
     private hasResolvedDropdownNames(resolved: ResolvedDropdownNames): boolean {
         return hasResolvedDropdownNames(resolved);
+    }
+
+    private buildFormationCompatibleFactionFilterState(
+        definition: FormationTypeDefinition | null,
+        filterStateEntry?: FilterState[string],
+    ): FilterState[string] | null | undefined {
+        if (!definition?.exclusiveFaction?.length) {
+            return undefined;
+        }
+
+        const allFactionNames = this.dataService.getFactions().map((faction) => faction.name);
+        const resolved = this.resolveFactionNamesFromFilter(filterStateEntry);
+        const excludedFactionNames = new Set(resolved.not);
+        const positiveFactionNames = [...resolved.or, ...resolved.and];
+        const candidateFactionNames = (positiveFactionNames.length > 0 ? positiveFactionNames : allFactionNames)
+            .filter((factionName) => !excludedFactionNames.has(factionName));
+        const compatibleFactionNames = [...new Set(candidateFactionNames)].filter((factionName) => (
+            LanceTypeIdentifierUtil.isFormationAvailableForFaction(
+                definition,
+                this.dataService.getFactionByName(factionName) ?? factionName,
+            )
+        ));
+
+        if (compatibleFactionNames.length === 0) {
+            return null;
+        }
+
+        return {
+            interactedWith: true,
+            value: Object.fromEntries(compatibleFactionNames.map((factionName) => [
+                factionName,
+                {
+                    name: factionName,
+                    state: 'or',
+                    count: 1,
+                },
+            ])),
+        };
+    }
+
+    private buildFormationCompatibleAvailabilityState(
+        definition: FormationTypeDefinition | null,
+        state: FilterState,
+    ): FilterState | null {
+        const factionFilterState = this.buildFormationCompatibleFactionFilterState(definition, state['faction']);
+        if (factionFilterState === undefined) {
+            return state;
+        }
+
+        if (factionFilterState === null) {
+            return null;
+        }
+
+        return {
+            ...state,
+            faction: factionFilterState,
+        };
     }
 
     private getAvailabilitySelectionScopeParts(state: FilterState): AvailabilitySelectionScopeParts {
@@ -937,10 +1006,61 @@ export class UnitSearchFiltersService {
         return this.unitAvailabilitySource.unitMatchesAvailabilityRarity(unit, rarityName, context);
     }
 
+    public getDropdownOptionsForFormationTarget(
+        filterKey: 'era' | 'faction',
+        definition: FormationTypeDefinition | null,
+    ): DropdownOption[] | null {
+        const conf = getAdvancedFilterConfigByKey(filterKey);
+        if (!conf || conf.type !== AdvFilterType.DROPDOWN || !isFilterAvailableForAvailabilitySource(conf, this.optionsService.options().availabilitySource)) {
+            return null;
+        }
+
+        const state = this.stripFormationTargetFilterState(this.getApplicableFilterState(this.effectiveFilterState()));
+    this.tagsVersion();
+        const contextUnits = this.getAvailabilityCascadeContextUnits(state);
+
+        return this.buildMegaMekAvailabilityDropdownOptions(conf, contextUnits, state, definition);
+    }
+
+    private getAvailabilityCascadeContextUnits(state: FilterState): Unit[] {
+        let baseUnits = this.units;
+        const textSearch = this.effectiveTextSearch();
+        if (textSearch) {
+            const textTokens = parseSearchQuery(textSearch);
+            baseUnits = baseUnits.filter(unit => {
+                const searchableText = unit._searchKey || `${unit.chassis ?? ''} ${unit.model ?? ''}`.toLowerCase();
+                return matchesSearch(searchableText, textTokens, true);
+            });
+        }
+
+        const nonAvailabilityState = Object.fromEntries(
+            Object.entries(state).filter(([key, value]) => (
+                value.interactedWith && !AVAILABILITY_CASCADE_FILTER_KEYS.has(key)
+            )),
+        ) as FilterState;
+
+        return Object.keys(nonAvailabilityState).length === 0
+            ? baseUnits
+            : applyFilterStateToUnits({
+                units: baseUnits,
+                state: nonAvailabilityState,
+                dependencies: this.getUnitFilterKernelDependencies(),
+            });
+    }
+
+    private getFormationTargetDefinitionOverride(
+        activeFormationOverride: FormationTypeDefinition | null | undefined,
+    ): FormationTypeDefinition | null {
+        return activeFormationOverride === undefined
+            ? this.getActiveFormationTargetDefinition(this.gameService.currentGameSystem())
+            : activeFormationOverride;
+    }
+
     private buildMegaMekAvailabilityDropdownOptions(
         conf: AdvFilterConfig,
         contextUnits: Unit[],
         state: FilterState,
+        activeFormationOverride?: FormationTypeDefinition | null,
     ): { name: string; img?: string; displayName?: string; available: boolean }[] | null {
         const useMegaMekAvailability = this.unitAvailabilitySource.useMegaMekAvailability();
         const { availabilityFromNames, availabilityRarityNames } = this.getAvailabilitySelectionScopeParts(state);
@@ -950,14 +1070,14 @@ export class UnitSearchFiltersService {
 
         if (conf.key === 'era') {
             return useScopedAvailabilityDropdowns
-                ? this.buildMegaMekEraDropdownOptions(conf, contextUnits, state)
-                : this.buildExternalDropdownOptions(conf, contextUnits, state);
+                ? this.buildMegaMekEraDropdownOptions(conf, contextUnits, state, activeFormationOverride)
+                : this.buildExternalDropdownOptions(conf, contextUnits, state, activeFormationOverride);
         }
 
         if (conf.key === 'faction') {
             return useScopedAvailabilityDropdowns
-                ? this.buildMegaMekFactionDropdownOptions(conf, contextUnits, state)
-                : this.buildExternalDropdownOptions(conf, contextUnits, state);
+                ? this.buildMegaMekFactionDropdownOptions(conf, contextUnits, state, activeFormationOverride)
+                : this.buildExternalDropdownOptions(conf, contextUnits, state, activeFormationOverride);
         }
 
         if (conf.key === 'availabilityRarity' || conf.key === 'availabilityFrom') {
@@ -1009,6 +1129,7 @@ export class UnitSearchFiltersService {
         conf: AdvFilterConfig,
         contextUnits: Unit[],
         state: FilterState,
+        activeFormationOverride?: FormationTypeDefinition | null,
     ): { name: string; img?: string; displayName?: string; available: boolean }[] | null {
         if (conf.key !== 'era' && conf.key !== 'faction') {
             return null;
@@ -1019,14 +1140,22 @@ export class UnitSearchFiltersService {
         );
         const currentFilterState = state[conf.key];
         const activeFormation = conf.key === 'faction'
-            ? this.getActiveFormationTargetDefinition(this.gameService.currentGameSystem())
+            ? this.getFormationTargetDefinitionOverride(activeFormationOverride)
             : null;
+        const formationConstrainedState = conf.key === 'era'
+            ? this.buildFormationCompatibleAvailabilityState(
+                this.getFormationTargetDefinitionOverride(activeFormationOverride),
+                state,
+            )
+            : state;
 
         const options = this.dataService.getDropdownOptionUniverse(conf.key).map((option) => {
             const candidateFilterState = this.buildExternalDropdownCandidateState(currentFilterState, option.name);
-            const candidateUnitIds = conf.key === 'era'
-                ? this.getUnitIdsForExternalFilters(candidateFilterState, state['faction'])
-                : this.getUnitIdsForExternalFilters(state['era'], candidateFilterState);
+            const candidateUnitIds = formationConstrainedState === null
+                ? new Set<string>()
+                : conf.key === 'era'
+                    ? this.getUnitIdsForExternalFilters(candidateFilterState, formationConstrainedState['faction'])
+                    : this.getUnitIdsForExternalFilters(state['era'], candidateFilterState);
 
             return {
                 name: option.name,
@@ -1097,11 +1226,27 @@ export class UnitSearchFiltersService {
         conf: AdvFilterConfig,
         contextUnits: Unit[],
         state: FilterState,
+        activeFormationOverride?: FormationTypeDefinition | null,
     ): { name: string; img?: string; displayName?: string; available: boolean }[] {
-        const { factionNames } = this.getAvailabilitySelectionScopeParts(state);
+        const formationConstrainedState = this.buildFormationCompatibleAvailabilityState(
+            this.getFormationTargetDefinitionOverride(activeFormationOverride),
+            state,
+        );
+        if (formationConstrainedState === null) {
+            const options = this.dataService.getDropdownOptionUniverse(conf.key).map((option) => ({
+                name: option.name,
+                ...(option.img ? { img: option.img } : {}),
+                available: false,
+            }));
+
+            return sortDropdownOptionObjects(options, conf.sortOptions);
+        }
+
+        const availabilityState = formationConstrainedState;
+        const { factionNames } = this.getAvailabilitySelectionScopeParts(availabilityState);
         const extinctFactionName = this.dataService.getFactionById(MULFACTION_EXTINCT)?.name;
         if (!extinctFactionName || !factionNames.includes(extinctFactionName)) {
-            const optimizedAvailableEraIds = this.collectFastMegaMekAvailableOptionIds(contextUnits, state, 'era');
+            const optimizedAvailableEraIds = this.collectFastMegaMekAvailableOptionIds(contextUnits, availabilityState, 'era');
             if (optimizedAvailableEraIds) {
                 const options = this.dataService.getDropdownOptionUniverse(conf.key).map((option) => ({
                     name: option.name,
@@ -1112,7 +1257,7 @@ export class UnitSearchFiltersService {
                 return sortDropdownOptionObjects(options, conf.sortOptions);
             }
         }
-        const { availabilityFromNames } = this.getAvailabilitySelectionScopeParts(state);
+        const { availabilityFromNames } = this.getAvailabilitySelectionScopeParts(availabilityState);
         const contextUnitIds = new Set(contextUnits.map((unit) => unit.name));
 
         const options = this.dataService.getDropdownOptionUniverse(conf.key).map((option) => {
@@ -1125,7 +1270,7 @@ export class UnitSearchFiltersService {
             return {
                 name: option.name,
                 ...(option.img ? { img: option.img } : {}),
-                available: setHasAny(contextUnitIds, this.getMegaMekOptionScopeUnitIds(candidateScope, state)),
+                available: setHasAny(contextUnitIds, this.getMegaMekOptionScopeUnitIds(candidateScope, availabilityState)),
             };
         });
 
@@ -1136,8 +1281,9 @@ export class UnitSearchFiltersService {
         conf: AdvFilterConfig,
         contextUnits: Unit[],
         state: FilterState,
+        activeFormationOverride?: FormationTypeDefinition | null,
     ): { name: string; img?: string; displayName?: string; available: boolean }[] {
-        const activeFormation = this.getActiveFormationTargetDefinition(this.gameService.currentGameSystem());
+        const activeFormation = this.getFormationTargetDefinitionOverride(activeFormationOverride);
         const useSelfFilteredFactionCandidates = this.unitAvailabilitySource.useMegaMekAvailability()
             && this.hasAndDropdownSelections(state['faction']);
 

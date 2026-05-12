@@ -23,6 +23,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
     let requestClosePanelsSpy: jasmine.Spy;
     let setOptionSpy: jasmine.Spy;
     let setFilterSpy: jasmine.Spy;
+    let getDropdownOptionsForFormationTargetSpy: jasmine.Spy;
     let setPilotSkillsSpy: jasmine.Spy;
     let buildPreviewSpy: jasmine.Spy;
     let createForceEntrySpy: jasmine.Spy;
@@ -66,6 +67,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         dialogCloseSpy = jasmine.createSpy('close');
         requestClosePanelsSpy = jasmine.createSpy('requestClosePanels');
         setFilterSpy = jasmine.createSpy('setFilter');
+        getDropdownOptionsForFormationTargetSpy = jasmine.createSpy('getDropdownOptionsForFormationTarget').and.returnValue(null);
         const pilotGunnerySkillSignal = signal(4);
         const pilotPilotingSkillSignal = signal(5);
         searchTextSignal = signal('');
@@ -142,9 +144,11 @@ describe('SearchForceGeneratorDialogComponent', () => {
         filteredUnitsSignal = signal<Unit[]>([]);
         forceGeneratorEligibleUnitsSignal = signal<Unit[]>([]);
         const unitsByName = new Map<string, Unit>();
+        const factionsByName = new Map<string, any>();
         const dataServiceMock = {
             isDataReady: signal(true),
             getUnitByName: jasmine.createSpy('getUnitByName').and.callFake((name: string) => unitsByName.get(name)),
+            getFactionByName: jasmine.createSpy('getFactionByName').and.callFake((name: string) => factionsByName.get(name)),
             getFactionById: jasmine.createSpy('getFactionById').and.returnValue(null),
             getEraById: jasmine.createSpy('getEraById').and.returnValue(null),
         };
@@ -359,6 +363,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
                         isComplexQuery: signal(false),
                         pilotGunnerySkill: pilotGunnerySkillSignal,
                         pilotPilotingSkill: pilotPilotingSkillSignal,
+                        getDropdownOptionsForFormationTarget: getDropdownOptionsForFormationTargetSpy,
                         requestClosePanels: requestClosePanelsSpy,
                         searchText: searchTextSignal,
                         setFilter: setFilterSpy,
@@ -391,6 +396,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
             __test: {
                 currentForceSignal,
                 unitsByName,
+                factionsByName,
                 setPreviewResult(nextPreviewResult: typeof previewResult) {
                     previewResult = nextPreviewResult;
                 },
@@ -1220,6 +1226,69 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(displayNameById.get('fire-support-squadron')).toBe('Fire Support [Aero]');
         expect(displayNameById.get('interceptor-squadron')).toBe('Interceptor [Aero]');
     });
+
+    it('limits faction dropdown availability by selected target formations in the generator dialog', () => {
+        advOptionsSignal.update((options) => ({
+            ...options,
+            faction: {
+                ...options.faction,
+                options: [
+                    { name: 'Free Worlds League' },
+                    { name: 'Federated Suns' },
+                    { name: 'Draconis Combine', available: false },
+                ],
+            },
+        }));
+
+        component.onTargetFormationSelectionChange({
+            'anvil-lance': {
+                name: 'anvil-lance',
+                state: 'or',
+                count: 1,
+            },
+        });
+
+        const optionsByName = new Map(component.targetFormationFactionOptions().map((option) => [option.name, option]));
+
+        expect(optionsByName.get('Free Worlds League')?.available).toBeTrue();
+        expect(optionsByName.get('Federated Suns')?.available).toBeFalse();
+        expect(optionsByName.get('Draconis Combine')?.available).toBeFalse();
+        expect(getDropdownOptionsForFormationTargetSpy).toHaveBeenCalledWith(
+            'faction',
+            jasmine.objectContaining({ id: 'anvil-lance' }),
+        );
+    });
+
+    it('uses formation-projected era dropdown availability in the generator dialog', () => {
+        getDropdownOptionsForFormationTargetSpy.and.callFake((filterKey: string) => (
+            filterKey === 'era'
+                ? [
+                    { name: 'Jihad', available: true },
+                    { name: 'Succession Wars', available: false },
+                    { name: 'Dark Age', available: false },
+                ]
+                : null
+        ));
+
+        component.onTargetFormationSelectionChange({
+            'anvil-lance': {
+                name: 'anvil-lance',
+                state: 'or',
+                count: 1,
+            },
+        });
+
+        const optionsByName = new Map(component.targetFormationEraOptions().map((option) => [option.name, option]));
+
+        expect(optionsByName.get('Jihad')?.available).toBeTrue();
+        expect(optionsByName.get('Succession Wars')?.available).toBeFalse();
+        expect(optionsByName.get('Dark Age')?.available).toBeFalse();
+        expect(getDropdownOptionsForFormationTargetSpy).toHaveBeenCalledWith(
+            'era',
+            jasmine.objectContaining({ id: 'anvil-lance' }),
+        );
+    });
+
     it('keeps using the last committed budget range until the max field blurs', async () => {
         const fixture = TestBed.createComponent(SearchForceGeneratorDialogComponent);
         await fixture.whenStable();

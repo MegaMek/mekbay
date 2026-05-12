@@ -855,6 +855,150 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expectOptionAvailability(service.advOptions()['faction']?.options ?? [], FEDERATED_SUNS_FACTION, false);
     });
 
+    it('limits MegaMek faction dropdown availability by semantic formation targets', () => {
+        const bundle = createFormationFactionBundle();
+        const { dataService, service, optionsServiceStub, gameServiceStub } = createService(bundle);
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: bundle.units.units[0].name,
+                e: {
+                    '1': { '1': [45, 0] },
+                },
+            },
+            {
+                n: bundle.units.units[1].name,
+                e: {
+                    '1': { '2': [45, 0] },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+
+        service.setSearchText('formation=Anvil');
+
+        expect(service.semanticFormationTargetId()).toBe('anvil-lance');
+        expectOptionAvailability(service.advOptions()['faction']?.options ?? [], FREE_WORLDS_LEAGUE_FACTION, true);
+        expectOptionAvailability(service.advOptions()['faction']?.options ?? [], FEDERATED_SUNS_FACTION, false);
+    });
+
+    it('limits MUL era dropdown availability by exclusive formation targets', () => {
+        const bundle = createFormationFactionBundle();
+        bundle.eras.eras = [
+            {
+                id: 1,
+                name: 'League Era',
+                img: '',
+                years: { from: 3000, to: 3050 },
+                units: [1],
+                factions: [],
+            },
+            {
+                id: 2,
+                name: 'Suns Era',
+                img: '',
+                years: { from: 3051, to: 3100 },
+                units: [2],
+                factions: [],
+            },
+        ];
+        bundle.factions.factions = [
+            {
+                id: 1,
+                name: FREE_WORLDS_LEAGUE_FACTION,
+                group: 'Inner Sphere',
+                img: '',
+                eras: { 1: new Set([1]) },
+            },
+            {
+                id: 2,
+                name: FEDERATED_SUNS_FACTION,
+                group: 'Inner Sphere',
+                img: '',
+                eras: { 2: new Set([2]) },
+            },
+        ];
+        const { service, gameServiceStub } = createService(bundle);
+        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+
+        service.setFormationTarget({ formationId: 'anvil-lance', existingUnits: [], gameSystem: GameSystem.ALPHA_STRIKE });
+
+        expectOptionAvailability(service.advOptions()['era']?.options ?? [], 'League Era', true);
+        expectOptionAvailability(service.advOptions()['era']?.options ?? [], 'Suns Era', false);
+    });
+
+    it('limits MegaMek era dropdown availability by exclusive formation targets', () => {
+        const bundle = createFormationFactionBundle();
+        bundle.eras.eras = [
+            {
+                id: 1,
+                name: 'League Era',
+                img: '',
+                years: { from: 3000, to: 3050 },
+                units: [1],
+                factions: [],
+            },
+            {
+                id: 2,
+                name: 'Suns Era',
+                img: '',
+                years: { from: 3051, to: 3100 },
+                units: [2],
+                factions: [],
+            },
+        ];
+        bundle.factions.factions = [
+            {
+                id: 1,
+                name: FREE_WORLDS_LEAGUE_FACTION,
+                group: 'Inner Sphere',
+                img: '',
+                eras: { 1: new Set([1]) },
+            },
+            {
+                id: 2,
+                name: FEDERATED_SUNS_FACTION,
+                group: 'Inner Sphere',
+                img: '',
+                eras: { 2: new Set([2]) },
+            },
+        ];
+        const { dataService, service, optionsServiceStub, gameServiceStub } = createService(bundle);
+        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+            {
+                n: bundle.units.units[0].name,
+                e: {
+                    '1': { '1': [45, 0] },
+                },
+            },
+            {
+                n: bundle.units.units[1].name,
+                e: {
+                    '2': { '2': [45, 0] },
+                },
+            },
+        ]);
+        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<Unit, 'name'>) => {
+            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
+        });
+        optionsServiceStub.options.set({
+            ...optionsServiceStub.options(),
+            availabilitySource: 'megamek',
+        });
+        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+
+        service.setFormationTarget({ formationId: 'anvil-lance', existingUnits: [], gameSystem: GameSystem.ALPHA_STRIKE });
+
+        expectOptionAvailability(service.advOptions()['era']?.options ?? [], 'League Era', true);
+        expectOptionAvailability(service.advOptions()['era']?.options ?? [], 'Suns Era', false);
+    });
+
     it('limits formation dropdown availability by manual and semantic faction filters', () => {
         const { service } = createService(createFormationFactionBundle());
         const expectFormationAvailability = (formationId: string, available: boolean) => {

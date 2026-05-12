@@ -126,6 +126,9 @@ export class FormationRequirementEngine {
         const preservesValidFormation = currentEvaluation?.valid === true && nextEvaluation.valid;
         const fillsAnyDeficit = currentEvaluation?.valid !== true && nextDeficitScore < currentDeficitScore;
         const fillsFormationDeficit = currentEvaluation?.valid !== true && this.getDeficitScore(nextFormationDeficits) < this.getDeficitScore(currentFormationDeficits);
+        const fillsAlternativeDeficit = currentEvaluation !== null
+            && currentEvaluation.valid !== true
+            && this.hasAlternativeDeficitProgress(currentEvaluation.constraints, nextEvaluation.constraints);
         const keepsFormationDeficitsSatisfied = currentFormationDeficits.length === 0 && nextFormationDeficits.length === 0;
         const growsTowardMinimumWithoutLosingGround = currentEvaluation?.valid !== true
             && this.hasUnitCountMinimumDeficit(currentDeficits)
@@ -134,9 +137,17 @@ export class FormationRequirementEngine {
             && options.minUnits !== undefined
             && currentUnits.length < options.minUnits
             && !violatesHardConstraint;
-        const fillsDeficit = nextEvaluation.valid || fillsFormationDeficit || (fillsAnyDeficit && keepsFormationDeficitsSatisfied);
+        const fillsDeficit = nextEvaluation.valid
+            || fillsFormationDeficit
+            || fillsAlternativeDeficit
+            || (fillsAnyDeficit && keepsFormationDeficitsSatisfied);
         const allowed = nextEvaluation.valid
-            || (!violatesHardConstraint && (fillsAnyDeficit || growsTowardMinimumWithoutLosingGround || growsTowardRequestedMinimumFromValidPartial));
+            || (!violatesHardConstraint && (
+                fillsAnyDeficit
+                || fillsAlternativeDeficit
+                || growsTowardMinimumWithoutLosingGround
+                || growsTowardRequestedMinimumFromValidPartial
+            ));
 
         return {
             allowed,
@@ -229,6 +240,57 @@ export class FormationRequirementEngine {
 
     private static hasUnitCountMinimumDeficit(deficits: readonly FormationDeficit[]): boolean {
         return deficits.some(deficit => deficit.constraintId === 'unit-count-min' && deficit.needed > 0);
+    }
+
+    private static hasAlternativeDeficitProgress(
+        currentConstraints: readonly FormationConstraintEvaluation[],
+        nextConstraints: readonly FormationConstraintEvaluation[],
+    ): boolean {
+        for (const currentConstraint of currentConstraints) {
+            const nextConstraint = nextConstraints.find(constraint => constraint.constraintId === currentConstraint.constraintId);
+            if (!nextConstraint) {
+                continue;
+            }
+
+            if (this.hasAnyOfAlternativeDeficitProgress(currentConstraint, nextConstraint)) {
+                return true;
+            }
+
+            if (currentConstraint.childEvaluations?.length && nextConstraint.childEvaluations?.length
+                && this.hasAlternativeDeficitProgress(currentConstraint.childEvaluations, nextConstraint.childEvaluations)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static hasAnyOfAlternativeDeficitProgress(
+        currentConstraint: FormationConstraintEvaluation,
+        nextConstraint: FormationConstraintEvaluation,
+    ): boolean {
+        if (currentConstraint.kind !== 'any-of') {
+            return false;
+        }
+
+        for (const currentChild of currentConstraint.childEvaluations ?? []) {
+            if (currentChild.satisfied) {
+                continue;
+            }
+
+            const nextChild = nextConstraint.childEvaluations?.find(child => child.constraintId === currentChild.constraintId);
+            if (!nextChild || this.hasHardConstraintViolationInConstraints([nextChild])) {
+                continue;
+            }
+
+            const currentScore = this.getDeficitScore(this.collectDeficits([currentChild]));
+            const nextScore = this.getDeficitScore(this.collectDeficits([nextChild]));
+            if (nextScore < currentScore) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static hasHardConstraintViolation(evaluation: FormationEvaluation): boolean {

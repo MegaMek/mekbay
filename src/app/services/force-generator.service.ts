@@ -400,6 +400,11 @@ interface ForceGenerationSkillOptimizationState {
     selectedCandidates: ForceGenerationCandidateUnit[];
 }
 
+type ForceGenerationSkillOptionResolver = (
+    candidate: ForceGenerationCandidateUnit,
+    index: number,
+) => readonly ForceGenerationCandidateUnit[];
+
 interface ForceGenerationTargetAttemptRank {
     satisfiedTargetCount: number;
     requestedTargetCount: number;
@@ -2302,16 +2307,6 @@ export class ForceGeneratorService implements OnDestroy {
                 ));
 
         if (targetFormationContext) {
-            const targetSelectionPreparation = hasVariableSkillSettings
-                ? undefined
-                : this.prepareSelectionPreparation(
-                    this.filterTargetFormationCandidatePool(candidates, options, targetFormationContext.definition),
-                    lockedCandidates,
-                    options.context,
-                    minUnitCount,
-                    maxUnitCount,
-                    { enforceRulesetRequiredUnitTypes: false },
-                );
             const targetSearchResult = yield* this.runTargetFormationAttemptSearch({
                 mode: 'single',
                 candidateCount: candidates.length,
@@ -2330,7 +2325,7 @@ export class ForceGeneratorService implements OnDestroy {
                         lockedCandidates,
                         options.preventDuplicateChassis === true,
                         skillSettings,
-                        targetSelectionPreparation,
+                        undefined,
                         targetSearchDeadline,
                     );
                     const targetEvaluationBeforeSkillOptimization = FormationRequirementEngine.evaluateDefinition(
@@ -2347,6 +2342,12 @@ export class ForceGeneratorService implements OnDestroy {
                             options.gameSystem,
                             skillSettings,
                             budgetRange,
+                            (candidate) => this.createTargetFormationSkillAdjustedCandidateOptions(
+                                candidate,
+                                options,
+                                targetFormationContext.definition,
+                                skillSettings,
+                            ),
                         )
                         : targetAttempt;
                     const targetTotalCost = optimizedTargetAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
@@ -2401,7 +2402,7 @@ export class ForceGeneratorService implements OnDestroy {
                 budgetRange,
                 minUnitCount,
                 maxUnitCount,
-                targetSearchResult.bestAttempt ?? this.createSelectionAttemptFromCandidates(lockedCandidates, targetSelectionPreparation?.rulesetProfile ?? null),
+                targetSearchResult.bestAttempt ?? this.createSelectionAttemptFromCandidates(lockedCandidates, null),
                 targetMessage,
                 targetMessage,
                 candidates,
@@ -2436,6 +2437,7 @@ export class ForceGeneratorService implements OnDestroy {
                         options.gameSystem,
                         skillSettings,
                         budgetRange,
+                        this.createTargetFormationSetSkillOptionResolver(targetAttempt, options, skillSettings),
                     );
                     const targetEvaluation = this.evaluateTargetFormationSetAttempt(
                         optimizedTargetAttempt,
@@ -3896,6 +3898,18 @@ export class ForceGeneratorService implements OnDestroy {
             return [candidate];
         }
 
+        return this.createSkillAdjustedCandidateOptionsForSettings(candidate, gameSystem, skillSettings);
+    }
+
+    private createSkillAdjustedCandidateOptionsForSettings(
+        candidate: ForceGenerationCandidateUnit,
+        gameSystem: GameSystem,
+        skillSettings: ForceGenerationSkillSettings,
+    ): ForceGenerationCandidateUnit[] {
+        if (candidate.locked) {
+            return [candidate];
+        }
+
         const options: ForceGenerationCandidateUnit[] = [];
         const optionKeys = new Set<string>();
         if (gameSystem === GameSystem.ALPHA_STRIKE) {
@@ -3931,24 +3945,171 @@ export class ForceGeneratorService implements OnDestroy {
         return options.length > 0 ? options : [candidate];
     }
 
+    private createTargetFormationCandidatesForAttempt(
+        candidates: readonly ForceGenerationCandidateUnit[],
+        options: ForceGenerationRequest,
+        definition: FormationTypeDefinition,
+        skillSettings: ForceGenerationSkillSettings,
+    ): ForceGenerationCandidateUnit[] {
+        return candidates
+            .map((candidate) => this.createTargetFormationSkillAdjustedCandidate(candidate, options, definition, skillSettings))
+            .filter((candidate): candidate is ForceGenerationCandidateUnit => candidate !== null);
+    }
+
+    private createTargetFormationSkillAdjustedCandidate(
+        candidate: ForceGenerationCandidateUnit,
+        options: ForceGenerationRequest,
+        definition: FormationTypeDefinition,
+        skillSettings: ForceGenerationSkillSettings,
+    ): ForceGenerationCandidateUnit | null {
+        const skillOptions = this.createTargetFormationSkillAdjustedCandidateOptions(
+            candidate,
+            options,
+            definition,
+            skillSettings,
+        );
+        if (skillOptions.length === 0) {
+            return null;
+        }
+
+        return skillOptions.length === 1
+            ? skillOptions[0]
+            : skillOptions[Math.floor(Math.random() * skillOptions.length)];
+    }
+
+    private createTargetFormationSkillAdjustedCandidateOptions(
+        candidate: ForceGenerationCandidateUnit,
+        options: ForceGenerationRequest,
+        definition: FormationTypeDefinition,
+        skillSettings: ForceGenerationSkillSettings,
+    ): ForceGenerationCandidateUnit[] {
+        const preferredOptions = this.filterTargetFormationCandidatePool(
+            this.createSkillAdjustedCandidateOptionsForSettings(candidate, options.gameSystem, skillSettings),
+            options,
+            definition,
+        );
+        if (preferredOptions.length > 0) {
+            return preferredOptions;
+        }
+
+        const fallbackOptions = this.filterTargetFormationCandidatePool(
+            this.createSkillAdjustedCandidateOptionsForSettings(
+                candidate,
+                options.gameSystem,
+                this.createFormationSkillFallbackSettings(skillSettings),
+            ),
+            options,
+            definition,
+        );
+        if (fallbackOptions.length === 0) {
+            return [];
+        }
+
+        return this.getClosestSkillOptionsToSettings(fallbackOptions, options.gameSystem, skillSettings);
+    }
+
+    private createFormationSkillFallbackSettings(
+        skillSettings: ForceGenerationSkillSettings,
+    ): ForceGenerationSkillSettings {
+        return {
+            gunnery: {
+                min: FORCE_GENERATION_MIN_PILOT_SKILL,
+                max: FORCE_GENERATION_MAX_PILOT_SKILL,
+            },
+            piloting: {
+                min: FORCE_GENERATION_MIN_PILOT_SKILL,
+                max: FORCE_GENERATION_MAX_PILOT_SKILL,
+            },
+            maxDelta: skillSettings.maxDelta,
+        };
+    }
+
+    private getClosestSkillOptionsToSettings(
+        candidates: readonly ForceGenerationCandidateUnit[],
+        gameSystem: GameSystem,
+        skillSettings: ForceGenerationSkillSettings,
+    ): ForceGenerationCandidateUnit[] {
+        let bestDistance = Number.POSITIVE_INFINITY;
+        const bestCandidates: ForceGenerationCandidateUnit[] = [];
+
+        for (const candidate of candidates) {
+            const distance = this.getCandidateSkillRangeDistance(candidate, gameSystem, skillSettings);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestCandidates.length = 0;
+            }
+            if (distance === bestDistance) {
+                bestCandidates.push(candidate);
+            }
+        }
+
+        return bestCandidates;
+    }
+
+    private getCandidateSkillRangeDistance(
+        candidate: ForceGenerationCandidateUnit,
+        gameSystem: GameSystem,
+        skillSettings: ForceGenerationSkillSettings,
+    ): number {
+        const gunnery = gameSystem === GameSystem.ALPHA_STRIKE
+            ? candidate.skill ?? candidate.gunnery ?? skillSettings.gunnery.min
+            : candidate.gunnery ?? candidate.skill ?? skillSettings.gunnery.min;
+        const gunneryDistance = this.getSkillRangeDistance(gunnery, skillSettings.gunnery);
+        if (gameSystem === GameSystem.ALPHA_STRIKE) {
+            return gunneryDistance;
+        }
+
+        return gunneryDistance + this.getSkillRangeDistance(candidate.piloting ?? skillSettings.piloting.min, skillSettings.piloting);
+    }
+
+    private getSkillRangeDistance(value: number, range: ForceGenerationSkillRange): number {
+        if (value < range.min) {
+            return range.min - value;
+        }
+        if (value > range.max) {
+            return value - range.max;
+        }
+
+        return 0;
+    }
+
     private createSkillBudgetPlanningCosts(
         candidates: readonly ForceGenerationCandidateUnit[],
         gameSystem: GameSystem,
         skillSettings: ForceGenerationSkillSettings,
+        skillOptionResolver?: ForceGenerationSkillOptionResolver,
     ): ForceGenerationSkillBudgetPlanningCosts | undefined {
-        if (!FORCE_GENERATION_OPTIMIZE_SELECTED_SKILLS_FOR_BUDGET || !hasVariableForceGenerationSkillSettings(gameSystem, skillSettings)) {
+        if (!FORCE_GENERATION_OPTIMIZE_SELECTED_SKILLS_FOR_BUDGET
+            || (!hasVariableForceGenerationSkillSettings(gameSystem, skillSettings) && !skillOptionResolver)) {
             return undefined;
         }
 
         const minCostByCandidate = new Map<ForceGenerationCandidateUnit, number>();
         const maxCostByCandidate = new Map<ForceGenerationCandidateUnit, number>();
-        for (const candidate of candidates) {
-            const options = this.createSkillAdjustedCandidateOptions(candidate, gameSystem, skillSettings);
-            minCostByCandidate.set(candidate, Math.min(...options.map(option => option.cost)));
-            maxCostByCandidate.set(candidate, Math.max(...options.map(option => option.cost)));
+        for (const [index, candidate] of candidates.entries()) {
+            const options = skillOptionResolver
+                ? skillOptionResolver(candidate, index)
+                : this.createSkillAdjustedCandidateOptions(candidate, gameSystem, skillSettings);
+            const resolvedOptions = options.length > 0 ? options : [candidate];
+            minCostByCandidate.set(candidate, Math.min(...resolvedOptions.map(option => option.cost)));
+            maxCostByCandidate.set(candidate, Math.max(...resolvedOptions.map(option => option.cost)));
         }
 
         return { minCostByCandidate, maxCostByCandidate };
+    }
+
+    private createTargetFormationSkillBudgetPlanningCosts(
+        candidates: readonly ForceGenerationCandidateUnit[],
+        options: ForceGenerationRequest,
+        definition: FormationTypeDefinition,
+        skillSettings: ForceGenerationSkillSettings,
+    ): ForceGenerationSkillBudgetPlanningCosts | undefined {
+        return this.createSkillBudgetPlanningCosts(
+            candidates,
+            options.gameSystem,
+            skillSettings,
+            (candidate) => this.createTargetFormationSkillAdjustedCandidateOptions(candidate, options, definition, skillSettings),
+        );
     }
 
     private getSkillPlanningCost(
@@ -3975,10 +4136,11 @@ export class ForceGeneratorService implements OnDestroy {
         gameSystem: GameSystem,
         skillSettings: ForceGenerationSkillSettings,
         budgetRange: { min: number; max: number },
+        skillOptionResolver?: ForceGenerationSkillOptionResolver,
     ): ForceGenerationSelectionAttempt {
         if (
             !FORCE_GENERATION_OPTIMIZE_SELECTED_SKILLS_FOR_BUDGET
-            || !hasVariableForceGenerationSkillSettings(gameSystem, skillSettings)
+            || (!hasVariableForceGenerationSkillSettings(gameSystem, skillSettings) && !skillOptionResolver)
             || selectionAttempt.selectedCandidates.length === 0
         ) {
             return selectionAttempt;
@@ -3989,9 +4151,12 @@ export class ForceGeneratorService implements OnDestroy {
             totalCost: originalTotalCost,
             selectedCandidates: selectionAttempt.selectedCandidates,
         };
-        const skillOptionsByCandidate = selectionAttempt.selectedCandidates.map((candidate) => (
-            this.createSkillAdjustedCandidateOptions(candidate, gameSystem, skillSettings)
-        ));
+        const skillOptionsByCandidate = selectionAttempt.selectedCandidates.map((candidate, index) => {
+            const options = skillOptionResolver
+                ? skillOptionResolver(candidate, index)
+                : this.createSkillAdjustedCandidateOptions(candidate, gameSystem, skillSettings);
+            return options.length > 0 ? options : [candidate];
+        });
         let states: ForceGenerationSkillOptimizationState[] = [{ totalCost: 0, selectedCandidates: [] }];
 
         for (const candidateOptions of skillOptionsByCandidate) {
@@ -6046,13 +6211,16 @@ export class ForceGeneratorService implements OnDestroy {
         selectionPreparation?: ForceGenerationSelectionPreparation,
         deadline?: ForceGenerationSearchDeadline,
     ): ForceGenerationSelectionAttempt {
-        const attemptCandidates = hasVariableForceGenerationSkillSettings(options.gameSystem, skillSettings)
-            ? this.createSkillAdjustedCandidatesForAttempt(candidates, options.gameSystem, skillSettings)
-            : candidates;
-        const targetCandidates = this.filterTargetFormationCandidatePool(attemptCandidates, options, definition);
-        const skillBudgetPlanningCosts = this.createSkillBudgetPlanningCosts(
+        const targetCandidates = this.createTargetFormationCandidatesForAttempt(
+            candidates,
+            options,
+            definition,
+            skillSettings,
+        );
+        const skillBudgetPlanningCosts = this.createTargetFormationSkillBudgetPlanningCosts(
             targetCandidates,
-            options.gameSystem,
+            options,
+            definition,
             skillSettings,
         );
         const preparedSelection = selectionPreparation ?? this.prepareSelectionPreparation(
@@ -6554,6 +6722,31 @@ export class ForceGeneratorService implements OnDestroy {
         };
     }
 
+    private createTargetFormationSetSkillOptionResolver(
+        selectionAttempt: ForceGenerationSelectionAttempt,
+        options: ForceGenerationRequest,
+        skillSettings: ForceGenerationSkillSettings,
+    ): ForceGenerationSkillOptionResolver {
+        const definitionByUnitIndex = new Map<number, FormationTypeDefinition>();
+        for (const targetGroup of selectionAttempt.targetFormationGroups ?? []) {
+            const definition = LanceTypeIdentifierUtil.getDefinitionById(targetGroup.formationId, options.gameSystem);
+            if (!definition) {
+                continue;
+            }
+
+            for (const unitIndex of targetGroup.unitIndexes) {
+                definitionByUnitIndex.set(unitIndex, definition);
+            }
+        }
+
+        return (candidate, index) => {
+            const definition = definitionByUnitIndex.get(index);
+            return definition
+                ? this.createTargetFormationSkillAdjustedCandidateOptions(candidate, options, definition, skillSettings)
+                : this.createSkillAdjustedCandidateOptions(candidate, options.gameSystem, skillSettings);
+        };
+    }
+
     private buildTargetFormationGroupSelection(
         candidates: readonly ForceGenerationCandidateUnit[],
         options: ForceGenerationRequest,
@@ -6561,12 +6754,23 @@ export class ForceGeneratorService implements OnDestroy {
         budgetRange: { min: number; max: number },
         groupUnitCount: number,
         preventDuplicateChassis: boolean,
+        skillSettings: ForceGenerationSkillSettings,
         baseSelectedCandidates: readonly ForceGenerationCandidateUnit[] = [],
         minTotalUnitCount = groupUnitCount,
-        skillBudgetPlanningCosts?: ForceGenerationSkillBudgetPlanningCosts,
         deadline?: ForceGenerationSearchDeadline,
     ): ForceGenerationSelectionAttempt {
-        const targetCandidates = this.filterTargetFormationCandidatePool(candidates, options, definition);
+        const targetCandidates = this.createTargetFormationCandidatesForAttempt(
+            candidates,
+            options,
+            definition,
+            skillSettings,
+        );
+        const skillBudgetPlanningCosts = this.createTargetFormationSkillBudgetPlanningCosts(
+            targetCandidates,
+            options,
+            definition,
+            skillSettings,
+        );
         const selectedCandidates: ForceGenerationCandidateUnit[] = [];
         const remainingCandidates: ForceGenerationCandidateUnit[] = [...targetCandidates];
         const baseSelectedUnitCount = baseSelectedCandidates.length;
@@ -6884,9 +7088,9 @@ export class ForceGeneratorService implements OnDestroy {
                 budgetRange,
                 groupUnitCount,
                 preventDuplicateChassis,
+                skillSettings,
                 selectedCandidates,
                 minUnitCount,
-                skillBudgetPlanningCosts,
                 deadline,
             );
             const groupEvaluation = FormationRequirementEngine.evaluateDefinition(
