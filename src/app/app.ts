@@ -523,7 +523,8 @@ export class App {
 
     private contextMenuHandler = (event: Event) => {
         const target = event.target;
-        if (target instanceof Element && target.closest('[data-allow-native-context-menu="true"]')) {
+        const targetElement = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+        if (targetElement?.closest('input, textarea, .allow-select, [data-allow-native-context-menu="true"]')) {
             return;
         }
 
