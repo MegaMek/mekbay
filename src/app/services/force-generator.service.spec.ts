@@ -999,7 +999,7 @@ describe('ForceGeneratorService', () => {
             'Support Vehicle 3',
             'Support Vehicle 4',
         ]);
-        expect(preview.explanationLines).toContain('Duplicate chassis prevention: enabled.');
+        expect(preview.explanationLines).toContain('Prevent Duplicate Chassis: on.');
     });
 
     it('prioritizes Artillery Fire equipment deficits over generic unit count progress', () => {
@@ -3013,12 +3013,14 @@ describe('ForceGeneratorService', () => {
             maxUnitCount: 2,
             gunnery: 4,
             piloting: 5,
+            searchSettings: ['Search settings: query "atlas"; filters Era ilClan | Type Mek.'],
             preventDuplicateChassis: true,
         });
 
         expect(duplicatePreview.units.map((unit) => unit.unit.name)).toEqual(['Atlas Prime', 'Atlas Prime']);
         expect(uniquePreview.units.map((unit) => unit.unit.name)).toEqual(['Atlas Prime', 'Locust']);
-        expect(uniquePreview.explanationLines).toContain('Duplicate chassis prevention: enabled.');
+        expect(uniquePreview.explanationLines).toContain('Search settings: query "atlas"; filters Era ilClan | Type Mek.');
+        expect(uniquePreview.explanationLines).toContain('Prevent Duplicate Chassis: on.');
     });
 
     it('reuses the same availability-positive unit when duplicate and tag caps are inactive', () => {

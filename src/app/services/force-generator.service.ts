@@ -477,6 +477,7 @@ export interface ForceGenerationTargetFormationPreviewGroup {
 export interface ForceGenerationRequest {
     context: ForceGenerationContext;
     eligibleUnits?: readonly Unit[];
+    searchSettings?: readonly string[];
     gameSystem: GameSystem;
     budgetRange: ForceGenerationBudgetRange;
     minUnitCount: number;
@@ -1738,6 +1739,20 @@ function formatForceGeneratorWeight(value: number): string {
 
 function formatForceGeneratorPercent(value: number): string {
     return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function formatForceGeneratorFlags(
+    preventDuplicateChassis: boolean,
+    useTaggedQuantities: boolean,
+    useUnitTagsAsChassisTags: boolean,
+): string | null {
+    const activeFlags = [
+        preventDuplicateChassis ? 'Prevent Duplicate Chassis: on' : null,
+        useTaggedQuantities ? 'Limit to tagged quantities: on' : null,
+        useUnitTagsAsChassisTags ? 'Use Unit-variant tags as Chassis tags: on' : null,
+    ].filter((flag): flag is string => flag !== null);
+
+    return activeFlags.length > 0 ? `${activeFlags.join('; ')}.` : null;
 }
 
 function getForceGeneratorNow(): number {
@@ -4981,6 +4996,9 @@ export class ForceGeneratorService implements OnDestroy {
         error: string | null,
         lockedUnitCount: number,
         preventDuplicateChassis: boolean,
+        useTaggedQuantities: boolean,
+        useUnitTagsAsChassisTags: boolean,
+        searchSettings: readonly string[] = [],
         availabilitySourceCandidates: readonly ForceGenerationCandidateUnit[] = [],
         attemptsTried?: number,
         attemptsElapsedMs?: number,
@@ -4991,12 +5009,18 @@ export class ForceGeneratorService implements OnDestroy {
         const availabilitySourceRollNote = this.getAvailabilitySourceRollNote(availabilitySourceCandidates);
         lines.push(`Eligible units: ${eligibleUnitCount} units. Availability-positive candidates: ${candidateUnitCount} units. Target: ${minUnitCount}-${maxUnitCount} units, ${budgetLabel} ${budgetRange.min.toLocaleString()} to ${maxLabel}.`);
         lines.push(formatForceGenerationSkillSettingsNote(gameSystem, skillSettings));
+        lines.push(...searchSettings);
+        const generatorFlagsNote = formatForceGeneratorFlags(
+            preventDuplicateChassis,
+            useTaggedQuantities,
+            useUnitTagsAsChassisTags,
+        );
+        if (generatorFlagsNote) {
+            lines.push(generatorFlagsNote);
+        }
 
         if (lockedUnitCount > 0) {
             lines.push(`Locked units: ${lockedUnitCount} preserved across rerolls.`);
-        }
-        if (preventDuplicateChassis) {
-            lines.push('Duplicate chassis prevention: enabled.');
         }
 
         const contextParts = [context.forceFaction?.name, context.forceEra?.name].filter(Boolean);
@@ -5166,6 +5190,9 @@ export class ForceGeneratorService implements OnDestroy {
             error,
             (options.lockedUnits ?? []).length,
             options.preventDuplicateChassis === true,
+            options.useTaggedQuantities === true,
+            options.useUnitTagsAsChassisTags === true,
+            options.searchSettings ?? [],
             availabilitySourceCandidates,
             error ? attemptsTried ?? 0 : attemptsTried,
             attemptsElapsedMs,
@@ -5216,6 +5243,9 @@ export class ForceGeneratorService implements OnDestroy {
             error,
             (options.lockedUnits ?? []).length,
             options.preventDuplicateChassis === true,
+            options.useTaggedQuantities === true,
+            options.useUnitTagsAsChassisTags === true,
+            options.searchSettings ?? [],
             availabilitySourceCandidates,
             attemptsTried,
             attemptsElapsedMs,

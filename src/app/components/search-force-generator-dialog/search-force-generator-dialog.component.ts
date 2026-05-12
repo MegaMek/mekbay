@@ -937,6 +937,7 @@ export class SearchForceGeneratorDialogComponent {
 
         return {
             eligibleUnits,
+            searchSettings: this.buildSearchSettingsExplanationLines(),
             context: this.forceGeneratorService.resolveGenerationContext(eligibleUnits, {
                 crossEraAvailabilityInMultiEraSelection: this.crossEraAvailabilityInMultiEraSelection(),
                 gameSystem: settings.gameSystem,
@@ -1151,7 +1152,19 @@ export class SearchForceGeneratorDialogComponent {
         this.filtersService.setFilter(key, selectedValues);
     }
 
-    private summarizeActiveFilters(): string {
+    private buildSearchSettingsExplanationLines(): string[] {
+        const searchText = this.filtersService.searchText().trim();
+        const filterSummary = this.summarizeActiveFilters(Number.POSITIVE_INFINITY);
+        const filterSettingsSummary = filterSummary.length > 0 ? filterSummary : 'none';
+        const settings = [
+            searchText.length > 0 ? `query "${searchText}"` : null,
+            `filters ${filterSettingsSummary}`,
+        ].filter((setting): setting is string => setting !== null);
+
+        return [`Search settings: ${settings.join('; ')}.`];
+    }
+
+    private summarizeActiveFilters(maxVisibleFilters = 4): string {
         const summaries = Object.values(this.filtersService.advOptions())
             .filter((option) => option.interacted)
             .map((option) => this.formatFilterSummary(option))
@@ -1161,7 +1174,11 @@ export class SearchForceGeneratorDialogComponent {
             return '';
         }
 
-        const visibleSummaries = summaries.slice(0, 4);
+        if (!Number.isFinite(maxVisibleFilters)) {
+            return summaries.join(' | ');
+        }
+
+        const visibleSummaries = summaries.slice(0, maxVisibleFilters);
         const hiddenCount = summaries.length - visibleSummaries.length;
         return hiddenCount > 0
             ? `${visibleSummaries.join(' | ')} | +${hiddenCount} more`

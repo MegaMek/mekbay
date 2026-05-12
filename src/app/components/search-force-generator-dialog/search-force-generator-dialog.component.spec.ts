@@ -37,6 +37,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
     let filteredUnitsSignal: WritableSignal<Unit[]>;
     let forceGeneratorEligibleUnitsSignal: WritableSignal<Unit[]>;
     let gameSystemSignal: WritableSignal<GameSystem>;
+    let searchTextSignal: WritableSignal<string>;
 
     beforeEach(() => {
         optionsSignal = signal({
@@ -67,6 +68,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         setFilterSpy = jasmine.createSpy('setFilter');
         const pilotGunnerySkillSignal = signal(4);
         const pilotPilotingSkillSignal = signal(5);
+        searchTextSignal = signal('');
         setPilotSkillsSpy = jasmine.createSpy('setPilotSkills').and.callFake((gunnery: number, piloting: number) => {
             pilotGunnerySkillSignal.set(gunnery);
             pilotPilotingSkillSignal.set(piloting);
@@ -358,7 +360,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
                         pilotGunnerySkill: pilotGunnerySkillSignal,
                         pilotPilotingSkill: pilotPilotingSkillSignal,
                         requestClosePanels: requestClosePanelsSpy,
-                        searchText: signal(''),
+                        searchText: searchTextSignal,
                         setFilter: setFilterSpy,
                         setPilotSkills: setPilotSkillsSpy,
                         unsetFilter: jasmine.createSpy('unsetFilter'),
@@ -1015,6 +1017,24 @@ describe('SearchForceGeneratorDialogComponent', () => {
         component.reroll();
 
         expect(buildPreviewSpy.calls.mostRecent().args[0].useTaggedQuantities).toBeTrue();
+    });
+
+    it('forwards the current search settings into the preview request', () => {
+        searchTextSignal.set('atlas !primitive');
+
+        component.reroll();
+
+        expect(buildPreviewSpy.calls.mostRecent().args[0].searchSettings).toEqual([
+            'Search settings: query "atlas !primitive"; filters Era Jihad | Type Mek | Subtype BattleMek | Type BM.',
+        ]);
+    });
+
+    it('omits query from search settings when the search query is empty', () => {
+        component.reroll();
+
+        expect(buildPreviewSpy.calls.mostRecent().args[0].searchSettings).toEqual([
+            'Search settings: filters Era Jihad | Type Mek | Subtype BattleMek | Type BM.',
+        ]);
     });
 
     it('renders the unit-tags-as-chassis checkbox only when tagged quantities are active', async () => {
