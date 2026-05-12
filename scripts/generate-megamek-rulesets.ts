@@ -146,6 +146,15 @@ function parseDateBetweenAttribute(value: string): { fromYear?: number; toYear?:
     };
 }
 
+function rememberPredicateExpression(when: JsonObject, attrName: string, attrValue: string): void {
+    const currentExpressions = when.expressions;
+    const expressions: JsonObject = currentExpressions && typeof currentExpressions === 'object' && !Array.isArray(currentExpressions)
+        ? currentExpressions as JsonObject
+        : {};
+    expressions[attrName] = attrValue;
+    when.expressions = expressions;
+}
+
 function parseEchelonToken(raw: string): JsonObject {
     const token = raw.trim();
     const match = token.match(ECHELON_TOKEN_RE);
@@ -357,6 +366,12 @@ function normalizeRulesetAttributeValue(attrName: string, attrValue: string): un
             return splitDelimitedValues(attrValue);
         case 'flags':
             return splitDelimitedValues(attrValue);
+        case 'chassis':
+            return splitDelimitedValues(attrValue);
+        case 'variant':
+            return splitDelimitedValues(attrValue);
+        case 'model':
+            return splitDelimitedValues(attrValue);
         case 'augmented':
         case 'ifAugmented':
         case 'ifTopLevel': {
@@ -423,6 +438,10 @@ function mapAssertionAttrName(attrName: string): string {
             return 'motives';
         case 'flags':
             return 'flags';
+        case 'model':
+            return 'models';
+        case 'faction':
+            return 'factionKey';
         default:
             return attrName;
     }
@@ -471,8 +490,11 @@ function normalizeRulesetNode(value: unknown, pathSegments: string[] = []): unkn
         if (key.startsWith('@_')) {
             const attrName = key.slice(2);
             const attrValue = entry === undefined || entry === null ? '' : String(entry);
+            const isCommanderNode = pathSegments[pathSegments.length - 1] === 'co'
+                || pathSegments[pathSegments.length - 1] === 'xo';
 
             if (attrName === 'ifDateBetween' || attrName === 'ifYearBetween') {
+                rememberPredicateExpression(when, attrName, attrValue);
                 const { fromYear, toYear } = parseDateBetweenAttribute(attrValue);
                 if (fromYear !== undefined) {
                     when.fromYear = fromYear;
@@ -483,11 +505,17 @@ function normalizeRulesetNode(value: unknown, pathSegments: string[] = []): unkn
                 continue;
             }
 
+            if (isCommanderNode && attrName === 'unitType') {
+                normalized.unitType = normalizeConstantToken(attrValue);
+                continue;
+            }
+
             if (attrName === 'xmlns:xsi' || attrName === 'xsi:noNamespaceSchemaLocation') {
                 continue;
             }
 
             if (PREDICATE_ATTR_NAMES.has(attrName)) {
+                rememberPredicateExpression(when, attrName, attrValue);
                 when[mapPredicateAttrName(attrName)] = normalizeRulesetAttributeValue(attrName, attrValue);
                 continue;
             }

@@ -4858,6 +4858,273 @@ describe('ForceGeneratorService', () => {
         expect(profile.explanationNotes).toContain('Org target: Trinary (regular size 15).');
     });
 
+    it('uses chassis assertions from ruleset option groups to narrow matching candidates', () => {
+        const era = createEra(3025, 'Late Succession War', 3025, 3025);
+        const faction = createFaction(10, 'Federated Suns');
+        const atlas = createUnit({ id: 1, name: 'Atlas AS7-D', chassis: 'Atlas', model: 'AS7-D', as: { PV: 5 } as Unit['as'] });
+        const locust = createUnit({ id: 2, name: 'Locust LCT-1V', chassis: 'Locust', model: 'LCT-1V', as: { PV: 5 } as Unit['as'] });
+        const ruleset: MegaMekRulesetRecord = {
+            factionKey: 'FS',
+            indexes: { forceIndexesByEchelon: { LANCE: [0] } },
+            forceCount: 1,
+            forces: [
+                {
+                    echelon: { code: 'LANCE' },
+                    chassis: {
+                        options: [{ chassis: ['Atlas'] }],
+                    },
+                },
+            ],
+        };
+
+        registerMegaMekRuleset(faction, ruleset);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [locust, atlas],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 5 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Atlas AS7-D']);
+    });
+
+    it('uses TOC rating and flag options when matching force nodes', () => {
+        const era = createEra(3050, 'Clan Invasion', 3050, 3050);
+        const faction = createFaction(10, 'Clan Wolf');
+        const mek = createUnit({ id: 1, name: 'Rated Mek', chassis: 'Rated Mek', as: { PV: 5 } as Unit['as'] });
+        const ruleset: MegaMekRulesetRecord = {
+            factionKey: 'CW',
+            indexes: { forceIndexesByEchelon: { STAR: [0] } },
+            forceCount: 1,
+            toc: {
+                rating: {
+                    options: [{ ratings: ['A'], when: { unitTypes: ['Mek'] } }],
+                },
+                flags: {
+                    options: [{ flags: ['elite'], when: { ratings: ['A'] } }],
+                },
+            },
+            forces: [
+                {
+                    echelon: { code: 'STAR' },
+                    when: {
+                        expressions: {
+                            ifRating: 'A',
+                            ifFlags: 'elite',
+                        },
+                    },
+                    assign: { roles: ['command'] },
+                },
+            ],
+        };
+        const candidates = [{
+            unit: mek,
+            requisitionWeight: 10,
+            salvageWeight: 0,
+            cost: 5,
+            locked: false,
+            megaMekUnitType: 'Mek',
+            role: mek.role,
+        }];
+
+        registerMegaMekRuleset(faction, ruleset);
+
+        const profile = (service as any).buildRulesetProfile(
+            candidates,
+            createContext(faction, era),
+            1,
+            5,
+        );
+
+        expect(profile).not.toBeNull();
+        expect(profile.preferredRatings.has('a')).toBeTrue();
+        expect(profile.preferredFlags.has('elite')).toBeTrue();
+        expect(profile.preferredRoles.has('command')).toBeTrue();
+        expect(profile.explanationNotes.some((note: string) => note.includes('no matching force node'))).toBeFalse();
+    });
+
+    it('uses ruleset default ratings before matching force nodes', () => {
+        const era = createEra(3025, 'Late Succession War', 3025, 3025);
+        const faction = createFaction(10, 'Free Worlds League');
+        const mek = createUnit({ id: 1, name: 'Default Rated Mek', chassis: 'Default Rated Mek', as: { PV: 5 } as Unit['as'] });
+        const ruleset: MegaMekRulesetRecord = {
+            factionKey: 'FWL',
+            indexes: { forceIndexesByEchelon: { LANCE: [0] } },
+            forceCount: 1,
+            defaults: {
+                rating: [{ ratings: ['B'] }],
+            },
+            forces: [
+                {
+                    echelon: { code: 'LANCE' },
+                    when: { expressions: { ifRating: 'B' } },
+                    assign: { roles: ['command'] },
+                },
+            ],
+        };
+        const candidates = [{
+            unit: mek,
+            requisitionWeight: 10,
+            salvageWeight: 0,
+            cost: 5,
+            locked: false,
+            megaMekUnitType: 'Mek',
+            role: mek.role,
+        }];
+
+        registerMegaMekRuleset(faction, ruleset);
+
+        const profile = (service as any).buildRulesetProfile(
+            candidates,
+            createContext(faction, era),
+            1,
+            4,
+        );
+
+        expect(profile).not.toBeNull();
+        expect(profile.preferredRatings.has('b')).toBeTrue();
+        expect(profile.preferredRoles.has('command')).toBeTrue();
+        expect(profile.explanationNotes.some((note: string) => note.includes('no matching force node'))).toBeFalse();
+    });
+
+    it('turns generate=model subforces into shared model template guidance', () => {
+        const era = createEra(2765, 'Star League', 2765, 2765);
+        const faction = createFaction(10, 'Star League');
+        const seedUnit = createUnit({ id: 1, name: 'Cohesion Seed', chassis: 'Thunderbolt', model: 'TDR-5S', as: { PV: 5 } as Unit['as'] });
+        const otherUnit = createUnit({ id: 2, name: 'Cohesion Other', chassis: 'Wolverine', model: 'WVR-6R', as: { PV: 5 } as Unit['as'] });
+        const ruleset: MegaMekRulesetRecord = {
+            factionKey: 'SL',
+            indexes: { forceIndexesByEchelon: { LANCE: [0] } },
+            forceCount: 1,
+            forces: [
+                {
+                    echelon: { code: 'LANCE' },
+                    subforces: [
+                        {
+                            generate: 'model',
+                            subforces: [
+                                {
+                                    count: 2,
+                                    unitTypes: ['Mek'],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        };
+        const candidates = [seedUnit, otherUnit].map((unit) => ({
+            unit,
+            requisitionWeight: 10,
+            salvageWeight: 0,
+            cost: 5,
+            locked: false,
+            megaMekUnitType: 'Mek',
+            megaMekWeightClass: 'Medium',
+            role: unit.role,
+        }));
+
+        registerMegaMekRuleset(faction, ruleset);
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const profile = (service as any).buildRulesetProfile(
+            candidates,
+            createContext(faction, era),
+            1,
+            2,
+        );
+
+        expect(profile).not.toBeNull();
+        expect(profile.templates.length).toBeGreaterThan(0);
+        expect(profile.templates[0].generationMode).toBe('model');
+        expect(profile.templates[0].models.has('cohesion seed')).toBeTrue();
+        expect(profile.templates[0].chassis.has('thunderbolt')).toBeTrue();
+    });
+
+    it('applies changeEschelon option groups to the selected ruleset profile', () => {
+        const era = createEra(3025, 'Late Succession War', 3025, 3025);
+        const faction = createFaction(10, 'Capellan Confederation');
+        const ruleset: MegaMekRulesetRecord = {
+            factionKey: 'CC',
+            indexes: { forceIndexesByEchelon: { COMPANY: [0] } },
+            forceCount: 1,
+            forces: [
+                {
+                    echelon: { code: 'COMPANY' },
+                    changeEschelon: {
+                        options: [{ echelon: { code: 'LANCE' } }],
+                    },
+                },
+            ],
+        };
+
+        registerMegaMekRuleset(faction, ruleset);
+
+        const profile = (service as any).buildRulesetProfile(
+            [],
+            createContext(faction, era),
+            1,
+            12,
+        );
+
+        expect(profile).not.toBeNull();
+        expect(profile.selectedEchelon).toBe('LANCE');
+        expect(profile.preferredOrgType).toBe('Lance');
+        expect(profile.preferredUnitCount).toBe(4);
+        expect(profile.explanationNotes).toContain('Ruleset changed echelon to LANCE.');
+    });
+
+    it('marks the selected ruleset CO unit type as the generated commander', () => {
+        const era = createEra(3055, 'Clan Invasion', 3055, 3055);
+        const faction = createFaction(10, 'Clan Snow Raven');
+        const mek = createUnit({ id: 1, name: 'Line Mek', chassis: 'Line Mek', as: { PV: 5 } as Unit['as'] });
+        const fighter = createUnit({
+            id: 2,
+            name: 'Command Fighter',
+            chassis: 'Command Fighter',
+            type: 'Aero',
+            subtype: 'Aerospace Fighter',
+            moveType: 'Aerodyne',
+            as: { PV: 5, TP: 'AF', MVm: { a: 8 } } as unknown as Unit['as'],
+        });
+        const ruleset: MegaMekRulesetRecord = {
+            factionKey: 'CSR',
+            indexes: { forceIndexesByEchelon: { LANCE: [0] } },
+            forceCount: 1,
+            forces: [
+                {
+                    echelon: { code: 'LANCE' },
+                    co: [{ rank: '32', unitType: 'AeroSpaceFighter' }],
+                },
+            ],
+        };
+
+        registerMegaMekRuleset(faction, ruleset);
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [mek, fighter],
+            context: createContext(faction, era),
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 10, max: 10 },
+            minUnitCount: 2,
+            maxUnitCount: 2,
+            gunnery: 4,
+            piloting: 5,
+            preventDuplicateChassis: true,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.find((unit) => unit.unit.name === 'Command Fighter')?.commander).toBeTrue();
+        expect(preview.units.find((unit) => unit.unit.name === 'Line Mek')?.commander).not.toBeTrue();
+    });
+
     it('prefers a lance-shaped valid force over a company-shaped valid force when the ruleset selects LANCE', () => {
         const era = createEra(2570, 'Age of War');
         const faction = createFaction(10, 'Capellan Confederation');

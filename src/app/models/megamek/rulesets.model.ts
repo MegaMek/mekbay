@@ -32,6 +32,24 @@
  */
 
 export type MegaMekRulesetEchelonModifier = 'R' | 'US';
+export type MegaMekRulesetGenerateMode = '' | 'chassis' | 'group' | 'model' | 'unit';
+export type MegaMekRulesetPredicateExpressionKey =
+    'ifUnitType'
+    | 'ifWeightClass'
+    | 'ifRating'
+    | 'ifEschelon'
+    | 'ifFormation'
+    | 'ifRole'
+    | 'ifMotive'
+    | 'ifAugmented'
+    | 'ifDateBetween'
+    | 'ifYearBetween'
+    | 'ifTopLevel'
+    | 'ifName'
+    | 'ifFaction'
+    | 'ifFlags'
+    | 'ifIndex';
+export type MegaMekRulesetPredicateExpressions = Partial<Record<MegaMekRulesetPredicateExpressionKey, string>>;
 
 export interface MegaMekRulesetEchelonToken {
     code: string;
@@ -45,6 +63,7 @@ export interface MegaMekRulesetCodeLabel {
 }
 
 export interface MegaMekRulesetWhen {
+    expressions?: MegaMekRulesetPredicateExpressions;
     fromYear?: number;
     toYear?: number;
     unitTypes?: string[];
@@ -75,7 +94,10 @@ export interface MegaMekRulesetAssign {
     flags?: string[];
     variants?: string[];
     chassis?: string[];
+    models?: string[];
+    model?: string;
     name?: string;
+    fluffName?: string;
     factionKey?: string;
     augmented?: boolean;
 }
@@ -87,7 +109,7 @@ export interface MegaMekRulesetNodeBase {
     count?: number;
     position?: number;
     title?: string;
-    generate?: string;
+    generate?: MegaMekRulesetGenerateMode | string;
     factionKey?: string;
 }
 
@@ -99,7 +121,10 @@ export interface MegaMekRulesetNameNode {
 export interface MegaMekRulesetRankNode {
     rank: string;
     when?: MegaMekRulesetWhen;
+    assign?: MegaMekRulesetAssign;
     position?: number;
+    title?: string;
+    unitType?: string;
 }
 
 export interface MegaMekRulesetOptionNode extends MegaMekRulesetNodeBase {
@@ -115,7 +140,12 @@ export interface MegaMekRulesetOptionNode extends MegaMekRulesetNodeBase {
     flags?: string[];
     variants?: string[];
     chassis?: string[];
+    models?: string[];
+    model?: string;
     name?: string;
+    fluffName?: string;
+    factionKey?: string;
+    augmented?: boolean;
     asFactionKey?: string;
     useParentFaction?: boolean;
 }
@@ -129,10 +159,18 @@ export interface MegaMekRulesetSubforceNode extends MegaMekRulesetNodeBase {
     echelon?: MegaMekRulesetEchelonToken;
     unitTypes?: string[];
     weightClasses?: string[];
+    ratings?: string[];
+    formations?: string[];
     roles?: string[];
     motives?: string[];
     flags?: string[];
+    variants?: string[];
+    chassis?: string[];
+    models?: string[];
+    model?: string;
     name?: string;
+    fluffName?: string;
+    factionKey?: string;
     augmented?: boolean;
     asFactionKey?: string;
     useParentFaction?: boolean;
@@ -154,9 +192,13 @@ export interface MegaMekRulesetSubforceGroup extends MegaMekRulesetNodeBase {
 export interface MegaMekRulesetRuleGroup extends MegaMekRulesetNodeBase {
     unitType?: MegaMekRulesetOptionGroup;
     weightClass?: MegaMekRulesetOptionGroup;
+    chassis?: MegaMekRulesetOptionGroup;
+    variant?: MegaMekRulesetOptionGroup;
+    formation?: MegaMekRulesetOptionGroup;
     role?: MegaMekRulesetOptionGroup;
     motive?: MegaMekRulesetOptionGroup;
     flags?: MegaMekRulesetOptionGroup;
+    changeEschelon?: MegaMekRulesetOptionGroup;
 }
 
 export interface MegaMekRulesetForceNode extends MegaMekRulesetNodeBase {
@@ -167,6 +209,9 @@ export interface MegaMekRulesetForceNode extends MegaMekRulesetNodeBase {
     xo?: MegaMekRulesetRankNode[];
     unitType?: MegaMekRulesetOptionGroup;
     weightClass?: MegaMekRulesetOptionGroup;
+    chassis?: MegaMekRulesetOptionGroup;
+    variant?: MegaMekRulesetOptionGroup;
+    formation?: MegaMekRulesetOptionGroup;
     role?: MegaMekRulesetOptionGroup;
     motive?: MegaMekRulesetOptionGroup;
     flags?: MegaMekRulesetOptionGroup;

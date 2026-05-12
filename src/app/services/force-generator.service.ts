@@ -40,6 +40,7 @@ import type { ForcePreviewEntry, ForcePreviewGroup } from '../models/force-previ
 import type { MegaMekWeightedAvailabilityRecord } from '../models/megamek/availability.model';
 import type {
     MegaMekRulesetAssign,
+    MegaMekRulesetCodeLabel,
     MegaMekRulesetEchelonToken,
     MegaMekRulesetForceNode,
     MegaMekRulesetNodeBase,
@@ -74,6 +75,7 @@ import { resolveDropdownNamesFromFilter } from '../utils/filter-name-resolution.
 import { ForceNamerUtil } from '../utils/force-namer.util';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
 import { normalizeMultiStateSelection } from '../utils/unit-search-shared.util';
+import { matchesMegaMekRulesetWhen, type MegaMekRulesetPredicateContext } from '../utils/megamek-ruleset-predicate.util';
 import { DataService } from './data.service';
 import { OptionsService } from './options.service';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
@@ -110,11 +112,25 @@ const DEFAULT_PREVIEW_FORCE_FACTION: Faction = {
     eras: {},
 };
 
+type RulesetStringValue = string | MegaMekRulesetCodeLabel;
+
 interface RulesetPreferenceSource {
     unitTypes?: string[];
     weightClasses?: string[];
+    ratings?: RulesetStringValue[];
+    formations?: string[];
     roles?: string[];
     motives?: string[];
+    flags?: string[];
+    variants?: string[];
+    chassis?: string[];
+    models?: string[];
+    model?: string;
+    name?: string;
+    fluffName?: string;
+    factionKey?: string;
+    augmented?: boolean;
+    echelon?: MegaMekRulesetEchelonToken;
 }
 
 interface ForceGenerationCandidateUnit {
@@ -155,20 +171,39 @@ interface RulesetMatchContext {
     year?: number;
     unitType?: string;
     weightClass?: string;
+    rating?: string;
+    formation?: string;
     role?: string;
+    roles?: readonly string[];
     motive?: string;
+    motives?: readonly string[];
     echelon?: string;
     factionKey?: string;
     augmented?: boolean;
     topLevel?: boolean;
+    name?: string;
     flags?: readonly string[];
+    index?: number;
 }
 
 interface ForceGenerationRulesetTemplate {
+    generationMode?: string;
     unitTypes: Set<string>;
     weightClasses: Set<string>;
+    formations: Set<string>;
     roles: Set<string>;
     motives: Set<string>;
+    chassis: Set<string>;
+    models: Set<string>;
+    variants: Set<string>;
+    names: Set<string>;
+    fluffNames: Set<string>;
+}
+
+interface RulesetGenerationCohesion {
+    mode: string;
+    chassis?: string;
+    model?: string;
 }
 
 interface ForceGenerationCandidateUnitTypeSummary {
@@ -272,8 +307,17 @@ interface ForceGenerationRulesetProfile {
     requiredUnitTypes: Set<string>;
     preferredUnitTypes: Set<string>;
     preferredWeightClasses: Set<string>;
+    preferredRatings: Set<string>;
+    preferredFormations: Set<string>;
     preferredRoles: Set<string>;
     preferredMotives: Set<string>;
+    preferredFlags: Set<string>;
+    preferredChassis: Set<string>;
+    preferredModels: Set<string>;
+    preferredVariants: Set<string>;
+    preferredNames: Set<string>;
+    preferredFluffNames: Set<string>;
+    commanderUnitTypes: Set<string>;
     templates: ForceGenerationRulesetTemplate[];
     explanationNotes: string[];
 }
@@ -1541,12 +1585,71 @@ function getPreferredOrgTypeForEchelon(echelon: string | undefined): OrgType | u
     return echelon ? ECHELON_TO_ORG_TYPE.get(echelon) : undefined;
 }
 
-function getPositiveRulesetValues(values: readonly string[] | undefined): string[] {
-    return (values ?? []).filter((value) => !value.startsWith('!'));
+function getRulesetStringValue(value: RulesetStringValue): string {
+    return typeof value === 'string' ? value : value.code;
 }
 
-function getFirstPositiveRulesetValue(values: readonly string[] | undefined): string | undefined {
+function getPositiveRulesetValues(values: readonly RulesetStringValue[] | undefined): string[] {
+    return (values ?? [])
+        .map((value) => getRulesetStringValue(value))
+        .filter((value) => !value.startsWith('!'));
+}
+
+function getFirstPositiveRulesetValue(values: readonly RulesetStringValue[] | undefined): string | undefined {
     return getPositiveRulesetValues(values)[0];
+}
+
+function valueToArray(value: string | undefined): string[] {
+    return value ? [value] : [];
+}
+
+function mergeRulesetCollection(
+    currentValues: readonly string[],
+    assignedValues: readonly RulesetStringValue[] | undefined,
+): string[] {
+    if (!assignedValues) {
+        return [...currentValues];
+    }
+    if (assignedValues.length === 0) {
+        return [];
+    }
+
+    const assignedValueStrings = assignedValues.map((value) => getRulesetStringValue(value));
+    const result = assignedValueStrings[0].startsWith('+') || assignedValueStrings[0].startsWith('-')
+        ? [...currentValues]
+        : [];
+    for (const assignedValue of assignedValueStrings) {
+        if (assignedValue.startsWith('-')) {
+            const removedValue = assignedValue.slice(1);
+            const removeIndex = result.indexOf(removedValue);
+            if (removeIndex >= 0) {
+                result.splice(removeIndex, 1);
+            }
+            continue;
+        }
+
+        const addedValue = assignedValue.startsWith('+') ? assignedValue.slice(1) : assignedValue;
+        if (addedValue.length > 0 && !result.includes(addedValue)) {
+            result.push(addedValue);
+        }
+    }
+
+    return result;
+}
+
+function getRulesetEchelonAugmented(token: MegaMekRulesetEchelonToken | undefined): boolean | undefined {
+    return token?.augmented;
+}
+
+function resolveRulesetGenerateMode(
+    localGenerateMode: string | undefined,
+    inheritedGenerateMode: string | undefined,
+): string | undefined {
+    if (localGenerateMode !== undefined) {
+        return localGenerateMode.trim() || undefined;
+    }
+
+    return inheritedGenerateMode;
 }
 
 function getCommonUnitCountForOrgType(type: OrgType): number | undefined {
@@ -5061,7 +5164,7 @@ export class ForceGeneratorService implements OnDestroy {
         };
     }
 
-    private createGeneratedUnit(candidate: ForceGenerationCandidateUnit): GeneratedForceUnit {
+    private createGeneratedUnit(candidate: ForceGenerationCandidateUnit, commander = false): GeneratedForceUnit {
         return {
             unit: candidate.unit,
             cost: candidate.cost,
@@ -5069,9 +5172,27 @@ export class ForceGeneratorService implements OnDestroy {
             gunnery: candidate.gunnery,
             piloting: candidate.piloting,
             alias: candidate.alias,
-            commander: candidate.commander,
+            commander: commander || candidate.commander,
             lockKey: candidate.lockKey ?? generateUUID(),
         };
+    }
+
+    private resolveRulesetCommanderCandidate(
+        selectionAttempt: ForceGenerationSelectionAttempt,
+    ): ForceGenerationCandidateUnit | null {
+        if (selectionAttempt.selectedCandidates.length === 0
+            || selectionAttempt.selectedCandidates.some((candidate) => candidate.commander)) {
+            return null;
+        }
+
+        const commanderUnitTypes = selectionAttempt.rulesetProfile?.commanderUnitTypes;
+        if (!commanderUnitTypes || commanderUnitTypes.size === 0) {
+            return null;
+        }
+
+        return selectionAttempt.selectedCandidates.find((candidate) => {
+            return commanderUnitTypes.has(normalizeRulesetToken(candidate.megaMekUnitType));
+        }) ?? selectionAttempt.selectedCandidates[0];
     }
 
     private buildPreviewExplanation(
@@ -5262,7 +5383,10 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         const totalCost = selectionAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
-        const units = selectionAttempt.selectedCandidates.map((candidate) => this.createGeneratedUnit(candidate));
+        const rulesetCommanderCandidate = this.resolveRulesetCommanderCandidate(selectionAttempt);
+        const units = selectionAttempt.selectedCandidates.map((candidate) => {
+            return this.createGeneratedUnit(candidate, candidate === rulesetCommanderCandidate);
+        });
         const targetFormations = this.resolveRequestedTargetFormations(options);
         const targetFormationId = targetFormations.length === 1 && targetFormations[0].count === 1
             ? targetFormations[0].formationId
@@ -7690,8 +7814,17 @@ export class ForceGeneratorService implements OnDestroy {
             requiredUnitTypes: new Set<string>(),
             preferredUnitTypes: new Set<string>(),
             preferredWeightClasses: new Set<string>(),
+            preferredRatings: new Set<string>(),
+            preferredFormations: new Set<string>(),
             preferredRoles: new Set<string>(),
             preferredMotives: new Set<string>(),
+            preferredFlags: new Set<string>(),
+            preferredChassis: new Set<string>(),
+            preferredModels: new Set<string>(),
+            preferredVariants: new Set<string>(),
+            preferredNames: new Set<string>(),
+            preferredFluffNames: new Set<string>(),
+            commanderUnitTypes: new Set<string>(),
             templates: [],
             explanationNotes: [],
         };
@@ -7699,6 +7832,8 @@ export class ForceGeneratorService implements OnDestroy {
         profile.preferredOrgType = getPreferredOrgTypeForEchelon(resolvedSelectedEchelon);
         profile.preferredUnitCount = getPreferredUnitCountForEchelon(resolvedSelectedEchelon, orgDefinition);
         this.addRulesetValues(profile.requiredUnitTypes, topLevelMatchContext.unitType ? [topLevelMatchContext.unitType] : []);
+        this.addRulesetValues(profile.preferredRatings, topLevelMatchContext.rating ? [topLevelMatchContext.rating] : []);
+        this.addRulesetValues(profile.preferredFlags, topLevelMatchContext.flags ?? []);
         this.mergeRulesetNodeIntoProfile(profile, rulesetContext.primary?.assign);
 
         if (profile.preferredOrgType) {
@@ -7714,6 +7849,7 @@ export class ForceGeneratorService implements OnDestroy {
         this.applyForceNodeToProfile(profile, forceNode, forceNodeSelection.matchContext);
         this.collectRulesetTemplates(
             profile,
+            candidates,
             forceNode,
             forceNodeSelection.matchContext,
             rulesetContext,
@@ -7733,10 +7869,11 @@ export class ForceGeneratorService implements OnDestroy {
         maxUnitCount: number,
         orgDefinition: OrgDefinition | null,
     ): RulesetMatchContext {
+        const defaultedBaseMatchContext = this.applyRulesetDefaultSelections(rulesetChain, baseMatchContext);
         const unitTypeChoices = this.getTopLevelUnitTypeChoices(
             rulesetChain,
             candidates,
-            baseMatchContext,
+            defaultedBaseMatchContext,
             minUnitCount,
             maxUnitCount,
             orgDefinition,
@@ -7745,15 +7882,16 @@ export class ForceGeneratorService implements OnDestroy {
             const forceNodeChoices = this.getForceNodeBackedTopLevelUnitTypeChoices(
                 rulesetChain,
                 candidates,
-                baseMatchContext,
+                defaultedBaseMatchContext,
             );
             if (forceNodeChoices.length === 0) {
-                return baseMatchContext;
+                return this.applyTopLevelTocSelections(rulesetChain, defaultedBaseMatchContext);
             }
 
-            return pickWeightedRandomEntry(forceNodeChoices, (choice) => {
+            const selectedChoice = pickWeightedRandomEntry(forceNodeChoices, (choice) => {
                 return Math.max(0.05, choice.summary.totalAvailabilityWeight);
             }).matchContext;
+            return this.applyTopLevelTocSelections(rulesetChain, selectedChoice);
         }
 
         const selectedUnitTypeChoice = pickWeightedRandomEntry(unitTypeChoices, (choice) => {
@@ -7772,11 +7910,11 @@ export class ForceGeneratorService implements OnDestroy {
             ?? previewSelection.matchContext.echelon
             ?? getRulesetEchelonCode(previewSelection.forceNode?.echelon);
 
-        return {
+        return this.applyTopLevelTocSelections(rulesetChain, {
             ...previewSelection.matchContext,
             unitType: selectedUnitTypeChoice.summary.unitType,
             echelon: resolvedEchelon,
-        };
+        });
     }
 
     private getTopLevelUnitTypeChoices(
@@ -7787,7 +7925,9 @@ export class ForceGeneratorService implements OnDestroy {
         maxUnitCount: number,
         orgDefinition: OrgDefinition | null,
     ): ForceGenerationTopLevelUnitTypeChoice[] {
+        const allowedUnitTypes = this.getAllowedTopLevelUnitTypes(rulesetChain, baseMatchContext);
         return this.getCandidateUnitTypeSummaries(candidates)
+            .filter((summary) => !allowedUnitTypes || allowedUnitTypes.has(normalizeRulesetToken(summary.unitType)))
             .map((summary) => {
                 const echelons = this.getValidTopLevelEchelonOptions(
                     rulesetChain,
@@ -7807,6 +7947,114 @@ export class ForceGeneratorService implements OnDestroy {
                 };
             })
             .filter((choice) => choice.echelons.length > 0);
+    }
+
+    private applyRulesetDefaultSelections(
+        rulesetChain: readonly MegaMekRulesetRecord[],
+        matchContext: RulesetMatchContext,
+    ): RulesetMatchContext {
+        let nextMatchContext = { ...matchContext };
+
+        for (const ruleset of rulesetChain) {
+            const unitTypeOption = this.selectRulesetDefaultOption(ruleset.defaults?.unitType, nextMatchContext);
+            if (!nextMatchContext.unitType && unitTypeOption) {
+                const unitType = getFirstPositiveRulesetValue(unitTypeOption.unitTypes);
+                if (unitType && normalizeRulesetToken(unitType) !== 'null') {
+                    nextMatchContext = { ...nextMatchContext, unitType };
+                }
+            }
+
+            const echelonOption = this.selectRulesetDefaultOption(ruleset.defaults?.echelon, nextMatchContext);
+            if (!nextMatchContext.echelon && echelonOption) {
+                nextMatchContext = {
+                    ...nextMatchContext,
+                    echelon: getRulesetEchelonCode(echelonOption.echelon ?? echelonOption.echelons?.[0]) ?? nextMatchContext.echelon,
+                    augmented: echelonOption.augmented
+                        ?? getRulesetEchelonAugmented(echelonOption.echelon ?? echelonOption.echelons?.[0])
+                        ?? nextMatchContext.augmented,
+                };
+            }
+
+            const ratingOption = this.selectRulesetDefaultOption(ruleset.defaults?.rating, nextMatchContext);
+            if (!nextMatchContext.rating && ratingOption) {
+                nextMatchContext = {
+                    ...nextMatchContext,
+                    rating: getFirstPositiveRulesetValue(ratingOption.ratings) ?? nextMatchContext.rating,
+                };
+            }
+        }
+
+        return nextMatchContext;
+    }
+
+    private selectRulesetDefaultOption(
+        options: readonly MegaMekRulesetOptionNode[] | undefined,
+        matchContext: RulesetMatchContext,
+    ): MegaMekRulesetOptionNode | undefined {
+        return (options ?? []).find((option) => this.matchesRulesetWhen(option.when, matchContext));
+    }
+
+    private getAllowedTopLevelUnitTypes(
+        rulesetChain: readonly MegaMekRulesetRecord[],
+        baseMatchContext: RulesetMatchContext,
+    ): Set<string> | null {
+        for (const ruleset of rulesetChain) {
+            const selectedOption = this.selectRulesetOption(ruleset.toc?.unitType, baseMatchContext);
+            if (!selectedOption) {
+                continue;
+            }
+
+            const unitTypes = getPositiveRulesetValues(selectedOption.unitTypes)
+                .filter((unitType) => normalizeRulesetToken(unitType) !== 'null')
+                .map((unitType) => normalizeRulesetToken(unitType));
+            if (unitTypes.length > 0) {
+                return new Set(unitTypes);
+            }
+        }
+
+        return null;
+    }
+
+    private applyTopLevelTocSelections(
+        rulesetChain: readonly MegaMekRulesetRecord[],
+        matchContext: RulesetMatchContext,
+    ): RulesetMatchContext {
+        let nextMatchContext = { ...matchContext };
+
+        for (const ruleset of rulesetChain) {
+            const ratingOption = this.selectRulesetOption(ruleset.toc?.rating, nextMatchContext);
+            if (ratingOption) {
+                nextMatchContext = this.applyRulesetNodeToMatchContext(nextMatchContext, ratingOption);
+                break;
+            }
+        }
+
+        for (const ruleset of rulesetChain) {
+            const flagsOption = this.selectRulesetOption(ruleset.toc?.flags, nextMatchContext);
+            if (flagsOption) {
+                nextMatchContext = this.applyRulesetNodeToMatchContext(nextMatchContext, flagsOption);
+                break;
+            }
+        }
+
+        return nextMatchContext;
+    }
+
+    private selectRulesetOption(
+        optionGroup: MegaMekRulesetOptionGroup | undefined,
+        matchContext: RulesetMatchContext,
+    ): MegaMekRulesetOptionNode | undefined {
+        if (!optionGroup || !this.matchesRulesetWhen(optionGroup.when, matchContext)) {
+            return undefined;
+        }
+
+        const matchingOptions = (optionGroup.options ?? [])
+            .filter((option) => this.matchesRulesetWhen(option.when, matchContext));
+        if (matchingOptions.length === 0) {
+            return undefined;
+        }
+
+        return pickWeightedRandomEntry(matchingOptions, (option) => getRulesetOptionWeight(option));
     }
 
     private getValidTopLevelEchelonOptions(
@@ -7961,13 +8209,42 @@ export class ForceGeneratorService implements OnDestroy {
         candidates: readonly ForceGenerationCandidateUnit[],
         rulesetProfile: ForceGenerationRulesetProfile | null,
     ): ForceGenerationCandidateUnit[] {
-        if (!rulesetProfile || rulesetProfile.requiredUnitTypes.size === 0) {
+        if (!rulesetProfile) {
             return [...candidates];
         }
 
-        return candidates.filter((candidate) => {
-            return rulesetProfile.requiredUnitTypes.has(normalizeRulesetToken(candidate.megaMekUnitType));
+        let filteredCandidates = [...candidates];
+        if (rulesetProfile.requiredUnitTypes.size > 0) {
+            filteredCandidates = filteredCandidates.filter((candidate) => {
+                return rulesetProfile.requiredUnitTypes.has(normalizeRulesetToken(candidate.megaMekUnitType));
+            });
+        }
+
+        filteredCandidates = this.filterCandidatesWhenAnyMatch(filteredCandidates, (candidate) => {
+            return this.matchesPreferredCandidateValues(rulesetProfile.preferredChassis, [candidate.unit.chassis]);
         });
+        filteredCandidates = this.filterCandidatesWhenAnyMatch(filteredCandidates, (candidate) => {
+            return this.matchesPreferredCandidateValues(rulesetProfile.preferredVariants, [candidate.unit.model]);
+        });
+        filteredCandidates = this.filterCandidatesWhenAnyMatch(filteredCandidates, (candidate) => {
+            return this.matchesPreferredCandidateValues(rulesetProfile.preferredModels, this.getRulesetCandidateModelValues(candidate));
+        });
+        filteredCandidates = this.filterCandidatesWhenAnyMatch(filteredCandidates, (candidate) => {
+            return this.matchesPreferredCandidateValues(rulesetProfile.preferredNames, this.getRulesetCandidateNameValues(candidate));
+        });
+        filteredCandidates = this.filterCandidatesWhenAnyMatch(filteredCandidates, (candidate) => {
+            return this.matchesPreferredCandidateValues(rulesetProfile.preferredFluffNames, this.getRulesetCandidateNameValues(candidate));
+        });
+
+        return filteredCandidates;
+    }
+
+    private filterCandidatesWhenAnyMatch(
+        candidates: ForceGenerationCandidateUnit[],
+        predicate: (candidate: ForceGenerationCandidateUnit) => boolean,
+    ): ForceGenerationCandidateUnit[] {
+        const matchingCandidates = candidates.filter(predicate);
+        return matchingCandidates.length > 0 ? matchingCandidates : candidates;
     }
 
     private peekPreferredForceNode(
@@ -8082,55 +8359,7 @@ export class ForceGeneratorService implements OnDestroy {
         when: MegaMekRulesetWhen | undefined,
         matchContext: RulesetMatchContext,
     ): boolean {
-        if (!when) {
-            return true;
-        }
-
-        const fromYear = when.fromYear;
-        if (fromYear !== undefined && (matchContext.year === undefined || matchContext.year < fromYear)) {
-            return false;
-        }
-
-        const toYear = when.toYear;
-        if (toYear !== undefined && (matchContext.year === undefined || matchContext.year > toYear)) {
-            return false;
-        }
-
-        if (!this.matchesRulesetStringValues(when.factions ?? [], matchContext.factionKey)) {
-            return false;
-        }
-        if (!this.matchesRulesetStringValues(when.unitTypes ?? [], matchContext.unitType)) {
-            return false;
-        }
-
-        const topLevel = when.topLevel;
-        if (topLevel !== undefined && topLevel !== (matchContext.topLevel ?? false)) {
-            return false;
-        }
-
-        const augmented = when.augmented;
-        if (augmented !== undefined && augmented !== (matchContext.augmented ?? false)) {
-            return false;
-        }
-
-        const echelons = when.echelons ?? [];
-        if (echelons.length > 0) {
-            const matchedEchelon = echelons.some((echelonNode) => {
-                const echelon = echelonNode.code;
-                if (!echelon || !matchContext.echelon) {
-                    return false;
-                }
-
-                const requiredAugmented = echelonNode.augmented;
-                return echelon === matchContext.echelon
-                    && (requiredAugmented === undefined || requiredAugmented === (matchContext.augmented ?? false));
-            });
-            if (!matchedEchelon) {
-                return false;
-            }
-        }
-
-        return true;
+        return this.matchesRulesetWhen(this.createStructuralRulesetWhen(when), matchContext);
     }
 
     private deriveForceNodeMatchContext(
@@ -8141,10 +8370,15 @@ export class ForceGeneratorService implements OnDestroy {
             ...matchContext,
             unitType: getFirstPositiveRulesetValue(forceNode.when?.unitTypes) ?? matchContext.unitType,
             weightClass: getFirstPositiveRulesetValue(forceNode.when?.weightClasses) ?? matchContext.weightClass,
+            rating: getFirstPositiveRulesetValue(forceNode.when?.ratings) ?? matchContext.rating,
+            formation: getFirstPositiveRulesetValue(forceNode.when?.formations) ?? matchContext.formation,
             role: getFirstPositiveRulesetValue(forceNode.when?.roles) ?? matchContext.role,
+            roles: mergeRulesetCollection(matchContext.roles ?? valueToArray(matchContext.role), forceNode.when?.roles),
             motive: getFirstPositiveRulesetValue(forceNode.when?.motives) ?? matchContext.motive,
+            motives: mergeRulesetCollection(matchContext.motives ?? valueToArray(matchContext.motive), forceNode.when?.motives),
             echelon: getRulesetEchelonCode(forceNode.echelon) ?? matchContext.echelon,
             augmented: forceNode.echelon?.augmented ?? forceNode.when?.augmented ?? matchContext.augmented,
+            flags: mergeRulesetCollection(matchContext.flags ?? [], forceNode.when?.flags),
         };
     }
 
@@ -8156,20 +8390,36 @@ export class ForceGeneratorService implements OnDestroy {
         this.addRulesetValues(profile.requiredUnitTypes, getPositiveRulesetValues(forceNode.when?.unitTypes));
         this.mergeRulesetWhenIntoProfile(profile, forceNode.when);
         this.mergeRulesetNodeIntoProfile(profile, forceNode.assign);
-        this.mergeRulesetGroupIntoProfile(profile, forceNode.unitType, matchContext);
-        this.mergeRulesetGroupIntoProfile(profile, forceNode.weightClass, matchContext);
-        this.mergeRulesetGroupIntoProfile(profile, forceNode.role, matchContext);
-        this.mergeRulesetGroupIntoProfile(profile, forceNode.motive, matchContext);
+        let currentMatchContext = this.applyRulesetNodeToMatchContext(matchContext, forceNode.assign);
+        currentMatchContext = this.mergeRulesetGroupIntoProfile(profile, forceNode.unitType, currentMatchContext);
+        currentMatchContext = this.mergeRulesetGroupIntoProfile(profile, forceNode.weightClass, currentMatchContext);
+        currentMatchContext = this.mergeRulesetGroupIntoProfile(profile, forceNode.chassis, currentMatchContext);
+        currentMatchContext = this.mergeRulesetGroupIntoProfile(profile, forceNode.variant, currentMatchContext);
+        currentMatchContext = this.mergeRulesetGroupIntoProfile(profile, forceNode.formation, currentMatchContext);
+        currentMatchContext = this.mergeRulesetGroupIntoProfile(profile, forceNode.role, currentMatchContext);
+        currentMatchContext = this.mergeRulesetGroupIntoProfile(profile, forceNode.motive, currentMatchContext);
+        currentMatchContext = this.mergeRulesetGroupIntoProfile(profile, forceNode.flags, currentMatchContext);
+        currentMatchContext = this.mergeRulesetGroupIntoProfile(profile, forceNode.changeEschelon, currentMatchContext);
 
         for (const ruleGroup of forceNode.ruleGroup ?? []) {
-            if (!this.matchesRulesetWhen(ruleGroup.when, matchContext)) {
+            if (!this.matchesRulesetWhen(ruleGroup.when, currentMatchContext)) {
                 continue;
             }
 
-            this.mergeRulesetGroupIntoProfile(profile, ruleGroup.unitType, matchContext);
-            this.mergeRulesetGroupIntoProfile(profile, ruleGroup.weightClass, matchContext);
-            this.mergeRulesetGroupIntoProfile(profile, ruleGroup.role, matchContext);
-            this.mergeRulesetGroupIntoProfile(profile, ruleGroup.motive, matchContext);
+            currentMatchContext = this.mergeRulesetGroupIntoProfile(profile, ruleGroup.unitType, currentMatchContext);
+            currentMatchContext = this.mergeRulesetGroupIntoProfile(profile, ruleGroup.weightClass, currentMatchContext);
+            currentMatchContext = this.mergeRulesetGroupIntoProfile(profile, ruleGroup.chassis, currentMatchContext);
+            currentMatchContext = this.mergeRulesetGroupIntoProfile(profile, ruleGroup.variant, currentMatchContext);
+            currentMatchContext = this.mergeRulesetGroupIntoProfile(profile, ruleGroup.formation, currentMatchContext);
+            currentMatchContext = this.mergeRulesetGroupIntoProfile(profile, ruleGroup.role, currentMatchContext);
+            currentMatchContext = this.mergeRulesetGroupIntoProfile(profile, ruleGroup.motive, currentMatchContext);
+            currentMatchContext = this.mergeRulesetGroupIntoProfile(profile, ruleGroup.flags, currentMatchContext);
+            currentMatchContext = this.mergeRulesetGroupIntoProfile(profile, ruleGroup.changeEschelon, currentMatchContext);
+        }
+
+        const commanderNode = (forceNode.co ?? []).find((node) => this.matchesRulesetWhen(node.when, currentMatchContext));
+        if (commanderNode?.unitType) {
+            this.addRulesetValues(profile.commanderUnitTypes, [commanderNode.unitType]);
         }
     }
 
@@ -8260,23 +8510,37 @@ export class ForceGeneratorService implements OnDestroy {
         profile: ForceGenerationRulesetProfile,
         groupNode: MegaMekRulesetOptionGroup | undefined,
         matchContext: RulesetMatchContext,
-    ): void {
+    ): RulesetMatchContext {
         if (!groupNode || !this.matchesRulesetWhen(groupNode.when, matchContext)) {
-            return;
+            return matchContext;
         }
 
         this.mergeRulesetNodeIntoProfile(profile, groupNode);
+        let nextMatchContext = this.applyRulesetNodeToMatchContext(matchContext, groupNode);
 
         const matchingOptions = (groupNode.options ?? [])
-            .filter((option) => this.matchesRulesetWhen(option.when, matchContext));
+            .filter((option) => this.matchesRulesetWhen(option.when, nextMatchContext));
         if (matchingOptions.length === 0) {
-            return;
+            return nextMatchContext;
         }
 
         const selectedOption = pickWeightedRandomEntry(matchingOptions, (option) => getRulesetOptionWeight(option));
         this.mergeRulesetWhenIntoProfile(profile, selectedOption.when);
         this.mergeRulesetNodeIntoProfile(profile, selectedOption);
         this.mergeRulesetNodeIntoProfile(profile, selectedOption.assign);
+        nextMatchContext = this.applyRulesetWhenToMatchContext(nextMatchContext, selectedOption.when);
+        nextMatchContext = this.applyRulesetNodeToMatchContext(nextMatchContext, selectedOption);
+        nextMatchContext = this.applyRulesetNodeToMatchContext(nextMatchContext, selectedOption.assign);
+
+        const changedEchelon = getRulesetEchelonCode(selectedOption.echelon);
+        if (changedEchelon && profile.selectedEchelon !== changedEchelon) {
+            profile.selectedEchelon = changedEchelon;
+            profile.preferredOrgType = getPreferredOrgTypeForEchelon(changedEchelon);
+            profile.preferredUnitCount = getPreferredUnitCountForEchelon(changedEchelon, null);
+            this.appendRulesetNote(profile, `Ruleset changed echelon to ${changedEchelon}.`);
+        }
+
+        return nextMatchContext;
     }
 
     private mergeRulesetWhenIntoProfile(
@@ -8289,8 +8553,11 @@ export class ForceGeneratorService implements OnDestroy {
 
         this.addRulesetValues(profile.preferredUnitTypes, getPositiveRulesetValues(when.unitTypes));
         this.addRulesetValues(profile.preferredWeightClasses, getPositiveRulesetValues(when.weightClasses));
+        this.addRulesetValues(profile.preferredRatings, getPositiveRulesetValues(when.ratings));
+        this.addRulesetValues(profile.preferredFormations, getPositiveRulesetValues(when.formations));
         this.addRulesetValues(profile.preferredRoles, getPositiveRulesetValues(when.roles));
         this.addRulesetValues(profile.preferredMotives, getPositiveRulesetValues(when.motives));
+        this.addRulesetValues(profile.preferredFlags, getPositiveRulesetValues(when.flags));
     }
 
     private mergeRulesetNodeIntoProfile(
@@ -8303,12 +8570,79 @@ export class ForceGeneratorService implements OnDestroy {
 
         this.addRulesetValues(profile.preferredUnitTypes, node.unitTypes ?? []);
         this.addRulesetValues(profile.preferredWeightClasses, node.weightClasses ?? []);
+        this.addRulesetValues(profile.preferredRatings, node.ratings ?? []);
+        this.addRulesetValues(profile.preferredFormations, node.formations ?? []);
         this.addRulesetValues(profile.preferredRoles, node.roles ?? []);
         this.addRulesetValues(profile.preferredMotives, node.motives ?? []);
+        this.addRulesetValues(profile.preferredFlags, node.flags ?? []);
+        this.addRulesetValues(profile.preferredChassis, node.chassis ?? []);
+        this.addRulesetValues(profile.preferredModels, node.models ?? []);
+        this.addRulesetValues(profile.preferredModels, node.model ? [node.model] : []);
+        this.addRulesetValues(profile.preferredVariants, node.variants ?? []);
+        this.addRulesetValues(profile.preferredNames, node.name ? [node.name] : []);
+        this.addRulesetValues(profile.preferredFluffNames, node.fluffName ? [node.fluffName] : []);
+    }
+
+    private applyRulesetWhenToMatchContext(
+        matchContext: RulesetMatchContext,
+        when: MegaMekRulesetWhen | undefined,
+    ): RulesetMatchContext {
+        if (!when) {
+            return matchContext;
+        }
+
+        const roles = mergeRulesetCollection(matchContext.roles ?? valueToArray(matchContext.role), when.roles);
+        const motives = mergeRulesetCollection(matchContext.motives ?? valueToArray(matchContext.motive), when.motives);
+        return {
+            ...matchContext,
+            unitType: getFirstPositiveRulesetValue(when.unitTypes) ?? matchContext.unitType,
+            weightClass: getFirstPositiveRulesetValue(when.weightClasses) ?? matchContext.weightClass,
+            rating: getFirstPositiveRulesetValue(when.ratings) ?? matchContext.rating,
+            formation: getFirstPositiveRulesetValue(when.formations) ?? matchContext.formation,
+            role: roles[0] ?? matchContext.role,
+            roles,
+            motive: motives[0] ?? matchContext.motive,
+            motives,
+            echelon: getRulesetEchelonCode(when.echelons?.[0]) ?? matchContext.echelon,
+            augmented: when.augmented ?? getRulesetEchelonAugmented(when.echelons?.[0]) ?? matchContext.augmented,
+            topLevel: when.topLevel ?? matchContext.topLevel,
+            name: when.names?.[0] ?? matchContext.name,
+            factionKey: getFirstPositiveRulesetValue(when.factions) ?? matchContext.factionKey,
+            flags: mergeRulesetCollection(matchContext.flags ?? [], when.flags),
+        };
+    }
+
+    private applyRulesetNodeToMatchContext(
+        matchContext: RulesetMatchContext,
+        node: RulesetPreferenceSource | undefined,
+    ): RulesetMatchContext {
+        if (!node) {
+            return matchContext;
+        }
+
+        const roles = mergeRulesetCollection(matchContext.roles ?? valueToArray(matchContext.role), node.roles);
+        const motives = mergeRulesetCollection(matchContext.motives ?? valueToArray(matchContext.motive), node.motives);
+        return {
+            ...matchContext,
+            unitType: getFirstPositiveRulesetValue(node.unitTypes) ?? matchContext.unitType,
+            weightClass: getFirstPositiveRulesetValue(node.weightClasses) ?? matchContext.weightClass,
+            rating: getFirstPositiveRulesetValue(node.ratings) ?? matchContext.rating,
+            formation: getFirstPositiveRulesetValue(node.formations) ?? matchContext.formation,
+            role: roles[0] ?? matchContext.role,
+            roles,
+            motive: motives[0] ?? matchContext.motive,
+            motives,
+            echelon: getRulesetEchelonCode(node.echelon) ?? matchContext.echelon,
+            augmented: node.augmented ?? node.echelon?.augmented ?? matchContext.augmented,
+            name: node.name ?? node.fluffName ?? matchContext.name,
+            factionKey: node.factionKey ?? matchContext.factionKey,
+            flags: mergeRulesetCollection(matchContext.flags ?? [], node.flags),
+        };
     }
 
     private collectRulesetTemplates(
         profile: ForceGenerationRulesetProfile,
+        candidates: readonly ForceGenerationCandidateUnit[],
         forceNode: MegaMekRulesetForceNode,
         matchContext: RulesetMatchContext,
         rulesetContext: ResolvedRulesetContext,
@@ -8316,6 +8650,8 @@ export class ForceGeneratorService implements OnDestroy {
         limit: number,
         depth: number,
         visited: Set<string>,
+        inheritedGenerateMode?: string,
+        inheritedCohesion?: RulesetGenerationCohesion,
     ): number {
         if (limit <= 0 || depth > 4) {
             return 0;
@@ -8328,6 +8664,14 @@ export class ForceGeneratorService implements OnDestroy {
             }
 
             this.mergeRulesetNodeIntoProfile(profile, subforceGroup.assign);
+            const groupChildMatchContext = this.applyRulesetNodeToMatchContext(matchContext, subforceGroup.assign);
+            const groupGenerateMode = resolveRulesetGenerateMode(subforceGroup.generate, inheritedGenerateMode);
+            const groupCohesion = this.resolveRulesetGenerationCohesion(
+                candidates,
+                groupChildMatchContext,
+                groupGenerateMode,
+                inheritedCohesion,
+            );
             const groupRulesetContext = this.resolveSwitchedRulesetContext(
                 rulesetContext,
                 forceEra,
@@ -8352,13 +8696,16 @@ export class ForceGeneratorService implements OnDestroy {
                 const selectedOption = pickWeightedRandomEntry(matchingOptions, (option) => getRulesetOptionWeight(option));
                 templateCount += this.applySubforceNodeToProfile(
                     profile,
+                    candidates,
                     selectedOption,
-                    matchContext,
+                    groupChildMatchContext,
                     groupRulesetContext,
                     forceEra,
                     limit - templateCount,
                     depth + 1,
                     visited,
+                    groupGenerateMode,
+                    groupCohesion,
                 );
                 if (templateCount >= limit) {
                     return templateCount;
@@ -8372,13 +8719,16 @@ export class ForceGeneratorService implements OnDestroy {
 
                 templateCount += this.applySubforceNodeToProfile(
                     profile,
+                    candidates,
                     directSubforce,
-                    matchContext,
+                    groupChildMatchContext,
                     groupRulesetContext,
                     forceEra,
                     limit - templateCount,
                     depth + 1,
                     visited,
+                    groupGenerateMode,
+                    groupCohesion,
                 );
                 if (templateCount >= limit) {
                     return templateCount;
@@ -8391,6 +8741,7 @@ export class ForceGeneratorService implements OnDestroy {
 
     private applySubforceNodeToProfile(
         profile: ForceGenerationRulesetProfile,
+        candidates: readonly ForceGenerationCandidateUnit[],
         node: MegaMekRulesetSubforceNode,
         parentMatchContext: RulesetMatchContext,
         baseRulesetContext: ResolvedRulesetContext,
@@ -8398,6 +8749,8 @@ export class ForceGeneratorService implements OnDestroy {
         limit: number,
         depth: number,
         visited: Set<string>,
+        inheritedGenerateMode?: string,
+        inheritedCohesion?: RulesetGenerationCohesion,
     ): number {
         if (limit <= 0) {
             return 0;
@@ -8418,13 +8771,20 @@ export class ForceGeneratorService implements OnDestroy {
 
         let templateCount = 0;
         const repeatCount = Math.max(1, Math.floor(node.count ?? 1));
-        const template = this.createRulesetTemplate(node);
+        const nodeGenerateMode = resolveRulesetGenerateMode(node.generate, inheritedGenerateMode);
+        const childMatchContext = this.buildSubforceMatchContext(parentMatchContext, node, nodeRulesetContext);
+        const nodeCohesion = this.resolveRulesetGenerationCohesion(
+            candidates,
+            childMatchContext,
+            nodeGenerateMode,
+            inheritedCohesion,
+        );
+        const template = this.createRulesetTemplate(node, nodeGenerateMode, nodeCohesion, childMatchContext);
         for (let index = 0; template && index < repeatCount && templateCount < limit; index += 1) {
             profile.templates.push(template);
             templateCount += 1;
         }
 
-        const childMatchContext = this.buildSubforceMatchContext(parentMatchContext, node, nodeRulesetContext);
         const visitationKey = [
             nodeRulesetContext.primary?.factionKey ?? 'none',
             childMatchContext.echelon ?? '',
@@ -8443,6 +8803,7 @@ export class ForceGeneratorService implements OnDestroy {
             this.applyForceNodeToProfile(profile, childForceNode, childMatchContext);
             templateCount += this.collectRulesetTemplates(
                 profile,
+                candidates,
                 childForceNode,
                 childMatchContext,
                 nodeRulesetContext,
@@ -8450,6 +8811,8 @@ export class ForceGeneratorService implements OnDestroy {
                 limit - templateCount,
                 depth,
                 visited,
+                nodeGenerateMode,
+                nodeCohesion,
             );
         }
         visited.delete(visitationKey);
@@ -8463,17 +8826,25 @@ export class ForceGeneratorService implements OnDestroy {
         rulesetContext: ResolvedRulesetContext,
     ): RulesetMatchContext {
         const assign = node.assign;
+        const nodeContext = this.applyRulesetNodeToMatchContext(this.applyRulesetNodeToMatchContext(parentMatchContext, node), assign);
         const matchContext: RulesetMatchContext = {
             ...parentMatchContext,
+            ...nodeContext,
             unitType: node.unitTypes?.[0] ?? assign?.unitTypes?.[0] ?? parentMatchContext.unitType,
             weightClass: node.weightClasses?.[0] ?? assign?.weightClasses?.[0] ?? parentMatchContext.weightClass,
+            rating: node.ratings?.[0] ?? assign?.ratings?.[0] ?? parentMatchContext.rating,
+            formation: node.formations?.[0] ?? assign?.formations?.[0] ?? parentMatchContext.formation,
             role: node.roles?.[0] ?? assign?.roles?.[0] ?? parentMatchContext.role,
+            roles: nodeContext.roles,
             motive: node.motives?.[0] ?? assign?.motives?.[0] ?? parentMatchContext.motive,
+            motives: nodeContext.motives,
             echelon: getRulesetEchelonCode(node.echelon)
                 ?? getRulesetEchelonCode(assign?.echelon)
                 ?? parentMatchContext.echelon,
             augmented: node.augmented ?? assign?.augmented ?? parentMatchContext.augmented,
+            name: node.name ?? node.fluffName ?? assign?.name ?? assign?.fluffName ?? parentMatchContext.name,
             factionKey: rulesetContext.primary?.factionKey ?? parentMatchContext.factionKey,
+            flags: nodeContext.flags,
             topLevel: false,
         };
 
@@ -8522,33 +8893,142 @@ export class ForceGeneratorService implements OnDestroy {
         return currentContext.chain[1]?.factionKey;
     }
 
-    private createRulesetTemplate(node: MegaMekRulesetSubforceNode): ForceGenerationRulesetTemplate | null {
+    private resolveRulesetGenerationCohesion(
+        candidates: readonly ForceGenerationCandidateUnit[],
+        matchContext: RulesetMatchContext,
+        generationMode: string | undefined,
+        inheritedCohesion: RulesetGenerationCohesion | undefined,
+    ): RulesetGenerationCohesion | undefined {
+        if (!generationMode) {
+            return undefined;
+        }
+        if (inheritedCohesion?.mode === generationMode
+            && (generationMode === 'model' || generationMode === 'chassis')) {
+            return inheritedCohesion;
+        }
+        if (generationMode !== 'model' && generationMode !== 'chassis') {
+            return { mode: generationMode };
+        }
+
+        const seedCandidates = candidates.filter((candidate) => this.candidateMatchesRulesetMatchContext(candidate, matchContext));
+        const seedPool = seedCandidates.length > 0 ? seedCandidates : candidates;
+        if (seedPool.length === 0) {
+            return { mode: generationMode };
+        }
+
+        const seed = pickWeightedRandomEntry(seedPool, (candidate) => {
+            return Math.max(0.05, candidate.requisitionWeight) + Math.max(0.05, candidate.salvageWeight);
+        });
+
+        return {
+            mode: generationMode,
+            chassis: seed.unit.chassis,
+            model: this.getRulesetCandidateModelValues(seed)[0],
+        };
+    }
+
+    private candidateMatchesRulesetMatchContext(
+        candidate: ForceGenerationCandidateUnit,
+        matchContext: RulesetMatchContext,
+    ): boolean {
+        if (matchContext.unitType && normalizeRulesetToken(candidate.megaMekUnitType) !== normalizeRulesetToken(matchContext.unitType)) {
+            return false;
+        }
+        if (matchContext.weightClass
+            && (!candidate.megaMekWeightClass || normalizeRulesetToken(candidate.megaMekWeightClass) !== normalizeRulesetToken(matchContext.weightClass))) {
+            return false;
+        }
+        if (matchContext.role) {
+            const roles = matchContext.roles ?? [matchContext.role];
+            if (!candidate.role || !roles.some((role) => normalizeRulesetToken(role) === normalizeRulesetToken(candidate.role ?? ''))) {
+                return false;
+            }
+        }
+        if (matchContext.motive) {
+            const motives = matchContext.motives ?? [matchContext.motive];
+            if (!candidate.motive || !motives.some((motive) => normalizeRulesetToken(motive) === normalizeRulesetToken(candidate.motive ?? ''))) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private createRulesetTemplate(
+        node: MegaMekRulesetSubforceNode,
+        generationMode?: string,
+        cohesion?: RulesetGenerationCohesion,
+        matchContext?: RulesetMatchContext,
+    ): ForceGenerationRulesetTemplate | null {
         const template: ForceGenerationRulesetTemplate = {
+            generationMode,
             unitTypes: new Set<string>(),
             weightClasses: new Set<string>(),
+            formations: new Set<string>(),
             roles: new Set<string>(),
             motives: new Set<string>(),
+            chassis: new Set<string>(),
+            models: new Set<string>(),
+            variants: new Set<string>(),
+            names: new Set<string>(),
+            fluffNames: new Set<string>(),
         };
 
         this.addRulesetValues(template.unitTypes, node.unitTypes ?? []);
         this.addRulesetValues(template.weightClasses, node.weightClasses ?? []);
+        this.addRulesetValues(template.formations, node.formations ?? []);
         this.addRulesetValues(template.roles, node.roles ?? []);
         this.addRulesetValues(template.motives, node.motives ?? []);
+        this.addRulesetValues(template.chassis, node.chassis ?? []);
+        this.addRulesetValues(template.models, node.models ?? []);
+        this.addRulesetValues(template.models, node.model ? [node.model] : []);
+        this.addRulesetValues(template.variants, node.variants ?? []);
+        this.addRulesetValues(template.names, node.name ? [node.name] : []);
+        this.addRulesetValues(template.fluffNames, node.fluffName ? [node.fluffName] : []);
 
         const assignedNode = node.assign;
         this.addRulesetValues(template.unitTypes, assignedNode?.unitTypes ?? []);
         this.addRulesetValues(template.weightClasses, assignedNode?.weightClasses ?? []);
+        this.addRulesetValues(template.formations, assignedNode?.formations ?? []);
         this.addRulesetValues(template.roles, assignedNode?.roles ?? []);
         this.addRulesetValues(template.motives, assignedNode?.motives ?? []);
+        this.addRulesetValues(template.chassis, assignedNode?.chassis ?? []);
+        this.addRulesetValues(template.models, assignedNode?.models ?? []);
+        this.addRulesetValues(template.models, assignedNode?.model ? [assignedNode.model] : []);
+        this.addRulesetValues(template.variants, assignedNode?.variants ?? []);
+        this.addRulesetValues(template.names, assignedNode?.name ? [assignedNode.name] : []);
+        this.addRulesetValues(template.fluffNames, assignedNode?.fluffName ? [assignedNode.fluffName] : []);
 
-        return template.unitTypes.size > 0 || template.weightClasses.size > 0 || template.roles.size > 0 || template.motives.size > 0
+        this.addRulesetValues(template.unitTypes, matchContext?.unitType ? [matchContext.unitType] : []);
+        this.addRulesetValues(template.weightClasses, matchContext?.weightClass ? [matchContext.weightClass] : []);
+        this.addRulesetValues(template.formations, matchContext?.formation ? [matchContext.formation] : []);
+        this.addRulesetValues(template.roles, matchContext?.roles ?? (matchContext?.role ? [matchContext.role] : []));
+        this.addRulesetValues(template.motives, matchContext?.motives ?? (matchContext?.motive ? [matchContext.motive] : []));
+
+        if (cohesion?.mode === 'model' && cohesion.model) {
+            this.addRulesetValues(template.models, [cohesion.model]);
+        }
+        if ((cohesion?.mode === 'model' || cohesion?.mode === 'chassis') && cohesion.chassis) {
+            this.addRulesetValues(template.chassis, [cohesion.chassis]);
+        }
+
+        return template.unitTypes.size > 0
+            || template.weightClasses.size > 0
+            || template.formations.size > 0
+            || template.roles.size > 0
+            || template.motives.size > 0
+            || template.chassis.size > 0
+            || template.models.size > 0
+            || template.variants.size > 0
+            || template.names.size > 0
+            || template.fluffNames.size > 0
             ? template
             : null;
     }
 
-    private addRulesetValues(target: Set<string>, values: readonly string[]): void {
+    private addRulesetValues(target: Set<string>, values: readonly RulesetStringValue[]): void {
         for (const value of values) {
-            target.add(normalizeRulesetToken(value));
+            target.add(normalizeRulesetToken(getRulesetStringValue(value)));
         }
     }
 
@@ -8658,6 +9138,19 @@ export class ForceGeneratorService implements OnDestroy {
         if (candidate.motive && profile.preferredMotives.has(normalizeRulesetToken(candidate.motive))) {
             reasons.push(`motive ${candidate.motive}`);
         }
+        if (this.matchesPreferredCandidateValues(profile.preferredChassis, [candidate.unit.chassis])) {
+            reasons.push(`chassis ${candidate.unit.chassis}`);
+        }
+        if (this.matchesPreferredCandidateValues(profile.preferredVariants, [candidate.unit.model])) {
+            reasons.push(`variant ${candidate.unit.model}`);
+        }
+        if (this.matchesPreferredCandidateValues(profile.preferredModels, this.getRulesetCandidateModelValues(candidate))) {
+            reasons.push(`model ${formatForceGenerationUnitLabel(candidate.unit)}`);
+        }
+        if (this.matchesPreferredCandidateValues(profile.preferredNames, this.getRulesetCandidateNameValues(candidate))
+            || this.matchesPreferredCandidateValues(profile.preferredFluffNames, this.getRulesetCandidateNameValues(candidate))) {
+            reasons.push(`named unit ${formatForceGenerationUnitLabel(candidate.unit)}`);
+        }
 
         for (const template of profile.templates) {
             if (
@@ -8665,6 +9158,11 @@ export class ForceGeneratorService implements OnDestroy {
                 || (candidate.megaMekWeightClass && template.weightClasses.has(normalizeRulesetToken(candidate.megaMekWeightClass)))
                 || (candidate.role && template.roles.has(normalizeRulesetToken(candidate.role)))
                 || (candidate.motive && template.motives.has(normalizeRulesetToken(candidate.motive)))
+                || this.matchesPreferredCandidateValues(template.chassis, [candidate.unit.chassis])
+                || this.matchesPreferredCandidateValues(template.variants, [candidate.unit.model])
+                || this.matchesPreferredCandidateValues(template.models, this.getRulesetCandidateModelValues(candidate))
+                || this.matchesPreferredCandidateValues(template.names, this.getRulesetCandidateNameValues(candidate))
+                || this.matchesPreferredCandidateValues(template.fluffNames, this.getRulesetCandidateNameValues(candidate))
             ) {
                 reasons.push('matched a child template');
                 break;
@@ -8687,6 +9185,11 @@ export class ForceGeneratorService implements OnDestroy {
         score *= this.getPreferredValueScore(profile.preferredWeightClasses, candidate.megaMekWeightClass, 1.3, 0.9);
         score *= this.getPreferredValueScore(profile.preferredRoles, candidate.role, 1.2, 0.95);
         score *= this.getPreferredValueScore(profile.preferredMotives, candidate.motive, 1.1, 0.98);
+        score *= this.getPreferredAnyValueScore(profile.preferredChassis, [candidate.unit.chassis], 2.5, 0.85);
+        score *= this.getPreferredAnyValueScore(profile.preferredVariants, [candidate.unit.model], 2.2, 0.9);
+        score *= this.getPreferredAnyValueScore(profile.preferredModels, this.getRulesetCandidateModelValues(candidate), 3.0, 0.85);
+        score *= this.getPreferredAnyValueScore(profile.preferredNames, this.getRulesetCandidateNameValues(candidate), 2.0, 0.95);
+        score *= this.getPreferredAnyValueScore(profile.preferredFluffNames, this.getRulesetCandidateNameValues(candidate), 3.5, 0.9);
 
         let templateScore = 1;
         for (const template of profile.templates) {
@@ -8708,6 +9211,26 @@ export class ForceGeneratorService implements OnDestroy {
             if (template.motives.size > 0 && candidate.motive) {
                 constrained = true;
                 nextTemplateScore *= template.motives.has(normalizeRulesetToken(candidate.motive)) ? 1.05 : 0.98;
+            }
+            if (template.chassis.size > 0) {
+                constrained = true;
+                nextTemplateScore *= this.matchesPreferredCandidateValues(template.chassis, [candidate.unit.chassis]) ? 2.0 : 0.8;
+            }
+            if (template.variants.size > 0) {
+                constrained = true;
+                nextTemplateScore *= this.matchesPreferredCandidateValues(template.variants, [candidate.unit.model]) ? 1.8 : 0.85;
+            }
+            if (template.models.size > 0) {
+                constrained = true;
+                nextTemplateScore *= this.matchesPreferredCandidateValues(template.models, this.getRulesetCandidateModelValues(candidate)) ? 2.5 : 0.8;
+            }
+            if (template.names.size > 0) {
+                constrained = true;
+                nextTemplateScore *= this.matchesPreferredCandidateValues(template.names, this.getRulesetCandidateNameValues(candidate)) ? 1.5 : 0.95;
+            }
+            if (template.fluffNames.size > 0) {
+                constrained = true;
+                nextTemplateScore *= this.matchesPreferredCandidateValues(template.fluffNames, this.getRulesetCandidateNameValues(candidate)) ? 3.0 : 0.85;
             }
 
             if (constrained) {
@@ -8731,107 +9254,106 @@ export class ForceGeneratorService implements OnDestroy {
         return preferredValues.has(normalizeRulesetToken(candidateValue)) ? matchScore : mismatchScore;
     }
 
-    private matchesRulesetWhen(when: MegaMekRulesetWhen | undefined, matchContext: RulesetMatchContext): boolean {
+    private getPreferredAnyValueScore(
+        preferredValues: ReadonlySet<string>,
+        candidateValues: readonly (string | undefined)[],
+        matchScore: number,
+        mismatchScore: number,
+    ): number {
+        if (preferredValues.size === 0) {
+            return 1;
+        }
+
+        return this.matchesPreferredCandidateValues(preferredValues, candidateValues) ? matchScore : mismatchScore;
+    }
+
+    private matchesPreferredCandidateValues(
+        preferredValues: ReadonlySet<string>,
+        candidateValues: readonly (string | undefined)[],
+    ): boolean {
+        if (preferredValues.size === 0) {
+            return false;
+        }
+
+        return candidateValues.some((candidateValue) => candidateValue !== undefined
+            && preferredValues.has(normalizeRulesetToken(candidateValue)));
+    }
+
+    private getRulesetCandidateModelValues(candidate: ForceGenerationCandidateUnit): string[] {
+        const unit = candidate.unit;
+        return [
+            unit.name,
+            unit.model,
+            `${unit.chassis} ${unit.model}`,
+            `${unit.chassis} ${unit.model}`.trim(),
+            formatForceGenerationUnitLabel(unit),
+        ].filter((value, index, values) => value.length > 0 && values.indexOf(value) === index);
+    }
+
+    private getRulesetCandidateNameValues(candidate: ForceGenerationCandidateUnit): string[] {
+        const unit = candidate.unit;
+        return [
+            unit.name,
+            unit.chassis,
+            unit.model,
+            `${unit.chassis} ${unit.model}`.trim(),
+            formatForceGenerationUnitLabel(unit),
+        ].filter((value, index, values) => value.length > 0 && values.indexOf(value) === index);
+    }
+
+    private createStructuralRulesetWhen(when: MegaMekRulesetWhen | undefined): MegaMekRulesetWhen | undefined {
         if (!when) {
-            return true;
+            return undefined;
         }
 
-        const fromYear = when.fromYear;
-        if (fromYear !== undefined && (matchContext.year === undefined || matchContext.year < fromYear)) {
-            return false;
-        }
-
-        const toYear = when.toYear;
-        if (toYear !== undefined && (matchContext.year === undefined || matchContext.year > toYear)) {
-            return false;
-        }
-
-        if (!this.matchesRulesetStringValues(when.unitTypes ?? [], matchContext.unitType)) {
-            return false;
-        }
-        if (!this.matchesRulesetStringValues(when.weightClasses ?? [], matchContext.weightClass)) {
-            return false;
-        }
-        if (!this.matchesRulesetStringValues(when.roles ?? [], matchContext.role)) {
-            return false;
-        }
-        if (!this.matchesRulesetStringValues(when.motives ?? [], matchContext.motive)) {
-            return false;
-        }
-        if (!this.matchesRulesetStringValues(when.factions ?? [], matchContext.factionKey)) {
-            return false;
-        }
-
-        const topLevel = when.topLevel;
-        if (topLevel !== undefined && topLevel !== (matchContext.topLevel ?? false)) {
-            return false;
-        }
-
-        const augmented = when.augmented;
-        if (augmented !== undefined && augmented !== (matchContext.augmented ?? false)) {
-            return false;
-        }
-
-        const flagValues = when.flags ?? [];
-        if (flagValues.length > 0 && !this.matchesRulesetFlags(flagValues, matchContext.flags ?? [])) {
-            return false;
-        }
-
-        const echelons = when.echelons ?? [];
-        if (echelons.length > 0) {
-            const matchedEchelon = echelons.some((echelonNode) => {
-                const echelon = echelonNode.code;
-                if (!echelon || !matchContext.echelon) {
-                    return false;
-                }
-
-                const requiredAugmented = echelonNode.augmented;
-                return echelon === matchContext.echelon
-                    && (requiredAugmented === undefined || requiredAugmented === (matchContext.augmented ?? false));
-            });
-            if (!matchedEchelon) {
-                return false;
+        const structuralExpressions = when.expressions
+            ? {
+                ...(when.expressions.ifDateBetween !== undefined ? { ifDateBetween: when.expressions.ifDateBetween } : {}),
+                ...(when.expressions.ifYearBetween !== undefined ? { ifYearBetween: when.expressions.ifYearBetween } : {}),
+                ...(when.expressions.ifUnitType !== undefined ? { ifUnitType: when.expressions.ifUnitType } : {}),
+                ...(when.expressions.ifEschelon !== undefined ? { ifEschelon: when.expressions.ifEschelon } : {}),
+                ...(when.expressions.ifTopLevel !== undefined ? { ifTopLevel: when.expressions.ifTopLevel } : {}),
+                ...(when.expressions.ifFaction !== undefined ? { ifFaction: when.expressions.ifFaction } : {}),
+                ...(when.expressions.ifAugmented !== undefined ? { ifAugmented: when.expressions.ifAugmented } : {}),
             }
-        }
+            : undefined;
 
-        return true;
+        return {
+            expressions: structuralExpressions && Object.keys(structuralExpressions).length > 0
+                ? structuralExpressions
+                : undefined,
+            fromYear: when.fromYear,
+            toYear: when.toYear,
+            unitTypes: when.unitTypes,
+            echelons: when.echelons,
+            topLevel: when.topLevel,
+            factions: when.factions,
+            augmented: when.augmented,
+        };
     }
 
-    private matchesRulesetStringValues(values: readonly string[], candidateValue: string | undefined): boolean {
-        if (values.length === 0) {
-            return true;
-        }
-
-        const positiveValues = values.filter((value) => !value.startsWith('!')).map((value) => normalizeRulesetToken(value));
-        const negativeValues = values.filter((value) => value.startsWith('!')).map((value) => normalizeRulesetToken(value.slice(1)));
-
-        if (!candidateValue) {
-            return positiveValues.length === 0;
-        }
-
-        const normalizedCandidate = normalizeRulesetToken(candidateValue);
-        if (negativeValues.includes(normalizedCandidate)) {
-            return false;
-        }
-
-        return positiveValues.length === 0 || positiveValues.includes(normalizedCandidate);
+    private toRulesetPredicateContext(matchContext: RulesetMatchContext): MegaMekRulesetPredicateContext {
+        return {
+            year: matchContext.year,
+            unitType: matchContext.unitType,
+            weightClass: matchContext.weightClass,
+            rating: matchContext.rating,
+            echelon: matchContext.echelon,
+            formation: matchContext.formation,
+            role: matchContext.role,
+            roles: matchContext.roles,
+            motive: matchContext.motive,
+            motives: matchContext.motives,
+            augmented: matchContext.augmented,
+            topLevel: matchContext.topLevel,
+            name: matchContext.name,
+            factionKey: matchContext.factionKey,
+            flags: matchContext.flags,
+            index: matchContext.index,
+        };
     }
 
-    private matchesRulesetFlags(values: readonly string[], flags: readonly string[]): boolean {
-        if (values.length === 0) {
-            return true;
-        }
-
-        const normalizedFlags = new Set(flags.map((flag) => normalizeRulesetToken(flag)));
-        const positiveValues = values.filter((value) => !value.startsWith('!')).map((value) => normalizeRulesetToken(value));
-        const negativeValues = values.filter((value) => value.startsWith('!')).map((value) => normalizeRulesetToken(value.slice(1)));
-
-        for (const negativeValue of negativeValues) {
-            if (normalizedFlags.has(negativeValue)) {
-                return false;
-            }
-        }
-
-        return positiveValues.length === 0 || positiveValues.some((value) => normalizedFlags.has(value));
+    private matchesRulesetWhen(when: MegaMekRulesetWhen | undefined, matchContext: RulesetMatchContext): boolean {
+        return matchesMegaMekRulesetWhen(when, this.toRulesetPredicateContext(matchContext));
     }
 }

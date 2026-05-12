@@ -37,7 +37,7 @@ import type { MegaMekRulesetRecord, MegaMekRulesetsData } from '../../models/meg
 import { DbService } from '../db.service';
 import { CatalogBaseService } from './catalog-base.service';
 
-const CURRENT_RULESET_SCHEMA_VERSION = 2;
+const CURRENT_RULESET_SCHEMA_VERSION = 3;
 
 function buildRulesetIndexes(forces: MegaMekRulesetRecord['forces']): MegaMekRulesetRecord['indexes'] {
     const forceIndexesByEchelon: Record<string, number[]> = {};
