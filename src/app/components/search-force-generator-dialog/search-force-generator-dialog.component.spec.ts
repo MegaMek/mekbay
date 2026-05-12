@@ -1035,6 +1035,33 @@ describe('SearchForceGeneratorDialogComponent', () => {
         ]);
     });
 
+    it('expands AND tag selections in the forwarded search settings', () => {
+        advOptionsSignal.update((options) => ({
+            ...options,
+            _tags: {
+                type: 'dropdown' as const,
+                label: 'Tags',
+                options: [
+                    { name: 'Official' },
+                    { name: 'Want' },
+                    { name: 'CGB' },
+                ],
+                value: {
+                    Official: { name: 'Official', state: 'or' as const, count: 1 },
+                    Want: { name: 'Want', state: 'or' as const, count: 1 },
+                    CGB: { name: 'CGB', state: 'and' as const, count: 1 },
+                },
+                interacted: true,
+            },
+        }));
+
+        component.reroll();
+
+        expect(buildPreviewSpy.calls.mostRecent().args[0].searchSettings).toEqual([
+            'Search settings: filters Era Jihad | Type Mek | Subtype BattleMek | Type BM | Tags Official, Want, CGB.',
+        ]);
+    });
+
     it('omits query from search settings when the search query is empty', () => {
         component.reroll();
 

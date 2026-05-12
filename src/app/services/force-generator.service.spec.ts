@@ -3517,8 +3517,7 @@ describe('ForceGeneratorService', () => {
             _tags: {
                 interactedWith: true,
                 value: {
-                    owned: { name: 'owned', state: 'or', count: 1 },
-                    painted: { name: 'painted', state: 'or', count: 1 },
+                    owned: { name: 'owned', state: 'and', count: 1 },
                     test: { name: 'test', state: 'not', count: 1 },
                 },
             },

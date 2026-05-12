@@ -70,7 +70,7 @@ import { collectGroupUnits } from '../utils/org/org-facts.util';
 import type { GroupSizeResult, OrgDefinition, OrgRuleDefinition, OrgType } from '../utils/org/org-types';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
-import { resolveDropdownNamesFromFilter } from '../utils/filter-name-resolution.util';
+import { getPositiveDropdownNamesFromFilter, resolveDropdownNamesFromFilter } from '../utils/filter-name-resolution.util';
 import { ForceNamerUtil } from '../utils/force-namer.util';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
 import { normalizeMultiStateSelection } from '../utils/unit-search-shared.util';
@@ -3683,14 +3683,14 @@ export class ForceGeneratorService implements OnDestroy {
             return new Set<string>();
         }
 
-        const resolvedNames = resolveDropdownNamesFromFilter(
+        const positiveTagNames = getPositiveDropdownNamesFromFilter(
             normalizeMultiStateSelection(filterState.value),
             this.collectTaggedQuantityFilterNames(eligibleUnits),
             filterState.wildcardPatterns,
         );
 
         return new Set(
-            [...resolvedNames.or, ...resolvedNames.and]
+            positiveTagNames
                 .map((tagName) => normalizeSelectionKey(tagName))
                 .filter((tagKey) => tagKey.length > 0),
         );

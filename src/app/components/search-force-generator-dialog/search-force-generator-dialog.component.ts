@@ -1260,7 +1260,7 @@ export class SearchForceGeneratorDialogComponent {
 
     private buildSearchSettingsExplanationLines(): string[] {
         const searchText = this.filtersService.searchText().trim();
-        const filterSummary = this.summarizeActiveFilters(Number.POSITIVE_INFINITY);
+        const filterSummary = this.summarizeActiveFilters(Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
         const filterSettingsSummary = filterSummary.length > 0 ? filterSummary : 'none';
         const settings = [
             searchText.length > 0 ? `query "${searchText}"` : null,
@@ -1271,10 +1271,10 @@ export class SearchForceGeneratorDialogComponent {
         return [`Search settings: ${settings.join('; ')}.`];
     }
 
-    private summarizeActiveFilters(maxVisibleFilters = 4): string {
+    private summarizeActiveFilters(maxVisibleFilters = 4, maxVisibleSelections = 2): string {
         const summaries = Object.values(this.filtersService.advOptions())
             .filter((option) => option.interacted)
-            .map((option) => this.formatFilterSummary(option))
+            .map((option) => this.formatFilterSummary(option, maxVisibleSelections))
             .filter((summary): summary is string => summary.length > 0);
 
         if (summaries.length === 0) {
@@ -1292,7 +1292,7 @@ export class SearchForceGeneratorDialogComponent {
             : visibleSummaries.join(' | ');
     }
 
-    private formatFilterSummary(option: AdvFilterOptions): string {
+    private formatFilterSummary(option: AdvFilterOptions, maxVisibleSelections = 2): string {
         if (option.type === 'range') {
             const [min, max] = option.value;
             return `${option.label} ${option.displayText ?? `${min}-${max}`}`;
@@ -1315,7 +1315,7 @@ export class SearchForceGeneratorDialogComponent {
                 return '';
             }
 
-            const visibleValues = option.value.slice(0, 2);
+            const visibleValues = option.value.slice(0, maxVisibleSelections);
             const hiddenCount = option.value.length - visibleValues.length;
             return `${option.label} ${visibleValues.join(', ')}${hiddenCount > 0 ? ` +${hiddenCount}` : ''}`;
         }
@@ -1327,7 +1327,7 @@ export class SearchForceGeneratorDialogComponent {
             return '';
         }
 
-        const visibleSelections = activeSelections.slice(0, 2);
+        const visibleSelections = activeSelections.slice(0, maxVisibleSelections);
         const hiddenCount = activeSelections.length - visibleSelections.length;
         return `${option.label} ${visibleSelections.join(', ')}${hiddenCount > 0 ? ` +${hiddenCount}` : ''}`;
     }
