@@ -71,6 +71,9 @@ import { SessionPersistenceService } from '../../services/session-persistence.se
 import { ForceTagsComponent, type ForceTagClickEvent } from '../force-tags/force-tags.component';
 import { ForceTaggingService } from '../../services/force-tagging.service';
 import { naturalCompare } from '../../utils/sort.util';
+import type { Era } from '../../models/eras.model';
+import type { Faction } from '../../models/factions.model';
+import { CompactFilterMenuComponent } from '../compact-filter-menu/compact-filter-menu.component';
 
 /*
  * Author: Drake
@@ -106,10 +109,14 @@ export interface ForceLoadDialogData {
 type SortDirection = 'asc' | 'desc';
 type SortOption = { key: string; label: string };
 type HangarTagRecord = { id: string; label: string; count: number; ownedCount: number };
+type FactionFilterOption = { id: number; name: string; img?: string; count: number };
+type EraFilterOption = { id: number; name: string; img?: string; count: number; startYear: number };
 
 const HANGAR_SORT_SESSION_KEY = 'mekbay:force-load-dialog:hangar-sort';
 const HANGAR_SORT_DIRECTION_SESSION_KEY = 'mekbay:force-load-dialog:hangar-sort-direction';
 const HANGAR_TAG_FILTER_SESSION_KEY = 'mekbay:force-load-dialog:hangar-tag-filter';
+const HANGAR_FACTION_FILTER_SESSION_KEY = 'mekbay:force-load-dialog:hangar-faction-filter';
+const HANGAR_ERA_FILTER_SESSION_KEY = 'mekbay:force-load-dialog:hangar-era-filter';
 const HANGAR_FILTER_ALL = 'all';
 const HANGAR_FILTER_UNFILED = 'unfiled';
 const HANGAR_FILTER_CLASSIC = 'game-type:cbt';
@@ -119,6 +126,7 @@ const PACK_SORT_SESSION_KEY = 'mekbay:force-load-dialog:pack-sort';
 const PACK_SORT_DIRECTION_SESSION_KEY = 'mekbay:force-load-dialog:pack-sort-direction';
 const ORGANIZATION_SORT_SESSION_KEY = 'mekbay:force-load-dialog:organization-sort';
 const ORGANIZATION_SORT_DIRECTION_SESSION_KEY = 'mekbay:force-load-dialog:organization-sort-direction';
+const ORGANIZATION_FACTION_FILTER_SESSION_KEY = 'mekbay:force-load-dialog:organization-faction-filter';
 const OPERATION_SORT_SESSION_KEY = 'mekbay:force-load-dialog:operation-sort';
 const OPERATION_SORT_DIRECTION_SESSION_KEY = 'mekbay:force-load-dialog:operation-sort-direction';
 const DEFAULT_HANGAR_SORT_KEY = 'timestamp';
@@ -134,7 +142,7 @@ const DEFAULT_OPERATION_SORT_DIRECTION: SortDirection = 'desc';
     selector: 'force-load-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, MeasureClampOverflowDirective, UnitIconComponent, OpPreviewComponent, FactionImgPipe, ForceTagsComponent],
+    imports: [CommonModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, MeasureClampOverflowDirective, UnitIconComponent, OpPreviewComponent, FactionImgPipe, ForceTagsComponent, CompactFilterMenuComponent],
     templateUrl: './force-load-dialog.component.html',
     styleUrls: ['./force-load-dialog.component.css']
 })
@@ -188,6 +196,7 @@ export class ForceLoadDialogComponent {
     packSortDirection = signal<SortDirection>(this.getStoredSortDirection(PACK_SORT_DIRECTION_SESSION_KEY, DEFAULT_PACK_SORT_DIRECTION));
     organizationSort = signal<string>(this.getStoredSortKey(ORGANIZATION_SORT_SESSION_KEY, this.ORGANIZATION_SORT_OPTIONS, DEFAULT_ORGANIZATION_SORT_KEY));
     organizationSortDirection = signal<SortDirection>(this.getStoredSortDirection(ORGANIZATION_SORT_DIRECTION_SESSION_KEY, DEFAULT_ORGANIZATION_SORT_DIRECTION));
+    organizationFactionFilter = signal<number | null>(this.getStoredNumberFilter(ORGANIZATION_FACTION_FILTER_SESSION_KEY));
     operationSort = signal<string>(this.getStoredSortKey(OPERATION_SORT_SESSION_KEY, this.OPERATION_SORT_OPTIONS, DEFAULT_OPERATION_SORT_KEY));
     operationSortDirection = signal<SortDirection>(this.getStoredSortDirection(OPERATION_SORT_DIRECTION_SESSION_KEY, DEFAULT_OPERATION_SORT_DIRECTION));
 
@@ -247,6 +256,8 @@ export class ForceLoadDialogComponent {
     });
     gameTypeFilter = signal<'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE>('all');
     hangarTagFilter = signal<string>(this.getStoredHangarTagFilter());
+    hangarFactionFilter = signal<number | null>(this.getStoredNumberFilter(HANGAR_FACTION_FILTER_SESSION_KEY));
+    hangarEraFilter = signal<number | null>(this.getStoredNumberFilter(HANGAR_ERA_FILTER_SESSION_KEY));
 
     private hangarCountSourceForces = computed(() => {
         const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -359,14 +370,34 @@ export class ForceLoadDialogComponent {
         }
         return this.hangarTags().find(tag => tag.id === filter) ?? null;
     });
+
+    private hangarFacetSourceForces = computed(() => {
+        const tagFilter = this.hangarTagFilter();
+        return this.hangarCountSourceForces().filter(force => this.matchesHangarTagFilter(force, tagFilter));
+    });
+
+    hangarFactionOptions = computed<FactionFilterOption[]>(() =>
+        this.buildFactionOptionsFromForces(
+            this.hangarFacetSourceForces().filter(force => this.matchesForceEraFilter(force, this.hangarEraFilter())),
+        ),
+    );
+
+    hangarEraOptions = computed<EraFilterOption[]>(() =>
+        this.buildEraOptionsFromForces(
+            this.hangarFacetSourceForces().filter(force => this.matchesForceFactionFilter(force, this.hangarFactionFilter())),
+        ),
+    );
     
     filteredForces = computed<LoadForceEntry[]>(() => {
-        const tagFilter = this.hangarTagFilter();
-        
+        const factionFilter = this.hangarFactionFilter();
+        const eraFilter = this.hangarEraFilter();
         const sortKey = this.hangarSort();
         const sortDir = this.hangarSortDirection();
 
-        const filtered = this.hangarCountSourceForces().filter(force => this.matchesHangarTagFilter(force, tagFilter));
+        const filtered = this.hangarFacetSourceForces().filter(force =>
+            this.matchesForceFactionFilter(force, factionFilter)
+            && this.matchesForceEraFilter(force, eraFilter),
+        );
 
         return this.sortItems(filtered, sortKey, sortDir);
     });
@@ -405,6 +436,17 @@ export class ForceLoadDialogComponent {
     selectedOrganization = signal<LoadOrganizationEntry | null>(null);
     organizationsLoading = signal<boolean>(false);
     private organizationsLoaded = signal<boolean>(false);
+    private organizationCountSourceOrganizations = computed(() => {
+        const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
+        return this.organizations().filter(org => {
+            if (tokens.length === 0) return true;
+            const hay = (org.name || '').toLowerCase();
+            return tokens.every(t => hay.indexOf(t) !== -1);
+        });
+    });
+    organizationFactionOptions = computed<FactionFilterOption[]>(() =>
+        this.buildFactionOptionsFromOrganizations(this.organizationCountSourceOrganizations()),
+    );
     filteredOperations = computed<LoadOperationEntry[]>(() => {
         const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
         const typeFilter = this.gameTypeFilter();
@@ -439,6 +481,14 @@ export class ForceLoadDialogComponent {
         });
 
         effect(() => {
+            this.ensureHangarFacetFiltersAreValid();
+        });
+
+        effect(() => {
+            this.ensureOrganizationFactionFilterIsValid();
+        });
+
+        effect(() => {
             this.persistSortState(HANGAR_SORT_SESSION_KEY, HANGAR_SORT_DIRECTION_SESSION_KEY, this.hangarSort(), this.hangarSortDirection());
         });
 
@@ -447,11 +497,23 @@ export class ForceLoadDialogComponent {
         });
 
         effect(() => {
+            this.persistOptionalNumberFilter(HANGAR_FACTION_FILTER_SESSION_KEY, this.hangarFactionFilter());
+        });
+
+        effect(() => {
+            this.persistOptionalNumberFilter(HANGAR_ERA_FILTER_SESSION_KEY, this.hangarEraFilter());
+        });
+
+        effect(() => {
             this.persistSortState(PACK_SORT_SESSION_KEY, PACK_SORT_DIRECTION_SESSION_KEY, this.packSort(), this.packSortDirection());
         });
 
         effect(() => {
             this.persistSortState(ORGANIZATION_SORT_SESSION_KEY, ORGANIZATION_SORT_DIRECTION_SESSION_KEY, this.organizationSort(), this.organizationSortDirection());
+        });
+
+        effect(() => {
+            this.persistOptionalNumberFilter(ORGANIZATION_FACTION_FILTER_SESSION_KEY, this.organizationFactionFilter());
         });
 
         effect(() => {
@@ -478,6 +540,8 @@ export class ForceLoadDialogComponent {
         });
 
         this.ensureHangarTagFilterIsValid();
+        this.ensureHangarFacetFiltersAreValid();
+        this.ensureOrganizationFactionFilterIsValid();
     }
 
     private async loadForces(): Promise<void> {
@@ -739,6 +803,21 @@ export class ForceLoadDialogComponent {
         this.setHangarTagFilter(this.hangarTagFilter() === filter ? HANGAR_FILTER_ALL : filter);
     }
 
+    setHangarFactionFilter(filter: number | null) {
+        this.hangarFactionFilter.set(filter);
+        this.clearFilteredOutSelections();
+    }
+
+    setHangarEraFilter(filter: number | null) {
+        this.hangarEraFilter.set(filter);
+        this.clearFilteredOutSelections();
+    }
+
+    setOrganizationFactionFilter(filter: number | null) {
+        this.organizationFactionFilter.set(filter);
+        this.clearFilteredOutSelections();
+    }
+
     getHangarTagCount(filter: string): number {
         return this.hangarDisplayCounts().get(filter) ?? 0;
     }
@@ -746,6 +825,10 @@ export class ForceLoadDialogComponent {
     getHangarEmptyStateMessage(): string {
         if (this.searchText().trim().length > 0) {
             return 'No forces match the current search.';
+        }
+
+        if (this.hangarFactionFilter() !== null || this.hangarEraFilter() !== null) {
+            return 'No forces match the selected filters.';
         }
 
         const activeTag = this.activeHangarTagRecord();
@@ -863,9 +946,26 @@ export class ForceLoadDialogComponent {
             : defaultDirection;
     }
 
+    private getStoredNumberFilter(storageKey: string): number | null {
+        const stored = this.sessionPersistenceService.getItem(storageKey)?.trim();
+        if (!stored) {
+            return null;
+        }
+        const value = Number(stored);
+        return Number.isInteger(value) ? value : null;
+    }
+
     private persistSortState(sortKeyStorage: string, sortDirectionStorage: string, sortKey: string, sortDirection: SortDirection): void {
         this.sessionPersistenceService.setItem(sortKeyStorage, sortKey);
         this.sessionPersistenceService.setItem(sortDirectionStorage, sortDirection);
+    }
+
+    private persistOptionalNumberFilter(storageKey: string, value: number | null): void {
+        if (value == null) {
+            this.sessionPersistenceService.removeItem(storageKey);
+            return;
+        }
+        this.sessionPersistenceService.setItem(storageKey, String(value));
     }
 
     /** Shared sort comparator for forces and packs */
@@ -999,6 +1099,84 @@ export class ForceLoadDialogComponent {
         }
     }
 
+    private matchesForceFactionFilter(force: LoadForceEntry, filter: number | null): boolean {
+        return filter == null || force.faction?.id === filter;
+    }
+
+    private matchesForceEraFilter(force: LoadForceEntry, filter: number | null): boolean {
+        return filter == null || force.era?.id === filter;
+    }
+
+    private matchesOrganizationFactionFilter(org: LoadOrganizationEntry, filter: number | null): boolean {
+        return filter == null || org.factionId === filter;
+    }
+
+    private buildFactionOptionsFromForces(forces: readonly LoadForceEntry[]): FactionFilterOption[] {
+        const options = new Map<number, FactionFilterOption>();
+        for (const force of forces) {
+            this.addFactionOption(options, force.faction);
+        }
+        return this.sortFactionOptions(options);
+    }
+
+    private buildFactionOptionsFromOrganizations(organizations: readonly LoadOrganizationEntry[]): FactionFilterOption[] {
+        const options = new Map<number, FactionFilterOption>();
+        for (const org of organizations) {
+            const faction = org.factionId != null ? this.dataService.getFactionById(org.factionId) : undefined;
+            this.addFactionOption(options, faction);
+        }
+        return this.sortFactionOptions(options);
+    }
+
+    private addFactionOption(options: Map<number, FactionFilterOption>, faction: Faction | null | undefined): void {
+        if (!faction) {
+            return;
+        }
+        const existing = options.get(faction.id);
+        if (existing) {
+            existing.count += 1;
+            return;
+        }
+        options.set(faction.id, {
+            id: faction.id,
+            name: faction.name,
+            img: faction.img,
+            count: 1,
+        });
+    }
+
+    private sortFactionOptions(options: Map<number, FactionFilterOption>): FactionFilterOption[] {
+        return Array.from(options.values())
+            .sort((a, b) => naturalCompare(a.name, b.name) || a.id - b.id);
+    }
+
+    private buildEraOptionsFromForces(forces: readonly LoadForceEntry[]): EraFilterOption[] {
+        const options = new Map<number, EraFilterOption>();
+        for (const force of forces) {
+            this.addEraOption(options, force.era);
+        }
+        return Array.from(options.values())
+            .sort((a, b) => a.startYear - b.startYear || naturalCompare(a.name, b.name) || a.id - b.id);
+    }
+
+    private addEraOption(options: Map<number, EraFilterOption>, era: Era | null | undefined): void {
+        if (!era) {
+            return;
+        }
+        const existing = options.get(era.id);
+        if (existing) {
+            existing.count += 1;
+            return;
+        }
+        options.set(era.id, {
+            id: era.id,
+            name: era.name,
+            img: era.img ?? era.icon,
+            count: 1,
+            startYear: era.years.from ?? Number.NEGATIVE_INFINITY,
+        });
+    }
+
     private getForceNoteKey(force: LoadForceEntry): string {
         return force.instanceId || `${force.name || 'force'}::${force.timestamp || ''}`;
     }
@@ -1034,6 +1212,33 @@ export class ForceLoadDialogComponent {
         }
         if (!this.hangarTags().some(tag => tag.id === activeTag)) {
             this.hangarTagFilter.set(HANGAR_FILTER_ALL);
+        }
+    }
+
+    private ensureHangarFacetFiltersAreValid(): void {
+        if (this.loading()) {
+            return;
+        }
+
+        const factionFilter = this.hangarFactionFilter();
+        if (factionFilter !== null && !this.hangarFactionOptions().some(option => option.id === factionFilter)) {
+            this.hangarFactionFilter.set(null);
+        }
+
+        const eraFilter = this.hangarEraFilter();
+        if (eraFilter !== null && !this.hangarEraOptions().some(option => option.id === eraFilter)) {
+            this.hangarEraFilter.set(null);
+        }
+    }
+
+    private ensureOrganizationFactionFilterIsValid(): void {
+        if (!this.organizationsLoaded() && this.organizations().length === 0) {
+            return;
+        }
+
+        const factionFilter = this.organizationFactionFilter();
+        if (factionFilter !== null && !this.organizationFactionOptions().some(option => option.id === factionFilter)) {
+            this.organizationFactionFilter.set(null);
         }
     }
 
@@ -1252,18 +1457,27 @@ export class ForceLoadDialogComponent {
     }
 
     filteredOrganizations = computed<LoadOrganizationEntry[]>(() => {
-        const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
+        const factionFilter = this.organizationFactionFilter();
         const sortKey = this.organizationSort();
         const sortDir = this.organizationSortDirection();
 
-        const filtered = this.organizations().filter(org => {
-            if (tokens.length === 0) return true;
-            const hay = (org.name || '').toLowerCase();
-            return tokens.every(t => hay.indexOf(t) !== -1);
-        });
+        const filtered = this.organizationCountSourceOrganizations()
+            .filter(org => this.matchesOrganizationFactionFilter(org, factionFilter));
 
         return this.sortOrganizations(filtered, sortKey, sortDir);
     });
+
+    getOrganizationEmptyStateMessage(): string {
+        if (this.searchText().trim().length > 0) {
+            return 'No organizations match the current search.';
+        }
+
+        if (this.organizationFactionFilter() !== null) {
+            return 'No organizations match the selected faction.';
+        }
+
+        return 'No saved organizations found.';
+    }
 
     async onOpenOrganization() {
         const org = this.selectedOrganization();

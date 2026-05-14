@@ -63,6 +63,7 @@ import type { Era } from '../../models/eras.model';
 import { getOrgFromForce, getOrgFromForceCollection } from '../../utils/org/org-namer.util';
 import { Faction, FactionId, getFactionImg } from '../../models/factions.model';
 import { naturalCompare } from '../../utils/sort.util';
+import { CompactFilterMenuComponent } from '../compact-filter-menu/compact-filter-menu.component';
 
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 2.0;
@@ -200,6 +201,8 @@ function getDominantFactionId(entries: LoadForceEntry[]): FactionId | undefined 
 interface Rect { x: number; y: number; width: number; height: number }
 interface GroupPreview extends Rect { orgName: string; totals: string; factionId: FactionId | undefined }
 interface SidebarTagRecord { id: string; label: string; count: number }
+interface SidebarFactionFilterOption { id: number; name: string; img?: string; count: number }
+interface SidebarEraFilterOption { id: number; name: string; img?: string; count: number; startYear: number }
 
 interface PreviewOrgExtras {
     targetGroupId: string;
@@ -297,7 +300,7 @@ function createMissingForceEntry(instanceId: string): LoadForceEntry {
 @Component({
     selector: 'force-org-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [FactionImgPipe],
+    imports: [FactionImgPipe, CompactFilterMenuComponent],
     host: {
         class: 'fullscreen-dialog-host fullheight tv-fade',
     },
@@ -397,6 +400,8 @@ export class ForceOrgDialogComponent {
     protected readonly sidebarAllFilter = SIDEBAR_FILTER_ALL;
     protected readonly sidebarUntaggedFilter = SIDEBAR_FILTER_UNTAGGED;
     protected sidebarFilter = signal<string>(SIDEBAR_FILTER_ALL);
+    protected sidebarFactionFilter = signal<number | null>(null);
+    protected sidebarEraFilter = signal<number | null>(null);
     protected sidebarAnimated = signal(false);
     protected sidebarLoading = signal(false);
     protected loading = signal(false);
@@ -507,6 +512,23 @@ export class ForceOrgDialogComponent {
         return this.sidebarBaseForces().filter(force => this.matchesSidebarSearch(force, tokens));
     });
 
+    private sidebarFacetSourceForces = computed(() => {
+        const filter = this.sidebarFilter();
+        return this.sidebarCountSourceForces().filter(force => this.matchesSidebarFilter(force, filter));
+    });
+
+    protected sidebarFactionOptions = computed<SidebarFactionFilterOption[]>(() =>
+        this.buildSidebarFactionOptions(
+            this.sidebarFacetSourceForces().filter(force => this.matchesSidebarEraFilter(force, this.sidebarEraFilter())),
+        ),
+    );
+
+    protected sidebarEraOptions = computed<SidebarEraFilterOption[]>(() =>
+        this.buildSidebarEraOptions(
+            this.sidebarFacetSourceForces().filter(force => this.matchesSidebarFactionFilter(force, this.sidebarFactionFilter())),
+        ),
+    );
+
     private sidebarDisplayCounts = computed(() => {
         const counts = new Map<string, number>([
             [SIDEBAR_FILTER_ALL, 0],
@@ -598,10 +620,14 @@ export class ForceOrgDialogComponent {
 
     /** Forces available in sidebar (not yet placed) */
     protected sidebarForces = computed(() => {
-        const filter = this.sidebarFilter();
+        const factionFilter = this.sidebarFactionFilter();
+        const eraFilter = this.sidebarEraFilter();
         const sortKey = this.sidebarSort();
         const sortDir = this.sidebarSortDirection();
-        const filtered = this.sidebarCountSourceForces().filter(f => this.matchesSidebarFilter(f, filter));
+        const filtered = this.sidebarFacetSourceForces().filter(f =>
+            this.matchesSidebarFactionFilter(f, factionFilter)
+            && this.matchesSidebarEraFilter(f, eraFilter),
+        );
         return this.sortForces(filtered, sortKey, sortDir);
     });
 
@@ -890,6 +916,9 @@ export class ForceOrgDialogComponent {
             this.ensureSidebarFilterIsValid();
         });
         effect(() => {
+            this.ensureSidebarFacetFiltersAreValid();
+        });
+        effect(() => {
             this.dialogRef.disableClose = this.hasPendingUnsavedChanges();
         });
         this.dialogRef.backdropClick.subscribe(() => {
@@ -1157,6 +1186,14 @@ export class ForceOrgDialogComponent {
         this.setSidebarFilter(this.sidebarFilter() === filter ? SIDEBAR_FILTER_ALL : filter);
     }
 
+    protected setSidebarFactionFilter(filter: number | null): void {
+        this.sidebarFactionFilter.set(filter);
+    }
+
+    protected setSidebarEraFilter(filter: number | null): void {
+        this.sidebarEraFilter.set(filter);
+    }
+
     protected getSidebarTagCount(filter: string): number {
         return this.sidebarDisplayCounts().get(filter) ?? 0;
     }
@@ -1168,6 +1205,10 @@ export class ForceOrgDialogComponent {
     protected getSidebarEmptyStateMessage(): string {
         if (this.sidebarSearchText().trim().length > 0) {
             return 'No forces match the current search.';
+        }
+
+        if (this.sidebarFactionFilter() !== null || this.sidebarEraFilter() !== null) {
+            return 'No forces match the selected filters.';
         }
 
         const activeTag = this.activeSidebarTagRecord();
@@ -1200,6 +1241,22 @@ export class ForceOrgDialogComponent {
         }
         if (this.getSidebarTagCount(SIDEBAR_FILTER_UNTAGGED) === 0) {
             this.sidebarFilter.set(SIDEBAR_FILTER_ALL);
+        }
+    }
+
+    private ensureSidebarFacetFiltersAreValid(): void {
+        if (this.sidebarLoading()) {
+            return;
+        }
+
+        const factionFilter = this.sidebarFactionFilter();
+        if (factionFilter !== null && !this.sidebarFactionOptions().some(option => option.id === factionFilter)) {
+            this.sidebarFactionFilter.set(null);
+        }
+
+        const eraFilter = this.sidebarEraFilter();
+        if (eraFilter !== null && !this.sidebarEraOptions().some(option => option.id === eraFilter)) {
+            this.sidebarEraFilter.set(null);
         }
     }
 
@@ -1287,6 +1344,57 @@ export class ForceOrgDialogComponent {
             default:
                 return forceTags.some(tag => this.getSidebarTagFilterId(tag) === filter);
         }
+    }
+
+    private matchesSidebarFactionFilter(force: LoadForceEntry, filter: number | null): boolean {
+        return filter == null || force.faction?.id === filter;
+    }
+
+    private matchesSidebarEraFilter(force: LoadForceEntry, filter: number | null): boolean {
+        return filter == null || force.era?.id === filter;
+    }
+
+    private buildSidebarFactionOptions(forces: readonly LoadForceEntry[]): SidebarFactionFilterOption[] {
+        const options = new Map<number, SidebarFactionFilterOption>();
+        for (const force of forces) {
+            const faction = force.faction;
+            if (!faction) continue;
+            const existing = options.get(faction.id);
+            if (existing) {
+                existing.count += 1;
+                continue;
+            }
+            options.set(faction.id, {
+                id: faction.id,
+                name: faction.name,
+                img: faction.img,
+                count: 1,
+            });
+        }
+        return Array.from(options.values())
+            .sort((a, b) => naturalCompare(a.name, b.name) || a.id - b.id);
+    }
+
+    private buildSidebarEraOptions(forces: readonly LoadForceEntry[]): SidebarEraFilterOption[] {
+        const options = new Map<number, SidebarEraFilterOption>();
+        for (const force of forces) {
+            const era = force.era;
+            if (!era) continue;
+            const existing = options.get(era.id);
+            if (existing) {
+                existing.count += 1;
+                continue;
+            }
+            options.set(era.id, {
+                id: era.id,
+                name: era.name,
+                img: era.img ?? era.icon,
+                count: 1,
+                startYear: era.years.from ?? Number.NEGATIVE_INFINITY,
+            });
+        }
+        return Array.from(options.values())
+            .sort((a, b) => a.startYear - b.startYear || naturalCompare(a.name, b.name) || a.id - b.id);
     }
 
     private getSidebarTagFilterId(tag: string): string {

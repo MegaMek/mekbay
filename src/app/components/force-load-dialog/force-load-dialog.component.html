@@ -305,7 +305,7 @@
             @if (organizationsLoading()) {
                 <div class="loading-spinner">Loading organizations...</div>
             } @else if (filteredOrganizations().length === 0) {
-                <div class="empty-state">No saved organizations found.</div>
+                <div class="empty-state">{{ getOrganizationEmptyStateMessage() }}</div>
             } @else {
                 <div class="force-list">
                     @for (org of filteredOrganizations(); track org.organizationId) {
@@ -337,6 +337,37 @@
             }
         }
         <div class="tab-footer glass">
+            @if (activeTab() === 'Hangar') {
+            <div class="footer-filter-controls">
+                <compact-filter-menu
+                    [options]="hangarFactionOptions()"
+                    [selectedId]="hangarFactionFilter()"
+                    allLabel="All factions"
+                    ariaLabel="Filter by faction"
+                    fallbackLabel="F"
+                    (selectedIdChange)="setHangarFactionFilter($event)">
+                </compact-filter-menu>
+                <compact-filter-menu
+                    [options]="hangarEraOptions()"
+                    [selectedId]="hangarEraFilter()"
+                    allLabel="All eras"
+                    ariaLabel="Filter by era"
+                    fallbackLabel="E"
+                    (selectedIdChange)="setHangarEraFilter($event)">
+                </compact-filter-menu>
+            </div>
+            } @else if (activeTab() === 'TO&E') {
+            <div class="footer-filter-controls">
+                <compact-filter-menu
+                    [options]="organizationFactionOptions()"
+                    [selectedId]="organizationFactionFilter()"
+                    allLabel="All factions"
+                    ariaLabel="Filter by faction"
+                    fallbackLabel="F"
+                    (selectedIdChange)="setOrganizationFactionFilter($event)">
+                </compact-filter-menu>
+            </div>
+            }
             <div class="sort-controls">
                 <select class="bt-input sort-select"
                     (change)="setSortOrder($any($event.target).value)">

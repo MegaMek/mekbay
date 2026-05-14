@@ -412,6 +412,14 @@
     border-top: 1px solid var(--border-color);
     flex: 0 0 auto;
     margin-top: auto;
+    flex-wrap: wrap;
+}
+
+.footer-filter-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
 }
 
 .sort-controls {
