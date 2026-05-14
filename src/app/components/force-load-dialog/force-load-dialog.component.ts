@@ -70,6 +70,7 @@ import { NO_FORMATION_ID } from '../../utils/formation-type.model';
 import { SessionPersistenceService } from '../../services/session-persistence.service';
 import { ForceTagsComponent, type ForceTagClickEvent } from '../force-tags/force-tags.component';
 import { ForceTaggingService } from '../../services/force-tagging.service';
+import { naturalCompare } from '../../utils/sort.util';
 
 /*
  * Author: Drake
@@ -348,7 +349,7 @@ export class ForceLoadDialogComponent {
                 count: counts.get(id) ?? 0,
                 ownedCount: ownedCounts.get(id) ?? 0,
             }))
-            .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+            .sort((a, b) => naturalCompare(a.label, b.label));
     });
 
     activeHangarTagRecord = computed<HangarTagRecord | null>(() => {
@@ -873,7 +874,7 @@ export class ForceLoadDialogComponent {
         return items.sort((a, b) => {
             switch (sortKey) {
                 case 'name':
-                    return dir * (a.name || '').localeCompare(b.name || '');
+                    return dir * naturalCompare(a.name || '', b.name || '');
                 case 'value': {
                     const aVal = this.getForceValue(a);
                     const bVal = this.getForceValue(b);
@@ -882,7 +883,7 @@ export class ForceLoadDialogComponent {
                 case 'faction': {
                     const aFaction = a.factionId != null ? (this.dataService.getFactionById(a.factionId)?.name ?? '') : '';
                     const bFaction = b.factionId != null ? (this.dataService.getFactionById(b.factionId)?.name ?? '') : '';
-                    return dir * aFaction.localeCompare(bFaction);
+                    return dir * naturalCompare(aFaction, bFaction);
                 }
                 case 'size': {
                     const aSize = a.groups
@@ -905,7 +906,7 @@ export class ForceLoadDialogComponent {
         return items.sort((a, b) => {
             switch (sortKey) {
                 case 'name':
-                    return dir * (a.name || '').localeCompare(b.name || '');
+                    return dir * naturalCompare(a.name || '', b.name || '');
                 case 'forces':
                     return dir * (a.forces.length - b.forces.length);
                 case 'timestamp':
@@ -920,11 +921,11 @@ export class ForceLoadDialogComponent {
         return items.sort((a, b) => {
             switch (sortKey) {
                 case 'name':
-                    return dir * (a.name || '').localeCompare(b.name || '');
+                    return dir * naturalCompare(a.name || '', b.name || '');
                 case 'faction': {
                     const aFaction = a.factionId != null ? (this.dataService.getFactionById(a.factionId)?.name ?? '') : '';
                     const bFaction = b.factionId != null ? (this.dataService.getFactionById(b.factionId)?.name ?? '') : '';
-                    return dir * aFaction.localeCompare(bFaction);
+                    return dir * naturalCompare(aFaction, bFaction);
                 }
                 case 'forces':
                     return dir * (a.forceCount - b.forceCount);

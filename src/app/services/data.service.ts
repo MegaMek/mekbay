@@ -82,6 +82,7 @@ import { UnitsCatalogService } from './catalogs/units-catalog.service';
 import { UnitsFluffCatalogService } from './catalogs/units-fluff-catalog.service';
 import { EquipmentCatalogService } from './catalogs/equipment-catalog.service';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
+import { naturalCompare } from '../utils/sort.util';
 
 /*
  * Author: Drake
@@ -785,7 +786,7 @@ export class DataService {
         }
 
         return Array.from(labels.values())
-            .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
+            .sort(naturalCompare);
     }
 
     public updateCachedForceTags(instanceId: string, tags: readonly string[] | null | undefined): void {

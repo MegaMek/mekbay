@@ -45,7 +45,7 @@ import { UserStateService } from '../../services/userState.service';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { getChassisTagTargetUnits } from '../../utils/chassis-tag-target.util';
 import { matchesSearch, parseSearchQuery } from '../../utils/search.util';
-import { compareUnitsByName } from '../../utils/sort.util';
+import { compareUnitsByName, naturalCompare } from '../../utils/sort.util';
 import { shareUrlWithClipboardFallback } from '../../utils/clipboard.util';
 import { buildPublicTagSearchQueryParameters } from '../../utils/unit-search-public-tags-url.util';
 
@@ -208,11 +208,11 @@ export class CollectionDialogComponent {
         }
 
         for (const row of rows.values()) {
-            row.tags.sort((left, right) => left.tag.toLowerCase().localeCompare(right.tag.toLowerCase()));
+            row.tags.sort((left, right) => naturalCompare(left.tag, right.tag));
         }
 
         return Array.from(rows.values())
-            .sort((left, right) => left.title.localeCompare(right.title) || left.rowType.localeCompare(right.rowType));
+            .sort((left, right) => naturalCompare(left.title, right.title) || naturalCompare(left.rowType, right.rowType));
     });
 
     readonly allTags = computed(() => {
@@ -225,7 +225,7 @@ export class CollectionDialogComponent {
             }
         }
 
-        return Array.from(tags.values()).sort((left, right) => left.toLowerCase().localeCompare(right.toLowerCase()));
+        return Array.from(tags.values()).sort(naturalCompare);
     });
 
     readonly filteredRows = computed(() => {
@@ -291,7 +291,7 @@ export class CollectionDialogComponent {
         }
 
         return Array.from(options.values())
-            .sort((left, right) => left.label.localeCompare(right.label) || left.unit.type.localeCompare(right.unit.type));
+            .sort((left, right) => naturalCompare(left.label, right.label) || naturalCompare(left.unit.type, right.unit.type));
     });
 
     readonly chassisSuggestions = computed(() => {
@@ -441,7 +441,7 @@ export class CollectionDialogComponent {
         const createdTags = this.createdTagOptions()
             .filter(tag => !lowerTags.has(tag.toLowerCase()));
 
-        return [...createdTags, ...tags];
+        return [...createdTags, ...tags].sort(naturalCompare);
     });
 
     readonly titleTagOptions = computed(() => {
@@ -452,7 +452,7 @@ export class CollectionDialogComponent {
         }
 
         return [...tags, selectedTag]
-            .sort((left, right) => left.toLowerCase().localeCompare(right.toLowerCase()));
+            .sort(naturalCompare);
     });
 
     readonly selectedMassTagValue = computed(() => this.resolveSelectedTagValue(this.massTag()));
@@ -900,7 +900,7 @@ export class CollectionDialogComponent {
                     pendingRemoval: !!pendingRemovedTags[removalKey]
                 };
             })
-            .sort((left, right) => left.tag.toLowerCase().localeCompare(right.tag.toLowerCase()));
+            .sort((left, right) => naturalCompare(left.tag, right.tag));
     }
 
     private createPendingRemovedTag(row: CollectionRow, tag: CollectionTagEntry): PendingRemovedTag {

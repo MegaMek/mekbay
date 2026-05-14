@@ -62,6 +62,7 @@ import { ShareForceOrgDialogComponent } from '../share-force-org-dialog/share-fo
 import type { Era } from '../../models/eras.model';
 import { getOrgFromForce, getOrgFromForceCollection } from '../../utils/org/org-namer.util';
 import { Faction, FactionId, getFactionImg } from '../../models/factions.model';
+import { naturalCompare } from '../../utils/sort.util';
 
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 2.0;
@@ -579,7 +580,7 @@ export class ForceOrgDialogComponent {
                 label,
                 count: counts.get(id) ?? 0,
             }))
-            .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+            .sort((a, b) => naturalCompare(a.label, b.label));
     });
 
     protected activeSidebarTagRecord = computed<SidebarTagRecord | null>(() => {
@@ -1216,7 +1217,7 @@ export class ForceOrgDialogComponent {
         return [...items].sort((a, b) => {
             switch (sortKey) {
                 case 'name':
-                    return dir * (a.name || '').localeCompare(b.name || '');
+                    return dir * naturalCompare(a.name || '', b.name || '');
                 case 'value': {
                     const aVal = (a.type === GameSystem.ALPHA_STRIKE) ? (a.pv ?? 0) : (a.bv ?? 0);
                     const bVal = (b.type === GameSystem.ALPHA_STRIKE) ? (b.pv ?? 0) : (b.bv ?? 0);
@@ -1225,7 +1226,7 @@ export class ForceOrgDialogComponent {
                 case 'faction': {
                     const aFaction = a.faction?.name ?? '';
                     const bFaction = b.faction?.name ?? '';
-                    return dir * aFaction.localeCompare(bFaction);
+                    return dir * naturalCompare(aFaction, bFaction);
                 }
                 case 'size': {
                     const aSize = a.groups ? a.groups.reduce((sum, g) => sum + (g.units?.length || 0), 0) : 0;

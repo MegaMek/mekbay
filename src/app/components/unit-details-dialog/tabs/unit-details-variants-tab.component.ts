@@ -35,7 +35,7 @@ import { Component, ChangeDetectionStrategy, input, inject, computed, output } f
 import { CommonModule } from '@angular/common';
 import type { Unit } from '../../../models/units.model';
 import { DataService } from '../../../services/data.service';
-import { compareUnitsByName } from '../../../utils/sort.util';
+import { compareUnitsByName, naturalCompare } from '../../../utils/sort.util';
 import { UnitCardExpandedComponent } from '../../unit-card-expanded/unit-card-expanded.component';
 import type { TagClickEvent } from '../../unit-tags/unit-tags.component';
 import { isMegaMekRaritySortKey, SORT_OPTIONS } from '../../../services/unit-search-filters.model';
@@ -154,9 +154,9 @@ export class UnitDetailsVariantsTabComponent {
             if (typeof valA === 'number' && typeof valB === 'number') {
                 result = valA - valB;
             } else if (typeof valA === 'string' && typeof valB === 'string') {
-                result = valA.localeCompare(valB);
+                result = naturalCompare(valA, valB);
             } else {
-                result = String(valA ?? '').localeCompare(String(valB ?? ''));
+                result = naturalCompare(String(valA ?? ''), String(valB ?? ''));
             }
             if (result == 0) {
                 // Tiebreaker: sort by name

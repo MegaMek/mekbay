@@ -35,6 +35,8 @@
  * Author: Drake
  */
 
+import { naturalCompare } from '../utils/sort.util';
+
 interface ForcePackUnit {
   name: string;
 }
@@ -805,4 +807,4 @@ const FORCE_PACKS: ForcePack[] = [
 ];
 
 // Sort once at module load and cache
-const sortedForcePacks = [...FORCE_PACKS].sort((a, b) => a.name.localeCompare(b.name));
+const sortedForcePacks = [...FORCE_PACKS].sort((a, b) => naturalCompare(a.name, b.name));

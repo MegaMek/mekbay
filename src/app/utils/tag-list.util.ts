@@ -32,9 +32,10 @@
  */
 
 import type { Unit } from '../models/units.model';
+import { naturalCompare } from './sort.util';
 
 function sortTags(tags: Set<string>): string[] {
-    return Array.from(tags).sort((left, right) => left.toLowerCase().localeCompare(right.toLowerCase()));
+    return Array.from(tags).sort(naturalCompare);
 }
 
 export function collectAllTags(units: Unit[]): string[] {

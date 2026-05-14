@@ -65,6 +65,7 @@ import { formatMovement } from '../../utils/as-common.util';
 import { DataTableComponent, type DataTableCellContext, type DataTableColumn, type DataTableRowClickEvent, type DataTableSortEvent } from '../data-table/data-table.component';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { FORCE_NOTE_MAX_LENGTH } from '../../models/force-serialization';
+import { naturalCompare } from '../../utils/sort.util';
 
 export interface ForceOverviewDialogData {
     force: Force;
@@ -547,7 +548,7 @@ export class ForceOverviewDialogComponent {
                 else if (typeof valA === 'number' && typeof valB === 'number') {
                     cmp = valA - valB;
                 } else {
-                    cmp = String(valA).localeCompare(String(valB));
+                    cmp = naturalCompare(String(valA), String(valB));
                 }
 
                 return sortDirection === 'asc' ? cmp : -cmp;
@@ -763,7 +764,7 @@ export class ForceOverviewDialogComponent {
                 else if (typeof valA === 'number' && typeof valB === 'number') {
                     cmp = valA - valB;
                 } else {
-                    cmp = String(valA).localeCompare(String(valB));
+                    cmp = naturalCompare(String(valA), String(valB));
                 }
 
                 return sortDirection === 'asc' ? cmp : -cmp;

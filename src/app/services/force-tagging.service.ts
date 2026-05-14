@@ -48,6 +48,7 @@ import { DataService } from './data.service';
 import { DialogsService } from './dialogs.service';
 import { ForceBuilderService } from './force-builder.service';
 import { OverlayManagerService } from './overlay-manager.service';
+import { naturalCompare } from '../utils/sort.util';
 
 interface ForceTagState {
     fullyAssigned: string[];
@@ -167,7 +168,7 @@ export class ForceTaggingService {
         addTags(this.dataService.getCachedForceTagLabels());
 
         return Array.from(labels.values())
-            .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
+            .sort(naturalCompare);
     }
 
     private calculateTagStates(forces: ForceTaggableEntry[]): ForceTagState {
@@ -205,8 +206,8 @@ export class ForceTaggingService {
             }
         }
 
-        fullyAssigned.sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
-        partiallyAssigned.sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
+        fullyAssigned.sort(naturalCompare);
+        partiallyAssigned.sort(naturalCompare);
         return { fullyAssigned, partiallyAssigned };
     }
 

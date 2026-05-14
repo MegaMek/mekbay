@@ -55,6 +55,7 @@ import { AccountAuthService } from '../../services/account-auth.service';
 import { OAuthProviderPickerDialogComponent, type OAuthProviderPickerDialogResult } from '../oauth-provider-picker-dialog/oauth-provider-picker-dialog.component';
 import type { AvailableAuthProvider, LinkedOAuthProvider, OAuthProvider } from '../../models/account-auth.model';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
+import { naturalCompare } from '../../utils/sort.util';
 
 type OptionsSectionId = 'General' | 'Account' | 'Tags' | 'Sheets' | 'Alpha Strike' | 'Advanced' | 'Logs';
 type OptionsViewId = OptionsSectionId;
@@ -173,7 +174,7 @@ export class OptionsDialogComponent {
         const nameTags = this.tagsService.getNameTags();
         const chassisTags = this.tagsService.getChassisTags();
         const allTags = new Set([...Object.keys(nameTags), ...Object.keys(chassisTags)]);
-        return Array.from(allTags).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+        return Array.from(allTags).sort(naturalCompare);
     });
     showSubscriptionInput = signal(false);
     subscriptionError = signal('');
