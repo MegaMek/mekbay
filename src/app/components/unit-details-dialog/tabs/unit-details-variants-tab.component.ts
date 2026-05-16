@@ -138,13 +138,11 @@ export class UnitDetailsVariantsTabComponent {
         const currentUnit = this.unit();
         if (!currentUnit) return [];
 
-        const targetTP = currentUnit.as.TP;
-        const targetChassis = currentUnit.chassis;
         const sortKey = this.selectedSort();
         const sortDir = this.selectedSortDirection();
 
         const filtered = this.dataService.getUnits()
-            .filter(u => u.as.TP === targetTP && u.chassis === targetChassis);
+            .filter(u => u.as.TP === currentUnit.as.TP && u.chassis === currentUnit.chassis && u.omni === currentUnit.omni);
 
         // Sort based on selected key
         return filtered.sort((a, b) => {
