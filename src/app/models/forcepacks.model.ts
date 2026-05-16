@@ -288,7 +288,7 @@ const FORCE_PACKS: ForcePack[] = [
     "name": "Snord's Irregulars Assault Lance",
     "units": [
       { "name": "BMSpartan_SPTN2" },
-      { "name": "BMRifleman_RFL3N" },
+      { "name": "BMHybridRifleman_RFL3NSneede" },
       { "name": "BMGuillotine_GLT3N" },
       { "name": "BMHighlander_HGN732" }
     ]
