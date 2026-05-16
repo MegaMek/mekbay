@@ -969,7 +969,7 @@ export class ForceLoadDialogComponent {
     }
 
     /** Shared sort comparator for forces and packs */
-    private sortItems<T extends { name?: string; type?: GameSystem; bv?: number; pv?: number; factionId?: number; timestamp?: string; groups?: { units?: any[] }[]; units?: any[] }>(items: T[], sortKey: string, sortDir: SortDirection): T[] {
+    private sortItems<T extends { name?: string; type?: GameSystem; bv?: number; pv?: number; faction?: Faction | null; factionId?: number; timestamp?: string; groups?: { units?: any[] }[]; units?: any[] }>(items: T[], sortKey: string, sortDir: SortDirection): T[] {
         const dir = sortDir === 'asc' ? 1 : -1;
         return items.sort((a, b) => {
             switch (sortKey) {
@@ -981,8 +981,8 @@ export class ForceLoadDialogComponent {
                     return dir * (aVal - bVal);
                 }
                 case 'faction': {
-                    const aFaction = a.factionId != null ? (this.dataService.getFactionById(a.factionId)?.name ?? '') : '';
-                    const bFaction = b.factionId != null ? (this.dataService.getFactionById(b.factionId)?.name ?? '') : '';
+                    const aFaction = this.getItemFactionName(a);
+                    const bFaction = this.getItemFactionName(b);
                     return dir * naturalCompare(aFaction, bFaction);
                 }
                 case 'size': {
@@ -999,6 +999,15 @@ export class ForceLoadDialogComponent {
                     return dir * ((a.timestamp || '').localeCompare(b.timestamp || ''));
             }
         });
+    }
+
+    private getItemFactionName(item: { faction?: Faction | null; factionId?: number }): string {
+        if (item.faction?.name) {
+            return item.faction.name;
+        }
+        return item.factionId != null
+            ? (this.dataService.getFactionById(item.factionId)?.name ?? '')
+            : '';
     }
 
     private sortOperations(items: LoadOperationEntry[], sortKey: string, sortDir: SortDirection): LoadOperationEntry[] {
