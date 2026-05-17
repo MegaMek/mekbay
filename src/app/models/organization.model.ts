@@ -31,6 +31,8 @@
  * affiliated with Microsoft.
  */
 
+import { FactionId } from "./factions.model";
+
 /*
  * Author: Drake
  *
@@ -40,6 +42,8 @@
 
 /** A placed force card on the organization canvas. */
 export interface OrgPlacedForce {
+    /** Stable placement ID for this card on the canvas */
+    placementId?: string;
     /** Force instance ID */
     instanceId: string;
     x: number;
@@ -59,8 +63,6 @@ export interface OrgGroupData {
     height: number;
     zIndex: number;
     parentGroupId: string | null;
-    anchorX: number;
-    anchorY: number;
 }
 
 /** Serialized organization stored locally and on the server. */
@@ -72,11 +74,19 @@ export interface SerializedOrganization {
     /** Timestamp when the organization was last saved */
     timestamp: number;
     /** Dominant faction ID across all placed forces */
-    factionId?: number;
+    factionId?: FactionId;
     /** Placed forces with positions and group membership */
     forces: OrgPlacedForce[];
     /** Organizational groups */
     groups: OrgGroupData[];
+}
+
+/**
+ * Organization returned when loading an org for display.
+ * `owned` is transient client metadata and must not be sent back on save.
+ */
+export interface LoadedOrganization extends SerializedOrganization {
+    owned?: boolean;
 }
 
 /**
@@ -86,7 +96,7 @@ export class LoadOrganizationEntry {
     organizationId: string;
     name: string;
     timestamp: number;
-    factionId?: number;
+    factionId?: FactionId;
     forceCount: number;
     groupCount: number;
     cloud: boolean;

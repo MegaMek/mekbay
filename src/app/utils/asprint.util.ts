@@ -33,12 +33,15 @@
 
 import { type ApplicationRef, type ComponentRef, createComponent, EnvironmentInjector, type Injector } from '@angular/core';
 import type { ASForceUnit } from '../models/as-force-unit.model';
+import { getFactionAffinity } from '../models/factions.model';
 import type { Force, UnitGroup } from '../models/force.model';
 import { AlphaStrikeCardComponent } from '../components/alpha-strike-card/alpha-strike-card.component';
 import { getLayoutForUnitType } from '../components/alpha-strike-card/card-layout.config';
 import type { OptionsService } from '../services/options.service';
+import { formatMovement } from './as-common.util';
 import { isIOS } from './platform.util';
-import type { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
+import type { PrintAllOptions } from '../models/print-options.model';
+import { createPrintRosterLogoMarkup, createPrintRosterQrMarkup, getPrintRosterBrandingStyles } from './print-roster-branding.util';
 
 /**
  * Represents a single card to render (handles multi-card units)
@@ -47,6 +50,12 @@ interface CardRenderItem {
     forceUnit: ASForceUnit;
     cardIndex: number;
     groupIndex: number;
+}
+
+interface RosterCell {
+    content: string;
+    className?: string;
+    renderAsHtml?: boolean;
 }
 
 // Card dimensions in inches (88mm x 63mm)
@@ -71,7 +80,7 @@ export class ASPrintUtil {
      * @param injector - Angular Injector for dependency injection
      * @param optionsService - Options service for card style preferences
      * @param groups - Array of UnitGroup to print
-     * @param clean - If true, prints clean cards without damage state
+     * @param printOptions - One-off settings for this print job
      * @param triggerPrint - If true, triggers the browser print dialog
      */
     public static async multipagePrint(
@@ -79,7 +88,7 @@ export class ASPrintUtil {
         injector: Injector,
         optionsService: OptionsService,
         groups: UnitGroup<ASForceUnit>[],
-        clean: boolean = false,
+        printOptions: PrintAllOptions,
         triggerPrint: boolean = true,
         force?: Force
     ): Promise<void> {
@@ -88,6 +97,8 @@ export class ASPrintUtil {
             console.warn('No units to export.');
             return;
         }
+
+        const clean = printOptions.clean;
 
         // Store original heat values and set to 0 for printing
         const originalHeats = new Map<ASForceUnit, number>();
@@ -102,19 +113,24 @@ export class ASPrintUtil {
 
         // Expand units into individual cards (multi-card units become multiple entries)
         const cardRenderItems = this.expandToCardItems(groups);
-        const pageBreakOnGroups = optionsService.options().ASPrintPageBreakOnGroups;
+        const pageBreakOnGroups = printOptions.ASPrintPageBreakOnGroups;
         
         // Create print container - use different layouts for iOS vs other platforms
         const useFixedLayout = isIOS();
         const { overlay, cardComponentRefs } = useFixedLayout
-            ? await this.createFixedPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups, groups)
-            : await this.createFlexPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups, groups);
+            ? await this.createFixedPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups, groups, printOptions.printMargin)
+            : await this.createFlexPrintContainer(appRef, injector, optionsService, cardRenderItems, pageBreakOnGroups, groups, printOptions.printMargin);
 
-        // Append roster summary page if enabled
-        const printRosterSummary = optionsService.options().ASPrintRosterSummary;
+        // Insert roster summary page first if enabled
+        const printRosterSummary = printOptions.printRosterSummary;
         if (printRosterSummary && force) {
-            const rosterPage = this.createRosterSummaryPage(groups, force);
-            overlay.appendChild(rosterPage);
+            const rosterPage = await this.createRosterSummaryPage(groups, force, optionsService.options().ASUseHex);
+            const firstContentNode = Array.from(overlay.children).find(child => !(child instanceof HTMLStyleElement));
+            if (firstContentNode) {
+                overlay.insertBefore(rosterPage, firstContentNode);
+            } else {
+                overlay.appendChild(rosterPage);
+            }
         }
 
         // Wait for fonts and images to load
@@ -195,7 +211,8 @@ export class ASPrintUtil {
         optionsService: OptionsService,
         cardItems: CardRenderItem[],
         pageBreakOnGroups: boolean,
-        groups: UnitGroup<ASForceUnit>[]
+        groups: UnitGroup<ASForceUnit>[],
+        printMargin: PrintAllOptions['printMargin']
     ): Promise<{ overlay: HTMLElement; cardComponentRefs: ComponentRef<AlphaStrikeCardComponent>[] }> {
         const componentRefs: ComponentRef<AlphaStrikeCardComponent>[] = [];
         const useHex = optionsService.options().ASUseHex;
@@ -207,7 +224,7 @@ export class ASPrintUtil {
         
         // Add print styles
         const style = document.createElement('style');
-        style.textContent = this.getFixedPrintStyles();
+        style.textContent = this.getFixedPrintStyles(printMargin);
         overlay.appendChild(style);
         
         // Group cards by groupIndex if pageBreakOnGroups is enabled
@@ -292,7 +309,8 @@ export class ASPrintUtil {
         optionsService: OptionsService,
         cardItems: CardRenderItem[],
         pageBreakOnGroups: boolean,
-        groups: UnitGroup<ASForceUnit>[]
+        groups: UnitGroup<ASForceUnit>[],
+        printMargin: PrintAllOptions['printMargin']
     ): Promise<{ overlay: HTMLElement; cardComponentRefs: ComponentRef<AlphaStrikeCardComponent>[] }> {
         const componentRefs: ComponentRef<AlphaStrikeCardComponent>[] = [];
         const useHex = optionsService.options().ASUseHex;
@@ -304,7 +322,7 @@ export class ASPrintUtil {
         
         // Add print styles
         const style = document.createElement('style');
-        style.textContent = this.getFlexPrintStyles();
+        style.textContent = this.getFlexPrintStyles(printMargin);
         overlay.appendChild(style);
         
         if (pageBreakOnGroups) {
@@ -461,7 +479,7 @@ export class ASPrintUtil {
      * Returns the CSS styles for fixed grid printing (iOS).
      * Card size: 88mm x 63mm (standard Alpha Strike card dimensions)
      */
-    private static getFixedPrintStyles(): string {
+    private static getFixedPrintStyles(printMargin: PrintAllOptions['printMargin']): string {
         const cardWidthIn = `${CARD_WIDTH_IN}in`;
         const cardHeightIn = `${CARD_HEIGHT_IN}in`;
         const pageWidthIn = `${PAGE_WIDTH_IN}in`;
@@ -548,6 +566,7 @@ export class ASPrintUtil {
             }
 
             ${this.getRosterSummaryStyles()}
+            ${getPrintRosterBrandingStyles()}
 
             @media print {
                 body, html {
@@ -572,13 +591,13 @@ export class ASPrintUtil {
                 }
 
                 .as-roster-summary {
-                    page-break-before: always;
-                    break-before: page;
+                    page-break-after: always;
+                    break-after: page;
                 }
 
                 @page {
                     size: auto;
-                    margin: 0.25in !important;
+                    margin: ${printMargin === 'none' ? '0in' : '0.25in'} !important;
                 }
             }
         `;
@@ -588,7 +607,7 @@ export class ASPrintUtil {
      * Returns the CSS styles for flexible printing (non-iOS platforms).
      * Uses flexbox with auto-wrapping for portrait/landscape support.
      */
-    private static getFlexPrintStyles(): string {
+    private static getFlexPrintStyles(printMargin: PrintAllOptions['printMargin']): string {
         const cardWidthIn = `${CARD_WIDTH_IN}in`;
         const cardHeightIn = `${CARD_HEIGHT_IN}in`;
         
@@ -645,6 +664,7 @@ export class ASPrintUtil {
             }
 
             ${this.getRosterSummaryStyles()}
+            ${getPrintRosterBrandingStyles()}
 
             @media print {
                 body, html {
@@ -662,13 +682,13 @@ export class ASPrintUtil {
                 }
 
                 .as-roster-summary {
-                    page-break-before: always;
-                    break-before: page;
+                    page-break-after: always;
+                    break-after: page;
                 }
 
                 @page {
                     size: auto;
-                    margin: 0.25in !important;
+                    margin: ${printMargin === 'none' ? '0' : '0.25in'} !important;
                 }
 
             }
@@ -681,8 +701,10 @@ export class ASPrintUtil {
     private static getRosterSummaryStyles(): string {
         return `
             .as-roster-summary {
+                position: relative;
                 background: white;
-                padding: 0.2in 0;
+                padding: 0.2in 0.04in 0;
+                box-sizing: border-box;
                 font-family: sans-serif;
                 color: #222;
             }
@@ -691,7 +713,7 @@ export class ASPrintUtil {
                 display: flex;
                 align-items: baseline;
                 gap: 0.1in;
-                padding: 0 0.04in 0.08in;
+                padding: 0 1.5in 0.08in 0.04in;
                 border-bottom: 2px solid #333;
                 margin-bottom: 0.1in;
             }
@@ -732,20 +754,23 @@ export class ASPrintUtil {
                 white-space: nowrap;
             }
 
-            .as-roster-table td.as-roster-specials {
-                font-size: 7pt;
-                color: #555;
-                white-space: normal;
-                max-width: 2.5in;
-            }
-
             .as-roster-footer {
-                text-align: right;
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 0.12in;
                 font-weight: 700;
                 font-size: 11pt;
-                margin-top: 0.1in;
-                padding: 0.05in 0.04in;
+                margin-top: 0.14in;
+                padding: 0.08in 0.04in 0.05in;
                 border-top: 2px solid #333;
+                box-sizing: border-box;
+            }
+
+            .as-roster-footer-total {
+                margin-left: auto;
+                text-align: right;
+                padding-top: 0.04in;
             }
         `;
     }
@@ -753,7 +778,7 @@ export class ASPrintUtil {
     /**
      * Creates a roster summary page with a table of all units.
      */
-    private static createRosterSummaryPage(groups: UnitGroup<ASForceUnit>[], force: Force): HTMLElement {
+    private static async createRosterSummaryPage(groups: UnitGroup<ASForceUnit>[], force: Force, useHex: boolean): Promise<HTMLElement> {
         const container = document.createElement('div');
         container.className = 'as-roster-summary';
 
@@ -764,8 +789,9 @@ export class ASPrintUtil {
         const faction = force.faction();
         if (faction) {
             let factionLabel = faction.name;
-            if (faction.group && faction.group !== faction.name) {
-                factionLabel += ` \u00B7 ${faction.group}`;
+            const factionAffinity = getFactionAffinity(faction);
+            if (factionAffinity !== 'Other' && factionAffinity !== faction.name) {
+                factionLabel += ` · ${factionAffinity}`;
             }
             parts.push(factionLabel);
         }
@@ -815,29 +841,24 @@ export class ASPrintUtil {
                 const row = document.createElement('tr');
 
                 const unitName = [unit.chassis, unit.model].filter(Boolean).join(' ');
-                const cells = [
-                    unitName,
-                    as.TP,
-                    String(as.SZ),
-                    String(forceUnit.pilotSkill()),
-                    String(adjustedPv),
-                    unit.role || '',
-                    as.MV,
-                    as.dmg.dmgS,
-                    as.dmg.dmgM,
-                    as.dmg.dmgL,
-                    `${as.Arm}+${as.Str}`,
-                    String(as.OV),
-                    (as.specials || []).join(', ')
+                const cells: RosterCell[] = [
+                    { content: unitName },
+                    { content: as.TP },
+                    { content: String(as.SZ) },
+                    { content: String(forceUnit.pilotSkill()) },
+                    { content: String(adjustedPv) },
+                    { content: unit.role || '' },
+                    { content: this.formatRosterMovement(forceUnit, useHex), renderAsHtml: true },
+                    { content: as.dmg.dmgS },
+                    { content: as.dmg.dmgM },
+                    { content: as.dmg.dmgL },
+                    { content: `${as.Arm}+${as.Str}` },
+                    { content: String(as.OV) },
+                    { content: (as.specials || []).join(', ') }
                 ];
 
-                for (let i = 0; i < cells.length; i++) {
-                    const td = document.createElement('td');
-                    td.textContent = cells[i];
-                    if (i === columns.length - 1) {
-                        td.className = 'as-roster-specials';
-                    }
-                    row.appendChild(td);
+                for (const cell of cells) {
+                    row.appendChild(this.createRosterCell(cell));
                 }
 
                 tbody.appendChild(row);
@@ -849,10 +870,63 @@ export class ASPrintUtil {
         // Footer with total PV
         const footer = document.createElement('div');
         footer.className = 'as-roster-footer';
-        footer.textContent = `Total PV: ${totalPv}`;
+
+        const qrHost = document.createElement('div');
+        qrHost.innerHTML = await createPrintRosterQrMarkup(force);
+        const qr = qrHost.firstElementChild;
+        if (qr) {
+            footer.appendChild(qr);
+        }
+
+        const total = document.createElement('div');
+        total.className = 'as-roster-footer-total';
+        total.textContent = `Total PV: ${totalPv}`;
+        footer.appendChild(total);
+
         container.appendChild(footer);
 
+        const brandingHost = document.createElement('div');
+        brandingHost.innerHTML = createPrintRosterLogoMarkup();
+        const branding = brandingHost.firstElementChild;
+        if (branding) {
+            container.appendChild(branding);
+        }
+
         return container;
+    }
+
+    private static formatRosterMovement(forceUnit: ASForceUnit, useHex: boolean): string {
+        const movementEntries = Object.entries(forceUnit.effectiveMovement())
+            .filter(([, value]) => typeof value === 'number') as Array<[string, number]>;
+
+        if (forceUnit.getUnit().as.TP === 'BM') {
+            return movementEntries
+                .filter(([mode]) => mode !== 'a' && mode !== 'g')
+                .sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : 0))
+                .map(([mode, inches]) => formatMovement(inches, mode, useHex))
+                .join('/');
+        }
+
+        return movementEntries
+            .sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : 0))
+            .map(([mode, inches]) => formatMovement(inches, mode, useHex))
+            .join('/');
+    }
+
+    private static createRosterCell(cell: RosterCell): HTMLTableCellElement {
+        const td = document.createElement('td');
+
+        if (cell.renderAsHtml) {
+            td.innerHTML = cell.content;
+        } else {
+            td.textContent = cell.content;
+        }
+
+        if (cell.className) {
+            td.className = cell.className;
+        }
+
+        return td;
     }
 
     /**

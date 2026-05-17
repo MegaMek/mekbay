@@ -13,6 +13,7 @@
     width: 100%;
     height: 100%;
     box-sizing: border-box;
+    touch-action: pan-y;
 }
 
 .faction-availability-list {
@@ -21,6 +22,26 @@
     padding: 16px;
     gap: 8px 16px;
     align-items: start;
+    align-content: start;
+    flex: 1;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    touch-action: pan-y;
+}
+
+.availability-source-disclaimer {
+    width: 100%;
+    font-size: 0.8rem;
+    margin-top: 0;
+    padding: 2px;
+    box-sizing: border-box;
+    text-align: center;
+    background-color: orange;
+    color: black;
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
 }
 
 .era-wrapper {
@@ -61,8 +82,54 @@
 }
 
 .faction-item {
+    display: inline;
+}
+
+.faction-name-head {
     display: inline-flex;
     align-items: baseline;
+    white-space: nowrap;
+}
+
+.faction-name-middle {
+    white-space: pre-wrap;
+}
+
+.faction-name-tail {
+    display: inline-flex;
+    align-items: baseline;
+    white-space: nowrap;
+}
+
+.faction-megamek-availability {
+    display: inline-flex;
+    margin-left: 4px;
+    white-space: nowrap;
+    color: var(--text-color-secondary);
+}
+
+.faction-megamek-availability-badges {
+    display: inline-flex;
+}
+
+.faction-megamek-availability-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+    position: relative;
+    top: 0.18em;
+}
+
+.faction-megamek-availability-icon {
+    width: 0.95em;
+    height: 0.95em;
+    display: block;
+}
+
+.faction-megamek-availability-separator {
+    width: 4px;
+    display: inline-block;
 }
 
 .faction-icon {
@@ -84,6 +151,32 @@
 
 hr.divider {
     grid-column: 1 / -1;
+}
+
+.catch-all-faction {
+    display: inline;
+}
+
+.faction-name-head > .faction-icon,
+.faction-name-tail > .faction-icon {
+    vertical-align: text-bottom;
+}
+
+.catch-all-faction .parent-faction {
+    color: var(--bt-yellow);
+    cursor: pointer;
+}
+
+.catch-all-faction .parent-faction-label {
+    text-decoration: underline dotted;
+}
+
+.catch-all-faction .parent-faction:hover {
+    color: var(--bt-yellow-background-light);
+}
+
+.collapsed-faction-item {
+    display: inline;
 }
 
 /* Responsive */

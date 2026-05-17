@@ -59,6 +59,13 @@
         position: relative;
     }
 
+    .header-status-stack {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
     &.tiny {
         .logo {
             height: 50px;

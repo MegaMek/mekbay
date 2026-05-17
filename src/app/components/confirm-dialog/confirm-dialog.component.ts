@@ -85,6 +85,10 @@ export interface ConfirmDialogData<T = any> {
             background-color: #4d0400;
         }
 
+        .cdk-overlay-pane.warning :host {
+            background-color: #4a3100;
+        }
+
         .content {
             display: block;
             max-width: 500px;

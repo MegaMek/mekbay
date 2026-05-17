@@ -1138,7 +1138,7 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         tag: "CNARC#",
         name: "NARC Missile Beacon",
         summary: [
-            "A unit with the CNARC# or SNARC# special ability may make an extra weapon attack using its Narc missile beacon device. A unit hit by a Narc beacon will not suffer damage from the Narc itself, but will suffer 1 additional point of damage from any Indirect Fire (IF), LRM, or SRM attacks for the rest of the game—unless the unit is within a friendly ECM bubble. Standard Narc beacon launchers (indicated by SNARC) have a maximum range of Medium, while Compact Narc beacon launchers (CNARC) have a maximum range of Short.",
+            "A unit with the CNARC# or SNARC# special ability may make an extra weapon attack using its Narc missile beacon device . A unit hit by a Narc beacon will not suffer damage from the Narc itself, but will suffer 1 additional point of damage from any indirect fire attack or special weapon attack using the IF, LRM, or SRM special abilities, or any standard weapons attack from a unit with the IF, LRM, or SRM special abilities, for the rest of the game—unless the unit is within a friendly ECM bubble . Standard Narc beacon launchers (indicated by SNARC) have a maximum range of Medium, while Compact Narc beacon launchers (CNARC) have a maximum range of Short . Unlike most effects, NARC takes place immediately and can be used by other attacks in the same turn.",
             "Instead of their normal attack, Narc launchers may fire specialty ammo (see Alternate Munitions, p. 143).",
             "The numerical value of this ability indicates the number of extra Narc beacon attacks the unit can deliver in a single turn."
         ],
@@ -1150,7 +1150,7 @@ export const AS_SPECIAL_ABILITIES: ASSpecialAbility[] = [
         tag: "SNARC#",
         name: "NARC Missile Beacon",
         summary: [
-            "A unit with the CNARC# or SNARC# special ability may make an extra weapon attack using its Narc missile beacon device. A unit hit by a Narc beacon will not suffer damage from the Narc itself, but will suffer 1 additional point of damage from any Indirect Fire (IF), LRM, or SRM attacks for the rest of the game—unless the unit is within a friendly ECM bubble. Standard Narc beacon launchers (indicated by SNARC) have a maximum range of Medium, while Compact Narc beacon launchers (CNARC) have a maximum range of Short.",
+            "A unit with the CNARC# or SNARC# special ability may make an extra weapon attack using its Narc missile beacon device . A unit hit by a Narc beacon will not suffer damage from the Narc itself, but will suffer 1 additional point of damage from any indirect fire attack or special weapon attack using the IF, LRM, or SRM special abilities, or any standard weapons attack from a unit with the IF, LRM, or SRM special abilities, for the rest of the game—unless the unit is within a friendly ECM bubble . Standard Narc beacon launchers (indicated by SNARC) have a maximum range of Medium, while Compact Narc beacon launchers (CNARC) have a maximum range of Short . Unlike most effects, NARC takes place immediately and can be used by other attacks in the same turn.",
             "Instead of their normal attack, Narc launchers may fire specialty ammo (see Alternate Munitions, p. 143).",
             "The numerical value of this ability indicates the number of extra Narc beacon attacks the unit can deliver in a single turn."
         ],

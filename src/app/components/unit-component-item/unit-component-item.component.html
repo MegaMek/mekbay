@@ -5,7 +5,7 @@
         class="component {{ displayStyle() }}-data"
         (pointerenter)="onPointerEnter($event)" 
         (click)="onCompClick($event)" 
-        (pointerleave)="onPointerLeave($event)">{{ compEntry?.q }}×{{ compEntry?.n }} @if (compEntry?.q2) {<span class="ammo-count"> ({{ compEntry?.q2 }})</span>}</span>
+        (pointerleave)="onPointerLeave($event)">{{ compEntry?.q }}×{{ compEntry?.n }}@if (compEntry?.rear) { <span class="rear-indicator" title="Rear Mounted">(R)</span>} @if (compEntry?.q2) {<span class="ammo-count"> ({{ compEntry?.q2 }})</span>}</span>
 } @else {
 <div #component
     class="component {{ displayStyle() }}-data {{ typeClass() }}"

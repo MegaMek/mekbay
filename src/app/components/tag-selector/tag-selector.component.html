@@ -17,6 +17,19 @@
                     [class.tag-covered]="isNameTagCoveredByChassis(tag)"
                     (click)="onNameTagClick(tag)">
                     <span class="tag-label">{{ tag }}</span>
+                    <input
+                        type="number"
+                        class="tag-quantity-input"
+                        min="1"
+                        step="1"
+                        placeholder="1"
+                        [value]="getNameTagQuantity(tag)"
+                        [disabled]="!isNameTagAssignedToAny(tag)"
+                        (click)="$event.stopPropagation()"
+                        (input)="onNameTagQuantityInput(tag, $event)"
+                        (blur)="onNameTagQuantityBlur(tag, $event)"
+                        title="Tag value"
+                        aria-label="Tag value" />
                     @if (isNameTagAssignedToAny(tag)) {
                         <button
                             type="button"
@@ -53,6 +66,19 @@
                     [class.tag-partial]="isChassisTagPartiallyAssigned(tag)"
                     (click)="onChassisTagClick(tag)">
                     <span class="tag-label">{{ tag }}</span>
+                    <input
+                        type="number"
+                        class="tag-quantity-input"
+                        min="1"
+                        step="1"
+                        placeholder="1"
+                        [value]="getChassisTagQuantity(tag)"
+                        [disabled]="!isChassisTagAssignedToAny(tag)"
+                        (click)="$event.stopPropagation()"
+                        (input)="onChassisTagQuantityInput(tag, $event)"
+                        (blur)="onChassisTagQuantityBlur(tag, $event)"
+                        title="Tag value"
+                        aria-label="Tag value" />
                     @if (isChassisTagAssignedToAny(tag)) {
                         <button
                             type="button"

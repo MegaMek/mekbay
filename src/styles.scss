@@ -55,6 +55,9 @@
 
     --friendly-color: 100, 180, 255;
     --enemy-color: 220, 80, 80;
+
+    --chassis-tag-color: 78 201 176;
+    --name-tag-color: 255 193 7;
 }
 
 ::-webkit-scrollbar {
@@ -101,6 +104,17 @@ body {
     user-select: none;
     box-sizing: border-box;
     cursor: default;
+}
+
+:root:not(.keyboard-navigation) *:focus,
+:root:not(.keyboard-navigation) *:focus-visible {
+    outline: none !important;
+    outline-offset: 0 !important;
+}
+
+:root.keyboard-navigation *:focus {
+    outline: 2px solid var(--primary-focus-color-highlight) !important;
+    outline-offset: 2px !important;
 }
 
 @media print {
@@ -226,6 +240,10 @@ hr {
         max-height: 100vh;
         max-height: 100dvh;
     }
+
+    &.nopadding {
+        padding: 0;
+    }
 }
 
 .cdk-overlay-pane {
@@ -261,6 +279,24 @@ hr {
         linear-gradient(white, white), linear-gradient(white, white);
     background-size: 2px 12px, 2px 12px, 2px 12px, 2px 12px;
     background-position: top left, top right, bottom left, bottom right;
+
+    &.error {
+        border-color: red;
+        background-color: rgba(128, 24, 24, 0.28);
+        background-image:
+            linear-gradient(red, red),
+            linear-gradient(red, red),
+            linear-gradient(red, red),
+            linear-gradient(red, red),
+    }
+    &.muted-frame {
+        border-color: silver;
+        background-image:
+            linear-gradient(silver, silver),
+            linear-gradient(silver, silver),
+            linear-gradient(silver, silver),
+            linear-gradient(silver, silver),
+    }
 }
 
 .corner-borders {
@@ -487,7 +523,7 @@ hr {
 }
 
 .bt-select {
-    touch-action: none;
+    touch-action: manipulation;
     cursor: pointer;
     padding: 8px 20px 8px 8px;
     border: 2px transparent;
@@ -570,7 +606,7 @@ hr {
 .bt-button {
     cursor: pointer;
     white-space: nowrap;
-    touch-action: none;
+    touch-action: manipulation;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -591,6 +627,11 @@ hr {
         linear-gradient(#666, #666), linear-gradient(#666, #666);
     background-size: 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
     background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+
+    &.multiline {
+        white-space: normal;
+        font-weight: initial;
+    }
 
     &:hover {
         border-color: transparent;
@@ -734,7 +775,7 @@ hr {
 .bt-split-button {
     cursor: pointer;
     white-space: nowrap;
-    touch-action: none;
+    touch-action: manipulation;
     display: inline-flex;
     align-items: stretch;
     background: var(--background-input);
@@ -844,6 +885,7 @@ hr {
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.04em;
+        letter-spacing: 0.1em;
 
         &.centered {
             text-align: center;
@@ -1252,14 +1294,41 @@ hr.divider {
     background: #292313;
 }
 
-/* Ammo: #CCCCCC, background: #272727, inbetween: #999999 */
-.ammo {
+/* Bomb: #CC2222, background: #271111, inbetween: #992222 */
+.ammo-bomb {
+    --type-color: #c22;
+    border-left: 5px solid var(--type-color);
+    border-top: 1px solid #922;
+    border-right: 1px solid #922;
+    border-bottom: 1px solid #922;
+    background: #271111;
+}
+
+/* Chemical: #7BA3A0, background: #1a2524, inbetween: #4d7370 */
+.ammo-chemical {
+    --type-color: #7BA3A0;
+    border-left: 5px solid var(--type-color);
+    border-top: 1px solid #4d7370;
+    border-right: 1px solid #4d7370;
+    border-bottom: 1px solid #4d7370;
+    background: #1a2524;
+}
+
+/* Special: #CCCCCC, background: #272727, inbetween: #999999 */
+.ammo-special {
     --type-color: #ccc;
     border-left: 5px solid var(--type-color);
     border-top: 1px solid #999;
     border-right: 1px solid #999;
     border-bottom: 1px solid #999;
     background: #272727;
+}
+
+.ammo {
+    border-left-style: double;
+    border-top-style: solid;
+    border-right-style: solid;
+    border-bottom-style: solid;
 }
 
 /* Misc: #7BA3A0, background: #1a2524, inbetween: #4d7370 */
@@ -1299,7 +1368,7 @@ hr.divider {
     justify-content: flex-end;
     gap: 2px;
     width: 20px;
-    height: 20px;
+    height: 16px;
     padding: 0;
     border: 0;
     background: transparent;
@@ -1856,6 +1925,14 @@ hr.divider {
 
         .unusedMoveMode {
             opacity: 0.5;
+        }
+
+        .movePsrWarning {
+            fill: var(--danger);
+            font-family: Roboto, sans-serif;
+            font-size: 7px;
+            font-weight: 700;
+            pointer-events: none;
         }
     }
 }

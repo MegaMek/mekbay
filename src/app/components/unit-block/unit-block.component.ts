@@ -80,6 +80,15 @@ export class UnitBlockComponent {
     /** Derives Alpha Strike status from the unit's own force, not the global game system. */
     isAlphaStrike = computed<boolean>(() => this.forceUnit()?.force?.gameSystem === GameSystem.ALPHA_STRIKE);
 
+    isCommander = computed<boolean>(() => {
+        const forceUnit = this.forceUnit();
+        if (!forceUnit) return false;
+        if (forceUnit instanceof ASForceUnit || forceUnit instanceof CBTForceUnit) {
+            return forceUnit.commander();
+        }
+        return false;
+    });
+
     dirty = computed<boolean>(() => {
         if (!this.optionsService.options().useAutomations) {
             return false;
@@ -135,6 +144,35 @@ export class UnitBlockComponent {
             return hasECM;
         }
         return false;
+    });
+
+    getTAGLabel = computed<'TAG' | 'LTAG' | undefined>(() => {
+        const forceUnit = this.forceUnit();
+        if (!forceUnit) return undefined;
+        if (forceUnit instanceof ASForceUnit) {
+            if (forceUnit.getUnit().as.specials.includes('LTAG')) {
+                return 'LTAG';
+            }
+            if (forceUnit.getUnit().as.specials.includes('TAG')) {
+                return 'TAG';
+            }
+            return undefined;
+        } else
+        if (forceUnit instanceof CBTForceUnit) {
+            const tagComponents = forceUnit.getUnit().comp.filter(component => component.eq?.flags.has('F_TAG'));
+            if (tagComponents.length === 0) {
+                return undefined;
+            }
+
+            const hasLightTag = tagComponents.some(component => {
+                const names = [component.n, component.eq?.name, component.eq?.shortName, component.eq?.sortingName]
+                    .filter((name): name is string => !!name);
+                return names.some(name => /\blight\b/i.test(name));
+            });
+
+            return hasLightTag ? 'LTAG' : 'TAG';
+        }
+        return undefined;
     });
 
     getECMStatus = computed<boolean | undefined>(() => {

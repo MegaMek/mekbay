@@ -36,7 +36,7 @@ import { Component, input, computed, inject, ChangeDetectionStrategy } from '@an
 import type { UnitComponent } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
 import type { Unit } from '../../models/units.model';
-import { type Equipment, WeaponEquipment } from '../../models/equipment.model';
+import { AmmoEquipment, type Equipment, WeaponEquipment } from '../../models/equipment.model';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
 
 /*
@@ -85,11 +85,29 @@ export class FloatingCompInfoComponent {
     }
 
     get typeClass(): string {
-        return getWeaponTypeCSSClass(this.comp()?.t ?? '');
+        const currentComp = this.comp();
+        return getWeaponTypeCSSClass(currentComp?.t ?? '', this.equipment() ?? currentComp?.eq);
     }
 
     get typeLabel(): string {
+        const currentComp = this.comp();
+        if (currentComp?.t === 'X') {
+            const equipment = this.equipment() ?? currentComp.eq;
+            if (equipment instanceof AmmoEquipment) {
+                const labels = [equipment.category, ...(equipment.stats.explosive ? ['Explosive'] : [])];
+                return `Ammo (${labels.join(', ')})`;
+            }
+
+            return 'Ammo';
+        }
+
         return this.typeClass.charAt(0).toUpperCase() + this.typeClass.slice(1);
+    }
+
+    get toHitModifier(): string | null {
+        const modifier = (this.equipment() ?? this.comp()?.eq)?.stats.toHitModifier ?? 0;
+        if (modifier === 0) return null;
+        return modifier > 0 ? `+${modifier}` : String(modifier);
     }
 
     get rackSize(): number | null {
@@ -229,11 +247,12 @@ export class FloatingCompInfoComponent {
             return aYear - bYear;
         });
 
+        const unitType = unit.as?.TP;
         let slots = eq.critSlots;
-        if (eq.svSlots > -1) {
-            slots = eq.svSlots;
-        } else if (eq.tankSlots > -1) {
-            slots = eq.tankSlots;
+        if (unitType === 'SV') {
+            slots = eq.svSlots > -1 ? eq.svSlots : eq.critSlots;
+        } else if (unitType !== 'BM' && unitType !== 'IM') {
+            slots = eq.tankSlots > -1 ? eq.tankSlots : eq.critSlots;
         }
 
         const ratingString = `${eq.techBase} | ${eq.rating}/${eq.availability}`;

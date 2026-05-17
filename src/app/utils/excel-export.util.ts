@@ -81,10 +81,31 @@ function formatArcDamage(arc: AlphaStrikeArcStats | undefined, type: 'STD' | 'CA
 }
 
 function getMergedUnitTags(unit: Unit): string {
-    const merged = new Set<string>();
-    for (const tag of unit._chassisTags ?? []) merged.add(tag);
-    for (const tag of unit._nameTags ?? []) merged.add(tag);
-    return Array.from(merged).join(', ');
+    const merged = new Map<string, { label: string; quantity: number }>();
+
+    const mergeTag = (tag: string, quantity: number) => {
+        const key = tag.toLowerCase();
+        const existing = merged.get(key);
+        if (!existing) {
+            merged.set(key, { label: tag, quantity });
+            return;
+        }
+
+        if (quantity > existing.quantity) {
+            existing.quantity = quantity;
+        }
+    };
+
+    for (const entry of unit._chassisTags ?? []) {
+        mergeTag(entry.tag, entry.quantity);
+    }
+    for (const entry of unit._nameTags ?? []) {
+        mergeTag(entry.tag, entry.quantity);
+    }
+
+    return Array.from(merged.values())
+        .map(entry => entry.quantity > 1 ? `${entry.label} (${entry.quantity})` : entry.label)
+        .join(', ');
 }
 
 /**
@@ -109,6 +130,7 @@ function unitToCBTRow(unit: Unit): Record<string, unknown> {
         engine: unit.engine,
         engineRating: unit.engineRating,
         source: unit.source?.join(', ') ?? '',
+        publishedRS: unit.published?.join(', ') ?? '',
         tags: getMergedUnitTags(unit),
         role: unit.role,
         armorType: unit.armorType,
@@ -123,7 +145,6 @@ function unitToCBTRow(unit: Unit): Record<string, unknown> {
         walk: unit.walk,
         maxWalk: unit.walk2,
         jump: unit.jump,
-        maxJump: unit.jump2,
         umu: unit.umu,
         c3: unit.c3,
         dpt: unit.dpt,
@@ -162,6 +183,7 @@ function unitToASRow(unit: Unit): Record<string, unknown> {
         techBase: unit.techBase,
         techRating: unit.techRating,
         source: unit.source?.join(', ') ?? '',
+        publishedRS: unit.published?.join(', ') ?? '',
         tags: getMergedUnitTags(unit),
         role: unit.role,
         SZ: as?.SZ ?? '',

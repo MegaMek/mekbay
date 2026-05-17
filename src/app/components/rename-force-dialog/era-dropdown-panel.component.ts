@@ -31,6 +31,7 @@
  * affiliated with Microsoft.
  */
 
+import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import type { Era } from '../../models/eras.model';
 
@@ -71,6 +72,7 @@ export interface EraDisplayInfo {
                     <div class="era-details">
                         <div class="era-header">
                             <span class="era-name">{{ item.era.name }}</span>
+                            <span class="match-badge">{{ (item.matchPercentage * 100) | number:'1.0-0' }}% match</span>
                         </div>
                         <span class="era-years">{{ item.era.years.from ?? '?' }}\u2013{{ item.era.years.to ?? 'present' }}</span>
                     </div>
@@ -178,6 +180,14 @@ export interface EraDisplayInfo {
             color: var(--text-color);
         }
 
+        .match-badge {
+            font-size: 0.8em;
+            color: var(--bt-yellow);
+            padding: 2px 6px;
+            background: rgba(240, 192, 64, 0.15);
+            white-space: nowrap;
+        }
+
         .era-years {
             font-size: 0.8em;
             color: var(--text-color-secondary);
@@ -189,7 +199,8 @@ export interface EraDisplayInfo {
             color: var(--text-color-secondary);
             line-height: 1.3;
         }
-    `]
+    `],
+    imports: [DecimalPipe]
 })
 export class EraDropdownPanelComponent {
     eras = input.required<EraDisplayInfo[]>();

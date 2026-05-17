@@ -51,12 +51,14 @@ interface UnitSearchWorkerClientOptions {
     createWorker: () => SearchWorkerLike;
     onResult: (result: UnitSearchWorkerResultMessage) => void;
     onError: (message: string) => void;
+    onReady?: (corpusVersion: UnitSearchWorkerCorpusVersion) => void;
 }
 
 export class UnitSearchWorkerClient {
     private readonly createWorker: () => SearchWorkerLike;
     private readonly onResult: (result: UnitSearchWorkerResultMessage) => void;
     private readonly onError: (message: string) => void;
+    private readonly onReady?: (corpusVersion: UnitSearchWorkerCorpusVersion) => void;
     private worker: SearchWorkerLike | null = null;
     private readyCorpusVersion: UnitSearchWorkerCorpusVersion | null = null;
     private initializingCorpusVersion: UnitSearchWorkerCorpusVersion | null = null;
@@ -69,6 +71,7 @@ export class UnitSearchWorkerClient {
         this.createWorker = options.createWorker;
         this.onResult = options.onResult;
         this.onError = options.onError;
+        this.onReady = options.onReady;
     }
 
     submit(snapshot: UnitSearchWorkerCorpusSnapshot, request: UnitSearchWorkerQueryRequest): void {
@@ -121,6 +124,7 @@ export class UnitSearchWorkerClient {
                 if (this.initializingCorpusVersion === message.corpusVersion) {
                     this.initializingCorpusVersion = null;
                 }
+                this.onReady?.(message.corpusVersion);
                 this.flushPendingRequest();
                 return;
             case 'result':

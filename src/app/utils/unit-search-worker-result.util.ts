@@ -42,6 +42,8 @@ interface WorkerResultTelemetryContext {
     sortKey: string;
     sortDirection: 'asc' | 'desc';
     resultCount: number;
+    stages?: SearchTelemetrySnapshot['stages'];
+    totalMs?: number;
 }
 
 export function hydrateWorkerResultUnits(
@@ -66,7 +68,7 @@ export function buildWorkerSearchTelemetrySnapshot(
         sortKey: context.sortKey,
         sortDirection: context.sortDirection,
         isComplex: result.isComplex,
-        stages: result.stages,
-        totalMs: result.totalMs,
+        stages: context.stages ?? result.stages,
+        totalMs: context.totalMs ?? result.totalMs,
     };
 }

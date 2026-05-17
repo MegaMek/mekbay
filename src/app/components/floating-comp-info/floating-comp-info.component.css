@@ -1,4 +1,3 @@
-
 .floating-comp-info {
     position: static;
     display: block;
@@ -8,7 +7,7 @@
     font-size: 0.95em;
     opacity: 0;
     transition: opacity 0.15s;
-    inline-size: 200px;
+    inline-size: 220px;
 }
 
 .floating-comp-info .caption {
@@ -17,26 +16,35 @@
     font-weight: bold;
 }
 
+.basic-info {
+    font-size: 0.95em;
+}
+
 .equip-group {
     margin-bottom: 10px;
 }
+
 .equip-group-title {
     font-weight: bold;
     margin-bottom: 4px;
     color: var(--text-color-secondary);
     font-size: 1em;
 }
+
 .equip-items {
     margin-left: 8px;
 }
+
 .equip-item {
     display: flex;
     gap: 4px;
     font-size: 0.95em;
 }
+
 .equip-label {
     color: #aaa;
 }
+
 .equip-value {
     color: #fff;
 }

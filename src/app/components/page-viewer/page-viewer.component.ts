@@ -64,7 +64,7 @@ import {
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { OptionsService } from '../../services/options.service';
 import { DbService } from '../../services/db.service';
-import type { LayoutService } from '../../services/layout.service';
+import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { CBTForce } from '../../models/cbt-force.model';
 import { SvgInteractionService } from './svg-interaction.service';
@@ -165,10 +165,6 @@ type ShadowDirection = 'left' | 'right';
         PageViewerWrapperLayoutService
     ],
     imports: [ViewerStageComponent, ViewerPageComponent, ViewerShadowPageComponent, HeatDiffMarkerComponent, PageViewerCanvasControlsComponent],
-    host: {
-        '(window:keydown)': 'onWindowKeyDown($event)',
-        '(window:keyup)': 'onWindowKeyUp($event)'
-    },
     templateUrl: './page-viewer.component.html',
     styleUrls: ['./page-viewer.component.scss']
 })
@@ -206,6 +202,9 @@ export class PageViewerComponent implements AfterViewInit {
     private pageViewerSwipeDom = inject(PageViewerSwipeDomService);
     private pageViewerSwipeRenderer = inject(PageViewerSwipeRendererService);
     private pageViewerWrapperLayout = inject(PageViewerWrapperLayoutService);
+    private keyboardShortcutService = inject(KeyboardShortcutService);    
+    private destroyRef = inject(DestroyRef);
+
     canvasService = inject(PageViewerCanvasService);
 
     readonly rewriteActivePages = this.pageViewerRenderModel.activePages;
@@ -322,7 +321,6 @@ export class PageViewerComponent implements AfterViewInit {
     private shadowRenderVersion = 0; // Version counter for async shadow rendering
     private asyncNavigationVersion = 0; // Version counter for async keyboard/fallback navigation
     private pendingDirectionalNavigation = 0; // Queued discrete left/right page moves while an animation is in flight
-    private activeDirectionalKey: 'left' | 'right' | null = null; // Tracks the currently held arrow key so key repeat cannot pool navigation
 
     // Interaction services - keyed by unit ID for persistence across renders
     private interactionServices = new Map<string, SvgInteractionService>();
@@ -375,6 +373,12 @@ export class PageViewerComponent implements AfterViewInit {
     private fluffImageInjectEffectRef: EffectRef | null = null;
 
     constructor() {
+        this.keyboardShortcutService.register({
+            id: 'page-viewer',
+            active: () => this.viewInitialized() && !!this.unit(),
+            handle: (event) => this.handleShortcutKeyDown(event),
+        }, this.destroyRef);
+
         // Watch for unit changes
         let previousUnit: CBTForceUnit | null = null;
         let unitEffectRunId = 0;
@@ -509,7 +513,7 @@ export class PageViewerComponent implements AfterViewInit {
             }
         });
 
-        inject(DestroyRef).onDestroy(() => this.cleanup());
+        this.destroyRef.onDestroy(() => this.cleanup());
     }
 
     ngAfterViewInit(): void {
@@ -1630,46 +1634,18 @@ export class PageViewerComponent implements AfterViewInit {
 
     // ========== Keyboard Navigation ==========
 
-    onWindowKeyDown(event: KeyboardEvent): void {
-        // Ignore if typing in an input/textarea/contentEditable
-        const target = event.target as HTMLElement | null;
-        if (target) {
-            const tag = target.tagName;
-            if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) {
-                return;
-            }
-        }
-        // Ignore with modifiers
-        if (event.ctrlKey || event.altKey || event.metaKey) return;
-        if (event.repeat) return;
+    private handleShortcutKeyDown(event: KeyboardEvent): boolean {
+        if (event.ctrlKey || event.altKey || event.metaKey) return false;
 
         if (event.key === 'ArrowLeft') {
-            if (this.activeDirectionalKey === 'left') {
-                event.preventDefault();
-                return;
-            }
-            this.activeDirectionalKey = 'left';
             this.handleArrowNavigation('left');
-            event.preventDefault();
+            return true;
         } else if (event.key === 'ArrowRight') {
-            if (this.activeDirectionalKey === 'right') {
-                event.preventDefault();
-                return;
-            }
-            this.activeDirectionalKey = 'right';
             this.handleArrowNavigation('right');
-            event.preventDefault();
+            return true;
         }
-    }
 
-    onWindowKeyUp(event: KeyboardEvent): void {
-        if (event.key === 'ArrowLeft' && this.activeDirectionalKey === 'left') {
-            this.activeDirectionalKey = null;
-            this.pendingDirectionalNavigation = 0;
-        } else if (event.key === 'ArrowRight' && this.activeDirectionalKey === 'right') {
-            this.activeDirectionalKey = null;
-            this.pendingDirectionalNavigation = 0;
-        }
+        return false;
     }
 
     /**
@@ -2440,12 +2416,28 @@ export class PageViewerComponent implements AfterViewInit {
     }
 
     /**
-     * Handle canvas clear request from controls - delete canvas data for current unit
+     * Handle canvas clear requests from controls for either the current unit or the entire current force.
      */
-    onCanvasClearRequested(): void {
+    async onCanvasClearRequested(scope: 'unit' | 'force'): Promise<void> {
         const currentUnit = this.unit();
         if (currentUnit) {
-            this.dbService.deleteCanvasData(currentUnit.id);
+            if (scope === 'unit') {
+                this.canvasService.clearCanvas(`canvas-${currentUnit.id}`);
+                await this.dbService.deleteCanvasData(currentUnit.id);
+                return;
+            }
+
+            const currentForce = this.force();
+            if (!currentForce) {
+                return;
+            }
+
+            const unitIds = currentForce.units()
+                .map(unit => unit.id)
+                .filter((id): id is string => Boolean(id));
+
+            unitIds.forEach(id => this.canvasService.clearCanvas(`canvas-${id}`));
+            await Promise.all(unitIds.map(id => this.dbService.deleteCanvasData(id)));
         }
     }
 

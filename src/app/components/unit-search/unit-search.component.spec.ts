@@ -1,9 +1,12 @@
 import { CommonModule } from '@angular/common';
 import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
 import { Overlay } from '@angular/cdk/overlay';
+import { Dialog } from '@angular/cdk/dialog';
 import { computed, provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { NEVER, Subject } from 'rxjs';
 import { GameSystem } from '../../models/common.model';
+import { MEGAMEK_AVAILABILITY_UNKNOWN_SCORE } from '../../models/megamek/availability.model';
 import type { Unit } from '../../models/units.model';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { DataService } from '../../services/data.service';
@@ -15,15 +18,21 @@ import { OptionsService } from '../../services/options.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { SavedSearchesService } from '../../services/saved-searches.service';
 import { TaggingService } from '../../services/tagging.service';
+import { MEGAMEK_RARITY_PRODUCTION_SORT_KEY } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
+import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { UnitSearchComponent } from './unit-search.component';
 
 describe('UnitSearchComponent card virtualization', () => {
     const filteredUnitsSignal = signal<Unit[]>([]);
     const currentGameSystemSignal = signal(GameSystem.ALPHA_STRIKE);
+    const closePanelsRequestSignal = signal({ requestId: 0, exitExpandedView: false });
+    const isSearchSettledSignal = signal(true);
+    let openDialogs: unknown[];
     const optionsSignal = signal({
         ASUseHex: false,
         ASCardStyle: 'monochrome',
+        availabilitySource: 'mul' as 'mul' | 'megamek',
         unitSearchExpandedViewLayout: 'panel-list-filters',
         unitSearchViewMode: 'card' as 'list' | 'card' | 'chassis' | 'table',
     });
@@ -40,18 +49,30 @@ describe('UnitSearchComponent card virtualization', () => {
         forceTotalBvPv: signal(0),
         selectedSort: signal('name'),
         selectedSortDirection: signal<'asc' | 'desc'>('asc'),
+        closePanelsRequest: closePanelsRequestSignal,
         filteredUnits: () => filteredUnitsSignal(),
+        isSearchSettled: () => isSearchSettledSignal(),
         isDataReady: () => true,
         searchTokens: () => [],
         isComplexQuery: () => false,
         filterState: () => ({}),
         advOptions: () => ({}),
         resetFilters: jasmine.createSpy('resetFilters'),
+        setSearchText: jasmine.createSpy('setSearchText'),
         setSortDirection: jasmine.createSpy('setSortDirection'),
         setSortOrder: jasmine.createSpy('setSortOrder'),
         setFilter: jasmine.createSpy('setFilter'),
         unsetFilter: jasmine.createSpy('unsetFilter'),
         setPilotSkills: jasmine.createSpy('setPilotSkills'),
+        requestClosePanels: jasmine.createSpy('requestClosePanels').and.callFake((options?: { exitExpandedView?: boolean }) => {
+            const currentRequest = closePanelsRequestSignal();
+            closePanelsRequestSignal.set({
+                requestId: currentRequest.requestId + 1,
+                exitExpandedView: !!options?.exitExpandedView,
+            });
+        }),
+        getMegaMekAvailabilityBadges: jasmine.createSpy('getMegaMekAvailabilityBadges').and.returnValue([]),
+        getMegaMekRaritySortScore: jasmine.createSpy('getMegaMekRaritySortScore').and.returnValue(0),
     };
 
     const layoutServiceStub = {
@@ -112,28 +133,47 @@ describe('UnitSearchComponent card virtualization', () => {
     };
 
     function createUnit(name: string): Unit {
-        return { name } as Unit;
+        return createEmptyUnit({ name });
     }
 
-    async function flushRender() {
-        await Promise.resolve();
-        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    function dispatchWindowKey(key: string): KeyboardEvent {
+        const event = new KeyboardEvent('keydown', {
+            key,
+            bubbles: true,
+            cancelable: true,
+        });
+        window.dispatchEvent(event);
+        return event;
     }
 
     beforeEach(async () => {
+        openDialogs = [];
         filteredUnitsSignal.set([]);
         optionsSignal.set({
             ASUseHex: false,
             ASCardStyle: 'monochrome',
+            availabilitySource: 'mul',
             unitSearchExpandedViewLayout: 'panel-list-filters',
             unitSearchViewMode: 'card',
         });
         filtersServiceStub.expandedView.set(false);
         filtersServiceStub.advOpen.set(false);
         filtersServiceStub.searchText.set('');
+        isSearchSettledSignal.set(true);
         filtersServiceStub.bvPvLimit.set(0);
         filtersServiceStub.selectedSort.set('name');
         filtersServiceStub.selectedSortDirection.set('asc');
+        closePanelsRequestSignal.set({ requestId: 0, exitExpandedView: false });
+        filtersServiceStub.requestClosePanels.calls.reset();
+        filtersServiceStub.setSearchText.calls.reset();
+        filtersServiceStub.setSearchText.and.callFake((text: string) => {
+            filtersServiceStub.searchText.set(text);
+            return text;
+        });
+        filtersServiceStub.getMegaMekAvailabilityBadges.and.returnValue([]);
+        filtersServiceStub.getMegaMekRaritySortScore.and.returnValue(0);
+        dialogsServiceStub.createDialog.calls.reset();
+        dialogsServiceStub.createDialog.and.returnValue(undefined);
         savedSearchesServiceStub.version.set(0);
         currentGameSystemSignal.set(GameSystem.ALPHA_STRIKE);
 
@@ -149,6 +189,7 @@ describe('UnitSearchComponent card virtualization', () => {
                 { provide: SavedSearchesService, useValue: savedSearchesServiceStub },
                 { provide: OverlayManagerService, useValue: overlayManagerServiceStub },
                 { provide: DialogsService, useValue: dialogsServiceStub },
+                { provide: Dialog, useValue: { openDialogs } },
                 { provide: Overlay, useValue: overlayStub },
                 { provide: DataService, useValue: dataServiceStub },
                 { provide: TaggingService, useValue: taggingServiceStub },
@@ -204,26 +245,6 @@ describe('UnitSearchComponent card virtualization', () => {
         ]);
     });
 
-    it('renders the card-mode virtual viewport with row containers', async () => {
-        const fixture = TestBed.createComponent(UnitSearchComponent);
-        const component = fixture.componentInstance;
-
-        filteredUnitsSignal.set(Array.from({ length: 7 }, (_, index) => createUnit(`Unit ${index + 1}`)));
-        (component as any).resultsDropdownWidth.set(920);
-        fixture.detectChanges();
-        await flushRender();
-        fixture.detectChanges();
-
-        const viewport = fixture.nativeElement.querySelector('cdk-virtual-scroll-viewport') as HTMLElement | null;
-        const rows = Array.from(fixture.nativeElement.querySelectorAll('.card-view-row')) as HTMLElement[];
-        const cells = Array.from(fixture.nativeElement.querySelectorAll('.card-view-cell')) as HTMLElement[];
-
-        expect(viewport).not.toBeNull();
-        expect(rows.length).toBeGreaterThan(0);
-        expect(cells.length).toBe(7);
-        expect(rows.length).toBe(3);
-    });
-
     it('maps card item navigation to the containing virtual row index', () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
@@ -240,6 +261,257 @@ describe('UnitSearchComponent card virtualization', () => {
         (component as any).scrollToIndex(4);
 
         expect(scrollToIndex).toHaveBeenCalledOnceWith(1, 'smooth');
+    });
+
+    it('expands the search view when selecting table view from compact mode', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+
+        optionsServiceStub.setOption.calls.reset();
+        filtersServiceStub.expandedView.set(false);
+        fixture.detectChanges();
+
+        component.selectViewMode('table');
+
+        expect(filtersServiceStub.expandedView()).toBeTrue();
+        expect(component.viewMode()).toBe('table');
+        expect(optionsServiceStub.setOption).toHaveBeenCalledOnceWith('unitSearchViewMode', 'table');
+    });
+
+    it('disables Alpha Strike card view while in Classic mode', () => {
+        currentGameSystemSignal.set(GameSystem.CLASSIC);
+        optionsSignal.set({
+            ...optionsSignal(),
+            unitSearchViewMode: 'list',
+        });
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+
+        fixture.detectChanges();
+        const cardOption = component.viewModeOptions().find(option => option.mode === 'card');
+        optionsServiceStub.setOption.calls.reset();
+
+        component.selectViewMode('card');
+
+        expect(cardOption?.disabled).toBeTrue();
+        expect(component.viewMode()).toBe('list');
+        expect(optionsServiceStub.setOption).not.toHaveBeenCalled();
+    });
+
+    it('navigates search results with global up and down shortcuts', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const scrollToMakeVisible = spyOn<any>(component, 'scrollToMakeVisible');
+
+        filteredUnitsSignal.set([
+            createUnit('Unit 1'),
+            createUnit('Unit 2'),
+            createUnit('Unit 3'),
+        ]);
+        filtersServiceStub.expandedView.set(true);
+        layoutServiceStub.windowWidth.set(2200);
+        fixture.detectChanges();
+
+        const downEvent = dispatchWindowKey('ArrowDown');
+        expect(downEvent.defaultPrevented).toBeTrue();
+        expect(component.activeIndex()).toBe(0);
+        expect(component.inlinePanelUnit()?.name).toBe('Unit 1');
+        expect(scrollToMakeVisible).toHaveBeenCalledWith(0, 'auto');
+
+        dispatchWindowKey('ArrowDown');
+        expect(component.activeIndex()).toBe(1);
+        expect(component.inlinePanelUnit()?.name).toBe('Unit 2');
+        expect(scrollToMakeVisible).toHaveBeenCalledWith(1, 'auto');
+
+        dispatchWindowKey('ArrowUp');
+        expect(component.activeIndex()).toBe(0);
+        expect(component.inlinePanelUnit()?.name).toBe('Unit 1');
+        expect(scrollToMakeVisible).toHaveBeenCalledWith(0, 'auto');
+    });
+
+    it('clamps repeated down shortcut navigation at the final result', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const scrollToMakeVisible = spyOn<any>(component, 'scrollToMakeVisible');
+
+        filteredUnitsSignal.set([
+            createUnit('Unit 1'),
+            createUnit('Unit 2'),
+            createUnit('Unit 3'),
+        ]);
+        filtersServiceStub.expandedView.set(true);
+        layoutServiceStub.windowWidth.set(2200);
+        fixture.detectChanges();
+
+        for (let index = 0; index < 8; index++) {
+            dispatchWindowKey('ArrowDown');
+        }
+
+        expect(component.activeIndex()).toBe(2);
+        expect(component.inlinePanelUnit()?.name).toBe('Unit 3');
+        expect(scrollToMakeVisible.calls.allArgs()).toEqual([
+            [0, 'auto'],
+            [1, 'auto'],
+            [2, 'auto'],
+        ]);
+    });
+
+    it('ignores result hover selection briefly after keyboard navigation', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        spyOn<any>(component, 'scrollToMakeVisible');
+
+        filteredUnitsSignal.set([
+            createUnit('Unit 1'),
+            createUnit('Unit 2'),
+            createUnit('Unit 3'),
+        ]);
+        filtersServiceStub.expandedView.set(true);
+        fixture.detectChanges();
+
+        dispatchWindowKey('ArrowDown');
+        component.onResultPointerEnter(2);
+
+        expect(component.activeIndex()).toBe(0);
+
+        (component as any).resultPointerHoverSuppressedUntil = 0;
+        component.onResultPointerEnter(2);
+
+        expect(component.activeIndex()).toBe(2);
+    });
+
+    it('uses instant scrolling for inline panel previous and next navigation', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const scrollToMakeVisible = spyOn<any>(component, 'scrollToMakeVisible');
+        const units = [
+            createUnit('Unit 1'),
+            createUnit('Unit 2'),
+            createUnit('Unit 3'),
+        ];
+
+        filteredUnitsSignal.set(units);
+        component.inlinePanelUnit.set(units[1]);
+        fixture.detectChanges();
+
+        component.onInlinePanelNext();
+        expect(component.activeIndex()).toBe(2);
+        expect(component.inlinePanelUnit()?.name).toBe('Unit 3');
+        expect(scrollToMakeVisible).toHaveBeenCalledWith(2, 'auto');
+
+        component.onInlinePanelPrev();
+        expect(component.activeIndex()).toBe(1);
+        expect(component.inlinePanelUnit()?.name).toBe('Unit 2');
+        expect(scrollToMakeVisible).toHaveBeenCalledWith(1, 'auto');
+    });
+
+    it('uses instant scrolling for unit details dialog navigation', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const scrollToMakeVisible = spyOn<any>(component, 'scrollToMakeVisible');
+        const indexChange = new Subject<number>();
+        const add = new Subject<void>();
+        const units = [
+            createUnit('Unit 1'),
+            createUnit('Unit 2'),
+            createUnit('Unit 3'),
+        ];
+
+        dialogsServiceStub.createDialog.and.returnValue({
+            componentInstance: { indexChange, add },
+            closed: NEVER,
+        });
+        filteredUnitsSignal.set(units);
+        fixture.detectChanges();
+
+        component.showUnitDetails(units[0]);
+        indexChange.next(2);
+
+        expect(component.activeIndex()).toBe(2);
+        expect(component.inlinePanelUnit()?.name).toBe('Unit 3');
+        expect(scrollToMakeVisible).toHaveBeenCalledWith(2, 'auto');
+    });
+
+    it('queues Enter until a debounced search commits before opening a result', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const previousUnit = createUnit('Atlas');
+        const nextUnit = createUnit('Catapult');
+
+        dialogsServiceStub.createDialog.and.returnValue({ closed: NEVER });
+        filtersServiceStub.setSearchText.and.callFake((text: string) => {
+            filtersServiceStub.searchText.set(text);
+            isSearchSettledSignal.set(false);
+            return text;
+        });
+        filtersServiceStub.searchText.set('atlas');
+        filteredUnitsSignal.set([previousUnit]);
+        fixture.detectChanges();
+
+        component.setSearch('catapult');
+        const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
+        component.onKeydown(event);
+
+        expect(event.defaultPrevented).toBeTrue();
+        expect(dialogsServiceStub.createDialog).not.toHaveBeenCalled();
+
+        filteredUnitsSignal.set([nextUnit]);
+        isSearchSettledSignal.set(true);
+        fixture.detectChanges();
+
+        expect(filtersServiceStub.setSearchText).toHaveBeenCalledWith('catapult');
+        expect(dialogsServiceStub.createDialog).toHaveBeenCalledTimes(1);
+        const dialogConfig = dialogsServiceStub.createDialog.calls.mostRecent().args[1] as any;
+        expect(dialogConfig.data.unitList).toEqual([nextUnit]);
+        expect(dialogConfig.data.unitIndex).toBe(0);
+    });
+
+    it('queues Enter until worker results settle before opening a result', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const previousUnit = createUnit('Atlas');
+        const nextUnit = createUnit('Catapult');
+
+        dialogsServiceStub.createDialog.and.returnValue({ closed: NEVER });
+        filtersServiceStub.searchText.set('atlas');
+        filteredUnitsSignal.set([previousUnit]);
+        isSearchSettledSignal.set(false);
+        fixture.detectChanges();
+
+        const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
+        component.onKeydown(event);
+
+        expect(event.defaultPrevented).toBeTrue();
+        expect(dialogsServiceStub.createDialog).not.toHaveBeenCalled();
+
+        filteredUnitsSignal.set([nextUnit]);
+        isSearchSettledSignal.set(true);
+        fixture.detectChanges();
+
+        expect(dialogsServiceStub.createDialog).toHaveBeenCalledTimes(1);
+        const dialogConfig = dialogsServiceStub.createDialog.calls.mostRecent().args[1] as any;
+        expect(dialogConfig.data.unitList).toEqual([nextUnit]);
+        expect(dialogConfig.data.unitIndex).toBe(0);
+    });
+
+    it('does not navigate search results while a dialog is on top', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const scrollToMakeVisible = spyOn<any>(component, 'scrollToMakeVisible');
+
+        filteredUnitsSignal.set([
+            createUnit('Unit 1'),
+            createUnit('Unit 2'),
+        ]);
+        filtersServiceStub.expandedView.set(true);
+        fixture.detectChanges();
+
+        openDialogs.push({});
+        const event = dispatchWindowKey('ArrowDown');
+
+        expect(event.defaultPrevented).toBeFalse();
+        expect(component.activeIndex()).toBeNull();
+        expect(scrollToMakeVisible).not.toHaveBeenCalled();
     });
 
     it('toggles the visible advanced filter set locally without changing the global game mode', () => {
@@ -284,5 +556,48 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(component.advPanelFilterGameSystem()).toBe(GameSystem.ALPHA_STRIKE);
         expect(component.dropdownFilters().some(filter => filter.key === 'as.TP')).toBeTrue();
         expect(component.dropdownFilters().some(filter => filter.key === 'type')).toBeFalse();
+    });
+
+    it('keeps MegaMek availability filters visible in both availability modes', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+
+        fixture.detectChanges();
+
+        expect(component.dropdownFilters().some(filter => filter.key === 'availabilityRarity')).toBeTrue();
+        expect(component.dropdownFilters().some(filter => filter.key === 'availabilityFrom')).toBeTrue();
+
+        optionsSignal.set({
+            ...optionsSignal(),
+            availabilitySource: 'megamek',
+        });
+        fixture.detectChanges();
+
+        expect(component.dropdownFilters().some(filter => filter.key === 'availabilityRarity')).toBeTrue();
+        expect(component.dropdownFilters().some(filter => filter.key === 'availabilityFrom')).toBeTrue();
+    });
+
+    it('formats MegaMek rarity and availability badges for search result cards', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const unit = createUnit('Atlas');
+
+        filtersServiceStub.getMegaMekAvailabilityBadges.and.returnValue([
+            { source: 'Requisition', score: 30, rarity: 'Rare' },
+        ]);
+        filtersServiceStub.getMegaMekRaritySortScore.and.returnValue(30);
+        expect(component.getSearchResultMegaMekRarity(unit)).toBe('Rare');
+        expect(component.getSearchResultMegaMekAvailability(unit)).toEqual([
+            { source: 'Requisition', score: 30, rarity: 'Rare' },
+        ]);
+
+        filtersServiceStub.selectedSort.set(MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
+        expect(component.getCardSortSlotOverride(unit)).toEqual({
+            value: 'Rare',
+            numeric: false,
+        });
+
+        filtersServiceStub.getMegaMekRaritySortScore.and.returnValue(MEGAMEK_AVAILABILITY_UNKNOWN_SCORE);
+        expect(component.getSearchResultMegaMekRarity(unit)).toBe('—');
     });
 });

@@ -60,7 +60,7 @@ export class ExpandedComponentsPipe implements PipeTransform {
                 if (comp.eq?.hasAnyFlag(['F_JUMP_JET'])) continue; // Hide Jump Jets
             }; 
             if (comp.t === 'X') continue; // Hide Ammo
-            const key = comp.n || '';
+            const key = `${comp.n || ''}::${comp.rear ? 'rear' : 'front'}`;
             if (aggregated.has(key)) {
                 const existing = aggregated.get(key)!;
                 existing.q = (existing.q || 1) + (comp.q || 1);
@@ -69,6 +69,13 @@ export class ExpandedComponentsPipe implements PipeTransform {
             }
         }
         return Array.from(aggregated.values())
-            .sort((a, b) => (a.n ?? '').localeCompare(b.n ?? ''));
+            .sort((a, b) => {
+                const nameComparison = (a.n ?? '').localeCompare(b.n ?? '');
+                if (nameComparison !== 0) {
+                    return nameComparison;
+                }
+
+                return Number(!!a.rear) - Number(!!b.rear);
+            });
     }
 }

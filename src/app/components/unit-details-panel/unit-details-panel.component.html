@@ -92,25 +92,48 @@
         <div panel-footer class="footer">
             <button 
                 type="button"
-                class="nav-arrow nav-arrow-left"
+                class="footer-nav footer-nav-left"
                 [class.hidden]="!hasPrev()"
                 (click)="prev.emit()"
-                aria-label="Previous Unit">
-                &#10094;
+                [attr.aria-label]="prevUnitLabel() ? 'Previous Unit: ' + prevUnitLabel() : 'Previous Unit'"
+                [title]="prevUnitLabel()">
+                <span class="nav-arrow-symbol" aria-hidden="true">&#10094;</span>
+                <span class="nav-unit-name">
+                    <span class="nav-unit-model">{{ prevUnit()?.model }}</span>
+                    <span class="nav-unit-chassis">{{ prevUnit()?.chassis }}</span>
+                </span>
             </button>
-            <button 
-                [disabled]="forceBuilderService.currentForce()?.readOnly()" 
-                class="bt-button add-btn" 
-                (click)="onAdd()">
-                ADD TO FORCE
-            </button>
+            <div class="footer-actions">
+                <div class="bt-split-button add-split-button" [class.disabled]="forceBuilderService.currentForce()?.readOnly()">
+                    <button
+                        type="button"
+                        class="bt-split-part split-main"
+                        [disabled]="forceBuilderService.currentForce()?.readOnly()"
+                        (click)="onAdd()">
+                        ADD TO FORCE
+                    </button>
+                    <button
+                        type="button"
+                        class="bt-split-part split-extra"
+                        [disabled]="forceBuilderService.currentForce()?.readOnly()"
+                        (click)="onAddMultiple()"
+                        title="Add multiple copies">
+                        +
+                    </button>
+                </div>
+            </div>
             <button 
                 type="button"
-                class="nav-arrow nav-arrow-right"
+                class="footer-nav footer-nav-right"
                 [class.hidden]="!hasNext()"
                 (click)="next.emit()"
-                aria-label="Next Unit">
-                &#10095;
+                [attr.aria-label]="nextUnitLabel() ? 'Next Unit: ' + nextUnitLabel() : 'Next Unit'"
+                [title]="nextUnitLabel()">
+                <span class="nav-unit-name">
+                    <span class="nav-unit-model">{{ nextUnit()?.model }}</span>
+                    <span class="nav-unit-chassis">{{ nextUnit()?.chassis }}</span>
+                </span>
+                <span class="nav-arrow-symbol" aria-hidden="true">&#10095;</span>
             </button>
         </div>
     </base-panel>

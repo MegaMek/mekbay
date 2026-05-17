@@ -33,16 +33,20 @@
 
 import { ChangeDetectionStrategy, Component, inject, computed } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { type PilotAbility, type ASCustomPilotAbility, getAbilityDetails } from '../../models/pilot-abilities.model';
-import type { GameSystem, RulesReference } from '../../models/common.model';
+import type { CommandAbility } from '../../models/command-abilities.model';
+import { type PilotAbility, type ASCustomPilotAbility, formatSummaryMovement, getAbilityDetails } from '../../models/pilot-abilities.model';
+import { formatRulesReference, type GameSystem, type RulesReference } from '../../models/common.model';
 import type { GameService } from '../../services/game.service';
+import { OptionsService } from '../../services/options.service';
 
 export interface PilotAbilityInfoDialogData {
     gameSystem: GameSystem;
     /** The pilot ability (either standard or custom) */
-    ability: PilotAbility | ASCustomPilotAbility;
+    ability: PilotAbility | ASCustomPilotAbility | CommandAbility;
     /** Whether this is a custom ability */
     isCustom: boolean;
+    /** Whether this is a formation-granted command ability */
+    isCommand?: boolean;
 }
 
 /**
@@ -59,11 +63,20 @@ export interface PilotAbilityInfoDialogData {
 export class PilotAbilityInfoDialogComponent {
     private readonly dialogRef = inject(DialogRef);
     private readonly data = inject<PilotAbilityInfoDialogData>(DIALOG_DATA);
+    private readonly optionsService = inject(OptionsService);
 
     readonly ability = computed(() => this.data.ability);
     readonly isCustom = computed(() => this.data.isCustom);
+    readonly isCommand = computed(() => this.data.isCommand ?? false);
+    readonly summaryIsHtml = computed(() => !this.isCustom());
     readonly abilityName = computed(() => this.ability().name);
-    readonly abilityCost = computed(() => this.ability().cost);
+    readonly abilityCost = computed<number | null>(() => {
+        if (this.isCommand()) {
+            return null;
+        }
+        return (this.ability() as PilotAbility | ASCustomPilotAbility).cost;
+    });
+    readonly formatRuleReference = formatRulesReference;
     
     readonly summary = computed<string[]>(() => {
         const ability = this.ability();
@@ -71,11 +84,21 @@ export class PilotAbilityInfoDialogComponent {
             // Custom abilities have a single summary string
             return [(ability as ASCustomPilotAbility).summary];
         }
-        return getAbilityDetails(ability as PilotAbility, this.data.gameSystem).summary;
+        if (this.isCommand()) {
+            return [...(ability as CommandAbility).summary];
+        }
+        return formatSummaryMovement(
+            getAbilityDetails(ability as PilotAbility, this.data.gameSystem).summary,
+            this.optionsService.options().ASUseHex,
+        );
     });
     
     readonly rulesReference = computed<RulesReference[] | null>(() => {
         if (this.isCustom()) return null;
+        if (this.isCommand()) {
+            const ability = this.ability() as CommandAbility;
+            return ability.rulesRef?.length ? ability.rulesRef : null;
+        }
         const ability = this.ability() as PilotAbility;
         const details = getAbilityDetails(ability, this.data.gameSystem);
         if (!details.rulesRef?.length) return null;

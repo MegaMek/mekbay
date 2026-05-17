@@ -1,0 +1,270 @@
+@font-face {
+    font-family: 'Roboto';
+    src: url('/fonts/Roboto-VariableFont_wdth,wght.ttf') format('truetype');
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Roboto Condensed';
+    src: url('/fonts/RobotoCondensed-VariableFont_wght.ttf') format('truetype');
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+:root {
+    color-scheme: dark;
+    --bg: #10161d;
+    --bg-secondary: #1a232d;
+    --panel: rgba(15, 20, 27, 0.88);
+    --panel-border: rgba(255, 255, 255, 0.09);
+    --text: #edf1f4;
+    --muted: #a8b3bd;
+    --accent: #e3a63d;
+    --accent-strong: #cf5b2e;
+    --link: #8dc5ff;
+    --shadow: 0 20px 60px rgba(0, 0, 0, 0.38);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    min-height: 100%;
+    background:
+        radial-gradient(circle at top, rgba(227, 166, 61, 0.18), transparent 36%),
+        linear-gradient(180deg, #151d26 0%, #0f151b 100%);
+    color: var(--text);
+    font-family: 'Roboto', sans-serif;
+}
+
+body {
+    line-height: 1.65;
+}
+
+a {
+    color: var(--link);
+}
+
+.legal-shell {
+    width: min(960px, calc(100% - 32px));
+    margin: 0 auto;
+    padding: 32px 0 56px;
+}
+
+
+.framed-borders {
+    --frame-border-color: rgba(255, 255, 255, 0.18);
+    background-repeat: no-repeat;
+    background-origin: border-box;
+    border-top: 2px solid var(--frame-border-color);
+    border-bottom: 2px solid var(--frame-border-color);
+    background-image:
+        linear-gradient(var(--frame-border-color), var(--frame-border-color)), linear-gradient(var(--frame-border-color), var(--frame-border-color)),
+        linear-gradient(var(--frame-border-color), var(--frame-border-color)), linear-gradient(var(--frame-border-color), var(--frame-border-color));
+    background-size: 2px 12px, 2px 12px, 2px 12px, 2px 12px;
+    background-position: top left, top right, bottom left, bottom right;
+}
+
+.corner-borders {
+    --corner-border-color: rgba(255, 255, 255, 1);
+    transition: background 0.2s ease-in-out, color 0.2s ease-in-out, transform 0.18s ease;
+    background-repeat: no-repeat;
+    background-origin: border-box;
+    background-image:
+        linear-gradient(var(--corner-border-color), var(--corner-border-color)),
+        linear-gradient(var(--corner-border-color), var(--corner-border-color)),
+        linear-gradient(var(--corner-border-color), var(--corner-border-color)),
+        linear-gradient(var(--corner-border-color), var(--corner-border-color)),
+        linear-gradient(var(--corner-border-color), var(--corner-border-color)),
+        linear-gradient(var(--corner-border-color), var(--corner-border-color)),
+        linear-gradient(var(--corner-border-color), var(--corner-border-color)),
+        linear-gradient(var(--corner-border-color), var(--corner-border-color));
+    background-size: 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
+    background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+}
+
+.legal-masthead {
+    --frame-border-color: rgba(227, 166, 61, 1);
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 24px;
+    padding: 28px 28px 24px;
+    background-color: rgba(46, 29, 0, 0.5);
+    box-shadow: var(--shadow);
+}
+
+.legal-masthead::after {
+    content: '';
+    position: absolute;
+    inset: auto -10% -45% auto;
+    width: 260px;
+    height: 260px;
+    background: radial-gradient(circle, rgba(255, 202, 110, 0.14), transparent 70%);
+    pointer-events: none;
+}
+
+.eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    color: var(--accent);
+    font-family: 'Roboto Condensed', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.eyebrow::before {
+    content: '';
+    width: 24px;
+    height: 2px;
+    background: currentColor;
+}
+
+.legal-title {
+    margin: 0;
+    font-family: 'Roboto Condensed', sans-serif;
+    font-size: clamp(2.2rem, 5vw, 3.6rem);
+    line-height: 1.05;
+}
+
+.legal-subtitle {
+    max-width: 720px;
+    margin: 14px 0 0;
+    color: var(--muted);
+    font-size: 1.02rem;
+}
+
+.legal-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    margin-top: 18px;
+    color: var(--muted);
+    font-size: 0.95rem;
+}
+
+.legal-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 22px;
+}
+
+.legal-nav a {
+    --corner-border-color: rgba(255, 255, 255, 1);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    padding: 10px 16px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+    text-decoration: none;
+}
+
+.legal-nav a:hover,
+.legal-nav a:focus-visible {
+    --corner-border-color: rgba(227, 166, 61, 1);
+    background: rgba(227, 166, 61, 0.08);
+    transform: translateY(-1px);
+}
+
+.document-card {
+    --frame-border-color: rgba(255, 255, 255, 1);
+    padding: 28px;
+    background-color: var(--panel);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(12px);
+}
+
+.document-card + .document-card {
+    margin-top: 18px;
+}
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.summary-item {
+    padding: 18px;
+    background-color: rgba(255, 255, 255, 0.03);
+}
+
+.summary-item h2,
+.section-block h2 {
+    margin: 0 0 10px;
+    font-family: 'Roboto Condensed', sans-serif;
+    font-size: 1.35rem;
+    letter-spacing: 0.01em;
+}
+
+.summary-item p,
+.section-block p,
+.section-block li {
+    color: var(--muted);
+}
+
+.section-block + .section-block {
+    margin-top: 24px;
+    padding-top: 24px;
+    background-image: linear-gradient(rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.07));
+    background-repeat: no-repeat;
+    background-size: calc(100% - 12px) 1px;
+    background-position: top center;
+}
+
+.section-block ul {
+    margin: 12px 0 0;
+    padding-left: 20px;
+}
+
+.section-block li + li {
+    margin-top: 8px;
+}
+
+.contact-card {
+    --frame-border-color: rgba(207, 91, 46, 1);
+}
+
+.contact-card p {
+    margin: 0;
+}
+
+.contact-card p + p {
+    margin-top: 10px;
+}
+
+.fine-print {
+    margin-top: 18px;
+    color: var(--muted);
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+@media (max-width: 720px) {
+    .legal-shell {
+        width: min(100%, calc(100% - 24px));
+        padding-top: 20px;
+        padding-bottom: 36px;
+    }
+
+    .legal-masthead,
+    .document-card {
+        padding: 22px;
+    }
+
+    .summary-grid {
+        grid-template-columns: 1fr;
+    }
+}

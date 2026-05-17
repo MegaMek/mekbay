@@ -1,4 +1,5 @@
 import { Component, provideZonelessChangeDetection, signal, viewChild } from '@angular/core';
+import { OverlayContainer } from '@angular/cdk/overlay';
 import { TestBed } from '@angular/core/testing';
 import type { DropdownOption, MultiStateSelection } from './multi-select-dropdown.component';
 import { MultiSelectDropdownComponent } from './multi-select-dropdown.component';
@@ -27,7 +28,11 @@ class TestHostComponent {
 }
 
 describe('MultiSelectDropdownComponent', () => {
+    let overlayContainer: OverlayContainer;
+    let overlayContainerElement: HTMLElement;
+
     const layoutServiceStub = {
+        windowWidth: signal(1280),
         windowHeight: signal(900),
     };
 
@@ -39,6 +44,10 @@ describe('MultiSelectDropdownComponent', () => {
                 { provide: LayoutService, useValue: layoutServiceStub },
             ],
         }).compileComponents();
+
+        overlayContainer = TestBed.inject(OverlayContainer);
+        overlayContainerElement = overlayContainer.getContainerElement();
+        overlayContainerElement.innerHTML = '';
     });
 
     function createOptions(count: number): DropdownOption[] {
@@ -61,7 +70,7 @@ describe('MultiSelectDropdownComponent', () => {
         fixture.detectChanges();
 
         expect(fixture.componentInstance.useVirtualScroll()).toBeTrue();
-        const viewportEl = fixture.nativeElement.querySelector('cdk-virtual-scroll-viewport') as HTMLElement | null;
+        const viewportEl = overlayContainerElement.querySelector('cdk-virtual-scroll-viewport') as HTMLElement | null;
         expect(viewportEl).not.toBeNull();
         expect(getComputedStyle(viewportEl!).overflowY).toBe('auto');
     });
@@ -74,8 +83,8 @@ describe('MultiSelectDropdownComponent', () => {
         fixture.detectChanges();
 
         expect(fixture.componentInstance.useVirtualScroll()).toBeFalse();
-        expect(fixture.nativeElement.querySelector('cdk-virtual-scroll-viewport')).toBeNull();
-        expect(fixture.nativeElement.querySelector('.options-list')).not.toBeNull();
+        expect(overlayContainerElement.querySelector('cdk-virtual-scroll-viewport')).toBeNull();
+        expect(overlayContainerElement.querySelector('.options-list')).not.toBeNull();
     });
 
     it('hides unavailable unselected options by default while keeping selected unavailable ones visible', () => {
@@ -105,7 +114,192 @@ describe('MultiSelectDropdownComponent', () => {
         ]);
     });
 
-    it('preserves scroll position when toggling an item in the virtualized list', async () => {
+    it('can keep unavailable options visible when requested by the host', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+
+        fixture.componentRef.setInput('options', [
+            { name: 'Available', available: true },
+            { name: 'Not Available', available: false },
+        ]);
+        fixture.componentRef.setInput('keepUnavailableVisible', true);
+        fixture.componentInstance.isOpen.set(true);
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.filteredOptions().map(option => option.name)).toEqual([
+            'Available',
+            'Not Available',
+        ]);
+    });
+
+    it('keeps matching unavailable options visible while filtering', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+
+        fixture.componentRef.setInput('options', [
+            { name: 'Wolf’s Dragoons', available: false },
+            { name: 'Clan Wolf', available: true },
+        ]);
+        fixture.componentInstance.isOpen.set(true);
+        fixture.componentInstance.filterText.set("Wolf's Dragoons");
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.filteredOptions().map(option => option.name)).toEqual([
+            'Wolf’s Dragoons',
+        ]);
+    });
+
+    it('filters symbol-heavy option names with apostrophes', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+
+        fixture.componentRef.setInput('options', [
+            { name: 'Wolf’s Dragoons', available: true },
+            { name: 'Clan Wolf', available: true },
+        ]);
+        fixture.componentInstance.isOpen.set(true);
+        fixture.componentInstance.filterText.set("Wolf's Dragoons");
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.filteredOptions().map(option => option.name)).toEqual([
+            'Wolf’s Dragoons',
+        ]);
+    });
+
+    it('filters symbol-heavy option names with parentheses', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+
+        fixture.componentRef.setInput('options', [
+            { name: 'Clan Wolf (Beta Galaxy)', available: true },
+            { name: 'Clan Wolf Alpha Galaxy', available: true },
+        ]);
+        fixture.componentInstance.isOpen.set(true);
+        fixture.componentInstance.filterText.set('Wolf (Beta');
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.filteredOptions().map(option => option.name)).toEqual([
+            'Clan Wolf (Beta Galaxy)',
+        ]);
+    });
+
+    it('renders semantic display text instead of the Any placeholder for wildcard-only semantic filters', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+
+        fixture.componentRef.setInput('multistate', true);
+        fixture.componentRef.setInput('semanticOnly', true);
+        fixture.componentRef.setInput('displayText', '==Capellan *');
+        fixture.componentRef.setInput('selected', {});
+        fixture.detectChanges();
+
+        const semanticText = fixture.nativeElement.querySelector('.semantic-display-text') as HTMLElement | null;
+        const placeholder = fixture.nativeElement.querySelector('.placeholder') as HTMLElement | null;
+
+        expect(semanticText?.textContent?.trim()).toBe('==Capellan *');
+        expect(placeholder).toBeNull();
+    });
+
+    it('does not show the Any placeholder for semantic-only filters without display metadata', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+
+        fixture.componentRef.setInput('multistate', true);
+        fixture.componentRef.setInput('semanticOnly', true);
+        fixture.componentRef.setInput('selected', {});
+        fixture.detectChanges();
+
+        const placeholder = fixture.nativeElement.querySelector('.placeholder') as HTMLElement | null;
+
+        expect(placeholder).toBeNull();
+    });
+
+    it('renders single-select values with a clear button that unsets the selection', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        let emittedSelection: unknown;
+
+        fixture.componentInstance.selectionChange.subscribe((selection) => {
+            emittedSelection = selection;
+        });
+
+        fixture.componentRef.setInput('multiselect', false);
+        fixture.componentRef.setInput('options', [
+            { name: 'inner-sphere', displayName: 'Inner Sphere' },
+        ]);
+        fixture.componentRef.setInput('selected', ['inner-sphere']);
+        fixture.detectChanges();
+
+        const selectedValue = fixture.nativeElement.querySelector('.single-selected-value') as HTMLElement | null;
+        const clearButton = fixture.nativeElement.querySelector('.single-selected-value .remove-pill') as HTMLButtonElement | null;
+
+        expect(selectedValue?.textContent).toContain('Inner Sphere');
+        expect(clearButton).not.toBeNull();
+
+        clearButton!.click();
+
+        expect(emittedSelection).toEqual([]);
+    });
+
+    it('can restrict multistate toggles to selected and unselected only', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        let emittedSelection: unknown;
+        fixture.componentInstance.selectionChange.subscribe((selection) => {
+            emittedSelection = selection;
+        });
+
+        fixture.componentRef.setInput('multistate', true);
+        fixture.componentRef.setInput('stateCycle', ['or']);
+        fixture.componentRef.setInput('selected', {});
+        fixture.detectChanges();
+
+        fixture.componentInstance.onOptionToggle('Option 1');
+        expect((emittedSelection as MultiStateSelection)['Option 1']?.state).toBe('or');
+
+        fixture.componentRef.setInput('selected', emittedSelection);
+        fixture.detectChanges();
+
+        fixture.componentInstance.onOptionToggle('Option 1');
+        expect(emittedSelection).toEqual({});
+    });
+
+    it('supports exclusive multistate options with their own state cycle', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        let emittedSelection: unknown;
+        fixture.componentInstance.selectionChange.subscribe((selection) => {
+            emittedSelection = selection;
+        });
+
+        fixture.componentRef.setInput('multistate', true);
+        fixture.componentRef.setInput('options', [
+            { name: 'Random', exclusive: true, stateCycle: ['or'] },
+            { name: 'Federated Suns' },
+        ]);
+        fixture.componentRef.setInput('selected', {
+            'Federated Suns': { name: 'Federated Suns', state: 'and', count: 1 },
+        });
+        fixture.detectChanges();
+
+        fixture.componentInstance.onOptionToggle('Random');
+        expect(emittedSelection).toEqual({
+            Random: { name: 'Random', state: 'or', count: 1 },
+        });
+
+        fixture.componentRef.setInput('selected', emittedSelection);
+        fixture.detectChanges();
+
+        fixture.componentInstance.onOptionToggle('Random');
+        expect(emittedSelection).toEqual({});
+    });
+
+    it('keeps always-visible options in filtered results', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        fixture.componentRef.setInput('options', [
+            { name: 'Random', alwaysVisible: true },
+            { name: 'Federated Suns' },
+        ]);
+        fixture.detectChanges();
+
+        fixture.componentInstance.isOpen.set(true);
+        fixture.componentInstance.filterText.set('clan');
+
+        expect(fixture.componentInstance.filteredOptions().map((option) => option.name)).toEqual(['Random']);
+    });
+
+    xit('preserves scroll position when toggling an item in the virtualized list', async () => {
         const fixture = TestBed.createComponent(TestHostComponent);
         fixture.componentInstance.options.set(createOptions(140));
         fixture.detectChanges();

@@ -97,21 +97,31 @@
 }
 
 .options-dropdown {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    z-index: 1001;
+    position: relative;
+    width: 100%;
     padding: 2px;
-    margin-top: 4px;
     background-color: var(--background-color-menu);
+    box-sizing: border-box;
 }
 
 .options-list {
     position: relative;
-    width: 100%;    
+    width: 100%;
     overflow-y: auto;
     background-color: var(--background-color-menu);
+}
+
+:host ::ng-deep .cdk-overlay-pane.multi-select-dropdown-overlay-pane {
+    z-index: 1002;
+    box-sizing: border-box;
+}
+
+.options-dropdown.options-dropdown-below {
+    margin-top: 4px;
+}
+
+.options-dropdown.options-dropdown-above {
+    margin-bottom: 4px;
 }
 
 .options-viewport {
@@ -122,13 +132,21 @@
 
 .option-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     padding: 8px 12px;
-    min-height: 44px;
+    min-height: 28px;
     box-sizing: border-box;
     cursor: pointer;
     gap: 8px;
     -webkit-overflow-scrolling: touch;
+}
+
+.option-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.25;
 }
 
 .option-item ::ng-deep .matchHighlight {
@@ -170,6 +188,7 @@
     text-align: center;
     font-size: 1em;
     line-height: 16px;
+    margin-top: 2px;
 }
 
 /* For normal checkbox */
@@ -211,6 +230,8 @@
     width: 20px;
     height: 20px;
     object-fit: contain;
+    margin-top: 2px;
+    flex-shrink: 0;
 }
 
 .no-options {
@@ -270,6 +291,7 @@
 
 .quantity-input {
     margin-left: auto;
+    padding-left: 8px;
 }
 
 .quantity-input .quantity-field {

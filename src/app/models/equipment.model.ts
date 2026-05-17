@@ -91,8 +91,8 @@ export const AMMO_TYPE_CATEGORY: Record<AmmoType, AmmoCategory> = {
     SRM_TORPEDO: 'Missile',
     SRM_STREAK: 'Missile',
     MRM: 'Missile',
-    NARC: 'Special',
-    AMS: 'Special',
+    NARC: 'Missile',
+    AMS: 'Ballistic',
     ARROW_IV: 'Artillery',
     LONG_TOM: 'Artillery',
     SNIPER: 'Artillery',
@@ -108,7 +108,7 @@ export const AMMO_TYPE_CATEGORY: Record<AmmoType, AmmoCategory> = {
     MINE: 'Special',
     ATM: 'Missile',
     ROCKET_LAUNCHER: 'Missile',
-    INARC: 'Special',
+    INARC: 'Missile',
     LRM_STREAK: 'Missile',
     AC_LBX_THB: 'Ballistic',
     AC_ULTRA_THB: 'Ballistic',
@@ -150,7 +150,7 @@ export const AMMO_TYPE_CATEGORY: Record<AmmoType, AmmoCategory> = {
     SWORDFISH: 'Missile',
     STINGRAY: 'Missile',
     PIRANHA: 'Missile',
-    TASER: 'Special',
+    TASER: 'Ballistic',
     BOMB: 'Bomb',
     AAA_MISSILE: 'Missile',
     AS_MISSILE: 'Missile',
@@ -528,7 +528,11 @@ export class AmmoEquipment extends Equipment {
 
     constructor(data: EquipmentRawData) {
         super({ ...data, type: 'ammo' });
-        this.ammo = merge(AMMO_DEFAULTS, data.ammo);
+        const ammo = merge(AMMO_DEFAULTS, data.ammo);
+        this.ammo = {
+            ...ammo,
+            category: getAmmoCategory(ammo.type) // data.ammo?.category ?? 
+        };
         this.munitionType = new Set(this.ammo.munitionType);
     }
 

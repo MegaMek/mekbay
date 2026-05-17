@@ -37,10 +37,12 @@ import type { AlphaStrikeUnitStats, Unit } from '../../../models/units.model';
 import type { Era } from '../../../models/eras.model';
 import { DataService } from '../../../services/data.service';
 import { AsAbilityLookupService } from '../../../services/as-ability-lookup.service';
+import { COMMAND_ABILITIES } from '../../../models/command-abilities.model';
 import { PILOT_ABILITIES, type PilotAbility, type ASCustomPilotAbility } from '../../../models/pilot-abilities.model';
 import { type CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
 import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
 import { formatMovement } from '../../../utils/as-common.util';
+import { FormationAbilityAssignmentUtil } from '../../../utils/formation-ability-assignment.util';
 
 /*
  * Author: Drake
@@ -125,13 +127,42 @@ export abstract class AsLayoutBaseComponent {
     });
 
     // Skill and PV
+    isCommander = computed<boolean>(() => this.forceUnit()?.commander() ?? false);
     skill = computed<number>(() => this.forceUnit()?.getPilotStats() ?? 4);
     basePV = computed<number>(() => this.asStats().PV);
     adjustedPV = computed<number>(() => {
         return PVCalculatorUtil.calculateAdjustedPV(this.asStats().PV, this.skill());
     });
     pilotAbilities = computed<AbilitySelection[]>(() => {
-        return this.forceUnit()?.pilotAbilities() ?? [];
+        const forceUnit = this.forceUnit();
+        const abilities: AbilitySelection[] = [...(forceUnit?.pilotAbilities() ?? [])];
+        if (!forceUnit) {
+            return abilities;
+        }
+
+        const group = forceUnit.getGroup() as import('../../../models/force.model').UnitGroup<ASForceUnit> | null;
+        if (!group) {
+            return abilities;
+        }
+
+        const preview = FormationAbilityAssignmentUtil.previewGroupFormationAssignments(group);
+        if (!preview.eligibleUnitIds.includes(forceUnit.id)) {
+            return abilities;
+        }
+
+        const seenAbilityIds = new Set(
+            abilities.filter((ability): ability is string => typeof ability === 'string')
+        );
+
+        for (const abilityId of preview.assignmentsByUnitId.get(forceUnit.id) ?? []) {
+            if (seenAbilityIds.has(abilityId)) {
+                continue;
+            }
+            abilities.push(abilityId);
+            seenAbilityIds.add(abilityId);
+        }
+
+        return abilities;
     });
 
     // Armor and structure
@@ -453,7 +484,12 @@ export abstract class AsLayoutBaseComponent {
     formatPilotAbility(selection: AbilitySelection): string {
         if (typeof selection === 'string') {
             const ability = this.PILOT_ABILITIES.find(a => a.id === selection);
-            return ability ? `${ability.name} (${ability.cost})` : selection;
+            if (ability) {
+                return `${ability.name} (${ability.cost})`;
+            }
+
+            const commandAbility = COMMAND_ABILITIES.find((entry) => entry.id === selection);
+            return commandAbility?.name ?? selection;
         }
         return `${selection.name} (${selection.cost})`;
     }

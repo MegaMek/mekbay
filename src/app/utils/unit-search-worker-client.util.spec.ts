@@ -33,6 +33,7 @@ function createSnapshot(version: string): UnitSearchWorkerCorpusSnapshot {
             era: {},
             faction: {},
         },
+        factionEraIndex: {},
     };
 }
 

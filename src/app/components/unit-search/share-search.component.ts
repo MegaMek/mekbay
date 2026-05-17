@@ -38,7 +38,7 @@ import { DialogRef } from '@angular/cdk/dialog';
 import { ActivatedRoute, Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ToastService } from '../../services/toast.service';
-import { copyTextToClipboard } from '../../utils/clipboard.util';
+import { copyTextToClipboard, shareUrlWithClipboardFallback } from '../../utils/clipboard.util';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { GameService } from '../../services/game.service';
 import { GameSystem } from '../../models/common.model';
@@ -264,17 +264,8 @@ export class ShareSearchDialogComponent {
     async share(url: string) {
         const shareTitle = 'Shared MekBay Search Results';
 
-        if (navigator.share) {
-            navigator.share({
-                title: shareTitle,
-                url: url
-            }).catch(() => {
-                // fallback if user cancels or error
-                copyTextToClipboard(url);
-                this.toastService.showToast('Links copied to clipboard.', 'success');
-            });
-        } else {
-            copyTextToClipboard(url);
+        const result = await shareUrlWithClipboardFallback({ title: shareTitle, url });
+        if (result === 'copied') {
             this.toastService.showToast('Links copied to clipboard.', 'success');
         }
     }

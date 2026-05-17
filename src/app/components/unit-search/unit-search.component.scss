@@ -2,6 +2,85 @@
     display: block;
 }
 
+@supports (position-anchor: --unit-searchbar) and (top: anchor(bottom)) and (width: anchor-size(width)) {
+    :host {
+        anchor-scope: --unit-searchbar, --unit-search-adv-button;
+    }
+
+    .searchbar-container {
+        anchor-name: --unit-searchbar;
+    }
+
+    .adv-btn {
+        anchor-name: --unit-search-adv-button;
+    }
+
+    .results-container.css-anchor-positioned {
+        position-anchor: --unit-searchbar;
+    }
+
+    .results-container.css-anchor-positioned.expanded {
+        top: calc(anchor(bottom) + 4px);
+    }
+
+    .results-container.css-anchor-positioned:not(.expanded):not([hidden]) {
+        position: fixed;
+        top: calc(anchor(bottom) + 4px);
+        left: anchor(left);
+        width: anchor-size(width);
+    }
+
+    .results-container.css-anchor-positioned:not(.expanded).has-results:not([hidden]) {
+        bottom: max(4px, var(--safe-area-inset-bottom));
+        min-height: 80px;
+    }
+
+    .adv-panel.css-anchor-positioned {
+        --adv-panel-width: 300px;
+        position: fixed;
+        position-anchor: --unit-search-adv-button;
+    }
+
+    .adv-panel.css-anchor-positioned.two-column-panel {
+        --adv-panel-width: 600px;
+    }
+
+    .adv-panel.css-anchor-positioned:not(.docked) {
+        top: anchor(top);
+        left: calc(anchor(right) + 4px);
+        bottom: max(4px, var(--safe-area-inset-bottom));
+    }
+
+    .adv-panel.css-anchor-positioned.filters-left:not(.docked) {
+        left: calc(anchor(left) - var(--adv-panel-width) - 4px);
+        right: auto;
+    }
+
+    .adv-panel.css-anchor-positioned.anchor-below:not(.docked) {
+        top: calc(anchor(bottom) + 4px);
+        left: max(4px, calc(anchor(right) - var(--adv-panel-width)));
+        right: auto;
+    }
+
+    .adv-panel.css-anchor-positioned.anchor-below.filters-left:not(.docked) {
+        left: max(4px, anchor(left));
+    }
+
+    .adv-panel.css-anchor-positioned.docked {
+        position-anchor: --unit-searchbar;
+        top: calc(anchor(bottom) + 4px);
+        left: calc(anchor(right) - var(--adv-panel-width));
+        right: auto;
+        bottom: max(4px, var(--safe-area-inset-bottom));
+    }
+
+    .adv-panel.css-anchor-positioned.docked.docked-left {
+        left: anchor(left) !important;
+        right: auto;
+    }
+
+}
+
 .searchbar-container {
     position: relative;
     width: 100%;
@@ -27,6 +106,99 @@
     position: relative;
     flex-grow: 1;
     display: flex;
+}
+
+.view-mode-menu {
+    min-width: 240px;
+    padding: 4px;
+    background-color: var(--background-color-menu);
+    color: #ddd;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    box-sizing: border-box;
+}
+
+.view-mode-option {
+    width: 100%;
+    min-height: 48px;
+    padding: 8px 10px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    text-align: left;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.view-mode-option:hover:not(:disabled),
+.view-mode-option.active {
+    background-color: var(--background-highlight);
+    color: white;
+}
+
+.view-mode-option.active .view-mode-option-label {
+    color: var(--bt-yellow);
+}
+
+.view-mode-option:disabled {
+    cursor: not-allowed;
+    color: #666;
+}
+
+.view-mode-option-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+}
+
+.view-mode-option-icon svg {
+    width: 22px;
+    height: 22px;
+}
+
+.view-mode-option-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.view-mode-option-label,
+.view-mode-option-caption {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.view-mode-option-label {
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.view-mode-option-caption {
+    color: var(--text-color-secondary);
+    font-size: 0.75rem;
+}
+
+.view-mode-option:disabled .view-mode-option-caption {
+    color: #555;
+}
+
+.view-mode-option-hint {
+    color: var(--bt-yellow);
+    font-size: 0.65rem;
+    font-weight: 700;
+}
+
+:host ::ng-deep .cdk-overlay-pane.view-mode-menu-overlay-pane {
+    z-index: 1002;
 }
 
 .adv-panel {
@@ -74,53 +246,6 @@
     height: 40px;
     background: var(--text-color-secondary);
     border-radius: 2px;
-}
-
-.adv-panel .range-label {
-    cursor: pointer;
-    transition: color 0.2s;
-}
-
-.adv-panel .range-label:hover {
-    color: var(--bt-yellow);
-    text-decoration: underline;
-}
-
-.adv-panel .range-values {
-    color: var(--text-color-secondary);
-    font-size: 0.9em;
-}
-
-.adv-panel .range-label:hover .range-values {
-    color: var(--bt-yellow);
-}
-
-.adv-panel-content {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 4px 16px;
-}
-
-.complex-query-guide {
-    grid-column: 1 / -1;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    overflow-y: auto;
-    max-height: 100%;
-}
-
-.complex-query-notice {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 12px 16px;
-    border: 1px dashed var(--semantic-color);
-    color: var(--semantic-color);
-    font-size: 0.9rem;
-    text-align: center;
-    flex-shrink: 0;
 }
 
 .search-overlay  {
@@ -486,9 +611,9 @@
             display: flex;
             flex-direction: row;
             align-items: center;
-            gap: 16px;
-            padding-top: 4px;
-            padding-bottom: 4px;
+            gap: 8px;
+            padding: 4px 6px 4px 6px;
+            justify-content: center;
         }
 
         .pilot-skills-controls {
@@ -618,7 +743,7 @@
 
 .pilot-skills-controls {
     display: flex;
-    gap: 16px;
+    gap: 8px;
     flex-wrap: wrap;
     align-items: center;
     justify-content: center;
@@ -677,8 +802,8 @@
     background-color: #222;
     text-align: center;
     font-size: 1em;
-    width: 72px;
-    flex: 1 0 auto;
+    width: 56px;
+    flex: 1 1 auto;
     appearance: textfield;
     -moz-appearance: textfield;
     &::-webkit-outer-spin-button,

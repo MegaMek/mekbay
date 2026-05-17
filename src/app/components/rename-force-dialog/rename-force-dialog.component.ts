@@ -39,17 +39,16 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { outputToObservable } from '@angular/core/rxjs-interop';
 import { DecimalPipe } from '@angular/common';
 import { DataService } from '../../services/data.service';
-import { getEraUnitValidationSummary, type Force } from '../../models/force.model';
-import { FACTION_EXTINCT, type Faction } from '../../models/factions.model';
+import { buildEraWarningMessage, getEraUnitValidationSummary, type Force } from '../../models/force.model';
+import { getFactionImg, type Faction } from '../../models/factions.model';
 import type { Era } from '../../models/eras.model';
 import { ForceNamerUtil, type FactionDisplayInfo } from '../../utils/force-namer.util';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { FactionDropdownPanelComponent } from './faction-dropdown-panel.component';
-import { EMPTY_RESULT, resolveFromGroups } from '../../utils/org-solver.util';
-import type { AggregatedGroupSizeResult, GroupSizeResult } from '../../utils/org-types';
-import { getAggregatedGroupsResult } from '../../utils/org-namer.util';
 import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-visuals.util';
 import { EraDropdownPanelComponent, type EraDisplayInfo } from './era-dropdown-panel.component';
+import { MULFACTION_EXTINCT } from '../../models/mulfactions.model';
+import { UnitAvailabilitySourceService } from '../../services/unit-availability-source.service';
 
 
 
@@ -127,7 +126,10 @@ export interface RenameForceDialogResult {
                         <img [src]="display.era.icon" class="era-selector-icon" [alt]="display.era.name" />
                         }
                         <div class="era-selector-details">
-                        <span class="era-selector-name">{{ display.era.name }}</span>
+                        <div class="era-selector-header">
+                            <span class="era-selector-name">{{ display.era.name }}</span>
+                            <span class="match-badge">{{ (display.matchPercentage * 100) | number:'1.0-0' }}% match</span>
+                        </div>
                         <span class="era-selector-years">{{ display.era.years.from ?? '?' }}&ndash;{{ display.era.years.to ?? 'present' }}</span>
                         </div>
                     </div>
@@ -147,8 +149,8 @@ export interface RenameForceDialogResult {
                 <button id="faction" #factionTrigger class="faction-selector bt-select" (click)="toggleFactionDropdown()">
                     @if (selectedFactionDisplay(); as display) {
                     <div class="faction-selector-content">
-                        @if (display.faction.img) {
-                        <img [src]="display.faction.img" class="faction-selector-icon" [alt]="display.faction.name" />
+                        @if (display.faction && getFactionImg(display.faction); as factionImage) {
+                        <img [src]="factionImage" class="faction-selector-icon" [alt]="display.faction.name" />
                         }
                         <div class="faction-selector-details">
                         <div class="faction-selector-header">
@@ -410,10 +412,18 @@ export interface RenameForceDialogResult {
 
         .era-selector-details {
             display: flex;
-            align-items: center;
-            gap: 8px;
+            flex-direction: column;
+            gap: 2px;
             min-width: 0;
             flex: 1;
+        }
+
+        .era-selector-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            padding-right: 16px;
         }
 
         .era-selector-name {
@@ -439,23 +449,31 @@ export class RenameForceDialogComponent {
     private overlayManager = inject(OverlayManagerService);
     private injector = inject(Injector);
     private destroyRef = inject(DestroyRef);
+    private unitAvailabilitySource = inject(UnitAvailabilitySourceService);
+
+    getFactionImg = getFactionImg;
 
     /** Tracks whether the name input has text */
     nameHasText = signal<boolean>(!!this.data.force.name);
 
     selectedFaction = signal<Faction | null>(this.data.force.faction());
     selectedEra = signal<Era | null>(this.data.force.era());
+    availabilityContext = computed(() => this.unitAvailabilitySource.createForceAvailabilityContextForUnits(
+        this.data.force.units().map((unit) => unit.getUnit()),
+        this.dataService.getEras(),
+    ));
 
     eraDisplayList = computed<EraDisplayInfo[]>(() => {
         const eras = this.dataService.getEras();
         const units = this.data.force.units();
+        const availabilityContext = this.availabilityContext();
         if (units.length === 0) {
             return eras.map(era => ({ era, matchPercentage: 100 }));
         }
-        const extinctFaction = this.dataService.getFactionById(FACTION_EXTINCT) ?? null;
+        const extinctFaction = this.dataService.getFactionById(MULFACTION_EXTINCT) ?? null;
 
         return eras.map(era => {
-            const validation = getEraUnitValidationSummary(units, era, eras, extinctFaction);
+            const validation = getEraUnitValidationSummary(units, era, eras, extinctFaction, availabilityContext);
             return {
                 era,
                 matchPercentage: validation.totalUnits > 0
@@ -472,7 +490,17 @@ export class RenameForceDialogComponent {
     });
 
     selectedEraWarning = computed<string | null>(() => {
-        return this.data.force.getEraWarningMessage(this.selectedEra(), this.selectedFaction());
+        const availabilityContext = this.availabilityContext();
+        const extinctFaction = this.dataService.getFactionById(MULFACTION_EXTINCT) ?? null;
+        return buildEraWarningMessage(
+            this.data.force.units(),
+            this.selectedEra(),
+            this.selectedFaction(),
+            this.dataService.getEras(),
+            extinctFaction,
+            availabilityContext,
+            (faction, era) => this.unitAvailabilitySource.factionExistsInEra(faction, era, availabilityContext.source),
+        );
     });
 
     hasEraWarningState = computed<boolean>(() => {
@@ -491,7 +519,9 @@ export class RenameForceDialogComponent {
         return ForceNamerUtil.buildFactionDisplayList(
             units,
             this.dataService.getFactions(),
-            this.dataService.getEras()
+            this.dataService.getEras(),
+            this.selectedEra(),
+            this.availabilityContext()
         );
     });
 
@@ -584,7 +614,9 @@ export class RenameForceDialogComponent {
         const randomFaction = ForceNamerUtil.pickRandomFaction(
             units,
             this.dataService.getFactions(),
-            this.dataService.getEras()
+            this.dataService.getEras(),
+            this.selectedEra(),
+            this.availabilityContext()
         );
         if (randomFaction === this.selectedFaction()) return; // no change
         this.selectedFaction.set(randomFaction);

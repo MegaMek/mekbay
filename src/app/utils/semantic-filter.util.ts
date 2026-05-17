@@ -32,12 +32,27 @@
  */
 
 import type { GameSystem } from '../models/common.model';
-import { AdvFilterType, ADVANCED_FILTERS, type AdvFilterConfig } from '../services/unit-search-filters.model';
+import { AdvFilterType, ADVANCED_FILTERS, getBooleanFilterSemanticExpression, normalizeTriStateBooleanFilterValue, parseBooleanFilterSemanticValue, type AdvFilterConfig, type TriStateBooleanFilterValue } from '../services/unit-search-filters.model';
 import type { CountOperator, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { getAdvancedFilterConfigByKey } from './unit-search-filter-config.util';
+import { isEmbeddedApostrophe, normalizeMultiStateSelection } from './unit-search-shared.util';
 
 // Cache for semantic key maps
 const semanticKeyMapCache = new Map<GameSystem, Map<string, AdvFilterConfig>>();
+const AS_SPECIALS_EXPLICIT_NUMERIC_SEMANTIC_PATTERN = /(?:>=|<=|!=|>|<|=)\s*-?\d|\[[^\]]+\]/;
+
+function isASSpecialsNumericSemanticValue(value: string): boolean {
+    const normalized = value.replace(/\s+/g, '').toUpperCase();
+    if (AS_SPECIALS_EXPLICIT_NUMERIC_SEMANTIC_PATTERN.test(normalized) || normalized.includes('0*')) {
+        return true;
+    }
+
+    if (normalized.includes('*')) {
+        return false;
+    }
+
+    return /-?\d/.test(normalized);
+}
 
 /*
  * Author: Drake
@@ -256,6 +271,7 @@ export function parseValues(valueStr: string): string[] {
     const values: string[] = [];
     let current = '';
     let inQuote: '"' | "'" | null = null;
+    let bracketDepth = 0;
     let i = 0;
 
     while (i < valueStr.length) {
@@ -271,16 +287,22 @@ export function parseValues(valueStr: string): string[] {
                     continue;
                 }
             }
-            if (char === inQuote) {
+            if (char === inQuote && (char !== "'" || !isEmbeddedApostrophe(valueStr, i))) {
                 // End of quoted string
                 inQuote = null;
             } else {
                 current += char;
             }
-        } else if (char === '"' || char === "'") {
+        } else if (char === '"' || (char === "'" && !isEmbeddedApostrophe(valueStr, i))) {
             // Start of quoted string
             inQuote = char;
-        } else if (char === ',') {
+        } else if (char === '[') {
+            bracketDepth++;
+            current += char;
+        } else if (char === ']' && bracketDepth > 0) {
+            bracketDepth--;
+            current += char;
+        } else if (char === ',' && bracketDepth === 0) {
             // Value separator
             if (current.trim()) {
                 values.push(current.trim());
@@ -477,7 +499,35 @@ export function tokensToFilterState(
         const conf = semanticKeyMap.get(field);
         if (!conf) continue;
 
-        if (conf.type === AdvFilterType.RANGE) {
+        if (conf.type === AdvFilterType.BOOLEAN) {
+            let positiveSelected = false;
+            let negativeSelected = false;
+
+            for (const token of fieldTokens) {
+                for (const value of token.values) {
+                    const parsedValue = parseBooleanFilterSemanticValue(value);
+                    if (parsedValue === null) {
+                        continue;
+                    }
+
+                    const expectedValue = token.operator === '!=' ? !parsedValue : parsedValue;
+                    if (expectedValue) {
+                        positiveSelected = true;
+                    } else {
+                        negativeSelected = true;
+                    }
+                }
+            }
+
+            if (positiveSelected || negativeSelected) {
+                const value: TriStateBooleanFilterValue = positiveSelected ? 'or' : 'not';
+                filterState[conf.key] = {
+                    value,
+                    interactedWith: true,
+                    semanticOnly: positiveSelected && negativeSelected ? true : undefined,
+                };
+            }
+        } else if (conf.type === AdvFilterType.RANGE) {
             // Handle range filters with support for multiple ranges (OR logic) and exclusions
             const totalRange = totalRanges[conf.key] || [0, 100];
             
@@ -646,8 +696,9 @@ export function tokensToFilterState(
                     }
 
                     for (const val of token.values) {
+                        const isASSpecialsNumericSemantic = conf.key === 'as.specials' && isASSpecialsNumericSemanticValue(val);
                         // Check if this is a wildcard pattern
-                        if (val.includes('*')) {
+                        if (val.includes('*') && !isASSpecialsNumericSemantic) {
                             wildcardPatterns.push({ pattern: val, state });
                             semanticOnly = true;
                         } else if (conf.countable) {
@@ -675,6 +726,9 @@ export function tokensToFilterState(
                             // If no constraint, it means "has at least one" which is the default
                         } else {
                             // Regular value (non-countable)
+                            if (isASSpecialsNumericSemantic) {
+                                semanticOnly = true;
+                            }
                             const normalizedVal = normalizeValue(val);
                             // If already exists, update state with priority: not > and > or
                             if (selection[normalizedVal]) {
@@ -910,7 +964,13 @@ export function filterStateToSemanticText(
 
         const semanticKey = conf.semanticKey || conf.key;
 
-        if (conf.type === AdvFilterType.RANGE) {
+        if (conf.type === AdvFilterType.BOOLEAN) {
+            const value = normalizeTriStateBooleanFilterValue(state.value);
+            const expression = getBooleanFilterSemanticExpression(conf, value);
+            if (expression) {
+                parts.push(expression);
+            }
+        } else if (conf.type === AdvFilterType.RANGE) {
             const [min, max] = state.value as [number, number];
             const totalRange = totalRanges[key] || [0, 100];
             const extState = state as SemanticFilterState[string];
@@ -944,7 +1004,7 @@ export function filterStateToSemanticText(
             const extState = state as SemanticFilterState[string];
             const includeOperator = extState.exclusive ? '==' : '=';
             if (conf.multistate) {
-                const selection = state.value as MultiStateSelection;
+                const selection = normalizeMultiStateSelection(state.value);
                 const includeValues: string[] = [];
                 const andValues: string[] = [];
                 const excludeValues: string[] = [];

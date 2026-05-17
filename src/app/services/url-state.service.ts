@@ -53,6 +53,7 @@ export type UrlParamValue = string | number | null | undefined;
 export const MEANINGFUL_URL_PARAMS = [
     'units',       // Force units
     'instance',    // Cloud force instance ID
+    'toe',         // TO&E organization ID
     'shareUnit',   // Shared single unit
     'q',           // Search query
     'filters',     // Search filters
@@ -124,6 +125,10 @@ export class UrlStateService {
             hasMeaningfulParams,
             params
         };
+
+        for (const [key, value] of params.entries()) {
+            this.urlParams[key] = value;
+        }
     }
 
     /**
@@ -197,6 +202,7 @@ export class UrlStateService {
 
     private readonly location = inject(Location);
     private readonly urlParams: Record<string, string | null> = {};
+    private exclusiveUrlParams: Record<string, string | null> | null = null;
     private updateTimer: ReturnType<typeof setTimeout> | null = null;
 
     /**
@@ -213,6 +219,26 @@ export class UrlStateService {
         }
     }
 
+    /**
+     * Temporarily replaces the visible URL query string with only the provided parameters.
+     * Base URL params continue updating in the background and are restored when cleared.
+     */
+    setExclusiveParams(params: Record<string, UrlParamValue> | null): void {
+        if (params === null) {
+            this.exclusiveUrlParams = null;
+        } else {
+            const exclusiveParams: Record<string, string | null> = {};
+            for (const [key, value] of Object.entries(params)) {
+                if (value === undefined) continue;
+                exclusiveParams[key] = value === null ? null : String(value);
+            }
+            this.exclusiveUrlParams = exclusiveParams;
+        }
+        if (this.initialStateConsumed()) {
+            this.scheduleUrlUpdate();
+        }
+    }
+
     private scheduleUrlUpdate(): void {
         if (this.updateTimer) return; // Already scheduled
         this.updateTimer = setTimeout(() => {
@@ -223,7 +249,8 @@ export class UrlStateService {
 
     private applyUrlUpdate(): void {
         const searchParams = new URLSearchParams();
-        for (const [key, value] of Object.entries(this.urlParams)) {
+        const visibleParams = this.exclusiveUrlParams ?? this.urlParams;
+        for (const [key, value] of Object.entries(visibleParams)) {
             if (value !== null) {
                 searchParams.set(key, value);
             }

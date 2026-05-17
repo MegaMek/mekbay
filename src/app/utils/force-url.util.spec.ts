@@ -2,6 +2,7 @@ import { GameSystem } from '../models/common.model';
 import type { Force } from '../models/force.model';
 import type { ForceUnit } from '../models/force-unit.model';
 import type { Unit } from '../models/units.model';
+import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { parseForceFromUrl } from './force-url.util';
 
 type WritableArraySignal<T> = (() => T[]) & { set: (next: T[]) => void };
@@ -53,11 +54,23 @@ describe('force URL parsing', () => {
     it('parses units by name by default', () => {
         const force = createMockForce();
         const units = [
-            { name: 'BMAtlas_AS7D', id: 140 } as Unit,
-            { name: 'BMLocust_LCT1V', id: 1901 } as Unit
+            createEmptyUnit({ name: 'BMAtlas_AS7D', id: 140 }),
+            createEmptyUnit({ name: 'BMLocust_LCT1V', id: 1901 })
         ];
 
         const forceUnits = parseForceFromUrl(force, 'BMAtlas_AS7D,BMLocust_LCT1V', units);
+
+        expect(forceUnits.map(unit => unit.getUnit().name)).toEqual(['BMAtlas_AS7D', 'BMLocust_LCT1V']);
+    });
+
+    it('parses units by name without matching case exactly', () => {
+        const force = createMockForce();
+        const units = [
+            createEmptyUnit({ name: 'BMAtlas_AS7D', id: 140 }),
+            createEmptyUnit({ name: 'BMLocust_LCT1V', id: 1901 })
+        ];
+
+        const forceUnits = parseForceFromUrl(force, 'bmatlas_as7d,bmlocust_lct1v', units);
 
         expect(forceUnits.map(unit => unit.getUnit().name)).toEqual(['BMAtlas_AS7D', 'BMLocust_LCT1V']);
     });
@@ -66,9 +79,9 @@ describe('force URL parsing', () => {
         const force = createMockForce();
         const logger = { warn: jasmine.createSpy('warn') };
         const units = [
-            { name: 'BMAtlas_AS7D', id: 140 } as Unit,
-            { name: 'BMAtlas_AS7K', id: 144 } as Unit,
-            { name: 'BMLocust_LCT1V', id: 1901 } as Unit
+            createEmptyUnit({ name: 'BMAtlas_AS7D', id: 140 }),
+            createEmptyUnit({ name: 'BMAtlas_AS7K', id: 144 }),
+            createEmptyUnit({ name: 'BMLocust_LCT1V', id: 1901 })
         ];
 
         const forceUnits = parseForceFromUrl(force, 'Alpha~140,1901', units, logger, 'mulId');

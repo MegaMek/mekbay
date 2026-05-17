@@ -88,7 +88,7 @@ export function resolveHitModifier(entry: MountedEquipment, additionalModifiers:
             }
         }
         if (entry.equipment instanceof WeaponEquipment) {
-            if (entry.equipment.hasNoRange() && !entry.equipment.flags.has('F_CLUB') && !entry.equipment.flags.has('F_HAND_WEAPON')) {
+            if (entry.equipment.hasNoRange() && !entry.equipment.flags.has('F_CLUB') && !entry.equipment.flags.has('F_HAND_WEAPON') && !(entry.equipment.weapon.ammoType==='MML')) {
                 if (!entry.parent?.equipment || (entry.parent.equipment instanceof WeaponEquipment && entry.parent.equipment.hasNoRange())) {
                     return null;
                 }

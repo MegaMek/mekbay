@@ -48,7 +48,7 @@ import { UnitCardCompactComponent } from '../unit-card-compact/unit-card-compact
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { VariantDropdownPanelComponent } from './variant-dropdown-panel.component';
 import type { Unit } from '../../models/units.model';
-import type { PackUnitEntry, ResolvedPack } from '../../utils/force-pack.util';
+import { getForcePackLookupKey, type PackUnitEntry, type ResolvedPack } from '../../utils/force-pack.util';
 import { compareUnitsByName } from '../../utils/sort.util';
 import type { TagClickEvent } from '../unit-tags/unit-tags.component';
 import { GameSystem } from '../../models/common.model';
@@ -114,12 +114,8 @@ export class CustomizeForcePackDialogComponent {
         
         const unit = this.customizableUnits()[idx];
         if (!unit?.unit) return [];
-        
-        const targetType = unit.unit.type;
-        const targetChassis = unit.unit.chassis;
-        
-        return this.dataService.getUnits()
-            .filter(u => u.type === targetType && u.chassis === targetChassis)
+
+        return this.getVariantsForUnit(unit.unit)
             .sort((a, b) => {
                 // Sort by year first, then by name
                 const yearDiff = (a.year ?? 0) - (b.year ?? 0);
@@ -174,10 +170,7 @@ export class CustomizeForcePackDialogComponent {
         }
 
         // Phone mode: use centered overlay
-        const targetType = unit.unit.type;
-        const targetChassis = unit.unit.chassis;
-        const variants = this.dataService.getUnits()
-            .filter(u => u.type === targetType && u.chassis === targetChassis)
+        const variants = this.getVariantsForUnit(unit.unit)
             .sort(compareUnitsByName);
 
         if (variants.length === 0) return;
@@ -219,6 +212,12 @@ export class CustomizeForcePackDialogComponent {
         });
 
         this.openDropdownIndex.set(index);
+    }
+
+    private getVariantsForUnit(unit: Unit): Unit[] {
+        const lookupKey = getForcePackLookupKey(unit);
+        return this.dataService.getUnits()
+            .filter(candidate => getForcePackLookupKey(candidate) === lookupKey);
     }
 
     private closeDropdown(): void {

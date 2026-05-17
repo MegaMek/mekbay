@@ -147,7 +147,7 @@ export class PageViewerCanvasControlsComponent {
     // Input for current unit
     unit = input<ForceUnit | null>(null);
 
-    clearRequested = output<void>();
+    clearRequested = output<'unit' | 'force'>();
     printRequested = output<void>();
 
     mainFabStyle = computed(() => {
@@ -172,14 +172,21 @@ export class PageViewerCanvasControlsComponent {
             return;
         }
 
-        const confirmed = await this.dialogsService.requestConfirmation(
-            `Are you sure you want to clear the canvas for ${currentUnit.getDisplayName()}? This cannot be undone.`,
+        const currentForce = currentUnit.force;
+        const choice = await this.dialogsService.choose<'unit' | 'force' | 'dismiss'>(
             'Clear Canvas',
-            'info'
+            `Delete the canvas for "${currentUnit.getDisplayName()}", or delete all canvases for "${currentForce.displayName()}"? This cannot be undone.`,
+            [
+                { label: 'UNIT', value: 'unit', class: 'danger' },
+                { label: 'FORCE', value: 'force', class: 'danger' },
+                { label: 'DISMISS', value: 'dismiss' }
+            ],
+            'dismiss',
+            { panelClass: 'warning' }
         );
-        if (confirmed) {
-            this.canvasService.clearCanvas(`canvas-${currentUnit.id}`);
-            this.clearRequested.emit();
+
+        if (choice === 'unit' || choice === 'force') {
+            this.clearRequested.emit(choice);
         }
     }
 

@@ -34,6 +34,8 @@
 /*
  * Author: Drake
  */
+import { AmmoEquipment, type AmmoCategory, type Equipment } from '../models/equipment.model';
+
 export const weaponTypes: Array<{ code: string, color: string, name: string, img: string }> = [
     { code: 'B', color: '#9482B4', name: 'Ballistic', img: '/images/ballistic.svg' },
     { code: 'E', color: '#6082F6', name: 'Energy', img: '/images/energy.svg' },
@@ -43,11 +45,26 @@ export const weaponTypes: Array<{ code: string, color: string, name: string, img
     { code: 'O', color: '#d0a34f', name: 'Other', img: '/images/crate.svg' }
     ];
 
-export function getWeaponTypeCSSClass(typeCode: string): string {
+const AMMO_CATEGORY_CSS_CLASS: Record<AmmoCategory, string> = {
+    Ballistic: 'ballistic',
+    Missile: 'missile',
+    Energy: 'energy',
+    Artillery: 'artillery',
+    Bomb: 'ammo-bomb',
+    Chemical: 'ammo-chemical',
+    Special: 'ammo-special'
+};
+
+export function getWeaponTypeCSSClass(typeCode: string, equipment?: Equipment | null): string {
     if (typeCode === 'HIDDEN') return '';
     if (typeCode === 'C') return 'misc';
     if (typeCode === 'S') return 'structural';
-    if (typeCode === 'X') return 'ammo'; // We don't have it in the list above, maybe should be added?
+    if (typeCode === 'X') return getAmmoTypeCSSClass(equipment);
     const found = weaponTypes.find(t => t.code === typeCode);
     return found ? found.name.toLowerCase() : 'other';
+}
+
+function getAmmoTypeCSSClass(equipment?: Equipment | null): string {
+    const category = equipment instanceof AmmoEquipment ? equipment.category : 'Special';
+    return `ammo ${AMMO_CATEGORY_CSS_CLASS[category]}`;
 }

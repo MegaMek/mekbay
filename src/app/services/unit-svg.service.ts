@@ -37,7 +37,7 @@ import type { CriticalSlot, HeatProfile, MountedEquipment } from '../models/forc
 import { SheetService } from './sheet.service';
 import { UnitInitializerService } from './unit-initializer.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
-import { linkedLocs } from "../models/common.model";
+import { LINKED_LOCATIONS } from "../models/common.model";
 import { LoggerService } from './logger.service';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { resolveHitModifier, computeLinkedModifiers } from '../models/rules/hit-modifier.util';
@@ -624,8 +624,8 @@ export class UnitSvgService {
                 critGroup?.classList.remove('locationDestroyed');
                 // Not needed to remove from armor, as it's handled before during the armor loop
             }
-            if (linkedLocs[entry.loc]) {
-                linkedLocs[entry.loc].forEach(linkedLoc => {
+            if (LINKED_LOCATIONS[entry.loc]) {
+                LINKED_LOCATIONS[entry.loc].forEach(linkedLoc => {
                     const linkedEls = svg.querySelectorAll(`[loc="${linkedLoc}"]`);
                     if (linkedEls) {
                         linkedEls.forEach(linkedEl => {

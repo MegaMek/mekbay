@@ -35,8 +35,10 @@ import type { MultiState, MultiStateSelection } from '../components/multi-select
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import type { GameSystem } from '../models/common.model';
 import { getAvailableDropdownValuesMap, type UnitSearchDropdownValuesDependencies } from './unit-search-dropdown-values.util';
-import { AdvFilterType, type FilterState, SORT_OPTIONS } from '../services/unit-search-filters.model';
+import { AdvFilterType, normalizeTriStateBooleanFilterValue, type FilterState, SORT_OPTIONS } from '../services/unit-search-filters.model';
 import { getAdvancedFilterConfigByKey } from './unit-search-filter-config.util';
+import { parseValues } from './semantic-filter.util';
+import { normalizeMultiStateSelection } from './unit-search-shared.util';
 
 interface ParsedUnitSearchScalarUrlState {
     searchText: string | null;
@@ -74,6 +76,22 @@ interface UnitSearchQueryParameters {
     bvLimit: number | null;
     expanded: 'true' | null;
     gs?: GameSystem | null;
+}
+
+function quoteCompactFilterValue(value: string): string {
+    return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function serializeCompactFilterValue(value: string): string {
+    const needsQuoting = value.includes(',') || value.includes('|') || value.includes(':') ||
+        value.includes('"') || value.includes('\\') || value.includes('~') ||
+        value.endsWith('.') || value.endsWith('!');
+
+    return needsQuoting ? quoteCompactFilterValue(value) : value;
+}
+
+function splitCompactFilterValues(valueStr: string): string[] {
+    return parseValues(valueStr).filter(value => value.trim() !== '');
 }
 
 function parseBoundedInteger(value: string | null | undefined, min: number, max: number): number | null {
@@ -138,14 +156,19 @@ function generateCompactFiltersParam(state: FilterState): string | null {
         if (conf.type === AdvFilterType.RANGE) {
             const [min, max] = filterState.value;
             parts.push(`${key}:${min}-${max}`);
+        } else if (conf.type === AdvFilterType.BOOLEAN) {
+            const value = normalizeTriStateBooleanFilterValue(filterState.value);
+            if (value !== null) {
+                parts.push(`${key}:${value === 'or' ? 'yes' : 'no'}`);
+            }
         } else if (conf.type === AdvFilterType.DROPDOWN) {
             if (conf.multistate) {
-                const selection = filterState.value as MultiStateSelection;
+                const selection = normalizeMultiStateSelection(filterState.value);
                 const subParts: string[] = [];
 
                 for (const [name, selectionValue] of Object.entries(selection)) {
                     if (selectionValue.state !== false) {
-                        let part = name;
+                        let part = serializeCompactFilterValue(name);
                         if (selectionValue.state === 'and') part += '.';
                         else if (selectionValue.state === 'not') part += '!';
                         if (selectionValue.count > 1) part += `~${selectionValue.count}`;
@@ -159,7 +182,7 @@ function generateCompactFiltersParam(state: FilterState): string | null {
             } else {
                 const values = filterState.value as string[];
                 if (values.length > 0) {
-                    parts.push(`${key}:${values.join(',')}`);
+                    parts.push(`${key}:${values.map(serializeCompactFilterValue).join(',')}`);
                 }
             }
         }
@@ -202,7 +225,10 @@ export function buildUnitSearchQueryParameters({
     };
 }
 
-function parseCompactFiltersFromUrl(filtersParam: string): FilterState {
+function parseCompactFiltersFromUrl(
+    filtersParam: string,
+    dropdownValuesDependencies?: UnitSearchDropdownValuesDependencies,
+): FilterState {
     const filterState: FilterState = {};
     const parts = filtersParam.split('|');
 
@@ -228,10 +254,33 @@ function parseCompactFiltersFromUrl(filtersParam: string): FilterState {
                     };
                 }
             }
+        } else if (conf.type === AdvFilterType.BOOLEAN) {
+            const value = normalizeTriStateBooleanFilterValue(valueStr);
+            if (value !== null) {
+                filterState[key] = {
+                    value,
+                    interactedWith: true,
+                };
+            }
         } else if (conf.type === AdvFilterType.DROPDOWN) {
+            const availableValuesMap = dropdownValuesDependencies
+                ? getAvailableDropdownValuesMap(conf, dropdownValuesDependencies)
+                : null;
+            const exactValueMatch = availableValuesMap?.get(valueStr.toLowerCase());
+
             if (conf.multistate) {
+                if (exactValueMatch) {
+                    filterState[key] = {
+                        value: {
+                            [exactValueMatch]: { name: exactValueMatch, state: 'or', count: 1 },
+                        },
+                        interactedWith: true,
+                    };
+                    continue;
+                }
+
                 const selection: MultiStateSelection = {};
-                const items = valueStr.split(',');
+                const items = splitCompactFilterValues(valueStr);
 
                 for (const item of items) {
                     let name = item;
@@ -262,7 +311,9 @@ function parseCompactFiltersFromUrl(filtersParam: string): FilterState {
                     };
                 }
             } else {
-                const values = valueStr.split(',').filter(Boolean);
+                const values = exactValueMatch
+                    ? [exactValueMatch]
+                    : splitCompactFilterValues(valueStr);
                 if (values.length > 0) {
                     filterState[key] = {
                         value: values,
@@ -296,7 +347,7 @@ function validateParsedFiltersFromUrl(
             const availableValuesMap = getAvailableDropdownValuesMap(conf, dropdownValuesDependencies);
 
             if (conf.multistate) {
-                const selection = state.value as MultiStateSelection;
+                const selection = normalizeMultiStateSelection(state.value);
                 const validSelection: MultiStateSelection = {};
                 for (const [name, selectionValue] of Object.entries(selection)) {
                     const properCase = availableValuesMap.get(name.toLowerCase());
@@ -330,7 +381,7 @@ export function parseAndValidateCompactFiltersFromUrl(
     dropdownValuesDependencies: UnitSearchDropdownValuesDependencies,
 ): FilterState {
     return validateParsedFiltersFromUrl(
-        parseCompactFiltersFromUrl(filtersParam),
+        parseCompactFiltersFromUrl(filtersParam, dropdownValuesDependencies),
         dropdownValuesDependencies,
     );
 }

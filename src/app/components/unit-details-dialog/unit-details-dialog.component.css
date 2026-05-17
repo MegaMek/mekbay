@@ -1,29 +1,22 @@
 .footer {
     width: 100%;
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content minmax(0, 1fr);
     align-items: center;
-    flex-direction: row;
-    gap: 8px;
+    gap: 12px;
+}
+
+.footer-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    min-width: max-content;
+    padding-inline: 4px;
 }
 
 :host ::ng-deep .modal {
     max-width: 1000px !important;
-    position: relative;
-    overflow: visible;
-    clip-path: polygon(0 0, calc(100% - 40px) 0, 100% 40px, 100% 100%, 0 100%);
-}
-
-:host ::ng-deep .modal::before {
-    content: "";
-    position: absolute;
-    top: 0px;
-    right: 26px;
-    width: 120px;
-    height: 10px;
-    pointer-events: none;
-    background: repeating-linear-gradient(-60deg, rgba(255, 255, 255, 0.18) 0px, rgba(255, 255, 255, 0.18) 2px, transparent 4px, transparent 10px);
-    z-index: 2;
 }
 
 :host ::ng-deep .modal-body {
@@ -202,25 +195,77 @@
     line-height: 16px;
 }
 
-.nav-arrow {
+.footer-nav {
     background-color: transparent;
     color: gray;
-    bottom: 0px;
     border: none;
-    font-size: 2rem;
     cursor: pointer;
     transition: color 0.2s;
     outline: none;
     padding: 0px 6px;
     pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+    font: inherit;
 }
 
-.nav-arrow:hover {
+.footer-nav-left {
+    justify-self: start;
+    text-align: left;
+}
+
+.footer-nav-right {
+    justify-self: end;
+    text-align: right;
+}
+
+.footer-nav:hover {
     color: var(--text-color);
 }
 
-.nav-arrow.hidden {
+.footer-nav.hidden {
     visibility: hidden;
+    pointer-events: none;
+}
+
+.nav-arrow-symbol {
+    flex: 0 0 auto;
+    font-size: 2rem;
+    line-height: 1;
+}
+
+.nav-unit-name {
+    color: var(--text-color-secondary);
+    font-size: 0.85rem;
+    font-weight: 600;
+    max-width: 20ch;
+    min-width: 0;
+    overflow: hidden;
+    line-height: 1.1;
+}
+
+.nav-unit-model,
+.nav-unit-chassis {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.nav-unit-model {
+    color: var(--text-color-tertiary);
+    font-size: 0.78rem;
+}
+
+.footer-nav:hover .nav-unit-name {
+    color: var(--text-color);
+}
+
+.footer-nav:hover .nav-unit-model {
+    color: var(--text-color-secondary);
 }
 
 /* Fluff Tab */
@@ -253,7 +298,25 @@
     z-index: 1;
 }
 
+@container (max-width: 760px) {
+    .nav-unit-name {
+        display: none;
+    }
+}
+
 @container (max-width: 600px) {
+    .footer {
+        gap: 4px;
+    }
+
+    .footer-actions {
+        gap: 4px;
+    }
+
+    .footer-nav {
+        padding: 0px 2px;
+    }
+
     .header {
         padding-left: 0px;
         padding-right: 0px;

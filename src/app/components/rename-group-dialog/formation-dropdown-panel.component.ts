@@ -43,8 +43,12 @@ export interface FormationDisplayItem {
     definition: FormationTypeDefinition;
     displayName: string;
     isValid: boolean;
-    /** Whether this formation was matched via the Nova rule (Infantry filtered out). */
-    novaFiltered: boolean;
+    /** Whether this formation required organization-level requirement filtering. */
+    requirementsFiltered: boolean;
+    /** Optional org composition name that caused requirement filtering. */
+    requirementsFilterCompositionName?: string;
+    /** Optional notice describing which structural units were ignored. */
+    requirementsFilterNotice?: string;
 }
 
 @Component({
@@ -86,7 +90,7 @@ export interface FormationDisplayItem {
                         </div>
                         @if (expandedId() === item.definition.id) {
                             <div class="formation-option-details">
-                                <formation-info [formation]="item.definition" [gameSystem]="gameSystem()" [showTitle]="false" [isValid]="true" [novaFiltered]="item.novaFiltered"></formation-info>
+                                <formation-info [formation]="item.definition" [gameSystem]="gameSystem()" [showTitle]="false" [isValid]="true" [requirementsFiltered]="item.requirementsFiltered" [requirementsFilterCompositionName]="item.requirementsFilterCompositionName" [requirementsFilterNotice]="item.requirementsFilterNotice"></formation-info>
                             </div>
                         }
                     </div>
@@ -115,7 +119,7 @@ export interface FormationDisplayItem {
                         </div>
                         @if (expandedId() === item.definition.id) {
                             <div class="formation-option-details">
-                                <formation-info [formation]="item.definition" [gameSystem]="gameSystem()" [showTitle]="false" [isValid]="false" [novaFiltered]="item.novaFiltered"></formation-info>
+                                <formation-info [formation]="item.definition" [gameSystem]="gameSystem()" [showTitle]="false" [isValid]="false" [requirementsFiltered]="item.requirementsFiltered" [requirementsFilterCompositionName]="item.requirementsFilterCompositionName" [requirementsFilterNotice]="item.requirementsFilterNotice"></formation-info>
                             </div>
                         }
                     </div>
@@ -274,14 +278,18 @@ export class FormationDropdownPanelComponent {
     expandedId = signal<string | null>(null);
     readonly noFormationId = NO_FORMATION_ID;
 
+    private sortByDisplayName(items: FormationDisplayItem[]): FormationDisplayItem[] {
+        return [...items].sort((left, right) => left.displayName.localeCompare(right.displayName));
+    }
+
     /** Formations that are valid for the current group. */
     validFormations = computed<FormationDisplayItem[]>(() => {
-        return this.formations().filter(f => f.isValid);
+        return this.sortByDisplayName(this.formations().filter(f => f.isValid));
     });
 
     /** Formations that are NOT valid for the current group. */
     otherFormations = computed<FormationDisplayItem[]>(() => {
-        return this.formations().filter(f => !f.isValid);
+        return this.sortByDisplayName(this.formations().filter(f => !f.isValid));
     });
 
     toggleExpand(event: MouseEvent, id: string): void {

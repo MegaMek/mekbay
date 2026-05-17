@@ -97,6 +97,7 @@ export class AlphaStrikeViewerComponent {
     private readonly forceBuilder = inject(ForceBuilderService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly dbService = inject(DbService);
+    private readonly canvasService = inject(PageViewerCanvasService);
 
     readonly unit = computed(() => {
         const selectedUnit = this.forceBuilder.selectedUnit();
@@ -218,12 +219,28 @@ export class AlphaStrikeViewerComponent {
     }
     
     /**
-     * Handle canvas clear request from controls - delete canvas data for current unit
+     * Handle canvas clear requests from controls for either the current unit or the entire current force.
      */
-    onCanvasClearRequested(): void {
+    async onCanvasClearRequested(scope: 'unit' | 'force'): Promise<void> {
         const currentUnit = this.unit();
         if (currentUnit) {
-            this.dbService.deleteCanvasData(currentUnit.id);
+            if (scope === 'unit') {
+                this.canvasService.clearCanvas(`canvas-${currentUnit.id}`);
+                await this.dbService.deleteCanvasData(currentUnit.id);
+                return;
+            }
+
+            const currentForce = this.force();
+            if (!currentForce) {
+                return;
+            }
+
+            const unitIds = currentForce.units()
+                .map(unit => unit.id)
+                .filter((id): id is string => Boolean(id));
+
+            unitIds.forEach(id => this.canvasService.clearCanvas(`canvas-${id}`));
+            await Promise.all(unitIds.map(id => this.dbService.deleteCanvasData(id)));
         }
     }
     

@@ -36,8 +36,9 @@ import type { GameSystem } from "./common.model";
 /*
  * Author: Drake
  */
+export type AvailabilitySource = 'mul' | 'megamek';
+
 export interface Options {
-    uuid?: string; // deprecated, use UserStateService instead
     sheetsColor: 'normal' | 'night';
     pickerStyle: 'default' | 'radial' | 'linear';
     quickActions: 'enabled' | 'disabled';
@@ -46,6 +47,8 @@ export interface Options {
     syncZoomBetweenSheets: boolean;
     unitDisplayName: 'chassisModel' | 'alias' | 'both';
     gameSystem: GameSystem;
+    availabilitySource: AvailabilitySource;
+    megaMekAvailabilityFiltersUseAllScopedOptions: boolean;
     recordSheetCenterPanelContent: 'fluffImage' | 'clusterTable';
     lastCanvasState?: {
         brushSize: number;
@@ -60,10 +63,29 @@ export interface Options {
     automaticallyConvertFiltersToSemantic: boolean;
     allowMultipleActiveSheets: boolean;
     unitSearchExpandedViewLayout: 'panel-list-filters' | 'filters-list-panel';
+    showFilteredComponents: boolean;
     unitSearchViewMode: 'list' | 'card' | 'chassis' | 'table';
     forceOverviewViewMode: 'expanded' | 'compact' | 'table';
     ASUseAutomations: boolean;
     ASVehiclesCriticalHitTable: 'default' | 'scouringSands';
     ASUnifiedDamagePicker: boolean;
-    ASPrintRosterSummary: boolean;
+    printRosterSummary: boolean;
+    printMargin: 'none' | 'browserDefined';
+
+    // Force Generator
+    forceGenLastBVMin: number;
+    forceGenLastBVMax: number;
+    forceGenLastPVMin: number;
+    forceGenLastPVMax: number;
+    forceGenLastMinUnitCount: number;
+    forceGenLastMaxUnitCount: number;
+    forceGenLastGunnerySkillMin: number;
+    forceGenLastGunnerySkillMax: number;
+    forceGenLastPilotingSkillMin: number;
+    forceGenLastPilotingSkillMax: number;
+    forceGenLastMaxPilotSkillDelta: number;
+    forceGenFailureSearchWindowMs: number;
+    forceGenPreventDuplicateChassis: boolean;
+    forceGenUseTaggedQuantities: boolean;
+    forceGenUseUnitTagsAsChassisTags: boolean;
 }

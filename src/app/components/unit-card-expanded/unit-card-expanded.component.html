@@ -98,6 +98,32 @@
                     <span class="info-label muted">Tons:</span>
                     <span class="info-value" [class.sort-slot]="isSortActive('tons')">{{ u.tons | formatTons }}</span>
                 </div>
+                @if (megaMekAvailability() !== null) {
+                <div class="info-item">
+                    <span class="info-label muted">RAT Rarity:</span>
+                    <span class="info-value mega-mek-availability-icons" [class.sort-slot]="isSortActive(megaMekRarityRequisitionSortKey, megaMekRaritySalvageSortKey)" [tooltip]="megaMekAvailabilityTooltip()">
+                        @if (megaMekAvailabilityBadges().length > 0) {
+                        @for (badge of megaMekAvailabilityBadges(); track badge.source) {
+                        <span class="mega-mek-availability-badge" role="img" [attr.aria-label]="badge.source === megaMekAvailabilityUnknown ? 'Availability: ' + badge.rarity : badge.source + ': ' + badge.rarity" [style.color]="badge.color">
+                            @if (badge.source === 'Requisition') {
+                            <svg class="faction-megamek-availability-icon" viewBox="0 0 36 36" aria-hidden="true">
+                                <path [attr.d]="megaMekRequisitionIconPath" fill="currentColor" />
+                            </svg>
+                            } @else if (badge.source === 'Salvage') {
+                            <svg class="faction-megamek-availability-icon" viewBox="0 0 256 256" aria-hidden="true">
+                                <path [attr.d]="megaMekSalvageIconPath" fill="currentColor" />
+                            </svg>
+                            } @else {
+                            <span class="mega-mek-availability-unknown">?</span>
+                            }
+                        </span>
+                        }
+                        } @else {
+                        <span>—</span>
+                        }
+                    </span>
+                </div>
+                }
                 @if (sortSlot(); as slot) {
                 <div class="info-item">
                     <span class="info-label muted">{{ slot.label }}</span>
@@ -216,6 +242,32 @@
                     <span class="info-value" [class.sort-slot]="isSortActive('movement')">{{ u.walk }} / {{ u.run }} @if(u.run2 != u.run){ [{{ u.run2 }}]} @if(u.jump){ / {{ u.jump }} } @if (u.umu) { / {{ u.umu }}}</span>
                 </div>
                 }
+                @if (megaMekAvailability() !== null) {
+                <div class="info-item">
+                    <span class="info-label muted">RAT Rarity:</span>
+                    <span class="info-value mega-mek-availability-icons" [class.sort-slot]="isSortActive(megaMekRarityRequisitionSortKey, megaMekRaritySalvageSortKey)" [tooltip]="megaMekAvailabilityTooltip()">
+                        @if (megaMekAvailabilityBadges().length > 0) {
+                        @for (badge of megaMekAvailabilityBadges(); track badge.source) {
+                        <span class="mega-mek-availability-badge" role="img" [attr.aria-label]="badge.source === megaMekAvailabilityUnknown ? 'Availability: ' + badge.rarity : badge.source + ': ' + badge.rarity" [style.color]="badge.color">
+                            @if (badge.source === 'Requisition') {
+                            <svg class="faction-megamek-availability-icon" viewBox="0 0 36 36" aria-hidden="true">
+                                <path [attr.d]="megaMekRequisitionIconPath" fill="currentColor" />
+                            </svg>
+                            } @else if (badge.source === 'Salvage') {
+                            <svg class="faction-megamek-availability-icon" viewBox="0 0 256 256" aria-hidden="true">
+                                <path [attr.d]="megaMekSalvageIconPath" fill="currentColor" />
+                            </svg>
+                            } @else {
+                            <span class="mega-mek-availability-unknown">?</span>
+                            }
+                        </span>
+                        }
+                        } @else {
+                        <span>—</span>
+                        }
+                    </span>
+                </div>
+                }
                 @if (sortSlot(); as slot) {
                 <div class="info-item">
                     <span class="info-label muted">{{ slot.label }}</span>
@@ -240,17 +292,18 @@
             </div>
         </div>
         <div class="expanded-right">
-            @if ((u.comp | expandedComponents); as componentsList) {
+            @let componentsList = expandedComponents();
             @if (componentsList.length > 0) {
-            <div class="components-header">Equipment</div>
-            <div class="expanded-components">
-                <div class="components-pills">
-                    @for (comp of componentsList; let i = $index; track i) {
-                    <unit-component-item [unit]="u" [comp]="comp" displayStyle="tiny"></unit-component-item>
-                    }
+            <div class="components-inline">
+                <div class="components-header">Equipment:</div>
+                <div class="expanded-components">
+                    <div class="components-pills">
+                        @for (comp of componentsList; let i = $index; track i) {
+                        <unit-component-item [unit]="u" [comp]="comp" displayStyle="tiny"></unit-component-item>
+                        }
+                    </div>
                 </div>
             </div>
-            }
             }
             @if ((u.comp | filterAmmo); as ammoList) {
             @if (ammoList.length > 0) {

@@ -36,17 +36,21 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, type ElementR
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { takeUntilDestroyed, outputToObservable } from '@angular/core/rxjs-interop';
-import { ForceBuilderService } from '../../services/force-builder.service';
-import type { Force, UnitGroup } from '../../models/force.model';
-import { type FormationTypeDefinition, isNoFormation } from '../../utils/formation-type.model';
+import { OptionsService } from '../../services/options.service';
+import type { UnitGroup } from '../../models/force.model';
+import { formatSummaryMovement } from '../../models/pilot-abilities.model';
+import { formationInheritsParentEffects, type FormationTypeDefinition, isNoFormation } from '../../utils/formation-type.model';
 import { FormationInfoComponent } from '../formation-info/formation-info.component';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { FormationDropdownPanelComponent, type FormationDisplayItem } from './formation-dropdown-panel.component';
 import { FormationNamerUtil } from '../../utils/formation-namer.util';
-import { FORMATION_DEFINITIONS } from '../../utils/formation-definitions';
+import { getFormationDefinition, getFormationDefinitions } from '../../utils/formation-blueprints';
+import { FormationRequirementEngine } from '../../utils/formation-requirement-engine.util';
+
 /*
  * Author: Drake
  */
+
 export interface RenameGroupDialogData {
     group: UnitGroup;
 }
@@ -130,12 +134,12 @@ export interface RenameGroupDialogResult {
             <div class="formation-warning">
               @if (getRequirementsText(formation); as reqText) {
                 <div class="formation-warning-body">
-                  <strong>Missing requirements:</strong>
+                  <strong class="formation-warning-title">Missing requirements:</strong>
                   @if (getParentRequirementsText(formation); as parentReqText) {
-                    <span class="formation-warning-req"><strong>{{ getParentFormationName(formation) }}:</strong> {{ parentReqText }}</span>
-                    <span class="formation-warning-req"><strong>{{ formation.name }}:</strong> {{ reqText }}</span>
+                    <span class="formation-warning-req"><strong>{{ getParentFormationName(formation) }}: </strong><span [innerHTML]="parentReqText"></span></span>
+                    <span class="formation-warning-req"><strong>{{ formation.name }}: </strong><span [innerHTML]="reqText"></span></span>
                   } @else {
-                    <span class="formation-warning-req">{{ reqText }}</span>
+                    <span class="formation-warning-req" [innerHTML]="reqText"></span>
                   }
                 </div>
               } @else {
@@ -149,7 +153,7 @@ export interface RenameGroupDialogResult {
                 <svg class="expand-icon" width="16" height="16" viewBox="0 0 10 10" fill="currentColor"><path d="M3 1l5 4-5 4z"/></svg>
               </summary>
               <div class="selected-formation-details">
-                <formation-info [formation]="formation" [gameSystem]="data.group.force.gameSystem" [unitCount]="data.group.units().length" [isValid]="isSelectedFormationValid()" [novaFiltered]="isSelectedFormationNovaFiltered()"></formation-info>
+                <formation-info [formation]="formation" [gameSystem]="data.group.force.gameSystem" [unitCount]="data.group.units().length" [isValid]="isSelectedFormationValid()" [requirementsFiltered]="isSelectedFormationRequirementsFiltered()" [requirementsFilterCompositionName]="selectedFormationRequirementsFilterCompositionName()" [requirementsFilterNotice]="selectedFormationRequirementsFilterNotice()"></formation-info>
               </div>
             </details>
             }
@@ -269,9 +273,12 @@ export interface RenameGroupDialogResult {
             padding: 6px 10px;
             margin-top: 4px;
             font-size: 0.85em;
-            color: red;
             background: rgba(255, 0, 0, 0.08);
             border-left: 3px solid red;
+        }
+
+        .formation-warning-title {
+            color: red;
         }
 
         .formation-warning-body {
@@ -334,7 +341,7 @@ export class RenameGroupDialogComponent {
 
     public dialogRef: DialogRef<RenameGroupDialogResult | null, RenameGroupDialogComponent> = inject(DialogRef);
     readonly data: RenameGroupDialogData = inject(DIALOG_DATA);
-    private forceBuilder = inject(ForceBuilderService);
+    private optionsService = inject(OptionsService);
     private overlayManager = inject(OverlayManagerService);
     private injector = inject(Injector);
     private destroyRef = inject(DestroyRef);
@@ -349,15 +356,17 @@ export class RenameGroupDialogComponent {
     formationDisplayList: FormationDisplayItem[] = (() => {
         const validMatches = FormationNamerUtil.getAvailableFormationDefinitions(this.data.group);
         const validMap = new Map(validMatches.map(m => [m.definition.id, m]));
-        return FORMATION_DEFINITIONS
-            .filter(def => def.validator)
+        return getFormationDefinitions()
+            .filter(def => FormationRequirementEngine.hasBlueprint(def.id))
             .map(def => {
                 const match = validMap.get(def.id);
                 return {
                     definition: def,
-                    displayName: FormationNamerUtil.composeFormationDisplayName(def, this.data.group, match?.novaFiltered ?? false),
+                  displayName: FormationNamerUtil.composeFormationDisplayName(def, this.data.group, match?.requirementsFiltered ?? false),
                     isValid: !!match,
-                    novaFiltered: match?.novaFiltered ?? false,
+                  requirementsFiltered: match?.requirementsFiltered ?? false,
+                  requirementsFilterCompositionName: match?.requirementsFilterCompositionName,
+                  requirementsFilterNotice: match?.requirementsFilterNotice,
                 };
             });
     })();
@@ -369,18 +378,34 @@ export class RenameGroupDialogComponent {
         return this.formationDisplayList.some(f => f.definition.id === sel.id && f.isValid);
     });
 
-    /** Whether the currently selected formation was matched via the Nova rule. */
-    isSelectedFormationNovaFiltered = computed<boolean>(() => {
+    /** Whether the currently selected formation required organization-level filtering. */
+    isSelectedFormationRequirementsFiltered = computed<boolean>(() => {
         const sel = this.selectedFormation();
         if (!sel || isNoFormation(sel)) return false;
-        return this.formationDisplayList.some(f => f.definition.id === sel.id && f.isValid && f.novaFiltered);
+      return this.formationDisplayList.some(f => f.definition.id === sel.id && f.isValid && f.requirementsFiltered);
+    });
+
+    selectedFormationRequirementsFilterNotice = computed<string | undefined>(() => {
+      const sel = this.selectedFormation();
+      if (!sel || isNoFormation(sel)) return undefined;
+      return this.formationDisplayList.find(f => f.definition.id === sel.id && f.isValid)?.requirementsFilterNotice;
+    });
+
+    selectedFormationRequirementsFilterCompositionName = computed<string | undefined>(() => {
+      const sel = this.selectedFormation();
+      if (!sel || isNoFormation(sel)) return undefined;
+      return this.formationDisplayList.find(f => f.definition.id === sel.id && f.isValid)?.requirementsFilterCompositionName;
     });
 
     /** Placeholder name based on the currently selected formation. */
     placeholderName = computed<string>(() => {
         const sel = this.selectedFormation();
         if (sel && !isNoFormation(sel)) {
-            return FormationNamerUtil.composeFormationDisplayName(sel, this.data.group);
+        return FormationNamerUtil.composeFormationDisplayName(
+          sel,
+          this.data.group,
+          this.isSelectedFormationRequirementsFiltered(),
+        );
         }
         return this.data.group.organizationalName() ?? 'Group';
     });
@@ -410,29 +435,31 @@ export class RenameGroupDialogComponent {
     /** Expose isNoFormation to the template */
     isNoFormation = isNoFormation;
 
-    /** Get requirements text for a formation definition, including parent requirements */
+    /** Get requirements text for a formation definition. */
     getRequirementsText(formation: FormationTypeDefinition): string | null {
         if (!formation.requirements) return null;
-        return formation.requirements(this.data.group.force.gameSystem) || null;
+      const requirements = formation.requirements(this.data.group.force.gameSystem);
+      return requirements ? formatSummaryMovement(requirements, this.optionsService.options().ASUseHex) : null;
     }
 
     /** Get parent formation requirements text */
     getParentRequirementsText(formation: FormationTypeDefinition): string | null {
-        if (!formation.parent) return null;
-        const parent = FORMATION_DEFINITIONS.find(d => d.id === formation.parent);
+      if (!formationInheritsParentEffects(formation) || !formation.parent) return null;
+        const parent = getFormationDefinition(formation.parent);
         if (!parent?.requirements) return null;
-        return parent.requirements(this.data.group.force.gameSystem) || null;
+        const requirements = parent.requirements(this.data.group.force.gameSystem);
+        return requirements ? formatSummaryMovement(requirements, this.optionsService.options().ASUseHex) : null;
     }
 
     /** Get parent formation name */
     getParentFormationName(formation: FormationTypeDefinition): string {
-        if (!formation.parent) return '';
-        return FORMATION_DEFINITIONS.find(d => d.id === formation.parent)?.name ?? '';
+      if (!formationInheritsParentEffects(formation) || !formation.parent) return '';
+        return getFormationDefinition(formation.parent)?.name ?? '';
     }
 
     /** Compose a display name for a formation definition */
     getDisplayName(definition: FormationTypeDefinition): string {
-        return FormationNamerUtil.composeFormationDisplayName(definition, this.data.group, this.isSelectedFormationNovaFiltered());
+        return FormationNamerUtil.composeFormationDisplayName(definition, this.data.group, this.isSelectedFormationRequirementsFiltered());
     }
 
     submit(): void {

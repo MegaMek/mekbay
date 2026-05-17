@@ -35,7 +35,7 @@ import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { MountedEquipment } from '../force-serialization';
 import type { UnitTypeRules } from './unit-type-rules';
-import { linkedLocs, LEG_LOCATIONS, FOUR_LEGGED_LOCATIONS } from '../common.model';
+import { LINKED_LOCATIONS, LEG_LOCATIONS, FOUR_LEGGED_LOCATIONS } from '../common.model';
 import type { PSRCheck } from '../turn-state.model';
 import { type HeatScaleEntry, HeatManagement, getHeatEffects } from './heat-management';
 
@@ -65,7 +65,7 @@ export class MekRules implements UnitTypeRules {
         this.unit.locations?.internal?.forEach((_value, loc) => {
             if (this.unit.isInternalLocDestroyed(loc)) {
                 locationsToDestroy.add(loc);
-                const linked = linkedLocs[loc];
+                const linked = LINKED_LOCATIONS[loc];
                 if (linked) {
                     for (const linkedLoc of linked) {
                         if (this.unit.locations?.internal?.has(linkedLoc)) {
@@ -288,7 +288,7 @@ export class MekRules implements UnitTypeRules {
             preExisting -= 2; // AES in legs intact gives -2 modifier
             modifiers.push({
                 pilotCheck: -2,
-                reason: "'Mech mounts AES in its legs"
+                reason: "Mounts AES in its legs"
             });
         }
         const hardenedArmor = this.unit.getUnit().armorType === 'Hardened';
@@ -296,7 +296,7 @@ export class MekRules implements UnitTypeRules {
             preExisting += 1; // Hardened armor gives +1 modifier
             modifiers.push({
                 pilotCheck: 1,
-                reason: "'Mech mounts Hardened Armor"
+                reason: "Mounts Hardened Armor"
             });
         }
         const modularArmorPanelsCount = critSlots.filter(slot => slot.name && slot.name.includes('Modular Armor')).length;
@@ -306,7 +306,7 @@ export class MekRules implements UnitTypeRules {
                 preExisting += 1; // Modular armor gives +1 modifier (until destroyed or fully consumed)
                 modifiers.push({
                     pilotCheck: 1,
-                    reason: "'Mech mounts Modular Armor"
+                    reason: "Mounts Modular Armor"
                 });
             }
         }
@@ -318,7 +318,7 @@ export class MekRules implements UnitTypeRules {
             preExisting += 1; // Small or Torso cockpit gives +1 modifier
             modifiers.push({
                 pilotCheck: +1,
-                reason: "'Mech mounts small or torso-mounted cockpit"
+                reason: "Mounts small or torso cockpit"
             });
         }
         const destroyedHips = critSlots.filter(slot => slot.name && slot.loc && slot.destroyed && LEG_LOCATIONS.has(slot.loc) && !ignoreLeg.has(slot.loc) && slot.name.includes('Hip'));

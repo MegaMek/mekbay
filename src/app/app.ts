@@ -47,6 +47,8 @@ import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from './compon
 import { OptionsService } from './services/options.service';
 import { OptionsDialogComponent } from './components/options-dialog/options-dialog.component';
 import { SidebarComponent } from './components/sidebar/sidebar.component';
+import { ConnectionStatusBadgeComponent } from './components/connection-status-badge/connection-status-badge.component';
+import { ModeSwitchComponent } from './components/mode-switch/mode-switch.component';
 import { LicenseDialogComponent } from './components/license-dialog/license-dialog.component';
 import { ToastsComponent } from './components/toasts/toasts.component';
 import { SavedSearchesService } from './services/saved-searches.service';
@@ -54,6 +56,7 @@ import { WsService } from './services/ws.service';
 import { ToastService } from './services/toast.service';
 import { DialogsService } from './services/dialogs.service';
 import { BetaDialogComponent } from './components/beta-dialog/beta-dialog.component';
+import { CollectionDialogComponent } from './components/collection-dialog/collection-dialog.component';
 import { UpdateButtonComponent } from './components/update-button/update-button.component';
 import { UnitSearchFiltersService } from './services/unit-search-filters.service';
 import { DomPortal, PortalModule } from '@angular/cdk/portal';
@@ -62,9 +65,12 @@ import { APP_VERSION_STRING, BUILD_BRANCH } from './build-meta';
 import { LoggerService } from './services/logger.service';
 import { isIOS, isRunningStandalone } from './utils/platform.util';
 import { GameService } from './services/game.service';
+import { AccountAuthService } from './services/account-auth.service';
 
 import { GameSystem } from './models/common.model';
 import { UrlStateService } from './services/url-state.service';
+
+const SW_UPDATE_RELOAD_HASH_STORAGE_KEY = 'mekbay:sw-update-reload-hash';
 
 /*
  * Author: Drake
@@ -79,6 +85,8 @@ import { UrlStateService } from './services/url-state.service';
     LayoutModule,
     UpdateButtonComponent,
     SidebarComponent,
+    ConnectionStatusBadgeComponent,
+    ModeSwitchComponent,
     UnitSearchComponent,
     OverlayModule,
     PortalModule
@@ -87,7 +95,8 @@ import { UrlStateService } from './services/url-state.service';
     styleUrl: './app.scss',
     host: {
         '(window:online)': 'onOnline()',
-        '(window:focus)': 'onFocus()'
+        '(window:focus)': 'onFocus()',
+        '(window:keydown.escape)': 'closeHomeActionsPanel()'
     }
 })
 export class App {
@@ -103,6 +112,7 @@ export class App {
     public unitSearchFiltersService = inject(UnitSearchFiltersService);
     public injector = inject(Injector);
     public gameService = inject(GameService);
+    private accountAuthService = inject(AccountAuthService);
     private urlStateService = inject(UrlStateService);
     private savedSearchesService = inject(SavedSearchesService);
     private destroyRef = inject(DestroyRef);
@@ -114,12 +124,26 @@ export class App {
     private updateCheckInterval = 60 * 60 * 1000; // 1 hour
     private updateCheckTimeoutId: number | null = null;
     protected updateAvailable = signal(false);
+    protected updateAutoReloadEnabled = signal(false);
     protected showInstallButton = signal(false);
+    protected homeActionsPanelOpen = signal(false);
     private deferredPrompt: any;
     private urlAtLastBlur = this.getCurrentAppUrl();
     private lastHandledCapturedUrl: string | null = null;
     private lastHandledCapturedUrlAt = 0;
     private readonly capturedUrlDedupWindowMs = 2000;
+    private pendingUpdateHash: string | null = null;
+    private readonly keyboardNavigationKeys = new Set([
+        'Tab',
+        'ArrowUp',
+        'ArrowRight',
+        'ArrowDown',
+        'ArrowLeft',
+        'Home',
+        'End',
+        'PageUp',
+        'PageDown',
+    ]);
 
 
     private readonly unitSearchContainer = viewChild.required<ElementRef>('unitSearchContainer');
@@ -140,6 +164,7 @@ export class App {
         this.dataService.initialize();
         this.savedSearchesService.initialize();
         this.savedSearchesService.registerWsHandlers();
+        void this.accountAuthService.handleOAuthRedirectReturn();
         
         // Set up foreign tag import dialog callback
         this.unitSearchFiltersService.setForeignTagDialogCallback(
@@ -156,6 +181,10 @@ export class App {
         document.addEventListener('contextmenu', this.contextMenuHandler);
         window.addEventListener('beforeunload', this.beforeUnloadHandler);
         window.addEventListener('blur', this.onBlur);
+        window.addEventListener('keydown', this.keyboardNavigationHandler, true);
+        window.addEventListener('pointerdown', this.pointerNavigationHandler, true);
+        window.addEventListener('mousedown', this.pointerNavigationHandler, true);
+        window.addEventListener('touchstart', this.pointerNavigationHandler, true);
         // window.addEventListener('popstate', this.historyNavigationHandler);
         // if ('serviceWorker' in navigator) {
         //     navigator.serviceWorker.addEventListener('message', this.serviceWorkerMessageHandler);
@@ -170,8 +199,7 @@ export class App {
                             this.logger.info('Service worker update detected, downloading...');
                             break;
                         case 'VERSION_READY':
-                            this.logger.info('Service worker update is ready');
-                            this.updateAvailable.set(true);
+                            this.handleReadyServiceWorkerUpdate(event);
                             break;
                         case 'VERSION_INSTALLATION_FAILED':
                             this.logger.error('Service worker update installation failed: ' + event.error);
@@ -190,6 +218,13 @@ export class App {
         effect(() => {
             const colorMode = this.optionsService.options().sheetsColor;
             document.documentElement.classList.toggle('night-mode', (colorMode === 'night'));
+        });
+        effect(() => {
+            if (!this.dataService.isDataReady() || this.optionsService.options().availabilitySource !== 'megamek') {
+                return;
+            }
+
+            void this.dataService.ensureMegaMekAvailabilityCatalogInitialized();
         });
         effect(() => {
             const unitSearchContainer = this.unitSearchContainer();
@@ -260,10 +295,13 @@ export class App {
                 initialShareHandled = true;
                 // Use UrlStateService to get initial URL params (captured before any routing effects)
                 const hasProtocolLink = this.urlStateService.hasInitialParam('protocolLink');
+                const organizationId = this.urlStateService.getInitialParam('toe');
                 const sharedUnitName = this.urlStateService.getInitialParam('shareUnit');
                 const tab = this.urlStateService.getInitialParam('tab') ?? undefined;
                 if (hasProtocolLink) {
                     void this.handleCapturedUrl(window.location.href, 'protocol');
+                } else if (organizationId) {
+                    void this.forceBuilderService.showForceOrgDialog(organizationId);
                 } else if (sharedUnitName) {
                     const unit = this.dataService.getUnitByName(sharedUnitName);
                     if (unit) {
@@ -290,6 +328,10 @@ export class App {
             window.removeEventListener('appinstalled', this.appInstalledHandler);
             document.removeEventListener('contextmenu', this.contextMenuHandler);
             window.removeEventListener('blur', this.onBlur);
+            window.removeEventListener('keydown', this.keyboardNavigationHandler, true);
+            window.removeEventListener('pointerdown', this.pointerNavigationHandler, true);
+            window.removeEventListener('mousedown', this.pointerNavigationHandler, true);
+            window.removeEventListener('touchstart', this.pointerNavigationHandler, true);
             // window.removeEventListener('popstate', this.historyNavigationHandler);
             // if ('serviceWorker' in navigator) {
             //     navigator.serviceWorker.removeEventListener('message', this.serviceWorkerMessageHandler);
@@ -298,6 +340,20 @@ export class App {
     }
 
     hasForces = this.forceBuilderService.hasForces;
+
+    private readonly keyboardNavigationHandler = (event: KeyboardEvent) => {
+        if (event.metaKey || event.ctrlKey || event.altKey) {
+            return;
+        }
+
+        if (this.keyboardNavigationKeys.has(event.key)) {
+            document.documentElement.classList.add('keyboard-navigation');
+        }
+    };
+
+    private readonly pointerNavigationHandler = () => {
+        document.documentElement.classList.remove('keyboard-navigation');
+    };
 
     isCloudForceLoading = computed(() => this.dataService.isCloudForceLoading());
 
@@ -398,6 +454,61 @@ export class App {
         }
     }
 
+    private getLatestServiceWorkerHash(event: { latestVersion?: { hash?: string } }): string | null {
+        const hash = event.latestVersion?.hash?.trim();
+        return hash ? hash : null;
+    }
+
+    private getRecordedUpdateReloadHash(): string | null {
+        try {
+            const hash = localStorage.getItem(SW_UPDATE_RELOAD_HASH_STORAGE_KEY)?.trim();
+            return hash ? hash : null;
+        } catch {
+            return null;
+        }
+    }
+
+    private recordUpdateReloadHash(hash: string | null): void {
+        if (!hash) {
+            return;
+        }
+
+        try {
+            localStorage.setItem(SW_UPDATE_RELOAD_HASH_STORAGE_KEY, hash);
+        } catch {
+            // Best effort only; startup must continue even if storage is unavailable.
+        }
+    }
+
+    private clearRecordedUpdateReloadHash(): void {
+        try {
+            localStorage.removeItem(SW_UPDATE_RELOAD_HASH_STORAGE_KEY);
+        } catch {
+            // Best effort only; startup must continue even if storage is unavailable.
+        }
+    }
+
+    private handleReadyServiceWorkerUpdate(event: { latestVersion?: { hash?: string } }): void {
+        const latestHash = this.getLatestServiceWorkerHash(event);
+        const recordedHash = this.getRecordedUpdateReloadHash();
+        const shouldSuppressAutoReload = !!latestHash && latestHash === recordedHash;
+
+        if (latestHash && recordedHash && latestHash !== recordedHash) {
+            this.clearRecordedUpdateReloadHash();
+        }
+
+        this.pendingUpdateHash = latestHash;
+        this.updateAutoReloadEnabled.set(!!latestHash && !shouldSuppressAutoReload);
+
+        if (shouldSuppressAutoReload) {
+            this.logger.warn(`Service worker update ${latestHash} is still pending after a previous reload attempt; suppressing automatic reload.`);
+        } else {
+            this.logger.info('Service worker update is ready');
+        }
+
+        this.updateAvailable.set(true);
+    }
+
     private beforeInstallPromptHandler = (e: any) => {
         e.preventDefault();
         this.deferredPrompt = e;
@@ -411,6 +522,12 @@ export class App {
     };
 
     private contextMenuHandler = (event: Event) => {
+        const target = event.target;
+        const targetElement = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+        if (targetElement?.closest('input, textarea, .allow-select, [data-allow-native-context-menu="true"]')) {
+            return;
+        }
+
         event.preventDefault();
     };
 
@@ -428,6 +545,9 @@ export class App {
             if (await this.swUpdate.checkForUpdate()) {
                 this.logger.info('Update available');
                 this.updateAvailable.set(true);
+                if (!this.pendingUpdateHash) {
+                    this.updateAutoReloadEnabled.set(false);
+                }
             }
         } catch (err) {
             this.logger.error('Error checking for updates:' + err);
@@ -638,7 +758,27 @@ export class App {
     };
 
 
-    reloadForUpdate(): void {
+    async reloadForUpdate(): Promise<void> {
+        this.removeBeforeUnloadHandler();
+
+        if (this.swUpdate.isEnabled) {
+            this.recordUpdateReloadHash(this.pendingUpdateHash);
+            try {
+                const activated = await this.swUpdate.activateUpdate();
+                if (activated) {
+                    this.logger.info('Activated service worker update; reloading app.');
+                } else {
+                    this.logger.warn('Service worker activation returned false; reloading app anyway.');
+                }
+            } catch (err) {
+                this.logger.error('Error activating service worker update: ' + err);
+            }
+        }
+
+        this.performPageReload();
+    }
+
+    private performPageReload(): void {
         window.location.reload();
     }
 
@@ -660,6 +800,22 @@ export class App {
 
     showLoadForceDialog(): void {
         this.forceBuilderService.showLoadForceDialog();
+    }
+
+    showCollectionDialog(): void {
+        this.dialogService.createDialog(CollectionDialogComponent);
+    }
+
+    showForceGeneratorDialog(): void {
+        void this.forceBuilderService.showForceGeneratorDialog();
+    }
+
+    openHomeActionsPanel(): void {
+        this.homeActionsPanelOpen.set(true);
+    }
+
+    closeHomeActionsPanel(): void {
+        this.homeActionsPanelOpen.set(false);
     }
 
     showSingleUnitDetails(unit: Unit, tab?: string) {

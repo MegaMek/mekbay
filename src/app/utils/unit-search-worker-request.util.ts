@@ -34,7 +34,12 @@
 import type { GameSystem } from '../models/common.model';
 import type { Unit } from '../models/units.model';
 import { filterStateToSemanticText } from './semantic-filter.util';
-import type { UnitSearchWorkerCorpusSnapshot, UnitSearchWorkerIndexSnapshot, UnitSearchWorkerQueryRequest } from './unit-search-worker-protocol.util';
+import type {
+    UnitSearchWorkerCorpusSnapshot,
+    UnitSearchWorkerFactionEraSnapshot,
+    UnitSearchWorkerIndexSnapshot,
+    UnitSearchWorkerQueryRequest,
+} from './unit-search-worker-protocol.util';
 import type { FilterState } from '../services/unit-search-filters.model';
 
 interface UnitSearchWorkerCorpusCache {
@@ -63,6 +68,12 @@ interface BuildWorkerSearchRequestArgs {
     pilotPilotingSkill: number;
 }
 
+const SEMANTIC_TEXT_ESCAPE_PATTERN = /([()=><!"'&\\])/g;
+
+function escapePlainTextForWorkerExecutionQuery(text: string): string {
+    return text.replace(SEMANTIC_TEXT_ESCAPE_PATTERN, '\\$1');
+}
+
 export function getWorkerCorpusVersion(searchCorpusVersion: string | number, tagsVersion: number): string {
     return `${searchCorpusVersion}:${tagsVersion}`;
 }
@@ -72,6 +83,7 @@ export function getWorkerCorpusSnapshot(
     corpusVersion: string,
     units: Unit[],
     indexes: UnitSearchWorkerIndexSnapshot,
+    factionEraIndex: UnitSearchWorkerFactionEraSnapshot,
 ): { snapshot: UnitSearchWorkerCorpusSnapshot; cache: UnitSearchWorkerCorpusCache } {
     if (cache.snapshot && cache.version === corpusVersion) {
         return { snapshot: cache.snapshot, cache };
@@ -81,6 +93,7 @@ export function getWorkerCorpusSnapshot(
         corpusVersion,
         units,
         indexes,
+        factionEraIndex,
     };
 
     return {
@@ -100,7 +113,7 @@ export function buildWorkerExecutionQuery({
 }: BuildWorkerExecutionQueryArgs): string {
     return filterStateToSemanticText(
         effectiveFilterState,
-        effectiveTextSearch,
+        escapePlainTextForWorkerExecutionQuery(effectiveTextSearch),
         gameSystem,
         totalRangesCache,
     ).trim();

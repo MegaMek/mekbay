@@ -1,0 +1,26 @@
+<button type="button"
+    class="tri-state-checkbox"
+    [class.state-or]="normalizedValue() === 'or'"
+    [class.state-not]="normalizedValue() === 'not'"
+    [class.semantic-only]="semanticOnly()"
+    role="checkbox"
+    [attr.aria-checked]="ariaChecked()"
+    [attr.aria-label]="label() + ': ' + stateLabel()"
+    [attr.title]="label() + ': ' + stateLabel()"
+    [disabled]="semanticOnly()"
+    (click)="toggle()">
+    <span class="custom-checkbox"
+        [class.checkbox-or]="normalizedValue() === 'or'"
+        [class.checkbox-not]="normalizedValue() === 'not'"
+        [class.checked]="normalizedValue() !== null">
+        @if (normalizedValue() === 'or') {
+            <span class="checkbox-mark">&check;</span>
+        } @else if (normalizedValue() === 'not') {
+            <span class="checkbox-mark">-</span>
+        }
+    </span>
+    <span class="filter-label" [class.semantic-only]="semanticOnly()">{{ label() }}</span>
+    <span class="state-pill" [class.state-or]="normalizedValue() === 'or'" [class.state-not]="normalizedValue() === 'not'">
+        {{ stateLabel() }}
+    </span>
+</button>

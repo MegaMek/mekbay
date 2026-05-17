@@ -18,10 +18,19 @@
         @if (organizationFactionId() | factionImg; as factionImgUrl) {
         <img [src]="factionImgUrl" class="org-faction-icon" alt="" />
         }
-        <h2 class="org-name" (click)="renameOrganization()" title="Click to rename">{{ organizationName() }}</h2>
+        <h2 class="org-name" [class.editable]="!readOnly()" (click)="!readOnly() && renameOrganization()"
+            [title]="readOnly() ? '' : 'Click to rename'">{{ organizationName() }}</h2>
     </div>
     <div class="org-dialog-header-actions">
-        @if (layoutService.isMobile()) {
+        <button class="bt-button square" type="button" (click)="shareOrganization($event)" [disabled]="saving()"
+            title="Share TO&E" aria-label="Share TO&E">
+            <svg width="24px" height="24px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true">
+                <path fill-rule="evenodd" clip-rule="evenodd"
+                    d="M13.803 5.33333C13.803 3.49238 15.3022 2 17.1515 2C19.0008 2 20.5 3.49238 20.5 5.33333C20.5 7.17428 19.0008 8.66667 17.1515 8.66667C16.2177 8.66667 15.3738 8.28596 14.7671 7.67347L10.1317 10.8295C10.1745 11.0425 10.197 11.2625 10.197 11.4872C10.197 11.9322 10.109 12.3576 9.94959 12.7464L15.0323 16.0858C15.6092 15.6161 16.3473 15.3333 17.1515 15.3333C19.0008 15.3333 20.5 16.8257 20.5 18.6667C20.5 20.5076 19.0008 22 17.1515 22C15.3022 22 13.803 20.5076 13.803 18.6667C13.803 18.1845 13.9062 17.7255 14.0917 17.3111L9.05007 13.9987C8.46196 14.5098 7.6916 14.8205 6.84848 14.8205C4.99917 14.8205 3.5 13.3281 3.5 11.4872C3.5 9.64623 4.99917 8.15385 6.84848 8.15385C7.9119 8.15385 8.85853 8.64725 9.47145 9.41518L13.9639 6.35642C13.8594 6.03359 13.803 5.6896 13.803 5.33333Z" />
+            </svg>
+        </button>
+        @if (layoutService.isMobile() && !readOnly()) {
         <button class="bt-button square" type="button" (click)="toggleSidebar()" [class.active]="sidebarOpen()"
             aria-label="Toggle forces sidebar">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
@@ -71,7 +80,7 @@
             @for (group of baseLayerGroups(); track group.id) {
             @let previewInfo = previewGroupInfo().get(group.id);
             @let previewFactionId = previewInfo?.factionId ?? group.factionId();
-            <g class="group-container" [class.parent-group]="isParentGroup(group)"
+            <g class="group-container" [class.parent-group]="isParentGroup(group)" [class.readonly]="readOnly()"
                 [class.drop-target]="dropTargetGroupId() === group.id"
                 [attr.transform]="'translate(' + group.x() + ',' + group.y() + ')'"
                 (pointerdown)="onGroupPointerDown($event, group)">
@@ -88,38 +97,41 @@
 
                 <!-- Group faction icon -->
                 @if (previewFactionId | factionImg; as factionImgUrl) {
-                <image [attr.href]="factionImgUrl" x="8" y="10" width="28" height="28"
+                <image [attr.href]="factionImgUrl" x="8" [attr.y]="(GROUP_HEADER_HEIGHT - 28) / 2" width="28" height="28"
                     preserveAspectRatio="xMidYMid meet" />
                 }
 
                 <!-- Group header info -->
                 <foreignObject [attr.x]="previewFactionId !== undefined ? 40 : 8" y="0"
-                    [attr.width]="group.width() - (previewFactionId !== undefined ? 88 : 56)"
+                    [attr.width]="group.width() - (previewFactionId !== undefined ? (readOnly() ? 48 : 88) : (readOnly() ? 16 : 56))"
                     [attr.height]="GROUP_HEADER_HEIGHT" class="group-name-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="group-header-info">
-                        <div class="group-name" (click)="renameGroup(group)" title="Click to rename">
-                            {{ group.name() || previewInfo?.orgName ||
-                            group.orgName() }}
+                        @if (group.name(); as customName) {
+                        <div class="group-name" [class.editable]="!readOnly()"
+                            (pointerdown)="!readOnly() && onGroupTitlePointerDown($event, group)" [title]="readOnly() ? '' : 'Drag to move or click to rename'">
+                            {{ customName }}
                         </div>
-                        <div class="group-data">
-                            @if (group.name() && (previewInfo?.orgName ||
-                            group.orgName()); as orgName) {
-                            <span class="group-org-name">{{ orgName }}</span>
-                            }
-                            @if (previewInfo?.totals || group.totals(); as totals)
-                            {
-                            @if (group.name() && (previewInfo || group.totals())) {
-                            · }
-                            <span class="group-totals">{{ totals }}</span>
-                            }
+                        @if (previewInfo?.orgName || group.orgName(); as orgName) {
+                        <div class="group-org-name">{{ orgName }}</div>
+                        }
+                        } @else if (previewInfo?.orgName || group.orgName(); as orgName) {
+                        <div class="group-name" [class.editable]="!readOnly()"
+                            (pointerdown)="!readOnly() && onGroupTitlePointerDown($event, group)" [title]="readOnly() ? '' : 'Drag to move or click to rename'">
+                            {{ orgName }}
                         </div>
+                        }
+                        @if (previewInfo?.totals || group.totals(); as totals) {
+                        <div class="group-totals">{{ totals }}</div>
+                        }
                     </div>
                 </foreignObject>
 
                 <!-- Group remove button -->
+                @if (!readOnly()) {
                 <foreignObject [attr.x]="group.width() - 40" y="4" width="32" height="28" class="group-actions-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="group-actions">
-                        <button class="group-remove-btn" (click)="removeGroup(group)" title="Disband group">
+                        <button class="group-remove-btn" (click)="removeGroup(group); $event.stopPropagation()"
+                            (pointerdown)="$event.stopPropagation()" title="Disband group">
                             <svg width="12" height="12" fill="currentColor" viewBox="0 0 1200 1200"
                                 xmlns="http://www.w3.org/2000/svg">
                                 <path
@@ -128,6 +140,7 @@
                         </button>
                     </div>
                 </foreignObject>
+                }
             </g>
             }
 
@@ -141,7 +154,7 @@
 
                 <!-- Preview faction icon -->
                 @if (pr.factionId | factionImg; as factionImgUrl) {
-                <image [attr.href]="factionImgUrl" [attr.x]="pr.x + 8" [attr.y]="pr.y + 10" width="28" height="28"
+                <image [attr.href]="factionImgUrl" [attr.x]="pr.x + 8" [attr.y]="pr.y + (GROUP_HEADER_HEIGHT - 28) / 2" width="28" height="28"
                     preserveAspectRatio="xMidYMid meet" opacity="0.7" />
                 }
 
@@ -150,10 +163,10 @@
                     class="group-name-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="group-header-info drop-preview-info">
                         @if (pr.orgName) {
-                        <span class="group-org-name">{{ pr.orgName }}</span>
+                        <div class="group-org-name">{{ pr.orgName }}</div>
                         }
                         @if (pr.totals) {
-                        <span class="group-totals">{{ pr.totals }}</span>
+                        <div class="group-totals">{{ pr.totals }}</div>
                         }
                     </div>
                 </foreignObject>
@@ -161,15 +174,21 @@
             }
 
             <!-- Forces layer -->
-            @for (pf of sortedPlacedForces(); track pf.force.instanceId) {
+            @for (pf of baseLayerForces(); track pf.placementId) {
             @let metadata = forcesData().get(pf.force.instanceId);
+            @let shadowLabel = shadowCloneLabels().get(pf.placementId);
             <g class="force-card"
+                [class.shadow-clone]="!!shadowLabel"
+                [class.highlighted-hover]="hoveredForceInstanceId() === pf.force.instanceId"
+                [class.readonly-clickable]="readOnly() && !pf.force.missing"
                 [class.highlighted-selected]="selectedForceInstanceId() === pf.force.instanceId"
                 [class.highlighted-friendly]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'friendly'"
                 [class.highlighted-enemy]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'enemy'"
-                [attr.data-force-id]="pf.force.instanceId"
+                [attr.data-force-id]="pf.placementId"
                 [attr.transform]="'translate(' + pf.x() + ',' + pf.y() + ')'" (pointerdown)="onForcePointerDown($event, pf)"
-                (pointerenter)="hoveredForceId.set(pf.force.instanceId)" (pointerleave)="hoveredForceId.set(null)">
+                (click)="onReadonlyForceClick($event, pf)"
+                [attr.title]="readOnly() && !pf.force.missing ? 'Click to view details' : null"
+                (pointerenter)="hoveredForceId.set(pf.placementId)" (pointerleave)="hoveredForceId.set(null)">
 
                 <!-- Card background -->
                 <rect class="card-bg" x="0" y="0" [attr.width]="CARD_WIDTH" [attr.height]="CARD_HEIGHT"
@@ -179,29 +198,40 @@
                 <rect class="card-border" x="0" y="0" [attr.width]="CARD_WIDTH" [attr.height]="CARD_HEIGHT" />
 
                 <!-- Faction icon -->
-                @if (pf.force.factionId | factionImg; as factionImgUrl) {
+                
+                @if (pf.force.faction && getFactionImg(pf.force.faction); as factionImgUrl) {
                 <image [attr.href]="factionImgUrl" x="12" y="12" width="32" height="32"
                     preserveAspectRatio="xMidYMid meet" />
                 }
 
                 <!-- Force name -->
-                <foreignObject x="50" y="6" [attr.width]="CARD_WIDTH - 90" height="36" class="force-name-fo">
+                <foreignObject x="50" y="6" [attr.width]="CARD_WIDTH - (readOnly() ? 55 : 90)" height="36" class="force-name-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-name">
-                        {{ pf.force.name || metadata?.aggregatedOrg?.name }}
+                        {{ pf.force.name || metadata?.org?.name }}
                     </div>
-                    @if (pf.force.name) {
+                    @if (pf.force.missing) {
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-org">
-                        {{ metadata?.aggregatedOrg?.name }}
+                        {{ MISSING_FORCE_SUBTITLE }}
+                    </div>
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="force-value">
+                        {{ pf.force.instanceId }}
+                    </div>
+                    } @else if (pf.force.name) {
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="force-org">
+                        {{ metadata?.org?.name }}
                     </div>
                     }
+                    @if (!pf.force.missing) {
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-value">
                         @if (metadata?.bvString; as val) {
                         {{ val }}
                         }
                     </div>
+                    }
                 </foreignObject>
 
                 <!-- Action buttons (always visible, right side, vertically stacked) -->
+                @if (!readOnly()) {
                 <foreignObject [attr.x]="CARD_WIDTH - 30" y="0" width="30" [attr.height]="CARD_HEIGHT"
                     class="force-actions-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="force-action-column">
@@ -213,9 +243,98 @@
                                     d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
                             </svg>
                         </button>
+                        <button class="force-action-btn clone"
+                            (click)="shadowCloneForce(pf); $event.stopPropagation()"
+                            (pointerdown)="$event.stopPropagation()" title="Create shadow clone">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <rect x="9" y="9" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.8" />
+                                <path d="M7 15H6C4.89543 15 4 14.1046 4 13V6C4 4.89543 4.89543 4 6 4H13C14.1046 4 15 4.89543 15 6V7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                            </svg>
+                        </button>
+                        @if (!pf.force.missing) {
                         <button class="force-action-btn preview"
                             (click)="previewForce(pf.force); $event.stopPropagation()"
                             (pointerdown)="$event.stopPropagation()" title="View details">
+                            <svg stroke="currentColor" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M15.8053 15.8013L21 21M10.5 7.5V13.5M7.5 10.5H13.5M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z"
+                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                        </button>
+                        }
+                    </div>
+                </foreignObject>
+                }
+            </g>
+            }
+
+            <!-- Dragged force overlay (rendered above groups) -->
+            @for (pf of dragOverlayForces(); track pf.placementId) {
+            @let metadata = forcesData().get(pf.force.instanceId);
+            @let shadowLabel = shadowCloneLabels().get(pf.placementId);
+            <g class="force-card"
+                [class.shadow-clone]="!!shadowLabel"
+                [class.highlighted-hover]="hoveredForceInstanceId() === pf.force.instanceId"
+                [class.highlighted-selected]="selectedForceInstanceId() === pf.force.instanceId"
+                [class.highlighted-friendly]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'friendly'"
+                [class.highlighted-enemy]="selectedForceInstanceId() !== pf.force.instanceId && loadedForceAlignments().get(pf.force.instanceId) === 'enemy'"
+                [attr.data-force-id]="pf.placementId"
+                [attr.transform]="'translate(' + pf.x() + ',' + pf.y() + ')'"
+                pointer-events="none">
+
+                <rect class="card-bg" x="0" y="0" [attr.width]="CARD_WIDTH" [attr.height]="CARD_HEIGHT"
+                    filter="url(#card-drag-shadow)" />
+
+                <rect class="card-border" x="0" y="0" [attr.width]="CARD_WIDTH" [attr.height]="CARD_HEIGHT" />
+
+                @if (pf.force.faction && getFactionImg(pf.force.faction); as factionImgUrl) {
+                <image [attr.href]="factionImgUrl" x="12" y="12" width="32" height="32"
+                    preserveAspectRatio="xMidYMid meet" />
+                }
+
+                <foreignObject x="50" y="6" [attr.width]="CARD_WIDTH - 90" height="36" class="force-name-fo">
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="force-name">
+                        {{ pf.force.name || metadata?.org?.name }}
+                    </div>
+                    @if (pf.force.missing) {
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="force-org">
+                        {{ MISSING_FORCE_SUBTITLE }}
+                    </div>
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="force-value">
+                        {{ pf.force.instanceId }}
+                    </div>
+                    } @else if (pf.force.name) {
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="force-org">
+                        {{ metadata?.org?.name }}
+                    </div>
+                    }
+                    @if (!pf.force.missing) {
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="force-value">
+                        @if (metadata?.bvString; as val) {
+                        {{ val }}
+                        }
+                    </div>
+                    }
+                </foreignObject>
+
+                <foreignObject [attr.x]="CARD_WIDTH - 30" y="0" width="30" [attr.height]="CARD_HEIGHT"
+                    class="force-actions-fo">
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="force-action-column">
+                        <button class="force-action-btn remove" tabindex="-1">
+                            <svg width="12" height="12" fill="currentColor" viewBox="0 0 1200 1200"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z" />
+                            </svg>
+                        </button>
+                        <button class="force-action-btn clone" tabindex="-1">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <rect x="9" y="9" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.8" />
+                                <path d="M7 15H6C4.89543 15 4 14.1046 4 13V6C4 4.89543 4.89543 4 6 4H13C14.1046 4 15 4.89543 15 6V7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                            </svg>
+                        </button>
+                        <button class="force-action-btn preview" tabindex="-1">
                             <svg stroke="currentColor" width="14" height="14" viewBox="0 0 24 24" fill="none"
                                 xmlns="http://www.w3.org/2000/svg">
                                 <path
@@ -228,11 +347,11 @@
             </g>
             }
 
-            <!-- Dragged group overlay (rendered above forces) -->
+            <!-- Dragged group overlay (rendered above everything) -->
             @for (group of dragOverlayGroups(); track group.id) {
             @let previewInfo = previewGroupInfo().get(group.id);
             @let previewFactionId = previewInfo?.factionId ?? group.factionId();
-            <g class="group-container" [class.parent-group]="isParentGroup(group)"
+            <g class="group-container" [class.parent-group]="isParentGroup(group)" [class.readonly]="readOnly()"
                 [class.drop-target]="dropTargetGroupId() === group.id"
                 [attr.transform]="'translate(' + group.x() + ',' + group.y() + ')'"
                 pointer-events="none">
@@ -243,30 +362,29 @@
                     [attr.height]="GROUP_HEADER_HEIGHT" />
 
                 @if (previewFactionId | factionImg; as factionImgUrl) {
-                <image [attr.href]="factionImgUrl" x="8" y="10" width="28" height="28"
+                <image [attr.href]="factionImgUrl" x="8" [attr.y]="(GROUP_HEADER_HEIGHT - 28) / 2" width="28" height="28"
                     preserveAspectRatio="xMidYMid meet" />
                 }
 
                 <foreignObject [attr.x]="previewFactionId !== undefined ? 40 : 8" y="0"
-                    [attr.width]="group.width() - (previewFactionId !== undefined ? 88 : 56)"
+                    [attr.width]="group.width() - (previewFactionId !== undefined ? (readOnly() ? 48 : 88) : (readOnly() ? 16 : 56))"
                     [attr.height]="GROUP_HEADER_HEIGHT" class="group-name-fo">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="group-header-info">
-                        <div class="group-name">
-                            {{ group.name() || previewInfo?.orgName ||
-                            group.orgName() }}
+                        @if (group.name(); as customName) {
+                        <div class="group-name" [class.editable]="!readOnly()">
+                            {{ customName }}
                         </div>
-                        <div class="group-data">
-                            @if (group.name() && (previewInfo?.orgName ||
-                            group.orgName()); as orgName) {
-                            <span class="group-org-name">{{ orgName }}</span>
-                            }
-                            @if (previewInfo?.totals || group.totals(); as totals)
-                            {
-                            @if (group.name() && (previewInfo || group.totals())) {
-                            · }
-                            <span class="group-totals">{{ totals }}</span>
-                            }
+                        @if (previewInfo?.orgName || group.orgName(); as orgName) {
+                        <div class="group-org-name">{{ orgName }}</div>
+                        }
+                        } @else if (previewInfo?.orgName || group.orgName(); as orgName) {
+                        <div class="group-name" [class.editable]="!readOnly()">
+                            {{ orgName }}
                         </div>
+                        }
+                        @if (previewInfo?.totals || group.totals(); as totals) {
+                        <div class="group-totals">{{ totals }}</div>
+                        }
                     </div>
                 </foreignObject>
 
@@ -286,6 +404,16 @@
         </g>
     </svg>
 
+    <!-- Initial canvas loading overlay -->
+    @if (loading()) {
+    <div class="canvas-loading-overlay">
+        <div class="canvas-loading-card">
+            <div class="canvas-loading-title">Loading TO&amp;E...</div>
+            <p>Restoring organization layout and force data.</p>
+        </div>
+    </div>
+    }
+
     <!-- Empty canvas overlay -->
     @if (!loading() && placedForces().length === 0) {
     <div class="canvas-empty-overlay">
@@ -298,6 +426,7 @@
     }
 
     <!-- Sidebar: Hangar forces -->
+    @if (!readOnly()) {
     <div class="forces-sidebar framed-borders" [class.overlay]="layoutService.isMobile()"
         [class.hidden]="layoutService.isMobile() && !sidebarOpen()" [class.animate]="sidebarAnimated()">
 
@@ -305,35 +434,62 @@
             <input class="bt-input sidebar-search-input" type="text" placeholder="Search..."
                 [value]="sidebarSearchText()" (input)="onSidebarSearch($any($event.target).value)" />
             <div class="sidebar-filter-bar">
-                <button class="filter-btn" [class.active]="sidebarGameTypeFilter() === 'all'"
-                    (click)="onSidebarGameTypeFilter('all')">All</button>
-                <button class="filter-btn" [class.active]="sidebarGameTypeFilter() === GameSystem.CLASSIC"
-                    (click)="onSidebarGameTypeFilter(GameSystem.CLASSIC)">BattleTech</button>
-                <button class="filter-btn" [class.active]="sidebarGameTypeFilter() === GameSystem.ALPHA_STRIKE"
-                    (click)="onSidebarGameTypeFilter(GameSystem.ALPHA_STRIKE)">Alpha Strike</button>
+                <button class="filter-btn" [class.active]="sidebarFilter() === sidebarAllFilter"
+                    (click)="setSidebarFilter(sidebarAllFilter)">
+                    <span class="filter-label">All</span>
+                    <span class="filter-count">{{ getSidebarFilterCount(sidebarAllFilter) }}</span>
+                </button>
+                <button class="filter-btn" [class.active]="sidebarFilter() === GameSystem.CLASSIC"
+                    (click)="toggleSidebarFilter(GameSystem.CLASSIC)">
+                    <span class="filter-label">BattleTech</span>
+                    <span class="filter-count">{{ getSidebarFilterCount(GameSystem.CLASSIC) }}</span>
+                </button>
+                <button class="filter-btn" [class.active]="sidebarFilter() === GameSystem.ALPHA_STRIKE"
+                    (click)="toggleSidebarFilter(GameSystem.ALPHA_STRIKE)">
+                    <span class="filter-label">Alpha Strike</span>
+                    <span class="filter-count">{{ getSidebarFilterCount(GameSystem.ALPHA_STRIKE) }}</span>
+                </button>
+            </div>
+            <div class="sidebar-tag-bar">
+                @if (getSidebarTagCount(sidebarUntaggedFilter) > 0) {
+                <button class="filter-btn sidebar-tag-btn" type="button"
+                    [class.active]="sidebarFilter() === sidebarUntaggedFilter"
+                    (click)="toggleSidebarFilter(sidebarUntaggedFilter)">
+                    <span class="filter-label">Untagged</span>
+                    <span class="filter-count">{{ getSidebarTagCount(sidebarUntaggedFilter) }}</span>
+                </button>
+                }
+                @for (tag of sidebarTags(); track tag.id) {
+                    @if (tag.count > 0) {
+                    <button class="filter-btn sidebar-tag-btn" type="button"
+                        [class.active]="sidebarFilter() === tag.id"
+                        (click)="toggleSidebarFilter(tag.id)">
+                        <span class="filter-label">{{ tag.label }}</span>
+                        <span class="filter-count">{{ tag.count }}</span>
+                    </button>
+                    }
+                }
             </div>
         </div>
 
         <div class="forces-list">
-            @if (loading()) {
+            @if (sidebarLoading()) {
             <div class="sidebar-empty">Loading forces...</div>
-            } @else if (sidebarForces().length === 0 && placedForces().length === 0) {
-            <div class="sidebar-empty">No saved forces found.</div>
             } @else if (sidebarForces().length === 0) {
-            <div class="sidebar-empty">All forces placed.<br>Drag them back here to remove.</div>
+            <div class="sidebar-empty">{{ getSidebarEmptyStateMessage() }}</div>
             } @else {
             @for (force of sidebarForces(); track force.instanceId) {
             @let metadata = forcesData().get(force.instanceId);
             <div class="sidebar-force-item" (pointerdown)="onSidebarForcePointerDown($event, force)">
                 <div class="sidebar-force-icon">
-                    @if (force.factionId | factionImg; as factionImgUrl) {
+                    @if (force.faction && getFactionImg(force.faction); as factionImgUrl) {
                     <img [src]="factionImgUrl" class="sidebar-faction-img" alt="" />
                     }
                 </div>
                 <div class="sidebar-force-info">
-                    <div class="sidebar-force-name">{{ force.name || metadata?.aggregatedOrg?.name }}</div>
+                    <div class="sidebar-force-name">{{ force.name || metadata?.org?.name }}</div>
                     @if (force.name) {
-                    <div class="sidebar-force-org">{{ metadata?.aggregatedOrg?.name }}</div>
+                    <div class="sidebar-force-org">{{ metadata?.org?.name }}</div>
                     }
                     <div class="sidebar-force-value">{{ metadata?.bvString }}</div>
                 </div>
@@ -352,6 +508,28 @@
         </div>
 
         <div class="sidebar-sort-footer">
+            <div class="sidebar-footer-filter-controls">
+                <compact-filter-menu
+                    [options]="sidebarFactionOptions()"
+                    [selectedId]="sidebarFactionFilter()"
+                    allLabel="All factions"
+                    ariaLabel="Filter by faction"
+                    fallbackLabel="F"
+                    size="small"
+                    panelAlign="left"
+                    (selectedIdChange)="setSidebarFactionFilter($event)">
+                </compact-filter-menu>
+                <compact-filter-menu
+                    [options]="sidebarEraOptions()"
+                    [selectedId]="sidebarEraFilter()"
+                    allLabel="All eras"
+                    ariaLabel="Filter by era"
+                    fallbackLabel="E"
+                    size="small"
+                    panelAlign="left"
+                    (selectedIdChange)="setSidebarEraFilter($event)">
+                </compact-filter-menu>
+            </div>
             <div class="sort-controls">
                 <select class="bt-input sort-select"
                     (change)="setSidebarSort($any($event.target).value)">
@@ -381,6 +559,7 @@
             </div>
         </div>
     </div>
+    }
 
     <!-- Floating drag ghost for sidebar drag -->
     @if (sidebarDragActive() && sidebarDragForce()) {
@@ -389,15 +568,16 @@
         [style.top.px]="sidebarDragPos().y - CARD_HEIGHT / 2" [style.width.px]="CARD_WIDTH"
         [style.height.px]="CARD_HEIGHT">
         <div class="drag-ghost-icon">
-            @if (sidebarDragForce()!.factionId | factionImg; as factionImgUrl) {
+            @let faction = sidebarDragForce()!.faction;
+            @if (faction && getFactionImg(faction); as factionImgUrl) {
             <img [src]="factionImgUrl" class="drag-ghost-faction-img" alt="" />
             }
         </div>
         <div class="drag-ghost-info">
             <div class="drag-ghost-name">{{ sidebarDragForce()!.name ||
-                metatada?.aggregatedOrg?.name }}</div>
+                metatada?.org?.name }}</div>
             @if (sidebarDragForce()!.name) {
-            <div class="drag-ghost-org">{{ metatada?.aggregatedOrg?.name }}</div>
+            <div class="drag-ghost-org">{{ metatada?.org?.name }}</div>
             }
             <div class="drag-ghost-value">{{ metatada?.bvString }}</div>
         </div>
@@ -406,8 +586,10 @@
 </div>
 
 <div class="org-dialog-footer">
+    @if (!readOnly()) {
     <button class="modal-btn bt-button" [class.primary]="dirty()" (click)="saveOrganization()" [disabled]="saving() || !dirty()" title="Save Organization">
         {{ saving() ? 'SAVING...' : 'COMMIT' }}
     </button>
+    }
     <button class="modal-btn bt-button" (click)="close()">DISMISS</button>
 </div>

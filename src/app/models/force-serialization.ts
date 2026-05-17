@@ -38,7 +38,51 @@ import type { GameSystem } from './common.model';
 import type { CBTForceUnit } from './cbt-force-unit.model';
 import type { ASCustomPilotAbility } from './pilot-abilities.model';
 import type { C3NetworkType } from './c3-network.model';
-import { DEFAULT_GUNNERY_SKILL } from './crew-member.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './crew-member.model';
+
+export const FORCE_NOTE_MAX_LENGTH = 2000;
+export const FORCE_TAG_MAX_LENGTH = 48;
+export const FORCE_TAG_MAX_COUNT = 32;
+
+export function sanitizeForceTagLabel(rawTag: unknown): string | null {
+    if (typeof rawTag !== 'string') {
+        return null;
+    }
+
+    const sanitizedTag = rawTag.trim().replace(/\s+/g, ' ').slice(0, FORCE_TAG_MAX_LENGTH);
+    return sanitizedTag.length > 0 ? sanitizedTag : null;
+}
+
+/** Sanitizes a force tag label catalog without applying the per-force tag count limit. */
+export function sanitizeForceTagLabels(tags: readonly string[] | null | undefined): string[] {
+    if (!Array.isArray(tags) || tags.length === 0) {
+        return [];
+    }
+
+    const sanitizedTags: string[] = [];
+    const seen = new Set<string>();
+
+    for (const rawTag of tags) {
+        const sanitizedTag = sanitizeForceTagLabel(rawTag);
+        if (!sanitizedTag) {
+            continue;
+        }
+
+        const normalizedTag = sanitizedTag.toLocaleLowerCase();
+        if (seen.has(normalizedTag)) {
+            continue;
+        }
+
+        seen.add(normalizedTag);
+        sanitizedTags.push(sanitizedTag);
+    }
+
+    return sanitizedTags;
+}
+
+export function sanitizeForceTags(tags: readonly string[] | null | undefined): string[] {
+    return sanitizeForceTagLabels(tags).slice(0, FORCE_TAG_MAX_COUNT);
+}
 
 export interface LocationData {
     armor?: number;
@@ -60,6 +104,8 @@ export interface SerializedForce {
     instanceId: string;
     type: GameSystem;
     name: string;
+    note?: string;
+    tags?: string[];
     factionId?: number;
     factionLock?: boolean;
     eraId?: number;
@@ -101,6 +147,7 @@ export interface SerializedUnit {
     model?: string;
     chassis?: string;
     alias?: string;
+    commander?: boolean;
     updatedTs?: number;
     state: SerializedState;
 }
@@ -108,6 +155,8 @@ export interface ASSerializedUnit extends SerializedUnit {
     state: ASSerializedState;
     skill: number;
     abilities: (string | ASCustomPilotAbility)[]; // Array of ability IDs or custom abilities
+    formationAbilities?: string[];
+    commander?: boolean;
 }
 
 export interface CBTSerializedUnit extends SerializedUnit {
@@ -193,8 +242,19 @@ export interface ASCriticalHit {
     timestamp: number;
 }
 
+export interface SerializedCrewMember {
+    id: number;
+    name: string;
+    gunnerySkill: number;
+    pilotingSkill: number;
+    asfGunnerySkill?: number;
+    asfPilotingSkill?: number;
+    hits: number;
+    state: number;
+}
+
 export interface CBTSerializedState extends SerializedState {
-    crew: any[]; // Serialized CrewMember objects
+    crew: SerializedCrewMember[];
     crits: CriticalSlot[];
     locations: Record<string, LocationData>;
     heat: HeatProfile;
@@ -318,11 +378,11 @@ export const INVENTORY_SCHEMA = Sanitizer.schema<SerializedInventory>()
 /**
  * Schema for crew member serialized data
  */
-export const CREW_MEMBER_SCHEMA = Sanitizer.schema<any>()
+export const CREW_MEMBER_SCHEMA = Sanitizer.schema<SerializedCrewMember>()
     .number('id', { default: 0, min: 0 })
     .string('name', { default: '' })
     .number('gunnerySkill', { default: DEFAULT_GUNNERY_SKILL, min: 0, max: 8 })
-    .number('pilotingSkill', { default: 5, min: 0, max: 8 })
+    .number('pilotingSkill', { default: DEFAULT_PILOTING_SKILL, min: 0, max: 8 })
     .number('asfGunnerySkill')
     .number('asfPilotingSkill')
     .number('hits', { default: 0, min: 0 })
@@ -371,6 +431,7 @@ export const CBT_SERIALIZED_UNIT_SCHEMA = Sanitizer.schema<CBTSerializedUnit>()
     .string('model')
     .string('chassis')
     .string('alias')
+    .boolean('commander')
     .number('updatedTs')
     .custom('state', (value: unknown) => {
         if (!value || typeof value !== 'object') {
@@ -404,6 +465,12 @@ export const CBT_SERIALIZED_FORCE_SCHEMA = Sanitizer.schema<CBTSerializedForce>(
     .string('instanceId')
     .string('type')
     .string('name', { default: 'Unnamed Force' })
+    .string('note', { maxLength: FORCE_NOTE_MAX_LENGTH })
+    .custom('tags', (value: unknown) => {
+        if (!Array.isArray(value)) return undefined;
+        const tags = sanitizeForceTags(value);
+        return tags.length > 0 ? tags : undefined;
+    })
     .boolean('factionLock')
     .number('factionId')
     .number('eraId')
@@ -531,6 +598,12 @@ export const AS_SERIALIZED_UNIT_SCHEMA = Sanitizer.schema<ASSerializedUnit>()
             return null;
         }).filter((item): item is string | ASCustomPilotAbility => item !== null);
     })
+    .custom('formationAbilities', (value: unknown) => {
+        if (!Array.isArray(value)) return undefined;
+        const abilities = value.filter((item): item is string => typeof item === 'string');
+        return abilities.length > 0 ? [...new Set(abilities)] : undefined;
+    })
+    .boolean('commander')
     .custom('state', (value: unknown) => {
         if (!value || typeof value !== 'object') {
             return Sanitizer.sanitize({}, AS_SERIALIZED_STATE_SCHEMA);
@@ -563,6 +636,12 @@ export const AS_SERIALIZED_FORCE_SCHEMA = Sanitizer.schema<ASSerializedForce>()
     .string('instanceId')
     .string('type')
     .string('name', { default: 'Unnamed Force' })
+    .string('note', { maxLength: FORCE_NOTE_MAX_LENGTH })
+    .custom('tags', (value: unknown) => {
+        if (!Array.isArray(value)) return undefined;
+        const tags = sanitizeForceTags(value);
+        return tags.length > 0 ? tags : undefined;
+    })
     .boolean('factionLock')
     .number('factionId')
     .number('eraId')

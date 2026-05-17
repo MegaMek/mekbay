@@ -16,6 +16,8 @@ import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import type { ForceSlot } from '../../models/force-slot.model';
 import type { LoadOrganizationEntry } from '../../models/organization.model';
 import { AlignmentPickerDialogComponent, type AlignmentPickerResult } from '../alignment-picker-dialog/alignment-picker-dialog.component';
+import { AddExternalForceDialogComponent } from '../add-external-force-dialog/add-external-force-dialog.component';
+import { getFactionImg } from '../../models/factions.model';
 
 /*
  * Sidebar footer component
@@ -194,7 +196,7 @@ export class SidebarFooterComponent {
         for (const org of orgs) {
             if (org.factionId != null) {
                 const faction = this.dataService.getFactionById(org.factionId);
-                factionImages.set(org.organizationId, faction?.img || undefined);
+                factionImages.set(org.organizationId, faction ? getFactionImg(faction) : undefined);
             }
         }
 
@@ -219,13 +221,11 @@ export class SidebarFooterComponent {
     }
 
     async addExternalForce(): Promise<void> {
-        const input = await this.dialogsService.prompt(
-            'Enter the Force Instance ID or a MekBay URL:',
-            'Add Force',
-            '',
-            'You can paste an Instance ID or a full MekBay URL containing one. To directly add one of your own forces, use the ADD button in the Load dialog instead.'
-        );
-        if (!input) return;
+        const inputDialogRef = this.dialogsService.createDialog<string | null>(AddExternalForceDialogComponent, {
+            disableClose: true,
+        });
+        const input = await firstValueFrom(inputDialogRef.closed);
+        if (!input?.trim()) return;
 
         const instanceId = this.extractInstanceId(input.trim());
 
@@ -242,10 +242,10 @@ export class SidebarFooterComponent {
         }
 
         // Show alignment picker with force preview
-        const ref = this.dialogsService.createDialog<AlignmentPickerResult | null>(AlignmentPickerDialogComponent, {
+        const alignmentDialogRef = this.dialogsService.createDialog<AlignmentPickerResult | null>(AlignmentPickerDialogComponent, {
             data: { force }
         });
-        const result = await firstValueFrom(ref.closed);
+        const result = await firstValueFrom(alignmentDialogRef.closed);
         if (!result) return;
 
         let forceToAdd = force;

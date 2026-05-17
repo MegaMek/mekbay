@@ -47,6 +47,7 @@ import type { CrewMember } from './crew-member.model';
 export abstract class ForceUnit {
     protected unit: Unit; // Original unit data
     private _forceRef = signal<Force>(null!);
+    protected readonly _formationCommander = signal<boolean>(false);
     id: string;
     updatedTs: number = 0;
     initialized = false;
@@ -70,6 +71,7 @@ export abstract class ForceUnit {
     protected abstract state: ForceUnitState;
 
     readOnly = computed(() => this.force.owned() === false);
+    readonly commander = this._formationCommander.asReadonly();
 
     abstract readonly alias: Signal<string | undefined>;
 
@@ -131,6 +133,17 @@ export abstract class ForceUnit {
 
     setC3Position(pos: { x: number; y: number } | null) {
         this.state.c3Position.set(pos);
+    }
+
+    setFormationCommander(value: boolean, markModified: boolean = true): void {
+        if (this._formationCommander() === value) {
+            return;
+        }
+
+        this._formationCommander.set(value);
+        if (markModified) {
+            this.setModified();
+        }
     }
 
     getUnit(): Unit {

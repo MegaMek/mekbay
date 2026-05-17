@@ -1,0 +1,109 @@
+:host {
+    display: block;
+    width: 100%;
+}
+
+.tri-state-checkbox {
+    width: 100%;
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border: 0;
+    background: transparent;
+    color: var(--text-color);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.tri-state-checkbox:hover:not(:disabled) {
+    background-color: var(--background-color-light);
+}
+
+.tri-state-checkbox:focus-visible {
+    outline: 1px solid var(--bt-yellow);
+    outline-offset: -1px;
+}
+
+.tri-state-checkbox:disabled {
+    cursor: default;
+}
+
+.custom-checkbox {
+    position: relative;
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    background-color: transparent;
+    border: 1px solid silver;
+    border-radius: 2px;
+    flex-shrink: 0;
+    transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+    text-align: center;
+    font-size: 1em;
+    line-height: 16px;
+}
+
+.custom-checkbox.checked {
+    color: #fff;
+}
+
+.checkbox-or {
+    background-color: var(--bt-yellow);
+    border-color: var(--bt-yellow);
+}
+
+.checkbox-not {
+    background-color: #c00;
+    border-color: #c00;
+}
+
+.checkbox-mark {
+    position: absolute;
+    left: 2px;
+    top: 0;
+    width: 12px;
+    height: 16px;
+    font-size: 1em;
+    line-height: 16px;
+    text-align: center;
+    pointer-events: none;
+}
+
+.filter-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.filter-label.semantic-only {
+    color: var(--semantic-color);
+}
+
+.state-pill {
+    flex: 0 0 auto;
+    min-width: 34px;
+    padding: 2px 8px;
+    border: 1px solid var(--text-color-secondary);
+    background-color: transparent;
+    color: var(--text-color-secondary);
+    font-size: 0.7em;
+    text-align: center;
+}
+
+.state-pill.state-or {
+    background-color: var(--bt-yellow-background);
+    border-color: var(--bt-yellow);
+    color: var(--bt-yellow);
+}
+
+.state-pill.state-not {
+    background-color: #ffd4d4;
+    border-color: #c00;
+    color: #c00;
+}

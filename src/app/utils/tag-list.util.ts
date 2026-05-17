@@ -32,20 +32,21 @@
  */
 
 import type { Unit } from '../models/units.model';
+import { naturalCompare } from './sort.util';
 
 function sortTags(tags: Set<string>): string[] {
-    return Array.from(tags).sort((left, right) => left.toLowerCase().localeCompare(right.toLowerCase()));
+    return Array.from(tags).sort(naturalCompare);
 }
 
 export function collectAllTags(units: Unit[]): string[] {
     const tags = new Set<string>();
 
     for (const unit of units) {
-        for (const tag of unit._nameTags ?? []) {
-            tags.add(tag);
+        for (const entry of unit._nameTags ?? []) {
+            tags.add(entry.tag);
         }
-        for (const tag of unit._chassisTags ?? []) {
-            tags.add(tag);
+        for (const entry of unit._chassisTags ?? []) {
+            tags.add(entry.tag);
         }
     }
 
@@ -56,8 +57,8 @@ export function collectAllNameTags(units: Unit[]): string[] {
     const tags = new Set<string>();
 
     for (const unit of units) {
-        for (const tag of unit._nameTags ?? []) {
-            tags.add(tag);
+        for (const entry of unit._nameTags ?? []) {
+            tags.add(entry.tag);
         }
     }
 
@@ -68,8 +69,8 @@ export function collectAllChassisTags(units: Unit[]): string[] {
     const tags = new Set<string>();
 
     for (const unit of units) {
-        for (const tag of unit._chassisTags ?? []) {
-            tags.add(tag);
+        for (const entry of unit._chassisTags ?? []) {
+            tags.add(entry.tag);
         }
     }
 

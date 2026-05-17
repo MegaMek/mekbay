@@ -10,6 +10,7 @@ import { ForceBuilderViewerComponent } from '../force-builder-viewer/force-build
 import { SwipeDirective, type SwipeEndEvent, type SwipeStartEvent } from '../../directives/swipe.directive';
 import { BUILD_BRANCH } from '../../build-meta';
 import { DialogsService } from '../../services/dialogs.service';
+import { ConnectionStatusBadgeComponent } from '../connection-status-badge/connection-status-badge.component';
 
 /*
  * Main Sidebar component
@@ -19,7 +20,7 @@ import { DialogsService } from '../../services/dialogs.service';
     selector: 'sidebar',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, PortalModule, CdkMenuModule, SidebarFooterComponent, ForceBuilderViewerComponent, SwipeDirective],
+    imports: [CommonModule, PortalModule, CdkMenuModule, SidebarFooterComponent, ForceBuilderViewerComponent, SwipeDirective, ConnectionStatusBadgeComponent],
     templateUrl: './sidebar.component.html',
     styleUrls: ['./sidebar.component.scss'],
 })
