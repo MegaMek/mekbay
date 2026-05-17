@@ -41,6 +41,7 @@ import {
     inject
 } from '@angular/core';
 import { LayoutService } from '../../services/layout.service';
+import type { RecordSheetDoubleTapZoomResetMode } from '../../models/options.model';
 
 /*
  * Author: Drake
@@ -140,6 +141,7 @@ export class PageViewerZoomPanService {
     private containerDimensions = { width: 0, height: 0 };
     private totalPages = 1;
     private nonInteractiveSelectors: string[] = [];
+    private doubleTapZoomResetMode: RecordSheetDoubleTapZoomResetMode = 'disabled';
     private spaceEvenly = false;
     private transformPageTargets: PageTransformTarget[] = [];
     private transformCanvasOverlays: HTMLElement[] = [];
@@ -211,6 +213,14 @@ export class PageViewerZoomPanService {
         this.nonInteractiveSelectors = nonInteractiveSelectors?.selectors ?? [];
         this.spaceEvenly = spaceEvenly;
         this.setupEventListeners();
+    }
+
+    setDoubleTapZoomResetMode(mode: RecordSheetDoubleTapZoomResetMode): void {
+        this.doubleTapZoomResetMode = mode;
+        if (mode === 'disabled') {
+            this.doubleTapState.lastTapTime = 0;
+            this.doubleTapState.lastTapPoint = null;
+        }
     }
 
     /**
@@ -729,6 +739,12 @@ export class PageViewerZoomPanService {
     // ========== Double-tap Zoom ==========
 
     private checkDoubleTap(event: PointerEvent): void {
+        if (this.doubleTapZoomResetMode === 'disabled') {
+            this.doubleTapState.lastTapTime = 0;
+            this.doubleTapState.lastTapPoint = null;
+            return;
+        }
+
         if (this.gestureState.pointerMoved || this.pointers.size > 1) {
             this.doubleTapState.lastTapPoint = null;
             return;
@@ -767,18 +783,7 @@ export class PageViewerZoomPanService {
             event.preventDefault();
             event.stopPropagation();
 
-            const rect = this.containerRef.nativeElement.getBoundingClientRect();
-            const tapX = event.clientX - rect.left;
-            const tapY = event.clientY - rect.top;
-
-            if (this.isFullyVisible()) {
-                // Zoom in to 2x minimum
-                const newScale = Math.min(this.maxScale, this.minScale() * 2);
-                this.zoomToPoint(tapX, tapY, newScale);
-            } else {
-                // Zoom out to fit
-                this.resetView();
-            }
+            this.resetZoomFromDoubleTap(this.doubleTapZoomResetMode, pageWrapper, event);
 
             this.doubleTapState.lastTapTime = 0;
             this.doubleTapState.lastTapPoint = null;
@@ -786,6 +791,60 @@ export class PageViewerZoomPanService {
             this.doubleTapState.lastTapTime = now;
             this.doubleTapState.lastTapPoint = { x: event.clientX, y: event.clientY };
         }
+    }
+
+    private resetZoomFromDoubleTap(mode: RecordSheetDoubleTapZoomResetMode, pageWrapper: Element, event: PointerEvent): void {
+        if (mode === 'fit-to-screen' || (mode === 'contextual' && !this.isFullyVisible())) {
+            this.resetView();
+            return;
+        }
+
+        if (mode === 'full-width' || mode === 'contextual') {
+            this.resetToFullWidth(pageWrapper, event);
+        }
+    }
+
+    private resetToFullWidth(pageWrapper: Element, event: PointerEvent): void {
+        const containerWidth = this.containerDimensions.width;
+        if (containerWidth <= 0) return;
+
+        const containerRect = this.containerRef.nativeElement.getBoundingClientRect();
+        const tapY = event.clientY - containerRect.top;
+        const currentScale = this.scale();
+        const currentTranslate = this.translate();
+        const tappedContentY = currentScale > 0
+            ? (tapY - currentTranslate.y) / currentScale
+            : 0;
+        const originalLeft = this.getPageWrapperOriginalLeft(pageWrapper);
+        const nextScale = Math.max(this.minScale(), Math.min(this.maxScale, containerWidth / PAGE_WIDTH));
+        const centeredTapY = (this.containerDimensions.height / 2) - tappedContentY * nextScale;
+
+        this.scale.set(nextScale);
+        this.translate.set({
+            x: -originalLeft * nextScale,
+            y: centeredTapY
+        });
+        this.clampPan();
+        this.applyTransform();
+    }
+
+    private getPageWrapperOriginalLeft(pageWrapper: Element): number {
+        if (!(pageWrapper instanceof HTMLElement)) {
+            return 0;
+        }
+
+        const datasetLeft = Number.parseFloat(pageWrapper.dataset['originalLeft'] ?? '');
+        if (Number.isFinite(datasetLeft)) {
+            return datasetLeft;
+        }
+
+        const styleLeft = Number.parseFloat(pageWrapper.style.left);
+        if (!Number.isFinite(styleLeft)) {
+            return 0;
+        }
+
+        const currentScale = this.scale();
+        return currentScale > 0 ? styleLeft / currentScale : styleLeft;
     }
 
     // ========== Gesture Finalization ==========

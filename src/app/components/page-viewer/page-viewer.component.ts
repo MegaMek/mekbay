@@ -483,6 +483,10 @@ export class PageViewerComponent implements AfterViewInit {
             this.setFluffImageVisibility();
         });
 
+        effect(() => {
+            this.zoomPanService.setDoubleTapZoomResetMode(this.optionsService.options().recordSheetDoubleTapZoomReset);
+        }, { injector: this.injector });
+
         // Watch for allowMultipleActiveSheets option changes
         effect(() => {
             const allowMultiple = this.optionsService.options().allowMultipleActiveSheets;
@@ -545,16 +549,23 @@ export class PageViewerComponent implements AfterViewInit {
             onSwipeEnd: (dx, velocity) => this.onSwipeEnd(dx, velocity)
         };
 
-        // Non-interactive selectors that shouldn't trigger zoom reset on double-tap
-        const nonInteractiveSelectors = {
+        const zoomResetBlockedSelectors = {
             selectors: [
                 '.interactive',
                 '.pip',
+                '.pip-hit-area',
                 '.critSlot',
                 '.critLoc',
                 '.armor',
                 '.structure',
                 '.inventoryEntry',
+                '.crewHit',
+                '.crewNameButton',
+                '.crewSkillButton',
+                '.crew-status-checkbox',
+                '.soldierPip',
+                '#heatScale',
+                '#heatDataPanel',
                 '.preventZoomReset'
             ]
         };
@@ -563,7 +574,7 @@ export class PageViewerComponent implements AfterViewInit {
             this.containerRef(),
             this.contentRef(),
             swipeCallbacks,
-            nonInteractiveSelectors,
+            zoomResetBlockedSelectors,
             this.spaceEvenly()
         );
     }
