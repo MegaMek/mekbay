@@ -70,6 +70,7 @@ import { PickerFactoryService } from '../../services/picker-factory.service';
     host: {
         '[class.monochrome]': 'cardStyle() === "monochrome"',
         '[class.selected]': 'isSelected()',
+        '[class.export-mode]': 'exportMode()',
         '[class.interactive]': 'interactive()',
         '(click)': 'onCardClick()'
     }
@@ -94,6 +95,7 @@ export class AlphaStrikeCardComponent {
     useHex = input<boolean>(false);
     cardStyle = input<'colored' | 'monochrome'>('colored');
     isSelected = input<boolean>(false);
+    exportMode = input<boolean>(false);
     /** Which card index to render (0 for first/only card, 1 for second card) */
     cardIndex = input<number>(0);
     /** Enable interactive mode (damage/crit pickers) */
@@ -109,7 +111,7 @@ export class AlphaStrikeCardComponent {
     // Interaction state
     private interactionAbortController: AbortController | null = null;
     private pickerRef: NumericPickerInstance | ChoicePickerInstance | null = null;
-    private pickerAnchorElement: HTMLElement | null = null;
+    private pickerAnchorElement: Element | null = null;
     private interactionsSetup = false;
     
     onCardClick(): void {
@@ -140,6 +142,26 @@ export class AlphaStrikeCardComponent {
     
     /** Get the critical hits variant for the current card */
     currentCriticalHitsVariant = computed<CriticalHitsVariant>(() => this.currentCardConfig().criticalHits);
+
+    /** Card theme semantics for the SVG migration: colored = dark theme, monochrome = light theme. */
+    readonly cardTheme = computed<'dark' | 'light'>(() => this.cardStyle() === 'monochrome' ? 'light' : 'dark');
+
+    readonly shellPalette = computed(() => {
+        const theme = this.cardTheme();
+        return theme === 'light'
+            ? {
+                outerFill: '#000000',
+                innerFill: '#ffffff',
+                footerWedgeFill: '#000000',
+                battletechTextFill: '#000000',
+            }
+            : {
+                outerFill: '#000000',
+                innerFill: '#242424',
+                footerWedgeFill: '#000000',
+                battletechTextFill: '#ffffff',
+            };
+    });
 
     /** Check if the force unit has uncommitted changes */
     isDirty = computed<boolean>(() => {
@@ -445,7 +467,7 @@ export class AlphaStrikeCardComponent {
         this.interactionsSetup = false;
     }
     
-    private addTapHandler(el: HTMLElement, handler: (evt: PointerEvent) => void, signal: AbortSignal): void {
+    private addTapHandler(el: HTMLElement | SVGElement, handler: (evt: PointerEvent) => void, signal: AbortSignal): void {
         el.classList.add('interactive');
         const eventOptions = { passive: false, signal };
         
@@ -455,39 +477,44 @@ export class AlphaStrikeCardComponent {
         let startY = 0;
         const moveThreshold = 10;
         
-        el.addEventListener('pointerdown', (evt: PointerEvent) => {
-            evt.preventDefault();
-            evt.stopPropagation();
+        el.addEventListener('pointerdown', (evt) => {
+            const pointerEvent = evt as PointerEvent;
+            pointerEvent.preventDefault();
+            pointerEvent.stopPropagation();
             pointerMoved = false;
-            startX = evt.clientX;
-            startY = evt.clientY;
-            pointerId = evt.pointerId;
+            startX = pointerEvent.clientX;
+            startY = pointerEvent.clientY;
+            pointerId = pointerEvent.pointerId;
         }, eventOptions);
         
-        el.addEventListener('pointermove', (evt: PointerEvent) => {
-            if (evt.pointerId !== pointerId) return;
-            const dx = Math.abs(evt.clientX - startX);
-            const dy = Math.abs(evt.clientY - startY);
+        el.addEventListener('pointermove', (evt) => {
+            const pointerEvent = evt as PointerEvent;
+            if (pointerEvent.pointerId !== pointerId) return;
+            const dx = Math.abs(pointerEvent.clientX - startX);
+            const dy = Math.abs(pointerEvent.clientY - startY);
             if (dx > moveThreshold || dy > moveThreshold) {
                 pointerMoved = true;
             }
         }, eventOptions);
         
-        el.addEventListener('pointerup', (evt: PointerEvent) => {
-            if (evt.pointerId !== pointerId) return;
-            evt.preventDefault();
+        el.addEventListener('pointerup', (evt) => {
+            const pointerEvent = evt as PointerEvent;
+            if (pointerEvent.pointerId !== pointerId) return;
+            pointerEvent.preventDefault();
             if (!pointerMoved) {
-                handler(evt);
+                handler(pointerEvent);
             }
             pointerId = null;
         }, eventOptions);
         
-        el.addEventListener('pointerleave', (evt: PointerEvent) => {
-            if (evt.pointerId === pointerId) pointerId = null;
+        el.addEventListener('pointerleave', (evt) => {
+            const pointerEvent = evt as PointerEvent;
+            if (pointerEvent.pointerId === pointerId) pointerId = null;
         }, eventOptions);
         
-        el.addEventListener('pointercancel', (evt: PointerEvent) => {
-            if (evt.pointerId === pointerId) pointerId = null;
+        el.addEventListener('pointercancel', (evt) => {
+            const pointerEvent = evt as PointerEvent;
+            if (pointerEvent.pointerId === pointerId) pointerId = null;
         }, eventOptions);
     }
     
@@ -501,20 +528,21 @@ export class AlphaStrikeCardComponent {
                 this.showDamagePicker(evt);
             }, signal);
         } else {
-            // Separate: tap armor row or structure row shows individual picker
-            const armorRow = cardElement.querySelector('[data-damage-type="armor"]');
-            const structureRow = cardElement.querySelector('[data-damage-type="structure"]');
-            
-            if (armorRow) {
+            // Separate: tap any armor row or structure row shows individual picker
+            const armorRows = cardElement.querySelectorAll('[data-damage-type="armor"]');
+            const structureRows = cardElement.querySelectorAll('[data-damage-type="structure"]');
+
+            armorRows.forEach((armorRow) => {
                 this.addTapHandler(armorRow as HTMLElement, (evt) => {
                     this.showSingleDamagePicker(evt, 'armor');
                 }, signal);
-            }
-            if (structureRow) {
+            });
+
+            structureRows.forEach((structureRow) => {
                 this.addTapHandler(structureRow as HTMLElement, (evt) => {
                     this.showSingleDamagePicker(evt, 'structure');
                 }, signal);
-            }
+            });
         }
     }
     
@@ -525,7 +553,7 @@ export class AlphaStrikeCardComponent {
             if (!critKey) return;
             
             this.addTapHandler(row as HTMLElement, (evt) => {
-                this.showCritPicker(evt, critKey, row as HTMLElement);
+                this.showCritPicker(evt, critKey, row);
             }, signal);
         });
     }
@@ -876,7 +904,7 @@ export class AlphaStrikeCardComponent {
         return hits;
     }
     
-    private showCritPicker(event: PointerEvent, critKey: string, rowElement: HTMLElement): void {
+    private showCritPicker(event: PointerEvent, critKey: string, rowElement: Element): void {
         const unit = this.forceUnit();
         if (!unit) return;
         
@@ -921,7 +949,7 @@ export class AlphaStrikeCardComponent {
      * - 'radial' or 'default': Uses rotating dial picker
      */
     private showNumericPicker(config: {
-        anchorElement: HTMLElement;
+        anchorElement: Element;
         event?: PointerEvent;
         title: string;
         min: number;
@@ -990,7 +1018,7 @@ export class AlphaStrikeCardComponent {
      * Show a choice picker (linear style) for selecting from a list of options.
      */
     private showLinearPicker(config: {
-        anchorElement: HTMLElement;
+        anchorElement: Element;
         title: string;
         values: PickerChoice[];
         onPick: (val: PickerChoice) => void;
@@ -1013,7 +1041,7 @@ export class AlphaStrikeCardComponent {
         });
     }
     
-    private calculatePickerPosition(element: HTMLElement, centerVertically: boolean): PickerPosition {
+    private calculatePickerPosition(element: Element, centerVertically: boolean): PickerPosition {
         const rect = element.getBoundingClientRect();
         return {
             x: rect.left + rect.width / 2,

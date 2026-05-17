@@ -2,10 +2,12 @@
 	height: fit-content;
 	min-height: 100%;
 	width: 100%;
+	position: relative;
 }
 
 /* Card Tab Styles */
 .tab-content {
+	position: relative;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
@@ -14,10 +16,32 @@
 	width: 100%;
 	height: 100%;
 	box-sizing: border-box;
+	padding-bottom: 4.5rem;
 }
 
 .tab-content alpha-strike-card {
 	display: block;
 	width: 100%;
 	height: auto;
+}
+
+.alpha-strike-card-panel {
+	display: block;
+	width: 100%;
+	height: auto;
+}
+
+.export-button {
+	position: absolute;
+	right: 1rem;
+	bottom: 1rem;
+	z-index: 2;
+	min-height: auto;
+	padding: 0.65rem 1rem;
+	box-shadow: 0 0.35rem 1rem rgba(0, 0, 0, 0.28);
+}
+
+.export-button[disabled] {
+	opacity: 0.7;
+	cursor: progress;
 }

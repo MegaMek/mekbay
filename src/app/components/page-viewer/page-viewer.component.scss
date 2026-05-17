@@ -135,11 +135,6 @@
     //     pointer-events: none;
     //     transition: opacity 0.2s;
 
-    //     /* Hide wrapper when no SVG inside */
-    //     &:not(:has(svg)) {
-    //         opacity: 0;
-    //     }
-
     //     /* Fade in neighbor pages */
     //     &.neighbor-visible {
     //         opacity: 1;
@@ -151,8 +146,11 @@
 
 .page-wrapper {
     &.leaving-page,
-    &.shadow-page {
+    &.shadow-page.dimmed {
         opacity: 0.1;
+    }
+
+    &.shadow-page {
         cursor: pointer;
         // transition: opacity 0.2s ease-out; // (disabled, is too heavy during swipe)
 
@@ -164,6 +162,11 @@
         @media print {
             display: none;
         }
+    }
+
+    &.promoted-shadow-page {
+        opacity: 1;
+        cursor: default;
     }
 }
 
