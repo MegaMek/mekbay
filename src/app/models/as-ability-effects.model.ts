@@ -33,7 +33,6 @@ export type ASMovementDisplayKind = 'movement' | 'sprint';
 export interface ASMovementDisplayValue {
     readonly baseInches: number;
     readonly adjustedInches?: number;
-    readonly note?: string;
 }
 
 export interface ASAbilityMovementDisplayContext extends ASAbilityEffectContext {

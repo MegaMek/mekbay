@@ -919,7 +919,7 @@ export class ASPrintUtil {
             ? formatMovementWithAlternate(display.baseInches, display.adjustedInches, mode, useHex)
             : formatMovement(display.baseInches, mode, useHex);
 
-        return display.note ? `${formatted} (${display.note})` : formatted;
+        return formatted;
     }
 
     private static createRosterCell(cell: RosterCell): HTMLTableCellElement {

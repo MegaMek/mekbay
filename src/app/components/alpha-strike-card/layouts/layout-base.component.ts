@@ -479,7 +479,7 @@ export abstract class AsLayoutBaseComponent {
             ? formatMovementWithAlternate(display.baseInches, display.adjustedInches, mode, this.useHex())
             : formatMovement(display.baseInches, mode, this.useHex());
 
-        return display.note ? `${formatted} (${display.note})` : formatted;
+        return formatted;
     }
 
     protected formatSprintMovementDisplay(mode: string, inches: number): string {
@@ -493,7 +493,7 @@ export abstract class AsLayoutBaseComponent {
             ? formatMovementWithAlternate(display.baseInches, display.adjustedInches, mode, this.useHex())
             : formatMovement(display.baseInches, mode, this.useHex());
 
-        return display.note ? `${formatted} (${display.note})` : formatted;
+        return formatted;
     }
 
     formatPilotAbility(selection: AbilitySelection): string {

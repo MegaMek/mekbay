@@ -310,7 +310,7 @@ export class UnitBlockComponent {
             ? formatMovementWithAlternate(display.baseInches, display.adjustedInches, mode, useHex)
             : formatMovement(display.baseInches, mode, useHex);
 
-        return display.note ? `${formatted} (${display.note})` : formatted;
+        return formatted;
     }
 
     showTMM = computed<boolean>(() => {

@@ -99,8 +99,7 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
                 if (context.isAerospace) {
                     return {
                         ...display,
-                        adjustedInches: display.baseInches + 1,
-                        note: '+1 points',
+                        adjustedInches: display.baseInches + 1
                     };
                 }
 
