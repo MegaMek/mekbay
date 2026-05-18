@@ -2,25 +2,12 @@ import { isAerospaceMovementMode } from '../utils/as-common.util';
 import type { ASAbilityEffectDefinition } from './as-ability-effects.model';
 import type { Unit } from './units.model';
 
-function unitText(unit: Unit): string {
-    return [
-        unit.name,
-        unit.chassis,
-        unit.model,
-        unit.subtype,
-        unit.moveType,
-        unit.icon,
-        ...(unit.sheets ?? []),
-    ].join(' ').toLowerCase();
-}
 
 function isBeastMountedInfantry(unit: Unit): boolean {
     if (unit.as.TP !== 'CI') {
         return false;
     }
-
-    const text = unitText(unit);
-    return text.includes('beast infantry') || text.includes('beast-mounted') || text.includes('beast mounted');
+    return unit.chassis.includes('Beast Infantry');
 }
 
 function isFootInfantry(unit: Unit): boolean {
