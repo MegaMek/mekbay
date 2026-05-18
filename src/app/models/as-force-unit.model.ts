@@ -44,7 +44,18 @@ import { ASForceUnitState } from './as-force-unit-state.model';
 import type { CrewMember } from './crew-member.model';
 import type { ASCustomPilotAbility } from './pilot-abilities.model';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
-import type { SpecialAbilityState } from '../components/alpha-strike-card/layouts/layout-base.component';
+import type { SpecialAbilityState } from './as-special-ability-state.model';
+import type { ASAbilityEffectContext, ASAbilityEffectMode, ASAbilityEffectRef, ASMovementDisplayValue } from './as-ability-effects.model';
+import {
+    applyCriticalHitCountEffects,
+    applyHeatForPenaltiesEffects,
+    applyHeatTrackMaxEffects,
+    applyShutdownThresholdEffects,
+    applyMovementDisplayEffects,
+    applyMovementInchesEffects,
+    hasRegisteredASAbilityEffect,
+    resolveASAbilityEffects,
+} from '../utils/as-ability-effect-engine.util';
 import { isAerospace } from '../utils/as-common.util';
 
 /** Represents either a standard ability (by ID) or a custom ability (object) */
@@ -216,6 +227,111 @@ export class ASForceUnit extends ForceUnit {
      */
     getCommittedCritHits(key: string): number {
         return this.state.getCommittedCritHits(key);
+    }
+
+    private baseHeatForMode(mode: ASAbilityEffectMode): number {
+        if (mode === 'previewNoHeat') {
+            return 0;
+        }
+        if (mode === 'preview') {
+            return this.state.heat() + this.state.pendingHeat();
+        }
+        return this.state.heat();
+    }
+
+    private activeAbilityEffectRefs(): ASAbilityEffectRef[] {
+        const refs: ASAbilityEffectRef[] = [];
+
+        for (const ability of this._pilotAbilities()) {
+            if (typeof ability === 'string') {
+                refs.push({ source: 'pilot', id: ability });
+            }
+        }
+
+        for (const abilityId of this._formationAbilities()) {
+            const pilotRef: ASAbilityEffectRef = { source: 'pilot', id: abilityId };
+            if (hasRegisteredASAbilityEffect(pilotRef)) {
+                refs.push(pilotRef);
+            }
+
+            const commandRef: ASAbilityEffectRef = { source: 'command', id: abilityId };
+            if (hasRegisteredASAbilityEffect(commandRef)) {
+                refs.push(commandRef);
+            }
+        }
+
+        for (const special of this.unit.as.specials ?? []) {
+            const tag = this.normalizeSpecialEffectId(special);
+            const specialRef: ASAbilityEffectRef = { source: 'asSpecial', id: tag };
+            if (hasRegisteredASAbilityEffect(specialRef)) {
+                refs.push(specialRef);
+            }
+        }
+
+        return refs;
+    }
+
+    private normalizeSpecialEffectId(special: string): string {
+        return special.trim().replace(/\(.+$/, '').toUpperCase();
+    }
+
+    private abilityEffectContext(mode: ASAbilityEffectMode): ASAbilityEffectContext {
+        return {
+            mode,
+            unit: this.unit,
+            abilityRefs: this.activeAbilityEffectRefs(),
+        };
+    }
+
+    private activeAbilityEffects(mode: ASAbilityEffectMode) {
+        return resolveASAbilityEffects(this.abilityEffectContext(mode).abilityRefs);
+    }
+
+    effectiveHeatForPenalties(mode: ASAbilityEffectMode = 'committed'): number {
+        const baseHeat = this.baseHeatForMode(mode);
+        const context = this.abilityEffectContext(mode);
+        return Math.max(0, applyHeatForPenaltiesEffects(this.activeAbilityEffects(mode), baseHeat, context));
+    }
+
+    shutdownHeatThreshold(mode: ASAbilityEffectMode = 'committed'): number {
+        const context = this.abilityEffectContext(mode);
+        return Math.max(1, applyShutdownThresholdEffects(this.activeAbilityEffects(mode), 4, context));
+    }
+
+    heatTrackLevels(mode: ASAbilityEffectMode = 'committed'): number[] {
+        const context = this.abilityEffectContext(mode);
+        const maxHeatLevel = Math.max(0, applyHeatTrackMaxEffects(this.activeAbilityEffects(mode), 3, context));
+        return Array.from({ length: maxHeatLevel + 1 }, (_, index) => index);
+    }
+
+    heatToHitModifier(mode: ASAbilityEffectMode = 'committed'): number {
+        return Math.max(0, this.effectiveHeatForPenalties(mode));
+    }
+
+    private effectiveCritHits(key: string, hits: number, mode: ASAbilityEffectMode): number {
+        const context = this.abilityEffectContext(mode);
+        return Math.max(0, applyCriticalHitCountEffects(this.activeAbilityEffects(mode), hits, { ...context, key }));
+    }
+
+    movementDisplayValue(
+        movementMode: string,
+        baseInches: number,
+        displayKind: 'movement' | 'sprint' = 'movement',
+        mode: ASAbilityEffectMode = 'committed',
+    ): ASMovementDisplayValue {
+        const context = this.abilityEffectContext(mode);
+        return applyMovementDisplayEffects(
+            this.activeAbilityEffects(mode),
+            { baseInches },
+            {
+                ...context,
+                movementMode,
+                displayKind,
+                isAerospace: this.isAerospace(),
+                isVehicle: this.isVehicle(),
+                isImmobilized: this.isImmobilized(),
+            },
+        );
     }
 
     /**
@@ -551,7 +667,8 @@ export class ASForceUnit extends ForceUnit {
     public calculateMovement(
         heat: number,
         mpHits: number,
-        orderedCrits: { key: string; timestamp: number }[]
+        orderedCrits: { key: string; timestamp: number }[],
+        effectMode: ASAbilityEffectMode = 'committed',
     ): { [mode: string]: number } {
         const mvm = this.unit.as.MVm;
         if (!mvm) return {};
@@ -565,13 +682,6 @@ export class ASForceUnit extends ForceUnit {
                 entries.unshift(['', mvm['j']]);
             }
         }
-
-        // TSM (Triple Strength Myomer): At heat 1+, gain 2" ground Move.
-        // At heat 1, also ignore the 2" loss from overheating.        
-        const hasTsm = heat >= 1 && this.unit.as.specials?.includes('TSM');
-        // At heat level 1, TSM negates the 2" movement loss from overheating
-        const heatReduction = (hasTsm && heat === 1) ? 0 : heat * 2;
-        const tsmBonus = hasTsm ? 2 : 0;
 
         // Build result with '' first if present
         const result: { [mode: string]: number } = {};
@@ -591,7 +701,25 @@ export class ASForceUnit extends ForceUnit {
             
             if (mode === '') {
                 // Apply heat reduction only to ground movement
-                reducedInches = Math.max(0, reducedInches - heatReduction + tsmBonus);
+                reducedInches -= heat * 2;
+            }
+
+            reducedInches = applyMovementInchesEffects(
+                this.activeAbilityEffects(effectMode),
+                reducedInches,
+                {
+                    ...this.abilityEffectContext(effectMode),
+                    movementMode: mode,
+                    heat,
+                    isAerospace: this.isAerospace(),
+                    isVehicle: this.isVehicle(),
+                    isImmobilized: false,
+                },
+            );
+
+            reducedInches = Math.max(0, reducedInches);
+
+            if (mode === '') {
                 groundValue = reducedInches;
             } else {
                 result[mode] = reducedInches;
@@ -610,12 +738,11 @@ export class ASForceUnit extends ForceUnit {
      * Get effective movement values in inches after applying committed crits and heat.
      */
     effectiveMovement = computed<{ [mode: string]: number }>(() => {
-        const baseHeat = this.state.heat();
-        const heat = this.hasHotDog() ? Math.max(0, baseHeat - 1) : baseHeat;
         return this.calculateMovement(
-            heat,
-            this.state.getCommittedCritHits('mp'),
-            this.state.getCommittedCritsOrdered()
+            this.effectiveHeatForPenalties('committed'),
+            this.effectiveCritHits('mp', this.state.getCommittedCritHits('mp'), 'committed'),
+            this.state.getCommittedCritsOrdered(),
+            'committed'
         );
     });
 
@@ -623,12 +750,11 @@ export class ASForceUnit extends ForceUnit {
      * Get preview movement values including pending changes.
      */
     previewMovement = computed<{ [mode: string]: number }>(() => {
-        const baseHeat = this.state.heat() + this.state.pendingHeat();
-        const heat = this.hasHotDog() ? Math.max(0, baseHeat - 1) : baseHeat;
         return this.calculateMovement(
-            heat,
-            this.state.getPreviewCritHits('mp'),
-            this.state.getPreviewCritsOrdered()
+            this.effectiveHeatForPenalties('preview'),
+            this.effectiveCritHits('mp', this.state.getPreviewCritHits('mp'), 'preview'),
+            this.state.getPreviewCritsOrdered(),
+            'preview'
         );
     });
 
@@ -638,23 +764,15 @@ export class ASForceUnit extends ForceUnit {
     previewMovementNoHeat = computed<{ [mode: string]: number }>(() => {
         return this.calculateMovement(
             0,
-            this.state.getPreviewCritHits('mp'),
-            this.state.getPreviewCritsOrdered()
-        );
-    });
-
-    // Check if pilot has the "hot_dog" ability (extends heat track to 4 before shutdown)
-    hasHotDog = computed<boolean>(() => {
-        const abilities = this.pilotAbilities() ?? [];
-        return abilities.some((ability) =>
-            typeof ability === 'string' && ability === 'hot_dog'
+            this.effectiveCritHits('mp', this.state.getPreviewCritHits('mp'), 'previewNoHeat'),
+            this.state.getPreviewCritsOrdered(),
+            'previewNoHeat'
         );
     });
 
     isShutdown = computed<boolean>(() => {
         const heat = this.getState().heat();
-        const hotDog = this.hasHotDog();
-        return hotDog ? heat >= 5 : heat >= 4;
+        return heat >= this.shutdownHeatThreshold('committed');
     });
 
     /**
@@ -662,8 +780,7 @@ export class ASForceUnit extends ForceUnit {
      */
     previewShutdown = computed<boolean>(() => {
         const heat = this.getState().heat() + this.getState().pendingHeat();
-        const hotDog = this.hasHotDog();
-        return hotDog ? heat >= 5 : heat >= 4;
+        return heat >= this.shutdownHeatThreshold('preview');
     });
 
     /**
@@ -775,12 +892,10 @@ export class ASForceUnit extends ForceUnit {
      * Modes with the same TMM are merged (e.g., if ground and jump have same TMM, only '' is returned).
      */
     effectiveTmm = computed<{ [mode: string]: number }>(() => {
-        const baseHeat = this.state.heat();
-        const heat = this.hasHotDog() ? Math.max(0, baseHeat - 1) : baseHeat;
         return this.calculateTmm(
             this.isImmobilized(),
-            heat,
-            this.state.getCommittedCritHits('mp'),
+            this.effectiveHeatForPenalties('committed'),
+            this.effectiveCritHits('mp', this.state.getCommittedCritHits('mp'), 'committed'),
             this.state.getCommittedCritsOrdered()
         );
     });
@@ -789,12 +904,10 @@ export class ASForceUnit extends ForceUnit {
      * Get preview TMM values including pending changes.
      */
     previewTmm = computed<{ [mode: string]: number }>(() => {
-        const baseHeat = this.state.heat() + this.state.pendingHeat();
-        const heat = this.hasHotDog() ? Math.max(0, baseHeat - 1) : baseHeat;
         return this.calculateTmm(
             this.previewImmobilized(),
-            heat,
-            this.state.getPreviewCritHits('mp'),
+            this.effectiveHeatForPenalties('preview'),
+            this.effectiveCritHits('mp', this.state.getPreviewCritHits('mp'), 'preview'),
             this.state.getPreviewCritsOrdered()
         );
     });
