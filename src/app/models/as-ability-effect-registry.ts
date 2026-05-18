@@ -29,7 +29,6 @@ function isFootInfantry(unit: Unit): boolean {
 export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = [
     {
         ref: { source: 'pilot', id: 'evasive_maneuver' },
-        scope: 'unit',
         priority: 100,
         criticalHits: {
             adjustRollModifier: (modifier, context) => {
@@ -50,7 +49,6 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
     },
     {
         ref: { source: 'pilot', id: 'hot_dog' },
-        scope: 'unit',
         priority: 100,
         heat: {
             adjustHeatForPenalties: (heat) => Math.max(0, heat - 1),
@@ -60,7 +58,6 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
     },
     {
         ref: { source: 'pilot', id: 'hopper' },
-        scope: 'unit',
         priority: 100,
         criticalHits: {
             adjustHitCount: (hits, context) => context.key === 'mp' ? Math.max(0, hits - 1) : hits,
@@ -68,7 +65,6 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
     },
     {
         ref: { source: 'pilot', id: 'foot_cavalry' },
-        scope: 'movement',
         priority: 100,
         movement: {
             adjustMovementInches: (inches, context) => {
@@ -81,7 +77,6 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
     },
     {
         ref: { source: 'pilot', id: 'light_horseman' },
-        scope: 'movement',
         priority: 100,
         movement: {
             adjustMovementInches: (inches, context) => {
@@ -94,7 +89,6 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
     },
     {
         ref: { source: 'pilot', id: 'speed_demon' },
-        scope: 'movement',
         priority: 100,
         movement: {
             adjustMovementDisplay: (display, context) => {
@@ -120,7 +114,6 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
     },
     {
         ref: { source: 'asSpecial', id: 'ARS' },
-        scope: 'unit',
         priority: 100,
         criticalHits: {
             adjustRollModifier: (modifier, context) => context.key === 'motiveDamage' ? modifier - 1 : modifier,
@@ -128,7 +121,6 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
     },
     {
         ref: { source: 'asSpecial', id: 'CR' },
-        scope: 'unit',
         priority: 100,
         criticalHits: {
             adjustRollModifier: (modifier, context) => context.key === 'criticalHit' ? modifier - 2 : modifier,
@@ -136,7 +128,6 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
     },
     {
         ref: { source: 'asSpecial', id: 'IRA' },
-        scope: 'unit',
         priority: 100,
         criticalHits: {
             adjustRollModifier: (modifier, context) => context.key === 'criticalHit' ? modifier + 1 : modifier,
@@ -150,7 +141,6 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
     },
     {
         ref: { source: 'asSpecial', id: 'TSM' },
-        scope: 'movement',
         priority: 100,
         movement: {
             adjustMovementInches: (inches, context) => {
@@ -163,7 +153,6 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
     },
     {
         ref: { source: 'command', id: 'assault_operations' },
-        scope: 'movement',
         priority: 100,
         movement: {
             adjustMovementInches: (inches, context) => {

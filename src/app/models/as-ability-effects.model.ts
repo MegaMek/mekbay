@@ -1,15 +1,6 @@
 import type { Unit } from './units.model';
 
 export type ASAbilityEffectSourceKind = 'pilot' | 'command' | 'asSpecial';
-
-export type ASAbilityEffectScope =
-    | 'unit'
-    | 'attack'
-    | 'movement'
-    | 'scenario'
-    | 'force'
-    | 'manual';
-
 export type ASAbilityEffectMode = 'committed' | 'preview' | 'previewNoHeat';
 
 export interface ASAbilityEffectRef {
@@ -79,10 +70,8 @@ export interface ASAbilityCriticalHitHooks {
 
 export interface ASAbilityEffectDefinition {
     readonly ref: ASAbilityEffectRef;
-    readonly scope: ASAbilityEffectScope;
     readonly priority: number;
     readonly heat?: ASAbilityHeatHooks;
     readonly movement?: ASAbilityMovementHooks;
     readonly criticalHits?: ASAbilityCriticalHitHooks;
-    readonly manualNote?: string;
 }
