@@ -1,3 +1,4 @@
+import { isAerospaceMode } from '../utils/as-common.util';
 import type { ASAbilityEffectDefinition } from './as-ability-effects.model';
 import type { Unit } from './units.model';
 
@@ -39,7 +40,7 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
                 const baseMove = Math.max(
                     0,
                     ...Object.entries(context.unit.as.MVm ?? {})
-                        .filter(([mode]) => mode !== 'a' && mode !== 'p' && mode !== 'k')
+                        .filter(([mode]) => !isAerospaceMode(mode))
                         .map(([, inches]) => typeof inches === 'number' ? inches : 0),
                 );
 
