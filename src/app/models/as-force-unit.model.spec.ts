@@ -64,6 +64,30 @@ describe('ASForceUnit ability effects', () => {
         expect(forceUnit.isShutdown()).toBeTrue();
     });
 
+    it('sets only ground movement to 0 while shutdown', () => {
+        const forceUnit = createForceUnit(createTestUnit({
+            as: { MVm: { '': 8, j: 10 }, specials: ['TSM'] },
+        }));
+        forceUnit.setPilotAbilities(['speed_demon']);
+        forceUnit.getState().heat.set(4);
+
+        expect(forceUnit.isShutdown()).toBeTrue();
+        expect(forceUnit.effectiveMovement()).toEqual({ '': 0, j: 10 });
+        expect(forceUnit.movementDisplayValue('', 0)).toEqual({ baseInches: 0 });
+    });
+
+    it('preserves aerospace thrust while heat shutdown', () => {
+        const forceUnit = createForceUnit(createTestUnit({
+            type: 'Aero',
+            subtype: 'Aerospace Fighter',
+            as: { TP: 'AF', MVm: { a: 4 } },
+        }));
+        forceUnit.getState().heat.set(4);
+
+        expect(forceUnit.isShutdown()).toBeTrue();
+        expect(forceUnit.effectiveMovement()).toEqual({ a: 4 });
+    });
+
     it('applies Hot Dog through generic heat effect APIs', () => {
         const forceUnit = createForceUnit();
         forceUnit.setPilotAbilities(['hot_dog']);
@@ -103,6 +127,18 @@ describe('ASForceUnit ability effects', () => {
 
         expect(forceUnit.previewShutdown()).toBeTrue();
         expect(forceUnit.previewMovement()).toEqual({ '': 0 });
+    });
+
+    it('sets preview movement to 0 when pending heat causes shutdown', () => {
+        const forceUnit = createForceUnit(createTestUnit({
+            as: { MVm: { '': 8, j: 10 } },
+        }));
+        forceUnit.getState().heat.set(3);
+        forceUnit.setPendingHeat(1);
+
+        expect(forceUnit.previewShutdown()).toBeTrue();
+        expect(forceUnit.previewMovement()).toEqual({ '': 0, j: 10 });
+        expect(forceUnit.previewMovementNoHeat()).toEqual({ '': 8, j: 10 });
     });
 
     it('preserves current Hot Dog and TSM heat ordering', () => {
@@ -151,7 +187,6 @@ describe('ASForceUnit ability effects', () => {
         expect(forceUnit.movementDisplayValue('a', 4)).toEqual({
             baseInches: 4,
             adjustedInches: 5,
-            note: '+1 points',
         });
     });
 

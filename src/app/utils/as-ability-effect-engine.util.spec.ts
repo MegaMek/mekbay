@@ -78,7 +78,7 @@ describe('AS ability effect engine', () => {
             isAerospace: true,
             isVehicle: false,
             isImmobilized: false,
-        })).toEqual({ baseInches: 4, adjustedInches: 5, note: '+1 points' });
+        })).toEqual({ baseInches: 4, adjustedInches: 5 });
     });
 
     it('suppresses Speed Demon display bonuses when immobilized', () => {

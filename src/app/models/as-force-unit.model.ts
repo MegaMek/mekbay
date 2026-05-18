@@ -58,7 +58,7 @@ import {
     resolveCriticalHitRollResultEffects,
     resolveASAbilityEffects,
 } from '../utils/as-ability-effect-engine.util';
-import { isAerospace } from '../utils/as-common.util';
+import { isAerospace, isAerospaceMode, isGroundMovement } from '../utils/as-common.util';
 
 /** Represents either a standard ability (by ID) or a custom ability (object) */
 export type AbilitySelection = string | ASCustomPilotAbility;
@@ -689,6 +689,7 @@ export class ASForceUnit extends ForceUnit {
         mpHits: number,
         orderedCrits: { key: string; timestamp: number }[],
         effectMode: ASAbilityEffectMode = 'committed',
+        isShutdown: boolean = false,
     ): { [mode: string]: number } {
         const mvm = this.unit.as.MVm;
         if (!mvm) return {};
@@ -705,7 +706,7 @@ export class ASForceUnit extends ForceUnit {
 
         // Build result with '' first if present
         const result: { [mode: string]: number } = {};
-        let groundValue: number | undefined;
+        let baseGroundMovementValue: number | undefined;
 
         for (const [mode, inches] of entries) {
             if (typeof inches !== 'number' || inches <= 0) continue;
@@ -719,36 +720,40 @@ export class ASForceUnit extends ForceUnit {
                 reducedInches = this.applyMpHitsReduction(inches, mpHits);
             }
             
-            if (mode === '') {
-                // Apply heat reduction only to ground movement
-                reducedInches -= heat * 2;
-            }
+            if (!isAerospaceMode(mode) && isShutdown) {
+                reducedInches = 0;
+            } else {
+                if (isGroundMovement(mode)) {
+                    // Apply heat reduction only to ground movement
+                    reducedInches -= heat * 2;
+                }
 
-            reducedInches = applyMovementInchesEffects(
-                this.activeAbilityEffects(effectMode),
-                reducedInches,
-                {
-                    ...this.abilityEffectContext(effectMode),
-                    movementMode: mode,
-                    heat,
-                    isAerospace: this.isAerospace(),
-                    isVehicle: this.isVehicle(),
-                    isImmobilized: false,
-                },
-            );
+                reducedInches = applyMovementInchesEffects(
+                    this.activeAbilityEffects(effectMode),
+                    reducedInches,
+                    {
+                        ...this.abilityEffectContext(effectMode),
+                        movementMode: mode,
+                        heat,
+                        isAerospace: this.isAerospace(),
+                        isVehicle: this.isVehicle(),
+                        isImmobilized: false,
+                    },
+                );
+            }
 
             reducedInches = Math.max(0, reducedInches);
 
             if (mode === '') {
-                groundValue = reducedInches;
+                baseGroundMovementValue = reducedInches;
             } else {
                 result[mode] = reducedInches;
             }
         }
 
         // Insert ground value first if present
-        if (groundValue !== undefined) {
-            return { '': groundValue, ...result };
+        if (baseGroundMovementValue !== undefined) {
+            return { '': baseGroundMovementValue, ...result };
         }
 
         return result;
@@ -762,7 +767,8 @@ export class ASForceUnit extends ForceUnit {
             this.effectiveHeatForPenalties('committed'),
             this.effectiveCritHits('mp', this.state.getCommittedCritHits('mp'), 'committed'),
             this.state.getCommittedCritsOrdered(),
-            'committed'
+            'committed',
+            this.isShutdown()
         );
     });
 
@@ -774,7 +780,8 @@ export class ASForceUnit extends ForceUnit {
             this.effectiveHeatForPenalties('preview'),
             this.effectiveCritHits('mp', this.state.getPreviewCritHits('mp'), 'preview'),
             this.state.getPreviewCritsOrdered(),
-            'preview'
+            'preview',
+            this.previewShutdown()
         );
     });
 
@@ -786,7 +793,8 @@ export class ASForceUnit extends ForceUnit {
             0,
             this.effectiveCritHits('mp', this.state.getPreviewCritHits('mp'), 'previewNoHeat'),
             this.state.getPreviewCritsOrdered(),
-            'previewNoHeat'
+            'previewNoHeat',
+            false
         );
     });
 

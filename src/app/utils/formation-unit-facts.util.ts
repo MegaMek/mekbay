@@ -1,7 +1,6 @@
 import type { Faction } from '../models/factions.model';
 import { CBT_WEIGHT_CLASS_ORDINALS, type Unit } from '../models/units.model';
-
-const AEROSPACE_MODES = new Set(['a', 'p', 'k']);
+import { isGroundMovement } from './as-common.util';
 
 const CBT_LIGHT_WEIGHT_CLASS = CBT_WEIGHT_CLASS_ORDINALS.get('Light') ?? 1;
 const CBT_MEDIUM_WEIGHT_CLASS = CBT_WEIGHT_CLASS_ORDINALS.get('Medium') ?? 2;
@@ -55,7 +54,7 @@ export function asGetMaxGroundMove(unit: Unit): number {
 
     let maxMove = 0;
     for (const [mode, value] of Object.entries(movementModes)) {
-        if (mode === 'j' || AEROSPACE_MODES.has(mode)) continue;
+        if (!isGroundMovement(mode)) continue;
         if (value > maxMove) maxMove = value;
     }
 

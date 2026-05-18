@@ -24,3 +24,11 @@ export function isAerospace(type: string, movementModes: { [mode: string]: numbe
     || type === 'SC' || type === 'WS' || type === 'SS' || type === 'JS' 
     || (type === 'SV' && ((movementModes['a'] !== undefined) || (movementModes['p'] !== undefined) || (movementModes['k'] !== undefined)));
 }
+
+export function isAerospaceMode(mode: string): boolean {
+    return mode === 'a' || mode === 'p' || mode === 'k';
+}
+
+export function isGroundMovement(mode: string): boolean {
+    return !isAerospaceMode(mode) && mode !== 'j';
+}
