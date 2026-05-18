@@ -565,27 +565,31 @@ export class AlphaStrikeCardComponent {
     private setupHeatInteraction(cardElement: HTMLElement, signal: AbortSignal): void {
         const heatTrack = cardElement.querySelector('.heat-track');
         if (!heatTrack) return;
-        
-        const heatLevels = heatTrack.querySelectorAll('.heat-level');
-        heatLevels.forEach((level, index) => {
-            this.addTapHandler(level as HTMLElement, () => {
-                const unit = this.forceUnit();
-                if (!unit) return;
-                const targetHeat = Number((level as HTMLElement).dataset['heat'] ?? index);
-                const committedHeat = unit.getState().heat();
-                const pendingHeat = unit.getState().pendingHeat();
-                const effectiveHeat = committedHeat + pendingHeat;
-                
-                if (effectiveHeat === targetHeat) {
-                    // Toggle off - reset pending to 0
-                    unit.setPendingHeat(0);
-                } else {
-                    // Set pending delta to reach this level
-                    unit.setPendingHeat(targetHeat - committedHeat);
-                }
-                vibrate(10);
-            }, signal);
-        });
+
+        this.addTapHandler(heatTrack as HTMLElement, (event) => {
+            const target = event.target instanceof HTMLElement
+                ? event.target.closest<HTMLElement>('.heat-level')
+                : null;
+            if (!target || !heatTrack.contains(target)) return;
+
+            const unit = this.forceUnit();
+            if (!unit) return;
+            const targetHeat = Number(target.dataset['heat']);
+            if (!Number.isFinite(targetHeat)) return;
+
+            const committedHeat = unit.getState().heat();
+            const pendingHeat = unit.getState().pendingHeat();
+            const effectiveHeat = committedHeat + pendingHeat;
+
+            if (effectiveHeat === targetHeat) {
+                // Toggle off - reset pending to 0
+                unit.setPendingHeat(0);
+            } else {
+                // Set pending delta to reach this level
+                unit.setPendingHeat(targetHeat - committedHeat);
+            }
+            vibrate(10);
+        }, signal);
     }
     
     private showDamagePicker(event: PointerEvent): void {
