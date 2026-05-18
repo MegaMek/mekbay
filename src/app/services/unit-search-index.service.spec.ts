@@ -30,6 +30,26 @@ function createUnit(overrides: TestUnitOverrides): Unit {
 }
 
 describe('UnitSearchIndexService', () => {
+    it('indexes Alpha Strike zero-star damage between zero and one', () => {
+        const service = new UnitSearchIndexService();
+        const unit = createUnit({
+            name: 'Zero Star Mek',
+            subtype: 'BattleMek',
+            as: {
+                TP: 'BM',
+                dmg: { dmgS: '0*', dmgM: '1', dmgL: '0', dmgE: '0*' },
+            },
+        });
+
+        service.prepareUnits([unit]);
+
+        expect(unit.as.dmg._dmgS).toBe(0.5);
+        expect(unit.as.dmg._dmgM).toBe(1);
+        expect(unit.as.dmg._dmgL).toBe(0);
+        expect(unit.as.dmg._dmgE).toBe(0.5);
+        expect(service.getASUnitTypeMaxStats('BM').asDmgS).toEqual({ min: 0.5, max: 0.5, average: 0.5 });
+    });
+
     it('tracks min, max, and average stats by subtype and alpha strike type', () => {
         const service = new UnitSearchIndexService();
 

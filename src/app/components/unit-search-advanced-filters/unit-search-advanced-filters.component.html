@@ -67,8 +67,8 @@
                 </span>
                 } @else {
                 <span class="range-values">
-                    (<span class="range-value-min">{{ rangeOpts?.value?.[0] | formatNumber:false:true }}</span>~<span
-                        class="range-value-max">{{ rangeOpts?.value?.[1] | formatNumber:false:true }}</span>)
+                    (<span class="range-value-min">{{ formatRangeValue(conf, rangeOpts?.value?.[0]) }}</span>~<span
+                        class="range-value-max">{{ formatRangeValue(conf, rangeOpts?.value?.[1]) }}</span>)
                 </span>
                 }
             </label>
@@ -78,6 +78,8 @@
                 [availableRange]="rangeOpts?.options"
                 [interacted]="rangeOpts?.interacted ?? false"
                 [curve]="conf.curve ?? 1" [stepSize]="conf.stepSize ?? 1"
+                [specialValues]="conf.specialValues"
+                [formatValue]="conf.formatValue"
                 [disabled]="rangeOpts?.semanticOnly ?? false"
                 [excludeRanges]="rangeOpts?.excludeRanges"
                 [includeRanges]="rangeOpts?.includeRanges"

@@ -1,5 +1,6 @@
 import { GameSystem } from '../models/common.model';
 import { filterUnitsWithAST, parseSemanticQueryAST, tokenizeForHighlight, type ParseResult } from './semantic-filter-ast.util';
+import { filterStateToSemanticText, tokensToFilterState } from './semantic-filter.util';
 import { matchesSearch, parseSearchQuery } from './search.util';
 
 function getUnitId(unit: { id?: string | number; name?: string }): string {
@@ -94,6 +95,71 @@ describe('semantic boolean filters', () => {
 
         expect(filtered).toEqual([units[0], units[1]]);
         expect(propertyChecks).toBe(2);
+    });
+});
+
+describe('semantic Alpha Strike damage filters', () => {
+    const units = [
+        { id: 1, name: 'zero-damage', as: { dmg: { _dmgS: 0 } } },
+        { id: 2, name: 'zero-star-damage', as: { dmg: { _dmgS: 0.5 } } },
+        { id: 3, name: 'one-damage', as: { dmg: { _dmgS: 1 } } },
+        { id: 4, name: 'two-damage', as: { dmg: { _dmgS: 2 } } },
+    ];
+
+    function getNestedProperty(unit: any, key: string): unknown {
+        return key.split('.').reduce((current, part) => current?.[part], unit);
+    }
+
+    function filterASDamageUnitNames(query: string): string[] {
+        const result = parseSemanticQueryAST(query, GameSystem.ALPHA_STRIKE);
+        const filtered = filterUnitsWithAST(units, result.ast, {
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            getUnitId,
+            getProperty: getNestedProperty,
+        });
+
+        expect(result.errors).toEqual([]);
+        return filtered.map(unit => unit.name);
+    }
+
+    it('matches zero-star damage as a distinct value between zero and one', () => {
+        expect(filterASDamageUnitNames('dmgs=0*')).toEqual(['zero-star-damage']);
+        expect(filterASDamageUnitNames('dmgs>0')).toEqual(['zero-star-damage', 'one-damage', 'two-damage']);
+        expect(filterASDamageUnitNames('dmgs<1')).toEqual(['zero-damage', 'zero-star-damage']);
+        expect(filterASDamageUnitNames('dmgs=0-1')).toEqual(['zero-damage', 'zero-star-damage', 'one-damage']);
+    });
+
+    it('round-trips zero-star damage through semantic filter state', () => {
+        const parsed = parseSemanticQueryAST('dmgs=0* dmgm>0 dmgl<1', GameSystem.ALPHA_STRIKE);
+        const state = tokensToFilterState(parsed.tokens, GameSystem.ALPHA_STRIKE, {
+            'as.dmg._dmgS': [0, 6],
+            'as.dmg._dmgM': [0, 6],
+            'as.dmg._dmgL': [0, 6],
+        });
+
+        expect(state['as.dmg._dmgS']).toEqual(jasmine.objectContaining({ value: [0.5, 0.5] }));
+        expect(state['as.dmg._dmgM']).toEqual(jasmine.objectContaining({ value: [0.5, 6] }));
+        expect(state['as.dmg._dmgL']).toEqual(jasmine.objectContaining({ value: [0, 0.5] }));
+        expect(filterStateToSemanticText({
+            'as.dmg._dmgS': {
+                value: [0.5, 0.5],
+                interactedWith: true,
+            },
+        }, '', GameSystem.ALPHA_STRIKE, {
+            'as.dmg._dmgS': [0, 6],
+        })).toBe('dmgs=0*');
+    });
+
+    it('formats zero-star damage exclusion ranges without nonexistent half steps', () => {
+        const parsed = parseSemanticQueryAST('dmgs!=1', GameSystem.ALPHA_STRIKE);
+        const state = tokensToFilterState(parsed.tokens, GameSystem.ALPHA_STRIKE, {
+            'as.dmg._dmgS': [0, 6],
+        });
+
+        expect(state['as.dmg._dmgS']).toEqual(jasmine.objectContaining({
+            value: [0, 6],
+            displayText: '0-0*, 2-6',
+        }));
     });
 });
 

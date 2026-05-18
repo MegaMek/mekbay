@@ -36,6 +36,7 @@ import { AdvFilterType, ADVANCED_FILTERS, getBooleanFilterSemanticExpression, no
 import type { CountOperator, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { getAdvancedFilterConfigByKey } from './unit-search-filter-config.util';
 import { isEmbeddedApostrophe, normalizeMultiStateSelection } from './unit-search-shared.util';
+import { formatASDamageValue, isASDamageFilterKey, parseASDamageValue } from './as-damage.util';
 
 // Cache for semantic key maps
 const semanticKeyMapCache = new Map<GameSystem, Map<string, AdvFilterConfig>>();
@@ -193,7 +194,7 @@ export function buildSemanticKeyMap(gameSystem: GameSystem): Map<string, AdvFilt
 /**
  * Merge and sort an array of ranges. Overlapping or adjacent ranges are combined.
  */
-function mergeAndSortRanges(ranges: [number, number][]): [number, number][] {
+function mergeAndSortRanges(ranges: [number, number][], adjacencyStep = 1): [number, number][] {
     if (ranges.length === 0) return [];
     
     // Sort by start value
@@ -205,7 +206,7 @@ function mergeAndSortRanges(ranges: [number, number][]): [number, number][] {
         const current = sorted[i];
         
         // Merge if overlapping or adjacent
-        if (current[0] <= last[1] + 1) {
+        if (current[0] <= last[1] + adjacencyStep) {
             last[1] = Math.max(last[1], current[1]);
         } else {
             merged.push(current);
@@ -215,13 +216,47 @@ function mergeAndSortRanges(ranges: [number, number][]): [number, number][] {
     return merged;
 }
 
+function getPreviousRangeValue(conf: AdvFilterConfig | undefined, value: number, step: number): number {
+    if (!conf || !isASDamageFilterKey(conf.key)) {
+        return value - step;
+    }
+
+    if (value <= 0.5) {
+        return 0;
+    }
+
+    if (value <= 1) {
+        return 0.5;
+    }
+
+    return Math.ceil(value) - 1;
+}
+
+function getNextRangeValue(conf: AdvFilterConfig | undefined, value: number, step: number): number {
+    if (!conf || !isASDamageFilterKey(conf.key)) {
+        return value + step;
+    }
+
+    if (value < 0.5) {
+        return 0.5;
+    }
+
+    if (value < 1) {
+        return 1;
+    }
+
+    return Math.floor(value) + 1;
+}
+
 /**
  * Apply exclusion ranges to an include range, returning the remaining segments.
  */
 function applyExclusionsToRange(
     min: number,
     max: number,
-    excludeRanges: [number, number][]
+    excludeRanges: [number, number][],
+    conf?: AdvFilterConfig,
+    step = 1,
 ): [number, number][] {
     if (excludeRanges.length === 0) {
         return [[min, max]];
@@ -238,11 +273,11 @@ function applyExclusionsToRange(
         
         // Add segment before exclusion
         if (current < exMin) {
-            segments.push([current, Math.min(exMin - 1, max)]);
+            segments.push([current, Math.min(getPreviousRangeValue(conf, exMin, step), max)]);
         }
         
         // Move past exclusion
-        current = Math.max(current, exMax + 1);
+        current = Math.max(current, getNextRangeValue(conf, exMax, step));
     }
     
     // Add final segment after last exclusion
@@ -257,8 +292,16 @@ function applyExclusionsToRange(
  * Format an array of range segments as a display string.
  * E.g., [[0,10], [20,30]] → "0-10, 20-30"
  */
-function formatRangeSegments(segments: [number, number][]): string {
-    return segments.map(([s, e]) => s === e ? `${s}` : `${s}-${e}`).join(', ');
+function formatRangeSemanticValue(conf: AdvFilterConfig, value: number): string {
+    return isASDamageFilterKey(conf.key) ? formatASDamageValue(value) : `${value}`;
+}
+
+function formatRangeSegments(segments: [number, number][], conf: AdvFilterConfig): string {
+    return segments
+        .map(([s, e]) => s === e
+            ? formatRangeSemanticValue(conf, s)
+            : `${formatRangeSemanticValue(conf, s)}-${formatRangeSemanticValue(conf, e)}`)
+        .join(', ');
 }
 
 /**
@@ -327,15 +370,26 @@ export function parseValues(valueStr: string): string[] {
  * Supports both - and ~ as range separators.
  * Returns [min, max] if it's a range, null otherwise
  */
-function parseRange(value: string): [number, number] | null {
+function parseRangeNumber(value: string, conf: AdvFilterConfig): number | null {
+    if (isASDamageFilterKey(conf.key)) {
+        return parseASDamageValue(value);
+    }
+
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseRange(value: string, conf: AdvFilterConfig): [number, number] | null {
     // Match patterns like "2-5", "100-200", "-5-10" (negative min), or "2~5"
     // Be careful with negative numbers: -5--2 means -5 to -2
     // Supports both - and ~ as range separators
-    const match = value.match(/^(-?\d+(?:\.\d+)?)[-~](-?\d+(?:\.\d+)?)$/);
+    const match = isASDamageFilterKey(conf.key)
+        ? value.match(/^(0\*|-?\d+(?:\.\d+)?)[-~](0\*|-?\d+(?:\.\d+)?)$/i)
+        : value.match(/^(-?\d+(?:\.\d+)?)[-~](-?\d+(?:\.\d+)?)$/);
     if (match) {
-        const min = parseFloat(match[1]);
-        const max = parseFloat(match[2]);
-        if (!isNaN(min) && !isNaN(max)) {
+        const min = parseRangeNumber(match[1], conf);
+        const max = parseRangeNumber(match[2], conf);
+        if (min !== null && max !== null) {
             // Ensure min <= max
             return min <= max ? [min, max] : [max, min];
         }
@@ -538,13 +592,14 @@ export function tokensToFilterState(
             let hasComparisonOps = false;
             let comparisonMin = totalRange[0];
             let comparisonMax = totalRange[1];
+            const comparisonStep = isASDamageFilterKey(conf.key) ? 0.5 : 1;
 
             for (const token of fieldTokens) {
                 if (token.operator === '=' || token.operator === '!=') {
                     // For = and != operators, support comma-separated values (already parsed into token.values)
                     for (const value of token.values) {
                         // Check if value is a range (e.g., "2-5") - only for = and !=
-                        const range = parseRange(value);
+                        const range = parseRange(value, conf);
                         if (range) {
                             if (token.operator === '=') {
                                 includeRanges.push(range);
@@ -555,8 +610,8 @@ export function tokensToFilterState(
                         }
 
                         // Parse as single number (treat as single-value range)
-                        const num = parseFloat(value);
-                        if (isNaN(num)) continue;
+                        const num = parseRangeNumber(value, conf);
+                        if (num === null) continue;
 
                         if (token.operator === '=') {
                             includeRanges.push([num, num]);
@@ -568,18 +623,18 @@ export function tokensToFilterState(
                     // Comparison operators (>, <, >=, <=) - use first value only
                     const value = token.values[0];
                     hasComparisonOps = true;
-                    const num = parseFloat(value);
-                    if (isNaN(num)) continue;
+                    const num = parseRangeNumber(value, conf);
+                    if (num === null) continue;
 
                     switch (token.operator) {
                         case '>':
-                            comparisonMin = Math.max(comparisonMin, num + 1);
+                            comparisonMin = Math.max(comparisonMin, num + comparisonStep);
                             break;
                         case '>=':
                             comparisonMin = Math.max(comparisonMin, num);
                             break;
                         case '<':
-                            comparisonMax = Math.min(comparisonMax, num - 1);
+                            comparisonMax = Math.min(comparisonMax, num - comparisonStep);
                             break;
                         case '<=':
                             comparisonMax = Math.min(comparisonMax, num);
@@ -599,7 +654,7 @@ export function tokensToFilterState(
             }
             
             // Merge exclude ranges
-            const mergedExcludeRanges = mergeAndSortRanges(excludeRanges);
+            const mergedExcludeRanges = mergeAndSortRanges(excludeRanges, comparisonStep);
 
             // Now compute the final state
             let finalIncludeRanges: [number, number][] | undefined;
@@ -610,7 +665,7 @@ export function tokensToFilterState(
             // Determine if we need semantic-only mode
             // - Multiple disjoint include ranges → semantic only
             // - Any exclusions → semantic only
-            const mergedRanges = mergeAndSortRanges(includeRanges);
+            const mergedRanges = mergeAndSortRanges(includeRanges, comparisonStep);
             const hasExclusions = mergedExcludeRanges.length > 0;
             const hasMultipleRanges = mergedRanges.length > 1;
             
@@ -627,18 +682,18 @@ export function tokensToFilterState(
                     const relevantExcludes = mergedExcludeRanges.filter(
                         ex => ex[1] >= range[0] && ex[0] <= range[1]
                     );
-                    const segments = applyExclusionsToRange(range[0], range[1], relevantExcludes);
+                    const segments = applyExclusionsToRange(range[0], range[1], relevantExcludes, conf, comparisonStep);
                     effectiveSegments.push(...segments);
                 }
                 
                 // Merge adjacent segments
-                effectiveSegments = mergeAndSortRanges(effectiveSegments);
+                effectiveSegments = mergeAndSortRanges(effectiveSegments, comparisonStep);
                 
                 if (effectiveSegments.length > 0) {
                     // For visualization: store the ORIGINAL include ranges (before exclusions)
                     // The slider will show these in cyan, with red overlays for exclusions
                     finalIncludeRanges = effectiveIncludeRanges;
-                    displayText = formatRangeSegments(effectiveSegments);
+                    displayText = formatRangeSegments(effectiveSegments, conf);
                 }
                 
                 // Store exclude ranges for reference
@@ -979,9 +1034,9 @@ export function filterStateToSemanticText(
             if (extState.excludeRanges && extState.excludeRanges.length > 0) {
                 for (const [exMin, exMax] of extState.excludeRanges) {
                     if (exMin === exMax) {
-                        parts.push(`${semanticKey}!=${exMin}`);
+                        parts.push(`${semanticKey}!=${formatRangeSemanticValue(conf, exMin)}`);
                     } else {
-                        parts.push(`${semanticKey}!=${exMin}-${exMax}`);
+                        parts.push(`${semanticKey}!=${formatRangeSemanticValue(conf, exMin)}-${formatRangeSemanticValue(conf, exMax)}`);
                     }
                 }
             }
@@ -990,13 +1045,13 @@ export function filterStateToSemanticText(
             const isFullRange = min === totalRange[0] && max === totalRange[1];
             if (!isFullRange) {
                 if (min === max) {
-                    parts.push(`${semanticKey}=${min}`);
+                    parts.push(`${semanticKey}=${formatRangeSemanticValue(conf, min)}`);
                 } else if (min !== totalRange[0] && max !== totalRange[1]) {
-                    parts.push(`${semanticKey}=${min}-${max}`);
+                    parts.push(`${semanticKey}=${formatRangeSemanticValue(conf, min)}-${formatRangeSemanticValue(conf, max)}`);
                 } else if (min !== totalRange[0]) {
-                    parts.push(`${semanticKey}>=${min}`);
+                    parts.push(`${semanticKey}>=${formatRangeSemanticValue(conf, min)}`);
                 } else if (max !== totalRange[1]) {
-                    parts.push(`${semanticKey}<=${max}`);
+                    parts.push(`${semanticKey}<=${formatRangeSemanticValue(conf, max)}`);
                 }
             }
 

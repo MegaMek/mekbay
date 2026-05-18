@@ -73,6 +73,7 @@ import { TaggingService } from '../../services/tagging.service';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { AbilityInfoDialogComponent, type AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
 import { SyntaxInputComponent } from '../syntax-input/syntax-input.component';
+import { formatASDamageValue, isASDamageFilterKey } from '../../utils/as-damage.util';
 import { SavedSearchesService } from '../../services/saved-searches.service';
 import { generateUUID } from '../../services/ws.service';
 import { GameSystem } from '../../models/common.model';
@@ -2140,6 +2141,12 @@ export class UnitSearchComponent {
             return min === max ? fmtMin : `${fmtMin}–${fmtMax}`;
         }
 
+        if (isASDamageFilterKey(key)) {
+            const fmtMin = formatASDamageValue(min);
+            const fmtMax = formatASDamageValue(max);
+            return min === max ? fmtMin : `${fmtMin}–${fmtMax}`;
+        }
+
         const fmtMin = FormatNumberPipe.formatValue(min, true, false);
         const fmtMax = FormatNumberPipe.formatValue(max, true, false);
         return min === max ? fmtMin : `${fmtMin}–${fmtMax}`;
@@ -2204,6 +2211,10 @@ export class UnitSearchComponent {
 
         const raw = this.getUnitSortRawValue(unit, key);
         if (raw == null) return '—';
+
+        if (typeof raw === 'number' && isASDamageFilterKey(key)) {
+            return formatASDamageValue(raw);
+        }
 
         return typeof raw === 'number' ? FormatNumberPipe.formatValue(raw, true, false) : String(raw);
     }

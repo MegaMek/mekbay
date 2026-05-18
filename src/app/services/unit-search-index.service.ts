@@ -40,6 +40,7 @@ import { removeAccents } from '../utils/string.util';
 import { naturalCompare } from '../utils/sort.util';
 import { getMergedTags, getUnitSourceFilterValues } from '../utils/unit-search-shared.util';
 import { calculateWeightedMaxRange, getMaxRangeFromComponents } from '../utils/unit-range.util';
+import { parseASDamageValue } from '../utils/as-damage.util';
 import { AS_MOVEMENT_MODE_DISPLAY_NAMES, BOOLEAN_FILTERS, getBooleanFilterUnitValue } from './unit-search-filters.model';
 import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot } from '../utils/unit-search-worker-protocol.util';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
@@ -246,10 +247,10 @@ export class UnitSearchIndexService {
 
             if (unit.as) {
                 if (unit.as.dmg) {
-                    unit.as.dmg._dmgS = parseFloat(unit.as.dmg.dmgS) || 0;
-                    unit.as.dmg._dmgM = parseFloat(unit.as.dmg.dmgM) || 0;
-                    unit.as.dmg._dmgL = parseFloat(unit.as.dmg.dmgL) || 0;
-                    unit.as.dmg._dmgE = parseFloat(unit.as.dmg.dmgE) || 0;
+                    unit.as.dmg._dmgS = parseASDamageValue(unit.as.dmg.dmgS) ?? 0;
+                    unit.as.dmg._dmgM = parseASDamageValue(unit.as.dmg.dmgM) ?? 0;
+                    unit.as.dmg._dmgL = parseASDamageValue(unit.as.dmg.dmgL) ?? 0;
+                    unit.as.dmg._dmgE = parseASDamageValue(unit.as.dmg.dmgE) ?? 0;
                 }
 
                 if (unit.as.MVm && unit.as.MVm['j'] !== undefined && unit.as.MVm[''] === undefined) {
