@@ -6,6 +6,7 @@ import type {
     ASAbilityEffectContext,
     ASAbilityEffectDefinition,
     ASAbilityEffectRef,
+    ASAbilityRollModifierComment,
     ASAbilityMovementContext,
     ASAbilityMovementDisplayContext,
     ASMovementDisplayValue,
@@ -111,6 +112,29 @@ export function applyCriticalHitRollModifierEffects(
     return effects.reduce((currentModifier, effect) => {
         return effect.criticalHits?.adjustRollModifier?.(currentModifier, context) ?? currentModifier;
     }, modifier);
+}
+
+export function collectCriticalHitRollModifierCommentsEffects(
+    effects: readonly ASAbilityEffectDefinition[],
+    modifier: number,
+    context: ASAbilityCriticalHitContext,
+): ASAbilityRollModifierComment[] {
+    const comments: ASAbilityRollModifierComment[] = [];
+    let currentModifier = modifier;
+
+    for (const effect of effects) {
+        const nextModifier = effect.criticalHits?.adjustRollModifier?.(currentModifier, context) ?? currentModifier;
+        const modifierDelta = nextModifier - currentModifier;
+        if (modifierDelta !== 0) {
+            const comment = effect.criticalHits?.describeRollModifier?.(modifierDelta, context);
+            if (comment) {
+                comments.push({ modifier: modifierDelta, comment });
+            }
+        }
+        currentModifier = nextModifier;
+    }
+
+    return comments;
 }
 
 export function resolveCriticalHitRollResultEffects(

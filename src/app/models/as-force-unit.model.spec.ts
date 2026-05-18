@@ -221,6 +221,10 @@ describe('ASForceUnit ability effects', () => {
         forceUnit.setPilotAbilities(['evasive_maneuver']);
 
         expect(forceUnit.criticalHitRollModifier('motiveDamage', 1)).toBe(-1);
+        expect(forceUnit.criticalHitRollModifierComments('motiveDamage', 1)).toEqual([{
+            modifier: -2,
+            comment: 'Evasive Maneuver reduces motive damage rolls for fast combat vehicles.',
+        }]);
     });
 
     it('does not apply Evasive Maneuver to slower combat vehicles', () => {
@@ -251,6 +255,10 @@ describe('ASForceUnit ability effects', () => {
         }));
 
         expect(forceUnit.criticalHitRollModifier('criticalHit', 0)).toBe(-1);
+        expect(forceUnit.criticalHitRollModifierComments('criticalHit', 0)).toEqual([
+            { modifier: -2, comment: 'Critical Resistant reduces critical hit rolls.' },
+            { modifier: 1, comment: 'Impact Resistant Armor increases critical hit rolls.' },
+        ]);
         expect(forceUnit.criticalHitRollModifier('motiveDamage', 0)).toBe(0);
         expect(forceUnit.criticalHitRollResolution('criticalHit', 13)).toBe('engineHit');
         expect(forceUnit.criticalHitRollResolution('criticalHit', 12)).toBeUndefined();

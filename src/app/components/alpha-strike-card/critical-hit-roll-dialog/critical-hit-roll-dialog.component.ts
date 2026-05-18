@@ -214,6 +214,17 @@ const CRIT_TABLE_DROPSHIP: Record<number, CritTableEntry> = {
                 (click)="reroll()"
             />
             </div>
+
+            @if (rollModifierComments().length > 0) {
+                <div class="roll-modifier-comments">
+                    @for (comment of rollModifierComments(); track $index) {
+                        <div class="roll-modifier-comment">
+                            <span class="roll-modifier-value">{{ formatRollModifier(comment.modifier) }}</span>
+                            <span>{{ comment.comment }}</span>
+                        </div>
+                    }
+                </div>
+            }
             
             @if (result()) {
                 <div class="result-container">
@@ -325,6 +336,33 @@ const CRIT_TABLE_DROPSHIP: Record<number, CritTableEntry> = {
             background: rgba(0, 0, 0, 0.3);
         }
 
+        .roll-modifier-comments {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 280px;
+            max-width: 520px;
+            text-align: left;
+        }
+
+        .roll-modifier-comment {
+            display: flex;
+            gap: 8px;
+            align-items: baseline;
+            padding: 8px 10px;
+            background: rgba(255, 204, 0, 0.12);
+            border: 1px solid rgba(255, 204, 0, 0.35);
+            color: #ddd;
+            font-size: 0.9em;
+        }
+
+        .roll-modifier-value {
+            min-width: 2.5em;
+            text-align: right;
+            color: #ffcc00;
+            font-weight: bold;
+        }
+
         .mitigation-message {
             padding: 12px 16px;
             font-size: 1.1em;
@@ -398,6 +436,8 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
 
     /** Modifier to the critical hit roll from active unit ability effects. */
     readonly rollModifier = computed(() => this.forceUnit?.criticalHitRollModifier('criticalHit', 0) ?? 0);
+
+    readonly rollModifierComments = computed(() => this.forceUnit?.criticalHitRollModifierComments('criticalHit', 0) ?? []);
 
     /** Ammo hit mitigation status based on unit specials */
     readonly ammoHitMitigation = computed<'none' | 'case' | 'immune'>(() => {
@@ -501,6 +541,10 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
 
         return !!this.cannotApplyReason() && !!this.forceUnit;
     });
+
+    formatRollModifier(modifier: number): string {
+        return `${modifier >= 0 ? '+' : ''}${modifier}`;
+    }
 
     ngAfterViewInit(): void {
         // Auto-roll when dialog opens

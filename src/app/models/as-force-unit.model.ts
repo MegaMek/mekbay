@@ -45,10 +45,11 @@ import type { CrewMember } from './crew-member.model';
 import type { ASCustomPilotAbility } from './pilot-abilities.model';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
 import type { SpecialAbilityState } from './as-special-ability-state.model';
-import type { ASAbilityCriticalHitRollResolution, ASAbilityEffectContext, ASAbilityEffectMode, ASAbilityEffectRef, ASMovementDisplayValue } from './as-ability-effects.model';
+import type { ASAbilityCriticalHitRollResolution, ASAbilityEffectContext, ASAbilityEffectMode, ASAbilityEffectRef, ASAbilityRollModifierComment, ASMovementDisplayValue } from './as-ability-effects.model';
 import {
     applyCriticalHitCountEffects,
     applyCriticalHitRollModifierEffects,
+    collectCriticalHitRollModifierCommentsEffects,
     applyHeatForPenaltiesEffects,
     applyHeatTrackMaxEffects,
     applyShutdownThresholdEffects,
@@ -322,6 +323,15 @@ export class ASForceUnit extends ForceUnit {
     ): number {
         const context = this.abilityEffectContext(mode);
         return applyCriticalHitRollModifierEffects(this.activeAbilityEffects(mode), baseModifier, { ...context, key });
+    }
+
+    criticalHitRollModifierComments(
+        key: string,
+        baseModifier: number = 0,
+        mode: ASAbilityEffectMode = 'committed',
+    ): ASAbilityRollModifierComment[] {
+        const context = this.abilityEffectContext(mode);
+        return collectCriticalHitRollModifierCommentsEffects(this.activeAbilityEffects(mode), baseModifier, { ...context, key });
     }
 
     criticalHitRollResolution(

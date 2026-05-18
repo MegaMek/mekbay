@@ -46,6 +46,7 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
 
                 return baseMove >= 10 ? modifier - 2 : modifier;
             },
+            describeRollModifier: () => 'Evasive Maneuver reduces motive damage rolls for fast combat vehicles.',
         },
     },
     {
@@ -117,6 +118,7 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
         priority: 100,
         criticalHits: {
             adjustRollModifier: (modifier, context) => context.key === 'motiveDamage' ? modifier - 1 : modifier,
+            describeRollModifier: () => 'Armored Motive System reduces motive damage rolls.',
         },
     },
     {
@@ -124,6 +126,7 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
         priority: 100,
         criticalHits: {
             adjustRollModifier: (modifier, context) => context.key === 'criticalHit' ? modifier - 2 : modifier,
+            describeRollModifier: () => 'Critical Resistant reduces critical hit rolls.',
         },
     },
     {
@@ -131,6 +134,7 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
         priority: 100,
         criticalHits: {
             adjustRollModifier: (modifier, context) => context.key === 'criticalHit' ? modifier + 1 : modifier,
+            describeRollModifier: () => 'Impact Resistant Armor increases critical hit rolls.',
             resolveRollResult: (context) => {
                 if (context.key !== 'criticalHit' || context.roll <= 12) {
                     return undefined;

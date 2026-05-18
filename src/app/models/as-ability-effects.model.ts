@@ -61,9 +61,15 @@ export interface ASAbilityCriticalHitRollResultContext extends ASAbilityCritical
     readonly roll: number;
 }
 
+export interface ASAbilityRollModifierComment {
+    readonly modifier: number;
+    readonly comment: string;
+}
+
 export interface ASAbilityCriticalHitHooks {
     readonly adjustHitCount?: (hits: number, context: ASAbilityCriticalHitContext) => number;
     readonly adjustRollModifier?: (modifier: number, context: ASAbilityCriticalHitContext) => number;
+    readonly describeRollModifier?: (modifierDelta: number, context: ASAbilityCriticalHitContext) => string | undefined;
     readonly resolveRollResult?: (context: ASAbilityCriticalHitRollResultContext) => ASAbilityCriticalHitRollResolution | undefined;
 }
 

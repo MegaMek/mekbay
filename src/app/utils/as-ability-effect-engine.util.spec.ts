@@ -3,6 +3,7 @@ import type { ASAbilityEffectContext, ASAbilityEffectRef } from '../models/as-ab
 import {
     applyCriticalHitCountEffects,
     applyCriticalHitRollModifierEffects,
+    collectCriticalHitRollModifierCommentsEffects,
     applyHeatForPenaltiesEffects,
     applyHeatTrackMaxEffects,
     applyMovementDisplayEffects,
@@ -136,6 +137,10 @@ describe('AS ability effect engine', () => {
 
         expect(applyCriticalHitRollModifierEffects(effects, 1, { ...context, key: 'motiveDamage' })).toBe(-1);
         expect(applyCriticalHitRollModifierEffects(effects, 1, { ...context, key: 'criticalHit' })).toBe(1);
+        expect(collectCriticalHitRollModifierCommentsEffects(effects, 1, { ...context, key: 'motiveDamage' })).toEqual([{
+            modifier: -2,
+            comment: 'Evasive Maneuver reduces motive damage rolls for fast combat vehicles.',
+        }]);
     });
 
     it('does not apply Evasive Maneuver below 10 Move', () => {
@@ -153,6 +158,10 @@ describe('AS ability effect engine', () => {
 
         expect(applyCriticalHitRollModifierEffects(effects, 0, { ...context, key: 'motiveDamage' })).toBe(-1);
         expect(applyCriticalHitRollModifierEffects(effects, 0, { ...context, key: 'criticalHit' })).toBe(0);
+        expect(collectCriticalHitRollModifierCommentsEffects(effects, 0, { ...context, key: 'motiveDamage' })).toEqual([{
+            modifier: -1,
+            comment: 'Armored Motive System reduces motive damage rolls.',
+        }]);
     });
 
     it('applies Critical Resistant to critical hit rolls', () => {
@@ -162,6 +171,10 @@ describe('AS ability effect engine', () => {
 
         expect(applyCriticalHitRollModifierEffects(effects, 0, { ...context, key: 'criticalHit' })).toBe(-2);
         expect(applyCriticalHitRollModifierEffects(effects, 0, { ...context, key: 'motiveDamage' })).toBe(0);
+        expect(collectCriticalHitRollModifierCommentsEffects(effects, 0, { ...context, key: 'criticalHit' })).toEqual([{
+            modifier: -2,
+            comment: 'Critical Resistant reduces critical hit rolls.',
+        }]);
     });
 
     it('applies Impact Resistant Armor to critical hit rolls above the table', () => {
@@ -170,6 +183,10 @@ describe('AS ability effect engine', () => {
         const effects = resolveASAbilityEffects([ref]);
 
         expect(applyCriticalHitRollModifierEffects(effects, 0, { ...context, key: 'criticalHit' })).toBe(1);
+        expect(collectCriticalHitRollModifierCommentsEffects(effects, 0, { ...context, key: 'criticalHit' })).toEqual([{
+            modifier: 1,
+            comment: 'Impact Resistant Armor increases critical hit rolls.',
+        }]);
         expect(resolveCriticalHitRollResultEffects(effects, { ...context, key: 'criticalHit', roll: 13 })).toBe('engineHit');
         expect(resolveCriticalHitRollResultEffects(effects, { ...context, key: 'criticalHit', roll: 12 })).toBeUndefined();
         expect(resolveCriticalHitRollResultEffects(effects, { ...context, key: 'motiveDamage', roll: 13 })).toBeUndefined();
