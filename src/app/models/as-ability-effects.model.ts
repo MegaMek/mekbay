@@ -1,6 +1,6 @@
 import type { Unit } from './units.model';
 
-export type ASAbilityEffectSourceKind = 'pilot' | 'command' | 'asSpecial';
+export type ASAbilityEffectSourceKind = 'pilot' | 'command' | 'special';
 export type ASAbilityEffectMode = 'committed' | 'preview' | 'previewNoHeat';
 
 export interface ASAbilityEffectRef {

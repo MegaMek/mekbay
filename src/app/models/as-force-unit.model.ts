@@ -59,7 +59,7 @@ import {
     resolveCriticalHitRollResultEffects,
     resolveASAbilityEffects,
 } from '../utils/as-ability-effect-engine.util';
-import { isAerospace, isAerospaceMode, isGroundMovement } from '../utils/as-common.util';
+import { isAerospace, isAerospaceMovementMode, isGroundMovementMode } from '../utils/as-common.util';
 
 /** Represents either a standard ability (by ID) or a custom ability (object) */
 export type AbilitySelection = string | ASCustomPilotAbility;
@@ -265,7 +265,7 @@ export class ASForceUnit extends ForceUnit {
 
         for (const special of this.unit.as.specials ?? []) {
             const tag = this.normalizeSpecialEffectId(special);
-            const specialRef: ASAbilityEffectRef = { source: 'asSpecial', id: tag };
+            const specialRef: ASAbilityEffectRef = { source: 'special', id: tag };
             if (hasRegisteredASAbilityEffect(specialRef)) {
                 refs.push(specialRef);
             }
@@ -730,10 +730,10 @@ export class ASForceUnit extends ForceUnit {
                 reducedInches = this.applyMpHitsReduction(inches, mpHits);
             }
             
-            if (!isAerospaceMode(mode) && isShutdown) {
+            if (!isAerospaceMovementMode(mode) && isShutdown) {
                 reducedInches = 0;
             } else {
-                if (isGroundMovement(mode)) {
+                if (isGroundMovementMode(mode)) {
                     // Apply heat reduction only to ground movement
                     reducedInches -= heat * 2;
                 }

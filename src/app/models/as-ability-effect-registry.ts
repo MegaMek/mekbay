@@ -1,4 +1,4 @@
-import { isAerospaceMode } from '../utils/as-common.util';
+import { isAerospaceMovementMode } from '../utils/as-common.util';
 import type { ASAbilityEffectDefinition } from './as-ability-effects.model';
 import type { Unit } from './units.model';
 
@@ -40,7 +40,7 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
                 const baseMove = Math.max(
                     0,
                     ...Object.entries(context.unit.as.MVm ?? {})
-                        .filter(([mode]) => !isAerospaceMode(mode))
+                        .filter(([mode]) => !isAerospaceMovementMode(mode))
                         .map(([, inches]) => typeof inches === 'number' ? inches : 0),
                 );
 
@@ -114,7 +114,7 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
         },
     },
     {
-        ref: { source: 'asSpecial', id: 'ARS' },
+        ref: { source: 'special', id: 'ARS' },
         priority: 100,
         criticalHits: {
             adjustRollModifier: (modifier, context) => context.key === 'motiveDamage' ? modifier - 1 : modifier,
@@ -122,7 +122,7 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
         },
     },
     {
-        ref: { source: 'asSpecial', id: 'CR' },
+        ref: { source: 'special', id: 'CR' },
         priority: 100,
         criticalHits: {
             adjustRollModifier: (modifier, context) => context.key === 'criticalHit' ? modifier - 2 : modifier,
@@ -130,7 +130,7 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
         },
     },
     {
-        ref: { source: 'asSpecial', id: 'IRA' },
+        ref: { source: 'special', id: 'IRA' },
         priority: 100,
         criticalHits: {
             adjustRollModifier: (modifier, context) => context.key === 'criticalHit' ? modifier + 1 : modifier,
@@ -144,7 +144,7 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
         },
     },
     {
-        ref: { source: 'asSpecial', id: 'TSM' },
+        ref: { source: 'special', id: 'TSM' },
         priority: 100,
         movement: {
             adjustMovementInches: (inches, context) => {

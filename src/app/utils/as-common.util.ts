@@ -22,13 +22,17 @@ export function formatMovementWithAlternate(
 export function isAerospace(type: string, movementModes: { [mode: string]: number }): boolean {
     return type === 'AF' || type === 'CF' || type === 'DA' || type === 'DS' 
     || type === 'SC' || type === 'WS' || type === 'SS' || type === 'JS' 
-    || (type === 'SV' && ((movementModes['a'] !== undefined) || (movementModes['p'] !== undefined) || (movementModes['k'] !== undefined)));
+    || (type === 'SV' && hasAerospaceMovementMode(movementModes));
 }
 
-export function isAerospaceMode(mode: string): boolean {
+export function hasAerospaceMovementMode(movementModes: { [mode: string]: number }): boolean {
+    return movementModes['a'] !== undefined || movementModes['p'] !== undefined || movementModes['k'] !== undefined;
+}
+
+export function isAerospaceMovementMode(mode: string): boolean {
     return mode === 'a' || mode === 'p' || mode === 'k';
 }
 
-export function isGroundMovement(mode: string): boolean {
-    return !isAerospaceMode(mode) && mode !== 'j';
+export function isGroundMovementMode(mode: string): boolean {
+    return !isAerospaceMovementMode(mode) && mode !== 'j';
 }

@@ -98,7 +98,7 @@ describe('AS ability effect engine', () => {
     });
 
     it('applies TSM as a ground movement value effect', () => {
-        const ref: ASAbilityEffectRef = { source: 'asSpecial', id: 'TSM' };
+        const ref: ASAbilityEffectRef = { source: 'special', id: 'TSM' };
         const context = createContext([ref]);
         const effects = resolveASAbilityEffects([ref]);
 
@@ -152,7 +152,7 @@ describe('AS ability effect engine', () => {
     });
 
     it('applies Armored Motive System to motive damage rolls', () => {
-        const ref: ASAbilityEffectRef = { source: 'asSpecial', id: 'ARS' };
+        const ref: ASAbilityEffectRef = { source: 'special', id: 'ARS' };
         const context = createContext([ref]);
         const effects = resolveASAbilityEffects([ref]);
 
@@ -165,7 +165,7 @@ describe('AS ability effect engine', () => {
     });
 
     it('applies Critical Resistant to critical hit rolls', () => {
-        const ref: ASAbilityEffectRef = { source: 'asSpecial', id: 'CR' };
+        const ref: ASAbilityEffectRef = { source: 'special', id: 'CR' };
         const context = createContext([ref]);
         const effects = resolveASAbilityEffects([ref]);
 
@@ -178,7 +178,7 @@ describe('AS ability effect engine', () => {
     });
 
     it('applies Impact Resistant Armor to critical hit rolls above the table', () => {
-        const ref: ASAbilityEffectRef = { source: 'asSpecial', id: 'IRA' };
+        const ref: ASAbilityEffectRef = { source: 'special', id: 'IRA' };
         const context = createContext([ref]);
         const effects = resolveASAbilityEffects([ref]);
 
