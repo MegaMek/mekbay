@@ -176,4 +176,91 @@ describe('ASForceUnit ability effects', () => {
         expect(forceUnit.effectiveMovement()).toEqual({ '': 4 });
         expect(forceUnit.effectiveTmm()).toEqual({ '': 0 });
     });
+
+    it('applies Evasive Maneuver to fast combat vehicle motive damage rolls', () => {
+        const forceUnit = createForceUnit(createTestUnit({
+            type: 'Tank',
+            subtype: 'Combat Vehicle',
+            as: { TP: 'CV', MVm: { '': 10 } },
+        }));
+        forceUnit.setPilotAbilities(['evasive_maneuver']);
+
+        expect(forceUnit.criticalHitRollModifier('motiveDamage', 1)).toBe(-1);
+    });
+
+    it('does not apply Evasive Maneuver to slower combat vehicles', () => {
+        const forceUnit = createForceUnit(createTestUnit({
+            type: 'Tank',
+            subtype: 'Combat Vehicle',
+            as: { TP: 'CV', MVm: { '': 8 } },
+        }));
+        forceUnit.setPilotAbilities(['evasive_maneuver']);
+
+        expect(forceUnit.criticalHitRollModifier('motiveDamage', 1)).toBe(1);
+    });
+
+    it('applies Armored Motive System to motive damage rolls', () => {
+        const forceUnit = createForceUnit(createTestUnit({
+            type: 'Tank',
+            subtype: 'Combat Vehicle',
+            as: { TP: 'CV', MVm: { '': 8 }, specials: ['ARS'] },
+        }));
+
+        expect(forceUnit.criticalHitRollModifier('motiveDamage', 0)).toBe(-1);
+        expect(forceUnit.criticalHitRollModifier('criticalHit', 0)).toBe(0);
+    });
+
+    it('applies critical hit roll modifiers from AS special ability effects', () => {
+        const forceUnit = createForceUnit(createTestUnit({
+            as: { specials: ['CR', 'IRA'] },
+        }));
+
+        expect(forceUnit.criticalHitRollModifier('criticalHit', 0)).toBe(-1);
+        expect(forceUnit.criticalHitRollModifier('motiveDamage', 0)).toBe(0);
+        expect(forceUnit.criticalHitRollResolution('criticalHit', 13)).toBe('engineHit');
+        expect(forceUnit.criticalHitRollResolution('criticalHit', 12)).toBeUndefined();
+    });
+
+    it('applies Foot Cavalry to conventional foot infantry movement', () => {
+        const forceUnit = createForceUnit(createTestUnit({
+            type: 'Infantry',
+            subtype: 'Conventional Infantry',
+            chassis: 'Infantry',
+            as: { TP: 'CI', MVm: { f: 2 } },
+        }));
+        forceUnit.setPilotAbilities(['foot_cavalry']);
+
+        expect(forceUnit.effectiveMovement()).toEqual({ f: 4 });
+    });
+
+    it('does not apply Foot Cavalry to beast-mounted infantry', () => {
+        const forceUnit = createForceUnit(createTestUnit({
+            type: 'Infantry',
+            subtype: 'Conventional Infantry',
+            chassis: 'Beast Infantry (Camel)',
+            as: { TP: 'CI', MVm: { f: 4 } },
+        }));
+        forceUnit.setPilotAbilities(['foot_cavalry']);
+
+        expect(forceUnit.effectiveMovement()).toEqual({ f: 4 });
+    });
+
+    it('applies Light Horseman to beast-mounted infantry movement', () => {
+        const forceUnit = createForceUnit(createTestUnit({
+            type: 'Infantry',
+            subtype: 'Conventional Infantry',
+            chassis: 'Beast Infantry (Camel)',
+            as: { TP: 'CI', MVm: { f: 4 } },
+        }));
+        forceUnit.setPilotAbilities(['light_horseman']);
+
+        expect(forceUnit.effectiveMovement()).toEqual({ f: 6 });
+    });
+
+    it('applies formation-granted Assault Operations to BattleMech ground movement', () => {
+        const forceUnit = createForceUnit(createTestUnit({ as: { TP: 'BM', MVm: { '': 8, j: 8 } } }));
+        forceUnit.setFormationAbilities(['assault_operations'], false);
+
+        expect(forceUnit.effectiveMovement()).toEqual({ '': 10, j: 8 });
+    });
 });

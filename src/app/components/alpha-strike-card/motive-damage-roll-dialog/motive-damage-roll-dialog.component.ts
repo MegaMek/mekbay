@@ -285,8 +285,10 @@ export class MotiveDamageRollDialogComponent implements AfterViewInit {
 
     readonly result = signal<MotiveDamageResult | null>(null);
 
-    /** Modifier to the roll based on motive type */
-    readonly rollModifier = computed(() => getMotiveRollModifier(this.moveType));
+    /** Modifier to the roll based on motive type and active unit abilities. */
+    readonly rollModifier = computed(() => {
+        return this.forceUnit.criticalHitRollModifier('motiveDamage', getMotiveRollModifier(this.moveType));
+    });
 
     /** Display name combining chassis, model, and optional alias */
     readonly unitDisplayName = computed(() => {

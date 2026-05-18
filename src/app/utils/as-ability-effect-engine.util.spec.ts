@@ -2,22 +2,24 @@ import { createEmptyUnit } from '../testing/unit-test-helpers';
 import type { ASAbilityEffectContext, ASAbilityEffectRef } from '../models/as-ability-effects.model';
 import {
     applyCriticalHitCountEffects,
+    applyCriticalHitRollModifierEffects,
     applyHeatForPenaltiesEffects,
     applyHeatTrackMaxEffects,
     applyMovementDisplayEffects,
     applyMovementInchesEffects,
     applyShutdownThresholdEffects,
     hasRegisteredASAbilityEffect,
+    resolveCriticalHitRollResultEffects,
     resolveASAbilityEffects,
 } from './as-ability-effect-engine.util';
 
 describe('AS ability effect engine', () => {
     const unit = createEmptyUnit({ as: { TP: 'BM' } });
 
-    function createContext(refs: readonly ASAbilityEffectRef[]): ASAbilityEffectContext {
+    function createContext(refs: readonly ASAbilityEffectRef[], contextUnit = unit): ASAbilityEffectContext {
         return {
             mode: 'committed',
-            unit,
+            unit: contextUnit,
             abilityRefs: refs,
         };
     }
@@ -125,5 +127,106 @@ describe('AS ability effect engine', () => {
 
         expect(applyCriticalHitCountEffects(effects, 2, { ...context, key: 'mp' })).toBe(1);
         expect(applyCriticalHitCountEffects(effects, 2, { ...context, key: 'weapons' })).toBe(2);
+    });
+
+    it('applies Evasive Maneuver to fast combat vehicle motive damage rolls', () => {
+        const ref: ASAbilityEffectRef = { source: 'pilot', id: 'evasive_maneuver' };
+        const context = createContext([ref], createEmptyUnit({ as: { TP: 'CV', MVm: { '': 10 } } }));
+        const effects = resolveASAbilityEffects([ref]);
+
+        expect(applyCriticalHitRollModifierEffects(effects, 1, { ...context, key: 'motiveDamage' })).toBe(-1);
+        expect(applyCriticalHitRollModifierEffects(effects, 1, { ...context, key: 'criticalHit' })).toBe(1);
+    });
+
+    it('does not apply Evasive Maneuver below 10 Move', () => {
+        const ref: ASAbilityEffectRef = { source: 'pilot', id: 'evasive_maneuver' };
+        const context = createContext([ref], createEmptyUnit({ as: { TP: 'CV', MVm: { '': 8 } } }));
+        const effects = resolveASAbilityEffects([ref]);
+
+        expect(applyCriticalHitRollModifierEffects(effects, 1, { ...context, key: 'motiveDamage' })).toBe(1);
+    });
+
+    it('applies Armored Motive System to motive damage rolls', () => {
+        const ref: ASAbilityEffectRef = { source: 'asSpecial', id: 'ARS' };
+        const context = createContext([ref]);
+        const effects = resolveASAbilityEffects([ref]);
+
+        expect(applyCriticalHitRollModifierEffects(effects, 0, { ...context, key: 'motiveDamage' })).toBe(-1);
+        expect(applyCriticalHitRollModifierEffects(effects, 0, { ...context, key: 'criticalHit' })).toBe(0);
+    });
+
+    it('applies Critical Resistant to critical hit rolls', () => {
+        const ref: ASAbilityEffectRef = { source: 'asSpecial', id: 'CR' };
+        const context = createContext([ref]);
+        const effects = resolveASAbilityEffects([ref]);
+
+        expect(applyCriticalHitRollModifierEffects(effects, 0, { ...context, key: 'criticalHit' })).toBe(-2);
+        expect(applyCriticalHitRollModifierEffects(effects, 0, { ...context, key: 'motiveDamage' })).toBe(0);
+    });
+
+    it('applies Impact Resistant Armor to critical hit rolls above the table', () => {
+        const ref: ASAbilityEffectRef = { source: 'asSpecial', id: 'IRA' };
+        const context = createContext([ref]);
+        const effects = resolveASAbilityEffects([ref]);
+
+        expect(applyCriticalHitRollModifierEffects(effects, 0, { ...context, key: 'criticalHit' })).toBe(1);
+        expect(resolveCriticalHitRollResultEffects(effects, { ...context, key: 'criticalHit', roll: 13 })).toBe('engineHit');
+        expect(resolveCriticalHitRollResultEffects(effects, { ...context, key: 'criticalHit', roll: 12 })).toBeUndefined();
+        expect(resolveCriticalHitRollResultEffects(effects, { ...context, key: 'motiveDamage', roll: 13 })).toBeUndefined();
+    });
+
+    it('applies infantry cavalry movement bonuses only to eligible units', () => {
+        const footRef: ASAbilityEffectRef = { source: 'pilot', id: 'foot_cavalry' };
+        const lightRef: ASAbilityEffectRef = { source: 'pilot', id: 'light_horseman' };
+        const footContext = createContext([footRef], createEmptyUnit({ as: { TP: 'CI', MVm: { f: 2 } } }));
+        const beastContext = createContext([lightRef], createEmptyUnit({ chassis: 'Beast Infantry (Camel)', as: { TP: 'CI', MVm: { f: 4 } } }));
+
+        expect(applyMovementInchesEffects(resolveASAbilityEffects([footRef]), 2, {
+            ...footContext,
+            movementMode: 'f',
+            heat: 0,
+            isAerospace: false,
+            isVehicle: false,
+            isImmobilized: false,
+        })).toBe(4);
+        expect(applyMovementInchesEffects(resolveASAbilityEffects([footRef]), 4, {
+            ...beastContext,
+            movementMode: 'f',
+            heat: 0,
+            isAerospace: false,
+            isVehicle: false,
+            isImmobilized: false,
+        })).toBe(4);
+        expect(applyMovementInchesEffects(resolveASAbilityEffects([lightRef]), 4, {
+            ...beastContext,
+            movementMode: 'f',
+            heat: 0,
+            isAerospace: false,
+            isVehicle: false,
+            isImmobilized: false,
+        })).toBe(6);
+    });
+
+    it('applies Assault Operations to BattleMech ground movement', () => {
+        const ref: ASAbilityEffectRef = { source: 'command', id: 'assault_operations' };
+        const context = createContext([ref], createEmptyUnit({ as: { TP: 'BM', MVm: { '': 8 } } }));
+        const effects = resolveASAbilityEffects([ref]);
+
+        expect(applyMovementInchesEffects(effects, 8, {
+            ...context,
+            movementMode: '',
+            heat: 0,
+            isAerospace: false,
+            isVehicle: false,
+            isImmobilized: false,
+        })).toBe(10);
+        expect(applyMovementInchesEffects(effects, 8, {
+            ...context,
+            movementMode: 'j',
+            heat: 0,
+            isAerospace: false,
+            isVehicle: false,
+            isImmobilized: false,
+        })).toBe(8);
     });
 });

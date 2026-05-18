@@ -45,15 +45,17 @@ import type { CrewMember } from './crew-member.model';
 import type { ASCustomPilotAbility } from './pilot-abilities.model';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
 import type { SpecialAbilityState } from './as-special-ability-state.model';
-import type { ASAbilityEffectContext, ASAbilityEffectMode, ASAbilityEffectRef, ASMovementDisplayValue } from './as-ability-effects.model';
+import type { ASAbilityCriticalHitRollResolution, ASAbilityEffectContext, ASAbilityEffectMode, ASAbilityEffectRef, ASMovementDisplayValue } from './as-ability-effects.model';
 import {
     applyCriticalHitCountEffects,
+    applyCriticalHitRollModifierEffects,
     applyHeatForPenaltiesEffects,
     applyHeatTrackMaxEffects,
     applyShutdownThresholdEffects,
     applyMovementDisplayEffects,
     applyMovementInchesEffects,
     hasRegisteredASAbilityEffect,
+    resolveCriticalHitRollResultEffects,
     resolveASAbilityEffects,
 } from '../utils/as-ability-effect-engine.util';
 import { isAerospace } from '../utils/as-common.util';
@@ -311,6 +313,24 @@ export class ASForceUnit extends ForceUnit {
     private effectiveCritHits(key: string, hits: number, mode: ASAbilityEffectMode): number {
         const context = this.abilityEffectContext(mode);
         return Math.max(0, applyCriticalHitCountEffects(this.activeAbilityEffects(mode), hits, { ...context, key }));
+    }
+
+    criticalHitRollModifier(
+        key: string,
+        baseModifier: number = 0,
+        mode: ASAbilityEffectMode = 'committed',
+    ): number {
+        const context = this.abilityEffectContext(mode);
+        return applyCriticalHitRollModifierEffects(this.activeAbilityEffects(mode), baseModifier, { ...context, key });
+    }
+
+    criticalHitRollResolution(
+        key: string,
+        roll: number,
+        mode: ASAbilityEffectMode = 'committed',
+    ): ASAbilityCriticalHitRollResolution | undefined {
+        const context = this.abilityEffectContext(mode);
+        return resolveCriticalHitRollResultEffects(this.activeAbilityEffects(mode), { ...context, key, roll });
     }
 
     movementDisplayValue(

@@ -396,15 +396,8 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
     readonly randomColumn = signal<string | null>(null);
     readonly currentEntry = signal<CritTableEntry | null>(null);
 
-    /** Modifier to the critical hit roll (e.g., -2 for CR special) */
-    readonly rollModifier = computed(() => {
-        if (!this.forceUnit) return 0;
-        const specials = this.forceUnit.getUnit().as.specials;
-        if (!specials) return 0;
-        // CR (Critical-Resistant) special reduces crit roll by 2
-        if (specials.includes('CR')) return -2;
-        return 0;
-    });
+    /** Modifier to the critical hit roll from active unit ability effects. */
+    readonly rollModifier = computed(() => this.forceUnit?.criticalHitRollModifier('criticalHit', 0) ?? 0);
 
     /** Ammo hit mitigation status based on unit specials */
     readonly ammoHitMitigation = computed<'none' | 'case' | 'immune'>(() => {
@@ -543,7 +536,8 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
             return;
         }
         
-        const entry = this.critTable[roll];
+        const resolution = this.forceUnit?.criticalHitRollResolution('criticalHit', roll);
+        const entry = resolution ? this.getEntryForResolution(resolution) : this.critTable[roll];
         if (entry) {
             // Check if this crit type has maxHits and is already at the limit
             if (entry.maxHits && entry.pipKey && this.forceUnit) {
@@ -584,6 +578,17 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
 
         const colIndex = Math.floor(Math.random() * this.weaponColumns.length);
         this.randomColumn.set(this.weaponColumns[colIndex]);
+    }
+
+    private getEntryForResolution(resolution: 'engineHit'): CritTableEntry {
+        switch (resolution) {
+            case 'engineHit':
+                return Object.values(this.critTable ?? {}).find(entry => entry.pipKey === 'engine') ?? {
+                    critType: 'Engine Hit',
+                    description: 'Impact Resistant Armor treats modified critical hit rolls over 12 as an Engine Hit critical.',
+                    pipKey: 'engine',
+                };
+        }
     }
 
     reroll(): void {

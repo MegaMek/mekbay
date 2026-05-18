@@ -1,6 +1,53 @@
 import type { ASAbilityEffectDefinition } from './as-ability-effects.model';
+import type { Unit } from './units.model';
+
+function unitText(unit: Unit): string {
+    return [
+        unit.name,
+        unit.chassis,
+        unit.model,
+        unit.subtype,
+        unit.moveType,
+        unit.icon,
+        ...(unit.sheets ?? []),
+    ].join(' ').toLowerCase();
+}
+
+function isBeastMountedInfantry(unit: Unit): boolean {
+    if (unit.as.TP !== 'CI') {
+        return false;
+    }
+
+    const text = unitText(unit);
+    return text.includes('beast infantry') || text.includes('beast-mounted') || text.includes('beast mounted');
+}
+
+function isFootInfantry(unit: Unit): boolean {
+    return unit.as.TP === 'CI' && !isBeastMountedInfantry(unit);
+}
 
 export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = [
+    {
+        ref: { source: 'pilot', id: 'evasive_maneuver' },
+        scope: 'unit',
+        priority: 100,
+        criticalHits: {
+            adjustRollModifier: (modifier, context) => {
+                if (context.key !== 'motiveDamage' || context.unit.as.TP !== 'CV') {
+                    return modifier;
+                }
+
+                const baseMove = Math.max(
+                    0,
+                    ...Object.entries(context.unit.as.MVm ?? {})
+                        .filter(([mode]) => mode !== 'a' && mode !== 'p' && mode !== 'k')
+                        .map(([, inches]) => typeof inches === 'number' ? inches : 0),
+                );
+
+                return baseMove >= 10 ? modifier - 2 : modifier;
+            },
+        },
+    },
     {
         ref: { source: 'pilot', id: 'hot_dog' },
         scope: 'unit',
@@ -17,6 +64,32 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
         priority: 100,
         criticalHits: {
             adjustHitCount: (hits, context) => context.key === 'mp' ? Math.max(0, hits - 1) : hits,
+        },
+    },
+    {
+        ref: { source: 'pilot', id: 'foot_cavalry' },
+        scope: 'movement',
+        priority: 100,
+        movement: {
+            adjustMovementInches: (inches, context) => {
+                if (context.movementMode !== 'f' || inches <= 0 || !isFootInfantry(context.unit)) {
+                    return inches;
+                }
+                return inches + 2;
+            },
+        },
+    },
+    {
+        ref: { source: 'pilot', id: 'light_horseman' },
+        scope: 'movement',
+        priority: 100,
+        movement: {
+            adjustMovementInches: (inches, context) => {
+                if (inches <= 0 || !isBeastMountedInfantry(context.unit)) {
+                    return inches;
+                }
+                return inches + 2;
+            },
         },
     },
     {
@@ -46,6 +119,36 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
         },
     },
     {
+        ref: { source: 'asSpecial', id: 'ARS' },
+        scope: 'unit',
+        priority: 100,
+        criticalHits: {
+            adjustRollModifier: (modifier, context) => context.key === 'motiveDamage' ? modifier - 1 : modifier,
+        },
+    },
+    {
+        ref: { source: 'asSpecial', id: 'CR' },
+        scope: 'unit',
+        priority: 100,
+        criticalHits: {
+            adjustRollModifier: (modifier, context) => context.key === 'criticalHit' ? modifier - 2 : modifier,
+        },
+    },
+    {
+        ref: { source: 'asSpecial', id: 'IRA' },
+        scope: 'unit',
+        priority: 100,
+        criticalHits: {
+            adjustRollModifier: (modifier, context) => context.key === 'criticalHit' ? modifier + 1 : modifier,
+            resolveRollResult: (context) => {
+                if (context.key !== 'criticalHit' || context.roll <= 12) {
+                    return undefined;
+                }
+                return 'engineHit';
+            },
+        },
+    },
+    {
         ref: { source: 'asSpecial', id: 'TSM' },
         scope: 'movement',
         priority: 100,
@@ -55,6 +158,19 @@ export const AS_ABILITY_EFFECT_REGISTRY: readonly ASAbilityEffectDefinition[] = 
                     return inches;
                 }
                 return inches + (context.heat === 1 ? 4 : 2);
+            },
+        },
+    },
+    {
+        ref: { source: 'command', id: 'assault_operations' },
+        scope: 'movement',
+        priority: 100,
+        movement: {
+            adjustMovementInches: (inches, context) => {
+                if (context.movementMode !== '' || inches <= 0 || context.unit.as.TP !== 'BM') {
+                    return inches;
+                }
+                return inches + 2;
             },
         },
     },

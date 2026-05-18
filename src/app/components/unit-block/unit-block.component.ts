@@ -48,7 +48,7 @@ import { ASForceUnit } from '../../models/as-force-unit.model';
 import { C3NetworkUtil } from '../../utils/c3-network.util';
 import type { C3Component, C3NetworkType } from '../../models/c3-network.model';
 import { GameSystem } from '../../models/common.model';
-import { formatMovement } from '../../utils/as-common.util';
+import { formatMovement, formatMovementWithAlternate } from '../../utils/as-common.util';
 
 /**
  * Author: Drake
@@ -297,11 +297,21 @@ export class UnitBlockComponent {
             const entries = this.getMovementEntries(effectiveMv);
             if (entries.length === 0) return forceUnit.getUnit()?.as?.MV ?? '';
             return entries
-                .map(([mode, inches]) => formatMovement(inches, mode, this.optionsService.options().ASUseHex))
+                .map(([mode, inches]) => this.formatASMovementEntry(forceUnit, mode, inches))
                 .join('/');
         }
         return forceUnit.getUnit()?.as?.MV ?? '';
     });
+
+    private formatASMovementEntry(forceUnit: ASForceUnit, mode: string, inches: number): string {
+        const useHex = this.optionsService.options().ASUseHex;
+        const display = forceUnit.movementDisplayValue(mode, inches);
+        const formatted = display.adjustedInches !== undefined
+            ? formatMovementWithAlternate(display.baseInches, display.adjustedInches, mode, useHex)
+            : formatMovement(display.baseInches, mode, useHex);
+
+        return display.note ? `${formatted} (${display.note})` : formatted;
+    }
 
     showTMM = computed<boolean>(() => {
         const forceUnit = this.forceUnit();

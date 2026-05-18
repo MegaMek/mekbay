@@ -1,6 +1,8 @@
 import { AS_ABILITY_EFFECT_REGISTRY } from '../models/as-ability-effect-registry';
 import type {
     ASAbilityCriticalHitContext,
+    ASAbilityCriticalHitRollResolution,
+    ASAbilityCriticalHitRollResultContext,
     ASAbilityEffectContext,
     ASAbilityEffectDefinition,
     ASAbilityEffectRef,
@@ -99,4 +101,27 @@ export function applyCriticalHitCountEffects(
     return effects.reduce((currentHits, effect) => {
         return effect.criticalHits?.adjustHitCount?.(currentHits, context) ?? currentHits;
     }, hits);
+}
+
+export function applyCriticalHitRollModifierEffects(
+    effects: readonly ASAbilityEffectDefinition[],
+    modifier: number,
+    context: ASAbilityCriticalHitContext,
+): number {
+    return effects.reduce((currentModifier, effect) => {
+        return effect.criticalHits?.adjustRollModifier?.(currentModifier, context) ?? currentModifier;
+    }, modifier);
+}
+
+export function resolveCriticalHitRollResultEffects(
+    effects: readonly ASAbilityEffectDefinition[],
+    context: ASAbilityCriticalHitRollResultContext,
+): ASAbilityCriticalHitRollResolution | undefined {
+    for (const effect of effects) {
+        const resolution = effect.criticalHits?.resolveRollResult?.(context);
+        if (resolution) {
+            return resolution;
+        }
+    }
+    return undefined;
 }

@@ -65,8 +65,16 @@ export interface ASAbilityCriticalHitContext extends ASAbilityEffectContext {
     readonly key: string;
 }
 
+export type ASAbilityCriticalHitRollResolution = 'engineHit';
+
+export interface ASAbilityCriticalHitRollResultContext extends ASAbilityCriticalHitContext {
+    readonly roll: number;
+}
+
 export interface ASAbilityCriticalHitHooks {
     readonly adjustHitCount?: (hits: number, context: ASAbilityCriticalHitContext) => number;
+    readonly adjustRollModifier?: (modifier: number, context: ASAbilityCriticalHitContext) => number;
+    readonly resolveRollResult?: (context: ASAbilityCriticalHitRollResultContext) => ASAbilityCriticalHitRollResolution | undefined;
 }
 
 export interface ASAbilityEffectDefinition {
