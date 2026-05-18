@@ -66,13 +66,13 @@ describe('ASForceUnit ability effects', () => {
 
     it('sets only ground movement to 0 while shutdown', () => {
         const forceUnit = createForceUnit(createTestUnit({
-            as: { MVm: { '': 8, j: 10 }, specials: ['TSM'] },
+            as: { MVm: { '': 8, a: 10 }, specials: ['TSM'] },
         }));
         forceUnit.setPilotAbilities(['speed_demon']);
         forceUnit.getState().heat.set(4);
 
         expect(forceUnit.isShutdown()).toBeTrue();
-        expect(forceUnit.effectiveMovement()).toEqual({ '': 0, j: 10 });
+        expect(forceUnit.effectiveMovement()).toEqual({ '': 0, a: 10 });
         expect(forceUnit.movementDisplayValue('', 0)).toEqual({ baseInches: 0 });
     });
 
@@ -131,14 +131,14 @@ describe('ASForceUnit ability effects', () => {
 
     it('sets preview movement to 0 when pending heat causes shutdown', () => {
         const forceUnit = createForceUnit(createTestUnit({
-            as: { MVm: { '': 8, j: 10 } },
+            as: { MVm: { '': 8, a: 10 } },
         }));
         forceUnit.getState().heat.set(3);
         forceUnit.setPendingHeat(1);
 
         expect(forceUnit.previewShutdown()).toBeTrue();
-        expect(forceUnit.previewMovement()).toEqual({ '': 0, j: 10 });
-        expect(forceUnit.previewMovementNoHeat()).toEqual({ '': 8, j: 10 });
+        expect(forceUnit.previewMovement()).toEqual({ '': 0, a: 10 });
+        expect(forceUnit.previewMovementNoHeat()).toEqual({ '': 8, a: 10 });
     });
 
     it('preserves current Hot Dog and TSM heat ordering', () => {
