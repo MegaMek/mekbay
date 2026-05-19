@@ -2639,10 +2639,10 @@ export class UnitSearchComponent {
         this.activeIndex.set(null);
         this.inlinePanelUnit.set(null);
         this.setViewMode('chassis');
-        this.scrollToChassisGroup(groupKey);
+        this.scrollToVariantsGroup(groupKey);
     }
 
-    private scrollToChassisGroup(groupKey: string): void {
+    private scrollToVariantsGroup(groupKey: string): void {
         afterNextRender(() => {
             const dropdown = this.resultsDropdown()?.nativeElement;
             const rows = dropdown
@@ -2651,7 +2651,7 @@ export class UnitSearchComponent {
             const row = rows.find(element => element.dataset['variantGroupKey'] === groupKey);
             if (!row) return;
 
-            row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            row.scrollIntoView({ block: 'center', behavior: 'instant' });
             row.classList.add('restored');
             window.setTimeout(() => row.classList.remove('restored'), 900);
         }, { injector: this.injector });

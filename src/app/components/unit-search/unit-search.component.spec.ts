@@ -365,7 +365,7 @@ describe('UnitSearchComponent card virtualization', () => {
         });
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
-        const scrollToChassisGroup = spyOn<any>(component, 'scrollToChassisGroup');
+        const scrollToVariantsGroup = spyOn<any>(component, 'scrollToVariantsGroup');
 
         filteredUnitsSignal.set([
             createUnit('Nova Prime', { chassis: 'Nova', omni: 1, as: { TP: 'BM' } }),
@@ -378,7 +378,7 @@ describe('UnitSearchComponent card virtualization', () => {
 
         expect(component.activeVariantGroupFilter()).toBeNull();
         expect(component.viewMode()).toBe('chassis');
-        expect(scrollToChassisGroup).toHaveBeenCalledOnceWith('Nova|BM|true');
+        expect(scrollToVariantsGroup).toHaveBeenCalledOnceWith('Nova|BM|true');
     });
 
     it('navigates search results with global up and down shortcuts', () => {
