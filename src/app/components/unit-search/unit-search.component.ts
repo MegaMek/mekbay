@@ -1125,11 +1125,13 @@ export class UnitSearchComponent {
         effect(() => {
             const savedViewMode = this.optionsService.options().unitSearchViewMode;
             const normalizedViewMode = this.normalizeViewMode(savedViewMode);
+            const shouldPersistNormalizedViewMode = savedViewMode !== normalizedViewMode
+                && !(savedViewMode === 'chassis' && normalizedViewMode === 'list' && this.activeVariantGroupFilter());
             untracked(() => {
                 if (this.viewMode() !== normalizedViewMode) {
                     this.viewMode.set(normalizedViewMode);
                 }
-                if (savedViewMode !== normalizedViewMode) {
+                if (shouldPersistNormalizedViewMode) {
                     void this.optionsService.setOption('unitSearchViewMode', normalizedViewMode);
                 }
             });
@@ -2536,6 +2538,9 @@ export class UnitSearchComponent {
     }
 
     private normalizeViewMode(viewMode: UnitSearchViewMode): UnitSearchViewMode {
+        if (viewMode === 'chassis' && this.activeVariantGroupFilter()) {
+            return 'list';
+        }
         if (!this.gameService.isAlphaStrike() && viewMode === 'card') {
             return 'list';
         }

@@ -358,6 +358,49 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(component.displayedUnits().map(unit => unit.name)).toEqual(['Nova Prime', 'Nova A']);
     });
 
+    it('keeps variant group results filtered when toggling expanded view', () => {
+        optionsSignal.set({
+            ...optionsSignal(),
+            unitSearchViewMode: 'chassis',
+        });
+        filtersServiceStub.expandedView.set(false);
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+
+        filteredUnitsSignal.set([
+            createUnit('Atlas AS7-D', { chassis: 'Atlas', omni: 0, as: { TP: 'BM' } }),
+            createUnit('Atlas AS7-K', { chassis: 'Atlas', omni: 0, as: { TP: 'BM' } }),
+            createUnit('Atlas Industrial', { chassis: 'Atlas', omni: 0, as: { TP: 'IM' } }),
+            createUnit('Locust LCT-1V', { chassis: 'Locust', omni: 0, as: { TP: 'BM' } }),
+        ]);
+        fixture.detectChanges();
+        optionsServiceStub.setOption.calls.reset();
+
+        const group = component.groupedUnits().find(item => item.key === 'Atlas|BM|false');
+        expect(group).toBeDefined();
+
+        component.onCompactGroupClick(group!);
+        expect(component.viewMode()).toBe('list');
+        expect(component.displayedUnits().map(unit => unit.name)).toEqual(['Atlas AS7-D', 'Atlas AS7-K']);
+
+        component.toggleExpandedView();
+        fixture.detectChanges();
+
+        expect(filtersServiceStub.expandedView()).toBeTrue();
+        expect(component.activeVariantGroupTitle()).toBe('Atlas');
+        expect(component.viewMode()).toBe('list');
+        expect(component.displayedUnits().map(unit => unit.name)).toEqual(['Atlas AS7-D', 'Atlas AS7-K']);
+
+        component.toggleExpandedView();
+        fixture.detectChanges();
+
+        expect(filtersServiceStub.expandedView()).toBeFalse();
+        expect(component.activeVariantGroupTitle()).toBe('Atlas');
+        expect(component.viewMode()).toBe('list');
+        expect(component.displayedUnits().map(unit => unit.name)).toEqual(['Atlas AS7-D', 'Atlas AS7-K']);
+        expect(optionsServiceStub.setOption).not.toHaveBeenCalled();
+    });
+
     it('clears the variant group filter back to chassis view and targets the old group row', () => {
         optionsSignal.set({
             ...optionsSignal(),
