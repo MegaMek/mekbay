@@ -160,7 +160,7 @@ export class UnitDetailsGeneralTabComponent {
         return result;
     });
 
-    /** Force packs that contain the current unit's chassis|type|subtype */
+    /** Force packs that contain the current unit's variants */
     forcePacks = computed<string[]>(() => {
         const u = this.unit();
         if (!u) return [];

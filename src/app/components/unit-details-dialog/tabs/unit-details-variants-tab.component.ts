@@ -41,6 +41,7 @@ import type { TagClickEvent } from '../../unit-tags/unit-tags.component';
 import { isMegaMekRaritySortKey, SORT_OPTIONS } from '../../../services/unit-search-filters.model';
 import { GameService } from '../../../services/game.service';
 import { OptionsService } from '../../../services/options.service';
+import { isSameVariantGroup } from '../../../utils/unit-variant.util';
 
 /**
  * State for the variants tab that can be persisted by parent components.
@@ -142,7 +143,7 @@ export class UnitDetailsVariantsTabComponent {
         const sortDir = this.selectedSortDirection();
 
         const filtered = this.dataService.getUnits()
-            .filter(u => u.as.TP === currentUnit.as.TP && u.chassis === currentUnit.chassis && u.omni === currentUnit.omni);
+            .filter(u => isSameVariantGroup(u, currentUnit));
 
         // Sort based on selected key
         return filtered.sort((a, b) => {

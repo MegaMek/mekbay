@@ -66,7 +66,6 @@ import type { MegaMekFactionAffiliation, MegaMekFactionRecord, MegaMekFactions }
 import type { MegaMekWeightedAvailabilityRecord } from '../models/megamek/availability.model';
 import type { MegaMekRulesetRecord } from '../models/megamek/rulesets.model';
 import { getForcePacks } from '../models/forcepacks.model';
-import { getForcePackLookupKey } from '../utils/force-pack.util';
 import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot } from '../utils/unit-search-worker-protocol.util';
 import { MegaMekAvailabilityCatalogService } from './catalogs/megamek-availability-catalog.service';
 import { MegaMekFactionsCatalogService } from './catalogs/megamek-factions-catalog.service';
@@ -83,6 +82,7 @@ import { UnitsFluffCatalogService } from './catalogs/units-fluff-catalog.service
 import { EquipmentCatalogService } from './catalogs/equipment-catalog.service';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import { naturalCompare } from '../utils/sort.util';
+import { getUnitVariantGroupKey } from '../utils/unit-variant.util';
 
 /*
  * Author: Drake
@@ -191,9 +191,9 @@ export class DataService {
     /** Emits when a cloud save is rejected (not_owner) and the force needs adoption. */
     public forceNeedsAdoption = new Subject<Force>();
 
-    /** packName -> Set<chassis|type|subtype> for force pack membership checks */
+    /** packName -> Set<chassis|as.TP|omni> for force pack membership checks */
     private forcePackToLookupKey: Map<string, Set<string>> | null = null;
-    /** chassis|type|subtype -> sorted pack names[] for reverse lookups */
+    /** chassis|as.TP|omni -> sorted pack names[] for reverse lookups */
     private lookupKeyToForcePacks: Map<string, string[]> | null = null;
     private cachedForceTagsByInstanceId = new Map<string, string[]>();
 
@@ -1661,8 +1661,8 @@ export class DataService {
 
     /**
      * Build both force pack lookup maps on first use.
-     * - forcePackToLookupKey: packName -> Set<chassis|type|subtype>
-     * - lookupKeyToForcePacks: chassis|type|subtype -> sorted packName[]
+        * - forcePackToLookupKey: packName -> Set<chassis|as.TP|omni>
+        * - lookupKeyToForcePacks: chassis|as.TP|omni -> sorted packName[]
      */
     private buildForcePackCaches(): void {
         this.forcePackToLookupKey = new Map();
@@ -1675,7 +1675,7 @@ export class DataService {
                 for (const pu of unitList) {
                     const unit = this.getUnitByName(pu.name);
                     if (unit) {
-                        const key = getForcePackLookupKey(unit);
+                        const key = getUnitVariantGroupKey(unit);
                         lookupKeys.add(key);
                         if (!reverseMap.has(key)) reverseMap.set(key, new Set());
                         reverseMap.get(key)!.add(pack.name);
@@ -1700,17 +1700,17 @@ export class DataService {
     }
 
     /**
-     * Check if a unit belongs to a force pack (by chassis|type|subtype).
+    * Check if a unit belongs to a force pack (by variants).
      */
     public unitBelongsToForcePack(unit: Unit, packName: string): boolean {
         if (!this.forcePackToLookupKey) this.buildForcePackCaches();
         const lookupSet = this.forcePackToLookupKey!.get(packName);
         if (!lookupSet) return false;
-        return lookupSet.has(getForcePackLookupKey(unit));
+        return lookupSet.has(getUnitVariantGroupKey(unit));
     }
 
     /**
-     * Get the chassis|type|subtype set for a force pack (for bulk filtering).
+    * Get the variants set for a force pack (for bulk filtering).
      */
     public getForcePackLookupSet(packName: string): Set<string> | undefined {
         if (!this.forcePackToLookupKey) this.buildForcePackCaches();
@@ -1718,11 +1718,11 @@ export class DataService {
     }
 
     /**
-     * Get the sorted list of force pack names that contain a unit's chassis|type|subtype.
+    * Get the sorted list of force pack names that contain a unit's variants.
      */
     public getForcePacksForUnit(unit: Unit): string[] {
         if (!this.lookupKeyToForcePacks) this.buildForcePackCaches();
-        return this.lookupKeyToForcePacks!.get(getForcePackLookupKey(unit)) ?? [];
+        return this.lookupKeyToForcePacks!.get(getUnitVariantGroupKey(unit)) ?? [];
     }
 
     /* ----------------------------------------------------------

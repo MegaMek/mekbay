@@ -87,9 +87,11 @@ import type { UnitType } from '../../models/units.model';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 import { DataTableComponent, type DataTableCellContext, type DataTableColumn, type DataTableRowClickEvent, type DataTableRowLongPressEvent, type DataTableRowPointerEnterEvent, type DataTableSortEvent } from '../data-table/data-table.component';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
+import { getUnitVariantGroupIdentity, getUnitVariantGroupKey, type UnitVariantGroupIdentity, unitMatchesVariantGroup } from '../../utils/unit-variant.util';
 
 /** Grouped chassis entry for compact view */
-export interface ChassisGroup {
+export interface ChassisGroup extends UnitVariantGroupIdentity {
+    key: string;
     chassis: string;
     type: UnitType;
     displayType: string;
@@ -118,6 +120,11 @@ interface ViewModeOption extends ViewModeOptionConfig {
     disabled: boolean;
     disabledReason: string | null;
     willExpand: boolean;
+}
+
+interface ActiveVariantGroupFilter extends UnitVariantGroupIdentity {
+    key: string;
+    representativeUnit: Unit;
 }
 
 @Component({
@@ -305,6 +312,7 @@ export class UnitSearchComponent {
     viewModeMenuOpen = signal(false);
     activeIndex = signal<number | null>(null);
     selectedUnits = signal<Set<string>>(new Set());
+    readonly activeVariantGroupFilter = signal<ActiveVariantGroupFilter | null>(null);
     private unitDetailsDialogOpen = signal(false);
 
      /**
@@ -334,13 +342,31 @@ export class UnitSearchComponent {
     private readonly cardViewGapPx = 4;
     private readonly cardViewRowPaddingPx = 4;
     private readonly resultsDropdownWidth = signal(0);
+    readonly displayedUnits = computed(() => {
+        const units = this.filtersService.filteredUnits();
+        const variantGroupFilter = this.activeVariantGroupFilter();
+        if (!variantGroupFilter) return units;
+
+        return units.filter(unit => unitMatchesVariantGroup(unit, variantGroupFilter));
+    });
+    readonly activeVariantGroupRepresentativeUnit = computed(() => {
+        return this.displayedUnits()[0] ?? this.activeVariantGroupFilter()?.representativeUnit ?? null;
+    });
+    readonly activeVariantGroupTitle = computed(() => {
+        const variantGroupFilter = this.activeVariantGroupFilter();
+        return variantGroupFilter ? this.formatVariantGroupTitle(variantGroupFilter) : '';
+    });
+    readonly activeVariantGroupMeta = computed(() => {
+        const variantGroupFilter = this.activeVariantGroupFilter();
+        return variantGroupFilter ? this.formatVariantGroupMeta(variantGroupFilter, this.displayedUnits().length) : '';
+    });
     readonly cardViewColumnCount = computed(() => {
         const measuredWidth = this.resultsDropdownWidth();
         const availableWidth = Math.max(0, measuredWidth - (this.cardViewRowPaddingPx * 2));
         return Math.max(1, Math.floor((availableWidth + this.cardViewGapPx) / (this.cardViewMinWidthPx + this.cardViewGapPx)));
     });
     readonly cardViewRows = computed(() => {
-        const units = this.filtersService.filteredUnits();
+        const units = this.displayedUnits();
         const columnCount = this.cardViewColumnCount();
         const rows: Unit[][] = [];
 
@@ -378,21 +404,23 @@ export class UnitSearchComponent {
     });
 
     /**
-     * Units grouped by chassis+type for compact view.
+     * Units grouped by chassis+Alpha Strike type+omni status for compact view.
      * Each group contains summary info (BV range, tonnage, year range, variant count).
      */
     readonly groupedUnits = computed((): ChassisGroup[] => {
         const units = this.filtersService.filteredUnits();
         if (units.length === 0) return [];
 
-        const isAS = this.gameService.isAlphaStrike();
         const map = new Map<string, ChassisGroup>();
 
         for (const unit of units) {
-            const key = `${unit.type}|||${unit.chassis}`;
+            const key = getUnitVariantGroupKey(unit);
             let group = map.get(key);
             if (!group) {
+                const identity = getUnitVariantGroupIdentity(unit);
                 group = {
+                    key,
+                    ...identity,
                     chassis: unit.chassis,
                     type: unit.type,
                     displayType: unit._displayType,
@@ -423,7 +451,7 @@ export class UnitSearchComponent {
     private inlinePanelIndex = computed(() => {
         const unit = this.inlinePanelUnit();
         if (!unit) return -1;
-        return this.filtersService.filteredUnits().findIndex(u => u.name === unit.name);
+        return this.displayedUnits().findIndex(u => u.name === unit.name);
     });
 
     /** Whether there is a previous unit to navigate to in the inline panel */
@@ -432,19 +460,19 @@ export class UnitSearchComponent {
     /** Previous unit preview for the inline details panel */
     inlinePanelPrevUnit = computed(() => {
         const index = this.inlinePanelIndex();
-        return index > 0 ? this.filtersService.filteredUnits()[index - 1] ?? null : null;
+        return index > 0 ? this.displayedUnits()[index - 1] ?? null : null;
     });
 
     /** Whether there is a next unit to navigate to in the inline panel */
     inlinePanelHasNext = computed(() => {
         const index = this.inlinePanelIndex();
-        return index >= 0 && index < this.filtersService.filteredUnits().length - 1;
+        return index >= 0 && index < this.displayedUnits().length - 1;
     });
 
     /** Next unit preview for the inline details panel */
     inlinePanelNextUnit = computed(() => {
         const index = this.inlinePanelIndex();
-        const units = this.filtersService.filteredUnits();
+        const units = this.displayedUnits();
         return index >= 0 && index < units.length - 1 ? units[index + 1] ?? null : null;
     });
 
@@ -960,7 +988,7 @@ export class UnitSearchComponent {
             return true;
         }
         const wantsVisible = (this.focused() || this.advOpen() || this.unitDetailsDialogOpen()) &&
-            (this.filtersService.searchText() || this.isAdvActive());
+            (this.filtersService.searchText() || this.isAdvActive() || this.activeVariantGroupFilter());
         if (!wantsVisible) return false;
         // If search results are current, show immediately
         if (this.filtersService.isSearchSettled()) return true;
@@ -1020,7 +1048,7 @@ export class UnitSearchComponent {
     constructor() {
         this.keyboardShortcutService.register({
             id: 'unit-search-results',
-            active: () => this.resultsVisible() && this.filtersService.filteredUnits().length > 0,
+            active: () => this.resultsVisible() && this.displayedUnits().length > 0,
             handle: (event) => this.handleSearchResultsShortcutKeyDown(event),
         }, this.destroyRef);
 
@@ -1060,7 +1088,7 @@ export class UnitSearchComponent {
             if (!this.pendingResultOpenRequest()) return;
             if (this.isResultOpenBlockedByPendingSearch()) return;
 
-            const items = this.filtersService.filteredUnits();
+            const items = this.displayedUnits();
             untracked(() => {
                 this.pendingResultOpenRequest.set(false);
                 this.openCurrentSearchResult(items);
@@ -1383,7 +1411,7 @@ export class UnitSearchComponent {
                 this.filtersService.advOpen();
                 this.advPanelUserColumns();
             }
-            this.filtersService.filteredUnits();
+            this.displayedUnits();
             debouncedUpdateHeights();
         });
 
@@ -1560,7 +1588,7 @@ export class UnitSearchComponent {
         }
 
         let height;
-        if (this.filtersService.filteredUnits().length > 0) {
+        if (this.displayedUnits().length > 0) {
             const availableHeight = viewportHeight - baseTop - Math.max(4, safeBottom);
             height = `${availableHeight}px`;
         } else {
@@ -1745,7 +1773,7 @@ export class UnitSearchComponent {
             return;
         }
         if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
-            const items = this.filtersService.filteredUnits();
+            const items = this.displayedUnits();
             if (items.length === 0) return;
             switch (event.key) {
                 case 'ArrowDown':
@@ -1775,7 +1803,7 @@ export class UnitSearchComponent {
         return this.openCurrentSearchResult();
     }
 
-    private openCurrentSearchResult(items = this.filtersService.filteredUnits()): boolean {
+    private openCurrentSearchResult(items = this.displayedUnits()): boolean {
         if (items.length === 0) return false;
 
         const currentActiveIndex = this.activeIndex();
@@ -1798,7 +1826,7 @@ export class UnitSearchComponent {
         return false;
     }
 
-    private navigateSearchResults(direction: 'next' | 'previous', items = this.filtersService.filteredUnits()): boolean {
+    private navigateSearchResults(direction: 'next' | 'previous', items = this.displayedUnits()): boolean {
         if (items.length === 0) return false;
 
         this.suppressResultPointerHover();
@@ -1837,13 +1865,13 @@ export class UnitSearchComponent {
         return Date.now() < this.resultPointerHoverSuppressedUntil;
     }
 
-    private selectResultIndex(index: number, items = this.filtersService.filteredUnits(), behavior: ScrollBehavior = 'smooth'): void {
+    private selectResultIndex(index: number, items = this.displayedUnits(), behavior: ScrollBehavior = 'smooth'): void {
         this.suppressResultPointerHover();
         this.setActiveResultIndex(index, items);
         this.scrollToMakeVisible(index, behavior);
     }
 
-    private setActiveResultIndex(index: number | null, items = this.filtersService.filteredUnits()): void {
+    private setActiveResultIndex(index: number | null, items = this.displayedUnits()): void {
         this.activeIndex.set(index);
 
         if (index !== null) {
@@ -1967,7 +1995,7 @@ export class UnitSearchComponent {
     }
 
     showUnitDetails(unit: Unit) {
-        const filteredUnits = this.filtersService.filteredUnits();
+        const filteredUnits = this.displayedUnits();
         const filteredUnitIndex = filteredUnits.findIndex(u => u.name === unit.name);
         const ref = this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
@@ -1981,7 +2009,7 @@ export class UnitSearchComponent {
 
         // Track navigation within the dialog to keep activeIndex in sync
         const indexChangeSub = ref.componentInstance?.indexChange.subscribe((newIndex: number) => {
-            this.selectResultIndex(newIndex, this.filtersService.filteredUnits(), 'auto');
+            this.selectResultIndex(newIndex, this.displayedUnits(), 'auto');
         });
 
         const addSub = ref.componentInstance?.add.subscribe(() => {
@@ -2283,7 +2311,7 @@ export class UnitSearchComponent {
 
         // Determine which units to tag: selected units if any.
         const selectedNames = this.selectedUnits();
-        const allUnits = this.filtersService.filteredUnits();
+        const allUnits = this.displayedUnits();
         let unitsToTag: Unit[];
         if (selectedNames.size > 0) {
             // Always include the clicked unit, even if not in the selection
@@ -2387,7 +2415,7 @@ export class UnitSearchComponent {
         this.inlinePanelUnit.set(unit);
         if (this.showInlinePanel()) {
             // Update activeIndex to match clicked unit
-            const filteredUnits = this.filtersService.filteredUnits();
+            const filteredUnits = this.displayedUnits();
             const index = filteredUnits.findIndex(u => u.name === unit.name);
             if (index >= 0) {
                 this.activeIndex.set(index);
@@ -2415,14 +2443,14 @@ export class UnitSearchComponent {
     onInlinePanelPrev(): void {
         const index = this.inlinePanelIndex();
         if (index > 0) {
-            this.selectResultIndex(index - 1, this.filtersService.filteredUnits(), 'auto');
+            this.selectResultIndex(index - 1, this.displayedUnits(), 'auto');
         }
     }
 
     /** Navigate to next unit in inline panel */
     onInlinePanelNext(): void {
         const index = this.inlinePanelIndex();
-        const filteredUnits = this.filtersService.filteredUnits();
+        const filteredUnits = this.displayedUnits();
         if (index >= 0 && index < filteredUnits.length - 1) {
             this.selectResultIndex(index + 1, filteredUnits, 'auto');
         }
@@ -2439,7 +2467,7 @@ export class UnitSearchComponent {
     }
 
     selectAll() {
-        const allUnits = this.filtersService.filteredUnits();
+        const allUnits = this.displayedUnits();
         const allNames = new Set(allUnits.map(u => u.name));
         this.selectedUnits.set(allNames);
     }
@@ -2537,6 +2565,12 @@ export class UnitSearchComponent {
         const option = this.viewModeOptions().find(item => item.mode === viewMode);
         if (!option || option.disabled) return;
 
+        if (viewMode === 'chassis' && this.activeVariantGroupFilter()) {
+            this.clearVariantGroupFilter();
+            this.closeViewModeMenu();
+            return;
+        }
+
         if (option.requiresExpanded && !this.expandedView()) {
             this.expandedView.set(true);
         }
@@ -2570,21 +2604,57 @@ export class UnitSearchComponent {
         this.activeIndex.set(null);
     }
 
-    /**
-     * Handle click on a compact chassis group.
-     * Appends a chassis filter to the current search to drill down into variants.
-     */
+    formatVariantGroupType(group: Pick<UnitVariantGroupIdentity, 'asType'>): string {
+        return AS_TYPE_DISPLAY_NAMES[group.asType] ?? group.asType;
+    }
+
+    formatVariantGroupTitle(group: UnitVariantGroupIdentity): string {
+        return group.chassis;
+    }
+
+    formatVariantGroupMeta(group: UnitVariantGroupIdentity, variantCount: number): string {
+        const omniSuffix = group.omni ? ' (omni)' : '';
+        return `${this.formatVariantGroupType(group)}${omniSuffix} · ${variantCount} variant${variantCount === 1 ? '' : 's'}`;
+    }
+
+    /** Handle click on a compact chassis group to drill down into its variants. */
     onCompactGroupClick(group: ChassisGroup) {
-        // Build a chassis= filter and set it as the search text
-        const chassisFilter = `chassis="${group.chassis}"`;
-        const typeFilter = group.type ? ` type="${group.type}"` : '';
-        const fullFilter = chassisFilter + typeFilter;
-        const current = this.filtersService.searchText().trim();
-        const newSearch = current ? `${current} ${fullFilter}` : fullFilter;
-        this.immediateSearchText.set(newSearch);
-        this.filtersService.setSearchText(newSearch);
-        // Switch back to list view to show variants
-        this.setViewMode('list');
+        this.activeVariantGroupFilter.set({
+            key: group.key,
+            chassis: group.chassis,
+            asType: group.asType,
+            omni: group.omni,
+            representativeUnit: group.representativeUnit,
+        });
+        this.activeIndex.set(null);
+        this.inlinePanelUnit.set(null);
+        this.viewMode.set('list');
+    }
+
+    clearVariantGroupFilter(): void {
+        const groupKey = this.activeVariantGroupFilter()?.key;
+        if (!groupKey) return;
+
+        this.activeVariantGroupFilter.set(null);
+        this.activeIndex.set(null);
+        this.inlinePanelUnit.set(null);
+        this.setViewMode('chassis');
+        this.scrollToChassisGroup(groupKey);
+    }
+
+    private scrollToChassisGroup(groupKey: string): void {
+        afterNextRender(() => {
+            const dropdown = this.resultsDropdown()?.nativeElement;
+            const rows = dropdown
+                ? Array.from(dropdown.querySelectorAll<HTMLElement>('.chassis-view-row'))
+                : [];
+            const row = rows.find(element => element.dataset['variantGroupKey'] === groupKey);
+            if (!row) return;
+
+            row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            row.classList.add('restored');
+            window.setTimeout(() => row.classList.remove('restored'), 900);
+        }, { injector: this.injector });
     }
 
     openShareSearch(event: MouseEvent) {
