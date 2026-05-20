@@ -82,7 +82,7 @@ export function cbtCanDealDamage(unit: Unit, minDamage: number, atRange: number)
         if (component.md) {
             const damage = parseInt(component.md);
             if (!isNaN(damage)) {
-                totalDamageAtRange += damage;
+                totalDamageAtRange += damage * component.q;
                 if (totalDamageAtRange >= minDamage) return true;
             }
         }
