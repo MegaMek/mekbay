@@ -79,8 +79,8 @@ export function cbtCanDealDamage(unit: Unit, minDamage: number, atRange: number)
         }
         if (maxRange < atRange) continue;
 
-        if (component.d) {
-            const damage = parseInt(component.d);
+        if (component.md) {
+            const damage = parseInt(component.md);
             if (!isNaN(damage)) {
                 totalDamageAtRange += damage;
                 if (totalDamageAtRange >= minDamage) return true;
