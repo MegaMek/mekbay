@@ -201,7 +201,7 @@ export class RsPolyfillUtil {
             textElement.setAttribute('dominant-baseline', 'middle');
             const prevStyle = textElement.getAttribute('style') || '';
             textElement.classList.add('skillValue');
-            textElement.setAttribute('style', prevStyle.replace(/font-size\s*:\s*[^;]+;?/g, 'font-size:8px;font-weight:bold;'));
+            textElement.setAttribute('style', prevStyle.replace(/font-size\s*:\s*[^;]+;?/g, 'font-size:10px;font-weight:bold;'));
             textElement.setAttribute('y', textY.toString());
 
             const rectWidth = 12;
