@@ -117,7 +117,7 @@
     object-fit: contain;
     transition: opacity 0.2s ease;
 
-    :host:has(.monochrome) & {
+    :host(.monochrome) & {
         filter: saturate(0) invert(1) brightness(1.25);
     }
 
