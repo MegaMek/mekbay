@@ -564,6 +564,8 @@ export class ForceLoadDialogComponent {
         let scrollGapTimer: any;
         let currentViewportElement: HTMLElement | null = null;
         let viewportResizeObserver: ResizeObserver | null = null;
+        let prevLayoutKey: string | undefined;
+        let prevViewportWidth = 0;
 
         const isHangarVisible = () => this.activeTab() === 'Hangar' && !this.loading() && this.filteredForces().length > 0;
 
@@ -672,15 +674,17 @@ export class ForceLoadDialogComponent {
         effect(() => {
             const forces = this.filteredForces();
             const visible = this.activeTab() === 'Hangar' && !this.loading() && forces.length > 0;
-            this.forceTagsVersion();
-            this.expandedForceNotes();
+            const forceTagsVersion = this.forceTagsVersion();
+            const expandedForceNotes = this.expandedForceNotes();
             this.overflowingForceNotes();
-            this.optionsService.options().unitDisplayName;
+            const unitDisplayName = this.optionsService.options().unitDisplayName;
+            const layoutKey = `${unitDisplayName}:${forceTagsVersion}:${Array.from(expandedForceNotes).sort().join('|')}`;
 
             untracked(() => {
                 if (!visible) {
                     this.hangarMeasuredItemHeights.clear();
                     this.hangarItemSizeSignal.set(this.hangarDefaultItemSize);
+                    prevLayoutKey = undefined;
                     if (this.hangarHeightTrackingDebounceTimer) {
                         clearTimeout(this.hangarHeightTrackingDebounceTimer);
                         this.hangarHeightTrackingDebounceTimer = undefined;
@@ -689,6 +693,11 @@ export class ForceLoadDialogComponent {
                     gapCorrectionPending = null;
                     return;
                 }
+
+                if (prevLayoutKey !== undefined && prevLayoutKey !== layoutKey) {
+                    this.hangarMeasuredItemHeights.clear();
+                }
+                prevLayoutKey = layoutKey;
 
                 const activeKeys = new Set(forces.map((force, index) => this.getForceVirtualKey(index, force)));
                 for (const key of this.hangarMeasuredItemHeights.keys()) {
@@ -744,11 +753,20 @@ export class ForceLoadDialogComponent {
                 }
                 viewportResizeObserver?.disconnect();
                 viewportResizeObserver = null;
+                prevViewportWidth = 0;
 
                 currentViewportElement = nextViewportElement;
                 if (currentViewportElement) {
                     currentViewportElement.addEventListener('scroll', onViewportScroll, { passive: true });
-                    viewportResizeObserver = new ResizeObserver(() => debouncedMeasureHeights());
+                    prevViewportWidth = currentViewportElement.clientWidth;
+                    viewportResizeObserver = new ResizeObserver(() => {
+                        const currentWidth = currentViewportElement?.clientWidth ?? 0;
+                        if (currentWidth !== prevViewportWidth) {
+                            this.hangarMeasuredItemHeights.clear();
+                            prevViewportWidth = currentWidth;
+                        }
+                        debouncedMeasureHeights();
+                    });
                     viewportResizeObserver.observe(currentViewportElement);
                 }
             });
