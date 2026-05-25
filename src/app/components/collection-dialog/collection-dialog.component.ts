@@ -110,7 +110,7 @@ interface QuickAddQuantityConflict {
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
-        class: 'fullscreen-dialog-host nopadding fullheight'
+        class: 'fullscreen-dialog-host nopadding fullheight tv-fade'
     },
     templateUrl: './collection-dialog.component.html',
     styleUrl: './collection-dialog.component.scss'
