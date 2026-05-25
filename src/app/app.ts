@@ -647,7 +647,7 @@ export class App {
                     [
                         { label: 'LOAD (REPLACE)', value: 'load', class: 'danger' },
                         { label: 'ADD AS FRIENDLY', value: 'add-friendly' },
-                        { label: 'ADD AS OPPOSING', value: 'add-enemy' },
+                        { label: 'ADD AS HOSTILE', value: 'add-enemy' },
                         { label: 'DISMISS', value: 'dismiss' },
                     ],
                     'dismiss'
