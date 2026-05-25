@@ -61,9 +61,17 @@
             } @else if (filteredForces().length === 0) {
                 <div class="empty-state">{{ getHangarEmptyStateMessage() }}</div>
             } @else {
-                <div class="force-list">
-                    @for (force of filteredForces(); let i = $index; track force.instanceId) {
-                    @defer (on viewport) {
+                <cdk-virtual-scroll-viewport
+                    #hangarViewport
+                    class="force-list virtual-hangar-list"
+                    [itemSize]="hangarItemSize()"
+                    [style.--hangar-item-size.px]="hangarItemSize()"
+                    [minBufferPx]="hangarMinBufferPx"
+                    [maxBufferPx]="hangarMaxBufferPx"
+                    tabindex="0">
+                    <div class="virtual-hangar-item"
+                        *cdkVirtualFor="let force of filteredForces(); let i = index; trackBy: trackForce"
+                        [attr.data-force-key]="getForceVirtualKey(i, force)">
                     <div class="force-entry" [class.selected]="selectedForce() === force" (click)="selectForce(force)"
                         tabindex="0">
                         <div class="force-header">
@@ -176,11 +184,8 @@
                             }
                         </div>
                     </div>
-                    } @placeholder {
-                    <div class="force-entry-placeholder"></div>
-                    }
-                    }
-                </div>
+                    </div>
+                </cdk-virtual-scroll-viewport>
             }
         }
         @if (activeTab() === 'Force Packs') {
