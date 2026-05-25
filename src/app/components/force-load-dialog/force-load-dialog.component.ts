@@ -434,6 +434,7 @@ export class ForceLoadDialogComponent {
     operations = signal<LoadOperationEntry[]>([]);
     selectedOperation = signal<LoadOperationEntry | null>(null);
     operationsLoading = signal<boolean>(false);
+    operationCreateBusy = signal<boolean>(false);
     private operationsLoaded = signal<boolean>(false);
     expandedForceNotes = signal<ReadonlySet<string>>(new Set<string>());
     expandedOperationNotes = signal<ReadonlySet<string>>(new Set<string>());
@@ -480,6 +481,23 @@ export class ForceLoadDialogComponent {
         });
 
         return this.sortOperations(filtered, sortKey, sortDir);
+    });
+
+    canCreateOperation = computed<boolean>(() =>
+        this.forceBuilderService.loadedForces().length >= 2 && !this.operationCreateBusy()
+    );
+
+    newOperationTitle = computed<string>(() => {
+        if (this.operationCreateBusy()) {
+            return 'Saving operation...';
+        }
+        const forceCount = this.forceBuilderService.loadedForces().length;
+        if (forceCount >= 2) {
+            return 'Create operation from deployed forces';
+        }
+        return forceCount === 1
+            ? 'Deploy one more force to create an operation'
+            : 'Deploy at least two forces to create an operation';
     });
 
     constructor() {
@@ -822,7 +840,7 @@ export class ForceLoadDialogComponent {
         return s.trim().toLowerCase();
     }
 
-    private async loadOperations(): Promise<void> {
+    private async loadOperations(selectOperationId?: string): Promise<void> {
         this.operationsLoading.set(true);
         try {
             const result = await this.dataService.listOperations();
@@ -884,10 +902,23 @@ export class ForceLoadDialogComponent {
                 }
             }
 
-            this.operations.set(result || []);
+            const operations = result || [];
+            this.operations.set(operations);
+            if (selectOperationId) {
+                this.revealOperation(selectOperationId);
+            }
         } finally {
             this.operationsLoading.set(false);
             this.operationsLoaded.set(true);
+        }
+    }
+
+    private revealOperation(operationId: string): void {
+        const operation = this.operations().find(op => op.operationId === operationId) ?? null;
+        this.selectedOperation.set(operation);
+        if (operation && !this.filteredOperations().includes(operation)) {
+            this.searchText.set('');
+            this.gameTypeFilter.set('all');
         }
     }
 
@@ -1573,6 +1604,21 @@ export class ForceLoadDialogComponent {
         const op = this.selectedOperation();
         if (!op) return;
         this.dialogRef.close({ result: op, mode: 'operation', alignment: 'friendly' });
+    }
+
+    async onNewOperation() {
+        if (!this.canCreateOperation()) return;
+        this.operationCreateBusy.set(true);
+        try {
+            const saved = await this.forceBuilderService.saveOperation();
+            if (!saved) return;
+            const operationId = this.forceBuilderService.currentOperation()?.operationId;
+            if (operationId) {
+                await this.loadOperations(operationId);
+            }
+        } finally {
+            this.operationCreateBusy.set(false);
+        }
     }
 
     async onDeleteOperation() {

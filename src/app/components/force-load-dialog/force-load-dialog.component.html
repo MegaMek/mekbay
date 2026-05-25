@@ -233,7 +233,7 @@
             }
         }
         @if (activeTab() === 'Operations') {
-            <div class="filter-bar">
+            <div class="filter-bar" role="group" aria-label="Operation game type filter">
                 <button class="filter-btn" 
                     [class.active]="gameTypeFilter() === 'all'" 
                     (click)="onGameTypeFilter('all')">All</button>
@@ -412,6 +412,11 @@
             <button class="modal-btn bt-button" (click)="onOpenOrganization();" [disabled]="!selectedOrganization()">OPEN</button>
             <button class="modal-btn bt-button" (click)="onNewOrganization();">NEW</button>
             <button class="modal-btn bt-button danger" (click)="onDeleteOrganization();" [disabled]="!selectedOrganization()">DELETE</button>
+            <button class="modal-btn bt-button" (click)="onClose();">DISMISS</button>
+        } @else if (activeTab() === 'Operations') {
+            <button class="modal-btn bt-button" (click)="onLoad();" [disabled]="!selectedOperation()">DEPLOY</button>
+            <button class="modal-btn bt-button" (click)="onNewOperation();" [disabled]="!canCreateOperation()" [title]="newOperationTitle()" [attr.aria-label]="newOperationTitle()">{{ operationCreateBusy() ? 'SAVING...' : 'NEW' }}</button>
+            <button class="modal-btn bt-button danger" (click)="onDelete();" [disabled]="!selectedOperation()">DELETE</button>
             <button class="modal-btn bt-button" (click)="onClose();">DISMISS</button>
         } @else {
             <button class="modal-btn bt-button" (click)="onLoad();" [disabled]="activeTab() === 'Operations' ? !selectedOperation() : (!selectedForce() && !selectedPack())">DEPLOY</button>
