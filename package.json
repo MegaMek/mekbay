@@ -5,6 +5,7 @@
     "ng": "ng",
     "gen-meta": "node scripts/generate-build-meta.js",
     "gen-assets": "node scripts/generate-assets.js",
+    "gen-force-name-words": "tsx scripts/generate-force-name-words.ts",
     "gen-ratgenerator": "tsx scripts/ratgenerator_build_table.ts",
     "gen-sprites": "node scripts/generate-sprite-map.js",
     "prerun": "npm run gen-meta && npm run gen-assets && npm run gen-sprites",

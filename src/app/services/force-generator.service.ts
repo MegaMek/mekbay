@@ -2898,7 +2898,7 @@ export class ForceGeneratorService implements OnDestroy {
         const previewEntryStartedAt = getForceGeneratorNow();
         const faction = preview.faction ?? null;
         const era = preview.era ?? null;
-        const resolvedName = name?.trim() || preview.name?.trim() || ForceNamerUtil.generateForceNameForFaction(faction);
+        const resolvedName = name?.trim() || preview.name?.trim() || ForceNamerUtil.generateForceNameForFaction(faction, this.dataService.getForceNameWords());
         const previewGroupBuildMetrics: PreviewGroupBuildMetrics = {
             orgResolveMs: 0,
             formationMatchMs: 0,
@@ -5328,7 +5328,7 @@ export class ForceGeneratorService implements OnDestroy {
 
         return {
             gameSystem: options.gameSystem,
-            name: ForceNamerUtil.generateForceNameForFaction(options.context.forceFaction),
+            name: ForceNamerUtil.generateForceNameForFaction(options.context.forceFaction, this.dataService.getForceNameWords()),
             units,
             totalCost,
             faction: options.context.forceFaction,

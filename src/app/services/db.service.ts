@@ -42,6 +42,7 @@ import type { MegaMekFactionsData } from '../models/megamek/factions.model';
 import type { MegaMekAvailabilityData } from '../models/megamek/availability.model';
 import type { MegaMekRulesetsData } from '../models/megamek/rulesets.model';
 import type { SarnaPageTitlesData } from '../models/sarna-page-titles.model';
+import type { ForceNameWordsData } from '../models/force-name-words.model';
 import type { RawEquipmentData } from '../models/equipment.model';
 import type { SerializedForce } from '../models/force-serialization';
 import { DialogsService } from './dialogs.service';
@@ -85,6 +86,7 @@ const OPTIONS_KEY = 'options';
 const USER_KEY = 'user';
 const QUIRKS_KEY = 'quirks';
 const SARNA_PAGE_TITLES_KEY = 'sarnaPageTitles';
+const FORCE_NAME_WORDS_KEY = 'forceNameWords';
 
 const CATALOG_GENERAL_STORE_KEYS = [
     UNITS_KEY,
@@ -98,6 +100,7 @@ const CATALOG_GENERAL_STORE_KEYS = [
     SOURCEBOOKS_KEY,
     QUIRKS_KEY,
     SARNA_PAGE_TITLES_KEY,
+    FORCE_NAME_WORDS_KEY,
 ] as const;
 
 const MAX_SHEET_CACHE_COUNT = 5000; // Max number of sheets to cache
@@ -629,6 +632,14 @@ export class DbService {
 
     public async saveSarnaPageTitles(data: SarnaPageTitlesData): Promise<void> {
         return await this.saveDataFromGeneralStore(data, SARNA_PAGE_TITLES_KEY);
+    }
+
+    public async getForceNameWords(): Promise<ForceNameWordsData | null> {
+        return await this.getDataFromGeneralStore<ForceNameWordsData>(FORCE_NAME_WORDS_KEY);
+    }
+
+    public async saveForceNameWords(data: ForceNameWordsData): Promise<void> {
+        return await this.saveDataFromGeneralStore(data, FORCE_NAME_WORDS_KEY);
     }
 
     /**

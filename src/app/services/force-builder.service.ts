@@ -1301,7 +1301,7 @@ export class ForceBuilderService {
         }
         force.faction.set(faction);
         force.setName(
-            ForceNamerUtil.generateForceNameForFaction(faction),
+            ForceNamerUtil.generateForceNameForFaction(faction, this.dataService.getForceNameWords()),
             false
         );
     }
