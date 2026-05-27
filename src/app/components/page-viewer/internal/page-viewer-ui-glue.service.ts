@@ -75,7 +75,7 @@ export class PageViewerUiGlueService {
             return null;
         }
 
-        const target = eventTarget instanceof HTMLElement ? eventTarget : null;
+        const target = eventTarget instanceof Element ? eventTarget : null;
         const pageWrapper = target?.closest('.page-wrapper') as HTMLElement | null;
         const clickedUnitId = pageWrapper?.dataset['unitId'];
         if (!clickedUnitId || clickedUnitId === currentUnitId) {

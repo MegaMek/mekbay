@@ -74,4 +74,32 @@ describe('PageViewerSwipeAnimationService', () => {
         expect(onComplete).toHaveBeenCalledTimes(1);
         expect(service.hasActiveAnimation()).toBeFalse();
     });
+
+    it('replaces an active animation when start is called again', () => {
+        const swipeWrapper = document.createElement('div');
+        const firstComplete = jasmine.createSpy('firstComplete');
+        const secondComplete = jasmine.createSpy('secondComplete');
+
+        service.start({
+            swipeWrapper,
+            durationMs: 100,
+            easing: 'ease-out',
+            transform: 'translate3d(10px, 0, 0)',
+            onComplete: firstComplete
+        });
+
+        service.start({
+            swipeWrapper,
+            durationMs: 100,
+            easing: 'ease-out',
+            transform: 'translate3d(20px, 0, 0)',
+            onComplete: secondComplete
+        });
+
+        jasmine.clock().tick(200);
+
+        expect(firstComplete).not.toHaveBeenCalled();
+        expect(secondComplete).toHaveBeenCalledTimes(1);
+        expect(service.hasActiveAnimation()).toBeFalse();
+    });
 });

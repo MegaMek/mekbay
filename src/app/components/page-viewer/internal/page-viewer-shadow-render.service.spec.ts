@@ -44,9 +44,14 @@ describe('PageViewerShadowRenderService', () => {
             onShadowClick
         });
 
-        expect(cleanups.length).toBe(0);
+        expect(cleanups.length).toBe(1);
         expect(wrapper.querySelector('svg')).not.toBeNull();
 
+        wrapper.click();
+
+        expect(onShadowClick).toHaveBeenCalledTimes(1);
+
+        cleanups.forEach(cleanup => cleanup());
         wrapper.click();
 
         expect(onShadowClick).toHaveBeenCalledTimes(1);
@@ -57,7 +62,7 @@ describe('PageViewerShadowRenderService', () => {
         wrapper.dataset['shadowKey'] = 'right:2';
         const unitSvg = createSvg();
 
-        service.bindDeclarativeShadowPages({
+        const cleanups = service.bindDeclarativeShadowPages({
             wrappers: [wrapper],
             currentCleanups: [],
             descriptors: [{
@@ -81,9 +86,9 @@ describe('PageViewerShadowRenderService', () => {
 
         const firstClone = wrapper.querySelector('svg');
 
-        service.bindDeclarativeShadowPages({
+        const nextCleanups = service.bindDeclarativeShadowPages({
             wrappers: [wrapper],
-            currentCleanups: [],
+            currentCleanups: cleanups,
             descriptors: [{
                 key: 'right:2',
                 unit: { svg: () => unitSvg } as never,
@@ -104,6 +109,46 @@ describe('PageViewerShadowRenderService', () => {
         });
 
         expect(wrapper.querySelector('svg')).toBe(firstClone);
+        expect(nextCleanups.length).toBe(1);
+    });
+
+    it('ignores incoming shadow loads after the requesting animation is stale', async () => {
+        const clickedShadow = document.createElement('div');
+        clickedShadow.style.left = '100px';
+        document.body.appendChild(clickedShadow);
+        let resolveLoad = () => fail('load promise was not created');
+        let requestCurrent = true;
+        const upsertTransientShadowPage = jasmine.createSpy('upsertTransientShadowPage');
+
+        service.createIncomingShadowPages({
+            clickedShadow,
+            targetIndex: 0,
+            direction: 'right',
+            pagesToMove: 1,
+            scale: 1,
+            showFluff: false,
+            allUnits: [
+                { id: 'u0', load: () => Promise.resolve() },
+                {
+                    id: 'u1',
+                    load: () => new Promise<void>(resolve => {
+                        resolveLoad = resolve;
+                    })
+                }
+            ] as never,
+            shadowPageElements: [],
+            activeUnitIds: new Set(),
+            getShadowKey: (unitIndex, direction) => `${direction}:${unitIndex}`,
+            isRequestCurrent: () => requestCurrent,
+            upsertTransientShadowPage
+        });
+
+        requestCurrent = false;
+        resolveLoad();
+        await Promise.resolve();
+
+        expect(upsertTransientShadowPage).not.toHaveBeenCalled();
+        clickedShadow.remove();
     });
 
     it('collects existing shadow keys from current shadow wrappers', () => {

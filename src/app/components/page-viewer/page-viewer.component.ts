@@ -401,7 +401,14 @@ export class PageViewerComponent implements AfterViewInit {
             void (async () => {
                 // Load unit if needed
                 if (currentUnit) {
-                    await currentUnit.load();
+                    try {
+                        await currentUnit.load();
+                    } catch (error) {
+                        if (!cancelled && runId === unitEffectRunId) {
+                            this.setUnitLoadFailure(error);
+                        }
+                        return;
+                    }
                 }
 
                 // Ignore stale async continuations
@@ -1643,6 +1650,15 @@ export class PageViewerComponent implements AfterViewInit {
         }
     }
 
+    private loadUnits(units: readonly CBTForceUnit[]): Promise<void> {
+        return Promise.all(units.map(unit => unit.load())).then(() => undefined);
+    }
+
+    private setUnitLoadFailure(error: unknown): void {
+        const message = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+        this.loadError.set(message.trim() || 'Unable to load record sheet.');
+    }
+
     // ========== Keyboard Navigation ==========
 
     private handleShortcutKeyDown(event: KeyboardEvent): boolean {
@@ -1820,6 +1836,10 @@ export class PageViewerComponent implements AfterViewInit {
                     this.navigateToShadowPage(targetUnit, targetIndex, wrapper, 'keyboard');
                 }
             });
+        }).catch((error) => {
+            if (navigationVersion === this.asyncNavigationVersion) {
+                this.setUnitLoadFailure(error);
+            }
         });
     }
 
@@ -1861,14 +1881,20 @@ export class PageViewerComponent implements AfterViewInit {
         const currentVersion = ++this.displayVersion;
 
         // Load all displayed units first
-        const loadPromises = this.displayedUnits().map(u => u.load());
-
-        Promise.all(loadPromises).then(() => {
+        this.loadUnits(this.displayedUnits()).then(() => {
             // Check if this call is still valid
             if (this.displayVersion !== currentVersion) {
                 return;
             }
             this.renderPages({ fromSwipe });
+        }).catch((error) => {
+            if (this.displayVersion !== currentVersion) {
+                return;
+            }
+
+            this.displayedUnits.set([]);
+            this.currentSvg.set(null);
+            this.setUnitLoadFailure(error);
         });
     }
 
@@ -1912,9 +1938,8 @@ export class PageViewerComponent implements AfterViewInit {
 
         // Capture version to avoid stale async updates
         const currentVersion = ++this.displayVersion;
-        const loadPromises = expectedUnits.map(u => u.load());
 
-        Promise.all(loadPromises).then(() => {
+        this.loadUnits(expectedUnits).then(() => {
             if (this.displayVersion !== currentVersion) {
                 return;
             }
@@ -1944,6 +1969,10 @@ export class PageViewerComponent implements AfterViewInit {
             // Replace displayed units (model) without rebuilding wrappers
             this.displayedUnits.set(expectedUnits);
             this.finalizeActivePageRender(displayedUnitIds, { applyCurrentTransform: true });
+        }).catch((error) => {
+            if (this.displayVersion === currentVersion) {
+                this.setUnitLoadFailure(error);
+            }
         });
     }
 
@@ -2119,7 +2148,11 @@ export class PageViewerComponent implements AfterViewInit {
         
         // Pre-load shadow units to ensure SVGs are available
         const shadowUnits = desiredShadows.map(s => allUnits[s.unitIndex] as CBTForceUnit).filter(u => u);
-        await Promise.all(shadowUnits.map(u => u.load()));
+        try {
+            await this.loadUnits(shadowUnits);
+        } catch {
+            return;
+        }
 
         if (renderVersion !== this.shadowRenderVersion || this.isSwiping) {
             return;
@@ -2211,12 +2244,6 @@ export class PageViewerComponent implements AfterViewInit {
             this.setPromotedShadowState(clickedShadow, true);
         }
         
-        // Create incoming shadow pages that will slide into view during animation
-        // These are the pages beyond the clicked shadow in the direction of movement
-        if (direction) {
-            this.createIncomingShadowPages(clickedShadow, targetIndex, direction, shadowNavigationPlan.pagesToMove, scale, showFluff, allUnits as CBTForceUnit[]);
-        }
-
         const swipeWrapper = this.swipeWrapperRef().nativeElement;
         
         // Store state for animation
@@ -2225,6 +2252,12 @@ export class PageViewerComponent implements AfterViewInit {
         this.baseDisplayStartIndex = currentStartIndex;
         
         const animationVersion = this.swipeVersion;
+
+        // Create incoming shadow pages that will slide into view during animation
+        // These are the pages beyond the clicked shadow in the direction of movement
+        if (direction) {
+            this.createIncomingShadowPages(clickedShadow, targetIndex, direction, shadowNavigationPlan.pagesToMove, scale, showFluff, allUnits as CBTForceUnit[], animationVersion);
+        }
 
         this.startSwipeAnimation({
             durationMs: 300,
@@ -2268,7 +2301,8 @@ export class PageViewerComponent implements AfterViewInit {
         pagesToMove: number,
         scale: number,
         showFluff: boolean,
-        allUnits: CBTForceUnit[]
+        allUnits: CBTForceUnit[],
+        animationVersion: number
     ): void {
         this.pageViewerShadowRender.createIncomingShadowPages({
             clickedShadow,
@@ -2281,7 +2315,7 @@ export class PageViewerComponent implements AfterViewInit {
             shadowPageElements: this.shadowPageElements,
             activeUnitIds: new Set(this.displayedUnits().map((unit) => unit.id)),
             getShadowKey: (unitIndex, shadowDirection) => this.getShadowKey(unitIndex, shadowDirection),
-            isAnimationActive: () => this.pageViewerSwipeAnimation.hasActiveAnimation(),
+            isRequestCurrent: () => this.swipeVersion === animationVersion && this.pageViewerSwipeAnimation.hasActiveAnimation(),
             upsertTransientShadowPage: (descriptor, shadowScale, shouldShowFluff) => this.upsertTransientShadowPage(descriptor, shadowScale, shouldShowFluff)
         });
     }
@@ -2421,7 +2455,10 @@ export class PageViewerComponent implements AfterViewInit {
         const currentUnit = this.unit();
         if (currentUnit) {
             currentUnit.load().then(() => {
+                this.loadError.set(null);
                 this.displayUnit();
+            }).catch((error) => {
+                this.setUnitLoadFailure(error);
             });
         }
     }

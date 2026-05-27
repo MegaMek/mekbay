@@ -87,4 +87,25 @@ describe('PageViewerUiGlueService', () => {
             currentUnitId: 'unit-a'
         })).toBeNull();
     });
+
+    it('resolves selection events that originate from SVG sheet elements', () => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'page-wrapper';
+        wrapper.dataset['unitId'] = 'unit-b';
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const armorLocation = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        armorLocation.classList.add('unitLocation');
+        svg.appendChild(armorLocation);
+        wrapper.appendChild(svg);
+        const units = [{ id: 'unit-a' }, { id: 'unit-b' }] as never[];
+
+        expect(service.resolvePageSelectionUnit({
+            eventTarget: armorLocation,
+            pointerMoved: false,
+            isPanning: false,
+            isSwiping: false,
+            displayedUnits: units,
+            currentUnitId: 'unit-a'
+        })).toEqual(units[1]);
+    });
 });
