@@ -37,6 +37,7 @@ import type { GameSystem } from "./common.model";
  * Author: Drake
  */
 export type AvailabilitySource = 'mul' | 'megamek';
+export type RecordSheetDoubleTapZoomResetMode = 'disabled' | 'fit-to-screen' | 'full-width' | 'contextual';
 
 export interface Options {
     sheetsColor: 'normal' | 'night';
@@ -50,6 +51,7 @@ export interface Options {
     availabilitySource: AvailabilitySource;
     megaMekAvailabilityFiltersUseAllScopedOptions: boolean;
     recordSheetCenterPanelContent: 'fluffImage' | 'clusterTable';
+    recordSheetDoubleTapZoomReset: RecordSheetDoubleTapZoomResetMode;
     lastCanvasState?: {
         brushSize: number;
         eraserSize: number;

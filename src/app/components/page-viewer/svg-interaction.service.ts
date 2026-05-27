@@ -208,26 +208,40 @@ export class SvgInteractionService {
 
         let pointerId: number | null = null;
 
+        const releasePointerCapture = (id: number | null) => {
+            if (id === null) return;
+            try {
+                if (el.hasPointerCapture(id)) {
+                    el.releasePointerCapture(id);
+                }
+            } catch { /* Ignore unsupported pointer capture */ }
+        };
+
         el.addEventListener('pointerdown', (evt: PointerEvent) => {
             evt.preventDefault();
             this.state.clickTarget = el;
             this.zoomPanService.pointerMoved = false;
             clearLongTouch();
+            pointerId = evt.pointerId;
+            try {
+                el.setPointerCapture(evt.pointerId);
+            } catch { /* Ignore unsupported pointer capture */ }
             longTouchTimer = setTimeout(() => {
                 upHandlerSecondary(evt);
             }, 300);
-            pointerId = evt.pointerId;
             // Dispatch a custom event for page selection to work
             // Since we preventDefault on pointerdown, the click event won't fire naturally
             el.dispatchEvent(new CustomEvent('svg-interaction-click', { bubbles: true }));
         }, eventOptions);
 
         const clearLongTouch = () => {
+            const activePointerId = pointerId;
             pointerId = null;
             if (longTouchTimer) {
                 clearTimeout(longTouchTimer);
                 longTouchTimer = null;
             }
+            releasePointerCapture(activePointerId);
         };
 
         const upHandlerSecondary = (evt: PointerEvent) => {
@@ -260,7 +274,15 @@ export class SvgInteractionService {
             this.state.clickTarget = null;
         };
 
-        el.addEventListener('pointerleave', cancelHandler, eventOptions);
+        const leaveHandler = (evt: PointerEvent) => {
+            if (evt.pointerId !== pointerId) return;
+            try {
+                if (el.hasPointerCapture(evt.pointerId)) return;
+            } catch { /* Ignore unsupported pointer capture */ }
+            cancelHandler(evt);
+        };
+
+        el.addEventListener('pointerleave', leaveHandler, eventOptions);
         el.addEventListener('pointercancel', cancelHandler, eventOptions);
         el.addEventListener('pointerup', upHandler, eventOptions);
         signal.addEventListener('abort', () => {
