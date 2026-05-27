@@ -205,8 +205,10 @@ export class SvgInteractionService {
         let longTouchTimer: any = null;
         el.classList.add('interactive');
         const eventOptions = { passive: false, signal };
+        const globalEventOptions = { passive: false, signal, capture: true };
 
         let pointerId: number | null = null;
+        let globalListenersActive = false;
 
         const releasePointerCapture = (id: number | null) => {
             if (id === null) return;
@@ -226,6 +228,7 @@ export class SvgInteractionService {
             try {
                 el.setPointerCapture(evt.pointerId);
             } catch { /* Ignore unsupported pointer capture */ }
+            addGlobalPointerListeners();
             longTouchTimer = setTimeout(() => {
                 upHandlerSecondary(evt);
             }, 300);
@@ -237,6 +240,7 @@ export class SvgInteractionService {
         const clearLongTouch = () => {
             const activePointerId = pointerId;
             pointerId = null;
+            removeGlobalPointerListeners();
             if (longTouchTimer) {
                 clearTimeout(longTouchTimer);
                 longTouchTimer = null;
@@ -274,11 +278,26 @@ export class SvgInteractionService {
             this.state.clickTarget = null;
         };
 
+        const addGlobalPointerListeners = () => {
+            if (globalListenersActive) return;
+            globalListenersActive = true;
+            window.addEventListener('pointerup', upHandler, globalEventOptions);
+            window.addEventListener('pointercancel', cancelHandler, globalEventOptions);
+        };
+
+        const removeGlobalPointerListeners = () => {
+            if (!globalListenersActive) return;
+            globalListenersActive = false;
+            window.removeEventListener('pointerup', upHandler, globalEventOptions);
+            window.removeEventListener('pointercancel', cancelHandler, globalEventOptions);
+        };
+
         const leaveHandler = (evt: PointerEvent) => {
             if (evt.pointerId !== pointerId) return;
             try {
                 if (el.hasPointerCapture(evt.pointerId)) return;
             } catch { /* Ignore unsupported pointer capture */ }
+            if (evt.pointerType === 'pen' || evt.pointerType === 'touch') return;
             cancelHandler(evt);
         };
 

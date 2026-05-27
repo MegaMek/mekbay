@@ -97,6 +97,41 @@ describe('SvgInteractionService', () => {
         expect(handler).toHaveBeenCalledOnceWith(upEvent, true);
         expect(releasePointerCapture).toHaveBeenCalledOnceWith(17);
     });
+
+    it('completes a pen tap when hover retargeting moves pointerup away from the SVG element', () => {
+        const el = document.createElementNS('http://www.w3.org/2000/svg', 'path') as SVGElement;
+        const abortController = new AbortController();
+        const handler = jasmine.createSpy('handler');
+        spyOn(el, 'setPointerCapture').and.throwError('unsupported');
+        spyOn(el, 'hasPointerCapture').and.returnValue(false);
+        spyOn(el, 'releasePointerCapture').and.stub();
+
+        service.addSvgTapHandler(el, handler, abortController.signal);
+
+        el.dispatchEvent(createPointerEvent('pointerdown', { pointerId: 23, pointerType: 'pen', button: 0, buttons: 1 }));
+        el.dispatchEvent(createPointerEvent('pointerleave', { pointerId: 23, pointerType: 'pen', buttons: 1 }));
+        const upEvent = createPointerEvent('pointerup', { pointerId: 23, pointerType: 'pen', button: 0 });
+        window.dispatchEvent(upEvent);
+
+        expect(handler).toHaveBeenCalledOnceWith(upEvent, true);
+    });
+
+    it('still cancels a mouse tap when the pointer leaves without capture', () => {
+        const el = document.createElementNS('http://www.w3.org/2000/svg', 'path') as SVGElement;
+        const abortController = new AbortController();
+        const handler = jasmine.createSpy('handler');
+        spyOn(el, 'setPointerCapture').and.throwError('unsupported');
+        spyOn(el, 'hasPointerCapture').and.returnValue(false);
+        spyOn(el, 'releasePointerCapture').and.stub();
+
+        service.addSvgTapHandler(el, handler, abortController.signal);
+
+        el.dispatchEvent(createPointerEvent('pointerdown', { pointerId: 31, pointerType: 'mouse', button: 0, buttons: 1 }));
+        el.dispatchEvent(createPointerEvent('pointerleave', { pointerId: 31, pointerType: 'mouse', buttons: 1 }));
+        window.dispatchEvent(createPointerEvent('pointerup', { pointerId: 31, pointerType: 'mouse', button: 0 }));
+
+        expect(handler).not.toHaveBeenCalled();
+    });
 });
 
 function createPointerEvent(type: string, init: PointerEventInit): PointerEvent {
