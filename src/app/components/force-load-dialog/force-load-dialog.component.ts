@@ -31,9 +31,10 @@
  * affiliated with Microsoft.
  */
 
-import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, viewChild, type ElementRef, DestroyRef } from '@angular/core';
+import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, viewChild, type ElementRef, DestroyRef, afterNextRender, Injector, untracked } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
+import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
 import { firstValueFrom, map, race } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
@@ -142,7 +143,7 @@ const DEFAULT_OPERATION_SORT_DIRECTION: SortDirection = 'desc';
     selector: 'force-load-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, MeasureClampOverflowDirective, UnitIconComponent, OpPreviewComponent, FactionImgPipe, ForceTagsComponent, CompactFilterMenuComponent],
+    imports: [CommonModule, ScrollingModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, MeasureClampOverflowDirective, UnitIconComponent, OpPreviewComponent, FactionImgPipe, ForceTagsComponent, CompactFilterMenuComponent],
     templateUrl: './force-load-dialog.component.html',
     styleUrls: ['./force-load-dialog.component.css']
 })
@@ -151,6 +152,7 @@ export class ForceLoadDialogComponent {
     private dialogData: ForceLoadDialogData | null = inject(DIALOG_DATA, { optional: true });
     private dataService = inject(DataService);
     private destroyRef = inject(DestroyRef);
+    private injector = inject(Injector);
     private sessionPersistenceService = inject(SessionPersistenceService);
     private forceTaggingService = inject(ForceTaggingService);
     forceBuilderService = inject(ForceBuilderService);
@@ -162,9 +164,17 @@ export class ForceLoadDialogComponent {
     readonly hangarClassicFilter = HANGAR_FILTER_CLASSIC;
     readonly hangarAlphaStrikeFilter = HANGAR_FILTER_ALPHA_STRIKE;
     searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
+    private hangarViewport = viewChild<CdkVirtualScrollViewport>('hangarViewport');
 
     readonly GameSystem = GameSystem;
     readonly getUnitPilotStats = getForcePreviewUnitPilotStats;
+    readonly hangarMinBufferPx = 600;
+    readonly hangarMaxBufferPx = 1200;
+    private readonly hangarDefaultItemSize = 142;
+    private readonly hangarItemSizeSignal = signal(this.hangarDefaultItemSize);
+    readonly hangarItemSize = computed(() => this.hangarItemSizeSignal());
+    private hangarHeightTrackingDebounceTimer: any;
+    private readonly hangarMeasuredItemHeights = new Map<string, number>();
 
     readonly HANGAR_SORT_OPTIONS: { key: string; label: string }[] = [
         { key: 'timestamp', label: 'Date' },
@@ -424,6 +434,7 @@ export class ForceLoadDialogComponent {
     operations = signal<LoadOperationEntry[]>([]);
     selectedOperation = signal<LoadOperationEntry | null>(null);
     operationsLoading = signal<boolean>(false);
+    operationCreateBusy = signal<boolean>(false);
     private operationsLoaded = signal<boolean>(false);
     expandedForceNotes = signal<ReadonlySet<string>>(new Set<string>());
     expandedOperationNotes = signal<ReadonlySet<string>>(new Set<string>());
@@ -470,6 +481,23 @@ export class ForceLoadDialogComponent {
         });
 
         return this.sortOperations(filtered, sortKey, sortDir);
+    });
+
+    canCreateOperation = computed<boolean>(() =>
+        this.forceBuilderService.loadedForces().length >= 2 && !this.operationCreateBusy()
+    );
+
+    newOperationTitle = computed<string>(() => {
+        if (this.operationCreateBusy()) {
+            return 'Saving operation...';
+        }
+        const forceCount = this.forceBuilderService.loadedForces().length;
+        if (forceCount >= 2) {
+            return 'Create operation from deployed forces';
+        }
+        return forceCount === 1
+            ? 'Deploy one more force to create an operation'
+            : 'Deploy at least two forces to create an operation';
     });
 
     constructor() {
@@ -542,6 +570,241 @@ export class ForceLoadDialogComponent {
         this.ensureHangarTagFilterIsValid();
         this.ensureHangarFacetFiltersAreValid();
         this.ensureOrganizationFactionFilterIsValid();
+        this.setupHangarItemHeightTracking();
+    }
+
+    private setupHangarItemHeightTracking(): void {
+        const DEBOUNCE_MS = 100;
+        const SCROLL_DEBOUNCE_MS = 120;
+        const MAX_GAP_CORRECTIONS = 3;
+        let gapCorrectionPending: { destroy: () => void } | null = null;
+        let gapCorrectionCount = 0;
+        let scrollGapTimer: any;
+        let currentViewportElement: HTMLElement | null = null;
+        let viewportResizeObserver: ResizeObserver | null = null;
+        let prevLayoutKey: string | undefined;
+        let prevViewportWidth = 0;
+
+        const isHangarVisible = () => this.activeTab() === 'Hangar' && !this.loading() && this.filteredForces().length > 0;
+
+        const detectAndFixGap = () => {
+            const viewport = this.hangarViewport();
+            if (!viewport || !isHangarVisible()) {
+                return;
+            }
+
+            const viewportElement = viewport.elementRef.nativeElement;
+            const contentWrapper = viewportElement.querySelector('.cdk-virtual-scroll-content-wrapper') as HTMLElement | null;
+            if (!contentWrapper) {
+                return;
+            }
+
+            const viewportRect = viewportElement.getBoundingClientRect();
+            const contentRect = contentWrapper.getBoundingClientRect();
+            const gap = viewportRect.bottom - contentRect.bottom;
+            const renderedRange = viewport.getRenderedRange();
+            const dataLength = viewport.getDataLength();
+            const isAtDataEnd = renderedRange.end >= dataLength;
+
+            if (gap <= 1) {
+                gapCorrectionCount = 0;
+                return;
+            }
+
+            if (isAtDataEnd) {
+                const renderedContentHeight = contentWrapper.offsetHeight;
+                const transform = contentWrapper.style.transform || '';
+                const match = transform.match(/translateY\((\d+(?:\.\d+)?)px\)/);
+                const actualOffset = match ? parseFloat(match[1]) : renderedRange.start * this.hangarItemSize();
+                const realTotalHeight = actualOffset + renderedContentHeight;
+                const currentTotalHeight = dataLength * this.hangarItemSize();
+
+                if (realTotalHeight < currentTotalHeight) {
+                    viewport.setTotalContentSize(realTotalHeight);
+                }
+            } else {
+                const currentOffset = viewport.measureScrollOffset();
+                const correctedOffset = Math.max(0, currentOffset - gap - 1);
+                viewport.scrollToOffset(correctedOffset);
+            }
+
+            if (gapCorrectionCount < MAX_GAP_CORRECTIONS) {
+                gapCorrectionCount++;
+                gapCorrectionPending?.destroy();
+                gapCorrectionPending = afterNextRender(() => {
+                    gapCorrectionPending = null;
+                    detectAndFixGap();
+                }, { injector: this.injector });
+            }
+        };
+
+        const scheduleGapCheck = () => {
+            gapCorrectionCount = 0;
+            gapCorrectionPending?.destroy();
+            gapCorrectionPending = afterNextRender(() => {
+                gapCorrectionPending = null;
+                detectAndFixGap();
+            }, { injector: this.injector });
+        };
+
+        const measureHeights = () => {
+            const viewport = this.hangarViewport();
+            if (!viewport || !isHangarVisible()) {
+                return;
+            }
+
+            const items = viewport.elementRef.nativeElement.querySelectorAll('.virtual-hangar-item') as NodeListOf<HTMLElement>;
+            if (items.length === 0) {
+                return;
+            }
+
+            for (const item of Array.from(items).slice(0, 100)) {
+                const key = item.dataset['forceKey'];
+                const height = Math.ceil(item.offsetHeight);
+                if (key && height > 0) {
+                    this.hangarMeasuredItemHeights.set(key, height);
+                }
+            }
+
+            const heights = Array.from(this.hangarMeasuredItemHeights.values()).filter(height => height > 0);
+            if (heights.length === 0) {
+                return;
+            }
+
+            const averageHeight = Math.round(heights.reduce((sum, height) => sum + height, 0) / heights.length);
+            if (averageHeight > 0 && this.hangarItemSizeSignal() !== averageHeight) {
+                this.hangarItemSizeSignal.set(averageHeight);
+            }
+
+            scheduleGapCheck();
+        };
+
+        const debouncedMeasureHeights = (debounceMs = DEBOUNCE_MS) => {
+            if (this.hangarHeightTrackingDebounceTimer) {
+                clearTimeout(this.hangarHeightTrackingDebounceTimer);
+            }
+            this.hangarHeightTrackingDebounceTimer = setTimeout(() => {
+                this.hangarHeightTrackingDebounceTimer = undefined;
+                measureHeights();
+            }, debounceMs);
+        };
+
+        effect(() => {
+            const forces = this.filteredForces();
+            const visible = this.activeTab() === 'Hangar' && !this.loading() && forces.length > 0;
+            const forceTagsVersion = this.forceTagsVersion();
+            const expandedForceNotes = this.expandedForceNotes();
+            this.overflowingForceNotes();
+            const unitDisplayName = this.optionsService.options().unitDisplayName;
+            const layoutKey = `${unitDisplayName}:${forceTagsVersion}:${Array.from(expandedForceNotes).sort().join('|')}`;
+
+            untracked(() => {
+                if (!visible) {
+                    this.hangarMeasuredItemHeights.clear();
+                    this.hangarItemSizeSignal.set(this.hangarDefaultItemSize);
+                    prevLayoutKey = undefined;
+                    if (this.hangarHeightTrackingDebounceTimer) {
+                        clearTimeout(this.hangarHeightTrackingDebounceTimer);
+                        this.hangarHeightTrackingDebounceTimer = undefined;
+                    }
+                    gapCorrectionPending?.destroy();
+                    gapCorrectionPending = null;
+                    return;
+                }
+
+                if (prevLayoutKey !== undefined && prevLayoutKey !== layoutKey) {
+                    this.hangarMeasuredItemHeights.clear();
+                }
+                prevLayoutKey = layoutKey;
+
+                const activeKeys = new Set(forces.map((force, index) => this.getForceVirtualKey(index, force)));
+                for (const key of this.hangarMeasuredItemHeights.keys()) {
+                    if (!activeKeys.has(key)) {
+                        this.hangarMeasuredItemHeights.delete(key);
+                    }
+                }
+                if (this.hangarMeasuredItemHeights.size === 0 && this.hangarItemSizeSignal() !== this.hangarDefaultItemSize) {
+                    this.hangarItemSizeSignal.set(this.hangarDefaultItemSize);
+                }
+            });
+
+            if (visible) {
+                debouncedMeasureHeights();
+            }
+        });
+
+        const onViewportScroll = () => {
+            if (scrollGapTimer) {
+                clearTimeout(scrollGapTimer);
+            }
+            scrollGapTimer = setTimeout(() => {
+                measureHeights();
+
+                const viewport = this.hangarViewport();
+                if (!viewport || !isHangarVisible()) {
+                    return;
+                }
+
+                const scrollOffset = viewport.measureScrollOffset();
+                const viewportSize = viewport.getViewportSize();
+                const totalContentSize = viewport.getDataLength() * this.hangarItemSize();
+                const distanceFromEnd = totalContentSize - scrollOffset - viewportSize;
+                if (distanceFromEnd < viewportSize * 2) {
+                    gapCorrectionCount = 0;
+                    detectAndFixGap();
+                }
+            }, SCROLL_DEBOUNCE_MS);
+        };
+
+        effect(() => {
+            const viewport = this.hangarViewport();
+            const visible = this.activeTab() === 'Hangar' && !this.loading() && this.filteredForces().length > 0;
+
+            untracked(() => {
+                const nextViewportElement = viewport && visible ? viewport.elementRef.nativeElement : null;
+                if (nextViewportElement === currentViewportElement) {
+                    return;
+                }
+
+                if (currentViewportElement) {
+                    currentViewportElement.removeEventListener('scroll', onViewportScroll);
+                }
+                viewportResizeObserver?.disconnect();
+                viewportResizeObserver = null;
+                prevViewportWidth = 0;
+
+                currentViewportElement = nextViewportElement;
+                if (currentViewportElement) {
+                    currentViewportElement.addEventListener('scroll', onViewportScroll, { passive: true });
+                    prevViewportWidth = currentViewportElement.clientWidth;
+                    viewportResizeObserver = new ResizeObserver(() => {
+                        const currentWidth = currentViewportElement?.clientWidth ?? 0;
+                        if (currentWidth !== prevViewportWidth) {
+                            this.hangarMeasuredItemHeights.clear();
+                            prevViewportWidth = currentWidth;
+                        }
+                        debouncedMeasureHeights();
+                    });
+                    viewportResizeObserver.observe(currentViewportElement);
+                }
+            });
+        });
+
+        this.destroyRef.onDestroy(() => {
+            if (this.hangarHeightTrackingDebounceTimer) {
+                clearTimeout(this.hangarHeightTrackingDebounceTimer);
+                this.hangarHeightTrackingDebounceTimer = undefined;
+            }
+            if (scrollGapTimer) {
+                clearTimeout(scrollGapTimer);
+            }
+            if (currentViewportElement) {
+                currentViewportElement.removeEventListener('scroll', onViewportScroll);
+                currentViewportElement = null;
+            }
+            viewportResizeObserver?.disconnect();
+            gapCorrectionPending?.destroy();
+        });
     }
 
     private async loadForces(): Promise<void> {
@@ -577,7 +840,7 @@ export class ForceLoadDialogComponent {
         return s.trim().toLowerCase();
     }
 
-    private async loadOperations(): Promise<void> {
+    private async loadOperations(selectOperationId?: string): Promise<void> {
         this.operationsLoading.set(true);
         try {
             const result = await this.dataService.listOperations();
@@ -639,10 +902,23 @@ export class ForceLoadDialogComponent {
                 }
             }
 
-            this.operations.set(result || []);
+            const operations = result || [];
+            this.operations.set(operations);
+            if (selectOperationId) {
+                this.revealOperation(selectOperationId);
+            }
         } finally {
             this.operationsLoading.set(false);
             this.operationsLoaded.set(true);
+        }
+    }
+
+    private revealOperation(operationId: string): void {
+        const operation = this.operations().find(op => op.operationId === operationId) ?? null;
+        this.selectedOperation.set(operation);
+        if (operation && !this.filteredOperations().includes(operation)) {
+            this.searchText.set('');
+            this.gameTypeFilter.set('all');
         }
     }
 
@@ -651,6 +927,12 @@ export class ForceLoadDialogComponent {
         this.selectedOperation.set(null);
         this.selectedForce.set(force);
     }
+
+    getForceVirtualKey(index: number, force: LoadForceEntry): string {
+        return force.instanceId || `${force.name || 'force'}::${force.timestamp || index}`;
+    }
+
+    trackForce = (index: number, force: LoadForceEntry) => this.getForceVirtualKey(index, force);
 
     selectPack(p: ResolvedPack) {
         this.selectedForce.set(null);
@@ -1322,6 +1604,21 @@ export class ForceLoadDialogComponent {
         const op = this.selectedOperation();
         if (!op) return;
         this.dialogRef.close({ result: op, mode: 'operation', alignment: 'friendly' });
+    }
+
+    async onNewOperation() {
+        if (!this.canCreateOperation()) return;
+        this.operationCreateBusy.set(true);
+        try {
+            const saved = await this.forceBuilderService.saveOperation();
+            if (!saved) return;
+            const operationId = this.forceBuilderService.currentOperation()?.operationId;
+            if (operationId) {
+                await this.loadOperations(operationId);
+            }
+        } finally {
+            this.operationCreateBusy.set(false);
+        }
     }
 
     async onDeleteOperation() {

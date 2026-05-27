@@ -38,7 +38,7 @@ import type { Force, UnitGroup } from '../models/force.model';
 import { AlphaStrikeCardComponent } from '../components/alpha-strike-card/alpha-strike-card.component';
 import { getLayoutForUnitType } from '../components/alpha-strike-card/card-layout.config';
 import type { OptionsService } from '../services/options.service';
-import { formatMovement } from './as-common.util';
+import { formatMovement, formatMovementWithAlternate } from './as-common.util';
 import { isIOS } from './platform.util';
 import type { PrintAllOptions } from '../models/print-options.model';
 import { createPrintRosterLogoMarkup, createPrintRosterQrMarkup, getPrintRosterBrandingStyles } from './print-roster-branding.util';
@@ -903,14 +903,23 @@ export class ASPrintUtil {
             return movementEntries
                 .filter(([mode]) => mode !== 'a' && mode !== 'g')
                 .sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : 0))
-                .map(([mode, inches]) => formatMovement(inches, mode, useHex))
+                .map(([mode, inches]) => this.formatRosterMovementEntry(forceUnit, mode, inches, useHex))
                 .join('/');
         }
 
         return movementEntries
             .sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : 0))
-            .map(([mode, inches]) => formatMovement(inches, mode, useHex))
+            .map(([mode, inches]) => this.formatRosterMovementEntry(forceUnit, mode, inches, useHex))
             .join('/');
+    }
+
+    private static formatRosterMovementEntry(forceUnit: ASForceUnit, mode: string, inches: number, useHex: boolean): string {
+        const display = forceUnit.movementDisplayValue(mode, inches);
+        const formatted = display.adjustedInches !== undefined
+            ? formatMovementWithAlternate(display.baseInches, display.adjustedInches, mode, useHex)
+            : formatMovement(display.baseInches, mode, useHex);
+
+        return formatted;
     }
 
     private static createRosterCell(cell: RosterCell): HTMLTableCellElement {

@@ -20,7 +20,7 @@ import { SavedSearchesService } from '../../services/saved-searches.service';
 import { TaggingService } from '../../services/tagging.service';
 import { MEGAMEK_RARITY_PRODUCTION_SORT_KEY } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
-import { createEmptyUnit } from '../../testing/unit-test-helpers';
+import { createEmptyUnit, type TestUnitOverrides } from '../../testing/unit-test-helpers';
 import { UnitSearchComponent } from './unit-search.component';
 
 describe('UnitSearchComponent card virtualization', () => {
@@ -132,8 +132,8 @@ describe('UnitSearchComponent card virtualization', () => {
         parseAbility: jasmine.createSpy('parseAbility').and.returnValue(null),
     };
 
-    function createUnit(name: string): Unit {
-        return createEmptyUnit({ name });
+    function createUnit(name: string, overrides: TestUnitOverrides = {}): Unit {
+        return createEmptyUnit({ name, ...overrides });
     }
 
     function dispatchWindowKey(key: string): KeyboardEvent {
@@ -296,6 +296,132 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(cardOption?.disabled).toBeTrue();
         expect(component.viewMode()).toBe('list');
         expect(optionsServiceStub.setOption).not.toHaveBeenCalled();
+    });
+
+    it('groups chassis view results by chassis, Alpha Strike type, and omni status', () => {
+        optionsSignal.set({
+            ...optionsSignal(),
+            unitSearchViewMode: 'chassis',
+        });
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+
+        filteredUnitsSignal.set([
+            createUnit('Atlas AS7-D', { chassis: 'Atlas', omni: 0, as: { TP: 'BM', PV: 42 }, bv: 1800, pv: 42 }),
+            createUnit('Atlas AS7-K', { chassis: 'Atlas', omni: 0, as: { TP: 'BM', PV: 44 }, bv: 1900, pv: 44 }),
+            createUnit('Atlas Omni', { chassis: 'Atlas', omni: 1, as: { TP: 'BM', PV: 46 }, bv: 2000, pv: 46 }),
+            createUnit('Atlas Industrial', { chassis: 'Atlas', omni: 0, as: { TP: 'IM', PV: 28 }, bv: 1200, pv: 28 }),
+        ]);
+        fixture.detectChanges();
+
+        expect(component.groupedUnits().map(group => ({
+            key: group.key,
+            chassis: group.chassis,
+            asType: group.asType,
+            omni: group.omni,
+            variantCount: group.variantCount,
+            minPV: group.minPV,
+            maxPV: group.maxPV,
+        }))).toEqual([
+            { key: 'Atlas|BM|false', chassis: 'Atlas', asType: 'BM', omni: false, variantCount: 2, minPV: 42, maxPV: 44 },
+            { key: 'Atlas|BM|true', chassis: 'Atlas', asType: 'BM', omni: true, variantCount: 1, minPV: 46, maxPV: 46 },
+            { key: 'Atlas|IM|false', chassis: 'Atlas', asType: 'IM', omni: false, variantCount: 1, minPV: 28, maxPV: 28 },
+        ]);
+    });
+
+    it('drills into a chassis group without changing the search text', () => {
+        optionsSignal.set({
+            ...optionsSignal(),
+            unitSearchViewMode: 'chassis',
+        });
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+
+        filteredUnitsSignal.set([
+            createUnit('Nova Prime', { chassis: 'Nova', omni: 1, as: { TP: 'BM' } }),
+            createUnit('Nova A', { chassis: 'Nova', omni: 1, as: { TP: 'BM' } }),
+            createUnit('Nova Industrial', { chassis: 'Nova', omni: 1, as: { TP: 'IM' } }),
+            createUnit('Locust LCT-1V', { chassis: 'Locust', omni: 0, as: { TP: 'BM' } }),
+        ]);
+        fixture.detectChanges();
+        filtersServiceStub.setSearchText.calls.reset();
+
+        const group = component.groupedUnits().find(item => item.key === 'Nova|BM|true');
+        expect(group).toBeDefined();
+
+        component.onCompactGroupClick(group!);
+
+        expect(filtersServiceStub.setSearchText).not.toHaveBeenCalled();
+        expect(component.viewMode()).toBe('list');
+        expect(component.activeVariantGroupTitle()).toBe('Nova');
+        expect(component.activeVariantGroupMeta()).toBe('BattleMek (omni) · 2 variants');
+        expect(component.displayedUnits().map(unit => unit.name)).toEqual(['Nova Prime', 'Nova A']);
+    });
+
+    it('keeps variant group results filtered when toggling expanded view', () => {
+        optionsSignal.set({
+            ...optionsSignal(),
+            unitSearchViewMode: 'chassis',
+        });
+        filtersServiceStub.expandedView.set(false);
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+
+        filteredUnitsSignal.set([
+            createUnit('Atlas AS7-D', { chassis: 'Atlas', omni: 0, as: { TP: 'BM' } }),
+            createUnit('Atlas AS7-K', { chassis: 'Atlas', omni: 0, as: { TP: 'BM' } }),
+            createUnit('Atlas Industrial', { chassis: 'Atlas', omni: 0, as: { TP: 'IM' } }),
+            createUnit('Locust LCT-1V', { chassis: 'Locust', omni: 0, as: { TP: 'BM' } }),
+        ]);
+        fixture.detectChanges();
+        optionsServiceStub.setOption.calls.reset();
+
+        const group = component.groupedUnits().find(item => item.key === 'Atlas|BM|false');
+        expect(group).toBeDefined();
+
+        component.onCompactGroupClick(group!);
+        expect(component.viewMode()).toBe('list');
+        expect(component.displayedUnits().map(unit => unit.name)).toEqual(['Atlas AS7-D', 'Atlas AS7-K']);
+
+        component.toggleExpandedView();
+        fixture.detectChanges();
+
+        expect(filtersServiceStub.expandedView()).toBeTrue();
+        expect(component.activeVariantGroupTitle()).toBe('Atlas');
+        expect(component.viewMode()).toBe('list');
+        expect(component.displayedUnits().map(unit => unit.name)).toEqual(['Atlas AS7-D', 'Atlas AS7-K']);
+
+        component.toggleExpandedView();
+        fixture.detectChanges();
+
+        expect(filtersServiceStub.expandedView()).toBeFalse();
+        expect(component.activeVariantGroupTitle()).toBe('Atlas');
+        expect(component.viewMode()).toBe('list');
+        expect(component.displayedUnits().map(unit => unit.name)).toEqual(['Atlas AS7-D', 'Atlas AS7-K']);
+        expect(optionsServiceStub.setOption).not.toHaveBeenCalled();
+    });
+
+    it('clears the variant group filter back to chassis view and targets the old group row', () => {
+        optionsSignal.set({
+            ...optionsSignal(),
+            unitSearchViewMode: 'chassis',
+        });
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const scrollToVariantsGroup = spyOn<any>(component, 'scrollToVariantsGroup');
+
+        filteredUnitsSignal.set([
+            createUnit('Nova Prime', { chassis: 'Nova', omni: 1, as: { TP: 'BM' } }),
+            createUnit('Nova A', { chassis: 'Nova', omni: 1, as: { TP: 'BM' } }),
+        ]);
+        fixture.detectChanges();
+
+        component.onCompactGroupClick(component.groupedUnits()[0]);
+        component.clearVariantGroupFilter();
+
+        expect(component.activeVariantGroupFilter()).toBeNull();
+        expect(component.viewMode()).toBe('chassis');
+        expect(scrollToVariantsGroup).toHaveBeenCalledOnceWith('Nova|BM|true');
     });
 
     it('navigates search results with global up and down shortcuts', () => {

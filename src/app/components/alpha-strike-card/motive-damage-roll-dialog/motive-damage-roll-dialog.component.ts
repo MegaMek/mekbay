@@ -140,6 +140,17 @@ const MOTIVE_DAMAGE_TABLE: Record<number, MotiveTableEntry> = {
                 <span class="motive-value">{{ this.moveType }}</span>
                 <span class="modifier-label">({{ rollModifier() >= 0 ? '+' : '' }}{{ rollModifier() }} modifier)</span>
             </div>
+
+            @if (rollModifierComments().length > 0) {
+                <div class="roll-modifier-comments">
+                    @for (comment of rollModifierComments(); track $index) {
+                        <div class="roll-modifier-comment">
+                            <span class="roll-modifier-value">{{ formatRollModifier(comment.modifier) }}</span>
+                            <span>{{ comment.comment }}</span>
+                        </div>
+                    }
+                </div>
+            }
             
             <div class="dice-roller-container">
             <!-- 2D6 roll -->
@@ -224,6 +235,33 @@ const MOTIVE_DAMAGE_TABLE: Record<number, MotiveTableEntry> = {
             font-size: 0.9em;
         }
 
+        .roll-modifier-comments {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 280px;
+            max-width: 520px;
+            text-align: left;
+        }
+
+        .roll-modifier-comment {
+            display: flex;
+            gap: 8px;
+            align-items: baseline;
+            padding: 8px 10px;
+            background: rgba(255, 204, 0, 0.12);
+            border: 1px solid rgba(255, 204, 0, 0.35);
+            color: #ddd;
+            font-size: 0.9em;
+        }
+
+        .roll-modifier-value {
+            min-width: 2.5em;
+            text-align: right;
+            color: #ffcc00;
+            font-weight: bold;
+        }
+
         .result-container {
             padding: 16px;
             background: rgba(0, 0, 0, 0.3);
@@ -285,8 +323,14 @@ export class MotiveDamageRollDialogComponent implements AfterViewInit {
 
     readonly result = signal<MotiveDamageResult | null>(null);
 
-    /** Modifier to the roll based on motive type */
-    readonly rollModifier = computed(() => getMotiveRollModifier(this.moveType));
+    /** Modifier to the roll based on motive type and active unit abilities. */
+    readonly rollModifier = computed(() => {
+        return this.forceUnit.criticalHitRollModifier('motiveDamage', getMotiveRollModifier(this.moveType));
+    });
+
+    readonly rollModifierComments = computed(() => {
+        return this.forceUnit.criticalHitRollModifierComments('motiveDamage', getMotiveRollModifier(this.moveType));
+    });
 
     /** Display name combining chassis, model, and optional alias */
     readonly unitDisplayName = computed(() => {
@@ -328,6 +372,10 @@ export class MotiveDamageRollDialogComponent implements AfterViewInit {
             case 'motive3': return 1;
             default: return 1;
         }
+    }
+
+    formatRollModifier(modifier: number): string {
+        return `${modifier >= 0 ? '+' : ''}${modifier}`;
     }
 
     ngAfterViewInit(): void {

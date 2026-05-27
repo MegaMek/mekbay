@@ -34,6 +34,7 @@
 import { GameSystem } from '../models/common.model';
 import type { AvailabilitySource } from '../models/options.model';
 import type { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
+import { AS_DAMAGE_ZERO_STAR_VALUE, formatASDamageValue } from '../utils/as-damage.util';
 import {
     type MegaMekAvailabilityFrom,
     MEGAMEK_AVAILABILITY_ALL_RARITY_OPTIONS,
@@ -87,6 +88,8 @@ export interface AdvFilterConfig {
     multistate?: boolean; // if true, the filter (dropdown) can have multiple states (OR, AND, NOT)
     countable?: boolean; // if true, show amount next to options
     stepSize?: number; // for range sliders, defines the step size
+    specialValues?: readonly number[]; // extra allowed slider stops between regular steps
+    formatValue?: (value: number) => string; // for range sliders, maps internal numeric values to display labels
     semanticKey?: string; // Simplified key for semantic filter mode (e.g., 'tmm' instead of 'as.TMM')
     booleanSource?: BooleanFilterSource; // How to derive a boolean filter value from the unit property
     valueNormalizer?: (value: string) => string; // Optional function to normalize semantic filter values
@@ -383,6 +386,8 @@ export interface RangeFilterConfig {
     availabilitySources?: readonly AvailabilitySource[];
     curve?: number;
     stepSize?: number;
+    specialValues?: readonly number[];
+    formatValue?: (value: number) => string;
     ignoreValues?: any[];
 }
 
@@ -491,10 +496,10 @@ export const RANGE_FILTERS: readonly RangeFilterConfig[] = Object.freeze([
     { key: 'as._mv', semanticKey: 'mv', label: 'Movement', curve: 1, game: GameSystem.ALPHA_STRIKE },
     { key: 'as.OV', semanticKey: 'ov', label: 'Overheat Value', curve: 1, game: GameSystem.ALPHA_STRIKE },
     { key: 'as.Th', semanticKey: 'th', label: 'Threshold', curve: 1, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.dmg._dmgS', semanticKey: 'dmgs', label: 'Damage (Short)', curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.dmg._dmgM', semanticKey: 'dmgm', label: 'Damage (Medium)', curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.dmg._dmgL', semanticKey: 'dmgl', label: 'Damage (Long)', curve: 1, game: GameSystem.ALPHA_STRIKE },
-    { key: 'as.dmg._dmgE', semanticKey: 'dmge', label: 'Damage (Extreme)', curve: 1, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.dmg._dmgS', semanticKey: 'dmgs', label: 'Damage (Short)', curve: 1, stepSize: 1, specialValues: [AS_DAMAGE_ZERO_STAR_VALUE], formatValue: formatASDamageValue, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.dmg._dmgM', semanticKey: 'dmgm', label: 'Damage (Medium)', curve: 1, stepSize: 1, specialValues: [AS_DAMAGE_ZERO_STAR_VALUE], formatValue: formatASDamageValue, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.dmg._dmgL', semanticKey: 'dmgl', label: 'Damage (Long)', curve: 1, stepSize: 1, specialValues: [AS_DAMAGE_ZERO_STAR_VALUE], formatValue: formatASDamageValue, game: GameSystem.ALPHA_STRIKE },
+    { key: 'as.dmg._dmgE', semanticKey: 'dmge', label: 'Damage (Extreme)', curve: 1, stepSize: 1, specialValues: [AS_DAMAGE_ZERO_STAR_VALUE], formatValue: formatASDamageValue, game: GameSystem.ALPHA_STRIKE },
     { key: 'as.Arm', semanticKey: 'a', label: 'Armor', curve: 0, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
     { key: 'as.Str', semanticKey: 's', label: 'Structure', curve: 0, ignoreValues: [-1], game: GameSystem.ALPHA_STRIKE },
 ]);

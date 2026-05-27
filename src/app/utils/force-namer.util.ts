@@ -34,11 +34,7 @@
 import type { ForceUnit } from '../models/force-unit.model';
 import { type MULFaction, MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../models/mulfactions.model';
 import type { Era } from '../models/eras.model';
-import {
-    MIDDLE_WORD_MERCENARY, END_WORD_MERCENARY,
-    MIDDLE_WORD_CORPORATE, END_WORD_CORPORATE,
-    PRE_FAB,
-} from './force-name-words.data';
+import type { ForceNameWords } from '../models/force-name-words.model';
 import { Faction } from '../models/factions.model';
 import { createMulForceAvailabilityContext, type ForceAvailabilityContext } from './force-availability.util';
 
@@ -203,28 +199,36 @@ function getEraMatchPercentage(
  *   2: "{middle} {end}"                - "Phantom Lancers"
  *   3: Pre-fab name                    - "Misfire Misfits"
  */
-function generateMercenaryName(): string {
+function hasUsableNameWords(words: ForceNameWords): boolean {
+    return words.middleWordCorporate.length > 0
+        && words.endWordCorporate.length > 0
+        && words.middleWordMercenary.length > 0
+        && words.endWordMercenary.length > 0
+        && words.preFab.length > 0;
+}
+
+function generateMercenaryName(words: ForceNameWords): string {
     const roll = Math.floor(Math.random() * 4);
     switch (roll) {
         case 0: {
             const ord = randomOrdinal();
-            const mid = pick(MIDDLE_WORD_MERCENARY);
-            const end = pickUnique(END_WORD_MERCENARY, mid);
+            const mid = pick(words.middleWordMercenary);
+            const end = pickUnique(words.endWordMercenary, mid);
             return `The ${ord} ${mid} ${end}`;
         }
         case 1: {
-            const mid = pick(MIDDLE_WORD_MERCENARY);
-            const end = pickUnique(END_WORD_MERCENARY, mid);
+            const mid = pick(words.middleWordMercenary);
+            const end = pickUnique(words.endWordMercenary, mid);
             return `The ${mid} ${end}`;
         }
         case 2: {
-            const mid = pick(MIDDLE_WORD_MERCENARY);
-            const end = pickUnique(END_WORD_MERCENARY, mid);
+            const mid = pick(words.middleWordMercenary);
+            const end = pickUnique(words.endWordMercenary, mid);
             return `${mid} ${end}`;
         }
         case 3:
         default:
-            return pick(PRE_FAB);
+            return pick(words.preFab);
     }
 }
 
@@ -234,13 +238,13 @@ function generateMercenaryName(): string {
  *   0: "{faction} {midCorp} {endCorp}"   - "ComStar Apex Solutions"
  *   1: "{faction} {endCorp}"             - "Word of Blake Technologies"
  */
-function generateCorporateName(factionName: string): string {
+function generateCorporateName(factionName: string, words: ForceNameWords): string {
     if (Math.random() < 0.5) {
-        const mid = pick(MIDDLE_WORD_CORPORATE);
-        const end = pickUnique(END_WORD_CORPORATE, `${factionName} ${mid}`);
+        const mid = pick(words.middleWordCorporate);
+        const end = pickUnique(words.endWordCorporate, `${factionName} ${mid}`);
         return `${factionName} ${mid} ${end}`;
     }
-    return `${factionName} ${pick(END_WORD_CORPORATE)}`;
+    return `${factionName} ${pick(words.endWordCorporate)}`;
 }
 
 /**
@@ -251,27 +255,27 @@ function generateCorporateName(factionName: string): string {
  *   2: "{faction} {end}"                 - "Kurita Dragoons"
  *   3: "The {ordinal} {faction} {end}"   - "The 5th Liao Cavaliers"
  */
-function generateFactionMilitaryName(factionName: string): string {
+function generateFactionMilitaryName(factionName: string, words: ForceNameWords): string {
     const roll = Math.floor(Math.random() * 4);
     switch (roll) {
         case 0: {
             const ord = randomOrdinal();
-            const end = pick(END_WORD_MERCENARY);
+            const end = pick(words.endWordMercenary);
             return `${ord} ${factionName} ${end}`;
         }
         case 1: {
-            const mid = pick(MIDDLE_WORD_MERCENARY);
-            const end = pickUnique(END_WORD_MERCENARY, `${factionName} ${mid}`);
+            const mid = pick(words.middleWordMercenary);
+            const end = pickUnique(words.endWordMercenary, `${factionName} ${mid}`);
             return `${factionName} ${mid} ${end}`;
         }
         case 2: {
-            const end = pick(END_WORD_MERCENARY);
+            const end = pick(words.endWordMercenary);
             return `${factionName} ${end}`;
         }
         case 3:
         default: {
             const ord = randomOrdinal();
-            const end = pick(END_WORD_MERCENARY);
+            const end = pick(words.endWordMercenary);
             return `The ${ord} ${factionName} ${end}`;
         }
     }
@@ -472,25 +476,30 @@ export class ForceNamerUtil {
         faction: Faction | null,
         factions: Faction[],
         eras: Era[],
+        forceNameWords: ForceNameWords,
         availabilityContext?: ForceAvailabilityContext,
     ): string {
         if (!units || units.length === 0) return 'Unnamed Force';
         const resolved = faction ?? this.pickRandomFaction(units, factions, eras, null, availabilityContext);
-        return this.generateForceNameForFaction(resolved);
+        return this.generateForceNameForFaction(resolved, forceNameWords);
     }
 
     /**
      * Generate a force name for a specific faction.
      * Dispatches to the appropriate naming pattern based on faction type.
      */
-    static generateForceNameForFaction(faction: Faction | null): string {
+    static generateForceNameForFaction(faction: Faction | null, forceNameWords: ForceNameWords): string {
+        if (!hasUsableNameWords(forceNameWords)) {
+            return faction ? `${cleanFactionNameForGeneration(faction.name)} Force` : 'Unnamed Force';
+        }
+
         if (!faction || faction.id === MULFACTION_MERCENARY) {
-            return generateMercenaryName();
+            return generateMercenaryName(forceNameWords);
         }
         const name = cleanFactionNameForGeneration(faction.name);
         if (CORPORATE_FACTIONS.has(faction.name)) {
-            return generateCorporateName(name);
+            return generateCorporateName(name, forceNameWords);
         }
-        return generateFactionMilitaryName(name);
+        return generateFactionMilitaryName(name, forceNameWords);
     }
 }

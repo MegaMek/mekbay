@@ -63,6 +63,7 @@ import { type SemanticOperator, type SemanticToken, buildSemanticKeyMap, VIRTUAL
 import { normalizeLooseText, wildcardToRegex } from './string.util';
 import { usesIndexedDropdownUniverse } from './unit-search-filter-config.util';
 import { checkQuantityConstraint as checkQuantityConstraintCore, isEmbeddedApostrophe } from './unit-search-shared.util';
+import { isASDamageSemanticKey, parseASDamageValue } from './as-damage.util';
 
 // ============================================================================
 // Helpers
@@ -1189,6 +1190,7 @@ interface ParsedSpecialQuery {
 }
 
 const RANGE_VALUE_PATTERN = /^(-?\d+(?:\.\d+)?)[-~](-?\d+(?:\.\d+)?)$/;
+const AS_DAMAGE_RANGE_VALUE_PATTERN = /^(0\*|-?\d+(?:\.\d+)?)[-~](0\*|-?\d+(?:\.\d+)?)$/i;
 const SPECIAL_EXPLICIT_NUMERIC_QUERY_PATTERN = /(?:>=|<=|!=|>|<|=)\s*-?\d|\[[^\]]+\]/;
 const FILTER_CONFIGS_BY_SEMANTIC_KEY = new Map<string, AdvFilterConfig[]>();
 const sortedFilterConfigsCache = new WeakMap<EvaluatorContext, Map<string, readonly AdvFilterConfig[]>>();
@@ -1232,21 +1234,36 @@ function getSortedFilterConfigs(context: EvaluatorContext, semanticKey: string):
     return sorted;
 }
 
-function preParseRangeValues(values: string[]): ParsedRangeValue[] {
+function parseRangeFilterNumber(value: string, semanticKey: string): number | null {
+    if (isASDamageSemanticKey(semanticKey)) {
+        return parseASDamageValue(value);
+    }
+
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function preParseRangeValues(values: string[], semanticKey: string): ParsedRangeValue[] {
     const parsedValues: ParsedRangeValue[] = [];
     for (const value of values) {
-        const rangeMatch = value.match(RANGE_VALUE_PATTERN);
+        const rangeMatch = value.match(isASDamageSemanticKey(semanticKey) ? AS_DAMAGE_RANGE_VALUE_PATTERN : RANGE_VALUE_PATTERN);
         if (rangeMatch) {
+            const min = parseRangeFilterNumber(rangeMatch[1], semanticKey);
+            const max = parseRangeFilterNumber(rangeMatch[2], semanticKey);
+            if (min === null || max === null) {
+                continue;
+            }
+
             parsedValues.push({
                 type: 'range',
-                min: parseFloat(rangeMatch[1]),
-                max: parseFloat(rangeMatch[2]),
+                min: Math.min(min, max),
+                max: Math.max(min, max),
             });
             continue;
         }
 
-        const num = parseFloat(value);
-        if (!Number.isNaN(num)) {
+        const num = parseRangeFilterNumber(value, semanticKey);
+        if (num !== null) {
             parsedValues.push({ type: 'single', num });
         }
     }
@@ -1256,7 +1273,7 @@ function preParseRangeValues(values: string[]): ParsedRangeValue[] {
 function getParsedRangeValues(filter: SemanticToken): ParsedRangeValue[] {
     let cached = parsedRangeValuesCache.get(filter);
     if (!cached) {
-        cached = preParseRangeValues(filter.values);
+        cached = preParseRangeValues(filter.values, filter.field);
         parsedRangeValuesCache.set(filter, cached);
     }
     return cached;

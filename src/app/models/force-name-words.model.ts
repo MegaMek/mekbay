@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -30,31 +30,25 @@
  * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
  * affiliated with Microsoft.
  */
-
-let isiDevice: boolean | undefined = undefined;
-
-export function isAndroid(): boolean {
-    const nav = typeof navigator !== 'undefined' ? navigator : typeof window !== 'undefined' ? (window as any).navigator : undefined;
-    const ua = nav?.userAgent || '';
-    return /Android/i.test(ua);
+export interface ForceNameWords {
+    middleWordCorporate: string[];
+    endWordCorporate: string[];
+    middleWordMercenary: string[];
+    endWordMercenary: string[];
+    preFab: string[];
 }
 
-export function isIOS(): boolean {
-    if (typeof isiDevice !== 'undefined') {
-        return isiDevice;
-    }
-    const nav = typeof navigator !== 'undefined' ? navigator : (window as any).navigator;
-    if (!nav) {
-        isiDevice = false;
-    } else {
-        const ua = nav.userAgent || nav.vendor || '';
-        // covers iPhone/iPad/iPod and iPadOS on Intel (Mac with touch points)
-        isiDevice = /iPad|iPhone|iPod/.test(ua)
-            || (nav.platform === 'MacIntel' && (nav as any).maxTouchPoints > 1);
-    }
-    return isiDevice;
+export interface ForceNameWordsData {
+    etag: string;
+    words: ForceNameWords;
 }
 
-export function isRunningStandalone(): boolean {
-    return (window.navigator as any).standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+export function createEmptyForceNameWords(): ForceNameWords {
+    return {
+        middleWordCorporate: [],
+        endWordCorporate: [],
+        middleWordMercenary: [],
+        endWordMercenary: [],
+        preFab: [],
+    };
 }

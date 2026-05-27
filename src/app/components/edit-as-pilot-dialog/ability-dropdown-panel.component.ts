@@ -31,8 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { formatRulesReference, type RulesReference } from '../../models/common.model';
+import { naturalCompare } from '../../utils/sort.util';
 
 export interface AbilityDropdownOption {
     id: string;
@@ -59,10 +60,10 @@ export interface AbilityDropdownOption {
                 <div class="ability-summary">Create a custom ability with your own name, cost, and description</div>
             </div>
             }
-            @if (allowCustom() && abilities().length > 0) {
+            @if (allowCustom() && sortedAbilities().length > 0) {
             <hr class="divider"/>
             }
-            @for (ability of abilities(); track ability.id) {
+            @for (ability of sortedAbilities(); track ability.id) {
                 @let abilityCost = ability.cost ?? 0;
                 @let isDisabled = disabledIds().includes(ability.id) || abilityCost > remainingCost();
                 <div 
@@ -213,9 +214,27 @@ export class AbilityDropdownPanelComponent {
     allowCustom = input<boolean>(true);
     showCost = input<boolean>(true);
     readonly formatRuleReference = formatRulesReference;
+    readonly sortedAbilities = computed(() => {
+        return [...this.abilities()].sort((left, right) => {
+            const leftAvailable = this.isAbilityAvailable(left);
+            const rightAvailable = this.isAbilityAvailable(right);
+            if (leftAvailable !== rightAvailable) {
+                return leftAvailable ? -1 : 1;
+            }
+
+            const nameComparison = naturalCompare(left.name, right.name);
+            return nameComparison || naturalCompare(left.id, right.id);
+        });
+    });
     
     selected = output<string>();
     addCustom = output<void>();
+
+    private isAbilityAvailable(ability: AbilityDropdownOption): boolean {
+        return !this.disabledIds().includes(ability.id)
+            && (ability.cost ?? 0) <= this.remainingCost()
+            && !ability.unitTypeRestricted;
+    }
 
     onSelect(abilityId: string) {
         const ability = this.abilities().find((entry) => entry.id === abilityId);

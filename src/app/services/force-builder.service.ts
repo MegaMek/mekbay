@@ -1301,7 +1301,7 @@ export class ForceBuilderService {
         }
         force.faction.set(faction);
         force.setName(
-            ForceNamerUtil.generateForceNameForFaction(faction),
+            ForceNamerUtil.generateForceNameForFaction(faction, this.dataService.getForceNameWords()),
             false
         );
     }
@@ -2689,7 +2689,7 @@ export class ForceBuilderService {
                 const ownedSlots = slots.filter(s => s.force.owned());
                 if (ownedSlots.length > 0 && ownedSlots.every(s => s.alignment === 'enemy')) {
                     const switchSides = await this.dialogsService.requestConfirmation(
-                        'Your forces are currently assigned to the opposing side in this operation. Would you like to switch sides?',
+                        'Your forces are currently assigned to the hostile side in this operation. Would you like to switch sides?',
                         'Switch Sides?',
                         'info'
                     );

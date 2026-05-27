@@ -167,7 +167,7 @@
             }
             }
             @if (operationEnemySlots().length > 0) {
-            <div class="menu-section-header enemy-header">Opposing</div>
+            <div class="menu-section-header enemy-header">Hostile</div>
             @for (slot of operationEnemySlots(); track slot.force.instanceId()) {
             <button class="menu-item force-item" cdkMenuItem (click)="selectOperationForce(slot)"
                 [class.active-force]="slot.force === forceBuilderService.currentForce()">

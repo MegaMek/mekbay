@@ -132,7 +132,6 @@
             @if (asStats().usesOV) {
             <div class="heat-box">
                 <div class="heat-box-svg-shell">
-                    @let hotDog = forceUnit()?.hasHotDog();
                     <svg class="heat-box-svg" [attr.viewBox]="'0 0 ' + heatBoxViewBoxWidth() + ' ' + heatBoxViewBoxHeight()" preserveAspectRatio="xMidYMid meet">
                         <defs>
                             @if (!isMonochrome()) {
@@ -163,17 +162,19 @@
 
                         <g class="heat-track" [attr.transform]="'translate(' + heatTrackStartX() + ',' + heatTrackStartY() + ')'">
                             <rect x="0" y="0" [attr.width]="heatTrackTotalWidth()" [attr.height]="heatTrackHeight()" rx="8" ry="8" class="heat-track-background-svg"></rect>
-                            @for (level of heatTrackLevels(); track level.key) {
+                            @let extendedHeatTrack = hasExtendedHeatTrack();
+                            @for (level of heatTrackSegments(); track level.key) {
                                 <g
                                     class="heat-level"
-                                    [class.hot-dog]="hotDog"
+                                    [attr.data-heat]="level.heatValue"
+                                    [class.extended-heat]="extendedHeatTrack"
                                     [class.active]="level.active"
                                     [class.pending]="level.pending"
                                     [class.heat-0]="level.key === '0'"
                                     [class.heat-1]="level.key === '1'"
                                     [class.heat-2]="level.key === '2'"
                                     [class.heat-3]="level.key === '3'"
-                                    [class.heat-4]="level.key === '4'"
+                                    [class.heat-4]="level.heatValue >= 4 && level.key !== 'S'"
                                     [class.heat-s]="level.key === 'S'"
                                     [attr.transform]="'translate(' + level.x + ',0)'">
                                     <path [attr.d]="heatLevelPath(level.width, level.roundLeft, level.roundRight)" class="heat-level-cell-svg"></path>

@@ -34,6 +34,7 @@
 import type { Unit } from '../models/units.model';
 import { getForcePacks } from '../models/forcepacks.model';
 import type { DataService } from '../services/data.service';
+import { getUnitVariantGroupKey } from './unit-variant.util';
 
 export type PackUnitEntry = {
     chassis: string;
@@ -49,10 +50,6 @@ export type ResolvedPack = {
     pv: number;
     variantName?: string;
 };
-
-export function getForcePackLookupKey(unit: Pick<Unit, 'chassis' | 'type' | 'subtype'>): string {
-    return `${unit.chassis}|${unit.type}|${unit.subtype}`;
-}
 
 export function resolveForcePackUnits(
     unitList: Array<{ name: string }>,

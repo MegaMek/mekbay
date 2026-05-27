@@ -10,7 +10,6 @@ import {
 } from './services/unit-search-filters.model';
 import { BVCalculatorUtil } from './utils/bv-calculator.util';
 import { getEffectivePilotingSkill } from './utils/cbt-common.util';
-import { getForcePackLookupKey } from './utils/force-pack.util';
 import { parseSemanticQueryAST } from './utils/semantic-filter-ast.util';
 import { PVCalculatorUtil } from './utils/pv-calculator.util';
 import { parseSearchQuery } from './utils/search.util';
@@ -26,6 +25,7 @@ import type {
     UnitSearchWorkerResponseMessage,
     UnitSearchWorkerResultMessage,
 } from './utils/unit-search-worker-protocol.util';
+import { getUnitVariantGroupKey } from './utils/unit-variant.util';
 
 interface WorkerCorpusRuntime {
     corpusVersion: string;
@@ -106,7 +106,7 @@ function buildForcePackIndex(units: Unit[]): Map<string, Set<string>> {
             for (const packUnit of packUnits) {
                 const unit = unitsByName.get(getUnitNameKey(packUnit.name));
                 if (unit) {
-                    lookupKeys.add(getForcePackLookupKey(unit));
+                    lookupKeys.add(getUnitVariantGroupKey(unit));
                 }
             }
         };
@@ -272,7 +272,7 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
         },
         unitBelongsToEra: (unit: Unit, eraName: string, scope?: AvailabilityFilterScope) => getScopedEraUnitNames(eraName, scope).has(unit.name),
         unitBelongsToFaction: (unit: Unit, factionName: string, eraNames?: readonly string[]) => getScopedFactionUnitNames(factionName, eraNames).has(unit.name),
-        unitBelongsToForcePack: (unit: Unit, packName: string) => runtime.forcePackToLookupKey.get(packName)?.has(getForcePackLookupKey(unit)) ?? false,
+        unitBelongsToForcePack: (unit: Unit, packName: string) => runtime.forcePackToLookupKey.get(packName)?.has(getUnitVariantGroupKey(unit)) ?? false,
         getAllEraNames: getEraFilterValues,
         getAllFactionNames: getFactionFilterValues,
         getDisplayName: (filterKey: string, value: string) => workerDisplayNameFns.get(filterKey)?.(value),

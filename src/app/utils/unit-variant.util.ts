@@ -30,31 +30,36 @@
  * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
  * affiliated with Microsoft.
  */
+import type { Unit } from '../models/units.model';
 
-let isiDevice: boolean | undefined = undefined;
-
-export function isAndroid(): boolean {
-    const nav = typeof navigator !== 'undefined' ? navigator : typeof window !== 'undefined' ? (window as any).navigator : undefined;
-    const ua = nav?.userAgent || '';
-    return /Android/i.test(ua);
+export interface UnitVariantGroupIdentity {
+    chassis: string;
+    asType: string;
+    omni: boolean;
 }
 
-export function isIOS(): boolean {
-    if (typeof isiDevice !== 'undefined') {
-        return isiDevice;
-    }
-    const nav = typeof navigator !== 'undefined' ? navigator : (window as any).navigator;
-    if (!nav) {
-        isiDevice = false;
-    } else {
-        const ua = nav.userAgent || nav.vendor || '';
-        // covers iPhone/iPad/iPod and iPadOS on Intel (Mac with touch points)
-        isiDevice = /iPad|iPhone|iPod/.test(ua)
-            || (nav.platform === 'MacIntel' && (nav as any).maxTouchPoints > 1);
-    }
-    return isiDevice;
+export type UnitVariantGroupLike = Pick<Unit, 'chassis' | 'as' | 'omni'>;
+
+export function getUnitVariantGroupIdentity(unit: UnitVariantGroupLike): UnitVariantGroupIdentity {
+    return {
+        chassis: unit.chassis,
+        asType: unit.as.TP,
+        omni: !!unit.omni,
+    };
 }
 
-export function isRunningStandalone(): boolean {
-    return (window.navigator as any).standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+export function getUnitVariantGroupKey(unit: UnitVariantGroupLike): string {
+    return `${unit.chassis}|${unit.as.TP}|${!!unit.omni}`;
+}
+
+export function isSameVariantGroup(source: UnitVariantGroupLike, target: UnitVariantGroupLike): boolean {
+    return source.chassis === target.chassis
+        && source.as.TP === target.as.TP
+        && !!source.omni === !!target.omni;
+}
+
+export function unitMatchesVariantGroup(unit: UnitVariantGroupLike, group: UnitVariantGroupIdentity): boolean {
+    return unit.chassis === group.chassis
+        && unit.as.TP === group.asType
+        && !!unit.omni === group.omni;
 }

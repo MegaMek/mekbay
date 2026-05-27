@@ -88,6 +88,22 @@
     overflow-y: auto;
 }
 
+.virtual-hangar-list {
+    display: block;
+    gap: 0;
+    padding: 0;
+    touch-action: pan-y;
+}
+
+:host ::ng-deep .virtual-hangar-list .cdk-virtual-scroll-content-wrapper {
+    width: 100%;
+}
+
+.virtual-hangar-item {
+    box-sizing: border-box;
+    padding: 0 4px 4px;
+}
+
 .force-entry {
     border: 1px solid transparent;
     padding: 8px;

@@ -1,6 +1,9 @@
 :host {
-    height: fit-content;
-    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    height: 100%;
+    min-height: 0;
     width: 100%;
     container-type: inline-size;
 }
@@ -17,6 +20,7 @@
 
 .tab-footer {
     display: flex;
+    flex: 0 0 auto;
     justify-content: flex-end;
     align-items: center;
     padding: 4px;
@@ -78,7 +82,13 @@
 .variants-list {
     display: flex;
     flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
     width: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
 }
 
 .variants-list unit-card-expanded {

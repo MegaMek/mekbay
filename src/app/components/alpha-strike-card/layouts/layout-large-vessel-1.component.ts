@@ -33,7 +33,8 @@
 
 import { Component, ChangeDetectionStrategy, computed } from '@angular/core';
 import { type CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
-import { AsLayoutBaseComponent, type SpecialAbilityState } from './layout-base.component';
+import { AsLayoutBaseComponent } from './layout-base.component';
+import type { SpecialAbilityState } from '../../../models/as-special-ability-state.model';
 
 interface CriticalRowLayout {
     key: string;

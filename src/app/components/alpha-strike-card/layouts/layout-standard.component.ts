@@ -121,7 +121,7 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
         if (groundMoveInches <= 0) return formatMovement(0, '', this.useHex());
 
         const sprintInches = Math.ceil(groundMoveInches * 1.5);
-        return formatMovement(sprintInches, '', this.useHex());
+        return this.formatSprintMovementDisplay('', sprintInches);
     });
 
     tmmDisplay = computed<string>(() => {
@@ -152,6 +152,18 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
     // Pending heat change (delta: 0 = no change)
     pendingHeat = computed<number>(() => {
         return this.forceUnit()?.getState().pendingHeat() ?? 0;
+    });
+
+    heatTrackLevels = computed<number[]>(() => {
+        return this.forceUnit()?.heatTrackLevels('committed') ?? [0, 1, 2, 3];
+    });
+
+    shutdownHeatThreshold = computed<number>(() => {
+        return this.forceUnit()?.shutdownHeatThreshold('committed') ?? 4;
+    });
+
+    hasExtendedHeatTrack = computed<boolean>(() => {
+        return this.heatTrackLevels().length > 4;
     });
 
     // Damage values affected by weapon critical hits: -1 per hit
@@ -291,33 +303,35 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
         return Math.max(0, this.heatTrackHeight() - (this.heatCellInset() * 2));
     });
 
-    protected heatTrackLevels = computed(() => {
+    protected heatTrackSegments = computed(() => {
         const pendingHeatDelta = this.pendingHeat();
         const currentHeat = this.heatLevel();
         const effectiveHeat = currentHeat + pendingHeatDelta;
-        const hotDog = this.forceUnit()?.hasHotDog() ?? false;
-        const keys = hotDog ? ['0', '1', '2', '3', '4', 'S'] as const : ['0', '1', '2', '3', 'S'] as const;
-        const segmentWidth = hotDog ? 21 : 24;
+        const heatLevels = this.heatTrackLevels();
+        const shutdownHeatThreshold = this.shutdownHeatThreshold();
+        const heatSegments = [
+            ...heatLevels.map((heatValue) => ({ key: heatValue.toString(), label: heatValue.toString(), heatValue, isShutdown: false })),
+            { key: 'S', label: 'S', heatValue: shutdownHeatThreshold, isShutdown: true },
+        ];
+        const segmentWidth = Math.min(24, 126 / heatSegments.length);
 
-        return keys.map((key, index) => {
-            const isShutdown = key === 'S';
-            const heatValue = isShutdown ? (hotDog ? 5 : 4) : Number(key);
-
+        return heatSegments.map((segment, index) => {
             return {
-                key,
-                label: key,
+                key: segment.key,
+                label: segment.label,
+                heatValue: segment.heatValue,
                 x: index * segmentWidth,
                 width: segmentWidth,
-                active: isShutdown ? currentHeat >= heatValue : currentHeat === heatValue,
-                pending: pendingHeatDelta !== 0 && (isShutdown ? effectiveHeat >= heatValue : effectiveHeat === heatValue),
+                active: segment.isShutdown ? currentHeat >= segment.heatValue : currentHeat === segment.heatValue,
+                pending: pendingHeatDelta !== 0 && (segment.isShutdown ? effectiveHeat >= segment.heatValue : effectiveHeat === segment.heatValue),
                 roundLeft: index === 0,
-                roundRight: index === keys.length - 1,
+                roundRight: index === heatSegments.length - 1,
             };
         });
     });
 
     protected heatTrackTotalWidth = computed<number>(() => {
-        const levels = this.heatTrackLevels();
+        const levels = this.heatTrackSegments();
         if (levels.length === 0) {
             return 0;
         }
