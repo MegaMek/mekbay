@@ -18,6 +18,9 @@ type SvgInteractionServicePrivate = {
         handler: (evt: PointerEvent, primaryAction: boolean) => void,
         signal: AbortSignal
     ): void;
+    updateUnit(unit: any): void;
+    setupInteractions(svg: SVGSVGElement): void;
+    getHeatDiffMarkerData(): { el: SVGElement | null; heat: number; baselineHeat: number; containerRect: DOMRect } | null;
 };
 
 describe('SvgInteractionService', () => {
@@ -153,6 +156,58 @@ describe('SvgInteractionService', () => {
 
         expect(handler).not.toHaveBeenCalled();
     });
+
+    it('reports heat drag marker deltas from the pending heat at drag start', () => {
+        const { svg, heat5, heat10, heat12 } = createHeatScaleSvg();
+        const heatState: { current: number; next: number | null } = { current: 5, next: null };
+        const unit = {
+            id: 'unit-a',
+            svg: () => svg,
+            getHeat: () => heatState,
+            setHeat: jasmine.createSpy('setHeat').and.callFake((heat: number) => {
+                heatState.next = heat;
+            }),
+            getUnit: () => ({ type: 'Mek' }),
+            getInventory: () => []
+        };
+
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        heat5.dispatchEvent(createPointerEvent('pointerdown', { pointerId: 51, pointerType: 'pen', clientY: 50 }));
+
+        expect(service.getHeatDiffMarkerData()).toEqual(jasmine.objectContaining({
+            el: heat5,
+            heat: 5,
+            baselineHeat: 5
+        }));
+
+        svg.dispatchEvent(createPointerEvent('pointermove', { pointerId: 51, pointerType: 'pen', clientY: 100 }));
+
+        expect(service.getHeatDiffMarkerData()).toEqual(jasmine.objectContaining({
+            el: heat10,
+            heat: 10,
+            baselineHeat: 5
+        }));
+
+        svg.dispatchEvent(createPointerEvent('pointerup', { pointerId: 51, pointerType: 'pen', clientY: 100 }));
+
+        heat10.dispatchEvent(createPointerEvent('pointerdown', { pointerId: 52, pointerType: 'pen', clientY: 100 }));
+
+        expect(service.getHeatDiffMarkerData()).toEqual(jasmine.objectContaining({
+            el: heat10,
+            heat: 10,
+            baselineHeat: 10
+        }));
+
+        svg.dispatchEvent(createPointerEvent('pointermove', { pointerId: 52, pointerType: 'pen', clientY: 120 }));
+
+        expect(service.getHeatDiffMarkerData()).toEqual(jasmine.objectContaining({
+            el: heat12,
+            heat: 12,
+            baselineHeat: 10
+        }));
+    });
 });
 
 function createPointerEvent(type: string, init: PointerEventInit): PointerEvent {
@@ -163,4 +218,36 @@ function createPointerEvent(type: string, init: PointerEventInit): PointerEvent 
         clientY: 10,
         ...init
     });
+}
+
+function createHeatScaleSvg(): { svg: SVGSVGElement; heat5: SVGElement; heat10: SVGElement; heat12: SVGElement } {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const heatScale = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    heatScale.setAttribute('id', 'heatScale');
+    svg.appendChild(heatScale);
+
+    const heat5 = createHeatElement(5, 50);
+    const heat10 = createHeatElement(10, 100);
+    const heat12 = createHeatElement(12, 120);
+
+    heatScale.append(heat5, heat10, heat12);
+    return { svg, heat5, heat10, heat12 };
+}
+
+function createHeatElement(heat: number, centerY: number): SVGElement {
+    const element = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    element.classList.add('heat');
+    element.setAttribute('heat', String(heat));
+    spyOn(element, 'getBoundingClientRect').and.returnValue({
+        x: 0,
+        y: centerY - 5,
+        top: centerY - 5,
+        bottom: centerY + 5,
+        left: 0,
+        right: 10,
+        width: 10,
+        height: 10,
+        toJSON: () => ({})
+    } as DOMRect);
+    return element;
 }

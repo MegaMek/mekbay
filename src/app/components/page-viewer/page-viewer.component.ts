@@ -2367,7 +2367,7 @@ export class PageViewerComponent implements AfterViewInit {
 
         return left.el === right.el &&
             left.heat === right.heat &&
-            left.currentHeat === right.currentHeat &&
+            left.baselineHeat === right.baselineHeat &&
             left.containerRect.left === right.containerRect.left &&
             left.containerRect.top === right.containerRect.top &&
             left.containerRect.width === right.containerRect.width &&

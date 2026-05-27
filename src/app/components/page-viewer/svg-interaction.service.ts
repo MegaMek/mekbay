@@ -60,7 +60,7 @@ export interface InteractionState {
     clickTarget: SVGElement | null;
     isHeatDragging: boolean;
     diffHeatMarkerVisible: WritableSignal<boolean>;
-    heatMarkerData: WritableSignal<{ el: SVGElement | null, heat: number } | null>;
+    heatMarkerData: WritableSignal<{ el: SVGElement | null, heat: number; baselineHeat: number } | null>;
     isPickerOpen: WritableSignal<boolean>;
 }
 
@@ -86,7 +86,7 @@ export class SvgInteractionService {
         clickTarget: null,
         isHeatDragging: false,
         diffHeatMarkerVisible: signal(false),
-        heatMarkerData: signal<{ el: SVGElement | null, heat: number } | null>(null),
+        heatMarkerData: signal<{ el: SVGElement | null, heat: number; baselineHeat: number } | null>(null),
         isPickerOpen: signal(false)
     };
 
@@ -147,20 +147,19 @@ export class SvgInteractionService {
      * Gets the heat diff marker data for the HeatDiffMarkerComponent.
      * Returns null if no marker should be shown.
      */
-    getHeatDiffMarkerData(): { el: SVGElement | null; heat: number; currentHeat: number; containerRect: DOMRect } | null {
+    getHeatDiffMarkerData(): { el: SVGElement | null; heat: number; baselineHeat: number; containerRect: DOMRect } | null {
         const data = this.state.heatMarkerData();
         if (!data?.el) return null;
 
         const currentUnit = this.unit();
         if (!currentUnit) return null;
 
-        const currentHeat = currentUnit.getHeat();
         const containerRect = this.containerRef.nativeElement.getBoundingClientRect();
 
         return {
             el: data.el,
             heat: data.heat,
-            currentHeat: currentHeat.current,
+            baselineHeat: data.baselineHeat,
             containerRect
         };
     }
@@ -991,6 +990,7 @@ export class SvgInteractionService {
         let dragState: {
             pointerId: number;
             startElement: SVGElement;
+            baselineHeat: number;
         } | null = null;
 
         const findClosestHeat = (clientY: number): SVGElement | null => {
@@ -1010,12 +1010,18 @@ export class SvgInteractionService {
 
         const updateHeatMarker = (clientY: number) => {
             const closestHeat = findClosestHeat(clientY);
-            if (closestHeat) {
-                this.state.clickTarget = closestHeat;
+            if (closestHeat && dragState) {
                 const heatValue = Number(closestHeat.getAttribute('heat'));
+                const currentMarker = this.state.heatMarkerData();
+                if (currentMarker?.el === closestHeat && currentMarker.heat === heatValue) {
+                    return;
+                }
+
+                this.state.clickTarget = closestHeat;
                 this.state.heatMarkerData.set({
                     el: closestHeat,
-                    heat: heatValue
+                    heat: heatValue,
+                    baselineHeat: dragState.baselineHeat
                 });
             }
         };
@@ -1066,19 +1072,17 @@ export class SvgInteractionService {
             el.addEventListener('pointerdown', (evt: PointerEvent) => {
                 evt.preventDefault();
                 if (dragState) return;
+                const currentHeat = unit.getHeat();
                 this.zoomPanService.pointerMoved = false;
                 dragState = {
                     pointerId: evt.pointerId,
-                    startElement: el
+                    startElement: el,
+                    baselineHeat: currentHeat.next ?? currentHeat.current
                 };
                 this.state.isHeatDragging = true;
                 this.zoomPanService.isPanning = false;
                 this.state.clickTarget = el as SVGElement;
-                const heatValue = Number(el.getAttribute('heat'));
-                this.state.heatMarkerData.set({
-                    el: this.state.clickTarget,
-                    heat: heatValue
-                });
+                updateHeatMarker(evt.clientY);
                 svg.addEventListener('pointerdown', onPointerDown, { passive: false, signal: signal });
                 svg.addEventListener('pointermove', onPointerMove, { passive: false, signal });
                 svg.addEventListener('pointerup', onPointerUp, { passive: false, signal });
