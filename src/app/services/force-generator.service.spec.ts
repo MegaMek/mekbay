@@ -10,6 +10,7 @@ import { MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../models/mulfactions.
 import type { AvailabilitySource } from '../models/options.model';
 import type { Unit } from '../models/units.model';
 import type { ForcePreviewEntry } from '../models/force-preview.model';
+import { createEmptyForceNameWords } from '../models/force-name-words.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { DataService } from './data.service';
 import type { ForceGenerationContext } from './force-generator.service';
@@ -66,6 +67,7 @@ describe('ForceGeneratorService', () => {
         getMegaMekFactionByKey: jasmine.createSpy('getMegaMekFactionByKey').and.callFake((factionKey: string) => {
             return megaMekFactionsByKey.get(factionKey);
         }),
+        getForceNameWords: jasmine.createSpy('getForceNameWords').and.callFake(() => createEmptyForceNameWords()),
     };
 
     function createEra(id: number, name: string, fromYear = 3151, toYear = 3152): Era {

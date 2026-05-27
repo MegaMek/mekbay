@@ -22,6 +22,8 @@ import { MegaMekRulesetsCatalogService } from './catalogs/megamek-rulesets-catal
 import { QuirksCatalogService } from './catalogs/quirks-catalog.service';
 import { SarnaPageTitlesCatalogService } from './catalogs/sarna-page-titles-catalog.service';
 import { SourcebooksCatalogService } from './catalogs/sourcebooks-catalog.service';
+import { ForceNameWordsCatalogService } from './catalogs/force-name-words-catalog.service';
+import { createEmptyForceNameWords } from '../models/force-name-words.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 
 function createUnit(name: string): Unit {
@@ -103,6 +105,10 @@ describe('DataService', () => {
         initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
         getSourcebookByAbbrev: jasmine.createSpy('getSourcebookByAbbrev').and.returnValue(undefined),
         getSourcebookTitle: jasmine.createSpy('getSourcebookTitle').and.callFake((abbrev: string) => abbrev),
+    };
+    const forceNameWordsCatalogMock = {
+        initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
+        getWords: jasmine.createSpy('getWords').and.callFake(() => createEmptyForceNameWords()),
     };
     const tagsServiceMock = {
         setRefreshUnitsCallback: jasmine.createSpy('setRefreshUnitsCallback'),
@@ -205,6 +211,10 @@ describe('DataService', () => {
         sourcebooksCatalogMock.getSourcebookByAbbrev.and.returnValue(undefined);
         sourcebooksCatalogMock.getSourcebookTitle.calls.reset();
         sourcebooksCatalogMock.getSourcebookTitle.and.callFake((abbrev: string) => abbrev);
+        forceNameWordsCatalogMock.initialize.calls.reset();
+        forceNameWordsCatalogMock.initialize.and.resolveTo(undefined);
+        forceNameWordsCatalogMock.getWords.calls.reset();
+        forceNameWordsCatalogMock.getWords.and.callFake(() => createEmptyForceNameWords());
         tagsServiceMock.setRefreshUnitsCallback.calls.reset();
         tagsServiceMock.setNotifyStoreUpdatedCallback.calls.reset();
         tagsServiceMock.registerWsHandlers.calls.reset();
@@ -236,6 +246,7 @@ describe('DataService', () => {
                 { provide: QuirksCatalogService, useValue: quirksCatalogMock },
                 { provide: SarnaPageTitlesCatalogService, useValue: sarnaPageTitlesCatalogMock },
                 { provide: SourcebooksCatalogService, useValue: sourcebooksCatalogMock },
+                { provide: ForceNameWordsCatalogService, useValue: forceNameWordsCatalogMock },
                 { provide: TagsService, useValue: tagsServiceMock },
                 { provide: PublicTagsService, useValue: publicTagsServiceMock },
                 { provide: LoggerService, useValue: loggerServiceMock },
