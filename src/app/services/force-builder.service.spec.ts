@@ -6,6 +6,7 @@ import type { ForceUnit } from '../models/force-unit.model';
 import { LoadForceEntry } from '../models/load-force-entry.model';
 import type { Unit } from '../models/units.model';
 import type { FormationTypeDefinition } from '../utils/formation-type.model';
+import { createEmptyForceNameWords } from '../models/force-name-words.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { ForceBuilderService } from './force-builder.service';
 
@@ -79,6 +80,7 @@ function createHarness(formation: FormationTypeDefinition, factions: Faction[]) 
 
     service.dataService = {
         getFactions: () => factions,
+        getForceNameWords: () => createEmptyForceNameWords(),
     };
     service.injector = {
         get: () => filtersService,
