@@ -457,6 +457,17 @@
                     <option value="false">Disabled</option>
                 </select>
             </div>
+            <div class="option-row">
+                <label for="recordSheetDoubleTapZoomReset">Double-tap zoom reset:</label>
+                <select id="recordSheetDoubleTapZoomReset" class="bt-select"
+                    [value]="optionsService.options().recordSheetDoubleTapZoomReset"
+                    (change)="onRecordSheetDoubleTapZoomResetChange($event)">
+                    <option value="contextual">Contextual (default)</option>
+                    <option value="fit-to-screen">Fit to screen</option>
+                    <option value="full-width">Full width</option>
+                    <option value="disabled">Disabled</option>
+                </select>
+            </div>
             <div class="option-col">
                 <div class="option-row">
                     <label for="allowMultipleActiveSheets">Multiple active sheets:</label>

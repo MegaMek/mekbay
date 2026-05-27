@@ -40,7 +40,8 @@ import {
     viewChild,
     type ElementRef,
     output,
-    computed
+    computed,
+    DestroyRef
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Overlay } from '@angular/cdk/overlay';
@@ -72,12 +73,18 @@ export class PageTurnSummaryPanelComponent {
     private injector = inject(Injector);
     private overlay = inject(Overlay);
     private parent = inject(PageInteractionOverlayComponent);
+    private destroyRef = inject(DestroyRef);
     unit = this.parent.unit;
     force = this.parent.force;
     sliderContainer = viewChild<ElementRef<HTMLDivElement>>('sliderContainer');
     private activePointerId: number | null = null;
+    private activeDragTarget: Element | null = null;
     endTurnForAllButtonVisible = input<boolean>(false);
     endTurnForAllClicked = output<void>();
+
+    constructor() {
+        this.destroyRef.onDestroy(() => this.stopDrag());
+    }
 
     endTurnForAll(event: MouseEvent) {
         event.stopPropagation();
@@ -325,12 +332,15 @@ export class PageTurnSummaryPanelComponent {
         event.preventDefault();
         const container = this.sliderContainer()?.nativeElement;
         if (!container) return;
+        this.stopDrag();
         this.activePointerId = event.pointerId;
+        this.activeDragTarget = event.target instanceof Element ? event.target : null;
         try {
-            (event.target as Element).setPointerCapture(this.activePointerId);
+            this.activeDragTarget?.setPointerCapture(this.activePointerId);
         } catch { /* ignore */ }
         window.addEventListener('pointermove', this.onPointerMove);
-        window.addEventListener('pointerup', this.onPointerUp, { once: true });
+        window.addEventListener('pointerup', this.onPointerEnd);
+        window.addEventListener('pointercancel', this.onPointerEnd);
         this.onPointerMove(event);
     }
 
@@ -347,15 +357,26 @@ export class PageTurnSummaryPanelComponent {
         u.turnState().moveDistance.set(value);
     };
 
-    private onPointerUp = (ev: PointerEvent) => {
+    private onPointerEnd = (ev: PointerEvent) => {
+        this.stopDrag(ev);
+    };
+
+    private stopDrag(ev?: PointerEvent): void {
+        if (ev && this.activePointerId != null && ev.pointerId !== this.activePointerId) {
+            return;
+        }
+
         if (this.activePointerId != null) {
             try {
-                (ev.target as Element).releasePointerCapture(this.activePointerId);
+                this.activeDragTarget?.releasePointerCapture(this.activePointerId);
             } catch { /* ignore */ }
         }
         this.activePointerId = null;
+        this.activeDragTarget = null;
         window.removeEventListener('pointermove', this.onPointerMove);
-    };
+        window.removeEventListener('pointerup', this.onPointerEnd);
+        window.removeEventListener('pointercancel', this.onPointerEnd);
+    }
 
     // Keyboard support when the slider container is focused
     onKeyDown(event: KeyboardEvent) {

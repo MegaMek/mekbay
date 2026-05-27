@@ -1,0 +1,34 @@
+:host {
+    display: contents;
+}
+
+.page-wrapper.shadow-page {
+    position: absolute;
+    top: 0;
+    left: 0;
+    box-sizing: border-box;
+    background-color: transparent;
+    cursor: pointer;
+}
+
+.page-wrapper.shadow-page.has-svg {
+    background-color: #fff;
+}
+
+.page-wrapper.shadow-page.dimmed {
+    opacity: 0.1;
+}
+
+.page-wrapper.shadow-page svg {
+    pointer-events: none;
+}
+
+:host-context(.swiping) .page-wrapper.shadow-page {
+    transition: none;
+}
+
+@media screen {
+    :host-context(.night-mode) .page-wrapper.shadow-page.has-svg {
+        background-color: unset;
+    }
+}

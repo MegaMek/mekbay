@@ -51,7 +51,7 @@ import { LayoutService } from '../../services/layout.service';
 export interface HeatDiffMarkerData {
     el: SVGElement | null;
     heat: number;
-    currentHeat: number;
+    baselineHeat: number;
     containerRect: DOMRect;
 }
 
@@ -161,7 +161,7 @@ export class HeatDiffMarkerComponent {
         const markerData = this.data();
         if (!markerData) return '#666';
 
-        const diff = markerData.heat - markerData.currentHeat;
+        const diff = markerData.heat - markerData.baselineHeat;
         if (diff < 0) return 'var(--cold-color)';
         if (diff > 0) return 'var(--hot-color)';
         return '#666';
@@ -171,7 +171,7 @@ export class HeatDiffMarkerComponent {
         const markerData = this.data();
         if (!markerData) return '';
 
-        const diff = markerData.heat - markerData.currentHeat;
+        const diff = markerData.heat - markerData.baselineHeat;
         const diffText = (diff >= 0 ? '+' : '') + diff.toString();
         
         const isMouse = !this.layoutService.isTouchInput();
