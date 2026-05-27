@@ -116,6 +116,27 @@ describe('SvgInteractionService', () => {
         expect(handler).toHaveBeenCalledOnceWith(upEvent, true);
     });
 
+    it('anchors tap action coordinates to pointerdown when the pen drifts before pointerup', () => {
+        const el = document.createElementNS('http://www.w3.org/2000/svg', 'path') as SVGElement;
+        const abortController = new AbortController();
+        const handler = jasmine.createSpy('handler');
+        spyOn(el, 'setPointerCapture').and.stub();
+        spyOn(el, 'hasPointerCapture').and.returnValue(true);
+        spyOn(el, 'releasePointerCapture').and.stub();
+
+        service.addSvgTapHandler(el, handler, abortController.signal);
+
+        el.dispatchEvent(createPointerEvent('pointerdown', { pointerId: 41, pointerType: 'pen', button: 0, buttons: 1, clientX: 25, clientY: 30 }));
+        el.dispatchEvent(createPointerEvent('pointerup', { pointerId: 41, pointerType: 'pen', button: 0, clientX: 180, clientY: 210 }));
+
+        expect(handler).toHaveBeenCalledTimes(1);
+        const event = handler.calls.mostRecent().args[0] as PointerEvent;
+        expect(event.type).toBe('pointerup');
+        expect(event.clientX).toBe(25);
+        expect(event.clientY).toBe(30);
+        expect(handler.calls.mostRecent().args[1]).toBeTrue();
+    });
+
     it('still cancels a mouse tap when the pointer leaves without capture', () => {
         const el = document.createElementNS('http://www.w3.org/2000/svg', 'path') as SVGElement;
         const abortController = new AbortController();

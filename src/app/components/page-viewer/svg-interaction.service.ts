@@ -208,6 +208,7 @@ export class SvgInteractionService {
         const globalEventOptions = { passive: false, signal, capture: true };
 
         let pointerId: number | null = null;
+        let tapStartEvent: PointerEvent | null = null;
         let globalListenersActive = false;
 
         const releasePointerCapture = (id: number | null) => {
@@ -225,6 +226,7 @@ export class SvgInteractionService {
             this.zoomPanService.pointerMoved = false;
             clearLongTouch();
             pointerId = evt.pointerId;
+            tapStartEvent = evt;
             try {
                 el.setPointerCapture(evt.pointerId);
             } catch { /* Ignore unsupported pointer capture */ }
@@ -240,6 +242,7 @@ export class SvgInteractionService {
         const clearLongTouch = () => {
             const activePointerId = pointerId;
             pointerId = null;
+            tapStartEvent = null;
             removeGlobalPointerListeners();
             if (longTouchTimer) {
                 clearTimeout(longTouchTimer);
@@ -248,25 +251,63 @@ export class SvgInteractionService {
             releasePointerCapture(activePointerId);
         };
 
+        const getAnchoredTapEvent = (evt: PointerEvent) => {
+            const anchor = tapStartEvent;
+            if (!anchor || (anchor.clientX === evt.clientX && anchor.clientY === evt.clientY)) {
+                return evt;
+            }
+
+            return new PointerEvent(evt.type, {
+                bubbles: evt.bubbles,
+                cancelable: evt.cancelable,
+                composed: evt.composed,
+                detail: evt.detail,
+                view: window,
+                screenX: anchor.screenX,
+                screenY: anchor.screenY,
+                clientX: anchor.clientX,
+                clientY: anchor.clientY,
+                ctrlKey: evt.ctrlKey,
+                shiftKey: evt.shiftKey,
+                altKey: evt.altKey,
+                metaKey: evt.metaKey,
+                button: evt.button,
+                buttons: evt.buttons,
+                relatedTarget: evt.relatedTarget,
+                pointerId: evt.pointerId,
+                width: evt.width,
+                height: evt.height,
+                pressure: evt.pressure,
+                tangentialPressure: evt.tangentialPressure,
+                tiltX: evt.tiltX,
+                tiltY: evt.tiltY,
+                twist: evt.twist,
+                pointerType: evt.pointerType,
+                isPrimary: evt.isPrimary
+            });
+        };
+
         const upHandlerSecondary = (evt: PointerEvent) => {
             if (evt.pointerId !== pointerId) return;
+            const tapEvent = getAnchoredTapEvent(evt);
             clearLongTouch();
             evt.stopPropagation();
             evt.preventDefault();
             if (this.state.clickTarget && !this.zoomPanService.pointerMoved) {
-                handler(evt, false);
+                handler(tapEvent, false);
             }
             this.state.clickTarget = null;
         };
 
         const upHandler = (evt: PointerEvent) => {
             if (evt.pointerId !== pointerId) return;
+            const tapEvent = getAnchoredTapEvent(evt);
             clearLongTouch();
             evt.preventDefault();
             if (this.state.clickTarget && !this.zoomPanService.pointerMoved) {
                 let isLeftClick = true;
                 isLeftClick = evt.button === 0;
-                handler(evt, isLeftClick);
+                handler(tapEvent, isLeftClick);
             }
             this.state.clickTarget = null;
         };
