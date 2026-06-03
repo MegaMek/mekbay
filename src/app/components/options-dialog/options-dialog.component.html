@@ -566,6 +566,19 @@
             }
             @case ('Advanced') {
             <div class="settings-view-content">
+            <div class="option-col">
+                <div class="option-row">
+                    <label for="performanceMode">Performance mode:</label>
+                    <select id="performanceMode" class="bt-select" [value]="optionsService.options().performanceMode"
+                        (change)="onPerformanceModeChange($event)">
+                        <option value="false">Disabled (default)</option>
+                        <option value="true">Enabled</option>
+                    </select>
+                </div>
+                <div class="description">
+                    <p>Reduces expensive visual effects in components that support a lighter rendering path.</p>
+                </div>
+            </div>
             <div class="option-row">
                 <label for="pickerStyle">Picker style:</label>
                 <select id="pickerStyle" class="bt-select" [value]="optionsService.options().pickerStyle"

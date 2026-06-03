@@ -172,6 +172,8 @@ describe('PageViewerSwipeDomService', () => {
             }]
         };
         const setPageWrapperContentState = jasmine.createSpy('setPageWrapperContentState');
+        const setSwipePlaceholderContent = jasmine.createSpy('setSwipePlaceholderContent');
+        const clearSwipePlaceholderContent = jasmine.createSpy('clearSwipePlaceholderContent');
         const setWrapperSelectedState = jasmine.createSpy('setWrapperSelectedState');
         const setSwipeNeighborVisibilityState = jasmine.createSpy('setSwipeNeighborVisibilityState');
         const attachSvgToWrapper = jasmine.createSpy('attachSvgToWrapper').and.callFake(({ wrapper, svg }) => {
@@ -191,7 +193,10 @@ describe('PageViewerSwipeDomService', () => {
             visiblePages: 1,
             readOnly: false,
             showFluff: true,
+            performanceMode: false,
             setPageWrapperContentState,
+            setSwipePlaceholderContent,
+            clearSwipePlaceholderContent,
             setWrapperSelectedState,
             setSwipeNeighborVisibilityState,
             attachSvgToWrapper,
@@ -204,6 +209,77 @@ describe('PageViewerSwipeDomService', () => {
         expect(setPageWrapperContentState).toHaveBeenCalledWith(slot, false);
         expect(slotStates[0].attachedSvg).toBe(nextSvg);
         expect(swipeSlotSvgs).toEqual([nextSvg]);
+    });
+
+    it('uses placeholders for swipe neighbors in performance mode without requiring an svg', () => {
+        const slot = document.createElement('div');
+        const slotStates: PageViewerSwipeRendererSlotState[] = [{
+            slotIndex: 0,
+            slotOffset: 1,
+            slotLeft: 1000,
+            slotRight: 2000,
+            unitIndex: 1,
+            element: slot,
+            attachedSvg: null
+        }];
+        const swipeSlotSvgs: (SVGSVGElement | null)[] = [null];
+        const unit = { id: 'unit-1', getDisplayName: () => 'Locust LCT-1V' } as never;
+        const renderUpdate = {
+            clearSlotIndices: [],
+            attachedUnitToSlotMap: new Map<number, number>(),
+            slotInstructions: [{
+                slotIndex: 0,
+                unitIndex: 1,
+                unitId: 'unit-1',
+                svg: null,
+                decision: {
+                    action: 'attach' as const,
+                    overlayMode: 'page' as const,
+                    updateVisualState: true,
+                    isSelected: false,
+                    showNeighborVisible: true
+                }
+            }]
+        };
+        const setPageWrapperContentState = jasmine.createSpy('setPageWrapperContentState');
+        const setSwipePlaceholderContent = jasmine.createSpy('setSwipePlaceholderContent');
+        const clearSwipePlaceholderContent = jasmine.createSpy('clearSwipePlaceholderContent');
+        const setWrapperSelectedState = jasmine.createSpy('setWrapperSelectedState');
+        const setSwipeNeighborVisibilityState = jasmine.createSpy('setSwipeNeighborVisibilityState');
+        const attachSvgToWrapper = jasmine.createSpy('attachSvgToWrapper');
+        const applyFluffImageVisibilityToSvg = jasmine.createSpy('applyFluffImageVisibilityToSvg');
+        const bindWrapperInteractiveLayers = jasmine.createSpy('bindWrapperInteractiveLayers');
+        const getOrCreateInteractionOverlay = jasmine.createSpy('getOrCreateInteractionOverlay');
+
+        const displayedUnitIds = service.applyRenderUpdate({
+            addOnly: false,
+            slotStates,
+            swipeSlotSvgs,
+            renderUpdate,
+            resolveUnit: () => unit,
+            scale: 1,
+            visiblePages: 1,
+            readOnly: false,
+            showFluff: false,
+            performanceMode: true,
+            setPageWrapperContentState,
+            setSwipePlaceholderContent,
+            clearSwipePlaceholderContent,
+            setWrapperSelectedState,
+            setSwipeNeighborVisibilityState,
+            attachSvgToWrapper,
+            applyFluffImageVisibilityToSvg,
+            bindWrapperInteractiveLayers,
+            getOrCreateInteractionOverlay
+        });
+
+        expect(Array.from(displayedUnitIds)).toEqual(['unit-1']);
+        expect(setPageWrapperContentState).toHaveBeenCalledWith(slot, false);
+        expect(setSwipePlaceholderContent).toHaveBeenCalledWith(slot, unit);
+        expect(setSwipeNeighborVisibilityState).toHaveBeenCalledWith(slot, true);
+        expect(attachSvgToWrapper).not.toHaveBeenCalled();
+        expect(bindWrapperInteractiveLayers).not.toHaveBeenCalled();
+        expect(swipeSlotSvgs).toEqual([null]);
     });
 
     it('resets swipe slots and clears slot bookkeeping', () => {
@@ -243,6 +319,7 @@ describe('PageViewerSwipeDomService', () => {
             attachedSvg: svg
         }];
         const setPageWrapperContentState = jasmine.createSpy('setPageWrapperContentState');
+        const clearSwipePlaceholderContent = jasmine.createSpy('clearSwipePlaceholderContent');
         const setSwipeNeighborVisibilityState = jasmine.createSpy('setSwipeNeighborVisibilityState');
         const attachedUnitToSlotMap = new Map<number, number>([[2, 0]]);
 
@@ -251,6 +328,7 @@ describe('PageViewerSwipeDomService', () => {
             slotIndicesToClear: [0],
             attachedUnitToSlotMap,
             setPageWrapperContentState,
+            clearSwipePlaceholderContent,
             setSwipeNeighborVisibilityState
         });
 
@@ -258,6 +336,7 @@ describe('PageViewerSwipeDomService', () => {
         expect(slotStates[0].attachedSvg).toBeNull();
         expect(attachedUnitToSlotMap.has(2)).toBeFalse();
         expect(setPageWrapperContentState).toHaveBeenCalledWith(slot, false);
+        expect(clearSwipePlaceholderContent).toHaveBeenCalledWith(slot);
         expect(setSwipeNeighborVisibilityState).toHaveBeenCalledWith(slot, false);
     });
 
@@ -287,6 +366,9 @@ describe('PageViewerSwipeDomService', () => {
             }
         };
         const attachedUnitToSlotMap = new Map<number, number>();
+        const setPageWrapperContentState = jasmine.createSpy('setPageWrapperContentState');
+        const setSwipePlaceholderContent = jasmine.createSpy('setSwipePlaceholderContent');
+        const clearSwipePlaceholderContent = jasmine.createSpy('clearSwipePlaceholderContent');
         const setWrapperSelectedState = jasmine.createSpy('setWrapperSelectedState');
         const setSwipeNeighborVisibilityState = jasmine.createSpy('setSwipeNeighborVisibilityState');
         const attachSvgToWrapper = jasmine.createSpy('attachSvgToWrapper').and.callFake(({ wrapper, svg: targetSvg }) => {
@@ -306,6 +388,10 @@ describe('PageViewerSwipeDomService', () => {
             visiblePages: 1,
             readOnly: false,
             showFluff: true,
+            performanceMode: false,
+            setPageWrapperContentState,
+            setSwipePlaceholderContent,
+            clearSwipePlaceholderContent,
             setWrapperSelectedState,
             setSwipeNeighborVisibilityState,
             attachSvgToWrapper,

@@ -73,6 +73,7 @@ export interface Options {
     ASUnifiedDamagePicker: boolean;
     printRosterSummary: boolean;
     printMargin: 'none' | 'browserDefined';
+    performanceMode: boolean;
 
     // Force Generator
     forceGenLastBVMin: number;

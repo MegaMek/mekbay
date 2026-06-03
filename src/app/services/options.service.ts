@@ -54,6 +54,7 @@ const DEFAULT_OPTIONS: Options = {
     forceOverviewViewMode: 'compact',
     printRosterSummary: false,
     printMargin: 'browserDefined',
+    performanceMode: false,
     
     // Classic
     sheetsColor: 'normal',
@@ -123,6 +124,7 @@ export class OptionsService {
         ASUnifiedDamagePicker: DEFAULT_OPTIONS.ASUnifiedDamagePicker,
         printRosterSummary: DEFAULT_OPTIONS.printRosterSummary,
         printMargin: DEFAULT_OPTIONS.printMargin,
+        performanceMode: DEFAULT_OPTIONS.performanceMode,
         forceGenLastBVMin: DEFAULT_OPTIONS.forceGenLastBVMin,
         forceGenLastBVMax: DEFAULT_OPTIONS.forceGenLastBVMax,
         forceGenLastPVMin: DEFAULT_OPTIONS.forceGenLastPVMin,
@@ -177,6 +179,7 @@ export class OptionsService {
             ASUnifiedDamagePicker: saved?.ASUnifiedDamagePicker ?? DEFAULT_OPTIONS.ASUnifiedDamagePicker,
             printRosterSummary: saved?.printRosterSummary ?? DEFAULT_OPTIONS.printRosterSummary,
             printMargin: saved?.printMargin ?? DEFAULT_OPTIONS.printMargin,
+            performanceMode: saved?.performanceMode ?? DEFAULT_OPTIONS.performanceMode,
             forceGenLastBVMin: saved?.forceGenLastBVMin ?? DEFAULT_OPTIONS.forceGenLastBVMin,
             forceGenLastBVMax: saved?.forceGenLastBVMax ?? DEFAULT_OPTIONS.forceGenLastBVMax,
             forceGenLastPVMin: saved?.forceGenLastPVMin ?? DEFAULT_OPTIONS.forceGenLastPVMin,

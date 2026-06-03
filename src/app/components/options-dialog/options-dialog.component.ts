@@ -436,6 +436,11 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('canvasInput', value);
     }
 
+    onPerformanceModeChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value === 'true';
+        this.optionsService.setOption('performanceMode', value);
+    }
+
     onSwipeToNextSheetChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'vertical' | 'horizontal' | 'disabled';
         this.optionsService.setOption('swipeToNextSheet', value);
