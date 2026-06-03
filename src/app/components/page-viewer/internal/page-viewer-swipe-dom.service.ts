@@ -214,7 +214,10 @@ export class PageViewerSwipeDomService {
         visiblePages: number;
         readOnly: boolean;
         showFluff: boolean;
+        performanceMode: boolean;
         setPageWrapperContentState: (wrapper: HTMLDivElement, hasSvg: boolean) => void;
+        setSwipePlaceholderContent: (wrapper: HTMLDivElement, unit: CBTForceUnit) => void;
+        clearSwipePlaceholderContent: (wrapper: HTMLDivElement) => void;
         setWrapperSelectedState: (wrapper: HTMLDivElement, isSelected: boolean) => void;
         setSwipeNeighborVisibilityState: (wrapper: HTMLDivElement, isVisible: boolean) => void;
         attachSvgToWrapper: (options: { wrapper: HTMLDivElement; svg: SVGSVGElement; scale?: number; setAsCurrent?: boolean }) => void;
@@ -232,7 +235,10 @@ export class PageViewerSwipeDomService {
             visiblePages,
             readOnly,
             showFluff,
+            performanceMode,
             setPageWrapperContentState,
+            setSwipePlaceholderContent,
+            clearSwipePlaceholderContent,
             setWrapperSelectedState,
             setSwipeNeighborVisibilityState,
             attachSvgToWrapper,
@@ -247,6 +253,7 @@ export class PageViewerSwipeDomService {
                 slotIndicesToClear: renderUpdate.clearSlotIndices,
                 attachedUnitToSlotMap: renderUpdate.attachedUnitToSlotMap,
                 setPageWrapperContentState,
+                clearSwipePlaceholderContent,
                 setSwipeNeighborVisibilityState
             });
             this.syncAttachedSvgs({ slotStates, swipeSlotSvgs });
@@ -261,6 +268,10 @@ export class PageViewerSwipeDomService {
             visiblePages,
             readOnly,
             showFluff,
+            performanceMode,
+            setPageWrapperContentState,
+            setSwipePlaceholderContent,
+            clearSwipePlaceholderContent,
             setWrapperSelectedState,
             setSwipeNeighborVisibilityState,
             attachSvgToWrapper,
@@ -302,6 +313,7 @@ export class PageViewerSwipeDomService {
         slotIndicesToClear: readonly number[];
         attachedUnitToSlotMap: Map<number, number>;
         setPageWrapperContentState: (wrapper: HTMLDivElement, hasSvg: boolean) => void;
+        clearSwipePlaceholderContent: (wrapper: HTMLDivElement) => void;
         setSwipeNeighborVisibilityState: (wrapper: HTMLDivElement, isVisible: boolean) => void;
     }): void {
         const {
@@ -309,6 +321,7 @@ export class PageViewerSwipeDomService {
             slotIndicesToClear,
             attachedUnitToSlotMap,
             setPageWrapperContentState,
+            clearSwipePlaceholderContent,
             setSwipeNeighborVisibilityState
         } = options;
 
@@ -319,12 +332,11 @@ export class PageViewerSwipeDomService {
             }
 
             const { element, unitIndex, attachedSvg } = slotState;
-            if (!attachedSvg || attachedSvg.parentElement !== element) {
-                continue;
+            if (attachedSvg && attachedSvg.parentElement === element) {
+                element.removeChild(attachedSvg);
+                slotState.attachedSvg = null;
             }
-
-            element.removeChild(attachedSvg);
-            slotState.attachedSvg = null;
+            clearSwipePlaceholderContent(element);
             setPageWrapperContentState(element, false);
             setSwipeNeighborVisibilityState(element, false);
             if (unitIndex !== null) {
@@ -342,6 +354,10 @@ export class PageViewerSwipeDomService {
         visiblePages: number;
         readOnly: boolean;
         showFluff: boolean;
+        performanceMode: boolean;
+        setPageWrapperContentState: (wrapper: HTMLDivElement, hasSvg: boolean) => void;
+        setSwipePlaceholderContent: (wrapper: HTMLDivElement, unit: CBTForceUnit) => void;
+        clearSwipePlaceholderContent: (wrapper: HTMLDivElement) => void;
         setWrapperSelectedState: (wrapper: HTMLDivElement, isSelected: boolean) => void;
         setSwipeNeighborVisibilityState: (wrapper: HTMLDivElement, isVisible: boolean) => void;
         attachSvgToWrapper: (options: { wrapper: HTMLDivElement; svg: SVGSVGElement; scale?: number; setAsCurrent?: boolean }) => void;
@@ -359,6 +375,10 @@ export class PageViewerSwipeDomService {
             visiblePages,
             readOnly,
             showFluff,
+            performanceMode,
+            setPageWrapperContentState,
+            setSwipePlaceholderContent,
+            clearSwipePlaceholderContent,
             setWrapperSelectedState,
             setSwipeNeighborVisibilityState,
             attachSvgToWrapper,
@@ -371,13 +391,37 @@ export class PageViewerSwipeDomService {
             const slotState = slotStates[instruction.slotIndex];
             const unit = resolveUnit(instruction.unitIndex);
             const svg = instruction.svg;
-            if (!slotState || !unit || !svg || instruction.decision.action === 'skip') {
+            if (!slotState || !unit || instruction.decision.action === 'skip') {
                 continue;
             }
 
             displayedUnitIds.add(unit.id);
 
+            if (performanceMode && instruction.decision.showNeighborVisible) {
+                if (slotState.attachedSvg?.parentElement === slotState.element) {
+                    slotState.element.removeChild(slotState.attachedSvg);
+                }
+                slotState.attachedSvg = null;
+                attachedUnitToSlotMap.delete(instruction.unitIndex);
+                slotState.element.dataset['unitId'] = unit.id;
+                slotState.element.dataset['unitIndex'] = String(instruction.unitIndex);
+                setPageWrapperContentState(slotState.element, false);
+                setSwipePlaceholderContent(slotState.element, unit);
+
+                if (instruction.decision.updateVisualState) {
+                    setWrapperSelectedState(slotState.element, instruction.decision.isSelected);
+                    setSwipeNeighborVisibilityState(slotState.element, instruction.decision.showNeighborVisible);
+                }
+
+                continue;
+            }
+
+            if (!svg) {
+                continue;
+            }
+
             if (instruction.decision.action === 'reuse-existing') {
+                clearSwipePlaceholderContent(slotState.element);
                 if (!readOnly && visiblePages === 1) {
                     getOrCreateInteractionOverlay(slotState.element, unit, instruction.decision.overlayMode);
                 }
@@ -392,6 +436,7 @@ export class PageViewerSwipeDomService {
                 setSwipeNeighborVisibilityState(slotState.element, instruction.decision.showNeighborVisible);
             }
 
+            clearSwipePlaceholderContent(slotState.element);
             attachSvgToWrapper({ wrapper: slotState.element, svg, scale });
             slotState.attachedSvg = svg;
             attachedUnitToSlotMap.set(instruction.unitIndex, instruction.slotIndex);
