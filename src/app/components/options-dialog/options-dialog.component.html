@@ -566,15 +566,6 @@
             }
             @case ('Advanced') {
             <div class="settings-view-content">
-            <div class="option-row">
-                <label for="pickerStyle">Picker style:</label>
-                <select id="pickerStyle" class="bt-select" [value]="optionsService.options().pickerStyle"
-                    (change)="onPickerStyleChange($event)">
-                    <option value="default">Automatic (default)</option>
-                    <option value="radial">Always Dial</option>
-                    <option value="linear">Always Linear</option>
-                </select>
-            </div>
             <div class="option-col">
                 <div class="option-row">
                     <label for="performanceMode">Performance mode:</label>
@@ -587,6 +578,15 @@
                 <div class="description">
                     <p>Reduces expensive visual effects in components that support a lighter rendering path.</p>
                 </div>
+            </div>
+            <div class="option-row">
+                <label for="pickerStyle">Picker style:</label>
+                <select id="pickerStyle" class="bt-select" [value]="optionsService.options().pickerStyle"
+                    (change)="onPickerStyleChange($event)">
+                    <option value="default">Automatic (default)</option>
+                    <option value="radial">Always Dial</option>
+                    <option value="linear">Always Linear</option>
+                </select>
             </div>
             <div class="option-col">
                 <div class="option-row">
