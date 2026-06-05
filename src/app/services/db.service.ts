@@ -128,7 +128,7 @@ export interface StoredChassisTags {
  * Uses short property names for wire efficiency.
  */
 export interface TagOp {
-    /** Key: unit name (for name tags) or chassis|type (for chassis tags). Empty for rename. */
+    /** Key: unit name (for name tags) or variant group key (for chassis tags). Empty for rename. */
     k: string;
     /** Tag name (original tag name for rename) */
     t: string;
@@ -167,14 +167,14 @@ export interface TagEntry {
 }
 
 /**
- * V3 Tag data format - uses lowercase tag IDs as keys.
+ * V4 Tag data format - uses lowercase tag IDs as keys.
  * This is the current storage format.
  */
 export interface TagData {
     /** Map of lowercase tagId -> TagEntry */
     tags: Record<string, TagEntry>;
-    /** Format version: 3 for V3 format */
-    formatVersion: 3;
+    /** Format version: 4 uses variant group keys for chassis tags. */
+    formatVersion: 3 | 4;
     /** Timestamp of last modification for sync purposes */
     timestamp: number;
 }
@@ -655,13 +655,14 @@ export class DbService {
 
             const tagsRequest = store.get('tags');
             const timestampRequest = store.get('timestamp');
+            const formatVersionRequest = store.get('formatVersion');
 
             transaction.oncomplete = () => {
                 if (tagsRequest.result) {
                     resolve({
                         tags: tagsRequest.result,
                         timestamp: timestampRequest.result || 0,
-                        formatVersion: 3
+                        formatVersion: formatVersionRequest.result || 3
                     } as TagData);
                 } else {
                     resolve(null);
@@ -682,7 +683,7 @@ export class DbService {
             // Save tag data
             store.put(data.tags, 'tags');
             store.put(data.timestamp, 'timestamp');
-            store.put(3, 'formatVersion');
+            store.put(data.formatVersion, 'formatVersion');
 
             transaction.oncomplete = () => resolve();
             transaction.onerror = () => reject(transaction.error);
@@ -750,7 +751,7 @@ export class DbService {
                 // Save tag data
                 store.put(tagData.tags, 'tags');
                 store.put(tagData.timestamp, 'timestamp');
-                store.put(3, 'formatVersion');
+                store.put(tagData.formatVersion, 'formatVersion');
                 store.put(newPending, 'pendingOps');
             };
 

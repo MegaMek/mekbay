@@ -82,7 +82,7 @@
                         </label>
                     </div>
                     <div>NAME</div>
-                    <div>TYPE</div>
+                    <div>TP</div>
                     <div>TAGS</div>
                 </div>
             </div>
@@ -115,6 +115,9 @@
                                 [attr.title]="row.rowType === 'chassis' ? 'Open chassis details' : 'Open unit details'">
                                 <span class="target-title">{{ row.title }}</span>
                             </button>
+                            @if (row.rowType === 'chassis' && row.unit.omni) {
+                                <span class="target-omni-marker">(omni)</span>
+                            }
                             <span class="target-inline-type">{{ row.subtitle }}</span>
                         </div>
                     </div>

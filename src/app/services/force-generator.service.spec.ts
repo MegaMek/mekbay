@@ -3532,44 +3532,77 @@ describe('ForceGeneratorService', () => {
         expect(preview.explanationLines[0]).toContain('Eligible units: 3 units. Availability-positive candidates: 3 units. Target: 4-4 units');
     });
 
-    it('uses chassis and type for duplicate chassis prevention', () => {
+    it('uses variant group keys for duplicate chassis prevention', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const battleMek = createUnit({
+        const hatamotoChi = createUnit({
             id: 1,
-            name: 'Peacekeeper Mek',
+            name: 'Hatamoto-Chi HTM-27T',
+            chassis: 'Hatamoto-Chi',
+            model: 'HTM-27T',
+            type: 'Mek',
+            subtype: 'BattleMek',
+            as: { TP: 'BM', PV: 4 } as Unit['as'],
+        });
+        const hatamotoKaze = createUnit({
+            id: 2,
+            name: 'Hatamoto-Kaze HTM-27V',
+            chassis: 'Hatamoto-Kaze',
+            model: 'HTM-27V',
+            type: 'Mek',
+            subtype: 'BattleMek',
+            as: { TP: 'BM', PV: 4 } as Unit['as'],
+        });
+        const battleMek = createUnit({
+            id: 3,
+            name: 'Peacekeeper BattleMek',
             chassis: 'Peacekeeper',
             model: 'PK-M',
             type: 'Mek',
             subtype: 'BattleMek',
-            as: { PV: 4 } as Unit['as'],
+            as: { TP: 'BM', PV: 4 } as Unit['as'],
         });
-        const tank = createUnit({
-            id: 2,
-            name: 'Peacekeeper Tank',
+        const industrialMek = createUnit({
+            id: 4,
+            name: 'Peacekeeper IndustrialMek',
             chassis: 'Peacekeeper',
-            model: 'PK-T',
-            type: 'Tank',
-            subtype: 'Combat Vehicle',
-            as: { PV: 4 } as Unit['as'],
+            model: 'PK-I',
+            type: 'Mek',
+            subtype: 'Industrial Mek',
+            as: { TP: 'IM', PV: 4 } as Unit['as'],
+        });
+        const omniMek = createUnit({
+            id: 5,
+            name: 'Peacekeeper Omni',
+            chassis: 'Peacekeeper',
+            model: 'PK-O',
+            type: 'Mek',
+            subtype: 'BattleMek',
+            omni: 1,
+            as: { TP: 'BM', PV: 4 } as Unit['as'],
         });
 
         spyOn(Math, 'random').and.returnValue(0);
 
         const preview = service.buildPreview({
-            eligibleUnits: [battleMek, tank],
+            eligibleUnits: [hatamotoChi, hatamotoKaze, battleMek, industrialMek, omniMek],
             context: createContext(faction, era),
             gameSystem: GameSystem.ALPHA_STRIKE,
             budgetRange: { min: 0, max: 20 },
-            minUnitCount: 2,
-            maxUnitCount: 2,
+            minUnitCount: 4,
+            maxUnitCount: 4,
             gunnery: 4,
             piloting: 5,
             preventDuplicateChassis: true,
         });
 
         expect(preview.error).toBeNull();
-        expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Peacekeeper Mek', 'Peacekeeper Tank']);
+        expect(preview.units.map((unit) => unit.unit.name)).toEqual([
+            'Hatamoto-Chi HTM-27T',
+            'Peacekeeper BattleMek',
+            'Peacekeeper IndustrialMek',
+            'Peacekeeper Omni',
+        ]);
     });
 
     it('uses selected positive tag quantities as exact-unit duplicate caps', () => {

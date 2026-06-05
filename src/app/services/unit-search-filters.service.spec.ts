@@ -10,7 +10,7 @@ import type { AvailabilitySource } from '../models/options.model';
 import type { Unit, Units } from '../models/units.model';
 import { GameSystem } from '../models/common.model';
 import { DataService } from './data.service';
-import { DbService } from './db.service';
+import { DbService, type TagData } from './db.service';
 import { GameService } from './game.service';
 import { LoggerService } from './logger.service';
 import { OptionsService } from './options.service';
@@ -678,6 +678,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
             getNameTags: () => ({}),
             getChassisTags: () => ({}),
             getTagData: async () => ({ tags: {}, timestamp: 0, formatVersion: 3 as const }),
+            migrateChassisTagsToVariantGroups: jasmine.createSpy('migrateChassisTagsToVariantGroups')
+                .and.callFake(async (_units: Unit[], tagData?: TagData) => tagData ?? ({ tags: {}, timestamp: 0, formatVersion: 4 as const })),
             fixNameTagsCoveredByChassis: jasmine.createSpy('fixNameTagsCoveredByChassis').and.resolveTo(undefined),
             setRefreshUnitsCallback: jasmine.createSpy('setRefreshUnitsCallback'),
             setNotifyStoreUpdatedCallback: jasmine.createSpy('setNotifyStoreUpdatedCallback'),

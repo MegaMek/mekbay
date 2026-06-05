@@ -7,9 +7,9 @@ describe('unit variant group utilities', () => {
         const industrialMek = createEmptyUnit({ chassis: 'Peacekeeper', omni: 0, as: { TP: 'IM' } });
         const omniBattleMek = createEmptyUnit({ chassis: 'Peacekeeper', omni: 1, as: { TP: 'BM' } });
 
-        expect(getUnitVariantGroupKey(battleMek)).toBe('Peacekeeper|BM|false');
-        expect(getUnitVariantGroupKey(industrialMek)).toBe('Peacekeeper|IM|false');
-        expect(getUnitVariantGroupKey(omniBattleMek)).toBe('Peacekeeper|BM|true');
+        expect(getUnitVariantGroupKey(battleMek)).toBe('Peacekeeper|BM');
+        expect(getUnitVariantGroupKey(industrialMek)).toBe('Peacekeeper|IM');
+        expect(getUnitVariantGroupKey(omniBattleMek)).toBe('Peacekeeper|BM|O');
     });
 
     it('matches units against a variant group identity', () => {
