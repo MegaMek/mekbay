@@ -124,7 +124,7 @@ describe('TagsService', () => {
 
         const savedData = (await service.getTagData()).tags;
         expect(savedData['clan'].units).toEqual({});
-        expect(savedData['clan'].chassis).toEqual({ 'Dasher|Mek': {} });
+        expect(savedData['clan'].chassis).toEqual({ 'Dasher|BM': {} });
         expect(savedData['cjf'].units).toEqual({
             'Dasher A': {},
             'Dasher B': {},
@@ -142,12 +142,12 @@ describe('TagsService', () => {
             jasmine.objectContaining({ k: 'Dasher A', t: 'CLAN', c: 0, a: 0 }),
             jasmine.objectContaining({ k: 'Dasher B', t: 'CLAN', c: 0, a: 0 }),
             jasmine.objectContaining({ k: 'Dasher C', t: 'CLAN', c: 0, a: 0 }),
-            jasmine.objectContaining({ k: 'Dasher|Mek', t: 'CLAN', c: 1, a: 1 }),
+            jasmine.objectContaining({ k: 'Dasher|BM', t: 'CLAN', c: 1, a: 1 }),
         ]));
     });
 
     it('persists cleanup of unit tags covered by same-named chassis tags', async () => {
-        tagData.tags['clan'].chassis['Dasher|Mek'] = {};
+        tagData.tags['clan'].chassis['Dasher|BM'] = {};
         const units = [createUnit('Dasher A'), createUnit('Dasher B'), createUnit('Dasher C')];
 
         await service.fixNameTagsCoveredByChassis(units, tagData);
@@ -160,6 +160,51 @@ describe('TagsService', () => {
             jasmine.objectContaining({ k: 'Dasher B', t: 'CLAN', c: 0, a: 0 }),
             jasmine.objectContaining({ k: 'Dasher C', t: 'CLAN', c: 0, a: 0 }),
         ]));
+    });
+
+    it('migrates legacy chassis tags to every matching variant group', async () => {
+        tagData.tags['clan'].units = {};
+        tagData.tags['clan'].chassis = {
+            'Centurion|Mek': { q: 2 },
+        };
+        tagData.formatVersion = 3;
+        const units = [
+            createEmptyUnit({ name: 'Centurion CN9-A', chassis: 'Centurion', type: 'Mek', omni: 0, as: { TP: 'BM' } }),
+            createEmptyUnit({ name: 'Centurion Omni', chassis: 'Centurion', type: 'Mek', omni: 1, as: { TP: 'BM' } }),
+            createEmptyUnit({ name: 'Centurion Industrial', chassis: 'Centurion', type: 'Mek', omni: 0, as: { TP: 'IM' } }),
+        ];
+
+        const migrated = await service.migrateChassisTagsToVariantGroups(units, tagData);
+
+        expect(migrated.formatVersion).toBe(4);
+        expect(migrated.tags['clan'].chassis).toEqual({
+            'Centurion|BM': { q: 2 },
+            'Centurion|BM|O': { q: 2 },
+            'Centurion|IM': { q: 2 },
+        });
+        expect(dbServiceMock.saveAllTagData).toHaveBeenCalledWith(migrated);
+    });
+
+    it('pushes full local tag state when sync finds an older remote format', async () => {
+        tagData.formatVersion = 4;
+        userStateServiceMock.uuid.and.returnValue('user-1');
+        wsServiceMock.getWebSocket.and.returnValue({ readyState: WebSocket.OPEN } as WebSocket);
+        wsServiceMock.sendAndWaitForResponse.and.callFake(async (message: { action: string }) => {
+            if (message.action === 'getTagOps') {
+                return { serverTs: 10, ops: [], formatVersion: 3 };
+            }
+
+            return { serverTs: 11 };
+        });
+
+        await service.syncFromCloud();
+
+        expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith(jasmine.objectContaining({
+            action: 'setTagState',
+            uuid: 'user-1',
+            data: tagData,
+        }));
+        expect(dbServiceMock.clearPendingTagOps).toHaveBeenCalledWith(11);
     });
 
     it('persists deletion of empty tag entries', async () => {

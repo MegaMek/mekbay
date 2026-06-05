@@ -421,7 +421,6 @@ export class UnitSearchComponent {
                 group = {
                     key,
                     ...identity,
-                    chassis: unit.chassis,
                     type: unit.type,
                     displayType: unit._displayType,
                     icon: unit.icon,

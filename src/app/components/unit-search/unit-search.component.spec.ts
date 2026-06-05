@@ -323,9 +323,9 @@ describe('UnitSearchComponent card virtualization', () => {
             minPV: group.minPV,
             maxPV: group.maxPV,
         }))).toEqual([
-            { key: 'Atlas|BM|false', chassis: 'Atlas', asType: 'BM', omni: false, variantCount: 2, minPV: 42, maxPV: 44 },
-            { key: 'Atlas|BM|true', chassis: 'Atlas', asType: 'BM', omni: true, variantCount: 1, minPV: 46, maxPV: 46 },
-            { key: 'Atlas|IM|false', chassis: 'Atlas', asType: 'IM', omni: false, variantCount: 1, minPV: 28, maxPV: 28 },
+            { key: 'Atlas|BM', chassis: 'Atlas', asType: 'BM', omni: false, variantCount: 2, minPV: 42, maxPV: 44 },
+            { key: 'Atlas|BM|O', chassis: 'Atlas', asType: 'BM', omni: true, variantCount: 1, minPV: 46, maxPV: 46 },
+            { key: 'Atlas|IM', chassis: 'Atlas', asType: 'IM', omni: false, variantCount: 1, minPV: 28, maxPV: 28 },
         ]);
     });
 
@@ -346,7 +346,7 @@ describe('UnitSearchComponent card virtualization', () => {
         fixture.detectChanges();
         filtersServiceStub.setSearchText.calls.reset();
 
-        const group = component.groupedUnits().find(item => item.key === 'Nova|BM|true');
+        const group = component.groupedUnits().find(item => item.key === 'Nova|BM|O');
         expect(group).toBeDefined();
 
         component.onCompactGroupClick(group!);
@@ -376,7 +376,7 @@ describe('UnitSearchComponent card virtualization', () => {
         fixture.detectChanges();
         optionsServiceStub.setOption.calls.reset();
 
-        const group = component.groupedUnits().find(item => item.key === 'Atlas|BM|false');
+        const group = component.groupedUnits().find(item => item.key === 'Atlas|BM');
         expect(group).toBeDefined();
 
         component.onCompactGroupClick(group!);
@@ -421,7 +421,7 @@ describe('UnitSearchComponent card virtualization', () => {
 
         expect(component.activeVariantGroupFilter()).toBeNull();
         expect(component.viewMode()).toBe('chassis');
-        expect(scrollToVariantsGroup).toHaveBeenCalledOnceWith('Nova|BM|true');
+        expect(scrollToVariantsGroup).toHaveBeenCalledOnceWith('Nova|BM|O');
     });
 
     it('navigates search results with global up and down shortcuts', () => {

@@ -42,24 +42,31 @@ export type UnitVariantGroupLike = Pick<Unit, 'chassis' | 'as' | 'omni'>;
 
 export function getUnitVariantGroupIdentity(unit: UnitVariantGroupLike): UnitVariantGroupIdentity {
     return {
-        chassis: unit.chassis,
+        chassis: solveChassis(unit.chassis),
         asType: unit.as.TP,
         omni: !!unit.omni,
     };
 }
 
 export function getUnitVariantGroupKey(unit: UnitVariantGroupLike): string {
-    return `${unit.chassis}|${unit.as.TP}|${!!unit.omni}`;
+    return `${solveChassis(unit.chassis)}|${unit.as.TP}${!!unit.omni?'|O':''}`;
 }
 
 export function isSameVariantGroup(source: UnitVariantGroupLike, target: UnitVariantGroupLike): boolean {
-    return source.chassis === target.chassis
+    return solveChassis(source.chassis) === solveChassis(target.chassis)
         && source.as.TP === target.as.TP
         && !!source.omni === !!target.omni;
 }
 
 export function unitMatchesVariantGroup(unit: UnitVariantGroupLike, group: UnitVariantGroupIdentity): boolean {
-    return unit.chassis === group.chassis
+    return solveChassis(unit.chassis) === group.chassis
         && unit.as.TP === group.asType
         && !!unit.omni === group.omni;
+}
+
+function solveChassis(chassis: string): string {
+    if (chassis.startsWith('Hatamoto-')) {
+        return 'Hatamoto';
+    }
+    return chassis;
 }

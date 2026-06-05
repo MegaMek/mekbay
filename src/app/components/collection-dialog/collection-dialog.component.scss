@@ -399,6 +399,13 @@
     display: none;
 }
 
+.target-omni-marker {
+    flex-shrink: 0;
+    color: var(--bt-yellow);
+    font-size: 0.78rem;
+    font-weight: 800;
+}
+
 .target-type-tag {
     display: inline-flex;
     align-items: center;

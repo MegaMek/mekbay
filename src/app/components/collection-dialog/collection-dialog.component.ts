@@ -48,6 +48,7 @@ import { matchesSearch, parseSearchQuery } from '../../utils/search.util';
 import { compareUnitsByName, naturalCompare } from '../../utils/sort.util';
 import { shareUrlWithClipboardFallback } from '../../utils/clipboard.util';
 import { buildPublicTagSearchQueryParameters } from '../../utils/unit-search-public-tags-url.util';
+import { getUnitVariantGroupIdentity } from '../../utils/unit-variant.util';
 
 type CollectionRowType = 'chassis' | 'name';
 
@@ -155,15 +156,14 @@ export class CollectionDialogComponent {
 
         for (const unit of this.dataService.getUnits()) {
             if (unit._chassisTags?.length) {
-                const chassisKey = TagsService.getChassisTagKey(unit);
                 const rowKey = this.getRowKey('chassis', unit);
                 if (!rows.has(rowKey)) {
                     rows.set(rowKey, {
                         key: rowKey,
                         rowType: 'chassis',
                         unit,
-                        title: unit.chassis,
-                        subtitle: unit.type,
+                        title: this.getVariantGroupChassis(unit),
+                        subtitle: unit.as.TP,
                         tags: this.toCollectionTags(unit._chassisTags, rowKey, pendingRemovedTags)
                     });
                 }
@@ -176,7 +176,7 @@ export class CollectionDialogComponent {
                     rowType: 'name',
                     unit,
                     title: this.getUnitDisplayName(unit),
-                    subtitle: unit.type,
+                    subtitle: unit.as.TP,
                     tags: this.toCollectionTags(unit._nameTags, rowKey, pendingRemovedTags)
                 });
             }
@@ -267,9 +267,10 @@ export class CollectionDialogComponent {
             const key = TagsService.getChassisTagKey(unit);
             counts.set(key, (counts.get(key) ?? 0) + 1);
             if (!options.has(key)) {
+                const chassis = this.getVariantGroupChassis(unit);
                 options.set(key, {
-                    label: unit.chassis,
-                    inputLabel: unit.chassis,
+                    label: chassis,
+                    inputLabel: chassis,
                     key,
                     unit,
                     unitCount: 0
@@ -286,12 +287,14 @@ export class CollectionDialogComponent {
         for (const option of options.values()) {
             option.unitCount = counts.get(option.key) ?? 1;
             if ((labelCounts.get(option.label.toLowerCase()) ?? 0) > 1) {
-                option.inputLabel = `${option.label} [${option.unit.type}]`;
+                option.inputLabel = this.getVariantGroupInputLabel(option.unit);
             }
         }
 
         return Array.from(options.values())
-            .sort((left, right) => naturalCompare(left.label, right.label) || naturalCompare(left.unit.type, right.unit.type));
+            .sort((left, right) => naturalCompare(left.label, right.label)
+                || naturalCompare(left.unit.as.TP, right.unit.as.TP)
+                || Number(!!left.unit.omni) - Number(!!right.unit.omni));
     });
 
     readonly chassisSuggestions = computed(() => {
@@ -984,7 +987,7 @@ export class CollectionDialogComponent {
 
     private getRowSearchText(row: CollectionRow): string {
         if (row.rowType === 'chassis') {
-            return row.unit.chassis ?? row.title;
+            return `${row.unit.chassis ?? row.title} ${row.unit.as.TP} ${row.unit.omni ? 'omni' : ''}`;
         }
 
         return row.unit._searchKey || `${row.unit.chassis ?? ''} ${row.unit.model ?? ''}`;
@@ -1007,6 +1010,14 @@ export class CollectionDialogComponent {
 
     private getQuickAddUnitDisplayName(unit: Unit): string {
         return unit.model ? this.getUnitDisplayName(unit) : `${unit.chassis} (Standard)`;
+    }
+
+    private getVariantGroupChassis(unit: Unit): string {
+        return getUnitVariantGroupIdentity(unit).chassis;
+    }
+
+    private getVariantGroupInputLabel(unit: Unit): string {
+        return `${this.getVariantGroupChassis(unit)} [${unit.as.TP}${unit.omni ? ' omni' : ''}]`;
     }
 
     private toModelOption(unit: Unit, includeChassis: boolean): ModelOption {

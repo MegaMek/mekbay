@@ -435,7 +435,7 @@
                 <div class="results-footer">
                     <div class="results-count">
                         @if (viewMode() === 'chassis') {
-                        {{ groupedUnits().length }} chassis{{ groupedUnits().length === 1 ? '' : 'es' }} ({{ resultUnits.length }} variant{{ resultUnits.length === 1 ? '' : 's' }})
+                        {{ groupedUnits().length }} chassis ({{ resultUnits.length }} variant{{ resultUnits.length === 1 ? '' : 's' }})
                         } @else {
                         {{ resultUnits.length }} result{{ resultUnits.length === 1 ? '' : 's' }}
                         }

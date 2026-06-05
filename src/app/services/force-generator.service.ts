@@ -74,6 +74,7 @@ import { getPositiveDropdownNamesFromFilter, resolveDropdownNamesFromFilter } fr
 import { ForceNamerUtil } from '../utils/force-namer.util';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
 import { normalizeMultiStateSelection } from '../utils/unit-search-shared.util';
+import { getUnitVariantGroupKey } from '../utils/unit-variant.util';
 import { DataService } from './data.service';
 import { OptionsService } from './options.service';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
@@ -1680,14 +1681,13 @@ function normalizeSelectionKey(value: string | undefined): string {
     return value?.trim().toLowerCase() || '';
 }
 
-function buildDuplicateChassisKey(unit: Pick<Unit, 'chassis' | 'type'>): string {
+function buildDuplicateChassisKey(unit: Unit): string {
     const chassisKey = normalizeSelectionKey(unit.chassis);
     if (chassisKey.length === 0) {
         return '';
     }
 
-    const typeKey = normalizeSelectionKey(unit.type);
-    return typeKey.length > 0 ? `${chassisKey}|${typeKey}` : chassisKey;
+    return normalizeSelectionKey(getUnitVariantGroupKey(unit));
 }
 
 function buildTaggedQuantityUnitKey(unit: Unit): string {
