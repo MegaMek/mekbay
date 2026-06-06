@@ -101,6 +101,76 @@ describe('ThousandsIntegerInputComponent', () => {
         expect(commits[commits.length - 1]).toBe(1000);
         expect(input.value).toBe('1,000');
     });
+
+    it('increments and decrements with arrow keys while focused', async () => {
+        const fixture = TestBed.createComponent(ThousandsIntegerInputComponent);
+        const values: number[] = [];
+        fixture.componentInstance.valueChange.subscribe((value) => values.push(value));
+        fixture.componentRef.setInput('value', 8000);
+        fixture.detectChanges();
+
+        const input = getInput(fixture.nativeElement);
+        input.dispatchEvent(new Event('focus'));
+        input.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'ArrowUp',
+            bubbles: true,
+            cancelable: true,
+        }));
+        await settleCaret();
+
+        expect(input.value).toBe('8,001');
+        expect(input.selectionStart).toBe(input.value.length);
+        expect(values[values.length - 1]).toBe(8001);
+
+        input.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'ArrowDown',
+            bubbles: true,
+            cancelable: true,
+        }));
+        await settleCaret();
+
+        expect(input.value).toBe('8,000');
+        expect(input.selectionStart).toBe(input.value.length);
+        expect(values[values.length - 1]).toBe(8000);
+    });
+
+    it('honors step and min max bounds when stepping with arrow keys', async () => {
+        const fixture = TestBed.createComponent(ThousandsIntegerInputComponent);
+        fixture.componentRef.setInput('value', 10);
+        fixture.componentRef.setInput('step', 5);
+        fixture.componentRef.setInput('min', 10);
+        fixture.componentRef.setInput('max', 15);
+        fixture.detectChanges();
+
+        const input = getInput(fixture.nativeElement);
+        input.dispatchEvent(new Event('focus'));
+        input.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'ArrowDown',
+            bubbles: true,
+            cancelable: true,
+        }));
+        await settleCaret();
+
+        expect(input.value).toBe('10');
+
+        input.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'ArrowUp',
+            bubbles: true,
+            cancelable: true,
+        }));
+        await settleCaret();
+
+        expect(input.value).toBe('15');
+
+        input.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'ArrowUp',
+            bubbles: true,
+            cancelable: true,
+        }));
+        await settleCaret();
+
+        expect(input.value).toBe('15');
+    });
 });
 
 function getInput(element: HTMLElement): HTMLInputElement {

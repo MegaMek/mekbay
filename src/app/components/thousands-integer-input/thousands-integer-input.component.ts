@@ -131,7 +131,32 @@ export class ThousandsIntegerInputComponent {
         } else if (event.key === 'Delete' && input.value[start] === ',') {
             event.preventDefault();
             this.deleteDigitAt(input, this.countDigitsBefore(input.value, start));
+        } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+            event.preventDefault();
+            this.stepValue(input, event.key === 'ArrowUp' ? 1 : -1);
         }
+    }
+
+    private stepValue(input: HTMLInputElement, direction: 1 | -1): void {
+        const step = Math.max(1, Math.floor(this.step()));
+        const currentValue = this.parseFormattedValue(input.value);
+        const nextValue = this.clampValue(currentValue + (step * direction));
+        const nextDigits = `${nextValue}`;
+        this.applyDigits(input, nextDigits, nextDigits.length);
+    }
+
+    private clampValue(value: number): number {
+        const min = this.min();
+        const max = this.max();
+        let clampedValue = Math.max(0, Math.floor(value));
+        if (min !== null) {
+            clampedValue = Math.max(min, clampedValue);
+        }
+        if (max !== null) {
+            clampedValue = Math.min(max, clampedValue);
+        }
+
+        return clampedValue;
     }
 
     private deleteDigitAt(input: HTMLInputElement, digitIndex: number): void {
