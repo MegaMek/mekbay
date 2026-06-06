@@ -508,6 +508,28 @@
         </div>
 
         <div class="sidebar-sort-footer">
+            <div class="sidebar-footer-filter-controls">
+                <compact-filter-menu
+                    [options]="sidebarFactionOptions()"
+                    [selectedId]="sidebarFactionFilter()"
+                    allLabel="All factions"
+                    ariaLabel="Filter by faction"
+                    fallbackLabel="F"
+                    size="small"
+                    panelAlign="left"
+                    (selectedIdChange)="setSidebarFactionFilter($event)">
+                </compact-filter-menu>
+                <compact-filter-menu
+                    [options]="sidebarEraOptions()"
+                    [selectedId]="sidebarEraFilter()"
+                    allLabel="All eras"
+                    ariaLabel="Filter by era"
+                    fallbackLabel="E"
+                    size="small"
+                    panelAlign="left"
+                    (selectedIdChange)="setSidebarEraFilter($event)">
+                </compact-filter-menu>
+            </div>
             <div class="sort-controls">
                 <select class="bt-input sort-select"
                     (change)="setSidebarSort($any($event.target).value)">

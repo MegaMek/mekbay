@@ -102,7 +102,7 @@ export class TurnState {
                 checks.push({
                     fallCheck: 1,
                     pilotCheck: 1,
-                    reason: 'Received 20 or more damage'
+                    reason: `Received ${this.dmgReceived()} damage`
                 });
             }
             // We place the actuators FIRST so that the hips of this turn will not filter them out

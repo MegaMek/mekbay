@@ -33,6 +33,12 @@
 
 let isiDevice: boolean | undefined = undefined;
 
+export function isAndroid(): boolean {
+    const nav = typeof navigator !== 'undefined' ? navigator : typeof window !== 'undefined' ? (window as any).navigator : undefined;
+    const ua = nav?.userAgent || '';
+    return /Android/i.test(ua);
+}
+
 export function isIOS(): boolean {
     if (typeof isiDevice !== 'undefined') {
         return isiDevice;

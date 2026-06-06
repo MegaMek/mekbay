@@ -48,7 +48,8 @@ import { UnitCardCompactComponent } from '../unit-card-compact/unit-card-compact
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { VariantDropdownPanelComponent } from './variant-dropdown-panel.component';
 import type { Unit } from '../../models/units.model';
-import { getForcePackLookupKey, type PackUnitEntry, type ResolvedPack } from '../../utils/force-pack.util';
+import { type PackUnitEntry, type ResolvedPack } from '../../utils/force-pack.util';
+import { isSameVariantGroup } from '../../utils/unit-variant.util';
 import { compareUnitsByName } from '../../utils/sort.util';
 import type { TagClickEvent } from '../unit-tags/unit-tags.component';
 import { GameSystem } from '../../models/common.model';
@@ -215,9 +216,8 @@ export class CustomizeForcePackDialogComponent {
     }
 
     private getVariantsForUnit(unit: Unit): Unit[] {
-        const lookupKey = getForcePackLookupKey(unit);
         return this.dataService.getUnits()
-            .filter(candidate => getForcePackLookupKey(candidate) === lookupKey);
+            .filter(candidate => isSameVariantGroup(candidate, unit));
     }
 
     private closeDropdown(): void {

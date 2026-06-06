@@ -60,7 +60,7 @@ export interface InteractionState {
     clickTarget: SVGElement | null;
     isHeatDragging: boolean;
     diffHeatMarkerVisible: WritableSignal<boolean>;
-    heatMarkerData: WritableSignal<{ el: SVGElement | null, heat: number } | null>;
+    heatMarkerData: WritableSignal<{ el: SVGElement | null, heat: number; baselineHeat: number } | null>;
     isPickerOpen: WritableSignal<boolean>;
 }
 
@@ -86,7 +86,7 @@ export class SvgInteractionService {
         clickTarget: null,
         isHeatDragging: false,
         diffHeatMarkerVisible: signal(false),
-        heatMarkerData: signal<{ el: SVGElement | null, heat: number } | null>(null),
+        heatMarkerData: signal<{ el: SVGElement | null, heat: number; baselineHeat: number } | null>(null),
         isPickerOpen: signal(false)
     };
 
@@ -147,20 +147,19 @@ export class SvgInteractionService {
      * Gets the heat diff marker data for the HeatDiffMarkerComponent.
      * Returns null if no marker should be shown.
      */
-    getHeatDiffMarkerData(): { el: SVGElement | null; heat: number; currentHeat: number; containerRect: DOMRect } | null {
+    getHeatDiffMarkerData(): { el: SVGElement | null; heat: number; baselineHeat: number; containerRect: DOMRect } | null {
         const data = this.state.heatMarkerData();
         if (!data?.el) return null;
 
         const currentUnit = this.unit();
         if (!currentUnit) return null;
 
-        const currentHeat = currentUnit.getHeat();
         const containerRect = this.containerRef.nativeElement.getBoundingClientRect();
 
         return {
             el: data.el,
             heat: data.heat,
-            currentHeat: currentHeat.current,
+            baselineHeat: data.baselineHeat,
             containerRect
         };
     }
@@ -205,50 +204,109 @@ export class SvgInteractionService {
         let longTouchTimer: any = null;
         el.classList.add('interactive');
         const eventOptions = { passive: false, signal };
+        const globalEventOptions = { passive: false, signal, capture: true };
 
         let pointerId: number | null = null;
+        let tapStartEvent: PointerEvent | null = null;
+        let globalListenersActive = false;
+
+        const releasePointerCapture = (id: number | null) => {
+            if (id === null) return;
+            try {
+                if (el.hasPointerCapture(id)) {
+                    el.releasePointerCapture(id);
+                }
+            } catch { /* Ignore unsupported pointer capture */ }
+        };
 
         el.addEventListener('pointerdown', (evt: PointerEvent) => {
             evt.preventDefault();
             this.state.clickTarget = el;
             this.zoomPanService.pointerMoved = false;
             clearLongTouch();
+            pointerId = evt.pointerId;
+            tapStartEvent = evt;
+            try {
+                el.setPointerCapture(evt.pointerId);
+            } catch { /* Ignore unsupported pointer capture */ }
+            addGlobalPointerListeners();
             longTouchTimer = setTimeout(() => {
                 upHandlerSecondary(evt);
             }, 300);
-            pointerId = evt.pointerId;
             // Dispatch a custom event for page selection to work
             // Since we preventDefault on pointerdown, the click event won't fire naturally
             el.dispatchEvent(new CustomEvent('svg-interaction-click', { bubbles: true }));
         }, eventOptions);
 
         const clearLongTouch = () => {
+            const activePointerId = pointerId;
             pointerId = null;
+            tapStartEvent = null;
+            removeGlobalPointerListeners();
             if (longTouchTimer) {
                 clearTimeout(longTouchTimer);
                 longTouchTimer = null;
             }
+            releasePointerCapture(activePointerId);
+        };
+
+        const getAnchoredTapEvent = (evt: PointerEvent) => {
+            const anchor = tapStartEvent;
+            if (!anchor || (anchor.clientX === evt.clientX && anchor.clientY === evt.clientY)) {
+                return evt;
+            }
+
+            return new PointerEvent(evt.type, {
+                bubbles: evt.bubbles,
+                cancelable: evt.cancelable,
+                composed: evt.composed,
+                detail: evt.detail,
+                view: window,
+                screenX: anchor.screenX,
+                screenY: anchor.screenY,
+                clientX: anchor.clientX,
+                clientY: anchor.clientY,
+                ctrlKey: evt.ctrlKey,
+                shiftKey: evt.shiftKey,
+                altKey: evt.altKey,
+                metaKey: evt.metaKey,
+                button: evt.button,
+                buttons: evt.buttons,
+                relatedTarget: evt.relatedTarget,
+                pointerId: evt.pointerId,
+                width: evt.width,
+                height: evt.height,
+                pressure: evt.pressure,
+                tangentialPressure: evt.tangentialPressure,
+                tiltX: evt.tiltX,
+                tiltY: evt.tiltY,
+                twist: evt.twist,
+                pointerType: evt.pointerType,
+                isPrimary: evt.isPrimary
+            });
         };
 
         const upHandlerSecondary = (evt: PointerEvent) => {
             if (evt.pointerId !== pointerId) return;
+            const tapEvent = getAnchoredTapEvent(evt);
             clearLongTouch();
             evt.stopPropagation();
             evt.preventDefault();
             if (this.state.clickTarget && !this.zoomPanService.pointerMoved) {
-                handler(evt, false);
+                handler(tapEvent, false);
             }
             this.state.clickTarget = null;
         };
 
         const upHandler = (evt: PointerEvent) => {
             if (evt.pointerId !== pointerId) return;
+            const tapEvent = getAnchoredTapEvent(evt);
             clearLongTouch();
             evt.preventDefault();
             if (this.state.clickTarget && !this.zoomPanService.pointerMoved) {
                 let isLeftClick = true;
                 isLeftClick = evt.button === 0;
-                handler(evt, isLeftClick);
+                handler(tapEvent, isLeftClick);
             }
             this.state.clickTarget = null;
         };
@@ -260,7 +318,30 @@ export class SvgInteractionService {
             this.state.clickTarget = null;
         };
 
-        el.addEventListener('pointerleave', cancelHandler, eventOptions);
+        const addGlobalPointerListeners = () => {
+            if (globalListenersActive) return;
+            globalListenersActive = true;
+            window.addEventListener('pointerup', upHandler, globalEventOptions);
+            window.addEventListener('pointercancel', cancelHandler, globalEventOptions);
+        };
+
+        const removeGlobalPointerListeners = () => {
+            if (!globalListenersActive) return;
+            globalListenersActive = false;
+            window.removeEventListener('pointerup', upHandler, globalEventOptions);
+            window.removeEventListener('pointercancel', cancelHandler, globalEventOptions);
+        };
+
+        const leaveHandler = (evt: PointerEvent) => {
+            if (evt.pointerId !== pointerId) return;
+            try {
+                if (el.hasPointerCapture(evt.pointerId)) return;
+            } catch { /* Ignore unsupported pointer capture */ }
+            if (evt.pointerType === 'pen' || evt.pointerType === 'touch') return;
+            cancelHandler(evt);
+        };
+
+        el.addEventListener('pointerleave', leaveHandler, eventOptions);
         el.addEventListener('pointercancel', cancelHandler, eventOptions);
         el.addEventListener('pointerup', upHandler, eventOptions);
         signal.addEventListener('abort', () => {
@@ -909,6 +990,7 @@ export class SvgInteractionService {
         let dragState: {
             pointerId: number;
             startElement: SVGElement;
+            baselineHeat: number;
         } | null = null;
 
         const findClosestHeat = (clientY: number): SVGElement | null => {
@@ -928,12 +1010,18 @@ export class SvgInteractionService {
 
         const updateHeatMarker = (clientY: number) => {
             const closestHeat = findClosestHeat(clientY);
-            if (closestHeat) {
-                this.state.clickTarget = closestHeat;
+            if (closestHeat && dragState) {
                 const heatValue = Number(closestHeat.getAttribute('heat'));
+                const currentMarker = this.state.heatMarkerData();
+                if (currentMarker?.el === closestHeat && currentMarker.heat === heatValue) {
+                    return;
+                }
+
+                this.state.clickTarget = closestHeat;
                 this.state.heatMarkerData.set({
                     el: closestHeat,
-                    heat: heatValue
+                    heat: heatValue,
+                    baselineHeat: dragState.baselineHeat
                 });
             }
         };
@@ -984,19 +1072,17 @@ export class SvgInteractionService {
             el.addEventListener('pointerdown', (evt: PointerEvent) => {
                 evt.preventDefault();
                 if (dragState) return;
+                const currentHeat = unit.getHeat();
                 this.zoomPanService.pointerMoved = false;
                 dragState = {
                     pointerId: evt.pointerId,
-                    startElement: el
+                    startElement: el,
+                    baselineHeat: currentHeat.next ?? currentHeat.current
                 };
                 this.state.isHeatDragging = true;
                 this.zoomPanService.isPanning = false;
                 this.state.clickTarget = el as SVGElement;
-                const heatValue = Number(el.getAttribute('heat'));
-                this.state.heatMarkerData.set({
-                    el: this.state.clickTarget,
-                    heat: heatValue
-                });
+                updateHeatMarker(evt.clientY);
                 svg.addEventListener('pointerdown', onPointerDown, { passive: false, signal: signal });
                 svg.addEventListener('pointermove', onPointerMove, { passive: false, signal });
                 svg.addEventListener('pointerup', onPointerUp, { passive: false, signal });

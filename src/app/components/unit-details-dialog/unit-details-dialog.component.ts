@@ -667,7 +667,7 @@ export class UnitDetailsDialogComponent {
         this.floatingOverlayService.hide();
         this.isSwiping.set(true);
         this.swipeDeltaX.set(0);
-        this.incomingPanelScrollTop.set(this.currentPanelScrollTop());
+        this.incomingPanelScrollTop.set(this.getIncomingPanelInitialScrollTop());
         this.currentPanelOffset.set('0');
         this.incomingUnit.set(null);
     }
@@ -817,9 +817,17 @@ export class UnitDetailsDialogComponent {
     }
 
     private prepareIncomingUnit(unit: Unit): void {
-        this.incomingPanelScrollTop.set(this.currentPanelScrollTop());
+        this.incomingPanelScrollTop.set(this.getIncomingPanelInitialScrollTop());
         this.incomingUnit.set(unit);
         requestAnimationFrame(() => this.syncIncomingPanelScrollTop());
+    }
+
+    private getIncomingPanelInitialScrollTop(): number {
+        return this.shouldPreserveSwipeScroll() ? this.currentPanelScrollTop() : 0;
+    }
+
+    private shouldPreserveSwipeScroll(): boolean {
+        return this.activeTab() === 'General';
     }
 
     private currentPanelScrollTop(): number {
@@ -835,19 +843,31 @@ export class UnitDetailsDialogComponent {
     }
 
     private commitSwipeToIndex(newIndex: number): void {
-        this.syncIncomingPanelScrollTop();
-        const scrollTop = this.incomingPanelScrollTop();
-        this.unitIndex.set(newIndex);
-        const currentPanel = this.currentPanelRef()?.nativeElement;
-        if (currentPanel) {
-            currentPanel.scrollTop = scrollTop;
+        const shouldPreserveScroll = this.shouldPreserveSwipeScroll();
+        if (shouldPreserveScroll) {
+            this.syncIncomingPanelScrollTop();
+        } else {
+            this.incomingPanelScrollTop.set(0);
         }
+
+        const scrollTop = shouldPreserveScroll ? this.incomingPanelScrollTop() : 0;
+        this.unitIndex.set(newIndex);
+        this.setPanelScrollTop(this.currentPanelRef()?.nativeElement, scrollTop, !shouldPreserveScroll);
         requestAnimationFrame(() => {
-            const panel = this.currentPanelRef()?.nativeElement;
-            if (panel) {
-                panel.scrollTop = scrollTop;
-            }
+            this.setPanelScrollTop(this.currentPanelRef()?.nativeElement, scrollTop, !shouldPreserveScroll);
         });
+    }
+
+    private setPanelScrollTop(panel: HTMLElement | undefined, scrollTop: number, includeDescendants = false): void {
+        if (!panel) return;
+
+        panel.scrollTop = scrollTop;
+
+        if (!includeDescendants) return;
+
+        for (const element of panel.querySelectorAll<HTMLElement>('*')) {
+            element.scrollTop = scrollTop;
+        }
     }
 
     private resetSwipeState(): void {

@@ -232,12 +232,12 @@ unit().moveType }}</strong></div>
 @if (src.title) {
 <a class="source-link" (click)="openSourcebooksDialog(index)">{{ src.title }}</a>
 @if (src.sourceAnnotations.length > 0) {
-<span class="source-note">({{ src.sourceAnnotations.join(', ') }})</span>
+&nbsp;<span class="source-note">({{ src.sourceAnnotations.join(', ') }})</span>
 }
 } @else {
 <span>{{ src.abbrev }}</span>
 @if (src.sourceAnnotations.length > 0) {
-<span class="source-note">({{ src.sourceAnnotations.join(', ') }})</span>
+&nbsp;<span class="source-note">({{ src.sourceAnnotations.join(', ') }})</span>
 }
 }
 </span>

@@ -41,8 +41,9 @@ import { COMMAND_ABILITIES } from '../../../models/command-abilities.model';
 import { PILOT_ABILITIES, type PilotAbility, type ASCustomPilotAbility } from '../../../models/pilot-abilities.model';
 import { type CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
 import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
-import { formatMovement } from '../../../utils/as-common.util';
+import { formatMovement, formatMovementWithAlternate } from '../../../utils/as-common.util';
 import { FormationAbilityAssignmentUtil } from '../../../utils/formation-ability-assignment.util';
+import type { SpecialAbilityState } from '../../../models/as-special-ability-state.model';
 
 /*
  * Author: Drake
@@ -64,20 +65,6 @@ export interface PipState {
     isDamaged: boolean;           // Committed damage
     isPendingDamage: boolean;     // Pending damage (not yet committed)
     isPendingHeal: boolean;       // Pending heal (not yet committed)
-}
-
-/**
- * Represents a special ability with both original and effective values.
- */
-export interface SpecialAbilityState {
-    original: string;
-    effective: string;
-    /** True if this ability is exhausted (should show strikethrough) */
-    isExhausted?: boolean;
-    /** For consumable abilities, how many have been consumed */
-    consumedCount?: number;
-    /** For consumable abilities, the max count */
-    maxCount?: number;
 }
 
 /**
@@ -378,7 +365,7 @@ export abstract class AsLayoutBaseComponent {
     heatLevelToHitModifier = computed<number>(() => {
         const fu = this.forceUnit();
         if (!fu) return 0;
-        return Math.max(0, this.heatLevel() - (fu.hasHotDog() ? 1 : 0));
+        return fu.heatToHitModifier('committed');
     });
 
     // Heat level (committed)
@@ -407,7 +394,7 @@ export abstract class AsLayoutBaseComponent {
         };
 
         return entries
-            .map(([mode, inches]) => formatMovement(inches, mode, this.useHex()))
+            .map(([mode, inches]) => this.formatMovementDisplay(mode, inches))
             .join('/');
     });
 
@@ -479,6 +466,34 @@ export abstract class AsLayoutBaseComponent {
             .filter(([, value]) => typeof value === 'number') as Array<[string, number]>;
 
         return entries;
+    }
+
+    protected formatMovementDisplay(mode: string, inches: number): string {
+        const fu = this.forceUnit();
+        if (!fu) {
+            return formatMovement(inches, mode, this.useHex());
+        }
+
+        const display = fu.movementDisplayValue(mode, inches);
+        const formatted = display.adjustedInches !== undefined
+            ? formatMovementWithAlternate(display.baseInches, display.adjustedInches, mode, this.useHex())
+            : formatMovement(display.baseInches, mode, this.useHex());
+
+        return formatted;
+    }
+
+    protected formatSprintMovementDisplay(mode: string, inches: number): string {
+        const fu = this.forceUnit();
+        if (!fu) {
+            return formatMovement(inches, mode, this.useHex());
+        }
+
+        const display = fu.movementDisplayValue(mode, inches, 'sprint');
+        const formatted = display.adjustedInches !== undefined
+            ? formatMovementWithAlternate(display.baseInches, display.adjustedInches, mode, this.useHex())
+            : formatMovement(display.baseInches, mode, this.useHex());
+
+        return formatted;
     }
 
     formatPilotAbility(selection: AbilitySelection): string {

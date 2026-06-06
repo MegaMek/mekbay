@@ -40,7 +40,7 @@ import { GameSystem } from '../../models/common.model';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { OptionsService } from '../../services/options.service';
-import { BOOLEAN_FILTERS, DROPDOWN_FILTERS, RANGE_FILTERS } from '../../services/unit-search-filters.model';
+import { BOOLEAN_FILTERS, DROPDOWN_FILTERS, RANGE_FILTERS, type RangeFilterConfig } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import type { FormationSearchTarget } from '../../utils/formation-requirement.model';
 import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
@@ -59,7 +59,6 @@ import {
     selector: 'unit-search-advanced-filters',
     imports: [
         CommonModule,
-        FormatNumberPipe,
         MultiSelectDropdownComponent,
         RangeSliderComponent,
         SemanticGuideComponent,
@@ -232,6 +231,7 @@ export class UnitSearchAdvancedFiltersComponent {
             return;
         }
 
+        const filterConfig = RANGE_FILTERS.find(filter => filter.key === filterKey);
         const filterName = currentFilter.label || filterKey;
         const ref = this.dialogsService.createDialog<RangeModel | null>(UnitSearchFilterRangeDialogComponent, {
             data: {
@@ -241,6 +241,8 @@ export class UnitSearchAdvancedFiltersComponent {
                     from: currentValue[0],
                     to: currentValue[1],
                 },
+                allowFloatingValues: !Number.isInteger(filterConfig?.stepSize ?? 1)
+                    || (filterConfig?.specialValues?.some(value => !Number.isInteger(value)) ?? false),
             } as UnitSearchFilterRangeDialogData,
         });
         const newValues = await firstValueFrom(ref.closed);
@@ -272,5 +274,13 @@ export class UnitSearchAdvancedFiltersComponent {
         currentRange[1] = newTo;
 
         this.setAdvFilter(filterKey, currentRange);
+    }
+
+    formatRangeValue(conf: RangeFilterConfig, value: number | undefined): string {
+        if (value === undefined) {
+            return '';
+        }
+
+        return conf.formatValue?.(value) ?? FormatNumberPipe.formatValue(value, false, true);
     }
 }

@@ -1,5 +1,6 @@
 @let gunnery = this.filtersService.pilotGunnerySkill();
 @let piloting = this.filtersService.pilotPilotingSkill();
+@let resultUnits = displayedUnits();
 
 <div class="search-overlay overlay-backdrop" [class.expanded]="this.expandedView()"
     [hidden]="!this.filtersService.isDataReady() || !overlayVisible()" (click)="onOverlayClick()">
@@ -110,7 +111,7 @@
                 <span class="view-mode-option-icon">
                     <ng-container [ngTemplateOutlet]="viewModeIcon" [ngTemplateOutletContext]="{ mode: option.mode }"></ng-container>
                 </span>
-                <span class="view-mode-option-copy">
+                <span class="view-mode-option-label-container">
                     <span class="view-mode-option-label">{{ option.label }}</span>
                     <span class="view-mode-option-caption">{{ option.caption }}</span>
                 </span>
@@ -173,7 +174,7 @@
 <div #resultsContainer class="results-container"
     [class.expanded]="this.expandedView()"
     [class.css-anchor-positioned]="supportsCssAnchorPositioning"
-    [class.has-results]="this.filtersService.filteredUnits().length > 0"
+    [class.has-results]="resultUnits.length > 0"
     [class.with-details-panel]="showInlinePanel()"
     [hidden]="!this.filtersService.isDataReady() || !resultsVisible()"
     [style.top]="supportsCssAnchorPositioning ? null : (this.expandedView() ? expandedWrapperStyle().top : resultsDropdownStyle().top)"
@@ -201,7 +202,25 @@
 
     <div #resultsDropdown class="results-dropdown framed-borders" [class.expanded]="this.expandedView()">
         <div class="results-dropdown-content">
-            @if (this.filtersService.filteredUnits().length > 0) {
+            @if (activeVariantGroupFilter(); as variantGroup) {
+            <div class="variant-filter-bar">
+                @if (activeVariantGroupRepresentativeUnit(); as representativeUnit) {
+                <div class="variant-filter-icon"><unit-icon [unit]="representativeUnit" [size]="30"></unit-icon></div>
+                }
+                <div class="variant-filter-title-container">
+                    <div class="variant-filter-title">{{ activeVariantGroupTitle() }}</div>
+                    <div class="variant-filter-meta">{{ activeVariantGroupMeta() }}</div>
+                </div>
+                <button type="button" class="bt-button square variant-filter-clear"
+                    (click)="clearVariantGroupFilter(); $event.stopPropagation()"
+                    title="Clear variant group" aria-label="Clear variant group">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                        <path d="M6 6L18 18M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                    </svg>
+                </button>
+            </div>
+            }
+            @if (resultUnits.length > 0) {
             @if (viewMode() === 'chassis') {
             <!-- Compact Chassis-Grouped View -->
             <div class="chassis-view-grid" [class.has-sort-slot]="chassisSortSlotHeader()">
@@ -214,11 +233,14 @@
                     <div class="chassis-view-th chassis-view-th-sort-slot">{{ sortHeader }}</div>
                     }
                 </div>
-                @for (group of groupedUnits(); track group.chassis + group.type) {
-                <div class="chassis-view-row" (click)="onCompactGroupClick(group)">
+                @for (group of groupedUnits(); track group.key) {
+                <div class="chassis-view-row" [attr.data-variant-group-key]="group.key" (click)="onCompactGroupClick(group)">
                     <div class="chassis-view-td chassis-view-td-count">{{ group.variantCount }}</div>
                     <div class="chassis-view-td chassis-view-td-icon"><unit-icon [unit]="group.representativeUnit" [size]="28"></unit-icon></div>
-                    <div class="chassis-view-td chassis-view-td-chassis">{{ group.chassis }}</div>
+                    <div class="chassis-view-td chassis-view-td-chassis">
+                        <span class="chassis-view-chassis-name">{{ group.chassis }}</span>
+                        <span class="chassis-view-type">{{ formatVariantGroupType(group) }}@if (group.omni) {<span class="chassis-view-omni">(omni)</span>}</span>
+                    </div>
                     <div class="chassis-view-td chassis-view-td-value">{{ gameService.isAlphaStrike()
                         ? (group.minPV === group.maxPV ? '' + group.minPV : group.minPV + '–' + group.maxPV)
                         : (group.minBV === group.maxBV ? '' + group.minBV : group.minBV + '–' + group.maxBV) }}</div>
@@ -255,7 +277,7 @@
             </cdk-virtual-scroll-viewport>
             } @else if (this.expandedView() && isTableMode()) {
             <mb-data-table class="unit-search-as-table"
-                [rows]="this.filtersService.filteredUnits()"
+                [rows]="resultUnits"
                 [columns]="unitSearchTableColumns()"
                 [itemSize]="48"
                 [minWidth]="unitSearchTableMinWidth()"
@@ -331,7 +353,7 @@
             <cdk-virtual-scroll-viewport class="results-dropdown-viewport" [itemSize]="this.itemSize()"
                 [style.--item-size.px]="this.itemSize()" minBufferPx="900" maxBufferPx="1600" tabindex="0">
                 <div class="results-dropdown-item"
-                    *cdkVirtualFor="let unit of this.filtersService.filteredUnits(); let i = index; trackBy: trackByUnitId"
+                    *cdkVirtualFor="let unit of resultUnits; let i = index; trackBy: trackByUnitId"
                     [class.selected]="isUnitSelected(unit)"
                     [class.active]="activeIndex() === i"
                     [class.panel-selected]="showInlinePanel() && inlinePanelUnit()?.name === unit.name"
@@ -409,13 +431,13 @@
                     <button type="button" class="bt-button" (click)="clearSelection()">CLEAR</button>
                 </div>
             }
-            @if (this.filtersService.filteredUnits().length > 0) {
+            @if (resultUnits.length > 0) {
                 <div class="results-footer">
                     <div class="results-count">
                         @if (viewMode() === 'chassis') {
-                        {{ groupedUnits().length }} chassis{{ groupedUnits().length === 1 ? '' : 'es' }} ({{ this.filtersService.filteredUnits().length }} variant{{ this.filtersService.filteredUnits().length === 1 ? '' : 's' }})
+                        {{ groupedUnits().length }} chassis ({{ resultUnits.length }} variant{{ resultUnits.length === 1 ? '' : 's' }})
                         } @else {
-                        {{ this.filtersService.filteredUnits().length }} result{{ this.filtersService.filteredUnits().length === 1 ? '' : 's' }}
+                        {{ resultUnits.length }} result{{ resultUnits.length === 1 ? '' : 's' }}
                         }
                     </div>
                     <span class="spanner"></span>

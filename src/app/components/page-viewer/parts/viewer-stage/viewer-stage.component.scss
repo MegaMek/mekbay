@@ -1,0 +1,13 @@
+:host {
+    display: contents;
+}
+
+.page-viewer-container {
+    width: 100%;
+    min-height: 0;
+    flex: 1 1 0;
+    overflow: hidden;
+    background: transparent;
+    position: relative;
+    touch-action: none;
+}

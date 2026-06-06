@@ -416,16 +416,16 @@
 }
 
 .bottom-info .source-entry {
-    display: inline-flex;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: 4px;
+    display: block;
+    line-height: 1.25;
+    max-width: 100%;
 }
 
 .bottom-info .source-note {
     color: var(--text-color-secondary);            
     font-weight: normal;
     font-size: 0.9em;
+    white-space: nowrap;
 }
 
 .bottom-info .sarna-link {

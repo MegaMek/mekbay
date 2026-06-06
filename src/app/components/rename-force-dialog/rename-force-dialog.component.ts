@@ -605,7 +605,7 @@ export class RenameForceDialogComponent {
 
     fillRandomName() {
         const faction = this.selectedFaction();
-        const newName = ForceNamerUtil.generateForceNameForFaction(faction);
+        const newName = ForceNamerUtil.generateForceNameForFaction(faction, this.dataService.getForceNameWords());
         this.setInputText(newName);
     }
 

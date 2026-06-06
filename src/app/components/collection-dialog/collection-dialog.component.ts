@@ -45,9 +45,10 @@ import { UserStateService } from '../../services/userState.service';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { getChassisTagTargetUnits } from '../../utils/chassis-tag-target.util';
 import { matchesSearch, parseSearchQuery } from '../../utils/search.util';
-import { compareUnitsByName } from '../../utils/sort.util';
+import { compareUnitsByName, naturalCompare } from '../../utils/sort.util';
 import { shareUrlWithClipboardFallback } from '../../utils/clipboard.util';
 import { buildPublicTagSearchQueryParameters } from '../../utils/unit-search-public-tags-url.util';
+import { getUnitVariantGroupIdentity } from '../../utils/unit-variant.util';
 
 type CollectionRowType = 'chassis' | 'name';
 
@@ -110,7 +111,7 @@ interface QuickAddQuantityConflict {
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
-        class: 'fullscreen-dialog-host nopadding fullheight'
+        class: 'fullscreen-dialog-host nopadding fullheight tv-fade'
     },
     templateUrl: './collection-dialog.component.html',
     styleUrl: './collection-dialog.component.scss'
@@ -155,15 +156,14 @@ export class CollectionDialogComponent {
 
         for (const unit of this.dataService.getUnits()) {
             if (unit._chassisTags?.length) {
-                const chassisKey = TagsService.getChassisTagKey(unit);
                 const rowKey = this.getRowKey('chassis', unit);
                 if (!rows.has(rowKey)) {
                     rows.set(rowKey, {
                         key: rowKey,
                         rowType: 'chassis',
                         unit,
-                        title: unit.chassis,
-                        subtitle: unit.type,
+                        title: this.getVariantGroupChassis(unit),
+                        subtitle: unit.as.TP,
                         tags: this.toCollectionTags(unit._chassisTags, rowKey, pendingRemovedTags)
                     });
                 }
@@ -176,7 +176,7 @@ export class CollectionDialogComponent {
                     rowType: 'name',
                     unit,
                     title: this.getUnitDisplayName(unit),
-                    subtitle: unit.type,
+                    subtitle: unit.as.TP,
                     tags: this.toCollectionTags(unit._nameTags, rowKey, pendingRemovedTags)
                 });
             }
@@ -208,11 +208,11 @@ export class CollectionDialogComponent {
         }
 
         for (const row of rows.values()) {
-            row.tags.sort((left, right) => left.tag.toLowerCase().localeCompare(right.tag.toLowerCase()));
+            row.tags.sort((left, right) => naturalCompare(left.tag, right.tag));
         }
 
         return Array.from(rows.values())
-            .sort((left, right) => left.title.localeCompare(right.title) || left.rowType.localeCompare(right.rowType));
+            .sort((left, right) => naturalCompare(left.title, right.title) || naturalCompare(left.rowType, right.rowType));
     });
 
     readonly allTags = computed(() => {
@@ -225,7 +225,7 @@ export class CollectionDialogComponent {
             }
         }
 
-        return Array.from(tags.values()).sort((left, right) => left.toLowerCase().localeCompare(right.toLowerCase()));
+        return Array.from(tags.values()).sort(naturalCompare);
     });
 
     readonly filteredRows = computed(() => {
@@ -267,9 +267,10 @@ export class CollectionDialogComponent {
             const key = TagsService.getChassisTagKey(unit);
             counts.set(key, (counts.get(key) ?? 0) + 1);
             if (!options.has(key)) {
+                const chassis = this.getVariantGroupChassis(unit);
                 options.set(key, {
-                    label: unit.chassis,
-                    inputLabel: unit.chassis,
+                    label: chassis,
+                    inputLabel: chassis,
                     key,
                     unit,
                     unitCount: 0
@@ -286,12 +287,14 @@ export class CollectionDialogComponent {
         for (const option of options.values()) {
             option.unitCount = counts.get(option.key) ?? 1;
             if ((labelCounts.get(option.label.toLowerCase()) ?? 0) > 1) {
-                option.inputLabel = `${option.label} [${option.unit.type}]`;
+                option.inputLabel = this.getVariantGroupInputLabel(option.unit);
             }
         }
 
         return Array.from(options.values())
-            .sort((left, right) => left.label.localeCompare(right.label) || left.unit.type.localeCompare(right.unit.type));
+            .sort((left, right) => naturalCompare(left.label, right.label)
+                || naturalCompare(left.unit.as.TP, right.unit.as.TP)
+                || Number(!!left.unit.omni) - Number(!!right.unit.omni));
     });
 
     readonly chassisSuggestions = computed(() => {
@@ -441,7 +444,7 @@ export class CollectionDialogComponent {
         const createdTags = this.createdTagOptions()
             .filter(tag => !lowerTags.has(tag.toLowerCase()));
 
-        return [...createdTags, ...tags];
+        return [...createdTags, ...tags].sort(naturalCompare);
     });
 
     readonly titleTagOptions = computed(() => {
@@ -452,7 +455,7 @@ export class CollectionDialogComponent {
         }
 
         return [...tags, selectedTag]
-            .sort((left, right) => left.toLowerCase().localeCompare(right.toLowerCase()));
+            .sort(naturalCompare);
     });
 
     readonly selectedMassTagValue = computed(() => this.resolveSelectedTagValue(this.massTag()));
@@ -900,7 +903,7 @@ export class CollectionDialogComponent {
                     pendingRemoval: !!pendingRemovedTags[removalKey]
                 };
             })
-            .sort((left, right) => left.tag.toLowerCase().localeCompare(right.tag.toLowerCase()));
+            .sort((left, right) => naturalCompare(left.tag, right.tag));
     }
 
     private createPendingRemovedTag(row: CollectionRow, tag: CollectionTagEntry): PendingRemovedTag {
@@ -984,7 +987,7 @@ export class CollectionDialogComponent {
 
     private getRowSearchText(row: CollectionRow): string {
         if (row.rowType === 'chassis') {
-            return row.unit.chassis ?? row.title;
+            return `${row.unit.chassis ?? row.title} ${row.unit.as.TP} ${row.unit.omni ? 'omni' : ''}`;
         }
 
         return row.unit._searchKey || `${row.unit.chassis ?? ''} ${row.unit.model ?? ''}`;
@@ -1007,6 +1010,14 @@ export class CollectionDialogComponent {
 
     private getQuickAddUnitDisplayName(unit: Unit): string {
         return unit.model ? this.getUnitDisplayName(unit) : `${unit.chassis} (Standard)`;
+    }
+
+    private getVariantGroupChassis(unit: Unit): string {
+        return getUnitVariantGroupIdentity(unit).chassis;
+    }
+
+    private getVariantGroupInputLabel(unit: Unit): string {
+        return `${this.getVariantGroupChassis(unit)} [${unit.as.TP}${unit.omni ? ' omni' : ''}]`;
     }
 
     private toModelOption(unit: Unit, includeChassis: boolean): ModelOption {

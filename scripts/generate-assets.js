@@ -51,6 +51,7 @@ const megaMekAvailabilityScript = path.join(__dirname, 'generate-megamek-availab
 const megaMekRulesetsScript = path.join(__dirname, 'generate-megamek-rulesets.ts');
 const sarnaPageTitlesScript = path.join(__dirname, 'generate-sarna-page-titles.ts');
 const ratGeneratorCsvScript = path.join(__dirname, 'ratgenerator_build_table.ts');
+const forceNameWordsScript = path.join(__dirname, 'generate-force-name-words.ts');
 
 console.log(`[Assets] Using MM data from: ${mmDataRoot}`);
 console.log(`[Assets] Using sourcebooks from: ${sourcebooksDir}`);
@@ -156,6 +157,7 @@ function generateSourcebooks() {
 
 async function main() {
   try {
+    runTypeScriptScript(forceNameWordsScript);
     runTypeScriptScript(megaMekAvailabilityScript);
     runTypeScriptScript(megaMekRulesetsScript);
     runTypeScriptScript(sarnaPageTitlesScript);

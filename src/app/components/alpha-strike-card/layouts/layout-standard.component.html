@@ -135,51 +135,25 @@
                     </div>
                     <div class="frame-title-background heat-label">HEAT SCALE</div>
                     <div class="heat-track">
-                        <!-- Heat 0 -->
                         @let pendingHeatDelta = pendingHeat();
-                        @let effectiveHeat = heatLevel() + pendingHeatDelta;
-                        @let hotDog = forceUnit()?.hasHotDog();
-                        <div class="heat-level heat-0" 
-                             [class.hot-dog]="hotDog"
-                             [class.active]="heatLevel() === 0"
-                             [class.pending]="pendingHeatDelta !== 0 && effectiveHeat === 0">
-                            <span>0</span>
-                        </div>
-                        <!-- Heat 1 -->
-                        <div class="heat-level heat-1" 
-                             [class.hot-dog]="hotDog"
-                             [class.active]="heatLevel() === 1"
-                             [class.pending]="pendingHeatDelta !== 0 && effectiveHeat === 1">
-                            <span>1</span>
-                        </div>
-                        <!-- Heat 2 -->
-                        <div class="heat-level heat-2" 
-                             [class.hot-dog]="hotDog"
-                             [class.active]="heatLevel() === 2"
-                             [class.pending]="pendingHeatDelta !== 0 && effectiveHeat === 2">
-                            <span>2</span>
-                        </div>
-                        <!-- Heat 3 -->
-                        <div class="heat-level heat-3" 
-                             [class.hot-dog]="hotDog"
-                             [class.active]="heatLevel() === 3"
-                             [class.pending]="pendingHeatDelta !== 0 && effectiveHeat === 3">
-                            <span>3</span>
-                        </div>
-                        <!-- Heat 4 (Hot Dog ability) -->
-                        @if (hotDog) {
-                        <div class="heat-level heat-4" 
-                             [class.hot-dog]="hotDog"
-                             [class.active]="heatLevel() === 4"
-                             [class.pending]="pendingHeatDelta !== 0 && effectiveHeat === 4">
-                            <span>4</span>
-                        </div>
+                        @let committedHeat = heatLevel();
+                        @let previewHeat = committedHeat + pendingHeatDelta;
+                        @let extendedHeatTrack = hasExtendedHeatTrack();
+                        @let shutdownThreshold = shutdownHeatThreshold();
+                        @for (level of heatTrackLevels(); track level) {
+                                                        <div class="heat-level"
+                                                                 [attr.data-heat]="level"
+                                 [class.extended-heat]="extendedHeatTrack"
+                                 [class.active]="committedHeat === level"
+                                 [class.pending]="pendingHeatDelta !== 0 && previewHeat === level">
+                                <span>{{ level }}</span>
+                            </div>
                         }
-                        <!-- Shutdown -->
-                        <div class="heat-level heat-s" 
-                             [class.hot-dog]="hotDog"
-                             [class.active]="hotDog ? heatLevel() >= 5 : heatLevel() >= 4"
-                             [class.pending]="pendingHeatDelta !== 0 && (hotDog ? effectiveHeat >= 5 : effectiveHeat >= 4)">
+                            <div class="heat-level heat-s"
+                                [attr.data-heat]="shutdownThreshold"
+                             [class.extended-heat]="extendedHeatTrack"
+                             [class.active]="committedHeat >= shutdownThreshold"
+                             [class.pending]="pendingHeatDelta !== 0 && previewHeat >= shutdownThreshold">
                             <span>S</span>
                         </div>
                     </div>

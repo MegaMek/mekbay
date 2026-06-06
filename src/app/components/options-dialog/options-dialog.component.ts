@@ -44,7 +44,7 @@ import { isIOS } from '../../utils/platform.util';
 import { LoggerService } from '../../services/logger.service';
 import { GameService } from '../../services/game.service';
 import type { GameSystem } from '../../models/common.model';
-import type { AvailabilitySource } from '../../models/options.model';
+import type { AvailabilitySource, RecordSheetDoubleTapZoomResetMode } from '../../models/options.model';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { DataService } from '../../services/data.service';
 import { PublicTagsService } from '../../services/public-tags.service';
@@ -55,6 +55,7 @@ import { AccountAuthService } from '../../services/account-auth.service';
 import { OAuthProviderPickerDialogComponent, type OAuthProviderPickerDialogResult } from '../oauth-provider-picker-dialog/oauth-provider-picker-dialog.component';
 import type { AvailableAuthProvider, LinkedOAuthProvider, OAuthProvider } from '../../models/account-auth.model';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
+import { naturalCompare } from '../../utils/sort.util';
 
 type OptionsSectionId = 'General' | 'Account' | 'Tags' | 'Sheets' | 'Alpha Strike' | 'Advanced' | 'Logs';
 type OptionsViewId = OptionsSectionId;
@@ -173,7 +174,7 @@ export class OptionsDialogComponent {
         const nameTags = this.tagsService.getNameTags();
         const chassisTags = this.tagsService.getChassisTags();
         const allTags = new Set([...Object.keys(nameTags), ...Object.keys(chassisTags)]);
-        return Array.from(allTags).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+        return Array.from(allTags).sort(naturalCompare);
     });
     showSubscriptionInput = signal(false);
     subscriptionError = signal('');
@@ -390,6 +391,11 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('recordSheetCenterPanelContent', value);
     }
 
+    onRecordSheetDoubleTapZoomResetChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as RecordSheetDoubleTapZoomResetMode;
+        this.optionsService.setOption('recordSheetDoubleTapZoomReset', value);
+    }
+
     onSyncZoomBetweenSheetsChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value === 'true';
         this.optionsService.setOption('syncZoomBetweenSheets', value);
@@ -428,6 +434,11 @@ export class OptionsDialogComponent {
     onCanvasInputChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'all' | 'touch' | 'pen';
         this.optionsService.setOption('canvasInput', value);
+    }
+
+    onPerformanceModeChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value === 'true';
+        this.optionsService.setOption('performanceMode', value);
     }
 
     onSwipeToNextSheetChange(event: Event) {

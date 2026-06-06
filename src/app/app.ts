@@ -63,7 +63,7 @@ import { DomPortal, PortalModule } from '@angular/cdk/portal';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { APP_VERSION_STRING, BUILD_BRANCH } from './build-meta';
 import { LoggerService } from './services/logger.service';
-import { isIOS, isRunningStandalone } from './utils/platform.util';
+import { isAndroid, isIOS, isRunningStandalone } from './utils/platform.util';
 import { GameService } from './services/game.service';
 import { AccountAuthService } from './services/account-auth.service';
 
@@ -71,6 +71,8 @@ import { GameSystem } from './models/common.model';
 import { UrlStateService } from './services/url-state.service';
 
 const SW_UPDATE_RELOAD_HASH_STORAGE_KEY = 'mekbay:sw-update-reload-hash';
+const ANDROID_PWA_BACK_EXIT_HISTORY_STATE_KEY = 'mekbayAndroidPwaBackExit';
+const ANDROID_PWA_BACK_RESTORE_GUARD_MS = 1000;
 
 /*
  * Author: Drake
@@ -133,6 +135,9 @@ export class App {
     private lastHandledCapturedUrlAt = 0;
     private readonly capturedUrlDedupWindowMs = 2000;
     private pendingUpdateHash: string | null = null;
+    private androidPwaBackExitEnabled = false;
+    private androidPwaBackRestoring = false;
+    private androidPwaBackRestoreTimeoutId: number | null = null;
     private readonly keyboardNavigationKeys = new Set([
         'Tab',
         'ArrowUp',
@@ -185,6 +190,7 @@ export class App {
         window.addEventListener('pointerdown', this.pointerNavigationHandler, true);
         window.addEventListener('mousedown', this.pointerNavigationHandler, true);
         window.addEventListener('touchstart', this.pointerNavigationHandler, true);
+        this.initializeAndroidPwaBackExitHandling();
         // window.addEventListener('popstate', this.historyNavigationHandler);
         // if ('serviceWorker' in navigator) {
         //     navigator.serviceWorker.addEventListener('message', this.serviceWorkerMessageHandler);
@@ -332,6 +338,7 @@ export class App {
             window.removeEventListener('pointerdown', this.pointerNavigationHandler, true);
             window.removeEventListener('mousedown', this.pointerNavigationHandler, true);
             window.removeEventListener('touchstart', this.pointerNavigationHandler, true);
+            this.removeAndroidPwaBackExitHandling();
             // window.removeEventListener('popstate', this.historyNavigationHandler);
             // if ('serviceWorker' in navigator) {
             //     navigator.serviceWorker.removeEventListener('message', this.serviceWorkerMessageHandler);
@@ -354,6 +361,108 @@ export class App {
     private readonly pointerNavigationHandler = () => {
         document.documentElement.classList.remove('keyboard-navigation');
     };
+
+    private initializeAndroidPwaBackExitHandling(): void {
+        if (!this.shouldHandleAndroidPwaBackExit()) {
+            return;
+        }
+
+        this.androidPwaBackExitEnabled = true;
+        window.addEventListener('popstate', this.androidPwaBackExitHandler);
+        this.pushAndroidPwaBackExitState();
+    }
+
+    private removeAndroidPwaBackExitHandling(): void {
+        window.removeEventListener('popstate', this.androidPwaBackExitHandler);
+        this.clearAndroidPwaBackRestoreGuard();
+        this.androidPwaBackExitEnabled = false;
+    }
+
+    private shouldHandleAndroidPwaBackExit(): boolean {
+        // iOS web apps do not expose the same app-closing Back button path, and window.close() is not reliable there.
+        return isAndroid()
+            && isRunningStandalone()
+            && typeof window.history.pushState === 'function'
+            && typeof window.history.forward === 'function';
+    }
+
+    private pushAndroidPwaBackExitState(): void {
+        if (this.isAndroidPwaBackExitState(window.history.state)) {
+            return;
+        }
+
+        try {
+            window.history.pushState(
+                this.withAndroidPwaBackExitState(window.history.state),
+                '',
+                window.location.href
+            );
+        } catch (err) {
+            window.removeEventListener('popstate', this.androidPwaBackExitHandler);
+            this.androidPwaBackExitEnabled = false;
+            this.logger.warn('Unable to initialize Android PWA back handling: ' + err);
+        }
+    }
+
+    private replaceCurrentHistoryState(url: string): void {
+        const state = this.androidPwaBackExitEnabled
+            ? this.withAndroidPwaBackExitState(window.history.state)
+            : null;
+        window.history.replaceState(state, '', url);
+    }
+
+    private withAndroidPwaBackExitState(state: unknown): Record<string, unknown> {
+        const stateObject = state && typeof state === 'object' && !Array.isArray(state)
+            ? state as Record<string, unknown>
+            : {};
+        return { ...stateObject, [ANDROID_PWA_BACK_EXIT_HISTORY_STATE_KEY]: true };
+    }
+
+    private isAndroidPwaBackExitState(state: unknown): boolean {
+        return !!state
+            && typeof state === 'object'
+            && (state as Record<string, unknown>)[ANDROID_PWA_BACK_EXIT_HISTORY_STATE_KEY] === true;
+    }
+
+    private readonly androidPwaBackExitHandler = (event: PopStateEvent) => {
+        if (!this.androidPwaBackExitEnabled) {
+            return;
+        }
+
+        if (this.androidPwaBackRestoring) {
+            this.androidPwaBackRestoring = false;
+            this.clearAndroidPwaBackRestoreGuard();
+            return;
+        }
+
+        if (this.isAndroidPwaBackExitState(event.state)) {
+            return;
+        }
+
+        this.logger.info('[PWA] Android back button reached app root; closing standalone window.');
+        this.androidPwaBackRestoring = true;
+        try {
+            window.history.forward();
+            this.androidPwaBackRestoreTimeoutId = window.setTimeout(() => {
+                this.androidPwaBackRestoring = false;
+                this.androidPwaBackRestoreTimeoutId = null;
+            }, ANDROID_PWA_BACK_RESTORE_GUARD_MS);
+        } catch {
+            this.androidPwaBackRestoring = false;
+        }
+        this.closeStandaloneWindow();
+    };
+
+    private clearAndroidPwaBackRestoreGuard(): void {
+        if (this.androidPwaBackRestoreTimeoutId !== null) {
+            window.clearTimeout(this.androidPwaBackRestoreTimeoutId);
+            this.androidPwaBackRestoreTimeoutId = null;
+        }
+    }
+
+    private closeStandaloneWindow(): void {
+        window.close();
+    }
 
     isCloudForceLoading = computed(() => this.dataService.isCloudForceLoading());
 
@@ -614,7 +723,7 @@ export class App {
         }
 
         // Update browser URL bar (no reload)
-        window.history.replaceState(null, '', parsed.pathname + parsed.search);
+        this.replaceCurrentHistoryState(parsed.pathname + parsed.search);
 
         // ── shareUnit: just show the dialog ──────────────────────────────
         const sharedUnitName = params.get('shareUnit');
@@ -647,7 +756,7 @@ export class App {
                     [
                         { label: 'LOAD (REPLACE)', value: 'load', class: 'danger' },
                         { label: 'ADD AS FRIENDLY', value: 'add-friendly' },
-                        { label: 'ADD AS OPPOSING', value: 'add-enemy' },
+                        { label: 'ADD AS HOSTILE', value: 'add-enemy' },
                         { label: 'DISMISS', value: 'dismiss' },
                     ],
                     'dismiss'

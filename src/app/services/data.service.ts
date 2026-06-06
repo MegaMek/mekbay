@@ -65,8 +65,8 @@ import type { SarnaLookupUnit } from '../models/sarna-page-titles.model';
 import type { MegaMekFactionAffiliation, MegaMekFactionRecord, MegaMekFactions } from '../models/megamek/factions.model';
 import type { MegaMekWeightedAvailabilityRecord } from '../models/megamek/availability.model';
 import type { MegaMekRulesetRecord } from '../models/megamek/rulesets.model';
+import type { ForceNameWords } from '../models/force-name-words.model';
 import { getForcePacks } from '../models/forcepacks.model';
-import { getForcePackLookupKey } from '../utils/force-pack.util';
 import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot } from '../utils/unit-search-worker-protocol.util';
 import { MegaMekAvailabilityCatalogService } from './catalogs/megamek-availability-catalog.service';
 import { MegaMekFactionsCatalogService } from './catalogs/megamek-factions-catalog.service';
@@ -81,7 +81,10 @@ import { UnitRuntimeService } from './unit-runtime.service';
 import { UnitsCatalogService } from './catalogs/units-catalog.service';
 import { UnitsFluffCatalogService } from './catalogs/units-fluff-catalog.service';
 import { EquipmentCatalogService } from './catalogs/equipment-catalog.service';
+import { ForceNameWordsCatalogService } from './catalogs/force-name-words-catalog.service';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
+import { naturalCompare } from '../utils/sort.util';
+import { getUnitVariantGroupKey } from '../utils/unit-variant.util';
 
 /*
  * Author: Drake
@@ -176,12 +179,14 @@ export class DataService {
     private quirksCatalog = inject(QuirksCatalogService);
     private sarnaPageTitlesCatalog = inject(SarnaPageTitlesCatalogService);
     private sourcebooksCatalog = inject(SourcebooksCatalogService);
+    private forceNameWordsCatalog = inject(ForceNameWordsCatalogService);
     private readonly megaMekAvailabilityCatalogState = createCatalogInitializationState();
     private readonly megaMekFactionsCatalogState = createCatalogInitializationState();
     private readonly megaMekRulesetsCatalogState = createCatalogInitializationState();
     private readonly quirksCatalogState = createCatalogInitializationState();
     private readonly sarnaPageTitlesCatalogState = createCatalogInitializationState();
     private readonly sourcebooksCatalogState = createCatalogInitializationState();
+    private readonly forceNameWordsCatalogState = createCatalogInitializationState();
 
     isDataReady = signal(false);
     isDownloading = signal(false);
@@ -190,9 +195,9 @@ export class DataService {
     /** Emits when a cloud save is rejected (not_owner) and the force needs adoption. */
     public forceNeedsAdoption = new Subject<Force>();
 
-    /** packName -> Set<chassis|type|subtype> for force pack membership checks */
+    /** packName -> Set<chassis|as.TP|omni> for force pack membership checks */
     private forcePackToLookupKey: Map<string, Set<string>> | null = null;
-    /** chassis|type|subtype -> sorted pack names[] for reverse lookups */
+    /** chassis|as.TP|omni -> sorted pack names[] for reverse lookups */
     private lookupKeyToForcePacks: Map<string, string[]> | null = null;
     private cachedForceTagsByInstanceId = new Map<string, string[]>();
 
@@ -399,6 +404,10 @@ export class DataService {
         return this.sarnaPageTitlesCatalog.getPageTitleForUnit(unit);
     }
 
+    public getForceNameWords(): ForceNameWords {
+        return this.forceNameWordsCatalog.getWords();
+    }
+
     public getMegaMekFactions(): MegaMekFactions {
         return this.megaMekFactionsCatalog.getFactions();
     }
@@ -599,8 +608,17 @@ export class DataService {
         );
     }
 
+    private ensureForceNameWordsCatalogInitialized(): Promise<boolean> {
+        return this.ensureCatalogInitialized(
+            this.forceNameWordsCatalogState,
+            'force_name_words',
+            () => this.forceNameWordsCatalog.initialize(),
+        );
+    }
+
     private initializeStartupCatalogs(): Promise<boolean> {
         return this.ensureCatalogGroupInitialized([
+            { name: 'force_name_words', ensure: () => this.ensureForceNameWordsCatalogInitialized() },
             { name: 'megamek_availability', ensure: () => this.ensureMegaMekAvailabilityCatalogInitialized() },
             { name: 'quirks', ensure: () => this.ensureQuirksCatalogInitialized() },
             { name: 'sarna_page_titles', ensure: () => this.ensureSarnaPageTitlesCatalogInitialized() },
@@ -785,7 +803,7 @@ export class DataService {
         }
 
         return Array.from(labels.values())
-            .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
+            .sort(naturalCompare);
     }
 
     public updateCachedForceTags(instanceId: string, tags: readonly string[] | null | undefined): void {
@@ -1660,8 +1678,8 @@ export class DataService {
 
     /**
      * Build both force pack lookup maps on first use.
-     * - forcePackToLookupKey: packName -> Set<chassis|type|subtype>
-     * - lookupKeyToForcePacks: chassis|type|subtype -> sorted packName[]
+        * - forcePackToLookupKey: packName -> Set<chassis|as.TP|omni>
+        * - lookupKeyToForcePacks: chassis|as.TP|omni -> sorted packName[]
      */
     private buildForcePackCaches(): void {
         this.forcePackToLookupKey = new Map();
@@ -1674,7 +1692,7 @@ export class DataService {
                 for (const pu of unitList) {
                     const unit = this.getUnitByName(pu.name);
                     if (unit) {
-                        const key = getForcePackLookupKey(unit);
+                        const key = getUnitVariantGroupKey(unit);
                         lookupKeys.add(key);
                         if (!reverseMap.has(key)) reverseMap.set(key, new Set());
                         reverseMap.get(key)!.add(pack.name);
@@ -1699,17 +1717,17 @@ export class DataService {
     }
 
     /**
-     * Check if a unit belongs to a force pack (by chassis|type|subtype).
+    * Check if a unit belongs to a force pack (by variants).
      */
     public unitBelongsToForcePack(unit: Unit, packName: string): boolean {
         if (!this.forcePackToLookupKey) this.buildForcePackCaches();
         const lookupSet = this.forcePackToLookupKey!.get(packName);
         if (!lookupSet) return false;
-        return lookupSet.has(getForcePackLookupKey(unit));
+        return lookupSet.has(getUnitVariantGroupKey(unit));
     }
 
     /**
-     * Get the chassis|type|subtype set for a force pack (for bulk filtering).
+    * Get the variants set for a force pack (for bulk filtering).
      */
     public getForcePackLookupSet(packName: string): Set<string> | undefined {
         if (!this.forcePackToLookupKey) this.buildForcePackCaches();
@@ -1717,11 +1735,11 @@ export class DataService {
     }
 
     /**
-     * Get the sorted list of force pack names that contain a unit's chassis|type|subtype.
+    * Get the sorted list of force pack names that contain a unit's variants.
      */
     public getForcePacksForUnit(unit: Unit): string[] {
         if (!this.lookupKeyToForcePacks) this.buildForcePackCaches();
-        return this.lookupKeyToForcePacks!.get(getForcePackLookupKey(unit)) ?? [];
+        return this.lookupKeyToForcePacks!.get(getUnitVariantGroupKey(unit)) ?? [];
     }
 
     /* ----------------------------------------------------------

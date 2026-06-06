@@ -42,7 +42,8 @@ import { AbilityInfoDialogComponent, type AbilityInfoDialogData } from '../abili
 import { InputDialogComponent, type InputDialogData } from '../input-dialog/input-dialog.component';
 import { PilotAbilityInfoDialogComponent, type PilotAbilityInfoDialogData } from '../pilot-ability-info-dialog/pilot-ability-info-dialog.component';
 import { type CardConfig, type CardLayoutDesign, type CriticalHitsVariant, getLayoutForUnitType } from './card-layout.config';
-import type { SpecialAbilityState, SpecialAbilityClickEvent } from './layouts/layout-base.component';
+import type { SpecialAbilityState } from '../../models/as-special-ability-state.model';
+import type { SpecialAbilityClickEvent } from './layouts/layout-base.component';
 import { CriticalHitRollDialogComponent, type CriticalHitRollDialogData } from './critical-hit-roll-dialog/critical-hit-roll-dialog.component';
 import { MotiveDamageRollDialogComponent, type MotiveDamageRollDialogData } from './motive-damage-roll-dialog/motive-damage-roll-dialog.component';
 import { AsLayoutStandardComponent, AsLayoutLargeVessel1Component, AsLayoutLargeVessel2Component } from './layouts';
@@ -564,26 +565,31 @@ export class AlphaStrikeCardComponent {
     private setupHeatInteraction(cardElement: HTMLElement, signal: AbortSignal): void {
         const heatTrack = cardElement.querySelector('.heat-track');
         if (!heatTrack) return;
-        
-        const heatLevels = heatTrack.querySelectorAll('.heat-level');
-        heatLevels.forEach((level, index) => {
-            this.addTapHandler(level as HTMLElement, () => {
-                const unit = this.forceUnit();
-                if (!unit) return;
-                const committedHeat = unit.getState().heat();
-                const pendingHeat = unit.getState().pendingHeat();
-                const effectiveHeat = committedHeat + pendingHeat;
-                
-                if (effectiveHeat === index) {
-                    // Toggle off - reset pending to 0
-                    unit.setPendingHeat(0);
-                } else {
-                    // Set pending delta to reach this level
-                    unit.setPendingHeat(index - committedHeat);
-                }
-                vibrate(10);
-            }, signal);
-        });
+
+        this.addTapHandler(heatTrack as HTMLElement, (event) => {
+            const target = event.target instanceof HTMLElement
+                ? event.target.closest<HTMLElement>('.heat-level')
+                : null;
+            if (!target || !heatTrack.contains(target)) return;
+
+            const unit = this.forceUnit();
+            if (!unit) return;
+            const targetHeat = Number(target.dataset['heat']);
+            if (!Number.isFinite(targetHeat)) return;
+
+            const committedHeat = unit.getState().heat();
+            const pendingHeat = unit.getState().pendingHeat();
+            const effectiveHeat = committedHeat + pendingHeat;
+
+            if (effectiveHeat === targetHeat) {
+                // Toggle off - reset pending to 0
+                unit.setPendingHeat(0);
+            } else {
+                // Set pending delta to reach this level
+                unit.setPendingHeat(targetHeat - committedHeat);
+            }
+            vibrate(10);
+        }, signal);
     }
     
     private showDamagePicker(event: PointerEvent): void {

@@ -77,6 +77,7 @@ import { ForceNamerUtil } from '../utils/force-namer.util';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
 import { normalizeMultiStateSelection } from '../utils/unit-search-shared.util';
 import { matchesMegaMekRulesetWhen, type MegaMekRulesetPredicateContext } from '../utils/megamek-ruleset-predicate.util';
+import { getUnitVariantGroupKey } from '../utils/unit-variant.util';
 import { DataService } from './data.service';
 import { OptionsService } from './options.service';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
@@ -1802,14 +1803,13 @@ function normalizeSelectionKey(value: string | undefined): string {
     return value?.trim().toLowerCase() || '';
 }
 
-function buildDuplicateChassisKey(unit: Pick<Unit, 'chassis' | 'type'>): string {
+function buildDuplicateChassisKey(unit: Unit): string {
     const chassisKey = normalizeSelectionKey(unit.chassis);
     if (chassisKey.length === 0) {
         return '';
     }
 
-    const typeKey = normalizeSelectionKey(unit.type);
-    return typeKey.length > 0 ? `${chassisKey}|${typeKey}` : chassisKey;
+    return normalizeSelectionKey(getUnitVariantGroupKey(unit));
 }
 
 function buildTaggedQuantityUnitKey(unit: Unit): string {
@@ -3020,7 +3020,7 @@ export class ForceGeneratorService implements OnDestroy {
         const previewEntryStartedAt = getForceGeneratorNow();
         const faction = preview.faction ?? null;
         const era = preview.era ?? null;
-        const resolvedName = name?.trim() || preview.name?.trim() || ForceNamerUtil.generateForceNameForFaction(faction);
+        const resolvedName = name?.trim() || preview.name?.trim() || ForceNamerUtil.generateForceNameForFaction(faction, this.dataService.getForceNameWords());
         const previewGroupBuildMetrics: PreviewGroupBuildMetrics = {
             orgResolveMs: 0,
             formationMatchMs: 0,
@@ -5502,7 +5502,7 @@ export class ForceGeneratorService implements OnDestroy {
 
         return {
             gameSystem: options.gameSystem,
-            name: ForceNamerUtil.generateForceNameForFaction(options.context.forceFaction),
+            name: ForceNamerUtil.generateForceNameForFaction(options.context.forceFaction, this.dataService.getForceNameWords()),
             units,
             totalCost,
             faction: options.context.forceFaction,

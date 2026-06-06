@@ -60,6 +60,7 @@ import {
     normalizeComponentLocation,
     type ComponentMatrixAreaView,
 } from './unit-details-component-matrix.util';
+import { naturalCompare } from '../../../utils/sort.util';
 
 type SourceListEntry = Sourcebook & { sourceAnnotations: string[] };
 type ComponentDetailsDisplayStyle = 'normal' | 'additional';
@@ -159,7 +160,7 @@ export class UnitDetailsGeneralTabComponent {
         return result;
     });
 
-    /** Force packs that contain the current unit's chassis|type|subtype */
+    /** Force packs that contain the current unit's variants */
     forcePacks = computed<string[]>(() => {
         const u = this.unit();
         if (!u) return [];
@@ -186,7 +187,7 @@ export class UnitDetailsGeneralTabComponent {
             .sort((left, right) => {
                 const leftTitle = left.title || left.abbrev;
                 const rightTitle = right.title || right.abbrev;
-                return leftTitle.localeCompare(rightTitle) || left.abbrev.localeCompare(right.abbrev);
+                return naturalCompare(leftTitle, rightTitle) || naturalCompare(left.abbrev, right.abbrev);
             });
     });
 
@@ -262,8 +263,8 @@ export class UnitDetailsGeneralTabComponent {
             }
         }
 
-        sourcebooks.sort((left, right) => left.title.localeCompare(right.title));
-        unknownSources.sort((left, right) => left.abbrev.localeCompare(right.abbrev));
+        sourcebooks.sort((left, right) => naturalCompare(left.title, right.title));
+        unknownSources.sort((left, right) => naturalCompare(left.abbrev, right.abbrev));
         const selectedSourcebookIndex = selectedSourcebook
             ? sourcebooks.findIndex(sourcebook => sourcebook.abbrev === selectedSourcebook.abbrev)
             : -1;

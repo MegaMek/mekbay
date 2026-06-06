@@ -42,7 +42,7 @@ import { DataService } from '../../services/data.service';
 /*
  * Author: Drake
  *
- * Reusable operation preview showing Friendly vs Opposing sides
+ * Reusable operation preview showing Friendly vs Hostile sides
  * with force names, BV/PV values, and totals.
  */
 

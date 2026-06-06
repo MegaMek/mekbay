@@ -711,8 +711,16 @@
     display: flex;
     justify-content: flex-end;
     align-items: center;
+    gap: 4px;
     padding: 4px;
     border-top: 1px solid var(--border-color, #444);
+    flex: 0 0 auto;
+}
+
+.sidebar-footer-filter-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
     flex: 0 0 auto;
 }
 
@@ -720,12 +728,16 @@
     display: flex;
     align-items: center;
     gap: 4px;
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .sort-select {
     height: 28px;
     padding: 0 6px;
     font-size: 0.75rem;
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .sort-select option {

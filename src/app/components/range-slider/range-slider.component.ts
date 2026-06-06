@@ -42,7 +42,7 @@ type SliderThumb = 'min' | 'max' | 'single';
 @Component({
     selector: 'range-slider',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [FormatNumberPipe],
+    imports: [],
     templateUrl: './range-slider.component.html',
     styleUrl: './range-slider.component.css',
     host: {
@@ -65,6 +65,8 @@ export class RangeSliderComponent {
     interacted = input<boolean>(false);
     curve = input<number>(1); // 1 = linear, >1 = log-like, <1 = exp-like
     stepSize = input<number>(1);
+    specialValues = input<readonly number[] | undefined>();
+    formatValue = input<((value: number) => string) | undefined>();
     disabled = input<boolean>(false);
     /** Display excluded ranges (values that are filtered OUT) */
     excludeRanges = input<[number, number][] | undefined>();
@@ -159,6 +161,41 @@ export class RangeSliderComponent {
         return Math.log(this.max() + this.shift + 1);
     }
 
+    private getStepSize(): number {
+        const stepRaw = this.stepSize() ?? 1;
+        return typeof stepRaw === 'number' && stepRaw > 0 ? stepRaw : 1;
+    }
+
+    private normalizeStepValue(value: number): number {
+        const step = this.getStepSize();
+        if (Number.isInteger(step)) return Math.round(value);
+        return Number(value.toFixed(6));
+    }
+
+    private getValueStops(): number[] | null {
+        const specialValues = this.specialValues()?.filter(value => Number.isFinite(value));
+        if (!specialValues || specialValues.length === 0) {
+            return null;
+        }
+
+        const [min, max] = this.availableRange() ?? [this.min(), this.max()];
+        const step = this.getStepSize();
+        const stops = new Set<number>([min, max]);
+        const start = Math.ceil(min / step) * step;
+
+        for (let value = start; value <= max + Number.EPSILON; value += step) {
+            stops.add(this.normalizeStepValue(value));
+        }
+
+        for (const value of specialValues) {
+            if (value >= min && value <= max) {
+                stops.add(value);
+            }
+        }
+
+        return Array.from(stops).sort((left, right) => left - right);
+    }
+
     valueToPercent(value: number): number {
             if (this.max() === this.min()) return 0;
 
@@ -223,8 +260,21 @@ export class RangeSliderComponent {
     private alignToStep(value: number): number {
         const [min, max] = this.availableRange() ?? [this.min(), this.max()];
         if (value <= min || value >= max) return value;
-        const stepRaw = this.stepSize() ?? 1;
-        const step = (typeof stepRaw === 'number' && stepRaw > 0) ? stepRaw : 1;
+        const valueStops = this.getValueStops();
+        if (valueStops) {
+            let nearest = valueStops[0];
+            let nearestDistance = Math.abs(value - nearest);
+            for (let i = 1; i < valueStops.length; i++) {
+                const distance = Math.abs(value - valueStops[i]);
+                if (distance < nearestDistance) {
+                    nearest = valueStops[i];
+                    nearestDistance = distance;
+                }
+            }
+            return nearest;
+        }
+
+        const step = this.getStepSize();
         // If step is 1, just round to nearest integer for stability
         const steps = Math.round(value / step);
         const aligned = steps * step;
@@ -234,6 +284,39 @@ export class RangeSliderComponent {
         if (Number.isInteger(step)) return Math.round(clamped);
         // For fractional steps, round to reasonable precision
         return Number(clamped.toFixed(6));
+    }
+
+    private moveValue(value: number, direction: -1 | 1, largeStep: boolean): number {
+        const valueStops = this.getValueStops();
+        if (!valueStops) {
+            const step = this.getStepSize() * (largeStep ? 10 : 1);
+            return this.alignToStep(value + direction * step);
+        }
+
+        const currentValue = this.alignToStep(value);
+        const stepCount = largeStep ? 10 : 1;
+        const currentIndex = valueStops.findIndex(stop => Math.abs(stop - currentValue) < 0.000001);
+        if (currentIndex === -1) {
+            let fallbackIndex = -1;
+            if (direction > 0) {
+                fallbackIndex = valueStops.findIndex(stop => stop > currentValue);
+            } else {
+                for (let i = valueStops.length - 1; i >= 0; i--) {
+                    if (valueStops[i] < currentValue) {
+                        fallbackIndex = i;
+                        break;
+                    }
+                }
+            }
+            return fallbackIndex === -1 ? currentValue : valueStops[fallbackIndex];
+        }
+
+        const nextIndex = Math.max(0, Math.min(valueStops.length - 1, currentIndex + direction * stepCount));
+        return valueStops[nextIndex];
+    }
+
+    displayValue(value: number): string {
+        return this.formatValue()?.(value) ?? FormatNumberPipe.formatValue(value);
     }
 
     private setSingleValue(value: number) {
@@ -269,7 +352,6 @@ export class RangeSliderComponent {
         let changed = false;
 
         // ArrowUp/ArrowDown act as "large" steps (x10).
-        const baseStep = this.stepSize?.() ?? 1;
         const isSmallLeft = event.key === 'ArrowLeft';
         const isSmallRight = event.key === 'ArrowRight';
         const isLargeDown = event.key === 'ArrowDown';
@@ -277,10 +359,9 @@ export class RangeSliderComponent {
 
         if (this.isSingleValueMode()) {
             if (isSmallLeft || isLargeDown || isSmallRight || isLargeUp) {
-                const step = (isLargeDown || isLargeUp) ? baseStep * 10 : baseStep;
                 const direction = (isSmallLeft || isLargeDown) ? -1 : 1;
                 event.preventDefault();
-                this.setSingleValue(this.right() + (direction * step));
+                this.setSingleValue(this.moveValue(this.right(), direction, isLargeDown || isLargeUp));
                 this.emitCurrentValue();
             }
 
@@ -288,27 +369,25 @@ export class RangeSliderComponent {
         }
 
         if (isSmallLeft || isLargeDown) {
-            const step = isLargeDown ? baseStep * 10 : baseStep;
             event.preventDefault();
             if (focused === 'min') {
-                const newValue = this.alignToStep(Math.max(availableMin, this.left() - step));
+                const newValue = this.alignToStep(Math.max(availableMin, this.moveValue(this.left(), -1, isLargeDown)));
                 this.left.set(newValue);
                 if (newValue > this.right()) {
                     this.right.set(newValue);
                 }
             } else {
-                const newValue = this.alignToStep(Math.max(this.left(), this.right() - step));
+                const newValue = this.alignToStep(Math.max(this.left(), this.moveValue(this.right(), -1, isLargeDown)));
                 this.right.set(newValue);
             }
             changed = true;
         } else if (isSmallRight || isLargeUp) {
-            const step = isLargeUp ? baseStep * 10 : baseStep;
             event.preventDefault();
             if (focused === 'min') {
-                const newValue = this.alignToStep(Math.min(this.right(), this.left() + step));
+                const newValue = this.alignToStep(Math.min(this.right(), this.moveValue(this.left(), 1, isLargeUp)));
                 this.left.set(newValue);
             } else {
-                const newValue = this.alignToStep(Math.min(availableMax, this.right() + step));
+                const newValue = this.alignToStep(Math.min(availableMax, this.moveValue(this.right(), 1, isLargeUp)));
                 this.right.set(newValue);
                 if (newValue < this.left()) {
                     this.left.set(newValue);
@@ -329,29 +408,26 @@ export class RangeSliderComponent {
  
         event.preventDefault();
         const [availableMin, availableMax] = this.availableRange() ?? [this.min(), this.max()];
-        // Wheel moves by configured step size per notch
-        const baseStep = this.stepSize?.() ?? 1;
         const notch = event.deltaY > 0 ? -1 : 1;
-        const delta = notch * baseStep;
         let changed = false;
 
         if (this.isSingleValueMode()) {
-            this.setSingleValue(this.right() + delta);
+            this.setSingleValue(this.moveValue(this.right(), notch as -1 | 1, false));
             this.emitCurrentValue();
             return;
         }
  
         if (focused === 'min') {
-            const newValue = this.alignToStep(Math.max(availableMin, Math.min(this.right(), this.left() + delta)));
+            const newValue = this.alignToStep(Math.max(availableMin, Math.min(this.right(), this.moveValue(this.left(), notch as -1 | 1, false))));
             this.left.set(newValue);
-             if (delta > 0 && newValue > this.right()) {
+             if (notch > 0 && newValue > this.right()) {
                 this.right.set(newValue);
              }
              changed = true;
          } else {
-            const newValue = this.alignToStep(Math.max(this.left(), Math.min(availableMax, this.right() + delta)));
+            const newValue = this.alignToStep(Math.max(this.left(), Math.min(availableMax, this.moveValue(this.right(), notch as -1 | 1, false))));
             this.right.set(newValue);
-             if (delta < 0 && newValue < this.left()) {
+             if (notch < 0 && newValue < this.left()) {
                  this.left.set(newValue);
              }
              changed = true;
