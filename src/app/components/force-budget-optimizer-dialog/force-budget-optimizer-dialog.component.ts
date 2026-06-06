@@ -332,9 +332,9 @@ export class ForceBudgetOptimizerDialogComponent {
     }
 
     private getPilotingPriority(unit: Unit): number {
-        const physicalBonus = this.hasPhysicalOrMeleeCapability(unit) ? 1_000_000 : 0;
+        const physicalBonus = this.hasPhysicalOrMeleeCapability(unit) ? 1_000 : 0;
         const speed = Math.max(unit.run2 ?? unit.run ?? 0, unit.jump ?? 0);
-        return physicalBonus + Math.round(unit.tons * 100) + speed;
+        return physicalBonus + unit.tons + speed;
     }
 
     private hasPhysicalOrMeleeCapability(unit: Unit): boolean {
