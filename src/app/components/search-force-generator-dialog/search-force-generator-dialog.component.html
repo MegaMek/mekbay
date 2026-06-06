@@ -87,26 +87,24 @@
                     <div class="field-pair mobile-two-column span-all">
                         <div class="form-fields">
                             <label class="field-label">{{ budgetMinimumFieldLabel() }}</label>
-                            <input
-                                class="bt-input field-input"
-                                type="number"
-                                min="0"
-                                step="1"
-                                [value]="budgetRange().min || ''"
-                                (input)="onBudgetMinChange($event)"
-                                placeholder="0" />
+                            <thousands-integer-input
+                                class="field-input"
+                                [value]="budgetRange().min || undefined"
+                                [min]="0"
+                                [emptyWhenZero]="true"
+                                placeholder="0"
+                                (valueChange)="onBudgetMinChange($event)" />
                         </div>
 
                         <div class="form-fields">
                             <label class="field-label">{{ budgetMaximumFieldLabel() }}</label>
-                            <input
-                                class="bt-input field-input"
-                                type="number"
-                                min="0"
-                                step="1"
-                                [value]="budgetRange().max || ''"
-                                (blur)="onBudgetMaxBlur($event)"
-                                placeholder="0 = No maximum" />
+                            <thousands-integer-input
+                                class="field-input"
+                                [value]="budgetRange().max || undefined"
+                                [min]="0"
+                                [emptyWhenZero]="true"
+                                placeholder="0 = No maximum"
+                                (valueCommit)="onBudgetMaxCommit($event)" />
                         </div>
                     </div>
 

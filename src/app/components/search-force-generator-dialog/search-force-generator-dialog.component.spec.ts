@@ -590,10 +590,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         fixture.detectChanges();
 
         const dialog = fixture.componentInstance;
-        const inputs = Array.from(
-            fixture.nativeElement.querySelectorAll('input.bt-input.field-input[type="number"]'),
-        ) as HTMLInputElement[];
-        const maxBudgetInput = inputs[3];
+        const maxBudgetInput = fixture.nativeElement.querySelectorAll('thousands-integer-input input')[1] as HTMLInputElement;
 
         maxBudgetInput.value = '1';
         maxBudgetInput.dispatchEvent(new Event('input'));
@@ -613,7 +610,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         expect(dialog.budgetRange()).toEqual({ min: 7900, max: 10000 });
         expect(setOptionSpy).toHaveBeenCalledOnceWith('forceGenLastBVMax', 10000);
-        expect(maxBudgetInput.value).toBe('10000');
+        expect(maxBudgetInput.value).toBe('10,000');
     });
 
     it('does not replace the displayed preview when max budget is committed on blur', () => {
@@ -1442,10 +1439,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         fixture.detectChanges();
 
         const dialog = fixture.componentInstance;
-        const inputs = Array.from(
-            fixture.nativeElement.querySelectorAll('input.bt-input.field-input[type="number"]'),
-        ) as HTMLInputElement[];
-        const maxBudgetInput = inputs[3];
+        const maxBudgetInput = fixture.nativeElement.querySelectorAll('thousands-integer-input input')[1] as HTMLInputElement;
 
         buildPreviewSpy.calls.reset();
 

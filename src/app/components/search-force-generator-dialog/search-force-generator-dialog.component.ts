@@ -52,6 +52,7 @@ import { MultiSelectDropdownComponent, type DropdownOption, type MultiStateSelec
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { UnitSearchAdvancedFiltersComponent } from '../unit-search-advanced-filters/unit-search-advanced-filters.component';
+import { ThousandsIntegerInputComponent } from '../thousands-integer-input/thousands-integer-input.component';
 import { DataService } from '../../services/data.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import {
@@ -133,6 +134,7 @@ type FormationTargetDropdownOptionsProvider = UnitSearchFiltersService & {
         MultiSelectDropdownComponent,
         RangeSliderComponent,
         SyntaxInputComponent,
+        ThousandsIntegerInputComponent,
         TooltipDirective,
         UnitSearchAdvancedFiltersComponent,
     ],
@@ -701,25 +703,37 @@ export class SearchForceGeneratorDialogComponent {
         this.targetFormationSelection.set(nextSelection);
     }
 
-    onBudgetMinChange(event: Event): void {
+    onBudgetMinChange(valueOrEvent: number | Event): void {
+        const value = typeof valueOrEvent === 'number'
+            ? valueOrEvent
+            : this.parseNumericValue(valueOrEvent, 0);
+
         this.setBudgetRangeForSystem(
             this.gameSystem(),
             this.forceGeneratorService.resolveBudgetRangeForEditedMin(
                 this.budgetRange(),
-                this.parseNumericValue(event, 0),
+                value,
             ),
         );
     }
 
+    onBudgetMaxCommit(value: number): void {
+        this.setBudgetMax(value);
+    }
+
     onBudgetMaxBlur(event: Event): void {
+        this.setBudgetMax(this.parseNumericValue(event, 0));
+        this.syncInputValue(event, this.budgetRange().max || '');
+    }
+
+    private setBudgetMax(value: number): void {
         this.setBudgetRangeForSystem(
             this.gameSystem(),
             this.forceGeneratorService.resolveBudgetRangeForEditedMax(
                 this.budgetRange(),
-                this.parseNumericValue(event, 0),
+                value,
             ),
         );
-        this.syncInputValue(event, this.budgetRange().max || '');
     }
 
     onMinUnitCountChange(event: Event): void {
