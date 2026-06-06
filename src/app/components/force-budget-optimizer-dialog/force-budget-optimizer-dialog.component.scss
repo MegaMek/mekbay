@@ -1,0 +1,157 @@
+:host {
+    display: block;
+}
+
+:host ::ng-deep .modal.force-budget-optimizer-dialog {
+    width: min(620px, calc(100dvw - 24px));
+}
+
+.optimizer-body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+    padding: 12px;
+}
+
+.summary-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.summary-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    padding: 8px;
+    background-color: var(--background-color-light);
+}
+
+.summary-label {
+    color: var(--text-color-secondary);
+    font-size: 0.75em;
+    line-height: 1.2;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.summary-input-wrapper,
+.summary-value {
+    color: var(--text-color);
+    font-size: 1.2em;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.summary-value.positive {
+    color: #6fd37b;
+}
+
+.summary-value.negative {
+    color: #ff7a7a;
+}
+
+.form-fields {
+    min-width: 0;
+}
+
+.skill-settings-panel {
+    padding: 12px;
+    background-color: var(--background-color-light);
+}
+
+.pilot-skills-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    min-width: 0;
+}
+
+.pilot-skills-controls .filter-row,
+.pilot-skills-controls .range,
+.pilot-skills-controls range-slider {
+    display: block;
+    min-width: 0;
+}
+
+.range-label {
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.range-label:hover {
+    color: var(--bt-yellow);
+    text-decoration: underline;
+}
+
+.range-values {
+    color: var(--text-color-secondary);
+    font-size: 0.9em;
+}
+
+.range-label:hover .range-values {
+    color: var(--bt-yellow);
+}
+
+.skill-delta-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 32px;
+    padding: 2px 0 0;
+}
+
+.skill-delta-label {
+    color: var(--text-color-secondary);
+    font-size: 0.82em;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.skill-delta-input {
+    flex: 0 0 46px;
+    width: 46px;
+    min-width: 46px;
+    height: 30px;
+    padding: 0 4px;
+    background-color: #222;
+    text-align: center;
+    font-size: 1em;
+}
+
+.skill-delta-input.active {
+    color: var(--bt-yellow);
+    border-color: var(--bt-yellow);
+}
+
+.skill-delta-description {
+    color: var(--text-color-secondary);
+    font-size: 0.78em;
+    line-height: 1.25;
+}
+
+.result-message {
+    color: var(--text-color);
+    line-height: 1.35;
+}
+
+.footer {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+@media (max-width: 560px) {
+    .summary-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .skill-delta-control {
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+}

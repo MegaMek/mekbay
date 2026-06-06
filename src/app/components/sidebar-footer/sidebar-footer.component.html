@@ -327,6 +327,17 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
                     </svg></span> Print All
             </button>
             }
+            @if (canOptimizeBudget()) {
+            <button class="menu-item" cdkMenuItem (click)="showBudgetOptimizerDialog()">
+                <span class="icon"><svg width="32px" height="32px" viewBox="0 0 24 24" fill="currentColor"
+                        xmlns="http://www.w3.org/2000/svg">
+                        <path d="M4 4H20V6H4V4Z" />
+                        <path d="M4 18H20V20H4V18Z" />
+                        <path d="M7 8H17L20 12L17 16H7L4 12L7 8ZM8 10L6.5 12L8 14H16L17.5 12L16 10H8Z" />
+                        <path d="M11 11H13V13H11V11Z" />
+                    </svg></span> {{ optimizeBudgetLabel() }}
+            </button>
+            }
             <button class="menu-item" cdkMenuItem (click)="showForceOverview()">
                 <span class="icon"><svg width="32px" height="32px" viewBox="0 0 24 24" fill="currentColor"
                         xmlns="http://www.w3.org/2000/svg">
