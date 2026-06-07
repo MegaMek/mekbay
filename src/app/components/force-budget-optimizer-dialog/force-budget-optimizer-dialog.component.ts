@@ -246,12 +246,7 @@ export class ForceBudgetOptimizerDialogComponent {
             }
         }
 
-        const bestState = states.reduce<OptimizationState | null>((best, state) => {
-            if (!best || this.compareStates(state, best, targetBudget) < 0) {
-                return state;
-            }
-            return best;
-        }, null);
+        const bestState = this.selectBestAffordableState(states, targetBudget);
         if (!bestState) {
             return null;
         }
@@ -531,9 +526,20 @@ export class ForceBudgetOptimizerDialogComponent {
         return 0;
     }
 
+    private selectBestAffordableState(states: readonly OptimizationState[], targetBudget: number): OptimizationState | null {
+        return states
+            .filter(state => state.totalCost <= targetBudget)
+            .reduce<OptimizationState | null>((best, state) => {
+                if (!best || this.compareStates(state, best, targetBudget) < 0) {
+                    return state;
+                }
+                return best;
+            }, null);
+    }
+
     private compareStates(left: OptimizationState, right: OptimizationState, targetBudget: number): number {
-        const leftDistance = Math.abs(left.totalCost - targetBudget);
-        const rightDistance = Math.abs(right.totalCost - targetBudget);
+        const leftDistance = targetBudget - left.totalCost;
+        const rightDistance = targetBudget - right.totalCost;
         if (leftDistance !== rightDistance) {
             return leftDistance - rightDistance;
         }
