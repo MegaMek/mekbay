@@ -67,6 +67,10 @@ interface OptimizationState {
     choices: OptimizationChoice[];
 }
 
+interface OptimizationChangeSummary {
+    detail: string;
+}
+
 const MIN_PILOT_SKILL = 0;
 const MAX_PILOT_SKILL = 8;
 const DEFAULT_MAX_SKILL_DELTA = 1;
@@ -156,17 +160,21 @@ export class ForceBudgetOptimizerDialogComponent {
             return;
         }
 
-        let changedUnits = 0;
+        const changedUnits: OptimizationChangeSummary[] = [];
         for (const choice of result.choices) {
-            if (this.applyChoice(choice)) {
-                changedUnits += 1;
+            const change = this.applyChoice(choice);
+            if (change) {
+                changedUnits.push(change);
             }
         }
 
         const budgetLabel = this.budgetLabel();
         const distance = Math.abs(result.totalCost - this.targetBudget());
+        const changedUnitDetails = changedUnits.length < 8 && changedUnits.length > 0
+            ? ` ${changedUnits.map(change => change.detail).join(', ')}`
+            : '';
         this.resultMessage.set(
-            `Optimized ${changedUnits} unit${changedUnits === 1 ? '' : 's'} to ${result.totalCost.toLocaleString()} ${budgetLabel} (${distance.toLocaleString()} from target).`
+            `Optimized ${changedUnits.length} unit${changedUnits.length === 1 ? '' : 's'} to ${result.totalCost.toLocaleString()} ${budgetLabel} (${distance.toLocaleString()} from target).${changedUnitDetails}`
         );
     }
 
@@ -302,13 +310,16 @@ export class ForceBudgetOptimizerDialogComponent {
         return { forceUnit, cost: forceUnit.getBv(), smartScore: 0 };
     }
 
-    private applyChoice(choice: OptimizationChoice): boolean {
+    private applyChoice(choice: OptimizationChoice): OptimizationChangeSummary | null {
         if (choice.forceUnit instanceof ASForceUnit && choice.skill !== undefined) {
-            if (choice.forceUnit.pilotSkill() === choice.skill) {
-                return false;
+            const currentSkill = choice.forceUnit.pilotSkill();
+            if (currentSkill === choice.skill) {
+                return null;
             }
             choice.forceUnit.setPilotSkill(choice.skill);
-            return true;
+            return {
+                detail: `${choice.forceUnit.getDisplayName()} (${currentSkill}→${choice.skill})`,
+            };
         }
 
         if (choice.forceUnit instanceof CBTForceUnit && choice.gunnery !== undefined && choice.piloting !== undefined) {
@@ -316,22 +327,29 @@ export class ForceBudgetOptimizerDialogComponent {
             const pilot = crew[0];
             const gunner = crew.length > 1 ? crew[1] : pilot;
             if (!pilot || !gunner) {
-                return false;
+                return null;
             }
 
+            const currentGunnery = gunner.getSkill('gunnery');
+            const currentPiloting = pilot.getSkill('piloting');
             let changed = false;
-            if (gunner.getSkill('gunnery') !== choice.gunnery) {
+            if (currentGunnery !== choice.gunnery) {
                 gunner.setSkill('gunnery', choice.gunnery);
                 changed = true;
             }
-            if (pilot.getSkill('piloting') !== choice.piloting) {
+            if (currentPiloting !== choice.piloting) {
                 pilot.setSkill('piloting', choice.piloting);
                 changed = true;
             }
-            return changed;
+            if (!changed) {
+                return null;
+            }
+            return {
+                detail: `${choice.forceUnit.getDisplayName()} (${currentGunnery}/${currentPiloting}→${choice.gunnery}/${choice.piloting})`,
+            };
         }
 
-        return false;
+        return null;
     }
 
     private getPilotingPriority(unit: Unit): number {
