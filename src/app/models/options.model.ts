@@ -39,6 +39,18 @@ import type { GameSystem } from "./common.model";
 export type AvailabilitySource = 'mul' | 'megamek';
 export type RecordSheetDoubleTapZoomResetMode = 'disabled' | 'fit-to-screen' | 'full-width' | 'contextual';
 
+export interface SkillRangeOption {
+    min: number;
+    max: number;
+}
+
+export interface ForceBudgetOptimizerLastSkills {
+    gunnery: SkillRangeOption;
+    piloting: SkillRangeOption;
+    skill: SkillRangeOption;
+    maxDelta: number;
+}
+
 export interface Options {
     sheetsColor: 'normal' | 'night';
     pickerStyle: 'default' | 'radial' | 'linear';
@@ -91,4 +103,7 @@ export interface Options {
     forceGenPreventDuplicateChassis: boolean;
     forceGenUseTaggedQuantities: boolean;
     forceGenUseUnitTagsAsChassisTags: boolean;
+
+    // Force Budget Optimizer
+    forceBudgetOptimizerLastSkills: ForceBudgetOptimizerLastSkills;
 }

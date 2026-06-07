@@ -260,7 +260,7 @@ export interface Unit {
     jump: number;
     umu: number; // UMU movement points
     c3: string;
-    dpt: number;
+    dpt: number; // Damage per Turn, weighted on heat
     comp: UnitComponent[];
     su: number;
     crewSize: number;

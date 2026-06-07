@@ -18,6 +18,7 @@ import type { LoadOrganizationEntry } from '../../models/organization.model';
 import { AlignmentPickerDialogComponent, type AlignmentPickerResult } from '../alignment-picker-dialog/alignment-picker-dialog.component';
 import { AddExternalForceDialogComponent } from '../add-external-force-dialog/add-external-force-dialog.component';
 import { getFactionImg } from '../../models/factions.model';
+import { GameSystem } from '../../models/common.model';
 
 /*
  * Sidebar footer component
@@ -89,6 +90,15 @@ export class SidebarFooterComponent {
     private blinkTimeout: ReturnType<typeof setTimeout> | null = null;
     private remoteUpdateSub: Subscription | null = null;
 
+    optimizeBudgetLabel = computed(() => (
+        this.forceBuilderService.smartCurrentForce()?.gameSystem === GameSystem.ALPHA_STRIKE ? 'Optimize PV' : 'Optimize BV'
+    ));
+
+    canOptimizeBudget = computed(() => {
+        const force = this.forceBuilderService.smartCurrentForce();
+        return !!force && force.units().length > 0 && !force.readOnly();
+    });
+
     constructor() {
         const destroyRef = inject(DestroyRef);
 
@@ -142,6 +152,15 @@ export class SidebarFooterComponent {
 
     showOptionsDialog(): void {
         this.dialogsService.createDialog(OptionsDialogComponent);
+    }
+
+    async showBudgetOptimizerDialog(): Promise<void> {
+        const force = this.forceBuilderService.smartCurrentForce();
+        if (!force || force.readOnly() || force.units().length === 0) { return; }
+        const { ForceBudgetOptimizerDialogComponent } = await import('../force-budget-optimizer-dialog/force-budget-optimizer-dialog.component');
+        this.dialogsService.createDialog(ForceBudgetOptimizerDialogComponent, {
+            data: { force },
+        });
     }
 
     showForceOverview(): void {
