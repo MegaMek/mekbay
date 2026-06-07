@@ -1,15 +1,12 @@
-<base-dialog modalClass="force-budget-optimizer-dialog" [autoHeight]="true">
-    <div dialog-header>
-        <div class="title">OPTIMIZE {{ budgetLabel() }}</div>
-    </div>
-
-    <div dialog-body class="optimizer-body">
+<div class="wide-dialog">
+    <h2 class="wide-dialog-title">OPTIMIZE {{ budgetLabel() }}</h2>
+    <div class="wide-dialog-body">
         <div class="summary-row">
             <div class="summary-item">
                 <span class="summary-label">Current {{ budgetLabel() }}</span>
                 <span class="summary-value">{{ currentTotal().toLocaleString() }}</span>
             </div>
-            <div class="summary-item">
+            <div class="summary-item-with-input">
                 <span class="summary-label">Target {{ budgetLabel() }}</span>
                 <span class="summary-input-wrapper">
             <thousands-integer-input
@@ -113,8 +110,8 @@
         }
     </div>
 
-    <div dialog-footer class="footer">
+    <div class="wide-dialog-actions">
         <button class="modal-btn bt-button" type="button" (click)="optimize()" [disabled]="!canOptimize()">OPTIMIZE</button>
         <button class="modal-btn bt-button" type="button" (click)="dismiss()">DISMISS</button>
     </div>
-</base-dialog>
+</div>

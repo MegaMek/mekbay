@@ -90,9 +90,9 @@ const DEFAULT_OPTIONS: Options = {
     forceGenUseTaggedQuantities: false,
     forceGenUseUnitTagsAsChassisTags: false,
     forceBudgetOptimizerLastSkills: {
-        gunnery: { min: 0, max: 8 },
-        piloting: { min: 0, max: 8 },
-        skill: { min: 0, max: 8 },
+        gunnery: { min: 2, max: 4 },
+        piloting: { min: 3, max: 5 },
+        skill: { min: 2, max: 5 },
         maxDelta: 1,
     },
 };

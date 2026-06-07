@@ -76,7 +76,10 @@ const OPTIMIZATION_STATE_LIMIT = 5_000;
     selector: 'force-budget-optimizer-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, RangeSliderComponent, ThousandsIntegerInputComponent],
+    imports: [CommonModule, RangeSliderComponent, ThousandsIntegerInputComponent],
+    host: {
+        class: 'fullscreen-dialog-host glass'
+    },
     templateUrl: './force-budget-optimizer-dialog.component.html',
     styleUrls: ['./force-budget-optimizer-dialog.component.scss'],
 })

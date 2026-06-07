@@ -1,17 +1,5 @@
-:host {
-    display: block;
-}
-
-:host ::ng-deep .modal.force-budget-optimizer-dialog {
-    width: min(620px, calc(100dvw - 24px));
-}
-
-.optimizer-body {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    min-width: 0;
-    padding: 12px;
+.wide-dialog-body {
+    text-align: left;
 }
 
 .summary-row {
@@ -20,6 +8,7 @@
     gap: 10px;
 }
 
+.summary-item-with-input,
 .summary-item {
     display: flex;
     flex-direction: column;
@@ -27,6 +16,10 @@
     min-width: 0;
     padding: 8px;
     background-color: var(--background-color-light);
+}
+
+.summary-item {
+    gap: 12px;
 }
 
 .summary-label {
@@ -76,23 +69,9 @@
     min-width: 0;
 }
 
-.range-label {
-    cursor: pointer;
-    transition: color 0.2s;
-}
-
-.range-label:hover {
-    color: var(--bt-yellow);
-    text-decoration: underline;
-}
-
 .range-values {
     color: var(--text-color-secondary);
     font-size: 0.9em;
-}
-
-.range-label:hover .range-values {
-    color: var(--bt-yellow);
 }
 
 .skill-delta-control {
@@ -139,19 +118,16 @@
     line-height: 1.35;
 }
 
-.footer {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-}
-
 @media (max-width: 560px) {
     .summary-row {
         grid-template-columns: minmax(0, 1fr);
     }
 
+    .summary-item {
+        gap: 3px;
+    }
+
     .skill-delta-control {
-        align-items: flex-start;
         flex-wrap: wrap;
     }
 }
