@@ -170,7 +170,7 @@ export class ForceBudgetOptimizerDialogComponent {
 
         const budgetLabel = this.budgetLabel();
         const distance = Math.abs(result.totalCost - this.targetBudget());
-        const changedUnitDetails = changedUnits.length < 8 && changedUnits.length > 0
+        const changedUnitDetails = changedUnits.length < 12 && changedUnits.length > 0
             ? ` ${changedUnits.map(change => change.detail).join(', ')}`
             : '';
         this.resultMessage.set(
