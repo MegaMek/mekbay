@@ -17,6 +17,14 @@ interface ForceBudgetOptimizerDialogTestApi {
     getClassicSkillPriorities(unit: Unit): ClassicSkillPrioritiesTestApi;
     getClassicSmartScore(priorities: ClassicSkillPrioritiesTestApi, gunnery: number, piloting: number): number;
     getPhysicalDamagePerTurn(unit: Unit): number;
+    selectBestAffordableState(states: readonly OptimizationStateTestApi[], targetBudget: number): OptimizationStateTestApi | null;
+}
+
+interface OptimizationStateTestApi {
+    totalCost: number;
+    smartScore: number;
+    previous: OptimizationStateTestApi | null;
+    choice: null;
 }
 
 describe('ForceBudgetOptimizerDialogComponent', () => {
@@ -116,4 +124,34 @@ describe('ForceBudgetOptimizerDialogComponent', () => {
         expect(priorities.piloting).toBe(1);
         expect(gunneryFocusedScore).toBeGreaterThan(pilotingFocusedScore);
     });
+
+    it('selects the nearest result without exceeding the target budget', async () => {
+        const component = await createComponent();
+        const best = component.selectBestAffordableState([
+            createState(7998, 0),
+            createState(8001, 1000),
+            createState(7995, 2000),
+        ], 8000);
+
+        expect(best?.totalCost).toBe(7998);
+    });
+
+    it('returns no result when every final state exceeds the target budget', async () => {
+        const component = await createComponent();
+        const best = component.selectBestAffordableState([
+            createState(8001, 1000),
+            createState(8002, 2000),
+        ], 8000);
+
+        expect(best).toBeNull();
+    });
+
+    function createState(totalCost: number, smartScore: number): OptimizationStateTestApi {
+        return {
+            totalCost,
+            smartScore,
+            previous: null,
+            choice: null,
+        };
+    }
 });
