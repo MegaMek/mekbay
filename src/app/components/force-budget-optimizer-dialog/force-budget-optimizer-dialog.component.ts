@@ -79,6 +79,12 @@ interface RemainingCostBounds {
     max: number;
 }
 
+interface ClassicSkillPriorities {
+    gunnery: number;
+    piloting: number;
+    balance: number;
+}
+
 interface OptimizationChangeSummary {
     detail: string;
 }
@@ -87,6 +93,8 @@ const MIN_PILOT_SKILL = 0;
 const MAX_PILOT_SKILL = 8;
 const DEFAULT_MAX_SKILL_DELTA = 1;
 const OPTIMIZATION_STATE_LIMIT = 50_000;
+const MIN_SKILL_PRIORITY = 1;
+const BALANCED_DAMAGE_RATIO = 0.5;
 
 @Component({
     selector: 'force-budget-optimizer-dialog',
@@ -267,7 +275,7 @@ export class ForceBudgetOptimizerDialogComponent {
 
     private createAlphaStrikeOptions(forceUnit: ASForceUnit): OptimizationChoice[] {
         const unit = forceUnit.getUnit();
-        const priority = this.getPilotingPriority(unit);
+        const priority = this.getAlphaStrikeSkillPriority(unit);
         const optionsByCost = new Map<number, OptimizationChoice>();
         const [minSkill, maxSkill] = this.gunnerySkillRange();
 
@@ -288,7 +296,7 @@ export class ForceBudgetOptimizerDialogComponent {
     private createClassicOptions(forceUnit: CBTForceUnit): OptimizationChoice[] {
         const unit = forceUnit.getUnit();
         const preSkillBv = forceUnit.getBaseBv() + forceUnit.tagBV() + forceUnit.c3Tax() + forceUnit.externalStoresBv();
-        const priority = this.getPilotingPriority(unit);
+        const priorities = this.getClassicSkillPriorities(unit);
         const optionsByCost = new Map<number, OptimizationChoice>();
         const [minGunnery, maxGunnery] = this.gunnerySkillRange();
         const [minPiloting, maxPiloting] = this.pilotingSkillRange();
@@ -306,7 +314,7 @@ export class ForceBudgetOptimizerDialogComponent {
                     cost,
                     gunnery,
                     piloting,
-                    smartScore: priority * (MAX_PILOT_SKILL - piloting) + (MAX_PILOT_SKILL - gunnery),
+                    smartScore: this.getClassicSmartScore(priorities, gunnery, piloting),
                 };
                 this.keepBestOptionForCost(optionsByCost, option);
             }
@@ -329,19 +337,20 @@ export class ForceBudgetOptimizerDialogComponent {
                 forceUnit,
                 cost: forceUnit.getBv(),
                 skill,
-                smartScore: this.getPilotingPriority(forceUnit.getUnit()) * (MAX_PILOT_SKILL - skill),
+                smartScore: this.getAlphaStrikeSkillPriority(forceUnit.getUnit()) * (MAX_PILOT_SKILL - skill),
             };
         }
 
         if (forceUnit instanceof CBTForceUnit) {
             const gunnery = forceUnit.gunnerySkill();
             const piloting = forceUnit.pilotingSkill();
+            const priorities = this.getClassicSkillPriorities(forceUnit.getUnit());
             return {
                 forceUnit,
                 cost: forceUnit.getBv(),
                 gunnery,
                 piloting,
-                smartScore: this.getPilotingPriority(forceUnit.getUnit()) * (MAX_PILOT_SKILL - piloting) + (MAX_PILOT_SKILL - gunnery),
+                smartScore: this.getClassicSmartScore(priorities, gunnery, piloting),
             };
         }
 
@@ -390,15 +399,49 @@ export class ForceBudgetOptimizerDialogComponent {
         return null;
     }
 
-    private getPilotingPriority(unit: Unit): number {
-        const physicalBonus = this.hasPhysicalOrMeleeCapability(unit) ? 1_000 : 0;
-        const speed = Math.max(unit.run2 ?? unit.run ?? 0, unit.jump ?? 0);
-        return physicalBonus + unit.tons + speed;
+    private getClassicSkillPriorities(unit: Unit): ClassicSkillPriorities {
+        const rangedDamage = Math.max(0, unit.dpt || 0);
+        const physicalDamage = this.getPhysicalDamagePerTurn(unit);
+        const strongerDamage = Math.max(rangedDamage, physicalDamage);
+        const weakerDamage = Math.min(rangedDamage, physicalDamage);
+        const balance = strongerDamage > 0 && weakerDamage / strongerDamage >= BALANCED_DAMAGE_RATIO
+            ? Math.max(MIN_SKILL_PRIORITY, weakerDamage)
+            : 0;
+
+        return {
+            gunnery: MIN_SKILL_PRIORITY + rangedDamage,
+            piloting: MIN_SKILL_PRIORITY + physicalDamage,
+            balance,
+        };
     }
 
-    private hasPhysicalOrMeleeCapability(unit: Unit): boolean {
-        return unit.comp.some(component => component.t === 'P')
-            || (unit.as?.specials ?? []).includes('MEL');
+    private getAlphaStrikeSkillPriority(unit: Unit): number {
+        const priorities = this.getClassicSkillPriorities(unit);
+        return priorities.gunnery + priorities.piloting;
+    }
+
+    private getClassicSmartScore(priorities: ClassicSkillPriorities, gunnery: number, piloting: number): number {
+        const gunneryScore = priorities.gunnery * (MAX_PILOT_SKILL - gunnery);
+        const pilotingScore = priorities.piloting * (MAX_PILOT_SKILL - piloting);
+        const balanceScore = priorities.balance * (MAX_PILOT_SKILL - Math.abs(gunnery - piloting));
+        return gunneryScore + pilotingScore + balanceScore;
+    }
+
+    private getPhysicalDamagePerTurn(unit: Unit): number {
+        const physicalWeaponDamage = unit.comp
+            .filter(component => component.t === 'P')
+            .reduce((total, component) => total + this.parseDamageValue(component.md), 0);
+        const kickDamage = this.canKick(unit) ? Math.max(0, unit.tons || 0) / 5 : 0;
+        return physicalWeaponDamage + kickDamage;
+    }
+
+    private canKick(unit: Unit): boolean {
+        return unit.type === 'Mek';
+    }
+
+    private parseDamageValue(value: string | undefined): number {
+        const damage = Number(value);
+        return Number.isFinite(damage) ? Math.max(0, damage) : 0;
     }
 
     private buildRemainingCostBounds(optionsByUnit: readonly OptimizationChoice[][]): RemainingCostBounds[] {
