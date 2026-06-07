@@ -5359,7 +5359,7 @@ export class ForceGeneratorService implements OnDestroy {
                     ? `; ruleset bias ${step.rulesetReasons.join(', ')}`
                     : '';
                 lines.push(
-                    `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: locked, P ${formatForceGeneratorWeight(step.requisitionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}${skillNote}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
+                    `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: locked, R ${formatForceGeneratorWeight(step.requisitionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}${skillNote}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
                 );
                 continue;
             }
@@ -5371,7 +5371,7 @@ export class ForceGeneratorService implements OnDestroy {
                 ? `; ruleset bias ${step.rulesetReasons.join(', ')}`
                 : '';
             lines.push(
-                `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: ${step.source} pick${fallbackNote}, P ${formatForceGeneratorWeight(step.requisitionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}${skillNote}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
+                `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: ${step.source} pick${fallbackNote}, R ${formatForceGeneratorWeight(step.requisitionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}${skillNote}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
             );
         }
 
@@ -5428,13 +5428,13 @@ export class ForceGeneratorService implements OnDestroy {
         const eraCount = this.getScopedAvailabilityEraIds(context).length;
         const factionCount = this.getScopedAvailabilityFactionIds(context).length;
         if (usesEraScope && usesFactionScope && eraCount > 0 && factionCount > 0) {
-            return `Availability weights: max P/S across ${eraCount} eras x ${factionCount} factions.`;
+            return `Availability weights: max R/S across ${eraCount} eras x ${factionCount} factions.`;
         }
         if (usesEraScope && eraCount > 0) {
-            return `Availability weights: max P/S across ${eraCount} eras.`;
+            return `Availability weights: max R/S across ${eraCount} eras.`;
         }
         if (usesFactionScope && factionCount > 0) {
-            return `Availability weights: max P/S across ${factionCount} factions.`;
+            return `Availability weights: max R/S across ${factionCount} factions.`;
         }
 
         return null;
