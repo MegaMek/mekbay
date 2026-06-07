@@ -64,7 +64,19 @@ interface OptimizationChoice {
 interface OptimizationState {
     totalCost: number;
     smartScore: number;
+    previous: OptimizationState | null;
+    choice: OptimizationChoice | null;
+}
+
+interface OptimizationResult {
+    totalCost: number;
+    smartScore: number;
     choices: OptimizationChoice[];
+}
+
+interface RemainingCostBounds {
+    min: number;
+    max: number;
 }
 
 interface OptimizationChangeSummary {
@@ -74,7 +86,7 @@ interface OptimizationChangeSummary {
 const MIN_PILOT_SKILL = 0;
 const MAX_PILOT_SKILL = 8;
 const DEFAULT_MAX_SKILL_DELTA = 1;
-const OPTIMIZATION_STATE_LIMIT = 5_000;
+const OPTIMIZATION_STATE_LIMIT = 50_000;
 
 @Component({
     selector: 'force-budget-optimizer-dialog',
@@ -110,7 +122,8 @@ export class ForceBudgetOptimizerDialogComponent {
     readonly budgetLabel = computed(() => this.isAlphaStrike() ? 'PV' : 'BV');
     readonly currentTotal = computed(() => this.force.totalBv());
     readonly targetDifference = computed(() => this.targetBudget() - this.currentTotal());
-    readonly canOptimize = computed(() => !this.force.readOnly() && this.force.units().length > 0);
+    readonly optimizing = signal(false);
+    readonly canOptimize = computed(() => !this.optimizing() && !this.force.readOnly() && this.force.units().length > 0);
     readonly maxPilotSkillDeltaActive = computed(() => this.maxPilotSkillDelta() !== DEFAULT_MAX_SKILL_DELTA);
 
     onTargetBudgetChange(value: number): void {
@@ -147,49 +160,60 @@ export class ForceBudgetOptimizerDialogComponent {
         void this.saveSkillSettings();
     }
 
-    optimize(): void {
+    async optimize(): Promise<void> {
         if (!this.canOptimize()) {
             return;
         }
 
+        const targetBudget = this.targetBudget();
+        this.optimizing.set(true);
+        this.resultMessage.set('Optimizing...');
         void this.saveSkillSettings();
 
-        const result = this.findBestOptimization();
-        if (!result) {
-            this.resultMessage.set('No valid skill combination was found for the selected ranges.');
-            return;
-        }
-
-        const changedUnits: OptimizationChangeSummary[] = [];
-        for (const choice of result.choices) {
-            const change = this.applyChoice(choice);
-            if (change) {
-                changedUnits.push(change);
+        try {
+            await this.yieldToBrowser();
+            const result = await this.findBestOptimization(targetBudget);
+            if (!result) {
+                this.resultMessage.set('No valid skill combination was found for the selected ranges.');
+                return;
             }
-        }
 
-        const budgetLabel = this.budgetLabel();
-        const distance = Math.abs(result.totalCost - this.targetBudget());
-        const changedUnitDetails = changedUnits.length < 12 && changedUnits.length > 0
-            ? ` ${changedUnits.map(change => change.detail).join(', ')}`
-            : '';
-        this.resultMessage.set(
-            `Optimized ${changedUnits.length} unit${changedUnits.length === 1 ? '' : 's'} to ${result.totalCost.toLocaleString()} ${budgetLabel} (${distance.toLocaleString()} from target).${changedUnitDetails}`
-        );
+            const changedUnits: OptimizationChangeSummary[] = [];
+            for (const choice of result.choices) {
+                const change = this.applyChoice(choice);
+                if (change) {
+                    changedUnits.push(change);
+                }
+            }
+
+            const budgetLabel = this.budgetLabel();
+            const distance = Math.abs(result.totalCost - targetBudget);
+            const changedUnitDetails = changedUnits.length < 12 && changedUnits.length > 0
+                ? ` ${changedUnits.map(change => change.detail).join(', ')}`
+                : '';
+            this.resultMessage.set(
+                `Optimized ${changedUnits.length} unit${changedUnits.length === 1 ? '' : 's'} to ${result.totalCost.toLocaleString()} ${budgetLabel} (${distance.toLocaleString()} from target).${changedUnitDetails}`
+            );
+        } finally {
+            this.optimizing.set(false);
+        }
     }
 
     dismiss(): void {
         this.dialogRef.close(null);
     }
 
-    private findBestOptimization(): OptimizationState | null {
+    private async findBestOptimization(targetBudget: number): Promise<OptimizationResult | null> {
         const optionsByUnit = this.force.units().map((forceUnit) => this.createOptions(forceUnit));
         if (optionsByUnit.length === 0 || optionsByUnit.some(options => options.length === 0)) {
             return null;
         }
 
-        let states: OptimizationState[] = [{ totalCost: 0, smartScore: 0, choices: [] }];
-        for (const unitOptions of optionsByUnit) {
+        const remainingCostBounds = this.buildRemainingCostBounds(optionsByUnit);
+        let states: OptimizationState[] = [{ totalCost: 0, smartScore: 0, previous: null, choice: null }];
+        let lastYieldAt = performance.now();
+        for (let unitIndex = 0; unitIndex < optionsByUnit.length; unitIndex += 1) {
+            const unitOptions = optionsByUnit[unitIndex];
             const nextStatesByCost = new Map<number, OptimizationState>();
             for (const state of states) {
                 for (const option of unitOptions) {
@@ -202,19 +226,33 @@ export class ForceBudgetOptimizerDialogComponent {
                     nextStatesByCost.set(nextTotalCost, {
                         totalCost: nextTotalCost,
                         smartScore: nextSmartScore,
-                        choices: [...state.choices, option],
+                        previous: state,
+                        choice: option,
                     });
                 }
             }
-            states = this.pruneStates([...nextStatesByCost.values()]);
+            states = this.pruneStates([...nextStatesByCost.values()], remainingCostBounds[unitIndex + 1], targetBudget);
+            if (performance.now() - lastYieldAt > 16) {
+                await this.yieldToBrowser();
+                lastYieldAt = performance.now();
+            }
         }
 
-        return states.reduce<OptimizationState | null>((best, state) => {
-            if (!best || this.compareStates(state, best) < 0) {
+        const bestState = states.reduce<OptimizationState | null>((best, state) => {
+            if (!best || this.compareStates(state, best, targetBudget) < 0) {
                 return state;
             }
             return best;
         }, null);
+        if (!bestState) {
+            return null;
+        }
+
+        return {
+            totalCost: bestState.totalCost,
+            smartScore: bestState.smartScore,
+            choices: this.materializeChoices(bestState),
+        };
     }
 
     private createOptions(forceUnit: ForceUnit): OptimizationChoice[] {
@@ -363,20 +401,96 @@ export class ForceBudgetOptimizerDialogComponent {
             || (unit.as?.specials ?? []).includes('MEL');
     }
 
-    private pruneStates(states: OptimizationState[]): OptimizationState[] {
+    private buildRemainingCostBounds(optionsByUnit: readonly OptimizationChoice[][]): RemainingCostBounds[] {
+        const bounds: RemainingCostBounds[] = new Array(optionsByUnit.length + 1);
+        bounds[optionsByUnit.length] = { min: 0, max: 0 };
+
+        for (let index = optionsByUnit.length - 1; index >= 0; index -= 1) {
+            const unitOptions = optionsByUnit[index];
+            const minCost = Math.min(...unitOptions.map(option => option.cost));
+            const maxCost = Math.max(...unitOptions.map(option => option.cost));
+            const next = bounds[index + 1];
+            bounds[index] = {
+                min: next.min + minCost,
+                max: next.max + maxCost,
+            };
+        }
+
+        return bounds;
+    }
+
+    private materializeChoices(state: OptimizationState): OptimizationChoice[] {
+        const choices: OptimizationChoice[] = [];
+        let current: OptimizationState | null = state;
+        while (current) {
+            if (current.choice) {
+                choices.push(current.choice);
+            }
+            current = current.previous;
+        }
+        choices.reverse();
+        return choices;
+    }
+
+    private pruneStates(
+        states: OptimizationState[],
+        remainingCostBounds: RemainingCostBounds,
+        targetBudget: number,
+    ): OptimizationState[] {
         if (states.length <= OPTIMIZATION_STATE_LIMIT) {
             return states;
         }
 
         return states
-            .sort((left, right) => this.compareStates(left, right))
+            .sort((left, right) => this.comparePartialStates(left, right, remainingCostBounds, targetBudget))
             .slice(0, OPTIMIZATION_STATE_LIMIT);
     }
 
-    private compareStates(left: OptimizationState, right: OptimizationState): number {
-        const target = this.targetBudget();
-        const leftDistance = Math.abs(left.totalCost - target);
-        const rightDistance = Math.abs(right.totalCost - target);
+    private comparePartialStates(
+        left: OptimizationState,
+        right: OptimizationState,
+        remainingCostBounds: RemainingCostBounds,
+        targetBudget: number,
+    ): number {
+        const leftReachableDistance = this.getReachableTargetDistance(left, remainingCostBounds, targetBudget);
+        const rightReachableDistance = this.getReachableTargetDistance(right, remainingCostBounds, targetBudget);
+        if (leftReachableDistance !== rightReachableDistance) {
+            return leftReachableDistance - rightReachableDistance;
+        }
+
+        const idealPartialCost = targetBudget - ((remainingCostBounds.min + remainingCostBounds.max) / 2);
+        const leftIdealDistance = Math.abs(left.totalCost - idealPartialCost);
+        const rightIdealDistance = Math.abs(right.totalCost - idealPartialCost);
+        if (leftIdealDistance !== rightIdealDistance) {
+            return leftIdealDistance - rightIdealDistance;
+        }
+
+        if (left.smartScore !== right.smartScore) {
+            return right.smartScore - left.smartScore;
+        }
+
+        return Math.abs(left.totalCost - targetBudget) - Math.abs(right.totalCost - targetBudget);
+    }
+
+    private getReachableTargetDistance(
+        state: OptimizationState,
+        remainingCostBounds: RemainingCostBounds,
+        targetBudget: number,
+    ): number {
+        const minReachableTotal = state.totalCost + remainingCostBounds.min;
+        const maxReachableTotal = state.totalCost + remainingCostBounds.max;
+        if (targetBudget < minReachableTotal) {
+            return minReachableTotal - targetBudget;
+        }
+        if (targetBudget > maxReachableTotal) {
+            return targetBudget - maxReachableTotal;
+        }
+        return 0;
+    }
+
+    private compareStates(left: OptimizationState, right: OptimizationState, targetBudget: number): number {
+        const leftDistance = Math.abs(left.totalCost - targetBudget);
+        const rightDistance = Math.abs(right.totalCost - targetBudget);
         if (leftDistance !== rightDistance) {
             return leftDistance - rightDistance;
         }
@@ -391,6 +505,10 @@ export class ForceBudgetOptimizerDialogComponent {
             ? this.initialSkillSettings.skill
             : this.initialSkillSettings.gunnery;
         return this.normalizeRange([range.min, range.max]);
+    }
+
+    private yieldToBrowser(): Promise<void> {
+        return new Promise(resolve => requestAnimationFrame(() => resolve()));
     }
 
     private async saveSkillSettings(): Promise<void> {

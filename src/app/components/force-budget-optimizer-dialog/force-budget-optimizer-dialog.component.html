@@ -111,7 +111,7 @@
     </div>
 
     <div class="wide-dialog-actions">
-        <button class="modal-btn bt-button" type="button" (click)="optimize()" [disabled]="!canOptimize()">OPTIMIZE</button>
+        <button class="modal-btn bt-button" type="button" (click)="optimize()" [disabled]="!canOptimize()">{{ optimizing() ? 'OPTIMIZING...' : 'OPTIMIZE' }}</button>
         <button class="modal-btn bt-button" type="button" (click)="dismiss()">DISMISS</button>
     </div>
 </div>
