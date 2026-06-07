@@ -33,7 +33,7 @@
 
 import { inject, Injectable, signal } from '@angular/core';
 import { DbService } from './db.service';
-import type { Options } from '../models/options.model';
+import type { ForceBudgetOptimizerLastSkills, Options } from '../models/options.model';
 import { GameSystem } from '../models/common.model';
 
 /*
@@ -89,7 +89,33 @@ const DEFAULT_OPTIONS: Options = {
     forceGenPreventDuplicateChassis: false,
     forceGenUseTaggedQuantities: false,
     forceGenUseUnitTagsAsChassisTags: false,
+    forceBudgetOptimizerLastSkills: {
+        gunnery: { min: 2, max: 4 },
+        piloting: { min: 3, max: 5 },
+        skill: { min: 2, max: 5 },
+        maxDelta: 1,
+    },
 };
+
+function resolveForceBudgetOptimizerLastSkills(saved: Options | null | undefined): ForceBudgetOptimizerLastSkills {
+    const defaults = DEFAULT_OPTIONS.forceBudgetOptimizerLastSkills;
+    const skills = saved?.forceBudgetOptimizerLastSkills;
+    return {
+        gunnery: {
+            min: skills?.gunnery?.min ?? defaults.gunnery.min,
+            max: skills?.gunnery?.max ?? defaults.gunnery.max,
+        },
+        piloting: {
+            min: skills?.piloting?.min ?? defaults.piloting.min,
+            max: skills?.piloting?.max ?? defaults.piloting.max,
+        },
+        skill: {
+            min: skills?.skill?.min ?? defaults.skill.min,
+            max: skills?.skill?.max ?? defaults.skill.max,
+        },
+        maxDelta: skills?.maxDelta ?? defaults.maxDelta,
+    };
+}
 
 @Injectable({ providedIn: 'root' })
 export class OptionsService {
@@ -140,6 +166,7 @@ export class OptionsService {
         forceGenPreventDuplicateChassis: DEFAULT_OPTIONS.forceGenPreventDuplicateChassis,
         forceGenUseTaggedQuantities: DEFAULT_OPTIONS.forceGenUseTaggedQuantities,
         forceGenUseUnitTagsAsChassisTags: DEFAULT_OPTIONS.forceGenUseUnitTagsAsChassisTags,
+        forceBudgetOptimizerLastSkills: DEFAULT_OPTIONS.forceBudgetOptimizerLastSkills,
     });
 
     constructor() {
@@ -195,6 +222,7 @@ export class OptionsService {
             forceGenPreventDuplicateChassis: saved?.forceGenPreventDuplicateChassis ?? DEFAULT_OPTIONS.forceGenPreventDuplicateChassis,
             forceGenUseTaggedQuantities: saved?.forceGenUseTaggedQuantities ?? DEFAULT_OPTIONS.forceGenUseTaggedQuantities,
             forceGenUseUnitTagsAsChassisTags: saved?.forceGenUseUnitTagsAsChassisTags ?? DEFAULT_OPTIONS.forceGenUseUnitTagsAsChassisTags,
+            forceBudgetOptimizerLastSkills: resolveForceBudgetOptimizerLastSkills(saved),
         });
     }
 

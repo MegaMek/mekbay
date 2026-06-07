@@ -87,26 +87,24 @@
                     <div class="field-pair mobile-two-column span-all">
                         <div class="form-fields">
                             <label class="field-label">{{ budgetMinimumFieldLabel() }}</label>
-                            <input
-                                class="bt-input field-input"
-                                type="number"
-                                min="0"
-                                step="1"
-                                [value]="budgetRange().min || ''"
-                                (input)="onBudgetMinChange($event)"
-                                placeholder="0" />
+                            <thousands-integer-input
+                                class="field-input"
+                                [value]="budgetRange().min || undefined"
+                                [min]="0"
+                                [emptyWhenZero]="true"
+                                placeholder="0"
+                                (valueChange)="onBudgetMinChange($event)" />
                         </div>
 
                         <div class="form-fields">
                             <label class="field-label">{{ budgetMaximumFieldLabel() }}</label>
-                            <input
-                                class="bt-input field-input"
-                                type="number"
-                                min="0"
-                                step="1"
-                                [value]="budgetRange().max || ''"
-                                (blur)="onBudgetMaxBlur($event)"
-                                placeholder="0 = No maximum" />
+                            <thousands-integer-input
+                                class="field-input"
+                                [value]="budgetRange().max || undefined"
+                                [min]="0"
+                                [emptyWhenZero]="true"
+                                placeholder="0 = No maximum"
+                                (valueCommit)="onBudgetMaxCommit($event)" />
                         </div>
                     </div>
 
@@ -251,7 +249,7 @@
                                 @if (isAlphaStrike()) {
                                 <div class="filter-row">
                                     <div class="range">
-                                        <label class="range-label" id="force-generator-gunnery-skill-label">Pilot Skill
+                                        <label class="skill-range-label" id="force-generator-gunnery-skill-label">Pilot Skill
                                             <span class="range-values">
                                                 (<span class="range-value-min">{{ gunnerySkillRange()[0] }}</span>~<span class="range-value-max">{{ gunnerySkillRange()[1] }}</span>)
                                             </span>
@@ -272,7 +270,7 @@
                                 } @else {
                                 <div class="filter-row">
                                     <div class="range">
-                                        <label class="range-label" id="force-generator-gunnery-skill-label">Gunnery
+                                        <label class="skill-range-label" id="force-generator-gunnery-skill-label">Gunnery
                                             <span class="range-values">
                                                 (<span class="range-value-min">{{ gunnerySkillRange()[0] }}</span>~<span class="range-value-max">{{ gunnerySkillRange()[1] }}</span>)
                                             </span>
@@ -292,7 +290,7 @@
                                 </div>
                                 <div class="filter-row">
                                     <div class="range">
-                                        <label class="range-label" id="force-generator-piloting-skill-label">Piloting
+                                        <label class="skill-range-label" id="force-generator-piloting-skill-label">Piloting
                                             <span class="range-values">
                                                 (<span class="range-value-min">{{ pilotingSkillRange()[0] }}</span>~<span class="range-value-max">{{ pilotingSkillRange()[1] }}</span>)
                                             </span>
