@@ -72,6 +72,10 @@ import { FormationInfoDialogComponent, type FormationInfoDialogData } from '../f
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { ForceTagsComponent, type ForceTagClickEvent } from '../force-tags/force-tags.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { GameSystem } from '../../models/common.model';
+import { PVCalculatorUtil } from '../../utils/pv-calculator.util';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
+import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 
 const UNIT_TILE_MIN_WIDTH = 86;
 const UNIT_TILE_MAX_WIDTH = 114;
@@ -246,6 +250,12 @@ export interface ForcePreviewUnitMenuActionEvent {
                                     <div class="pilot-info info-slot numeric slim">
                                         <span class="value">{{ getPilotStats(unitEntry) }}</span>
                                     </div>
+                                    @if (showUnitCost() && unitEntry.unit) {
+                                    <div class="spanner"></div>
+                                    <div class="unit-cost">
+                                        <div class="value">{{ getUnitCost(unitEntry) }}</div>
+                                    </div>
+                                    }
                                 </div>
                             </div>
 
@@ -258,7 +268,7 @@ export interface ForcePreviewUnitMenuActionEvent {
                                             [class.locked]="isLocked(unitEntry)"
                                             [class.locked-chassis-only]="isChassisOnlyLocked(unitEntry)"
                                             (click)="onLockButtonClick($event, unitEntry)">
-                                            {{ isLocked(unitEntry) ? 'UNLOCK' : 'LOCK' }}
+                                            {{ isLocked(unitEntry) ? ( isChassisOnlyLocked(unitEntry) ? 'UNLOCK CHASSIS' : 'UNLOCK' ) : 'LOCK' }}
                                         </button>
                                     }
 
@@ -659,6 +669,7 @@ export interface ForcePreviewUnitMenuActionEvent {
 
         .unit-content {
             width: 100%;
+            height: 100%;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -697,6 +708,7 @@ export interface ForcePreviewUnitMenuActionEvent {
             padding: 2px 4px;
             font-size: 0.62em;
             letter-spacing: 0.08em;
+            white-space: normal;
         }
 
         .unit-actions {
@@ -815,6 +827,17 @@ export interface ForcePreviewUnitMenuActionEvent {
             right: 3px;
         }
 
+        .unit-cost {
+            width: 100%;
+            box-sizing: border-box;
+            display: flex;
+            justify-content: right;
+            padding-right: 4px;
+            padding-bottom: 4px;
+            font-size: 0.7em;
+            margin-top: 6px;
+        }
+
         .hint {
             font-size: 0.7em;
             color: var(--text-color-secondary);
@@ -838,6 +861,7 @@ export class ForcePreviewPanelComponent {
     readonly showNote = input(true);
     readonly scrollUnitsOnly = input(false);
     readonly showLockControls = input(false);
+    readonly showUnitCost = input(false);
     readonly controls = input<('none' | 'selection' | 'menu')>('none');
     readonly selectionMode = input<ForcePreviewSelectionMode>('multi');
     readonly displayMode = input<Options['unitDisplayName'] | null>(null);
@@ -958,6 +982,18 @@ export class ForcePreviewPanelComponent {
 
     getPilotStats(loadForceUnit: ForcePreviewUnit): string {
         return getForcePreviewUnitPilotStats(loadForceUnit, this.force().type);
+    }
+
+    getUnitCost(loadForceUnit: ForcePreviewUnit): string {
+        if (!loadForceUnit.unit) {
+            return '';
+        }
+        if (this.force().type == GameSystem.ALPHA_STRIKE) {
+            const adjustedPV = PVCalculatorUtil.calculateAdjustedPV(loadForceUnit.unit.as.PV, loadForceUnit.skill ?? DEFAULT_GUNNERY_SKILL);
+            return `PV: ${adjustedPV}`;
+        }
+        const adjustedBV = BVCalculatorUtil.calculateAdjustedBV(loadForceUnit.unit, loadForceUnit.unit.bv, loadForceUnit.gunnery ?? DEFAULT_GUNNERY_SKILL, loadForceUnit.piloting ?? DEFAULT_PILOTING_SKILL);
+        return `BV: ${adjustedBV}`;
     }
 
     onUnitClick(loadForceUnit: ForcePreviewUnit): void {
