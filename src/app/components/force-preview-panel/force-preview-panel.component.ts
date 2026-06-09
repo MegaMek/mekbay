@@ -81,7 +81,7 @@ const UNIT_TILE_MIN_WIDTH = 86;
 const UNIT_TILE_MAX_WIDTH = 114;
 const UNIT_TILE_GAP = 4;
 type ForcePreviewSelectionMode = 'multi' | 'single';
-export type ForcePreviewUnitMenuAction = 'edit-pilot' | 'toggle-chassis-lock' | 'reroll' | 'reject';
+export type ForcePreviewUnitMenuAction = 'edit-pilot' | 'toggle-chassis-lock' | 'reroll-unit-keep-pilot' | 'reroll-unit-and-pilot' | 'reject';
 export type ForcePreviewUnitMenuIcon = 'pilot' | 'lock' | 'reroll' | 'reject';
 
 export interface ForcePreviewUnitMenuItem {
