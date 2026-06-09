@@ -2294,8 +2294,8 @@ describe('ForceGeneratorService', () => {
         expect(preview.error).toBeNull();
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Extinct Unit']);
         expect(preview.explanationLines[0]).toContain('Eligible units: 2 units. Availability-positive candidates: 2 units.');
-        expect(preview.explanationLines.some((line) => line.includes('Generation context: Capellan Confederation - Jihad. Availability weights: max P/S across 2 eras x 2 factions.'))).toBeTrue();
-        expect(preview.explanationLines.some((line) => line.includes('requisition pick, P 20 / S 0'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('Generation context: Capellan Confederation - Jihad. Availability weights: max R/S across 2 eras x 2 factions.'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('requisition pick, R 20 / S 0'))).toBeTrue();
     });
 
     it('uses max weights across selected eras for a single rolled faction when multiselect expansion is enabled', () => {
@@ -2341,8 +2341,8 @@ describe('ForceGeneratorService', () => {
 
         expect(preview.error).toBeNull();
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Scoped Era Unit']);
-        expect(preview.explanationLines.some((line) => line.includes('Generation context: Capellan Confederation - Jihad. Availability weights: max P/S across 3 eras.'))).toBeTrue();
-        expect(preview.explanationLines.some((line) => line.includes('P 2 / S 9'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('Generation context: Capellan Confederation - Jihad. Availability weights: max R/S across 3 eras.'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('R 2 / S 9'))).toBeTrue();
     });
 
     it('uses max weights across selected factions for a single rolled era when multiselect expansion is enabled', () => {
@@ -2384,8 +2384,8 @@ describe('ForceGeneratorService', () => {
 
         expect(preview.error).toBeNull();
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Scoped Faction Unit']);
-        expect(preview.explanationLines.some((line) => line.includes('Generation context: Capellan Confederation - Jihad. Availability weights: max P/S across 3 factions.'))).toBeTrue();
-        expect(preview.explanationLines.some((line) => line.includes('P 7 / S 6'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('Generation context: Capellan Confederation - Jihad. Availability weights: max R/S across 3 factions.'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('R 7 / S 6'))).toBeTrue();
     });
 
     it('reuses cached availability weights across identical preview requests and rebuilds them when the scope changes', () => {
@@ -2896,7 +2896,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.error).toBeNull();
         expect(preview.units.map((generatedUnit) => generatedUnit.unit.name)).toEqual(['MUL Visible Unknown']);
         expect(preview.explanationLines[0]).toContain('Eligible units: 1 units. Availability-positive candidates: 1 units.');
-        expect(preview.explanationLines.some((line) => line.includes('P 1 / S 0'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('R 1 / S 0'))).toBeTrue();
     });
 
     it('keeps MUL fallback unknown weights requisition-only when another scoped pair already contributed exact MegaMek weights', () => {
@@ -2955,9 +2955,9 @@ describe('ForceGeneratorService', () => {
         expect(preview.error).toBeNull();
         expect(preview.units.map((generatedUnit) => generatedUnit.unit.name)).toEqual(['Mixed Scope Unknown']);
         expect(preview.explanationLines.some((line) => {
-            return line.includes('Generation context: Draconis Combine - Age of War. Availability weights: max P/S across 2 factions.');
+            return line.includes('Generation context: Draconis Combine - Age of War. Availability weights: max R/S across 2 factions.');
         })).toBeTrue();
-        expect(preview.explanationLines.some((line) => line.includes('requisition pick, P 1 / S 0'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('requisition pick, R 1 / S 0'))).toBeTrue();
     });
 
     it('keeps excluding MUL-invisible units that are missing MegaMek availability records', () => {
