@@ -1083,6 +1083,10 @@ span {
             background-color: var(--background-highlight);
         }
 
+        &.danger {
+            color: var(--danger);
+        }
+
         &[aria-expanded='true'] {
             background-color: var(--background-highlight);
         }

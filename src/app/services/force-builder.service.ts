@@ -2041,7 +2041,7 @@ export class ForceBuilderService {
         await this.showSearchForceGeneratorDialog();
     }
 
-    async showSearchForceGeneratorDialog(): Promise<void> {
+    async showSearchForceGeneratorDialog(options: { importCurrentForce?: boolean } = {}): Promise<void> {
         if (!this.dataService.isDataReady()) {
             this.toastService.showToast('Data is still loading.', 'info');
             return;
@@ -2055,7 +2055,10 @@ export class ForceBuilderService {
 
         const { SearchForceGeneratorDialogComponent } = await import('../components/search-force-generator-dialog/search-force-generator-dialog.component');
         const dialogRef = this.dialogsService.createDialog<SearchForceGeneratorDialogResult | null>(SearchForceGeneratorDialogComponent, {
-            disableClose: true
+            disableClose: true,
+            data: {
+                importCurrentForce: options.importCurrentForce === true,
+            },
         });
 
         await this.finalizeGeneratedForceDialog((await firstValueFrom(dialogRef.closed)) ?? null);
