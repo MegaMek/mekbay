@@ -94,6 +94,11 @@ export class SidebarFooterComponent {
         this.forceBuilderService.smartCurrentForce()?.gameSystem === GameSystem.ALPHA_STRIKE ? 'Optimize PV' : 'Optimize BV'
     ));
 
+    canOpenForceGeneratorWithCurrentForce = computed(() => {
+        const force = this.forceBuilderService.smartCurrentForce();
+        return !!force && force.units().length > 0;
+    });
+
     canOptimizeBudget = computed(() => {
         const force = this.forceBuilderService.smartCurrentForce();
         return !!force && force.units().length > 0 && !force.readOnly();
@@ -161,6 +166,12 @@ export class SidebarFooterComponent {
         this.dialogsService.createDialog(ForceBudgetOptimizerDialogComponent, {
             data: { force },
         });
+    }
+
+    async showCurrentForceInGeneratorDialog(): Promise<void> {
+        const force = this.forceBuilderService.smartCurrentForce();
+        if (!force || force.units().length === 0) { return; }
+        await this.forceBuilderService.showSearchForceGeneratorDialog({ importCurrentForce: true });
     }
 
     showForceOverview(): void {

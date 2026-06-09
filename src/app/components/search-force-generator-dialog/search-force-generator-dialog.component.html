@@ -427,10 +427,22 @@
                             }
                         </div>
                     </div>
-
+                    @if (rejectedUnitPills().length > 0) {
+                        <div class="rejected-units span-all framed-borders">
+                            <span class="rejected-units-label">Rejected variants</span>
+                            <div class="rejected-unit-pills">
+                                @for (unit of rejectedUnitPills(); track unit.name) {
+                                    <span class="rejected-unit-pill">
+                                        <span>{{ unit.label }}</span>
+                                        <span class="action" aria-hidden="true" (click)="removeRejectedUnit(unit.name)">✕</span>
+                                    </span>
+                                }
+                            </div>
+                        </div>
+                    }
                     <div class="eligible-count">
                         <span class="eligible-label">Eligible Units</span>
-                        <span class="eligible-value">{{ eligibleUnits().length }}</span>
+                        <span class="eligible-value">{{ generationEligibleUnits().length }}</span>
                     </div>
                     <div class="controls-buttons">
                         <button class="bt-button" type="button" (click)="importCurrentForce()" [disabled]="!canImportCurrentForce()">IMPORT CURRENT FORCE</button>
@@ -441,7 +453,7 @@
             <section class="panel preview-panel" [attr.aria-busy]="forceGenerationInProgress()">
                 <div class="preview-body">
                     @if (previewEntry(); as previewForceEntry) {
-                        <div class="preview-layout">
+                        <div class="preview-layout" [class.radar-collapsed]="!radarExpanded()">
                             <div class="preview-summary">
                                 <force-preview-panel
                                     [force]="previewForceEntry"
@@ -449,13 +461,16 @@
                                     [showNote]="false"
                                     [scrollUnitsOnly]="true"
                                     [showLockControls]="true"
-                                    [showSelectionControls]="true"
+                                    [controls]="'menu'"
+                                    [unitMenuItems]="previewUnitMenuItems"
                                     [selectionMode]="'single'"
                                     [lockedUnitKeys]="lockedUnitKeys()"
+                                    [chassisOnlyLockedUnitKeys]="chassisOnlyLockedUnitKeys()"
                                     [lockToggle]="previewLockToggle"
                                     [variantChange]="previewVariantChange"
                                     (hoveredUnitChange)="onPreviewUnitHover($event)"
-                                    (selectedUnitsChange)="onPreviewSelectedUnitsChange($event)">
+                                    (selectedUnitsChange)="onPreviewSelectedUnitsChange($event)"
+                                    (unitMenuAction)="onPreviewUnitMenuAction($event)">
                                 </force-preview-panel>
 
                                 @if (previewError(); as errorMessage) {
@@ -463,11 +478,36 @@
                                 }
                             </div>
 
-                            <div class="preview-radar">
-                                <force-radar-panel
-                                    [force]="previewForceEntry"
-                                    [hoveredUnit]="hoveredRadarUnit()">
-                                </force-radar-panel>
+                            <div class="preview-radar" [class.collapsed]="!radarExpanded()">
+                                <button
+                                    class="radar-toggle"
+                                    type="button"
+                                    [attr.aria-expanded]="radarExpanded()"
+                                    [attr.aria-label]="radarExpanded() ? 'Collapse radar' : 'Expand radar'"
+                                    [title]="radarExpanded() ? 'Collapse radar' : 'Expand radar'"
+                                    (click)="toggleRadarExpanded()">
+                                    @if (radarExpanded()) {
+                                        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                                            focusable="false" aria-hidden="true" role="img">
+                                            <path d="M4 14H10M10 14V20M10 14L3 21M20 10H14M14 10V4M14 10L21 3" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round" />
+                                        </svg>
+                                    } @else {
+                                        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                                            focusable="false" aria-hidden="true" role="img">
+                                            <path d="M14 10L21 3M21 3H15M21 3V9M10 14L3 21M3 21H9M3 21L3 15" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round" />
+                                        </svg>
+                                    }
+                                </button>
+                                @if (radarExpanded()) {
+                                    <force-radar-panel
+                                        [force]="previewForceEntry"
+                                        [hoveredUnit]="hoveredRadarUnit()">
+                                    </force-radar-panel>
+                                } @else {
+                                    <span class="radar-collapsed-label">Show radar chart</span>
+                                }
                             </div>
                         </div>
                     } @else if (previewError(); as errorMessage) {
@@ -512,7 +552,7 @@
 
     <div dialog-footer class="footer">
         <button class="modal-btn bt-button" type="button" (click)="submit()" [disabled]="forceGenerationInProgress() || previewError() !== null || previewEntry() === null">CREATE</button>
-        <button class="modal-btn bt-button" type="button" (click)="reroll()" [disabled]="forceGenerationInProgress() || eligibleUnits().length === 0">REROLL</button>
+        <button class="modal-btn bt-button" type="button" (click)="reroll()" [disabled]="forceGenerationInProgress() || generationEligibleUnits().length === 0">REROLL</button>
         <button class="modal-btn bt-button" type="button" (click)="dismiss()">DISMISS</button>
     </div>
 </base-dialog>

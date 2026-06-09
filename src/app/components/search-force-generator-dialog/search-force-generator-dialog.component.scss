@@ -619,6 +619,52 @@
     letter-spacing: 0.1em;
 }
 
+.rejected-units {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    background-color: var(--background-color-light);
+    min-width: 0;
+}
+
+.rejected-units-label {
+    color: var(--text-color-secondary);
+    font-size: 0.75em;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+.rejected-unit-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+}
+
+.rejected-unit-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    padding: 3px 7px;
+    border: 1px solid red;
+    background: rgba(128, 24, 24, 0.28);
+    color: var(--text-color);
+    font: inherit;
+    font-size: 0.78em;
+
+    .action {
+        cursor: pointer;
+        color: red;
+        opacity: 0.7;
+
+        &:hover {
+            opacity: 1;
+        }
+    }
+}
+
 .eligible-value {
     font-size: 1.05em;
     font-weight: 700;
@@ -640,6 +686,38 @@
     gap: 12px;
     flex: 1 1 auto;
     min-height: 0;
+    position: relative;
+}
+
+.preview-layout.radar-collapsed {
+    grid-template-columns: minmax(0, 1.18fr) minmax(180px, 0.82fr);
+}
+
+.radar-toggle {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    padding: 3px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    bottom: 0px;
+    right: 0px;
+    color: var(--text-color-secondary);
+
+    &:hover {
+        color: var(--text-color);
+    }
+
+    svg {
+        display: block;
+        width: 24px;
+        height: 24px;
+    }
 }
 
 .preview-summary,
@@ -656,6 +734,21 @@
     border: 1px solid var(--border-color, #333);
     box-sizing: border-box;
     overflow: hidden;
+    position: relative;
+}
+
+.preview-radar.collapsed {
+    min-height: 32px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 34px;
+}
+
+.radar-collapsed-label {
+    color: var(--text-color-tertiary);
+    font-size: 0.82em;
+    line-height: 1.2;
 }
 
 .preview-empty {
