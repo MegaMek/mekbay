@@ -87,6 +87,7 @@ import { SyntaxInputComponent } from '../syntax-input/syntax-input.component';
 import { EditPilotDialogComponent, type EditPilotDialogData, type EditPilotResult } from '../edit-pilot-dialog/edit-pilot-dialog.component';
 import { EditASPilotDialogComponent, type EditASPilotDialogData, type EditASPilotResult } from '../edit-as-pilot-dialog/edit-as-pilot-dialog.component';
 import { getUnitVariantGroupKey } from '../../utils/unit-variant.util';
+import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 
 export interface SearchForceGeneratorDialogConfig {
     gameSystem: GameSystem;
@@ -145,6 +146,7 @@ type FormationTargetDropdownOptionsProvider = UnitSearchFiltersService & {
         SyntaxInputComponent,
         ThousandsIntegerInputComponent,
         TooltipDirective,
+        UnitCardExpandedComponent,
         UnitSearchAdvancedFiltersComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -183,6 +185,7 @@ export class SearchForceGeneratorDialogComponent {
 
     readonly gameSystem = this.selectedGameSystem.asReadonly();
     readonly isAlphaStrike = computed(() => this.gameSystem() === GameSystem.ALPHA_STRIKE);
+    readonly useHex = computed<boolean>(() => this.optionsService.options().ASUseHex);
     readonly availabilitySource = computed(() => this.optionsService.options().availabilitySource);
     readonly eligibleUnits = this.filtersService.forceGeneratorEligibleUnits;
     readonly pilotGunnerySkill = computed(() => this.filtersService.pilotGunnerySkill());
@@ -908,7 +911,9 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     onPreviewUnitHover(unitEntry: ForcePreviewUnit | null): void {
-        this.hoveredPreviewUnit.set(unitEntry?.unit ? unitEntry : null);
+        if (unitEntry?.unit) {
+            this.hoveredPreviewUnit.set(unitEntry);
+        }
     }
 
     onPreviewSelectedUnitsChange(selectedUnits: ForcePreviewUnit[]): void {
@@ -941,6 +946,10 @@ export class SearchForceGeneratorDialogComponent {
                 this.rejectPreviewUnit(event.unitEntry);
                 break;
         }
+    }
+
+    onHoverPreviewUnitPilotClick(unitEntry: ForcePreviewUnit): void {
+        void this.editPreviewUnitPilot(unitEntry);
     }
 
     removeRejectedUnit(unitName: string): void {

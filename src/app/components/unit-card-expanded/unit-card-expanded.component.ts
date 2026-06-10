@@ -123,8 +123,17 @@ export class UnitCardExpandedComponent {
     /** Piloting skill for BV adjustment. Ignored when unit is a ForceUnit. */
     pilotingInput = input(DEFAULT_PILOTING_SKILL, { alias: 'piloting' });
 
+    /** To force view of pilot skills even when we don't have a ForceUnit (e.g., force generator) */
+    forceShowPilotInfo = input(false);
+
+    /** Forcibly override game system detection */
+    gameSystemOverride = input<GameSystem | null>(null);
+
+    /** Whether to show tags on the unit card */
+    showTags = input(true);
+
     /** Check if the input is a ForceUnit */
-    private isForceUnit(u: Unit | ForceUnit): u is ForceUnit {
+    protected isForceUnit(u: Unit | ForceUnit): u is ForceUnit {
         return u instanceof ForceUnit;
     }
 
@@ -187,6 +196,12 @@ export class UnitCardExpandedComponent {
         if (this.isForceUnit(u)) {
             return u.getPilotStats?.() ?? null;
         }
+        if (this.forceShowPilotInfo()) {
+            if (this.isAlphaStrike()) {
+                return `${this.gunnery()}`;
+            }
+            return `${this.gunnery()}/${this.piloting()}`;
+        }
         return null;
     });
 
@@ -208,6 +223,9 @@ export class UnitCardExpandedComponent {
         const u = this.unit();
         if (this.isForceUnit(u)) {
             return u.force.gameSystem === GameSystem.ALPHA_STRIKE;
+        }
+        if (this.gameSystemOverride()) {
+            return this.gameSystemOverride() === GameSystem.ALPHA_STRIKE;
         }
         return this.gameService.isAlphaStrike();
     });
@@ -291,8 +309,8 @@ export class UnitCardExpandedComponent {
     /** Emitted when the tag button is clicked */
     tagClick = output<TagClickEvent>();
 
-    /** Emitted when the pilot info is clicked (only for ForceUnit) */
-    pilotClick = output<ForceUnit>();
+    /** Emitted whenever visible pilot info is clicked. */
+    pilotInfoClick = output<void>();
 
     /**
      * Keys that are grouped together in the UI display.
@@ -406,10 +424,7 @@ export class UnitCardExpandedComponent {
     /** Handle pilot info click - emits pilotClick if this is a ForceUnit */
     onPilotClick(event: Event): void {
         event.stopPropagation();
-        const u = this.unit();
-        if (this.isForceUnit(u)) {
-            this.pilotClick.emit(u);
-        }
+        this.pilotInfoClick.emit();
     }
 
     /** Handle AS special ability click - opens ability info dialog */

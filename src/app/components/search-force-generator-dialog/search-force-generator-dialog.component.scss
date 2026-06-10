@@ -28,7 +28,6 @@
 :host ::ng-deep .preview-radar force-radar-panel {
     display: block;
     width: 100%;
-    max-height: 30vh;
 }
 
 .dialog-body {
@@ -41,7 +40,6 @@
 .dialog-layout {
     display: grid;
     grid-template-columns: minmax(340px, 0.92fr) minmax(0, 1.48fr);
-    gap: 12px;
     width: 100%;
     min-height: 0;
     box-sizing: border-box;
@@ -112,6 +110,7 @@
 .preview-explanation-shell {
     background-color: var(--background-color-light);
     flex: 0 0 auto;
+    z-index: 1;
 }
 
 .preview-explanation-toggle {
@@ -682,15 +681,11 @@
 
 .preview-layout {
     display: grid;
-    grid-template-columns: minmax(0, 1.18fr) minmax(300px, 0.82fr);
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 1fr);
     gap: 12px;
     flex: 1 1 auto;
     min-height: 0;
     position: relative;
-}
-
-.preview-layout.radar-collapsed {
-    grid-template-columns: minmax(0, 1.18fr) minmax(180px, 0.82fr);
 }
 
 .radar-toggle {
@@ -721,6 +716,7 @@
 }
 
 .preview-summary,
+.preview-radar-column,
 .preview-radar {
     display: flex;
     flex-direction: column;
@@ -728,13 +724,29 @@
     min-height: 0;
 }
 
-.preview-radar {
+.preview-radar-column {
     align-self: start;
+    gap: 8px;
+    height: 100%;
+}
+
+.preview-radar {
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--border-color, #333);
     box-sizing: border-box;
     overflow: hidden;
     position: relative;
+    flex-shrink: 0;
+}
+
+.preview-hover-unit-card {
+    display: block;
+    overflow: auto;
+    background-color: var(--background-color-light);
+}
+
+:host ::ng-deep .preview-hover-unit-card unit-card-expanded {
+    display: block;
 }
 
 .preview-radar.collapsed {
@@ -811,15 +823,28 @@
 }
 
 @media (max-width: 1260px) {
+    :host ::ng-deep .preview-radar force-radar-panel {
+        max-height: 30vh;
+    }
+
+    .preview-hover-unit-card {
+        display: none;
+    }
+
     .preview-layout {
         display: flex;
         flex-direction: column;
         gap: 10px;
     }
 
-    .preview-radar {
+    .preview-radar-column {
         order: -1;
         flex: 0 0 auto;
+        width: 100%;
+        height: auto;
+    }
+
+    .preview-radar {
         width: 100%;
     }
 
