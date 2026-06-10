@@ -293,7 +293,7 @@
                                     [useHex]="useHex()"
                                     (cardClick)="onUnitClick(vm)"
                                     (tagClick)="onTagClick($event)"
-                                    (pilotClick)="onPilotClick($event)">
+                                    (pilotInfoClick)="onPilotClick(vm.forceUnit)">
                                 </unit-card-expanded>
                                 @if (!last && !isTableMode()) {
                                     <hr class="divider" />

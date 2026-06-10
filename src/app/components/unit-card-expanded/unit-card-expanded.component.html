@@ -30,9 +30,11 @@
                 <span [class.sort-slot]="isSortActive('as.TP')" [tooltip]="unitTypeDisplayNames[u.as.TP]">{{ u.as.TP }}</span>
                 <span> • {{ u.weightClass }}</span>
             </div>
+            @if (showTags()) {
             <div class="subtitle-line">
                 <unit-tags [unit]="u" mode="full" (tagClick)="onTagClick($event)" />
             </div>
+            }
         </div>
     </div>
     <div class="expanded-content as-view">
@@ -166,9 +168,11 @@
                 <span>{{ u.type }}@if(u.subtype && u.subtype !== u.type){<span> - {{ u.subtype }}</span>}</span>
                 <span> • {{ u.weightClass }}</span>
             </div>
+            @if (showTags()) {
             <div class="subtitle-line">
                 <unit-tags [unit]="u" mode="full" (tagClick)="onTagClick($event)" />
             </div>
+            }
         </div>
     </div>
     <div class="expanded-content">
@@ -379,7 +383,9 @@
                 }
             </div>
             <span class="spanner"></span>
-            <unit-tags [unit]="u" mode="compact" (tagClick)="onTagClick($event)" />
+            @if (showTags()) {
+                <unit-tags [unit]="u" mode="compact" (tagClick)="onTagClick($event)" />
+            }
         </div>
     </div>
     
