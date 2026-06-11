@@ -130,6 +130,10 @@ import { DialogsService } from '../../services/dialogs.service';
             align-items: center;
             justify-content: space-between;
             width: 100%;
+
+            @media (max-width: 380px) {
+                flex-direction: column;
+            }
         }
 
         .export-buttons {
