@@ -44,7 +44,8 @@ import { CatalogBaseService } from './catalog-base.service';
 export class QuirksCatalogService extends CatalogBaseService<Quirks, Quirks> {
     private readonly dbService = inject(DbService);
 
-    private quirks = new Map<string, Quirk>();
+    private quirksByKey = new Map<string, Quirk>();
+    private quirksByName = new Map<string, Quirk>();
 
     protected override get catalogKey(): string {
         return 'quirks';
@@ -54,12 +55,16 @@ export class QuirksCatalogService extends CatalogBaseService<Quirks, Quirks> {
         return `${REMOTE_HOST}/quirks.json`;
     }
 
+    public getQuirkByKey(key: string): Quirk | undefined {
+        return this.quirksByKey.get(key);
+    }
+
     public getQuirkByName(name: string): Quirk | undefined {
-        return this.quirks.get(name);
+        return this.quirksByName.get(name);
     }
 
     protected override hasHydratedData(): boolean {
-        return this.quirks.size > 0;
+        return this.quirksByKey.size > 0;
     }
 
     protected override async loadFromCache(): Promise<Quirks | undefined> {
@@ -73,9 +78,11 @@ export class QuirksCatalogService extends CatalogBaseService<Quirks, Quirks> {
     protected override hydrate(data: Quirks): void {
         const quirks = [...data.quirks].sort((left, right) => naturalCompare(left.name, right.name));
 
-        this.quirks.clear();
+        this.quirksByKey.clear();
+        this.quirksByName.clear();
         for (const quirk of quirks) {
-            this.quirks.set(quirk.name, quirk);
+            this.quirksByKey.set(quirk.key, quirk);
+            this.quirksByName.set(quirk.name, quirk);
         }
 
         this.etag = data.etag || '';

@@ -80,8 +80,10 @@
                                     @if (force.faction) {
                                         <img [src]="force.faction.img" class="faction-icon" />
                                     }
-                                    @if (force.era?.img || force.era?.icon; as eraImg) {
-                                        <img [src]="eraImg" class="era-icon" [alt]="force.era?.name || 'Era'" [title]="force.era?.name || 'Era'" />
+                                    @if (force.era; as era) {
+                                        @if (era.img || era.icon; as eraImg) {
+                                            <img [src]="eraImg" class="era-icon" [alt]="era.name || 'Era'" [title]="era.name || 'Era'" />
+                                        }
                                     }
                                     <div class="force-name">{{ force.name }}</div>
                                 </div>
@@ -343,6 +345,9 @@
         }
         <div class="tab-footer glass">
             @if (activeTab() === 'Hangar') {
+            <input #mulFileInput type="file" accept=".mul,application/xml,text/xml" class="hidden-file-input" (change)="onMulFileSelected($event)" />
+            <button type="button" class="bt-button mul-load-btn" (click)="openMulFilePicker()">Load from MUL...</button>
+            <div class="spanner"></div>
             <div class="footer-filter-controls">
                 <compact-filter-menu
                     [options]="hangarFactionOptions()"
