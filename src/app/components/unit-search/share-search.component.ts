@@ -131,7 +131,7 @@ import { DialogsService } from '../../services/dialogs.service';
             justify-content: space-between;
             width: 100%;
 
-            @media (max-width: 600px) {
+            @media (max-width: 380px) {
                 flex-direction: column;
             }
         }
