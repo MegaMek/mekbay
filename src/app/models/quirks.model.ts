@@ -35,6 +35,7 @@
  * Author: Drake
  */
 export interface Quirk {
+    key: string;
     name: string;
     description: string;
     type: 'positive' | 'negative';
