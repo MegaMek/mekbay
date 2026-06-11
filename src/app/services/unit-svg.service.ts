@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, effect, inject, DestroyRef } from '@angular/core';
+import { Injectable, effect, signal, inject, DestroyRef } from '@angular/core';
 import { type CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, type SkillType } from '../models/crew-member.model';
 import type { CriticalSlot, HeatProfile, MountedEquipment } from '../models/force-serialization';
 import { SheetService } from './sheet.service';
@@ -55,6 +55,7 @@ export class UnitSvgService {
     protected logger = inject(LoggerService);
     private sheetService = inject(SheetService);
     private svgDimensions = { width: 0, height: 0 };
+    public version = signal(0);
 
     constructor(
         protected unit: CBTForceUnit,
@@ -63,19 +64,27 @@ export class UnitSvgService {
         // Armor effect
         effect(() => {
             this.updateArmorDisplay(false);
+            this.version(); // Track version to force a repaint
         });
         // Data effect
         effect(() => {
             this.updateAllDisplays();
+            this.version(); // Track version to force a repaint
         });
         // Destroy effect
         effect(() => {
             const destroyed = this.unit.destroyed;
             this.updateDestroyedOverlayDisplay(destroyed);
+            this.version(); // Track version to force a repaint
         });
         inject(DestroyRef).onDestroy(() => {        
             this.unit.svg.set(null); // Clear SVG on destruction
         });
+    }
+
+
+    public forceRepaint() {
+        this.version.set(this.version()+1); // Increment version to trigger repaint
     }
 
     public async loadAndInitialize(): Promise<void> {

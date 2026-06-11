@@ -44,6 +44,8 @@ import { buildForceQueryParams } from '../../utils/force-url.util';
 import { firstValueFrom } from 'rxjs';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForcePreviewComponent } from '../force-preview/force-preview.component';
+import { GameSystem } from '../../models/common.model';
+import type { CBTForce } from '../../models/cbt-force.model';
 
 /*
  * Author: Drake
@@ -115,6 +117,15 @@ export interface ShareForceDialogData {
                             EXCEL
                         }
                     </button>
+                    @if (force.gameSystem === GameSystem.CLASSIC) {
+                        <button class="bt-button export-btn" (click)="exportToMUL()" [disabled]="isExporting()">
+                            @if (isExporting()) {
+                                EXPORTING...
+                            } @else {
+                                MUL
+                            }
+                        </button>
+                    }
                 </div>
             </div>
         </div>
@@ -204,6 +215,7 @@ export class ShareForceDialogComponent {
     cleanUrl = signal<string | null>(null);
     force: Force;
     isExporting = signal(false);
+    readonly GameSystem = GameSystem;
 
     constructor() {
         this.force = this.data.force;
@@ -264,6 +276,29 @@ export class ShareForceDialogComponent {
         } catch (err) {
             console.error('Failed to export to CSV:', err);
             this.toastService.showToast('Failed to export to CSV.', 'error');
+        } finally {
+            this.isExporting.set(false);
+        }
+    }
+
+    async exportToMUL() {
+        const forceUnits = this.force.units();
+        if (this.force.gameSystem !== GameSystem.CLASSIC) {
+            return;
+        }
+        if (!forceUnits || forceUnits.length === 0) {
+            this.toastService.showToast('No units to export.', 'error');
+            return;
+        }
+
+        this.isExporting.set(true);
+        try {
+            const { exportForceToMul } = await import('../../utils/mul-file.util');
+            await exportForceToMul(this.force as CBTForce);
+            this.toastService.showToast(`Exported ${forceUnits.length} units to MUL.`, 'success');
+        } catch (err) {
+            console.error('Failed to export to MUL:', err);
+            this.toastService.showToast('Failed to export to MUL.', 'error');
         } finally {
             this.isExporting.set(false);
         }

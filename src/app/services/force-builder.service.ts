@@ -33,7 +33,7 @@
 
 import { Injectable, signal, effect, computed, Injector, inject, untracked, DestroyRef, ApplicationRef } from '@angular/core';
 import type { Unit } from '../models/units.model';
-import { type Force, type UnitGroup, MAX_GROUPS, MAX_UNITS } from '../models/force.model';
+import { Force, type UnitGroup, MAX_GROUPS, MAX_UNITS } from '../models/force.model';
 import type { ForceUnit } from '../models/force-unit.model';
 import { DataService } from './data.service';
 import { LayoutService } from './layout.service';
@@ -1945,13 +1945,15 @@ export class ForceBuilderService {
                 this.toastService.showToast('No editable force to insert into.', 'error');
                 return;
             }
-            if (result instanceof LoadForceEntry) {
-                const sourceForce = await this.dataService.getForce(result.instanceId, false);
-                if (!sourceForce) {
+            if (result instanceof Force) {
+                await this.insertForceInto(result, targetForce);
+            } else if (result instanceof LoadForceEntry) {
+                const forceToInsert = await this.dataService.getForce(result.instanceId, false);
+                if (!forceToInsert) {
                     this.toastService.showToast('Failed to load force.', 'error');
                     return;
                 }
-                await this.insertForceInto(sourceForce, targetForce);
+                await this.insertForceInto(forceToInsert, targetForce);
             } else {
                 const pack = result as ResolvedPack;
                 if (pack.units && pack.units.length > 0) {
@@ -1964,7 +1966,13 @@ export class ForceBuilderService {
         const isAdd = mode === 'add';
         const addAlignment: ForceAlignment = alignment ?? 'friendly';
 
-        if (result instanceof LoadForceEntry) {
+        if (result instanceof Force) {
+            if (isAdd) {
+                await this.addForce(result, addAlignment);
+            } else {
+                await this.loadForce(result);
+            }
+        } else if (result instanceof LoadForceEntry) {
             const requestedForce = await this.dataService.getForce(result.instanceId, false);
             if (!requestedForce) {
                 this.toastService.showToast('Failed to load force.', 'error');

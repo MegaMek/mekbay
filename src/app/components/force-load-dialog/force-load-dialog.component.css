@@ -438,6 +438,15 @@
     flex: 0 0 auto;
 }
 
+.hidden-file-input {
+    display: none;
+}
+
+.mul-load-btn {
+    height: 32px;
+    white-space: nowrap;
+}
+
 .sort-controls {
     display: flex;
     align-items: center;
