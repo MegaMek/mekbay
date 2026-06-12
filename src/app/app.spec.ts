@@ -178,6 +178,38 @@ describe('App', () => {
     expect(app.updateAutoReloadEnabled()).toBeFalse();
   });
 
+  it('snoozes update prompts for the current session when dismissed', () => {
+    swUpdateMock.isEnabled = true;
+    const now = 1000000;
+    spyOn(Date, 'now').and.returnValue(now);
+
+    fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+
+    versionUpdates.next({
+      type: 'VERSION_READY',
+      currentVersion: { hash: 'hash-old' },
+      latestVersion: { hash: 'hash-ready' },
+    });
+
+    expect(app.updateAvailable()).toBeTrue();
+    expect(app.updateAutoReloadEnabled()).toBeTrue();
+
+    app.dismissUpdatePromptForSession();
+
+    expect(app.updateAvailable()).toBeFalse();
+    expect(app.updateAutoReloadEnabled()).toBeFalse();
+    expect(app.lastUpdateCheck).toBeGreaterThan(now);
+
+    versionUpdates.next({
+      type: 'VERSION_READY',
+      currentVersion: { hash: 'hash-old' },
+      latestVersion: { hash: 'hash-ready' },
+    });
+
+    expect(app.updateAvailable()).toBeFalse();
+  });
+
   it('activates a pending service worker update before reloading', async () => {
     swUpdateMock.isEnabled = true;
 

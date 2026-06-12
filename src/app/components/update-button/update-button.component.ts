@@ -45,7 +45,7 @@ import { App } from '../../app';
     styleUrls: ['./update-button.component.css']
 })
 export class UpdateButtonComponent {
-    public START_COUNTDOWN = 120; // seconds
+    public START_COUNTDOWN = 300; // seconds
     public WARNING_THRESHOLD = 30; // seconds
     updateAvailable = input<boolean>(false);
     autoReloadEnabled = input<boolean>(false);
@@ -68,7 +68,7 @@ export class UpdateButtonComponent {
                     this.stopCountdown();
                 }
             } else {
-                this.cancelReload();
+                this.hideUpdate();
             }
         });
     }
@@ -85,7 +85,7 @@ export class UpdateButtonComponent {
                     this.triggerPulse();
                 }
             } else {
-                this.cancelReload();
+                this.hideUpdate();
                 void this.app.reloadForUpdate();
             }
         }, 1000);
@@ -103,7 +103,12 @@ export class UpdateButtonComponent {
         void this.app.reloadForUpdate();
     }
 
-    cancelReload() {
+    dismissUpdatePrompt() {
+        this.app.dismissUpdatePromptForSession();
+        this.hideUpdate();
+    }
+
+    private hideUpdate() {
         this.isVisible.set(false);
         this.stopCountdown();
     }
