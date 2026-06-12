@@ -35,7 +35,7 @@ import { Injectable, signal, inject, computed, effect, untracked } from '@angula
 import { OptionsService } from './options.service';
 import { ForceBuilderService } from './force-builder.service';
 import { GameSystem } from '../models/common.model';
-import { UrlStateService } from './url-state.service';
+import { UrlService } from './url.service';
 
 /*
  * Author: Drake
@@ -60,7 +60,7 @@ import { UrlStateService } from './url-state.service';
 export class GameService {
     private readonly optionsService = inject(OptionsService);
     private readonly forceBuilderService = inject(ForceBuilderService);
-    private readonly urlStateService = inject(UrlStateService);
+    private readonly urlService = inject(UrlService);
 
     public readonly currentGameSystem = signal<GameSystem>(this.optionsService.options().gameSystem);
 
@@ -72,9 +72,9 @@ export class GameService {
     private readonly gameSystemOverride = signal<GameSystem | null>(null);
 
     constructor() {
-        // Read initial game system from URL state service (captured before routing)
+        // Read initial game system from the URL captured at startup.
         // Only apply override if the URL has meaningful content, not just `gs`
-        const initialOverride = this.urlStateService.getGameSystemOverride();
+        const initialOverride = this.urlService.getGameSystemOverride();
         if (initialOverride) {
             this.gameSystemOverride.set(initialOverride);
         }
@@ -106,22 +106,17 @@ export class GameService {
             this.currentGameSystem.set(gameSystem);
         });
 
-        // Update URL with current game system, but only after initial URL state is consumed
-        // and only when no force is loaded (ForceBuilderService handles URL when a force exists)
+        // Update URL with current game system, but only when no force is loaded
+        // (ForceBuilderService handles URL when a force exists)
         effect(() => {
             const gs = this.currentGameSystem();
-            const canUpdate = this.urlStateService.initialStateConsumed();
-            if (!canUpdate) {
-                return; // Don't update URL until initial state is read by all consumers
-            }
             // Skip URL update if forces are loaded - ForceBuilderService handles all URL params
             // including `gs` when forces exist, avoiding race conditions between the two services
             const hasForces = this.forceBuilderService.hasForces();
             if (hasForces) {
                 return;
             }
-            // Use centralized URL state service
-            this.urlStateService.setParams({ gs });
+            this.urlService.setQueryParams({ gs });
         });
     }
 

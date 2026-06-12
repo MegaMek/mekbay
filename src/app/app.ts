@@ -56,7 +56,6 @@ import { WsService } from './services/ws.service';
 import { ToastService } from './services/toast.service';
 import { DialogsService } from './services/dialogs.service';
 import { BetaDialogComponent } from './components/beta-dialog/beta-dialog.component';
-import { CollectionDialogComponent } from './components/collection-dialog/collection-dialog.component';
 import { UpdateButtonComponent } from './components/update-button/update-button.component';
 import { UnitSearchFiltersService } from './services/unit-search-filters.service';
 import { DomPortal, PortalModule } from '@angular/cdk/portal';
@@ -68,7 +67,8 @@ import { GameService } from './services/game.service';
 import { AccountAuthService } from './services/account-auth.service';
 
 import { GameSystem } from './models/common.model';
-import { UrlStateService } from './services/url-state.service';
+import { Router, RouterOutlet } from '@angular/router';
+import { UrlService } from './services/url.service';
 
 const SW_UPDATE_RELOAD_HASH_STORAGE_KEY = 'mekbay:sw-update-reload-hash';
 const UPDATE_PROMPT_SNOOZE_MS = 4 * 60 * 60 * 1000; // 4 hours
@@ -92,7 +92,8 @@ const ANDROID_PWA_BACK_RESTORE_GUARD_MS = 1000;
     ModeSwitchComponent,
     UnitSearchComponent,
     OverlayModule,
-    PortalModule
+    PortalModule,
+    RouterOutlet
 ],
     templateUrl: './app.html',
     styleUrl: './app.scss',
@@ -116,7 +117,8 @@ export class App {
     public injector = inject(Injector);
     public gameService = inject(GameService);
     private accountAuthService = inject(AccountAuthService);
-    private urlStateService = inject(UrlStateService);
+    private router = inject(Router);
+    private urlService = inject(UrlService);
     private savedSearchesService = inject(SavedSearchesService);
     private destroyRef = inject(DestroyRef);
 
@@ -161,9 +163,6 @@ export class App {
     protected unitSearchPortalForceBuilder = signal<DomPortal<any> | undefined>(undefined);
 
     constructor() {
-        // Register as a URL state consumer - must call markConsumerReady when done reading URL
-        this.urlStateService.registerConsumer('app');
-        
         // if ("virtualKeyboard" in navigator) {
         //     (navigator as any).virtualKeyboard.overlaysContent = true; // Opt out of the automatic handling.
         // }
@@ -300,35 +299,32 @@ export class App {
         effect(() => {
             if (this.dataService.isDataReady() && !initialShareHandled) {
                 initialShareHandled = true;
-                // Use UrlStateService to get initial URL params (captured before any routing effects)
-                const hasProtocolLink = this.urlStateService.hasInitialParam('protocolLink');
-                const initialPage = this.urlStateService.getInitialPage();
-                const organizationId = this.urlStateService.getInitialParam('toe');
-                const sharedUnitName = this.urlStateService.getInitialParam('shareUnit');
-                const tab = this.urlStateService.getInitialParam('tab') ?? undefined;
+                // Routed pages (/toe, /forcegenerator, /collection) are handled
+                // natively by the router; only query-param-driven startup actions
+                // are handled here, based on the initial URL captured at startup.
+                const onHomePage = this.urlService.initialPathname.replace(/\/+$/, '') === '';
+                const hasProtocolLink = this.urlService.hasInitialParam('protocolLink');
+                const organizationId = this.urlService.getInitialParam('toe');
+                const sharedUnitName = this.urlService.getInitialParam('shareUnit');
+                const tab = this.urlService.getInitialParam('tab') ?? undefined;
                 if (hasProtocolLink) {
                     void this.handleCapturedUrl(window.location.href, 'protocol');
-                } else if (initialPage === 'toe' || organizationId) {
-                    void this.forceBuilderService.showForceOrgDialog(organizationId ?? undefined);
-                } else if (initialPage === 'forceGenerator') {
-                    void this.forceBuilderService.showForceGeneratorDialog();
-                } else if (initialPage === 'collection') {
-                    this.showCollectionDialog();
-                } else if (sharedUnitName) {
+                } else if (onHomePage && organizationId) {
+                    // Legacy ?toe=... link on the home page: open the TO&E page
+                    void this.forceBuilderService.showForceOrgDialog(organizationId);
+                } else if (onHomePage && sharedUnitName) {
                     const unit = this.dataService.getUnitByName(sharedUnitName);
                     if (unit) {
                         this.showSingleUnitDetails(unit, tab);
                     }
-                } else {
+                } else if (onHomePage) {
                     afterNextRender(() => {
                         // Don't focus if loading forces
-                        if (this.urlStateService.hasInitialParam('instance') || this.urlStateService.hasInitialParam('units')) return;
+                        if (this.urlService.hasInitialParam('instance') || this.urlService.hasInitialParam('units')) return;
                         this.unitSearchComponentRef()?.focusInput();
                     }, { injector: this.injector });
                 }
-                // Signal that we're done reading URL state
-                this.urlStateService.markConsumerReady('app');
-                
+
                 // Process any pending foreign tags from URL (async, don't block)
                 this.unitSearchFiltersService.processPendingForeignTags();
             }
@@ -944,7 +940,7 @@ export class App {
     }
 
     showCollectionDialog(): void {
-        this.dialogService.createPageDialog('collection', CollectionDialogComponent);
+        void this.router.navigate(['/collection'], { queryParamsHandling: 'preserve' });
     }
 
     showForceGeneratorDialog(): void {

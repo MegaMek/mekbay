@@ -31,21 +31,28 @@
  * affiliated with Microsoft.
  */
 
-/**
- * Builds a shareable root URL (`{origin}/?{query}`) from query parameters.
- * Parameters with null/undefined values are omitted. Uses the same
- * URLSearchParams serialization as the app URL, so shared links match
- * the URLs the app itself produces.
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ForceBuilderService } from '../services/force-builder.service';
+import { RoutedDialogPage } from './routed-dialog-page';
+
+/*
+ * Author: Drake
  */
-export function buildShareUrl(
-    origin: string,
-    params: Record<string, string | number | null | undefined>,
-): string {
-    const searchParams = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-        if (value === null || value === undefined) continue;
-        searchParams.set(key, String(value));
+
+/**
+ * Routed page for the TO&E organization dialog (/toe).
+ * The organization to open is taken from the `toe` query parameter.
+ */
+@Component({
+    selector: 'toe-page',
+    template: '',
+    changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class ToePageComponent extends RoutedDialogPage {
+    private readonly forceBuilderService = inject(ForceBuilderService);
+
+    protected override openDialog() {
+        const organizationId = this.route.snapshot.queryParamMap.get('toe') ?? undefined;
+        return this.forceBuilderService.openForceOrgDialog(organizationId);
     }
-    const query = searchParams.toString();
-    return query ? `${origin}/?${query}` : `${origin}/`;
 }

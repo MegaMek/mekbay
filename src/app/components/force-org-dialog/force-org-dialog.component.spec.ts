@@ -10,7 +10,7 @@ import { DialogsService } from '../../services/dialogs.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
-import { UrlStateService } from '../../services/url-state.service';
+import { UrlService } from '../../services/url.service';
 import { ForceOrgDialogComponent } from './force-org-dialog.component';
 
 describe('ForceOrgDialogComponent', () => {
@@ -49,8 +49,8 @@ describe('ForceOrgDialogComponent', () => {
         isMobile: signal(false),
     };
 
-    const urlStateServiceStub = {
-        setParams: jasmine.createSpy('setParams'),
+    const urlServiceStub = {
+        setQueryParams: jasmine.createSpy('setQueryParams'),
     };
 
     beforeEach(async () => {
@@ -71,7 +71,7 @@ describe('ForceOrgDialogComponent', () => {
                 { provide: DialogsService, useValue: dialogsServiceStub },
                 { provide: ForceBuilderService, useValue: forceBuilderServiceStub },
                 { provide: LayoutService, useValue: layoutServiceStub },
-                { provide: UrlStateService, useValue: urlStateServiceStub },
+                { provide: UrlService, useValue: urlServiceStub },
             ],
         }).compileComponents();
 
@@ -79,7 +79,7 @@ describe('ForceOrgDialogComponent', () => {
         component = fixture.componentInstance;
         fixture.detectChanges();
         dialogsServiceStub.choose.calls.reset();
-        urlStateServiceStub.setParams.calls.reset();
+        urlServiceStub.setQueryParams.calls.reset();
     });
 
     function createPlacedForce(instanceId: string, x: number, y: number, groupId: string | null, placementId = `${instanceId}-placement-${nextPlacementId++}`) {
@@ -700,12 +700,12 @@ describe('ForceOrgDialogComponent', () => {
         (component as any).organizationId.set('org-42');
         fixture.detectChanges();
 
-        expect(urlStateServiceStub.setParams).toHaveBeenCalledWith({ toe: 'org-42' });
+        expect(urlServiceStub.setQueryParams).toHaveBeenCalledWith({ toe: 'org-42' });
 
-        urlStateServiceStub.setParams.calls.reset();
+        urlServiceStub.setQueryParams.calls.reset();
         fixture.destroy();
 
-        expect(urlStateServiceStub.setParams).toHaveBeenCalledWith({ toe: null });
+        expect(urlServiceStub.setQueryParams).toHaveBeenCalledWith({ toe: null });
     });
 
     it('treats non-owned organizations as read-only and blocks saving', async () => {
@@ -733,7 +733,7 @@ describe('ForceOrgDialogComponent', () => {
 
         expect((component as any).readOnly()).toBeTrue();
         expect(dataServiceStub.saveOrganization).not.toHaveBeenCalled();
-        expect(urlStateServiceStub.setParams).toHaveBeenCalledWith({ toe: 'org-shared' });
+        expect(urlServiceStub.setQueryParams).toHaveBeenCalledWith({ toe: 'org-shared' });
     });
 
     it('opens force details when clicking a force card in read-only mode', async () => {

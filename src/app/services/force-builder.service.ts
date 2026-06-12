@@ -41,7 +41,7 @@ import { ForceNamerUtil } from '../utils/force-namer.util';
 import { getFactionImg, type Faction } from '../models/factions.model';
 import type { Era } from '../models/eras.model';
 import { ConfirmDialogComponent, type ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
-import { firstValueFrom, Subject } from 'rxjs';
+import { firstValueFrom, Subject, filter, map, take, type Observable } from 'rxjs';
 import { RenameForceDialogComponent, type RenameForceDialogData, type RenameForceDialogResult } from '../components/rename-force-dialog/rename-force-dialog.component';
 import { RenameGroupDialogComponent, type RenameGroupDialogData, type RenameGroupDialogResult } from '../components/rename-group-dialog/rename-group-dialog.component';
 import { UnitInitializerService } from './unit-initializer.service';
@@ -67,7 +67,8 @@ import { ASForce } from '../models/as-force.model';
 import { ASForceUnit } from '../models/as-force-unit.model';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { GameService } from './game.service';
-import { UrlStateService } from './url-state.service';
+import { UrlService } from './url.service';
+import { NavigationEnd, Router } from '@angular/router';
 import { canAntiMech } from '../utils/infantry.util';
 import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import type { ResolvedPack } from '../utils/force-pack.util';
@@ -105,7 +106,8 @@ export class ForceBuilderService {
     private dialogsService = inject(DialogsService);
     private unitInitializer = inject(UnitInitializerService);
     private injector = inject(Injector);
-    private urlStateService = inject(UrlStateService);
+    private urlService = inject(UrlService);
+    private router = inject(Router);
     private unitAvailabilitySource = inject(UnitAvailabilitySourceService);
 
     public selectedUnit = signal<ForceUnit | null>(null, { equal: () => false });
@@ -162,9 +164,6 @@ export class ForceBuilderService {
     });
 
     constructor() {
-        // Register as a URL state consumer - must call markConsumerReady when done reading URL
-        this.urlStateService.registerConsumer('force-builder');
-        
         this.loadUnitsFromUrlOnStartup();
         this.updateUrlOnForceChange();
         this.monitorWebSocketConnection();
@@ -666,7 +665,7 @@ export class ForceBuilderService {
     }
 
     private clearForceUrlParams() {
-        this.urlStateService.setParams({
+        this.urlService.setQueryParams({
             units: null,
             name: null,
             instance: null,
@@ -1532,9 +1531,28 @@ export class ForceBuilderService {
         this.openC3Network(force, force.readOnly());
     }
 
-    public async showForceOrgDialog(organizationId?: string): Promise<DialogRef> {
+    /**
+     * Navigates to the TO&E page (/toe), which opens the org dialog.
+     * The returned `closed` observable emits when the page is left again.
+     */
+    public async showForceOrgDialog(organizationId?: string): Promise<{ closed: Observable<void> }> {
+        await this.router.navigate(['/toe'], {
+            queryParams: { toe: organizationId ?? null },
+            queryParamsHandling: 'merge',
+        });
+        const closed = this.router.events.pipe(
+            filter((e): e is NavigationEnd => e instanceof NavigationEnd),
+            filter(e => !e.urlAfterRedirects.startsWith('/toe')),
+            take(1),
+            map(() => undefined as void),
+        );
+        return { closed };
+    }
+
+    /** Opens the TO&E org dialog. Called by the /toe routed page. */
+    public async openForceOrgDialog(organizationId?: string): Promise<DialogRef> {
         const { ForceOrgDialogComponent } = await import('../components/force-org-dialog/force-org-dialog.component');
-        return this.dialogsService.createPageDialog('toe', ForceOrgDialogComponent, {
+        return this.dialogsService.createDialog(ForceOrgDialogComponent, {
             data: organizationId ? { organizationId } : undefined,
             width: '100dvw',
             height: '100dvh',
@@ -1689,8 +1707,7 @@ export class ForceBuilderService {
             if (!this.urlStateInitialized()) {
                 return;
             }
-            // Use centralized URL state service to avoid race conditions
-            this.urlStateService.setParams({
+            this.urlService.setQueryParams({
                 gs: params.gs,
                 units: params.units,
                 name: params.name,
@@ -1729,7 +1746,7 @@ export class ForceBuilderService {
     }
 
     private async initializeFromUrl(): Promise<void> {
-        const params = this.urlStateService.initialState.params;
+        const params = this.urlService.initialParams;
 
         // Handle operation= param (load entire operation by ID)
         const operationId = params.get('operation');
@@ -1737,7 +1754,6 @@ export class ForceBuilderService {
             const loaded = await this.loadOperationFromUrl(operationId);
             if (loaded) {
                 this.urlStateInitialized.set(true);
-                this.urlStateService.markConsumerReady('force-builder');
                 return;
             }
             // Operation not found: fall through to normal force loading
@@ -1760,12 +1776,11 @@ export class ForceBuilderService {
             }
         } else if (params.has('instance')) {
             // None of the instance IDs were found: clear them from URL
-            this.urlStateService.setParams({ instance: null });
+            this.urlService.setQueryParams({ instance: null });
         }
 
         // Mark as initialized so the update effect can start running.
         this.urlStateInitialized.set(true);
-        this.urlStateService.markConsumerReady('force-builder');
     }
 
     /**
@@ -1789,7 +1804,7 @@ export class ForceBuilderService {
     private async loadOperationFromUrl(operationId: string): Promise<boolean> {
         const loaded = await this.loadOperation(operationId, { skipPrompts: true });
         if (loaded) {
-            this.restoreSelectionFromUrl(this.urlStateService.initialState.params);
+            this.restoreSelectionFromUrl(this.urlService.initialParams);
         }
         return loaded;
     }
@@ -2049,27 +2064,35 @@ export class ForceBuilderService {
         await this.showSearchForceGeneratorDialog();
     }
 
+    /** Navigates to the force generator page (/forcegenerator), which opens the dialog. */
     async showSearchForceGeneratorDialog(options: { importCurrentForce?: boolean } = {}): Promise<void> {
         if (!this.dataService.isDataReady()) {
             this.toastService.showToast('Data is still loading.', 'info');
             return;
         }
+        await this.router.navigate(['/forcegenerator'], {
+            queryParamsHandling: 'preserve',
+            state: { importCurrentForce: options.importCurrentForce === true },
+        });
+    }
 
+    /** Opens the force generator dialog. Called by the /forcegenerator routed page. */
+    async openSearchForceGeneratorDialog(options: { importCurrentForce?: boolean } = {}): Promise<DialogRef | null> {
         const megaMekDataReady = await this.dataService.ensureMegaMekCatalogsInitialized();
         if (!megaMekDataReady) {
             this.toastService.showToast('MegaMek force generator data could not be loaded.', 'error');
-            return;
+            return null;
         }
 
         const { SearchForceGeneratorDialogComponent } = await import('../components/search-force-generator-dialog/search-force-generator-dialog.component');
-        const dialogRef = this.dialogsService.createPageDialog<SearchForceGeneratorDialogResult | null>('forceGenerator', SearchForceGeneratorDialogComponent, {
+        const dialogRef = this.dialogsService.createDialog<SearchForceGeneratorDialogResult | null>(SearchForceGeneratorDialogComponent, {
             disableClose: true,
             data: {
                 importCurrentForce: options.importCurrentForce === true,
             },
         });
-
-        await this.finalizeGeneratedForceDialog((await firstValueFrom(dialogRef.closed)) ?? null);
+        void firstValueFrom(dialogRef.closed).then(result => this.finalizeGeneratedForceDialog(result ?? null));
+        return dialogRef;
     }
 
     private async finalizeGeneratedForceDialog(

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -57,7 +57,7 @@ import { GameService } from '../../services/game.service';
 import { UnitDetailsCardTabComponent } from './tabs/unit-details-card-tab.component';
 import { UnitTagsComponent, type TagClickEvent } from '../unit-tags/unit-tags.component';
 import { TaggingService } from '../../services/tagging.service';
-import { UrlStateService } from '../../services/url-state.service';
+import { UrlService } from '../../services/url.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { LayoutService } from '../../services/layout.service';
 import { buildUnitShareLinks } from '../../utils/force-url.util';
@@ -108,7 +108,7 @@ export class UnitDetailsDialogComponent {
     layoutService = inject(LayoutService);
     floatingOverlayService = inject(FloatingOverlayService);
     private taggingService = inject(TaggingService);
-    private urlStateService = inject(UrlStateService);
+    private urlService = inject(UrlService);
     private dialogsService = inject(DialogsService);
     private keyboardShortcutService = inject(KeyboardShortcutService);
     private destroyRef = inject(DestroyRef);
@@ -276,8 +276,7 @@ export class UnitDetailsDialogComponent {
         effect(() => {
             this.unit;
             this.activeTab()
-            // Use centralized URL state service to avoid race conditions
-            this.urlStateService.setParams({
+            this.urlService.setQueryParams({
                 shareUnit: this.unit.name,
                 tab: this.activeTab(),
             });
@@ -295,7 +294,7 @@ export class UnitDetailsDialogComponent {
         
         // Clean up URL params when dialog closes
         firstValueFrom(this.dialogRef.closed).then(() => {
-            this.urlStateService.setParams({
+            this.urlService.setQueryParams({
                 shareUnit: null,
                 tab: null,
             });

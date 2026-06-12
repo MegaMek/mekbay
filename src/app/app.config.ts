@@ -34,7 +34,9 @@
 import { type ApplicationConfig, provideBrowserGlobalErrorListeners, provideZonelessChangeDetection, ErrorHandler, provideAppInitializer, inject, isDevMode } from '@angular/core';
 import { OVERLAY_DEFAULT_CONFIG } from '@angular/cdk/overlay';
 import { provideHttpClient } from '@angular/common/http';
+import { provideRouter } from '@angular/router';
 import { provideServiceWorker } from '@angular/service-worker';
+import { routes } from './app.routes';
 import { LoggerService } from './services/logger.service';
 import { EquipmentInteractionRegistryService } from './services/equipment-interaction-registry.service';
 import { WakeLockService } from './services/wake-lock.service';
@@ -51,8 +53,7 @@ export const appConfig: ApplicationConfig = {
             useExisting: LoggerService,
         },
         provideBrowserGlobalErrorListeners(),
-        // Note: no Angular Router. The URL (path + query) is owned by
-        // UrlStateService; dialog-backed pages are mapped in APP_PAGES.
+        provideRouter(routes),
         provideHttpClient(),
         provideAppInitializer(() => {
             const registryService = inject(EquipmentInteractionRegistryService);
