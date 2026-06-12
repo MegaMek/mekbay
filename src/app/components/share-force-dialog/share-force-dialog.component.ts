@@ -36,9 +36,9 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ForceBuilderService } from '../../services/force-builder.service';
-import { ActivatedRoute, Router } from '@angular/router';
 import { ToastService } from '../../services/toast.service';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
+import { buildShareUrl } from '../../utils/share-url.util';
 import type { Force } from '../../models/force.model';
 import { buildForceQueryParams } from '../../utils/force-url.util';
 import { firstValueFrom } from 'rxjs';
@@ -212,8 +212,6 @@ export class ShareForceDialogComponent {
     forceBuilderService = inject(ForceBuilderService);
     toastService = inject(ToastService);
     private dialogsService = inject(DialogsService);
-    private router = inject(Router);
-    private route = inject(ActivatedRoute);
     instanceId = signal<string | null>(null);
     shareLiveUrl = signal<string | null>(null);
     cleanUrl = signal<string | null>(null);
@@ -314,28 +312,21 @@ export class ShareForceDialogComponent {
         const singleForceParams = buildForceQueryParams(this.force);
 
         // Instance ID of the current force
-        this.instanceId.set(this.force.instanceId() || null);
+        const instanceId = this.force.instanceId() || null;
+        this.instanceId.set(instanceId);
 
-        const instanceTree = this.router.createUrlTree([], {
-            relativeTo: this.route,
-            queryParams: {
-                instance: this.force.instanceId() || null
-            }
-        });
-        const shareLiveUrl = this.router.serializeUrl(instanceTree);
-        this.shareLiveUrl.set(shareLiveUrl.length > 1 ? origin + shareLiveUrl : null);
+        this.shareLiveUrl.set(instanceId
+            ? buildShareUrl(origin, { instance: instanceId })
+            : null);
 
-        const cleanTree = this.router.createUrlTree([], {
-            relativeTo: this.route,
-            queryParams: {
-                gs: singleForceParams.gs || null,
+        this.cleanUrl.set(singleForceParams.units
+            ? buildShareUrl(origin, {
+                gs: singleForceParams.gs,
                 units: singleForceParams.units,
-                name: singleForceParams.name || null,
-                factionId: singleForceParams.factionId || null
-            }
-        });
-        const cleanUrl = this.router.serializeUrl(cleanTree);
-        this.cleanUrl.set(cleanUrl.length > 1 ? origin + cleanUrl : null);
+                name: singleForceParams.name,
+                factionId: singleForceParams.factionId,
+            })
+            : null);
     }
 
     async share(url: string) {

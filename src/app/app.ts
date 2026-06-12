@@ -71,6 +71,7 @@ import { GameSystem } from './models/common.model';
 import { UrlStateService } from './services/url-state.service';
 
 const SW_UPDATE_RELOAD_HASH_STORAGE_KEY = 'mekbay:sw-update-reload-hash';
+const UPDATE_PROMPT_SNOOZE_MS = 4 * 60 * 60 * 1000; // 4 hours
 const ANDROID_PWA_BACK_EXIT_HISTORY_STATE_KEY = 'mekbayAndroidPwaBackExit';
 const ANDROID_PWA_BACK_RESTORE_GUARD_MS = 1000;
 
@@ -301,13 +302,18 @@ export class App {
                 initialShareHandled = true;
                 // Use UrlStateService to get initial URL params (captured before any routing effects)
                 const hasProtocolLink = this.urlStateService.hasInitialParam('protocolLink');
+                const initialPage = this.urlStateService.getInitialPage();
                 const organizationId = this.urlStateService.getInitialParam('toe');
                 const sharedUnitName = this.urlStateService.getInitialParam('shareUnit');
                 const tab = this.urlStateService.getInitialParam('tab') ?? undefined;
                 if (hasProtocolLink) {
                     void this.handleCapturedUrl(window.location.href, 'protocol');
-                } else if (organizationId) {
-                    void this.forceBuilderService.showForceOrgDialog(organizationId);
+                } else if (initialPage === 'toe' || organizationId) {
+                    void this.forceBuilderService.showForceOrgDialog(organizationId ?? undefined);
+                } else if (initialPage === 'forceGenerator') {
+                    void this.forceBuilderService.showForceGeneratorDialog();
+                } else if (initialPage === 'collection') {
+                    this.showCollectionDialog();
                 } else if (sharedUnitName) {
                     const unit = this.dataService.getUnitByName(sharedUnitName);
                     if (unit) {
@@ -545,11 +551,23 @@ export class App {
         return decoded;
     }
 
+    public dismissUpdatePromptForSession(): void {
+        const now = Date.now();
+        this.lastUpdateCheck = now + UPDATE_PROMPT_SNOOZE_MS;
+        this.updateAvailable.set(false);
+        this.updateAutoReloadEnabled.set(false);
+        this.logger.info('Update prompt dismissed; snoozing update notifications for 4 hours.');
+    }
+
+    private isUpdatePromptSnoozed(now = Date.now()): boolean {
+        return this.lastUpdateCheck > now;
+    }
+
     private startPeriodicUpdateChecks() {
         this.stopPeriodicUpdateChecks();
         const scheduleNext = () => {
             this.updateCheckTimeoutId = window.setTimeout(async () => {
-                await this.checkForUpdate(true);
+                await this.checkForUpdate();
                 scheduleNext();
             }, this.updateCheckInterval);
         };
@@ -607,6 +625,14 @@ export class App {
         }
 
         this.pendingUpdateHash = latestHash;
+
+        if (this.isUpdatePromptSnoozed()) {
+            this.updateAutoReloadEnabled.set(false);
+            this.updateAvailable.set(false);
+            this.logger.info('Service worker update is ready, but update prompts are snoozed.');
+            return;
+        }
+
         this.updateAutoReloadEnabled.set(!!latestHash && !shouldSuppressAutoReload);
 
         if (shouldSuppressAutoReload) {
@@ -643,8 +669,11 @@ export class App {
     private async checkForUpdate(force = false) {
         if (!this.swUpdate.isEnabled) return;
         const now = Date.now();
+        if (this.isUpdatePromptSnoozed(now)) {
+            return;
+        }
         // Prevent too frequent checks
-        if (!force && now - this.lastUpdateCheck < (this.updateCheckInterval / 4)) {
+        if (!force && this.lastUpdateCheck <= now && (now - this.lastUpdateCheck < (this.updateCheckInterval / 4))) {
             return;
         }
         this.logger.info('Checking for updates...');
@@ -652,6 +681,9 @@ export class App {
 
         try {
             if (await this.swUpdate.checkForUpdate()) {
+                if (this.isUpdatePromptSnoozed()) {
+                    return;
+                }
                 this.logger.info('Update available');
                 this.updateAvailable.set(true);
                 if (!this.pendingUpdateHash) {
@@ -912,7 +944,7 @@ export class App {
     }
 
     showCollectionDialog(): void {
-        this.dialogService.createDialog(CollectionDialogComponent);
+        this.dialogService.createPageDialog('collection', CollectionDialogComponent);
     }
 
     showForceGeneratorDialog(): void {

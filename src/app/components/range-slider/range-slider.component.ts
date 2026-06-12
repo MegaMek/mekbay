@@ -465,6 +465,7 @@ export class RangeSliderComponent {
     startDrag(which: SliderThumb, event: PointerEvent) {
         if (this.disabled()) return;
         event.preventDefault();
+        event.stopPropagation();
         this.dragging.set(which);
         this.focusedThumb.set(which);
         const thumbRef = which === 'min' ? this.leftThumbRef() : this.rightThumbRef();

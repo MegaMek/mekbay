@@ -350,6 +350,7 @@ export interface ForcePreviewUnitMenuActionEvent {
             display: flex;
             flex-direction: column;
             width: 100%;
+            touch-action: pan-y;
             --preview-selection-accent: #62c4ff;
         }
 
@@ -358,6 +359,7 @@ export interface ForcePreviewUnitMenuActionEvent {
             flex-direction: column;
             width: 100%;
             min-height: 0;
+            touch-action: pan-y;
         }
 
         .force-preview-shell.scroll-units-only {
@@ -373,6 +375,7 @@ export interface ForcePreviewUnitMenuActionEvent {
             width: 100%;
             box-sizing: border-box;
             min-height: 0;
+            touch-action: pan-y;
         }
 
         .force-preview-shell.scroll-units-only .force-preview {
@@ -546,6 +549,7 @@ export interface ForcePreviewUnitMenuActionEvent {
             flex-direction: column;
             gap: 4px;
             overflow-y: auto;
+            touch-action: pan-y;
         }
 
         .force-preview-shell.scroll-units-only .unit-scroll {

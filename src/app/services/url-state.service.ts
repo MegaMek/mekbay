@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -62,6 +62,21 @@ export const MEANINGFUL_URL_PARAMS = [
 export type MeaningfulUrlParam = typeof MEANINGFUL_URL_PARAMS[number];
 
 /**
+ * Registry of app "pages": fullscreen views (dialogs) that own a URL path
+ * while they are open. The URL path reverts to '/' when the page closes.
+ *
+ * To give a new page its own URL, add an entry here and open its dialog
+ * through `DialogsService.createPageDialog`.
+ */
+export const APP_PAGES = {
+    toe: '/toe',
+    forceGenerator: '/forcegenerator',
+    collection: '/collection',
+} as const;
+
+export type AppPageId = keyof typeof APP_PAGES;
+
+/**
  * Captured initial URL state from page load.
  * This is captured synchronously before Angular routing can modify the URL.
  */
@@ -72,6 +87,8 @@ export interface InitialUrlState {
     hasMeaningfulParams: boolean;
     /** All query parameters captured at startup */
     params: URLSearchParams;
+    /** App page resolved from the URL path at startup (e.g. /toe), if any */
+    page: AppPageId | null;
 }
 
 /**
@@ -117,18 +134,30 @@ export class UrlStateService {
             gameSystem = gsParam;
         }
 
+        // Resolve the app page from the URL path (e.g. /toe)
+        const page = UrlStateService.resolvePageFromPath(window.location.pathname);
+
         // Check if URL has meaningful parameters
-        const hasMeaningfulParams = MEANINGFUL_URL_PARAMS.some(key => params.has(key));
+        const hasMeaningfulParams = MEANINGFUL_URL_PARAMS.some(key => params.has(key)) || page !== null;
 
         this.initialState = {
             gameSystem,
             hasMeaningfulParams,
-            params
+            params,
+            page
         };
+        this.pagePath = page ? APP_PAGES[page] : '/';
 
         for (const [key, value] of params.entries()) {
             this.urlParams[key] = value;
         }
+    }
+
+    /** Resolve a known app page from a URL pathname, or null if it is not a page path. */
+    private static resolvePageFromPath(pathname: string): AppPageId | null {
+        const normalized = `/${pathname.replace(/^\/+|\/+$/g, '')}`.toLowerCase();
+        return (Object.keys(APP_PAGES) as AppPageId[])
+            .find(pageId => APP_PAGES[pageId] === normalized) ?? null;
     }
 
     /**
@@ -172,6 +201,13 @@ export class UrlStateService {
     }
 
     /**
+     * Get the app page resolved from the URL path at startup (e.g. /toe), if any.
+     */
+    getInitialPage(): AppPageId | null {
+        return this.initialState.page;
+    }
+
+    /**
      * Determines if the URL indicates a game system override should be applied.
      * 
      * Override should only happen when:
@@ -204,6 +240,35 @@ export class UrlStateService {
     private readonly urlParams: Record<string, string | null> = {};
     private exclusiveUrlParams: Record<string, string | null> | null = null;
     private updateTimer: ReturnType<typeof setTimeout> | null = null;
+    /** The URL path currently owned by the app ('/' or an APP_PAGES path). */
+    private pagePath = '/';
+
+    /**
+     * Set the URL path to the given page's path. Call when the page opens.
+     */
+    openPage(pageId: AppPageId): void {
+        this.setPagePath(APP_PAGES[pageId]);
+    }
+
+    /**
+     * Reset the URL path to root, if the given page is still the active one.
+     * Call when the page closes.
+     */
+    closePage(pageId: AppPageId): void {
+        if (this.pagePath === APP_PAGES[pageId]) {
+            this.setPagePath('/');
+        }
+    }
+
+    private setPagePath(path: string): void {
+        if (this.pagePath === path) {
+            return;
+        }
+        this.pagePath = path;
+        if (this.initialStateConsumed()) {
+            this.scheduleUrlUpdate();
+        }
+    }
 
     /**
      * Set one or more URL parameters. Batches multiple calls into one URL update.
@@ -255,7 +320,7 @@ export class UrlStateService {
                 searchParams.set(key, value);
             }
         }
-        const path = window.location.pathname;
+        const path = this.pagePath;
         const query = searchParams.toString();
         const url = query ? `${path}?${query}` : path;
         this.location.replaceState(url);

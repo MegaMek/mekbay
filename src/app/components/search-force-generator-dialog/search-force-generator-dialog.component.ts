@@ -52,6 +52,7 @@ import { ModeSwitchComponent } from '../mode-switch/mode-switch.component';
 import { MultiSelectDropdownComponent, type DropdownOption, type MultiStateSelection } from '../multi-select-dropdown/multi-select-dropdown.component';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { TooltipDirective } from '../../directives/tooltip.directive';
+import { SwipeDirective, type SwipeEndEvent } from '../../directives/swipe.directive';
 import { UnitSearchAdvancedFiltersComponent } from '../unit-search-advanced-filters/unit-search-advanced-filters.component';
 import { ThousandsIntegerInputComponent } from '../thousands-integer-input/thousands-integer-input.component';
 import { DataService } from '../../services/data.service';
@@ -146,6 +147,7 @@ type FormationTargetDropdownOptionsProvider = UnitSearchFiltersService & {
         SyntaxInputComponent,
         ThousandsIntegerInputComponent,
         TooltipDirective,
+        SwipeDirective,
         UnitCardExpandedComponent,
         UnitSearchAdvancedFiltersComponent,
     ],
@@ -522,6 +524,12 @@ export class SearchForceGeneratorDialogComponent {
         };
     });
     readonly mobileTab = signal<GeneratorDialogTab>('configuration');
+    readonly mobileSwipeActive = signal(false);
+    private readonly mobileSwipeRatio = signal(0);
+    readonly mobileTrackOffset = computed(() => {
+        const tabOffset = this.mobileTab() === 'preview' ? 1 : 0;
+        return `${(this.mobileSwipeRatio() - tabOffset) * 100}%`;
+    });
     readonly forceGenerationInProgress = signal(false);
     readonly forceGenerationTerminateRequested = signal(false);
     private readonly previewState = signal<ForceGenerationPreview>(this.createEmptyPreview(
@@ -825,8 +833,38 @@ export class SearchForceGeneratorDialogComponent {
         this.syncInputValue(event, this.maxUnitCount());
     }
 
+    readonly shouldBlockMobileSwipe = (): boolean => typeof window === 'undefined' || window.innerWidth > 960;
+
     setMobileTab(tab: GeneratorDialogTab): void {
         this.mobileTab.set(tab);
+        this.mobileSwipeRatio.set(0);
+        this.mobileSwipeActive.set(false);
+    }
+
+    onMobileSwipeStart(): void {
+        this.mobileSwipeActive.set(true);
+        this.mobileSwipeRatio.set(0);
+    }
+
+    onMobileSwipeRatio(ratio: number): void {
+        this.mobileSwipeRatio.set(this.normalizeMobileSwipeRatio(ratio));
+    }
+
+    onMobileSwipeEnd(event: SwipeEndEvent): void {
+        const currentTab = this.mobileTab();
+        if (event.success && currentTab === 'configuration' && event.direction === 'left') {
+            this.mobileTab.set('preview');
+        } else if (event.success && currentTab === 'preview' && event.direction === 'right') {
+            this.mobileTab.set('configuration');
+        }
+
+        this.mobileSwipeRatio.set(0);
+        this.mobileSwipeActive.set(false);
+    }
+
+    onMobileSwipeCancel(): void {
+        this.mobileSwipeRatio.set(0);
+        this.mobileSwipeActive.set(false);
     }
 
     reroll(): void {
@@ -1582,6 +1620,12 @@ export class SearchForceGeneratorDialogComponent {
 
     private normalizeMaxPilotSkillDelta(value: number): number {
         return Math.min(this.maxPilotSkill, Math.max(0, Math.floor(Number.isFinite(value) ? value : this.maxPilotSkillDelta())));
+    }
+
+    private normalizeMobileSwipeRatio(ratio: number): number {
+        return this.mobileTab() === 'configuration'
+            ? Math.min(0, Math.max(-1, ratio))
+            : Math.max(0, Math.min(1, ratio));
     }
 
     private toSkillRangeObject(range: readonly [number, number]): ForceGenerationSkillRange {

@@ -33,7 +33,6 @@
 
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { DialogRef } from '@angular/cdk/dialog';
-import { ActivatedRoute, Router } from '@angular/router';
 import type { Unit, UnitTagEntry } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -47,6 +46,7 @@ import { getChassisTagTargetUnits } from '../../utils/chassis-tag-target.util';
 import { matchesSearch, parseSearchQuery } from '../../utils/search.util';
 import { compareUnitsByName, naturalCompare } from '../../utils/sort.util';
 import { shareUrlWithClipboardFallback } from '../../utils/clipboard.util';
+import { buildShareUrl } from '../../utils/share-url.util';
 import { buildPublicTagSearchQueryParameters } from '../../utils/unit-search-public-tags-url.util';
 import { getUnitVariantGroupIdentity } from '../../utils/unit-variant.util';
 
@@ -118,8 +118,6 @@ interface QuickAddQuantityConflict {
 })
 export class CollectionDialogComponent {
     private readonly dialogRef = inject(DialogRef<void>);
-    private readonly router = inject(Router);
-    private readonly route = inject(ActivatedRoute);
     private readonly dataService = inject(DataService);
     private readonly dialogsService = inject(DialogsService);
     private readonly gameService = inject(GameService);
@@ -1076,11 +1074,7 @@ export class CollectionDialogComponent {
             gameSystem: this.gameService.currentGameSystem(),
         });
 
-        const tree = this.router.createUrlTree([], {
-            relativeTo: this.route,
-            queryParams: queryParameters,
-        });
-        return (window.location.origin || '') + this.router.serializeUrl(tree);
+        return buildShareUrl(window.location.origin || '', queryParameters);
     }
 
     private replaceSelectedTagReferences(oldTag: string, newTag: string): void {
