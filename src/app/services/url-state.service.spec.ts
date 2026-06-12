@@ -48,4 +48,30 @@ describe('UrlStateService', () => {
 
         expect(replaceStateSpy).toHaveBeenCalledWith('/?units=bravo&instance=force-99');
     });
+
+    it('reflects the page path while a page is open and restores root when it closes', async () => {
+        service.openPage('toe');
+        await flushUrlUpdate();
+
+        expect(replaceStateSpy).toHaveBeenCalledWith('/toe?units=alpha&filters=heavy');
+
+        replaceStateSpy.calls.reset();
+
+        service.closePage('toe');
+        await flushUrlUpdate();
+
+        expect(replaceStateSpy).toHaveBeenCalledWith('/?units=alpha&filters=heavy');
+    });
+
+    it('does not reset the page path when a different page closes', async () => {
+        service.openPage('collection');
+        await flushUrlUpdate();
+
+        replaceStateSpy.calls.reset();
+
+        service.closePage('toe');
+        await flushUrlUpdate();
+
+        expect(replaceStateSpy).not.toHaveBeenCalled();
+    });
 });

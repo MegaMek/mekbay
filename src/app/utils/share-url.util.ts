@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -31,6 +31,21 @@
  * affiliated with Microsoft.
  */
 
-import type { Routes } from '@angular/router';
-
-export const routes: Routes = [];
+/**
+ * Builds a shareable root URL (`{origin}/?{query}`) from query parameters.
+ * Parameters with null/undefined values are omitted. Uses the same
+ * URLSearchParams serialization as UrlStateService, so shared links match
+ * the URLs the app itself produces.
+ */
+export function buildShareUrl(
+    origin: string,
+    params: Record<string, string | number | null | undefined>,
+): string {
+    const searchParams = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+        if (value === null || value === undefined) continue;
+        searchParams.set(key, String(value));
+    }
+    const query = searchParams.toString();
+    return query ? `${origin}/?${query}` : `${origin}/`;
+}

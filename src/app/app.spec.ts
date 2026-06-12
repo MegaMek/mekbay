@@ -80,6 +80,7 @@ describe('App', () => {
     };
     dialogsServiceMock = {
       createDialog: jasmine.createSpy('createDialog').and.returnValue({ componentInstance: null }),
+      createPageDialog: jasmine.createSpy('createPageDialog').and.returnValue({ componentInstance: null }),
       choose: jasmine.createSpy('choose').and.resolveTo('dismiss'),
       requestConfirmation: jasmine.createSpy('requestConfirmation').and.resolveTo(false),
       showNoticeHtml: jasmine.createSpy('showNoticeHtml'),
@@ -110,6 +111,7 @@ describe('App', () => {
       registerConsumer: jasmine.createSpy('registerConsumer'),
       hasInitialParam: jasmine.createSpy('hasInitialParam').and.returnValue(false),
       getInitialParam: jasmine.createSpy('getInitialParam').and.returnValue(null),
+      getInitialPage: jasmine.createSpy('getInitialPage').and.returnValue(null),
       markConsumerReady: jasmine.createSpy('markConsumerReady'),
     };
     savedSearchesServiceMock = {

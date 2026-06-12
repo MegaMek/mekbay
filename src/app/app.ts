@@ -302,13 +302,18 @@ export class App {
                 initialShareHandled = true;
                 // Use UrlStateService to get initial URL params (captured before any routing effects)
                 const hasProtocolLink = this.urlStateService.hasInitialParam('protocolLink');
+                const initialPage = this.urlStateService.getInitialPage();
                 const organizationId = this.urlStateService.getInitialParam('toe');
                 const sharedUnitName = this.urlStateService.getInitialParam('shareUnit');
                 const tab = this.urlStateService.getInitialParam('tab') ?? undefined;
                 if (hasProtocolLink) {
                     void this.handleCapturedUrl(window.location.href, 'protocol');
-                } else if (organizationId) {
-                    void this.forceBuilderService.showForceOrgDialog(organizationId);
+                } else if (initialPage === 'toe' || organizationId) {
+                    void this.forceBuilderService.showForceOrgDialog(organizationId ?? undefined);
+                } else if (initialPage === 'forceGenerator') {
+                    void this.forceBuilderService.showForceGeneratorDialog();
+                } else if (initialPage === 'collection') {
+                    this.showCollectionDialog();
                 } else if (sharedUnitName) {
                     const unit = this.dataService.getUnitByName(sharedUnitName);
                     if (unit) {
@@ -939,7 +944,7 @@ export class App {
     }
 
     showCollectionDialog(): void {
-        this.dialogService.createDialog(CollectionDialogComponent);
+        this.dialogService.createPageDialog('collection', CollectionDialogComponent);
     }
 
     showForceGeneratorDialog(): void {

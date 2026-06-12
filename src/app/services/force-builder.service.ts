@@ -1534,7 +1534,7 @@ export class ForceBuilderService {
 
     public async showForceOrgDialog(organizationId?: string): Promise<DialogRef> {
         const { ForceOrgDialogComponent } = await import('../components/force-org-dialog/force-org-dialog.component');
-        return this.dialogsService.createDialog(ForceOrgDialogComponent, {
+        return this.dialogsService.createPageDialog('toe', ForceOrgDialogComponent, {
             data: organizationId ? { organizationId } : undefined,
             width: '100dvw',
             height: '100dvh',
@@ -2062,7 +2062,7 @@ export class ForceBuilderService {
         }
 
         const { SearchForceGeneratorDialogComponent } = await import('../components/search-force-generator-dialog/search-force-generator-dialog.component');
-        const dialogRef = this.dialogsService.createDialog<SearchForceGeneratorDialogResult | null>(SearchForceGeneratorDialogComponent, {
+        const dialogRef = this.dialogsService.createPageDialog<SearchForceGeneratorDialogResult | null>('forceGenerator', SearchForceGeneratorDialogComponent, {
             disableClose: true,
             data: {
                 importCurrentForce: options.importCurrentForce === true,
