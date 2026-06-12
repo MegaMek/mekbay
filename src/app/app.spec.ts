@@ -1,5 +1,6 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { SwUpdate } from '@angular/service-worker';
 import { Subject } from 'rxjs';
 import { App } from './app';
@@ -13,7 +14,7 @@ import { OptionsService } from './services/options.service';
 import { UnitSearchFiltersService } from './services/unit-search-filters.service';
 import { GameService } from './services/game.service';
 import { AccountAuthService } from './services/account-auth.service';
-import { UrlStateService } from './services/url-state.service';
+import { UrlService } from './services/url.service';
 import { SavedSearchesService } from './services/saved-searches.service';
 import { LoggerService } from './services/logger.service';
 import { GameSystem } from './models/common.model';
@@ -39,7 +40,7 @@ describe('App', () => {
   let unitSearchFiltersServiceMock: any;
   let gameServiceMock: any;
   let accountAuthServiceMock: any;
-  let urlStateServiceMock: any;
+  let urlServiceMock: any;
   let savedSearchesServiceMock: any;
   let loggerServiceMock: any;
 
@@ -80,7 +81,6 @@ describe('App', () => {
     };
     dialogsServiceMock = {
       createDialog: jasmine.createSpy('createDialog').and.returnValue({ componentInstance: null }),
-      createPageDialog: jasmine.createSpy('createPageDialog').and.returnValue({ componentInstance: null }),
       choose: jasmine.createSpy('choose').and.resolveTo('dismiss'),
       requestConfirmation: jasmine.createSpy('requestConfirmation').and.resolveTo(false),
       showNoticeHtml: jasmine.createSpy('showNoticeHtml'),
@@ -107,12 +107,13 @@ describe('App', () => {
     accountAuthServiceMock = {
       handleOAuthRedirectReturn: jasmine.createSpy('handleOAuthRedirectReturn').and.resolveTo(undefined),
     };
-    urlStateServiceMock = {
-      registerConsumer: jasmine.createSpy('registerConsumer'),
+    urlServiceMock = {
+      initialParams: new URLSearchParams(),
+      initialPathname: '/',
       hasInitialParam: jasmine.createSpy('hasInitialParam').and.returnValue(false),
       getInitialParam: jasmine.createSpy('getInitialParam').and.returnValue(null),
-      getInitialPage: jasmine.createSpy('getInitialPage').and.returnValue(null),
-      markConsumerReady: jasmine.createSpy('markConsumerReady'),
+      getGameSystemOverride: jasmine.createSpy('getGameSystemOverride').and.returnValue(null),
+      setQueryParams: jasmine.createSpy('setQueryParams'),
     };
     savedSearchesServiceMock = {
       initialize: jasmine.createSpy('initialize'),
@@ -129,6 +130,7 @@ describe('App', () => {
       imports: [App],
       providers: [
         provideZonelessChangeDetection(),
+        provideRouter([]),
         {
           provide: SwUpdate,
           useValue: swUpdateMock,
@@ -143,7 +145,7 @@ describe('App', () => {
         { provide: UnitSearchFiltersService, useValue: unitSearchFiltersServiceMock },
         { provide: GameService, useValue: gameServiceMock },
         { provide: AccountAuthService, useValue: accountAuthServiceMock },
-        { provide: UrlStateService, useValue: urlStateServiceMock },
+        { provide: UrlService, useValue: urlServiceMock },
         { provide: SavedSearchesService, useValue: savedSearchesServiceMock },
         { provide: LoggerService, useValue: loggerServiceMock },
       ]

@@ -31,21 +31,27 @@
  * affiliated with Microsoft.
  */
 
-/**
- * Builds a shareable root URL (`{origin}/?{query}`) from query parameters.
- * Parameters with null/undefined values are omitted. Uses the same
- * URLSearchParams serialization as the app URL, so shared links match
- * the URLs the app itself produces.
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { DialogsService } from '../services/dialogs.service';
+import { RoutedDialogPage } from './routed-dialog-page';
+
+/*
+ * Author: Drake
  */
-export function buildShareUrl(
-    origin: string,
-    params: Record<string, string | number | null | undefined>,
-): string {
-    const searchParams = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-        if (value === null || value === undefined) continue;
-        searchParams.set(key, String(value));
+
+/**
+ * Routed page for the collection dialog (/collection).
+ */
+@Component({
+    selector: 'collection-page',
+    template: '',
+    changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class CollectionPageComponent extends RoutedDialogPage {
+    private readonly dialogsService = inject(DialogsService);
+
+    protected override async openDialog() {
+        const { CollectionDialogComponent } = await import('../components/collection-dialog/collection-dialog.component');
+        return this.dialogsService.createDialog(CollectionDialogComponent);
     }
-    const query = searchParams.toString();
-    return query ? `${origin}/?${query}` : `${origin}/`;
 }
