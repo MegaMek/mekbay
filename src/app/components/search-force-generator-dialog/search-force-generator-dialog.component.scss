@@ -869,27 +869,37 @@
         flex-direction: column;
         flex: 1 1 auto;
         min-height: 0;
+        overflow: hidden;
+        touch-action: pan-y;
     }
 
     .dialog-layout {
-        display: flex;
-        flex-direction: column;
+        display: grid;
+        grid-template-columns: 100% 100%;
         flex: 1 1 auto;
+        width: 100%;
         min-height: 0;
+        touch-action: pan-y;
+        transform: translateX(var(--mobile-track-offset, 0%));
+        transition: transform 180ms ease-out;
+        will-change: transform;
     }
 
-    .dialog-layout.mobile-configuration-active .preview-panel,
-    .dialog-layout.mobile-preview-active .controls-panel {
-        display: none;
+    .dialog-layout.mobile-swipe-active {
+        transition: none;
     }
 
     .panel {
-        flex: 1 1 auto;
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+        touch-action: pan-y;
     }
 
     .controls-panel,
     .preview-panel {
         min-height: 0;
+        touch-action: pan-y;
     }
 }
 
