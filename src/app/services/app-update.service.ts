@@ -15,6 +15,20 @@
  *
  * A copy of the GPL should have been included with this project;
  * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 
 import { DestroyRef, Injectable, inject, signal } from '@angular/core';
@@ -29,11 +43,13 @@ import {
 
 export interface UpdateCheckOptions {
     force?: boolean;
+    minimumIntervalMs?: number;
 }
 
 @Injectable({ providedIn: 'root' })
 export class AppUpdateService {
     readonly updateCheckIntervalMs = 60 * 60 * 1000; // 1 hour
+    readonly focusUpdateCheckIntervalMs = 10 * 60 * 1000; // 10 minutes
     readonly updatePending = signal(false);
     readonly updateCheckInProgress = signal(false);
     readonly reloadingForUpdate = signal(false);
@@ -72,13 +88,14 @@ export class AppUpdateService {
 
     async checkForUpdate(options: UpdateCheckOptions = {}): Promise<boolean> {
         const force = options.force ?? false;
+        const minimumIntervalMs = options.minimumIntervalMs ?? this.updateCheckIntervalMs;
 
         if (!this.swUpdate.isEnabled) {
             return false;
         }
 
         const now = Date.now();
-        if (!force && (now - this.lastUpdateCheck) < this.updateCheckIntervalMs) {
+        if (!force && (now - this.lastUpdateCheck) < minimumIntervalMs) {
             return false;
         }
 
@@ -107,6 +124,10 @@ export class AppUpdateService {
             });
 
         return this.currentCheck;
+    }
+
+    async checkForUpdateAfterFocus(): Promise<boolean> {
+        return this.checkForUpdate({ minimumIntervalMs: this.focusUpdateCheckIntervalMs });
     }
 
     async restartForUpdate(): Promise<void> {

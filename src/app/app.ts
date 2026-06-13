@@ -274,13 +274,10 @@ export class App {
                 // natively by the router; only query-param-driven startup actions
                 // are handled here, based on the initial URL captured at startup.
                 const onHomePage = this.urlService.initialPathname.replace(/\/+$/, '') === '';
-                const hasProtocolLink = this.urlService.hasInitialParam('protocolLink');
                 const organizationId = this.urlService.getInitialParam('toe');
                 const sharedUnitName = this.urlService.getInitialParam('shareUnit');
                 const tab = this.urlService.getInitialParam('tab') ?? undefined;
-                if (hasProtocolLink) {
-                    void this.handleCapturedUrl(window.location.href, 'protocol');
-                } else if (onHomePage && organizationId) {
+                if (onHomePage && organizationId) {
                     // Legacy ?toe=... link on the home page: open the TO&E page
                     void this.forceBuilderService.showForceOrgDialog(organizationId);
                 } else if (onHomePage && sharedUnitName) {
@@ -441,12 +438,10 @@ export class App {
     isCloudForceLoading = computed(() => this.dataService.isCloudForceLoading());
 
     onOnline() {
-        void this.checkForUpdateAndRestartTimer();
+        void this.checkForUpdateAfterFocusAndRestartTimer();
     }
 
     onFocus() {
-        // TODO: Temporarily disabled, this is for PWA URL handling but is causing issues with normal navigation.
-        // this.processFocusedCapturedUrl();
         this.checkForUpdateAfterResume();
     }
 
@@ -477,7 +472,7 @@ export class App {
             return;
         }
 
-        void this.checkForUpdateAndRestartTimer();
+        void this.checkForUpdateAfterFocusAndRestartTimer();
     }
 
     private markFocusLost(): void {
@@ -487,34 +482,6 @@ export class App {
     private getCurrentAppUrl(): string {
         return `${window.location.pathname}${window.location.search}`;
     }
-
-    // TODO: Temporarily disabled, this is for PWA URL handling but is causing issues with normal navigation.
-    // private processFocusedCapturedUrl(): void {
-    //     const currentUrl = this.getCurrentAppUrl();
-    //     if (currentUrl === this.urlAtLastBlur) {
-    //         return;
-    //     }
-    //     this.logger.info('[PWA] Focus detected URL change: ' + currentUrl);
-    //     this.urlAtLastBlur = currentUrl;
-    //     void this.handleCapturedUrl(window.location.href, 'focus');
-    // }
-
-    // TODO: Temporarily disabled, this is for PWA URL handling but is causing issues with normal navigation.
-    // private serviceWorkerMessageHandler = (event: MessageEvent) => {
-    //     const data = event.data as { type?: string; url?: string } | undefined;
-    //     if (data?.type !== 'NAVIGATE' || !data.url) {
-    //         return;
-    //     }
-    //     this.logger.info('[PWA] Received NAVIGATE message from service worker: ' + data.url);
-    //     this.urlAtLastBlur = this.getCurrentAppUrl();
-    //     void this.handleCapturedUrl(data.url, 'service-worker');
-    // };
-
-    // TODO: Temporarily disabled, this is for PWA URL handling but is causing issues with normal navigation.
-    // private historyNavigationHandler = () => {
-    //     this.logger.info('[PWA] History navigation detected, evaluating URL');
-    //     void this.handleCapturedUrl(window.location.href, 'history');
-    // };
 
     private shouldSkipDuplicateCapturedUrl(parsed: URL): boolean {
         const normalizedUrl = `${parsed.pathname}${parsed.search}`;
@@ -526,27 +493,6 @@ export class App {
         this.lastHandledCapturedUrl = normalizedUrl;
         this.lastHandledCapturedUrlAt = now;
         return false;
-    }
-
-    private normalizeProtocolLinkPayload(value: string): string {
-        const decoded = (() => {
-            try {
-                return decodeURIComponent(value);
-            } catch {
-                return value;
-            }
-        })();
-
-        // URLSearchParams decodes '+' as space. Recover our custom scheme if needed.
-        if (decoded.startsWith('web mekbay://')) {
-            return 'web+mekbay://' + decoded.slice('web mekbay://'.length);
-        }
-
-        if (decoded.startsWith('web mekbay:')) {
-            return 'web+mekbay:' + decoded.slice('web mekbay:'.length);
-        }
-
-        return decoded;
     }
 
     private scheduleUpdateCheckTimer(): void {
@@ -564,8 +510,8 @@ export class App {
         }
     }
 
-    private async checkForUpdateAndRestartTimer(options: { force?: boolean } = {}): Promise<void> {
-        const checkPerformed = await this.appUpdateService.checkForUpdate(options);
+    private async checkForUpdateAfterFocusAndRestartTimer(): Promise<void> {
+        const checkPerformed = await this.appUpdateService.checkForUpdateAfterFocus();
         if (checkPerformed) {
             this.scheduleUpdateCheckTimer();
         }
@@ -592,170 +538,6 @@ export class App {
 
         event.preventDefault();
     };
-
-    /**
-     * Handle a URL captured by the service worker (e.g. from a link click
-     * when the PWA is installed). Parses the URL and updates the app state
-     * without a full navigation, applying smart context-aware logic:
-     *
-     * - shareUnit: Opens the unit details dialog directly.
-     * - Search params (q, filters, sort, etc.):
-     *   A) No loaded forces → apply search params and switch game system.
-     *   B) Forces loaded + matching gs → apply search params.
-     *   B) Forces loaded + different gs → warn, offer to unload forces.
-     * - Force params (instance=, units=):
-     *   A) No loaded forces → load the force directly.
-     *   B) Forces loaded → offer to LOAD (replace), ADD (friendly/enemy), or DISMISS.
-     */
-    private async handleCapturedUrl(url: string, source: 'focus' | 'service-worker' | 'history' | 'protocol' = 'focus'): Promise<void> {
-        this.logger.info(`[PWA] Handling captured URL from ${source}: ${url}`);
-        let parsed: URL;
-        try {
-            parsed = new URL(url, window.location.origin);
-        } catch {
-            this.logger.error('[PWA] Failed to parse captured URL: ' + url);
-            return;
-        }
-
-        if (parsed.origin !== window.location.origin) {
-            this.logger.warn('[PWA] Ignoring captured URL from different origin: ' + parsed.origin);
-            return;
-        }
-
-        if (this.shouldSkipDuplicateCapturedUrl(parsed)) {
-            return;
-        }
-
-        const params = parsed.searchParams;
-
-        const encodedProtocolLink = params.get('protocolLink');
-        if (encodedProtocolLink) {
-            const decodedProtocolLink = this.normalizeProtocolLinkPayload(encodedProtocolLink);
-
-            let protocolUrl: URL;
-            try {
-                protocolUrl = new URL(decodedProtocolLink);
-            } catch {
-                this.logger.error('[PWA] Failed to parse protocolLink payload: ' + decodedProtocolLink);
-                return;
-            }
-
-            if (protocolUrl.protocol !== 'web+mekbay:') {
-                this.logger.warn('[PWA] Ignoring unsupported protocol payload: ' + protocolUrl.protocol);
-                return;
-            }
-
-            const translatedParams = protocolUrl.searchParams.toString();
-            const translatedUrl = `${window.location.origin}${window.location.pathname}${translatedParams ? `?${translatedParams}` : ''}`;
-            this.logger.info('[PWA] Translated protocol link to app URL: ' + translatedUrl);
-            await this.handleCapturedUrl(translatedUrl, 'protocol');
-            return;
-        }
-
-        // Update browser URL bar (no reload)
-        this.replaceCurrentHistoryState(parsed.pathname + parsed.search);
-
-        // ── shareUnit: just show the dialog ──────────────────────────────
-        const sharedUnitName = params.get('shareUnit');
-        if (sharedUnitName) {
-            const tab = params.get('tab') ?? undefined;
-            const unit = this.dataService.getUnitByName(sharedUnitName);
-            if (unit) {
-                this.showSingleUnitDetails(unit, tab);
-            } else {
-                this.toastService.showToast(`Unit "${sharedUnitName}" not found.`, 'error');
-            }
-            return;
-        }
-
-        const hasForceParams = params.has('instance') || params.has('units');
-        const hasSearchParams = params.has('q') || params.has('filters') || params.has('sort');
-        const requestedGs = (params.get('gs') as GameSystem) ?? null;
-        const hasForces = this.forceBuilderService.hasForces();
-
-        // ── Force params (instance= / units=) ───────────────────────────
-        if (hasForceParams) {
-            if (!hasForces) {
-                // A) No loaded forces → load directly
-                await this.forceBuilderService.loadForceFromUrlParams(params, 'replace');
-            } else {
-                // B) Forces loaded → ask the user
-                const choice = await this.dialogService.choose<'load' | 'add-friendly' | 'add-enemy' | 'dismiss'>(
-                    'Incoming Force',
-                    'A link with a force was opened. You already have forces loaded. What would you like to do?',
-                    [
-                        { label: 'LOAD (REPLACE)', value: 'load', class: 'danger' },
-                        { label: 'ADD AS FRIENDLY', value: 'add-friendly' },
-                        { label: 'ADD AS HOSTILE', value: 'add-enemy' },
-                        { label: 'DISMISS', value: 'dismiss' },
-                    ],
-                    'dismiss'
-                );
-
-                switch (choice) {
-                    case 'load':
-                        await this.forceBuilderService.loadForceFromUrlParams(params, 'replace');
-                        break;
-                    case 'add-friendly':
-                        await this.forceBuilderService.loadForceFromUrlParams(params, 'add', 'friendly');
-                        break;
-                    case 'add-enemy':
-                        await this.forceBuilderService.loadForceFromUrlParams(params, 'add', 'enemy');
-                        break;
-                    case 'dismiss':
-                        break;
-                }
-            }
-
-            // Also apply any search params that came along with the force URL
-            if (hasSearchParams) {
-                this.unitSearchFiltersService.applySearchParamsFromUrl(params, { expandView: false });
-            }
-            // Switch game system if specified
-            if (requestedGs) {
-                this.gameService.setOverride(requestedGs);
-            }
-            return;
-        }
-
-        // ── Search params only (no force) ────────────────────────────────
-        if (hasSearchParams) {
-            if (!hasForces) {
-                // A) No loaded forces → apply directly
-                this.unitSearchFiltersService.applySearchParamsFromUrl(params);
-                if (requestedGs) {
-                    this.gameService.setOverride(requestedGs);
-                }
-            } else {
-                // B) Forces loaded: check if gs matches
-                const currentGs = this.gameService.currentGameSystem();
-                const gsConflict = requestedGs && requestedGs !== currentGs;
-
-                if (!gsConflict) {
-                    // Same game system or no gs specified → apply search params
-                    this.unitSearchFiltersService.applySearchParamsFromUrl(params);
-                } else {
-                    // Different game system → warn
-                    const accepted = await this.dialogService.requestConfirmation(
-                        `This link uses ${requestedGs === GameSystem.ALPHA_STRIKE ? 'Alpha Strike' : 'Classic BattleTech'}, ` +
-                        `but you currently have forces loaded in ${currentGs === GameSystem.ALPHA_STRIKE ? 'Alpha Strike' : 'Classic BattleTech'}. ` +
-                        `To switch, all loaded forces will be removed.\n\nContinue?`,
-                        'Game System Conflict',
-                        'danger'
-                    );
-                    if (accepted) {
-                        await this.forceBuilderService.clear();
-                        this.unitSearchFiltersService.applySearchParamsFromUrl(params);
-                        this.gameService.setOverride(requestedGs);
-                    }
-                    // If declined, do nothing: keep current state
-                }
-            }
-            return;
-        }
-
-        // ── No recognized params: just update the URL bar (already done) ──
-    }
 
     async installPwa() {
         if (isIOS()) {
