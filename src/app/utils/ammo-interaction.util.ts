@@ -209,11 +209,6 @@ export function getAmmoControlGroups(entries: AmmoControlEntry[]): AmmoControlGr
     const keyedGroups = new Map<string, AmmoControlGroup>();
 
     for (const entry of entries) {
-        if (entry.sourceType !== 'inventory') {
-            groups.push(createAmmoControlGroup([entry]));
-            continue;
-        }
-
         const key = `${entry.sourceType}:${entry.currentAmmo.internalName}:${entry.locationLabel}`;
         const existingGroup = keyedGroups.get(key);
         if (existingGroup) {
@@ -452,14 +447,31 @@ export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerCont
     let remainingToAllocate = clamp(newAmmoValue.quantity, 0, getTotalAmmoForAmmoType(firstEntry.originalAmmo, originalTotalAmmo, selectedAmmo));
 
     for (const entry of group.entries.sort((a, b) => a.id.localeCompare(b.id))) {
-        const source = entry.source as MountedEquipment;
         const newTotalAmmo = getTotalAmmoForAmmoType(entry.originalAmmo, entry.originalTotalAmmo, selectedAmmo);
         const newRemaining = Math.min(newTotalAmmo, remainingToAllocate);
         remainingToAllocate -= newRemaining;
-        source.ammo = selectedAmmo.internalName === source.name ? undefined : selectedAmmo.internalName;
-        source.totalAmmo = newTotalAmmo;
-        source.consumed = newTotalAmmo - newRemaining;
-        entry.owner.setInventoryEntry(source);
+
+        if (entry.sourceType === 'inventory') {
+            const source = entry.source as MountedEquipment;
+            source.ammo = selectedAmmo.internalName === source.name ? undefined : selectedAmmo.internalName;
+            source.totalAmmo = newTotalAmmo;
+            source.consumed = newTotalAmmo - newRemaining;
+            entry.owner.setInventoryEntry(source);
+        } else {
+            const source = entry.source as CriticalSlot;
+            if (selectedAmmo.internalName !== source.name) {
+                if (!source.originalName) {
+                    source.originalName = source.name;
+                } else if (selectedAmmo.internalName === source.originalName) {
+                    delete source.originalName;
+                }
+                source.name = selectedAmmo.internalName;
+                source.eq = selectedAmmo;
+            }
+            source.totalAmmo = newTotalAmmo;
+            source.consumed = newTotalAmmo - newRemaining;
+            entry.owner.setCritSlot(source);
+        }
         syncEntryFromSource(entry, equipmentMap);
     }
 
