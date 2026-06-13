@@ -34,7 +34,7 @@
 import { inject, Injectable, Injector } from '@angular/core';
 import type { CriticalSlot, MountedEquipment } from '../models/force-serialization';
 import { DataService } from './data.service';
-import type { Equipment } from '../models/equipment.model';
+import { AmmoEquipment, type Equipment } from '../models/equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 
 /*
@@ -317,6 +317,9 @@ export class UnitInitializerService {
                         locations.add(loc);
                     }
                 });
+            } else {
+                name = id.split('@')[0];
+                eq = this.getDataService().getEquipments()[name];
             }
             if (locations.size === 0) {
                 // If no locations found, try to get it from entry itself
@@ -381,9 +384,48 @@ export class UnitInitializerService {
         return inventoryEntries;
     }
 
+    private getDirectAmmoInventoryEntries(unit: CBTForceUnit, currentInventory: MountedEquipment[]): MountedEquipment[] {
+        const inventoryEntries: MountedEquipment[] = [];
+        const equipmentList = this.getDataService().getEquipments();
+        unit.getUnit().comp.forEach((component, index) => {
+            const equipment = component.eq ?? equipmentList[component.id];
+            if (!(equipment instanceof AmmoEquipment)) return;
+
+            const binCount = Math.max(1, component.q || 1);
+            const totalAmmo = component.q2 || (equipment.shots * binCount) || 0;
+            const baseBinAmmo = Math.floor(totalAmmo / binCount);
+            const extraBinAmmo = totalAmmo % binCount;
+            const locations = component.l && component.l !== '—'
+                ? new Set(component.l.split('/'))
+                : new Set<string>();
+            for (let binIndex = 0; binIndex < binCount; binIndex++) {
+                const id = `${component.id}@${component.l || 'Ammo'}#${index}.${binIndex}`;
+                const originalTotalAmmo = baseBinAmmo + (binIndex < extraBinAmmo ? 1 : 0);
+                const existingEntry = currentInventory.find(item => item.id === id);
+
+                inventoryEntries.push({
+                    ...(existingEntry ?? {}),
+                    owner: unit,
+                    id,
+                    name: component.id,
+                    locations,
+                    equipment,
+                    physical: false,
+                    linkedWith: null,
+                    parent: null,
+                    destroyed: existingEntry?.destroyed ?? false,
+                    totalAmmo: existingEntry?.totalAmmo ?? originalTotalAmmo,
+                    consumed: existingEntry?.consumed ?? 0,
+                    states: existingEntry?.states ?? new Map<string, string>(),
+                });
+            }
+        });
+        return inventoryEntries;
+    }
+
     private initInventory(unit: CBTForceUnit, svg: SVGSVGElement): void {
         const inventoryEntryEls = svg.querySelectorAll(`.inventoryEntry:not(.inventoryEntry .inventoryEntry)`) as NodeListOf<SVGElement>;
-        if (inventoryEntryEls.length === 0) return;
+        if (inventoryEntryEls.length === 0 && svg.querySelector('.critSlot')) return;
         const inventory = this.getInventoryElements(unit, svg, inventoryEntryEls);
         const inventoryData: MountedEquipment[] = [];
         for (const entry of inventory) {
@@ -393,6 +435,9 @@ export class UnitInitializerService {
                     inventoryData.push(linkedEntry);
                 });
             }
+        }
+        if (!svg.querySelector('.critSlot')) {
+            inventoryData.push(...this.getDirectAmmoInventoryEntries(unit, unit.getInventory()));
         }
         unit.setInventory(inventoryData, true);
     }

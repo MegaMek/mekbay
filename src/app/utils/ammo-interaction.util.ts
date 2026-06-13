@@ -8,7 +8,8 @@ import type { HandlerContext } from '../services/equipment-interaction-registry.
 export interface AmmoControlEntry {
     id: string;
     owner: CBTForceUnit;
-    source: CriticalSlot;
+    source: CriticalSlot | MountedEquipment;
+    sourceType: 'crit' | 'inventory';
     locationLabel: string;
     displayName: string;
     currentAmmo: AmmoEquipment;
@@ -19,12 +20,27 @@ export interface AmmoControlEntry {
     destroyed: boolean;
 }
 
+export interface AmmoControlGroup {
+    id: string;
+    entries: AmmoControlEntry[];
+    locationLabel: string;
+    displayName: string;
+    totalAmmo: number;
+    consumed: number;
+    destroyed: boolean;
+    expandable: boolean;
+}
+
 function clamp(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, value));
 }
 
 export function formatAmmoName(ammo: AmmoEquipment): string {
     return ammo.shortName.endsWith(' Ammo') ? ammo.shortName.slice(0, -5) : ammo.shortName;
+}
+
+function getAmmoControlDisplayName(ammo: AmmoEquipment): string {
+    return ammo.name.endsWith(' Ammo') ? ammo.name.slice(0, -5) : ammo.name;
 }
 
 export function getCriticalSlotAmmoProfileKey(criticalSlot: CriticalSlot): string | null {
@@ -64,14 +80,67 @@ function createCriticalSlotAmmoControlEntry(unit: CBTForceUnit, criticalSlot: Cr
         id: `crit:${criticalSlot.loc ?? ''}:${criticalSlot.slot ?? ''}:${criticalSlot.name ?? criticalSlot.id}`,
         owner: unit,
         source: criticalSlot,
+        sourceType: 'crit',
         locationLabel: criticalSlot.loc ?? 'Ammo',
-        displayName: formatAmmoName(criticalSlot.eq),
+        displayName: getAmmoControlDisplayName(criticalSlot.eq),
         currentAmmo: criticalSlot.eq,
         originalAmmo,
         originalTotalAmmo: getOriginalTotalAmmo(unit, criticalSlot),
         totalAmmo,
         consumed: criticalSlot.consumed ?? 0,
         destroyed: !!criticalSlot.destroyed
+    };
+}
+
+function getInventoryComponentRef(entry: MountedEquipment): { componentIndex: number; binIndex: number | null } | null {
+    const indexText = entry.id.split('#').pop();
+    if (!indexText) return null;
+    const [componentIndexText, binIndexText] = indexText.split('.');
+    const componentIndex = Number(componentIndexText);
+    const binIndex = binIndexText === undefined ? null : Number(binIndexText);
+    if (!Number.isInteger(componentIndex)) return null;
+    if (binIndex !== null && !Number.isInteger(binIndex)) return null;
+    return { componentIndex, binIndex };
+}
+
+function getInventoryOriginalTotalAmmo(entry: MountedEquipment): number {
+    const componentRef = getInventoryComponentRef(entry);
+    const component = componentRef === null ? undefined : entry.owner.getUnit().comp[componentRef.componentIndex];
+    const originalAmmo = entry.equipment instanceof AmmoEquipment ? entry.equipment : null;
+    const binCount = Math.max(1, component?.q ?? 1);
+    const totalAmmo = component?.q2 || (originalAmmo ? originalAmmo.shots * binCount : 0) || entry.totalAmmo || 0;
+    if (componentRef?.binIndex === null) return totalAmmo;
+    const baseBinAmmo = Math.floor(totalAmmo / binCount);
+    const extraBinAmmo = totalAmmo % binCount;
+    return baseBinAmmo + (componentRef && componentRef.binIndex < extraBinAmmo ? 1 : 0);
+}
+
+function getInventoryCurrentAmmo(entry: MountedEquipment, equipmentMap: EquipmentMap): AmmoEquipment | null {
+    const currentAmmo = entry.ammo ? equipmentMap[entry.ammo] : entry.equipment;
+    if (currentAmmo instanceof AmmoEquipment) return currentAmmo;
+    return entry.equipment instanceof AmmoEquipment ? entry.equipment : null;
+}
+
+function createInventoryAmmoControlEntry(unit: CBTForceUnit, inventoryEntry: MountedEquipment, equipmentMap: EquipmentMap): AmmoControlEntry | null {
+    if (!(inventoryEntry.equipment instanceof AmmoEquipment)) return null;
+    const currentAmmo = getInventoryCurrentAmmo(inventoryEntry, equipmentMap);
+    if (!currentAmmo) return null;
+
+    const originalTotalAmmo = getInventoryOriginalTotalAmmo(inventoryEntry);
+    const totalAmmo = inventoryEntry.totalAmmo ?? originalTotalAmmo;
+    return {
+        id: `inventory:${inventoryEntry.id}`,
+        owner: unit,
+        source: inventoryEntry,
+        sourceType: 'inventory',
+        locationLabel: Array.from(inventoryEntry.locations ?? []).join('/') || 'Ammo',
+        displayName: getAmmoControlDisplayName(currentAmmo),
+        currentAmmo,
+        originalAmmo: inventoryEntry.equipment,
+        originalTotalAmmo,
+        totalAmmo,
+        consumed: inventoryEntry.consumed ?? 0,
+        destroyed: !!inventoryEntry.destroyed
     };
 }
 
@@ -94,10 +163,16 @@ export function getAmmoControlEntriesForWeapon(equipment: MountedEquipment, cont
     if (!(equipment.equipment instanceof WeaponEquipment)) return [];
     const equipmentMap = context.dataService.getEquipments();
 
-    return sortAmmoControlEntries(equipment.owner.getCritSlots()
+    const critEntries = equipment.owner.getCritSlots()
         .filter(criticalSlot => criticalSlot.eq instanceof AmmoEquipment && ammoMatchesWeapon(equipment.equipment as WeaponEquipment, criticalSlot.eq))
         .map(criticalSlot => createCriticalSlotAmmoControlEntry(equipment.owner, criticalSlot, equipmentMap))
-        .filter((entry): entry is AmmoControlEntry => !!entry));
+        .filter((entry): entry is AmmoControlEntry => !!entry);
+    const inventoryEntries = equipment.owner.getInventory()
+        .filter(entry => entry.equipment instanceof AmmoEquipment && ammoMatchesWeapon(equipment.equipment as WeaponEquipment, getInventoryCurrentAmmo(entry, equipmentMap) ?? entry.equipment))
+        .map(entry => createInventoryAmmoControlEntry(equipment.owner, entry, equipmentMap))
+        .filter((entry): entry is AmmoControlEntry => !!entry);
+
+    return sortAmmoControlEntries([...critEntries, ...inventoryEntries]);
 }
 
 export function getAmmoControlEntriesForUnitWeapons(unit: CBTForceUnit, equipmentMap: EquipmentMap): AmmoControlEntry[] {
@@ -110,27 +185,111 @@ export function getAmmoControlEntriesForUnitWeapons(unit: CBTForceUnit, equipmen
 
     if (weaponAmmoKeys.size === 0) return [];
 
-    return sortAmmoControlEntries(unit.getCritSlots()
+    const critEntries = unit.getCritSlots()
         .filter(criticalSlot => criticalSlot.eq instanceof AmmoEquipment && weaponAmmoKeys.has(`${criticalSlot.eq.ammoType}:${criticalSlot.eq.rackSize}`))
         .map(criticalSlot => createCriticalSlotAmmoControlEntry(unit, criticalSlot, equipmentMap))
-        .filter((entry): entry is AmmoControlEntry => !!entry));
+        .filter((entry): entry is AmmoControlEntry => !!entry);
+    const inventoryEntries = unit.getInventory()
+        .filter(entry => {
+            const ammo = getInventoryCurrentAmmo(entry, equipmentMap);
+            return ammo && weaponAmmoKeys.has(`${ammo.ammoType}:${ammo.rackSize}`);
+        })
+        .map(entry => createInventoryAmmoControlEntry(unit, entry, equipmentMap))
+        .filter((entry): entry is AmmoControlEntry => !!entry);
+
+    return sortAmmoControlEntries([...critEntries, ...inventoryEntries]);
 }
 
 export function getAmmoEntryRemaining(entry: AmmoControlEntry): number {
     return Math.max(0, entry.totalAmmo - entry.consumed);
 }
 
+export function getAmmoControlGroups(entries: AmmoControlEntry[]): AmmoControlGroup[] {
+    const groups: AmmoControlGroup[] = [];
+    const keyedGroups = new Map<string, AmmoControlGroup>();
+
+    for (const entry of entries) {
+        if (entry.sourceType !== 'inventory') {
+            groups.push(createAmmoControlGroup([entry]));
+            continue;
+        }
+
+        const key = `${entry.sourceType}:${entry.currentAmmo.internalName}:${entry.locationLabel}`;
+        const existingGroup = keyedGroups.get(key);
+        if (existingGroup) {
+            existingGroup.entries.push(entry);
+            syncGroupTotals(existingGroup);
+        } else {
+            const group = createAmmoControlGroup([entry]);
+            keyedGroups.set(key, group);
+            groups.push(group);
+        }
+    }
+
+    return sortAmmoControlGroups(groups);
+}
+
+function createAmmoControlGroup(entries: AmmoControlEntry[]): AmmoControlGroup {
+    const firstEntry = entries[0];
+    const group: AmmoControlGroup = {
+        id: entries.map(entry => entry.id).join('|'),
+        entries,
+        locationLabel: firstEntry.locationLabel,
+        displayName: firstEntry.displayName,
+        totalAmmo: 0,
+        consumed: 0,
+        destroyed: false,
+        expandable: false
+    };
+    syncGroupTotals(group);
+    return group;
+}
+
+function syncGroupTotals(group: AmmoControlGroup): void {
+    group.entries.sort((a, b) => a.id.localeCompare(b.id));
+    group.id = group.entries.map(entry => entry.id).join('|');
+    group.totalAmmo = group.entries.reduce((total, entry) => total + entry.totalAmmo, 0);
+    group.consumed = group.entries.reduce((total, entry) => total + entry.consumed, 0);
+    group.destroyed = group.entries.every(entry => entry.destroyed);
+    group.expandable = group.entries.length > 1;
+}
+
+function sortAmmoControlGroups(groups: AmmoControlGroup[]): AmmoControlGroup[] {
+    return groups.sort((a, b) => {
+        const nameCompare = a.displayName.localeCompare(b.displayName);
+        if (nameCompare !== 0) return nameCompare;
+        const locationCompare = a.locationLabel.localeCompare(b.locationLabel);
+        if (locationCompare !== 0) return locationCompare;
+        return a.id.localeCompare(b.id);
+    });
+}
+
 function syncEntryFromSource(entry: AmmoControlEntry, equipmentMap: EquipmentMap): void {
-    const currentAmmo = entry.source.eq;
+    if (entry.sourceType === 'inventory') {
+        const source = entry.source as MountedEquipment;
+        const currentAmmo = getInventoryCurrentAmmo(source, equipmentMap);
+        if (currentAmmo) {
+            entry.currentAmmo = currentAmmo;
+            entry.displayName = getAmmoControlDisplayName(currentAmmo);
+        }
+        entry.originalAmmo = source.equipment instanceof AmmoEquipment ? source.equipment : entry.currentAmmo;
+        entry.originalTotalAmmo = getInventoryOriginalTotalAmmo(source);
+        entry.totalAmmo = source.totalAmmo ?? entry.originalTotalAmmo;
+        entry.consumed = source.consumed ?? 0;
+        entry.destroyed = !!source.destroyed;
+        return;
+    }
+
+    const currentAmmo = (entry.source as CriticalSlot).eq;
     if (currentAmmo instanceof AmmoEquipment) {
         entry.currentAmmo = currentAmmo;
-        entry.displayName = formatAmmoName(currentAmmo);
+        entry.displayName = getAmmoControlDisplayName(currentAmmo);
     }
-    entry.originalAmmo = resolveOriginalAmmo(entry.source, equipmentMap) ?? entry.currentAmmo;
-    entry.originalTotalAmmo = getOriginalTotalAmmo(entry.owner, entry.source);
-    entry.totalAmmo = getCriticalSlotTotalAmmo(entry.owner, entry.source);
-    entry.consumed = entry.source.consumed ?? 0;
-    entry.destroyed = !!entry.source.destroyed;
+    entry.originalAmmo = resolveOriginalAmmo(entry.source as CriticalSlot, equipmentMap) ?? entry.currentAmmo;
+    entry.originalTotalAmmo = getOriginalTotalAmmo(entry.owner, entry.source as CriticalSlot);
+    entry.totalAmmo = getCriticalSlotTotalAmmo(entry.owner, entry.source as CriticalSlot);
+    entry.consumed = (entry.source as CriticalSlot).consumed ?? 0;
+    entry.destroyed = !!(entry.source as CriticalSlot).destroyed;
 }
 
 function showAmmoToast(entry: AmmoControlEntry, deltaRemaining: number, context: HandlerContext): void {
@@ -150,10 +309,39 @@ export function changeAmmoEntryRemaining(entry: AmmoControlEntry, deltaRemaining
     if (appliedDelta === 0) return false;
 
     entry.source.consumed = entry.totalAmmo - nextRemaining;
-    entry.owner.setCritSlot(entry.source);
+    if (entry.sourceType === 'inventory') {
+        entry.owner.setInventoryEntry(entry.source as MountedEquipment);
+    } else {
+        entry.owner.setCritSlot(entry.source as CriticalSlot);
+    }
     syncEntryFromSource(entry, context.dataService.getEquipments());
     showAmmoToast(entry, appliedDelta, context);
     return true;
+}
+
+export function getAmmoGroupRemaining(group: AmmoControlGroup): number {
+    return group.entries.reduce((total, entry) => total + getAmmoEntryRemaining(entry), 0);
+}
+
+export function changeAmmoGroupRemaining(group: AmmoControlGroup, deltaRemaining: number, context: HandlerContext): boolean {
+    if (group.entries.length === 1) return changeAmmoEntryRemaining(group.entries[0], deltaRemaining, context);
+
+    const sortedEntries = [...group.entries].sort((a, b) => a.id.localeCompare(b.id));
+    let changed = false;
+
+    if (deltaRemaining < 0) {
+        const target = [...sortedEntries].reverse().find(entry => !entry.destroyed && getAmmoEntryRemaining(entry) > 0);
+        if (target) changed = changeAmmoEntryRemaining(target, -1, context);
+    } else if (deltaRemaining > 0) {
+        const target = [...sortedEntries].reverse().find(entry => {
+            const remaining = getAmmoEntryRemaining(entry);
+            return !entry.destroyed && remaining > 0 && remaining < entry.totalAmmo;
+        }) ?? sortedEntries.find(entry => !entry.destroyed && getAmmoEntryRemaining(entry) < entry.totalAmmo);
+        if (target) changed = changeAmmoEntryRemaining(target, 1, context);
+    }
+
+    if (changed) syncGroupTotals(group);
+    return changed;
 }
 
 function sortCompatibleAmmo(ammoOptions: AmmoEquipment[]): AmmoEquipment[] {
@@ -201,24 +389,88 @@ export async function setAmmoEntry(entry: AmmoControlEntry, context: HandlerCont
     const newTotalAmmo = getTotalAmmoForAmmoType(entry.originalAmmo, entry.originalTotalAmmo, selectedAmmo);
     const newQuantity = clamp(newAmmoValue.quantity, 0, newTotalAmmo);
 
-    if (selectedAmmo.internalName !== entry.source.name) {
-        if (!entry.source.originalName) {
-            entry.source.originalName = entry.source.name;
-        } else if (selectedAmmo.internalName === entry.source.originalName) {
-            delete entry.source.originalName;
+    if (entry.sourceType === 'inventory') {
+        const source = entry.source as MountedEquipment;
+        source.ammo = selectedAmmo.internalName === source.name ? undefined : selectedAmmo.internalName;
+        source.totalAmmo = newTotalAmmo;
+        source.consumed = newTotalAmmo - newQuantity;
+        entry.owner.setInventoryEntry(source);
+    } else {
+        const source = entry.source as CriticalSlot;
+        if (selectedAmmo.internalName !== source.name) {
+            if (!source.originalName) {
+                source.originalName = source.name;
+            } else if (selectedAmmo.internalName === source.originalName) {
+                delete source.originalName;
+            }
+            source.name = selectedAmmo.internalName;
+            source.eq = selectedAmmo;
         }
-        entry.source.name = selectedAmmo.internalName;
-        entry.source.eq = selectedAmmo;
-    }
 
-    entry.source.totalAmmo = newTotalAmmo;
-    entry.source.consumed = newTotalAmmo - newQuantity;
-    entry.owner.setCritSlot(entry.source);
+        source.totalAmmo = newTotalAmmo;
+        source.consumed = newTotalAmmo - newQuantity;
+        entry.owner.setCritSlot(source);
+    }
     syncEntryFromSource(entry, equipmentMap);
 
     const appliedDelta = getAmmoEntryRemaining(entry) - previousRemaining;
     if (appliedDelta !== 0) {
         showAmmoToast(entry, appliedDelta, context);
+    }
+    return true;
+}
+
+export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerContext): Promise<boolean> {
+    if (group.entries.length === 1) return setAmmoEntry(group.entries[0], context);
+    if (group.destroyed) return false;
+
+    const firstEntry = group.entries[0];
+    const equipmentMap = context.dataService.getEquipments();
+    const unitBlueprint = firstEntry.owner.getUnit();
+    const originalTotalAmmo = group.entries.reduce((total, entry) => total + entry.originalTotalAmmo, 0);
+    const previousRemaining = getAmmoGroupRemaining(group);
+    const compatibleAmmo = sortCompatibleAmmo(Object.values(equipmentMap)
+        .filter((equipment): equipment is AmmoEquipment => (equipment instanceof AmmoEquipment) && firstEntry.originalAmmo.compatibleAmmo(equipment, unitBlueprint)));
+
+    const ref = context.dialogsService.createDialog<{ name: string; quantity: number, totalAmmo: number } | null>(SetAmmoDialogComponent, {
+        data: {
+            currentAmmo: firstEntry.currentAmmo,
+            originalAmmo: firstEntry.originalAmmo,
+            originalTotalAmmo,
+            ammoOptions: compatibleAmmo,
+            quantity: previousRemaining,
+            maxQuantity: group.totalAmmo
+        } as SetAmmoDialogData
+    });
+
+    const newAmmoValue = await firstValueFrom(ref.closed);
+    if (!newAmmoValue) return false;
+
+    const selectedAmmo = equipmentMap[newAmmoValue.name] instanceof AmmoEquipment
+        ? equipmentMap[newAmmoValue.name] as AmmoEquipment
+        : firstEntry.currentAmmo;
+    let remainingToAllocate = clamp(newAmmoValue.quantity, 0, getTotalAmmoForAmmoType(firstEntry.originalAmmo, originalTotalAmmo, selectedAmmo));
+
+    for (const entry of group.entries.sort((a, b) => a.id.localeCompare(b.id))) {
+        const source = entry.source as MountedEquipment;
+        const newTotalAmmo = getTotalAmmoForAmmoType(entry.originalAmmo, entry.originalTotalAmmo, selectedAmmo);
+        const newRemaining = Math.min(newTotalAmmo, remainingToAllocate);
+        remainingToAllocate -= newRemaining;
+        source.ammo = selectedAmmo.internalName === source.name ? undefined : selectedAmmo.internalName;
+        source.totalAmmo = newTotalAmmo;
+        source.consumed = newTotalAmmo - newRemaining;
+        entry.owner.setInventoryEntry(source);
+        syncEntryFromSource(entry, equipmentMap);
+    }
+
+    syncGroupTotals(group);
+    const appliedDelta = getAmmoGroupRemaining(group) - previousRemaining;
+    if (appliedDelta !== 0) {
+        context.toastService.showToast(
+            `${appliedDelta > 0 ? `+${appliedDelta}` : appliedDelta.toString()} ${appliedDelta >= 0 ? 'to' : 'from'} ${group.locationLabel} ${group.displayName} (${getAmmoGroupRemaining(group)}/${group.totalAmmo})`,
+            'info',
+            `ammo-control-${firstEntry.owner.id}-${group.id}`
+        );
     }
     return true;
 }
