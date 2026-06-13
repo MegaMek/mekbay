@@ -33,8 +33,6 @@
 
 import { Component, computed, signal, inject, effect, ChangeDetectionStrategy, viewChild, type ElementRef, afterNextRender, Injector, DestroyRef } from '@angular/core';
 
-import { SwUpdate } from '@angular/service-worker';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
 import { PageViewerComponent } from './components/page-viewer/page-viewer.component';
 import { AlphaStrikeViewerComponent } from './components/alpha-strike-viewer/alpha-strike-viewer.component';
@@ -56,7 +54,6 @@ import { WsService } from './services/ws.service';
 import { ToastService } from './services/toast.service';
 import { DialogsService } from './services/dialogs.service';
 import { BetaDialogComponent } from './components/beta-dialog/beta-dialog.component';
-import { UpdateButtonComponent } from './components/update-button/update-button.component';
 import { UnitSearchFiltersService } from './services/unit-search-filters.service';
 import { DomPortal, PortalModule } from '@angular/cdk/portal';
 import { OverlayModule } from '@angular/cdk/overlay';
@@ -65,15 +62,15 @@ import { LoggerService } from './services/logger.service';
 import { isAndroid, isIOS, isRunningStandalone } from './utils/platform.util';
 import { GameService } from './services/game.service';
 import { AccountAuthService } from './services/account-auth.service';
+import { AppUpdateService } from './services/app-update.service';
 
 import { GameSystem } from './models/common.model';
 import { Router, RouterOutlet } from '@angular/router';
 import { UrlService } from './services/url.service';
 
-const SW_UPDATE_RELOAD_HASH_STORAGE_KEY = 'mekbay:sw-update-reload-hash';
-const UPDATE_PROMPT_SNOOZE_MS = 4 * 60 * 60 * 1000; // 4 hours
 const ANDROID_PWA_BACK_EXIT_HISTORY_STATE_KEY = 'mekbayAndroidPwaBackExit';
 const ANDROID_PWA_BACK_RESTORE_GUARD_MS = 1000;
+const PENDING_UPDATE_RELOAD_AFTER_NO_FOCUS_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 /*
  * Author: Drake
@@ -86,7 +83,6 @@ const ANDROID_PWA_BACK_RESTORE_GUARD_MS = 1000;
     PageViewerComponent,
     AlphaStrikeViewerComponent,
     LayoutModule,
-    UpdateButtonComponent,
     SidebarComponent,
     ConnectionStatusBadgeComponent,
     ModeSwitchComponent,
@@ -105,10 +101,10 @@ const ANDROID_PWA_BACK_RESTORE_GUARD_MS = 1000;
 })
 export class App {
     logger = inject(LoggerService);
-    private swUpdate = inject(SwUpdate);
     protected dataService = inject(DataService);
     forceBuilderService = inject(ForceBuilderService);
     protected layoutService = inject(LayoutService);
+    protected appUpdateService = inject(AppUpdateService);
     private wsService = inject(WsService);
     private dialogService = inject(DialogsService);
     private toastService = inject(ToastService);
@@ -125,11 +121,7 @@ export class App {
     protected GameSystem = GameSystem;
     protected buildInfo = APP_VERSION_STRING;
     protected isMainBuild = BUILD_BRANCH === 'main';
-    private lastUpdateCheck: number = 0;
-    private updateCheckInterval = 60 * 60 * 1000; // 1 hour
     private updateCheckTimeoutId: number | null = null;
-    protected updateAvailable = signal(false);
-    protected updateAutoReloadEnabled = signal(false);
     protected showInstallButton = signal(false);
     protected homeActionsPanelOpen = signal(false);
     private deferredPrompt: any;
@@ -137,7 +129,7 @@ export class App {
     private lastHandledCapturedUrl: string | null = null;
     private lastHandledCapturedUrlAt = 0;
     private readonly capturedUrlDedupWindowMs = 2000;
-    private pendingUpdateHash: string | null = null;
+    private focusLostAt: number | null = document.visibilityState === 'hidden' ? Date.now() : null;
     private androidPwaBackExitEnabled = false;
     private androidPwaBackRestoring = false;
     private androidPwaBackRestoreTimeoutId: number | null = null;
@@ -186,6 +178,7 @@ export class App {
         document.addEventListener('contextmenu', this.contextMenuHandler);
         window.addEventListener('beforeunload', this.beforeUnloadHandler);
         window.addEventListener('blur', this.onBlur);
+        document.addEventListener('visibilitychange', this.visibilityChangeHandler);
         window.addEventListener('keydown', this.keyboardNavigationHandler, true);
         window.addEventListener('pointerdown', this.pointerNavigationHandler, true);
         window.addEventListener('mousedown', this.pointerNavigationHandler, true);
@@ -195,29 +188,7 @@ export class App {
         // if ('serviceWorker' in navigator) {
         //     navigator.serviceWorker.addEventListener('message', this.serviceWorkerMessageHandler);
         // }
-        
-        if (this.swUpdate.isEnabled) {
-            this.swUpdate.versionUpdates
-                .pipe(takeUntilDestroyed(this.destroyRef))
-                .subscribe((event) => {
-                    switch (event.type) {
-                        case 'VERSION_DETECTED':
-                            this.logger.info('Service worker update detected, downloading...');
-                            break;
-                        case 'VERSION_READY':
-                            this.handleReadyServiceWorkerUpdate(event);
-                            break;
-                        case 'VERSION_INSTALLATION_FAILED':
-                            this.logger.error('Service worker update installation failed: ' + event.error);
-                            break;
-                        case 'NO_NEW_VERSION_DETECTED':
-                            // this.logger.info('No new service worker version detected');
-                            break;
-                    }
-                });
-            this.startPeriodicUpdateChecks();
-            this.checkForUpdate(true);
-        }
+        this.scheduleUpdateCheckTimer();
         this.wsService.setGlobalErrorHandler((msg: string) => {
             this.toastService.showToast(msg, 'error');
         });
@@ -330,12 +301,13 @@ export class App {
             }
         });
         this.destroyRef.onDestroy(() => {
-            this.stopPeriodicUpdateChecks();
+            this.clearUpdateCheckTimer();
             this.removeBeforeUnloadHandler();
             window.removeEventListener('beforeinstallprompt', this.beforeInstallPromptHandler);
             window.removeEventListener('appinstalled', this.appInstalledHandler);
             document.removeEventListener('contextmenu', this.contextMenuHandler);
             window.removeEventListener('blur', this.onBlur);
+            document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
             window.removeEventListener('keydown', this.keyboardNavigationHandler, true);
             window.removeEventListener('pointerdown', this.pointerNavigationHandler, true);
             window.removeEventListener('mousedown', this.pointerNavigationHandler, true);
@@ -469,18 +441,48 @@ export class App {
     isCloudForceLoading = computed(() => this.dataService.isCloudForceLoading());
 
     onOnline() {
-        void this.checkForUpdate();
+        void this.checkForUpdateAndRestartTimer();
     }
 
     onFocus() {
         // TODO: Temporarily disabled, this is for PWA URL handling but is causing issues with normal navigation.
         // this.processFocusedCapturedUrl();
-        void this.checkForUpdate();
+        this.checkForUpdateAfterResume();
     }
 
     private onBlur = () => {
         this.urlAtLastBlur = this.getCurrentAppUrl();
+        this.markFocusLost();
     };
+
+    private readonly visibilityChangeHandler = () => {
+        if (document.visibilityState === 'hidden') {
+            this.markFocusLost();
+            return;
+        }
+
+        if (document.visibilityState === 'visible') {
+            this.checkForUpdateAfterResume();
+        }
+    };
+
+    private checkForUpdateAfterResume(): void {
+        const focusLostAt = this.focusLostAt;
+        this.focusLostAt = null;
+
+        if (focusLostAt !== null
+            && (Date.now() - focusLostAt) >= PENDING_UPDATE_RELOAD_AFTER_NO_FOCUS_MS
+            && this.appUpdateService.updatePending()) {
+            void this.appUpdateService.restartForUpdate();
+            return;
+        }
+
+        void this.checkForUpdateAndRestartTimer();
+    }
+
+    private markFocusLost(): void {
+        this.focusLostAt ??= Date.now();
+    }
 
     private getCurrentAppUrl(): string {
         return `${window.location.pathname}${window.location.search}`;
@@ -547,97 +549,26 @@ export class App {
         return decoded;
     }
 
-    public dismissUpdatePromptForSession(): void {
-        const now = Date.now();
-        this.lastUpdateCheck = now + UPDATE_PROMPT_SNOOZE_MS;
-        this.updateAvailable.set(false);
-        this.updateAutoReloadEnabled.set(false);
-        this.logger.info('Update prompt dismissed; snoozing update notifications for 4 hours.');
+    private scheduleUpdateCheckTimer(): void {
+        this.clearUpdateCheckTimer();
+        this.updateCheckTimeoutId = window.setTimeout(async () => {
+            await this.appUpdateService.checkForUpdate({ force: true });
+            this.scheduleUpdateCheckTimer();
+        }, this.appUpdateService.updateCheckIntervalMs);
     }
 
-    private isUpdatePromptSnoozed(now = Date.now()): boolean {
-        return this.lastUpdateCheck > now;
-    }
-
-    private startPeriodicUpdateChecks() {
-        this.stopPeriodicUpdateChecks();
-        const scheduleNext = () => {
-            this.updateCheckTimeoutId = window.setTimeout(async () => {
-                await this.checkForUpdate();
-                scheduleNext();
-            }, this.updateCheckInterval);
-        };
-        scheduleNext();
-    }
-
-    private stopPeriodicUpdateChecks() {
+    private clearUpdateCheckTimer(): void {
         if (this.updateCheckTimeoutId !== null) {
             window.clearTimeout(this.updateCheckTimeoutId);
             this.updateCheckTimeoutId = null;
         }
     }
 
-    private getLatestServiceWorkerHash(event: { latestVersion?: { hash?: string } }): string | null {
-        const hash = event.latestVersion?.hash?.trim();
-        return hash ? hash : null;
-    }
-
-    private getRecordedUpdateReloadHash(): string | null {
-        try {
-            const hash = localStorage.getItem(SW_UPDATE_RELOAD_HASH_STORAGE_KEY)?.trim();
-            return hash ? hash : null;
-        } catch {
-            return null;
+    private async checkForUpdateAndRestartTimer(options: { force?: boolean } = {}): Promise<void> {
+        const checkPerformed = await this.appUpdateService.checkForUpdate(options);
+        if (checkPerformed) {
+            this.scheduleUpdateCheckTimer();
         }
-    }
-
-    private recordUpdateReloadHash(hash: string | null): void {
-        if (!hash) {
-            return;
-        }
-
-        try {
-            localStorage.setItem(SW_UPDATE_RELOAD_HASH_STORAGE_KEY, hash);
-        } catch {
-            // Best effort only; startup must continue even if storage is unavailable.
-        }
-    }
-
-    private clearRecordedUpdateReloadHash(): void {
-        try {
-            localStorage.removeItem(SW_UPDATE_RELOAD_HASH_STORAGE_KEY);
-        } catch {
-            // Best effort only; startup must continue even if storage is unavailable.
-        }
-    }
-
-    private handleReadyServiceWorkerUpdate(event: { latestVersion?: { hash?: string } }): void {
-        const latestHash = this.getLatestServiceWorkerHash(event);
-        const recordedHash = this.getRecordedUpdateReloadHash();
-        const shouldSuppressAutoReload = !!latestHash && latestHash === recordedHash;
-
-        if (latestHash && recordedHash && latestHash !== recordedHash) {
-            this.clearRecordedUpdateReloadHash();
-        }
-
-        this.pendingUpdateHash = latestHash;
-
-        if (this.isUpdatePromptSnoozed()) {
-            this.updateAutoReloadEnabled.set(false);
-            this.updateAvailable.set(false);
-            this.logger.info('Service worker update is ready, but update prompts are snoozed.');
-            return;
-        }
-
-        this.updateAutoReloadEnabled.set(!!latestHash && !shouldSuppressAutoReload);
-
-        if (shouldSuppressAutoReload) {
-            this.logger.warn(`Service worker update ${latestHash} is still pending after a previous reload attempt; suppressing automatic reload.`);
-        } else {
-            this.logger.info('Service worker update is ready');
-        }
-
-        this.updateAvailable.set(true);
     }
 
     private beforeInstallPromptHandler = (e: any) => {
@@ -661,35 +592,6 @@ export class App {
 
         event.preventDefault();
     };
-
-    private async checkForUpdate(force = false) {
-        if (!this.swUpdate.isEnabled) return;
-        const now = Date.now();
-        if (this.isUpdatePromptSnoozed(now)) {
-            return;
-        }
-        // Prevent too frequent checks
-        if (!force && this.lastUpdateCheck <= now && (now - this.lastUpdateCheck < (this.updateCheckInterval / 4))) {
-            return;
-        }
-        this.logger.info('Checking for updates...');
-        this.lastUpdateCheck = now;
-
-        try {
-            if (await this.swUpdate.checkForUpdate()) {
-                if (this.isUpdatePromptSnoozed()) {
-                    return;
-                }
-                this.logger.info('Update available');
-                this.updateAvailable.set(true);
-                if (!this.pendingUpdateHash) {
-                    this.updateAutoReloadEnabled.set(false);
-                }
-            }
-        } catch (err) {
-            this.logger.error('Error checking for updates:' + err);
-        }
-    }
 
     /**
      * Handle a URL captured by the service worker (e.g. from a link click
@@ -880,44 +782,22 @@ export class App {
     }
 
     beforeUnloadHandler = (event: BeforeUnloadEvent) => {
-        if (this.dataService.hasPendingCloudSaves()) {
+        if (!this.appUpdateService.reloadingForUpdate() && this.hasBlockingUnsavedWork()) {
             event.preventDefault();
-            return 'Cloud sync is still pending. Are you sure you want to leave?';
-        }
-        const loadedForces = this.forceBuilderService.loadedForces();
-        const hasUnsavedForce = loadedForces.some(forceSlot => forceSlot.force.units().length > 0 && !forceSlot.force.instanceId());
-        if (hasUnsavedForce) {
-            // We have forces with units and without an instanceId? This is not yet saved. Warn the user before leaving.
-            event.preventDefault();
-            return 'You have unsaved changes in your force. Are you sure you want to leave?';
+            return 'You have unsaved changes. Are you sure you want to leave?';
         }
         return undefined;
     };
 
-
-    async reloadForUpdate(): Promise<void> {
-        this.removeBeforeUnloadHandler();
-
-        if (this.swUpdate.isEnabled) {
-            this.recordUpdateReloadHash(this.pendingUpdateHash);
-            try {
-                const activated = await this.swUpdate.activateUpdate();
-                if (activated) {
-                    this.logger.info('Activated service worker update; reloading app.');
-                } else {
-                    this.logger.warn('Service worker activation returned false; reloading app anyway.');
-                }
-            } catch (err) {
-                this.logger.error('Error activating service worker update: ' + err);
-            }
+    private hasBlockingUnsavedWork(): boolean {
+        if (this.dataService.hasPendingCloudSaves()) {
+            return true;
         }
 
-        this.performPageReload();
+        const loadedForces = this.forceBuilderService.loadedForces();
+        return loadedForces.some(forceSlot => forceSlot.force.units().length > 0 && !forceSlot.force.instanceId());
     }
 
-    private performPageReload(): void {
-        window.location.reload();
-    }
 
     showLicenseDialog(): void {
         this.dialogService.createDialog(LicenseDialogComponent);

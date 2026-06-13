@@ -56,6 +56,7 @@ import { OAuthProviderPickerDialogComponent, type OAuthProviderPickerDialogResul
 import type { AvailableAuthProvider, LinkedOAuthProvider, OAuthProvider } from '../../models/account-auth.model';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { naturalCompare } from '../../utils/sort.util';
+import { AppUpdateService } from '../../services/app-update.service';
 
 type OptionsSectionId = 'General' | 'Account' | 'Tags' | 'Sheets' | 'Alpha Strike' | 'Advanced' | 'Logs';
 type OptionsViewId = OptionsSectionId;
@@ -142,6 +143,7 @@ export class OptionsDialogComponent {
     taggingService = inject(TaggingService);
     toastService = inject(ToastService);
     accountAuthService = inject(AccountAuthService);
+    appUpdateService = inject(AppUpdateService);
     destroyRef = inject(DestroyRef);
     isIOS = isIOS();
     modalClass = 'wide options-dialog-modal';
@@ -355,6 +357,10 @@ export class OptionsDialogComponent {
 
     onClose() {
         this.dialogRef.close();
+    }
+
+    restartToUpdate(): void {
+        void this.appUpdateService.restartForUpdate();
     }
 
     onGameSystemChange(event: Event) {

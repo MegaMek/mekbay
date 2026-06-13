@@ -35,6 +35,11 @@
             @switch (currentViewId()) {
             @case ('General') {
             <div class="settings-view-content">
+            @if (appUpdateService.updatePending()) {
+            <div class="option-row update-restart-row">
+                <button type="button" class="bt-button warning restart-update-button" (click)="restartToUpdate()">RESTART TO UPDATE</button>
+            </div>
+            }
             <div class="option-row">
                 <label for="gameSystem">Default Game system:</label>
                 <select id="gameSystem" class="bt-select" [value]="optionsService.options().gameSystem"
@@ -692,7 +697,9 @@
                 <button type="button" class="options-nav-item" [class.active]="isSectionActive(section.id)"
                     [attr.aria-current]="isSectionActive(section.id) ? 'page' : null"
                     (click)="selectDesktopSection(section.id)">
-                    <span class="options-nav-label">{{ section.title }}</span>
+                    <span class="options-nav-label">{{ section.title }}
+                        @if (section.id === 'General' && appUpdateService.updatePending()) { <span class="settings-update-dot" aria-hidden="true"></span> }
+                    </span>
                     <span class="options-nav-description">{{ section.description }}</span>
                 </button>
                 }
@@ -719,7 +726,9 @@
                 <button type="button" class="mobile-settings-item" role="listitem"
                     (click)="openMobileSection(section.id)">
                     <span class="mobile-settings-copy">
-                        <span class="mobile-settings-label">{{ section.title }}</span>
+                        <span class="mobile-settings-label">{{ section.title }}
+                            @if (section.id === 'General' && appUpdateService.updatePending()) { <span class="settings-update-dot" aria-hidden="true"></span> }
+                        </span>
                         <span class="mobile-settings-description">{{ section.description }}</span>
                     </span>
                     <svg class="mobile-settings-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"

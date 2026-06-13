@@ -2990,7 +2990,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.error).toBeNull();
         expect(preview.units.map((generatedUnit) => generatedUnit.unit.name)).toEqual(['MUL Visible Unknown']);
         expect(preview.explanationLines[0]).toContain('Eligible units: 1 units. Availability-positive candidates: 1 units.');
-        expect(preview.explanationLines.some((line) => line.includes('R 1 / S 0'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('R 10 / S 0'))).toBeTrue();
     });
 
     it('keeps MUL fallback unknown weights requisition-only when another scoped pair already contributed exact MegaMek weights', () => {
@@ -3051,7 +3051,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.explanationLines.some((line) => {
             return line.includes('Generation context: Draconis Combine - Age of War. Availability weights: max R/S across 2 factions.');
         })).toBeTrue();
-        expect(preview.explanationLines.some((line) => line.includes('requisition pick, R 1 / S 0'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('requisition pick, R 10 / S 0'))).toBeTrue();
     });
 
     it('keeps excluding MUL-invisible units that are missing MegaMek availability records', () => {

@@ -1137,6 +1137,29 @@ hr.divider {
     border: 0;
 }
 
+
+
+.update-marker-anchor {
+    position: relative;
+}
+
+.update-marker {
+    position: absolute;
+    right: 4px;
+    top: 4px;
+    width: 9px;
+    height: 9px;
+    border: 2px solid var(--background-color-menu);
+    border-radius: 50%;
+    background: var(--bt-yellow);
+    pointer-events: none;
+
+    &.wrapped {
+        top: -2px;
+        right: -4px;
+    }
+}
+
 /* Unit Card */
 .unit-card {
     display: flex;

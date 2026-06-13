@@ -18,6 +18,7 @@ import { UrlService } from './services/url.service';
 import { SavedSearchesService } from './services/saved-searches.service';
 import { LoggerService } from './services/logger.service';
 import { GameSystem } from './models/common.model';
+import { AppUpdateService } from './services/app-update.service';
 
 describe('App', () => {
   const reloadHashStorageKey = 'mekbay:sw-update-reload-hash';
@@ -155,6 +156,7 @@ describe('App', () => {
   afterEach(() => {
     fixture?.destroy();
     fixture = null;
+    document.querySelectorAll('.mekbay-bootstrap-update-screen').forEach((element) => element.remove());
     localStorage.removeItem(reloadHashStorageKey);
     versionUpdates.complete();
   });
@@ -165,30 +167,19 @@ describe('App', () => {
     expect(app).toBeTruthy();
   });
 
-  it('suppresses auto reload when the same ready version already triggered a reload attempt', () => {
-    localStorage.setItem(reloadHashStorageKey, 'hash-ready');
+  it('does not check for service worker updates immediately after full app startup', () => {
     swUpdateMock.isEnabled = true;
 
     fixture = TestBed.createComponent(App);
-    const app = fixture.componentInstance as any;
 
-    versionUpdates.next({
-      type: 'VERSION_READY',
-      currentVersion: { hash: 'hash-old' },
-      latestVersion: { hash: 'hash-ready' },
-    });
-
-    expect(app.updateAvailable()).toBeTrue();
-    expect(app.updateAutoReloadEnabled()).toBeFalse();
+    expect(swUpdateMock.checkForUpdate).not.toHaveBeenCalled();
   });
 
-  it('snoozes update prompts for the current session when dismissed', () => {
+  it('marks a service worker update as pending without activating it immediately', () => {
     swUpdateMock.isEnabled = true;
-    const now = 1000000;
-    spyOn(Date, 'now').and.returnValue(now);
 
     fixture = TestBed.createComponent(App);
-    const app = fixture.componentInstance as any;
+    const appUpdateService = TestBed.inject(AppUpdateService);
 
     versionUpdates.next({
       type: 'VERSION_READY',
@@ -196,37 +187,65 @@ describe('App', () => {
       latestVersion: { hash: 'hash-ready' },
     });
 
-    expect(app.updateAvailable()).toBeTrue();
-    expect(app.updateAutoReloadEnabled()).toBeTrue();
-
-    app.dismissUpdatePromptForSession();
-
-    expect(app.updateAvailable()).toBeFalse();
-    expect(app.updateAutoReloadEnabled()).toBeFalse();
-    expect(app.lastUpdateCheck).toBeGreaterThan(now);
-
-    versionUpdates.next({
-      type: 'VERSION_READY',
-      currentVersion: { hash: 'hash-old' },
-      latestVersion: { hash: 'hash-ready' },
-    });
-
-    expect(app.updateAvailable()).toBeFalse();
+    expect(appUpdateService.updatePending()).toBeTrue();
+    expect(swUpdateMock.activateUpdate).not.toHaveBeenCalled();
   });
 
-  it('activates a pending service worker update before reloading', async () => {
+  it('checks for updates on focus only when the hourly cadence is due', async () => {
     swUpdateMock.isEnabled = true;
+    const startTime = 1_000_000;
+    const nowSpy = spyOn(Date, 'now').and.returnValue(startTime);
 
     fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance as any;
-    spyOn(app, 'performPageReload');
-    app.pendingUpdateHash = 'hash-ready';
+    const appUpdateService = TestBed.inject(AppUpdateService);
 
-    await app.reloadForUpdate();
+    app.onFocus();
+    await Promise.resolve();
+    expect(swUpdateMock.checkForUpdate).not.toHaveBeenCalled();
 
-    expect(swUpdateMock.activateUpdate).toHaveBeenCalled();
-    expect(localStorage.getItem(reloadHashStorageKey)).toBe('hash-ready');
-    expect(app.performPageReload).toHaveBeenCalled();
+    nowSpy.and.returnValue(startTime + appUpdateService.updateCheckIntervalMs + 1);
+    app.onFocus();
+    await Promise.resolve();
+
+    expect(swUpdateMock.checkForUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('restarts to install an already pending update after six hours without focus', () => {
+    swUpdateMock.isEnabled = true;
+    const startTime = 1_000_000;
+    spyOn(Date, 'now').and.returnValue(startTime + (6 * 60 * 60 * 1000) + 1);
+
+    fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    const appUpdateService = TestBed.inject(AppUpdateService);
+    const restartSpy = spyOn(appUpdateService, 'restartForUpdate').and.resolveTo();
+
+    app.focusLostAt = startTime;
+    appUpdateService.updatePending.set(true);
+    app.onFocus();
+
+    expect(restartSpy).toHaveBeenCalled();
+    expect(swUpdateMock.checkForUpdate).not.toHaveBeenCalled();
+  });
+
+  it('keeps focus recovery passive after six hours when no update is pending', async () => {
+    swUpdateMock.isEnabled = true;
+    const startTime = 1_000_000;
+    const nowSpy = spyOn(Date, 'now').and.returnValue(startTime);
+
+    fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    const appUpdateService = TestBed.inject(AppUpdateService);
+    const restartSpy = spyOn(appUpdateService, 'restartForUpdate').and.resolveTo();
+
+    app.focusLostAt = startTime;
+    nowSpy.and.returnValue(startTime + (6 * 60 * 60 * 1000) + 1);
+    app.onFocus();
+    await Promise.resolve();
+
+    expect(restartSpy).not.toHaveBeenCalled();
+    expect(swUpdateMock.checkForUpdate).toHaveBeenCalledTimes(1);
   });
 
   it('adds a synthetic Android standalone PWA back history entry', () => {
