@@ -53,7 +53,7 @@ import type {
 } from '../models/megamek/rulesets.model';
 import { LoadForceEntry } from '../models/load-force-entry.model';
 import { MAX_UNITS as FORCE_MAX_UNITS } from '../models/force.model';
-import { MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../models/mulfactions.model';
+import { MULFACTION_EXTINCT, MULFACTION_MERCENARY, MULFACTION_NONE } from '../models/mulfactions.model';
 import type { Options } from '../models/options.model';
 import { getUnitsAverageTechBase } from '../models/tech.model';
 import type { Unit } from '../models/units.model';
@@ -3435,17 +3435,22 @@ export class ForceGeneratorService implements OnDestroy {
     ): Faction | null {
         const candidateFactionIds = new Set(availablePairs.map((pair) => pair.factionId));
         const candidates = selectedFactions.length > 0
-            ? selectedFactions.filter((faction) => candidateFactionIds.has(faction.id))
+            ? selectedFactions.filter((faction) => faction.id !== MULFACTION_NONE && candidateFactionIds.has(faction.id))
             : [...candidateFactionIds]
                 .map((factionId) => this.dataService.getFactionById(factionId))
-                .filter((faction): faction is Faction => faction !== undefined && faction.id !== MULFACTION_EXTINCT);
+                .filter((faction): faction is Faction => faction !== undefined
+                    && faction.id !== MULFACTION_EXTINCT
+                    && faction.id !== MULFACTION_NONE);
 
         if (candidates.length > 0) {
             return pickWeightedRandomEntry(candidates, () => 1);
         }
 
         if (selectedFactions.length > 0) {
-            return pickWeightedRandomEntry(selectedFactions, () => 1);
+            const fallbackCandidates = selectedFactions.filter((faction) => faction.id !== MULFACTION_NONE);
+            return fallbackCandidates.length > 0
+                ? pickWeightedRandomEntry(fallbackCandidates, () => 1)
+                : this.dataService.getFactionById(MULFACTION_MERCENARY) ?? null;
         }
 
         return this.dataService.getFactionById(MULFACTION_MERCENARY) ?? null;
@@ -4941,10 +4946,10 @@ export class ForceGeneratorService implements OnDestroy {
             return context.availabilityFactionIds;
         }
 
-        return context.forceFaction
-            ? [context.forceFaction.id]
-            : context.availabilityFactionIds.length > 0
-                ? [context.availabilityFactionIds[0]]
+        return context.availabilityFactionIds.length > 0
+            ? [context.availabilityFactionIds[0]]
+            : context.forceFaction
+                ? [context.forceFaction.id]
                 : [];
     }
 
