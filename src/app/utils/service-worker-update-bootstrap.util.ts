@@ -6,7 +6,7 @@ const UPDATE_INSTALL_TIMEOUT_MS = 90000;
 const UPDATE_ACTIVATE_TIMEOUT_MS = 10000;
 const CHECKING_SCREEN_DELAY_MS = 600;
 // Local debug switch: set true to simulate the startup update screen once per tab session.
-export const DEBUG_FAKE_BOOTSTRAP_UPDATE = true;
+const DEBUG_FAKE_BOOTSTRAP_UPDATE = false;
 const DEBUG_FAKE_BOOTSTRAP_UPDATE_SESSION_KEY = 'mekbay:debug-fake-bootstrap-update-seen';
 const DEBUG_FAKE_BOOTSTRAP_UPDATE_STEP_MS = 700;
 
