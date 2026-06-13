@@ -330,7 +330,7 @@ export class PageViewerComponent implements AfterViewInit {
     private interactionServiceEffectRefs = new Map<string, EffectRef>();
 
     // Track which SVGs have had interactions set up (to avoid re-setup)
-    private setupInteractionsSvgs = new WeakSet<SVGSVGElement>();
+    private setupInteractionsSvgModes = new WeakMap<SVGSVGElement, 'readonly' | 'full'>();
 
     // Event listener cleanup functions
     private eventListenerCleanups: (() => void)[] = [];
@@ -1122,10 +1122,11 @@ export class PageViewerComponent implements AfterViewInit {
         overlayMode: 'fixed' | 'page'
     ): void {
         if (this.readOnly()) {
+            this.getOrCreateInteractionService(unit, svg, 'readonly');
             return;
         }
 
-        this.getOrCreateInteractionService(unit, svg);
+        this.getOrCreateInteractionService(unit, svg, 'full');
         this.getOrCreateCanvasOverlay(wrapper, unit);
         this.getOrCreateInteractionOverlay(wrapper, unit, overlayMode);
     }
@@ -1496,17 +1497,21 @@ export class PageViewerComponent implements AfterViewInit {
      * Services are keyed by unit ID and persist across re-renders.
      * This avoids constantly re-creating services and re-attaching event listeners.
      */
-    private getOrCreateInteractionService(unit: CBTForceUnit, svg: SVGSVGElement): SvgInteractionService {
+    private getOrCreateInteractionService(unit: CBTForceUnit, svg: SVGSVGElement, mode: 'readonly' | 'full' = 'full'): SvgInteractionService {
         const unitId = unit.id;
         
         // Check if we already have a service for this unit
         const existingService = this.interactionServices.get(unitId);
         if (existingService) {
             // Check if this SVG already has interactions set up
-            if (!this.setupInteractionsSvgs.has(svg)) {
+            if (this.setupInteractionsSvgModes.get(svg) !== mode) {
                 existingService.updateUnit(unit);
-                existingService.setupInteractions(svg);
-                this.setupInteractionsSvgs.add(svg);
+                if (mode === 'readonly') {
+                    existingService.setupReadOnlyInteractions(svg);
+                } else {
+                    existingService.setupInteractions(svg);
+                }
+                this.setupInteractionsSvgModes.set(svg, mode);
             }
             return existingService;
         }
@@ -1521,8 +1526,12 @@ export class PageViewerComponent implements AfterViewInit {
         );
         
         service.updateUnit(unit);
-        service.setupInteractions(svg);
-        this.setupInteractionsSvgs.add(svg);
+        if (mode === 'readonly') {
+            service.setupReadOnlyInteractions(svg);
+        } else {
+            service.setupInteractions(svg);
+        }
+        this.setupInteractionsSvgModes.set(svg, mode);
         
         // Monitor heat marker state for this service
         const effectRef = effect(() => {
@@ -1663,7 +1672,7 @@ export class PageViewerComponent implements AfterViewInit {
         this.heatDiffMarkers.set(new Map());
         
         // Also clear the SVG tracking set (WeakSet doesn't need explicit clearing but we note it)
-        this.setupInteractionsSvgs = new WeakSet<SVGSVGElement>();
+        this.setupInteractionsSvgModes = new WeakMap<SVGSVGElement, 'readonly' | 'full'>();
     }
 
     /**

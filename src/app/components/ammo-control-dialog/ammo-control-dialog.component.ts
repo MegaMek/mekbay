@@ -8,6 +8,8 @@ export interface AmmoControlDialogData {
     title: string;
     entries: AmmoControlEntry[];
     context: HandlerContext;
+    readOnly?: boolean;
+    getEntries?: () => AmmoControlEntry[];
 }
 
 @Component({
@@ -21,7 +23,7 @@ export interface AmmoControlDialogData {
     <div class="wide-dialog ammo-control-dialog">
         <h2 class="wide-dialog-title">{{ data.title }}</h2>
         <div class="wide-dialog-body">
-            <div class="ammo-control-list">
+            <div class="ammo-control-list" [class.read-only]="readOnly()">
                 @for (group of groups(); track group.id) {
                     <div class="ammo-control-row" [class.destroyed]="group.destroyed">
                         <div class="ammo-control-label" [class.expandable]="group.expandable">
@@ -38,7 +40,7 @@ export interface AmmoControlDialogData {
                             @if (isExpanded(group)) {
                                 <div class="ammo-bin-list">
                                     @for (entry of group.entries; track entry.id) {
-                                        <button class="ammo-bin" type="button" (click)="setAmmoBin(entry)" [disabled]="entry.destroyed" [class.destroyed]="entry.destroyed">
+                                        <button class="ammo-bin" type="button" (click)="setAmmoBin(entry)" [disabled]="entry.destroyed || readOnly()" [class.destroyed]="entry.destroyed">
                                             <span class="ammo-bin-name">{{ entry.displayName }}</span>
                                             <span class="ammo-count">{{ remaining(entry) }}/{{ entry.totalAmmo }}</span>
                                         </button>
@@ -46,7 +48,7 @@ export interface AmmoControlDialogData {
                                 </div>
                             }
                         </div>
-                        @if (!group.destroyed) {
+                        @if (!group.destroyed && !readOnly()) {
                             <div class="ammo-control-actions">
                                 <button class="bt-button square-small" type="button" (click)="decrement(group)" [disabled]="groupRemaining(group) <= 0">-1</button>
                                 <button class="bt-button square-small" type="button" (click)="increment(group)" [disabled]="groupRemaining(group) >= group.totalAmmo">+1</button>
@@ -182,10 +184,24 @@ export interface AmmoControlDialogData {
             text-decoration: underline dotted var(--text-color-secondary);
         }
 
+        .ammo-control-list.read-only .ammo-bin {
+            cursor: default;
+        }
+
+        .ammo-control-list.read-only .ammo-bin-name {
+            text-decoration: none;
+        }
+
         .ammo-bin.destroyed .ammo-bin-name {
             text-decoration-line: underline, line-through;
             text-decoration-style: dotted, solid;
             text-decoration-color: var(--text-color-secondary), var(--damage-color);
+        }
+
+        .ammo-control-list.read-only .ammo-bin.destroyed .ammo-bin-name {
+            text-decoration-line: line-through;
+            text-decoration-style: solid;
+            text-decoration-color: var(--damage-color);
         }
 
         @container (max-width: 520px) {
@@ -207,7 +223,12 @@ export class AmmoControlDialogComponent {
 
     groups(): AmmoControlGroup[] {
         this.revision();
-        return getAmmoControlGroups(this.data.entries);
+        return getAmmoControlGroups(this.data.getEntries?.() ?? this.data.entries);
+    }
+
+    readOnly(): boolean {
+        const entries = this.data.getEntries?.() ?? this.data.entries;
+        return this.data.readOnly ?? entries[0]?.owner.readOnly() ?? false;
     }
 
     isExpanded(group: AmmoControlGroup): boolean {
@@ -239,24 +260,28 @@ export class AmmoControlDialogComponent {
     }
 
     decrement(group: AmmoControlGroup): void {
+        if (this.readOnly()) return;
         if (changeAmmoGroupRemaining(group, -1, this.data.context)) {
             this.revision.update(value => value + 1);
         }
     }
 
     increment(group: AmmoControlGroup): void {
+        if (this.readOnly()) return;
         if (changeAmmoGroupRemaining(group, 1, this.data.context)) {
             this.revision.update(value => value + 1);
         }
     }
 
     async setAmmo(group: AmmoControlGroup): Promise<void> {
+        if (this.readOnly()) return;
         if (await setAmmoGroup(group, this.data.context)) {
             this.revision.update(value => value + 1);
         }
     }
 
     async setAmmoBin(entry: AmmoControlEntry): Promise<void> {
+        if (this.readOnly()) return;
         if (await setAmmoEntry(entry, this.data.context)) {
             this.revision.update(value => value + 1);
         }

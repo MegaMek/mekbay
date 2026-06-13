@@ -199,6 +199,15 @@ export class SvgInteractionService {
         this.setupAmmoProfileInteractions(svg, signal);
     }
 
+    setupReadOnlyInteractions(svg: SVGSVGElement) {
+        if (this.interactionAbortController) {
+            this.interactionAbortController.abort();
+        }
+        this.interactionAbortController = new AbortController();
+        const signal = this.interactionAbortController.signal;
+        this.setupAmmoProfileInteractions(svg, signal);
+    }
+
     private addSvgTapHandler(
         el: SVGElement,
         handler: (evt: PointerEvent, primaryAction: boolean) => void,
@@ -1001,6 +1010,8 @@ export class SvgInteractionService {
                 data: {
                     title: 'Ammo',
                     entries,
+                    readOnly: unit.readOnly(),
+                    getEntries: () => getAmmoControlEntriesForUnitWeapons(unit, this.dataService.getEquipments()),
                     context: {
                         toastService: this.toastService,
                         dialogsService: this.dialogsService,

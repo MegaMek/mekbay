@@ -18,7 +18,7 @@ export class WeaponAmmoHandler extends EquipmentInteractionHandler {
         const entries = getAmmoControlEntriesForWeapon(equipment, context);
         if (entries.length === 0) return [];
 
-        if (entries.length === 1) {
+        if (entries.length === 1 && !equipment.owner.readOnly()) {
             const entry = entries[0];
             const remaining = getAmmoEntryRemaining(entry);
             return [
@@ -32,8 +32,7 @@ export class WeaponAmmoHandler extends EquipmentInteractionHandler {
             {
                 label: 'Ammo',
                 value: 'weapon-ammo-dialog',
-                displayType: 'button',
-                disabled: entries.every(entry => entry.destroyed)
+                displayType: 'button'
             }
         ];
     }
@@ -47,6 +46,8 @@ export class WeaponAmmoHandler extends EquipmentInteractionHandler {
                 data: {
                     title: `${equipment.equipment?.shortName ?? equipment.name} Ammo`,
                     entries,
+                    readOnly: equipment.owner.readOnly(),
+                    getEntries: () => getAmmoControlEntriesForWeapon(equipment, context),
                     context
                 } as AmmoControlDialogData,
             });

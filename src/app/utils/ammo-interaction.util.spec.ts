@@ -144,7 +144,7 @@ describe('ammo interaction direct inventory groups', () => {
             svg: () => null,
         } as unknown as Pick<CBTForceUnit, 'id' | 'setCritSlot' | 'getUnit'>;
         const entries = [
-            createCritEntry({ id: 'ammo-lt-0', loc: 'LT', slot: 0, ammo: standardAmmo, owner }),
+            createCritEntry({ id: 'ammo-lt-5', loc: 'LT', slot: 5, ammo: standardAmmo, owner }),
             createCritEntry({ id: 'ammo-lt-1', loc: 'LT', slot: 1, ammo: standardAmmo, owner }),
             createCritEntry({ id: 'ammo-rt-0', loc: 'RT', slot: 0, ammo: standardAmmo, owner }),
         ];
@@ -156,6 +156,7 @@ describe('ammo interaction direct inventory groups', () => {
         expect(groups[0].displayName).toBe('Clan Ultra AC/20 Ammo');
         expect(groups[0].expandable).toBeTrue();
         expect(groups[0].entries.length).toBe(2);
+        expect(groups[0].entries.map(entry => (entry.source as CriticalSlot).slot)).toEqual([1, 5]);
         expect(groups[0].totalAmmo).toBe(10);
         expect(groups[1].locationLabel).toBe('RT');
         expect(groups[1].expandable).toBeFalse();

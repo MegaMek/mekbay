@@ -166,6 +166,16 @@ function sortAmmoControlEntries(entries: AmmoControlEntry[]): AmmoControlEntry[]
     });
 }
 
+function compareAmmoControlEntryOrder(a: AmmoControlEntry, b: AmmoControlEntry): number {
+    if (a.sourceType === 'crit' && b.sourceType === 'crit') {
+        const aSlot = (a.source as CriticalSlot).slot ?? Number.MAX_SAFE_INTEGER;
+        const bSlot = (b.source as CriticalSlot).slot ?? Number.MAX_SAFE_INTEGER;
+        if (aSlot !== bSlot) return aSlot - bSlot;
+    }
+
+    return a.id.localeCompare(b.id);
+}
+
 export function getAmmoControlEntriesForWeapon(equipment: MountedEquipment, context: HandlerContext): AmmoControlEntry[] {
     if (!(equipment.equipment instanceof WeaponEquipment)) return [];
     const equipmentMap = context.dataService.getEquipments();
@@ -249,7 +259,7 @@ function createAmmoControlGroup(entries: AmmoControlEntry[]): AmmoControlGroup {
 }
 
 function syncGroupTotals(group: AmmoControlGroup): void {
-    group.entries.sort((a, b) => a.id.localeCompare(b.id));
+    group.entries.sort(compareAmmoControlEntryOrder);
     group.id = group.entries.map(entry => entry.id).join('|');
     group.totalAmmo = group.entries.reduce((total, entry) => total + entry.totalAmmo, 0);
     group.consumed = group.entries.reduce((total, entry) => total + entry.consumed, 0);
@@ -329,7 +339,7 @@ export function getAmmoGroupRemaining(group: AmmoControlGroup): number {
 export function changeAmmoGroupRemaining(group: AmmoControlGroup, deltaRemaining: number, context: HandlerContext): boolean {
     if (group.entries.length === 1) return changeAmmoEntryRemaining(group.entries[0], deltaRemaining, context);
 
-    const sortedEntries = [...group.entries].sort((a, b) => a.id.localeCompare(b.id));
+    const sortedEntries = [...group.entries].sort(compareAmmoControlEntryOrder);
     let changed = false;
 
     if (deltaRemaining < 0) {
@@ -454,7 +464,7 @@ export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerCont
         : firstEntry.currentAmmo;
     let remainingToAllocate = clamp(newAmmoValue.quantity, 0, getTotalAmmoForAmmoType(firstEntry.originalAmmo, originalTotalAmmo, selectedAmmo));
 
-    for (const entry of group.entries.sort((a, b) => a.id.localeCompare(b.id))) {
+    for (const entry of group.entries.sort(compareAmmoControlEntryOrder)) {
         const newTotalAmmo = getTotalAmmoForAmmoType(entry.originalAmmo, entry.originalTotalAmmo, selectedAmmo);
         const newRemaining = Math.min(newTotalAmmo, remainingToAllocate);
         remainingToAllocate -= newRemaining;
