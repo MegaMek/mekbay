@@ -6,7 +6,7 @@ import type { Era } from '../models/eras.model';
 import type { Faction } from '../models/factions.model';
 import type { MegaMekFactionRecord } from '../models/megamek/factions.model';
 import type { MegaMekRulesetRecord } from '../models/megamek/rulesets.model';
-import { MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../models/mulfactions.model';
+import { MULFACTION_EXTINCT, MULFACTION_MERCENARY, MULFACTION_NONE } from '../models/mulfactions.model';
 import type { AvailabilitySource } from '../models/options.model';
 import type { Unit } from '../models/units.model';
 import type { ForcePreviewEntry } from '../models/force-preview.model';
@@ -516,6 +516,100 @@ describe('ForceGeneratorService', () => {
         expect(context.forceEra).toBe(era);
         expect(context.availabilityFactionIds).toEqual([20]);
         expect(context.useAvailabilityFactionScope).toBeFalse();
+    });
+
+    it('does not use None as the rolled force faction while merged availability still includes it', () => {
+        const era = createEra(3150, 'ilClan');
+        const federatedSuns = createFaction(10, 'Federated Suns');
+        const noneFaction = createFaction(MULFACTION_NONE, 'None', 'Other');
+        const unit = createUnit({ name: 'Merged None Atlas' });
+
+        registerEraAndFaction(era, federatedSuns);
+        factionsByName.set(noneFaction.name, noneFaction);
+        factionsById.set(noneFaction.id, noneFaction);
+        megaMekAvailabilityByUnitName.set(unit.name, {
+            e: {
+                '3150': {
+                    '10': [3, 1],
+                    [String(MULFACTION_NONE)]: [2, 2],
+                },
+            },
+        });
+
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            era: {
+                interactedWith: true,
+                value: ['ilClan'],
+            },
+            faction: {
+                interactedWith: true,
+                value: {
+                    fs: { name: 'Federated Suns', state: 'or', count: 1 },
+                    none: { name: 'None', state: 'or', count: 1 },
+                },
+            },
+        });
+        spyOn(Math, 'random').and.returnValue(0.75);
+
+        const context = service.resolveGenerationContext([unit], { mergeSelectedFactionAvailability: true });
+
+        expect(context.forceFaction).toBe(federatedSuns);
+        expect(context.forceEra).toBe(era);
+        expect(context.availabilityFactionIds).toEqual([10, MULFACTION_NONE]);
+        expect(context.useAvailabilityFactionScope).toBeTrue();
+    });
+
+    it('uses Mercenary as the force faction when only None is selected', () => {
+        const era = createEra(3150, 'ilClan');
+        const mercenary = createFaction(MULFACTION_MERCENARY, 'Mercenary');
+        const noneFaction = createFaction(MULFACTION_NONE, 'None', 'Other');
+        const unit = createUnit({ name: 'Only None Atlas' });
+
+        registerEraAndFaction(era, noneFaction);
+        factionsByName.set(mercenary.name, mercenary);
+        factionsById.set(mercenary.id, mercenary);
+        megaMekAvailabilityByUnitName.set(unit.name, {
+            e: {
+                '3150': {
+                    [String(MULFACTION_NONE)]: [2, 2],
+                },
+            },
+        });
+
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            era: {
+                interactedWith: true,
+                value: ['ilClan'],
+            },
+            faction: {
+                interactedWith: true,
+                value: {
+                    none: { name: 'None', state: 'or', count: 1 },
+                },
+            },
+        });
+
+        const context = service.resolveGenerationContext([unit]);
+
+        expect(context.forceFaction).toBe(mercenary);
+        expect(context.forceEra).toBe(era);
+        expect(context.availabilityFactionIds).toEqual([MULFACTION_NONE]);
+        expect(context.useAvailabilityFactionScope).toBeFalse();
+
+        const preview = service.buildPreview({
+            eligibleUnits: [unit],
+            context,
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            budgetRange: { min: 0, max: 10 },
+            minUnitCount: 1,
+            maxUnitCount: 1,
+            gunnery: 4,
+            piloting: 5,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map((generatedUnit) => generatedUnit.unit.name)).toEqual(['Only None Atlas']);
+        expect(preview.explanationLines.some((line) => line.includes('R 2 / S 2'))).toBeTrue();
     });
 
     it('limits implicit faction scope to factions with positive availability in the selected era', () => {
@@ -2896,7 +2990,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.error).toBeNull();
         expect(preview.units.map((generatedUnit) => generatedUnit.unit.name)).toEqual(['MUL Visible Unknown']);
         expect(preview.explanationLines[0]).toContain('Eligible units: 1 units. Availability-positive candidates: 1 units.');
-        expect(preview.explanationLines.some((line) => line.includes('R 1 / S 0'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('R 10 / S 0'))).toBeTrue();
     });
 
     it('keeps MUL fallback unknown weights requisition-only when another scoped pair already contributed exact MegaMek weights', () => {
@@ -2957,7 +3051,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.explanationLines.some((line) => {
             return line.includes('Generation context: Draconis Combine - Age of War. Availability weights: max R/S across 2 factions.');
         })).toBeTrue();
-        expect(preview.explanationLines.some((line) => line.includes('requisition pick, R 1 / S 0'))).toBeTrue();
+        expect(preview.explanationLines.some((line) => line.includes('requisition pick, R 10 / S 0'))).toBeTrue();
     });
 
     it('keeps excluding MUL-invisible units that are missing MegaMek availability records', () => {

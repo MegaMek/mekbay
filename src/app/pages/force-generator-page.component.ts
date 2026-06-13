@@ -31,21 +31,33 @@
  * affiliated with Microsoft.
  */
 
-/**
- * Builds a shareable root URL (`{origin}/?{query}`) from query parameters.
- * Parameters with null/undefined values are omitted. Uses the same
- * URLSearchParams serialization as the app URL, so shared links match
- * the URLs the app itself produces.
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ForceBuilderService } from '../services/force-builder.service';
+import { RoutedDialogPage } from './routed-dialog-page';
+
+/*
+ * Author: Drake
  */
-export function buildShareUrl(
-    origin: string,
-    params: Record<string, string | number | null | undefined>,
-): string {
-    const searchParams = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-        if (value === null || value === undefined) continue;
-        searchParams.set(key, String(value));
+
+/**
+ * Routed page for the force generator dialog (/forcegenerator).
+ * The optional `importCurrentForce` flag is passed via navigation state.
+ */
+@Component({
+    selector: 'force-generator-page',
+    template: '',
+    changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class ForceGeneratorPageComponent extends RoutedDialogPage {
+    private readonly forceBuilderService = inject(ForceBuilderService);
+
+    /** Navigation state must be read during construction (while the navigation is running). */
+    private readonly importCurrentForce =
+        (this.router.currentNavigation()?.extras?.state ?? history.state)?.importCurrentForce === true;
+
+    protected override openDialog() {
+        return this.forceBuilderService.openSearchForceGeneratorDialog({
+            importCurrentForce: this.importCurrentForce,
+        });
     }
-    const query = searchParams.toString();
-    return query ? `${origin}/?${query}` : `${origin}/`;
 }

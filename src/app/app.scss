@@ -16,11 +16,11 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background-color: var(--background-color-menu);
+    background: linear-gradient(225deg, #333333 0%, #101010 100%);
     position: relative;
 
     @media print {
-        background-color: unset;
+        background: unset;
         overflow: unset;
     }
 }
@@ -284,6 +284,7 @@ svg-viewer {
     }
 
     .home-button {
+        position: relative;
         background: none;
         padding: 0;
         border: none;
@@ -299,6 +300,7 @@ svg-viewer {
     }
 
     .home-action-button {
+        position: relative;
         width: auto;
         height: 36px;
         min-width: 110px;
@@ -443,6 +445,7 @@ svg-viewer {
 }
 
 .home-panel-action {
+    position: relative;
     width: 100%;
     min-height: 52px;
     display: flex;

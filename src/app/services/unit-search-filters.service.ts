@@ -55,7 +55,7 @@ import { LoggerService } from './logger.service';
 import { GameSystem } from '../models/common.model';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import { GameService } from './game.service';
-import { UrlStateService } from './url-state.service';
+import { UrlService } from './url.service';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
 import { filterStateToSemanticText, tokensToFilterState, type WildcardPattern } from '../utils/semantic-filter.util';
 import { parseSemanticQueryAST, stripSemanticFieldsFromParseResult, type ParseResult, type ParseError, isComplexQuery } from '../utils/semantic-filter-ast.util';
@@ -173,7 +173,7 @@ export class UnitSearchFiltersService {
     gameService = inject(GameService);
     logger = inject(LoggerService);
     private readonly searchWorkerFactory = inject(SEARCH_WORKER_FACTORY);
-    private urlStateService = inject(UrlStateService);
+    private urlService = inject(UrlService);
     private userStateService = inject(UserStateService);
     private publicTagsService = inject(PublicTagsService);
     private tagsService = inject(TagsService);
@@ -2359,9 +2359,6 @@ export class UnitSearchFiltersService {
     }
 
     constructor() {
-        // Register as a URL state consumer - must call markConsumerReady when done reading URL
-        this.urlStateService.registerConsumer('unit-search-filters');
-
         if (this.workerSearchEnabled()) {
             this.logger.info('Unit search worker startup: enabled');
             this.searchWorkerClient = new UnitSearchWorkerClient({
@@ -3588,9 +3585,8 @@ export class UnitSearchFiltersService {
         effect(() => {
             const isDataReady = this.dataService.isDataReady();
             if (isDataReady && !this.urlStateInitialized()) {
-                this.applyParamsCore(this.urlStateService.initialState.params);
+                this.applyParamsCore(this.urlService.initialParams);
                 this.urlStateInitialized.set(true);
-                this.urlStateService.markConsumerReady('unit-search-filters');
             }
         });
     }
@@ -3694,8 +3690,7 @@ export class UnitSearchFiltersService {
             if (!this.urlStateInitialized()) {
                 return;
             }
-            // Use centralized URL state service to avoid race conditions
-            this.urlStateService.setParams(queryParameters);
+            this.urlService.setQueryParams(queryParameters);
         });
     }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -37,7 +37,6 @@ import { ConfirmDialogComponent, type ConfirmDialogData } from '../components/co
 import { InputDialogComponent, type InputDialogData } from '../components/input-dialog/input-dialog.component';
 import { Dialog, type DialogRef as CdkDialogRef, type DIALOG_DATA } from '@angular/cdk/dialog';
 import type { ComponentType } from '@angular/cdk/portal';
-import { UrlStateService, type AppPageId } from './url-state.service';
 
 /*
  * Author: Drake
@@ -66,7 +65,6 @@ export interface DialogOptions<D = unknown> {
 @Injectable({ providedIn: 'root' })
 export class DialogsService {
     private dialog = inject(Dialog);
-    private urlStateService = inject(UrlStateService);
 
     // Generic dialog creator using CDK Overlay, compatible with components expecting CDK Dialog
     public createDialog<R = any, T = any, D = unknown>(
@@ -92,21 +90,6 @@ export class DialogsService {
             closed: cdkRef.closed,
             close: (result?: R) => cdkRef.close(result)
         };
-    }
-
-    /**
-     * Opens a dialog that represents an app "page": while it is open the URL
-     * path reflects the page (e.g. /toe) and reverts to '/' when it closes.
-     */
-    public createPageDialog<R = any, T = any, D = unknown>(
-        page: AppPageId,
-        component: ComponentType<T>,
-        opts?: DialogOptions<D>
-    ): DialogRef<T, R> {
-        const ref = this.createDialog<R, T, D>(component, opts);
-        this.urlStateService.openPage(page);
-        ref.closed.subscribe(() => this.urlStateService.closePage(page));
-        return ref;
     }
 
     async showNoticeHtml(messageHtml: string, title = 'Notice'): Promise<void> {

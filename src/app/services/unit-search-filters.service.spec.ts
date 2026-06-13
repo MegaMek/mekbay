@@ -19,7 +19,7 @@ import { TagsService } from './tags.service';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
 import { UnitInitializerService } from './unit-initializer.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
-import { UrlStateService } from './url-state.service';
+import { UrlService } from './url.service';
 import { UserStateService } from './userState.service';
 import { WsService } from './ws.service';
 import {
@@ -662,15 +662,11 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         const httpClientStub = {};
 
-        const urlStateServiceStub = {
-            initialState: {
-                gameSystem: null,
-                hasMeaningfulParams: false,
-                params: new URLSearchParams(),
-            },
-            registerConsumer: jasmine.createSpy('registerConsumer'),
-            markConsumerReady: jasmine.createSpy('markConsumerReady'),
-            setParams: jasmine.createSpy('setParams'),
+        const urlServiceStub = {
+            initialParams: new URLSearchParams(),
+            initialPathname: '/',
+            getGameSystemOverride: () => null,
+            setQueryParams: jasmine.createSpy('setQueryParams'),
         };
 
         const tagsServiceStub = {
@@ -717,7 +713,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 { provide: UnitInitializerService, useValue: unitInitializerStub },
                 { provide: OptionsService, useValue: optionsServiceStub },
                 { provide: GameService, useValue: gameServiceStub },
-                { provide: UrlStateService, useValue: urlStateServiceStub },
+                { provide: UrlService, useValue: urlServiceStub },
                 { provide: UserStateService, useValue: userStateServiceStub },
                 { provide: PublicTagsService, useValue: publicTagsServiceStub },
                 { provide: TagsService, useValue: tagsServiceStub },

@@ -19,6 +19,7 @@ import { AlignmentPickerDialogComponent, type AlignmentPickerResult } from '../a
 import { AddExternalForceDialogComponent } from '../add-external-force-dialog/add-external-force-dialog.component';
 import { getFactionImg } from '../../models/factions.model';
 import { GameSystem } from '../../models/common.model';
+import { AppUpdateService } from '../../services/app-update.service';
 
 /*
  * Sidebar footer component
@@ -39,6 +40,7 @@ export class SidebarFooterComponent {
     forceBuilderService = inject(ForceBuilderService);
     dialogsService = inject(DialogsService);
     dataService = inject(DataService);
+    appUpdateService = inject(AppUpdateService);
     compactModeService = inject(CompactModeService);
     menuTriggers = viewChildren<CdkMenuTrigger>(CdkMenuTrigger);
 

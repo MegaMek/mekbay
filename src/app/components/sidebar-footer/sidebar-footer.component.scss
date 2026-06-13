@@ -90,6 +90,18 @@
     }
 }
 
+.update-marker {
+    right: 2px;
+    top: 2px;
+}
+
+.menu-item .update-marker {
+    width: 7px;
+    height: 7px;
+    right: -4px;
+    top: -4px;
+}
+
 .alignment-filter-btn {
     transition: color 0.2s, background-color 0.2s;
 

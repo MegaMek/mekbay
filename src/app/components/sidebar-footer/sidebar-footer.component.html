@@ -21,11 +21,12 @@
         }
     </button>
     }
-    <button class="bt-button square-large" [cdkMenuTriggerFor]="generalMenu" title="Menu">
+    <button class="bt-button square-large update-marker-anchor" [cdkMenuTriggerFor]="generalMenu" title="Menu">
         <svg width="24px" height="24px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
             <path fill-rule="evenodd" clip-rule="evenodd"
                 d="M12 7C10.3431 7 9 5.65685 9 4C9 2.34315 10.3431 1 12 1C13.6569 1 15 2.34315 15 4C15 5.65685 13.6569 7 12 7ZM12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9ZM12 17C10.3431 17 9 18.3431 9 20C9 21.6569 10.3431 23 12 23C13.6569 23 15 21.6569 15 20C15 18.3431 13.6569 17 12 17Z" />
         </svg>
+        @if (appUpdateService.updatePending()) { <span class="update-marker" aria-hidden="true"></span> }
     </button>
     } @else {
     <button class="bt-button square" (click)="toggleCompactMode()" title="Toggle Compact Mode">
@@ -143,11 +144,12 @@
     c0-10.818,8.76-19.586,19.578-19.586c10.81,0,19.586,8.767,19.586,19.586C469.61,255.723,460.835,264.492,450.024,264.492z" />
                 </svg>
             </button> -->
-    <button class="bt-button square" [cdkMenuTriggerFor]="generalMenu" title="Menu">
+    <button class="bt-button square update-marker-anchor" [cdkMenuTriggerFor]="generalMenu" title="Menu">
         <svg width="20px" height="20px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
             <path fill-rule="evenodd" clip-rule="evenodd"
                 d="M12 7C10.3431 7 9 5.65685 9 4C9 2.34315 10.3431 1 12 1C13.6569 1 15 2.34315 15 4C15 5.65685 13.6569 7 12 7ZM12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9ZM12 17C10.3431 17 9 18.3431 9 20C9 21.6569 10.3431 23 12 23C13.6569 23 15 21.6569 15 20C15 18.3431 13.6569 17 12 17Z" />
         </svg>
+        @if (appUpdateService.updatePending()) { <span class="update-marker" aria-hidden="true"></span> }
     </button>
     }
     <ng-template #forcesSubmenu>
@@ -402,12 +404,15 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
             }
             <hr class="divider" />
             <button class="menu-item" cdkMenuItem (click)="showOptionsDialog()">
-                <span class="icon"><svg fill="currentColor" width="32px" height="32px" viewBox="0 0 1920 1920"
+                <span class="icon update-marker-anchor"><svg fill="currentColor" width="32px" height="32px" viewBox="0 0 1920 1920"
                         xmlns="http://www.w3.org/2000/svg">
                         <path
                             d="M1703.534 960c0-41.788-3.84-84.48-11.633-127.172l210.184-182.174-199.454-340.856-265.186 88.433c-66.974-55.567-143.323-99.389-223.85-128.415L1158.932 0h-397.78L706.49 269.704c-81.43 29.138-156.423 72.282-223.962 128.414l-265.073-88.32L18 650.654l210.184 182.174C220.39 875.52 216.55 918.212 216.55 960s3.84 84.48 11.633 127.172L18 1269.346l199.454 340.856 265.186-88.433c66.974 55.567 143.322 99.389 223.85 128.415L761.152 1920h397.779l54.663-269.704c81.318-29.138 156.424-72.282 223.963-128.414l265.073 88.433 199.454-340.856-210.184-182.174c7.793-42.805 11.633-85.497 11.633-127.285m-743.492 395.294c-217.976 0-395.294-177.318-395.294-395.294 0-217.976 177.318-395.294 395.294-395.294 217.977 0 395.294 177.318 395.294 395.294 0 217.976-177.317 395.294-395.294 395.294"
                             fill-rule="evenodd" />
-                    </svg></span> Options...</button>
+                    </svg>
+                    @if (appUpdateService.updatePending()) { <span class="update-marker" aria-hidden="true"></span> }
+                </span> Options...
+            </button>
         </div>
     </ng-template>
 </div>

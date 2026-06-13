@@ -49,7 +49,7 @@ export interface EraDisplayInfo {
             <div class="dropdown-option none-option"
                  [class.active]="!selectedEraId()"
                  (click)="onSelectNone()">
-                <div class="era-icon-spacer" aria-hidden="true"></div>
+                <img src="/images/factions/none.png" class="era-icon" alt="No Era" />
                 <div class="none-option-details">
                     <div class="era-header">
                         <span class="era-name">Any</span>

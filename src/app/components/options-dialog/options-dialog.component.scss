@@ -164,6 +164,9 @@
 }
 
 .options-nav-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   font-weight: 500;
 }
 
@@ -248,7 +251,24 @@
 }
 
 .mobile-settings-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   font-weight: 500;
+}
+
+.settings-update-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--bt-yellow);
+}
+
+.restart-update-button {
+  width: 100%;
+  background-color: var(--bt-yellow-background);
 }
 
 .mobile-settings-description {

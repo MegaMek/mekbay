@@ -38,6 +38,13 @@ import { DbService } from '../db.service';
 import { UnitRuntimeService } from '../unit-runtime.service';
 import { CatalogBaseService } from './catalog-base.service';
 
+export function normalizeNullMulUnitIds(units: readonly Unit[]): Unit[] {
+    let nextNullMulId = -1;
+    return units.map((unit) => unit.id > 0
+        ? unit
+        : { ...unit, id: nextNullMulId-- });
+}
+
 @Injectable({
     providedIn: 'root'
 })
@@ -72,7 +79,7 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
     }
 
     protected override hydrate(data: Units): void {
-        this.units = data.units;
+        this.units = normalizeNullMulUnitIds(data.units);
         this.unitRuntimeService.preprocessUnits(this.units);
         this.etag = data.etag || '';
     }

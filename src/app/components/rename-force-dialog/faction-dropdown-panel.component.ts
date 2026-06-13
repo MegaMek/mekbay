@@ -50,7 +50,7 @@ import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-vis
                 <div class="dropdown-option none-option"
                      [class.active]="!selectedFactionId()"
                      (click)="onSelectNone()">
-                    <div class="faction-icon-spacer" aria-hidden="true"></div>
+                    <img src="/images/factions/none.png" class="faction-icon" alt="No Faction" />
                     <div class="none-option-details">
                         <div class="faction-header">
                             <span class="faction-name">None</span>

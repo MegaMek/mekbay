@@ -82,7 +82,7 @@ import { UnitsCatalogService } from './catalogs/units-catalog.service';
 import { UnitsFluffCatalogService } from './catalogs/units-fluff-catalog.service';
 import { EquipmentCatalogService } from './catalogs/equipment-catalog.service';
 import { ForceNameWordsCatalogService } from './catalogs/force-name-words-catalog.service';
-import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
+import { MULFACTION_EXTINCT, MULFACTION_NONE } from '../models/mulfactions.model';
 import { naturalCompare } from '../utils/sort.util';
 import { getUnitVariantGroupKey } from '../utils/unit-variant.util';
 
@@ -507,10 +507,56 @@ export class DataService {
     }
 
     private postprocessData(): void {
+        this.applyNoneFactionMemberships(this.getUnits(), this.getEras(), this.getFactions());
         this.unitRuntimeService.postprocessUnits(this.getUnits(), this.getEras());
         this.unitRuntimeService.linkEquipmentToUnits(this.getUnits(), this.getEquipments());
         const extinctFaction = this.getFactionById(MULFACTION_EXTINCT);
         this.unitSearchIndexService.rebuildIndexes(this.getUnits(), this.getEras(), this.getFactions(), extinctFaction);
+    }
+
+    private applyNoneFactionMemberships(units: readonly Unit[], eras: readonly Era[], factions: readonly Faction[]): void {
+        const noneFaction = this.getFactionById(MULFACTION_NONE);
+        if (!noneFaction) {
+            return;
+        }
+
+        const factionUnitIds = new Set<number>();
+        for (const faction of factions) {
+            if (faction.id === MULFACTION_NONE) {
+                continue;
+            }
+
+            for (const eraUnitIds of Object.values(faction.eras) as Set<number>[]) {
+                for (const unitId of eraUnitIds) {
+                    factionUnitIds.add(unitId);
+                }
+            }
+        }
+
+        const noneUnits = units.filter((unit) => !factionUnitIds.has(unit.id));
+
+        noneFaction.eras = {};
+        for (const era of eras) {
+            const noneEraUnitIds = new Set<number>();
+            for (const unit of noneUnits) {
+                if (!this.isUnitYearValidForEra(unit, era)) {
+                    continue;
+                }
+
+                noneEraUnitIds.add(unit.id);
+                (era.units as Set<number>).add(unit.id);
+            }
+
+            if (noneEraUnitIds.size > 0) {
+                noneFaction.eras[era.id] = noneEraUnitIds;
+                (era.factions as Set<number>).add(MULFACTION_NONE);
+            }
+        }
+    }
+
+    private isUnitYearValidForEra(unit: Pick<Unit, 'year'>, era: Era): boolean {
+        const eraEndYear = era.years.to ?? Number.POSITIVE_INFINITY;
+        return unit.year < eraEndYear;
     }
 
     private async checkForUpdate(): Promise<void> {
