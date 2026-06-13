@@ -11,8 +11,7 @@ export class WeaponAmmoHandler extends EquipmentInteractionHandler {
 
     override applicableTo = (equipment: MountedEquipment): boolean => {
         return equipment.equipment instanceof WeaponEquipment
-            && equipment.equipment.ammoType !== 'NA'
-            && equipment.equipment.rackSize > 0;
+            && equipment.equipment.ammoType !== 'NA';
     };
 
     getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {

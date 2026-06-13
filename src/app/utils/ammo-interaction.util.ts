@@ -145,8 +145,15 @@ function createInventoryAmmoControlEntry(unit: CBTForceUnit, inventoryEntry: Mou
 }
 
 function ammoMatchesWeapon(weapon: WeaponEquipment, ammo: AmmoEquipment): boolean {
-    if (weapon.ammoType === 'NA' || weapon.rackSize <= 0) return false;
+    if (weapon.ammoType === 'NA') return false;
+    if (weapon.rackSize <= 0) return ammo.ammoType === weapon.ammoType;
     return ammo.ammoType === weapon.ammoType && ammo.rackSize === weapon.rackSize;
+}
+
+function getAmmoCompatibilityKey(equipment: WeaponEquipment | AmmoEquipment): string {
+    return equipment.rackSize > 0
+        ? `${equipment.ammoType}:${equipment.rackSize}`
+        : equipment.ammoType;
 }
 
 function sortAmmoControlEntries(entries: AmmoControlEntry[]): AmmoControlEntry[] {
@@ -179,20 +186,20 @@ export function getAmmoControlEntriesForUnitWeapons(unit: CBTForceUnit, equipmen
     const weaponAmmoKeys = new Set(
         unit.getInventory()
             .map(entry => entry.equipment)
-            .filter((equipment): equipment is WeaponEquipment => equipment instanceof WeaponEquipment && equipment.ammoType !== 'NA' && equipment.rackSize > 0)
-            .map(weapon => `${weapon.ammoType}:${weapon.rackSize}`)
+            .filter((equipment): equipment is WeaponEquipment => equipment instanceof WeaponEquipment && equipment.ammoType !== 'NA')
+            .map(weapon => getAmmoCompatibilityKey(weapon))
     );
 
     if (weaponAmmoKeys.size === 0) return [];
 
     const critEntries = unit.getCritSlots()
-        .filter(criticalSlot => criticalSlot.eq instanceof AmmoEquipment && weaponAmmoKeys.has(`${criticalSlot.eq.ammoType}:${criticalSlot.eq.rackSize}`))
+        .filter(criticalSlot => criticalSlot.eq instanceof AmmoEquipment && weaponAmmoKeys.has(getAmmoCompatibilityKey(criticalSlot.eq)))
         .map(criticalSlot => createCriticalSlotAmmoControlEntry(unit, criticalSlot, equipmentMap))
         .filter((entry): entry is AmmoControlEntry => !!entry);
     const inventoryEntries = unit.getInventory()
         .filter(entry => {
             const ammo = getInventoryCurrentAmmo(entry, equipmentMap);
-            return ammo && weaponAmmoKeys.has(`${ammo.ammoType}:${ammo.rackSize}`);
+            return ammo && weaponAmmoKeys.has(getAmmoCompatibilityKey(ammo));
         })
         .map(entry => createInventoryAmmoControlEntry(unit, entry, equipmentMap))
         .filter((entry): entry is AmmoControlEntry => !!entry);
@@ -201,6 +208,7 @@ export function getAmmoControlEntriesForUnitWeapons(unit: CBTForceUnit, equipmen
 }
 
 export function getAmmoEntryRemaining(entry: AmmoControlEntry): number {
+    if (entry.destroyed) return 0;
     return Math.max(0, entry.totalAmmo - entry.consumed);
 }
 

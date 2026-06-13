@@ -23,7 +23,7 @@ export interface AmmoControlDialogData {
         <div class="wide-dialog-body">
             <div class="ammo-control-list">
                 @for (group of groups(); track group.id) {
-                    <div class="ammo-control-row">
+                    <div class="ammo-control-row" [class.destroyed]="group.destroyed">
                         <div class="ammo-control-label" [class.expandable]="group.expandable">
                             <span class="ammo-location">{{ group.locationLabel }}</span>
                             @if (group.expandable) {
@@ -38,7 +38,7 @@ export interface AmmoControlDialogData {
                             @if (isExpanded(group)) {
                                 <div class="ammo-bin-list">
                                     @for (entry of group.entries; track entry.id) {
-                                        <button class="ammo-bin" type="button" (click)="setAmmoBin(entry)" [disabled]="entry.destroyed">
+                                        <button class="ammo-bin" type="button" (click)="setAmmoBin(entry)" [disabled]="entry.destroyed" [class.destroyed]="entry.destroyed">
                                             <span class="ammo-bin-name">{{ entry.displayName }}</span>
                                             <span class="ammo-count">{{ remaining(entry) }}/{{ entry.totalAmmo }}</span>
                                         </button>
@@ -46,11 +46,13 @@ export interface AmmoControlDialogData {
                                 </div>
                             }
                         </div>
-                        <div class="ammo-control-actions">
-                            <button class="bt-button square-small" type="button" (click)="decrement(group)" [disabled]="group.destroyed || groupRemaining(group) <= 0">-1</button>
-                            <button class="bt-button square-small" type="button" (click)="increment(group)" [disabled]="group.destroyed || groupRemaining(group) >= group.totalAmmo">+1</button>
-                            <button class="bt-button" type="button" (click)="setAmmo(group)" [disabled]="group.destroyed">SET AMMO</button>
-                        </div>
+                        @if (!group.destroyed) {
+                            <div class="ammo-control-actions">
+                                <button class="bt-button square-small" type="button" (click)="decrement(group)" [disabled]="groupRemaining(group) <= 0">-1</button>
+                                <button class="bt-button square-small" type="button" (click)="increment(group)" [disabled]="groupRemaining(group) >= group.totalAmmo">+1</button>
+                                <button class="bt-button" type="button" (click)="setAmmo(group)">SET AMMO</button>
+                            </div>
+                        }
                     </div>
                 }
             </div>
@@ -77,6 +79,12 @@ export interface AmmoControlDialogData {
 
         .ammo-control-row:last-child {
             border-bottom: 0;
+        }
+
+        .ammo-control-row.destroyed .ammo-name,
+        .ammo-bin.destroyed {
+            color: var(--damage-color);
+            text-decoration-line: line-through;
         }
 
         .ammo-control-label {
@@ -134,6 +142,11 @@ export interface AmmoControlDialogData {
             font-variant-numeric: tabular-nums;
         }
 
+        .ammo-control-row.destroyed > .ammo-control-label > .ammo-count,
+        .ammo-bin.destroyed > .ammo-count {
+            color: var(--damage-color);
+        }
+
         .ammo-control-actions {
             display: flex;
             gap: 6px;
@@ -167,6 +180,12 @@ export interface AmmoControlDialogData {
         .ammo-bin-name {
             justify-self: start;
             text-decoration: underline dotted var(--text-color-secondary);
+        }
+
+        .ammo-bin.destroyed .ammo-bin-name {
+            text-decoration-line: underline, line-through;
+            text-decoration-style: dotted, solid;
+            text-decoration-color: var(--text-color-secondary), var(--damage-color);
         }
 
         @container (max-width: 520px) {
