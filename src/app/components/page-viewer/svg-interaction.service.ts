@@ -985,7 +985,7 @@ export class SvgInteractionService {
     }
 
     private setupAmmoProfileInteractions(svg: SVGSVGElement, signal: AbortSignal) {
-        const ammoProfileEl = svg.querySelector('#ammoProfile > text') as SVGElement | null;
+        const ammoProfileEl = svg.querySelector('#ammoProfile') as SVGElement | null;
         if (!ammoProfileEl) return;
 
         this.addSvgTapHandler(ammoProfileEl, (event: PointerEvent) => {

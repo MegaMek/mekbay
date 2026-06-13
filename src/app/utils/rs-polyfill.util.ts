@@ -616,6 +616,28 @@ export class RsPolyfillUtil {
             rectWidth = bboxPanel.width - 4;
         }
 
+        let ammoProfileButtonAdded = false;
+        const addAmmoProfileButton = () => {
+            const ammoProfile = svg.querySelector('#ammoProfile') as SVGGElement | null;
+            if (ammoProfileButtonAdded || !ammoProfile || ammoProfile.querySelector('.ammoProfileButton')) return;
+            let bbox: DOMRect | null = null;
+            try {
+                bbox = ammoProfile.getBBox();
+            } catch {
+                const ammoProfileText = ammoProfile.querySelector('text') as SVGGraphicsElement | null;
+                bbox = ammoProfileText?.getBBox() ?? null;
+            }
+            if (!bbox) return;
+            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            rect.setAttribute('x', rectX.toString());
+            rect.setAttribute('y', bbox.y.toString());
+            rect.setAttribute('width', rectWidth.toString());
+            rect.setAttribute('height', bbox.height.toString());
+            rect.setAttribute('class', 'inventoryEntryButton ammoProfileButton interactive screen-only');
+            ammoProfile.insertBefore(rect, ammoProfile.firstChild);
+            ammoProfileButtonAdded = true;
+        };
+
         inventoryEntries.forEach(group => {
             const id = group.getAttribute('id');
             if (!id) return;
@@ -631,6 +653,7 @@ export class RsPolyfillUtil {
                 rectWidth = groupBBox.width + 4;
                 rectX = groupBBox.x - 1;
             }
+            addAmmoProfileButton();
             let rectHeight = bbox.height;
             let rectY = bbox.y;
 

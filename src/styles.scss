@@ -1773,6 +1773,10 @@ hr.divider {
             }
         }
 
+        #ammoProfile:hover>.inventoryEntryButton {
+            fill: var(--highlight-color);
+        }
+
         .inventoryEntry>.alternativeMode {
             &:hover>.inventoryEntryButton {
                 fill: var(--highlight-color);
