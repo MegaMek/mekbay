@@ -37,6 +37,7 @@ import { UnitSvgService } from "./unit-svg.service";
 import { AmmoEquipment } from "../models/equipment.model";
 import type { MekRules } from "../models/rules/mek-rules";
 import { resolveHitModifier } from "../models/rules/hit-modifier.util";
+import { getCriticalSlotAmmoProfileKey } from "../utils/ammo-interaction.util";
 
 /*
  * Author: Drake
@@ -110,7 +111,7 @@ export class UnitSvgMekService extends UnitSvgService {
                         svgText.setAttribute('lengthAdjust', 'spacingAndGlyphs');
                     }
 
-                    const key = text.startsWith("Ammo ") ? text.substring(5) : text;
+                    const key = getCriticalSlotAmmoProfileKey(criticalSlot) ?? (text.startsWith("Ammo ") ? text.substring(5) : text);
                     ammoProfile.set(
                         key,
                         (ammoProfile.get(key) ?? 0) + (criticalSlot.destroyed ? 0 : remainingAmmo)

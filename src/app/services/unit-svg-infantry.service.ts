@@ -52,6 +52,7 @@ export class UnitSvgInfantryService extends UnitSvgService {
         this.updateBVDisplay();
         this.updateCrewDisplay(crew);
         this.updateTroopsDisplay();
+        this.updateAmmoProfile();
         this.updateInventory();
         this.updateTurnState();
     }

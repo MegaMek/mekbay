@@ -675,6 +675,19 @@ export class CBTForceUnit extends ForceUnit {
             if (item.consumed) {
                 item.consumed = 0;
             }
+            if (item.equipment instanceof AmmoEquipment) {
+                item.ammo = undefined;
+                const componentIndexText = item.id.split('#').pop();
+                const [componentIndexRaw, binIndexRaw] = (componentIndexText ?? '').split('.');
+                const componentIndex = Number(componentIndexRaw);
+                const binIndex = Number(binIndexRaw ?? 0);
+                const component = Number.isInteger(componentIndex) ? this.unit.comp[componentIndex] : undefined;
+                const binCount = Math.max(1, component?.q ?? 1);
+                const originalTotalAmmo = component?.q2 || (item.equipment.shots * binCount) || 0;
+                const baseBinAmmo = Math.floor(originalTotalAmmo / binCount);
+                const extraBinAmmo = originalTotalAmmo % binCount;
+                item.totalAmmo = baseBinAmmo + (binIndex < extraBinAmmo ? 1 : 0) || undefined;
+            }
             if (item.states && item.states.size > 0) {
                 item.states.forEach((value, key) => {
                     item.states!.set(key, ''); // Clear all states, assuming empty string will fallback to default

@@ -42,6 +42,8 @@ import { LoggerService } from './logger.service';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { resolveHitModifier, computeLinkedModifiers } from '../models/rules/hit-modifier.util';
 import { formatPilotingDisplay } from '../models/rules/unit-type-rules';
+import { AmmoEquipment } from '../models/equipment.model';
+import { formatAmmoName } from '../utils/ammo-interaction.util';
 
 /*
  * Author: Drake
@@ -211,6 +213,7 @@ export class UnitSvgService {
         this.updateCritLocDisplay(critSlots);
         this.updateHeatDisplay(heat);
         this.updateHeatSinkPips();
+        this.updateAmmoProfile();
         this.updateInventory();
         this.updateTurnState();
     }
@@ -652,6 +655,46 @@ export class UnitSvgService {
 
     protected updateHeatSinkPips() {
         // No-op for non-heat units (vehicles, etc.)
+    }
+
+    private getInventoryOriginalTotalAmmo(entry: MountedEquipment): number {
+        const componentIndexText = entry.id.split('#').pop();
+        const [componentIndexRaw, binIndexRaw] = (componentIndexText ?? '').split('.');
+        const componentIndex = Number(componentIndexRaw);
+        const binIndex = Number(binIndexRaw ?? 0);
+        const component = Number.isInteger(componentIndex) ? this.unit.getUnit().comp[componentIndex] : undefined;
+        const ammo = entry.equipment instanceof AmmoEquipment ? entry.equipment : undefined;
+        const binCount = Math.max(1, component?.q ?? 1);
+        const originalTotalAmmo = component?.q2 || (ammo ? ammo.shots * binCount : 0) || entry.totalAmmo || 0;
+        const baseBinAmmo = Math.floor(originalTotalAmmo / binCount);
+        const extraBinAmmo = originalTotalAmmo % binCount;
+        return baseBinAmmo + (binIndex < extraBinAmmo ? 1 : 0);
+    }
+
+    protected updateAmmoProfile() {
+        const svg = this.unit.svg();
+        if (!svg) return;
+
+        const ammoProfileEl = svg.querySelector('#ammoProfile > text');
+        if (!ammoProfileEl) return;
+
+        const equipmentList = this.unit.getAvailableEquipment();
+        const ammoProfile = new Map<string, number>();
+        this.unit.getInventory().forEach(entry => {
+            if (!(entry.equipment instanceof AmmoEquipment)) return;
+            const currentAmmo = entry.ammo && equipmentList[entry.ammo] instanceof AmmoEquipment
+                ? equipmentList[entry.ammo] as AmmoEquipment
+                : entry.equipment;
+            const totalAmmo = entry.totalAmmo ?? this.getInventoryOriginalTotalAmmo(entry);
+            const remainingAmmo = totalAmmo - (entry.consumed ?? 0);
+            const key = `(${formatAmmoName(currentAmmo)})`;
+            ammoProfile.set(key, (ammoProfile.get(key) ?? 0) + (entry.destroyed ? 0 : remainingAmmo));
+        });
+
+        const ammoList = Array.from(ammoProfile.entries())
+            .map(([key, value]) => `${key} ${value}`)
+            .join(', ');
+        ammoProfileEl.textContent = ammoList ? `Ammo: ${ammoList}` : 'Ammo:';
     }
 
     /** Override to inject global fire modifiers (e.g. heat penalties). */

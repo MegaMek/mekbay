@@ -39,7 +39,7 @@ import { firstValueFrom } from 'rxjs';
 
 export class C3Handler extends EquipmentInteractionHandler {
     readonly id = 'c3-handler';
-    readonly flags: string[] = ['ANY_C3'];
+    override readonly flags: string[] = ['ANY_C3'];
     override readonly priority = 10;
 
     getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {

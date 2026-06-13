@@ -35,7 +35,7 @@ import { ToggleHandler } from './base/toggle.handler';
 
 export class BAPHandler extends ToggleHandler {
     readonly id = 'bap-handler';
-    readonly flags = ['F_BAP'];
+    override readonly flags = ['F_BAP'];
     override readonly priority = 10;
     
     protected override readonly enabledLabel = 'Active Probe On';

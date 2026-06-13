@@ -259,6 +259,14 @@ export class CBTForceUnitState extends ForceUnitState {
                         item.consumed = incoming.consumed;
                         inventoryChanged = true;
                     }
+                    if (item.ammo !== incoming.ammo) {
+                        item.ammo = incoming.ammo;
+                        inventoryChanged = true;
+                    }
+                    if (item.totalAmmo !== incoming.totalAmmo) {
+                        item.totalAmmo = incoming.totalAmmo;
+                        inventoryChanged = true;
+                    }
                     if (incoming.states !== undefined) {
                         item.states = new Map(incoming.states.map(s => [s.name, s.value]));
                         inventoryChanged = true;
@@ -266,9 +274,12 @@ export class CBTForceUnitState extends ForceUnitState {
                 } else {
                     // Not in incoming: reset to pristine if it had state
                     if (item.destroyed || (item.consumed ?? 0) > 0 ||
+                        (item.ammo !== undefined && item.ammo !== item.name) ||
                         (item.states && item.states.size > 0 && Array.from(item.states.values()).some(v => v !== ''))) {
                         item.destroyed = undefined;
                         item.consumed = undefined;
+                        item.ammo = undefined;
+                        item.totalAmmo = undefined;
                         if (item.states) {
                             item.states.forEach((_v, k) => item.states!.set(k, ''));
                         }
@@ -348,11 +359,14 @@ export class CBTForceUnitState extends ForceUnitState {
         for (const item of inventory) {
             const hasStates = item.states !== undefined && item.states.size > 0 
                 && Array.from(item.states.values()).some(v => v !== '');
-            if (item.destroyed || (item.consumed ?? 0) > 0 || hasStates) {
+            const hasCustomAmmo = item.ammo !== undefined && item.ammo !== item.name;
+            if (item.destroyed || (item.consumed ?? 0) > 0 || hasCustomAmmo || hasStates) {
                 serializedData.push({
                     id: item.id,
                     ...(item.destroyed && { destroyed: item.destroyed }),
                     ...((item.consumed ?? 0) > 0 && { consumed: item.consumed }),
+                    ...(hasCustomAmmo && { ammo: item.ammo }),
+                    ...(((item.consumed ?? 0) > 0 || hasCustomAmmo) && item.totalAmmo !== undefined && { totalAmmo: item.totalAmmo }),
                     ...(hasStates && { 
                         states: Array.from(item.states!.entries()).map(([name, value]) => ({ name, value })) 
                     })
