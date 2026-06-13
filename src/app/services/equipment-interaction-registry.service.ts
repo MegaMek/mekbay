@@ -36,6 +36,7 @@ import type { PickerChoice, PickerValue } from '../components/picker/picker.inte
 import type { MountedEquipment } from '../models/force-serialization';
 import type { ToastService } from './toast.service';
 import type { DialogsService } from './dialogs.service';
+import type { DataService } from './data.service';
 
 /**
  * Context passed to handlers containing additional information
@@ -43,6 +44,7 @@ import type { DialogsService } from './dialogs.service';
 export interface HandlerContext {
     toastService: ToastService;
     dialogsService: DialogsService;
+    dataService: DataService;
 }
 
 /**
@@ -65,7 +67,7 @@ export abstract class EquipmentInteractionHandler {
     /**
      * The equipment flags this handler responds to ('F_ECM', 'F_MASC', etc.). If multiple flags, it has to match all.
      */
-    abstract readonly flags: string[];
+    readonly flags: string[] = [];
 
     /**
      * Optional method to determine if this handler applies to the given equipment
@@ -129,10 +131,12 @@ class EquipmentInteractionRegistry {
      * Get all applicable handlers for an equipment, sorted by priority
      */
     getHandlers(equipment: MountedEquipment): EquipmentInteractionHandler[] {
-        if (!equipment.equipment?.flags) return [];
-        
         const applicableHandlers = Array.from(this.handlers.values())
-            .filter(handler => handler.flags.every(flag => equipment.equipment!.flags.has(flag)) && (!handler.applicableTo || handler.applicableTo(equipment)));
+            .filter(handler => {
+                const flagsMatch = handler.flags.length === 0
+                    || (!!equipment.equipment?.flags && handler.flags.every(flag => equipment.equipment!.flags.has(flag)));
+                return flagsMatch && (!handler.applicableTo || handler.applicableTo(equipment));
+            });
             
         // Sort by priority (descending)
         applicableHandlers.sort((a, b) => b.priority - a.priority);

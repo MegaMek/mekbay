@@ -38,6 +38,7 @@ import { StealthHandler } from './stealth.handler';
 import { MASCHandler } from './masc.handler';
 import { UACJammingHandler } from './uacjamming.handler';
 import { C3Handler } from './c3.handler';
+import { WeaponAmmoHandler } from './weapon-ammo.handler';
 
 /**
  * Register all equipment handlers.
@@ -53,4 +54,5 @@ export function registerAllHandlers(registryService: EquipmentInteractionRegistr
     registry.register(new MASCHandler());
     registry.register(new UACJammingHandler());
     registry.register(new C3Handler());
+    // registry.register(new WeaponAmmoHandler()); // TODO: is a bit annoying
 }

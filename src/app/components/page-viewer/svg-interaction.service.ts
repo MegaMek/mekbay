@@ -52,6 +52,8 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { type ChoicePickerStyle, PickerFactoryService } from '../../services/picker-factory.service';
 import { canAntiMech } from '../../utils/infantry.util';
+import { AmmoControlDialogComponent, type AmmoControlDialogData } from '../ammo-control-dialog/ammo-control-dialog.component';
+import { getAmmoControlEntriesForUnitWeapons } from '../../utils/ammo-interaction.util';
 
 /*
  * Author: Drake
@@ -194,6 +196,7 @@ export class SvgInteractionService {
         this.setupSkillInteractions(svg, signal);
         this.setupCrewNameInteractions(svg, signal);
         this.setupInventoryInteractions(svg, signal);
+        this.setupAmmoProfileInteractions(svg, signal);
     }
 
     private addSvgTapHandler(
@@ -855,7 +858,8 @@ export class SvgInteractionService {
             const createAndShowPicker = (event: Event) => {
                 const context: HandlerContext = {
                     toastService: this.toastService,
-                    dialogsService: this.dialogsService
+                    dialogsService: this.dialogsService,
+                    dataService: this.dataService
                 };
 
                 const registry = this.equipmentRegistryService.getRegistry();
@@ -978,6 +982,33 @@ export class SvgInteractionService {
                 createAndShowPicker(event);
             }, signal);
         });
+    }
+
+    private setupAmmoProfileInteractions(svg: SVGSVGElement, signal: AbortSignal) {
+        const ammoProfileEl = svg.querySelector('#ammoProfile > text') as SVGElement | null;
+        if (!ammoProfileEl) return;
+
+        this.addSvgTapHandler(ammoProfileEl, (event: PointerEvent) => {
+            if (this.state.clickTarget !== ammoProfileEl) return;
+            const unit = this.unit();
+            if (!unit) return;
+
+            const entries = getAmmoControlEntriesForUnitWeapons(unit, this.dataService.getEquipments());
+            if (entries.length === 0) return;
+
+            this.removePicker();
+            this.dialogsService.createDialog<void>(AmmoControlDialogComponent, {
+                data: {
+                    title: 'Ammo',
+                    entries,
+                    context: {
+                        toastService: this.toastService,
+                        dialogsService: this.dialogsService,
+                        dataService: this.dataService
+                    }
+                } as AmmoControlDialogData,
+            });
+        }, signal);
     }
 
     private setupHeatInteractions(svg: SVGSVGElement, signal: AbortSignal) {

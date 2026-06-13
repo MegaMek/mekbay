@@ -35,7 +35,7 @@ import { ToggleHandler } from './base/toggle.handler';
 
 export class MASCHandler extends ToggleHandler {
     readonly id = 'masc-handler';
-    readonly flags = ['F_MASC'];
+    override readonly flags = ['F_MASC'];
     override readonly priority = 10;
     
     protected override readonly enabledLabel = 'Enabled';

@@ -39,7 +39,7 @@ import { CycleModeHandler } from './base/cycle-mode.handler';
 export class UACJammingHandler extends CycleModeHandler {
     protected override readonly modeLabel: string = 'State';
     readonly id = 'uac-jamming-handler';
-    readonly flags = ['F_BALLISTIC', 'F_DIRECT_FIRE'];
+    override readonly flags = ['F_BALLISTIC', 'F_DIRECT_FIRE'];
     override readonly priority = 10;
 
     override applicableTo = (equipment: MountedEquipment): boolean => {
