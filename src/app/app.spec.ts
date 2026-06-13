@@ -191,22 +191,37 @@ describe('App', () => {
     expect(swUpdateMock.activateUpdate).not.toHaveBeenCalled();
   });
 
-  it('checks for updates on focus only when the hourly cadence is due', async () => {
+  it('checks for updates on focus and online only when the ten-minute update-check clock is due', async () => {
     swUpdateMock.isEnabled = true;
     const startTime = 1_000_000;
     const nowSpy = spyOn(Date, 'now').and.returnValue(startTime);
+    const flushUpdateCheck = async () => {
+      for (let i = 0; i < 6; i++) {
+        await Promise.resolve();
+      }
+    };
 
     fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance as any;
     const appUpdateService = TestBed.inject(AppUpdateService);
+    const scheduleUpdateCheckTimerSpy = spyOn(app, 'scheduleUpdateCheckTimer').and.callThrough();
 
     app.onFocus();
-    await Promise.resolve();
+    await flushUpdateCheck();
     expect(swUpdateMock.checkForUpdate).not.toHaveBeenCalled();
+    expect(scheduleUpdateCheckTimerSpy).not.toHaveBeenCalled();
 
-    nowSpy.and.returnValue(startTime + appUpdateService.updateCheckIntervalMs + 1);
+    nowSpy.and.returnValue(startTime + appUpdateService.focusUpdateCheckIntervalMs + 1);
     app.onFocus();
-    await Promise.resolve();
+    await swUpdateMock.checkForUpdate.calls.mostRecent().returnValue;
+    await flushUpdateCheck();
+
+    expect(swUpdateMock.checkForUpdate).toHaveBeenCalledTimes(1);
+    expect(scheduleUpdateCheckTimerSpy).toHaveBeenCalled();
+
+    nowSpy.and.returnValue(startTime + appUpdateService.focusUpdateCheckIntervalMs + 2);
+    app.onOnline();
+    await flushUpdateCheck();
 
     expect(swUpdateMock.checkForUpdate).toHaveBeenCalledTimes(1);
   });
