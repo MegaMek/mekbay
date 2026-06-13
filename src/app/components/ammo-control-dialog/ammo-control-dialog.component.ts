@@ -46,15 +46,14 @@ export interface AmmoControlDialogData {
     styles: [`
         .ammo-control-list {
             display: grid;
-            gap: 8px;
         }
 
         .ammo-control-row {
             display: grid;
             grid-template-columns: minmax(0, 1fr) auto;
-            gap: 12px;
+            gap: 4px 12px;
             align-items: center;
-            padding: 4px 0;
+            padding: 8px 0;
             border-bottom: 1px solid color-mix(in srgb, var(--text-color-secondary) 25%, transparent);
         }
 
@@ -75,6 +74,7 @@ export interface AmmoControlDialogData {
             color: var(--text-color-secondary);
             border-right: 1px solid var(--border-color);
             padding: 4px 8px 4px 0px;
+            min-width: 32px;
         }
 
         .ammo-name {
