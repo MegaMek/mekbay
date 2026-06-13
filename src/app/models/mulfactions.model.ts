@@ -36,6 +36,7 @@
  */
 
 export const MULFACTION_EXTINCT = 3;
+export const MULFACTION_NONE = -1;
 export const MULFACTION_MERCENARY = 34;
 
 export type FactionAffinity = 'Inner Sphere' | 'IS Clan' | 'HW Clan' | 'Periphery' | 'Mercenary' | 'Other'; 

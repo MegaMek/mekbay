@@ -115,7 +115,7 @@ function unitToCBTRow(unit: Unit): Record<string, unknown> {
     return {
         chassis: unit.chassis,
         model: unit.model,
-        mul_id: unit.id === -1 ? '' : unit.id,
+        mul_id: unit.id <= 0 ? '' : unit.id,
         year: unit.year,
         BV: unit.bv,
         cost: unit.cost,
@@ -175,7 +175,7 @@ function unitToASRow(unit: Unit): Record<string, unknown> {
     return {
         chassis: unit.chassis,
         model: unit.model,
-        mul_id: unit.id === -1 ? '' : unit.id,
+        mul_id: unit.id <= 0 ? '' : unit.id,
         year: unit.year,
         PV: as?.PV ?? '',
         cost: unit.cost,

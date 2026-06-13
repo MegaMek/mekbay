@@ -34,7 +34,7 @@
 import { Injectable, inject } from '@angular/core';
 
 import { REMOTE_HOST } from '../../models/common.model';
-import type { FactionEraMembership, MULFaction, MULFactions, RawFactionEraMembership, RawMULFactions } from '../../models/mulfactions.model';
+import { MULFACTION_NONE, type FactionEraMembership, type MULFaction, type MULFactions, type RawFactionEraMembership, type RawMULFactions } from '../../models/mulfactions.model';
 import { normalizeLooseText } from '../../utils/string.util';
 import { naturalCompare } from '../../utils/sort.util';
 import { DbService } from '../db.service';
@@ -85,7 +85,10 @@ export class FactionsCatalogService extends CatalogBaseService<MULFactions | Raw
     }
 
     protected override hydrate(data: MULFactions | RawMULFactions): void {
-        const factions = [...data.factions]
+        const rawFactions = data.factions.some((faction) => faction.id === MULFACTION_NONE)
+            ? [...data.factions]
+            : [...data.factions, this.createNoneFaction()];
+        const factions = rawFactions
             .sort((left, right) => naturalCompare(left.name, right.name))
             .map((faction) => ({
                 ...faction,
@@ -133,5 +136,15 @@ export class FactionsCatalogService extends CatalogBaseService<MULFactions | Raw
 
     private hydrateEraMembership(units: RawFactionEraMembership): FactionEraMembership {
         return units instanceof Set ? new Set(units) : new Set(units);
+    }
+
+    private createNoneFaction(): MULFaction {
+        return {
+            id: MULFACTION_NONE,
+            name: 'None',
+            group: 'Other',
+            img: '/images/factions/none.png',
+            eras: {},
+        };
     }
 }
