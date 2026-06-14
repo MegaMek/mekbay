@@ -93,6 +93,45 @@ describe('PageViewerZoomPanService', () => {
         expect(overlay.counts['left']).toBe(3);
     });
 
+    it('pans horizontally with Shift+wheel without changing zoom', () => {
+        const { container } = setupGestureDom(service);
+        service.setDisplayedPages(1);
+        service.updateDimensions(300, 300, 1);
+        service.scale.set(1);
+        service.translate.set({ x: 0, y: 0 });
+
+        dispatchWheel(container, { deltaY: 120, shiftKey: true });
+
+        expect(service.scale()).toBe(1);
+        expect(service.translate()).toEqual({ x: -120, y: 0 });
+    });
+
+    it('pans vertically with Ctrl+wheel without changing zoom', () => {
+        const { container } = setupGestureDom(service);
+        service.setDisplayedPages(1);
+        service.updateDimensions(300, 300, 1);
+        service.scale.set(1);
+        service.translate.set({ x: 0, y: 0 });
+
+        dispatchWheel(container, { deltaY: 120, ctrlKey: true });
+
+        expect(service.scale()).toBe(1);
+        expect(service.translate()).toEqual({ x: 0, y: -120 });
+    });
+
+    it('keeps Shift+wheel horizontal panning within pan bounds', () => {
+        const { container } = setupGestureDom(service);
+        const minTranslateX = 300 - PAGE_WIDTH;
+        service.setDisplayedPages(1);
+        service.updateDimensions(300, 300, 1);
+        service.scale.set(1);
+        service.translate.set({ x: minTranslateX, y: 0 });
+
+        dispatchWheel(container, { deltaY: 120, shiftKey: true });
+
+        expect(service.translate()).toEqual({ x: minTranslateX, y: 0 });
+    });
+
     it('resets to fit-to-screen on a non-interactive page double-tap', () => {
         const { pageWrapper } = setupGestureDom(service);
         service.setDoubleTapZoomResetMode('fit-to-screen');
@@ -182,6 +221,8 @@ describe('PageViewerZoomPanService', () => {
 });
 
 function setupGestureDom(service: PageViewerZoomPanService): {
+    container: HTMLDivElement;
+    content: HTMLDivElement;
     pageWrapper: HTMLDivElement;
     secondPageWrapper: HTMLDivElement;
     interactiveControl: HTMLDivElement;
@@ -207,7 +248,20 @@ function setupGestureDom(service: PageViewerZoomPanService): {
         { selectors: ['.interactive'] }
     );
 
-    return { pageWrapper, secondPageWrapper, interactiveControl };
+    return { container, content, pageWrapper, secondPageWrapper, interactiveControl };
+}
+
+function dispatchWheel(
+    target: HTMLElement,
+    options: { deltaY: number; shiftKey?: boolean; ctrlKey?: boolean }
+): void {
+    target.dispatchEvent(new WheelEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        deltaY: options.deltaY,
+        shiftKey: options.shiftKey ?? false,
+        ctrlKey: options.ctrlKey ?? false
+    }));
 }
 
 function doubleTap(service: PageViewerZoomPanService, options: { clientX?: number; clientY?: number } = {}): void {
