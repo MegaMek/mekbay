@@ -269,6 +269,7 @@ function syncGroupTotals(group: AmmoControlGroup): void {
 
 function sortAmmoControlGroups(groups: AmmoControlGroup[]): AmmoControlGroup[] {
     return groups.sort((a, b) => {
+        if (a.destroyed !== b.destroyed) return a.destroyed ? 1 : -1;
         const nameCompare = a.displayName.localeCompare(b.displayName);
         if (nameCompare !== 0) return nameCompare;
         const locationCompare = a.locationLabel.localeCompare(b.locationLabel);

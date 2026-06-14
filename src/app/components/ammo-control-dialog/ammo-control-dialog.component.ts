@@ -89,6 +89,16 @@ export interface AmmoControlDialogData {
             text-decoration-line: line-through;
         }
 
+        .ammo-control-row.destroyed {
+            color: var(--damage-color);
+            background-image: repeating-linear-gradient(
+                140deg,
+                rgba(85, 0, 0, 0.7333333333) 0px,
+                rgba(85, 0, 0, 0.7333333333) 12px,
+                rgba(51, 0, 0, 0.6666666667) 12px,
+                rgba(51, 0, 0, 0.6666666667) 24px);
+        }
+
         .ammo-control-label {
             display: grid;
             grid-template-columns: auto minmax(0, 1fr) auto;

@@ -93,8 +93,9 @@ describe('AmmoControlDialogComponent', () => {
 
         groups = component.groups();
         expect(groups.length).toBe(2);
-        expect(groups.map(group => group.displayName)).toEqual(['Clan Ultra AC/20 Ammo', 'Clan Ultra AC/20 Precision Ammo']);
-        expect(component.groupRemaining(groups[0])).toBe(0);
-        expect(component.groupRemaining(groups[1])).toBe(5);
+        expect(groups.map(group => group.displayName)).toEqual(['Clan Ultra AC/20 Precision Ammo', 'Clan Ultra AC/20 Ammo']);
+        expect(groups.map(group => group.destroyed)).toEqual([false, true]);
+        expect(component.groupRemaining(groups[0])).toBe(5);
+        expect(component.groupRemaining(groups[1])).toBe(0);
     });
 });
