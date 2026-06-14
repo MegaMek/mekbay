@@ -246,13 +246,15 @@ export class RsPolyfillUtil {
             const blankPathVisibility = (blankNamePath as SVGElement).getAttribute('visibility');
             const pilotTextVisibility = (nameText as SVGElement).getAttribute('visibility');
             if (blankPathVisibility === 'hidden' && pilotTextVisibility === 'hidden') return;
-            const height = 10;
-            const nameX: number = parseFloat((nameText as SVGTextElement).getAttribute('x') || '0');
-            const nameY: number = parseFloat((nameText as SVGTextElement).getAttribute('y') || '0') + 2;
+            const height = 25;
+            const nameX: number = parseFloat((nameText as SVGTextElement).getAttribute('x') || '0') - 22;
+            const nameY: number = parseFloat((nameText as SVGTextElement).getAttribute('y') || '0') + 1;
             const pathBBox = (blankNamePath as SVGPathElement).getBBox();
             let width = pathBBox.width;
             if (width <= 0) {
-                width = 100; // Fallback
+                width = 122; // Fallback
+            } else {
+                width += 22; // Add padding
             }
             const clickArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
             clickArea.classList.add('crewNameButton');

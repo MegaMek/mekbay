@@ -1668,6 +1668,7 @@ hr.divider {
         }
 
         /* Skills */
+        #ammoProfile text,
         .skillValue {
             fill: #00f;
         }
@@ -2154,6 +2155,8 @@ hr.divider {
             filter: invert(1) brightness(0.6) saturate(50) hue-rotate(217deg) contrast(1.5) !important;
         }
 
+        
+        #ammoProfile text,
         .skillValue {
             fill: #bbf;
         }
