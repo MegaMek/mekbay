@@ -241,6 +241,53 @@ describe('MUL file utilities', () => {
         expect(locations['LT'].internal).toBe(20);
     });
 
+    it('imports record survivors and salvage while skipping ejected pilot entries', async () => {
+        const grasshopper = createEmptyUnit({
+            name: 'BMGrasshopper_GHR8K',
+            chassis: 'Grasshopper',
+            model: 'GHR-8K',
+            armor: 160,
+            internal: 80,
+            moveType: 'Biped',
+            techBase: 'Inner Sphere',
+        });
+        const atlas = createEmptyUnit({
+            name: 'BMAtlas_AS8S',
+            chassis: 'Atlas',
+            model: 'AS8-S',
+            armor: 160,
+            internal: 80,
+            moveType: 'Biped',
+            techBase: 'Inner Sphere',
+        });
+        mockLoadedCritSlots(() => []);
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<record version="0.51.01">
+    <survivors>
+        <entity chassis="Grasshopper" model="GHR-8K" type="Biped" commander="false" externalId="grasshopper-1">
+            <pilot size="1" name="Stacey Makhtiev" gunnery="4" piloting="5"/>
+            <Game id="2"/>
+        </entity>
+        <entity chassis="Pilot" model="Latrice Hart" type="Leg" commander="false" externalId="pilot-1">
+            <pilot size="1" name="Latrice Hart" gunnery="4" piloting="5" ejected="true"/>
+            <Game id="4"/>
+        </entity>
+    </survivors>
+    <salvage>
+        <entity chassis="Atlas" model="AS8-S" type="Biped" commander="false" externalId="atlas-1">
+            <pilot size="1" name="Rhys Hill" gunnery="3" piloting="4"/>
+            <Game id="3"/>
+        </entity>
+    </salvage>
+</record>`;
+
+        const { force, issues } = await parseMulForce(xml, 'Record Import', createFakeDataService([grasshopper, atlas]), {} as any, {} as any);
+
+        expect(issues).toEqual([]);
+        expect(force.units().map(unit => unit.getUnit().chassis)).toEqual(['Grasshopper', 'Atlas']);
+        expect(force.units().map(unit => unit.id)).toEqual(['grasshopper-1', 'atlas-1']);
+    });
+
     it('writes destroyed locations when internals are fully damaged', async () => {
         const unit = createSerializedArmorUnit();
         const savedXml = await serializeForceToMul(createFakeClassicForce(createFakeForceUnit(unit, [], [createFakeCrewMember()], {

@@ -577,10 +577,18 @@ function parseMulDocument(xmlText: string): XMLDocument {
     }
 
     const root = doc.documentElement;
-    if (!root || root.tagName !== 'unit') {
-        throw new Error('Invalid MUL file: missing <unit> root.');
+    if (!root || (root.tagName !== 'unit' && root.tagName !== 'record')) {
+        throw new Error('Invalid MUL file: missing <unit> or <record> root.');
     }
     return doc;
+}
+
+function getMulEntityElements(doc: XMLDocument): Element[] {
+    const root = doc.documentElement;
+    const entities = root.tagName === 'record'
+        ? ['survivors', 'salvage'].flatMap(section => Array.from(root.querySelectorAll(`:scope > ${section} > entity`)))
+        : Array.from(root.querySelectorAll(':scope > entity'));
+    return entities.filter(entity => entity.getAttribute('chassis') !== 'Pilot');
 }
 
 export async function parseMulForce(
@@ -594,7 +602,7 @@ export async function parseMulForce(
     const issues: MulParseIssue[] = [];
     const unitLookup = createUnitLookup(dataService.getUnits());
     const force = new CBTForce(forceName || 'Imported MUL Force', dataService, unitInitializer, injector);
-    const entities = Array.from(doc.documentElement.querySelectorAll(':scope > entity'));
+    const entities = getMulEntityElements(doc);
 
     force.loading = true;
     try {
