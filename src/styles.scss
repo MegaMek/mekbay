@@ -1413,6 +1413,26 @@ hr.divider {
     width: 100%;
 }
 
+.destroyed-entry {
+    color: var(--damage-color);
+    background-image: repeating-linear-gradient(
+        140deg,
+        rgba(85, 0, 0, 0.7333333333) 0px,
+        rgba(85, 0, 0, 0.7333333333) 12px,
+        rgba(51, 0, 0, 0.6666666667) 12px,
+        rgba(51, 0, 0, 0.6666666667) 24px);
+}
+
+.disabled-entry {
+    color: var(--text-color-secondary);
+    background-image: repeating-linear-gradient(
+        140deg,
+        rgba(85, 85, 85, 0.56) 0px,
+        rgba(85, 85, 85, 0.56) 12px,
+        rgba(45, 45, 45, 0.52) 12px,
+        rgba(45, 45, 45, 0.52) 24px);
+}
+
 .component-damaged {
     &::before {
         content: '';

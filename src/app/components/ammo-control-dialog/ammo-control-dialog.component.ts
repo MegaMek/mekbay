@@ -25,7 +25,7 @@ export interface AmmoControlDialogData {
         <div class="wide-dialog-body">
             <div class="ammo-control-list" [class.read-only]="readOnly()">
                 @for (group of groups(); track group.id) {
-                    <div class="ammo-control-row" [class.destroyed]="group.destroyed">
+                    <div class="ammo-control-row" [class.destroyed-entry]="group.destroyed">
                         <div class="ammo-control-label" [class.expandable]="group.expandable">
                             <span class="ammo-location">{{ group.locationLabel }}</span>
                             @if (group.expandable) {
@@ -83,20 +83,14 @@ export interface AmmoControlDialogData {
             border-bottom: 0;
         }
 
-        .ammo-control-row.destroyed .ammo-name,
+        .ammo-control-row.destroyed-entry .ammo-name,
         .ammo-bin.destroyed {
             color: var(--damage-color);
             text-decoration-line: line-through;
         }
 
-        .ammo-control-row.destroyed {
+        .ammo-control-row.destroyed-entry {
             color: var(--damage-color);
-            background-image: repeating-linear-gradient(
-                140deg,
-                rgba(85, 0, 0, 0.7333333333) 0px,
-                rgba(85, 0, 0, 0.7333333333) 12px,
-                rgba(51, 0, 0, 0.6666666667) 12px,
-                rgba(51, 0, 0, 0.6666666667) 24px);
         }
 
         .ammo-control-label {
@@ -154,7 +148,7 @@ export interface AmmoControlDialogData {
             font-variant-numeric: tabular-nums;
         }
 
-        .ammo-control-row.destroyed > .ammo-control-label > .ammo-count,
+        .ammo-control-row.destroyed-entry > .ammo-control-label > .ammo-count,
         .ammo-bin.destroyed > .ammo-count {
             color: var(--damage-color);
         }
