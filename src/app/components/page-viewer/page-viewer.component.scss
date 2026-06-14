@@ -6,18 +6,6 @@
     background-color: var(--background-color);
 }
 
-.page-viewer-container {
-    width: 100%;
-    min-height: 0;
-    flex: 1 1 0;
-    overflow: hidden;
-    background: transparent;
-    position: relative;
-    touch-action: none;
-    -webkit-user-select: none;
-    user-select: none;
-}
-
 /* Swipe wrapper - handles X translation during swipe (separate from zoom) */
 .swipe-wrapper {
     position: absolute;
@@ -64,64 +52,6 @@
     }
 }
 
-/* Page wrapper for individual pages */
-.page-wrapper {
-    position: absolute;
-    top: 0;
-    left: 0;
-    box-sizing: border-box;
-    /* Empty wrappers are transparent with a subtle border */
-    background-color: transparent;
-    transition: background-color 1.6s, outline 0.6s;
-
-    @media print {
-        position: relative;
-        outline: none;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        background: white !important;
-        width: 100% !important;
-        height: 100% !important;
-        padding: 0 !important;
-        margin: 0 auto !important;
-        box-sizing: border-box;
-        page-break-after: always;
-        break-after: page;
-        overflow: hidden;
-        background: white !important;
-        transform: none !important;
-
-        &.shadow-page {
-            display: none;
-        }
-
-        &:not(.selected) {
-            display: none;
-        }
-
-        &.selected {
-            left: 0 !important;
-            top: 0 !important;
-        }
-    }
-}
-
-.page-viewer-container.swiping .page-wrapper {
-    transition: none;
-}
-
-/* Empty page wrapper during swipe - subtle border to show position */
-.page-wrapper.is-empty {
-    outline: 1px solid var(--border-color);
-    outline-offset: -1px;
-}
-
-/* Page wrapper with content (has SVG) shows white background */
-.page-wrapper.has-svg {
-    background-color: #fff;
-}
-
 .swipe-page-placeholder {
     width: 100%;
     height: 100%;
@@ -142,49 +72,91 @@
 
 @media screen {
     :host-context(.night-mode) {
-        .page-wrapper.has-svg {
+        ::ng-deep .page-wrapper[data-slot-index].has-svg {
             background-color: unset;
         }
     }
 }
 
-/* Neighbor pages during swipe */
-.page-wrapper.neighbor-page {
-    //     pointer-events: none;
-    //     transition: opacity 0.2s;
-
-    //     /* Fade in neighbor pages */
-    //     &.neighbor-visible {
-    //         opacity: 1;
-    //     }
-    @media print {
-        display: none;
-    }
+/* Imperative swipe slots are created outside Angular's template scoping. */
+:host ::ng-deep .page-wrapper[data-slot-index] {
+    position: absolute;
+    top: 0;
+    left: 0;
+    box-sizing: border-box;
+    background-color: transparent;
+    transition: background-color 1.6s, outline 0.6s;
 }
 
-.page-wrapper {
-    &.leaving-page,
-    &.shadow-page.dimmed {
-        opacity: 0.1;
+:host ::ng-deep .page-wrapper[data-slot-index].is-empty {
+    outline: 1px solid var(--border-color);
+    outline-offset: -1px;
+}
+
+:host ::ng-deep .page-wrapper[data-slot-index].has-svg {
+    background-color: #fff;
+}
+
+:host ::ng-deep .swiping .page-wrapper[data-slot-index] {
+    transition: none;
+}
+
+@media print {
+    :host ::ng-deep .page-wrapper[data-slot-index] {
+        position: relative;
+        outline: none;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: white !important;
+        width: 100% !important;
+        height: 100% !important;
+        padding: 0 !important;
+        margin: 0 auto !important;
+        box-sizing: border-box;
+        page-break-after: always;
+        break-after: page;
+        overflow: hidden;
+        transform: none !important;
     }
 
-    &.shadow-page {
-        cursor: pointer;
-        // transition: opacity 0.2s ease-out; // (disabled, is too heavy during swipe)
+    :host ::ng-deep .page-wrapper[data-slot-index].neighbor-page {
+        display: none;
+    }
 
-        /* Disable pointer events on SVG content to ensure wrapper handles clicks */
+    :host ::ng-deep .page-wrapper[data-slot-index]:not(.selected) {
+        display: none;
+    }
+
+    :host ::ng-deep .page-wrapper[data-slot-index].selected {
+        left: 0 !important;
+        top: 0 !important;
+        justify-content: flex-start !important;
+        align-items: flex-start !important;
+        min-width: 100% !important;
+        min-height: 100% !important;
+
+        svg.mekbay-sheet {
+            display: block;
+            box-sizing: border-box;
+            padding: 0 !important;
+            margin: 0 !important;
+            transform: none !important;
+            top: 0 !important;
+            left: 0 !important;
+            height: 100%;
+            width: auto;
+            max-width: 100%;
+            min-width: 0;
+            max-height: 100%;
+            page-break-inside: avoid !important;
+            page-break-after: auto !important;
+            break-after: auto !important;
+        }
+
         svg {
-            pointer-events: none;
+            transform: none !important;
         }
-
-        @media print {
-            display: none;
-        }
-    }
-
-    &.promoted-shadow-page {
-        opacity: 1;
-        cursor: default;
     }
 }
 
@@ -222,19 +194,6 @@
     line-height: 1;
 }
 
-/* Canvas overlay wrapper - positioned absolutely within page-content */
-.page-canvas-overlay-wrapper {
-    position: absolute;
-    width: 612px;
-    height: 792px;
-    pointer-events: none;
-    z-index: 1;
-}
-
-.page-canvas-overlay-wrapper.active {
-    pointer-events: auto;
-}
-
 /* Fixed overlay container - positioned at container level for single page mode */
 .fixed-overlay-container {
     position: absolute;
@@ -251,9 +210,7 @@
 }
 
 @media print {
-    :host,
-    .page-viewer-container,
-    .page-viewer-container .page-content {
+    :host {
         width: 100% !important;
         height: 100% !important;
         padding: 0 !important;
@@ -264,53 +221,6 @@
         background: transparent !important;
         transform: none !important;
         box-sizing: border-box;
-    }
-
-    .page-wrapper:not(.selected) {
-        display: none;
-    }
-
-    .page-wrapper.selected {
-        display: flex;
-        justify-content: flex-start !important;
-        align-items: flex-start !important;
-        background: white !important;
-        width: 100% !important;
-        height: 100% !important;
-        min-width: 100% !important;
-        min-height: 100% !important;
-        left: 0 !important;
-        top: 0 !important;
-        padding: 0 !important;
-        margin: 0 auto !important;
-        box-sizing: border-box;
-        page-break-after: always;
-        break-after: page;
-        overflow: hidden;
-        background: white !important;
-        transform: none !important;
-
-        ::ng-deep svg.mekbay-sheet {
-            display: block;
-            box-sizing: border-box;
-            padding: 0 !important;
-            margin: 0 !important;
-            transform: none !important;
-            top: 0 !important;
-            left: 0 !important;
-            height: 100%;
-            width: auto;
-            max-width: 100%;
-            min-width: 0;
-            max-height: 100%;
-            page-break-inside: avoid !important;
-            page-break-after: auto !important;
-            break-after: auto !important;
-        }
-
-        ::ng-deep svg {
-            transform: none !important;
-        }
     }
 
     @page {
