@@ -1,16 +1,17 @@
 .weapon-equipment-dialog {
     --weapon-equipment-title-height: 30px;
-    --weapon-equipment-columns: 32px 28px minmax(180px, 1.25fr) 44px 42px 40px minmax(90px, 0.8fr) repeat(4, 42px) minmax(260px, 1fr);
+    --weapon-equipment-columns: 32px 28px minmax(180px, 1.25fr) 42px 44px 40px fit-content(300px) repeat(4, 42px) minmax(260px, 1fr);
     max-width: min(1400px, 96dvw);
     width: 100%;
 }
 
 .weapon-equipment-dialog.hide-actions-column {
-    --weapon-equipment-columns: 32px 28px minmax(180px, 1.25fr) 44px 42px 40px minmax(90px, 0.8fr) repeat(4, 42px);
+    --weapon-equipment-columns: 32px 28px minmax(180px, 1.25fr) 42px 44px 40px fit-content(300px) repeat(4, 42px);
 }
 
 .weapon-equipment-grid {
     display: grid;
+    grid-template-columns: var(--weapon-equipment-columns);
     gap: 4px;
     min-width: 0;
 }
@@ -18,7 +19,8 @@
 .weapon-equipment-header,
 .weapon-equipment-row {
     display: grid;
-    grid-template-columns: var(--weapon-equipment-columns);
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
     gap: 4px;
     align-items: center;
     padding: 4px;
@@ -44,6 +46,8 @@
 
 .weapon-equipment-section {
     display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
     gap: 0;
 }
 
@@ -52,6 +56,7 @@
     top: 0;
     z-index: 3;
     display: flex;
+    grid-column: 1 / -1;
     align-items: center;
     min-height: var(--weapon-equipment-title-height);
     box-sizing: border-box;
@@ -85,6 +90,8 @@
 
 .weapon-equipment-list {
     display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
     gap: 1px;
     margin-top: 4px;
     font-size: 0.82rem;
@@ -109,7 +116,6 @@
 .weapon-equipment-row.cdk-drag-preview {
     width: 100%;
     box-sizing: border-box;
-    grid-template-columns: var(--weapon-equipment-columns);
     background: var(--background-color);
     border-bottom-color: transparent;
     opacity: 0.8;
@@ -143,8 +149,12 @@
     grid-column: 3;
 }
 
-.location-cell {
+.hit-cell {
     grid-column: 4;
+}
+
+.location-cell {
+    grid-column: 5;
 }
 
 .heat-cell {
@@ -153,10 +163,6 @@
 
 .damage-cell {
     grid-column: 7;
-}
-
-.hit-cell {
-    grid-column: 5;
 }
 
 .min-cell {
