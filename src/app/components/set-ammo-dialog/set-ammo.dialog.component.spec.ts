@@ -1,4 +1,5 @@
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
+import { OverlayContainer } from '@angular/cdk/overlay';
 import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment } from '../../models/equipment.model';
 import { DialogsService } from '../../services/dialogs.service';
@@ -14,6 +15,8 @@ function createAmmo(id: string, kgPerShot = 100): AmmoEquipment {
 }
 
 describe('SetAmmoDialogComponent', () => {
+    let overlayContainerElement: HTMLElement;
+
     function configureDialog(data: SetAmmoDialogData) {
         TestBed.configureTestingModule({
             imports: [SetAmmoDialogComponent],
@@ -23,6 +26,9 @@ describe('SetAmmoDialogComponent', () => {
                 { provide: DialogsService, useValue: { requestConfirmation: jasmine.createSpy('requestConfirmation').and.resolveTo(false) } },
             ],
         });
+
+        overlayContainerElement = TestBed.inject(OverlayContainer).getContainerElement();
+        overlayContainerElement.innerHTML = '';
 
         const fixture = TestBed.createComponent(SetAmmoDialogComponent);
         fixture.detectChanges();
@@ -55,5 +61,30 @@ describe('SetAmmoDialogComponent', () => {
         input.value = '0';
         buttons[0].click();
         expect(input.value).toBe('0');
+    });
+
+    it('renders ammo options in rows that can wrap long names', () => {
+        const standardAmmo = createAmmo('Clan Ultra AC/20 Ammo');
+        const longAmmo = createAmmo('Clan Ultra AC/20 Extremely Long Prototype Specialty Ammunition With Guidance Package Ammo');
+        const fixture = configureDialog({
+            currentAmmo: standardAmmo,
+            originalAmmo: standardAmmo,
+            originalTotalAmmo: 5,
+            ammoOptions: [standardAmmo, longAmmo],
+            quantity: 3,
+            maxQuantity: 5,
+        });
+        const trigger: HTMLButtonElement = fixture.nativeElement.querySelector('#inputName');
+
+        trigger.click();
+        fixture.detectChanges();
+
+        const optionTokens = overlayContainerElement.querySelectorAll('.multiline-dropdown-option-label .multiline-dropdown-token') as NodeListOf<HTMLElement>;
+        const longOptionToken = Array.from(optionTokens)
+            .find(element => element.textContent === 'Extremely');
+        const longOptionLabel = longOptionToken?.closest('.multiline-dropdown-option-label') as HTMLElement | null;
+
+        expect(longOptionLabel).toBeTruthy();
+        expect(getComputedStyle(longOptionLabel!).whiteSpace).toBe('normal');
     });
 });

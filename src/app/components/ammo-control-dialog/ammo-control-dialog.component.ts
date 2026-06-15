@@ -197,6 +197,7 @@ export interface AmmoControlDialogData {
             text-align: left;
             line-height: 1.3;
             margin-right: 6px;
+            font-weight: 500;
         }
 
         .ammo-location-badges {
