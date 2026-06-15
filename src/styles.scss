@@ -741,6 +741,7 @@ hr {
         width: 40px;
         height: 40px;
         overflow: hidden;
+        min-width: 40px;
     }
 
     &.square-small {
@@ -749,6 +750,7 @@ hr {
         width: 32px;
         height: 32px;
         overflow: hidden;
+        min-width: 32px;
     }
 
     &.square-large {
@@ -757,6 +759,7 @@ hr {
         width: 48px;
         height: 48px;
         overflow: hidden;
+        min-width: 48px;
     }
 
     &.borderless {

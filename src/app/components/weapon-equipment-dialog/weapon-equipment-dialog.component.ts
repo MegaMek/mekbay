@@ -61,6 +61,10 @@ export class WeaponEquipmentDialogComponent {
         this.data.unit.syncInventoryControlSelectionSvg();
     }
 
+    compactLayout(): boolean {
+        return this.layoutService.windowWidth() <= 1200;
+    }
+
     groups(): InventoryControlGroup[] {
         this.revision();
         return getInventoryControlGroups(this.data.unit, this.data.context.dataService.getEquipments());

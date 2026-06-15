@@ -1,19 +1,19 @@
 .weapon-equipment-dialog {
-    --weapon-equipment-columns: 32px 28px minmax(180px, 1.25fr) 44px 40px minmax(90px, 0.8fr) 42px repeat(4, 42px) minmax(160px, 220px) minmax(190px, 1fr);
+    --weapon-equipment-columns: 32px 28px minmax(180px, 1.25fr) 44px 42px 40px minmax(90px, 0.8fr) repeat(4, 42px) minmax(160px, 220px) minmax(190px, 1fr);
     max-width: min(1400px, 96dvw);
     width: 100%;
 }
 
 .weapon-equipment-dialog.hide-ammo-column {
-    --weapon-equipment-columns: 32px 28px minmax(180px, 1.25fr) 44px 40px minmax(90px, 0.8fr) 42px repeat(4, 42px) minmax(190px, 1fr);
+    --weapon-equipment-columns: 32px 28px minmax(180px, 1.25fr) 44px 42px 40px minmax(90px, 0.8fr) repeat(4, 42px) minmax(190px, 1fr);
 }
 
 .weapon-equipment-dialog.hide-controls-column {
-    --weapon-equipment-columns: 32px 28px minmax(180px, 1.25fr) 44px 40px minmax(90px, 0.8fr) 42px repeat(4, 42px) minmax(160px, 220px);
+    --weapon-equipment-columns: 32px 28px minmax(180px, 1.25fr) 44px 42px 40px minmax(90px, 0.8fr) repeat(4, 42px) minmax(160px, 220px);
 }
 
 .weapon-equipment-dialog.hide-ammo-column.hide-controls-column {
-    --weapon-equipment-columns: 32px 28px minmax(180px, 1.25fr) 44px 40px minmax(90px, 0.8fr) 42px repeat(4, 42px);
+    --weapon-equipment-columns: 32px 28px minmax(180px, 1.25fr) 44px 42px 40px minmax(90px, 0.8fr) repeat(4, 42px);
 }
 
 .weapon-equipment-grid {
@@ -147,15 +147,15 @@
 }
 
 .heat-cell {
-    grid-column: 5;
-}
-
-.damage-cell {
     grid-column: 6;
 }
 
-.hit-cell {
+.damage-cell {
     grid-column: 7;
+}
+
+.hit-cell {
+    grid-column: 5;
 }
 
 .min-cell {
@@ -199,13 +199,14 @@
     display: flex;
     gap: 5px;
     align-items: baseline;
+    flex-wrap: wrap;
     min-width: 0;
 }
 
 .name-cell > span:first-child {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
 }
 
 .modifier {
@@ -251,22 +252,43 @@
     gap: 4px;
     align-items: center;
     min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .control-select {
     display: inline-flex;
+    flex: 1 1 240px;
+    flex-wrap: wrap;
     gap: 4px;
     align-items: center;
     color: var(--text-color-secondary);
     min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
 }
 
 .control-select select {
-    max-width: 150px;
+    flex: 1 1 160px;
+    min-width: 0;
+    max-width: 100%;
     min-height: 26px;
     border: 1px solid var(--border-color);
     background: var(--background-color-light);
     color: var(--text-color);
+}
+
+.controls-cell .bt-button,
+.controls-cell .control-label,
+.control-select span {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.damage-cell {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
 }
 
 .control-label {
@@ -385,7 +407,7 @@
         display: flex;
         flex-direction: column;
         flex-wrap: wrap;
-        gap: 2px;
+        gap: 4px;
         align-items: stretch;
         min-width: 0;
         max-width: 100%;
@@ -395,7 +417,7 @@
         display: flex;
         flex-direction: row;
         flex-wrap: wrap;
-        gap: 0px 14px;
+        gap: 4px 14px;
         align-items: stretch;
         min-width: 0;
         max-width: 100%;
@@ -471,9 +493,18 @@
         display: flex;
         align-items: center;
         justify-content: flex-start;
-        min-height: 28px;
         min-width: 0;
         line-height: 1.15;
+    }
+
+    .hit-cell,
+    .heat-cell,
+    .min-cell {
+        min-width: 42px;
+    }
+
+    .damage-cell {
+        min-width: 112px;
     }
 
     .range-cells {
