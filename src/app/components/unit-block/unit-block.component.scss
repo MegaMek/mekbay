@@ -116,8 +116,10 @@
     }
 
     .pilot-info {
-        top: 3px;
-        right: 3px;
+        top: -1px;
+        right: -1px;
+        paint-order: stroke fill;
+        -webkit-text-stroke: 2px rgba(0, 0, 0, 0.5);;
     }
 
     .group-commander-indicator {
@@ -150,11 +152,6 @@
         white-space: normal;
         overflow-wrap: anywhere;
         word-break: break-all;
-    }
-
-    // We hide extra infos because we don't have space
-    .pilot-info {
-        display: none;
     }
 }
 
