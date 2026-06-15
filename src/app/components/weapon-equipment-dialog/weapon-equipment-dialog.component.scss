@@ -26,14 +26,6 @@
     padding: 4px;
 }
 
-.desktop-entry-grid {
-    display: contents;
-}
-
-.mobile-entry-card {
-    display: none;
-}
-
 .weapon-equipment-header {
     position: sticky;
     top: var(--weapon-equipment-title-height);
@@ -281,6 +273,10 @@
     display: none;
 }
 
+.range-cells {
+    display: contents;
+}
+
 .actions-cell,
 .controls-cell {
     display: flex;
@@ -383,64 +379,15 @@
         font-size: 0.86rem;
     }
 
-    .weapon-equipment-row,
-    .weapon-equipment-row.cdk-drag-preview {
-        display: block;
+    .weapon-equipment-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px 14px;
         padding: 4px;
         border-bottom: 1px solid var(--border-color);
         cursor: grab;
         overflow-x: clip;
-    }
-
-    .desktop-entry-grid {
-        display: none;
-    }
-
-    .mobile-entry-card {
-        display: flex;
-        flex-direction: column;
-        flex-wrap: wrap;
-        gap: 4px;
-        align-items: stretch;
-        min-width: 0;
-        max-width: 100%;
-    }
-
-    .mobile-entry-secondary-rows {
-        display: flex;
-        flex-direction: row;
-        flex-wrap: wrap;
-        gap: 4px 14px;
-        align-items: stretch;
-        min-width: 0;
-        max-width: 100%;
-    }
-
-    .mobile-entry-main-row,
-    .mobile-entry-stats-row,
-    .mobile-entry-range-row,
-    .mobile-entry-actions-row {
-        display: flex;
-        align-items: center;
-        gap: 4px 14px;
-        min-width: 0;
-        max-width: 100%;
-    }
-
-    .mobile-entry-main-row {
-        flex-wrap: nowrap;
-        gap: 8px;
-        min-height: 24px;
-    }
-
-    .mobile-entry-stats-row,
-    .mobile-entry-range-row,
-    .mobile-entry-actions-row {
-        flex-wrap: wrap;
-    }
-
-    .mobile-entry-actions-row {
-        align-items: stretch;
     }
 
     .drag-cell {
@@ -448,6 +395,7 @@
     }
 
     .location-cell {
+        order: 1;
         font-weight: 700;
         color: var(--text-color-secondary);
         border-right: 1px solid var(--border-color);
@@ -458,6 +406,7 @@
     }
 
     .name-cell {
+        order: 2;
         flex: 1 1 auto;
         flex-wrap: wrap;
         align-items: center;
@@ -471,6 +420,7 @@
     }
 
     .select-cell {
+        order: 3;
         flex: 0 0 auto;
         margin-left: auto;
         align-self: center;
@@ -492,6 +442,22 @@
         line-height: 1.15;
     }
 
+    .hit-cell {
+        order: 4;
+    }
+
+    .heat-cell {
+        order: 5;
+    }
+
+    .damage-cell {
+        order: 6;
+    }
+
+    .min-cell {
+        order: 7;
+    }
+
     .hit-cell,
     .heat-cell,
     .min-cell {
@@ -503,6 +469,7 @@
     }
 
     .range-cells {
+        order: 8;
         display: flex;
         gap: 4px;
         align-items: center;
@@ -541,6 +508,7 @@
     }
 
     .actions-cell {
+        order: 9;
         flex-wrap: wrap;
         align-items: center;
     }

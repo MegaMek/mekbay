@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DragDropModule, type CdkDragDrop, moveItemInArray } from '@angular/cdk/drag-drop';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
@@ -58,7 +58,16 @@ export class WeaponEquipmentDialogComponent {
     readonly layoutService = inject(LayoutService);
     private readonly dialogRef: DialogRef<void, WeaponEquipmentDialogComponent> = inject(DialogRef);
     private readonly revision = signal(0);
+    private readonly handlerChoiceCache = new Map<MountedEquipment, HandlerChoice[]>();
+    private handlerChoiceCacheRevision = -1;
     readonly rangeKeys: InventoryRangeKey[] = ['short', 'medium', 'long'];
+    readonly groups = computed(() => {
+        this.revision();
+        return getInventoryControlGroups(this.data.unit, this.data.context.dataService.getEquipments());
+    });
+    readonly hasAmmoColumn = computed(() => this.groups().some(group => this.groupHasAmmo(group)));
+    readonly hasControlsColumn = computed(() => this.groups().some(group => this.groupHasControls(group)));
+    readonly hasActionsColumn = computed(() => this.groups().some(group => this.groupHasActions(group)));
 
     constructor() {
         this.data.unit.syncInventoryControlSelectionSvg();
@@ -66,23 +75,6 @@ export class WeaponEquipmentDialogComponent {
 
     compactLayout(): boolean {
         return this.layoutService.windowWidth() <= 920;
-    }
-
-    groups(): InventoryControlGroup[] {
-        this.revision();
-        return getInventoryControlGroups(this.data.unit, this.data.context.dataService.getEquipments());
-    }
-
-    hasAmmoColumn(): boolean {
-        return this.groups().some(group => this.groupHasAmmo(group));
-    }
-
-    hasControlsColumn(): boolean {
-        return this.groups().some(group => this.groupHasControls(group));
-    }
-
-    hasActionsColumn(): boolean {
-        return this.groups().some(group => this.groupHasActions(group));
     }
 
     groupHasAmmo(group: InventoryControlGroup): boolean {
@@ -133,12 +125,12 @@ export class WeaponEquipmentDialogComponent {
 
     toggleSelected(row: InventoryControlRow): void {
         this.data.unit.setInventoryControlEntrySelected(row.entry, !this.isSelected(row));
-        this.revision.update(value => value + 1);
+        this.refresh();
     }
 
     resetSelections(): void {
         this.data.unit.clearInventoryControlSelection();
-        this.revision.update(value => value + 1);
+        this.refresh();
     }
 
     canOpenAmmoDialog(): boolean {
@@ -158,7 +150,7 @@ export class WeaponEquipmentDialogComponent {
                 context: this.data.context
             } as AmmoControlDialogData,
         });
-        ref.closed.subscribe(() => this.revision.update(value => value + 1));
+        ref.closed.subscribe(() => this.refresh());
     }
 
     canSelectRange(row: InventoryControlRow, range: InventoryRangeKey): boolean {
@@ -172,12 +164,12 @@ export class WeaponEquipmentDialogComponent {
         const wasSelectedRange = this.data.unit.getInventoryControlSelectedRange(row.id) === range;
         if (wasSelectedRange) {
             this.data.unit.setInventoryControlSelectedRange(row.entry, null);
-            this.revision.update(value => value + 1);
+            this.refresh();
             return;
         }
 
         this.data.unit.setInventoryControlSelectedRange(row.entry, range);
-        this.revision.update(value => value + 1);
+        this.refresh();
     }
 
     isRangeSelected(row: InventoryControlRow, range: InventoryRangeKey): boolean {
@@ -237,7 +229,7 @@ export class WeaponEquipmentDialogComponent {
 
     selectAmmoOption(row: InventoryControlRow, value: string): void {
         this.data.unit.setInventoryControlSelectedAmmoOption(row.id, value);
-        this.revision.update(current => current + 1);
+        this.refresh();
     }
 
     private selectedAmmo(row: InventoryControlRow): InventoryControlAmmoOption | undefined {
@@ -265,17 +257,16 @@ export class WeaponEquipmentDialogComponent {
         const rows = [...group.rows];
         moveItemInArray(rows, event.previousIndex, event.currentIndex);
         setInventoryControlSortOrder(rows);
-        this.revision.update(value => value + 1);
+        this.refresh();
     }
 
     handlerChoices(row: InventoryControlRow): HandlerChoice[] {
-        if (row.destroyed) return [];
-        return this.data.context.registry.getChoices(row.entry, this.data.context)
+        return this.getHandlerChoices(row)
             .filter(choice => !this.isModeChoice(choice));
     }
 
     modeChoice(row: InventoryControlRow): HandlerChoice | undefined {
-        return this.data.context.registry.getChoices(row.entry, this.data.context)
+        return this.getHandlerChoices(row)
             .find(choice => this.isModeChoice(choice));
     }
 
@@ -307,7 +298,23 @@ export class WeaponEquipmentDialogComponent {
     async handleChoice(row: InventoryControlRow, choice: HandlerChoice): Promise<void> {
         if (this.readOnly() || choice.disabled) return;
         await this.data.context.registry.handleSelection(row.entry, choice, this.data.context);
-        this.revision.update(value => value + 1);
+        this.refresh();
+    }
+
+    private getHandlerChoices(row: InventoryControlRow): HandlerChoice[] {
+        if (row.destroyed) return [];
+        const revision = this.revision();
+        if (this.handlerChoiceCacheRevision !== revision) {
+            this.handlerChoiceCache.clear();
+            this.handlerChoiceCacheRevision = revision;
+        }
+
+        const cachedChoices = this.handlerChoiceCache.get(row.entry);
+        if (cachedChoices) return cachedChoices;
+
+        const choices = this.data.context.registry.getChoices(row.entry, this.data.context);
+        this.handlerChoiceCache.set(row.entry, choices);
+        return choices;
     }
 
     private isModeChoice(choice: HandlerChoice): boolean {
@@ -324,7 +331,7 @@ export class WeaponEquipmentDialogComponent {
         row.entry.destroyed = true;
         row.entry.owner.setInventoryEntry(row.entry);
         this.data.context.toastService.showToast(`Critical Hit on ${row.display.name}`, 'error');
-        this.revision.update(value => value + 1);
+        this.refresh();
     }
 
     canRepair(row: InventoryControlRow): boolean {
@@ -336,6 +343,10 @@ export class WeaponEquipmentDialogComponent {
         row.entry.destroyed = false;
         row.entry.owner.setInventoryEntry(row.entry);
         this.data.context.toastService.showToast(`Repaired ${row.display.name}`, 'success');
+        this.refresh();
+    }
+
+    private refresh(): void {
         this.revision.update(value => value + 1);
     }
 

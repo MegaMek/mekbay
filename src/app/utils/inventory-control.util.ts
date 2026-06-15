@@ -114,8 +114,9 @@ export function setInventoryControlMode(entry: MountedEquipment, mode: string): 
 
 export function getInventoryControlGroups(unit: CBTForceUnit, equipmentMap: EquipmentMap = {}): InventoryControlGroup[] {
     const entryStates = getEntryStates(unit);
+    const ammoSources = getAmmoSources(unit, equipmentMap);
     const rows = unit.getInventory()
-        .map((entry, index) => buildInventoryControlRow(entry, index, entryStates, equipmentMap))
+        .map((entry, index) => buildInventoryControlRow(entry, index, entryStates, ammoSources))
         .filter((row): row is InventoryControlRow => row !== null);
 
     const groups: InventoryControlGroup[] = [
@@ -132,16 +133,7 @@ export function getInventoryControlModes(entry: MountedEquipment): InventoryCont
 }
 
 export function getSelectedInventoryControlMode(entry: MountedEquipment): string | null {
-    const modes = getInventoryControlModes(entry);
-    if (modes.length === 0) return null;
-
-    const persistedMode = entry.states.get(INVENTORY_CONTROL_MODE_STATE);
-    if (persistedMode && modes.some(mode => mode.mode === persistedMode)) return persistedMode;
-
-    const svgSelectedMode = modes.find(mode => entry.el?.querySelector(`:scope > .alternativeMode[mode="${CSS.escape(mode.mode)}"].selected`))?.mode;
-    if (svgSelectedMode) return svgSelectedMode;
-
-    return modes[0].mode;
+    return getSelectedMode(entry, getInventoryControlModes(entry));
 }
 
 export function getInventoryControlModeAmmoSummary(
@@ -149,11 +141,19 @@ export function getInventoryControlModeAmmoSummary(
     equipmentMap: EquipmentMap,
     mode: string | null = getSelectedInventoryControlMode(entry)
 ): InventoryControlAmmoSummary {
+    return getInventoryControlAmmoSummary(entry, getAmmoSources(entry.owner, equipmentMap), mode);
+}
+
+function getInventoryControlAmmoSummary(
+    entry: MountedEquipment,
+    ammoSources: AmmoSource[],
+    mode: string | null
+): InventoryControlAmmoSummary {
     if (!(entry.equipment instanceof WeaponEquipment) || entry.equipment.ammoType === 'NA') {
         return { tracksAmmo: false, remaining: 0, total: 0, options: [] };
     }
 
-    const matchingAmmo = getAmmoSources(entry.owner, equipmentMap)
+    const matchingAmmo = ammoSources
         .filter(source => ammoMatchesWeaponMode(entry.equipment as WeaponEquipment, source.ammo, mode));
     const groupedAmmo = groupAmmoSources(matchingAmmo);
     const availableAmmo = groupedAmmo.filter(source => !source.destroyed);
@@ -248,10 +248,6 @@ function createGroup(id: InventoryControlGroupId, rows: InventoryControlRow[]): 
 }
 
 function compareRows(a: InventoryControlRow, b: InventoryControlRow, groupId: InventoryControlGroupId): number {
-    const aInactive = a.destroyed || a.disabled;
-    const bInactive = b.destroyed || b.disabled;
-    if (aInactive !== bInactive) return aInactive ? 1 : -1;
-
     const sortKey = inventoryControlSortKey(groupId);
     const aOrder = Number(a.entry.states.get(sortKey));
     const bOrder = Number(b.entry.states.get(sortKey));
@@ -267,7 +263,7 @@ function buildInventoryControlRow(
     entry: MountedEquipment,
     originalIndex: number,
     entryStates: Map<MountedEquipment, EntryState>,
-    equipmentMap: EquipmentMap
+    ammoSources: AmmoSource[]
 ): InventoryControlRow | null {
     if (!entry.el?.classList.contains('inventoryEntry')) return null;
 
@@ -293,7 +289,7 @@ function buildInventoryControlRow(
         modes,
         modifiers,
         selectedMode,
-        ammo: getInventoryControlModeAmmoSummary(entry, equipmentMap, selectedMode)
+        ammo: getInventoryControlAmmoSummary(entry, ammoSources, selectedMode)
     };
 }
 

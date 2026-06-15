@@ -211,18 +211,6 @@ describe('WeaponEquipmentDialogComponent', () => {
         expect(row.destroyed).toBeFalse();
     });
 
-    it('moves disabled and destroyed entries to the end of their group', () => {
-        const active = entry({ id: 'active', equipment: weapon('active'), el: svgEntry('<g><g class="name"><text>Active</text></g></g>') });
-        const disabled = entry({ id: 'disabled', equipment: weapon('disabled'), el: svgEntry('<g><g class="name"><text>Disabled</text></g></g>') });
-        const destroyed = entry({ id: 'destroyed', equipment: weapon('destroyed'), destroyed: true, el: svgEntry('<g><g class="name"><text>Destroyed</text></g></g>') });
-        const entryStates = new Map<MountedEquipment, { isDamaged: boolean; isDisabled: boolean; hitMod: number }>([
-            [disabled, { isDamaged: false, isDisabled: true, hitMod: 0 }]
-        ]);
-        const { component } = createComponent([destroyed, disabled, active], {}, [], entryStates);
-
-        expect(component.groups().find(group => group.id === 'ranged')!.rows.map(row => row.id)).toEqual(['active', 'destroyed', 'disabled']);
-    });
-
     it('repairs destroyed direct inventory entries', () => {
         const broken = entry({ id: 'broken', equipment: weapon('broken'), destroyed: true, el: svgEntry('<g><g class="name"><text>Broken</text></g></g>') });
         const { component, unit } = createComponent([broken]);
