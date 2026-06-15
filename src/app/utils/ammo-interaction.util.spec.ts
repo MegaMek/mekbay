@@ -133,10 +133,49 @@ describe('ammo interaction direct inventory groups', () => {
             'inventory:Clan Ultra AC/20 Ammo@BD#1.1',
         ]);
         expect(groups[0].entries.map(entry => entry.displayBinName)).toEqual(['#1 Bin [BD]', '#2 Bin [BD]']);
+        expect(groups[0].locations).toEqual([{ loc: 'BD', quantity: 10, state: 'normal' }]);
         expect(groups[0].totalAmmo).toBe(10);
         expect(groups[1].displayName).toBe('Clan Ultra AC/20 Precision Ammo');
         expect(groups[1].expandable).toBeTrue();
+        expect(groups[1].locations).toEqual([{ loc: 'BD', quantity: 4, state: 'normal' }]);
         expect(groups[1].totalAmmo).toBe(4);
+    });
+
+    it('summarizes grouped ammo locations with exposed and destroyed states', () => {
+        const owner = {
+            id: 'unit-1',
+            setCritSlot: jasmine.createSpy('setCritSlot'),
+            getUnit: () => ({ techBase: 'Clan' }),
+            getLocations: () => ({
+                LT: { armor: 2 },
+                'LT-rear': { armor: 6 },
+                RT: { armor: 3 },
+            }),
+            locations: {
+                armor: new Map([
+                    ['LT', { loc: 'LT', rear: false, points: 10 }],
+                    ['LT-rear', { loc: 'LT', rear: true, points: 6 }],
+                    ['CT', { loc: 'CT', rear: false, points: 12 }],
+                    ['RT', { loc: 'RT', rear: false, points: 10 }],
+                ]),
+            },
+            svg: () => null,
+        } as unknown as Pick<CBTForceUnit, 'id' | 'setCritSlot' | 'getUnit'>;
+        const entries = [
+            createCritEntry({ id: 'ammo-lt-0', loc: 'LT', slot: 0, ammo: standardAmmo, owner }),
+            createCritEntry({ id: 'ammo-lt-1', loc: 'LT', slot: 1, ammo: standardAmmo, owner }),
+            createCritEntry({ id: 'ammo-ct-2', loc: 'CT', slot: 2, ammo: standardAmmo, destroyed: true, owner }),
+            createCritEntry({ id: 'ammo-ct-3', loc: 'CT', slot: 3, ammo: standardAmmo, destroyed: true, owner }),
+            createCritEntry({ id: 'ammo-rt-4', loc: 'RT', slot: 4, ammo: standardAmmo, owner }),
+        ];
+
+        const group = getAmmoControlGroups(entries)[0];
+
+        expect(group.locations).toEqual([
+            { loc: 'LT', quantity: 10, state: 'exposed' },
+            { loc: 'CT', quantity: 10, state: 'destroyed' },
+            { loc: 'RT', quantity: 5, state: 'normal' },
+        ]);
     });
 
     it('numbers crit ammo bins in visible order with their locations', () => {

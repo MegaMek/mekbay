@@ -127,14 +127,56 @@ describe('AmmoControlDialogComponent', () => {
         fixture.detectChanges();
 
         const expandButton: HTMLButtonElement | null = fixture.nativeElement.querySelector('.ammo-expand-button');
-        expect(expandButton).not.toBeNull();
+        expect(expandButton).toBeNull();
         expect(fixture.nativeElement.querySelector('.ammo-bin-list')).toBeNull();
+    });
 
-        expandButton?.click();
+    it('shows location badges beside the group name', () => {
+        const standardAmmo = createAmmo('Clan Ultra AC/20 Ammo');
+        const owner = {
+            id: 'unit-1',
+            readOnly: () => false,
+            getUnit: () => ({ techBase: 'Clan' }),
+            getLocations: () => ({
+                LT: { armor: 0 },
+                RT: { armor: 6 },
+            }),
+            locations: {
+                armor: new Map([
+                    ['LT', { loc: 'LT', rear: false, points: 10 }],
+                    ['RT', { loc: 'RT', rear: false, points: 6 }],
+                    ['CT', { loc: 'CT', rear: false, points: 12 }],
+                ]),
+            },
+        } as unknown as Pick<CBTForceUnit, 'id' | 'readOnly' | 'getUnit'>;
+        const data: AmmoControlDialogData = {
+            title: 'Ammo',
+            entries: [
+                createCritEntry({ loc: 'LT', slot: 0, ammo: standardAmmo, owner }),
+                createCritEntry({ loc: 'LT', slot: 1, ammo: standardAmmo, owner }),
+                createCritEntry({ loc: 'RT', slot: 2, ammo: standardAmmo, owner }),
+                createCritEntry({ loc: 'CT', slot: 3, ammo: standardAmmo, destroyed: true, owner }),
+            ],
+            context: {} as HandlerContext,
+        };
+
+        TestBed.configureTestingModule({
+            imports: [AmmoControlDialogComponent],
+            providers: [
+                { provide: DIALOG_DATA, useValue: data },
+                { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
+            ],
+        });
+        const fixture = TestBed.createComponent(AmmoControlDialogComponent);
         fixture.detectChanges();
 
-        const binName: HTMLElement | null = fixture.nativeElement.querySelector('.ammo-bin-name');
-        expect(binName?.textContent?.trim()).toBe('#1 Bin [LT]');
+        const badges = Array.from(fixture.nativeElement.querySelectorAll('.ammo-location-badge')) as HTMLElement[];
+
+        expect(badges.map(badge => badge.textContent?.trim())).toEqual(['2x LT', 'RT', 'CT']);
+        expect(badges[0].classList.contains('exposed')).toBeFalse();
+        expect(badges[0].classList.contains('destroyed')).toBeFalse();
+        expect(badges[1].classList.contains('exposed')).toBeTrue();
+        expect(badges[2].classList.contains('destroyed')).toBeTrue();
     });
 
     it('shows per-bin quantity controls only for active bins', () => {

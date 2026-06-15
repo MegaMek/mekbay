@@ -2,7 +2,7 @@ import { firstValueFrom } from 'rxjs';
 import { SetAmmoDialogComponent, type SetAmmoDialogData } from '../components/set-ammo-dialog/set-ammo.dialog.component';
 import { AmmoEquipment, WeaponEquipment, type EquipmentMap } from '../models/equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
-import type { CriticalSlot, MountedEquipment } from '../models/force-serialization';
+import type { CriticalSlot, LocationData, MountedEquipment } from '../models/force-serialization';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 
 export interface AmmoControlEntry {
@@ -21,10 +21,17 @@ export interface AmmoControlEntry {
     destroyed: boolean;
 }
 
+export interface AmmoControlGroupLocation {
+    loc: string;
+    quantity: number;
+    state: 'normal' | 'exposed' | 'destroyed';
+}
+
 export interface AmmoControlGroup {
     id: string;
     entries: AmmoControlEntry[];
     displayName: string;
+    locations: AmmoControlGroupLocation[];
     totalAmmo: number;
     consumed: number;
     destroyed: boolean;
@@ -43,8 +50,8 @@ function getAmmoControlDisplayName(ammo: AmmoEquipment): string {
     return ammo.name.endsWith(' Ammo') ? ammo.name.slice(0, -5) : ammo.name;
 }
 
-function formatAmmoBinName(index: number, locationLabel: string): string {
-    return `#${index} Bin` + (locationLabel ? ` [${locationLabel}]` : '');
+function formatAmmoBinName(index: number): string {
+    return `#${index} Bin`;
 }
 
 export function getCriticalSlotAmmoProfileKey(criticalSlot: CriticalSlot): string | null {
@@ -88,7 +95,7 @@ function createCriticalSlotAmmoControlEntry(unit: CBTForceUnit, criticalSlot: Cr
         sourceType: 'crit',
         locationLabel,
         displayName: getAmmoControlDisplayName(criticalSlot.eq),
-        displayBinName: formatAmmoBinName(1, locationLabel),
+        displayBinName: formatAmmoBinName(1),
         currentAmmo: criticalSlot.eq,
         originalAmmo,
         originalTotalAmmo: getOriginalTotalAmmo(unit, criticalSlot),
@@ -142,7 +149,7 @@ function createInventoryAmmoControlEntry(unit: CBTForceUnit, inventoryEntry: Mou
         sourceType: 'inventory',
         locationLabel,
         displayName: getAmmoControlDisplayName(currentAmmo),
-        displayBinName: formatAmmoBinName(1, locationLabel),
+        displayBinName: formatAmmoBinName(1),
         currentAmmo,
         originalAmmo: inventoryEntry.equipment,
         originalTotalAmmo,
@@ -259,22 +266,63 @@ function createAmmoControlGroup(entries: AmmoControlEntry[]): AmmoControlGroup {
         totalAmmo: 0,
         consumed: 0,
         destroyed: false,
-        expandable: false
+        expandable: false,
+        locations: [],
     };
     syncGroupTotals(group);
     return group;
 }
 
+function getArmorDamage(locationData: LocationData | undefined): number {
+    return (locationData?.armor ?? 0) + (locationData?.pendingArmor ?? 0);
+}
+
+function isAmmoLocationExposed(entry: AmmoControlEntry, loc: string): boolean {
+    const armor = entry.owner.locations?.armor;
+    if (!armor) return false;
+
+    const locations = entry.owner.getLocations?.() ?? {};
+    const armorKeys = [loc, `${loc}-rear`].filter(armorKey => armor.has(armorKey));
+    return armorKeys.some(armorKey => {
+        const armorPoints = armor.get(armorKey)?.points ?? 0;
+        return armorPoints > 0 && armorPoints - getArmorDamage(locations[armorKey]) <= 0;
+    });
+}
+
+function getAmmoLocationState(entries: AmmoControlEntry[], loc: string): AmmoControlGroupLocation['state'] {
+    if (entries.every(entry => entry.destroyed)) return 'destroyed';
+    return entries.some(entry => isAmmoLocationExposed(entry, loc)) ? 'exposed' : 'normal';
+}
+
+function getAmmoControlGroupLocations(entries: AmmoControlEntry[]): AmmoControlGroupLocation[] {
+    const groupedLocations = new Map<string, AmmoControlEntry[]>();
+    for (const entry of entries) {
+        const locationEntries = groupedLocations.get(entry.locationLabel);
+        if (locationEntries) {
+            locationEntries.push(entry);
+        } else {
+            groupedLocations.set(entry.locationLabel, [entry]);
+        }
+    }
+
+    return Array.from(groupedLocations, ([loc, locationEntries]) => ({
+        loc,
+        quantity: locationEntries.length,
+        state: getAmmoLocationState(locationEntries, loc),
+    }));
+}
+
 function syncGroupTotals(group: AmmoControlGroup): void {
     group.entries.sort(compareAmmoControlEntryOrder);
     group.entries.forEach((entry, index) => {
-        entry.displayBinName = formatAmmoBinName(index + 1, entry.locationLabel);
+        entry.displayBinName = formatAmmoBinName(index + 1);
     });
     group.id = group.entries.map(entry => entry.id).join('|');
+    group.locations = getAmmoControlGroupLocations(group.entries);
     group.totalAmmo = group.entries.reduce((total, entry) => total + entry.totalAmmo, 0);
     group.consumed = group.entries.reduce((total, entry) => total + entry.consumed, 0);
     group.destroyed = group.entries.every(entry => entry.destroyed);
-    group.expandable = group.entries.length > 0;
+    group.expandable = group.entries.length > 1;
 }
 
 function sortAmmoControlGroups(groups: AmmoControlGroup[]): AmmoControlGroup[] {
