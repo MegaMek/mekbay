@@ -66,6 +66,7 @@ export interface SetAmmoDialogData {
                 <div class="form-fields">
                     <label class="field-label">Ammo Type</label>
                     <multiline-dropdown
+                        class="ammo-select"
                         controlId="inputName"
                         label="Ammo Type"
                         [options]="ammoDropdownOptions()"
@@ -109,6 +110,11 @@ export interface SetAmmoDialogData {
                 align-self: center;
             }
         }
+
+        .ammo-select {
+            width: 100%;
+        }
+        
         .ammo-quantity {
             flex: 0 0 auto;
         }
