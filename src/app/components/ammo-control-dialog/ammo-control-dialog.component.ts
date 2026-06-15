@@ -130,7 +130,6 @@ export interface AmmoControlDialogData {
         .ammo-control-row.destroyed-entry .ammo-name,
         .ammo-bin.destroyed {
             color: var(--damage-color);
-            text-decoration-line: line-through;
         }
 
         .ammo-control-row.destroyed-entry {
@@ -197,18 +196,18 @@ export interface AmmoControlDialogData {
 
         .ammo-location-badge {
             display: inline-flex;
-            align-items: center;
+            align-items: baseline;
             justify-content: center;
             min-width: 12px;
             padding: 1px 4px;
             background: var(--background-highlight-bright);
-            color: var(--text-color);
+            color: black;
             font-size: 0.7em;
             line-height: 1.3;
             white-space: nowrap;
 
             .quantity {
-                color: var(--text-color-secondary);
+                font-size: 0.9em;
                 margin-right: 2px;
             }
         }
@@ -336,14 +335,6 @@ export interface AmmoControlDialogData {
         }
 
         .ammo-bin.destroyed .ammo-bin-name {
-            text-decoration-line: underline, line-through;
-            text-decoration-style: dotted, solid;
-            text-decoration-color: var(--text-color-secondary), var(--damage-color);
-        }
-
-        .ammo-control-list.read-only .ammo-bin.destroyed .ammo-bin-name {
-            text-decoration-line: line-through;
-            text-decoration-style: solid;
             text-decoration-color: var(--damage-color);
         }
 
