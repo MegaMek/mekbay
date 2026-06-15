@@ -189,6 +189,46 @@ describe('AmmoControlDialogComponent', () => {
         expect(binBadges[3].classList.contains('destroyed')).toBeTrue();
     });
 
+    it('groups location badges by location and state until expanded', () => {
+        const standardAmmo = createAmmo('Clan Ultra AC/20 Ammo');
+        const owner = {
+            id: 'unit-1',
+            readOnly: () => false,
+            getUnit: () => ({ techBase: 'Clan' }),
+        } as unknown as Pick<CBTForceUnit, 'id' | 'readOnly' | 'getUnit'>;
+        const data: AmmoControlDialogData = {
+            title: 'Ammo',
+            entries: [
+                createCritEntry({ loc: 'RT', slot: 0, ammo: standardAmmo, owner }),
+                createCritEntry({ loc: 'RT', slot: 1, ammo: standardAmmo, owner }),
+                createCritEntry({ loc: 'RT', slot: 2, ammo: standardAmmo, destroyed: true, owner }),
+            ],
+            context: {} as HandlerContext,
+        };
+
+        TestBed.configureTestingModule({
+            imports: [AmmoControlDialogComponent],
+            providers: [
+                { provide: DIALOG_DATA, useValue: data },
+                { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
+            ],
+        });
+        const fixture = TestBed.createComponent(AmmoControlDialogComponent);
+        fixture.detectChanges();
+
+        const groupBadges = Array.from(fixture.nativeElement.querySelectorAll('.ammo-expand-button .ammo-location-badge')) as HTMLElement[];
+
+        expect(groupBadges.map(badge => badge.textContent?.trim())).toEqual(['2× RT', 'RT']);
+        expect(groupBadges[0].classList.contains('destroyed')).toBeFalse();
+        expect(groupBadges[1].classList.contains('destroyed')).toBeTrue();
+
+        fixture.nativeElement.querySelector('.ammo-expand-button')?.click();
+        fixture.detectChanges();
+
+        expect(fixture.nativeElement.querySelectorAll('.ammo-expand-button .ammo-location-badge').length).toBe(0);
+        expect(fixture.nativeElement.querySelectorAll('.ammo-bin .ammo-location-badge').length).toBe(3);
+    });
+
     it('shows per-bin quantity controls only for active bins', () => {
         const standardAmmo = createAmmo('Clan Ultra AC/20 Ammo');
         const owner = {

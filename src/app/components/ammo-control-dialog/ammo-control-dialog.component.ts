@@ -33,16 +33,18 @@ export interface AmmoControlDialogData {
                                     <svg width="13px" height="13px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" class="chevron" [class.collapsed]="!isExpanded(group)"><path d="M0 2l5 6 5-6z"></path></svg>
                                     <span class="ammo-name-wrapper">
                                         <span class="ammo-name">{{ group.displayName }}</span>
-                                        <span class="ammo-location-badges">
-                                        @for (location of group.locations; track location.loc) {
-                                            <span class="ammo-location-badge" [class.exposed]="isLocationBadgeExposed(location)" [class.destroyed]="isLocationBadgeDestroyed(location)">
-                                                @if (location.quantity > 1) {
-                                                    <span class="quantity">{{ location.quantity + '×' }}</span>
-                                                }
-                                                {{ location.loc }}
+                                        @if (!isExpanded(group)) {
+                                            <span class="ammo-location-badges">
+                                            @for (location of group.locations; track location.loc + ':' + location.state) {
+                                                <span class="ammo-location-badge" [class.exposed]="isLocationBadgeExposed(location)" [class.destroyed]="isLocationBadgeDestroyed(location)">
+                                                    @if (location.quantity > 1) {
+                                                        <span class="quantity">{{ location.quantity + '×' }}</span>
+                                                    }
+                                                    {{ location.loc }}
+                                                </span>
+                                            }
                                             </span>
                                         }
-                                        </span>
                                     </span>
                                 </button>
                             } @else {
@@ -53,7 +55,7 @@ export interface AmmoControlDialogData {
                                     <span class="ammo-name-wrapper">
                                         <span class="ammo-name">{{ group.displayName }}</span>
                                         <span class="ammo-location-badges">
-                                            @for (location of group.locations; track location.loc) {
+                                            @for (location of group.locations; track location.loc + ':' + location.state) {
                                                 <span class="ammo-location-badge" [class.exposed]="isLocationBadgeExposed(location)" [class.destroyed]="isLocationBadgeDestroyed(location)">
                                                     @if (location.quantity > 1) {
                                                         <span class="quantity">{{ location.quantity + '×' }}</span>

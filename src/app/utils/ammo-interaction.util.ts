@@ -289,27 +289,25 @@ function isAmmoLocationExposed(entry: AmmoControlEntry, loc: string): boolean {
     });
 }
 
-function getAmmoLocationState(entries: AmmoControlEntry[], loc: string): AmmoControlGroupLocation['state'] {
-    if (entries.every(entry => entry.destroyed)) return 'destroyed';
-    return entries.some(entry => isAmmoLocationExposed(entry, loc)) ? 'exposed' : 'normal';
+function getAmmoEntryLocationState(entry: AmmoControlEntry): AmmoControlGroupLocation['state'] {
+    if (entry.destroyed) return 'destroyed';
+    return isAmmoLocationExposed(entry, entry.locationLabel) ? 'exposed' : 'normal';
 }
 
 function getAmmoControlGroupLocations(entries: AmmoControlEntry[]): AmmoControlGroupLocation[] {
-    const groupedLocations = new Map<string, AmmoControlEntry[]>();
+    const groupedLocations = new Map<string, AmmoControlGroupLocation>();
     for (const entry of entries) {
-        const locationEntries = groupedLocations.get(entry.locationLabel);
-        if (locationEntries) {
-            locationEntries.push(entry);
+        const state = getAmmoEntryLocationState(entry);
+        const key = `${entry.locationLabel}:${state}`;
+        const location = groupedLocations.get(key);
+        if (location) {
+            location.quantity += 1;
         } else {
-            groupedLocations.set(entry.locationLabel, [entry]);
+            groupedLocations.set(key, { loc: entry.locationLabel, quantity: 1, state });
         }
     }
 
-    return Array.from(groupedLocations, ([loc, locationEntries]) => ({
-        loc,
-        quantity: locationEntries.length,
-        state: getAmmoLocationState(locationEntries, loc),
-    }));
+    return Array.from(groupedLocations.values());
 }
 
 function syncGroupTotals(group: AmmoControlGroup): void {
