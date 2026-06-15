@@ -25,12 +25,14 @@ export interface AmmoControlDialogData {
         <div class="wide-dialog-body">
             <div class="ammo-control-list" [class.read-only]="readOnly()">
                 @for (group of groups(); track group.id) {
-                    <div class="ammo-control-row" [class.destroyed-entry]="group.destroyed">
+                    @let remainingAmmoGroup = groupRemaining(group);
+                    <div class="ammo-control-row" [class.destroyed-entry]="group.destroyed" [class.empty]="remainingAmmoGroup <= 0">
                         <div class="ammo-control-label" [class.expandable]="group.expandable">
                             @if (group.expandable) {
                                 <button class="ammo-expand-button" type="button" (click)="toggleGroup(group)">
                                     <svg width="13px" height="13px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" class="chevron" [class.collapsed]="!isExpanded(group)"><path d="M0 2l5 6 5-6z"></path></svg>
-                                    <span class="ammo-name">{{ group.displayName }}
+                                    <span class="ammo-name-wrapper">
+                                        <span class="ammo-name">{{ group.displayName }}</span>
                                         <span class="ammo-location-badges">
                                         @for (location of group.locations; track location.loc) {
                                             <span class="ammo-location-badge" [class.exposed]="isLocationBadgeExposed(location)" [class.destroyed]="isLocationBadgeDestroyed(location)">
@@ -46,9 +48,10 @@ export interface AmmoControlDialogData {
                             } @else {
                                 <div class="ammo-single-entry">
                                     @if (hasExpandableGroups()) {
-                                        <div class="muted">—</div>
+                                        <div class="no-chevron">—</div>
                                     }
-                                    <span class="ammo-name">{{ group.displayName }}
+                                    <span class="ammo-name-wrapper">
+                                        <span class="ammo-name">{{ group.displayName }}</span>
                                         <span class="ammo-location-badges">
                                             @for (location of group.locations; track location.loc) {
                                                 <span class="ammo-location-badge" [class.exposed]="isLocationBadgeExposed(location)" [class.destroyed]="isLocationBadgeDestroyed(location)">
@@ -62,11 +65,12 @@ export interface AmmoControlDialogData {
                                     </span>
                                 </div>
                             }
-                            <span class="ammo-count">{{ groupRemaining(group) }}/{{ group.totalAmmo }}</span>
+                            <span class="ammo-count"><span class="count">{{ remainingAmmoGroup }}</span>/{{ group.totalAmmo }}</span>
                             @if (isExpanded(group)) {
                                 <div class="ammo-bin-list">
                                     @for (entry of group.entries; track entry.id) {
-                                        <div class="ammo-bin" [class.destroyed]="entry.destroyed">
+                                        @let remainingAmmoBin = remaining(entry);
+                                        <div class="ammo-bin" [class.destroyed]="entry.destroyed" [class.empty]="remainingAmmoBin <= 0">
                                             <button class="ammo-bin-name-wrapper" type="button" (click)="setAmmoBin(entry)" [disabled]="entry.destroyed || readOnly()">
                                                 <span class="ammo-bin-name">{{ entry.displayBinName }}</span>
                                                 <span class="ammo-location-badges">
@@ -83,7 +87,7 @@ export interface AmmoControlDialogData {
                                             } @else {
                                                 <span class="ammo-bin-adjustments" aria-hidden="true"></span>
                                             }
-                                            <span class="ammo-count">{{ remaining(entry) }}/{{ entry.totalAmmo }}</span>
+                                            <span class="ammo-count"><span class="count">{{ remainingAmmoBin }}</span>/{{ entry.totalAmmo }}</span>
                                         </div>
                                     }
                                 </div>
@@ -175,6 +179,15 @@ export interface AmmoControlDialogData {
             margin-top: calc((1.3em - 13px) / 2);
         }
 
+        .no-chevron {
+            color: var(--text-color-secondary);
+        }
+
+        .destroyed-entry .chevron,
+        .destroyed-entry .no-chevron {
+            color: var(--damage-color);
+        }
+
         .chevron.collapsed {
             transform: rotate(-90deg);
         }
@@ -183,6 +196,7 @@ export interface AmmoControlDialogData {
             color: var(--text-color);
             text-align: left;
             line-height: 1.3;
+            margin-right: 6px;
         }
 
         .ammo-location-badges {
@@ -193,7 +207,6 @@ export interface AmmoControlDialogData {
             min-width: 0;
             position: relative;
             top: -2px;
-            margin-left: 4px;
         }
 
         .ammo-location-badge {
@@ -207,6 +220,7 @@ export interface AmmoControlDialogData {
             font-size: 0.7em;
             line-height: 1.3;
             white-space: nowrap;
+            font-weight: bold;
 
             .quantity {
                 font-size: 0.9em;
@@ -222,7 +236,7 @@ export interface AmmoControlDialogData {
             background: var(--damage-color);
         }
 
-        .ammo-control-label > .ammo-name {
+        .ammo-control-label > .ammo-name-wrapper {
             display: flex;
             align-items: center;
             min-height: 32px;
@@ -232,6 +246,11 @@ export interface AmmoControlDialogData {
             color: var(--text-color-secondary);
             text-align: right;
             min-width: 48px;
+
+            .count {
+                font-weight: bold;
+                color: var(--text-color);
+            }
         }
 
         .ammo-control-label > .ammo-count {
@@ -245,8 +264,12 @@ export interface AmmoControlDialogData {
             box-sizing: border-box;
         }
 
+        .ammo-control-row.empty > .ammo-control-label > .ammo-count > .count,
         .ammo-control-row.destroyed-entry > .ammo-control-label > .ammo-count,
-        .ammo-bin.destroyed > .ammo-count {
+        .ammo-control-row.destroyed-entry > .ammo-control-label > .ammo-count > .count,
+        .ammo-bin.empty > .ammo-count > .count,
+        .ammo-bin.destroyed > .ammo-count,
+        .ammo-bin.destroyed > .ammo-count > .count {
             color: var(--damage-color);
         }
 
@@ -294,7 +317,7 @@ export interface AmmoControlDialogData {
             cursor: pointer;
             display: inline-flex;
             align-items: center;
-            gap: 4px;
+            gap: 6px;
 
             .ammo-location-badges {
                 top: 0px;
