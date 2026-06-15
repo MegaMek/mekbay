@@ -211,6 +211,8 @@ describe('SvgInteractionService', () => {
         }));
     });
 
+});
+
 function createPointerEvent(type: string, init: PointerEventInit): PointerEvent {
     return new PointerEvent(type, {
         bubbles: true,
