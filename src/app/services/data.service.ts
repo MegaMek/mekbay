@@ -783,8 +783,10 @@ export class DataService {
             }
         }
 
+        let cloudIsNewer = false;
         if (local && cloud) {
-            result = this.isCloudNewer(localRaw, cloudRaw) ? cloud : local;
+            cloudIsNewer = this.isCloudNewer(localRaw, cloudRaw);
+            result = cloudIsNewer ? cloud : local;
         } else if (!triedCloud && local) {
             result = local;
         } else {
@@ -795,6 +797,14 @@ export class DataService {
         if (triedCloud && local && !cloud) {
             this.logger.info(`Force "${local.name}" exists locally but not in cloud: pushing to cloud.`);
             this.saveForceCloud(local);
+        } else 
+        if (triedCloud && cloudIsNewer && cloud && cloud.owned()) {
+            if (!local) {
+                this.logger.info(`Force "${cloud.name}" exists in cloud but not locally: saving local copy.`);
+            } else {
+                this.logger.info(`Force "${cloud.name}" exists in cloud and is newer: updating local copy.`);
+            }
+            await this.dbService.saveForce(cloudRaw as SerializedForce);
         }
 
         // Fix any duplicate group/unit IDs that may have been persisted.
