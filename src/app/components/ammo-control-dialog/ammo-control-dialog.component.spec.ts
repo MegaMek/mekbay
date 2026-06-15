@@ -177,6 +177,16 @@ describe('AmmoControlDialogComponent', () => {
         expect(badges[0].classList.contains('destroyed')).toBeFalse();
         expect(badges[1].classList.contains('exposed')).toBeTrue();
         expect(badges[2].classList.contains('destroyed')).toBeTrue();
+
+        fixture.nativeElement.querySelector('.ammo-expand-button')?.click();
+        fixture.detectChanges();
+        const binBadges = Array.from(fixture.nativeElement.querySelectorAll('.ammo-bin .ammo-location-badge')) as HTMLElement[];
+
+        expect(binBadges.map(badge => badge.textContent?.trim())).toEqual(['LT', 'LT', 'RT', 'CT']);
+        expect(binBadges[0].classList.contains('exposed')).toBeFalse();
+        expect(binBadges[1].classList.contains('exposed')).toBeFalse();
+        expect(binBadges[2].classList.contains('exposed')).toBeTrue();
+        expect(binBadges[3].classList.contains('destroyed')).toBeTrue();
     });
 
     it('shows per-bin quantity controls only for active bins', () => {

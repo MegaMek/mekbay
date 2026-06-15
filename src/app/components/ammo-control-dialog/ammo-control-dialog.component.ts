@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import type { HandlerContext } from '../../services/equipment-interaction-registry.service';
-import type { AmmoControlEntry, AmmoControlGroup } from '../../utils/ammo-interaction.util';
+import type { AmmoControlEntry, AmmoControlGroup, AmmoControlGroupLocation } from '../../utils/ammo-interaction.util';
 import { changeAmmoEntryRemaining, changeAmmoGroupRemaining, getAmmoControlGroups, getAmmoEntryRemaining, getAmmoGroupRemaining, setAmmoEntry, setAmmoGroup } from '../../utils/ammo-interaction.util';
 
 export interface AmmoControlDialogData {
@@ -33,7 +33,7 @@ export interface AmmoControlDialogData {
                                     <span class="ammo-name">{{ group.displayName }}
                                         <span class="ammo-location-badges">
                                         @for (location of group.locations; track location.loc) {
-                                            <span class="ammo-location-badge" [class.exposed]="location.state === 'exposed'" [class.destroyed]="location.state === 'destroyed'">
+                                            <span class="ammo-location-badge" [class.exposed]="isLocationBadgeExposed(location)" [class.destroyed]="isLocationBadgeDestroyed(location)">
                                                 @if (location.quantity > 1) {
                                                     <span class="quantity">{{ location.quantity + 'x' }}</span>
                                                 }
@@ -49,7 +49,7 @@ export interface AmmoControlDialogData {
                                     <span class="ammo-name">{{ group.displayName }}
                                         <span class="ammo-location-badges">
                                             @for (location of group.locations; track location.loc) {
-                                                <span class="ammo-location-badge" [class.exposed]="location.state === 'exposed'" [class.destroyed]="location.state === 'destroyed'">
+                                                <span class="ammo-location-badge" [class.exposed]="isLocationBadgeExposed(location)" [class.destroyed]="isLocationBadgeDestroyed(location)">
                                                     @if (location.quantity > 1) {
                                                         <span class="quantity">{{ location.quantity + 'x' }}</span>
                                                     }
@@ -68,7 +68,7 @@ export interface AmmoControlDialogData {
                                             <button class="ammo-bin-name-wrapper" type="button" (click)="setAmmoBin(entry)" [disabled]="entry.destroyed || readOnly()">
                                                 <span class="ammo-bin-name">{{ entry.displayBinName }}</span>
                                                 <span class="ammo-location-badges">
-                                                    <span class="ammo-location-badge" [class.destroyed]="entry.destroyed">
+                                                    <span class="ammo-location-badge" [class.exposed]="isEntryLocationBadgeExposed(group, entry)" [class.destroyed]="isEntryLocationBadgeDestroyed(entry)">
                                                         {{ entry.locationLabel }}
                                                     </span>
                                                 </span>
@@ -87,13 +87,12 @@ export interface AmmoControlDialogData {
                                 </div>
                             }
                         </div>
-                        @if (!readOnly()) {
+                        @if (!readOnly() && !group.destroyed) {
                             <div class="ammo-control-actions">
-                                @if (!group.destroyed) {
-                                    <button class="bt-button square-small" type="button" (click)="decrement(group)" [disabled]="groupRemaining(group) <= 0">-1</button>
-                                    <button class="bt-button square-small" type="button" (click)="increment(group)" [disabled]="groupRemaining(group) >= group.totalAmmo">+1</button>
-                                    <button class="bt-button" type="button" (click)="setAmmo(group)">SET AMMO</button>
-                                }
+                                <button class="bt-button square-small" type="button" (click)="decrement(group)" [disabled]="groupRemaining(group) <= 0">-1</button>
+                                <button class="bt-button square-small" type="button" (click)="increment(group)" [disabled]="groupRemaining(group) >= group.totalAmmo">+1</button>
+                                <button class="bt-button" type="button" (click)="setAmmo(group)">SET AMMO</button>
+                            
                             </div>
                         }
                     </div>
@@ -405,6 +404,23 @@ export class AmmoControlDialogComponent {
     groupRemaining(group: AmmoControlGroup): number {
         this.revision();
         return getAmmoGroupRemaining(group);
+    }
+
+    isLocationBadgeExposed(location: AmmoControlGroupLocation): boolean {
+        return location.state === 'exposed';
+    }
+
+    isLocationBadgeDestroyed(location: AmmoControlGroupLocation): boolean {
+        return location.state === 'destroyed';
+    }
+
+    isEntryLocationBadgeExposed(group: AmmoControlGroup, entry: AmmoControlEntry): boolean {
+        if (entry.destroyed) return false;
+        return group.locations.find(location => location.loc === entry.locationLabel)?.state === 'exposed';
+    }
+
+    isEntryLocationBadgeDestroyed(entry: AmmoControlEntry): boolean {
+        return entry.destroyed;
     }
 
     decrement(group: AmmoControlGroup): void {
