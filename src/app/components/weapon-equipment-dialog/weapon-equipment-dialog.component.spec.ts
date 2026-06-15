@@ -261,7 +261,8 @@ describe('WeaponEquipmentDialogComponent', () => {
         expect(row.selectedMode).toBe('LRM');
         expect(row.display.damage).toBe('1/Msl');
         expect(row.display.long).toBe('21');
-        expect(component.handlerChoices(row)[0].choices?.map(choice => choice.value)).toEqual(['LRM']);
+        expect(component.modeChoice(row)?.choices?.map(choice => choice.value)).toEqual(['LRM']);
+        expect(component.handlerChoices(row)).toEqual([]);
         expect(component.canSelectRange(row, 'min')).toBeFalse();
     });
 
@@ -278,17 +279,17 @@ describe('WeaponEquipmentDialogComponent', () => {
 
         component.drop({ previousIndex: 0, currentIndex: 1 } as CdkDragDrop<any>, group);
 
-    const rangedSortKey = inventoryControlSortKey('ranged');
-    expect(first.states.get(rangedSortKey)).toBe('1');
-    expect(second.states.get(rangedSortKey)).toBe('0');
+        const rangedSortKey = inventoryControlSortKey('ranged');
+        expect(first.states.get(rangedSortKey)).toBe('1');
+        expect(second.states.get(rangedSortKey)).toBe('0');
 
         const row = component.groups().find(candidate => candidate.id === 'ranged')!.rows.find(candidate => candidate.id === 'mode')!;
-    await component.handleChoice(row, { ...component.handlerChoices(row)[0], value: 'A', label: 'A' });
+        await component.handleChoice(row, { ...component.modeChoice(row)!, value: 'A', label: 'A' });
         component.selectRange(row, 'short');
-    const updatedRow = component.groups().find(candidate => candidate.id === 'ranged')!.rows.find(candidate => candidate.id === 'mode')!;
+        const updatedRow = component.groups().find(candidate => candidate.id === 'ranged')!.rows.find(candidate => candidate.id === 'mode')!;
 
         expect(modeEntry.states.get(INVENTORY_CONTROL_MODE_STATE)).toBe('A');
-    expect(component.handlerChoices(updatedRow)[0].value).toBe('A');
+        expect(component.modeChoice(updatedRow)?.value).toBe('A');
         expect(modeEntry.states.has('selected')).toBeFalse();
         expect(modeEntry.states.has('range')).toBeFalse();
         fixture.destroy();
@@ -367,24 +368,26 @@ describe('WeaponEquipmentDialogComponent', () => {
         expect(data.getEntries!().length).toBe(1);
     });
 
-    it('hides ammo and controls columns when no group has data for them', () => {
+    it('hides the action column when no group has ammo or controls', () => {
         const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
         const { component, fixture } = createComponent([laser], {}, [], new Map(), { readOnly: true });
 
         expect(component.hasAmmoColumn()).toBeFalse();
         expect(component.hasControlsColumn()).toBeFalse();
+        expect(component.hasActionsColumn()).toBeFalse();
 
         fixture.detectChanges();
         const root = fixture.nativeElement.querySelector('.weapon-equipment-dialog') as HTMLElement;
-        expect(root.classList.contains('hide-ammo-column')).toBeTrue();
-        expect(root.classList.contains('hide-controls-column')).toBeTrue();
+        expect(root.classList.contains('hide-actions-column')).toBeTrue();
         expect(fixture.nativeElement.querySelector('.ammo-header')).toBeNull();
         expect(fixture.nativeElement.querySelector('.controls-header')).toBeNull();
+        expect(fixture.nativeElement.querySelector('.actions-header')).toBeNull();
         expect(fixture.nativeElement.querySelector('.ammo-cell')).toBeNull();
         expect(fixture.nativeElement.querySelector('.controls-cell')).toBeNull();
+        expect(fixture.nativeElement.querySelector('.actions-cell')).toBeNull();
     });
 
-    it('keeps optional columns but blanks headers for groups without that data', () => {
+    it('combines optional ammo and controls into one action column', () => {
         const standardAmmo = ammo('ATM 6 Standard', 'ATM', 6, ['M_STANDARD']);
         const atm = entry({
             id: 'atm',
@@ -399,22 +402,55 @@ describe('WeaponEquipmentDialogComponent', () => {
         const physicalGroup = component.groups().find(group => group.id === 'physical')!;
 
         expect(component.hasAmmoColumn()).toBeTrue();
-        expect(component.hasControlsColumn()).toBeTrue();
+        expect(component.hasControlsColumn()).toBeFalse();
+        expect(component.hasActionsColumn()).toBeTrue();
         expect(component.groupHasAmmo(rangedGroup)).toBeTrue();
-        expect(component.groupHasControls(rangedGroup)).toBeTrue();
+        expect(component.groupHasControls(rangedGroup)).toBeFalse();
+        expect(component.groupHasActions(rangedGroup)).toBeTrue();
+        expect(component.groupActionsHeader(rangedGroup)).toBe('Ammo');
         expect(component.groupHasAmmo(physicalGroup)).toBeFalse();
         expect(component.groupHasControls(physicalGroup)).toBeFalse();
+        expect(component.groupHasActions(physicalGroup)).toBeFalse();
+        expect(component.groupActionsHeader(physicalGroup)).toBe('');
 
         fixture.detectChanges();
         const sections = Array.from(fixture.nativeElement.querySelectorAll('.weapon-equipment-section')) as HTMLElement[];
         const rangedSection = sections.find(section => section.querySelector('h3')?.textContent?.trim() === 'Ranged Weapons')!;
         const physicalSection = sections.find(section => section.querySelector('h3')?.textContent?.trim() === 'Physical Weapons')!;
-        expect(rangedSection.querySelector('.ammo-header')?.textContent?.trim()).toBe('Ammo');
-        expect(rangedSection.querySelector('.controls-header')?.textContent?.trim()).toBe('Controls');
-        expect(physicalSection.querySelector('.ammo-header')?.textContent?.trim()).toBe('');
-        expect(physicalSection.querySelector('.controls-header')?.textContent?.trim()).toBe('');
-        expect(physicalSection.querySelector('.ammo-cell')).not.toBeNull();
-        expect(physicalSection.querySelector('.controls-cell')).not.toBeNull();
+        expect(rangedSection.querySelector('.actions-header')?.textContent?.trim()).toBe('Ammo');
+        expect(rangedSection.querySelector('.ammo-header')).toBeNull();
+        expect(rangedSection.querySelector('.controls-header')).toBeNull();
+        expect(physicalSection.querySelector('.actions-header')?.textContent?.trim()).toBe('');
+        expect(physicalSection.querySelector('.ammo-header')).toBeNull();
+        expect(physicalSection.querySelector('.controls-header')).toBeNull();
+        expect(physicalSection.querySelector('.actions-cell')).not.toBeNull();
+        expect(physicalSection.querySelector('.actions-cell')?.classList.contains('empty-row-actions')).toBeTrue();
+        expect(rangedSection.querySelector('.name-cell .mode-badge')?.textContent?.trim()).toBe('STD');
+    });
+
+    it('labels the combined action column from group contents', () => {
+        const standardAmmo = ammo('ATM 6 Standard', 'ATM', 6, ['M_STANDARD']);
+        const atm = entry({
+            id: 'atm',
+            equipment: weapon('ATM 6', 'ATM', 6),
+            el: svgEntry('<g><g class="name"><text>ATM 6</text></g><g class="alternativeMode" mode="Standard"><g class="name"><text>Standard</text></g><g class="damage"><text>2/Msl</text></g><text class="range_short">5</text></g></g>')
+        });
+        const ammoBin = entry({ id: 'std-ammo', equipment: standardAmmo, totalAmmo: 10, consumed: 2, locations: new Set(['CT']) });
+        const punch = entry({ id: 'punch', physical: true, el: svgEntry('<g><g class="name"><text>Punch</text></g><text class="range_short">1</text><text class="range_medium">2</text><text class="range_long">3</text></g>') });
+        const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
+        const { component, fixture } = createComponent([atm, ammoBin, punch], equipmentMap);
+        const rangedGroup = component.groups().find(group => group.id === 'ranged')!;
+        const physicalGroup = component.groups().find(group => group.id === 'physical')!;
+
+        expect(component.groupActionsHeader(rangedGroup)).toBe('Ammo & Controls');
+        expect(component.groupActionsHeader(physicalGroup)).toBe('Controls');
+
+        fixture.detectChanges();
+        const sections = Array.from(fixture.nativeElement.querySelectorAll('.weapon-equipment-section')) as HTMLElement[];
+        const rangedSection = sections.find(section => section.querySelector('h3')?.textContent?.trim() === 'Ranged Weapons')!;
+        const physicalSection = sections.find(section => section.querySelector('h3')?.textContent?.trim() === 'Physical Weapons')!;
+        expect(rangedSection.querySelector('.actions-header')?.textContent?.trim()).toBe('Ammo & Controls');
+        expect(physicalSection.querySelector('.actions-header')?.textContent?.trim()).toBe('Controls');
     });
 
     it('shows mode-aware ammo totals and marks empty ammo', async () => {
@@ -442,24 +478,28 @@ describe('WeaponEquipmentDialogComponent', () => {
             [erAmmo.internalName]: erAmmo,
             [heAmmo.internalName]: heAmmo,
         };
-        const { component } = createComponent([atm, standardBin, erBin, destroyedHeBin], equipmentMap);
+        const { component, fixture } = createComponent([atm, standardBin, erBin, destroyedHeBin], equipmentMap);
 
         let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         expect(row.selectedMode).toBe('Standard');
+        expect(component.modeChoice(row)?.choices?.map(choice => choice.label)).toEqual(['STD', 'ER', 'HE']);
         expect(component.ammoText(row)).toBe('ATM 6 Standard (8/10)');
         expect(component.ammoDepleted(row)).toBeFalse();
         expect(row.ammo.options.map(option => option.label)).toEqual(['ATM 6 Standard (8/10)']);
+        fixture.detectChanges();
+        const inlineMode = fixture.nativeElement.querySelector('.name-cell .mode-choice') as HTMLElement;
+        expect(inlineMode.textContent?.trim()).toContain('STD');
 
-        await component.handleChoice(row, { ...component.handlerChoices(row)[0], value: 'Extended Range', label: 'Extended Range' });
+        await component.handleChoice(row, { ...component.modeChoice(row)!, value: 'Extended Range', label: 'ER' });
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         expect(component.ammoText(row)).toBe('ATM 6 ER (0/10)');
         expect(component.ammoDepleted(row)).toBeTrue();
-        component.selectAmmoOption(row, { target: { value: row.ammo.options[0].id } } as unknown as Event);
+        component.selectAmmoOption(row, row.ammo.options[0].id);
         expect(component.selectedAmmoOption(row)).toBe(row.ammo.options[0].id);
 
-        await component.handleChoice(row, { ...component.handlerChoices(row)[0], value: 'High Explosive', label: 'High Explosive' });
+        await component.handleChoice(row, { ...component.modeChoice(row)!, value: 'High Explosive', label: 'HE' });
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
-        expect(component.ammoText(row)).toBe('No ammo');
+        expect(component.ammoText(row)).toBe('NO AMMO');
         expect(component.ammoDepleted(row)).toBeTrue();
         expect(component.ammoDestroyed(row)).toBeFalse();
     });
@@ -496,7 +536,7 @@ describe('WeaponEquipmentDialogComponent', () => {
 
         expect(row.ammo.options).toEqual([]);
         expect(component.ammoDepleted(row)).toBeTrue();
-        expect(component.ammoText(row)).toBe('No ammo');
+        expect(component.ammoText(row)).toBe('NO AMMO');
     });
 
     it('shows No ammo instead of a dropdown when all ammo choices are destroyed', () => {
@@ -517,7 +557,7 @@ describe('WeaponEquipmentDialogComponent', () => {
             { remaining: 0, destroyed: true }
         ]);
         expect(component.showAmmoDropdown(row)).toBeFalse();
-        expect(component.ammoText(row)).toBe('No ammo');
+        expect(component.ammoText(row)).toBe('NO AMMO');
         expect(component.ammoDepleted(row)).toBeTrue();
         expect(component.ammoDestroyed(row)).toBeFalse();
     });
@@ -590,7 +630,7 @@ describe('WeaponEquipmentDialogComponent', () => {
         const { component } = createComponent([atm, destroyedBin, emptyBin, liveBin], equipmentMap);
 
         let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
-        await component.handleChoice(row, { ...component.handlerChoices(row)[0], value: 'Extended Range', label: 'Extended Range' });
+        await component.handleChoice(row, { ...component.modeChoice(row)!, value: 'Extended Range', label: 'ER' });
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
         expect(row.ammo.options.map(option => ({ label: option.label, disabled: option.disabled, destroyed: option.destroyed }))).toEqual([

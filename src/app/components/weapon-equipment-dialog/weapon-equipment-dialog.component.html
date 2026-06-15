@@ -1,4 +1,4 @@
-<div class="wide-dialog weapon-equipment-dialog" [class.hide-ammo-column]="!hasAmmoColumn()" [class.hide-controls-column]="!hasControlsColumn()">
+<div class="wide-dialog weapon-equipment-dialog" [class.hide-actions-column]="!hasActionsColumn()">
     <h2 class="wide-dialog-title">{{ data.title }}</h2>
     <div class="wide-dialog-body">
         <div class="weapon-equipment-grid">
@@ -19,11 +19,8 @@
                         <span>Sht</span>
                         <span>Med</span>
                         <span>Lng</span>
-                        @if (hasAmmoColumn()) {
-                            <span class="ammo-header">{{ groupHasAmmo(group) ? 'Ammo' : '' }}</span>
-                        }
-                        @if (hasControlsColumn()) {
-                            <span class="controls-header">{{ groupHasControls(group) ? 'Controls' : '' }}</span>
+                        @if (hasActionsColumn()) {
+                            <span class="actions-header">{{ groupActionsHeader(group) }}</span>
                         }
                     </div>
                     <div
@@ -51,6 +48,21 @@
                                         @for (modifier of row.modifiers; track modifier.name) {
                                             <span class="modifier" [class.destroyed]="modifier.destroyed">{{ modifier.name }}</span>
                                         }
+                                        @if (modeChoice(row); as choice) {
+                                            @if ((choice.choices?.length ?? 0) > 1 && !choice.disabled && !readOnly()) {
+                                                <multiline-dropdown
+                                                    class="mode-choice"
+                                                    [title]="choice.label"
+                                                    [label]="choice.label"
+                                                    [options]="handlerDropdownOptions(choice)"
+                                                    [value]="handlerDropdownValue(choice)"
+                                                    [disabled]="choice.disabled || readOnly()"
+                                                    (valueChange)="selectHandlerDropdown(row, choice, $event)"
+                                                />
+                                            } @else {
+                                                <span class="mode-badge">{{ modeText(row, choice) }}</span>
+                                            }
+                                        }
                                     </div>
                                     <span class="location-cell meta-cell" data-label="Loc">{{ row.display.location }}</span>
                                     <span class="hit-cell meta-cell" data-label="Hit">{{ row.display.hit }}</span>
@@ -71,51 +83,56 @@
                                             {{ rangeValue(row, range) }}
                                         </button>
                                     }
-                                    @if (hasAmmoColumn()) {
-                                        <div class="ammo-cell" [attr.data-label]="rowHasAmmo(row) ? 'Ammo' : ''" [class.empty-row-ammo]="!rowHasAmmo(row)" [class.ammo-without-controls]="!rowHasControls(row)" [class.empty-ammo]="ammoDepleted(row)" [class.destroyed-ammo]="ammoDestroyed(row)">
-                                            @if (rowHasAmmo(row)) {
-                                                @if (showAmmoDropdown(row)) {
-                                                    <select class="ammo-choice" [value]="selectedAmmoOption(row)" (change)="selectAmmoOption(row, $event)">
-                                                        @for (option of row.ammo.options; track option.id) {
-                                                            <option [value]="option.id" [disabled]="option.disabled" [class.destroyed-ammo-option]="option.destroyed">{{ option.label }}</option>
+                                    @if (hasActionsColumn()) {
+                                        <div class="actions-cell" [class.empty-row-actions]="!rowHasActions(row)">
+                                            <div class="ammo-cell" [attr.data-label]="rowHasAmmo(row) && !ammoDepleted(row) ? 'Ammo' : ''" [class.empty-row-ammo]="!rowHasAmmo(row)" [class.empty-ammo]="ammoDepleted(row)" [class.destroyed-ammo]="ammoDestroyed(row)">
+                                                @if (rowHasAmmo(row)) {
+                                                    @if (showAmmoDropdown(row)) {
+                                                        <multiline-dropdown
+                                                            class="ammo-choice"
+                                                            title="Ammo"
+                                                            label="Ammo"
+                                                            [options]="ammoDropdownOptions(row)"
+                                                            [value]="selectedAmmoOption(row)"
+                                                            [disabled]="readOnly()"
+                                                            (valueChange)="selectAmmoOption(row, $event)"
+                                                        />
+                                                    } @else {
+                                                        <span class="ammo-choice-static">{{ ammoText(row) }}</span>
+                                                    }
+                                                }
+                                            </div>
+                                            <div class="controls-cell" [class.empty-row-controls]="!rowHasControls(row)">
+                                                @for (choice of handlerChoices(row); track choice.label) {
+                                                    @switch (choice.displayType) {
+                                                        @case ('dropdown') {
+                                                                <multiline-dropdown
+                                                                    class="control-select"
+                                                                    [title]="choice.label"
+                                                                    [label]="choice.label"
+                                                                    [options]="handlerDropdownOptions(choice)"
+                                                                    [value]="handlerDropdownValue(choice)"
+                                                                    [disabled]="choice.disabled || readOnly()"
+                                                                    (valueChange)="selectHandlerDropdown(row, choice, $event)"
+                                                                />
                                                         }
-                                                    </select>
-                                                } @else {
-                                                    <span class="ammo-choice-static">{{ ammoText(row) }}</span>
-                                                }
-                                            }
-                                        </div>
-                                    }
-                                    @if (hasControlsColumn()) {
-                                        <div class="controls-cell" [class.empty-row-controls]="!rowHasControls(row)" [class.controls-without-ammo]="!rowHasAmmo(row)">
-                                            @for (choice of handlerChoices(row); track choice.label) {
-                                                @switch (choice.displayType) {
-                                                    @case ('dropdown') {
-                                                        <label class="control-select">
-                                                            <span>{{ choice.label }}</span>
-                                                            <select [value]="choice.value" [disabled]="choice.disabled || readOnly()" (change)="selectHandlerDropdown(row, choice, $event)">
-                                                                @for (option of choice.choices ?? []; track option.value) {
-                                                                    <option [value]="option.value" [selected]="option.value === choice.value" [disabled]="option.disabled">{{ option.label }}</option>
-                                                                }
-                                                            </select>
-                                                        </label>
-                                                    }
-                                                    @case ('label') {
-                                                        <span class="control-label">{{ choice.label }}</span>
-                                                    }
-                                                    @case ('toggle') {
-                                                        <button class="bt-button square-small" type="button" [class.active-control]="choice.active" [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.label }}</button>
-                                                    }
-                                                    @default {
-                                                        <button class="bt-button" type="button" [class.active-control]="choice.active" [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.shortLabel || choice.label }}</button>
+                                                        @case ('label') {
+                                                            <span class="control-label">{{ choice.label }}</span>
+                                                        }
+                                                        @case ('toggle') {
+                                                            <button class="bt-button square-small" type="button" [class.active-control]="choice.active" [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.label }}</button>
+                                                        }
+                                                        @default {
+                                                            <button class="bt-button" type="button" [class.active-control]="choice.active" [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.shortLabel || choice.label }}</button>
+                                                        }
                                                     }
                                                 }
-                                            }
-                                            @if (canMarkDestroyed(row)) {
-                                                <button class="bt-button" type="button" (click)="markDestroyed(row)">HIT</button>
-                                            } @else if (canRepair(row)) {
-                                                <button class="bt-button" type="button" (click)="repair(row)">REPAIR</button>
-                                            }
+                                                @if (canMarkDestroyed(row)) {
+                                                    <button class="bt-button" type="button" (click)="markDestroyed(row)">HIT</button>
+                                                } @else if (canRepair(row)) {
+                                                    <button class="bt-button" type="button" (click)="repair(row)">REPAIR</button>
+                                                }
+                                            </div>
                                         </div>
                                     }
                                 </div>
@@ -126,6 +143,21 @@
                                             <span>{{ row.display.name }}</span>
                                             @for (modifier of row.modifiers; track modifier.name) {
                                                 <span class="modifier" [class.destroyed]="modifier.destroyed">{{ modifier.name }}</span>
+                                            }
+                                            @if (modeChoice(row); as choice) {
+                                                @if ((choice.choices?.length ?? 0) > 1 && !choice.disabled && !readOnly()) {
+                                                    <multiline-dropdown
+                                                        class="mode-choice"
+                                                        [title]="choice.label"
+                                                        [label]="choice.label"
+                                                        [options]="handlerDropdownOptions(choice)"
+                                                        [value]="handlerDropdownValue(choice)"
+                                                        [disabled]="choice.disabled || readOnly()"
+                                                        (valueChange)="selectHandlerDropdown(row, choice, $event)"
+                                                    />
+                                                } @else {
+                                                    <span class="mode-badge">{{ modeText(row, choice) }}</span>
+                                                }
                                             }
                                         </div>
                                         <div class="select-cell">
@@ -161,34 +193,38 @@
                                             </span>
                                         </div>
                                         <div class="mobile-entry-actions-row">
-                                            @if (hasAmmoColumn()) {
-                                                <div class="ammo-cell" [attr.data-label]="rowHasAmmo(row) ? 'Ammo' : ''" [class.empty-row-ammo]="!rowHasAmmo(row)" [class.ammo-without-controls]="!rowHasControls(row)" [class.empty-ammo]="ammoDepleted(row)" [class.destroyed-ammo]="ammoDestroyed(row)">
+                                            @if (hasActionsColumn()) {
+                                                <div class="actions-cell" [class.empty-row-actions]="!rowHasActions(row)">
+                                                <div class="ammo-cell" [attr.data-label]="rowHasAmmo(row) && !ammoDepleted(row) ? 'Ammo' : ''" [class.empty-row-ammo]="!rowHasAmmo(row)" [class.empty-ammo]="ammoDepleted(row)" [class.destroyed-ammo]="ammoDestroyed(row)">
                                                     @if (rowHasAmmo(row)) {
                                                         @if (showAmmoDropdown(row)) {
-                                                            <select class="ammo-choice" [value]="selectedAmmoOption(row)" (change)="selectAmmoOption(row, $event)">
-                                                                @for (option of row.ammo.options; track option.id) {
-                                                                    <option [value]="option.id" [disabled]="option.disabled" [class.destroyed-ammo-option]="option.destroyed">{{ option.label }}</option>
-                                                                }
-                                                            </select>
+                                                            <multiline-dropdown
+                                                                class="ammo-choice"
+                                                                title="Ammo"
+                                                                label="Ammo"
+                                                                [options]="ammoDropdownOptions(row)"
+                                                                [value]="selectedAmmoOption(row)"
+                                                                [disabled]="readOnly()"
+                                                                (valueChange)="selectAmmoOption(row, $event)"
+                                                            />
                                                         } @else {
                                                             <span class="ammo-choice-static">{{ ammoText(row) }}</span>
                                                         }
                                                     }
                                                 </div>
-                                            }
-                                            @if (hasControlsColumn()) {
-                                                <div class="controls-cell" [class.empty-row-controls]="!rowHasControls(row)" [class.controls-without-ammo]="!rowHasAmmo(row)">
+                                                <div class="controls-cell" [class.empty-row-controls]="!rowHasControls(row)">
                                                     @for (choice of handlerChoices(row); track choice.label) {
                                                         @switch (choice.displayType) {
                                                             @case ('dropdown') {
-                                                                <label class="control-select">
-                                                                    <span>{{ choice.label }}</span>
-                                                                    <select [value]="choice.value" [disabled]="choice.disabled || readOnly()" (change)="selectHandlerDropdown(row, choice, $event)">
-                                                                        @for (option of choice.choices ?? []; track option.value) {
-                                                                            <option [value]="option.value" [selected]="option.value === choice.value" [disabled]="option.disabled">{{ option.label }}</option>
-                                                                        }
-                                                                    </select>
-                                                                </label>
+                                                                <multiline-dropdown
+                                                                    class="control-select"
+                                                                    [title]="choice.label"
+                                                                    [label]="choice.label"
+                                                                    [options]="handlerDropdownOptions(choice)"
+                                                                    [value]="handlerDropdownValue(choice)"
+                                                                    [disabled]="choice.disabled || readOnly()"
+                                                                    (valueChange)="selectHandlerDropdown(row, choice, $event)"
+                                                                />
                                                             }
                                                             @case ('label') {
                                                                 <span class="control-label">{{ choice.label }}</span>
@@ -206,6 +242,7 @@
                                                     } @else if (canRepair(row)) {
                                                         <button class="bt-button" type="button" (click)="repair(row)">REPAIR</button>
                                                     }
+                                                </div>
                                                 </div>
                                             }
                                         </div>

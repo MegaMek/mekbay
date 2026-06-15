@@ -5,9 +5,12 @@ import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import type { MountedEquipment } from '../../models/force-serialization';
 import type { HandlerChoice, HandlerContext } from '../../services/equipment-interaction-registry.service';
 import { AmmoControlDialogComponent, type AmmoControlDialogData } from '../ammo-control-dialog/ammo-control-dialog.component';
+import { INVENTORY_MODE_CHOICE_LABEL, INVENTORY_MODE_HANDLER_ID } from '../../equipment-handlers/inventory-mode.handler';
 import { getAmmoControlEntriesForUnitWeapons } from '../../utils/ammo-interaction.util';
 import { LayoutService } from '../../services/layout.service';
+import { MultilineDropdownComponent, type MultilineDropdownOption } from '../multiline-dropdown/multiline-dropdown.component';
 import {
+    formatInventoryControlModeName,
     getInventoryControlGroups,
     setInventoryControlSortOrder,
     type InventoryControlAmmoOption,
@@ -42,7 +45,7 @@ export interface WeaponEquipmentDialogData {
 @Component({
     selector: 'weapon-equipment-dialog',
     standalone: true,
-    imports: [DragDropModule],
+    imports: [DragDropModule, MultilineDropdownComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         class: 'fullscreen-dialog-host glass'
@@ -62,7 +65,7 @@ export class WeaponEquipmentDialogComponent {
     }
 
     compactLayout(): boolean {
-        return this.layoutService.windowWidth() <= 1200;
+        return this.layoutService.windowWidth() <= 960;
     }
 
     groups(): InventoryControlGroup[] {
@@ -78,6 +81,10 @@ export class WeaponEquipmentDialogComponent {
         return this.groups().some(group => this.groupHasControls(group));
     }
 
+    hasActionsColumn(): boolean {
+        return this.groups().some(group => this.groupHasActions(group));
+    }
+
     groupHasAmmo(group: InventoryControlGroup): boolean {
         return group.rows.some(row => this.rowHasAmmo(row));
     }
@@ -86,12 +93,29 @@ export class WeaponEquipmentDialogComponent {
         return group.rows.some(row => this.rowHasControls(row));
     }
 
+    groupHasActions(group: InventoryControlGroup): boolean {
+        return group.rows.some(row => this.rowHasActions(row));
+    }
+
+    groupActionsHeader(group: InventoryControlGroup): string {
+        const hasAmmo = this.groupHasAmmo(group);
+        const hasControls = this.groupHasControls(group);
+        if (hasAmmo && hasControls) return 'Ammo & Controls';
+        if (hasAmmo) return 'Ammo';
+        if (hasControls) return 'Controls';
+        return '';
+    }
+
     rowHasAmmo(row: InventoryControlRow): boolean {
         return row.ammo.tracksAmmo;
     }
 
     rowHasControls(row: InventoryControlRow): boolean {
         return this.handlerChoices(row).length > 0 || this.canMarkDestroyed(row) || this.canRepair(row);
+    }
+
+    rowHasActions(row: InventoryControlRow): boolean {
+        return this.rowHasAmmo(row) || this.rowHasControls(row);
     }
 
     readOnly(): boolean {
@@ -171,7 +195,7 @@ export class WeaponEquipmentDialogComponent {
 
     ammoText(row: InventoryControlRow): string {
         if (!row.ammo.tracksAmmo) return '';
-        if (!this.hasAvailableAmmoOption(row)) return 'No ammo';
+        if (!this.hasAvailableAmmoOption(row)) return 'NO AMMO';
         const selectedOption = this.selectedAmmo(row);
         if (selectedOption) return selectedOption.label;
         if (row.ammo.options.length === 1) return row.ammo.options[0].label;
@@ -203,8 +227,15 @@ export class WeaponEquipmentDialogComponent {
         return this.preferredAmmoOption(row)?.id ?? '';
     }
 
-    selectAmmoOption(row: InventoryControlRow, event: Event): void {
-        const value = (event.target as HTMLSelectElement).value;
+    ammoDropdownOptions(row: InventoryControlRow): MultilineDropdownOption[] {
+        return row.ammo.options.map(option => ({
+            value: option.id,
+            label: option.label,
+            disabled: option.disabled
+        }));
+    }
+
+    selectAmmoOption(row: InventoryControlRow, value: string): void {
         this.data.unit.setInventoryControlSelectedAmmoOption(row.id, value);
         this.revision.update(current => current + 1);
     }
@@ -239,11 +270,35 @@ export class WeaponEquipmentDialogComponent {
 
     handlerChoices(row: InventoryControlRow): HandlerChoice[] {
         if (row.destroyed) return [];
-        return this.data.context.registry.getChoices(row.entry, this.data.context);
+        return this.data.context.registry.getChoices(row.entry, this.data.context)
+            .filter(choice => !this.isModeChoice(choice));
     }
 
-    async selectHandlerDropdown(row: InventoryControlRow, choice: HandlerChoice, event: Event): Promise<void> {
-        const value = (event.target as HTMLSelectElement).value;
+    modeChoice(row: InventoryControlRow): HandlerChoice | undefined {
+        return this.data.context.registry.getChoices(row.entry, this.data.context)
+            .find(choice => this.isModeChoice(choice));
+    }
+
+    modeText(row: InventoryControlRow, choice: HandlerChoice): string {
+        const option = choice.choices?.find(candidate => candidate.value === choice.value);
+        if (option) return option.label;
+        const mode = row.modes.find(candidate => candidate.mode === choice.value);
+        return formatInventoryControlModeName(mode?.name ?? String(choice.value));
+    }
+
+    handlerDropdownOptions(choice: HandlerChoice): MultilineDropdownOption[] {
+        return choice.choices?.map(option => ({
+            value: String(option.value),
+            label: option.label,
+            disabled: option.disabled
+        })) ?? [];
+    }
+
+    handlerDropdownValue(choice: HandlerChoice): string {
+        return String(choice.value);
+    }
+
+    async selectHandlerDropdown(row: InventoryControlRow, choice: HandlerChoice, value: string): Promise<void> {
         const option = choice.choices?.find(candidate => String(candidate.value) === value);
         if (!option) return;
         await this.handleChoice(row, { ...choice, value: option.value, label: option.label, disabled: option.disabled });
@@ -253,6 +308,11 @@ export class WeaponEquipmentDialogComponent {
         if (this.readOnly() || choice.disabled) return;
         await this.data.context.registry.handleSelection(row.entry, choice, this.data.context);
         this.revision.update(value => value + 1);
+    }
+
+    private isModeChoice(choice: HandlerChoice): boolean {
+        return choice._handler?.id === INVENTORY_MODE_HANDLER_ID
+            || (choice.label === INVENTORY_MODE_CHOICE_LABEL && choice.displayType === 'dropdown');
     }
 
     canMarkDestroyed(row: InventoryControlRow): boolean {

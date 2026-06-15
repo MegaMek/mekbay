@@ -79,7 +79,7 @@ export class ECMHandler extends EquipmentInteractionHandler {
 
         return [
             {
-                label: 'ECM Mode:',
+                label: 'ECM Mode',
                 value: currentState,
                 displayType: 'dropdown',
                 choices: modes,

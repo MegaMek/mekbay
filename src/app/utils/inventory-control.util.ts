@@ -5,6 +5,11 @@ import { computeLinkedModifiers, isMountedDestroyed, resolveHitModifier } from '
 
 export const INVENTORY_CONTROL_MODE_STATE = 'inventory_control_mode';
 export const INVENTORY_CONTROL_SORT_STATE = 'inventory_control_sort';
+export const INVENTORY_CONTROL_MODE_DISPLAY_NAMES: Readonly<Record<string, string>> = {
+    Standard: 'STD',
+    'Extended Range': 'ER',
+    'High Explosive': 'HE'
+};
 
 export type InventoryControlGroupId = 'ranged' | 'physical' | 'equipment';
 export type InventoryRangeKey = 'min' | 'short' | 'medium' | 'long';
@@ -221,15 +226,12 @@ function formatAmmoOptionLabel(source: AmmoSource, showLocation: boolean): strin
     return `${location}${source.ammo.shortName} (${remaining}/${source.total})`;
 }
 
-export function getInventoryControlModeChoices(entry: MountedEquipment, equipmentMap: EquipmentMap): Array<{ label: string; value: string; disabled?: boolean }> {
-    return getInventoryControlModes(entry).map(mode => {
-        const ammo = getInventoryControlModeAmmoSummary(entry, equipmentMap, mode.mode);
-        return {
-            label: ammo.tracksAmmo ? `${mode.name} (${ammo.remaining}/${ammo.total})` : mode.name,
-            value: mode.mode,
-            disabled: false
-        };
-    });
+export function getInventoryControlModeChoices(entry: MountedEquipment, _equipmentMap: EquipmentMap): Array<{ label: string; value: string; disabled?: boolean }> {
+    return getInventoryControlModes(entry).map(mode => ({
+        label: formatInventoryControlModeName(mode.name),
+        value: mode.mode,
+        disabled: false
+    }));
 }
 
 function createGroup(id: InventoryControlGroupId, rows: InventoryControlRow[]): InventoryControlGroup {
@@ -467,6 +469,10 @@ function getAtmMunitionType(mode: string | null): string | null {
     if (normalizedMode.includes('explosive')) return 'M_HIGH_EXPLOSIVE';
     if (normalizedMode.includes('standard')) return 'M_STANDARD';
     return null;
+}
+
+export function formatInventoryControlModeName(modeName: string): string {
+    return INVENTORY_CONTROL_MODE_DISPLAY_NAMES[modeName] ?? modeName;
 }
 
 function normalizeEquipmentName(value: string): string {

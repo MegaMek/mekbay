@@ -100,4 +100,29 @@ describe('MultilineDropdownComponent', () => {
         expect(emittedValue).toBe('long');
         expect(fixture.componentInstance.open()).toBeFalse();
     });
+
+    it('uses the trigger font size in the overlay panel', () => {
+        const fixture = TestBed.createComponent(MultilineDropdownComponent);
+        fixture.componentRef.setInput('options', options);
+        fixture.componentRef.setInput('value', 'standard');
+        fixture.detectChanges();
+
+        const trigger = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
+        trigger.style.fontSize = '13px';
+        trigger.click();
+        fixture.detectChanges();
+
+        const panel = overlayContainerElement.querySelector('.multiline-dropdown-options') as HTMLElement;
+        expect(getComputedStyle(panel).fontSize).toBe('13px');
+    });
+
+    it('renders all option labels into the trigger width measure', () => {
+        const fixture = TestBed.createComponent(MultilineDropdownComponent);
+        fixture.componentRef.setInput('options', options);
+        fixture.componentRef.setInput('value', 'standard');
+        fixture.detectChanges();
+
+        const measureOptions = Array.from(fixture.nativeElement.querySelectorAll('.multiline-dropdown-measure-option')) as HTMLElement[];
+        expect(measureOptions.map(option => option.textContent?.trim())).toEqual(options.map(option => option.label));
+    });
 });

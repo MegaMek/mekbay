@@ -49,6 +49,9 @@ export interface MultilineDropdownOption {
     selector: 'multiline-dropdown-panel',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
+    host: {
+        '[style.font-size]': 'fontSize() || null'
+    },
     template: `
         <div
             class="multiline-dropdown-options glass has-shadow framed-borders"
@@ -128,7 +131,6 @@ export interface MultilineDropdownOption {
         .multiline-dropdown-option-label {
             display: block;
             min-width: 0;
-            line-height: 1.25;
             white-space: normal;
             overflow-wrap: normal;
             word-break: normal;
@@ -142,6 +144,7 @@ class MultilineDropdownPanelComponent {
     readonly optionsId = input('');
     readonly activeOptionId = input('');
     readonly activeIndex = input(0);
+    readonly fontSize = input('');
 
     readonly selected = output<MultilineDropdownOption>();
     readonly hovered = output<number>();
@@ -176,6 +179,11 @@ class MultilineDropdownPanelComponent {
                 (keydown)="onTriggerKeydown($event)"
             >
                 <span class="multiline-dropdown-label">{{ selectedLabel() }}</span>
+                <span class="multiline-dropdown-measure" aria-hidden="true">
+                    @for (option of options(); track option.value) {
+                        <span class="multiline-dropdown-measure-option">{{ option.label }}</span>
+                    }
+                </span>
                 <span class="multiline-dropdown-arrow" aria-hidden="true">\u25be</span>
             </button>
         </div>
@@ -184,26 +192,30 @@ class MultilineDropdownPanelComponent {
         :host {
             display: block;
             min-width: 0;
-            width: 100%;
+            width: max-content;
+            max-width: 100%;
         }
 
         .multiline-dropdown {
             min-width: 0;
             width: 100%;
+            height: 100%;
         }
 
         .multiline-dropdown-trigger {
-            display: flex;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
             align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-            min-height: 32px;
+            width: 100%;
+            height: 100%;
+            gap: 4px;
             text-align: left;
             cursor: pointer;
-            line-height: 1.2;
         }
 
         .multiline-dropdown-label {
+            grid-column: 1;
+            grid-row: 1;
             flex: 1 1 auto;
             min-width: 0;
             white-space: normal;
@@ -211,7 +223,26 @@ class MultilineDropdownPanelComponent {
             word-break: normal;
         }
 
+        .multiline-dropdown-measure {
+            display: grid;
+            grid-column: 1;
+            grid-row: 1;
+            min-width: 0;
+            overflow: hidden;
+            visibility: hidden;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+
+        .multiline-dropdown-measure-option {
+            grid-column: 1;
+            grid-row: 1;
+            white-space: nowrap;
+        }
+
         .multiline-dropdown-arrow {
+            grid-column: 2;
+            grid-row: 1;
             flex: 0 0 auto;
             color: var(--text-color-secondary);
             font-size: 0.8em;
@@ -366,8 +397,14 @@ export class MultilineDropdownComponent implements OnDestroy {
         panelRef.setInput('optionsId', this.optionsId());
         panelRef.setInput('activeOptionId', this.activeOptionId());
         panelRef.setInput('activeIndex', this.activeIndex());
+        panelRef.setInput('fontSize', this.triggerFontSize());
         panelRef.changeDetectorRef.detectChanges();
         this.scrollActiveOptionIntoView(panelRef.location.nativeElement as HTMLElement);
+    }
+
+    private triggerFontSize(): string {
+        const trigger = this.triggerEl();
+        return trigger ? getComputedStyle(trigger.nativeElement).fontSize : '';
     }
 
     private scrollActiveOptionIntoView(panelHost: HTMLElement) {

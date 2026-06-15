@@ -963,6 +963,75 @@ hr {
     }
 }
 
+// specific for inventory dialog, to make the input fields smaller and more compact
+.weapon-equipment-dialog {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    text-align: left;
+
+    .field-label {
+        font-size: 0.85em;
+        color: var(--text-color-secondary);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        letter-spacing: 0.1em;
+
+        &.centered {
+            text-align: center;
+        }
+        
+        .optional {
+            font-weight: normal;
+            text-transform: none;
+            font-style: italic;
+        }
+    }
+
+    &.disabled .field-label {
+        color: var(--text-color-tertiary);
+    }
+
+    .field-input {
+        width: 100%;
+        flex: 1 1 auto;
+        min-width: 0;
+        font-family: inherit;
+        font-size: inherit;
+        box-sizing: border-box;
+        background: var(--background-input);
+        color: white;
+        border: 0;
+        outline: none;
+        transition: border 0.2s ease-in-out, background 0.2s ease-in-out, color 0.2s ease-in-out;
+        white-space: normal;
+        overflow-wrap: break-word;
+        word-break: break-word;
+
+        &:focus {
+            outline: none;
+        }
+
+        &:disabled {
+            color: var(--text-color-tertiary);
+            cursor: not-allowed;
+        }
+
+        &[contenteditable]:empty::before {
+            content: attr(data-placeholder);
+            color: #888;
+            pointer-events: none;
+        }
+    }
+
+    select.field-input {
+        cursor: pointer;
+        text-overflow: ellipsis;
+    }
+}
+
 /* ── Wide Dialog ──
  * CSS convention for fullscreen-dialog-host glass dialogs.
  * Structure:

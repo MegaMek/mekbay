@@ -8,8 +8,11 @@ import {
     setInventoryControlMode
 } from '../utils/inventory-control.util';
 
+export const INVENTORY_MODE_HANDLER_ID = 'inventory-mode-handler';
+export const INVENTORY_MODE_CHOICE_LABEL = 'Mode';
+
 export class InventoryModeHandler extends EquipmentInteractionHandler {
-    readonly id = 'inventory-mode-handler';
+    readonly id = INVENTORY_MODE_HANDLER_ID;
     override readonly priority = 100;
 
     override applicableTo(equipment: MountedEquipment): boolean {
@@ -23,7 +26,7 @@ export class InventoryModeHandler extends EquipmentInteractionHandler {
         const currentMode = getSelectedInventoryControlMode(equipment) ?? choices[0].value;
         return [
             {
-                label: 'Mode',
+                label: INVENTORY_MODE_CHOICE_LABEL,
                 value: currentMode,
                 displayType: 'dropdown',
                 choices,

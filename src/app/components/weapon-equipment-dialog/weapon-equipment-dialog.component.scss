@@ -1,19 +1,11 @@
 .weapon-equipment-dialog {
     --weapon-equipment-title-height: 30px;
-    --weapon-equipment-columns: 32px 28px minmax(180px, 1.25fr) 44px 42px 40px minmax(90px, 0.8fr) repeat(4, 42px) minmax(160px, 220px) minmax(190px, 1fr);
+    --weapon-equipment-columns: 32px 28px minmax(180px, 1.25fr) 44px 42px 40px minmax(90px, 0.8fr) repeat(4, 42px) minmax(260px, 1fr);
     max-width: min(1400px, 96dvw);
     width: 100%;
 }
 
-.weapon-equipment-dialog.hide-ammo-column {
-    --weapon-equipment-columns: 32px 28px minmax(180px, 1.25fr) 44px 42px 40px minmax(90px, 0.8fr) repeat(4, 42px) minmax(190px, 1fr);
-}
-
-.weapon-equipment-dialog.hide-controls-column {
-    --weapon-equipment-columns: 32px 28px minmax(180px, 1.25fr) 44px 42px 40px minmax(90px, 0.8fr) repeat(4, 42px) minmax(160px, 220px);
-}
-
-.weapon-equipment-dialog.hide-ammo-column.hide-controls-column {
+.weapon-equipment-dialog.hide-actions-column {
     --weapon-equipment-columns: 32px 28px minmax(180px, 1.25fr) 44px 42px 40px minmax(90px, 0.8fr) repeat(4, 42px);
 }
 
@@ -21,7 +13,6 @@
     display: grid;
     gap: 4px;
     min-width: 0;
-    overflow-x: clip;
 }
 
 .weapon-equipment-header,
@@ -184,12 +175,9 @@
     grid-column: 11;
 }
 
-.ammo-cell {
+.actions-cell {
     grid-column: 12;
-}
-
-.controls-cell {
-    grid-column: -2 / -1;
+    min-width: 0;
 }
 
 .drag-handle {
@@ -201,7 +189,7 @@
     background: transparent;
     color: var(--text-color-secondary);
     cursor: grab;
-    font-size: 0.66rem;
+    font-size: 0.7rem;
     letter-spacing: -1px;
 }
 
@@ -224,6 +212,37 @@
     color: var(--text-color-secondary);
     font-size: 0.9em;
     font-style: italic;
+}
+
+.mode-choice,
+.control-select,
+.mode-badge {
+    flex: 0 1 auto;
+    color: var(--text-color-secondary);
+    line-height: 1.2;
+}
+
+.mode-badge {
+    max-width: 160px;
+    border: 1px solid var(--border-color);
+    background: var(--background-color-light);
+    font: inherit;
+}
+
+.mode-choice,
+.control-select {
+    width: auto;
+    min-width: 54px;
+    max-width: 160px;
+}
+
+.mode-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .range-cell {
@@ -256,6 +275,7 @@
     display: none;
 }
 
+.actions-cell,
 .controls-cell {
     display: flex;
     flex-wrap: wrap;
@@ -265,31 +285,8 @@
     overflow-wrap: anywhere;
 }
 
-.control-select {
-    display: inline-flex;
-    flex: 1 1 240px;
-    flex-wrap: wrap;
-    gap: 4px;
-    align-items: center;
-    color: var(--text-color-secondary);
-    min-width: 0;
-    max-width: 100%;
-    overflow-wrap: anywhere;
-}
-
-.control-select select {
-    flex: 1 1 160px;
-    min-width: 0;
-    max-width: 100%;
-    min-height: 26px;
-    border: 1px solid var(--border-color);
-    background: var(--background-color-light);
-    color: var(--text-color);
-}
-
 .controls-cell .bt-button,
-.controls-cell .control-label,
-.control-select span {
+.controls-cell .control-label {
     max-width: 100%;
     white-space: normal;
     overflow-wrap: anywhere;
@@ -311,6 +308,7 @@
 
 .ammo-cell.empty-ammo {
     color: var(--damage-color);
+    font-weight: bold;
 }
 
 .ammo-cell.destroyed-ammo {
@@ -334,52 +332,31 @@
 .ammo-choice {
     width: 100%;
     min-width: 0;
-    max-width: 220px;
-    min-height: 24px;
-    border: 1px solid var(--border-color);
-    background-color: var(--background-color-light);
-    color: var(--text-color);
-    font: inherit;
 }
-
 
 .ammo-choice-static {
     width: 100%;
     min-width: 0;
-    max-width: 220px;
     min-height: 24px;
     border: 1px solid transparent;
     font: inherit;
-}
-
-.ammo-choice {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.ammo-choice-static {
     display: inline-flex;
     align-items: center;
     border-color: transparent;
     padding: 0px 4px;
 }
 
-.ammo-choice option {
-    background-color: var(--background-color-light);
-    color: var(--text-color);
+.mode-choice,
+.control-select,
+.ammo-choice {
+    border: 1px solid var(--border-color);
+    min-height: 24px;
+    align-items: center;
+    display: flex;
+    font-size: 0.9rem;
 }
 
-.ammo-choice:focus {
-    outline: 1px solid var(--bt-yellow);
-}
-
-.ammo-choice .destroyed-ammo-option {
-    color: var(--damage-color);
-    text-decoration-line: line-through;
-}
-
-@container (max-width: 1200px) {
+@container (max-width: 900px) {
     .weapon-equipment-header {
         display: none;
     }
@@ -497,6 +474,7 @@
     .hit-cell,
     .heat-cell,
     .damage-cell,
+    .actions-cell,
     .ammo-cell,
     .min-cell,
     .range-label,
@@ -548,11 +526,17 @@
         box-sizing: border-box;
     }
 
+    .actions-cell,
     .ammo-cell {
         flex-wrap: nowrap;
         gap: 4px;
         min-width: 0;
         max-width: 100%;
+    }
+
+    .actions-cell {
+        flex-wrap: wrap;
+        align-items: center;
     }
 
     .ammo-cell.empty-row-ammo {
@@ -584,6 +568,10 @@
     }
 
     .controls-cell.empty-row-controls {
+        display: none;
+    }
+
+    .actions-cell.empty-row-actions {
         display: none;
     }
 
@@ -623,6 +611,7 @@
     }
 
     .control-select {
-        flex: 1 1 160px;
+        flex: 0 1 160px;
+        max-width: 100%;
     }
 }
