@@ -1052,9 +1052,21 @@ hr {
     container-type: inline-size;
 }
 
+h2 {
+    font-size: 1.3em;
+}
+
+h3 {
+    font-size: 1.2em;
+}
+
 .wide-dialog-title {
     margin: 8px 0;
     flex-shrink: 0;
+
+    @media (max-height: 400px) {
+        margin: 2px 0;
+    }
 }
 
 .wide-dialog-body {
