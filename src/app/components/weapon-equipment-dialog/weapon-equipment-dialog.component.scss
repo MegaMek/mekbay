@@ -1,12 +1,12 @@
 .weapon-equipment-dialog {
     --weapon-equipment-title-height: 30px;
-    --weapon-equipment-columns: 32px 28px minmax(180px, 1fr) 42px 44px 40px fit-content(300px) repeat(4, 42px) fit-content(420px);
+    --weapon-equipment-columns: 32px 28px minmax(100px, 1fr) 42px 42px 42px fit-content(200px) repeat(4, 42px) fit-content(420px);
     max-width: min(1400px, 96dvw);
     width: 100%;
 }
 
 .weapon-equipment-dialog.hide-actions-column {
-    --weapon-equipment-columns: 32px 28px minmax(180px, 1.25fr) 42px 44px 40px fit-content(300px) repeat(4, 42px);
+    --weapon-equipment-columns: 32px 28px minmax(100px, 1.25fr) 42px 42px 42px fit-content(200px) repeat(4, 42px);
 }
 
 .weapon-equipment-grid {
@@ -368,7 +368,7 @@
     font-size: 0.9rem;
 }
 
-@container (max-width: 900px) {
+@container (max-width: 760px) {
     .weapon-equipment-header {
         display: none;
     }

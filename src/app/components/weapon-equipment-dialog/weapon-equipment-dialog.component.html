@@ -33,7 +33,7 @@
                         @for (row of group.rows; track row.id) {
                             <div class="weapon-equipment-row" cdkDrag cdkDragLockAxis="y" cdkDragPreviewContainer="parent" [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0" [cdkDragDisabled]="!group.sortable || readOnly() || row.destroyed || row.disabled" [class.destroyed-entry]="row.destroyed" [class.disabled-entry]="!row.destroyed && row.disabled">
                                 <div class="drag-cell">
-                                    @if (group.sortable && !row.destroyed && !row.disabled && !compactLayout()) {
+                                    @if (group.sortable && !compactLayout()) {
                                         <button class="drag-handle" type="button" cdkDragHandle aria-label="Reorder">::::</button>
                                     }
                                 </div>

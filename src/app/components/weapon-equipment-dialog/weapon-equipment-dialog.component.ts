@@ -74,7 +74,7 @@ export class WeaponEquipmentDialogComponent {
     }
 
     compactLayout(): boolean {
-        return this.layoutService.windowWidth() <= 920;
+        return this.layoutService.windowWidth() <= 760;
     }
 
     groupHasAmmo(group: InventoryControlGroup): boolean {
