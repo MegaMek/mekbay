@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/cor
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import type { HandlerContext } from '../../services/equipment-interaction-registry.service';
 import type { AmmoControlEntry, AmmoControlGroup } from '../../utils/ammo-interaction.util';
-import { changeAmmoGroupRemaining, getAmmoControlGroups, getAmmoEntryRemaining, getAmmoGroupRemaining, setAmmoEntry, setAmmoGroup } from '../../utils/ammo-interaction.util';
+import { changeAmmoEntryRemaining, changeAmmoGroupRemaining, getAmmoControlGroups, getAmmoEntryRemaining, getAmmoGroupRemaining, setAmmoEntry, setAmmoGroup } from '../../utils/ammo-interaction.util';
 
 export interface AmmoControlDialogData {
     title: string;
@@ -27,10 +27,9 @@ export interface AmmoControlDialogData {
                 @for (group of groups(); track group.id) {
                     <div class="ammo-control-row" [class.destroyed-entry]="group.destroyed">
                         <div class="ammo-control-label" [class.expandable]="group.expandable">
-                            <span class="ammo-location">{{ group.locationLabel }}</span>
                             @if (group.expandable) {
                                 <button class="ammo-expand-button" type="button" (click)="toggleGroup(group)">
-                                    <svg width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" class="chevron" [class.collapsed]="!isExpanded(group)"><path d="M0 2l5 6 5-6z"></path></svg>
+                                    <svg width="13px" height="13px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" class="chevron" [class.collapsed]="!isExpanded(group)"><path d="M0 2l5 6 5-6z"></path></svg>
                                     <span class="ammo-name">{{ group.displayName }}</span>
                                 </button>
                             } @else {
@@ -40,10 +39,18 @@ export interface AmmoControlDialogData {
                             @if (isExpanded(group)) {
                                 <div class="ammo-bin-list">
                                     @for (entry of group.entries; track entry.id) {
-                                        <button class="ammo-bin" type="button" (click)="setAmmoBin(entry)" [disabled]="entry.destroyed || readOnly()" [class.destroyed]="entry.destroyed">
-                                            <span class="ammo-bin-name">{{ entry.displayName }}</span>
+                                        <div class="ammo-bin" [class.destroyed]="entry.destroyed">
+                                            <button class="ammo-bin-name" type="button" (click)="setAmmoBin(entry)" [disabled]="entry.destroyed || readOnly()">{{ entry.displayBinName }}</button>
+                                            @if (!entry.destroyed && !readOnly()) {
+                                                <div class="ammo-bin-adjustments">
+                                                    <button class="ammo-bin-adjust bt-button square-small" type="button" (click)="decrementBin(entry)" [disabled]="remaining(entry) <= 0">-1</button>
+                                                    <button class="ammo-bin-adjust bt-button square-small" type="button" (click)="incrementBin(entry)" [disabled]="remaining(entry) >= entry.totalAmmo">+1</button>
+                                                </div>
+                                            } @else {
+                                                <span class="ammo-bin-adjustments" aria-hidden="true"></span>
+                                            }
                                             <span class="ammo-count">{{ remaining(entry) }}/{{ entry.totalAmmo }}</span>
-                                        </button>
+                                        </div>
                                     }
                                 </div>
                             }
@@ -74,9 +81,9 @@ export interface AmmoControlDialogData {
             display: grid;
             grid-template-columns: minmax(0, 1fr) auto;
             gap: 4px 12px;
-            align-items: center;
-            padding: 8px 0;
-            border-bottom: 1px solid color-mix(in srgb, var(--text-color-secondary) 25%, transparent);
+            align-items: start;
+            padding: 4px 0;
+            border-bottom: 1px solid var(--border-color);
         }
 
         .ammo-control-row:last-child {
@@ -95,14 +102,14 @@ export interface AmmoControlDialogData {
 
         .ammo-control-label {
             display: grid;
-            grid-template-columns: auto minmax(0, 1fr) auto;
+            grid-template-columns: minmax(0, 1fr) auto auto;
             gap: 0px 8px;
             align-items: baseline;
             min-width: 0;
         }
 
         .ammo-control-label.expandable {
-            grid-template-columns: auto minmax(0, 1fr) auto;
+            grid-template-columns: minmax(0, 1fr) auto auto;
         }
 
         .ammo-expand-button {
@@ -111,6 +118,7 @@ export interface AmmoControlDialogData {
             justify-content: flex-start;
             gap: 4px;
             min-width: 0;
+            min-height: 32px;
             padding: 0;
             border: 0;
             background: transparent;
@@ -130,22 +138,30 @@ export interface AmmoControlDialogData {
             transform: rotate(-90deg);
         }
 
-        .ammo-location {
-            font-weight: 700;
-            color: var(--text-color-secondary);
-            border-right: 1px solid var(--border-color);
-            padding: 4px 8px 4px 0px;
-            min-width: 32px;
-        }
-
         .ammo-name {
             color: var(--text-color);
             text-align: left;
         }
 
+        .ammo-control-label > .ammo-name {
+            display: flex;
+            align-items: center;
+            min-height: 32px;
+        }
+
         .ammo-count {
             color: var(--text-color-secondary);
             font-variant-numeric: tabular-nums;
+            text-align: right;
+            min-width: 48px;
+        }
+
+        .ammo-control-label > .ammo-count {
+            grid-column: 3;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            min-height: 32px;
         }
 
         .ammo-control-row.destroyed-entry > .ammo-control-label > .ammo-count,
@@ -156,36 +172,70 @@ export interface AmmoControlDialogData {
         .ammo-control-actions {
             display: flex;
             gap: 6px;
-            align-items: center;
+            align-items: stretch;
             align-self: start;
         }
 
         .ammo-bin-list {
-            grid-column: 2 / -1;
+            grid-column: 1 / -1;
             display: grid;
-            gap: 2px;
-            margin-left: 8px;
-            padding-left: 16px;
-            border-left: 1px solid color-mix(in srgb, var(--text-color-secondary) 45%, transparent);
+            gap: 0px 8px;
             font-size: 0.86em;
+            margin-top: -4px;
+            padding-bottom: 4px;
         }
 
         .ammo-bin {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-columns: 96px auto minmax(48px, auto);
             gap: 8px;
             align-items: baseline;
-            padding: 2px 0;
+            padding: 0;
             border: 0;
             background: transparent;
             color: inherit;
             text-align: left;
-            cursor: pointer;
+            border-left: 1px solid var(--border-color);
+            margin-left: 6px;
+            padding-top: 4px;
+            box-sizing: border-box;
         }
 
         .ammo-bin-name {
             justify-self: start;
+            box-sizing: border-box;
+            padding-left: 10px;
+            border: 0;
+            background: transparent;
+            color: inherit;
+            font: inherit;
+            text-align: left;
+            cursor: pointer;
             text-decoration: underline dotted var(--text-color-secondary);
+        }
+
+        .ammo-bin-adjustments {
+            display: inline-flex;
+            gap: 4px;
+            align-items: center;
+        }
+
+        .ammo-bin-adjust {
+            display: inline-grid;
+            place-items: center;
+            width: 24px;
+            height: 24px;
+            min-height: 0;
+            max-height: 24px;
+            min-width: 0;
+            max-width: 24px;
+            padding: 0;
+            cursor: pointer;
+        }
+
+        .ammo-bin-adjust:disabled {
+            opacity: 0.45;
+            cursor: default;
         }
 
         .ammo-control-list.read-only .ammo-bin {
@@ -224,6 +274,7 @@ export class AmmoControlDialogComponent {
     private readonly dialogRef: DialogRef<void, AmmoControlDialogComponent> = inject(DialogRef);
     private readonly revision = signal(0);
     private readonly expandedGroups = signal<Set<string>>(new Set());
+    private readonly expandedEntries = signal<Set<string>>(new Set());
 
     groups(): AmmoControlGroup[] {
         this.revision();
@@ -237,17 +288,30 @@ export class AmmoControlDialogComponent {
 
     isExpanded(group: AmmoControlGroup): boolean {
         this.revision();
-        return this.expandedGroups().has(group.id);
+        const expandedEntries = this.expandedEntries();
+        return this.expandedGroups().has(group.id) || group.entries.some(entry => expandedEntries.has(entry.id));
     }
 
     toggleGroup(group: AmmoControlGroup): void {
         if (!group.expandable) return;
+        const isExpanded = this.isExpanded(group);
         this.expandedGroups.update(groups => {
             const next = new Set(groups);
-            if (next.has(group.id)) {
+            if (isExpanded) {
                 next.delete(group.id);
             } else {
                 next.add(group.id);
+            }
+            return next;
+        });
+        this.expandedEntries.update(entries => {
+            const next = new Set(entries);
+            for (const entry of group.entries) {
+                if (isExpanded) {
+                    next.delete(entry.id);
+                } else {
+                    next.add(entry.id);
+                }
             }
             return next;
         });
@@ -273,6 +337,20 @@ export class AmmoControlDialogComponent {
     increment(group: AmmoControlGroup): void {
         if (this.readOnly()) return;
         if (changeAmmoGroupRemaining(group, 1, this.data.context)) {
+            this.revision.update(value => value + 1);
+        }
+    }
+
+    decrementBin(entry: AmmoControlEntry): void {
+        if (this.readOnly() || entry.destroyed) return;
+        if (changeAmmoEntryRemaining(entry, -1, this.data.context)) {
+            this.revision.update(value => value + 1);
+        }
+    }
+
+    incrementBin(entry: AmmoControlEntry): void {
+        if (this.readOnly() || entry.destroyed) return;
+        if (changeAmmoEntryRemaining(entry, 1, this.data.context)) {
             this.revision.update(value => value + 1);
         }
     }

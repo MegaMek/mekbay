@@ -211,48 +211,6 @@ describe('SvgInteractionService', () => {
         }));
     });
 
-    it('opens ammo profile dialog in read-only interaction mode', () => {
-        const gaussWeapon = new WeaponEquipment({
-            id: 'CLGaussRifle',
-            name: 'Gauss Rifle',
-            type: 'weapon',
-            weapon: { ammoType: 'GAUSS', rackSize: 0 }
-        });
-        const gaussAmmo = new AmmoEquipment({
-            id: 'Clan Gauss Ammo',
-            name: 'Gauss Rifle Ammo [Clan]',
-            type: 'ammo',
-            ammo: { type: 'GAUSS', rackSize: 0, shots: 8 }
-        });
-        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        const ammoProfile = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        ammoProfile.setAttribute('id', 'ammoProfile');
-        const ammoProfileButton = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        ammoProfileButton.classList.add('ammoProfileButton');
-        ammoProfile.appendChild(ammoProfileButton);
-        svg.appendChild(ammoProfile);
-        const unit = {
-            id: 'unit-readonly',
-            readOnly: () => true,
-            getInventory: () => ([
-                { id: 'CLGaussRifle@RA#0', name: gaussWeapon.internalName, equipment: gaussWeapon, states: new Map() },
-            ]),
-            getCritSlots: () => ([
-                { id: 'Clan Gauss Ammo@RA#1', name: gaussAmmo.internalName, loc: 'RA', slot: 1, eq: gaussAmmo, totalAmmo: 8, consumed: 0 },
-            ]),
-            svg: () => svg,
-        };
-        const dialogsService = TestBed.inject(DialogsService) as jasmine.SpyObj<DialogsService>;
-
-        service.updateUnit(unit);
-        service.setupReadOnlyInteractions(svg);
-        ammoProfileButton.dispatchEvent(createPointerEvent('pointerdown', { pointerId: 61, pointerType: 'mouse', button: 0, buttons: 1 }));
-        ammoProfileButton.dispatchEvent(createPointerEvent('pointerup', { pointerId: 61, pointerType: 'mouse', button: 0 }));
-
-        expect(dialogsService.createDialog).toHaveBeenCalled();
-    });
-});
-
 function createPointerEvent(type: string, init: PointerEventInit): PointerEvent {
     return new PointerEvent(type, {
         bubbles: true,

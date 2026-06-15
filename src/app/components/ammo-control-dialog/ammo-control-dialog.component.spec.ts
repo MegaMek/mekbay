@@ -42,6 +42,7 @@ function createCritEntry(params: {
         sourceType: 'crit',
         locationLabel: params.loc,
         displayName: params.ammo.name,
+        displayBinName: `Bin #1 [${params.loc}]`,
         currentAmmo: params.ammo,
         originalAmmo: params.ammo,
         originalTotalAmmo: 5,
@@ -52,6 +53,18 @@ function createCritEntry(params: {
 }
 
 describe('AmmoControlDialogComponent', () => {
+    function configureDialog(data: AmmoControlDialogData): AmmoControlDialogComponent {
+        TestBed.configureTestingModule({
+            imports: [AmmoControlDialogComponent],
+            providers: [
+                { provide: DIALOG_DATA, useValue: data },
+                { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
+            ],
+        });
+
+        return TestBed.createComponent(AmmoControlDialogComponent).componentInstance;
+    }
+
     it('recomputes visible groups from live entries while open', () => {
         const standardAmmo = createAmmo('Clan Ultra AC/20 Ammo');
         const precisionAmmo = createAmmo('Clan Ultra AC/20 Precision Ammo');
@@ -70,16 +83,7 @@ describe('AmmoControlDialogComponent', () => {
             getEntries: () => liveEntries,
             context: {} as HandlerContext,
         };
-
-        TestBed.configureTestingModule({
-            imports: [AmmoControlDialogComponent],
-            providers: [
-                { provide: DIALOG_DATA, useValue: data },
-                { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
-            ],
-        });
-        const fixture = TestBed.createComponent(AmmoControlDialogComponent);
-        const component = fixture.componentInstance;
+        const component = configureDialog(data);
 
         let groups = component.groups();
         expect(groups.length).toBe(1);
@@ -97,5 +101,114 @@ describe('AmmoControlDialogComponent', () => {
         expect(groups.map(group => group.destroyed)).toEqual([false, true]);
         expect(component.groupRemaining(groups[0])).toBe(5);
         expect(component.groupRemaining(groups[1])).toBe(0);
+    });
+
+    it('allows a single-bin ammo group to expand', () => {
+        const standardAmmo = createAmmo('Clan Ultra AC/20 Ammo');
+        const owner = {
+            id: 'unit-1',
+            readOnly: () => false,
+            getUnit: () => ({ techBase: 'Clan' }),
+        } as unknown as Pick<CBTForceUnit, 'id' | 'readOnly' | 'getUnit'>;
+        const data: AmmoControlDialogData = {
+            title: 'Ammo',
+            entries: [createCritEntry({ loc: 'LT', slot: 0, ammo: standardAmmo, owner })],
+            context: {} as HandlerContext,
+        };
+
+        TestBed.configureTestingModule({
+            imports: [AmmoControlDialogComponent],
+            providers: [
+                { provide: DIALOG_DATA, useValue: data },
+                { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
+            ],
+        });
+        const fixture = TestBed.createComponent(AmmoControlDialogComponent);
+        fixture.detectChanges();
+
+        const expandButton: HTMLButtonElement | null = fixture.nativeElement.querySelector('.ammo-expand-button');
+        expect(expandButton).not.toBeNull();
+        expect(fixture.nativeElement.querySelector('.ammo-bin-list')).toBeNull();
+
+        expandButton?.click();
+        fixture.detectChanges();
+
+        const binName: HTMLElement | null = fixture.nativeElement.querySelector('.ammo-bin-name');
+        expect(binName?.textContent?.trim()).toBe('#1 Bin [LT]');
+    });
+
+    it('shows per-bin quantity controls only for active bins', () => {
+        const standardAmmo = createAmmo('Clan Ultra AC/20 Ammo');
+        const owner = {
+            id: 'unit-1',
+            readOnly: () => false,
+            setCritSlot: jasmine.createSpy('setCritSlot'),
+            getUnit: () => ({ techBase: 'Clan' }),
+            svg: () => null,
+        } as unknown as Pick<CBTForceUnit, 'id' | 'readOnly' | 'setCritSlot' | 'getUnit' | 'svg'>;
+        const activeEntry = createCritEntry({ loc: 'LT', slot: 0, ammo: standardAmmo, owner, consumed: 1 });
+        const destroyedEntry = createCritEntry({ loc: 'LT', slot: 1, ammo: standardAmmo, owner, destroyed: true });
+        const data: AmmoControlDialogData = {
+            title: 'Ammo',
+            entries: [activeEntry, destroyedEntry],
+            context: {
+                dataService: { getEquipments: () => ({ [standardAmmo.internalName]: standardAmmo }) },
+                toastService: { showToast: jasmine.createSpy('showToast') },
+            } as unknown as HandlerContext,
+        };
+
+        TestBed.configureTestingModule({
+            imports: [AmmoControlDialogComponent],
+            providers: [
+                { provide: DIALOG_DATA, useValue: data },
+                { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
+            ],
+        });
+        const fixture = TestBed.createComponent(AmmoControlDialogComponent);
+        fixture.detectChanges();
+        fixture.nativeElement.querySelector('.ammo-expand-button')?.click();
+        fixture.detectChanges();
+
+        const binRows = Array.from(fixture.nativeElement.querySelectorAll('.ammo-bin')) as HTMLElement[];
+        expect(binRows[0].querySelectorAll('.ammo-bin-adjust').length).toBe(2);
+        expect(binRows[1].querySelectorAll('.ammo-bin-adjust').length).toBe(0);
+
+        (binRows[0].querySelector('.ammo-bin-adjust') as HTMLButtonElement).click();
+        fixture.detectChanges();
+
+        expect(activeEntry.consumed).toBe(2);
+        expect(owner.setCritSlot).toHaveBeenCalledWith(activeEntry.source as CriticalSlot);
+        expect(binRows[0].querySelector('.ammo-count')?.textContent?.trim()).toBe('3/5');
+    });
+
+    it('keeps rebuilt groups open after a bin changes ammo type', () => {
+        const standardAmmo = createAmmo('Clan Ultra AC/20 Ammo');
+        const precisionAmmo = createAmmo('Clan Ultra AC/20 Precision Ammo');
+        const owner = {
+            id: 'unit-1',
+            readOnly: () => false,
+            getUnit: () => ({ techBase: 'Clan' }),
+        } as unknown as Pick<CBTForceUnit, 'id' | 'readOnly' | 'getUnit'>;
+        const changedEntry = createCritEntry({ loc: 'LT', slot: 0, ammo: standardAmmo, owner });
+        const remainingEntry = createCritEntry({ loc: 'LT', slot: 1, ammo: standardAmmo, owner });
+        const data: AmmoControlDialogData = {
+            title: 'Ammo',
+            entries: [changedEntry, remainingEntry],
+            getEntries: () => [changedEntry, remainingEntry],
+            context: {} as HandlerContext,
+        };
+        const component = configureDialog(data);
+        const group = component.groups()[0];
+
+        component.toggleGroup(group);
+        expect(component.isExpanded(group)).toBeTrue();
+
+        changedEntry.currentAmmo = precisionAmmo;
+        changedEntry.displayName = precisionAmmo.name;
+
+        const rebuiltGroups = component.groups();
+
+        expect(rebuiltGroups.length).toBe(2);
+        expect(rebuiltGroups.every(rebuiltGroup => component.isExpanded(rebuiltGroup))).toBeTrue();
     });
 });

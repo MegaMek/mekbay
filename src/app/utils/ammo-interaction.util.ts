@@ -12,6 +12,7 @@ export interface AmmoControlEntry {
     sourceType: 'crit' | 'inventory';
     locationLabel: string;
     displayName: string;
+    displayBinName: string;
     currentAmmo: AmmoEquipment;
     originalAmmo: AmmoEquipment;
     originalTotalAmmo: number;
@@ -23,7 +24,6 @@ export interface AmmoControlEntry {
 export interface AmmoControlGroup {
     id: string;
     entries: AmmoControlEntry[];
-    locationLabel: string;
     displayName: string;
     totalAmmo: number;
     consumed: number;
@@ -41,6 +41,10 @@ export function formatAmmoName(ammo: AmmoEquipment): string {
 
 function getAmmoControlDisplayName(ammo: AmmoEquipment): string {
     return ammo.name.endsWith(' Ammo') ? ammo.name.slice(0, -5) : ammo.name;
+}
+
+function formatAmmoBinName(index: number, locationLabel: string): string {
+    return `#${index} Bin` + (locationLabel ? ` [${locationLabel}]` : '');
 }
 
 export function getCriticalSlotAmmoProfileKey(criticalSlot: CriticalSlot): string | null {
@@ -76,13 +80,15 @@ function createCriticalSlotAmmoControlEntry(unit: CBTForceUnit, criticalSlot: Cr
     if (!originalAmmo) return null;
 
     const totalAmmo = getCriticalSlotTotalAmmo(unit, criticalSlot);
+    const locationLabel = criticalSlot.loc ?? 'Ammo';
     return {
         id: `crit:${criticalSlot.loc ?? ''}:${criticalSlot.slot ?? ''}:${criticalSlot.name ?? criticalSlot.id}`,
         owner: unit,
         source: criticalSlot,
         sourceType: 'crit',
-        locationLabel: criticalSlot.loc ?? 'Ammo',
+        locationLabel,
         displayName: getAmmoControlDisplayName(criticalSlot.eq),
+        displayBinName: formatAmmoBinName(1, locationLabel),
         currentAmmo: criticalSlot.eq,
         originalAmmo,
         originalTotalAmmo: getOriginalTotalAmmo(unit, criticalSlot),
@@ -128,13 +134,15 @@ function createInventoryAmmoControlEntry(unit: CBTForceUnit, inventoryEntry: Mou
 
     const originalTotalAmmo = getInventoryOriginalTotalAmmo(inventoryEntry);
     const totalAmmo = inventoryEntry.totalAmmo ?? originalTotalAmmo;
+    const locationLabel = Array.from(inventoryEntry.locations ?? []).join('/') || 'Ammo';
     return {
         id: `inventory:${inventoryEntry.id}`,
         owner: unit,
         source: inventoryEntry,
         sourceType: 'inventory',
-        locationLabel: Array.from(inventoryEntry.locations ?? []).join('/') || 'Ammo',
+        locationLabel,
         displayName: getAmmoControlDisplayName(currentAmmo),
+        displayBinName: formatAmmoBinName(1, locationLabel),
         currentAmmo,
         originalAmmo: inventoryEntry.equipment,
         originalTotalAmmo,
@@ -227,7 +235,7 @@ export function getAmmoControlGroups(entries: AmmoControlEntry[]): AmmoControlGr
     const keyedGroups = new Map<string, AmmoControlGroup>();
 
     for (const entry of entries) {
-        const key = `${entry.sourceType}:${entry.currentAmmo.internalName}:${entry.locationLabel}`;
+        const key = `${entry.sourceType}:${entry.currentAmmo.internalName}`;
         const existingGroup = keyedGroups.get(key);
         if (existingGroup) {
             existingGroup.entries.push(entry);
@@ -247,7 +255,6 @@ function createAmmoControlGroup(entries: AmmoControlEntry[]): AmmoControlGroup {
     const group: AmmoControlGroup = {
         id: entries.map(entry => entry.id).join('|'),
         entries,
-        locationLabel: firstEntry.locationLabel,
         displayName: firstEntry.displayName,
         totalAmmo: 0,
         consumed: 0,
@@ -260,11 +267,14 @@ function createAmmoControlGroup(entries: AmmoControlEntry[]): AmmoControlGroup {
 
 function syncGroupTotals(group: AmmoControlGroup): void {
     group.entries.sort(compareAmmoControlEntryOrder);
+    group.entries.forEach((entry, index) => {
+        entry.displayBinName = formatAmmoBinName(index + 1, entry.locationLabel);
+    });
     group.id = group.entries.map(entry => entry.id).join('|');
     group.totalAmmo = group.entries.reduce((total, entry) => total + entry.totalAmmo, 0);
     group.consumed = group.entries.reduce((total, entry) => total + entry.consumed, 0);
     group.destroyed = group.entries.every(entry => entry.destroyed);
-    group.expandable = group.entries.length > 1;
+    group.expandable = group.entries.length > 0;
 }
 
 function sortAmmoControlGroups(groups: AmmoControlGroup[]): AmmoControlGroup[] {
@@ -272,8 +282,6 @@ function sortAmmoControlGroups(groups: AmmoControlGroup[]): AmmoControlGroup[] {
         if (a.destroyed !== b.destroyed) return a.destroyed ? 1 : -1;
         const nameCompare = a.displayName.localeCompare(b.displayName);
         if (nameCompare !== 0) return nameCompare;
-        const locationCompare = a.locationLabel.localeCompare(b.locationLabel);
-        if (locationCompare !== 0) return locationCompare;
         return a.id.localeCompare(b.id);
     });
 }
@@ -498,7 +506,7 @@ export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerCont
     const appliedDelta = getAmmoGroupRemaining(group) - previousRemaining;
     if (appliedDelta !== 0) {
         context.toastService.showToast(
-            `${appliedDelta > 0 ? `+${appliedDelta}` : appliedDelta.toString()} ${appliedDelta >= 0 ? 'to' : 'from'} ${group.locationLabel} ${group.displayName} (${getAmmoGroupRemaining(group)}/${group.totalAmmo})`,
+            `${appliedDelta > 0 ? `+${appliedDelta}` : appliedDelta.toString()} ${appliedDelta >= 0 ? 'to' : 'from'} ${group.displayName} (${getAmmoGroupRemaining(group)}/${group.totalAmmo})`,
             'info',
             `ammo-control-${firstEntry.owner.id}-${group.id}`
         );

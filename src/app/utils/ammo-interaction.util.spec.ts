@@ -51,6 +51,7 @@ function createEntry(params: {
         sourceType: 'inventory',
         locationLabel: 'BD',
         displayName: params.ammo.name,
+        displayBinName: '#1 Bin [BD]',
         currentAmmo: params.ammo,
         originalAmmo: params.ammo,
         originalTotalAmmo: params.totalAmmo ?? 5,
@@ -86,6 +87,7 @@ function createCritEntry(params: {
         sourceType: 'crit',
         locationLabel: params.loc,
         displayName: params.ammo.name,
+        displayBinName: `#1 Bin [${params.loc}]`,
         currentAmmo: params.ammo,
         originalAmmo: params.ammo,
         originalTotalAmmo: 5,
@@ -130,13 +132,14 @@ describe('ammo interaction direct inventory groups', () => {
             'inventory:Clan Ultra AC/20 Ammo@BD#1.0',
             'inventory:Clan Ultra AC/20 Ammo@BD#1.1',
         ]);
+        expect(groups[0].entries.map(entry => entry.displayBinName)).toEqual(['#1 Bin [BD]', '#2 Bin [BD]']);
         expect(groups[0].totalAmmo).toBe(10);
         expect(groups[1].displayName).toBe('Clan Ultra AC/20 Precision Ammo');
-        expect(groups[1].expandable).toBeFalse();
+        expect(groups[1].expandable).toBeTrue();
         expect(groups[1].totalAmmo).toBe(4);
     });
 
-    it('groups crit ammo by current ammo type and location', () => {
+    it('numbers crit ammo bins in visible order with their locations', () => {
         const owner = {
             id: 'unit-1',
             setCritSlot: jasmine.createSpy('setCritSlot'),
@@ -151,16 +154,12 @@ describe('ammo interaction direct inventory groups', () => {
 
         const groups = getAmmoControlGroups(entries);
 
-        expect(groups.length).toBe(2);
-        expect(groups[0].locationLabel).toBe('LT');
+        expect(groups.length).toBe(1);
         expect(groups[0].displayName).toBe('Clan Ultra AC/20 Ammo');
         expect(groups[0].expandable).toBeTrue();
-        expect(groups[0].entries.length).toBe(2);
-        expect(groups[0].entries.map(entry => (entry.source as CriticalSlot).slot)).toEqual([1, 5]);
-        expect(groups[0].totalAmmo).toBe(10);
-        expect(groups[1].locationLabel).toBe('RT');
-        expect(groups[1].expandable).toBeFalse();
-        expect(groups[1].totalAmmo).toBe(5);
+        expect(groups[0].entries.map(entry => (entry.source as CriticalSlot).slot)).toEqual([0, 1, 5]);
+        expect(groups[0].entries.map(entry => entry.displayBinName)).toEqual(['#1 Bin [RT]', '#2 Bin [LT]', '#3 Bin [LT]']);
+        expect(groups[0].totalAmmo).toBe(15);
     });
 
     it('matches zero-rack ammo types such as Gauss by ammo type', () => {
