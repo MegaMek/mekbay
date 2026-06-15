@@ -35,7 +35,7 @@ export interface AmmoControlDialogData {
                                         @for (location of group.locations; track location.loc) {
                                             <span class="ammo-location-badge" [class.exposed]="isLocationBadgeExposed(location)" [class.destroyed]="isLocationBadgeDestroyed(location)">
                                                 @if (location.quantity > 1) {
-                                                    <span class="quantity">{{ location.quantity + 'x' }}</span>
+                                                    <span class="quantity">{{ location.quantity + '×' }}</span>
                                                 }
                                                 {{ location.loc }}
                                             </span>
@@ -45,13 +45,15 @@ export interface AmmoControlDialogData {
                                 </button>
                             } @else {
                                 <div class="ammo-single-entry">
-                                    <div class="chevron"></div>
+                                    @if (hasExpandableGroups()) {
+                                        <div class="muted">—</div>
+                                    }
                                     <span class="ammo-name">{{ group.displayName }}
                                         <span class="ammo-location-badges">
                                             @for (location of group.locations; track location.loc) {
                                                 <span class="ammo-location-badge" [class.exposed]="isLocationBadgeExposed(location)" [class.destroyed]="isLocationBadgeDestroyed(location)">
                                                     @if (location.quantity > 1) {
-                                                        <span class="quantity">{{ location.quantity + 'x' }}</span>
+                                                        <span class="quantity">{{ location.quantity + '×' }}</span>
                                                     }
                                                     {{ location.loc }}
                                                 </span>
@@ -191,6 +193,7 @@ export interface AmmoControlDialogData {
             min-width: 0;
             position: relative;
             top: -2px;
+            margin-left: 4px;
         }
 
         .ammo-location-badge {
@@ -363,6 +366,10 @@ export class AmmoControlDialogComponent {
     readOnly(): boolean {
         const entries = this.data.getEntries?.() ?? this.data.entries;
         return this.data.readOnly ?? entries[0]?.owner.readOnly() ?? false;
+    }
+
+    hasExpandableGroups(): boolean {
+        return this.groups().some(group => group.expandable);
     }
 
     isExpanded(group: AmmoControlGroup): boolean {
