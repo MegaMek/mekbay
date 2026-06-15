@@ -254,6 +254,27 @@ describe('WeaponEquipmentDialogComponent', () => {
         expect(component.canSelectRange(row, 'min')).toBeFalse();
     });
 
+    it('shows linked weapon enhancements as modifiers instead of standalone rows', () => {
+        const artemis = entry({
+            id: 'ISArtemisIV@RT#5',
+            equipment: misc('ISArtemisIV', ['F_WEAPON_ENHANCEMENT']),
+            destroyed: true,
+            el: svgEntry('<g class="linked"><g class="name"><text>w/Artemis IV</text></g></g>')
+        });
+        const lrm = entry({
+            id: 'LRM 20@RT#0',
+            equipment: weapon('LRM 20', 'MML', 20),
+            linkedWith: [artemis],
+            el: svgEntry('<g><g class="name"><text>LRM 20</text></g><text class="location">RT</text><text class="heat">6</text><g class="damage"><text>1/Msl [M,C,S]</text></g></g>')
+        });
+        artemis.parent = lrm;
+        const { component } = createComponent([lrm, artemis]);
+        const rows = component.groups().flatMap(group => group.rows);
+
+        expect(rows.map(row => row.id)).toEqual(['LRM 20@RT#0']);
+        expect(rows[0].modifiers).toEqual([{ name: 'w/Artemis IV', destroyed: true }]);
+    });
+
     it('persists mode and sort order but keeps selection transient', async () => {
         const first = entry({ id: 'first', equipment: weapon('first'), el: svgEntry('<g><g class="name"><text>First</text></g></g>') });
         const second = entry({ id: 'second', equipment: weapon('second'), el: svgEntry('<g><g class="name"><text>Second</text></g></g>') });

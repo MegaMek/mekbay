@@ -266,6 +266,7 @@ function buildInventoryControlRow(
     ammoSources: AmmoSource[]
 ): InventoryControlRow | null {
     if (!entry.el?.classList.contains('inventoryEntry')) return null;
+    if (isLinkedWeaponEnhancement(entry)) return null;
 
     const state = entryStates.get(entry);
     const destroyed = isMountedDestroyed(entry);
@@ -273,7 +274,7 @@ function buildInventoryControlRow(
     const hitModifier = resolveHitModifier(entry, state?.hitMod ?? computeLinkedModifiers(entry));
     const hit = formatHitModifier(hitModifier);
     const base = readEntryDisplayData(entry.el, hit);
-    const { modes, modifiers } = readAlternativeModes(entry);
+    const { modes, modifiers } = readInventoryControlModesAndModifiers(entry);
     const selectedMode = getSelectedMode(entry, modes);
     const selectedModeData = selectedMode ? modes.find(mode => mode.mode === selectedMode)?.data : null;
 
@@ -334,6 +335,11 @@ function readEntryDisplayData(el: SVGElement, hit: string): InventoryControlDisp
     };
 }
 
+function readInventoryControlModesAndModifiers(entry: MountedEquipment): { modes: InventoryControlMode[]; modifiers: InventoryControlModifier[] } {
+    const { modes, modifiers } = readAlternativeModes(entry);
+    return { modes, modifiers: [...modifiers, ...readLinkedWeaponEnhancementModifiers(entry)] };
+}
+
 function readAlternativeModes(entry: MountedEquipment): { modes: InventoryControlMode[]; modifiers: InventoryControlModifier[] } {
     const modes: InventoryControlMode[] = [];
     const modifiers: InventoryControlModifier[] = [];
@@ -353,6 +359,27 @@ function readAlternativeModes(entry: MountedEquipment): { modes: InventoryContro
     });
 
     return { modes, modifiers };
+}
+
+function readLinkedWeaponEnhancementModifiers(entry: MountedEquipment): InventoryControlModifier[] {
+    return entry.linkedWith
+        ?.filter(isWeaponEnhancement)
+        .map(linked => ({
+            name: readLinkedModifierName(linked),
+            destroyed: isMountedDestroyed(linked)
+        })) ?? [];
+}
+
+function readLinkedModifierName(entry: MountedEquipment): string {
+    return (entry.el ? readDirectText(entry.el, '.name') : '') || entry.equipment?.shortName || entry.name;
+}
+
+function isLinkedWeaponEnhancement(entry: MountedEquipment): boolean {
+    return isWeaponEnhancement(entry) && (!!entry.parent || !!entry.el?.classList.contains('linked'));
+}
+
+function isWeaponEnhancement(entry: MountedEquipment): boolean {
+    return !!entry.equipment?.flags.has('F_WEAPON_ENHANCEMENT');
 }
 
 function isModifierDestroyed(entry: MountedEquipment, modifierName: string): boolean {
