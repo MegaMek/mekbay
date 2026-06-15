@@ -65,7 +65,7 @@ export class WeaponEquipmentDialogComponent {
     }
 
     compactLayout(): boolean {
-        return this.layoutService.windowWidth() <= 960;
+        return this.layoutService.windowWidth() <= 920;
     }
 
     groups(): InventoryControlGroup[] {
