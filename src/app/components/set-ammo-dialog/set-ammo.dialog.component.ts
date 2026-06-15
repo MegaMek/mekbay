@@ -89,6 +89,7 @@ export interface SetAmmoDialogData {
                 <div class="form-fields ammo-quantity">
                     <label class="field-label">Quantity</label>
                     <div class="quantity-group">
+                    <button class="bt-button square-small quantity-adjust" type="button" (click)="adjustQuantity(-1)">-</button>
                     <input
                         class="field-input"
                         #inputQuantityRef
@@ -102,6 +103,7 @@ export interface SetAmmoDialogData {
                         (keydown.enter)="submit()"
                         required
                     />
+                    <button class="bt-button square-small quantity-adjust" type="button" (click)="adjustQuantity(1)">+</button>
                     <span class="max-quantity">/{{ currentMaxQuantity() }}</span>
                     </div>
                 </div>
@@ -126,8 +128,8 @@ export interface SetAmmoDialogData {
 
         .quantity-group {
             display: flex;
-            align-items: baseline;
-            gap: 2px;
+            align-items: center;
+            gap: 4px;
         }
 
         .max-quantity {
@@ -153,6 +155,12 @@ export interface SetAmmoDialogData {
         #inputQuantity::-webkit-inner-spin-button {
             -webkit-appearance: none;
             margin: 0;
+        }
+
+        .quantity-adjust {
+            width: 32px;
+            height: 32px;
+            min-width: 32px;
         }
     `]
 })
@@ -202,6 +210,15 @@ export class SetAmmoDialogComponent {
         } else if (currentQuantity > newMaxQuantity) {
             nativeEl.value = newMaxQuantity.toString();
         }
+    }
+
+    adjustQuantity(delta: number) {
+        const nativeEl = this.inputQuantityRef().nativeElement;
+        const currentQuantity = nativeEl.value === '' ? this.data.quantity : Number(nativeEl.value);
+        if (isNaN(currentQuantity)) return;
+
+        const nextQuantity = Math.max(0, Math.min(this.currentMaxQuantity(), currentQuantity + delta));
+        nativeEl.value = nextQuantity.toString();
     }
 
     async dump() {
