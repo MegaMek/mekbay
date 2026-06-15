@@ -79,12 +79,11 @@ describe('SetAmmoDialogComponent', () => {
         trigger.click();
         fixture.detectChanges();
 
-        const optionTokens = overlayContainerElement.querySelectorAll('.multiline-dropdown-option-label .multiline-dropdown-token') as NodeListOf<HTMLElement>;
-        const longOptionToken = Array.from(optionTokens)
-            .find(element => element.textContent === 'Extremely');
-        const longOptionLabel = longOptionToken?.closest('.multiline-dropdown-option-label') as HTMLElement | null;
+        const optionLabels = overlayContainerElement.querySelectorAll('.multiline-dropdown-option-label') as NodeListOf<HTMLElement>;
+        const longOptionLabel = Array.from(optionLabels)
+            .find(element => element.textContent?.includes('Extremely Long Prototype Specialty Ammunition'));
 
         expect(longOptionLabel).toBeTruthy();
-        expect(getComputedStyle(longOptionLabel!).whiteSpace).toBe('normal');
+        expect(getComputedStyle(longOptionLabel as HTMLElement).whiteSpace).toBe('normal');
     });
 });
