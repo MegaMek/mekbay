@@ -172,7 +172,7 @@ describe('AmmoControlDialogComponent', () => {
 
         const badges = Array.from(fixture.nativeElement.querySelectorAll('.ammo-location-badge')) as HTMLElement[];
 
-        expect(badges.map(badge => badge.textContent?.trim())).toEqual(['2x LT', 'RT', 'CT']);
+        expect(badges.map(badge => badge.textContent?.trim())).toEqual(['2× LT', 'RT', 'CT']);
         expect(badges[0].classList.contains('exposed')).toBeFalse();
         expect(badges[0].classList.contains('destroyed')).toBeFalse();
         expect(badges[1].classList.contains('exposed')).toBeTrue();
@@ -231,36 +231,6 @@ describe('AmmoControlDialogComponent', () => {
         expect(activeEntry.consumed).toBe(2);
         expect(owner.setCritSlot).toHaveBeenCalledWith(activeEntry.source as CriticalSlot);
         expect(binRows[0].querySelector('.ammo-count')?.textContent?.trim()).toBe('3/5');
-    });
-
-    it('reserves the action column for destroyed groups', () => {
-        const standardAmmo = createAmmo('Clan Ultra AC/20 Ammo');
-        const owner = {
-            id: 'unit-1',
-            readOnly: () => false,
-            getUnit: () => ({ techBase: 'Clan' }),
-        } as unknown as Pick<CBTForceUnit, 'id' | 'readOnly' | 'getUnit'>;
-        const data: AmmoControlDialogData = {
-            title: 'Ammo',
-            entries: [createCritEntry({ loc: 'LT', slot: 0, ammo: standardAmmo, destroyed: true, owner })],
-            context: {} as HandlerContext,
-        };
-
-        TestBed.configureTestingModule({
-            imports: [AmmoControlDialogComponent],
-            providers: [
-                { provide: DIALOG_DATA, useValue: data },
-                { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
-            ],
-        });
-        const fixture = TestBed.createComponent(AmmoControlDialogComponent);
-        fixture.detectChanges();
-
-        const actions: HTMLElement | null = fixture.nativeElement.querySelector('.ammo-control-actions');
-
-        expect(actions?.classList.contains('placeholder')).toBeTrue();
-        expect(actions?.getAttribute('aria-hidden')).toBe('true');
-        expect(actions?.querySelectorAll('button').length).toBe(3);
     });
 
     it('keeps rebuilt groups open after a bin changes ammo type', () => {

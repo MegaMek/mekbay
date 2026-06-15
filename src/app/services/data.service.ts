@@ -798,7 +798,7 @@ export class DataService {
             this.logger.info(`Force "${local.name}" exists locally but not in cloud: pushing to cloud.`);
             this.saveForceCloud(local);
         } else 
-        if (triedCloud && cloudIsNewer && cloud && cloud.owned()) {
+        if (triedCloud && (cloudIsNewer || !local) && cloud && cloud.owned()) {
             if (!local) {
                 this.logger.info(`Force "${cloud.name}" exists in cloud but not locally: saving local copy.`);
             } else {

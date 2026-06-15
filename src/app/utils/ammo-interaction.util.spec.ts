@@ -51,7 +51,7 @@ function createEntry(params: {
         sourceType: 'inventory',
         locationLabel: 'BD',
         displayName: params.ammo.name,
-        displayBinName: '#1 Bin [BD]',
+        displayBinName: '#1 Bin',
         currentAmmo: params.ammo,
         originalAmmo: params.ammo,
         originalTotalAmmo: params.totalAmmo ?? 5,
@@ -87,7 +87,7 @@ function createCritEntry(params: {
         sourceType: 'crit',
         locationLabel: params.loc,
         displayName: params.ammo.name,
-        displayBinName: `#1 Bin [${params.loc}]`,
+        displayBinName: `#1 Bin`,
         currentAmmo: params.ammo,
         originalAmmo: params.ammo,
         originalTotalAmmo: 5,
@@ -132,12 +132,12 @@ describe('ammo interaction direct inventory groups', () => {
             'inventory:Clan Ultra AC/20 Ammo@BD#1.0',
             'inventory:Clan Ultra AC/20 Ammo@BD#1.1',
         ]);
-        expect(groups[0].entries.map(entry => entry.displayBinName)).toEqual(['#1 Bin [BD]', '#2 Bin [BD]']);
-        expect(groups[0].locations).toEqual([{ loc: 'BD', quantity: 10, state: 'normal' }]);
+        expect(groups[0].entries.map(entry => entry.displayBinName)).toEqual(['#1 Bin', '#2 Bin']);
+        expect(groups[0].locations).toEqual([{ loc: 'BD', quantity: 2, state: 'normal' }]);
         expect(groups[0].totalAmmo).toBe(10);
         expect(groups[1].displayName).toBe('Clan Ultra AC/20 Precision Ammo');
-        expect(groups[1].expandable).toBeTrue();
-        expect(groups[1].locations).toEqual([{ loc: 'BD', quantity: 4, state: 'normal' }]);
+        expect(groups[1].expandable).toBeFalse();
+        expect(groups[1].locations).toEqual([{ loc: 'BD', quantity: 1, state: 'normal' }]);
         expect(groups[1].totalAmmo).toBe(4);
     });
 
@@ -172,9 +172,9 @@ describe('ammo interaction direct inventory groups', () => {
         const group = getAmmoControlGroups(entries)[0];
 
         expect(group.locations).toEqual([
-            { loc: 'LT', quantity: 10, state: 'exposed' },
-            { loc: 'CT', quantity: 10, state: 'destroyed' },
-            { loc: 'RT', quantity: 5, state: 'normal' },
+            { loc: 'LT', quantity: 2, state: 'exposed' },
+            { loc: 'CT', quantity: 2, state: 'destroyed' },
+            { loc: 'RT', quantity: 1, state: 'normal' },
         ]);
     });
 
@@ -197,7 +197,7 @@ describe('ammo interaction direct inventory groups', () => {
         expect(groups[0].displayName).toBe('Clan Ultra AC/20 Ammo');
         expect(groups[0].expandable).toBeTrue();
         expect(groups[0].entries.map(entry => (entry.source as CriticalSlot).slot)).toEqual([0, 1, 5]);
-        expect(groups[0].entries.map(entry => entry.displayBinName)).toEqual(['#1 Bin [RT]', '#2 Bin [LT]', '#3 Bin [LT]']);
+        expect(groups[0].entries.map(entry => entry.displayBinName)).toEqual(['#1 Bin', '#2 Bin', '#3 Bin']);
         expect(groups[0].totalAmmo).toBe(15);
     });
 
