@@ -54,6 +54,7 @@ import { type ChoicePickerStyle, PickerFactoryService } from '../../services/pic
 import { canAntiMech } from '../../utils/infantry.util';
 import { AmmoControlDialogComponent, type AmmoControlDialogData } from '../ammo-control-dialog/ammo-control-dialog.component';
 import { getAmmoControlEntriesForUnitWeapons } from '../../utils/ammo-interaction.util';
+import { WeaponEquipmentDialogComponent, type WeaponEquipmentDialogContext, type WeaponEquipmentDialogData } from '../../components/weapon-equipment-dialog/weapon-equipment-dialog.component';
 
 /*
  * Author: Drake
@@ -841,155 +842,31 @@ export class SvgInteractionService {
         this.unit()?.getInventory().forEach(entry => {
             const el = entry.el;
             if (!el) return;
-            let nameText = entry.el?.querySelector(':scope > .name')?.textContent || '';
-            let totalAmmo = 0;
-            if (el.hasAttribute('totalAmmo')) {
-                totalAmmo = parseInt(el.getAttribute('totalAmmo') || '0');
-            }
-            const ammoToastId = `ammo-${this.unit()?.id}-${entry.id}`;
-            let lastAmountVariationTimestamp = 0;
-            let amount = 0;
-            const showAmmoToast = (equip: MountedEquipment, variation: number) => {
-                if (equip.consumed === undefined) {
-                    return;
-                }
-                const timeDiff = Date.now() - lastAmountVariationTimestamp;
-                if (timeDiff > 3000) {
-                    amount = 0;
-                }
-                amount += variation;
-                lastAmountVariationTimestamp = Date.now();
-                const remaining = totalAmmo - equip.consumed;
-                const amountText = amount > 0 ? `+${amount}` : amount.toString();
-                this.toastService.showToast(`${amountText} ${amount >= 0 ? 'to' : 'from'} ${nameText} (${remaining}/${totalAmmo})`, 'info', ammoToastId);
-            };
-
-            const createAndShowPicker = (event: Event) => {
-                const context: HandlerContext = {
+            const openInventoryDialog = () => {
+                const unit = this.unit();
+                if (!unit) return;
+                this.removePicker();
+                const context: WeaponEquipmentDialogContext = {
                     toastService: this.toastService,
                     dialogsService: this.dialogsService,
-                    dataService: this.dataService
+                    dataService: this.dataService,
+                    registry: this.equipmentRegistryService.getRegistry()
                 };
-
-                const registry = this.equipmentRegistryService.getRegistry();
-
-                const calculateValues = () => {
-                    let values: HandlerChoice[] = [];
-
-                    // Get equipment-specific choices based on flags
-                    const equipmentChoices = registry.getChoices(entry, context);
-                    if (equipmentChoices.length > 0) {
-                        values.push(...equipmentChoices);
-                    }
-
-
-                    // Add standard damage/repair options
-                    if (this.unit()?.hasDirectInventory()) {
-                        if (!entry.destroyed) {
-                            values.push({ label: 'Critical Hit', value: 'Hit' });
-                        } else {
-                            values.push({ label: 'Repair', value: 'Repair' });
-                        }
-                    }
-
-                    // Add ammo management options if applicable
-                    if (!entry.destroyed && (totalAmmo > 0)) {
-                        values.unshift({ label: '+1', value: '+1', keepOpen: true, disabled: ((entry.consumed ?? 0) == 0) });
-                        values.unshift({ label: '-1', value: '-1', keepOpen: true, disabled: ((entry.consumed ?? 0) >= totalAmmo) });
-                        values.push({ label: 'Empty', value: 'Empty', disabled: ((entry.consumed ?? 0) >= totalAmmo) });
-                    }
-                    return values;
-                };
-
-                let calculatePickerValues = calculateValues();
-                if (calculatePickerValues.length === 0) {
-                    return;
-                }
-
-                const pickerInstance = this.showChoicePicker({
-                    event,
-                    el,
-                    title: nameText,
-                    values: calculatePickerValues,
-                    selected: null,
-                    style: 'linear',
-                    targetType: 'crit',
-                    onPick: async (choice: HandlerChoice) => {
-                        if (!choice || !choice.keepOpen) {
-                            this.removePicker();
-                        }
-                        if (!choice) return;
-
-                        // Try equipment-specific handlers first
-                        let handled = false;
-                        if (choice?._handler) {
-                            handled = await registry.handleSelection(entry, choice, context);
-                        }
-
-                        // Handle standard options
-                        if (!handled) {
-                            if (choice.value == '+1') {
-                                if (entry.consumed === undefined) {
-                                    return;
-                                }
-                                if (entry.consumed <= 0) return;
-                                entry.consumed--;
-                                this.unit()?.setInventoryEntry(entry);
-                                showAmmoToast(entry, 1);
-                            } else if (choice.value == '-1') {
-                                if (entry.consumed === undefined) {
-                                    entry.consumed = 0;
-                                }
-                                if (entry.consumed >= totalAmmo) return;
-                                entry.consumed++;
-                                this.unit()?.setInventoryEntry(entry);
-                                showAmmoToast(entry, -1);
-                            } else if (choice.value == 'Empty') {
-                                entry.consumed = totalAmmo;
-                                this.unit()?.setInventoryEntry(entry);
-                                this.toastService.showToast(`Emptied ${nameText}`, 'info');
-                            } else if (choice.value == 'Hit') {
-                                entry.destroyed = true;
-                                this.unit()?.setInventoryEntry(entry);
-                                this.toastService.showToast(`Critical Hit on ${nameText}`, 'error');
-                            } else if (choice.value == 'Repair') {
-                                entry.destroyed = false;
-                                this.unit()?.setInventoryEntry(entry);
-                                this.toastService.showToast(`Repaired ${nameText}`, 'success');
-                            }
-                        }
-                        if (choice.keepOpen && isChoicePickerInstance(pickerInstance)) {
-                            pickerInstance.component.values.set(calculateValues());
-                        }
-                    },
-                    onCancel: () => {
-                        this.removePicker();
-                    }
+                this.dialogsService.createDialog<void>(WeaponEquipmentDialogComponent, {
+                    data: {
+                        title: 'Weapons & Equipment',
+                        unit,
+                        readOnly: unit.readOnly(),
+                        context
+                    } as WeaponEquipmentDialogData,
                 });
-            }
+            };
 
-            this.addSvgTapHandler(el, (event: Event, primaryAction: boolean) => {
-                if (this.state.clickTarget !== el) return;
-                if (primaryAction && !el.classList.contains('damagedInventory') && !el.classList.contains('disabledInventory')) {
-                    if (event.target instanceof Element) {
-                        if (event.target.classList.contains('alternativeModeButton')) {
-                            const altModeEl = event.target.parentElement;
-                            if (altModeEl) {
-                                const wasSelected = altModeEl.classList.contains('selected');
-                                el.querySelectorAll('.alternativeMode').forEach(optionEl => {
-                                    if (optionEl === altModeEl) return;
-                                    optionEl.classList.remove('selected');
-                                });
-                                altModeEl.classList.toggle('selected', !wasSelected);
-                                el.classList.toggle('selected', !wasSelected);
-                                return;
-                            }
-                        }
-                    }
-                    el.classList.toggle('selected');
-                }
-                createAndShowPicker(event);
-            }, signal);
+            el.classList.add('interactive');
+            el.style.cursor = 'pointer';
+            el.addEventListener('click', (evt: Event) => {
+                openInventoryDialog();
+            }, { passive: false, signal });
         });
     }
 
@@ -997,8 +874,9 @@ export class SvgInteractionService {
         const ammoProfileEl = svg.querySelector('#ammoProfile') as SVGElement | null;
         if (!ammoProfileEl) return;
 
-        this.addSvgTapHandler(ammoProfileEl, (event: PointerEvent) => {
-            if (this.state.clickTarget !== ammoProfileEl) return;
+        ammoProfileEl.classList.add('interactive');
+        ammoProfileEl.style.cursor = 'pointer';
+        ammoProfileEl.addEventListener('click', (event: Event) => {
             const unit = this.unit();
             if (!unit) return;
 
@@ -1019,7 +897,7 @@ export class SvgInteractionService {
                     }
                 } as AmmoControlDialogData,
             });
-        }, signal);
+        }, { passive: false, signal });
     }
 
     private setupHeatInteractions(svg: SVGSVGElement, signal: AbortSignal) {

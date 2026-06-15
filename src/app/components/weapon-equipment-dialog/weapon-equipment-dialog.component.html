@@ -1,0 +1,226 @@
+<div class="wide-dialog weapon-equipment-dialog" [class.hide-ammo-column]="!hasAmmoColumn()" [class.hide-controls-column]="!hasControlsColumn()">
+    <h2 class="wide-dialog-title">{{ data.title }}</h2>
+    <div class="wide-dialog-body">
+        <div class="weapon-equipment-grid">
+            @for (group of groups(); track group.id) {
+                <section class="weapon-equipment-section">
+                    <h3>{{ group.title }}</h3>
+                    <div class="weapon-equipment-header">
+                        <span></span>
+                        <span></span>
+                        <span>Name</span>
+                        <span>Loc</span>
+                        <span>Ht</span>
+                        <span>Dmg</span>
+                        <span class="hit-header" title="Hit modifier">
+                            <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="2"></circle><path d="M12 1v5M12 18v5M1 12h5M18 12h5"></path></svg>
+                        </span>
+                        <span>Min</span>
+                        <span>Sht</span>
+                        <span>Med</span>
+                        <span>Lng</span>
+                        @if (hasAmmoColumn()) {
+                            <span class="ammo-header">{{ groupHasAmmo(group) ? 'Ammo' : '' }}</span>
+                        }
+                        @if (hasControlsColumn()) {
+                            <span class="controls-header">{{ groupHasControls(group) ? 'Controls' : '' }}</span>
+                        }
+                    </div>
+                    <div
+                        class="weapon-equipment-list"
+                        cdkDropList
+                        cdkDropListLockAxis="y"
+                        [cdkDropListData]="group.rows"
+                        [cdkDropListDisabled]="!group.sortable || readOnly()"
+                        (cdkDropListDropped)="drop($event, group)">
+                        @for (row of group.rows; track row.id) {
+                            <div class="weapon-equipment-row" cdkDrag cdkDragLockAxis="y" cdkDragPreviewContainer="parent" cdkDragHandle [cdkDragHandleDisabled]="!layoutService.isMobile()" [cdkDragDisabled]="!group.sortable || readOnly() || row.destroyed || row.disabled" [class.destroyed-entry]="row.destroyed" [class.disabled-entry]="!row.destroyed && row.disabled">
+                                <div class="desktop-entry-grid">
+                                    <div class="drag-cell">
+                                        @if (group.sortable && !row.destroyed && !row.disabled) {
+                                            <button class="drag-handle" type="button" cdkDragHandle [cdkDragHandleDisabled]="layoutService.isMobile()" aria-label="Reorder">::::</button>
+                                        }
+                                    </div>
+                                    <div class="select-cell">
+                                        @if (isSelectable(row)) {
+                                            <input type="checkbox" class="bt-checkbox" [checked]="isSelected(row)" (change)="toggleSelected(row)">
+                                        }
+                                    </div>
+                                    <div class="name-cell">
+                                        <span>{{ row.display.name }}</span>
+                                        @for (modifier of row.modifiers; track modifier.name) {
+                                            <span class="modifier" [class.destroyed]="modifier.destroyed">{{ modifier.name }}</span>
+                                        }
+                                    </div>
+                                    <span class="location-cell meta-cell" data-label="Loc">{{ row.display.location }}</span>
+                                    <span class="heat-cell meta-cell" data-label="Ht">{{ row.display.heat }}</span>
+                                    <span class="damage-cell meta-cell" data-label="Dmg">{{ row.display.damage }}</span>
+                                    <span class="hit-cell meta-cell" data-label="Hit">{{ row.display.hit }}</span>
+                                    <span class="min-cell meta-cell" data-label="Min">{{ row.display.min }}</span>
+                                    @for (range of rangeKeys; track range) {
+                                        <button
+                                            class="range-cell"
+                                            type="button"
+                                            [attr.data-label]="rangeLabel(range)"
+                                            [class.range-short]="range === 'short'"
+                                            [class.range-medium]="range === 'medium'"
+                                            [class.range-long]="range === 'long'"
+                                            [disabled]="!canSelectRange(row, range)"
+                                            [class.selected-range]="isRangeSelected(row, range)"
+                                            (click)="selectRange(row, range)">
+                                            {{ rangeValue(row, range) }}
+                                        </button>
+                                    }
+                                    @if (hasAmmoColumn()) {
+                                        <div class="ammo-cell" [attr.data-label]="rowHasAmmo(row) ? 'Ammo' : ''" [class.empty-row-ammo]="!rowHasAmmo(row)" [class.ammo-without-controls]="!rowHasControls(row)" [class.empty-ammo]="ammoDepleted(row)" [class.destroyed-ammo]="ammoDestroyed(row)">
+                                            @if (rowHasAmmo(row)) {
+                                                @if (showAmmoDropdown(row)) {
+                                                    <select class="ammo-choice" [value]="selectedAmmoOption(row)" (change)="selectAmmoOption(row, $event)">
+                                                        @for (option of row.ammo.options; track option.id) {
+                                                            <option [value]="option.id" [disabled]="option.disabled" [class.destroyed-ammo-option]="option.destroyed">{{ option.label }}</option>
+                                                        }
+                                                    </select>
+                                                } @else {
+                                                    <span class="ammo-choice-static">{{ ammoText(row) }}</span>
+                                                }
+                                            }
+                                        </div>
+                                    }
+                                    @if (hasControlsColumn()) {
+                                        <div class="controls-cell" [class.empty-row-controls]="!rowHasControls(row)" [class.controls-without-ammo]="!rowHasAmmo(row)">
+                                            @for (choice of handlerChoices(row); track choice.label) {
+                                                @switch (choice.displayType) {
+                                                    @case ('dropdown') {
+                                                        <label class="control-select">
+                                                            <span>{{ choice.label }}</span>
+                                                            <select [value]="choice.value" [disabled]="choice.disabled || readOnly()" (change)="selectHandlerDropdown(row, choice, $event)">
+                                                                @for (option of choice.choices ?? []; track option.value) {
+                                                                    <option [value]="option.value" [selected]="option.value === choice.value" [disabled]="option.disabled">{{ option.label }}</option>
+                                                                }
+                                                            </select>
+                                                        </label>
+                                                    }
+                                                    @case ('label') {
+                                                        <span class="control-label">{{ choice.label }}</span>
+                                                    }
+                                                    @case ('toggle') {
+                                                        <button class="bt-button square-small" type="button" [class.active-control]="choice.active" [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.label }}</button>
+                                                    }
+                                                    @default {
+                                                        <button class="bt-button" type="button" [class.active-control]="choice.active" [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.shortLabel || choice.label }}</button>
+                                                    }
+                                                }
+                                            }
+                                            @if (canMarkDestroyed(row)) {
+                                                <button class="bt-button" type="button" (click)="markDestroyed(row)">HIT</button>
+                                            } @else if (canRepair(row)) {
+                                                <button class="bt-button" type="button" (click)="repair(row)">REPAIR</button>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                                <div class="mobile-entry-card">
+                                    <div class="mobile-entry-main-row">
+                                        <span class="location-cell meta-cell" data-label="Loc">{{ row.display.location }}</span>
+                                        <div class="name-cell">
+                                            <span>{{ row.display.name }}</span>
+                                            @for (modifier of row.modifiers; track modifier.name) {
+                                                <span class="modifier" [class.destroyed]="modifier.destroyed">{{ modifier.name }}</span>
+                                            }
+                                        </div>
+                                        <div class="select-cell">
+                                            @if (isSelectable(row)) {
+                                                <input type="checkbox" class="bt-checkbox" [checked]="isSelected(row)" (change)="toggleSelected(row)">
+                                            }
+                                        </div>
+                                    </div>
+                                    <div class="mobile-entry-secondary-rows">
+                                        <div class="mobile-entry-stats-row">
+                                            <span class="hit-cell meta-cell" data-label="Hit">{{ row.display.hit }}</span>
+                                            <span class="heat-cell meta-cell" data-label="Ht">{{ row.display.heat }}</span>
+                                            <span class="damage-cell meta-cell" data-label="Dmg">{{ row.display.damage }}</span>
+                                        </div>
+                                        <div class="mobile-entry-range-row">
+                                            <span class="min-cell meta-cell" data-label="Min">{{ row.display.min }}</span>
+                                            <span class="range-cells">
+                                            <span class="range-label">Range:</span>
+                                                @for (range of rangeKeys; track range) {
+                                                    <button
+                                                        class="range-cell"
+                                                        type="button"
+                                                        [attr.data-label]="rangeLabel(range)"
+                                                        [class.range-short]="range === 'short'"
+                                                        [class.range-medium]="range === 'medium'"
+                                                        [class.range-long]="range === 'long'"
+                                                        [disabled]="!canSelectRange(row, range)"
+                                                        [class.selected-range]="isRangeSelected(row, range)"
+                                                        (click)="selectRange(row, range)">
+                                                        {{ rangeValue(row, range) }}
+                                                    </button>
+                                                }
+                                            </span>
+                                        </div>
+                                        <div class="mobile-entry-actions-row">
+                                            @if (hasAmmoColumn()) {
+                                                <div class="ammo-cell" [attr.data-label]="rowHasAmmo(row) ? 'Ammo' : ''" [class.empty-row-ammo]="!rowHasAmmo(row)" [class.ammo-without-controls]="!rowHasControls(row)" [class.empty-ammo]="ammoDepleted(row)" [class.destroyed-ammo]="ammoDestroyed(row)">
+                                                    @if (rowHasAmmo(row)) {
+                                                        @if (showAmmoDropdown(row)) {
+                                                            <select class="ammo-choice" [value]="selectedAmmoOption(row)" (change)="selectAmmoOption(row, $event)">
+                                                                @for (option of row.ammo.options; track option.id) {
+                                                                    <option [value]="option.id" [disabled]="option.disabled" [class.destroyed-ammo-option]="option.destroyed">{{ option.label }}</option>
+                                                                }
+                                                            </select>
+                                                        } @else {
+                                                            <span class="ammo-choice-static">{{ ammoText(row) }}</span>
+                                                        }
+                                                    }
+                                                </div>
+                                            }
+                                            @if (hasControlsColumn()) {
+                                                <div class="controls-cell" [class.empty-row-controls]="!rowHasControls(row)" [class.controls-without-ammo]="!rowHasAmmo(row)">
+                                                    @for (choice of handlerChoices(row); track choice.label) {
+                                                        @switch (choice.displayType) {
+                                                            @case ('dropdown') {
+                                                                <label class="control-select">
+                                                                    <span>{{ choice.label }}</span>
+                                                                    <select [value]="choice.value" [disabled]="choice.disabled || readOnly()" (change)="selectHandlerDropdown(row, choice, $event)">
+                                                                        @for (option of choice.choices ?? []; track option.value) {
+                                                                            <option [value]="option.value" [selected]="option.value === choice.value" [disabled]="option.disabled">{{ option.label }}</option>
+                                                                        }
+                                                                    </select>
+                                                                </label>
+                                                            }
+                                                            @case ('label') {
+                                                                <span class="control-label">{{ choice.label }}</span>
+                                                            }
+                                                            @case ('toggle') {
+                                                                <button class="bt-button square-small" type="button" [class.active-control]="choice.active" [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.label }}</button>
+                                                            }
+                                                            @default {
+                                                                <button class="bt-button" type="button" [class.active-control]="choice.active" [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.shortLabel || choice.label }}</button>
+                                                            }
+                                                        }
+                                                    }
+                                                    @if (canMarkDestroyed(row)) {
+                                                        <button class="bt-button" type="button" (click)="markDestroyed(row)">HIT</button>
+                                                    } @else if (canRepair(row)) {
+                                                        <button class="bt-button" type="button" (click)="repair(row)">REPAIR</button>
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </section>
+            }
+        </div>
+    </div>
+    <div class="wide-dialog-actions">
+        <button class="bt-button" type="button" [disabled]="!canOpenAmmoDialog()" (click)="openAmmoDialog()">AMMO</button>
+        <button class="bt-button" type="button" (click)="resetSelections()">RESET</button>
+        <button class="bt-button" type="button" (click)="close()">DISMISS</button>
+    </div>
+</div>

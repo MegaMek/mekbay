@@ -56,6 +56,14 @@ import { AeroRules } from './rules/aero-rules';
 import { InfantryRules } from './rules/infantry-rules';
 import { VehicleRules } from './rules/vehicle-rules';
 
+export type InventoryControlRuntimeRangeKey = 'min' | 'short' | 'medium' | 'long';
+
+export interface InventoryControlRuntimeSelectionSnapshot {
+    selectedEntryIds: Set<string>;
+    selectedRanges: Map<string, InventoryControlRuntimeRangeKey>;
+    selectedAmmoOptions: Map<string, string>;
+}
+
 /*
  * Author: Drake
  */
@@ -73,6 +81,11 @@ export class CBTForceUnit extends ForceUnit {
         internal: Map<string, { loc: string; points?: number }>;
     };
     protected override state: CBTForceUnitState;
+    private readonly inventoryControlSelection = {
+        selectedEntryIds: new Set<string>(),
+        selectedRanges: new Map<string, InventoryControlRuntimeRangeKey>(),
+        selectedAmmoOptions: new Map<string, string>()
+    };
 
     readonly alias = computed<string | undefined>(() => {
         const pilot = this.getCrewMember(0);
@@ -303,6 +316,72 @@ export class CBTForceUnit extends ForceUnit {
             inventory.push(inventoryEntry);
         }
         this.setInventory(inventory);
+    }
+
+    getInventoryControlSelectionSnapshot(): InventoryControlRuntimeSelectionSnapshot {
+        return {
+            selectedEntryIds: new Set(this.inventoryControlSelection.selectedEntryIds),
+            selectedRanges: new Map(this.inventoryControlSelection.selectedRanges),
+            selectedAmmoOptions: new Map(this.inventoryControlSelection.selectedAmmoOptions)
+        };
+    }
+
+    isInventoryControlEntrySelected(entryId: string): boolean {
+        return this.inventoryControlSelection.selectedEntryIds.has(entryId);
+    }
+
+    getInventoryControlSelectedRange(entryId: string): InventoryControlRuntimeRangeKey | undefined {
+        return this.inventoryControlSelection.selectedRanges.get(entryId);
+    }
+
+    getInventoryControlSelectedAmmoOption(entryId: string): string | undefined {
+        return this.inventoryControlSelection.selectedAmmoOptions.get(entryId);
+    }
+
+    setInventoryControlEntrySelected(entry: MountedEquipment, selected: boolean): void {
+        if (selected) {
+            this.inventoryControlSelection.selectedEntryIds.add(entry.id);
+        } else {
+            this.inventoryControlSelection.selectedEntryIds.delete(entry.id);
+            this.inventoryControlSelection.selectedRanges.delete(entry.id);
+        }
+        this.syncInventoryControlEntrySelectionSvg(entry);
+    }
+
+    setInventoryControlSelectedRange(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey | null): void {
+        if (range === null) {
+            this.inventoryControlSelection.selectedEntryIds.delete(entry.id);
+            this.inventoryControlSelection.selectedRanges.delete(entry.id);
+        } else {
+            this.inventoryControlSelection.selectedEntryIds.add(entry.id);
+            this.inventoryControlSelection.selectedRanges.set(entry.id, range);
+        }
+        this.syncInventoryControlEntrySelectionSvg(entry);
+    }
+
+    setInventoryControlSelectedAmmoOption(entryId: string, optionId: string): void {
+        this.inventoryControlSelection.selectedAmmoOptions.set(entryId, optionId);
+    }
+
+    clearInventoryControlSelection(): void {
+        this.inventoryControlSelection.selectedEntryIds.clear();
+        this.inventoryControlSelection.selectedRanges.clear();
+        this.inventoryControlSelection.selectedAmmoOptions.clear();
+        this.syncInventoryControlSelectionSvg();
+    }
+
+    syncInventoryControlSelectionSvg(): void {
+        for (const entry of this.state.inventory()) {
+            this.syncInventoryControlEntrySelectionSvg(entry);
+        }
+    }
+
+    private syncInventoryControlEntrySelectionSvg(entry: MountedEquipment): void {
+        const el = entry.el;
+        if (!el) return;
+        const selected = this.inventoryControlSelection.selectedEntryIds.has(entry.id);
+        const hasSelectedMode = !!el.querySelector(':scope > .alternativeMode.selected');
+        el.classList.toggle('selected', selected || hasSelectedMode);
     }
 
     get getLocations() {
@@ -729,6 +808,7 @@ export class CBTForceUnit extends ForceUnit {
     }
     
     public endTurn() {
+        this.clearInventoryControlSelection();
         // deselect all inventory items
         this.getInventory().forEach(entry => {
             if (!entry.el) return;
@@ -762,6 +842,7 @@ export class CBTForceUnit extends ForceUnit {
         this._formationCommander.set(data.commander ?? false);
         if (data.state) {
             this.state.update(data.state);
+            this.syncInventoryControlSelectionSvg();
         }
     }
 
