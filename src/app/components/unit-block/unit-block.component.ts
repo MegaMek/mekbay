@@ -361,8 +361,9 @@ export class UnitBlockComponent {
             const sign = pilotBv > 0 ? '+' : '';
             lines.push({ label: 'Pilot', value: `${sign}${pilotBv}` });
         }
+        lines.push({ isBreak: true });
         if (tagBv > 0 || c3Tax > 0 || pilotBv !== 0) {
-            lines.push({ label: 'Total', value: `=${totalBv}` });
+            lines.push({ label: 'Total', value: `${totalBv}` });
         }
 
         return lines.length > 0 ? lines : null;
