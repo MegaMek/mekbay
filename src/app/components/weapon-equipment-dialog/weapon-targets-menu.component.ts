@@ -24,10 +24,10 @@ export interface WeaponTargetUpdateRequest {
         <div class="weapon-targets-menu glass framed-borders has-shadow">
             <div class="weapon-targets-header">
                 <div class="weapon-targets-header-group">
-                    <button class="bt-button square-small" type="button" aria-label="Add target" title="Add target" [disabled]="readOnly() || targets().length >= maxTargets()" (click)="addRequest.emit()">+</button>
+                    <button class="bt-button square-small" type="button" aria-label="Add target" title="Add target" [disabled]="targets().length >= maxTargets()" (click)="addRequest.emit()">+</button>
                     <strong>Targets</strong>
                 </div>
-                    <button class="targets-delete" type="button" aria-label="Reset targets" title="Reset targets" [disabled]="readOnly() || targets().length === 0" (click)="resetRequest.emit()">
+                    <button class="targets-delete" type="button" aria-label="Reset targets" title="Reset targets" [disabled]="targets().length === 0" (click)="resetRequest.emit()">
                             <svg _ngcontent-ng-c1165242001="" width="18px" height="18px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg"><path _ngcontent-ng-c1165242001="" d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
                                         L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z"></path></svg>
                     </button>
@@ -44,36 +44,35 @@ export interface WeaponTargetUpdateRequest {
                                         class="target-square"
                                         [value]="target.color"
                                         [colors]="colors()"
-                                        [disabled]="readOnly()"
                                         [ariaLabel]="'Choose color for ' + target.name"
                                         (pickerOpened)="colorPickerOpened.emit()"
                                         (pickerClosed)="colorPickerClosed.emit()"
                                         (valueChange)="updateColor(target.id, $event)">
                                         {{ target.letter }}
                                     </color-picker-button>
-                                    <input class="bt-input target-name" type="text" [value]="target.name" [disabled]="readOnly()" (input)="updateName(target.id, $any($event.target).value)">
+                                    <input class="bt-input target-name" type="text" [value]="target.name" (input)="updateName(target.id, $any($event.target).value)">
                                 </div>
                                 <div class="target-controls-row">
-                                    <label class="target-number-field">
+                                    <div class="target-number-field">
                                         <span>Distance</span>
                                         <span class="target-stepper">
-                                            <button class="bt-button square-small" type="button" [disabled]="readOnly()" (click)="stepDistance(target, -1)">-</button>
-                                            <input class="value" type="number" min="0" step="1" [value]="target.distance" [disabled]="readOnly()" (input)="updateDistance(target.id, $any($event.target).value)">
-                                            <button class="bt-button square-small" type="button" [disabled]="readOnly()" (click)="stepDistance(target, 1)">+</button>
+                                            <button class="bt-button square-small" type="button" (click)="stepDistance(target, -1)">-</button>
+                                            <input class="value" type="number" min="0" step="1" [value]="target.distance" (input)="updateDistance(target.id, $any($event.target).value)">
+                                            <button class="bt-button square-small" type="button" (click)="stepDistance(target, 1)">+</button>
                                         </span>
-                                    </label>
-                                    <label class="target-number-field">
+                                    </div>
+                                    <div class="target-number-field">
                                         <span>TN Modifier</span>
                                         <span class="target-stepper">
-                                            <button class="bt-button square-small" type="button" [disabled]="readOnly()" (click)="stepTnModifier(target, -1)">-</button>
-                                            <input class="value" type="number" step="1" [value]="target.tnModifier" [disabled]="readOnly()" (input)="updateTnModifier(target.id, $any($event.target).value)">
-                                            <button class="bt-button square-small" type="button" [disabled]="readOnly()" (click)="stepTnModifier(target, 1)">+</button>
+                                            <button class="bt-button square-small" type="button" (click)="stepTnModifier(target, -1)">-</button>
+                                            <input class="value" type="number" step="1" [value]="target.tnModifier" (input)="updateTnModifier(target.id, $any($event.target).value)">
+                                            <button class="bt-button square-small" type="button" (click)="stepTnModifier(target, 1)">+</button>
                                         </span>
-                                    </label>
+                                    </div>
                                 </div>
                             </div>
                             <div class="target-delete-row">
-                                <button class="target-delete" type="button" aria-label="Delete target" title="Delete target" [disabled]="readOnly()" (click)="deleteRequest.emit(target.id)">
+                                <button class="target-delete" type="button" aria-label="Delete target" title="Delete target" (click)="deleteRequest.emit(target.id)">
                                     <svg _ngcontent-ng-c1165242001="" width="18px" height="18px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg"><path _ngcontent-ng-c1165242001="" d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
                                         L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z"></path></svg>
                                 </button>
@@ -246,6 +245,14 @@ export interface WeaponTargetUpdateRequest {
             flex: 1 1 0;
             inline-size: 0;
             min-inline-size: 3ch;
+            appearance: textfield;
+            -moz-appearance: textfield;
+        }
+
+        .target-stepper .value::-webkit-outer-spin-button,
+        .target-stepper .value::-webkit-inner-spin-button {
+            margin: 0;
+            -webkit-appearance: none;
         }
 
         .target-stepper .bt-button {
@@ -299,7 +306,6 @@ export class WeaponTargetsMenuComponent {
     readonly targets = input<InventoryControlRuntimeTarget[]>([]);
     readonly colors = input<readonly string[]>(INVENTORY_CONTROL_TARGET_COLORS);
     readonly maxTargets = input(INVENTORY_CONTROL_TARGET_MAX_COUNT);
-    readonly readOnly = input(false);
     readonly ready = signal(false);
 
     readonly addRequest = output<void>();
