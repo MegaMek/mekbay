@@ -400,7 +400,7 @@ export class WeaponEquipmentDialogComponent {
     }
 
     private hasAvailableAmmoOption(row: InventoryControlRow): boolean {
-        return row.ammo.options.some((option: InventoryControlAmmoOption) => !option.destroyed);
+        return row.ammo.options.some((option: InventoryControlAmmoOption) => !option.destroyed && option.remaining > 0);
     }
 
     private heatDissipationState(): HeatDissipationWithWings | null {

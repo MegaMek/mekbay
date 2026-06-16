@@ -759,7 +759,7 @@ describe('WeaponEquipmentDialogComponent', () => {
 
         await component.handleChoice(row, { ...component.modeChoice(row)!, value: 'Extended Range', label: 'ER' });
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
-        expect(component.ammoText(row)).toBe('ATM 6 ER (0/10)');
+        expect(component.ammoText(row)).toBe('NO AMMO');
         expect(component.ammoDepleted(row)).toBeTrue();
         component.selectAmmoOption(row, row.ammo.options[0].id);
         expect(component.selectedAmmoOption(row)).toBe(row.ammo.options[0].id);
@@ -804,6 +804,29 @@ describe('WeaponEquipmentDialogComponent', () => {
         expect(row.ammo.options).toEqual([]);
         expect(component.ammoDepleted(row)).toBeTrue();
         expect(component.ammoText(row)).toBe('NO AMMO');
+    });
+
+    it('shows No ammo instead of a dropdown when all ammo choices are depleted', () => {
+        const standardAmmo = ammo('ATM 6 Standard', 'ATM', 6, ['M_STANDARD']);
+        const atm = entry({
+            id: 'atm',
+            equipment: weapon('ATM 6', 'ATM', 6),
+            el: svgEntry('<g><g class="name"><text>ATM 6</text></g><g class="alternativeMode" mode="Standard"><g class="name"><text>Standard</text></g><g class="damage"><text>2/Msl</text></g><text class="range_short">5</text></g></g>')
+        });
+        const leftBin = entry({ id: 'left-ammo', equipment: standardAmmo, totalAmmo: 10, consumed: 10, locations: new Set(['LT']) });
+        const rightBin = entry({ id: 'right-ammo', equipment: standardAmmo, totalAmmo: 10, consumed: 10, locations: new Set(['RT']) });
+        const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
+        const { component } = createComponent([atm, leftBin, rightBin], equipmentMap);
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(row.ammo.options.map(option => ({ remaining: option.remaining, destroyed: option.destroyed }))).toEqual([
+            { remaining: 0, destroyed: false },
+            { remaining: 0, destroyed: false }
+        ]);
+        expect(component.showAmmoDropdown(row)).toBeFalse();
+        expect(component.ammoText(row)).toBe('NO AMMO');
+        expect(component.ammoDepleted(row)).toBeTrue();
+        expect(component.ammoDestroyed(row)).toBeFalse();
     });
 
     it('shows No ammo instead of a dropdown when all ammo choices are destroyed', () => {
