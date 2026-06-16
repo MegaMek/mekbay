@@ -1,4 +1,4 @@
-<div class="wide-dialog weapon-equipment-dialog" [class.hide-actions-column]="!hasActionsColumn()">
+<div class="wide-dialog weapon-equipment-dialog" [class.hide-actions-column]="!hasActionsColumn()" [class.has-targets]="hasTargets()">
     <h2 class="wide-dialog-title">{{ data.title }}</h2>
     <div class="wide-dialog-body">
         <div class="weapon-equipment-grid">
@@ -9,15 +9,32 @@
                         <span></span>
                         <span class="select-header">
                             @if (group.id === 'ranged') {
-                                <input
-                                    type="checkbox"
-                                    class="bt-checkbox ranged-select-all"
-                                    aria-label="Select all ranged weapons"
-                                    [checked]="groupAllSelectableRowsSelected(group)"
-                                    [indeterminate]="groupSomeSelectableRowsSelected(group)"
-                                    (change)="toggleGroupSelectableRows(group)">
+                                @if (hasTargets()) {
+                                    @let selectedGroupTarget = groupTargetSelection(group);
+                                    <button
+                                        class="target-selector ranged-select-all"
+                                        type="button"
+                                        [class.target-selected]="!!selectedGroupTarget"
+                                        [class.target-mixed]="groupSomeTargetRowsSelected(group)"
+                                        [style.background]="selectedGroupTarget?.color ?? null"
+                                        aria-label="Select target for all ranged weapons"
+                                        (click)="onGroupTargetSelectorClick($event, group)">
+                                        {{ selectedGroupTarget?.letter ?? '' }}
+                                    </button>
+                                } @else {
+                                    <input
+                                        type="checkbox"
+                                        class="bt-checkbox ranged-select-all"
+                                        aria-label="Select all ranged weapons"
+                                        [checked]="groupAllSelectableRowsSelected(group)"
+                                        [indeterminate]="groupSomeSelectableRowsSelected(group)"
+                                        (change)="toggleGroupSelectableRows(group)">
+                                }
                             }
                         </span>
+                        @if (hasTargets()) {
+                            <span class="tn-header">TN</span>
+                        }
                         <span class="name-header">Name</span>
                         <span class="hit-header" title="Hit modifier">
                             <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="2"></circle><path d="M12 1v5M12 18v5M1 12h5M18 12h5"></path></svg>
@@ -41,7 +58,7 @@
                         [cdkDropListDisabled]="!group.sortable || readOnly()"
                         (cdkDropListDropped)="drop($event, group)">
                         @for (row of group.rows; track row.id) {
-                            <div class="weapon-equipment-row" cdkDrag cdkDragLockAxis="y" cdkDragPreviewContainer="parent" [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0" [cdkDragDisabled]="!group.sortable || readOnly() || row.destroyed || row.disabled" [class.destroyed-entry]="row.destroyed" [class.disabled-entry]="!row.destroyed && row.disabled">
+                            <div class="weapon-equipment-row" cdkDrag cdkDragLockAxis="y" cdkDragPreviewContainer="parent" [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0" [cdkDragDisabled]="!group.sortable || readOnly() || row.destroyed || row.disabled" [class.destroyed-entry]="row.destroyed" [class.disabled-entry]="!row.destroyed && row.disabled" (pointerdown)="cacheDragPreviewCellWidths($event)" (cdkDragStarted)="onDragStarted($event)">
                                 <div class="drag-cell">
                                     @if (group.sortable && !compactLayout()) {
                                         <button class="drag-handle" type="button" cdkDragHandle aria-label="Reorder">::::</button>
@@ -49,9 +66,28 @@
                                 </div>
                                 <div class="select-cell">
                                     @if (isSelectable(row)) {
-                                        <input type="checkbox" class="bt-checkbox" [checked]="isSelected(row)" (change)="toggleSelected(row)">
+                                        @if (hasTargets()) {
+                                            <button
+                                                class="target-selector"
+                                                type="button"
+                                                [class.target-selected]="!!targetForRow(row)"
+                                                [style.background]="targetSelectionColor(row)"
+                                                [attr.aria-label]="targetForRow(row) ? 'Selected target ' + targetSelectionLabel(row) : 'No selected target'"
+                                                (click)="onRowTargetSelectorClick($event, row)">
+                                                {{ targetSelectionLabel(row) }}
+                                            </button>
+                                        } @else {
+                                            <input type="checkbox" class="bt-checkbox" [checked]="isSelected(row)" (change)="toggleSelected(row)">
+                                        }
                                     }
                                 </div>
+                                @if (hasTargets()) {
+                                    <span class="tn-cell" [class.out-of-range]="isOutOfExtremeRange(row)" [tooltip]="targetNumberTooltip(row)">
+                                        @if (targetNumberText(row); as tnText) {
+                                            <span class="tn-value">{{ tnText }}</span>
+                                        }
+                                    </span>
+                                }
                                 <div class="name-cell">
                                     <span>{{ row.display.name }}</span>
                                     @for (modifier of row.modifiers; track modifier.name) {
@@ -90,6 +126,7 @@
                                             [class.range-long]="range === 'long'"
                                             [disabled]="!canSelectRange(row, range)"
                                             [class.selected-range]="isRangeSelected(row, range)"
+                                            [class.out-of-range]="isOutOfLongRange(row)"
                                             (click)="selectRange(row, range)">
                                             {{ rangeValue(row, range) }}
                                         </button>
@@ -175,7 +212,7 @@
                 <button class="bt-button" type="button" [disabled]="readOnly()" (click)="consumeSelectedHeatAndAmmo()">{{ consumeButtonLabel() }}</button>
             </div>
         }
-        <button class="bt-button square" type="button" aria-label="Targets" title="Targets" (click)="close()">
+        <button class="bt-button square" type="button" aria-label="Targets" title="Targets" (click)="openTargets($event)">
             <svg aria-hidden="true" stroke="currentColor" fill="none" height="24px" width="24px" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="2"></circle><path d="M12 1v5M12 18v5M1 12h5M18 12h5"></path></svg>
         </button>
         <button class="bt-button square" type="button" aria-label="Ammo" title="Ammo" [disabled]="!canOpenAmmoDialog()" (click)="openAmmoDialog()">

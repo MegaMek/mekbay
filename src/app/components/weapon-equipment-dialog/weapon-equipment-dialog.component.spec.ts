@@ -1,70 +1,48 @@
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { CdkDragDrop } from '@angular/cdk/drag-drop';
+import { CdkDragDrop, CdkDragStart } from '@angular/cdk/drag-drop';
 import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment, WeaponEquipment, MiscEquipment, type EquipmentMap } from '../../models/equipment.model';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import { INVENTORY_CONTROL_TARGET_COLORS, InventoryControlRuntimeState, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import type { CriticalSlot, HeatProfile, MountedEquipment } from '../../models/force-serialization';
 import { InventoryModeHandler } from '../../equipment-handlers/inventory-mode.handler';
 import type { HandlerChoice } from '../../services/equipment-interaction-registry.service';
 import { INVENTORY_CONTROL_MODE_STATE, inventoryControlSortKey, getInventoryControlGroups } from '../../utils/inventory-control.util';
 import { AmmoControlDialogComponent, type AmmoControlDialogData } from '../ammo-control-dialog/ammo-control-dialog.component';
 import { WeaponEquipmentDialogComponent, type WeaponEquipmentDialogContext, type WeaponEquipmentDialogData } from './weapon-equipment-dialog.component';
+import type { MotiveModes } from '../../models/motiveModes.model';
 
 function addRuntimeSelection(unit: CBTForceUnit): CBTForceUnit {
-    const selectedEntryIds = new Set<string>();
-    const selectedRanges = new Map<string, 'min' | 'short' | 'medium' | 'long'>();
-    const selectedAmmoOptions = new Map<string, string>();
-    const syncEntry = (entry: MountedEquipment) => {
-        const hasSelectedMode = !!entry.el?.querySelector(':scope > .alternativeMode.selected');
-        entry.el?.classList.toggle('selected', selectedEntryIds.has(entry.id) || hasSelectedMode);
-    };
+    const runtime = new InventoryControlRuntimeState(() => unit.getInventory());
 
     Object.assign(unit, {
-        getInventoryControlSelectionSnapshot: () => ({
-            selectedEntryIds: new Set(selectedEntryIds),
-            selectedRanges: new Map(selectedRanges),
-            selectedAmmoOptions: new Map(selectedAmmoOptions)
-        }),
-        isInventoryControlEntrySelected: (entryId: string) => selectedEntryIds.has(entryId),
-        getInventoryControlSelectedRange: (entryId: string) => selectedRanges.get(entryId),
-        getInventoryControlSelectedAmmoOption: (entryId: string) => selectedAmmoOptions.get(entryId),
-        setInventoryControlEntrySelected: (entry: MountedEquipment, selected: boolean) => {
-            if (selected) {
-                selectedEntryIds.add(entry.id);
-            } else {
-                selectedEntryIds.delete(entry.id);
-                selectedRanges.delete(entry.id);
-            }
-            syncEntry(entry);
-        },
-        setInventoryControlSelectedRange: (entry: MountedEquipment, range: 'min' | 'short' | 'medium' | 'long' | null) => {
-            if (range === null) {
-                selectedEntryIds.delete(entry.id);
-                selectedRanges.delete(entry.id);
-            } else {
-                selectedEntryIds.add(entry.id);
-                selectedRanges.set(entry.id, range);
-            }
-            syncEntry(entry);
-        },
-        setInventoryControlSelectedAmmoOption: (entryId: string, optionId: string) => selectedAmmoOptions.set(entryId, optionId),
-        clearInventoryControlSelection: () => {
-            selectedEntryIds.clear();
-            selectedRanges.clear();
-            selectedAmmoOptions.clear();
-            unit.getInventory().forEach(syncEntry);
-        },
-        syncInventoryControlSelectionSvg: () => unit.getInventory().forEach(syncEntry)
+        getInventoryControlSelectionSnapshot: () => runtime.getSelectionSnapshot(),
+        getInventoryControlTargets: () => runtime.getTargets(),
+        getInventoryControlTarget: (targetId: InventoryControlRuntimeTargetId) => runtime.getTarget(targetId),
+        getInventoryControlSelectedTarget: (entryId: string) => runtime.getSelectedTarget(entryId),
+        isInventoryControlEntrySelected: (entryId: string) => runtime.isEntrySelected(entryId),
+        getInventoryControlSelectedRange: (entryId: string) => runtime.getSelectedRange(entryId),
+        getInventoryControlSelectedAmmoOption: (entryId: string) => runtime.getSelectedAmmoOption(entryId),
+        setInventoryControlEntrySelected: (entry: MountedEquipment, selected: boolean) => runtime.setEntrySelected(entry, selected),
+        setInventoryControlSelectedRange: (entry: MountedEquipment, range: 'min' | 'short' | 'medium' | 'long' | null) => runtime.setSelectedRange(entry, range),
+        setInventoryControlSelectedAmmoOption: (entryId: string, optionId: string) => runtime.setSelectedAmmoOption(entryId, optionId),
+        setInventoryControlSelectedTarget: (entry: MountedEquipment, targetId: InventoryControlRuntimeTargetId | null) => runtime.setSelectedTarget(entry, targetId),
+        createInventoryControlTarget: () => runtime.createTarget(),
+        updateInventoryControlTarget: (targetId: InventoryControlRuntimeTargetId, patch: Partial<Omit<InventoryControlRuntimeTarget, 'id' | 'letter'>>) => runtime.updateTarget(targetId, patch),
+        deleteInventoryControlTarget: (targetId: InventoryControlRuntimeTargetId) => runtime.deleteTarget(targetId),
+        resetInventoryControlTargets: () => runtime.resetTargets(),
+        clearInventoryControlSelection: () => runtime.clearSelection(),
+        syncInventoryControlSelectionSvg: () => runtime.syncSelectionSvg()
     });
     return unit;
 }
 
-function weapon(id: string, ammoType: 'NA' | 'ATM' | 'MML' = 'NA', rackSize = 0): WeaponEquipment {
+function weapon(id: string, ammoType: 'NA' | 'ATM' | 'MML' = 'NA', rackSize = 0, ranges: number[] = [1, 2, 3, 4]): WeaponEquipment {
     return new WeaponEquipment({
         id,
         name: id,
         type: 'weapon',
-        weapon: { ammoType, rackSize, ranges: [1, 2, 3, 4] }
+        weapon: { ammoType, rackSize, ranges }
     });
 }
 
@@ -136,6 +114,9 @@ interface CreateComponentOptions {
     tracksHeat?: boolean;
     heatDissipation?: number;
     heatNext?: number;
+    gunnerySkill?: number;
+    pilotingSkill?: number;
+    moveMode?: MotiveModes | null;
 }
 
 function createComponent(
@@ -171,6 +152,12 @@ function createComponent(
         getUnit: () => ({ comp: [] }),
         getHeat: () => heat,
         setHeat: jasmine.createSpy('setHeat').and.callFake((value: number) => heat.next = value),
+        gunnerySkill: () => options.gunnerySkill ?? 4,
+        pilotingSkill: () => options.pilotingSkill ?? 5,
+        turnState: () => ({
+            moveMode: () => options.moveMode ?? null,
+            airborne: () => false,
+        }),
         readOnly: () => options.readOnly ?? false,
         hasDirectInventory: () => options.hasDirectInventory ?? true,
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
@@ -370,6 +357,227 @@ describe('WeaponEquipmentDialogComponent', () => {
         component.selectRange(row, 'medium');
         expect(component.isSelected(row)).toBeFalse();
         expect(component.isRangeSelected(row, 'medium')).toBeFalse();
+    });
+
+    it('upgrades existing weapon selections to the first target and toggles the single target like a checkbox', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>') });
+        const { component, fixture, unit } = createComponent([laser]);
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        component.toggleSelected(row);
+        unit.createInventoryControlTarget();
+        (component as any).refresh();
+        fixture.detectChanges();
+
+        expect(unit.getInventoryControlSelectedTarget(row.id)).toBe('A');
+        expect(component.isSelected(row)).toBeTrue();
+        const selector = fixture.nativeElement.querySelector('.weapon-equipment-row .target-selector') as HTMLButtonElement;
+        expect(selector.textContent?.trim()).toBe('A');
+
+        selector.click();
+        fixture.detectChanges();
+
+        expect(unit.getInventoryControlSelectedTarget(row.id)).toBeUndefined();
+        expect(component.isSelected(row)).toBeFalse();
+    });
+
+    it('opens target choices for multiple targets and assigns the picked target', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>') });
+        const { component, fixture, unit } = createComponent([laser]);
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('B', { distance: 4, tnModifier: 1 });
+        (component as any).refresh();
+        fixture.detectChanges();
+
+        (fixture.nativeElement.querySelector('.weapon-equipment-row .target-selector') as HTMLButtonElement).click();
+        fixture.detectChanges();
+        const choices = Array.from(document.body.querySelectorAll('.weapon-target-choice-menu .target-choice')) as HTMLButtonElement[];
+        expect(choices.map(choice => choice.querySelector('.target-choice-token')?.textContent?.trim())).toEqual(['—', 'A', 'B']);
+        expect(choices.map(choice => choice.querySelector('.target-choice-tn')?.textContent?.trim() ?? '')).toEqual(['', '4', '7']);
+
+        choices[2].click();
+        fixture.detectChanges();
+
+        expect(unit.getInventoryControlSelectedTarget(row.id)).toBe('B');
+        expect(component.isSelected(row)).toBeTrue();
+        fixture.destroy();
+    });
+
+    it('uses the target selector for ranged select all when targets exist', () => {
+        const first = entry({ id: 'first', equipment: weapon('first'), el: svgEntry('<g><g class="name"><text>First</text></g></g>') });
+        const second = entry({ id: 'second', equipment: weapon('second'), el: svgEntry('<g><g class="name"><text>Second</text></g></g>') });
+        const punch = entry({ id: 'punch', physical: true, el: svgEntry('<g><g class="name"><text>Punch</text></g></g>') });
+        const { component, fixture, unit } = createComponent([first, second, punch]);
+        unit.createInventoryControlTarget();
+        (component as any).refresh();
+        fixture.detectChanges();
+        const rangedSection = (Array.from(fixture.nativeElement.querySelectorAll('.weapon-equipment-section')) as HTMLElement[])
+            .find(section => section.querySelector('h3')?.textContent?.trim() === 'Ranged Weapons')!;
+        const headerSelector = rangedSection.querySelector('.select-header .target-selector') as HTMLButtonElement;
+        const rows = component.groups().flatMap(group => group.rows);
+        const firstRow = rows.find(row => row.id === 'first')!;
+        const secondRow = rows.find(row => row.id === 'second')!;
+        const punchRow = rows.find(row => row.id === 'punch')!;
+
+        headerSelector.click();
+        fixture.detectChanges();
+
+        expect(unit.getInventoryControlSelectedTarget(firstRow.id)).toBe('A');
+        expect(unit.getInventoryControlSelectedTarget(secondRow.id)).toBe('A');
+        expect(unit.getInventoryControlSelectedTarget(punchRow.id)).toBeUndefined();
+        expect(component.groupTargetSelection(component.groups().find(group => group.id === 'ranged')!)?.id).toBe('A');
+
+        (rangedSection.querySelector('.select-header .target-selector') as HTMLButtonElement).click();
+        fixture.detectChanges();
+
+        expect(component.isSelected(firstRow)).toBeFalse();
+        expect(component.isSelected(secondRow)).toBeFalse();
+        expect(component.isSelected(punchRow)).toBeFalse();
+    });
+
+    it('uses assigned target distance for range selection and target number math', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_min">6</text><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>') });
+        const { component, fixture, unit } = createComponent([laser], {}, [], new Map([[laser, { isDamaged: false, isDisabled: false, hitMod: 1 }]]), { gunnerySkill: 4, moveMode: 'run' });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 8, tnModifier: 1 });
+        unit.setInventoryControlSelectedTarget(row.entry, 'A');
+        (component as any).refresh();
+        fixture.detectChanges();
+
+        expect(component.canSelectRange(row, 'long')).toBeFalse();
+        expect(component.isRangeSelected(row, 'long')).toBeTrue();
+        expect(component.isOutOfLongRange(row)).toBeFalse();
+        expect(component.isOutOfExtremeRange(row)).toBeFalse();
+        expect(component.targetNumberText(row)).toBe('12');
+        expect(component.targetNumberTooltip(row)).toEqual([
+            { label: 'Gunnery', value: '4' },
+            { label: 'Movement (Run)', value: '+2' },
+            { label: 'Target (A)', value: '+1' },
+            { label: 'Range (Long)', value: '+4' },
+            { label: 'Hit Modifier', value: '+1' },
+            { isBreak: true },
+            { label: 'Total', value: '12', isHeader: true },
+        ]);
+        expect((fixture.nativeElement.querySelector('.tn-cell') as HTMLElement).hasAttribute('data-tooltip-host')).toBeTrue();
+        expect((fixture.nativeElement.querySelector('.range-long') as HTMLElement).classList.contains('selected-range')).toBeTrue();
+    });
+
+    it('uses piloting skill for physical target numbers', () => {
+        const punch = entry({ id: 'punch', physical: true, el: svgEntry('<g><g class="name"><text>Punch</text></g></g>') });
+        const { component, unit } = createComponent([punch], {}, [], new Map(), { pilotingSkill: 6 });
+        const row = component.groups().find(group => group.id === 'physical')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 10, tnModifier: 1 });
+        unit.setInventoryControlSelectedTarget(row.entry, 'A');
+        (component as any).refresh();
+
+        expect(component.isRangeSelected(row, 'short')).toBeFalse();
+        expect(component.isOutOfLongRange(row)).toBeFalse();
+        expect(component.isOutOfExtremeRange(row)).toBeFalse();
+        expect(component.targetNumberText(row)).toBe('7');
+        expect(component.targetNumberTooltip(row)).toEqual([
+            { label: 'Piloting', value: '6' },
+            { label: 'Movement (None)', value: '+0' },
+            { label: 'Target (A)', value: '+1' },
+            { isBreak: true },
+            { label: 'Total', value: '7', isHeader: true },
+        ]);
+    });
+
+    it('marks target-assigned weapons beyond long range and uses extreme range modifier', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [3, 6, 9, 12]), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>') });
+        const { component, fixture, unit } = createComponent([laser], {}, [], new Map([[laser, { isDamaged: false, isDisabled: false, hitMod: 1 }]]), { gunnerySkill: 4 });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 10, tnModifier: 1 });
+        unit.setInventoryControlSelectedTarget(row.entry, 'A');
+        (component as any).refresh();
+        fixture.detectChanges();
+
+        expect(component.isOutOfLongRange(row)).toBeTrue();
+        expect(component.isOutOfExtremeRange(row)).toBeFalse();
+        expect(component.isRangeSelected(row, 'long')).toBeFalse();
+        expect(component.targetNumberText(row)).toBe('12');
+        expect(component.targetNumberTooltip(row)).toEqual([
+            { label: 'Gunnery', value: '4' },
+            { label: 'Movement (None)', value: '+0' },
+            { label: 'Target (A)', value: '+1' },
+            { label: 'Range (Extreme)', value: '+6' },
+            { label: 'Hit Modifier', value: '+1' },
+            { isBreak: true },
+            { label: 'Total', value: '12', isHeader: true },
+        ]);
+        expect((fixture.nativeElement.querySelector('.tn-cell') as HTMLElement).classList.contains('out-of-range')).toBeFalse();
+        const rangeCells = Array.from(fixture.nativeElement.querySelectorAll('.range-cell')) as HTMLElement[];
+        expect(rangeCells.length).toBe(3);
+        expect(rangeCells.every(cell => cell.classList.contains('out-of-range'))).toBeTrue();
+    });
+
+    it('marks target numbers out of range beyond extreme range', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [3, 6, 9, 12]), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>') });
+        const { component, fixture, unit } = createComponent([laser], {}, [], new Map(), { gunnerySkill: 4 });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 13, tnModifier: 1 });
+        unit.setInventoryControlSelectedTarget(row.entry, 'A');
+        (component as any).refresh();
+        fixture.detectChanges();
+
+        expect(component.isOutOfLongRange(row)).toBeTrue();
+        expect(component.isOutOfExtremeRange(row)).toBeTrue();
+        expect(component.targetNumberText(row)).toBe('X');
+        expect(component.targetNumberTooltip(row)).toEqual([{ value: 'OUT OF RANGE', isHeader: true }]);
+        expect((fixture.nativeElement.querySelector('.tn-cell') as HTMLElement).classList.contains('out-of-range')).toBeTrue();
+        const rangeCells = Array.from(fixture.nativeElement.querySelectorAll('.range-cell')) as HTMLElement[];
+        expect(rangeCells.every(cell => cell.classList.contains('out-of-range'))).toBeTrue();
+    });
+
+    it('opens the targets overlay, adds a target, and changes color from the target square', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
+        const { fixture, unit } = createComponent([laser]);
+        fixture.detectChanges();
+
+        const targetsButton = fixture.nativeElement.querySelector('button[aria-label="Targets"]') as HTMLButtonElement;
+        targetsButton.click();
+        fixture.detectChanges();
+
+        const menu = document.body.querySelector('.weapon-targets-menu') as HTMLElement;
+        expect(menu).not.toBeNull();
+        (menu.querySelector('button[aria-label="Add target"]') as HTMLButtonElement).click();
+        fixture.detectChanges();
+
+        expect(unit.getInventoryControlTargets().map(target => target.id)).toEqual(['A']);
+        const targetRow = menu.querySelector('.weapon-target-row') as HTMLElement;
+        expect(targetRow.querySelectorAll('.target-identity-row').length).toBe(1);
+        expect(targetRow.querySelectorAll('.target-controls-row').length).toBe(1);
+        expect(targetRow.querySelectorAll('.target-delete-row').length).toBe(1);
+        expect(targetRow.querySelectorAll('.target-controls-row .target-number-field').length).toBe(2);
+        expect(getComputedStyle(targetRow).display).toBe('flex');
+        expect(getComputedStyle(targetRow.querySelector('.target-identity-row') as HTMLElement).display).toBe('flex');
+        expect(getComputedStyle(targetRow.querySelector('.target-controls-row') as HTMLElement).display).toBe('flex');
+        const targetName = targetRow.querySelector('.target-name') as HTMLInputElement;
+        const targetDelete = targetRow.querySelector('.target-delete') as HTMLButtonElement;
+        expect((targetRow.querySelector('.target-square') as HTMLElement).offsetHeight).toBe(targetName.offsetHeight);
+        expect(targetDelete.offsetHeight).toBe(targetName.offsetHeight);
+        const colorButton = menu.querySelector('.target-square .color-picker-button') as HTMLButtonElement;
+        expect(colorButton).not.toBeNull();
+        colorButton.click();
+        fixture.detectChanges();
+
+        const colorChoices = Array.from(document.body.querySelectorAll('.color-picker-panel .color-choice')) as HTMLButtonElement[];
+        expect(colorChoices.length).toBe(INVENTORY_CONTROL_TARGET_COLORS.length);
+        colorChoices[1].click();
+        fixture.detectChanges();
+
+        expect(unit.getInventoryControlTargets()[0].color).toBe(INVENTORY_CONTROL_TARGET_COLORS[1]);
+        expect(document.body.querySelector('.weapon-targets-menu')).not.toBeNull();
+        const expectedColor = document.createElement('div');
+        expectedColor.style.background = INVENTORY_CONTROL_TARGET_COLORS[1];
+        expect((menu.querySelector('.target-square .color-picker-button') as HTMLButtonElement).style.background).toBe(expectedColor.style.background);
+        fixture.destroy();
     });
 
     it('toggles all ranged weapons from the ranged group header checkbox', () => {

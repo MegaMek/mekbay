@@ -1,15 +1,26 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, type ComponentRef, DestroyRef, inject, Injector, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { DragDropModule, type CdkDragDrop, moveItemInArray } from '@angular/cdk/drag-drop';
+import { DragDropModule, type CdkDragDrop, type CdkDragStart, moveItemInArray } from '@angular/cdk/drag-drop';
+import { Overlay, OverlayModule } from '@angular/cdk/overlay';
+import { ComponentPortal } from '@angular/cdk/portal';
+import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
+import { WeaponEquipment } from '../../models/equipment.model';
 import type { CriticalSlot, MountedEquipment } from '../../models/force-serialization';
 import type { HandlerChoice, HandlerContext } from '../../services/equipment-interaction-registry.service';
+import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { AmmoControlDialogComponent, type AmmoControlDialogData } from '../ammo-control-dialog/ammo-control-dialog.component';
 import { INVENTORY_MODE_CHOICE_LABEL, INVENTORY_MODE_HANDLER_ID } from '../../equipment-handlers/inventory-mode.handler';
 import { getAmmoControlEntriesForUnitWeapons, getAmmoControlEntriesForWeapon, getAmmoEntryRemaining } from '../../utils/ammo-interaction.util';
 import type { HeatDissipationState } from '../../models/rules/heat-management';
 import { LayoutService } from '../../services/layout.service';
 import { MultilineDropdownComponent, type MultilineDropdownOption } from '../multiline-dropdown/multiline-dropdown.component';
+import { WeaponTargetChoiceMenuComponent } from './weapon-target-choice-menu.component';
+import { WeaponTargetsMenuComponent, type WeaponTargetUpdateRequest } from './weapon-targets-menu.component';
+import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
+import { TooltipDirective } from '../../directives/tooltip.directive';
+import type { TooltipLine } from '../tooltip/tooltip.component';
+import { getMotiveModeLabel, getMotiveModeTargetNumberModifier } from '../../models/motiveModes.model';
 import {
     formatInventoryControlModeName,
     getInventoryControlGroups,
@@ -27,6 +38,8 @@ const RANGE_LABELS: Record<InventoryRangeKey, string> = {
     long: 'Lng'
 };
 const HEAT_BAR_SCALE = 30;
+const WEAPON_TARGETS_OVERLAY_KEY = 'weapon-equipment-targets';
+const WEAPON_TARGET_CHOICE_OVERLAY_KEY = 'weapon-equipment-target-choice';
 
 interface WeaponEquipmentDialogRegistry {
     getChoices(entry: MountedEquipment, context: HandlerContext): HandlerChoice[];
@@ -34,6 +47,7 @@ interface WeaponEquipmentDialogRegistry {
 }
 
 type HeatDissipationWithWings = HeatDissipationState & { totalDissipationWithWings?: number };
+type TargetRangeKey = Exclude<InventoryRangeKey, 'min'> | 'extreme';
 
 interface HeatAwareRules {
     heatDissipation: () => HeatDissipationWithWings | null;
@@ -51,6 +65,29 @@ interface SelectedHeatProjection {
     retainedWidth: number;
 }
 
+interface TargetRangeSelection {
+    range: TargetRangeKey;
+    outOfLongRange: boolean;
+    outOfExtremeRange: boolean;
+}
+
+interface TargetNumberBreakdown {
+    total: number;
+    lines: TooltipLine[];
+}
+
+interface DragPreviewCellSizing {
+    path: number[];
+    width: number;
+}
+
+interface DragPreviewSizing {
+    sourceRow: HTMLElement;
+    rowWidth: number;
+    gridTemplateColumns: string;
+    cells: DragPreviewCellSizing[];
+}
+
 export interface WeaponEquipmentDialogContext extends HandlerContext {
     registry: WeaponEquipmentDialogRegistry;
 }
@@ -65,7 +102,7 @@ export interface WeaponEquipmentDialogData {
 @Component({
     selector: 'weapon-equipment-dialog',
     standalone: true,
-    imports: [DragDropModule, MultilineDropdownComponent],
+    imports: [DragDropModule, OverlayModule, MultilineDropdownComponent, TooltipDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         class: 'fullscreen-dialog-host glass'
@@ -76,15 +113,27 @@ export interface WeaponEquipmentDialogData {
 export class WeaponEquipmentDialogComponent {
     readonly data: WeaponEquipmentDialogData = inject(DIALOG_DATA);
     readonly layoutService = inject(LayoutService);
+    private readonly overlay = inject(Overlay);
+    private readonly overlayManager = inject(OverlayManagerService);
+    private readonly injector = inject(Injector);
+    private readonly destroyRef = inject(DestroyRef);
     private readonly dialogRef: DialogRef<void, WeaponEquipmentDialogComponent> = inject(DialogRef);
     private readonly revision = signal(0);
     private readonly handlerChoiceCache = new Map<MountedEquipment, HandlerChoice[]>();
     private handlerChoiceCacheRevision = -1;
+    private targetsCompRef: ComponentRef<WeaponTargetsMenuComponent> | null = null;
+    private targetChoiceCompRef: ComponentRef<WeaponTargetChoiceMenuComponent> | null = null;
+    private pendingDragPreviewSizing: DragPreviewSizing | null = null;
     readonly rangeKeys: InventoryRangeKey[] = ['short', 'medium', 'long'];
     readonly groups = computed(() => {
         this.revision();
         return getInventoryControlGroups(this.data.unit, this.data.context.dataService.getEquipments());
     });
+    readonly targets = computed(() => {
+        this.revision();
+        return this.data.unit.getInventoryControlTargets();
+    });
+    readonly hasTargets = computed(() => this.targets().length > 0);
     readonly hasAmmoColumn = computed(() => this.groups().some(group => this.groupHasAmmo(group)));
     readonly hasControlsColumn = computed(() => this.groups().some(group => this.groupHasControls(group)));
     readonly hasActionsColumn = computed(() => this.groups().some(group => this.groupHasActions(group)));
@@ -118,6 +167,183 @@ export class WeaponEquipmentDialogComponent {
 
     constructor() {
         this.data.unit.syncInventoryControlSelectionSvg();
+        this.destroyRef.onDestroy(() => {
+            this.overlayManager.closeManagedOverlay(WEAPON_TARGETS_OVERLAY_KEY);
+            this.overlayManager.closeManagedOverlay(WEAPON_TARGET_CHOICE_OVERLAY_KEY);
+        });
+    }
+
+    openTargets(event: MouseEvent): void {
+        event.stopPropagation();
+
+        if (this.overlayManager.has(WEAPON_TARGETS_OVERLAY_KEY)) {
+            this.overlayManager.closeManagedOverlay(WEAPON_TARGETS_OVERLAY_KEY);
+            this.targetsCompRef = null;
+            return;
+        }
+
+        const target = event.currentTarget as HTMLElement;
+        const portal = new ComponentPortal(WeaponTargetsMenuComponent, null, this.injector);
+        const { componentRef, closed } = this.overlayManager.createManagedOverlay(WEAPON_TARGETS_OVERLAY_KEY, target, portal, {
+            hasBackdrop: false,
+            panelClass: 'weapon-targets-overlay-panel',
+            closeOnOutsideClick: true,
+            scrollStrategy: this.overlay.scrollStrategies.reposition()
+        });
+        this.targetsCompRef = componentRef;
+        this.syncTargetsOverlayInputs();
+
+        outputToObservable(componentRef.instance.addRequest).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            this.data.unit.createInventoryControlTarget();
+            this.refresh();
+            this.syncTargetsOverlayInputs();
+        });
+        outputToObservable(componentRef.instance.resetRequest).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            this.data.unit.resetInventoryControlTargets();
+            this.refresh();
+            this.syncTargetsOverlayInputs();
+        });
+        outputToObservable(componentRef.instance.updateRequest).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((request: WeaponTargetUpdateRequest) => {
+            this.data.unit.updateInventoryControlTarget(request.targetId, request.patch);
+            this.refresh();
+            this.syncTargetsOverlayInputs();
+        });
+        outputToObservable(componentRef.instance.deleteRequest).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(targetId => {
+            this.data.unit.deleteInventoryControlTarget(targetId);
+            this.refresh();
+            this.syncTargetsOverlayInputs();
+        });
+        outputToObservable(componentRef.instance.colorPickerOpened).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            this.overlayManager.blockCloseUntil(WEAPON_TARGETS_OVERLAY_KEY);
+        });
+        outputToObservable(componentRef.instance.colorPickerClosed).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            this.overlayManager.unblockClose(WEAPON_TARGETS_OVERLAY_KEY);
+        });
+        closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            this.targetsCompRef = null;
+        });
+    }
+
+    private syncTargetsOverlayInputs(): void {
+        if (!this.targetsCompRef) return;
+        this.targetsCompRef.setInput('targets', this.targets());
+        this.targetsCompRef.setInput('readOnly', this.readOnly());
+        this.targetsCompRef.changeDetectorRef.detectChanges();
+    }
+
+    targetForRow(row: InventoryControlRow): InventoryControlRuntimeTarget | null {
+        const targetId = this.data.unit.getInventoryControlSelectedTarget(row.id);
+        return targetId ? this.targets().find(target => target.id === targetId) ?? null : null;
+    }
+
+    targetSelectionLabel(row: InventoryControlRow): string {
+        return this.targetForRow(row)?.letter ?? '';
+    }
+
+    targetSelectionColor(row: InventoryControlRow): string | null {
+        return this.targetForRow(row)?.color ?? null;
+    }
+
+    onRowTargetSelectorClick(event: MouseEvent, row: InventoryControlRow): void {
+        event.stopPropagation();
+        if (!this.isSelectable(row)) return;
+        const targets = this.targets();
+        if (targets.length === 0) return;
+        if (targets.length === 1) {
+            const targetId = targets[0].id;
+            const selectedTargetId = this.data.unit.getInventoryControlSelectedTarget(row.id);
+            this.data.unit.setInventoryControlSelectedTarget(row.entry, selectedTargetId === targetId ? null : targetId);
+            this.refresh();
+            return;
+        }
+
+        this.openTargetChoiceOverlay(
+            event.currentTarget as HTMLElement,
+            this.data.unit.getInventoryControlSelectedTarget(row.id) ?? null,
+            targetId => {
+                this.data.unit.setInventoryControlSelectedTarget(row.entry, targetId);
+                this.refresh();
+            },
+            this.targetChoiceTargetNumberTexts(row)
+        );
+    }
+
+    groupTargetSelection(group: InventoryControlGroup): InventoryControlRuntimeTarget | null {
+        const rows = this.groupSelectableRows(group);
+        if (rows.length === 0) return null;
+        const firstTargetId = this.data.unit.getInventoryControlSelectedTarget(rows[0].id);
+        if (!firstTargetId || !rows.every(row => this.data.unit.getInventoryControlSelectedTarget(row.id) === firstTargetId)) {
+            return null;
+        }
+        return this.targets().find(target => target.id === firstTargetId) ?? null;
+    }
+
+    groupSomeTargetRowsSelected(group: InventoryControlGroup): boolean {
+        const rows = this.groupSelectableRows(group);
+        const selectedCount = rows.filter(row => !!this.data.unit.getInventoryControlSelectedTarget(row.id)).length;
+        return selectedCount > 0 && selectedCount < rows.length;
+    }
+
+    onGroupTargetSelectorClick(event: MouseEvent, group: InventoryControlGroup): void {
+        event.stopPropagation();
+        if (group.id !== 'ranged') return;
+        const targets = this.targets();
+        if (targets.length === 0) return;
+        if (targets.length === 1) {
+            const targetId = targets[0].id;
+            const selected = this.groupTargetSelection(group)?.id === targetId;
+            this.setGroupTarget(group, selected ? null : targetId);
+            return;
+        }
+
+        this.openTargetChoiceOverlay(
+            event.currentTarget as HTMLElement,
+            this.groupTargetSelection(group)?.id ?? null,
+            targetId => this.setGroupTarget(group, targetId)
+        );
+    }
+
+    private setGroupTarget(group: InventoryControlGroup, targetId: InventoryControlRuntimeTargetId | null): void {
+        for (const row of this.groupSelectableRows(group)) {
+            this.data.unit.setInventoryControlSelectedTarget(row.entry, targetId);
+        }
+        this.refresh();
+    }
+
+    private openTargetChoiceOverlay(
+        anchor: HTMLElement,
+        selectedTargetId: InventoryControlRuntimeTargetId | null,
+        onSelect: (targetId: InventoryControlRuntimeTargetId | null) => void,
+        targetNumberTexts: Readonly<Record<InventoryControlRuntimeTargetId, string>> = {}
+    ): void {
+        this.overlayManager.closeManagedOverlay(WEAPON_TARGET_CHOICE_OVERLAY_KEY);
+        const portal = new ComponentPortal(WeaponTargetChoiceMenuComponent, null, this.injector);
+        const { componentRef, closed } = this.overlayManager.createManagedOverlay(WEAPON_TARGET_CHOICE_OVERLAY_KEY, anchor, portal, {
+            hasBackdrop: false,
+            panelClass: 'weapon-target-choice-overlay-panel',
+            closeOnOutsideClick: true,
+            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            positions: [
+                { originX: 'end', originY: 'center', overlayX: 'start', overlayY: 'center', offsetX: 4 },
+                { originX: 'start', originY: 'center', overlayX: 'end', overlayY: 'center', offsetX: -4 },
+                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 }
+            ]
+        });
+        this.targetChoiceCompRef = componentRef;
+        componentRef.setInput('targets', this.targets());
+        componentRef.setInput('selectedTargetId', selectedTargetId);
+        componentRef.setInput('targetNumberTexts', targetNumberTexts);
+        componentRef.changeDetectorRef.detectChanges();
+
+        outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(targetId => {
+            onSelect(targetId);
+            this.overlayManager.closeManagedOverlay(WEAPON_TARGET_CHOICE_OVERLAY_KEY);
+            this.targetChoiceCompRef = null;
+        });
+        closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            this.targetChoiceCompRef = null;
+        });
     }
 
     compactLayout(): boolean {
@@ -228,6 +454,7 @@ export class WeaponEquipmentDialogComponent {
 
     canSelectRange(row: InventoryControlRow, range: InventoryRangeKey): boolean {
         if (range === 'min') return false;
+        if (this.targetForRow(row)) return false;
         const value = this.rangeValue(row, range);
         return this.isSelectable(row) && value !== '—';
     }
@@ -247,7 +474,33 @@ export class WeaponEquipmentDialogComponent {
 
     isRangeSelected(row: InventoryControlRow, range: InventoryRangeKey): boolean {
         this.revision();
+        if (row.category === 'physical' && this.targetForRow(row)) return false;
+        const targetRange = this.targetRangeSelection(row);
+        if (targetRange) {
+            return !targetRange.outOfLongRange && targetRange.range === range;
+        }
         return this.data.unit.getInventoryControlSelectedRange(row.id) === range;
+    }
+
+    isOutOfLongRange(row: InventoryControlRow): boolean {
+        this.revision();
+        return this.targetRangeSelection(row)?.outOfLongRange ?? false;
+    }
+
+    isOutOfExtremeRange(row: InventoryControlRow): boolean {
+        this.revision();
+        return this.targetRangeSelection(row)?.outOfExtremeRange ?? false;
+    }
+
+    targetNumberText(row: InventoryControlRow): string {
+        this.revision();
+        return this.targetNumberTextForTarget(row, this.targetForRow(row));
+    }
+
+    targetNumberTooltip(row: InventoryControlRow): TooltipLine[] | null {
+        this.revision();
+        if (this.targetRangeSelection(row)?.outOfExtremeRange) return [{ value: 'OUT OF RANGE', isHeader: true }];
+        return this.targetNumberBreakdown(row)?.lines ?? null;
     }
 
     rangeValue(row: InventoryControlRow, range: InventoryRangeKey): string {
@@ -256,6 +509,138 @@ export class WeaponEquipmentDialogComponent {
 
     rangeLabel(range: InventoryRangeKey): string {
         return RANGE_LABELS[range];
+    }
+
+    private targetRangeSelection(row: InventoryControlRow): TargetRangeSelection | null {
+        return this.targetRangeSelectionForTarget(row, this.targetForRow(row));
+    }
+
+    private targetRangeSelectionForTarget(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null): TargetRangeSelection | null {
+        if (!target) return null;
+        if (row.category === 'physical') return { range: 'short', outOfLongRange: false, outOfExtremeRange: false };
+
+        const thresholds = this.rangeKeys
+            .map(range => ({ range, value: this.parseNumericCell(row.display[range]) }))
+            .filter((item): item is { range: Exclude<InventoryRangeKey, 'min'>; value: number } => item.value !== null);
+        if (thresholds.length === 0) return null;
+
+        for (const threshold of thresholds) {
+            if (target.distance <= threshold.value) {
+                return { range: threshold.range, outOfLongRange: false, outOfExtremeRange: false };
+            }
+        }
+
+        const extremeRange = this.extremeRange(row);
+        return {
+            range: 'extreme',
+            outOfLongRange: true,
+            outOfExtremeRange: extremeRange !== null && target.distance > extremeRange
+        };
+    }
+
+    private targetChoiceTargetNumberTexts(row: InventoryControlRow): Readonly<Record<InventoryControlRuntimeTargetId, string>> {
+        return Object.fromEntries(this.targets()
+            .map(target => [target.id, this.targetNumberTextForTarget(row, target)] as const)
+            .filter(([, targetNumber]) => targetNumber !== ''));
+    }
+
+    private targetNumberTextForTarget(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null): string {
+        if (this.targetRangeSelectionForTarget(row, target)?.outOfExtremeRange) return 'X';
+        const targetNumber = this.targetNumberBreakdownForTarget(row, target);
+        return targetNumber === null ? '' : targetNumber.total.toString();
+    }
+
+    private extremeRange(row: InventoryControlRow): number | null {
+        const equipment = row.entry.equipment;
+        if (!(equipment instanceof WeaponEquipment)) return null;
+        const extremeRange = equipment.ranges[3];
+        return Number.isFinite(extremeRange) && extremeRange > 0 ? extremeRange : null;
+    }
+
+    private targetNumberBreakdown(row: InventoryControlRow): TargetNumberBreakdown | null {
+        return this.targetNumberBreakdownForTarget(row, this.targetForRow(row));
+    }
+
+    private targetNumberBreakdownForTarget(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null): TargetNumberBreakdown | null {    
+        if (!target) return null;
+        const rangeSelection = this.targetRangeSelectionForTarget(row, target);
+        if (!rangeSelection) return null;
+
+        const skillLabel = row.category === 'physical' ? 'Piloting' : 'Gunnery';
+        const skill = row.category === 'physical'
+            ? this.data.unit.pilotingSkill()
+            : this.data.unit.gunnerySkill();
+        const moveMode = this.data.unit.turnState().moveMode();
+        const movementModifier = getMotiveModeTargetNumberModifier(moveMode);
+        const rangeModifier = this.rangeModifier(rangeSelection.range);
+        const minimumRangeModifier = this.minimumRangeModifier(row, target.distance);
+        const hitModifier = this.hitModifier(row.display.hit);
+        const terms: TooltipLine[] = [
+            { label: skillLabel, value: skill.toString() },
+            { label: `Movement (${this.motiveModeLabel(moveMode)})`, value: this.formatSignedModifier(movementModifier) },
+            { label: `Target (${target.letter})`, value: this.formatSignedModifier(target.tnModifier) },
+        ];
+
+        if (row.category !== 'physical') {
+            terms.push({ label: `Range (${this.rangeDisplayName(rangeSelection.range)})`, value: this.formatSignedModifier(rangeModifier) });
+        }
+
+        if (minimumRangeModifier !== 0) {
+            terms.push({ label: 'Minimum Range', value: this.formatSignedModifier(minimumRangeModifier) });
+        }
+        if (hitModifier !== 0) {
+            terms.push({ label: 'Hit Modifier', value: this.formatSignedModifier(hitModifier) });
+        }
+
+        const total = skill + movementModifier + target.tnModifier + rangeModifier + minimumRangeModifier + hitModifier;
+        terms.push({ isBreak: true });
+        terms.push({ label: 'Total', value: total.toString(), isHeader: true });
+
+        return { total, lines: terms };
+    }
+
+    private motiveModeLabel(moveMode: ReturnType<ReturnType<CBTForceUnit['turnState']>['moveMode']>): string {
+        if (!moveMode) return 'None';
+        return getMotiveModeLabel(moveMode, this.data.unit.getUnit(), this.data.unit.turnState().airborne() ?? false);
+    }
+
+    private rangeDisplayName(range: TargetRangeKey): string {
+        switch (range) {
+            case 'short': return 'Short';
+            case 'medium': return 'Medium';
+            case 'long': return 'Long';
+            case 'extreme': return 'Extreme';
+        }
+    }
+
+    private formatSignedModifier(value: number): string {
+        return value >= 0 ? `+${value}` : value.toString();
+    }
+
+    private rangeModifier(range: TargetRangeKey): number {
+        switch (range) {
+            case 'medium': return 2;
+            case 'long': return 4;
+            case 'extreme': return 6;
+            default: return 0;
+        }
+    }
+
+    private minimumRangeModifier(row: InventoryControlRow, distance: number): number {
+        const min = this.parseNumericCell(row.display.min);
+        if (min === null || min <= 0 || distance > min) return 0;
+        return (min - distance) + 1;
+    }
+
+    private hitModifier(value: string): number {
+        return this.parseNumericCell(value) ?? 0;
+    }
+
+    private parseNumericCell(value: string): number | null {
+        const text = value.trim();
+        if (!/^[-+]?\d+(?:\.\d+)?$/.test(text)) return null;
+        const parsed = Number(text);
+        return Number.isFinite(parsed) ? parsed : null;
     }
 
     ammoText(row: InventoryControlRow): string {
@@ -457,6 +842,97 @@ export class WeaponEquipmentDialogComponent {
 
     private groupSelectableRows(group: InventoryControlGroup): InventoryControlRow[] {
         return group.rows.filter(row => this.isSelectable(row));
+    }
+
+    cacheDragPreviewCellWidths(event: PointerEvent): void {
+        const sourceRow = event.currentTarget;
+        if (!(sourceRow instanceof HTMLElement)) return;
+        this.pendingDragPreviewSizing = this.measureDragPreviewSizing(sourceRow);
+    }
+
+    onDragStarted(event: CdkDragStart): void {
+        const sourceRow = event.source.getRootElement();
+        const sizing = this.pendingDragPreviewSizing?.sourceRow === sourceRow
+            ? this.pendingDragPreviewSizing
+            : this.measureDragPreviewSizing(sourceRow);
+        this.pendingDragPreviewSizing = null;
+        this.lockDragPreviewCellWidths(sourceRow, sizing);
+    }
+
+    private measureDragPreviewSizing(sourceRow: HTMLElement): DragPreviewSizing | null {
+        const cells = this.measureDragPreviewCells(sourceRow);
+        if (cells.length === 0) return null;
+        const sourceRowStyle = getComputedStyle(sourceRow);
+        return {
+            sourceRow,
+            rowWidth: sourceRow.getBoundingClientRect().width,
+            gridTemplateColumns: sourceRowStyle.gridTemplateColumns,
+            cells
+        };
+    }
+
+    private measureDragPreviewCells(parent: HTMLElement, parentPath: number[] = []): DragPreviewCellSizing[] {
+        return Array.from(parent.children).flatMap((child, index) => {
+            if (!(child instanceof HTMLElement)) return [];
+            const path = [...parentPath, index];
+            if (getComputedStyle(child).display === 'contents') {
+                return this.measureDragPreviewCells(child, path);
+            }
+            const width = child.getBoundingClientRect().width;
+            return Number.isFinite(width) && width > 0 ? [{ path, width }] : [];
+        });
+    }
+
+    private lockDragPreviewCellWidths(sourceRow: HTMLElement, sizing: DragPreviewSizing | null): void {
+        if (!sizing) return;
+
+        const applyWidth = () => {
+            const previewRow = this.findDragPreviewRow(sourceRow);
+            if (!previewRow) return false;
+            if (Number.isFinite(sizing.rowWidth) && sizing.rowWidth > 0) {
+                const fixedRowWidth = `${sizing.rowWidth}px`;
+                previewRow.style.width = fixedRowWidth;
+                previewRow.style.minWidth = fixedRowWidth;
+                previewRow.style.maxWidth = fixedRowWidth;
+            }
+            if (sizing.gridTemplateColumns && sizing.gridTemplateColumns !== 'none') {
+                previewRow.style.gridTemplateColumns = sizing.gridTemplateColumns;
+            }
+            let appliedAnyCell = false;
+            for (const cell of sizing.cells) {
+                const previewCell = this.elementAtPath(previewRow, cell.path);
+                if (!previewCell) continue;
+                const fixedWidth = `${cell.width}px`;
+                previewCell.style.width = fixedWidth;
+                previewCell.style.minWidth = fixedWidth;
+                previewCell.style.maxWidth = fixedWidth;
+                previewCell.style.flexBasis = fixedWidth;
+                appliedAnyCell = true;
+            }
+            return appliedAnyCell;
+        };
+
+        if (!applyWidth()) {
+            queueMicrotask(applyWidth);
+            requestAnimationFrame(applyWidth);
+        }
+    }
+
+    private elementAtPath(root: HTMLElement, path: number[]): HTMLElement | null {
+        let current: Element = root;
+        for (const index of path) {
+            const child = current.children.item(index);
+            if (!(child instanceof HTMLElement)) return null;
+            current = child;
+        }
+        return current instanceof HTMLElement ? current : null;
+    }
+
+    private findDragPreviewRow(sourceRow: HTMLElement): HTMLElement | null {
+        const container = sourceRow.parentElement;
+        if (!container) return null;
+        const previews = Array.from(container.querySelectorAll<HTMLElement>('.weapon-equipment-row.cdk-drag-preview'));
+        return previews.find(preview => preview !== sourceRow) ?? null;
     }
 
     drop(event: CdkDragDrop<InventoryControlRow[]>, group: InventoryControlGroup): void {

@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment, WeaponEquipment, type EquipmentMap } from './equipment.model';
 import { CBTForce } from './cbt-force.model';
 import { CBTForceUnit } from './cbt-force-unit.model';
+import { INVENTORY_CONTROL_TARGET_MAX_COUNT } from './inventory-control-runtime-state.model';
 import type { CBTSerializedUnit } from './force-serialization';
 import { DataService } from '../services/data.service';
 import { UnitInitializerService } from '../services/unit-initializer.service';
@@ -201,5 +202,110 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(repairedAmmoEntries.map(entry => entry.ammo)).toEqual([undefined, undefined, undefined, undefined, undefined, undefined]);
         expect(repairedAmmoEntries.map(entry => entry.totalAmmo)).toEqual([5, 5, 5, 5, 5, 5]);
         expect(repairedAmmoEntries.map(entry => entry.consumed)).toEqual([0, 0, 0, 0, 0, 0]);
+    });
+
+    it('keeps inventory control targets transient and upgrades existing selections to the first target', () => {
+        const forceUnit = createForceUnit();
+        initialize(forceUnit);
+        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
+
+        forceUnit.setInventoryControlSelectedRange(weaponEntry, 'medium');
+        const target = forceUnit.createInventoryControlTarget();
+
+        expect(target?.id).toBe('A');
+        expect(forceUnit.isInventoryControlEntrySelected(weaponEntry.id)).toBeTrue();
+        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBe('A');
+        expect(forceUnit.getInventoryControlSelectedRange(weaponEntry.id)).toBeUndefined();
+
+        const serialized = forceUnit.serialize();
+        expect(JSON.stringify(serialized)).not.toContain('Target A');
+        expect(serialized.state.inventory).toBeUndefined();
+    });
+
+    it('reuses deleted target letters and caps targets at twelve', () => {
+        const forceUnit = createForceUnit();
+        initialize(forceUnit);
+
+        expect(forceUnit.createInventoryControlTarget()?.id).toBe('A');
+        expect(forceUnit.createInventoryControlTarget()?.id).toBe('B');
+        expect(forceUnit.createInventoryControlTarget()?.id).toBe('C');
+
+        forceUnit.deleteInventoryControlTarget('B');
+        expect(forceUnit.createInventoryControlTarget()?.id).toBe('B');
+        expect(forceUnit.getInventoryControlTargets().map(target => target.id)).toEqual(['A', 'B', 'C']);
+
+        while (forceUnit.getInventoryControlTargets().length < INVENTORY_CONTROL_TARGET_MAX_COUNT) {
+            expect(forceUnit.createInventoryControlTarget()).not.toBeNull();
+        }
+        expect(forceUnit.createInventoryControlTarget()).toBeNull();
+        expect(forceUnit.getInventoryControlTargets().length).toBe(INVENTORY_CONTROL_TARGET_MAX_COUNT);
+    });
+
+    it('deselects entries assigned to deleted targets and clears all target selections on reset', () => {
+        const forceUnit = createForceUnit();
+        initialize(forceUnit);
+        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
+
+        forceUnit.createInventoryControlTarget();
+        forceUnit.createInventoryControlTarget();
+        forceUnit.setInventoryControlSelectedTarget(weaponEntry, 'B');
+        expect(forceUnit.isInventoryControlEntrySelected(weaponEntry.id)).toBeTrue();
+        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBe('B');
+
+        forceUnit.deleteInventoryControlTarget('B');
+        expect(forceUnit.getInventoryControlTargets().map(target => target.id)).toEqual(['A']);
+        expect(forceUnit.isInventoryControlEntrySelected(weaponEntry.id)).toBeFalse();
+        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBeUndefined();
+
+        forceUnit.setInventoryControlSelectedTarget(weaponEntry, 'A');
+        forceUnit.resetInventoryControlTargets();
+        expect(forceUnit.getInventoryControlTargets()).toEqual([]);
+        expect(forceUnit.isInventoryControlEntrySelected(weaponEntry.id)).toBeFalse();
+        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBeUndefined();
+    });
+
+    it('preserves valid target assignments across updates and prunes stale entry assignments', () => {
+        const forceUnit = createForceUnit();
+        initialize(forceUnit);
+        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
+        forceUnit.createInventoryControlTarget();
+        forceUnit.setInventoryControlSelectedTarget(weaponEntry, 'A');
+        forceUnit.setInventoryControlSelectedAmmoOption(weaponEntry.id, 'ammo-option');
+
+        forceUnit.update({
+            id: forceUnit.id,
+            unit: forceUnit.getUnit().name,
+            state: {
+                crew: forceUnit.getCrewMembers().map(crew => crew.serialize()),
+                crits: [],
+                heat: { current: 0, previous: 0 },
+                locations: {},
+                modified: false,
+                destroyed: false,
+                shutdown: false,
+            },
+        } as CBTSerializedUnit);
+
+        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBe('A');
+        expect(forceUnit.getInventoryControlSelectionSnapshot().selectedAmmoOptions.get(weaponEntry.id)).toBe('ammo-option');
+
+        forceUnit.setInventory([]);
+        forceUnit.update({
+            id: forceUnit.id,
+            unit: forceUnit.getUnit().name,
+            state: {
+                crew: forceUnit.getCrewMembers().map(crew => crew.serialize()),
+                crits: [],
+                heat: { current: 0, previous: 0 },
+                locations: {},
+                modified: false,
+                destroyed: false,
+                shutdown: false,
+            },
+        } as CBTSerializedUnit);
+
+        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBeUndefined();
+        expect(forceUnit.getInventoryControlSelectionSnapshot().selectedAmmoOptions.has(weaponEntry.id)).toBeFalse();
+        expect(forceUnit.isInventoryControlEntrySelected(weaponEntry.id)).toBeFalse();
     });
 });
