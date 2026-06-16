@@ -188,7 +188,13 @@ export class WeaponEquipmentDialogComponent {
             hasBackdrop: false,
             panelClass: 'weapon-targets-overlay-panel',
             closeOnOutsideClick: true,
-            scrollStrategy: this.overlay.scrollStrategies.reposition()
+            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            positions: [
+                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
+                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 }
+            ]
         });
         this.targetsCompRef = componentRef;
         this.syncTargetsOverlayInputs();
@@ -229,6 +235,7 @@ export class WeaponEquipmentDialogComponent {
         this.targetsCompRef.setInput('targets', this.targets());
         this.targetsCompRef.setInput('readOnly', this.readOnly());
         this.targetsCompRef.changeDetectorRef.detectChanges();
+        this.overlayManager.repositionAll();
     }
 
     targetForRow(row: InventoryControlRow): InventoryControlRuntimeTarget | null {

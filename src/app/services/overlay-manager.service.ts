@@ -185,6 +185,12 @@ export class OverlayManagerService {
         const entry: ManagedEntry = { overlayRef, closed };
         if (anchorStrategy) entry.anchorPositionStrategy = anchorStrategy;
 
+        try {
+            const cro = new ResizeObserver(() => this.schedulePositionUpdate());
+            cro.observe(overlayRef.overlayElement);
+            entry.contentResizeObserver = cro;
+        } catch { /* ResizeObserver may not be available in some test envs */ }
+
         // Subscribe to detachments to clean up managed entry when overlay is closed externally
         // (e.g., by scroll strategy close)
         overlayRef.detachments().pipe(take(1)).subscribe(() => {
@@ -220,12 +226,6 @@ export class OverlayManagerService {
             // Run initial position after a microtask so the component has rendered
             Promise.resolve().then(() => {
                 this.updateAnchoredPosition(entry);
-                // Observe content size changes (e.g. expanding a details chevron)
-                try {
-                    const cro = new ResizeObserver(() => this.schedulePositionUpdate());
-                    cro.observe(overlayRef.overlayElement);
-                    entry.contentResizeObserver = cro;
-                } catch { /* ignore */ }
             });
         }
         
