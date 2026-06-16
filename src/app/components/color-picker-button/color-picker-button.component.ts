@@ -102,14 +102,16 @@ let nextColorPickerId = 0;
     styles: [`
         :host {
             display: inline-flex;
+            inline-size: 100%;
+            block-size: 100%;
         }
 
         .color-picker-button {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            inline-size: 24px;
-            block-size: 24px;
+            inline-size: 100%;
+            block-size: 100%;
             padding: 0;
             border: 1px solid rgba(255, 255, 255, 0.45);
             color: #111;
