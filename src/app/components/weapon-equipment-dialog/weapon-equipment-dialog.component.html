@@ -107,7 +107,7 @@
                                     }
                                 </div>
                                 @if (hasTargets()) {
-                                    <span class="tn-cell" [class.out-of-range]="isOutOfExtremeRange(row)" [tooltip]="targetNumberTooltip(row)">
+                                    <span class="tn-cell" [class.out-of-range]="isOutOfLongRange(row)" [tooltip]="targetNumberTooltip(row)">
                                         @if (targetNumberText(row); as tnText) {
                                             <span class="tn-value">{{ tnText }}</span>
                                         }

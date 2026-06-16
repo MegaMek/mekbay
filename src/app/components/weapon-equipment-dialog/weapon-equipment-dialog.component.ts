@@ -808,7 +808,7 @@ export class WeaponEquipmentDialogComponent {
 
     targetNumberTooltip(row: InventoryControlRow): TooltipLine[] | null {
         this.revision();
-        if (this.targetRangeSelection(row)?.outOfExtremeRange) return [{ value: 'OUT OF RANGE', isHeader: true }];
+        if (this.targetRangeSelection(row)?.outOfLongRange) return [{ value: 'OUT OF RANGE', isHeader: true }];
         return this.targetNumberBreakdown(row)?.lines ?? null;
     }
 
@@ -854,7 +854,7 @@ export class WeaponEquipmentDialogComponent {
     }
 
     private targetNumberTextForTarget(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null): string {
-        if (this.targetRangeSelectionForTarget(row, target)?.outOfExtremeRange) return 'X';
+        if (this.targetRangeSelectionForTarget(row, target)?.outOfLongRange) return 'X';
         const targetNumber = this.targetNumberBreakdownForTarget(row, target);
         return targetNumber === null ? '' : targetNumber.total.toString();
     }
