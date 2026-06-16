@@ -827,6 +827,21 @@ export class RsPolyfillUtil {
         const paths = heatDataPanel.querySelectorAll('path');
         if (paths.length >= 2) {
             paths[1].classList.add('applyHeatButtonFrame');
+            const frameBBox = (paths[1] as SVGGraphicsElement).getBBox();
+            const damagedEngineHeatText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            damagedEngineHeatText.setAttribute('id', 'damagedEngineHeatText');
+            damagedEngineHeatText.setAttribute('x', (frameBBox.x + frameBBox.width - 6).toString());
+            damagedEngineHeatText.setAttribute('y', (frameBBox.y + frameBBox.height - 4).toString());
+            damagedEngineHeatText.setAttribute('text-anchor', 'end');
+            damagedEngineHeatText.setAttribute('dominant-baseline', 'text-after-edge');
+            damagedEngineHeatText.setAttribute('font-family', 'Arial, sans-serif');
+            damagedEngineHeatText.setAttribute('font-size', '8');
+            damagedEngineHeatText.setAttribute('font-weight', 'bold');
+            damagedEngineHeatText.setAttribute('letter-spacing', '-0.05em');
+            damagedEngineHeatText.setAttribute('fill', 'red');
+            damagedEngineHeatText.setAttribute('class', 'damagedEngineHeatText');
+            damagedEngineHeatText.setAttribute('display', 'none');
+            paths[1].parentElement?.appendChild(damagedEngineHeatText);
         }
 
         const pipsGroup = heatDataPanel.querySelector('g.hsPips');

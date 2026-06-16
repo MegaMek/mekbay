@@ -761,6 +761,19 @@ export class UnitSvgService {
         if (!svg) return;
         const unit = this.unit;
         const turnState = unit.turnState();
+        const damagedEngineHeatText = svg.getElementById('damagedEngineHeatText') as SVGTextElement | null;
+        if (damagedEngineHeatText) {
+            const damagedEngineHeat = turnState.heatGeneratedFromDamagedEngine();
+            if (damagedEngineHeat > 0) {
+                damagedEngineHeatText.textContent = `Engine: +${damagedEngineHeat} HT`;
+                damagedEngineHeatText.removeAttribute('display');
+                damagedEngineHeatText.style.display = 'block';
+            } else {
+                damagedEngineHeatText.textContent = '';
+                damagedEngineHeatText.setAttribute('display', 'none');
+                damagedEngineHeatText.style.display = 'none';
+            }
+        }
         // Update move mode display
         const moveMode = turnState.moveMode();
         let el: SVGElement | null = null;
