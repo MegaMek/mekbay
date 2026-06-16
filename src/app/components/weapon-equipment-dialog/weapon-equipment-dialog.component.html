@@ -1,6 +1,6 @@
 <div class="wide-dialog weapon-equipment-dialog" [class.hide-actions-column]="!hasActionsColumn()" [class.has-targets]="hasTargets()">
     <div class="wide-dialog-title weapon-equipment-title-row">
-        <h2>{{ data.title }}</h2>
+        <h2>{{ unitTitle() }}</h2>
         @if (!readOnly()) {
             <button class="turn-tracker-title-button preventZoomReset" type="button" aria-label="Turn summary" title="Turn Summary" (click)="openTurnSummary($event)">
                 @let phase = turnSummaryPhase();
@@ -23,8 +23,10 @@
             </button>
         }
     </div>
-    <div class="wide-dialog-body">
-        <div class="weapon-equipment-grid">
+    <div class="wide-dialog-body weapon-equipment-swipe-body" swipe [direction]="'horizontal'" [shouldBlockSwipe]="shouldBlockSwipe" (swipestart)="onSwipeStart($event)" (swipemove)="onSwipeMove($event)" (swipeend)="onSwipeEnd($event)">
+        <div class="weapon-equipment-swipe-container" [class.animating]="isSwipeAnimating()" [class.swiping]="isSwiping()">
+            <div #currentPanel class="weapon-equipment-swipe-panel current-panel" [style.--current-offset]="currentPanelOffset()">
+                <div class="weapon-equipment-grid">
             @for (group of groups(); track group.id) {
                 <section class="weapon-equipment-section">
                     <h3>{{ group.title }}</h3>
@@ -212,9 +214,25 @@
                     </div>
                 </section>
             }
+                </div>
+            </div>
+            @if (incomingUnit(); as unit) {
+                <div #incomingPanel class="weapon-equipment-swipe-panel incoming-panel" [style.--incoming-offset]="incomingPanelOffset()">
+                    <div class="incoming-unit-preview">
+                        <span class="incoming-unit-label">{{ unitTitle(unit) }}</span>
+                    </div>
+                </div>
+            }
         </div>
     </div>
-    <div class="wide-dialog-actions">
+    <div class="wide-dialog-actions weapon-equipment-footer">
+        <button [class.hidden]="!hasPrev()" class="footer-nav footer-nav-left" type="button" (click)="onPrev()"
+            [attr.aria-label]="prevUnitLabel() ? 'Previous Unit: ' + prevUnitLabel() : 'Previous Unit'"
+            [title]="prevUnitLabel()">
+            <span class="nav-arrow-symbol" aria-hidden="true">&#10094;</span>
+            <span class="nav-unit-name">{{ prevUnitLabel() }}</span>
+        </button>
+        <div class="weapon-equipment-footer-actions">
         @if (hasSelectedRows()) {
             <div class="selected-weapons-panel">
                 @if (selectedHeatProjection(); as heat) {
@@ -264,5 +282,12 @@
             </button>
             <button class="bt-button" type="button" (click)="close()">DISMISS</button>
         </div>
+        </div>
+        <button [class.hidden]="!hasNext()" class="footer-nav footer-nav-right" type="button" (click)="onNext()"
+            [attr.aria-label]="nextUnitLabel() ? 'Next Unit: ' + nextUnitLabel() : 'Next Unit'"
+            [title]="nextUnitLabel()">
+            <span class="nav-unit-name">{{ nextUnitLabel() }}</span>
+            <span class="nav-arrow-symbol" aria-hidden="true">&#10095;</span>
+        </button>
     </div>
 </div>

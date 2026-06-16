@@ -117,6 +117,7 @@ interface CreateComponentOptions {
     gunnerySkill?: number;
     pilotingSkill?: number;
     moveMode?: MotiveModes | null;
+    configureData?: (data: WeaponEquipmentDialogData, unit: CBTForceUnit) => void;
 }
 
 function createComponent(
@@ -181,6 +182,7 @@ function createComponent(
         context,
         readOnly: options.readOnly,
     };
+    options.configureData?.(data, unit);
 
     TestBed.configureTestingModule({
         imports: [WeaponEquipmentDialogComponent],
@@ -908,6 +910,59 @@ describe('WeaponEquipmentDialogComponent', () => {
         const data = dialogsService.createDialog.calls.mostRecent().args[1]!.data as AmmoControlDialogData;
         expect(data.entries.length).toBe(1);
         expect(data.getEntries!().length).toBe(1);
+    });
+
+    it('notifies when navigation changes the active unit', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
+        const secondUnit = addRuntimeSelection({
+            id: 'unit-2',
+            getInventory: () => [],
+            getCritSlots: () => [],
+            getUnit: () => ({ chassis: 'Shadow Hawk', model: 'SHD-2H', comp: [] }),
+            getHeat: () => ({ current: 0, previous: 0 }),
+            turnState: () => ({ moveMode: () => null, airborne: () => false }),
+            readOnly: () => false,
+            hasDirectInventory: () => true,
+            rules: {}
+        } as unknown as CBTForceUnit);
+        const onUnitChange = jasmine.createSpy('onUnitChange');
+        const { component, unit } = createComponent([laser], {}, [], new Map(), {
+            configureData: (data, createdUnit) => {
+                data.unitList = [createdUnit, secondUnit];
+                data.onUnitChange = onUnitChange;
+            }
+        });
+
+        component.onNext();
+
+        expect(component.unit()).toBe(secondUnit);
+        expect(onUnitChange).toHaveBeenCalledOnceWith(secondUnit, 1);
+    });
+
+    it('navigates units with left and right arrow shortcuts', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
+        const secondUnit = addRuntimeSelection({
+            id: 'unit-2',
+            getInventory: () => [],
+            getCritSlots: () => [],
+            getUnit: () => ({ chassis: 'Shadow Hawk', model: 'SHD-2H', comp: [] }),
+            getHeat: () => ({ current: 0, previous: 0 }),
+            turnState: () => ({ moveMode: () => null, airborne: () => false }),
+            readOnly: () => false,
+            hasDirectInventory: () => true,
+            rules: {}
+        } as unknown as CBTForceUnit);
+        const { component, unit } = createComponent([laser], {}, [], new Map(), {
+            configureData: (data, createdUnit) => {
+                data.unitList = [createdUnit, secondUnit];
+            }
+        });
+
+        expect((component as any).handleShortcutKeyDown(new KeyboardEvent('keydown', { key: 'ArrowRight' }))).toBeTrue();
+        expect(component.unit()).toBe(secondUnit);
+        expect((component as any).handleShortcutKeyDown(new KeyboardEvent('keydown', { key: 'ArrowLeft' }))).toBeTrue();
+        expect(component.unit()).toBe(unit);
+        expect((component as any).handleShortcutKeyDown(new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true }))).toBeFalse();
     });
 
     it('hides the action column when no group has ammo or controls', () => {

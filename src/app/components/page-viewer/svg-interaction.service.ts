@@ -858,8 +858,9 @@ export class SvgInteractionService {
                 const ref = this.dialogsService.createDialog<void>(WeaponEquipmentDialogComponent, {
                     data: {
                         title: 'Weapons & Equipment',
-                        unit,
-                        readOnly: unit.readOnly(),
+                        unitList: this.pageViewerState.forceUnits,
+                        unitIndex: this.pageViewerState.forceUnits().findIndex(candidate => candidate.id === unit.id),
+                        onUnitChange: (selectedUnit) => this.forceBuilderService.selectUnit(selectedUnit),
                         context
                     } as WeaponEquipmentDialogData,
                 });

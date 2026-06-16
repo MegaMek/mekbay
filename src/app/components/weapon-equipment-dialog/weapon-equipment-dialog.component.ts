@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, type ComponentRef, DestroyRef, inject, Injector, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, type ComponentRef, DestroyRef, type ElementRef, inject, Injector, isSignal, type Signal, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DragDropModule, type CdkDragDrop, type CdkDragStart, moveItemInArray } from '@angular/cdk/drag-drop';
 import { Overlay, OverlayModule } from '@angular/cdk/overlay';
@@ -14,6 +14,7 @@ import { INVENTORY_MODE_CHOICE_LABEL, INVENTORY_MODE_HANDLER_ID } from '../../eq
 import { getAmmoControlEntriesForUnitWeapons, getAmmoControlEntriesForWeapon, getAmmoEntryRemaining } from '../../utils/ammo-interaction.util';
 import type { HeatDissipationState } from '../../models/rules/heat-management';
 import { LayoutService } from '../../services/layout.service';
+import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 import { MultilineDropdownComponent, type MultilineDropdownOption } from '../multiline-dropdown/multiline-dropdown.component';
 import { WeaponTargetChoiceMenuComponent } from './weapon-target-choice-menu.component';
 import { WeaponTargetsMenuComponent, type WeaponTargetUpdateRequest } from './weapon-targets-menu.component';
@@ -23,6 +24,7 @@ import type { TooltipLine } from '../tooltip/tooltip.component';
 import { getMotiveModeLabel, getMotiveModeTargetNumberModifier } from '../../models/motiveModes.model';
 import { PageInteractionOverlayComponent } from '../page-viewer/overlay/page-interaction-overlay.component';
 import { PageTurnSummaryPanelComponent } from '../page-viewer/overlay/page-turn-summary.component';
+import { SwipeDirective, type SwipeEndEvent, type SwipeMoveEvent, type SwipeStartEvent } from '../../directives/swipe.directive';
 import {
     formatInventoryControlModeName,
     getInventoryControlGroups,
@@ -96,7 +98,10 @@ export interface WeaponEquipmentDialogContext extends HandlerContext {
 
 export interface WeaponEquipmentDialogData {
     title: string;
-    unit: CBTForceUnit;
+    unit?: CBTForceUnit;
+    unitList?: CBTForceUnit[] | Signal<CBTForceUnit[]>;
+    unitIndex?: number;
+    onUnitChange?: (unit: CBTForceUnit, unitIndex: number) => void;
     context: WeaponEquipmentDialogContext;
     readOnly?: boolean;
 }
@@ -104,7 +109,7 @@ export interface WeaponEquipmentDialogData {
 @Component({
     selector: 'weapon-equipment-dialog',
     standalone: true,
-    imports: [DragDropModule, OverlayModule, MultilineDropdownComponent, TooltipDirective],
+    imports: [DragDropModule, OverlayModule, MultilineDropdownComponent, TooltipDirective, SwipeDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         class: 'fullscreen-dialog-host glass'
@@ -120,9 +125,11 @@ export class WeaponEquipmentDialogComponent {
     private readonly injector = inject(Injector);
     private readonly destroyRef = inject(DestroyRef);
     private readonly dialogRef: DialogRef<void, WeaponEquipmentDialogComponent> = inject(DialogRef);
+    private readonly keyboardShortcutService = inject(KeyboardShortcutService);
     private readonly revision = signal(0);
+    readonly unitIndex = signal(this.initialUnitIndex());
     private readonly turnSummaryParent = {
-        unit: () => this.data.unit,
+        unit: () => this.unit(),
         force: () => null
     };
     private readonly handlerChoiceCache = new Map<MountedEquipment, HandlerChoice[]>();
@@ -130,14 +137,30 @@ export class WeaponEquipmentDialogComponent {
     private targetsCompRef: ComponentRef<WeaponTargetsMenuComponent> | null = null;
     private targetChoiceCompRef: ComponentRef<WeaponTargetChoiceMenuComponent> | null = null;
     private pendingDragPreviewSizing: DragPreviewSizing | null = null;
+    currentPanelRef = viewChild<ElementRef<HTMLElement>>('currentPanel');
+    incomingPanelRef = viewChild<ElementRef<HTMLElement>>('incomingPanel');
+    readonly isSwipeAnimating = signal(false);
+    readonly isSwiping = signal(false);
+    readonly swipeDeltaX = signal(0);
+    readonly currentPanelOffset = signal('0');
+    readonly incomingPanelOffset = signal('100%');
+    readonly incomingUnit = signal<CBTForceUnit | null>(null);
     readonly rangeKeys: InventoryRangeKey[] = ['short', 'medium', 'long'];
+    readonly unitList = computed(() => this.resolveUnitList());
+    readonly unit = computed(() => this.unitList()[this.unitIndex()] ?? this.requiredUnit());
+    readonly hasPrev = computed(() => this.unitIndex() > 0);
+    readonly hasNext = computed(() => this.unitIndex() < this.unitList().length - 1);
+    readonly prevUnit = computed(() => this.hasPrev() ? this.unitList()[this.unitIndex() - 1] ?? null : null);
+    readonly nextUnit = computed(() => this.hasNext() ? this.unitList()[this.unitIndex() + 1] ?? null : null);
+    readonly prevUnitLabel = computed(() => this.formatUnitLabel(this.prevUnit()));
+    readonly nextUnitLabel = computed(() => this.formatUnitLabel(this.nextUnit()));
     readonly groups = computed(() => {
         this.revision();
-        return getInventoryControlGroups(this.data.unit, this.data.context.dataService.getEquipments());
+        return getInventoryControlGroups(this.unit(), this.data.context.dataService.getEquipments());
     });
     readonly targets = computed(() => {
         this.revision();
-        return this.data.unit.getInventoryControlTargets();
+        return this.unit().getInventoryControlTargets();
     });
     readonly hasTargets = computed(() => this.targets().length > 0);
     readonly hasAmmoColumn = computed(() => this.groups().some(group => this.groupHasAmmo(group)));
@@ -145,14 +168,14 @@ export class WeaponEquipmentDialogComponent {
     readonly hasActionsColumn = computed(() => this.groups().some(group => this.groupHasActions(group)));
     readonly selectedRows = computed(() => this.groups()
         .flatMap(group => group.rows)
-        .filter(row => this.data.unit.isInventoryControlEntrySelected(row.id)));
+        .filter(row => this.unit().isInventoryControlEntrySelected(row.id)));
     readonly selectedHeatTotal = computed(() => this.selectedRows()
         .reduce((total, row) => total + this.heatValue(row), 0));
     readonly selectedHeatProjection = computed<SelectedHeatProjection | null>(() => {
         this.revision();
         const dissipationState = this.heatDissipationState();
         if (!dissipationState) return null;
-        const heat = this.data.unit.getHeat();
+        const heat = this.unit().getHeat();
         const base = heat.next ?? heat.current;
         const selection = this.selectedHeatTotal();
         const dissipation = this.heatDissipationValue(dissipationState);
@@ -172,33 +195,246 @@ export class WeaponEquipmentDialogComponent {
     });
 
     constructor() {
-        this.data.unit.syncInventoryControlSelectionSvg();
+        this.keyboardShortcutService.register({
+            id: 'weapon-equipment-dialog',
+            dialogRef: this.dialogRef,
+            handle: (event) => this.handleShortcutKeyDown(event),
+        }, this.destroyRef);
+        this.setActiveUnitIndex(this.unitIndex(), false);
         this.destroyRef.onDestroy(() => {
-            this.overlayManager.closeManagedOverlay(this.turnSummaryOverlayKey());
-            this.overlayManager.closeManagedOverlay(this.psrWarningOverlayKey());
-            this.overlayManager.closeManagedOverlay(WEAPON_TARGETS_OVERLAY_KEY);
-            this.overlayManager.closeManagedOverlay(WEAPON_TARGET_CHOICE_OVERLAY_KEY);
+            this.closeUnitOverlays(this.unit().id);
         });
     }
 
+    private handleShortcutKeyDown(event: KeyboardEvent): boolean {
+        if (event.ctrlKey || event.altKey || event.metaKey) return false;
+
+        if (event.key === 'ArrowLeft') {
+            this.onPrev();
+            return true;
+        } else if (event.key === 'ArrowRight') {
+            this.onNext();
+            return true;
+        }
+
+        return false;
+    }
+
+    unitTitle(unit: CBTForceUnit | null = this.unit()): string {
+        return this.formatUnitLabel(unit);
+    }
+
+    onPrev(): void {
+        if (this.hasPrev() && !this.isSwipeAnimating() && !this.isSwiping()) {
+            this.setActiveUnitIndex(this.unitIndex() - 1);
+        }
+    }
+
+    onNext(): void {
+        if (this.hasNext() && !this.isSwipeAnimating() && !this.isSwiping()) {
+            this.setActiveUnitIndex(this.unitIndex() + 1);
+        }
+    }
+
+    readonly shouldBlockSwipe = (): boolean => {
+        if (this.isSwiping()) return false;
+        if (this.isSwipeAnimating()) return true;
+        const index = this.unitIndex();
+        return (index === 0 && !this.hasNext()) || (index === this.unitList().length - 1 && !this.hasPrev());
+    };
+
+    onSwipeStart(event: SwipeStartEvent): void {
+        if (this.isSwipeAnimating()) return;
+        this.isSwiping.set(true);
+        this.swipeDeltaX.set(0);
+        this.currentPanelOffset.set('0');
+        this.incomingUnit.set(null);
+        this.closeUnitOverlays(this.unit().id);
+    }
+
+    onSwipeMove(event: SwipeMoveEvent): void {
+        if (this.isSwipeAnimating()) return;
+
+        const deltaX = event.deltaX;
+        this.swipeDeltaX.set(deltaX);
+        if (deltaX > 0 && this.hasPrev()) {
+            const previousUnit = this.unitList()[this.unitIndex() - 1];
+            if (this.incomingUnit() !== previousUnit) {
+                this.incomingUnit.set(previousUnit);
+            }
+            this.currentPanelOffset.set(`${deltaX}px`);
+            this.incomingPanelOffset.set(`calc(-100% + ${deltaX}px)`);
+        } else if (deltaX < 0 && this.hasNext()) {
+            const nextUnit = this.unitList()[this.unitIndex() + 1];
+            if (this.incomingUnit() !== nextUnit) {
+                this.incomingUnit.set(nextUnit);
+            }
+            this.currentPanelOffset.set(`${deltaX}px`);
+            this.incomingPanelOffset.set(`calc(100% + ${deltaX}px)`);
+        } else {
+            this.currentPanelOffset.set(`${deltaX * 0.3}px`);
+            this.incomingUnit.set(null);
+        }
+    }
+
+    onSwipeEnd(event: SwipeEndEvent): void {
+        if (this.isSwipeAnimating()) {
+            this.isSwiping.set(false);
+            return;
+        }
+
+        this.isSwiping.set(false);
+        if (!event.success) {
+            void this.animateSwipeCancel();
+            return;
+        }
+
+        if (event.direction === 'left' && this.hasNext()) {
+            void this.completeSwipeAnimation('left', this.unitIndex() + 1);
+        } else if (event.direction === 'right' && this.hasPrev()) {
+            void this.completeSwipeAnimation('right', this.unitIndex() - 1);
+        } else {
+            void this.animateSwipeCancel();
+        }
+    }
+
+    private async animateSwipeCancel(): Promise<void> {
+        this.isSwipeAnimating.set(true);
+        this.currentPanelOffset.set('0');
+        const incoming = this.incomingUnit();
+        if (incoming) {
+            const incomingIndex = this.unitList().findIndex(unit => unit.id === incoming.id);
+            this.incomingPanelOffset.set(incomingIndex < this.unitIndex() ? '-100%' : '100%');
+        }
+        await this.waitForTransitionEnd();
+        this.resetSwipeState();
+    }
+
+    private async completeSwipeAnimation(swipeDirection: 'left' | 'right', newIndex: number): Promise<void> {
+        this.isSwipeAnimating.set(true);
+        this.currentPanelOffset.set(swipeDirection === 'left' ? '-100%' : '100%');
+        this.incomingPanelOffset.set('0');
+        await this.waitForTransitionEnd();
+        this.setActiveUnitIndex(newIndex);
+        setTimeout(() => this.resetSwipeState(), 100);
+    }
+
+    private waitForTransitionEnd(): Promise<void> {
+        return new Promise(resolve => {
+            const panel = this.incomingPanelRef()?.nativeElement;
+            if (!panel) {
+                setTimeout(resolve, 320);
+                return;
+            }
+
+            const handler = (event: TransitionEvent) => {
+                if (event.propertyName === 'transform' && event.target === panel) {
+                    panel.removeEventListener('transitionend', handler);
+                    requestAnimationFrame(() => resolve());
+                }
+            };
+            panel.addEventListener('transitionend', handler);
+            setTimeout(() => {
+                panel.removeEventListener('transitionend', handler);
+                resolve();
+            }, 400);
+        });
+    }
+
+    private resetSwipeState(): void {
+        this.isSwipeAnimating.set(false);
+        this.isSwiping.set(false);
+        this.swipeDeltaX.set(0);
+        this.currentPanelOffset.set('0');
+        this.incomingPanelOffset.set('100%');
+        this.incomingUnit.set(null);
+    }
+
+    private initialUnitIndex(): number {
+        const units = this.resolveUnitList();
+        if (this.data.unitIndex !== undefined && this.data.unitIndex >= 0 && this.data.unitIndex < units.length) {
+            return this.data.unitIndex;
+        }
+        const fallbackUnit = this.data.unit;
+        const index = fallbackUnit ? units.findIndex(unit => unit.id === fallbackUnit.id) : -1;
+        return index >= 0 ? index : 0;
+    }
+
+    private setActiveUnitIndex(index: number, refresh = true): void {
+        const units = this.resolveUnitList();
+        const nextUnit = units[index];
+        if (!nextUnit) return;
+
+        const previousUnitId = this.unit().id;
+        this.unitIndex.set(index);
+        nextUnit.syncInventoryControlSelectionSvg();
+        this.handlerChoiceCache.clear();
+        this.handlerChoiceCacheRevision = -1;
+        if (previousUnitId !== nextUnit.id) {
+            this.closeUnitOverlays(previousUnitId);
+            this.data.onUnitChange?.(nextUnit, index);
+        }
+        if (refresh) {
+            this.refresh();
+        }
+    }
+
+    private resolveUnitList(): CBTForceUnit[] {
+        const units = this.data.unitList;
+        if (!units) return this.data.unit ? [this.data.unit] : [];
+        const resolvedUnits = isSignal(units) ? units() : units;
+        return resolvedUnits.length > 0 ? resolvedUnits : (this.data.unit ? [this.data.unit] : []);
+    }
+
+    private requiredUnit(): CBTForceUnit {
+        const unit = this.data.unit;
+        if (unit) return unit;
+        const units = this.data.unitList;
+        const resolvedUnits = units ? (isSignal(units) ? units() : units) : [];
+        const resolvedUnit = resolvedUnits[this.data.unitIndex ?? 0] ?? resolvedUnits[0];
+        if (resolvedUnit) return resolvedUnit;
+        throw new Error('WeaponEquipmentDialogComponent requires a unit or unitList.');
+    }
+
+    private formatUnitLabel(unit: CBTForceUnit | null): string {
+        if (!unit) return '';
+        const baseUnit = unit.getUnit();
+        return [baseUnit.chassis, baseUnit.model].filter(Boolean).join(' ') || baseUnit.name;
+    }
+
+    private closeUnitOverlays(unitId: string): void {
+        this.overlayManager.closeManagedOverlay(this.turnSummaryOverlayKey(unitId));
+        this.overlayManager.closeManagedOverlay(this.psrWarningOverlayKey(unitId));
+        this.overlayManager.closeManagedOverlay(WEAPON_TARGETS_OVERLAY_KEY);
+        this.overlayManager.closeManagedOverlay(WEAPON_TARGET_CHOICE_OVERLAY_KEY);
+        this.targetsCompRef = null;
+        this.targetChoiceCompRef = null;
+    }
+
     turnSummaryDirty(): boolean {
-        return this.data.unit.turnState().dirty();
+        return this.callTurnState('dirty', false);
     }
 
     turnSummaryFalling(): boolean {
-        return this.data.unit.turnState().autoFall();
+        return this.callTurnState('autoFall', false);
     }
 
     turnSummaryHasPsrChecks(): boolean {
-        return this.data.unit.turnState().PSRRollsCount() > 0;
+        return this.turnSummaryPsrCount() > 0;
     }
 
     turnSummaryPsrCount(): number {
-        return this.data.unit.turnState().PSRRollsCount();
+        return this.callTurnState('PSRRollsCount', 0);
     }
 
     turnSummaryPhase(): string {
-        return this.data.unit.turnState().currentPhase();
+        return this.callTurnState('currentPhase', '');
+    }
+
+    private callTurnState<T>(methodName: string, fallback: T): T {
+        const turnState = this.unit().turnState() as unknown as Record<string, unknown>;
+        const method = turnState[methodName];
+        return typeof method === 'function' ? method.call(turnState) as T : fallback;
     }
 
     openTurnSummary(event: MouseEvent): void {
@@ -230,12 +466,12 @@ export class WeaponEquipmentDialogComponent {
         componentRef?.setInput('endTurnForAllButtonVisible', false);
     }
 
-    private turnSummaryOverlayKey(): string {
-        return `turnSummary-${this.data.unit.id}`;
+    private turnSummaryOverlayKey(unitId = this.unit().id): string {
+        return `turnSummary-${unitId}`;
     }
 
-    private psrWarningOverlayKey(): string {
-        return `psrWarning-${this.data.unit.id}`;
+    private psrWarningOverlayKey(unitId = this.unit().id): string {
+        return `psrWarning-${unitId}`;
     }
 
     openTargets(event: MouseEvent): void {
@@ -265,22 +501,22 @@ export class WeaponEquipmentDialogComponent {
         this.syncTargetsOverlayInputs();
 
         outputToObservable(componentRef.instance.addRequest).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-            this.data.unit.createInventoryControlTarget();
+            this.unit().createInventoryControlTarget();
             this.refresh();
             this.syncTargetsOverlayInputs();
         });
         outputToObservable(componentRef.instance.resetRequest).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-            this.data.unit.resetInventoryControlTargets();
+            this.unit().resetInventoryControlTargets();
             this.refresh();
             this.syncTargetsOverlayInputs();
         });
         outputToObservable(componentRef.instance.updateRequest).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((request: WeaponTargetUpdateRequest) => {
-            this.data.unit.updateInventoryControlTarget(request.targetId, request.patch);
+            this.unit().updateInventoryControlTarget(request.targetId, request.patch);
             this.refresh();
             this.syncTargetsOverlayInputs();
         });
         outputToObservable(componentRef.instance.deleteRequest).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(targetId => {
-            this.data.unit.deleteInventoryControlTarget(targetId);
+            this.unit().deleteInventoryControlTarget(targetId);
             this.refresh();
             this.syncTargetsOverlayInputs();
         });
@@ -304,7 +540,7 @@ export class WeaponEquipmentDialogComponent {
     }
 
     targetForRow(row: InventoryControlRow): InventoryControlRuntimeTarget | null {
-        const targetId = this.data.unit.getInventoryControlSelectedTarget(row.id);
+        const targetId = this.unit().getInventoryControlSelectedTarget(row.id);
         return targetId ? this.targets().find(target => target.id === targetId) ?? null : null;
     }
 
@@ -323,17 +559,17 @@ export class WeaponEquipmentDialogComponent {
         if (targets.length === 0) return;
         if (targets.length === 1) {
             const targetId = targets[0].id;
-            const selectedTargetId = this.data.unit.getInventoryControlSelectedTarget(row.id);
-            this.data.unit.setInventoryControlSelectedTarget(row.entry, selectedTargetId === targetId ? null : targetId);
+            const selectedTargetId = this.unit().getInventoryControlSelectedTarget(row.id);
+            this.unit().setInventoryControlSelectedTarget(row.entry, selectedTargetId === targetId ? null : targetId);
             this.refresh();
             return;
         }
 
         this.openTargetChoiceOverlay(
             event.currentTarget as HTMLElement,
-            this.data.unit.getInventoryControlSelectedTarget(row.id) ?? null,
+            this.unit().getInventoryControlSelectedTarget(row.id) ?? null,
             targetId => {
-                this.data.unit.setInventoryControlSelectedTarget(row.entry, targetId);
+                this.unit().setInventoryControlSelectedTarget(row.entry, targetId);
                 this.refresh();
             },
             this.targetChoiceTargetNumberTexts(row)
@@ -343,8 +579,8 @@ export class WeaponEquipmentDialogComponent {
     groupTargetSelection(group: InventoryControlGroup): InventoryControlRuntimeTarget | null {
         const rows = this.groupSelectableRows(group);
         if (rows.length === 0) return null;
-        const firstTargetId = this.data.unit.getInventoryControlSelectedTarget(rows[0].id);
-        if (!firstTargetId || !rows.every(row => this.data.unit.getInventoryControlSelectedTarget(row.id) === firstTargetId)) {
+        const firstTargetId = this.unit().getInventoryControlSelectedTarget(rows[0].id);
+        if (!firstTargetId || !rows.every(row => this.unit().getInventoryControlSelectedTarget(row.id) === firstTargetId)) {
             return null;
         }
         return this.targets().find(target => target.id === firstTargetId) ?? null;
@@ -352,7 +588,7 @@ export class WeaponEquipmentDialogComponent {
 
     groupSomeTargetRowsSelected(group: InventoryControlGroup): boolean {
         const rows = this.groupSelectableRows(group);
-        const selectedCount = rows.filter(row => !!this.data.unit.getInventoryControlSelectedTarget(row.id)).length;
+        const selectedCount = rows.filter(row => !!this.unit().getInventoryControlSelectedTarget(row.id)).length;
         return selectedCount > 0 && selectedCount < rows.length;
     }
 
@@ -377,7 +613,7 @@ export class WeaponEquipmentDialogComponent {
 
     private setGroupTarget(group: InventoryControlGroup, targetId: InventoryControlRuntimeTargetId | null): void {
         for (const row of this.groupSelectableRows(group)) {
-            this.data.unit.setInventoryControlSelectedTarget(row.entry, targetId);
+            this.unit().setInventoryControlSelectedTarget(row.entry, targetId);
         }
         this.refresh();
     }
@@ -456,7 +692,8 @@ export class WeaponEquipmentDialogComponent {
     }
 
     readOnly(): boolean {
-        return this.data.readOnly ?? this.data.unit.readOnly();
+        if (this.data.unitList) return this.unit().readOnly();
+        return this.data.readOnly ?? this.unit().readOnly();
     }
 
     isSelectable(row: InventoryControlRow): boolean {
@@ -465,11 +702,11 @@ export class WeaponEquipmentDialogComponent {
 
     isSelected(row: InventoryControlRow): boolean {
         this.revision();
-        return this.data.unit.isInventoryControlEntrySelected(row.id);
+        return this.unit().isInventoryControlEntrySelected(row.id);
     }
 
     toggleSelected(row: InventoryControlRow): void {
-        this.data.unit.setInventoryControlEntrySelected(row.entry, !this.isSelected(row));
+        this.unit().setInventoryControlEntrySelected(row.entry, !this.isSelected(row));
         this.refresh();
     }
 
@@ -487,12 +724,12 @@ export class WeaponEquipmentDialogComponent {
         if (group.id !== 'ranged') return;
         const rows = this.groupSelectableRows(group);
         const selected = !this.groupAllSelectableRowsSelected(group);
-        rows.forEach(row => this.data.unit.setInventoryControlEntrySelected(row.entry, selected));
+        rows.forEach(row => this.unit().setInventoryControlEntrySelected(row.entry, selected));
         this.refresh();
     }
 
     resetSelections(): void {
-        this.data.unit.clearInventoryControlSelection();
+        this.unit().clearInventoryControlSelection();
         this.refresh();
     }
 
@@ -533,14 +770,14 @@ export class WeaponEquipmentDialogComponent {
 
     selectRange(row: InventoryControlRow, range: InventoryRangeKey): void {
         if (!this.canSelectRange(row, range)) return;
-        const wasSelectedRange = this.data.unit.getInventoryControlSelectedRange(row.id) === range;
+        const wasSelectedRange = this.unit().getInventoryControlSelectedRange(row.id) === range;
         if (wasSelectedRange) {
-            this.data.unit.setInventoryControlSelectedRange(row.entry, null);
+            this.unit().setInventoryControlSelectedRange(row.entry, null);
             this.refresh();
             return;
         }
 
-        this.data.unit.setInventoryControlSelectedRange(row.entry, range);
+        this.unit().setInventoryControlSelectedRange(row.entry, range);
         this.refresh();
     }
 
@@ -551,7 +788,7 @@ export class WeaponEquipmentDialogComponent {
         if (targetRange) {
             return !targetRange.outOfLongRange && targetRange.range === range;
         }
-        return this.data.unit.getInventoryControlSelectedRange(row.id) === range;
+        return this.unit().getInventoryControlSelectedRange(row.id) === range;
     }
 
     isOutOfLongRange(row: InventoryControlRow): boolean {
@@ -640,9 +877,9 @@ export class WeaponEquipmentDialogComponent {
 
         const skillLabel = row.category === 'physical' ? 'Piloting' : 'Gunnery';
         const skill = row.category === 'physical'
-            ? this.data.unit.pilotingSkill()
-            : this.data.unit.gunnerySkill();
-        const moveMode = this.data.unit.turnState().moveMode();
+            ? this.unit().pilotingSkill()
+            : this.unit().gunnerySkill();
+        const moveMode = this.unit().turnState().moveMode();
         const movementModifier = getMotiveModeTargetNumberModifier(moveMode);
         const rangeModifier = this.rangeModifier(rangeSelection.range);
         const minimumRangeModifier = this.minimumRangeModifier(row, target.distance);
@@ -673,7 +910,7 @@ export class WeaponEquipmentDialogComponent {
 
     private motiveModeLabel(moveMode: ReturnType<ReturnType<CBTForceUnit['turnState']>['moveMode']>): string {
         if (!moveMode) return 'None';
-        return getMotiveModeLabel(moveMode, this.data.unit.getUnit(), this.data.unit.turnState().airborne() ?? false);
+        return getMotiveModeLabel(moveMode, this.unit().getUnit(), this.unit().turnState().airborne() ?? false);
     }
 
     private rangeDisplayName(range: TargetRangeKey): string {
@@ -742,7 +979,7 @@ export class WeaponEquipmentDialogComponent {
 
     selectedAmmoOption(row: InventoryControlRow): string {
         this.revision();
-        const selectedOptionId = this.data.unit.getInventoryControlSelectedAmmoOption(row.id);
+        const selectedOptionId = this.unit().getInventoryControlSelectedAmmoOption(row.id);
         const selectedOption = selectedOptionId
             ? row.ammo.options.find((option: InventoryControlAmmoOption) => option.id === selectedOptionId)
             : undefined;
@@ -765,7 +1002,7 @@ export class WeaponEquipmentDialogComponent {
     }
 
     selectAmmoOption(row: InventoryControlRow, value: string): void {
-        this.data.unit.setInventoryControlSelectedAmmoOption(row.id, value);
+        this.unit().setInventoryControlSelectedAmmoOption(row.id, value);
         this.refresh();
     }
 
@@ -808,7 +1045,7 @@ export class WeaponEquipmentDialogComponent {
         }
 
         if (heatProjection) {
-            this.data.unit.setHeat(heatProjection.pending);
+            this.unit().setHeat(heatProjection.pending);
         }
         this.refresh();
         await this.data.context.dialogsService.showNoticeHtml(
@@ -881,7 +1118,7 @@ export class WeaponEquipmentDialogComponent {
     }
 
     private heatDissipationState(): HeatDissipationWithWings | null {
-        const rules = this.data.unit.rules as Partial<HeatAwareRules>;
+        const rules = this.unit().rules as Partial<HeatAwareRules>;
         return typeof rules.heatDissipation === 'function' ? rules.heatDissipation() : null;
     }
 
@@ -894,7 +1131,7 @@ export class WeaponEquipmentDialogComponent {
     }
 
     private ammoDialogEntries() {
-        return getAmmoControlEntriesForUnitWeapons(this.data.unit, this.data.context.dataService.getEquipments());
+        return getAmmoControlEntriesForUnitWeapons(this.unit(), this.data.context.dataService.getEquipments());
     }
 
     private preferredAmmoOption(row: InventoryControlRow): InventoryControlAmmoOption | undefined {
@@ -1079,7 +1316,7 @@ export class WeaponEquipmentDialogComponent {
     }
 
     canMarkDestroyed(row: InventoryControlRow): boolean {
-        return !this.readOnly() && this.data.unit.hasDirectInventory() && !row.destroyed;
+        return !this.readOnly() && this.unit().hasDirectInventory() && !row.destroyed;
     }
 
     markDestroyed(row: InventoryControlRow): void {
@@ -1091,7 +1328,7 @@ export class WeaponEquipmentDialogComponent {
     }
 
     canRepair(row: InventoryControlRow): boolean {
-        return !this.readOnly() && this.data.unit.hasDirectInventory() && row.destroyed;
+        return !this.readOnly() && this.unit().hasDirectInventory() && row.destroyed;
     }
 
     repair(row: InventoryControlRow): void {

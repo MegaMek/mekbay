@@ -118,6 +118,13 @@ body {
     outline-offset: 2px !important;
 }
 
+:root.keyboard-navigation .cdk-dialog-container:focus,
+:root.keyboard-navigation .fullscreen-dialog-host:focus,
+:root.keyboard-navigation .wide-dialog:focus {
+    outline: none !important;
+    outline-offset: 0 !important;
+}
+
 @media print {
     :root {
         color-scheme: light;
