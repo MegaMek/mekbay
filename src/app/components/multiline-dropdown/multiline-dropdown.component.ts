@@ -43,6 +43,7 @@ export interface MultilineDropdownOption {
     value: string;
     label: string;
     disabled?: boolean;
+    destroyed?: boolean;
 }
 
 @Component({
@@ -69,6 +70,7 @@ export interface MultilineDropdownOption {
                     [id]="optionId(optionIndex)"
                     [class.active]="optionIndex === activeIndex()"
                     [disabled]="option.disabled"
+                    [class.destroyed]="option.destroyed"
                     [attr.aria-selected]="option.value === value()"
                     (click)="selectOption(option)"
                     (mouseenter)="hovered.emit(optionIndex)"
@@ -127,6 +129,10 @@ export interface MultilineDropdownOption {
             color: var(--text-color-tertiary);
             cursor: not-allowed;
         }
+        
+        .multiline-dropdown-option.destroyed {
+            color: var(--damage-color);
+        }
 
         .multiline-dropdown-option-label {
             display: block;
@@ -175,6 +181,7 @@ class MultilineDropdownPanelComponent {
                 [attr.aria-expanded]="open()"
                 [attr.aria-label]="label()"
                 [disabled]="disabled() || options().length === 0"
+                [class.destroyed]="selectedOption()?.destroyed"
                 (click)="toggle()"
                 (keydown)="onTriggerKeydown($event)"
             >
@@ -211,6 +218,10 @@ class MultilineDropdownPanelComponent {
             gap: 4px;
             text-align: left;
             cursor: pointer;
+        }
+
+        .multiline-dropdown-trigger.destroyed {
+            color: var(--damage-color);
         }
 
         .multiline-dropdown-label {

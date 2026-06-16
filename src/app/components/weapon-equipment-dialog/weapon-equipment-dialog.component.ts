@@ -694,7 +694,8 @@ export class WeaponEquipmentDialogComponent {
         return row.ammo.options.map(option => ({
             value: option.id,
             label: option.label,
-            disabled: option.disabled
+            disabled: option.disabled,
+            destroyed: option.destroyed,
         }));
     }
 

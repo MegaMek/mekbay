@@ -1,20 +1,21 @@
 .weapon-equipment-dialog {
     --weapon-equipment-title-height: 30px;
-    --weapon-equipment-columns: 24px 28px minmax(100px, auto) 42px 42px 42px fit-content(200px) repeat(4, 42px) fit-content(420px);
+    --weapon-equipment-columns: 24px 28px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(4, 42px) fit-content(420px);
     max-width: min(1400px, 96dvw);
     width: 100%;
+    align-items: center;
 }
 
 .weapon-equipment-dialog.hide-actions-column {
-    --weapon-equipment-columns: 24px 28px minmax(100px, auto) 42px 42px 42px fit-content(200px) repeat(4, 42px);
+    --weapon-equipment-columns: 24px 28px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(4, 42px);
 }
 
 .weapon-equipment-dialog.has-targets {
-    --weapon-equipment-columns: 24px 28px 38px minmax(100px, auto) 42px 42px 42px fit-content(200px) repeat(4, 42px) fit-content(420px);
+    --weapon-equipment-columns: 24px 28px 38px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(4, 42px) fit-content(420px);
 }
 
 .weapon-equipment-dialog.has-targets.hide-actions-column {
-    --weapon-equipment-columns: 24px 28px 38px minmax(100px, auto) 42px 42px 42px fit-content(200px) repeat(4, 42px);
+    --weapon-equipment-columns: 24px 28px 38px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(4, 42px);
 }
 
 .weapon-equipment-grid {
@@ -461,7 +462,7 @@
     font-weight: bold;
 }
 
-.ammo-cell.destroyed-ammo {
+.ammo-cell.destroyed-ammo .ammo-choice-static {
     color: var(--damage-color);
     text-decoration-line: line-through;
 }
@@ -737,7 +738,7 @@
         max-width: 42px;
         flex: 0 0 42px;
         justify-content: center;
-        border-color: color-mix(in srgb, var(--border-color) 80%, transparent);
+        border-color: var(--border-color);
         background: transparent;
         box-sizing: border-box;
     }
