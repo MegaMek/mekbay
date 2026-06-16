@@ -55,6 +55,7 @@ import { canAntiMech } from '../../utils/infantry.util';
 import { AmmoControlDialogComponent, type AmmoControlDialogData } from '../ammo-control-dialog/ammo-control-dialog.component';
 import { getAmmoControlEntriesForUnitWeapons } from '../../utils/ammo-interaction.util';
 import { WeaponEquipmentDialogComponent, type WeaponEquipmentDialogContext, type WeaponEquipmentDialogData } from '../../components/weapon-equipment-dialog/weapon-equipment-dialog.component';
+import { PageViewerStateService } from './internal/page-viewer-state.service';
 
 /*
  * Author: Drake
@@ -77,6 +78,7 @@ export class SvgInteractionService {
     private forceBuilderService = inject(ForceBuilderService);
     private equipmentRegistryService = inject(EquipmentInteractionRegistryService);
     private pickerFactory = inject(PickerFactoryService);
+    private pageViewerState = inject(PageViewerStateService);
 
     // Zoom-pan service passed via initialize()
     private zoomPanService!: ZoomPanServiceInterface;
@@ -852,7 +854,8 @@ export class SvgInteractionService {
                     dataService: this.dataService,
                     registry: this.equipmentRegistryService.getRegistry()
                 };
-                this.dialogsService.createDialog<void>(WeaponEquipmentDialogComponent, {
+                this.pageViewerState.beginInventoryDialog();
+                const ref = this.dialogsService.createDialog<void>(WeaponEquipmentDialogComponent, {
                     data: {
                         title: 'Weapons & Equipment',
                         unit,
@@ -860,6 +863,7 @@ export class SvgInteractionService {
                         context
                     } as WeaponEquipmentDialogData,
                 });
+                ref.closed.subscribe(() => this.pageViewerState.endInventoryDialog());
             };
 
             el.classList.add('interactive');

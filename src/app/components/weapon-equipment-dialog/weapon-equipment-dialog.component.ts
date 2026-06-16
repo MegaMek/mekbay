@@ -21,6 +21,8 @@ import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } f
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import type { TooltipLine } from '../tooltip/tooltip.component';
 import { getMotiveModeLabel, getMotiveModeTargetNumberModifier } from '../../models/motiveModes.model';
+import { PageInteractionOverlayComponent } from '../page-viewer/overlay/page-interaction-overlay.component';
+import { PageTurnSummaryPanelComponent } from '../page-viewer/overlay/page-turn-summary.component';
 import {
     formatInventoryControlModeName,
     getInventoryControlGroups,
@@ -119,6 +121,10 @@ export class WeaponEquipmentDialogComponent {
     private readonly destroyRef = inject(DestroyRef);
     private readonly dialogRef: DialogRef<void, WeaponEquipmentDialogComponent> = inject(DialogRef);
     private readonly revision = signal(0);
+    private readonly turnSummaryParent = {
+        unit: () => this.data.unit,
+        force: () => null
+    };
     private readonly handlerChoiceCache = new Map<MountedEquipment, HandlerChoice[]>();
     private handlerChoiceCacheRevision = -1;
     private targetsCompRef: ComponentRef<WeaponTargetsMenuComponent> | null = null;
@@ -168,9 +174,68 @@ export class WeaponEquipmentDialogComponent {
     constructor() {
         this.data.unit.syncInventoryControlSelectionSvg();
         this.destroyRef.onDestroy(() => {
+            this.overlayManager.closeManagedOverlay(this.turnSummaryOverlayKey());
+            this.overlayManager.closeManagedOverlay(this.psrWarningOverlayKey());
             this.overlayManager.closeManagedOverlay(WEAPON_TARGETS_OVERLAY_KEY);
             this.overlayManager.closeManagedOverlay(WEAPON_TARGET_CHOICE_OVERLAY_KEY);
         });
+    }
+
+    turnSummaryDirty(): boolean {
+        return this.data.unit.turnState().dirty();
+    }
+
+    turnSummaryFalling(): boolean {
+        return this.data.unit.turnState().autoFall();
+    }
+
+    turnSummaryHasPsrChecks(): boolean {
+        return this.data.unit.turnState().PSRRollsCount() > 0;
+    }
+
+    turnSummaryPsrCount(): number {
+        return this.data.unit.turnState().PSRRollsCount();
+    }
+
+    turnSummaryPhase(): string {
+        return this.data.unit.turnState().currentPhase();
+    }
+
+    openTurnSummary(event: MouseEvent): void {
+        event.stopPropagation();
+        if (this.readOnly()) return;
+
+        const overlayKey = this.turnSummaryOverlayKey();
+        if (this.overlayManager.has(overlayKey)) {
+            this.overlayManager.closeManagedOverlay(overlayKey);
+            return;
+        }
+
+        const target = event.currentTarget as HTMLElement;
+        const customInjector = Injector.create({
+            providers: [
+                { provide: PageInteractionOverlayComponent, useValue: this.turnSummaryParent }
+            ],
+            parent: this.injector
+        });
+        const portal = new ComponentPortal(PageTurnSummaryPanelComponent, null, customInjector);
+        const { componentRef } = this.overlayManager.createManagedOverlay<PageTurnSummaryPanelComponent>(overlayKey, target, portal, {
+            hasBackdrop: false,
+            panelClass: 'turn-summary-overlay-panel',
+            closeOnOutsideClick: false,
+            closeOnOutsideClickOnly: true,
+            scrollStrategy: this.overlay.scrollStrategies.reposition()
+        });
+
+        componentRef?.setInput('endTurnForAllButtonVisible', false);
+    }
+
+    private turnSummaryOverlayKey(): string {
+        return `turnSummary-${this.data.unit.id}`;
+    }
+
+    private psrWarningOverlayKey(): string {
+        return `psrWarning-${this.data.unit.id}`;
     }
 
     openTargets(event: MouseEvent): void {

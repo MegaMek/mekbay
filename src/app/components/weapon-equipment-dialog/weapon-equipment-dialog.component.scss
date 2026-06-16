@@ -18,6 +18,80 @@
     --weapon-equipment-columns: 24px 28px 38px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(4, 42px);
 }
 
+.weapon-equipment-title-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 40px;
+    padding-inline: 48px;
+    box-sizing: border-box;
+}
+
+.weapon-equipment-title-row h2 {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.turn-tracker-title-button {
+    position: absolute;
+    top: 50%;
+    right: 4px;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #000;
+    cursor: pointer;
+    opacity: 0.85;
+    transform: translateY(-50%);
+    transition: opacity 0.2s;
+}
+
+.turn-tracker-title-button:hover,
+.turn-tracker-title-button:focus-visible {
+    opacity: 1;
+}
+
+.turn-tracker-title-button svg {
+    width: 100%;
+    height: 100%;
+}
+
+.turn-tracker-title-button svg .octagon {
+    stroke: white;
+    stroke-width: 1;
+}
+
+.turn-tracker-title-button svg text {
+    pointer-events: none;
+    font-weight: bold;
+    fill: #fff;
+}
+
+.turn-tracker-title-button svg.ranged .octagon {
+    fill: var(--phase-ranged);
+}
+
+.turn-tracker-title-button svg.physical .octagon {
+    fill: var(--phase-physical);
+}
+
+.turn-tracker-title-button svg.heat .octagon {
+    fill: var(--phase-heat);
+}
+
+.turn-tracker-title-button svg.warning {
+    color: var(--damage-color);
+}
+
+.turn-tracker-title-button svg.warning text {
+    fill: #000;
+}
+
 .weapon-equipment-grid {
     display: grid;
     grid-template-columns: var(--weapon-equipment-columns);
@@ -398,6 +472,14 @@
 .range-cell:not(:disabled) {
     border-color: var(--border-color);
     cursor: pointer;
+}
+
+.standard-footer-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+    flex-shrink: 0;
 }
 
 .weapon-equipment-row.destroyed-entry .range-cell:not(:disabled) {

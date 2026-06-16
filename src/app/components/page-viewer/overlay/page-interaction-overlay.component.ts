@@ -39,7 +39,8 @@ import {
     input,
     computed,
     ElementRef,
-    DestroyRef
+    DestroyRef,
+    effect
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Overlay } from '@angular/cdk/overlay';
@@ -52,6 +53,7 @@ import { OverlayManagerService } from '../../../services/overlay-manager.service
 import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
 import type { CBTForce } from '../../../models/cbt-force.model';
 import { PageTurnSummaryPanelComponent } from './page-turn-summary.component';
+import { PageViewerStateService } from '../internal/page-viewer-state.service';
 
 /*
  * Author: Drake
@@ -80,6 +82,7 @@ export class PageInteractionOverlayComponent {
     private optionsService = inject(OptionsService);
     private overlay = inject(Overlay);
     private host = inject(ElementRef<HTMLElement>);
+    private pageViewerState = inject(PageViewerStateService);
 
     // Inputs
     unit = input<CBTForceUnit | null>(null);
@@ -139,8 +142,19 @@ export class PageInteractionOverlayComponent {
         return units.some(u => u.turnState().dirty());
     });
 
+    turnTrackerVisible = computed(() => !this.pageViewerState.inventoryDialogOpen());
+
+    constructor() {
+        effect(() => {
+            if (this.pageViewerState.inventoryDialogOpen()) {
+                this.closeAllOverlays();
+            }
+        });
+    }
+
     openTurnSummary(event: MouseEvent) {
         event.stopPropagation();
+        if (!this.turnTrackerVisible()) return;
 
         const unitId = this.unit()?.id;
         const overlayKey = `turnSummary-${unitId}`;

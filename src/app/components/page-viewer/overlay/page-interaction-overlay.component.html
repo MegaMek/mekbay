@@ -1,4 +1,4 @@
-@if (dirtyPhase()) {
+@if (turnTrackerVisible() && dirtyPhase()) {
 <div class="phase-controls">
     <button role="button" class="phase-button end-phase-button preventZoomReset" tabindex="0"
         (click)="endPhase($event)">
@@ -7,6 +7,7 @@
 </div>
 }
 
+@if (turnTrackerVisible()) {
 <div class="container">
     <button role="button" class="overlay-button turn-tracker-button preventZoomReset" tabindex="0"
         (click)="openTurnSummary($event)">
@@ -42,3 +43,4 @@
         }
     </button>
 </div>
+}

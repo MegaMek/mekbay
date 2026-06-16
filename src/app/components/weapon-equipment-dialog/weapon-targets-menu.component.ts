@@ -307,6 +307,7 @@ export class WeaponTargetsMenuComponent {
     readonly colors = input<readonly string[]>(INVENTORY_CONTROL_TARGET_COLORS);
     readonly maxTargets = input(INVENTORY_CONTROL_TARGET_MAX_COUNT);
     readonly ready = signal(false);
+    readonly readOnly = input(false);
 
     readonly addRequest = output<void>();
     readonly resetRequest = output<void>();
