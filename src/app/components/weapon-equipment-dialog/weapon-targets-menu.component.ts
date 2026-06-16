@@ -38,37 +38,39 @@ export interface WeaponTargetUpdateRequest {
                 } @else {
                     @for (target of targets(); track target.id) {
                         <div class="weapon-target-row">
-                            <div class="target-identity-row">
-                                <color-picker-button
-                                    class="target-square"
-                                    [value]="target.color"
-                                    [colors]="colors()"
-                                    [disabled]="readOnly()"
-                                    [ariaLabel]="'Choose color for ' + target.name"
-                                    (pickerOpened)="colorPickerOpened.emit()"
-                                    (pickerClosed)="colorPickerClosed.emit()"
-                                    (valueChange)="updateColor(target.id, $event)">
-                                    {{ target.letter }}
-                                </color-picker-button>
-                                <input class="bt-input target-name" type="text" [value]="target.name" [disabled]="readOnly()" (input)="updateName(target.id, $any($event.target).value)">
-                            </div>
-                            <div class="target-controls-row">
-                                <label class="target-number-field">
-                                    <span>Distance</span>
-                                    <span class="target-stepper">
-                                        <button class="bt-button square-small" type="button" [disabled]="readOnly()" (click)="stepDistance(target, -1)">-</button>
-                                        <input class="bt-input" type="number" min="0" step="1" [value]="target.distance" [disabled]="readOnly()" (input)="updateDistance(target.id, $any($event.target).value)">
-                                        <button class="bt-button square-small" type="button" [disabled]="readOnly()" (click)="stepDistance(target, 1)">+</button>
-                                    </span>
-                                </label>
-                                <label class="target-number-field">
-                                    <span>TN Modifier</span>
-                                    <span class="target-stepper">
-                                        <button class="bt-button square-small" type="button" [disabled]="readOnly()" (click)="stepTnModifier(target, -1)">-</button>
-                                        <input class="bt-input" type="number" step="1" [value]="target.tnModifier" [disabled]="readOnly()" (input)="updateTnModifier(target.id, $any($event.target).value)">
-                                        <button class="bt-button square-small" type="button" [disabled]="readOnly()" (click)="stepTnModifier(target, 1)">+</button>
-                                    </span>
-                                </label>
+                            <div class="target-wrapper">
+                                <div class="target-identity-row">
+                                    <color-picker-button
+                                        class="target-square"
+                                        [value]="target.color"
+                                        [colors]="colors()"
+                                        [disabled]="readOnly()"
+                                        [ariaLabel]="'Choose color for ' + target.name"
+                                        (pickerOpened)="colorPickerOpened.emit()"
+                                        (pickerClosed)="colorPickerClosed.emit()"
+                                        (valueChange)="updateColor(target.id, $event)">
+                                        {{ target.letter }}
+                                    </color-picker-button>
+                                    <input class="bt-input target-name" type="text" [value]="target.name" [disabled]="readOnly()" (input)="updateName(target.id, $any($event.target).value)">
+                                </div>
+                                <div class="target-controls-row">
+                                    <label class="target-number-field">
+                                        <span>Distance</span>
+                                        <span class="target-stepper">
+                                            <button class="bt-button square-small" type="button" [disabled]="readOnly()" (click)="stepDistance(target, -1)">-</button>
+                                            <input class="value" type="number" min="0" step="1" [value]="target.distance" [disabled]="readOnly()" (input)="updateDistance(target.id, $any($event.target).value)">
+                                            <button class="bt-button square-small" type="button" [disabled]="readOnly()" (click)="stepDistance(target, 1)">+</button>
+                                        </span>
+                                    </label>
+                                    <label class="target-number-field">
+                                        <span>TN Modifier</span>
+                                        <span class="target-stepper">
+                                            <button class="bt-button square-small" type="button" [disabled]="readOnly()" (click)="stepTnModifier(target, -1)">-</button>
+                                            <input class="value" type="number" step="1" [value]="target.tnModifier" [disabled]="readOnly()" (input)="updateTnModifier(target.id, $any($event.target).value)">
+                                            <button class="bt-button square-small" type="button" [disabled]="readOnly()" (click)="stepTnModifier(target, 1)">+</button>
+                                        </span>
+                                    </label>
+                                </div>
                             </div>
                             <div class="target-delete-row">
                                 <button class="target-delete" type="button" aria-label="Delete target" title="Delete target" [disabled]="readOnly()" (click)="deleteRequest.emit(target.id)">
@@ -137,11 +139,14 @@ export interface WeaponTargetUpdateRequest {
 
         .weapon-target-row {
             display: flex;
-            gap: 10px;
-            align-items: end;
+            align-items: stretch;
+            justify-content: space-between;
             flex-wrap: nowrap;
+            gap: 10px;
             padding: 4px 12px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            border-bottom: 1px solid var(--border-color);
+            width: 100%;
+            box-sizing: border-box;
 
             &:last-child {
                 border-bottom: 0;
@@ -149,8 +154,13 @@ export interface WeaponTargetUpdateRequest {
             }
         }
 
-        .weapon-target-row:last-child {
-            border-bottom: 0;
+        .target-wrapper {
+            display: flex;
+            gap: 10px;
+            align-items: end;
+            flex-wrap: nowrap;
+            flex: 1 1 auto;
+            min-width: 0;
         }
 
         .target-identity-row {
@@ -165,12 +175,18 @@ export interface WeaponTargetUpdateRequest {
             display: flex;
             gap: 8px;
             align-items: end;
-            flex: 0 0 auto;
+            flex: 1 1 220px;
+            min-width: 0;
         }
 
         .target-delete-row {
+            border-left: 1px solid var(--border-color);
+            padding-left: 10px;
+            min-height: 100%;
             display: flex;
+            flex-direction: column;
             align-items: end;
+            justify-content: end;
             flex: 0 0 auto;
         }
 
@@ -195,29 +211,48 @@ export interface WeaponTargetUpdateRequest {
             font-weight: 700;
             text-transform: uppercase;
             align-self: end;
+            flex: 1 1 0;
+            min-width: 0;
+        }
+
+        .target-number-field > span:first-child {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .target-stepper {
-            display: grid;
-            grid-template-columns: var(--target-control-height) minmax(42px, 1fr) var(--target-control-height);
+            display: flex;
+            align-items: center;
+            justify-content: center;
             gap: 3px;
             align-items: center;
-            width: 136px;
+            min-width: 0;
+
+            input {
+                border: 0;
+                text-align: center;
+                font-variant-numeric: tabular-nums;
+                background: transparent;
+                color: var(--text-color);
+                border-bottom: 1px solid var(--border-color);
+                height: var(--target-control-height);
+                box-sizing: border-box;
+            }
+        }
+
+        .target-stepper .value {
+            font-size: 1.5em;
+            flex: 1 1 0;
+            inline-size: 0;
+            min-inline-size: 3ch;
         }
 
         .target-stepper .bt-button {
             min-width: var(--target-control-height);
             min-height: var(--target-control-height);
-            transition: none;
-        }
-
-        .target-stepper input {
-            min-width: 0;
-            width: 100%;
-            height: var(--target-control-height);
-            box-sizing: border-box;
-            text-align: center;
-            font-variant-numeric: tabular-nums;
+            max-width: var(--target-control-height);
+            max-height: var(--target-control-height);
         }
 
         .targets-delete,
@@ -238,35 +273,24 @@ export interface WeaponTargetUpdateRequest {
 
         @container (max-width: 500px) {
             .weapon-target-row {
-                display: grid;
-                grid-template-columns: minmax(0, 1fr) auto;
-                gap: 10px;
-                align-items: stretch;
+                gap: 4px;
             }
 
-            .target-identity-row {
-                grid-column: 1;
-                grid-row: 1;
-                align-items: center;
+            .target-wrapper {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+                padding: 4px 2px 4px 0px;
+            }
+
+            .target-identity-row,
+            .target-controls-row {
+                flex: 1 1 100%;
+                width: 100%;
             }
 
             .target-delete-row {
-                grid-column: 2;
-                grid-row: 1;
-                align-items: center;
-            }
-
-            .target-controls-row {
-                grid-column: 1 / -1;
-                grid-row: 2;
-                display: grid;
-                grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-                gap: 8px;
-                padding-left: 32px;
-            }
-
-            .target-stepper {
-                width: 100%;
+                justify-content: start;
             }
         }
     `]
