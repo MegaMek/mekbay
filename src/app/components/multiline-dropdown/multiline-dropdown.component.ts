@@ -97,7 +97,7 @@ export interface MultilineDropdownOption {
         .multiline-dropdown-option {
             display: block;
             width: 100%;
-            padding: 8px 10px;
+            padding: 6px;
             border: 0;
             border-bottom: 1px solid rgba(255, 255, 255, 0.08);
             border-left: 3px solid transparent;

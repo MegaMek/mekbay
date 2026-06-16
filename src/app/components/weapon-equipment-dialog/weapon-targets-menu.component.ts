@@ -131,7 +131,7 @@ export interface WeaponTargetUpdateRequest {
         }
 
         .weapon-targets-empty {
-            padding: 23px 16px;
+            padding: 22px 16px;
             color: var(--text-color-secondary);
             text-align: center;
         }
