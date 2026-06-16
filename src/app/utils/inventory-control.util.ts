@@ -248,6 +248,12 @@ function createGroup(id: InventoryControlGroupId, rows: InventoryControlRow[]): 
 }
 
 function compareRows(a: InventoryControlRow, b: InventoryControlRow, groupId: InventoryControlGroupId): number {
+    if (isCritBasedInventoryRow(a) && isCritBasedInventoryRow(b)) {
+        const aInactive = a.destroyed || a.disabled;
+        const bInactive = b.destroyed || b.disabled;
+        if (aInactive !== bInactive) return aInactive ? 1 : -1;
+    }
+
     const sortKey = inventoryControlSortKey(groupId);
     const aOrder = Number(a.entry.states.get(sortKey));
     const bOrder = Number(b.entry.states.get(sortKey));
@@ -257,6 +263,10 @@ function compareRows(a: InventoryControlRow, b: InventoryControlRow, groupId: In
     if (aHasOrder && bHasOrder && aOrder !== bOrder) return aOrder - bOrder;
     if (aHasOrder !== bHasOrder) return aHasOrder ? -1 : 1;
     return a.originalIndex - b.originalIndex;
+}
+
+function isCritBasedInventoryRow(row: InventoryControlRow): boolean {
+    return !!row.entry.critSlots?.length;
 }
 
 function buildInventoryControlRow(

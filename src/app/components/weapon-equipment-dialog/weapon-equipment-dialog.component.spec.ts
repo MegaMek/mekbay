@@ -102,6 +102,7 @@ function entry(params: {
     totalAmmo?: number;
     consumed?: number;
     locations?: Set<string>;
+    critSlots?: CriticalSlot[];
 }): MountedEquipment {
     const owner = {
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
@@ -124,7 +125,8 @@ function entry(params: {
         linkedWith: params.linkedWith ?? null,
         totalAmmo: params.totalAmmo,
         consumed: params.consumed,
-        locations: params.locations
+        locations: params.locations,
+        critSlots: params.critSlots
     } as MountedEquipment;
 }
 
@@ -220,6 +222,30 @@ describe('WeaponEquipmentDialogComponent', () => {
         expect(groups.find(group => group.id === 'physical')?.rows.map(row => row.id)).toEqual(['punch', 'hatchet']);
         expect(groups.find(group => group.id === 'equipment')?.rows.map(row => row.id)).toEqual(['ecm']);
         expect(groups.find(group => group.id === 'ranged')?.rows.find(row => row.id === 'broken')?.destroyed).toBeTrue();
+    });
+
+    it('keeps inactive direct inventory rows in original order', () => {
+        const broken = entry({ id: 'broken', equipment: weapon('broken'), destroyed: true, el: svgEntry('<g><g class="name"><text>Broken</text></g></g>') });
+        const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
+        const unit = { getInventory: () => [broken, laser], getCritSlots: () => [], rules: {} } as unknown as CBTForceUnit;
+        [broken, laser].forEach(item => item.owner = unit);
+
+        const groups = getInventoryControlGroups(unit);
+
+        expect(groups.find(group => group.id === 'ranged')?.rows.map(row => row.id)).toEqual(['broken', 'laser']);
+    });
+
+    it('moves inactive crit-backed inventory rows to the bottom', () => {
+        const brokenCrit = { id: 'broken-crit', destroyed: 1 } as CriticalSlot;
+        const liveCrit = { id: 'live-crit' } as CriticalSlot;
+        const broken = entry({ id: 'broken', equipment: weapon('broken'), critSlots: [brokenCrit], el: svgEntry('<g><g class="name"><text>Broken</text></g></g>') });
+        const laser = entry({ id: 'laser', equipment: weapon('laser'), critSlots: [liveCrit], el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
+        const unit = { getInventory: () => [broken, laser], getCritSlots: () => [brokenCrit, liveCrit], rules: {} } as unknown as CBTForceUnit;
+        [broken, laser].forEach(item => item.owner = unit);
+
+        const groups = getInventoryControlGroups(unit);
+
+        expect(groups.find(group => group.id === 'ranged')?.rows.map(row => row.id)).toEqual(['laser', 'broken']);
     });
 
     it('marks rows disabled from entry state rules', () => {
