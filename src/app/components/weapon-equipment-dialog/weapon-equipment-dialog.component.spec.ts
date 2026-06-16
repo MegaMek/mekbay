@@ -514,6 +514,73 @@ describe('WeaponEquipmentDialogComponent', () => {
         );
     });
 
+    it('switches to another compatible ammo bin after the selected bin is depleted', async () => {
+        const standardAmmo = ammo('ATM 6 Standard', 'ATM', 6, ['M_STANDARD']);
+        const atm = entry({
+            id: 'atm',
+            equipment: weapon('ATM 6', 'ATM', 6),
+            el: svgEntry('<g><g class="name"><text>ATM 6</text></g><text class="heat">4</text><text class="range_short">5</text></g>')
+        });
+        const leftBin = entry({ id: 'left-ammo', equipment: standardAmmo, totalAmmo: 1, consumed: 0, locations: new Set(['LT']) });
+        const rightBin = entry({ id: 'right-ammo', equipment: standardAmmo, totalAmmo: 5, consumed: 0, locations: new Set(['RT']) });
+        const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
+        const { component } = createComponent([atm, leftBin, rightBin], equipmentMap, [], new Map(), { tracksHeat: false });
+        let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(component.selectedAmmoOption(row)).toBe(row.ammo.options[0].id);
+        component.toggleSelected(row);
+
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(leftBin.consumed).toBe(1);
+        expect(rightBin.consumed).toBe(0);
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(component.selectedAmmoOption(row)).toBe(row.ammo.options[1].id);
+        expect(component.ammoText(row)).toBe('[RT] ATM 6 Standard (5/5)');
+
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(leftBin.consumed).toBe(1);
+        expect(rightBin.consumed).toBe(1);
+    });
+
+    it('does not switch to a different ammo type after the selected bin is depleted', async () => {
+        const fragAmmo = ammo('LRM 15 Frag', 'MML', 15);
+        const smokeAmmo = ammo('LRM 15 Smoke', 'MML', 15);
+        const lrm = entry({
+            id: 'lrm',
+            equipment: weapon('LRM 15', 'MML', 15),
+            el: svgEntry('<g><g class="name"><text>LRM 15</text></g><text class="heat">5</text><text class="range_short">7</text></g>')
+        });
+        const fragBin = entry({ id: 'frag-ammo', equipment: fragAmmo, totalAmmo: 10, consumed: 5, locations: new Set(['LT']) });
+        const smokeBin = entry({ id: 'smoke-ammo', equipment: smokeAmmo, totalAmmo: 1, consumed: 0, locations: new Set(['LT']) });
+        const emptySmokeBin = entry({ id: 'empty-smoke-ammo', equipment: smokeAmmo, totalAmmo: 10, consumed: 10, locations: new Set(['RT']) });
+        const equipmentMap: EquipmentMap = {
+            [fragAmmo.internalName]: fragAmmo,
+            [smokeAmmo.internalName]: smokeAmmo,
+        };
+        const { component, dialogsService } = createComponent([lrm, fragBin, smokeBin, emptySmokeBin], equipmentMap, [], new Map(), { tracksHeat: false });
+        let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        component.selectAmmoOption(row, row.ammo.options[1].id);
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(component.ammoText(row)).toBe('[LT] LRM 15 Smoke (1/1)');
+        component.toggleSelected(row);
+
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(smokeBin.consumed).toBe(1);
+        expect(fragBin.consumed).toBe(5);
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(component.selectedAmmoOption(row)).toBe(row.ammo.options[1].id);
+        expect(component.ammoText(row)).toBe('[LT] LRM 15 Smoke (0/1)');
+
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(dialogsService.showError).toHaveBeenCalledWith('LRM 15 has no available ammo.', 'No Ammo');
+        expect(fragBin.consumed).toBe(5);
+    });
+
     it('starts selected heat projection from existing pending heat', async () => {
         const standardAmmo = ammo('ATM 6 Standard', 'ATM', 6, ['M_STANDARD']);
         const atm = entry({

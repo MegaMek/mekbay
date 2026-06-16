@@ -286,8 +286,14 @@ export class WeaponEquipmentDialogComponent {
     selectedAmmoOption(row: InventoryControlRow): string {
         this.revision();
         const selectedOptionId = this.data.unit.getInventoryControlSelectedAmmoOption(row.id);
-        if (selectedOptionId && row.ammo.options.some((option: InventoryControlAmmoOption) => option.id === selectedOptionId)) {
-            return selectedOptionId;
+        const selectedOption = selectedOptionId
+            ? row.ammo.options.find((option: InventoryControlAmmoOption) => option.id === selectedOptionId)
+            : undefined;
+        if (selectedOption && (!this.hasAvailableAmmoOption(row) || this.isUsableAmmoOption(selectedOption))) {
+            return selectedOption.id;
+        }
+        if (selectedOption) {
+            return this.preferredUsableAmmoOption(row, selectedOption)?.id ?? selectedOption.id;
         }
         return this.preferredAmmoOption(row)?.id ?? '';
     }
@@ -400,7 +406,20 @@ export class WeaponEquipmentDialogComponent {
     }
 
     private hasAvailableAmmoOption(row: InventoryControlRow): boolean {
-        return row.ammo.options.some((option: InventoryControlAmmoOption) => !option.destroyed && option.remaining > 0);
+        return row.ammo.options.some((option: InventoryControlAmmoOption) => this.isUsableAmmoOption(option));
+    }
+
+    private isUsableAmmoOption(option: InventoryControlAmmoOption): boolean {
+        return !option.destroyed && option.remaining > 0;
+    }
+
+    private sameAmmoType(left: InventoryControlAmmoOption, right: InventoryControlAmmoOption): boolean {
+        return this.ammoTypeKey(left) === this.ammoTypeKey(right);
+    }
+
+    private ammoTypeKey(option: InventoryControlAmmoOption): string {
+        const separator = option.id.indexOf(':');
+        return separator === -1 ? option.id : option.id.slice(0, separator);
     }
 
     private heatDissipationState(): HeatDissipationWithWings | null {
@@ -421,9 +440,14 @@ export class WeaponEquipmentDialogComponent {
     }
 
     private preferredAmmoOption(row: InventoryControlRow): InventoryControlAmmoOption | undefined {
-        return row.ammo.options.find((option: InventoryControlAmmoOption) => !option.destroyed && option.remaining > 0)
+        return this.preferredUsableAmmoOption(row)
             ?? row.ammo.options.find((option: InventoryControlAmmoOption) => !option.destroyed)
             ?? row.ammo.options[0];
+    }
+
+    private preferredUsableAmmoOption(row: InventoryControlRow, sameTypeAs?: InventoryControlAmmoOption): InventoryControlAmmoOption | undefined {
+        return row.ammo.options.find((option: InventoryControlAmmoOption) => this.isUsableAmmoOption(option)
+            && (!sameTypeAs || this.sameAmmoType(option, sameTypeAs)));
     }
 
     private heatValue(row: InventoryControlRow): number {
