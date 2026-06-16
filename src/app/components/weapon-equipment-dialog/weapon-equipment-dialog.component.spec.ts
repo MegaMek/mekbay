@@ -3,7 +3,7 @@ import { CdkDragDrop } from '@angular/cdk/drag-drop';
 import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment, WeaponEquipment, MiscEquipment, type EquipmentMap } from '../../models/equipment.model';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
-import type { CriticalSlot, MountedEquipment } from '../../models/force-serialization';
+import type { CriticalSlot, HeatProfile, MountedEquipment } from '../../models/force-serialization';
 import { InventoryModeHandler } from '../../equipment-handlers/inventory-mode.handler';
 import type { HandlerChoice } from '../../services/equipment-interaction-registry.service';
 import { INVENTORY_CONTROL_MODE_STATE, inventoryControlSortKey, getInventoryControlGroups } from '../../utils/inventory-control.util';
@@ -131,6 +131,9 @@ function entry(params: {
 interface CreateComponentOptions {
     readOnly?: boolean;
     hasDirectInventory?: boolean;
+    tracksHeat?: boolean;
+    heatDissipation?: number;
+    heatNext?: number;
 }
 
 function createComponent(
@@ -142,15 +145,35 @@ function createComponent(
 ) {
     let context: WeaponEquipmentDialogContext;
     const modeHandler = new InventoryModeHandler();
-    const dialogsService = { createDialog: jasmine.createSpy('createDialog').and.returnValue({ closed: { subscribe: jasmine.createSpy('subscribe') } }) };
+    const dialogsService = {
+        createDialog: jasmine.createSpy('createDialog').and.returnValue({ closed: { subscribe: jasmine.createSpy('subscribe') } }),
+        showNoticeHtml: jasmine.createSpy('showNoticeHtml').and.resolveTo(),
+        showError: jasmine.createSpy('showError').and.resolveTo()
+    };
+    const heat: HeatProfile = { current: 2, previous: 1, next: options.heatNext };
+    const rules = {
+        computeAllEntryStates: () => entryStates,
+        ...(options.tracksHeat === false ? {} : {
+            heatDissipation: () => ({
+                totalPips: 10,
+                healthyPips: 10,
+                damagedCount: 0,
+                heatsinksOff: 0,
+                totalDissipation: options.heatDissipation ?? 0
+            })
+        })
+    };
     const unit = {
         getInventory: () => entries,
         getCritSlots: () => critSlots,
         getUnit: () => ({ comp: [] }),
+        getHeat: () => heat,
+        setHeat: jasmine.createSpy('setHeat').and.callFake((value: number) => heat.next = value),
         readOnly: () => options.readOnly ?? false,
         hasDirectInventory: () => options.hasDirectInventory ?? true,
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        rules: { computeAllEntryStates: () => entryStates }
+        setCritSlot: jasmine.createSpy('setCritSlot'),
+        rules
     } as unknown as CBTForceUnit;
     addRuntimeSelection(unit);
     entries.forEach(item => item.owner = unit);
@@ -178,7 +201,7 @@ function createComponent(
         ],
     });
     const fixture = TestBed.createComponent(WeaponEquipmentDialogComponent);
-    return { fixture, component: fixture.componentInstance, unit, dialogsService };
+    return { fixture, component: fixture.componentInstance, unit, dialogsService, heat };
 }
 
 describe('WeaponEquipmentDialogComponent', () => {
@@ -323,6 +346,38 @@ describe('WeaponEquipmentDialogComponent', () => {
         expect(component.isRangeSelected(row, 'medium')).toBeFalse();
     });
 
+    it('toggles all ranged weapons from the ranged group header checkbox', () => {
+        const first = entry({ id: 'first', equipment: weapon('first'), el: svgEntry('<g><g class="name"><text>First</text></g></g>') });
+        const second = entry({ id: 'second', equipment: weapon('second'), el: svgEntry('<g><g class="name"><text>Second</text></g></g>') });
+        const punch = entry({ id: 'punch', physical: true, el: svgEntry('<g><g class="name"><text>Punch</text></g></g>') });
+        const { component, fixture } = createComponent([first, second, punch]);
+        fixture.detectChanges();
+
+        const sections = Array.from(fixture.nativeElement.querySelectorAll('.weapon-equipment-section')) as HTMLElement[];
+        const rangedSection = sections.find(section => section.querySelector('h3')?.textContent?.trim() === 'Ranged Weapons')!;
+        const checkbox = rangedSection.querySelector<HTMLInputElement>('.ranged-select-all')!;
+        const rows = component.groups().flatMap(group => group.rows);
+        const firstRow = rows.find(row => row.id === 'first')!;
+        const secondRow = rows.find(row => row.id === 'second')!;
+        const punchRow = rows.find(row => row.id === 'punch')!;
+
+        checkbox.click();
+        fixture.detectChanges();
+
+        expect(component.isSelected(firstRow)).toBeTrue();
+        expect(component.isSelected(secondRow)).toBeTrue();
+        expect(component.isSelected(punchRow)).toBeFalse();
+        expect(rangedSection.querySelector<HTMLInputElement>('.ranged-select-all')!.checked).toBeTrue();
+
+        rangedSection.querySelector<HTMLInputElement>('.ranged-select-all')!.click();
+        fixture.detectChanges();
+
+        expect(component.isSelected(firstRow)).toBeFalse();
+        expect(component.isSelected(secondRow)).toBeFalse();
+        expect(component.isSelected(punchRow)).toBeFalse();
+        expect(rangedSection.querySelector<HTMLInputElement>('.ranged-select-all')!.checked).toBeFalse();
+    });
+
     it('resets entry and range selections from the dialog and SVG', () => {
         const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>') });
         const punch = entry({ id: 'punch', physical: true, el: svgEntry('<g><g class="name"><text>Punch</text></g><text class="range_short">1</text><text class="range_medium">2</text><text class="range_long">3</text></g>') });
@@ -348,6 +403,183 @@ describe('WeaponEquipmentDialogComponent', () => {
         expect(unit.getInventoryControlSelectionSnapshot().selectedRanges.size).toBe(0);
         expect(laser.el!.classList.contains('selected')).toBeFalse();
         expect(punch.el!.classList.contains('selected')).toBeFalse();
+    });
+
+    it('raises selected weapon heat before dissipation and consumes shared ammo bins', async () => {
+        const standardAmmo = ammo('ATM 6 Standard', 'ATM', 6, ['M_STANDARD']);
+        const first = entry({
+            id: 'first-atm',
+            equipment: weapon('ATM 6', 'ATM', 6),
+            el: svgEntry('<g><g class="name"><text>ATM 6</text></g><text class="heat">4</text><text class="range_short">5</text></g>')
+        });
+        const second = entry({
+            id: 'second-atm',
+            equipment: weapon('ATM 6', 'ATM', 6),
+            el: svgEntry('<g><g class="name"><text>ATM 6</text></g><text class="heat">3</text><text class="range_short">5</text></g>')
+        });
+        const ammoBin = entry({ id: 'std-ammo', equipment: standardAmmo, totalAmmo: 5, consumed: 1, locations: new Set(['CT']) });
+        const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
+        const { component, fixture, unit, dialogsService, heat } = createComponent([first, second, ammoBin], equipmentMap, [], new Map(), { heatDissipation: 3 });
+        const rows = component.groups().find(group => group.id === 'ranged')!.rows;
+
+        component.toggleSelected(rows[0]);
+        component.toggleSelected(rows[1]);
+        fixture.detectChanges();
+
+        expect(component.selectedHeatTotal()).toBe(7);
+        const panel = fixture.nativeElement.querySelector('.selected-weapons-panel') as HTMLElement;
+        const heatMeter = panel.querySelector('.selected-heat-meter') as HTMLElement;
+        const dissipation = panel.querySelector('.heat-balance-segment.dissipation') as HTMLElement;
+        const pending = panel.querySelector('.heat-balance-segment.pending') as HTMLElement;
+        const retainedHeat = panel.querySelector('.heat-balance-segment.retained') as HTMLElement;
+        const projected = panel.querySelector('.heat-balance-equation .projected') as HTMLElement;
+        expect(panel.textContent).toContain('2+7-3=6');
+        expect(heatMeter.getAttribute('aria-label')).toBe('Heat projection: current 2, selection +7, dissipation -3, projected 6');
+        expect(getComputedStyle(projected).minWidth).toBe('24px');
+        expect(getComputedStyle(dissipation).left).toBe('0px');
+        expect(getComputedStyle(pending).left).toBe('0px');
+        expect(dissipation.style.width).toBe('10%');
+        expect(pending.style.width).toBe('30%');
+        expect(Number.parseFloat(pending.style.width)).toBeGreaterThan(Number.parseFloat(dissipation.style.width));
+        expect(getComputedStyle(retainedHeat).right).toBe('0px');
+        expect(Number.parseFloat(retainedHeat.style.width)).toBeGreaterThan(0);
+        expect(panel.textContent).toContain('CONSUME HEAT & AMMO');
+
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(ammoBin.consumed).toBe(3);
+        expect(unit.setInventoryEntry).toHaveBeenCalledWith(ammoBin);
+        expect(unit.setHeat).toHaveBeenCalledWith(9);
+        expect(heat.next).toBe(9);
+        expect(dialogsService.showNoticeHtml).toHaveBeenCalledWith(
+            '<ul><li>ATM 6 Standard (4/5): 2</li></ul><p>Heat raised: +7<br>Current heat: 2<br>Pending heat: 9<br>Projected dissipation: -3<br>Projected heat: 6</p>',
+            'Weapons Fired'
+        );
+    });
+
+    it('hides heat information and consumes only ammo for units that do not track heat', async () => {
+        const standardAmmo = ammo('ATM 6 Standard', 'ATM', 6, ['M_STANDARD']);
+        const atm = entry({
+            id: 'atm',
+            equipment: weapon('ATM 6', 'ATM', 6),
+            el: svgEntry('<g><g class="name"><text>ATM 6</text></g><text class="heat">4</text><text class="range_short">5</text></g>')
+        });
+        const ammoBin = entry({ id: 'std-ammo', equipment: standardAmmo, totalAmmo: 5, consumed: 1, locations: new Set(['CT']) });
+        const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
+        const { component, fixture, unit, dialogsService } = createComponent([atm, ammoBin], equipmentMap, [], new Map(), { tracksHeat: false });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        component.toggleSelected(row);
+        fixture.detectChanges();
+
+        const panelText = (fixture.nativeElement.querySelector('.selected-weapons-panel') as HTMLElement).textContent;
+        expect(panelText).not.toContain('Current');
+        expect(panelText).not.toContain('Selection');
+        expect(panelText).not.toContain('Final');
+        expect(panelText).toContain('CONSUME AMMO');
+
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(ammoBin.consumed).toBe(2);
+        expect(unit.setHeat).not.toHaveBeenCalled();
+        expect(dialogsService.showNoticeHtml).toHaveBeenCalledWith(
+            '<ul><li>ATM 6 Standard (4/5): 1</li></ul>',
+            'Weapons Fired'
+        );
+    });
+
+    it('starts selected heat projection from existing pending heat', async () => {
+        const standardAmmo = ammo('ATM 6 Standard', 'ATM', 6, ['M_STANDARD']);
+        const atm = entry({
+            id: 'atm',
+            equipment: weapon('ATM 6', 'ATM', 6),
+            el: svgEntry('<g><g class="name"><text>ATM 6</text></g><text class="heat">4</text><text class="range_short">5</text></g>')
+        });
+        const ammoBin = entry({ id: 'std-ammo', equipment: standardAmmo, totalAmmo: 5, consumed: 1, locations: new Set(['CT']) });
+        const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
+        const { component, fixture, unit, dialogsService, heat } = createComponent([atm, ammoBin], equipmentMap, [], new Map(), { heatDissipation: 3, heatNext: 8 });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        component.toggleSelected(row);
+        fixture.detectChanges();
+
+        const heatMeter = fixture.nativeElement.querySelector('.selected-heat-meter') as HTMLElement;
+        const pending = fixture.nativeElement.querySelector('.heat-balance-segment.pending') as HTMLElement;
+        expect(heatMeter.textContent).toContain('8+4-3=9');
+        expect(heatMeter.getAttribute('aria-label')).toBe('Heat projection: current 8, selection +4, dissipation -3, projected 9');
+        expect(pending.style.width).toBe('40%');
+
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(unit.setHeat).toHaveBeenCalledWith(12);
+        expect(heat.next).toBe(12);
+        expect(dialogsService.showNoticeHtml).toHaveBeenCalledWith(
+            '<ul><li>ATM 6 Standard (4/5): 1</li></ul><p>Heat raised: +4<br>Current heat: 8<br>Pending heat: 12<br>Projected dissipation: -3<br>Projected heat: 9</p>',
+            'Weapons Fired'
+        );
+    });
+
+    it('fills projected heat bar when final heat reaches the heat scale cap', () => {
+        const standardAmmo = ammo('ATM 6 Standard', 'ATM', 6, ['M_STANDARD']);
+        const atm = entry({
+            id: 'atm',
+            equipment: weapon('ATM 6', 'ATM', 6),
+            el: svgEntry('<g><g class="name"><text>ATM 6</text></g><text class="heat">4</text><text class="range_short">5</text></g>')
+        });
+        const ammoBin = entry({ id: 'std-ammo', equipment: standardAmmo, totalAmmo: 5, consumed: 1, locations: new Set(['CT']) });
+        const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
+        const { component, fixture } = createComponent([atm, ammoBin], equipmentMap, [], new Map(), { heatDissipation: 3, heatNext: 29 });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        component.toggleSelected(row);
+        fixture.detectChanges();
+
+        const retainedHeat = fixture.nativeElement.querySelector('.heat-balance-segment.retained') as HTMLElement;
+        expect(component.selectedHeatProjection()?.final).toBe(30);
+        expect(getComputedStyle(retainedHeat).right).toBe('0px');
+        expect(retainedHeat.style.width).toBe('100%');
+    });
+
+    it('blocks heat and ammo consumption when a selected weapon has no ammo', async () => {
+        const atm = entry({
+            id: 'atm',
+            equipment: weapon('ATM 6', 'ATM', 6),
+            el: svgEntry('<g><g class="name"><text>ATM 6</text></g><text class="heat">4</text><text class="range_short">5</text></g>')
+        });
+        const { component, dialogsService, unit } = createComponent([atm]);
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        component.toggleSelected(row);
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(dialogsService.showError).toHaveBeenCalledWith('ATM 6 has no available ammo.', 'No Ammo');
+        expect(unit.setHeat).not.toHaveBeenCalled();
+    });
+
+    it('blocks heat and ammo consumption when a shared selected bin is short', async () => {
+        const standardAmmo = ammo('ATM 6 Standard', 'ATM', 6, ['M_STANDARD']);
+        const first = entry({
+            id: 'first-atm',
+            equipment: weapon('ATM 6', 'ATM', 6),
+            el: svgEntry('<g><g class="name"><text>ATM 6</text></g><text class="heat">4</text><text class="range_short">5</text></g>')
+        });
+        const second = entry({
+            id: 'second-atm',
+            equipment: weapon('ATM 6', 'ATM', 6),
+            el: svgEntry('<g><g class="name"><text>ATM 6</text></g><text class="heat">3</text><text class="range_short">5</text></g>')
+        });
+        const ammoBin = entry({ id: 'std-ammo', equipment: standardAmmo, totalAmmo: 5, consumed: 4, locations: new Set(['CT']) });
+        const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
+        const { component, dialogsService, unit } = createComponent([first, second, ammoBin], equipmentMap);
+        const rows = component.groups().find(group => group.id === 'ranged')!.rows;
+
+        component.toggleSelected(rows[0]);
+        component.toggleSelected(rows[1]);
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(dialogsService.showError).toHaveBeenCalledWith('ATM 6 Standard (1/5) does not have enough ammo for the selected weapons.', 'Not Enough Ammo');
+        expect(ammoBin.consumed).toBe(4);
+        expect(unit.setHeat).not.toHaveBeenCalled();
     });
 
     it('opens the ammo dialog from the weapon dialog actions', () => {

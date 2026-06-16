@@ -134,7 +134,8 @@
 }
 
 .drag-cell,
-.select-cell {
+.select-cell,
+.select-header {
     display: flex;
     justify-content: center;
 }
@@ -366,6 +367,94 @@
     align-items: center;
     display: flex;
     font-size: 0.9rem;
+}
+
+.selected-weapons-panel {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+
+    .bt-button {
+        min-height: 40px;
+    }
+}
+
+.selected-heat-meter {
+    display: inline-grid;
+    gap: 3px;
+    align-items: center;
+    min-width: 0;
+}
+
+.heat-balance-bar {
+    position: relative;
+    display: block;
+    width: 100%;
+    min-width: 58px;
+    height: 7px;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--border-color) 55%, transparent);
+}
+
+.heat-balance-segment {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+}
+
+.heat-balance-segment.dissipation {
+    left: 0;
+    background: #2f8fa3;
+}
+
+.heat-balance-segment.pending {
+    left: 0;
+    background: #d56f28;
+}
+
+.heat-balance-segment.retained {
+    right: 0;
+    background: #b94432;
+}
+
+.heat-balance-equation {
+    display: inline-flex;
+    gap: 3px;
+    align-items: center;
+    color: var(--text-color-secondary);
+    font-size: 0.78rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.heat-balance-equation strong,
+.heat-balance-equation span {
+    display: inline-block;
+    min-width: 24px;
+    text-align: right;
+}
+
+.heat-balance-equation strong {
+    color: var(--text-color);
+}
+
+.heat-balance-equation .selection {
+    color: #d56f28;
+}
+
+.heat-balance-equation .dissipation {
+    color: #2f8fa3;
+}
+
+.heat-balance-equation .projected {
+    color: var(--text-color-secondary);
+}
+
+.heat-balance-equation .projected.hot {
+    color: #b94432;
 }
 
 @container (max-width: 760px) {
