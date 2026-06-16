@@ -140,6 +140,11 @@
     justify-content: center;
 }
 
+.select-header .ranged-select-all {
+    width: 14px;
+    height: 14px;
+}
+
 .drag-cell {
     grid-column: 1;
 }
@@ -204,7 +209,7 @@
 
 .name-cell {
     display: flex;
-    gap: 5px;
+    gap: 2px 5px;
     align-items: baseline;
     flex-wrap: wrap;
     min-width: 0;
@@ -214,6 +219,7 @@
     min-width: 0;
     overflow-wrap: anywhere;
     white-space: normal;
+    text-align: left;
 }
 
 .modifier {
@@ -366,7 +372,7 @@
     min-height: 24px;
     align-items: center;
     display: flex;
-    font-size: 0.9rem;
+    font-size: 0.8rem;
 }
 
 .selected-weapons-panel {
