@@ -27,10 +27,12 @@ export interface WeaponTargetUpdateRequest {
                     <button class="bt-button square-small" type="button" aria-label="Add target" title="Add target" [disabled]="targets().length >= maxTargets()" (click)="addRequest.emit()">+</button>
                     <strong>Targets</strong>
                 </div>
+                @if (targets().length > 0) {
                 <button class="targets-delete" type="button" aria-label="Reset targets" title="Reset targets" [disabled]="targets().length === 0" (click)="resetRequest.emit()">
                         <svg _ngcontent-ng-c1165242001="" width="18px" height="18px" fill="currentColor" viewBox="0 0 1200 1200" version="1.1" xmlns="http://www.w3.org/2000/svg"><path _ngcontent-ng-c1165242001="" d="M0,264.84L335.16,600L0,935.16L264.84,1200L600,864.84L935.16,1200
                                     L1200,935.16L864.84,600L1200,264.84L935.16,0L600,335.16L264.84,0L0,264.84z"></path></svg>
                 </button>
+                }
             </div>
             <div class="weapon-targets-list">
                 @if (targets().length === 0) {
