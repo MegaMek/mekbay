@@ -183,6 +183,11 @@ describe('SvgInteractionService', () => {
 
         expect(unit.getInventoryControlSelectedTarget(entry.id)).toBe('A');
         expect(unit.getInventoryControlSelectedRange(entry.id)).toBeUndefined();
+
+        (entry.el!.querySelector('.shrButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        expect(unit.getInventoryControlSelectedTarget(entry.id)).toBeUndefined();
+        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeFalse();
     });
 
     it('opens a target picker with target numbers when sheet range is clicked with multiple targets', () => {

@@ -905,7 +905,9 @@ export class SvgInteractionService {
                 if (targets.length === 0) {
                     unit.toggleInventoryControlSelectedRange(entry, range, forceSelected);
                 } else if (targets.length === 1) {
-                    unit.setInventoryControlSelectedTarget(entry, targets[0].id);
+                    const targetId = targets[0].id;
+                    const selectedTargetId = unit.getInventoryControlSelectedTarget(entry.id);
+                    unit.setInventoryControlSelectedTarget(entry, !forceSelected && selectedTargetId === targetId ? null : targetId);
                 } else {
                     this.showInventoryTargetPicker(entry, button, event, targets);
                 }
