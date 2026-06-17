@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, type ComponentRef, DestroyRef, inject, Injector, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, type ComponentRef, DestroyRef, inject, Injector, input } from '@angular/core';
 import { DragDropModule, type CdkDragDrop, type CdkDragStart, moveItemInArray } from '@angular/cdk/drag-drop';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
@@ -16,8 +16,8 @@ import { WeaponTargetChoiceMenuComponent } from '../equipment-dialog/weapon-targ
 import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import type { TooltipLine } from '../tooltip/tooltip.component';
-import { getMotiveModeLabel, getMotiveModeTargetNumberModifier } from '../../models/motiveModes.model';
 import { inventoryTargetNumberBreakdown, inventoryTargetNumberText, inventoryTargetRangeSelection, parseInventoryTargetNumberCell, type InventoryTargetRangeKey } from '../../utils/inventory-target-number.util';
+import { getMotiveModeLabel, getMotiveModeTargetNumberModifier } from '../../models/motiveModes.model';
 import type { EquipmentDialogContext } from './equipment-dialog.model';
 import {
     formatInventoryControlModeName,
@@ -99,33 +99,34 @@ export class WeaponsEquipmentPanelComponent {
     readonly unitInput = input.required<CBTForceUnit>({ alias: 'unit' });
     readonly contextInput = input.required<EquipmentDialogContext>({ alias: 'context' });
     readonly readOnlyInput = input<boolean | undefined>(undefined, { alias: 'readOnly' });
-    private readonly revision = signal(0);
-    private readonly handlerChoiceCache = new Map<MountedEquipment, HandlerChoice[]>();
-    private handlerChoiceCacheRevision = -1;
     private targetChoiceCompRef: ComponentRef<WeaponTargetChoiceMenuComponent> | null = null;
     private pendingDragPreviewSizing: DragPreviewSizing | null = null;
     readonly rangeKeys: InventoryRangeKey[] = ['short', 'medium', 'long'];
     readonly unit = computed(() => this.unitInput());
     readonly context = computed(() => this.contextInput());
+    readonly inventoryControl = computed(() => this.unit().inventoryControl);
     readonly groups = computed(() => {
-        this.revision();
+        this.inventoryControl().inventoryViewVersion();
         return getInventoryControlGroups(this.unit(), this.context().dataService.getEquipments());
     });
     readonly targets = computed(() => {
-        this.revision();
+        this.inventoryControl().targetsMap();
         return this.unit().getInventoryControlTargets();
     });
     readonly hasTargets = computed(() => this.targets().length > 0);
     readonly hasAmmoColumn = computed(() => this.groups().some(group => this.groupHasAmmo(group)));
     readonly hasControlsColumn = computed(() => this.groups().some(group => this.groupHasControls(group)));
     readonly hasActionsColumn = computed(() => this.groups().some(group => this.groupHasActions(group)));
-    readonly selectedRows = computed(() => this.groups()
-        .flatMap(group => group.rows)
-        .filter(row => this.unit().isInventoryControlEntrySelected(row.id)));
+    readonly selectedRows = computed(() => {
+        const selectedEntryIds = this.inventoryControl().selectedEntryIds();
+        return this.groups()
+            .flatMap(group => group.rows)
+            .filter(row => selectedEntryIds.has(row.id));
+    });
     readonly selectedHeatTotal = computed(() => this.selectedRows()
         .reduce((total, row) => total + this.heatValue(row), 0));
     readonly selectedHeatProjection = computed<SelectedHeatProjection | null>(() => {
-        this.revision();
+        this.inventoryControl().inventoryViewVersion();
         const dissipationState = this.heatDissipationState();
         if (!dissipationState) return null;
         const heat = this.unit().getHeat();
@@ -180,15 +181,10 @@ export class WeaponsEquipmentPanelComponent {
                 selectedTargetId,
                 targetId => {
                     this.unit().setInventoryControlSelectedTarget(row.entry, targetId);
-                    this.refresh();
                 },
                 this.targetChoiceTargetNumberTexts(row)
             );
         });
-
-        if (updated) {
-            this.refresh();
-        }
     }
 
     groupTargetSelection(group: InventoryControlGroup): InventoryControlRuntimeTarget | null {
@@ -231,7 +227,6 @@ export class WeaponsEquipmentPanelComponent {
         for (const row of rows) {
             this.unit().setInventoryControlSelectedTarget(row.entry, targetId);
         }
-        this.refresh();
     }
 
     private openTargetChoiceOverlay(
@@ -321,14 +316,11 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     isSelected(row: InventoryControlRow): boolean {
-        this.revision();
         return this.unit().isInventoryControlEntrySelected(row.id);
     }
 
     toggleSelected(row: InventoryControlRow): void {
-        if (selectInventoryControlEntry(this.unit(), row.entry)) {
-            this.refresh();
-        }
+        selectInventoryControlEntry(this.unit(), row.entry);
     }
 
     groupAllSelectableRowsSelected(group: InventoryControlGroup): boolean {
@@ -346,12 +338,10 @@ export class WeaponsEquipmentPanelComponent {
         const selected = !this.groupAllSelectableRowsSelected(group);
         const rows = selected ? this.groupActiveSelectableRows(group) : this.groupSelectableRows(group);
         rows.forEach(row => this.unit().setInventoryControlEntrySelected(row.entry, selected));
-        this.refresh();
     }
 
     resetSelections(): void {
         this.unit().clearInventoryControlSelection();
-        this.refresh();
     }
 
     hasSelectedRows(): boolean {
@@ -371,11 +361,9 @@ export class WeaponsEquipmentPanelComponent {
     selectRange(row: InventoryControlRow, range: InventoryRangeKey): void {
         if (!this.canSelectRange(row, range)) return;
         this.unit().toggleInventoryControlSelectedRange(row.entry, range);
-        this.refresh();
     }
 
     isRangeSelected(row: InventoryControlRow, range: InventoryRangeKey): boolean {
-        this.revision();
         if (row.category === 'physical' && this.targetForRow(row)) return false;
         const targetRange = this.targetRangeSelection(row);
         if (targetRange) {
@@ -385,22 +373,18 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     isOutOfLongRange(row: InventoryControlRow): boolean {
-        this.revision();
         return this.targetRangeSelection(row)?.outOfLongRange ?? false;
     }
 
     isOutOfExtremeRange(row: InventoryControlRow): boolean {
-        this.revision();
         return this.targetRangeSelection(row)?.outOfExtremeRange ?? false;
     }
 
     targetNumberText(row: InventoryControlRow): string {
-        this.revision();
         return this.targetNumberTextForTarget(row, this.targetForRow(row));
     }
 
     targetNumberTooltip(row: InventoryControlRow): TooltipLine[] | null {
-        this.revision();
         if (this.targetRangeSelection(row)?.outOfLongRange) return [{ value: 'OUT OF RANGE', isHeader: true }];
         return this.targetNumberBreakdown(row)?.lines ?? null;
     }
@@ -441,6 +425,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     private targetNumberInput(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null) {
+        this.inventoryControl().inventoryViewVersion();
         const moveMode = this.unit().turnState().moveMode();
         const heatFireModifier = this.unit().svgService?.inventoryTargetHeatFireModifier(row.entry) ?? 0;
         const hitModifier = parseInventoryTargetNumberCell(row.display.hit) ?? 0;
@@ -452,15 +437,10 @@ export class WeaponsEquipmentPanelComponent {
             gunnerySkill: this.unit().gunnerySkill(),
             pilotingSkill: this.unit().pilotingSkill(),
             movementModifier: getMotiveModeTargetNumberModifier(moveMode),
-            movementLabel: this.motiveModeLabel(moveMode),
+            movementLabel: moveMode ? getMotiveModeLabel(moveMode, this.unit().getUnit(), this.unit().turnState().airborne() ?? false) : 'None',
             hitModifier: hitModifier - heatFireModifier,
             heatFireModifier
         };
-    }
-
-    private motiveModeLabel(moveMode: ReturnType<ReturnType<CBTForceUnit['turnState']>['moveMode']>): string {
-        if (!moveMode) return 'None';
-        return getMotiveModeLabel(moveMode, this.unit().getUnit(), this.unit().turnState().airborne() ?? false);
     }
 
     ammoText(row: InventoryControlRow): string {
@@ -488,7 +468,6 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     selectedAmmoOption(row: InventoryControlRow): string {
-        this.revision();
         const selectedOptionId = this.unit().getInventoryControlSelectedAmmoOption(row.id);
         const selectedOption = selectedOptionId
             ? row.ammo.options.find((option: InventoryControlAmmoOption) => option.id === selectedOptionId)
@@ -513,7 +492,6 @@ export class WeaponsEquipmentPanelComponent {
 
     selectAmmoOption(row: InventoryControlRow, value: string): void {
         this.unit().setInventoryControlSelectedAmmoOption(row.id, value);
-        this.refresh();
     }
 
     canAdjustAmmo(row: InventoryControlRow, delta: number): boolean {
@@ -530,7 +508,7 @@ export class WeaponsEquipmentPanelComponent {
         const option = this.selectedAmmo(row);
         if (!option) return;
         if (changeAmmoEntriesRemaining(this.getAmmoEntriesForOption(row, option.id), -delta, this.context())) {
-            this.refresh();
+            this.inventoryControl().markInventoryViewChanged();
         }
     }
 
@@ -575,7 +553,7 @@ export class WeaponsEquipmentPanelComponent {
         if (heatProjection) {
             this.unit().setHeat(heatProjection.pending);
         }
-        this.refresh();
+        this.inventoryControl().markInventoryViewChanged();
         await this.context().dialogsService.showNoticeHtml(
             this.consumptionSummaryHtml(ammoSummary, heatProjection),
             'Weapons Fired'
@@ -798,7 +776,6 @@ export class WeaponsEquipmentPanelComponent {
         const rows = [...group.rows];
         moveItemInArray(rows, event.previousIndex, event.currentIndex);
         setInventoryControlSortOrder(rows);
-        this.refresh();
     }
 
     handlerChoices(row: InventoryControlRow): HandlerChoice[] {
@@ -839,24 +816,13 @@ export class WeaponsEquipmentPanelComponent {
     async handleChoice(row: InventoryControlRow, choice: HandlerChoice): Promise<void> {
         if (this.readOnly() || choice.disabled) return;
         await this.context().registry.handleSelection(row.entry, choice, this.context());
-        this.refresh();
+        this.inventoryControl().markInventoryViewChanged();
     }
 
     private getHandlerChoices(row: InventoryControlRow): HandlerChoice[] {
         if (this.isVirtualTrooperRow(row)) return [];
         if (row.destroyed) return [];
-        const revision = this.revision();
-        if (this.handlerChoiceCacheRevision !== revision) {
-            this.handlerChoiceCache.clear();
-            this.handlerChoiceCacheRevision = revision;
-        }
-
-        const cachedChoices = this.handlerChoiceCache.get(row.entry);
-        if (cachedChoices) return cachedChoices;
-
-        const choices = this.context().registry.getChoices(row.entry, this.context());
-        this.handlerChoiceCache.set(row.entry, choices);
-        return choices;
+        return this.context().registry.getChoices(row.entry, this.context());
     }
 
     private isModeChoice(choice: HandlerChoice): boolean {
@@ -873,7 +839,6 @@ export class WeaponsEquipmentPanelComponent {
         row.entry.destroyed = true;
         row.entry.owner.setInventoryEntry(row.entry);
         this.context().toastService.showToast(`Critical Hit on ${row.display.name}`, 'error');
-        this.refresh();
     }
 
     canRepair(row: InventoryControlRow): boolean {
@@ -889,11 +854,6 @@ export class WeaponsEquipmentPanelComponent {
         row.entry.destroyed = false;
         row.entry.owner.setInventoryEntry(row.entry);
         this.context().toastService.showToast(`Repaired ${row.display.name}`, 'success');
-        this.refresh();
-    }
-
-    refresh(): void {
-        this.revision.update(value => value + 1);
     }
 
 }

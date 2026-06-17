@@ -246,7 +246,7 @@ export class UnitSvgMekService extends UnitSvgService {
             // Hit modifier badge
             this.renderHitModEntry(entry, resolveHitModifier(entry, state.hitMod || 0));
         });
-        this.unit.syncInventoryControlSelectionSvg();
+        this.renderInventoryControlSelection();
     }
 
     protected override getInventoryTargetHitModifier(entry: MountedEquipment): number {

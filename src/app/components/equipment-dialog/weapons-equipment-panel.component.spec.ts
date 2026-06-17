@@ -2,7 +2,8 @@ import { CdkDragDrop, CdkDragStart } from '@angular/cdk/drag-drop';
 import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment, WeaponEquipment, MiscEquipment, type EquipmentMap } from '../../models/equipment.model';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
-import { INVENTORY_CONTROL_TARGET_COLORS, InventoryControlRuntimeState, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
+import { INVENTORY_CONTROL_TARGET_COLORS, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
+import { CBTInventoryControlRuntime } from '../../models/cbt-inventory-control-runtime.model';
 import type { CriticalSlot, HeatProfile, MountedEquipment } from '../../models/force-serialization';
 import { InventoryModeHandler } from '../../equipment-handlers/inventory-mode.handler';
 import type { HandlerChoice } from '../../services/equipment-interaction-registry.service';
@@ -12,9 +13,10 @@ import type { EquipmentDialogContext } from './equipment-dialog.model';
 import type { MotiveModes } from '../../models/motiveModes.model';
 
 function addRuntimeSelection(unit: CBTForceUnit): CBTForceUnit {
-    const runtime = new InventoryControlRuntimeState(() => unit.getInventory());
+    const runtime = new CBTInventoryControlRuntime(unit);
 
     Object.assign(unit, {
+        inventoryControl: runtime,
         getInventoryControlSelectionSnapshot: () => runtime.getSelectionSnapshot(),
         getInventoryControlTargets: () => runtime.getTargets(),
         getInventoryControlTarget: (targetId: InventoryControlRuntimeTargetId) => runtime.getTarget(targetId),
@@ -409,13 +411,10 @@ describe('WeaponsEquipmentPanelComponent', () => {
         component.selectRange(row, 'medium');
         expect(component.isSelected(row)).toBeTrue();
         expect(component.isRangeSelected(row, 'medium')).toBeTrue();
-        expect(laser.el!.classList.contains('selected-range-medium')).toBeTrue();
-        expect(laser.el!.classList.contains('selected-range-short')).toBeFalse();
 
         component.toggleSelected(row);
         expect(component.isSelected(row)).toBeFalse();
         expect(component.isRangeSelected(row, 'medium')).toBeFalse();
-        expect(laser.el!.classList.contains('selected-range-medium')).toBeFalse();
 
         component.selectRange(row, 'medium');
         component.selectRange(row, 'medium');
@@ -423,15 +422,19 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(component.isRangeSelected(row, 'medium')).toBeFalse();
     });
 
-    it('syncs target distance selections to SVG range button classes', () => {
+    it('computes target distance range state without mutating SVG classes directly', () => {
         const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [3, 6, 9, 12]), el: svgEntry('<g><rect class="inventoryEntryButton"></rect><rect class="shrButton inventoryEntryButton"></rect><rect class="medButton inventoryEntryButton"></rect><rect class="lngButton inventoryEntryButton"></rect><rect class="extButton inventoryEntryButton"></rect><g class="name"><text>Laser</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>') });
-        const { unit } = createComponent([laser]);
+        const { component, unit } = createComponent([laser]);
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
         unit.createInventoryControlTarget();
         unit.updateInventoryControlTarget('A', { distance: 10 });
         unit.setInventoryControlSelectedTarget(laser, 'A');
 
-        expect(laser.el!.classList.contains('selected-range-extreme')).toBeTrue();
+        expect(component.isOutOfLongRange(row)).toBeTrue();
+        expect(component.isRangeSelected(row, 'long')).toBeFalse();
+        expect(component.targetNumberText(row)).toBe('X');
+        expect(laser.el!.classList.contains('selected-range-extreme')).toBeFalse();
         expect(laser.el!.classList.contains('selected-range-long')).toBeFalse();
     });
 
@@ -442,7 +445,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         component.toggleSelected(row);
         unit.createInventoryControlTarget();
-        (component as any).refresh();
+        unit.inventoryControl.markInventoryViewChanged();
         fixture.detectChanges();
 
         expect(unit.getInventoryControlSelectedTarget(row.id)).toBe('A');
@@ -464,7 +467,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         unit.createInventoryControlTarget();
         unit.createInventoryControlTarget();
         unit.updateInventoryControlTarget('B', { distance: 4, tnModifier: 1 });
-        (component as any).refresh();
+        unit.inventoryControl.markInventoryViewChanged();
         fixture.detectChanges();
 
         (fixture.nativeElement.querySelector('.weapon-equipment-row .target-selector') as HTMLButtonElement).click();
@@ -492,7 +495,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         ]);
         const { component, fixture, unit } = createComponent([first, second, broken, disabled, punch], {}, [], entryStates);
         unit.createInventoryControlTarget();
-        (component as any).refresh();
+        unit.inventoryControl.markInventoryViewChanged();
         fixture.detectChanges();
         const rangedSection = (Array.from(fixture.nativeElement.querySelectorAll('.weapon-equipment-section')) as HTMLElement[])
             .find(section => section.querySelector('h3')?.textContent?.trim() === 'Ranged Weapons')!;
@@ -534,7 +537,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         unit.createInventoryControlTarget();
         unit.updateInventoryControlTarget('A', { distance: 8, tnModifier: 1 });
         unit.setInventoryControlSelectedTarget(row.entry, 'A');
-        (component as any).refresh();
+        unit.inventoryControl.markInventoryViewChanged();
         fixture.detectChanges();
 
         expect(component.canSelectRange(row, 'long')).toBeFalse();
@@ -565,7 +568,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         unit.createInventoryControlTarget();
         unit.updateInventoryControlTarget('A', { distance: 4, tnModifier: 1 });
         unit.setInventoryControlSelectedTarget(row.entry, 'A');
-        (component as any).refresh();
+        unit.inventoryControl.markInventoryViewChanged();
         fixture.detectChanges();
 
         expect(component.targetNumberText(row)).toBe('10');
@@ -588,7 +591,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         unit.createInventoryControlTarget();
         unit.updateInventoryControlTarget('A', { distance: 10, tnModifier: 1 });
         unit.setInventoryControlSelectedTarget(row.entry, 'A');
-        (component as any).refresh();
+        unit.inventoryControl.markInventoryViewChanged();
 
         expect(component.isRangeSelected(row, 'short')).toBeFalse();
         expect(component.isOutOfLongRange(row)).toBeFalse();
@@ -610,7 +613,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         unit.createInventoryControlTarget();
         unit.updateInventoryControlTarget('A', { distance: 11, tnModifier: 1 });
         unit.setInventoryControlSelectedTarget(row.entry, 'A');
-        (component as any).refresh();
+        unit.inventoryControl.markInventoryViewChanged();
         fixture.detectChanges();
 
         expect(component.isOutOfLongRange(row)).toBeTrue();
@@ -669,7 +672,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(rangedSection.querySelector<HTMLInputElement>('.ranged-select-all')!.checked).toBeFalse();
     });
 
-    it('resets entry and range selections from the dialog and SVG', () => {
+    it('resets entry and range selections from the dialog state', () => {
         const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>') });
         const punch = entry({ id: 'punch', physical: true, el: svgEntry('<g><g class="name"><text>Punch</text></g><text class="range_short">1</text><text class="range_medium">2</text><text class="range_long">3</text></g>') });
         const { component, unit } = createComponent([laser, punch]);
@@ -682,8 +685,6 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(component.isSelected(laserRow)).toBeTrue();
         expect(component.isRangeSelected(laserRow, 'medium')).toBeTrue();
         expect(component.isSelected(punchRow)).toBeTrue();
-        expect(laser.el!.classList.contains('selected')).toBeTrue();
-        expect(punch.el!.classList.contains('selected')).toBeTrue();
 
         component.resetSelections();
 
@@ -692,8 +693,6 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(component.isSelected(punchRow)).toBeFalse();
         expect(unit.getInventoryControlSelectionSnapshot().selectedEntryIds.size).toBe(0);
         expect(unit.getInventoryControlSelectionSnapshot().selectedRanges.size).toBe(0);
-        expect(laser.el!.classList.contains('selected')).toBeFalse();
-        expect(punch.el!.classList.contains('selected')).toBeFalse();
     });
 
     it('raises selected weapon heat before dissipation and consumes shared ammo bins', async () => {

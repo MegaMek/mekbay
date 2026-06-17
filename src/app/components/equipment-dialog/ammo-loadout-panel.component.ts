@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';
+import type { CBTInventoryControlRuntime } from '../../models/cbt-inventory-control-runtime.model';
 import type { HandlerContext } from '../../services/equipment-interaction-registry.service';
 import type { AmmoControlEntry, AmmoControlGroup, AmmoControlGroupLocation } from '../../utils/ammo-interaction.util';
 import { changeAmmoEntryRemaining, changeAmmoGroupRemaining, getAmmoControlGroups, getAmmoEntryRemaining, getAmmoGroupRemaining, setAmmoEntry, setAmmoGroup } from '../../utils/ammo-interaction.util';
@@ -8,6 +9,7 @@ export interface AmmoLoadoutPanelData {
     context: HandlerContext;
     readOnly?: boolean;
     getEntries?: () => AmmoControlEntry[];
+    inventoryControl?: CBTInventoryControlRuntime;
 }
 
 @Component({
@@ -389,7 +391,6 @@ export interface AmmoLoadoutPanelData {
 })
 export class AmmoLoadoutPanelComponent {
     readonly panelData = input.required<AmmoLoadoutPanelData>({ alias: 'data' });
-    private readonly revision = signal(0);
     private readonly expandedGroups = signal<Set<string>>(new Set());
     private readonly expandedEntries = signal<Set<string>>(new Set());
 
@@ -398,11 +399,12 @@ export class AmmoLoadoutPanelComponent {
     }
 
     groups(): AmmoControlGroup[] {
-        this.revision();
+        this.trackInventoryView();
         return getAmmoControlGroups(this.data.getEntries?.() ?? this.data.entries);
     }
 
     readOnly(): boolean {
+        this.trackInventoryView();
         const entries = this.data.getEntries?.() ?? this.data.entries;
         return this.data.readOnly ?? entries[0]?.owner.readOnly() ?? false;
     }
@@ -412,7 +414,7 @@ export class AmmoLoadoutPanelComponent {
     }
 
     isExpanded(group: AmmoControlGroup): boolean {
-        this.revision();
+        this.trackInventoryView();
         const expandedEntries = this.expandedEntries();
         return this.expandedGroups().has(group.id) || group.entries.some(entry => expandedEntries.has(entry.id));
     }
@@ -443,12 +445,12 @@ export class AmmoLoadoutPanelComponent {
     }
 
     remaining(entry: AmmoControlEntry): number {
-        this.revision();
+        this.trackInventoryView();
         return getAmmoEntryRemaining(entry);
     }
 
     groupRemaining(group: AmmoControlGroup): number {
-        this.revision();
+        this.trackInventoryView();
         return getAmmoGroupRemaining(group);
     }
 
@@ -472,43 +474,51 @@ export class AmmoLoadoutPanelComponent {
     decrement(group: AmmoControlGroup): void {
         if (this.readOnly()) return;
         if (changeAmmoGroupRemaining(group, -1, this.data.context)) {
-            this.revision.update(value => value + 1);
+            this.markInventoryViewChanged();
         }
     }
 
     increment(group: AmmoControlGroup): void {
         if (this.readOnly()) return;
         if (changeAmmoGroupRemaining(group, 1, this.data.context)) {
-            this.revision.update(value => value + 1);
+            this.markInventoryViewChanged();
         }
     }
 
     decrementBin(entry: AmmoControlEntry): void {
         if (this.readOnly() || entry.destroyed) return;
         if (changeAmmoEntryRemaining(entry, -1, this.data.context)) {
-            this.revision.update(value => value + 1);
+            this.markInventoryViewChanged();
         }
     }
 
     incrementBin(entry: AmmoControlEntry): void {
         if (this.readOnly() || entry.destroyed) return;
         if (changeAmmoEntryRemaining(entry, 1, this.data.context)) {
-            this.revision.update(value => value + 1);
+            this.markInventoryViewChanged();
         }
     }
 
     async setAmmo(group: AmmoControlGroup): Promise<void> {
         if (this.readOnly()) return;
         if (await setAmmoGroup(group, this.data.context)) {
-            this.revision.update(value => value + 1);
+            this.markInventoryViewChanged();
         }
     }
 
     async setAmmoBin(entry: AmmoControlEntry): Promise<void> {
         if (this.readOnly()) return;
         if (await setAmmoEntry(entry, this.data.context)) {
-            this.revision.update(value => value + 1);
+            this.markInventoryViewChanged();
         }
+    }
+
+    private trackInventoryView(): void {
+        this.data.inventoryControl?.inventoryViewVersion();
+    }
+
+    private markInventoryViewChanged(): void {
+        this.data.inventoryControl?.markInventoryViewChanged();
     }
 
 }

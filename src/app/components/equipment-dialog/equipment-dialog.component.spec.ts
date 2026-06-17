@@ -5,7 +5,7 @@ import { Subject } from 'rxjs';
 import { WeaponEquipment } from '../../models/equipment.model';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import type { MountedEquipment } from '../../models/force-serialization';
-import { InventoryControlRuntimeState } from '../../models/inventory-control-runtime-state.model';
+import { CBTInventoryControlRuntime } from '../../models/cbt-inventory-control-runtime.model';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { EquipmentDialogComponent } from './equipment-dialog.component';
@@ -25,9 +25,10 @@ class FakeOutput<T> {
 }
 
 function addRuntimeSelection(unit: CBTForceUnit): CBTForceUnit {
-    const runtime = new InventoryControlRuntimeState(() => unit.getInventory());
+    const runtime = new CBTInventoryControlRuntime(unit);
 
     Object.assign(unit, {
+        inventoryControl: runtime,
         getInventoryControlSelectionSnapshot: () => runtime.getSelectionSnapshot(),
         getInventoryControlTargets: () => runtime.getTargets(),
         getInventoryControlTarget: (targetId: string) => runtime.getTarget(targetId),

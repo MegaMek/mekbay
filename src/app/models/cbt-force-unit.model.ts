@@ -47,7 +47,7 @@ import { UnitSvgInfantryService } from '../services/unit-svg-infantry.service';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { AmmoEquipment, WeaponEquipment } from './equipment.model';
 import { C3NetworkUtil } from '../utils/c3-network.util';
-import { getMotiveModeLabel, getMotiveModeTargetNumberModifier, getMotiveModesOptionsByUnit, type MotiveModeOption } from './motiveModes.model';
+import { getMotiveModesOptionsByUnit, type MotiveModeOption } from './motiveModes.model';
 import type { TurnState } from './turn-state.model';
 import { Sanitizer } from '../utils/sanitizer.util';
 import type { UnitTypeRules } from './rules/unit-type-rules';
@@ -55,9 +55,8 @@ import { MekRules } from './rules/mek-rules';
 import { AeroRules } from './rules/aero-rules';
 import { InfantryRules } from './rules/infantry-rules';
 import { VehicleRules } from './rules/vehicle-rules';
-import { InventoryControlRuntimeState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeSelectionSnapshot, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from './inventory-control-runtime-state.model';
-import { computeLinkedModifiers, resolveHitModifier } from './rules/hit-modifier.util';
-import { inventoryTargetCategory, inventoryTargetNumberText, readInventoryTargetDisplay } from '../utils/inventory-target-number.util';
+import { type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeSelectionSnapshot, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from './inventory-control-runtime-state.model';
+import { CBTInventoryControlRuntime } from './cbt-inventory-control-runtime.model';
 
 /*
  * Author: Drake
@@ -76,10 +75,8 @@ export class CBTForceUnit extends ForceUnit {
         internal: Map<string, { loc: string; points?: number }>;
     };
     protected override state: CBTForceUnitState;
-    private readonly inventoryControlRuntime = new InventoryControlRuntimeState(
-        () => this.state.inventory(),
-        (entry, target) => this.inventoryControlTargetNumberText(entry, target)
-    );
+    readonly inventoryControl = new CBTInventoryControlRuntime(this);
+    private readonly inventoryControlRuntime = this.inventoryControl;
 
     readonly alias = computed<string | undefined>(() => {
         const pilot = this.getCrewMember(0);
@@ -119,6 +116,7 @@ export class CBTForceUnit extends ForceUnit {
      */
     writeCrits(crits: CriticalSlot[]): void {
         this.state.crits.set(crits);
+        this.inventoryControl.markInventoryViewChanged();
     }
 
     private createRules(): UnitTypeRules {
@@ -225,6 +223,7 @@ export class CBTForceUnit extends ForceUnit {
 
     setCritSlots(critSlots: CriticalSlot[], initialization: boolean = false) {
         this.state.crits.set(critSlots);
+        this.inventoryControl.markInventoryViewChanged();
         if (!initialization) {
             this.evaluateDestroyed();
             this.setModified();
@@ -296,6 +295,7 @@ export class CBTForceUnit extends ForceUnit {
 
     setInventory(inventory: MountedEquipment[], initialization: boolean = false) {
         this.state.inventory.set(inventory);
+        this.inventoryControl.markInventoryViewChanged();
         if (!initialization) {
             this.setModified();
         }
@@ -386,33 +386,6 @@ export class CBTForceUnit extends ForceUnit {
 
     syncInventoryControlSelectionSvg(): void {
         this.inventoryControlRuntime.syncSelectionSvg();
-    }
-
-    private inventoryControlTargetNumberText(entry: MountedEquipment, target: InventoryControlRuntimeTarget): string | null {
-        const svgText = this.svgService?.inventoryTargetNumberText(entry, target);
-        if (svgText) return svgText;
-
-        const moveMode = this.turnState().moveMode();
-        const heatFireModifier = this.svgService?.inventoryTargetHeatFireModifier(entry) ?? 0;
-        const text = inventoryTargetNumberText({
-            entry,
-            category: inventoryTargetCategory(entry),
-            display: readInventoryTargetDisplay(entry),
-            target,
-            gunnerySkill: this.gunnerySkill(),
-            pilotingSkill: this.pilotingSkill(),
-            movementModifier: getMotiveModeTargetNumberModifier(moveMode),
-            movementLabel: moveMode ? getMotiveModeLabel(moveMode, this.getUnit(), this.turnState().airborne() ?? false) : 'None',
-            hitModifier: this.inventoryControlHitModifier(entry) - heatFireModifier,
-            heatFireModifier
-        });
-        return text || null;
-    }
-
-    private inventoryControlHitModifier(entry: MountedEquipment): number {
-        const state = (this.rules as { computeAllEntryStates?: () => Map<MountedEquipment, { hitMod: number }> }).computeAllEntryStates?.().get(entry);
-        const hitModifier = resolveHitModifier(entry, state?.hitMod ?? computeLinkedModifiers(entry));
-        return typeof hitModifier === 'number' ? hitModifier : 0;
     }
 
     get getLocations() {

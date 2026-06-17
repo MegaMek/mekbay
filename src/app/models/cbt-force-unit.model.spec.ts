@@ -272,7 +272,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBeUndefined();
     });
 
-    it('renders selected target TN in a separate SVG overlay without mutating hit modifier', () => {
+    it('does not mutate hit modifier or render target TN text during runtime target selection sync', () => {
         const forceUnit = createForceUnit();
         initialize(forceUnit);
         const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
@@ -285,9 +285,9 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.setInventoryControlSelectedTarget(weaponEntry, 'A');
 
         expect(hitModText.textContent).toBe('+0');
-        expect(targetTnRect.getAttribute('display')).toBe('block');
-        expect(targetTnText.getAttribute('display')).toBe('block');
-        expect(targetTnText.textContent).toBe('7');
+        expect(targetTnRect.getAttribute('display')).toBe('none');
+        expect(targetTnText.getAttribute('display')).toBe('none');
+        expect(targetTnText.textContent).toBe('');
 
         forceUnit.setInventoryControlSelectedTarget(weaponEntry, null);
 
@@ -297,69 +297,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(targetTnText.textContent).toBe('');
     });
 
-    it('uses the active SVG service path for selected target TN rendering', () => {
-        const forceUnit = createForceUnit();
-        initialize(forceUnit);
-        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
-        forceUnit.svg.set(weaponEntry.el!.ownerSVGElement as SVGSVGElement);
-        const targetTnText = weaponEntry.el!.querySelector(':scope > .targetTn-text') as SVGTextElement;
-        (forceUnit as any)._svgService = {
-            inventoryTargetNumberText: jasmine.createSpy('inventoryTargetNumberText').and.returnValue('13')
-        };
-
-        forceUnit.createInventoryControlTarget();
-        forceUnit.updateInventoryControlTarget('A', { distance: 8, tnModifier: 1 });
-        forceUnit.setInventoryControlSelectedTarget(weaponEntry, 'A');
-
-        expect((forceUnit.svgService as any).inventoryTargetNumberText).toHaveBeenCalledWith(weaponEntry, jasmine.objectContaining({ id: 'A' }));
-        expect(targetTnText.textContent).toBe('13');
-    });
-
-    it('refreshes selected target TN overlay when inventory display updates', () => {
-        const forceUnit = createForceUnit();
-        initialize(forceUnit);
-        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
-        forceUnit.svg.set(weaponEntry.el!.ownerSVGElement as SVGSVGElement);
-        const targetTnText = weaponEntry.el!.querySelector(':scope > .targetTn-text') as SVGTextElement;
-        let targetNumber = '7';
-        (forceUnit as any)._svgService = {
-            updateInventory: (UnitSvgService.prototype as any).updateInventory,
-            unit: forceUnit,
-            getGlobalFireModifier: () => 0,
-            getInventoryTargetHitModifier: () => 0,
-            inventoryTargetHeatFireModifier: () => 0,
-            inventoryTargetNumberText: () => targetNumber,
-            renderHitModEntry: () => undefined
-        };
-
-        forceUnit.createInventoryControlTarget();
-        forceUnit.updateInventoryControlTarget('A', { distance: 8, tnModifier: 1 });
-        forceUnit.setInventoryControlSelectedTarget(weaponEntry, 'A');
-        expect(targetTnText.textContent).toBe('7');
-
-        targetNumber = '9';
-        (forceUnit.svgService as any).updateInventory();
-
-        expect(targetTnText.textContent).toBe('9');
-    });
-
-    it('renders selected target TN for physical club entries without range thresholds', () => {
-        const forceUnit = createForceUnit();
-        initialize(forceUnit);
-        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
-        weaponEntry.equipment!.flags.add('F_CLUB');
-        weaponEntry.el!.querySelectorAll(':scope > .range_short, :scope > .range_medium, :scope > .range_long').forEach(node => node.remove());
-        const targetTnText = weaponEntry.el!.querySelector(':scope > .targetTn-text') as SVGTextElement;
-
-        forceUnit.createInventoryControlTarget();
-        forceUnit.updateInventoryControlTarget('A', { distance: 8, tnModifier: 1 });
-        forceUnit.setInventoryControlSelectedTarget(weaponEntry, 'A');
-
-        expect(targetTnText.getAttribute('display')).toBe('block');
-        expect(targetTnText.textContent).toBe('6');
-    });
-
-    it('marks target-selected inventory entries out of range for red SVG highlighting', () => {
+    it('keeps target selection state independent of SVG presentation rendering', () => {
         const forceUnit = createForceUnit();
         initialize(forceUnit);
         const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
@@ -369,12 +307,12 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.updateInventoryControlTarget('A', { distance: 13 });
         forceUnit.setInventoryControlSelectedTarget(weaponEntry, 'A');
 
-        expect(weaponEntry.el!.classList.contains('selected-target-out-of-range')).toBeTrue();
-        expect(targetTnText.textContent).toBe('X');
+        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBe('A');
+        expect(targetTnText.textContent).toBe('');
 
         forceUnit.setInventoryControlSelectedTarget(weaponEntry, null);
 
-        expect(weaponEntry.el!.classList.contains('selected-target-out-of-range')).toBeFalse();
+        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBeUndefined();
         expect(targetTnText.textContent).toBe('');
     });
 

@@ -46,7 +46,18 @@ import { AmmoEquipment } from '../models/equipment.model';
 import { formatAmmoName } from '../utils/ammo-interaction.util';
 import { getMotiveModeLabel, getMotiveModeTargetNumberModifier } from '../models/motiveModes.model';
 import { inventoryTargetCategory, inventoryTargetNumberText, readInventoryTargetDisplay } from '../utils/inventory-target-number.util';
-import type { InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
+import type { InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
+
+type InventoryControlSvgRangeKey = InventoryControlRuntimeRangeKey;
+
+const INVENTORY_CONTROL_SELECTION_COLOR_PROPERTY = '--inventory-control-selection-color';
+
+const INVENTORY_CONTROL_RANGE_CLASS_NAMES: Record<InventoryControlSvgRangeKey, string> = {
+    short: 'selected-range-short',
+    medium: 'selected-range-medium',
+    long: 'selected-range-long',
+    extreme: 'selected-range-extreme'
+};
 
 /*
  * Author: Drake
@@ -730,6 +741,75 @@ export class UnitSvgService {
         return text || null;
     }
 
+    protected renderInventoryControlSelection(): void {
+        this.unit.inventoryControl.inventoryViewVersion();
+        const selectedEntryIds = this.unit.inventoryControl.selectedEntryIds();
+        const selectedRanges = this.unit.inventoryControl.selectedRanges();
+        const selectedTargets = this.unit.inventoryControl.selectedTargets();
+        const targets = this.unit.inventoryControl.targetsMap();
+        for (const entry of this.unit.getInventory()) {
+            if (!entry.el) continue;
+            const selected = selectedEntryIds.has(entry.id);
+            const targetId = selectedTargets.get(entry.id);
+            const target = targetId ? targets.get(targetId) : undefined;
+            const targetNumberText = selected && target ? this.inventoryTargetNumberText(entry, target) : null;
+            const selectedRange = selected ? this.inventoryControlSelectedRange(entry, selectedRanges, target) : null;
+            const hasSelectedMode = !!entry.el.querySelector(':scope > .alternativeMode.selected');
+
+            this.renderInventoryControlSelectionColor(entry, target);
+            entry.el.classList.toggle('selected', selected);
+            entry.el.classList.toggle('selected-alternative-mode', selected && hasSelectedMode);
+            this.renderInventoryControlTargetNumberEntry(entry, targetNumberText);
+            for (const [range, className] of Object.entries(INVENTORY_CONTROL_RANGE_CLASS_NAMES) as [InventoryControlSvgRangeKey, string][]) {
+                entry.el.classList.toggle(className, selectedRange === range);
+            }
+        }
+    }
+
+    private renderInventoryControlSelectionColor(entry: MountedEquipment, target: InventoryControlRuntimeTarget | undefined): void {
+        const el = entry.el;
+        if (!el) return;
+        if (target?.color) {
+            el.style.setProperty(INVENTORY_CONTROL_SELECTION_COLOR_PROPERTY, target.color);
+        } else {
+            el.style.removeProperty(INVENTORY_CONTROL_SELECTION_COLOR_PROPERTY);
+        }
+    }
+
+    private renderInventoryControlTargetNumberEntry(entry: MountedEquipment, targetNumberText: string | null): void {
+        const el = entry.el;
+        if (!el) return;
+        const rect = el.querySelector<SVGElement>(':scope > .targetTn-rect');
+        const text = el.querySelector<SVGElement>(':scope > .targetTn-text');
+        if (!rect || !text) return;
+
+        const visible = !!targetNumberText;
+        rect.setAttribute('display', visible ? 'block' : 'none');
+        text.setAttribute('display', visible ? 'block' : 'none');
+        text.textContent = targetNumberText ?? '';
+        el.classList.toggle('selected-target-out-of-range', targetNumberText === 'X');
+    }
+
+    private inventoryControlSelectedRange(
+        entry: MountedEquipment,
+        selectedRanges: Map<string, InventoryControlRuntimeRangeKey>,
+        target: InventoryControlRuntimeTarget | undefined
+    ): InventoryControlSvgRangeKey | null {
+        if (target) return this.inventoryControlRangeForTargetDistance(entry, target.distance);
+        return selectedRanges.get(entry.id) ?? null;
+    }
+
+    private inventoryControlRangeForTargetDistance(entry: MountedEquipment, distance: number): InventoryControlSvgRangeKey | null {
+        const ranges = (entry.equipment as { ranges?: unknown } | undefined)?.ranges;
+        if (!Array.isArray(ranges)) return null;
+        const [shortRange, mediumRange, longRange, extremeRange] = ranges.map(value => Number(value));
+        if (Number.isFinite(shortRange) && distance <= shortRange) return 'short';
+        if (Number.isFinite(mediumRange) && distance <= mediumRange) return 'medium';
+        if (Number.isFinite(longRange) && distance <= longRange) return 'long';
+        if (Number.isFinite(extremeRange) && extremeRange > 0) return 'extreme';
+        return null;
+    }
+
     /** Render hit modifier badge for a single inventory entry. Pure presentation. */
     protected renderHitModEntry(entry: MountedEquipment, hitModifier: number | 'Vs' | '*' | null) {
         if (!entry.el) return;
@@ -784,7 +864,7 @@ export class UnitSvgService {
                 this.renderHitModEntry(entry, resolveHitModifier(entry, additionalMod));
             }
         });
-        this.unit.syncInventoryControlSelectionSvg();
+        this.renderInventoryControlSelection();
     }
 
     protected updateTurnState() {

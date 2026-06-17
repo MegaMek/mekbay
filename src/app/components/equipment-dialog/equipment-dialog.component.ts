@@ -37,7 +37,6 @@ export class EquipmentDialogComponent {
     private readonly overlayManager = inject(OverlayManagerService);
     private readonly injector = inject(Injector);
     private readonly destroyRef = inject(DestroyRef);
-    private readonly revision = signal(0);
     private readonly turnSummaryParent = {
         unit: () => this.unit(),
         force: () => null
@@ -52,7 +51,7 @@ export class EquipmentDialogComponent {
     readonly unitList = computed(() => this.resolveUnitList());
     readonly unit = computed(() => this.unitList()[this.unitIndex()] ?? this.requiredUnit());
     readonly targets = computed(() => {
-        this.revision();
+        this.unit().inventoryControl.targetsMap();
         return this.unit().getInventoryControlTargets();
     });
     readonly hasPrev = computed(() => this.unitIndex() > 0);
@@ -181,22 +180,18 @@ export class EquipmentDialogComponent {
 
         outputToObservable(componentRef.instance.addRequest).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             this.unit().createInventoryControlTarget();
-            this.refreshInventoryPanels();
             this.syncTargetsOverlayInputs();
         });
         outputToObservable(componentRef.instance.resetRequest).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             this.unit().resetInventoryControlTargets();
-            this.refreshInventoryPanels();
             this.syncTargetsOverlayInputs();
         });
         outputToObservable(componentRef.instance.updateRequest).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((request: WeaponTargetUpdateRequest) => {
             this.unit().updateInventoryControlTarget(request.targetId, request.patch);
-            this.refreshInventoryPanels();
             this.syncTargetsOverlayInputs();
         });
         outputToObservable(componentRef.instance.deleteRequest).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(targetId => {
             this.unit().deleteInventoryControlTarget(targetId);
-            this.refreshInventoryPanels();
             this.syncTargetsOverlayInputs();
         });
         outputToObservable(componentRef.instance.colorPickerOpened).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
@@ -211,12 +206,12 @@ export class EquipmentDialogComponent {
     }
 
     ammoPanelData(unit: CBTForceUnit): AmmoLoadoutPanelData {
-        this.revision();
         return {
             entries: this.ammoEntries(unit),
             context: this.data.context,
             readOnly: this.readOnly(unit),
-            getEntries: () => this.ammoEntries(unit)
+            getEntries: () => this.ammoEntries(unit),
+            inventoryControl: unit.inventoryControl
         };
     }
 
@@ -386,9 +381,6 @@ export class EquipmentDialogComponent {
             this.closeUnitOverlays(previousUnitId);
         }
         this.data.onUnitChange?.(nextUnit, index);
-        if (refresh) {
-            this.revision.update(value => value + 1);
-        }
     }
 
     private resolveUnitList(): CBTForceUnit[] {
@@ -422,15 +414,6 @@ export class EquipmentDialogComponent {
         const turnState = this.unit().turnState() as unknown as Record<string, unknown>;
         const method = turnState[methodName];
         return typeof method === 'function' ? method.call(turnState) as T : fallback;
-    }
-
-    private refresh(): void {
-        this.revision.update(value => value + 1);
-    }
-
-    private refreshInventoryPanels(): void {
-        this.refresh();
-        this.currentWeaponsPanel()?.refresh();
     }
 
     private syncTargetsOverlayInputs(): void {
