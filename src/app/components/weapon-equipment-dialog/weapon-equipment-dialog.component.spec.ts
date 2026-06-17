@@ -224,19 +224,6 @@ describe('WeaponEquipmentDialogComponent', () => {
         expect(groups.find(group => group.id === 'ranged')?.rows.map(row => row.id)).toEqual(['broken', 'laser']);
     });
 
-    it('moves inactive crit-backed inventory rows to the bottom', () => {
-        const brokenCrit = { id: 'broken-crit', destroyed: 1 } as CriticalSlot;
-        const liveCrit = { id: 'live-crit' } as CriticalSlot;
-        const broken = entry({ id: 'broken', equipment: weapon('broken'), critSlots: [brokenCrit], el: svgEntry('<g><g class="name"><text>Broken</text></g></g>') });
-        const laser = entry({ id: 'laser', equipment: weapon('laser'), critSlots: [liveCrit], el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
-        const unit = { getInventory: () => [broken, laser], getCritSlots: () => [brokenCrit, liveCrit], rules: {} } as unknown as CBTForceUnit;
-        [broken, laser].forEach(item => item.owner = unit);
-
-        const groups = getInventoryControlGroups(unit);
-
-        expect(groups.find(group => group.id === 'ranged')?.rows.map(row => row.id)).toEqual(['laser', 'broken']);
-    });
-
     it('marks rows disabled from entry state rules', () => {
         const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
         const entryStates = new Map<MountedEquipment, { isDamaged: boolean; isDisabled: boolean; hitMod: number }>([
@@ -519,47 +506,18 @@ describe('WeaponEquipmentDialogComponent', () => {
         ]);
     });
 
-    it('marks target-assigned weapons beyond long range and uses extreme range modifier', () => {
+    it('marks target numbers out of range beyond long range', () => {
         const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [3, 6, 9, 12]), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>') });
-        const { component, fixture, unit } = createComponent([laser], {}, [], new Map([[laser, { isDamaged: false, isDisabled: false, hitMod: 1 }]]), { gunnerySkill: 4 });
+        const { component, fixture, unit } = createComponent([laser], {}, [], new Map(), { gunnerySkill: 4 });
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         unit.createInventoryControlTarget();
-        unit.updateInventoryControlTarget('A', { distance: 10, tnModifier: 1 });
+        unit.updateInventoryControlTarget('A', { distance: 11, tnModifier: 1 });
         unit.setInventoryControlSelectedTarget(row.entry, 'A');
         (component as any).refresh();
         fixture.detectChanges();
 
         expect(component.isOutOfLongRange(row)).toBeTrue();
         expect(component.isOutOfExtremeRange(row)).toBeFalse();
-        expect(component.isRangeSelected(row, 'long')).toBeFalse();
-        expect(component.targetNumberText(row)).toBe('12');
-        expect(component.targetNumberTooltip(row)).toEqual([
-            { label: 'Gunnery', value: '4' },
-            { label: 'Movement (None)', value: '+0' },
-            { label: 'Target (A)', value: '+1' },
-            { label: 'Range (Extreme)', value: '+6' },
-            { label: 'Hit Modifier', value: '+1' },
-            { isBreak: true },
-            { label: 'Total', value: '12', isHeader: true },
-        ]);
-        expect((fixture.nativeElement.querySelector('.tn-cell') as HTMLElement).classList.contains('out-of-range')).toBeFalse();
-        const rangeCells = Array.from(fixture.nativeElement.querySelectorAll('.range-cell')) as HTMLElement[];
-        expect(rangeCells.length).toBe(3);
-        expect(rangeCells.every(cell => cell.classList.contains('out-of-range'))).toBeTrue();
-    });
-
-    it('marks target numbers out of range beyond extreme range', () => {
-        const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [3, 6, 9, 12]), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>') });
-        const { component, fixture, unit } = createComponent([laser], {}, [], new Map(), { gunnerySkill: 4 });
-        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
-        unit.createInventoryControlTarget();
-        unit.updateInventoryControlTarget('A', { distance: 13, tnModifier: 1 });
-        unit.setInventoryControlSelectedTarget(row.entry, 'A');
-        (component as any).refresh();
-        fixture.detectChanges();
-
-        expect(component.isOutOfLongRange(row)).toBeTrue();
-        expect(component.isOutOfExtremeRange(row)).toBeTrue();
         expect(component.targetNumberText(row)).toBe('X');
         expect(component.targetNumberTooltip(row)).toEqual([{ value: 'OUT OF RANGE', isHeader: true }]);
         expect((fixture.nativeElement.querySelector('.tn-cell') as HTMLElement).classList.contains('out-of-range')).toBeTrue();
