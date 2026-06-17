@@ -1,7 +1,7 @@
 .weapon-equipment-dialog {
     --weapon-equipment-title-height: 30px;
     --weapon-equipment-columns: 24px 28px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(4, 42px) fit-content(420px);
-    max-width: min(1400px, 96dvw);
+    max-width: 1000px;
     width: 100%;
     align-items: center;
 }
@@ -25,8 +25,39 @@
     justify-content: center;
     width: 100%;
     min-height: 40px;
-    padding-inline: 48px;
+    padding-inline: 190px;
+    margin: 0;
     box-sizing: border-box;
+}
+
+@container (max-width: 760px) {
+    .weapon-equipment-title-row {
+        padding-inline: 0px;
+        padding-right: 141px;
+        padding-left: 44px;
+    } 
+}
+
+@container (max-width: 400px) {
+    .weapon-equipment-title-row {
+        h2 {
+            font-size: 1.05em;
+        }
+    } 
+}
+
+.title-buttons {
+    position: absolute;
+    right: 0;
+    top: 0;
+    display: flex;
+    flex-direction: row;
+    gap: 8px;
+
+    &.left {
+        left: 0;
+        right: auto;
+    }
 }
 
 .weapon-equipment-title-row h2 {
@@ -36,9 +67,6 @@
 }
 
 .turn-tracker-title-button {
-    position: absolute;
-    top: 50%;
-    right: 4px;
     width: 40px;
     height: 40px;
     padding: 0;
@@ -47,7 +75,6 @@
     color: #000;
     cursor: pointer;
     opacity: 0.85;
-    transform: translateY(-50%);
     transition: opacity 0.2s;
 }
 
@@ -97,7 +124,8 @@
     grid-template-columns: var(--weapon-equipment-columns);
     gap: 4px;
     align-self: center;
-    width: fit-content;
+    width: 100%;
+    justify-content: safe center;
     max-width: 100%;
     max-height: 100%;
     min-width: 0;
@@ -193,6 +221,8 @@
     top: var(--weapon-equipment-title-height);
     z-index: 2;
     background: var(--background-color);
+    box-shadow: 0 0 0 100vmax var(--background-color);
+    clip-path: inset(0 -100vmax);
     color: var(--text-color-secondary);
     font-size: 0.78rem;
     font-weight: 700;
@@ -231,6 +261,8 @@
     min-height: var(--weapon-equipment-title-height);
     box-sizing: border-box;
     background: var(--background-color);
+    box-shadow: 0 0 0 100vmax var(--background-color);
+    clip-path: inset(0 -100vmax);
     text-align: left;
     margin: 0;
     padding: 4px 8px;
@@ -291,16 +323,20 @@
     grid-template-columns: var(--weapon-equipment-columns);
     width: 100%;
     box-sizing: border-box;
-    background: var(--background-color);
+    background: transparent;
     border-bottom-color: transparent;
-    opacity: 0.8;
+    opacity: 1;
     overflow: hidden;
     padding: 4px;
     gap: 4px;
 }
 
+.weapon-equipment-row.cdk-drag-preview::after {
+    display: none;
+}
+
 .weapon-equipment-row.cdk-drag-placeholder {
-    opacity: 0.35;
+    opacity: 0.3;
 }
 
 .modifier.destroyed {
