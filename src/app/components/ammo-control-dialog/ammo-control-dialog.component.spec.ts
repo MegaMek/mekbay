@@ -52,6 +52,23 @@ function createCritEntry(params: {
     };
 }
 
+function createToastServiceMock() {
+    const toasts: Array<{ id: string; message: string; type: 'info' | 'success' | 'error'; data?: Record<string, unknown> }> = [];
+    return {
+        showToast: jasmine.createSpy('showToast').and.callFake((message: string, type: 'info' | 'success' | 'error', id?: string, data?: Record<string, unknown>) => {
+            const toastId = id ?? `toast-${toasts.length + 1}`;
+            const existingIndex = toasts.findIndex(toast => toast.id === toastId);
+            if (existingIndex === -1) {
+                toasts.push({ id: toastId, message, type, data });
+            } else {
+                toasts[existingIndex] = { id: toastId, message, type, data };
+            }
+            return toastId;
+        }),
+        toasts: () => toasts,
+    };
+}
+
 describe('AmmoControlDialogComponent', () => {
     function configureDialog(data: AmmoControlDialogData): AmmoControlDialogComponent {
         TestBed.configureTestingModule({
@@ -245,7 +262,7 @@ describe('AmmoControlDialogComponent', () => {
             entries: [activeEntry, destroyedEntry],
             context: {
                 dataService: { getEquipments: () => ({ [standardAmmo.internalName]: standardAmmo }) },
-                toastService: { showToast: jasmine.createSpy('showToast') },
+                toastService: createToastServiceMock(),
             } as unknown as HandlerContext,
         };
 
