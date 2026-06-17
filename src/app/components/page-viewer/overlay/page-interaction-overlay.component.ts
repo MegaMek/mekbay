@@ -179,7 +179,7 @@ export class PageInteractionOverlayComponent {
             return;
         }
 
-        this.overlayManager.closeAllManagedOverlays();
+        this.closeAllOverlays();
 
         const target = event.currentTarget as HTMLElement || (event.target as HTMLElement);
 
@@ -224,7 +224,7 @@ export class PageInteractionOverlayComponent {
             return;
         }
 
-        this.overlayManager.closeAllManagedOverlays();
+        this.closeAllOverlays();
 
         const target = event.currentTarget as HTMLElement;
         const portal = new ComponentPortal(WeaponTargetsMenuComponent, null, this.injector);
