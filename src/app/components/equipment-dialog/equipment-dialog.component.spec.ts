@@ -1,5 +1,6 @@
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { TestBed } from '@angular/core/testing';
+import { Subject } from 'rxjs';
 
 import { WeaponEquipment } from '../../models/equipment.model';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
@@ -9,6 +10,19 @@ import { KeyboardShortcutService } from '../../services/keyboard-shortcut.servic
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { EquipmentDialogComponent } from './equipment-dialog.component';
 import type { EquipmentDialogContext, EquipmentDialogData } from './equipment-dialog.model';
+
+class FakeOutput<T> {
+    private readonly subscribers: Array<(value: T) => void> = [];
+
+    subscribe(callback: (value: T) => void): { unsubscribe: () => void } {
+        this.subscribers.push(callback);
+        return { unsubscribe: () => undefined };
+    }
+
+    emit(value: T): void {
+        this.subscribers.forEach(callback => callback(value));
+    }
+}
 
 function addRuntimeSelection(unit: CBTForceUnit): CBTForceUnit {
     const runtime = new InventoryControlRuntimeState(() => unit.getInventory());
@@ -123,6 +137,24 @@ function createDialog(data: EquipmentDialogData) {
     return { fixture, component: fixture.componentInstance, dialogRef, shortcutService, overlayManager };
 }
 
+function createTargetsMenuOverlay() {
+    const instance = {
+        addRequest: new FakeOutput<void>(),
+        resetRequest: new FakeOutput<void>(),
+        updateRequest: new FakeOutput<any>(),
+        deleteRequest: new FakeOutput<string>(),
+        colorPickerOpened: new FakeOutput<void>(),
+        colorPickerClosed: new FakeOutput<void>()
+    };
+    const componentRef = {
+        instance,
+        setInput: jasmine.createSpy('setInput'),
+        changeDetectorRef: { detectChanges: jasmine.createSpy('detectChanges') }
+    };
+    const closed = new Subject<void>();
+    return { instance, overlayRef: { componentRef, closed } };
+}
+
 function createContext(): EquipmentDialogContext {
     return {
         toastService: { showToast: jasmine.createSpy('showToast') },
@@ -182,5 +214,32 @@ describe('EquipmentDialogComponent', () => {
         expect(footerCenter.textContent).toContain('CONSUME HEAT & AMMO');
         expect(footerCenter.textContent).toContain('DISMISS');
         expect(footerCenter.querySelector('button[aria-label="Reset"]')).not.toBeNull();
+    });
+
+    it('upgrades selected weapons when the first target is added and clears selections when that target is deleted', () => {
+        const laser = weaponEntry('laser');
+        const unit = createUnit('unit-a', [laser]);
+        const { fixture, component, overlayManager } = createDialog({ unit, context: createContext() });
+        const targetsOverlay = createTargetsMenuOverlay();
+        overlayManager.createManagedOverlay.and.returnValue(targetsOverlay.overlayRef as any);
+        const panel = component.currentWeaponsPanel()!;
+        const row = panel.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        panel.toggleSelected(row);
+        expect(panel.isSelected(row)).toBeTrue();
+        expect(panel.targetForRow(row)).toBeNull();
+
+        component.openTargets(new MouseEvent('click'));
+        targetsOverlay.instance.addRequest.emit(undefined);
+        fixture.detectChanges();
+
+        expect(panel.isSelected(row)).toBeTrue();
+        expect(panel.targetForRow(row)?.id).toBe('A');
+
+        targetsOverlay.instance.deleteRequest.emit('A');
+        fixture.detectChanges();
+
+        expect(panel.isSelected(row)).toBeFalse();
+        expect(panel.targetForRow(row)).toBeNull();
     });
 });

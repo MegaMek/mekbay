@@ -181,22 +181,22 @@ export class EquipmentDialogComponent {
 
         outputToObservable(componentRef.instance.addRequest).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             this.unit().createInventoryControlTarget();
-            this.refresh();
+            this.refreshInventoryPanels();
             this.syncTargetsOverlayInputs();
         });
         outputToObservable(componentRef.instance.resetRequest).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             this.unit().resetInventoryControlTargets();
-            this.refresh();
+            this.refreshInventoryPanels();
             this.syncTargetsOverlayInputs();
         });
         outputToObservable(componentRef.instance.updateRequest).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((request: WeaponTargetUpdateRequest) => {
             this.unit().updateInventoryControlTarget(request.targetId, request.patch);
-            this.refresh();
+            this.refreshInventoryPanels();
             this.syncTargetsOverlayInputs();
         });
         outputToObservable(componentRef.instance.deleteRequest).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(targetId => {
             this.unit().deleteInventoryControlTarget(targetId);
-            this.refresh();
+            this.refreshInventoryPanels();
             this.syncTargetsOverlayInputs();
         });
         outputToObservable(componentRef.instance.colorPickerOpened).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
@@ -426,6 +426,11 @@ export class EquipmentDialogComponent {
 
     private refresh(): void {
         this.revision.update(value => value + 1);
+    }
+
+    private refreshInventoryPanels(): void {
+        this.refresh();
+        this.currentWeaponsPanel()?.refresh();
     }
 
     private syncTargetsOverlayInputs(): void {

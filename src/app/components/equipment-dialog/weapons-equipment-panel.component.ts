@@ -892,7 +892,7 @@ export class WeaponsEquipmentPanelComponent {
         this.refresh();
     }
 
-    private refresh(): void {
+    refresh(): void {
         this.revision.update(value => value + 1);
     }
 
