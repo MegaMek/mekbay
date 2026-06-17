@@ -1008,7 +1008,7 @@ export class SvgInteractionService {
 
         const unit = this.unit();
         if (!unit) return '';
-        const skill = entry.physical ? unit.pilotingSkill() : unit.gunnerySkill();
+        const skill = this.isInventoryPhysicalTargetNumberEntry(entry) ? unit.pilotingSkill() : unit.gunnerySkill();
         const movementModifier = getMotiveModeTargetNumberModifier(unit.turnState().moveMode());
         const minimumRangeModifier = this.inventoryMinimumRangeModifier(entry, target.distance);
         const hitModifier = this.parseNumericCell(this.inventoryDisplayText(entry, 'hit')) ?? 0;
@@ -1017,6 +1017,7 @@ export class SvgInteractionService {
     }
 
     private inventoryRangeSelectionForTarget(entry: MountedEquipment, distance: number): { range: SheetInventoryRangeKey; outOfLongRange: boolean } | null {
+        if (this.isInventoryPhysicalTargetNumberEntry(entry)) return { range: 'short', outOfLongRange: false };
         const thresholds = (['short', 'medium', 'long'] as const)
             .map(range => ({ range, value: this.parseNumericCell(this.inventoryDisplayText(entry, `range_${range}`)) }))
             .filter((item): item is { range: InventoryRangeKey; value: number } => item.value !== null);
@@ -1025,6 +1026,10 @@ export class SvgInteractionService {
             if (distance <= threshold.value) return { range: threshold.range, outOfLongRange: false };
         }
         return { range: 'extreme', outOfLongRange: true };
+    }
+
+    private isInventoryPhysicalTargetNumberEntry(entry: MountedEquipment): boolean {
+        return !!entry.physical || !!entry.equipment?.flags.has('F_CLUB') || !!entry.equipment?.flags.has('F_HAND_WEAPON');
     }
 
     private inventoryMinimumRangeModifier(entry: MountedEquipment, distance: number): number {

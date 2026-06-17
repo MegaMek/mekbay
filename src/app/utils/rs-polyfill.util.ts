@@ -819,7 +819,8 @@ export class RsPolyfillUtil {
     ): void {
         if (!parent || rangeButtonColumns.length === 0) return;
         for (const column of rangeButtonColumns) {
-            if (!this.hasRangeButtonValue(parent, column.field)) continue;
+            // we need this so that physical weapons have range clickable areas
+            // if (!this.hasRangeButtonValue(parent, column.field)) continue;
             const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
             rect.setAttribute('x', column.x.toString());
             rect.setAttribute('y', y.toString());

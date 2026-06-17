@@ -210,6 +210,28 @@ describe('SvgInteractionService', () => {
         expect(unit.getInventoryControlSelectedTarget(entry.id)).toBe('B');
     });
 
+    it('shows target picker target numbers for physical entries without range thresholds', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit(`
+            <g class="inventoryEntry">
+                <rect class="mainButton inventoryEntryButton"></rect>
+                <rect class="shrButton inventoryEntryButton"></rect>
+                <g class="name"><text>Punch</text></g>
+            </g>
+        `);
+        entry.physical = true;
+        unit.createInventoryControlTarget();
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 4 });
+        unit.updateInventoryControlTarget('B', { distance: 8, tnModifier: 1 });
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        (entry.el!.querySelector('.shrButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        const choices = Array.from(document.body.querySelectorAll('.weapon-target-choice-menu .target-choice:not(.empty-choice)')) as HTMLButtonElement[];
+        expect(choices.map(choice => choice.querySelector('.target-choice-tn')?.textContent?.trim())).toEqual(['5', '6']);
+    });
+
     it('switches to a valid alternative mode before selecting its sheet range button', () => {
         const { svg, entry, unit } = createInventoryInteractionUnit(`
             <g class="inventoryEntry">

@@ -296,6 +296,22 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(targetTnText.textContent).toBe('');
     });
 
+    it('renders selected target TN for physical club entries without range thresholds', () => {
+        const forceUnit = createForceUnit();
+        initialize(forceUnit);
+        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
+        weaponEntry.equipment!.flags.add('F_CLUB');
+        weaponEntry.el!.querySelectorAll(':scope > .range_short, :scope > .range_medium, :scope > .range_long').forEach(node => node.remove());
+        const targetTnText = weaponEntry.el!.querySelector(':scope > .targetTn-text') as SVGTextElement;
+
+        forceUnit.createInventoryControlTarget();
+        forceUnit.updateInventoryControlTarget('A', { distance: 8, tnModifier: 1 });
+        forceUnit.setInventoryControlSelectedTarget(weaponEntry, 'A');
+
+        expect(targetTnText.getAttribute('display')).toBe('block');
+        expect(targetTnText.textContent).toBe('6');
+    });
+
     it('marks target-selected inventory entries out of range for red SVG highlighting', () => {
         const forceUnit = createForceUnit();
         initialize(forceUnit);

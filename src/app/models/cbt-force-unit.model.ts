@@ -392,7 +392,7 @@ export class CBTForceUnit extends ForceUnit {
         if (!rangeSelection) return null;
         if (rangeSelection.outOfLongRange) return 'X';
 
-        const skill = entry.physical ? this.pilotingSkill() : this.gunnerySkill();
+        const skill = this.isInventoryControlPhysicalTargetNumberEntry(entry) ? this.pilotingSkill() : this.gunnerySkill();
         const movementModifier = getMotiveModeTargetNumberModifier(this.turnState().moveMode());
         const minimumRangeModifier = this.inventoryControlMinimumRangeModifier(entry, target.distance);
         const hitModifier = this.inventoryControlHitModifier(entry);
@@ -401,7 +401,7 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     private inventoryControlRangeSelectionForTarget(entry: MountedEquipment, distance: number): { range: InventoryControlRuntimeRangeKey; outOfLongRange: boolean } | null {
-        if (entry.physical) return { range: 'short', outOfLongRange: false };
+        if (this.isInventoryControlPhysicalTargetNumberEntry(entry)) return { range: 'short', outOfLongRange: false };
         const thresholds = (['short', 'medium', 'long'] as const)
             .map(range => ({ range, value: this.parseInventoryControlNumericCell(this.inventoryControlDisplayText(entry, `range_${range}`)) }))
             .filter((item): item is { range: 'short' | 'medium' | 'long'; value: number } => item.value !== null);
@@ -410,6 +410,10 @@ export class CBTForceUnit extends ForceUnit {
             if (distance <= threshold.value) return { range: threshold.range, outOfLongRange: false };
         }
         return { range: 'extreme', outOfLongRange: true };
+    }
+
+    private isInventoryControlPhysicalTargetNumberEntry(entry: MountedEquipment): boolean {
+        return !!entry.physical || !!entry.equipment?.flags.has('F_CLUB') || !!entry.equipment?.flags.has('F_HAND_WEAPON');
     }
 
     private inventoryControlMinimumRangeModifier(entry: MountedEquipment, distance: number): number {
