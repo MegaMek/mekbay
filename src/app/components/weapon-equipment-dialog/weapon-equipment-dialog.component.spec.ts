@@ -160,6 +160,9 @@ function createComponent(
             moveMode: () => options.moveMode ?? null,
             airborne: () => false,
         }),
+        svgService: {
+            inventoryTargetHeatFireModifier: () => 0
+        },
         readOnly: () => options.readOnly ?? false,
         hasDirectInventory: () => options.hasDirectInventory ?? true,
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
@@ -500,6 +503,30 @@ describe('WeaponEquipmentDialogComponent', () => {
         const selectedRangeCell = fixture.nativeElement.querySelector('.range-long') as HTMLElement;
         expect(selectedRangeCell.classList.contains('selected-range')).toBeTrue();
         expect(selectedRangeCell.style.getPropertyValue('--range-selection-color')).toBe(INVENTORY_CONTROL_TARGET_COLORS[0]);
+    });
+
+    it('shows heat fire modifiers as a separate target number term', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>') });
+        const { component, fixture, unit } = createComponent([laser], {}, [], new Map([[laser, { isDamaged: false, isDisabled: false, hitMod: 3 }]]), { gunnerySkill: 4 });
+        (unit.svgService as any).inventoryTargetHeatFireModifier = () => 2;
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 4, tnModifier: 1 });
+        unit.setInventoryControlSelectedTarget(row.entry, 'A');
+        (component as any).refresh();
+        fixture.detectChanges();
+
+        expect(component.targetNumberText(row)).toBe('10');
+        expect(component.targetNumberTooltip(row)).toEqual([
+            { label: 'Gunnery', value: '4' },
+            { label: 'Movement (None)', value: '+0' },
+            { label: 'Target (A)', value: '+1' },
+            { label: 'Range (Medium)', value: '+2' },
+            { label: 'Hit Modifier', value: '+1' },
+            { label: 'Heat - Fire Modifier', value: '+2' },
+            { isBreak: true },
+            { label: 'Total', value: '10', isHeader: true },
+        ]);
     });
 
     it('uses piloting skill for physical target numbers', () => {

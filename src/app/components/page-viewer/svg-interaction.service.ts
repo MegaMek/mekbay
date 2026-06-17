@@ -62,8 +62,9 @@ import { WeaponEquipmentDialogComponent, type WeaponEquipmentDialogContext, type
 import { WeaponTargetChoiceMenuComponent } from '../../components/weapon-equipment-dialog/weapon-target-choice-menu.component';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
 import { getInventoryControlModes, getSelectedInventoryControlMode, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
-import { getMotiveModeTargetNumberModifier } from '../../models/motiveModes.model';
+import { getMotiveModeLabel, getMotiveModeTargetNumberModifier } from '../../models/motiveModes.model';
 import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
+import { inventoryTargetCategory, inventoryTargetNumberText, parseInventoryTargetNumberCell, readInventoryTargetDisplay, readInventoryTargetText } from '../../utils/inventory-target-number.util';
 
 type SheetInventoryRangeKey = InventoryRangeKey | 'extreme';
 
@@ -1002,67 +1003,26 @@ export class SvgInteractionService {
     }
 
     private inventoryTargetNumberText(entry: MountedEquipment, target: InventoryControlRuntimeTarget): string {
-        const rangeSelection = this.inventoryRangeSelectionForTarget(entry, target.distance);
-        if (!rangeSelection) return '';
-        if (rangeSelection.outOfLongRange) return 'X';
-
         const unit = this.unit();
         if (!unit) return '';
-        const skill = this.isInventoryPhysicalTargetNumberEntry(entry) ? unit.pilotingSkill() : unit.gunnerySkill();
-        const movementModifier = getMotiveModeTargetNumberModifier(unit.turnState().moveMode());
-        const minimumRangeModifier = this.inventoryMinimumRangeModifier(entry, target.distance);
-        const hitModifier = this.parseNumericCell(this.inventoryDisplayText(entry, 'hit')) ?? 0;
-        const total = skill + movementModifier + target.tnModifier + this.inventoryRangeModifier(rangeSelection.range) + minimumRangeModifier + hitModifier;
-        return total.toString();
-    }
+        const svgText = unit.svgService?.inventoryTargetNumberText(entry, target);
+        if (svgText) return svgText;
 
-    private inventoryRangeSelectionForTarget(entry: MountedEquipment, distance: number): { range: SheetInventoryRangeKey; outOfLongRange: boolean } | null {
-        if (this.isInventoryPhysicalTargetNumberEntry(entry)) return { range: 'short', outOfLongRange: false };
-        const thresholds = (['short', 'medium', 'long'] as const)
-            .map(range => ({ range, value: this.parseNumericCell(this.inventoryDisplayText(entry, `range_${range}`)) }))
-            .filter((item): item is { range: InventoryRangeKey; value: number } => item.value !== null);
-        if (thresholds.length === 0) return null;
-        for (const threshold of thresholds) {
-            if (distance <= threshold.value) return { range: threshold.range, outOfLongRange: false };
-        }
-        return { range: 'extreme', outOfLongRange: true };
-    }
-
-    private isInventoryPhysicalTargetNumberEntry(entry: MountedEquipment): boolean {
-        return !!entry.physical || !!entry.equipment?.flags.has('F_CLUB') || !!entry.equipment?.flags.has('F_HAND_WEAPON');
-    }
-
-    private inventoryMinimumRangeModifier(entry: MountedEquipment, distance: number): number {
-        const min = this.parseNumericCell(this.inventoryDisplayText(entry, 'range_min'));
-        if (min === null || min <= 0 || distance > min) return 0;
-        return (min - distance) + 1;
-    }
-
-    private inventoryDisplayText(entry: MountedEquipment, className: string): string {
-        const selectedMode = entry.el?.querySelector(':scope > .alternativeMode.selected');
-        const modeValue = selectedMode ? this.directSvgText(selectedMode, `.${className}`) : '';
-        if (modeValue && modeValue !== '—') return modeValue;
-        return entry.el ? this.directSvgText(entry.el, `.${className}`) : '';
-    }
-
-    private directSvgText(parent: Element, selector: string): string {
-        return (parent.querySelector(`:scope > ${selector}`)?.textContent ?? '').trim();
-    }
-
-    private parseNumericCell(value: string): number | null {
-        const text = value.trim();
-        if (!/^[-+]?\d+(?:\.\d+)?$/.test(text)) return null;
-        const parsed = Number(text);
-        return Number.isFinite(parsed) ? parsed : null;
-    }
-
-    private inventoryRangeModifier(range: SheetInventoryRangeKey): number {
-        switch (range) {
-            case 'medium': return 2;
-            case 'long': return 4;
-            case 'extreme': return 6;
-            default: return 0;
-        }
+        const moveMode = unit.turnState().moveMode();
+        const heatFireModifier = unit.svgService?.inventoryTargetHeatFireModifier(entry) ?? 0;
+        const hitModifier = parseInventoryTargetNumberCell(readInventoryTargetText(entry, 'hit')) ?? 0;
+        return inventoryTargetNumberText({
+            entry,
+            category: inventoryTargetCategory(entry),
+            display: readInventoryTargetDisplay(entry),
+            target,
+            gunnerySkill: unit.gunnerySkill(),
+            pilotingSkill: unit.pilotingSkill(),
+            movementModifier: getMotiveModeTargetNumberModifier(moveMode),
+            movementLabel: moveMode ? getMotiveModeLabel(moveMode, unit.getUnit(), unit.turnState().airborne() ?? false) : 'None',
+            hitModifier: hitModifier - heatFireModifier,
+            heatFireModifier
+        });
     }
 
     private setupAmmoProfileInteractions(svg: SVGSVGElement, signal: AbortSignal) {

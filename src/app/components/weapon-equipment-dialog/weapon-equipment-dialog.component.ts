@@ -5,7 +5,6 @@ import { Overlay, OverlayModule } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
-import { WeaponEquipment } from '../../models/equipment.model';
 import type { CriticalSlot, MountedEquipment } from '../../models/force-serialization';
 import type { HandlerChoice, HandlerContext } from '../../services/equipment-interaction-registry.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
@@ -22,6 +21,7 @@ import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } f
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import type { TooltipLine } from '../tooltip/tooltip.component';
 import { getMotiveModeLabel, getMotiveModeTargetNumberModifier } from '../../models/motiveModes.model';
+import { inventoryTargetNumberBreakdown, inventoryTargetNumberText, inventoryTargetRangeSelection, parseInventoryTargetNumberCell, type InventoryTargetRangeKey } from '../../utils/inventory-target-number.util';
 import { PageInteractionOverlayComponent } from '../page-viewer/overlay/page-interaction-overlay.component';
 import { PageTurnSummaryPanelComponent } from '../page-viewer/overlay/page-turn-summary.component';
 import { SwipeDirective, type SwipeEndEvent, type SwipeMoveEvent, type SwipeStartEvent } from '../../directives/swipe.directive';
@@ -50,7 +50,7 @@ interface WeaponEquipmentDialogRegistry {
 }
 
 type HeatDissipationWithWings = HeatDissipationState & { totalDissipationWithWings?: number };
-type TargetRangeKey = InventoryRangeKey | 'extreme';
+type TargetRangeKey = InventoryTargetRangeKey;
 
 interface HeatAwareRules {
     heatDissipation: () => HeatDissipationWithWings | null;
@@ -824,26 +824,7 @@ export class WeaponEquipmentDialogComponent {
     }
 
     private targetRangeSelectionForTarget(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null): TargetRangeSelection | null {
-        if (!target) return null;
-        if (row.category === 'physical') return { range: 'short', outOfLongRange: false, outOfExtremeRange: false };
-
-        const thresholds = this.rangeKeys
-            .map(range => ({ range, value: this.parseNumericCell(row.display[range]) }))
-            .filter((item): item is { range: InventoryRangeKey; value: number } => item.value !== null);
-        if (thresholds.length === 0) return null;
-
-        for (const threshold of thresholds) {
-            if (target.distance <= threshold.value) {
-                return { range: threshold.range, outOfLongRange: false, outOfExtremeRange: false };
-            }
-        }
-
-        const extremeRange = this.extremeRange(row);
-        return {
-            range: 'extreme',
-            outOfLongRange: true,
-            outOfExtremeRange: extremeRange !== null && target.distance > extremeRange
-        };
+        return inventoryTargetRangeSelection(this.targetNumberInput(row, target));
     }
 
     private targetChoiceTargetNumberTexts(row: InventoryControlRow): Readonly<Record<InventoryControlRuntimeTargetId, string>> {
@@ -853,16 +834,7 @@ export class WeaponEquipmentDialogComponent {
     }
 
     private targetNumberTextForTarget(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null): string {
-        if (this.targetRangeSelectionForTarget(row, target)?.outOfLongRange) return 'X';
-        const targetNumber = this.targetNumberBreakdownForTarget(row, target);
-        return targetNumber === null ? '' : targetNumber.total.toString();
-    }
-
-    private extremeRange(row: InventoryControlRow): number | null {
-        const equipment = row.entry.equipment;
-        if (!(equipment instanceof WeaponEquipment)) return null;
-        const extremeRange = equipment.ranges[3];
-        return Number.isFinite(extremeRange) && extremeRange > 0 ? extremeRange : null;
+        return inventoryTargetNumberText(this.targetNumberInput(row, target));
     }
 
     private targetNumberBreakdown(row: InventoryControlRow): TargetNumberBreakdown | null {
@@ -870,85 +842,31 @@ export class WeaponEquipmentDialogComponent {
     }
 
     private targetNumberBreakdownForTarget(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null): TargetNumberBreakdown | null {    
-        if (!target) return null;
-        const rangeSelection = this.targetRangeSelectionForTarget(row, target);
-        if (!rangeSelection) return null;
+        const breakdown = inventoryTargetNumberBreakdown(this.targetNumberInput(row, target));
+        return breakdown === null ? null : { total: breakdown.total, lines: breakdown.lines };
+    }
 
-        const skillLabel = row.category === 'physical' ? 'Piloting' : 'Gunnery';
-        const skill = row.category === 'physical'
-            ? this.unit().pilotingSkill()
-            : this.unit().gunnerySkill();
+    private targetNumberInput(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null) {
         const moveMode = this.unit().turnState().moveMode();
-        const movementModifier = getMotiveModeTargetNumberModifier(moveMode);
-        const rangeModifier = this.rangeModifier(rangeSelection.range);
-        const minimumRangeModifier = this.minimumRangeModifier(row, target.distance);
-        const hitModifier = this.hitModifier(row.display.hit);
-        const terms: TooltipLine[] = [
-            { label: skillLabel, value: skill.toString() },
-            { label: `Movement (${this.motiveModeLabel(moveMode)})`, value: this.formatSignedModifier(movementModifier) },
-            { label: `Target (${target.letter})`, value: this.formatSignedModifier(target.tnModifier) },
-        ];
-
-        if (row.category !== 'physical') {
-            terms.push({ label: `Range (${this.rangeDisplayName(rangeSelection.range)})`, value: this.formatSignedModifier(rangeModifier) });
-        }
-
-        if (minimumRangeModifier !== 0) {
-            terms.push({ label: 'Minimum Range', value: this.formatSignedModifier(minimumRangeModifier) });
-        }
-        if (hitModifier !== 0) {
-            terms.push({ label: 'Hit Modifier', value: this.formatSignedModifier(hitModifier) });
-        }
-
-        const total = skill + movementModifier + target.tnModifier + rangeModifier + minimumRangeModifier + hitModifier;
-        terms.push({ isBreak: true });
-        terms.push({ label: 'Total', value: total.toString(), isHeader: true });
-
-        return { total, lines: terms };
+        const heatFireModifier = this.unit().svgService?.inventoryTargetHeatFireModifier(row.entry) ?? 0;
+        const hitModifier = parseInventoryTargetNumberCell(row.display.hit) ?? 0;
+        return {
+            entry: row.entry,
+            category: row.category,
+            display: row.display,
+            target,
+            gunnerySkill: this.unit().gunnerySkill(),
+            pilotingSkill: this.unit().pilotingSkill(),
+            movementModifier: getMotiveModeTargetNumberModifier(moveMode),
+            movementLabel: this.motiveModeLabel(moveMode),
+            hitModifier: hitModifier - heatFireModifier,
+            heatFireModifier
+        };
     }
 
     private motiveModeLabel(moveMode: ReturnType<ReturnType<CBTForceUnit['turnState']>['moveMode']>): string {
         if (!moveMode) return 'None';
         return getMotiveModeLabel(moveMode, this.unit().getUnit(), this.unit().turnState().airborne() ?? false);
-    }
-
-    private rangeDisplayName(range: TargetRangeKey): string {
-        switch (range) {
-            case 'short': return 'Short';
-            case 'medium': return 'Medium';
-            case 'long': return 'Long';
-            case 'extreme': return 'Extreme';
-        }
-    }
-
-    private formatSignedModifier(value: number): string {
-        return value >= 0 ? `+${value}` : value.toString();
-    }
-
-    private rangeModifier(range: TargetRangeKey): number {
-        switch (range) {
-            case 'medium': return 2;
-            case 'long': return 4;
-            case 'extreme': return 6;
-            default: return 0;
-        }
-    }
-
-    private minimumRangeModifier(row: InventoryControlRow, distance: number): number {
-        const min = this.parseNumericCell(row.display.min);
-        if (min === null || min <= 0 || distance > min) return 0;
-        return (min - distance) + 1;
-    }
-
-    private hitModifier(value: string): number {
-        return this.parseNumericCell(value) ?? 0;
-    }
-
-    private parseNumericCell(value: string): number | null {
-        const text = value.trim();
-        if (!/^[-+]?\d+(?:\.\d+)?$/.test(text)) return null;
-        const parsed = Number(text);
-        return Number.isFinite(parsed) ? parsed : null;
     }
 
     ammoText(row: InventoryControlRow): string {

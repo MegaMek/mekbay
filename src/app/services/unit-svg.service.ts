@@ -44,6 +44,9 @@ import { resolveHitModifier, computeLinkedModifiers } from '../models/rules/hit-
 import { formatPilotingDisplay } from '../models/rules/unit-type-rules';
 import { AmmoEquipment } from '../models/equipment.model';
 import { formatAmmoName } from '../utils/ammo-interaction.util';
+import { getMotiveModeLabel, getMotiveModeTargetNumberModifier } from '../models/motiveModes.model';
+import { inventoryTargetCategory, inventoryTargetNumberText, readInventoryTargetDisplay } from '../utils/inventory-target-number.util';
+import type { InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 
 /*
  * Author: Drake
@@ -700,6 +703,33 @@ export class UnitSvgService {
     /** Override to inject global fire modifiers (e.g. heat penalties). */
     protected getGlobalFireModifier(): number { return 0; }
 
+    /** Override to inject entry-specific effective hit modifiers. */
+    protected getInventoryTargetHitModifier(entry: MountedEquipment): number {
+        const hitModifier = resolveHitModifier(entry, this.getGlobalFireModifier() + computeLinkedModifiers(entry));
+        return typeof hitModifier === 'number' ? hitModifier - this.inventoryTargetHeatFireModifier(entry) : 0;
+    }
+
+    inventoryTargetHeatFireModifier(entry: MountedEquipment): number {
+        return inventoryTargetCategory(entry) === 'ranged' ? this.getGlobalFireModifier() : 0;
+    }
+
+    inventoryTargetNumberText(entry: MountedEquipment, target: InventoryControlRuntimeTarget): string | null {
+        const moveMode = this.unit.turnState().moveMode();
+        const text = inventoryTargetNumberText({
+            entry,
+            category: inventoryTargetCategory(entry),
+            display: readInventoryTargetDisplay(entry),
+            target,
+            gunnerySkill: this.unit.gunnerySkill(),
+            pilotingSkill: this.unit.pilotingSkill(),
+            movementModifier: getMotiveModeTargetNumberModifier(moveMode),
+            movementLabel: moveMode ? getMotiveModeLabel(moveMode, this.unit.getUnit(), this.unit.turnState().airborne() ?? false) : 'None',
+            hitModifier: this.getInventoryTargetHitModifier(entry),
+            heatFireModifier: this.inventoryTargetHeatFireModifier(entry)
+        });
+        return text || null;
+    }
+
     /** Render hit modifier badge for a single inventory entry. Pure presentation. */
     protected renderHitModEntry(entry: MountedEquipment, hitModifier: number | 'Vs' | '*' | null) {
         if (!entry.el) return;
@@ -754,6 +784,7 @@ export class UnitSvgService {
                 this.renderHitModEntry(entry, resolveHitModifier(entry, additionalMod));
             }
         });
+        this.unit.syncInventoryControlSelectionSvg();
     }
 
     protected updateTurnState() {
