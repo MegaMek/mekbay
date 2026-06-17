@@ -56,13 +56,14 @@ import { OverlayManagerService } from '../../services/overlay-manager.service';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { type ChoicePickerStyle, PickerFactoryService } from '../../services/picker-factory.service';
 import { canAntiMech } from '../../utils/infantry.util';
-import { AmmoControlDialogComponent, type AmmoControlDialogData } from '../ammo-control-dialog/ammo-control-dialog.component';
-import { getAmmoControlEntriesForUnitWeapons } from '../../utils/ammo-interaction.util';
-import { WeaponTargetChoiceMenuComponent } from '../../components/weapon-equipment-dialog/weapon-target-choice-menu.component';
+import { EquipmentDialogComponent } from '../equipment-dialog/equipment-dialog.component';
+import type { EquipmentDialogContext, EquipmentDialogData, EquipmentDialogTab } from '../equipment-dialog/equipment-dialog.model';
+import { WeaponTargetChoiceMenuComponent } from '../../components/equipment-dialog/weapon-target-choice-menu.component';
 import { getInventoryControlModes, getSelectedInventoryControlMode, selectInventoryControlEntry, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
 import { getMotiveModeLabel, getMotiveModeTargetNumberModifier } from '../../models/motiveModes.model';
 import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { inventoryTargetCategory, inventoryTargetNumberText, parseInventoryTargetNumberCell, readInventoryTargetDisplay, readInventoryTargetText } from '../../utils/inventory-target-number.util';
+import { PageViewerStateService } from './internal/page-viewer-state.service';
 
 type SheetInventoryRangeKey = InventoryRangeKey | 'extreme';
 
@@ -97,6 +98,7 @@ export class SvgInteractionService {
     private layoutService = inject(LayoutService);
     private forceBuilderService = inject(ForceBuilderService);
     private equipmentRegistryService = inject(EquipmentInteractionRegistryService);
+    private pageViewerState = inject(PageViewerStateService);
     private pickerFactory = inject(PickerFactoryService);
 
     // Zoom-pan service passed via initialize()
@@ -1025,25 +1027,31 @@ export class SvgInteractionService {
         ammoProfileEl.addEventListener('click', (event: Event) => {
             const unit = this.unit();
             if (!unit) return;
-
-            const entries = getAmmoControlEntriesForUnitWeapons(unit, this.dataService.getEquipments());
-            if (entries.length === 0) return;
-
-            this.removePicker();
-            this.dialogsService.createDialog<void>(AmmoControlDialogComponent, {
-                data: {
-                    title: 'Ammo',
-                    entries,
-                    readOnly: unit.readOnly(),
-                    getEntries: () => getAmmoControlEntriesForUnitWeapons(unit, this.dataService.getEquipments()),
-                    context: {
-                        toastService: this.toastService,
-                        dialogsService: this.dialogsService,
-                        dataService: this.dataService
-                    }
-                } as AmmoControlDialogData,
-            });
+            this.openEquipmentDialog(unit, 'ammo');
         }, { passive: false, signal });
+    }
+
+    private openEquipmentDialog(unit: CBTForceUnit, initialTab: EquipmentDialogTab): void {
+        this.removePicker();
+        this.overlayManager.closeAllManagedOverlays();
+        const unitList = this.pageViewerState.forceUnits().length > 0 ? this.pageViewerState.forceUnits() : [unit];
+        const context: EquipmentDialogContext = {
+            toastService: this.toastService,
+            dialogsService: this.dialogsService,
+            dataService: this.dataService,
+            registry: this.equipmentRegistryService.getRegistry()
+        };
+        this.pageViewerState.beginInventoryDialog();
+        const ref = this.dialogsService.createDialog<void>(EquipmentDialogComponent, {
+            data: {
+                unitList,
+                unitIndex: Math.max(0, unitList.findIndex(candidate => candidate.id === unit.id)),
+                onUnitChange: (selectedUnit) => this.forceBuilderService.selectUnit(selectedUnit),
+                context,
+                initialTab
+            } as EquipmentDialogData,
+        });
+        ref.closed.subscribe(() => this.pageViewerState.endInventoryDialog());
     }
 
     private setupHeatInteractions(svg: SVGSVGElement, signal: AbortSignal) {

@@ -59,8 +59,9 @@ import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
 import type { CBTForce } from '../../../models/cbt-force.model';
 import { PageTurnSummaryPanelComponent } from './page-turn-summary.component';
 import { PageViewerStateService } from '../internal/page-viewer-state.service';
-import { WeaponEquipmentDialogComponent, type WeaponEquipmentDialogContext, type WeaponEquipmentDialogData } from '../../weapon-equipment-dialog/weapon-equipment-dialog.component';
-import { WeaponTargetsMenuComponent, type WeaponTargetUpdateRequest } from '../../weapon-equipment-dialog/weapon-targets-menu.component';
+import { EquipmentDialogComponent } from '../../equipment-dialog/equipment-dialog.component';
+import type { EquipmentDialogContext, EquipmentDialogData } from '../../equipment-dialog/equipment-dialog.model';
+import { WeaponTargetsMenuComponent, type WeaponTargetUpdateRequest } from '../../equipment-dialog/weapon-targets-menu.component';
 
 const PAGE_TARGETS_OVERLAY_PREFIX = 'page-viewer-targets';
 
@@ -281,21 +282,21 @@ export class PageInteractionOverlayComponent {
 
         this.closeAllOverlays();
         const unitList = this.pageViewerState.forceUnits().length > 0 ? this.pageViewerState.forceUnits() : [unit];
-        const context: WeaponEquipmentDialogContext = {
+        const context: EquipmentDialogContext = {
             toastService: this.toastService,
             dialogsService: this.dialogsService,
             dataService: this.dataService,
             registry: this.equipmentRegistryService.getRegistry()
         };
         this.pageViewerState.beginInventoryDialog();
-        const ref = this.dialogsService.createDialog<void>(WeaponEquipmentDialogComponent, {
+        const ref = this.dialogsService.createDialog<void>(EquipmentDialogComponent, {
             data: {
-                title: 'Weapons & Equipment',
                 unitList,
                 unitIndex: Math.max(0, unitList.findIndex(candidate => candidate.id === unit.id)),
                 onUnitChange: (selectedUnit) => this.forceBuilderService.selectUnit(selectedUnit),
-                context
-            } as WeaponEquipmentDialogData,
+                context,
+                initialTab: 'weapons'
+            } as EquipmentDialogData,
         });
         ref.closed.subscribe(() => this.pageViewerState.endInventoryDialog());
     }

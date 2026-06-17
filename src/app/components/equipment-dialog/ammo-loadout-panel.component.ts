@@ -1,11 +1,9 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
+import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';
 import type { HandlerContext } from '../../services/equipment-interaction-registry.service';
 import type { AmmoControlEntry, AmmoControlGroup, AmmoControlGroupLocation } from '../../utils/ammo-interaction.util';
 import { changeAmmoEntryRemaining, changeAmmoGroupRemaining, getAmmoControlGroups, getAmmoEntryRemaining, getAmmoGroupRemaining, setAmmoEntry, setAmmoGroup } from '../../utils/ammo-interaction.util';
 
-export interface AmmoControlDialogData {
-    title: string;
+export interface AmmoLoadoutPanelData {
     entries: AmmoControlEntry[];
     context: HandlerContext;
     readOnly?: boolean;
@@ -13,106 +11,118 @@ export interface AmmoControlDialogData {
 }
 
 @Component({
-    selector: 'ammo-control-dialog',
+    selector: 'ammo-loadout-panel',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    host: {
-        class: 'fullscreen-dialog-host glass'
-    },
     template: `
-    <div class="wide-dialog ammo-control-dialog">
-        <h2 class="wide-dialog-title">{{ data.title }}</h2>
-        <div class="wide-dialog-body">
-            <div class="ammo-control-list" [class.read-only]="readOnly()">
-                @for (group of groups(); track group.id) {
-                    @let remainingAmmoGroup = groupRemaining(group);
-                    <div class="ammo-control-row" [class.destroyed-entry]="group.destroyed" [class.empty]="remainingAmmoGroup <= 0">
-                        <div class="ammo-control-label" [class.expandable]="group.expandable">
-                            @if (group.expandable) {
-                                <button class="ammo-expand-button" type="button" (click)="toggleGroup(group)">
-                                    <svg width="13px" height="13px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" class="chevron" [class.collapsed]="!isExpanded(group)"><path d="M0 2l5 6 5-6z"></path></svg>
-                                    <span class="ammo-name-wrapper">
-                                        <span class="ammo-name">{{ group.displayName }}</span>
-                                        @if (!isExpanded(group)) {
-                                            <span class="ammo-location-badges">
-                                            @for (location of group.locations; track location.loc + ':' + location.state) {
-                                                <span class="ammo-location-badge" [class.exposed]="isLocationBadgeExposed(location)" [class.destroyed]="isLocationBadgeDestroyed(location)">
-                                                    @if (location.quantity > 1) {
-                                                        <span class="quantity">{{ location.quantity + '×' }}</span>
-                                                    }
-                                                    {{ location.loc }}
-                                                </span>
+    @if (groups().length === 0) {
+        <div class="ammo-empty-state">
+            <strong>No ammo loadout</strong>
+            <span>This unit does not have any ammunition bins.</span>
+        </div>
+    } @else {
+    <div class="ammo-control-list" [class.read-only]="readOnly()">
+        @for (group of groups(); track group.id) {
+            @let remainingAmmoGroup = groupRemaining(group);
+            <div class="ammo-control-row" [class.destroyed-entry]="group.destroyed" [class.empty]="remainingAmmoGroup <= 0">
+                <div class="ammo-control-label" [class.expandable]="group.expandable">
+                    @if (group.expandable) {
+                        <button class="ammo-expand-button" type="button" (click)="toggleGroup(group)">
+                            <svg width="13px" height="13px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" class="chevron" [class.collapsed]="!isExpanded(group)"><path d="M0 2l5 6 5-6z"></path></svg>
+                            <span class="ammo-name-wrapper">
+                                <span class="ammo-name">{{ group.displayName }}</span>
+                                @if (!isExpanded(group)) {
+                                    <span class="ammo-location-badges">
+                                    @for (location of group.locations; track location.loc + ':' + location.state) {
+                                        <span class="ammo-location-badge" [class.exposed]="isLocationBadgeExposed(location)" [class.destroyed]="isLocationBadgeDestroyed(location)">
+                                            @if (location.quantity > 1) {
+                                                <span class="quantity">{{ location.quantity + '×' }}</span>
                                             }
-                                            </span>
-                                        }
-                                    </span>
-                                </button>
-                            } @else {
-                                <div class="ammo-single-entry">
-                                    @if (hasExpandableGroups()) {
-                                        <div class="no-chevron">—</div>
-                                    }
-                                    <span class="ammo-name-wrapper">
-                                        <span class="ammo-name">{{ group.displayName }}</span>
-                                        <span class="ammo-location-badges">
-                                            @for (location of group.locations; track location.loc + ':' + location.state) {
-                                                <span class="ammo-location-badge" [class.exposed]="isLocationBadgeExposed(location)" [class.destroyed]="isLocationBadgeDestroyed(location)">
-                                                    @if (location.quantity > 1) {
-                                                        <span class="quantity">{{ location.quantity + '×' }}</span>
-                                                    }
-                                                    {{ location.loc }}
-                                                </span>
-                                            }
+                                            {{ location.loc }}
                                         </span>
-                                    </span>
-                                </div>
-                            }
-                            <span class="ammo-count"><span class="count">{{ remainingAmmoGroup }}</span>/{{ group.totalAmmo }}</span>
-                            @if (isExpanded(group)) {
-                                <div class="ammo-bin-list">
-                                    @for (entry of group.entries; track entry.id) {
-                                        @let remainingAmmoBin = remaining(entry);
-                                        <div class="ammo-bin" [class.destroyed]="entry.destroyed" [class.empty]="remainingAmmoBin <= 0">
-                                            <button class="ammo-bin-name-wrapper" type="button" (click)="setAmmoBin(entry)" [disabled]="entry.destroyed || readOnly()">
-                                                <span class="ammo-bin-name">{{ entry.displayBinName }}</span>
-                                                <span class="ammo-location-badges">
-                                                    <span class="ammo-location-badge" [class.exposed]="isEntryLocationBadgeExposed(group, entry)" [class.destroyed]="isEntryLocationBadgeDestroyed(entry)">
-                                                        {{ entry.locationLabel }}
-                                                    </span>
-                                                </span>
-                                            </button>
-                                            @if (!entry.destroyed && !readOnly()) {
-                                                <div class="ammo-bin-adjustments">
-                                                    <button class="ammo-bin-adjust bt-button square-small" type="button" (click)="decrementBin(entry)" [disabled]="remaining(entry) <= 0">-1</button>
-                                                    <button class="ammo-bin-adjust bt-button square-small" type="button" (click)="incrementBin(entry)" [disabled]="remaining(entry) >= entry.totalAmmo">+1</button>
-                                                </div>
-                                            } @else {
-                                                <span class="ammo-bin-adjustments" aria-hidden="true"></span>
-                                            }
-                                            <span class="ammo-count"><span class="count">{{ remainingAmmoBin }}</span>/{{ entry.totalAmmo }}</span>
-                                        </div>
                                     }
+                                    </span>
+                                }
+                            </span>
+                        </button>
+                    } @else {
+                        <div class="ammo-single-entry">
+                            @if (hasExpandableGroups()) {
+                                <div class="no-chevron">—</div>
+                            }
+                            <span class="ammo-name-wrapper">
+                                <span class="ammo-name">{{ group.displayName }}</span>
+                                <span class="ammo-location-badges">
+                                    @for (location of group.locations; track location.loc + ':' + location.state) {
+                                        <span class="ammo-location-badge" [class.exposed]="isLocationBadgeExposed(location)" [class.destroyed]="isLocationBadgeDestroyed(location)">
+                                            @if (location.quantity > 1) {
+                                                <span class="quantity">{{ location.quantity + '×' }}</span>
+                                            }
+                                            {{ location.loc }}
+                                        </span>
+                                    }
+                                </span>
+                            </span>
+                        </div>
+                    }
+                    <span class="ammo-count"><span class="count">{{ remainingAmmoGroup }}</span>/{{ group.totalAmmo }}</span>
+                    @if (isExpanded(group)) {
+                        <div class="ammo-bin-list">
+                            @for (entry of group.entries; track entry.id) {
+                                @let remainingAmmoBin = remaining(entry);
+                                <div class="ammo-bin" [class.destroyed]="entry.destroyed" [class.empty]="remainingAmmoBin <= 0">
+                                    <button class="ammo-bin-name-wrapper" type="button" (click)="setAmmoBin(entry)" [disabled]="entry.destroyed || readOnly()">
+                                        <span class="ammo-bin-name">{{ entry.displayBinName }}</span>
+                                        <span class="ammo-location-badges">
+                                            <span class="ammo-location-badge" [class.exposed]="isEntryLocationBadgeExposed(group, entry)" [class.destroyed]="isEntryLocationBadgeDestroyed(entry)">
+                                                {{ entry.locationLabel }}
+                                            </span>
+                                        </span>
+                                    </button>
+                                    @if (!entry.destroyed && !readOnly()) {
+                                        <div class="ammo-bin-adjustments">
+                                            <button class="ammo-bin-adjust bt-button square-small" type="button" (click)="decrementBin(entry)" [disabled]="remaining(entry) <= 0">-1</button>
+                                            <button class="ammo-bin-adjust bt-button square-small" type="button" (click)="incrementBin(entry)" [disabled]="remaining(entry) >= entry.totalAmmo">+1</button>
+                                        </div>
+                                    } @else {
+                                        <span class="ammo-bin-adjustments" aria-hidden="true"></span>
+                                    }
+                                    <span class="ammo-count"><span class="count">{{ remainingAmmoBin }}</span>/{{ entry.totalAmmo }}</span>
                                 </div>
                             }
                         </div>
-                        @if (!readOnly() && !group.destroyed) {
-                            <div class="ammo-control-actions">
-                                <button class="bt-button square-small" type="button" (click)="decrement(group)" [disabled]="groupRemaining(group) <= 0">-1</button>
-                                <button class="bt-button square-small" type="button" (click)="increment(group)" [disabled]="groupRemaining(group) >= group.totalAmmo">+1</button>
-                                <button class="bt-button" type="button" (click)="setAmmo(group)">SET AMMO</button>
-                            
-                            </div>
-                        }
+                    }
+                </div>
+                @if (!readOnly() && !group.destroyed) {
+                    <div class="ammo-control-actions">
+                        <button class="bt-button square-small" type="button" (click)="decrement(group)" [disabled]="groupRemaining(group) <= 0">-1</button>
+                        <button class="bt-button square-small" type="button" (click)="increment(group)" [disabled]="groupRemaining(group) >= group.totalAmmo">+1</button>
+                        <button class="bt-button" type="button" (click)="setAmmo(group)">SET AMMO</button>
                     </div>
                 }
             </div>
-        </div>
-        <div class="wide-dialog-actions">
-            <button class="bt-button" type="button" (click)="close()">DISMISS</button>
-        </div>
+        }
     </div>
+    }
     `,
     styles: [`
+        .ammo-empty-state {
+            display: grid;
+            place-items: center;
+            align-content: center;
+            gap: 6px;
+            min-height: 180px;
+            padding: 24px;
+            box-sizing: border-box;
+            color: var(--text-color-secondary);
+            text-align: center;
+        }
+
+        .ammo-empty-state strong {
+            color: var(--text-color);
+            font-size: 1.1rem;
+        }
+
         .ammo-control-list {
             display: grid;
         }
@@ -294,7 +304,7 @@ export interface AmmoControlDialogData {
 
         .ammo-bin {
             display: grid;
-            grid-template-columns: 96px auto minmax(48px, auto);
+            grid-template-columns: fit-content(200px) auto minmax(48px, auto);
             gap: 8px;
             align-items: baseline;
             padding: 0;
@@ -377,12 +387,15 @@ export interface AmmoControlDialogData {
         }
     `]
 })
-export class AmmoControlDialogComponent {
-    readonly data: AmmoControlDialogData = inject(DIALOG_DATA);
-    private readonly dialogRef: DialogRef<void, AmmoControlDialogComponent> = inject(DialogRef);
+export class AmmoLoadoutPanelComponent {
+    readonly panelData = input.required<AmmoLoadoutPanelData>({ alias: 'data' });
     private readonly revision = signal(0);
     private readonly expandedGroups = signal<Set<string>>(new Set());
     private readonly expandedEntries = signal<Set<string>>(new Set());
+
+    get data(): AmmoLoadoutPanelData {
+        return this.panelData();
+    }
 
     groups(): AmmoControlGroup[] {
         this.revision();
@@ -498,7 +511,4 @@ export class AmmoControlDialogComponent {
         }
     }
 
-    close(): void {
-        this.dialogRef.close();
-    }
 }

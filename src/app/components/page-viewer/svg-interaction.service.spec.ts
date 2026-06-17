@@ -10,6 +10,7 @@ import { OptionsService } from '../../services/options.service';
 import { PickerFactoryService } from '../../services/picker-factory.service';
 import { ToastService } from '../../services/toast.service';
 import { AmmoEquipment, WeaponEquipment } from '../../models/equipment.model';
+import { EquipmentDialogComponent } from '../equipment-dialog/equipment-dialog.component';
 import type { MountedEquipment } from '../../models/force-serialization';
 import { InventoryControlRuntimeState, type InventoryControlRuntimeRangeKey } from '../../models/inventory-control-runtime-state.model';
 import { INVENTORY_CONTROL_MODE_STATE } from '../../utils/inventory-control.util';
@@ -33,6 +34,7 @@ describe('SvgInteractionService', () => {
     let service: SvgInteractionServicePrivate;
     let zoomPanService: ZoomPanServiceInterface;
     let dialogsService: { createDialog: jasmine.Spy };
+    let dialogClosedCallbacks: Array<() => void>;
     let forceBuilderService: { selectUnit: jasmine.Spy; editPilotOfUnit: jasmine.Spy };
     let pickerFactory: { createChoicePicker: jasmine.Spy; createNumericPicker: jasmine.Spy };
     let pageViewerState: PageViewerStateService;
@@ -42,7 +44,17 @@ describe('SvgInteractionService', () => {
             pointerMoved: false,
             isPanning: false
         };
-        dialogsService = { createDialog: jasmine.createSpy('createDialog').and.returnValue({ closed: { subscribe: jasmine.createSpy('subscribe') } }) };
+        dialogClosedCallbacks = [];
+        dialogsService = {
+            createDialog: jasmine.createSpy('createDialog').and.callFake(() => ({
+                closed: {
+                    subscribe: (callback: () => void) => {
+                        dialogClosedCallbacks.push(callback);
+                        return { unsubscribe: jasmine.createSpy('unsubscribe') };
+                    }
+                }
+            }))
+        };
         forceBuilderService = {
             selectUnit: jasmine.createSpy('selectUnit'),
             editPilotOfUnit: jasmine.createSpy('editPilotOfUnit')
@@ -98,7 +110,7 @@ describe('SvgInteractionService', () => {
         service = injectedService as unknown as SvgInteractionServicePrivate;
     });
 
-    it('opens the weapon equipment dialog only from main inventory buttons', () => {
+    it('selects inventory entries from main inventory buttons only', () => {
         const { svg, entry, unit } = createInventoryInteractionUnit();
         pageViewerState.setForceUnits([unit]);
         service.updateUnit(unit);
@@ -107,14 +119,15 @@ describe('SvgInteractionService', () => {
         entry.el!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
         (entry.el!.querySelector('.shrButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
         expect(dialogsService.createDialog).not.toHaveBeenCalled();
+        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeTrue();
 
         (entry.el!.querySelector('.mainButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 
-        expect(dialogsService.createDialog).toHaveBeenCalledTimes(1);
-        expect(dialogsService.createDialog.calls.mostRecent().args[1].data.unitIndex).toBe(0);
+        expect(dialogsService.createDialog).not.toHaveBeenCalled();
+        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeFalse();
     });
 
-    it('opens the weapon equipment dialog from alternative mode buttons', () => {
+    it('selects inventory entries from alternative mode buttons', () => {
         const { svg, entry, unit } = createInventoryInteractionUnit(`
             <g class="inventoryEntry">
                 <rect class="mainButton inventoryEntryButton"></rect>
@@ -132,7 +145,38 @@ describe('SvgInteractionService', () => {
 
         (entry.el!.querySelector('.alternativeModeButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 
-        expect(dialogsService.createDialog).toHaveBeenCalledTimes(1);
+        expect(dialogsService.createDialog).not.toHaveBeenCalled();
+        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeTrue();
+    });
+
+    it('opens ammo profile in the equipment dialog with unit navigation and inventory-dialog lifecycle', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const ammoProfile = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        ammoProfile.setAttribute('id', 'ammoProfile');
+        svg.appendChild(ammoProfile);
+        const otherUnit = { id: 'unit-a', readOnly: () => false };
+        const unit = { id: 'unit-b', readOnly: () => false };
+        pageViewerState.setForceUnits([otherUnit as any, unit as any]);
+        service.updateUnit(unit);
+        service.setupReadOnlyInteractions(svg);
+
+        ammoProfile.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        expect(dialogsService.createDialog).toHaveBeenCalledOnceWith(EquipmentDialogComponent, jasmine.objectContaining({
+            data: jasmine.objectContaining({
+                unitList: [otherUnit, unit],
+                unitIndex: 1,
+                initialTab: 'ammo'
+            })
+        }));
+        expect(pageViewerState.inventoryDialogOpen()).toBeTrue();
+
+        const data = dialogsService.createDialog.calls.mostRecent().args[1].data;
+        data.onUnitChange(otherUnit, 0);
+        expect(forceBuilderService.selectUnit).toHaveBeenCalledOnceWith(otherUnit);
+
+        dialogClosedCallbacks[0]();
+        expect(pageViewerState.inventoryDialogOpen()).toBeFalse();
     });
 
     it('toggles sheet range buttons through inventory control runtime state', () => {

@@ -1,0 +1,408 @@
+.equipment-dialog {
+    max-width: 1000px;
+    max-height: calc(100dvh - 24px);
+    width: 100%;
+    align-items: stretch;
+    gap: 6px;
+    min-height: 0;
+}
+
+.equipment-dialog-title-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 34px;
+    padding-inline: 96px;
+    margin: 0;
+    text-align: center;
+}
+
+.equipment-dialog-title-row h2 {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.title-buttons {
+    position: absolute;
+    right: 0;
+    top: 0;
+    display: flex;
+    flex-direction: row;
+    gap: 8px;
+    transform: scale(0.8);
+}
+
+.turn-tracker-title-button {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #000;
+    cursor: pointer;
+    opacity: 0.85;
+    transition: opacity 0.2s;
+}
+
+.target-title-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1pt solid #fff;
+    background: transparent;
+    color: #fff;
+    cursor: pointer;
+    opacity: 0.85;
+    transition: opacity 0.2s;
+}
+
+.turn-tracker-title-button:hover,
+.turn-tracker-title-button:focus-visible,
+.target-title-button:hover,
+.target-title-button:focus-visible {
+    opacity: 1;
+}
+
+.target-title-button svg {
+    width: 24px;
+    height: 24px;
+}
+
+.turn-tracker-title-button svg {
+    width: 100%;
+    height: 100%;
+}
+
+.turn-tracker-title-button svg .octagon {
+    stroke: white;
+    stroke-width: 1;
+}
+
+.turn-tracker-title-button svg text {
+    pointer-events: none;
+    font-weight: bold;
+    fill: #fff;
+}
+
+.turn-tracker-title-button svg.ranged .octagon {
+    fill: var(--phase-ranged);
+}
+
+.turn-tracker-title-button svg.physical .octagon {
+    fill: var(--phase-physical);
+}
+
+.turn-tracker-title-button svg.heat .octagon {
+    fill: var(--phase-heat);
+}
+
+.turn-tracker-title-button svg.warning {
+    color: var(--damage-color);
+}
+
+.turn-tracker-title-button svg.warning text {
+    fill: #000;
+}
+
+.equipment-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+}
+
+.equipment-tab {
+    min-height: 30px;
+    padding: 4px 12px;
+    border: 0;
+    border-bottom: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-color-secondary);
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+    
+    &.active {
+        color: var(--text-color);
+        border-color: var(--text-color-secondary);
+    }
+}
+
+
+.equipment-swipe-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    touch-action: pan-y pinch-zoom;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.equipment-swipe-container {
+    position: relative;
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 100%;
+    overflow: visible;
+}
+
+.equipment-swipe-panel {
+    display: flex;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+    touch-action: pan-y;
+    min-height: 180px;
+}
+
+.equipment-swipe-container.swiping .equipment-swipe-panel,
+.equipment-swipe-container.animating .equipment-swipe-panel {
+    overflow-y: hidden;
+}
+
+.equipment-swipe-container.swiping .equipment-swipe-panel.current-panel,
+.equipment-swipe-container.animating .equipment-swipe-panel.current-panel {
+    transform: translateX(var(--current-offset, 0));
+    will-change: transform;
+}
+
+.equipment-swipe-panel.incoming-panel {
+    position: absolute;
+    inset: 0;
+    transform: translateX(var(--incoming-offset, 100%));
+    will-change: transform;
+    background: transparent;
+}
+
+.equipment-swipe-container.animating .equipment-swipe-panel {
+    transition: transform 300ms ease-out;
+}
+
+.equipment-swipe-container.animating {
+    pointer-events: none;
+}
+
+.equipment-dialog-footer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 34px;
+}
+
+.equipment-dialog-footer-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: max-content;
+    padding-inline: 4px;
+    flex-wrap: wrap;
+}
+
+.selected-weapons-panel {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.wide-dialog-actions button,
+.selected-weapons-panel .bt-button {
+    min-height: 40px;
+}
+
+.selected-heat-meter {
+    display: inline-grid;
+    gap: 3px;
+    align-items: center;
+    min-width: 0;
+}
+
+.heat-balance-bar {
+    position: relative;
+    display: block;
+    width: 100%;
+    min-width: 58px;
+    height: 7px;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--border-color) 55%, transparent);
+}
+
+.heat-balance-segment {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+}
+
+.heat-balance-segment.dissipation {
+    left: 0;
+    background: #2f8fa3;
+}
+
+.heat-balance-segment.pending {
+    left: 0;
+    background: #d56f28;
+}
+
+.heat-balance-segment.retained {
+    right: 0;
+    background: #b94432;
+}
+
+.heat-balance-equation {
+    display: inline-flex;
+    gap: 3px;
+    align-items: center;
+    color: var(--text-color-secondary);
+    font-size: 0.78rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.heat-balance-equation strong,
+.heat-balance-equation span {
+    display: inline-block;
+    min-width: 24px;
+    text-align: right;
+}
+
+.heat-balance-equation strong {
+    color: var(--text-color);
+}
+
+.heat-balance-equation .selection {
+    color: #d56f28;
+}
+
+.heat-balance-equation .dissipation {
+    color: #2f8fa3;
+}
+
+.heat-balance-equation .projected {
+    color: var(--text-color-secondary);
+}
+
+.heat-balance-equation .projected.hot {
+    color: #b94432;
+}
+
+.footer-nav {
+    background-color: transparent;
+    color: gray;
+    border: none;
+    cursor: pointer;
+    transition: color 0.2s;
+    outline: none;
+    padding: 0px 6px;
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+    font: inherit;
+}
+
+.footer-nav-left {
+    justify-self: start;
+    text-align: left;
+}
+
+.footer-nav-right {
+    justify-self: end;
+    text-align: right;
+}
+
+.footer-nav:hover {
+    color: var(--text-color);
+}
+
+.footer-nav.hidden {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.nav-arrow-symbol {
+    flex: 0 0 auto;
+    font-size: 2rem;
+    line-height: 1;
+}
+
+.nav-unit-name {
+    color: var(--text-color-secondary);
+    font-size: 0.85rem;
+    font-weight: 600;
+    max-width: 20ch;
+    min-width: 0;
+    overflow: hidden;
+    line-height: 1.1;
+}
+
+.nav-unit-model,
+.nav-unit-chassis {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.nav-unit-model {
+    color: var(--text-color-tertiary);
+    font-size: 0.78rem;
+}
+
+.footer-nav:hover .nav-unit-name {
+    color: var(--text-color);
+}
+
+.footer-nav:hover .nav-unit-model {
+    color: var(--text-color-secondary);
+}
+
+@container (max-width: 760px) {
+    .equipment-dialog-title-row {
+        padding-inline: 0px;
+        padding-right: 96px;
+        text-align: left;
+        justify-content: space-between;
+    }
+
+    .equipment-tabs {
+        justify-content: stretch;
+    }
+
+    .equipment-tab {
+        flex: 1 1 0;
+        padding-inline: 6px;
+    }
+
+    .nav-unit-name {
+        display: none;
+    }
+}
+
+@container (max-width: 600px) {
+    .equipment-dialog-footer {
+        gap: 4px;
+    }
+
+    .equipment-dialog-footer-center {
+        gap: 4px;
+    }
+
+    .footer-nav {
+        padding: 0px 2px;
+    }
+}

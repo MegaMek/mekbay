@@ -2,7 +2,8 @@ import { EquipmentInteractionHandler, type HandlerContext } from '../services/eq
 import type { MountedEquipment } from '../models/force-serialization';
 import type { PickerChoice } from '../components/picker/picker.interface';
 import { WeaponEquipment } from '../models/equipment.model';
-import { AmmoControlDialogComponent, type AmmoControlDialogData } from '../components/ammo-control-dialog/ammo-control-dialog.component';
+import { EquipmentDialogComponent } from '../components/equipment-dialog/equipment-dialog.component';
+import type { EquipmentDialogData } from '../components/equipment-dialog/equipment-dialog.model';
 import { changeAmmoEntryRemaining, getAmmoControlEntriesForWeapon, getAmmoEntryRemaining, setAmmoEntry } from '../utils/ammo-interaction.util';
 
 export class WeaponAmmoHandler extends EquipmentInteractionHandler {
@@ -42,14 +43,19 @@ export class WeaponAmmoHandler extends EquipmentInteractionHandler {
         if (entries.length === 0) return false;
 
         if (choice.value === 'weapon-ammo-dialog') {
-            context.dialogsService.createDialog<void>(AmmoControlDialogComponent, {
+            context.dialogsService.createDialog<void>(EquipmentDialogComponent, {
                 data: {
-                    title: `${equipment.equipment?.shortName ?? equipment.name} Ammo`,
-                    entries,
+                    unit: equipment.owner,
                     readOnly: equipment.owner.readOnly(),
-                    getEntries: () => getAmmoControlEntriesForWeapon(equipment, context),
-                    context
-                } as AmmoControlDialogData,
+                    context: {
+                        ...context,
+                        registry: {
+                            getChoices: () => [],
+                            handleSelection: () => false
+                        }
+                    },
+                    initialTab: 'ammo'
+                } as EquipmentDialogData,
             });
             return true;
         }

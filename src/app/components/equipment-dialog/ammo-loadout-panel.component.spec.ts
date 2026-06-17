@@ -1,10 +1,9 @@
-import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment } from '../../models/equipment.model';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import type { CriticalSlot } from '../../models/force-serialization';
 import type { HandlerContext } from '../../services/equipment-interaction-registry.service';
-import { AmmoControlDialogComponent, type AmmoControlDialogData } from './ammo-control-dialog.component';
+import { AmmoLoadoutPanelComponent, type AmmoLoadoutPanelData } from './ammo-loadout-panel.component';
 import type { AmmoControlEntry } from '../../utils/ammo-interaction.util';
 
 function createAmmo(id: string): AmmoEquipment {
@@ -69,17 +68,16 @@ function createToastServiceMock() {
     };
 }
 
-describe('AmmoControlDialogComponent', () => {
-    function configureDialog(data: AmmoControlDialogData): AmmoControlDialogComponent {
+describe('AmmoLoadoutPanelComponent', () => {
+    function configurePanel(data: AmmoLoadoutPanelData): AmmoLoadoutPanelComponent {
         TestBed.configureTestingModule({
-            imports: [AmmoControlDialogComponent],
-            providers: [
-                { provide: DIALOG_DATA, useValue: data },
-                { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
-            ],
+            imports: [AmmoLoadoutPanelComponent],
         });
 
-        return TestBed.createComponent(AmmoControlDialogComponent).componentInstance;
+        const fixture = TestBed.createComponent(AmmoLoadoutPanelComponent);
+        fixture.componentRef.setInput('data', data);
+        fixture.detectChanges();
+        return fixture.componentInstance;
     }
 
     it('recomputes visible groups from live entries while open', () => {
@@ -94,13 +92,12 @@ describe('AmmoControlDialogComponent', () => {
             createCritEntry({ loc: 'LT', slot: 0, ammo: standardAmmo, owner }),
             createCritEntry({ loc: 'LT', slot: 1, ammo: standardAmmo, owner }),
         ];
-        const data: AmmoControlDialogData = {
-            title: 'Ammo',
+        const data: AmmoLoadoutPanelData = {
             entries: liveEntries,
             getEntries: () => liveEntries,
             context: {} as HandlerContext,
         };
-        const component = configureDialog(data);
+        const component = configurePanel(data);
 
         let groups = component.groups();
         expect(groups.length).toBe(1);
@@ -127,20 +124,16 @@ describe('AmmoControlDialogComponent', () => {
             readOnly: () => false,
             getUnit: () => ({ techBase: 'Clan' }),
         } as unknown as Pick<CBTForceUnit, 'id' | 'readOnly' | 'getUnit'>;
-        const data: AmmoControlDialogData = {
-            title: 'Ammo',
+        const data: AmmoLoadoutPanelData = {
             entries: [createCritEntry({ loc: 'LT', slot: 0, ammo: standardAmmo, owner })],
             context: {} as HandlerContext,
         };
 
         TestBed.configureTestingModule({
-            imports: [AmmoControlDialogComponent],
-            providers: [
-                { provide: DIALOG_DATA, useValue: data },
-                { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
-            ],
+            imports: [AmmoLoadoutPanelComponent],
         });
-        const fixture = TestBed.createComponent(AmmoControlDialogComponent);
+        const fixture = TestBed.createComponent(AmmoLoadoutPanelComponent);
+        fixture.componentRef.setInput('data', data);
         fixture.detectChanges();
 
         const expandButton: HTMLButtonElement | null = fixture.nativeElement.querySelector('.ammo-expand-button');
@@ -166,8 +159,7 @@ describe('AmmoControlDialogComponent', () => {
                 ]),
             },
         } as unknown as Pick<CBTForceUnit, 'id' | 'readOnly' | 'getUnit'>;
-        const data: AmmoControlDialogData = {
-            title: 'Ammo',
+        const data: AmmoLoadoutPanelData = {
             entries: [
                 createCritEntry({ loc: 'LT', slot: 0, ammo: standardAmmo, owner }),
                 createCritEntry({ loc: 'LT', slot: 1, ammo: standardAmmo, owner }),
@@ -178,13 +170,10 @@ describe('AmmoControlDialogComponent', () => {
         };
 
         TestBed.configureTestingModule({
-            imports: [AmmoControlDialogComponent],
-            providers: [
-                { provide: DIALOG_DATA, useValue: data },
-                { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
-            ],
+            imports: [AmmoLoadoutPanelComponent],
         });
-        const fixture = TestBed.createComponent(AmmoControlDialogComponent);
+        const fixture = TestBed.createComponent(AmmoLoadoutPanelComponent);
+        fixture.componentRef.setInput('data', data);
         fixture.detectChanges();
 
         const badges = Array.from(fixture.nativeElement.querySelectorAll('.ammo-location-badge')) as HTMLElement[];
@@ -213,8 +202,7 @@ describe('AmmoControlDialogComponent', () => {
             readOnly: () => false,
             getUnit: () => ({ techBase: 'Clan' }),
         } as unknown as Pick<CBTForceUnit, 'id' | 'readOnly' | 'getUnit'>;
-        const data: AmmoControlDialogData = {
-            title: 'Ammo',
+        const data: AmmoLoadoutPanelData = {
             entries: [
                 createCritEntry({ loc: 'RT', slot: 0, ammo: standardAmmo, owner }),
                 createCritEntry({ loc: 'RT', slot: 1, ammo: standardAmmo, owner }),
@@ -224,13 +212,10 @@ describe('AmmoControlDialogComponent', () => {
         };
 
         TestBed.configureTestingModule({
-            imports: [AmmoControlDialogComponent],
-            providers: [
-                { provide: DIALOG_DATA, useValue: data },
-                { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
-            ],
+            imports: [AmmoLoadoutPanelComponent],
         });
-        const fixture = TestBed.createComponent(AmmoControlDialogComponent);
+        const fixture = TestBed.createComponent(AmmoLoadoutPanelComponent);
+        fixture.componentRef.setInput('data', data);
         fixture.detectChanges();
 
         const groupBadges = Array.from(fixture.nativeElement.querySelectorAll('.ammo-expand-button .ammo-location-badge')) as HTMLElement[];
@@ -257,8 +242,7 @@ describe('AmmoControlDialogComponent', () => {
         } as unknown as Pick<CBTForceUnit, 'id' | 'readOnly' | 'setCritSlot' | 'getUnit' | 'svg'>;
         const activeEntry = createCritEntry({ loc: 'LT', slot: 0, ammo: standardAmmo, owner, consumed: 1 });
         const destroyedEntry = createCritEntry({ loc: 'LT', slot: 1, ammo: standardAmmo, owner, destroyed: true });
-        const data: AmmoControlDialogData = {
-            title: 'Ammo',
+        const data: AmmoLoadoutPanelData = {
             entries: [activeEntry, destroyedEntry],
             context: {
                 dataService: { getEquipments: () => ({ [standardAmmo.internalName]: standardAmmo }) },
@@ -267,13 +251,10 @@ describe('AmmoControlDialogComponent', () => {
         };
 
         TestBed.configureTestingModule({
-            imports: [AmmoControlDialogComponent],
-            providers: [
-                { provide: DIALOG_DATA, useValue: data },
-                { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
-            ],
+            imports: [AmmoLoadoutPanelComponent],
         });
-        const fixture = TestBed.createComponent(AmmoControlDialogComponent);
+        const fixture = TestBed.createComponent(AmmoLoadoutPanelComponent);
+        fixture.componentRef.setInput('data', data);
         fixture.detectChanges();
         fixture.nativeElement.querySelector('.ammo-expand-button')?.click();
         fixture.detectChanges();
@@ -300,13 +281,12 @@ describe('AmmoControlDialogComponent', () => {
         } as unknown as Pick<CBTForceUnit, 'id' | 'readOnly' | 'getUnit'>;
         const changedEntry = createCritEntry({ loc: 'LT', slot: 0, ammo: standardAmmo, owner });
         const remainingEntry = createCritEntry({ loc: 'LT', slot: 1, ammo: standardAmmo, owner });
-        const data: AmmoControlDialogData = {
-            title: 'Ammo',
+        const data: AmmoLoadoutPanelData = {
             entries: [changedEntry, remainingEntry],
             getEntries: () => [changedEntry, remainingEntry],
             context: {} as HandlerContext,
         };
-        const component = configureDialog(data);
+        const component = configurePanel(data);
         const group = component.groups()[0];
 
         component.toggleGroup(group);

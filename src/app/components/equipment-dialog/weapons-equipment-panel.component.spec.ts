@@ -1,4 +1,3 @@
-import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { CdkDragDrop, CdkDragStart } from '@angular/cdk/drag-drop';
 import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment, WeaponEquipment, MiscEquipment, type EquipmentMap } from '../../models/equipment.model';
@@ -8,8 +7,8 @@ import type { CriticalSlot, HeatProfile, MountedEquipment } from '../../models/f
 import { InventoryModeHandler } from '../../equipment-handlers/inventory-mode.handler';
 import type { HandlerChoice } from '../../services/equipment-interaction-registry.service';
 import { INVENTORY_CONTROL_MODE_STATE, inventoryControlSortKey, getInventoryControlGroups } from '../../utils/inventory-control.util';
-import { AmmoControlDialogComponent, type AmmoControlDialogData } from '../ammo-control-dialog/ammo-control-dialog.component';
-import { WeaponEquipmentDialogComponent, type WeaponEquipmentDialogContext, type WeaponEquipmentDialogData } from './weapon-equipment-dialog.component';
+import { WeaponsEquipmentPanelComponent } from './weapons-equipment-panel.component';
+import type { EquipmentDialogContext } from './equipment-dialog.model';
 import type { MotiveModes } from '../../models/motiveModes.model';
 
 function addRuntimeSelection(unit: CBTForceUnit): CBTForceUnit {
@@ -118,7 +117,6 @@ interface CreateComponentOptions {
     gunnerySkill?: number;
     pilotingSkill?: number;
     moveMode?: MotiveModes | null;
-    configureData?: (data: WeaponEquipmentDialogData, unit: CBTForceUnit) => void;
 }
 
 function createComponent(
@@ -128,7 +126,7 @@ function createComponent(
     entryStates = new Map<MountedEquipment, { isDamaged: boolean; isDisabled: boolean; hitMod: number }>(),
     options: CreateComponentOptions = {}
 ) {
-    let context: WeaponEquipmentDialogContext;
+    let context: EquipmentDialogContext;
     const modeHandler = new InventoryModeHandler();
     const toasts: Array<{ id: string; message: string; type: 'info' | 'success' | 'error'; data?: Record<string, unknown> }> = [];
     const toastService = {
@@ -193,27 +191,20 @@ function createComponent(
                 getChoices: (entry: MountedEquipment) => modeHandler.applicableTo(entry) ? modeHandler.getChoices(entry, context) : [],
                 handleSelection: (entry: MountedEquipment, choice: HandlerChoice) => modeHandler.handleSelection(entry, choice, context)
             }
-        } as unknown as WeaponEquipmentDialogContext;
-    const data: WeaponEquipmentDialogData = {
-        title: 'Weapons & Equipment',
-        unit,
-        context,
-        readOnly: options.readOnly,
-    };
-    options.configureData?.(data, unit);
+        } as unknown as EquipmentDialogContext;
 
     TestBed.configureTestingModule({
-        imports: [WeaponEquipmentDialogComponent],
-        providers: [
-            { provide: DIALOG_DATA, useValue: data },
-            { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
-        ],
+        imports: [WeaponsEquipmentPanelComponent],
     });
-    const fixture = TestBed.createComponent(WeaponEquipmentDialogComponent);
+    const fixture = TestBed.createComponent(WeaponsEquipmentPanelComponent);
+    fixture.componentRef.setInput('unit', unit);
+    fixture.componentRef.setInput('context', context);
+    fixture.componentRef.setInput('readOnly', options.readOnly);
+    fixture.detectChanges();
     return { fixture, component: fixture.componentInstance, unit, dialogsService, toastService, heat };
 }
 
-describe('WeaponEquipmentDialogComponent', () => {
+describe('WeaponsEquipmentPanelComponent', () => {
     it('groups ranged, physical, equipment, and destroyed entries', () => {
         const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
         const punch = entry({ id: 'punch', physical: true, el: svgEntry('<g><g class="name"><text>Punch</text></g></g>') });
@@ -585,51 +576,6 @@ describe('WeaponEquipmentDialogComponent', () => {
         expect(rangeCells.every(cell => cell.style.getPropertyValue('--range-selection-color') === '')).toBeTrue();
     });
 
-    it('opens the targets overlay, adds a target, and changes color from the target square', () => {
-        const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
-        const { fixture, unit } = createComponent([laser]);
-        fixture.detectChanges();
-
-        const targetsButton = fixture.nativeElement.querySelector('button[aria-label="Targets"]') as HTMLButtonElement;
-        targetsButton.click();
-        fixture.detectChanges();
-
-        const menu = document.body.querySelector('.weapon-targets-menu') as HTMLElement;
-        expect(menu).not.toBeNull();
-        (menu.querySelector('button[aria-label="Add target"]') as HTMLButtonElement).click();
-        fixture.detectChanges();
-
-        expect(unit.getInventoryControlTargets().map(target => target.id)).toEqual(['A']);
-        const targetRow = menu.querySelector('.weapon-target-row') as HTMLElement;
-        expect(targetRow.querySelectorAll('.target-identity-row').length).toBe(1);
-        expect(targetRow.querySelectorAll('.target-controls-row').length).toBe(1);
-        expect(targetRow.querySelectorAll('.target-delete-row').length).toBe(1);
-        expect(targetRow.querySelectorAll('.target-controls-row .target-number-field').length).toBe(2);
-        expect(getComputedStyle(targetRow).display).toBe('flex');
-        expect(getComputedStyle(targetRow.querySelector('.target-identity-row') as HTMLElement).display).toBe('flex');
-        expect(getComputedStyle(targetRow.querySelector('.target-controls-row') as HTMLElement).display).toBe('flex');
-        const targetName = targetRow.querySelector('.target-name') as HTMLInputElement;
-        const targetDelete = targetRow.querySelector('.target-delete') as HTMLButtonElement;
-        expect((targetRow.querySelector('.target-square') as HTMLElement).offsetHeight).toBe(targetName.offsetHeight);
-        expect(targetDelete.offsetHeight).toBe(targetName.offsetHeight);
-        const colorButton = menu.querySelector('.target-square .color-picker-button') as HTMLButtonElement;
-        expect(colorButton).not.toBeNull();
-        colorButton.click();
-        fixture.detectChanges();
-
-        const colorChoices = Array.from(document.body.querySelectorAll('.color-picker-panel .color-choice')) as HTMLButtonElement[];
-        expect(colorChoices.length).toBe(INVENTORY_CONTROL_TARGET_COLORS.length);
-        colorChoices[1].click();
-        fixture.detectChanges();
-
-        expect(unit.getInventoryControlTargets()[0].color).toBe(INVENTORY_CONTROL_TARGET_COLORS[1]);
-        expect(document.body.querySelector('.weapon-targets-menu')).not.toBeNull();
-        const expectedColor = document.createElement('div');
-        expectedColor.style.background = INVENTORY_CONTROL_TARGET_COLORS[1];
-        expect((menu.querySelector('.target-square .color-picker-button') as HTMLButtonElement).style.background).toBe(expectedColor.style.background);
-        fixture.destroy();
-    });
-
     it('toggles all ranged weapons from the ranged group header checkbox', () => {
         const first = entry({ id: 'first', equipment: weapon('first'), el: svgEntry('<g><g class="name"><text>First</text></g></g>') });
         const second = entry({ id: 'second', equipment: weapon('second'), el: svgEntry('<g><g class="name"><text>Second</text></g></g>') });
@@ -717,7 +663,7 @@ describe('WeaponEquipmentDialogComponent', () => {
         });
         const ammoBin = entry({ id: 'std-ammo', equipment: standardAmmo, totalAmmo: 5, consumed: 1, locations: new Set(['CT']) });
         const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
-        const { component, fixture, unit, dialogsService, heat } = createComponent([first, second, ammoBin], equipmentMap, [], new Map(), { heatDissipation: 3 });
+        const { component, fixture, unit, heat } = createComponent([first, second, ammoBin], equipmentMap, [], new Map(), { heatDissipation: 3 });
         const rows = component.groups().find(group => group.id === 'ranged')!.rows;
 
         component.toggleSelected(rows[0]);
@@ -725,23 +671,15 @@ describe('WeaponEquipmentDialogComponent', () => {
         fixture.detectChanges();
 
         expect(component.selectedHeatTotal()).toBe(7);
-        const panel = fixture.nativeElement.querySelector('.selected-weapons-panel') as HTMLElement;
-        const heatMeter = panel.querySelector('.selected-heat-meter') as HTMLElement;
-        const dissipation = panel.querySelector('.heat-balance-segment.dissipation') as HTMLElement;
-        const pending = panel.querySelector('.heat-balance-segment.pending') as HTMLElement;
-        const retainedHeat = panel.querySelector('.heat-balance-segment.retained') as HTMLElement;
-        const projected = panel.querySelector('.heat-balance-equation .projected') as HTMLElement;
-        expect(panel.textContent).toContain('2+7-3=6');
-        expect(heatMeter.getAttribute('aria-label')).toBe('Heat projection: current 2, selection +7, dissipation -3, projected 6');
-        expect(getComputedStyle(projected).minWidth).toBe('24px');
-        expect(getComputedStyle(dissipation).left).toBe('0px');
-        expect(getComputedStyle(pending).left).toBe('0px');
-        expect(dissipation.style.width).toBe('10%');
-        expect(pending.style.width).toBe('30%');
-        expect(Number.parseFloat(pending.style.width)).toBeGreaterThan(Number.parseFloat(dissipation.style.width));
-        expect(getComputedStyle(retainedHeat).right).toBe('0px');
-        expect(Number.parseFloat(retainedHeat.style.width)).toBeGreaterThan(0);
-        expect(panel.textContent).toContain('CONSUME HEAT & AMMO');
+        expect(component.selectedHeatProjection()).toEqual(jasmine.objectContaining({
+            current: 2,
+            selection: 7,
+            dissipation: 3,
+            final: 6,
+            dissipationWidth: 10,
+            pendingWidth: 30
+        }));
+        expect(component.consumeButtonLabel()).toBe('CONSUME HEAT & AMMO');
 
         await component.consumeSelectedHeatAndAmmo();
 
@@ -760,17 +698,14 @@ describe('WeaponEquipmentDialogComponent', () => {
         });
         const ammoBin = entry({ id: 'std-ammo', equipment: standardAmmo, totalAmmo: 5, consumed: 1, locations: new Set(['CT']) });
         const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
-        const { component, fixture, unit, dialogsService } = createComponent([atm, ammoBin], equipmentMap, [], new Map(), { tracksHeat: false });
+        const { component, fixture, unit } = createComponent([atm, ammoBin], equipmentMap, [], new Map(), { tracksHeat: false });
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
         component.toggleSelected(row);
         fixture.detectChanges();
 
-        const panelText = (fixture.nativeElement.querySelector('.selected-weapons-panel') as HTMLElement).textContent;
-        expect(panelText).not.toContain('Current');
-        expect(panelText).not.toContain('Selection');
-        expect(panelText).not.toContain('Final');
-        expect(panelText).toContain('CONSUME AMMO');
+        expect(component.selectedHeatProjection()).toBeNull();
+        expect(component.consumeButtonLabel()).toBe('CONSUME AMMO');
 
         await component.consumeSelectedHeatAndAmmo();
 
@@ -902,17 +837,19 @@ describe('WeaponEquipmentDialogComponent', () => {
         });
         const ammoBin = entry({ id: 'std-ammo', equipment: standardAmmo, totalAmmo: 5, consumed: 1, locations: new Set(['CT']) });
         const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
-        const { component, fixture, unit, dialogsService, heat } = createComponent([atm, ammoBin], equipmentMap, [], new Map(), { heatDissipation: 3, heatNext: 8 });
+        const { component, fixture, unit, heat } = createComponent([atm, ammoBin], equipmentMap, [], new Map(), { heatDissipation: 3, heatNext: 8 });
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
         component.toggleSelected(row);
         fixture.detectChanges();
 
-        const heatMeter = fixture.nativeElement.querySelector('.selected-heat-meter') as HTMLElement;
-        const pending = fixture.nativeElement.querySelector('.heat-balance-segment.pending') as HTMLElement;
-        expect(heatMeter.textContent).toContain('8+4-3=9');
-        expect(heatMeter.getAttribute('aria-label')).toBe('Heat projection: current 8, selection +4, dissipation -3, projected 9');
-        expect(pending.style.width).toBe('40%');
+        expect(component.selectedHeatProjection()).toEqual(jasmine.objectContaining({
+            current: 8,
+            selection: 4,
+            dissipation: 3,
+            final: 9,
+            pendingWidth: 40
+        }));
 
         await component.consumeSelectedHeatAndAmmo();
 
@@ -935,10 +872,8 @@ describe('WeaponEquipmentDialogComponent', () => {
         component.toggleSelected(row);
         fixture.detectChanges();
 
-        const retainedHeat = fixture.nativeElement.querySelector('.heat-balance-segment.retained') as HTMLElement;
         expect(component.selectedHeatProjection()?.final).toBe(30);
-        expect(getComputedStyle(retainedHeat).right).toBe('0px');
-        expect(retainedHeat.style.width).toBe('100%');
+        expect(component.selectedHeatProjection()?.retainedWidth).toBe(100);
     });
 
     it('blocks heat and ammo consumption when a selected weapon has no ammo', async () => {
@@ -981,86 +916,6 @@ describe('WeaponEquipmentDialogComponent', () => {
         expect(dialogsService.showError).toHaveBeenCalledWith('ATM 6 Standard (1/5) does not have enough ammo for the selected weapons.', 'Not Enough Ammo');
         expect(ammoBin.consumed).toBe(4);
         expect(unit.setHeat).not.toHaveBeenCalled();
-    });
-
-    it('opens the ammo dialog from the weapon dialog actions', () => {
-        const standardAmmo = ammo('ATM 6 Standard', 'ATM', 6, ['M_STANDARD']);
-        const atm = entry({
-            id: 'atm',
-            equipment: weapon('ATM 6', 'ATM', 6),
-            el: svgEntry('<g><g class="name"><text>ATM 6</text></g><g class="alternativeMode" mode="Standard"><g class="name"><text>Standard</text></g><g class="damage"><text>2/Msl</text></g><text class="range_short">5</text></g></g>')
-        });
-        const ammoBin = entry({ id: 'std-ammo', equipment: standardAmmo, totalAmmo: 10, consumed: 2, locations: new Set(['CT']) });
-        const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
-        const { component, dialogsService } = createComponent([atm, ammoBin], equipmentMap);
-
-        expect(component.canOpenAmmoDialog()).toBeTrue();
-        component.openAmmoDialog();
-
-        expect(dialogsService.createDialog).toHaveBeenCalledWith(AmmoControlDialogComponent, jasmine.objectContaining({
-            data: jasmine.objectContaining({
-                title: 'Ammo',
-                readOnly: false,
-                entries: jasmine.any(Array),
-                getEntries: jasmine.any(Function)
-            })
-        }));
-        const data = dialogsService.createDialog.calls.mostRecent().args[1]!.data as AmmoControlDialogData;
-        expect(data.entries.length).toBe(1);
-        expect(data.getEntries!().length).toBe(1);
-    });
-
-    it('notifies when navigation changes the active unit', () => {
-        const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
-        const secondUnit = addRuntimeSelection({
-            id: 'unit-2',
-            getInventory: () => [],
-            getCritSlots: () => [],
-            getUnit: () => ({ chassis: 'Shadow Hawk', model: 'SHD-2H', comp: [] }),
-            getHeat: () => ({ current: 0, previous: 0 }),
-            turnState: () => ({ moveMode: () => null, airborne: () => false }),
-            readOnly: () => false,
-            hasDirectInventory: () => true,
-            rules: {}
-        } as unknown as CBTForceUnit);
-        const onUnitChange = jasmine.createSpy('onUnitChange');
-        const { component, unit } = createComponent([laser], {}, [], new Map(), {
-            configureData: (data, createdUnit) => {
-                data.unitList = [createdUnit, secondUnit];
-                data.onUnitChange = onUnitChange;
-            }
-        });
-
-        component.onNext();
-
-        expect(component.unit()).toBe(secondUnit);
-        expect(onUnitChange).toHaveBeenCalledOnceWith(secondUnit, 1);
-    });
-
-    it('navigates units with left and right arrow shortcuts', () => {
-        const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
-        const secondUnit = addRuntimeSelection({
-            id: 'unit-2',
-            getInventory: () => [],
-            getCritSlots: () => [],
-            getUnit: () => ({ chassis: 'Shadow Hawk', model: 'SHD-2H', comp: [] }),
-            getHeat: () => ({ current: 0, previous: 0 }),
-            turnState: () => ({ moveMode: () => null, airborne: () => false }),
-            readOnly: () => false,
-            hasDirectInventory: () => true,
-            rules: {}
-        } as unknown as CBTForceUnit);
-        const { component, unit } = createComponent([laser], {}, [], new Map(), {
-            configureData: (data, createdUnit) => {
-                data.unitList = [createdUnit, secondUnit];
-            }
-        });
-
-        expect((component as any).handleShortcutKeyDown(new KeyboardEvent('keydown', { key: 'ArrowRight' }))).toBeTrue();
-        expect(component.unit()).toBe(secondUnit);
-        expect((component as any).handleShortcutKeyDown(new KeyboardEvent('keydown', { key: 'ArrowLeft' }))).toBeTrue();
-        expect(component.unit()).toBe(unit);
-        expect((component as any).handleShortcutKeyDown(new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true }))).toBeFalse();
     });
 
     it('hides the action column when no group has ammo or controls', () => {
@@ -1187,14 +1042,18 @@ describe('WeaponEquipmentDialogComponent', () => {
 
         await component.handleChoice(row, { ...component.modeChoice(row)!, value: 'Extended Range', label: 'ER' });
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
-        expect(component.ammoText(row)).toBe('NO AMMO');
+        expect(component.rowTracksAmmo(row)).toBeTrue();
+        expect(component.rowHasAmmo(row)).toBeFalse();
+        expect(component.ammoText(row)).toBe('');
         expect(component.ammoDepleted(row)).toBeTrue();
         component.selectAmmoOption(row, row.ammo.options[0].id);
         expect(component.selectedAmmoOption(row)).toBe(row.ammo.options[0].id);
 
         await component.handleChoice(row, { ...component.modeChoice(row)!, value: 'High Explosive', label: 'HE' });
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
-        expect(component.ammoText(row)).toBe('NO AMMO');
+        expect(component.rowTracksAmmo(row)).toBeTrue();
+        expect(component.rowHasAmmo(row)).toBeFalse();
+        expect(component.ammoText(row)).toBe('');
         expect(component.ammoDepleted(row)).toBeTrue();
         expect(component.ammoDestroyed(row)).toBeFalse();
     });
@@ -1226,12 +1085,17 @@ describe('WeaponEquipmentDialogComponent', () => {
             equipment: weapon('ATM 6', 'ATM', 6),
             el: svgEntry('<g><g class="name"><text>ATM 6</text></g><g class="alternativeMode" mode="Standard"><g class="name"><text>Standard</text></g><g class="damage"><text>2/Msl</text></g><text class="range_short">5</text></g></g>')
         });
-        const { component } = createComponent([atm]);
+        const { component, fixture } = createComponent([atm]);
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
         expect(row.ammo.options).toEqual([]);
+        expect(component.rowTracksAmmo(row)).toBeTrue();
+        expect(component.rowHasAmmo(row)).toBeFalse();
         expect(component.ammoDepleted(row)).toBeTrue();
-        expect(component.ammoText(row)).toBe('NO AMMO');
+        expect(component.ammoText(row)).toBe('');
+        fixture.detectChanges();
+        expect((fixture.nativeElement.querySelector('.ammo-cell') as HTMLElement).textContent?.trim()).toBe('NO AMMO');
+        expect(fixture.nativeElement.querySelectorAll('.ammo-stepper-button').length).toBe(0);
     });
 
     it('shows No ammo instead of a dropdown when all ammo choices are depleted', () => {
@@ -1244,7 +1108,7 @@ describe('WeaponEquipmentDialogComponent', () => {
         const leftBin = entry({ id: 'left-ammo', equipment: standardAmmo, totalAmmo: 10, consumed: 10, locations: new Set(['LT']) });
         const rightBin = entry({ id: 'right-ammo', equipment: standardAmmo, totalAmmo: 10, consumed: 10, locations: new Set(['RT']) });
         const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
-        const { component } = createComponent([atm, leftBin, rightBin], equipmentMap);
+        const { component, fixture } = createComponent([atm, leftBin, rightBin], equipmentMap);
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
         expect(row.ammo.options.map(option => ({ remaining: option.remaining, destroyed: option.destroyed }))).toEqual([
@@ -1252,9 +1116,14 @@ describe('WeaponEquipmentDialogComponent', () => {
             { remaining: 0, destroyed: false }
         ]);
         expect(component.showAmmoDropdown(row)).toBeFalse();
-        expect(component.ammoText(row)).toBe('NO AMMO');
+        expect(component.rowTracksAmmo(row)).toBeTrue();
+        expect(component.rowHasAmmo(row)).toBeFalse();
+        expect(component.ammoText(row)).toBe('');
         expect(component.ammoDepleted(row)).toBeTrue();
         expect(component.ammoDestroyed(row)).toBeFalse();
+        fixture.detectChanges();
+        expect((fixture.nativeElement.querySelector('.ammo-cell') as HTMLElement).textContent?.trim()).toBe('NO AMMO');
+        expect(fixture.nativeElement.querySelectorAll('.ammo-stepper-button').length).toBe(0);
     });
 
     it('shows No ammo instead of a dropdown when all ammo choices are destroyed', () => {
@@ -1267,7 +1136,7 @@ describe('WeaponEquipmentDialogComponent', () => {
         const leftBin = entry({ id: 'left-ammo', equipment: standardAmmo, totalAmmo: 10, consumed: 0, destroyed: true, locations: new Set(['LT']) });
         const rightBin = entry({ id: 'right-ammo', equipment: standardAmmo, totalAmmo: 10, consumed: 0, destroyed: true, locations: new Set(['RT']) });
         const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
-        const { component } = createComponent([atm, leftBin, rightBin], equipmentMap);
+        const { component, fixture } = createComponent([atm, leftBin, rightBin], equipmentMap);
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
         expect(row.ammo.options.map(option => ({ remaining: option.remaining, destroyed: option.destroyed }))).toEqual([
@@ -1275,9 +1144,14 @@ describe('WeaponEquipmentDialogComponent', () => {
             { remaining: 0, destroyed: true }
         ]);
         expect(component.showAmmoDropdown(row)).toBeFalse();
-        expect(component.ammoText(row)).toBe('NO AMMO');
+        expect(component.rowTracksAmmo(row)).toBeTrue();
+        expect(component.rowHasAmmo(row)).toBeFalse();
+        expect(component.ammoText(row)).toBe('');
         expect(component.ammoDepleted(row)).toBeTrue();
         expect(component.ammoDestroyed(row)).toBeFalse();
+        fixture.detectChanges();
+        expect((fixture.nativeElement.querySelector('.ammo-cell') as HTMLElement).textContent?.trim()).toBe('NO AMMO');
+        expect(fixture.nativeElement.querySelectorAll('.ammo-stepper-button').length).toBe(0);
     });
 
     it('groups same-location ammo bins', () => {
