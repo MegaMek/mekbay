@@ -487,7 +487,8 @@ export class WeaponEquipmentDialogComponent {
         const { componentRef, closed } = this.overlayManager.createManagedOverlay(WEAPON_TARGETS_OVERLAY_KEY, target, portal, {
             hasBackdrop: false,
             panelClass: 'weapon-targets-overlay-panel',
-            closeOnOutsideClick: true,
+            closeOnOutsideClick: false,
+            closeOnOutsideClickOnly: true,
             scrollStrategy: this.overlay.scrollStrategies.reposition(),
             positions: [
                 { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
@@ -634,7 +635,8 @@ export class WeaponEquipmentDialogComponent {
         const { componentRef, closed } = this.overlayManager.createManagedOverlay(WEAPON_TARGET_CHOICE_OVERLAY_KEY, anchor, portal, {
             hasBackdrop: false,
             panelClass: 'weapon-target-choice-overlay-panel',
-            closeOnOutsideClick: true,
+            closeOnOutsideClick: false,
+            closeOnOutsideClickOnly: true,
             scrollStrategy: this.overlay.scrollStrategies.reposition(),
             positions: [
                 { originX: 'end', originY: 'center', overlayX: 'start', overlayY: 'center', offsetX: 4 },
