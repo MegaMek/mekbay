@@ -86,7 +86,9 @@ export class InfantryRules implements UnitTypeRules {
             if (!entry.equipment) continue;
             entry.destroyed = allSquadsDestroyed;
             if (allSquadsDestroyed) continue;
-            if (entry.locations?.has('SSW')) {
+            
+            // TODO: not working, locations is empty for Infantry!!!! FIX ME!
+            if (entry.locations?.has('SSW')) { 
                 entry.destroyed = t1Destroyed;
             }
         }
