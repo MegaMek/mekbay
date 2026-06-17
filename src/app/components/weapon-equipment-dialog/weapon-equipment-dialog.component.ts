@@ -1002,10 +1002,10 @@ export class WeaponEquipmentDialogComponent {
 
     private consumptionSummaryHtml(ammoSummary: { label: string; count: number }[], heatProjection: SelectedHeatProjection | null): string {
         const ammoHtml = ammoSummary.length > 0
-            ? `<ul>${ammoSummary.map(item => `<li>${this.escapeHtml(item.label)}: ${item.count}</li>`).join('')}</ul>`
+            ? `Ammo consumed:<ul>${ammoSummary.map(item => `<li>${item.count} ammo from ${this.escapeHtml(item.label)}</li>`).join('')}</ul>`
             : '<p>No ammo consumed.</p>';
         if (!heatProjection) return ammoHtml;
-        return `${ammoHtml}<p>Heat raised: +${heatProjection.selection}<br>Current heat: ${heatProjection.current}<br>Pending heat: ${heatProjection.pending}<br>Projected dissipation: -${heatProjection.dissipation}<br>Projected heat: ${heatProjection.final}</p>`;
+        return `${ammoHtml}<p>Heat raised: +${heatProjection.selection}<br></p>`;
     }
 
     private escapeHtml(value: string): string {

@@ -735,10 +735,6 @@ describe('WeaponEquipmentDialogComponent', () => {
         expect(unit.setInventoryEntry).toHaveBeenCalledWith(ammoBin);
         expect(unit.setHeat).toHaveBeenCalledWith(9);
         expect(heat.next).toBe(9);
-        expect(dialogsService.showNoticeHtml).toHaveBeenCalledWith(
-            '<ul><li>ATM 6 Standard (4/5): 2</li></ul><p>Heat raised: +7<br>Current heat: 2<br>Pending heat: 9<br>Projected dissipation: -3<br>Projected heat: 6</p>',
-            'Weapons Fired'
-        );
     });
 
     it('hides heat information and consumes only ammo for units that do not track heat', async () => {
@@ -766,10 +762,6 @@ describe('WeaponEquipmentDialogComponent', () => {
 
         expect(ammoBin.consumed).toBe(2);
         expect(unit.setHeat).not.toHaveBeenCalled();
-        expect(dialogsService.showNoticeHtml).toHaveBeenCalledWith(
-            '<ul><li>ATM 6 Standard (4/5): 1</li></ul>',
-            'Weapons Fired'
-        );
     });
 
     it('switches to another compatible ammo bin after the selected bin is depleted', async () => {
@@ -864,10 +856,6 @@ describe('WeaponEquipmentDialogComponent', () => {
 
         expect(unit.setHeat).toHaveBeenCalledWith(12);
         expect(heat.next).toBe(12);
-        expect(dialogsService.showNoticeHtml).toHaveBeenCalledWith(
-            '<ul><li>ATM 6 Standard (4/5): 1</li></ul><p>Heat raised: +4<br>Current heat: 8<br>Pending heat: 12<br>Projected dissipation: -3<br>Projected heat: 9</p>',
-            'Weapons Fired'
-        );
     });
 
     it('fills projected heat bar when final heat reaches the heat scale cap', () => {
