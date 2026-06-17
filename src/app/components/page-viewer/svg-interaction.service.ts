@@ -50,7 +50,7 @@ import { SetAmmoDialogComponent, type SetAmmoDialogData } from '../set-ammo-dial
 import { DataService } from '../../services/data.service';
 import { AmmoEquipment, WeaponEquipment } from '../../models/equipment.model';
 import { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
-import type { HandlerChoice, HandlerContext } from '../../services/equipment-interaction-registry.service';
+import type { HandlerChoice } from '../../services/equipment-interaction-registry.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
@@ -58,10 +58,8 @@ import { type ChoicePickerStyle, PickerFactoryService } from '../../services/pic
 import { canAntiMech } from '../../utils/infantry.util';
 import { AmmoControlDialogComponent, type AmmoControlDialogData } from '../ammo-control-dialog/ammo-control-dialog.component';
 import { getAmmoControlEntriesForUnitWeapons } from '../../utils/ammo-interaction.util';
-import { WeaponEquipmentDialogComponent, type WeaponEquipmentDialogContext, type WeaponEquipmentDialogData } from '../../components/weapon-equipment-dialog/weapon-equipment-dialog.component';
 import { WeaponTargetChoiceMenuComponent } from '../../components/weapon-equipment-dialog/weapon-target-choice-menu.component';
-import { PageViewerStateService } from './internal/page-viewer-state.service';
-import { getInventoryControlModes, getSelectedInventoryControlMode, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
+import { getInventoryControlModes, getSelectedInventoryControlMode, selectInventoryControlEntry, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
 import { getMotiveModeLabel, getMotiveModeTargetNumberModifier } from '../../models/motiveModes.model';
 import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { inventoryTargetCategory, inventoryTargetNumberText, parseInventoryTargetNumberCell, readInventoryTargetDisplay, readInventoryTargetText } from '../../utils/inventory-target-number.util';
@@ -100,7 +98,6 @@ export class SvgInteractionService {
     private forceBuilderService = inject(ForceBuilderService);
     private equipmentRegistryService = inject(EquipmentInteractionRegistryService);
     private pickerFactory = inject(PickerFactoryService);
-    private pageViewerState = inject(PageViewerStateService);
 
     // Zoom-pan service passed via initialize()
     private zoomPanService!: ZoomPanServiceInterface;
@@ -867,30 +864,20 @@ export class SvgInteractionService {
             const el = entry.el;
             if (!el) return;
             syncSvgMode(entry, getSelectedInventoryControlMode(entry));
-            const openInventoryDialog = () => {
+
+            const selectEntry = (button: SVGElement) => {
                 const unit = this.unit();
                 if (!unit) return;
-                this.removePicker();
-                const context: WeaponEquipmentDialogContext = {
-                    toastService: this.toastService,
-                    dialogsService: this.dialogsService,
-                    dataService: this.dataService,
-                    registry: this.equipmentRegistryService.getRegistry()
-                };
-                this.pageViewerState.beginInventoryDialog();
-                const ref = this.dialogsService.createDialog<void>(WeaponEquipmentDialogComponent, {
-                    data: {
-                        title: 'Weapons & Equipment',
-                        unitList: this.pageViewerState.forceUnits,
-                        unitIndex: this.pageViewerState.forceUnits().findIndex(candidate => candidate.id === unit.id),
-                        onUnitChange: (selectedUnit) => this.forceBuilderService.selectUnit(selectedUnit),
-                        context
-                    } as WeaponEquipmentDialogData,
+
+                const updated = selectInventoryControlEntry(unit, entry, (selectedTargetId, targets) => {
+                    this.showInventoryTargetPicker(entry, button, selectedTargetId, targets);
                 });
-                ref.closed.subscribe(() => this.pageViewerState.endInventoryDialog());
+                if (updated) {
+                    this.removePicker();
+                }
             };
 
-            const selectRange = (button: SVGElement, event: Event) => {
+            const selectRange = (button: SVGElement) => {
                 const unit = this.unit();
                 const range = this.inventoryRangeForButton(button);
                 if (!unit || !range) return;
@@ -910,7 +897,7 @@ export class SvgInteractionService {
                     const selectedTargetId = unit.getInventoryControlSelectedTarget(entry.id);
                     unit.setInventoryControlSelectedTarget(entry, !forceSelected && selectedTargetId === targetId ? null : targetId);
                 } else {
-                    this.showInventoryTargetPicker(entry, button, event, targets);
+                    this.showInventoryTargetPicker(entry, button, unit.getInventoryControlSelectedTarget(entry.id) ?? null, targets);
                 }
             };
 
@@ -921,7 +908,7 @@ export class SvgInteractionService {
                 button.addEventListener('click', (evt: Event) => {
                     evt.preventDefault();
                     evt.stopPropagation();
-                    openInventoryDialog();
+                    selectEntry(button);
                 }, { passive: false, signal });
             });
             this.inventoryRangeButtons(el).forEach(button => {
@@ -930,7 +917,7 @@ export class SvgInteractionService {
                 button.addEventListener('click', (evt: Event) => {
                     evt.preventDefault();
                     evt.stopPropagation();
-                    selectRange(button, evt);
+                    selectRange(button);
                 }, { passive: false, signal });
             });
         });
@@ -967,10 +954,14 @@ export class SvgInteractionService {
         return getInventoryControlModes(entry).some(candidate => candidate.mode === mode) ? mode : null;
     }
 
-    private showInventoryTargetPicker(entry: MountedEquipment, button: SVGElement, _event: Event, targets: InventoryControlRuntimeTarget[]): void {
+    private showInventoryTargetPicker(
+        entry: MountedEquipment,
+        button: SVGElement,
+        selectedTargetId: InventoryControlRuntimeTargetId | null,
+        targets: readonly InventoryControlRuntimeTarget[]
+    ): void {
         const unit = this.unit();
         if (!unit) return;
-        const selectedTargetId = unit.getInventoryControlSelectedTarget(entry.id) ?? null;
         this.removePicker();
         const portal = new ComponentPortal(WeaponTargetChoiceMenuComponent, null, this.injector);
         const { componentRef } = this.overlayManager.createManagedOverlay(SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY, button as unknown as HTMLElement, portal, {
@@ -996,7 +987,7 @@ export class SvgInteractionService {
         });
     }
 
-    private inventoryTargetNumberTexts(entry: MountedEquipment, targets: InventoryControlRuntimeTarget[]): Readonly<Record<InventoryControlRuntimeTargetId, string>> {
+    private inventoryTargetNumberTexts(entry: MountedEquipment, targets: readonly InventoryControlRuntimeTarget[]): Readonly<Record<InventoryControlRuntimeTargetId, string>> {
         return Object.fromEntries(targets
             .map(target => [target.id, this.inventoryTargetNumberText(entry, target)] as const)
             .filter(([, targetNumber]) => targetNumber !== ''));

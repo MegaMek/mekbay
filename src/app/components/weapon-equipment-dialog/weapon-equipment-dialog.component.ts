@@ -28,6 +28,8 @@ import { SwipeDirective, type SwipeEndEvent, type SwipeMoveEvent, type SwipeStar
 import {
     formatInventoryControlModeName,
     getInventoryControlGroups,
+    isInventoryControlSelectableEntry,
+    selectInventoryControlEntry,
     setInventoryControlSortOrder,
     type InventoryControlAmmoOption,
     type InventoryControlGroup,
@@ -559,26 +561,21 @@ export class WeaponEquipmentDialogComponent {
 
     onRowTargetSelectorClick(event: MouseEvent, row: InventoryControlRow): void {
         event.stopPropagation();
-        if (!this.isSelectable(row)) return;
-        const targets = this.targets();
-        if (targets.length === 0) return;
-        if (targets.length === 1) {
-            const targetId = targets[0].id;
-            const selectedTargetId = this.unit().getInventoryControlSelectedTarget(row.id);
-            this.unit().setInventoryControlSelectedTarget(row.entry, selectedTargetId === targetId ? null : targetId);
-            this.refresh();
-            return;
-        }
+        const updated = selectInventoryControlEntry(this.unit(), row.entry, selectedTargetId => {
+            this.openTargetChoiceOverlay(
+                event.currentTarget as HTMLElement,
+                selectedTargetId,
+                targetId => {
+                    this.unit().setInventoryControlSelectedTarget(row.entry, targetId);
+                    this.refresh();
+                },
+                this.targetChoiceTargetNumberTexts(row)
+            );
+        });
 
-        this.openTargetChoiceOverlay(
-            event.currentTarget as HTMLElement,
-            this.unit().getInventoryControlSelectedTarget(row.id) ?? null,
-            targetId => {
-                this.unit().setInventoryControlSelectedTarget(row.entry, targetId);
-                this.refresh();
-            },
-            this.targetChoiceTargetNumberTexts(row)
-        );
+        if (updated) {
+            this.refresh();
+        }
     }
 
     groupTargetSelection(group: InventoryControlGroup): InventoryControlRuntimeTarget | null {
@@ -704,7 +701,7 @@ export class WeaponEquipmentDialogComponent {
     }
 
     isSelectable(row: InventoryControlRow): boolean {
-        return row.category === 'ranged' || row.category === 'physical';
+        return isInventoryControlSelectableEntry(row.entry);
     }
 
     isSelected(row: InventoryControlRow): boolean {
@@ -713,8 +710,9 @@ export class WeaponEquipmentDialogComponent {
     }
 
     toggleSelected(row: InventoryControlRow): void {
-        this.unit().setInventoryControlEntrySelected(row.entry, !this.isSelected(row));
-        this.refresh();
+        if (selectInventoryControlEntry(this.unit(), row.entry)) {
+            this.refresh();
+        }
     }
 
     groupAllSelectableRowsSelected(group: InventoryControlGroup): boolean {

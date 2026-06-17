@@ -1,6 +1,7 @@
 import { AmmoEquipment, WeaponEquipment, type EquipmentMap } from '../models/equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { CriticalSlot, MountedEquipment } from '../models/force-serialization';
+import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../models/inventory-control-runtime-state.model';
 import { computeLinkedModifiers, isMountedDestroyed, resolveHitModifier } from '../models/rules/hit-modifier.util';
 
 export const INVENTORY_CONTROL_MODE_STATE = 'inventory_control_mode';
@@ -128,6 +129,35 @@ export function getInventoryControlGroups(unit: CBTForceUnit, equipmentMap: Equi
     ];
 
     return groups.filter(group => group.rows.length > 0);
+}
+
+export function isInventoryControlSelectableEntry(entry: MountedEquipment): boolean {
+    const category = getEntryCategory(entry);
+    return category === 'ranged' || category === 'physical';
+}
+
+export function selectInventoryControlEntry(
+    unit: CBTForceUnit,
+    entry: MountedEquipment,
+    chooseTarget?: (selectedTargetId: InventoryControlRuntimeTargetId | null, targets: readonly InventoryControlRuntimeTarget[]) => void
+): boolean {
+    if (!isInventoryControlSelectableEntry(entry)) return false;
+
+    const targets = unit.getInventoryControlTargets();
+    if (targets.length === 0) {
+        unit.setInventoryControlEntrySelected(entry, !unit.isInventoryControlEntrySelected(entry.id));
+        return true;
+    }
+
+    if (targets.length === 1) {
+        const targetId = targets[0].id;
+        const selectedTargetId = unit.getInventoryControlSelectedTarget(entry.id);
+        unit.setInventoryControlSelectedTarget(entry, selectedTargetId === targetId ? null : targetId);
+        return true;
+    }
+
+    chooseTarget?.(unit.getInventoryControlSelectedTarget(entry.id) ?? null, targets);
+    return false;
 }
 
 export function getInventoryControlModes(entry: MountedEquipment): InventoryControlMode[] {
