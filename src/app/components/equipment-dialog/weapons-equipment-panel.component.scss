@@ -5,6 +5,10 @@
     max-width: 1000px;
     width: 100%;
     align-items: center;
+
+    @media (max-height: 600px) {
+        --weapon-equipment-title-height: 24px;
+    }
 }
 
 .weapon-equipment-dialog.hide-actions-column {
@@ -97,7 +101,7 @@
 .section-title {
     grid-column: 2 / -2;
     min-width: 0;
-    padding: 4px 8px;
+    padding: 2px 8px;
     overflow-wrap: anywhere;
 }
 

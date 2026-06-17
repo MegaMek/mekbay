@@ -18,6 +18,20 @@
     text-align: center;
 }
 
+@media (max-height: 600px) {
+    .equipment-dialog {
+        gap: 0px;
+    }
+
+    .wide-dialog-actions {
+        padding-top: 4px;
+    }
+
+    .equipment-dialog-title-row {
+        min-height: 26px;
+    }
+}
+
 .equipment-dialog-title-row h2 {
     margin: 0;
     min-width: 0;
@@ -115,6 +129,10 @@
     justify-content: center;
     gap: 6px;
     width: 100%;
+
+    @media (max-height: 600px) {
+        padding-bottom: 4px;
+    }
 }
 
 .equipment-tab {
@@ -131,6 +149,20 @@
     &.active {
         color: var(--text-color);
         border-color: var(--text-color-secondary);
+    }
+
+    @media (max-height: 600px) {
+        min-height: 28px;
+        padding-bottom: 0px;
+    }
+
+    @media (max-width: 600px) {
+        padding-bottom: 0px;
+        font-size: 0.9em;
+    }
+
+    @media (max-width: 400px) {
+        font-size: 0.8em;
     }
 }
 
