@@ -361,12 +361,22 @@ function syncEntryFromSource(entry: AmmoControlEntry, equipmentMap: EquipmentMap
 }
 
 function showAmmoToast(entry: AmmoControlEntry, deltaRemaining: number, context: HandlerContext): void {
-    const amountText = deltaRemaining > 0 ? `+${deltaRemaining}` : deltaRemaining.toString();
+    const toastId = `ammo-control-${entry.owner.id}-${entry.id}`;
+    const existingDelta = readAmmoToastDelta(context, toastId, deltaRemaining);
+    const accumulatedDelta = existingDelta + deltaRemaining;
+    const amountText = accumulatedDelta > 0 ? `+${accumulatedDelta}` : accumulatedDelta.toString();
     context.toastService.showToast(
-        `${amountText} ${deltaRemaining >= 0 ? 'to' : 'from'} ${entry.locationLabel} ${entry.displayName} (${getAmmoEntryRemaining(entry)}/${entry.totalAmmo})`,
+        `${amountText} ${accumulatedDelta >= 0 ? 'to' : 'from'} ${entry.locationLabel} ${entry.displayName} (${getAmmoEntryRemaining(entry)}/${entry.totalAmmo})`,
         'info',
-        `ammo-control-${entry.owner.id}-${entry.id}`
+        toastId,
+        { ammoDeltaRemaining: accumulatedDelta }
     );
+}
+
+function readAmmoToastDelta(context: HandlerContext, toastId: string, deltaRemaining: number): number {
+    const existingToast = context.toastService.toasts().find(toast => toast.id === toastId);
+    const delta = existingToast?.data?.['ammoDeltaRemaining'];
+    return typeof delta === 'number' && Math.sign(delta) === Math.sign(deltaRemaining) ? delta : 0;
 }
 
 export function changeAmmoEntryRemaining(entry: AmmoControlEntry, deltaRemaining: number, context: HandlerContext): boolean {
@@ -387,26 +397,34 @@ export function changeAmmoEntryRemaining(entry: AmmoControlEntry, deltaRemaining
     return true;
 }
 
+export function changeAmmoEntriesRemaining(entries: AmmoControlEntry[], deltaRemaining: number, context: HandlerContext): boolean {
+    if (deltaRemaining === 0) return false;
+    const sortedEntries = [...entries].sort(compareAmmoControlEntryOrder);
+    const reversedEntries = [...sortedEntries].reverse();
+    let remainingAdjustment = Math.abs(deltaRemaining);
+    let changed = false;
+
+    while (remainingAdjustment > 0) {
+        const target = deltaRemaining < 0
+            ? reversedEntries.find(entry => !entry.destroyed && getAmmoEntryRemaining(entry) > 0)
+            : reversedEntries.find(entry => {
+                const remaining = getAmmoEntryRemaining(entry);
+                return !entry.destroyed && remaining > 0 && remaining < entry.totalAmmo;
+            }) ?? sortedEntries.find(entry => !entry.destroyed && getAmmoEntryRemaining(entry) < entry.totalAmmo);
+        if (!target || !changeAmmoEntryRemaining(target, deltaRemaining < 0 ? -1 : 1, context)) break;
+        changed = true;
+        remainingAdjustment -= 1;
+    }
+
+    return changed;
+}
+
 export function getAmmoGroupRemaining(group: AmmoControlGroup): number {
     return group.entries.reduce((total, entry) => total + getAmmoEntryRemaining(entry), 0);
 }
 
 export function changeAmmoGroupRemaining(group: AmmoControlGroup, deltaRemaining: number, context: HandlerContext): boolean {
-    if (group.entries.length === 1) return changeAmmoEntryRemaining(group.entries[0], deltaRemaining, context);
-
-    const sortedEntries = [...group.entries].sort(compareAmmoControlEntryOrder);
-    let changed = false;
-
-    if (deltaRemaining < 0) {
-        const target = [...sortedEntries].reverse().find(entry => !entry.destroyed && getAmmoEntryRemaining(entry) > 0);
-        if (target) changed = changeAmmoEntryRemaining(target, -1, context);
-    } else if (deltaRemaining > 0) {
-        const target = [...sortedEntries].reverse().find(entry => {
-            const remaining = getAmmoEntryRemaining(entry);
-            return !entry.destroyed && remaining > 0 && remaining < entry.totalAmmo;
-        }) ?? sortedEntries.find(entry => !entry.destroyed && getAmmoEntryRemaining(entry) < entry.totalAmmo);
-        if (target) changed = changeAmmoEntryRemaining(target, 1, context);
-    }
+    const changed = changeAmmoEntriesRemaining(group.entries, deltaRemaining, context);
 
     if (changed) syncGroupTotals(group);
     return changed;

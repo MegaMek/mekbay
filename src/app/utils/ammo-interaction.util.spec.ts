@@ -2,7 +2,7 @@ import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import type { CriticalSlot, MountedEquipment } from '../models/force-serialization';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
-import { changeAmmoGroupRemaining, getAmmoControlEntriesForUnitWeapons, getAmmoControlGroups, getAmmoEntryRemaining, getAmmoGroupRemaining, type AmmoControlEntry } from './ammo-interaction.util';
+import { changeAmmoEntryRemaining, changeAmmoGroupRemaining, getAmmoControlEntriesForUnitWeapons, getAmmoControlGroups, getAmmoEntryRemaining, getAmmoGroupRemaining, type AmmoControlEntry } from './ammo-interaction.util';
 
 function createAmmo(id: string, shortName: string): AmmoEquipment {
     return new AmmoEquipment({
@@ -15,12 +15,24 @@ function createAmmo(id: string, shortName: string): AmmoEquipment {
 }
 
 function createContext(equipment: Record<string, AmmoEquipment>): HandlerContext {
+    const toasts: Array<{ id: string; message: string; type: 'info' | 'success' | 'error'; data?: Record<string, unknown> }> = [];
+    const showToast = jasmine.createSpy('showToast').and.callFake((message: string, type: 'info' | 'success' | 'error', id?: string, data?: Record<string, unknown>) => {
+        const toastId = id ?? `toast-${toasts.length + 1}`;
+        const existingIndex = toasts.findIndex(toast => toast.id === toastId);
+        if (existingIndex === -1) {
+            toasts.push({ id: toastId, message, type, data });
+        } else {
+            toasts[existingIndex] = { id: toastId, message, type, data };
+        }
+        return toastId;
+    });
     return {
         dataService: {
             getEquipments: () => equipment,
         },
         toastService: {
-            showToast: jasmine.createSpy('showToast'),
+            showToast,
+            toasts: () => toasts,
         },
         dialogsService: {},
     } as unknown as HandlerContext;
@@ -260,6 +272,24 @@ describe('ammo interaction direct inventory groups', () => {
         expect(entries[0].consumed).toBe(0);
         expect(entries[1].consumed).toBe(5);
         expect(getAmmoGroupRemaining(group)).toBe(5);
+    });
+
+    it('accumulates repeated same-direction ammo deltas into a reused toast', () => {
+        const owner = createOwner();
+        const context = createContext({ [standardAmmo.internalName]: standardAmmo });
+        const entry = createEntry({ id: 'Clan Ultra AC/20 Ammo@BD#1.0', ammo: standardAmmo, owner });
+
+        expect(changeAmmoEntryRemaining(entry, -1, context)).toBeTrue();
+        expect(changeAmmoEntryRemaining(entry, -1, context)).toBeTrue();
+        expect(changeAmmoEntryRemaining(entry, -1, context)).toBeTrue();
+
+        expect(context.toastService.showToast).toHaveBeenCalledWith('-1 from BD Clan Ultra AC/20 (4/5)', 'info', 'ammo-control-unit-1-inventory:Clan Ultra AC/20 Ammo@BD#1.0', { ammoDeltaRemaining: -1 });
+        expect(context.toastService.showToast).toHaveBeenCalledWith('-2 from BD Clan Ultra AC/20 (3/5)', 'info', 'ammo-control-unit-1-inventory:Clan Ultra AC/20 Ammo@BD#1.0', { ammoDeltaRemaining: -2 });
+        expect(context.toastService.showToast).toHaveBeenCalledWith('-3 from BD Clan Ultra AC/20 (2/5)', 'info', 'ammo-control-unit-1-inventory:Clan Ultra AC/20 Ammo@BD#1.0', { ammoDeltaRemaining: -3 });
+
+        expect(changeAmmoEntryRemaining(entry, 1, context)).toBeTrue();
+
+        expect(context.toastService.showToast).toHaveBeenCalledWith('+1 to BD Clan Ultra AC/20 (3/5)', 'info', 'ammo-control-unit-1-inventory:Clan Ultra AC/20 Ammo@BD#1.0', { ammoDeltaRemaining: 1 });
     });
 
     it('skips destroyed crit bins when changing grouped ammo quantity', () => {

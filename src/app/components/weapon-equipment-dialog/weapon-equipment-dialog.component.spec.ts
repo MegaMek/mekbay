@@ -130,6 +130,20 @@ function createComponent(
 ) {
     let context: WeaponEquipmentDialogContext;
     const modeHandler = new InventoryModeHandler();
+    const toasts: Array<{ id: string; message: string; type: 'info' | 'success' | 'error'; data?: Record<string, unknown> }> = [];
+    const toastService = {
+        showToast: jasmine.createSpy('showToast').and.callFake((message: string, type: 'info' | 'success' | 'error', id?: string, data?: Record<string, unknown>) => {
+            const toastId = id ?? `toast-${toasts.length + 1}`;
+            const existingIndex = toasts.findIndex(toast => toast.id === toastId);
+            if (existingIndex === -1) {
+                toasts.push({ id: toastId, message, type, data });
+            } else {
+                toasts[existingIndex] = { id: toastId, message, type, data };
+            }
+            return toastId;
+        }),
+        toasts: () => toasts,
+    };
     const dialogsService = {
         createDialog: jasmine.createSpy('createDialog').and.returnValue({ closed: { subscribe: jasmine.createSpy('subscribe') } }),
         showNoticeHtml: jasmine.createSpy('showNoticeHtml').and.resolveTo(),
@@ -172,7 +186,7 @@ function createComponent(
     addRuntimeSelection(unit);
     entries.forEach(item => item.owner = unit);
     context = {
-            toastService: { showToast: jasmine.createSpy('showToast') },
+            toastService,
             dialogsService,
             dataService: { getEquipments: () => equipmentMap },
             registry: {
@@ -196,7 +210,7 @@ function createComponent(
         ],
     });
     const fixture = TestBed.createComponent(WeaponEquipmentDialogComponent);
-    return { fixture, component: fixture.componentInstance, unit, dialogsService, heat };
+    return { fixture, component: fixture.componentInstance, unit, dialogsService, toastService, heat };
 }
 
 describe('WeaponEquipmentDialogComponent', () => {
@@ -762,6 +776,54 @@ describe('WeaponEquipmentDialogComponent', () => {
 
         expect(ammoBin.consumed).toBe(2);
         expect(unit.setHeat).not.toHaveBeenCalled();
+    });
+
+    it('adjusts selected ammo from row stepper controls', () => {
+        const standardAmmo = ammo('ATM 6 Standard', 'ATM', 6, ['M_STANDARD']);
+        const atm = entry({
+            id: 'atm',
+            equipment: weapon('ATM 6', 'ATM', 6),
+            el: svgEntry('<g><g class="name"><text>ATM 6</text></g><text class="heat">4</text><text class="range_short">5</text></g>')
+        });
+        const ammoBin = entry({ id: 'std-ammo', equipment: standardAmmo, totalAmmo: 5, consumed: 1, locations: new Set(['CT']) });
+        const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
+        const { component, fixture, unit, toastService } = createComponent([atm, ammoBin], equipmentMap, [], new Map(), { tracksHeat: false });
+        let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        fixture.detectChanges();
+        const buttons = fixture.nativeElement.querySelectorAll('.ammo-stepper-button') as NodeListOf<HTMLButtonElement>;
+        expect(buttons.length).toBe(2);
+        expect(buttons[0].textContent?.trim()).toBe('-');
+        expect(buttons[1].textContent?.trim()).toBe('+');
+
+        expect(component.canAdjustAmmo(row, 1)).toBeTrue();
+        expect(component.canAdjustAmmo(row, -1)).toBeTrue();
+        component.adjustAmmo(row, 1);
+
+        expect(ammoBin.consumed).toBe(2);
+        expect(unit.setInventoryEntry).toHaveBeenCalledWith(ammoBin);
+        expect(toastService.showToast).toHaveBeenCalledWith('-1 from CT ATM 6 Standard (3/5)', 'info', 'ammo-control-undefined-inventory:std-ammo', { ammoDeltaRemaining: -1 });
+
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        component.adjustAmmo(row, -1);
+        expect(ammoBin.consumed).toBe(1);
+        expect(toastService.showToast).toHaveBeenCalledWith('+1 to CT ATM 6 Standard (4/5)', 'info', 'ammo-control-undefined-inventory:std-ammo', { ammoDeltaRemaining: 1 });
+
+        for (let i = 0; i < 2; i++) {
+            row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+            component.adjustAmmo(row, -1);
+        }
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(ammoBin.consumed).toBe(0);
+        expect(component.canAdjustAmmo(row, -1)).toBeFalse();
+
+        for (let i = 0; i < 6; i++) {
+            row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+            component.adjustAmmo(row, 1);
+        }
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(ammoBin.consumed).toBe(5);
+        expect(component.canAdjustAmmo(row, 1)).toBeFalse();
     });
 
     it('switches to another compatible ammo bin after the selected bin is depleted', async () => {

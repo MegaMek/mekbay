@@ -10,7 +10,7 @@ import type { HandlerChoice, HandlerContext } from '../../services/equipment-int
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { AmmoControlDialogComponent, type AmmoControlDialogData } from '../ammo-control-dialog/ammo-control-dialog.component';
 import { INVENTORY_MODE_CHOICE_LABEL, INVENTORY_MODE_HANDLER_ID } from '../../equipment-handlers/inventory-mode.handler';
-import { getAmmoControlEntriesForUnitWeapons, getAmmoControlEntriesForWeapon, getAmmoEntryRemaining } from '../../utils/ammo-interaction.util';
+import { changeAmmoEntriesRemaining, getAmmoControlEntriesForUnitWeapons, getAmmoControlEntriesForWeapon, getAmmoEntryRemaining } from '../../utils/ammo-interaction.util';
 import type { HeatDissipationState } from '../../models/rules/heat-management';
 import { LayoutService } from '../../services/layout.service';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
@@ -921,6 +921,23 @@ export class WeaponEquipmentDialogComponent {
     selectAmmoOption(row: InventoryControlRow, value: string): void {
         this.unit().setInventoryControlSelectedAmmoOption(row.id, value);
         this.refresh();
+    }
+
+    canAdjustAmmo(row: InventoryControlRow, delta: number): boolean {
+        if (this.readOnly() || !row.ammo.tracksAmmo || delta === 0) return false;
+        const option = this.selectedAmmo(row);
+        if (!option || option.destroyed) return false;
+        if (delta > 0) return option.remaining > 0;
+        return option.remaining < option.total;
+    }
+
+    adjustAmmo(row: InventoryControlRow, delta: number): void {
+        if (!this.canAdjustAmmo(row, delta)) return;
+        const option = this.selectedAmmo(row);
+        if (!option) return;
+        if (changeAmmoEntriesRemaining(this.getAmmoEntriesForOption(row, option.id), -delta, this.data.context)) {
+            this.refresh();
+        }
     }
 
     async consumeSelectedHeatAndAmmo(): Promise<void> {

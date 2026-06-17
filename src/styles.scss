@@ -654,6 +654,14 @@ hr {
         background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
     }
 
+    &.tiny {
+        background-size: 8px 2px, 2px 8px, 8px 2px, 2px 8px, 8px 2px, 2px 8px, 8px 2px, 2px 8px;
+
+        &:hover {
+            background-size: 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
+        }
+    }
+
     &.selected {
         border-color: white;
         background-color: var(--bt-yellow);
@@ -1008,7 +1016,7 @@ hr {
         font-family: inherit;
         font-size: inherit;
         box-sizing: border-box;
-        background: var(--background-input);
+        background: transparent;
         color: white;
         border: 0;
         outline: none;

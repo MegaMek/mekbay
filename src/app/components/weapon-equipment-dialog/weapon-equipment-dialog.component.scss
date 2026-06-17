@@ -750,6 +750,18 @@
     overflow-wrap: anywhere;
 }
 
+.actions-cell .bt-button {
+    min-height: 24px;
+    height: 24px;
+    padding-block: 0;
+    font-size: 0.78rem;
+}
+
+.actions-cell .bt-button.square-small {
+    width: 24px;
+    min-width: 24px;
+}
+
 .damage-cell {
     min-width: 90px;
     overflow-wrap: anywhere;
@@ -772,6 +784,22 @@
 .ammo-cell.destroyed-ammo .ammo-choice-static {
     color: var(--damage-color);
     text-decoration-line: line-through;
+}
+
+.ammo-stepper-button {
+    flex: 0 0 24px;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.ammo-stepper-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
 }
 
 .ammo-cell {
@@ -808,6 +836,7 @@
 .control-select,
 .ammo-choice {
     border: 1px solid var(--border-color);
+    background: var(--background-input);
     min-height: 24px;
     align-items: center;
     display: flex;
@@ -1088,6 +1117,22 @@
     .ammo-cell .ammo-choice-static {
         min-height: 28px;
         padding: 0;
+    }
+
+    .ammo-stepper-button {
+        flex-basis: 28px;
+        width: 28px;
+        height: 28px;
+    }
+
+    .actions-cell .bt-button {
+        min-height: 28px;
+        height: 28px;
+    }
+
+    .actions-cell .bt-button.square-small {
+        width: 28px;
+        min-width: 28px;
     }
 
     .controls-cell {

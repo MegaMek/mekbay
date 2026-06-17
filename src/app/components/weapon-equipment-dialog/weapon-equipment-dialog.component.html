@@ -187,6 +187,10 @@
                                                 } @else {
                                                     <span class="ammo-choice-static">{{ ammoText(row) }}</span>
                                                 }
+                                                @if (!readOnly()) {
+                                                    <button class="bt-button tiny ammo-stepper-button" type="button" aria-label="Decrease ammo" title="Decrease Ammo" [disabled]="!canAdjustAmmo(row, 1)" (click)="adjustAmmo(row, 1)">-</button>
+                                                    <button class="bt-button tiny ammo-stepper-button" type="button" aria-label="Increase ammo" title="Increase Ammo" [disabled]="!canAdjustAmmo(row, -1)" (click)="adjustAmmo(row, -1)">+</button>
+                                                }
                                             }
                                         </div>
                                         <div class="controls-cell" [class.empty-row-controls]="!rowHasControls(row)">
@@ -207,17 +211,17 @@
                                                         <span class="control-label">{{ choice.label }}</span>
                                                     }
                                                     @case ('toggle') {
-                                                        <button class="bt-button square-small" type="button" [class.active-control]="choice.active" [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.label }}</button>
+                                                        <button class="bt-button tiny square-small" type="button" [class.active-control]="choice.active" [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.label }}</button>
                                                     }
                                                     @default {
-                                                        <button class="bt-button" type="button" [class.active-control]="choice.active" [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.shortLabel || choice.label }}</button>
+                                                        <button class="bt-button tiny" type="button" [class.active-control]="choice.active" [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.shortLabel || choice.label }}</button>
                                                     }
                                                 }
                                             }
                                             @if (canMarkDestroyed(row)) {
-                                                <button class="bt-button" type="button" (click)="markDestroyed(row)">HIT</button>
+                                                <button class="bt-button tiny" type="button" (click)="markDestroyed(row)">HIT</button>
                                             } @else if (canRepair(row)) {
-                                                <button class="bt-button" type="button" (click)="repair(row)">REPAIR</button>
+                                                <button class="bt-button tiny" type="button" (click)="repair(row)">REPAIR</button>
                                             }
                                         </div>
                                     </div>
