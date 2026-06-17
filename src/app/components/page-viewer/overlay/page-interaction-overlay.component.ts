@@ -179,6 +179,8 @@ export class PageInteractionOverlayComponent {
             return;
         }
 
+        this.overlayManager.closeAllManagedOverlays();
+
         const target = event.currentTarget as HTMLElement || (event.target as HTMLElement);
 
         // Create a custom injector that provides this component as the parent
@@ -221,6 +223,8 @@ export class PageInteractionOverlayComponent {
             this.targetsCompRef = null;
             return;
         }
+
+        this.overlayManager.closeAllManagedOverlays();
 
         const target = event.currentTarget as HTMLElement;
         const portal = new ComponentPortal(WeaponTargetsMenuComponent, null, this.injector);
@@ -338,17 +342,10 @@ export class PageInteractionOverlayComponent {
     }
 
     /**
-     * Closes all overlays opened by this component (turn summary, PSR warning, etc.).
+     * Closes all currently managed overlays.
      */
     closeAllOverlays(): void {
-        const unitId = this.unit()?.id;
-        if (!unitId) return;
-        
-        // Close turn summary overlay
-        this.overlayManager.closeManagedOverlay(`turnSummary-${unitId}`);
-        // Close PSR warning overlay if any
-        this.overlayManager.closeManagedOverlay(`psrWarning-${unitId}`);
-        this.overlayManager.closeManagedOverlay(this.targetsOverlayKey(unitId));
+        this.overlayManager.closeAllManagedOverlays();
         this.targetsCompRef = null;
     }
 }
