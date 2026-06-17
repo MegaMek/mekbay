@@ -305,6 +305,10 @@
 
 .weapon-equipment-row {
     border-bottom: 1px solid var(--border-color);
+
+    &:last-child {
+        border-bottom: 0;
+    }
 }
 
 .weapon-equipment-row.destroyed-entry .name-cell > span:first-child {
