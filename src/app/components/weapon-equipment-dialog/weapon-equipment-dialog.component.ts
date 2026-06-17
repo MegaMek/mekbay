@@ -577,7 +577,7 @@ export class WeaponEquipmentDialogComponent {
     }
 
     groupTargetSelection(group: InventoryControlGroup): InventoryControlRuntimeTarget | null {
-        const rows = this.groupSelectableRows(group);
+        const rows = this.groupActiveSelectableRows(group);
         if (rows.length === 0) return null;
         const firstTargetId = this.unit().getInventoryControlSelectedTarget(rows[0].id);
         if (!firstTargetId || !rows.every(row => this.unit().getInventoryControlSelectedTarget(row.id) === firstTargetId)) {
@@ -587,7 +587,7 @@ export class WeaponEquipmentDialogComponent {
     }
 
     groupSomeTargetRowsSelected(group: InventoryControlGroup): boolean {
-        const rows = this.groupSelectableRows(group);
+        const rows = this.groupActiveSelectableRows(group);
         const selectedCount = rows.filter(row => !!this.unit().getInventoryControlSelectedTarget(row.id)).length;
         return selectedCount > 0 && selectedCount < rows.length;
     }
@@ -612,7 +612,8 @@ export class WeaponEquipmentDialogComponent {
     }
 
     private setGroupTarget(group: InventoryControlGroup, targetId: InventoryControlRuntimeTargetId | null): void {
-        for (const row of this.groupSelectableRows(group)) {
+        const rows = targetId ? this.groupActiveSelectableRows(group) : this.groupSelectableRows(group);
+        for (const row of rows) {
             this.unit().setInventoryControlSelectedTarget(row.entry, targetId);
         }
         this.refresh();
@@ -711,19 +712,19 @@ export class WeaponEquipmentDialogComponent {
     }
 
     groupAllSelectableRowsSelected(group: InventoryControlGroup): boolean {
-        const rows = this.groupSelectableRows(group);
+        const rows = this.groupActiveSelectableRows(group);
         return rows.length > 0 && rows.every(row => this.isSelected(row));
     }
 
     groupSomeSelectableRowsSelected(group: InventoryControlGroup): boolean {
-        const rows = this.groupSelectableRows(group);
+        const rows = this.groupActiveSelectableRows(group);
         return rows.some(row => this.isSelected(row)) && !rows.every(row => this.isSelected(row));
     }
 
     toggleGroupSelectableRows(group: InventoryControlGroup): void {
         if (group.id !== 'ranged') return;
-        const rows = this.groupSelectableRows(group);
         const selected = !this.groupAllSelectableRowsSelected(group);
+        const rows = selected ? this.groupActiveSelectableRows(group) : this.groupSelectableRows(group);
         rows.forEach(row => this.unit().setInventoryControlEntrySelected(row.entry, selected));
         this.refresh();
     }
@@ -1152,6 +1153,10 @@ export class WeaponEquipmentDialogComponent {
 
     private groupSelectableRows(group: InventoryControlGroup): InventoryControlRow[] {
         return group.rows.filter(row => this.isSelectable(row));
+    }
+
+    private groupActiveSelectableRows(group: InventoryControlGroup): InventoryControlRow[] {
+        return this.groupSelectableRows(group).filter(row => !row.destroyed && !row.disabled);
     }
 
     cacheDragPreviewCellWidths(event: PointerEvent): void {

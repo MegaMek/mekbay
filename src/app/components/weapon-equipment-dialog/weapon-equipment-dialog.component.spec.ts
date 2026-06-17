@@ -410,8 +410,13 @@ describe('WeaponEquipmentDialogComponent', () => {
     it('uses the target selector for ranged select all when targets exist', () => {
         const first = entry({ id: 'first', equipment: weapon('first'), el: svgEntry('<g><g class="name"><text>First</text></g></g>') });
         const second = entry({ id: 'second', equipment: weapon('second'), el: svgEntry('<g><g class="name"><text>Second</text></g></g>') });
+        const broken = entry({ id: 'broken', equipment: weapon('broken'), destroyed: true, el: svgEntry('<g><g class="name"><text>Broken</text></g></g>') });
+        const disabled = entry({ id: 'disabled', equipment: weapon('disabled'), el: svgEntry('<g><g class="name"><text>Disabled</text></g></g>') });
         const punch = entry({ id: 'punch', physical: true, el: svgEntry('<g><g class="name"><text>Punch</text></g></g>') });
-        const { component, fixture, unit } = createComponent([first, second, punch]);
+        const entryStates = new Map<MountedEquipment, { isDamaged: boolean; isDisabled: boolean; hitMod: number }>([
+            [disabled, { isDamaged: false, isDisabled: true, hitMod: 0 }]
+        ]);
+        const { component, fixture, unit } = createComponent([first, second, broken, disabled, punch], {}, [], entryStates);
         unit.createInventoryControlTarget();
         (component as any).refresh();
         fixture.detectChanges();
@@ -421,6 +426,8 @@ describe('WeaponEquipmentDialogComponent', () => {
         const rows = component.groups().flatMap(group => group.rows);
         const firstRow = rows.find(row => row.id === 'first')!;
         const secondRow = rows.find(row => row.id === 'second')!;
+        const brokenRow = rows.find(row => row.id === 'broken')!;
+        const disabledRow = rows.find(row => row.id === 'disabled')!;
         const punchRow = rows.find(row => row.id === 'punch')!;
 
         headerSelector.click();
@@ -428,14 +435,21 @@ describe('WeaponEquipmentDialogComponent', () => {
 
         expect(unit.getInventoryControlSelectedTarget(firstRow.id)).toBe('A');
         expect(unit.getInventoryControlSelectedTarget(secondRow.id)).toBe('A');
+        expect(unit.getInventoryControlSelectedTarget(brokenRow.id)).toBeUndefined();
+        expect(unit.getInventoryControlSelectedTarget(disabledRow.id)).toBeUndefined();
         expect(unit.getInventoryControlSelectedTarget(punchRow.id)).toBeUndefined();
         expect(component.groupTargetSelection(component.groups().find(group => group.id === 'ranged')!)?.id).toBe('A');
+
+        unit.setInventoryControlSelectedTarget(brokenRow.entry, 'A');
+        unit.setInventoryControlSelectedTarget(disabledRow.entry, 'A');
 
         (rangedSection.querySelector('.select-header .target-selector') as HTMLButtonElement).click();
         fixture.detectChanges();
 
         expect(component.isSelected(firstRow)).toBeFalse();
         expect(component.isSelected(secondRow)).toBeFalse();
+        expect(component.isSelected(brokenRow)).toBeFalse();
+        expect(component.isSelected(disabledRow)).toBeFalse();
         expect(component.isSelected(punchRow)).toBeFalse();
     });
 
@@ -585,8 +599,13 @@ describe('WeaponEquipmentDialogComponent', () => {
     it('toggles all ranged weapons from the ranged group header checkbox', () => {
         const first = entry({ id: 'first', equipment: weapon('first'), el: svgEntry('<g><g class="name"><text>First</text></g></g>') });
         const second = entry({ id: 'second', equipment: weapon('second'), el: svgEntry('<g><g class="name"><text>Second</text></g></g>') });
+        const broken = entry({ id: 'broken', equipment: weapon('broken'), destroyed: true, el: svgEntry('<g><g class="name"><text>Broken</text></g></g>') });
+        const disabled = entry({ id: 'disabled', equipment: weapon('disabled'), el: svgEntry('<g><g class="name"><text>Disabled</text></g></g>') });
         const punch = entry({ id: 'punch', physical: true, el: svgEntry('<g><g class="name"><text>Punch</text></g></g>') });
-        const { component, fixture } = createComponent([first, second, punch]);
+        const entryStates = new Map<MountedEquipment, { isDamaged: boolean; isDisabled: boolean; hitMod: number }>([
+            [disabled, { isDamaged: false, isDisabled: true, hitMod: 0 }]
+        ]);
+        const { component, fixture, unit } = createComponent([first, second, broken, disabled, punch], {}, [], entryStates);
         fixture.detectChanges();
 
         const sections = Array.from(fixture.nativeElement.querySelectorAll('.weapon-equipment-section')) as HTMLElement[];
@@ -595,6 +614,8 @@ describe('WeaponEquipmentDialogComponent', () => {
         const rows = component.groups().flatMap(group => group.rows);
         const firstRow = rows.find(row => row.id === 'first')!;
         const secondRow = rows.find(row => row.id === 'second')!;
+        const brokenRow = rows.find(row => row.id === 'broken')!;
+        const disabledRow = rows.find(row => row.id === 'disabled')!;
         const punchRow = rows.find(row => row.id === 'punch')!;
 
         checkbox.click();
@@ -602,14 +623,21 @@ describe('WeaponEquipmentDialogComponent', () => {
 
         expect(component.isSelected(firstRow)).toBeTrue();
         expect(component.isSelected(secondRow)).toBeTrue();
+        expect(component.isSelected(brokenRow)).toBeFalse();
+        expect(component.isSelected(disabledRow)).toBeFalse();
         expect(component.isSelected(punchRow)).toBeFalse();
         expect(rangedSection.querySelector<HTMLInputElement>('.ranged-select-all')!.checked).toBeTrue();
+
+        unit.setInventoryControlEntrySelected(brokenRow.entry, true);
+        unit.setInventoryControlEntrySelected(disabledRow.entry, true);
 
         rangedSection.querySelector<HTMLInputElement>('.ranged-select-all')!.click();
         fixture.detectChanges();
 
         expect(component.isSelected(firstRow)).toBeFalse();
         expect(component.isSelected(secondRow)).toBeFalse();
+        expect(component.isSelected(brokenRow)).toBeFalse();
+        expect(component.isSelected(disabledRow)).toBeFalse();
         expect(component.isSelected(punchRow)).toBeFalse();
         expect(rangedSection.querySelector<HTMLInputElement>('.ranged-select-all')!.checked).toBeFalse();
     });
