@@ -93,6 +93,8 @@ const GROUP_TITLES: Record<InventoryControlGroupId, string> = {
     equipment: 'Equipment'
 };
 
+const JAMMED_STATE_VALUE = 'jammed';
+
 export function inventoryControlSortKey(groupId: InventoryControlGroupId): string {
     return `${INVENTORY_CONTROL_SORT_STATE}:${groupId}`;
 }
@@ -280,13 +282,14 @@ function buildInventoryControlRow(
 
     const state = entryStates.get(entry);
     const destroyed = isMountedDestroyed(entry);
+    const disabled = isInventoryControlEntryDisabled(entry, state);
     const category = getEntryCategory(entry);
     const hitModifier = resolveHitModifier(entry, state?.hitMod ?? computeLinkedModifiers(entry));
     const hit = formatHitModifier(hitModifier);
     const base = readEntryDisplayData(entry.el, hit);
     const { modes, modifiers } = readInventoryControlModesAndModifiers(entry);
     const selectedMode = getSelectedMode(entry, modes);
-    syncSvgMode(entry, selectedMode);
+    syncSvgMode(entry, selectedMode, disabled);
     const selectedModeData = selectedMode ? modes.find(mode => mode.mode === selectedMode)?.data : null;
 
     return {
@@ -294,7 +297,7 @@ function buildInventoryControlRow(
         entry,
         category,
         destroyed,
-        disabled: !!state?.isDisabled,
+        disabled,
         originalIndex,
         base,
         display: selectedModeData ? mergeModeData(base, selectedModeData) : base,
@@ -308,6 +311,10 @@ function buildInventoryControlRow(
 function getEntryStates(unit: CBTForceUnit): Map<MountedEquipment, EntryState> {
     const rules = unit.rules as EntryStateRules;
     return rules.computeAllEntryStates?.() ?? new Map<MountedEquipment, EntryState>();
+}
+
+function isInventoryControlEntryDisabled(entry: MountedEquipment, state?: EntryState): boolean {
+    return !!state?.isDisabled || entry.states.get('state') === JAMMED_STATE_VALUE;
 }
 
 function getEntryCategory(entry: MountedEquipment): InventoryControlGroupId {
@@ -547,7 +554,7 @@ function formatHitModifier(hitModifier: number | 'Vs' | '*' | null): string {
     return hitModifier >= 0 ? `+${hitModifier}` : hitModifier.toString();
 }
 
-export function syncSvgMode(entry: MountedEquipment, mode: string | null): void {
+export function syncSvgMode(entry: MountedEquipment, mode: string | null, disabled = isInventoryControlEntryDisabled(entry, getEntryStates(entry.owner).get(entry))): void {
     const el = entry.el;
     if (!el) return;
     const ownerSelection = entry.owner as { isInventoryControlEntrySelected?: (entryId: string) => boolean };
@@ -561,4 +568,6 @@ export function syncSvgMode(entry: MountedEquipment, mode: string | null): void 
     });
     el.classList.toggle('selected', selected);
     el.classList.toggle('selected-alternative-mode', selected && hasSelectedMode);
+    el.classList.toggle('disabledInventory', disabled);
+    if (disabled) el.classList.remove('selected');
 }

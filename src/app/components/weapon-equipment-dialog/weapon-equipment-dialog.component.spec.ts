@@ -38,7 +38,7 @@ function addRuntimeSelection(unit: CBTForceUnit): CBTForceUnit {
     return unit;
 }
 
-function weapon(id: string, ammoType: 'NA' | 'ATM' | 'MML' = 'NA', rackSize = 0, ranges: number[] = [1, 2, 3, 4]): WeaponEquipment {
+function weapon(id: string, ammoType: 'NA' | 'ATM' | 'MML' | 'AC_ULTRA' = 'NA', rackSize = 0, ranges: number[] = [1, 2, 3, 4]): WeaponEquipment {
     return new WeaponEquipment({
         id,
         name: id,
@@ -235,6 +235,22 @@ describe('WeaponEquipmentDialogComponent', () => {
 
         expect(row.disabled).toBeTrue();
         expect(row.destroyed).toBeFalse();
+    });
+
+    it('marks jammed inventory-only rows disabled without entry state rules', () => {
+        const uac = entry({
+            id: 'uac',
+            equipment: weapon('uac', 'AC_ULTRA'),
+            states: new Map([['state', 'jammed']]),
+            el: svgEntry('<g><g class="name"><text>Ultra AC/2</text></g></g>')
+        });
+        const unit = { getInventory: () => [uac], getCritSlots: () => [], rules: {} } as unknown as CBTForceUnit;
+        uac.owner = unit;
+
+        const row = getInventoryControlGroups(unit).find(group => group.id === 'ranged')!.rows[0];
+
+        expect(row.disabled).toBeTrue();
+        expect(uac.el!.classList.contains('disabledInventory')).toBeTrue();
     });
 
     it('repairs destroyed direct inventory entries', () => {
