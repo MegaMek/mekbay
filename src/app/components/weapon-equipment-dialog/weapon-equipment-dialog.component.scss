@@ -1,21 +1,22 @@
 .weapon-equipment-dialog {
     --weapon-equipment-title-height: 30px;
-    --weapon-equipment-columns: 24px 28px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(4, 42px) fit-content(420px);
+    --weapon-equipment-content-columns: 24px 28px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(4, 42px) fit-content(420px);
+    --weapon-equipment-columns: minmax(0, 1fr) var(--weapon-equipment-content-columns) minmax(0, 1fr);
     max-width: 1000px;
     width: 100%;
     align-items: center;
 }
 
 .weapon-equipment-dialog.hide-actions-column {
-    --weapon-equipment-columns: 24px 28px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(4, 42px);
+    --weapon-equipment-content-columns: 24px 28px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(4, 42px);
 }
 
 .weapon-equipment-dialog.has-targets {
-    --weapon-equipment-columns: 24px 28px 38px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(4, 42px) fit-content(420px);
+    --weapon-equipment-content-columns: 24px 28px 38px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(4, 42px) fit-content(420px);
 }
 
 .weapon-equipment-dialog.has-targets.hide-actions-column {
-    --weapon-equipment-columns: 24px 28px 38px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(4, 42px);
+    --weapon-equipment-content-columns: 24px 28px 38px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(4, 42px);
 }
 
 .weapon-equipment-title-row {
@@ -125,7 +126,6 @@
     gap: 4px;
     align-self: center;
     width: 100%;
-    justify-content: safe center;
     max-width: 100%;
     max-height: 100%;
     min-width: 0;
@@ -221,8 +221,6 @@
     top: var(--weapon-equipment-title-height);
     z-index: 2;
     background: var(--background-color);
-    box-shadow: 0 0 0 100vmax var(--background-color);
-    clip-path: inset(0 -100vmax);
     color: var(--text-color-secondary);
     font-size: 0.78rem;
     font-weight: 700;
@@ -255,21 +253,40 @@
     position: sticky;
     top: 0;
     z-index: 3;
-    display: flex;
+    display: grid;
     grid-column: 1 / -1;
+    grid-template-columns: subgrid;
     align-items: center;
     min-height: var(--weapon-equipment-title-height);
     box-sizing: border-box;
     background: var(--background-color);
-    box-shadow: 0 0 0 100vmax var(--background-color);
-    clip-path: inset(0 -100vmax);
     text-align: left;
     margin: 0;
-    padding: 4px 8px;
+    padding: 0;
     color: var(--text-color-secondary);
     font-size: 0.9rem;
     letter-spacing: 0;
     text-transform: uppercase;
+}
+
+.section-title {
+    grid-column: 2 / -2;
+    min-width: 0;
+    padding: 4px 8px;
+    overflow-wrap: anywhere;
+}
+
+.grid-fill {
+    min-width: 0;
+    pointer-events: none;
+}
+
+.grid-fill-left {
+    grid-column: 1;
+}
+
+.grid-fill-right {
+    grid-column: -2 / -1;
 }
 
 .meta-cell {
@@ -335,10 +352,6 @@
     gap: 4px;
 }
 
-.weapon-equipment-row.cdk-drag-preview::after {
-    display: none;
-}
-
 .weapon-equipment-row.cdk-drag-placeholder {
     opacity: 0.3;
 }
@@ -395,15 +408,15 @@
 }
 
 .drag-cell {
-    grid-column: 1;
-}
-
-.select-cell {
     grid-column: 2;
 }
 
-.tn-cell {
+.select-cell {
     grid-column: 3;
+}
+
+.tn-cell {
+    grid-column: 4;
     justify-self: center;
     min-width: 28px;
 }
@@ -428,85 +441,85 @@
 }
 
 .name-cell {
-    grid-column: 3;
+    grid-column: 4;
     font-weight: 500;
 }
 
 .hit-cell {
-    grid-column: 4;
-}
-
-.location-cell {
     grid-column: 5;
 }
 
-.heat-cell {
+.location-cell {
     grid-column: 6;
 }
 
-.damage-cell {
+.heat-cell {
     grid-column: 7;
 }
 
-.min-cell {
+.damage-cell {
     grid-column: 8;
 }
 
-.range-short {
+.min-cell {
     grid-column: 9;
 }
 
-.range-medium {
+.range-short {
     grid-column: 10;
 }
 
-.range-long {
+.range-medium {
     grid-column: 11;
 }
 
-.actions-cell {
+.range-long {
     grid-column: 12;
+}
+
+.actions-cell {
+    grid-column: 13;
     min-width: 0;
 }
 
 .weapon-equipment-dialog.has-targets .name-cell {
-    grid-column: 4;
-}
-
-.weapon-equipment-dialog.has-targets .hit-cell {
     grid-column: 5;
 }
 
-.weapon-equipment-dialog.has-targets .location-cell {
+.weapon-equipment-dialog.has-targets .hit-cell {
     grid-column: 6;
 }
 
-.weapon-equipment-dialog.has-targets .heat-cell {
+.weapon-equipment-dialog.has-targets .location-cell {
     grid-column: 7;
 }
 
-.weapon-equipment-dialog.has-targets .damage-cell {
+.weapon-equipment-dialog.has-targets .heat-cell {
     grid-column: 8;
 }
 
-.weapon-equipment-dialog.has-targets .min-cell {
+.weapon-equipment-dialog.has-targets .damage-cell {
     grid-column: 9;
 }
 
-.weapon-equipment-dialog.has-targets .range-short {
+.weapon-equipment-dialog.has-targets .min-cell {
     grid-column: 10;
 }
 
-.weapon-equipment-dialog.has-targets .range-medium {
+.weapon-equipment-dialog.has-targets .range-short {
     grid-column: 11;
 }
 
-.weapon-equipment-dialog.has-targets .range-long {
+.weapon-equipment-dialog.has-targets .range-medium {
     grid-column: 12;
 }
 
-.weapon-equipment-dialog.has-targets .actions-cell {
+.weapon-equipment-dialog.has-targets .range-long {
     grid-column: 13;
+}
+
+.weapon-equipment-dialog.has-targets .actions-cell {
+    grid-column: 14;
 }
 
 .drag-handle {

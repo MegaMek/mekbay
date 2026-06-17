@@ -1176,9 +1176,29 @@ export class WeaponEquipmentDialogComponent {
         return {
             sourceRow,
             rowWidth: sourceRow.getBoundingClientRect().width,
-            gridTemplateColumns: sourceRowStyle.gridTemplateColumns,
+            gridTemplateColumns: this.dragPreviewGridTemplateColumns(sourceRow, sourceRowStyle),
             cells
         };
+    }
+
+    private dragPreviewGridTemplateColumns(sourceRow: HTMLElement, sourceRowStyle: CSSStyleDeclaration): string {
+        const sourceColumns = sourceRowStyle.gridTemplateColumns;
+        if (sourceColumns && sourceColumns !== 'none' && !sourceColumns.includes('subgrid')) return sourceColumns;
+
+        const contentColumns = sourceRowStyle.getPropertyValue('--weapon-equipment-content-columns').trim();
+        if (!contentColumns) return sourceColumns;
+
+        return [
+            this.measuredTrackWidth(sourceRow, '.grid-fill-left'),
+            contentColumns,
+            this.measuredTrackWidth(sourceRow, '.grid-fill-right')
+        ].join(' ');
+    }
+
+    private measuredTrackWidth(sourceRow: HTMLElement, selector: string): string {
+        const element = sourceRow.querySelector<HTMLElement>(selector);
+        const width = element?.getBoundingClientRect().width ?? 0;
+        return `${Math.max(0, width)}px`;
     }
 
     private measureDragPreviewCells(parent: HTMLElement, parentPath: number[] = []): DragPreviewCellSizing[] {
