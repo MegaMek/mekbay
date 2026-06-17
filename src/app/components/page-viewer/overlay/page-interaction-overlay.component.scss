@@ -24,7 +24,6 @@
 }
 
 .overlay-button {
-    position: absolute;
     opacity: 0.8;
     outline: none;
     transition: opacity 0.2s;
@@ -39,6 +38,33 @@
     &:hover {
         opacity: 1.0;
     }
+}
+
+.top-right-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    pointer-events: auto;
+}
+
+.overlay-round-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 1pt solid #000;
+    background: rgba(255, 255, 255, 0.78);
+    color: #000;
+}
+
+.overlay-round-button svg {
+    width: 24px;
+    height: 24px;
 }
 
 .phase-controls {
@@ -78,8 +104,6 @@
 }
 
 .turn-tracker-button {
-    top: 8px;
-    right: 8px;
     width: 40px;
     height: 40px;
 
@@ -134,6 +158,12 @@
             stroke-width: 0;
         }
     }
+}
+
+:host-context(.night-mode) .overlay-round-button {
+    border-color: #fff;
+    background: rgba(20, 20, 20, 0.82);
+    color: #fff;
 }
 
 @media print {

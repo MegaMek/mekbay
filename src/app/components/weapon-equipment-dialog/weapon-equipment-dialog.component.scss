@@ -26,7 +26,7 @@
     justify-content: center;
     width: 100%;
     min-height: 40px;
-    padding-inline: 190px;
+    padding-inline: 96px;
     margin: 0;
     box-sizing: border-box;
 }
@@ -34,7 +34,7 @@
 @container (max-width: 760px) {
     .weapon-equipment-title-row {
         padding-inline: 0px;
-        padding-right: 141px;
+        padding-right: 96px;
         text-align: left;
         justify-content: space-between;
     } 
@@ -75,9 +75,32 @@
     transition: opacity 0.2s;
 }
 
+.target-title-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1pt solid #fff;
+    background: transparent;
+    color: #fff;
+    cursor: pointer;
+    opacity: 0.85;
+    transition: opacity 0.2s;
+}
+
 .turn-tracker-title-button:hover,
-.turn-tracker-title-button:focus-visible {
+.turn-tracker-title-button:focus-visible,
+.target-title-button:hover,
+.target-title-button:focus-visible {
     opacity: 1;
+}
+
+.target-title-button svg {
+    width: 24px;
+    height: 24px;
 }
 
 .turn-tracker-title-button svg {
