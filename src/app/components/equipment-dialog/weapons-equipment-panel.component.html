@@ -158,7 +158,7 @@
                                             } @else if (rowTracksAmmo(row)) {
                                                 <span class="ammo-choice-static">NO AMMO</span>
                                             }                                            
-                                            @if (!readOnly() && rowTracksAmmo(row)) {
+                                            @if (!readOnly() && rowTracksAmmo(row) && (canAdjustAmmo(row, 1) || canAdjustAmmo(row, -1))) {
                                                 <button class="bt-button tiny ammo-stepper-button" type="button" aria-label="Decrease ammo" title="Decrease Ammo" [disabled]="!canAdjustAmmo(row, 1)" (click)="adjustAmmo(row, 1)">-</button>
                                                 <button class="bt-button tiny ammo-stepper-button" type="button" aria-label="Increase ammo" title="Increase Ammo" [disabled]="!canAdjustAmmo(row, -1)" (click)="adjustAmmo(row, -1)">+</button>
                                             }
