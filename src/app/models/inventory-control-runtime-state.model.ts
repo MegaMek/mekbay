@@ -2,6 +2,15 @@ import type { MountedEquipment } from './force-serialization';
 
 export type InventoryControlRuntimeRangeKey = 'min' | 'short' | 'medium' | 'long';
 
+type InventoryControlRuntimeHighlightRangeKey = Exclude<InventoryControlRuntimeRangeKey, 'min'> | 'extreme';
+
+const INVENTORY_CONTROL_RANGE_CLASS_NAMES: Record<InventoryControlRuntimeHighlightRangeKey, string> = {
+    short: 'selected-range-short',
+    medium: 'selected-range-medium',
+    long: 'selected-range-long',
+    extreme: 'selected-range-extreme'
+};
+
 export const INVENTORY_CONTROL_TARGET_MAX_COUNT = 12;
 export const INVENTORY_CONTROL_TARGET_COLORS = [
     '#d1495b',
@@ -248,8 +257,35 @@ export class InventoryControlRuntimeState {
         const el = entry.el;
         if (!el) return;
         const selected = this.selectedEntryIds.has(entry.id);
+        const selectedRange = selected ? this.entrySelectedHighlightRange(entry) : null;
         const hasSelectedMode = !!el.querySelector(':scope > .alternativeMode.selected');
         el.classList.toggle('selected', selected || hasSelectedMode);
+        el.classList.toggle('selected-alternative-mode', hasSelectedMode);
+        for (const [range, className] of Object.entries(INVENTORY_CONTROL_RANGE_CLASS_NAMES) as [InventoryControlRuntimeHighlightRangeKey, string][]) {
+            el.classList.toggle(className, selectedRange === range);
+        }
+    }
+
+    private entrySelectedHighlightRange(entry: MountedEquipment): InventoryControlRuntimeHighlightRangeKey | null {
+        const targetId = this.selectedTargets.get(entry.id);
+        if (targetId) {
+            const target = this.targets.get(targetId);
+            return target ? this.rangeForTargetDistance(entry, target.distance) : null;
+        }
+
+        const selectedRange = this.selectedRanges.get(entry.id);
+        return selectedRange && selectedRange !== 'min' ? selectedRange : null;
+    }
+
+    private rangeForTargetDistance(entry: MountedEquipment, distance: number): InventoryControlRuntimeHighlightRangeKey | null {
+        const ranges = (entry.equipment as { ranges?: unknown } | undefined)?.ranges;
+        if (!Array.isArray(ranges)) return null;
+        const [shortRange, mediumRange, longRange, extremeRange] = ranges.map(value => Number(value));
+        if (Number.isFinite(shortRange) && distance <= shortRange) return 'short';
+        if (Number.isFinite(mediumRange) && distance <= mediumRange) return 'medium';
+        if (Number.isFinite(longRange) && distance <= longRange) return 'long';
+        if (Number.isFinite(extremeRange) && extremeRange > 0 && distance <= extremeRange) return 'extreme';
+        return null;
     }
 
     private nextTargetId(): InventoryControlRuntimeTargetId | null {

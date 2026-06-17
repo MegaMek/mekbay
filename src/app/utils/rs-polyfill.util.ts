@@ -34,6 +34,19 @@
 import { heatLevels, REMOTE_HOST } from "../models/common.model";
 import type { Unit } from "../models/units.model";
 
+interface InventoryRangeButtonColumn {
+    className: string;
+    x: number;
+    width: number;
+    field: string;
+}
+
+interface InventoryRangeButtonSpec {
+    className: string;
+    labels: string[];
+    field: string;
+}
+
 /*
  * Author: Drake
  */
@@ -246,7 +259,7 @@ export class RsPolyfillUtil {
             const blankPathVisibility = (blankNamePath as SVGElement).getAttribute('visibility');
             const pilotTextVisibility = (nameText as SVGElement).getAttribute('visibility');
             if (blankPathVisibility === 'hidden' && pilotTextVisibility === 'hidden') return;
-            const height = 25;
+            const height = 20;
             const nameX: number = parseFloat((nameText as SVGTextElement).getAttribute('x') || '0') - 22;
             const nameY: number = parseFloat((nameText as SVGTextElement).getAttribute('y') || '0') + 1;
             const pathBBox = (blankNamePath as SVGPathElement).getBBox();
@@ -605,6 +618,8 @@ export class RsPolyfillUtil {
 
         let rectX = 2;
         let rectWidth = 0;
+        const rangeButtonColumns = this.findInventoryRangeButtonColumns(svg);
+        const entryButtonLimitX = this.findInventoryEntryButtonLimitX(svg, rangeButtonColumns);
         const unitDataPanel = svg.querySelector('#unitDataPanel') as SVGSVGElement;
         if (unitDataPanel) {
             let frame = unitDataPanel.querySelector('.frame') as SVGGraphicsElement;
@@ -658,6 +673,7 @@ export class RsPolyfillUtil {
             addAmmoProfileButton();
             let rectHeight = bbox.height;
             let rectY = bbox.y;
+            const rowRectWidth = this.inventoryEntryButtonWidth(rectX, rectWidth, entryButtonLimitX);
 
             // check for sub-text for the line alignment
             if (nameEl.querySelector('text')) {
@@ -681,11 +697,12 @@ export class RsPolyfillUtil {
             const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
             rect.setAttribute('x', rectX.toString());
             rect.setAttribute('y', rectY.toString());
-            rect.setAttribute('width', rectWidth.toString());
+            rect.setAttribute('width', rowRectWidth.toString());
             rect.setAttribute('height', rectHeight.toString());
             rect.setAttribute('inventory-id', id);
-            rect.setAttribute('class', 'inventoryEntryButton interactive screen-only');
+            rect.setAttribute('class', 'inventoryEntryButton mainButton interactive screen-only');
             nameEl.parentElement?.insertBefore(rect, nameEl.parentElement.firstChild);
+            this.addRangeButtons(nameEl.parentElement, rangeButtonColumns, id, null, rectY, rectHeight);
 
             const alternativeModes = group.querySelectorAll('.alternativeMode');
             alternativeModes.forEach(mode => {
@@ -695,14 +712,103 @@ export class RsPolyfillUtil {
                 const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
                 rect.setAttribute('x', rectX.toString());
                 rect.setAttribute('y', modeBBox.y.toString());
-                rect.setAttribute('width', rectWidth.toString());
+                rect.setAttribute('width', rowRectWidth.toString());
                 rect.setAttribute('height', rectHeight.toString());
                 rect.setAttribute('inventory-id', id);
                 rect.setAttribute('mode', modeName);
                 rect.setAttribute('class', 'inventoryEntryButton alternativeModeButton interactive screen-only');
                 mode.insertBefore(rect, mode.firstElementChild);
+                this.addRangeButtons(mode, rangeButtonColumns, id, modeName, modeBBox.y, rectHeight);
             });
         });
+    }
+
+    private static findInventoryRangeButtonColumns(svg: SVGSVGElement): InventoryRangeButtonColumn[] {
+        return this.findRangeButtonColumns(svg, [
+            { className: 'shrButton', labels: ['Shr', 'Sht'], field: 'range_short' },
+            { className: 'medButton', labels: ['Med'], field: 'range_medium' },
+            { className: 'lngButton', labels: ['Lng'], field: 'range_long' },
+        ]) || this.findRangeButtonColumns(svg, [
+            { className: 'shrButton', labels: ['SRV'], field: 'range_short' },
+            { className: 'medButton', labels: ['MRV'], field: 'range_medium' },
+            { className: 'lngButton', labels: ['LRV'], field: 'range_long' },
+            { className: 'extButton', labels: ['ERV'], field: 'range_extreme' },
+        ]) || [];
+    }
+
+    private static findRangeButtonColumns(svg: SVGSVGElement, specs: InventoryRangeButtonSpec[]): InventoryRangeButtonColumn[] | null {
+        const columns = specs.map(spec => {
+            const header = this.findInventoryHeaderText(svg, spec.labels);
+            return header ? { ...header, className: spec.className, field: spec.field } : null;
+        });
+        return columns.every((column): column is InventoryRangeButtonColumn => column !== null) ? columns : null;
+    }
+
+    private static findInventoryEntryButtonLimitX(svg: SVGSVGElement, rangeButtonColumns: InventoryRangeButtonColumn[]): number | null {
+        const inventoryBox = svg.querySelector('#gInventoryBox');
+        return rangeButtonColumns[0]?.x ?? null;
+    }
+
+    private static findInventoryHeaderText(svg: SVGSVGElement, labels: string[]): { x: number; width: number } | null {
+        const inventoryBox = svg.querySelector('#gInventoryBox') ?? svg.querySelector('#unitDataPanel');
+        if (!inventoryBox) return null;
+
+        return this.findInventoryHeaderTextIn(inventoryBox, labels);
+    }
+
+    private static findInventoryHeaderTextIn(inventoryBox: Element, labels: string[]): { x: number; width: number } | null {
+        const labelSet = new Set(labels);
+        const header = Array.from(inventoryBox.querySelectorAll<SVGTextElement>('text'))
+            .find(text => labelSet.has(text.textContent?.trim() ?? ''));
+        if (!header) return null;
+
+        try {
+            const bbox = header.getBBox();
+            if (Number.isFinite(bbox.x) && Number.isFinite(bbox.width) && bbox.width > 0) {
+                return { x: bbox.x, width: bbox.width };
+            }
+        } catch {
+            // Fall back to attributes below.
+        }
+
+        const x = Number.parseFloat(header.getAttribute('x') ?? '');
+        const width = Number.parseFloat(header.getAttribute('textLength') ?? '');
+        if (!Number.isFinite(x) || !Number.isFinite(width) || width <= 0) return null;
+        const textAnchor = header.getAttribute('text-anchor');
+        return { x: textAnchor === 'middle' ? x - width / 2 : x, width };
+    }
+
+    private static inventoryEntryButtonWidth(rectX: number, rectWidth: number, limitX: number | null): number {
+        if (limitX === null) return rectWidth;
+        return Math.max(0, limitX - rectX - 1.2);
+    }
+
+    private static addRangeButtons(
+        parent: Element | null | undefined,
+        rangeButtonColumns: InventoryRangeButtonColumn[],
+        inventoryId: string,
+        modeName: string | null,
+        y: number,
+        height: number
+    ): void {
+        if (!parent || rangeButtonColumns.length === 0) return;
+        for (const column of rangeButtonColumns) {
+            if (!this.hasRangeButtonValue(parent, column.field)) continue;
+            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            rect.setAttribute('x', column.x.toString());
+            rect.setAttribute('y', y.toString());
+            rect.setAttribute('width', column.width.toString());
+            rect.setAttribute('height', height.toString());
+            rect.setAttribute('inventory-id', inventoryId);
+            if (modeName) rect.setAttribute('mode', modeName);
+            rect.setAttribute('class', `inventoryEntryButton ${column.className} interactive screen-only`);
+            parent.insertBefore(rect, parent.firstElementChild);
+        }
+    }
+
+    private static hasRangeButtonValue(parent: Element, field: string): boolean {
+        const value = parent.querySelector(`:scope > .${field}`)?.textContent?.trim() ?? '';
+        return value.length > 0 && value !== '—';
     }
 
     private static adjustArmorPips(unit: Unit, svg: SVGSVGElement): void {

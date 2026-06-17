@@ -286,6 +286,7 @@ function buildInventoryControlRow(
     const base = readEntryDisplayData(entry.el, hit);
     const { modes, modifiers } = readInventoryControlModesAndModifiers(entry);
     const selectedMode = getSelectedMode(entry, modes);
+    syncSvgMode(entry, selectedMode);
     const selectedModeData = selectedMode ? modes.find(mode => mode.mode === selectedMode)?.data : null;
 
     return {
@@ -546,9 +547,10 @@ function formatHitModifier(hitModifier: number | 'Vs' | '*' | null): string {
     return hitModifier >= 0 ? `+${hitModifier}` : hitModifier.toString();
 }
 
-function syncSvgMode(entry: MountedEquipment, mode: string | null): void {
+export function syncSvgMode(entry: MountedEquipment, mode: string | null): void {
     const el = entry.el;
     if (!el) return;
+    const ownerSelection = entry.owner as { isInventoryControlEntrySelected?: (entryId: string) => boolean };
 
     let selected = false;
     el.querySelectorAll(':scope > .alternativeMode').forEach(optionEl => {
@@ -556,5 +558,5 @@ function syncSvgMode(entry: MountedEquipment, mode: string | null): void {
         optionEl.classList.toggle('selected', active);
         selected ||= active;
     });
-    el.classList.toggle('selected', selected || entry.owner.isInventoryControlEntrySelected(entry.id));
+    el.classList.toggle('selected', selected || (ownerSelection.isInventoryControlEntrySelected?.(entry.id) ?? false));
 }

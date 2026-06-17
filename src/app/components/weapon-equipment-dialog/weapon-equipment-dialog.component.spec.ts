@@ -287,6 +287,7 @@ describe('WeaponEquipmentDialogComponent', () => {
         expect(row.selectedMode).toBe('LRM');
         expect(row.display.damage).toBe('1/Msl');
         expect(row.display.long).toBe('21');
+        expect(mml.el?.querySelector(':scope > .alternativeMode.selected')?.getAttribute('mode')).toBe('LRM');
         expect(component.modeChoice(row)?.choices?.map(choice => choice.value)).toEqual(['LRM']);
         expect(component.handlerChoices(row)).toEqual([]);
         expect(component.canSelectRange(row, 'min')).toBeFalse();
@@ -343,22 +344,37 @@ describe('WeaponEquipmentDialogComponent', () => {
     });
 
     it('keeps range selection tied to entry selection', () => {
-        const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>') });
+        const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><rect class="inventoryEntryButton"></rect><rect class="shrButton inventoryEntryButton"></rect><rect class="medButton inventoryEntryButton"></rect><rect class="lngButton inventoryEntryButton"></rect><g class="name"><text>Laser</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>') });
         const { component } = createComponent([laser]);
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
         component.selectRange(row, 'medium');
         expect(component.isSelected(row)).toBeTrue();
         expect(component.isRangeSelected(row, 'medium')).toBeTrue();
+        expect(laser.el!.classList.contains('selected-range-medium')).toBeTrue();
+        expect(laser.el!.classList.contains('selected-range-short')).toBeFalse();
 
         component.toggleSelected(row);
         expect(component.isSelected(row)).toBeFalse();
         expect(component.isRangeSelected(row, 'medium')).toBeFalse();
+        expect(laser.el!.classList.contains('selected-range-medium')).toBeFalse();
 
         component.selectRange(row, 'medium');
         component.selectRange(row, 'medium');
         expect(component.isSelected(row)).toBeFalse();
         expect(component.isRangeSelected(row, 'medium')).toBeFalse();
+    });
+
+    it('syncs target distance selections to SVG range button classes', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [3, 6, 9, 12]), el: svgEntry('<g><rect class="inventoryEntryButton"></rect><rect class="shrButton inventoryEntryButton"></rect><rect class="medButton inventoryEntryButton"></rect><rect class="lngButton inventoryEntryButton"></rect><rect class="extButton inventoryEntryButton"></rect><g class="name"><text>Laser</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>') });
+        const { unit } = createComponent([laser]);
+
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 10 });
+        unit.setInventoryControlSelectedTarget(laser, 'A');
+
+        expect(laser.el!.classList.contains('selected-range-extreme')).toBeTrue();
+        expect(laser.el!.classList.contains('selected-range-long')).toBeFalse();
     });
 
     it('upgrades existing weapon selections to the first target and toggles the single target like a checkbox', () => {
