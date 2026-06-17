@@ -50,6 +50,26 @@ function getAmmoControlDisplayName(ammo: AmmoEquipment): string {
     return ammo.name.endsWith(' Ammo') ? ammo.name.slice(0, -5) : ammo.name;
 }
 
+export function getBattleArmorTrooperNumber(locationLabel: string): number | null {
+    const match = locationLabel.trim().match(/^(?:Trooper\s+|T)(\d+)$/i);
+    if (!match) return null;
+    const trooperNumber = Number(match[1]);
+    return Number.isInteger(trooperNumber) && trooperNumber > 0 ? trooperNumber : null;
+}
+
+export function formatBattleArmorTrooperLocation(locationLabel: string): string {
+    const trooperNumber = getBattleArmorTrooperNumber(locationLabel);
+    return trooperNumber === null ? locationLabel : `T${trooperNumber}`;
+}
+
+export function isBattleArmorTrooperLocationDestroyed(unit: CBTForceUnit, locationLabel: string): boolean {
+    if (unit.getUnit().subtype !== 'Battle Armor') return false;
+    const trooperNumber = getBattleArmorTrooperNumber(locationLabel);
+    if (trooperNumber === null) return false;
+
+    return unit.isArmorLocCommittedDestroyed(`T${trooperNumber}`, false);
+}
+
 function formatAmmoBinName(index: number): string {
     return `#${index} Bin`;
 }
@@ -142,6 +162,7 @@ function createInventoryAmmoControlEntry(unit: CBTForceUnit, inventoryEntry: Mou
     const originalTotalAmmo = getInventoryOriginalTotalAmmo(inventoryEntry);
     const totalAmmo = inventoryEntry.totalAmmo ?? originalTotalAmmo;
     const locationLabel = Array.from(inventoryEntry.locations ?? []).join('/') || 'Ammo';
+    const destroyed = !!inventoryEntry.destroyed || isBattleArmorTrooperLocationDestroyed(unit, locationLabel);
     return {
         id: `inventory:${inventoryEntry.id}`,
         owner: unit,
@@ -155,7 +176,7 @@ function createInventoryAmmoControlEntry(unit: CBTForceUnit, inventoryEntry: Mou
         originalTotalAmmo,
         totalAmmo,
         consumed: inventoryEntry.consumed ?? 0,
-        destroyed: !!inventoryEntry.destroyed
+        destroyed
     };
 }
 
@@ -344,7 +365,7 @@ function syncEntryFromSource(entry: AmmoControlEntry, equipmentMap: EquipmentMap
         entry.originalTotalAmmo = getInventoryOriginalTotalAmmo(source);
         entry.totalAmmo = source.totalAmmo ?? entry.originalTotalAmmo;
         entry.consumed = source.consumed ?? 0;
-        entry.destroyed = !!source.destroyed;
+        entry.destroyed = !!source.destroyed || isBattleArmorTrooperLocationDestroyed(entry.owner, entry.locationLabel);
         return;
     }
 

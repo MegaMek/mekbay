@@ -22,6 +22,7 @@ import type { EquipmentDialogContext } from './equipment-dialog.model';
 import {
     formatInventoryControlModeName,
     getInventoryControlGroups,
+    INVENTORY_CONTROL_VIRTUAL_TROOPER_ROW_STATE,
     isInventoryControlSelectableEntry,
     selectInventoryControlEntry,
     setInventoryControlSortOrder,
@@ -517,6 +518,7 @@ export class WeaponsEquipmentPanelComponent {
 
     canAdjustAmmo(row: InventoryControlRow, delta: number): boolean {
         if (this.readOnly() || !row.ammo.tracksAmmo || delta === 0) return false;
+        if (!this.hasAvailableAmmoOption(row)) return false;
         const option = this.selectedAmmo(row);
         if (!option || option.destroyed) return false;
         if (delta > 0) return option.remaining > 0;
@@ -841,6 +843,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     private getHandlerChoices(row: InventoryControlRow): HandlerChoice[] {
+        if (this.isVirtualTrooperRow(row)) return [];
         if (row.destroyed) return [];
         const revision = this.revision();
         if (this.handlerChoiceCacheRevision !== revision) {
@@ -862,7 +865,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     canMarkDestroyed(row: InventoryControlRow): boolean {
-        return !this.readOnly() && this.unit().hasDirectInventory() && !row.destroyed;
+        return !this.isVirtualTrooperRow(row) && !this.readOnly() && this.unit().hasDirectInventory() && !row.destroyed;
     }
 
     markDestroyed(row: InventoryControlRow): void {
@@ -874,7 +877,11 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     canRepair(row: InventoryControlRow): boolean {
-        return !this.readOnly() && this.unit().hasDirectInventory() && row.destroyed;
+        return !this.isVirtualTrooperRow(row) && !this.readOnly() && this.unit().hasDirectInventory() && row.destroyed;
+    }
+
+    private isVirtualTrooperRow(row: InventoryControlRow): boolean {
+        return row.entry.states.has(INVENTORY_CONTROL_VIRTUAL_TROOPER_ROW_STATE);
     }
 
     repair(row: InventoryControlRow): void {

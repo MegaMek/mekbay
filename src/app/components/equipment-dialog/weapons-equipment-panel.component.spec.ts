@@ -37,7 +37,7 @@ function addRuntimeSelection(unit: CBTForceUnit): CBTForceUnit {
     return unit;
 }
 
-function weapon(id: string, ammoType: 'NA' | 'ATM' | 'MML' | 'AC_ULTRA' = 'NA', rackSize = 0, ranges: number[] = [1, 2, 3, 4]): WeaponEquipment {
+function weapon(id: string, ammoType: 'NA' | 'ATM' | 'MML' | 'AC_ULTRA' | 'NARC' = 'NA', rackSize = 0, ranges: number[] = [1, 2, 3, 4]): WeaponEquipment {
     return new WeaponEquipment({
         id,
         name: id,
@@ -46,7 +46,7 @@ function weapon(id: string, ammoType: 'NA' | 'ATM' | 'MML' | 'AC_ULTRA' = 'NA', 
     });
 }
 
-function ammo(id: string, ammoType: 'ATM' | 'MML', rackSize: number, munitionType: string[] = [], flags: string[] = []): AmmoEquipment {
+function ammo(id: string, ammoType: 'ATM' | 'MML' | 'NARC', rackSize: number, munitionType: string[] = [], flags: string[] = []): AmmoEquipment {
     return new AmmoEquipment({
         id,
         name: id,
@@ -211,7 +211,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const hatchet = entry({ id: 'hatchet', equipment: misc('Hatchet', ['F_CLUB']), el: svgEntry('<g><g class="name"><text>Hatchet</text></g></g>') });
         const ecm = entry({ id: 'ecm', equipment: misc('ECM'), el: svgEntry('<g><g class="name"><text>ECM</text></g></g>') });
         const broken = entry({ id: 'broken', equipment: weapon('broken'), destroyed: true, el: svgEntry('<g><g class="name"><text>Broken</text></g></g>') });
-        const unit = { getInventory: () => [laser, punch, hatchet, ecm, broken], getCritSlots: () => [], rules: {} } as unknown as CBTForceUnit;
+        const unit = { getInventory: () => [laser, punch, hatchet, ecm, broken], getCritSlots: () => [], getUnit: () => ({ subtype: '', comp: [] }), rules: {} } as unknown as CBTForceUnit;
         [laser, punch, hatchet, ecm, broken].forEach(item => item.owner = unit);
 
         const groups = getInventoryControlGroups(unit);
@@ -225,12 +225,59 @@ describe('WeaponsEquipmentPanelComponent', () => {
     it('keeps inactive direct inventory rows in original order', () => {
         const broken = entry({ id: 'broken', equipment: weapon('broken'), destroyed: true, el: svgEntry('<g><g class="name"><text>Broken</text></g></g>') });
         const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
-        const unit = { getInventory: () => [broken, laser], getCritSlots: () => [], rules: {} } as unknown as CBTForceUnit;
+        const unit = { getInventory: () => [broken, laser], getCritSlots: () => [], getUnit: () => ({ subtype: '', comp: [] }), rules: {} } as unknown as CBTForceUnit;
         [broken, laser].forEach(item => item.owner = unit);
 
         const groups = getInventoryControlGroups(unit);
 
         expect(groups.find(group => group.id === 'ranged')?.rows.map(row => row.id)).toEqual(['broken', 'laser']);
+    });
+
+    it('splits Battle Armor trooper weapons and locks ammo to the same trooper', () => {
+        const narc = weapon('CLBACompactNarc', 'NARC', 4);
+        narc.flags.add('F_BA_WEAPON');
+        const narcAmmo = ammo('BA-Compact Narc Ammo', 'NARC', 4);
+        const trooperLabels = [1, 2, 3, 4].map(trooper => `Trooper ${trooper}`);
+        const narcEntry = entry({
+            id: 'CLBACompactNarc@Squad#0',
+            equipment: narc,
+            locations: new Set(trooperLabels),
+            el: svgEntry('<g><g class="name"><text>Narc (Compact)</text></g><text class="location">Trooper 1/Trooper 2/Trooper 3/Trooper 4</text></g>')
+        });
+        const ammoEntries = trooperLabels.map((location, index) => entry({
+            id: `BA-Compact Narc Ammo@${location}#${index}.0`,
+            equipment: narcAmmo,
+            locations: new Set([location]),
+            totalAmmo: 2,
+            consumed: 0,
+        }));
+        const unit = {
+            getInventory: () => [narcEntry, ...ammoEntries],
+            getCritSlots: () => [],
+            isArmorLocCommittedDestroyed: (loc: string, rear = false) => !rear && loc === 'T1',
+            getUnit: () => ({
+                subtype: 'Battle Armor',
+                squads: 1,
+                squadSize: 4,
+                comp: trooperLabels.map(location => ({ id: narc.internalName, q: 1, q2: 0, l: location }))
+            }),
+            locations: { internal: new Map([['TROOP', { loc: 'TROOP', points: 4 }]]), armor: new Map() },
+            rules: {}
+        } as unknown as CBTForceUnit;
+        [narcEntry, ...ammoEntries].forEach(item => item.owner = unit);
+
+        const rangedRows = getInventoryControlGroups(unit, { [narcAmmo.internalName]: narcAmmo })
+            .find(group => group.id === 'ranged')!.rows;
+
+        expect(rangedRows.map(row => row.id)).toEqual(trooperLabels.map(location => `${narcEntry.id}:${location}`));
+        expect(rangedRows.map(row => row.display.location)).toEqual(['T1', 'T2', 'T3', 'T4']);
+        expect(rangedRows.map(row => row.entry.id)).toEqual(rangedRows.map(row => row.id));
+        expect(rangedRows.map(row => row.destroyed)).toEqual([true, false, false, false]);
+        expect(rangedRows.map(row => row.ammo.options.map(option => option.id))).toEqual(trooperLabels.map(location => [`${narcAmmo.internalName}:${location}`]));
+        expect(rangedRows.map(row => row.ammo.remaining)).toEqual([0, 2, 2, 2]);
+        expect(rangedRows[0].ammo.options[0].destroyed).toBeTrue();
+        expect(rangedRows[0].ammo.options[0].disabled).toBeTrue();
+        expect(rangedRows.slice(1).every(row => !row.ammo.options[0].destroyed)).toBeTrue();
     });
 
     it('marks rows disabled from entry state rules', () => {
@@ -252,7 +299,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
             states: new Map([['state', 'jammed']]),
             el: svgEntry('<g><g class="name"><text>Ultra AC/2</text></g></g>')
         });
-        const unit = { getInventory: () => [uac], getCritSlots: () => [], rules: {} } as unknown as CBTForceUnit;
+        const unit = { getInventory: () => [uac], getCritSlots: () => [], getUnit: () => ({ subtype: '', comp: [] }), rules: {} } as unknown as CBTForceUnit;
         uac.owner = unit;
 
         const row = getInventoryControlGroups(unit).find(group => group.id === 'ranged')!.rows[0];
