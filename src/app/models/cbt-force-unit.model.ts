@@ -47,7 +47,7 @@ import { UnitSvgInfantryService } from '../services/unit-svg-infantry.service';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { AmmoEquipment, WeaponEquipment } from './equipment.model';
 import { C3NetworkUtil } from '../utils/c3-network.util';
-import { getMotiveModesOptionsByUnit, type MotiveModeOption } from './motiveModes.model';
+import { getMotiveModeTargetNumberModifier, getMotiveModesOptionsByUnit, type MotiveModeOption } from './motiveModes.model';
 import type { TurnState } from './turn-state.model';
 import { Sanitizer } from '../utils/sanitizer.util';
 import type { UnitTypeRules } from './rules/unit-type-rules';
@@ -56,6 +56,7 @@ import { AeroRules } from './rules/aero-rules';
 import { InfantryRules } from './rules/infantry-rules';
 import { VehicleRules } from './rules/vehicle-rules';
 import { InventoryControlRuntimeState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeSelectionSnapshot, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from './inventory-control-runtime-state.model';
+import { computeLinkedModifiers, resolveHitModifier } from './rules/hit-modifier.util';
 
 /*
  * Author: Drake
@@ -74,7 +75,10 @@ export class CBTForceUnit extends ForceUnit {
         internal: Map<string, { loc: string; points?: number }>;
     };
     protected override state: CBTForceUnitState;
-    private readonly inventoryControlRuntime = new InventoryControlRuntimeState(() => this.state.inventory());
+    private readonly inventoryControlRuntime = new InventoryControlRuntimeState(
+        () => this.state.inventory(),
+        (entry, target) => this.inventoryControlTargetNumberText(entry, target)
+    );
 
     readonly alias = computed<string | undefined>(() => {
         const pilot = this.getCrewMember(0);
@@ -343,6 +347,10 @@ export class CBTForceUnit extends ForceUnit {
         this.inventoryControlRuntime.setSelectedRange(entry, range);
     }
 
+    toggleInventoryControlSelectedRange(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey, forceSelected = false): void {
+        this.inventoryControlRuntime.toggleSelectedRange(entry, range, forceSelected);
+    }
+
     setInventoryControlSelectedAmmoOption(entryId: string, optionId: string): void {
         this.inventoryControlRuntime.setSelectedAmmoOption(entryId, optionId);
     }
@@ -377,6 +385,70 @@ export class CBTForceUnit extends ForceUnit {
 
     syncInventoryControlSelectionSvg(): void {
         this.inventoryControlRuntime.syncSelectionSvg();
+    }
+
+    private inventoryControlTargetNumberText(entry: MountedEquipment, target: InventoryControlRuntimeTarget): string | null {
+        const rangeSelection = this.inventoryControlRangeSelectionForTarget(entry, target.distance);
+        if (!rangeSelection) return null;
+        if (rangeSelection.outOfLongRange) return 'X';
+
+        const skill = entry.physical ? this.pilotingSkill() : this.gunnerySkill();
+        const movementModifier = getMotiveModeTargetNumberModifier(this.turnState().moveMode());
+        const minimumRangeModifier = this.inventoryControlMinimumRangeModifier(entry, target.distance);
+        const hitModifier = this.inventoryControlHitModifier(entry);
+        const total = skill + movementModifier + target.tnModifier + this.inventoryControlRangeModifier(rangeSelection.range) + minimumRangeModifier + hitModifier;
+        return total.toString();
+    }
+
+    private inventoryControlRangeSelectionForTarget(entry: MountedEquipment, distance: number): { range: InventoryControlRuntimeRangeKey; outOfLongRange: boolean } | null {
+        if (entry.physical) return { range: 'short', outOfLongRange: false };
+        const thresholds = (['short', 'medium', 'long'] as const)
+            .map(range => ({ range, value: this.parseInventoryControlNumericCell(this.inventoryControlDisplayText(entry, `range_${range}`)) }))
+            .filter((item): item is { range: 'short' | 'medium' | 'long'; value: number } => item.value !== null);
+        if (thresholds.length === 0) return null;
+        for (const threshold of thresholds) {
+            if (distance <= threshold.value) return { range: threshold.range, outOfLongRange: false };
+        }
+        return { range: 'extreme', outOfLongRange: true };
+    }
+
+    private inventoryControlMinimumRangeModifier(entry: MountedEquipment, distance: number): number {
+        const min = this.parseInventoryControlNumericCell(this.inventoryControlDisplayText(entry, 'range_min'));
+        if (min === null || min <= 0 || distance > min) return 0;
+        return (min - distance) + 1;
+    }
+
+    private inventoryControlHitModifier(entry: MountedEquipment): number {
+        const state = (this.rules as { computeAllEntryStates?: () => Map<MountedEquipment, { hitMod: number }> }).computeAllEntryStates?.().get(entry);
+        const hitModifier = resolveHitModifier(entry, state?.hitMod ?? computeLinkedModifiers(entry));
+        return typeof hitModifier === 'number' ? hitModifier : 0;
+    }
+
+    private inventoryControlDisplayText(entry: MountedEquipment, className: string): string {
+        const selectedMode = entry.el?.querySelector(':scope > .alternativeMode.selected');
+        const modeValue = selectedMode ? this.directInventoryControlSvgText(selectedMode, `.${className}`) : '';
+        if (modeValue && modeValue !== '—') return modeValue;
+        return entry.el ? this.directInventoryControlSvgText(entry.el, `.${className}`) : '';
+    }
+
+    private directInventoryControlSvgText(parent: Element, selector: string): string {
+        return (parent.querySelector(`:scope > ${selector}`)?.textContent ?? '').trim();
+    }
+
+    private parseInventoryControlNumericCell(value: string): number | null {
+        const text = value.trim();
+        if (!/^[-+]?\d+(?:\.\d+)?$/.test(text)) return null;
+        const parsed = Number(text);
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    private inventoryControlRangeModifier(range: InventoryControlRuntimeRangeKey): number {
+        switch (range) {
+            case 'medium': return 2;
+            case 'long': return 4;
+            case 'extreme': return 6;
+            default: return 0;
+        }
     }
 
     get getLocations() {

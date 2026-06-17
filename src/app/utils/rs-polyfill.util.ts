@@ -528,7 +528,12 @@ export class RsPolyfillUtil {
             group.classList.add(`eq-${id}`);
 
             // Avoid duplicate insertion
-            if (group.querySelector('.hitMod-rect')) return;
+            const existingHitModRect = group.querySelector<SVGElement>(':scope > .hitMod-rect');
+            const existingHitModText = group.querySelector<SVGElement>(':scope > .hitMod-text');
+            if (existingHitModRect && existingHitModText) {
+                this.addTargetTnOverlay(group, existingHitModRect, existingHitModText);
+                return;
+            }
 
             // Gather hitMod attributes
             let hitMod: string | null = '';
@@ -607,7 +612,28 @@ export class RsPolyfillUtil {
 
             nameEl.parentElement?.appendChild(rect);
             nameEl.parentElement?.appendChild(text);
+            this.addTargetTnOverlay(nameEl.parentElement ?? group, rect, text);
         });
+    }
+
+    private static addTargetTnOverlay(parent: Element, hitModRect: SVGElement, hitModText: SVGElement): void {
+        if (parent.querySelector(':scope > .targetTn-rect') || parent.querySelector(':scope > .targetTn-text')) return;
+
+        const targetTnRect = hitModRect.cloneNode(false) as SVGRectElement;
+        targetTnRect.setAttribute('class', 'targetTn-rect');
+        targetTnRect.setAttribute('fill', '#fff');
+        targetTnRect.setAttribute('stroke', '#000');
+        targetTnRect.setAttribute('stroke-width', '0.8');
+        targetTnRect.setAttribute('display', 'none');
+
+        const targetTnText = hitModText.cloneNode(false) as SVGTextElement;
+        targetTnText.setAttribute('class', 'targetTn-text');
+        targetTnText.setAttribute('fill', '#000');
+        targetTnText.setAttribute('display', 'none');
+        targetTnText.textContent = '';
+
+        parent.appendChild(targetTnRect);
+        parent.appendChild(targetTnText);
     }
 
 

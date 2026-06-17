@@ -24,7 +24,8 @@ function addRuntimeSelection(unit: CBTForceUnit): CBTForceUnit {
         getInventoryControlSelectedRange: (entryId: string) => runtime.getSelectedRange(entryId),
         getInventoryControlSelectedAmmoOption: (entryId: string) => runtime.getSelectedAmmoOption(entryId),
         setInventoryControlEntrySelected: (entry: MountedEquipment, selected: boolean) => runtime.setEntrySelected(entry, selected),
-        setInventoryControlSelectedRange: (entry: MountedEquipment, range: 'min' | 'short' | 'medium' | 'long' | null) => runtime.setSelectedRange(entry, range),
+        setInventoryControlSelectedRange: (entry: MountedEquipment, range: 'short' | 'medium' | 'long' | null) => runtime.setSelectedRange(entry, range),
+        toggleInventoryControlSelectedRange: (entry: MountedEquipment, range: 'short' | 'medium' | 'long', forceSelected = false) => runtime.toggleSelectedRange(entry, range, forceSelected),
         setInventoryControlSelectedAmmoOption: (entryId: string, optionId: string) => runtime.setSelectedAmmoOption(entryId, optionId),
         setInventoryControlSelectedTarget: (entry: MountedEquipment, targetId: InventoryControlRuntimeTargetId | null) => runtime.setSelectedTarget(entry, targetId),
         createInventoryControlTarget: () => runtime.createTarget(),
@@ -277,7 +278,6 @@ describe('WeaponEquipmentDialogComponent', () => {
         expect(mml.el?.querySelector(':scope > .alternativeMode.selected')?.getAttribute('mode')).toBe('LRM');
         expect(component.modeChoice(row)?.choices?.map(choice => choice.value)).toEqual(['LRM']);
         expect(component.handlerChoices(row)).toEqual([]);
-        expect(component.canSelectRange(row, 'min')).toBeFalse();
     });
 
     it('shows linked weapon enhancements as modifiers instead of standalone rows', () => {
@@ -481,7 +481,9 @@ describe('WeaponEquipmentDialogComponent', () => {
             { label: 'Total', value: '12', isHeader: true },
         ]);
         expect((fixture.nativeElement.querySelector('.tn-cell') as HTMLElement).hasAttribute('data-tooltip-host')).toBeTrue();
-        expect((fixture.nativeElement.querySelector('.range-long') as HTMLElement).classList.contains('selected-range')).toBeTrue();
+        const selectedRangeCell = fixture.nativeElement.querySelector('.range-long') as HTMLElement;
+        expect(selectedRangeCell.classList.contains('selected-range')).toBeTrue();
+        expect(selectedRangeCell.style.getPropertyValue('--range-selection-color')).toBe(INVENTORY_CONTROL_TARGET_COLORS[0]);
     });
 
     it('uses piloting skill for physical target numbers', () => {
@@ -523,6 +525,7 @@ describe('WeaponEquipmentDialogComponent', () => {
         expect((fixture.nativeElement.querySelector('.tn-cell') as HTMLElement).classList.contains('out-of-range')).toBeTrue();
         const rangeCells = Array.from(fixture.nativeElement.querySelectorAll('.range-cell')) as HTMLElement[];
         expect(rangeCells.every(cell => cell.classList.contains('out-of-range'))).toBeTrue();
+        expect(rangeCells.every(cell => cell.style.getPropertyValue('--range-selection-color') === '')).toBeTrue();
     });
 
     it('opens the targets overlay, adds a target, and changes color from the target square', () => {

@@ -12,7 +12,7 @@ export const INVENTORY_CONTROL_MODE_DISPLAY_NAMES: Readonly<Record<string, strin
 };
 
 export type InventoryControlGroupId = 'ranged' | 'physical' | 'equipment';
-export type InventoryRangeKey = 'min' | 'short' | 'medium' | 'long';
+export type InventoryRangeKey = 'short' | 'medium' | 'long';
 
 export interface InventoryControlMode {
     mode: string;
@@ -551,12 +551,14 @@ export function syncSvgMode(entry: MountedEquipment, mode: string | null): void 
     const el = entry.el;
     if (!el) return;
     const ownerSelection = entry.owner as { isInventoryControlEntrySelected?: (entryId: string) => boolean };
+    const selected = ownerSelection.isInventoryControlEntrySelected?.(entry.id) ?? false;
 
-    let selected = false;
+    let hasSelectedMode = false;
     el.querySelectorAll(':scope > .alternativeMode').forEach(optionEl => {
         const active = !!mode && optionEl.getAttribute('mode') === mode;
         optionEl.classList.toggle('selected', active);
-        selected ||= active;
+        hasSelectedMode ||= active;
     });
-    el.classList.toggle('selected', selected || (ownerSelection.isInventoryControlEntrySelected?.(entry.id) ?? false));
+    el.classList.toggle('selected', selected);
+    el.classList.toggle('selected-alternative-mode', selected && hasSelectedMode);
 }

@@ -32,6 +32,9 @@
  */
 
 import { Injectable, type ElementRef, DestroyRef, signal, type WritableSignal, type Injector, effect, type EffectRef, inject } from '@angular/core';
+import { Overlay } from '@angular/cdk/overlay';
+import { ComponentPortal } from '@angular/cdk/portal';
+import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DialogsService } from '../../services/dialogs.service';
 import { firstValueFrom } from 'rxjs';
 import type { ForceUnit } from '../../models/force-unit.model';
@@ -45,17 +48,32 @@ import { ToastService } from '../../services/toast.service';
 import { LayoutService } from '../../services/layout.service';
 import { SetAmmoDialogComponent, type SetAmmoDialogData } from '../set-ammo-dialog/set-ammo.dialog.component';
 import { DataService } from '../../services/data.service';
-import { AmmoEquipment } from '../../models/equipment.model';
+import { AmmoEquipment, WeaponEquipment } from '../../models/equipment.model';
 import { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
 import type { HandlerChoice, HandlerContext } from '../../services/equipment-interaction-registry.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
+import { OverlayManagerService } from '../../services/overlay-manager.service';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { type ChoicePickerStyle, PickerFactoryService } from '../../services/picker-factory.service';
 import { canAntiMech } from '../../utils/infantry.util';
 import { AmmoControlDialogComponent, type AmmoControlDialogData } from '../ammo-control-dialog/ammo-control-dialog.component';
 import { getAmmoControlEntriesForUnitWeapons } from '../../utils/ammo-interaction.util';
 import { WeaponEquipmentDialogComponent, type WeaponEquipmentDialogContext, type WeaponEquipmentDialogData } from '../../components/weapon-equipment-dialog/weapon-equipment-dialog.component';
+import { WeaponTargetChoiceMenuComponent } from '../../components/weapon-equipment-dialog/weapon-target-choice-menu.component';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
+import { getInventoryControlModes, getSelectedInventoryControlMode, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
+import { getMotiveModeTargetNumberModifier } from '../../models/motiveModes.model';
+import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
+
+type SheetInventoryRangeKey = InventoryRangeKey | 'extreme';
+
+const INVENTORY_RANGE_BUTTON_CLASSES: ReadonlyArray<readonly [string, SheetInventoryRangeKey]> = [
+    ['shrButton', 'short'],
+    ['medButton', 'medium'],
+    ['lngButton', 'long'],
+    ['extButton', 'extreme']
+];
+const SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY = 'svg-inventory-target-choice';
 
 /*
  * Author: Drake
@@ -71,6 +89,9 @@ export interface InteractionState {
 @Injectable()
 export class SvgInteractionService {
     private dataService = inject(DataService);
+    private destroyRef = inject(DestroyRef);
+    private overlay = inject(Overlay);
+    private overlayManager = inject(OverlayManagerService);
     private optionsService = inject(OptionsService);
     private dialogsService = inject(DialogsService);
     private toastService = inject(ToastService);
@@ -107,7 +128,7 @@ export class SvgInteractionService {
     }
 
     constructor() {
-        inject(DestroyRef).onDestroy(() => {
+        this.destroyRef.onDestroy(() => {
             this.cleanup();
         });
     }
@@ -844,6 +865,7 @@ export class SvgInteractionService {
         this.unit()?.getInventory().forEach(entry => {
             const el = entry.el;
             if (!el) return;
+            syncSvgMode(entry, getSelectedInventoryControlMode(entry));
             const openInventoryDialog = () => {
                 const unit = this.unit();
                 if (!unit) return;
@@ -867,12 +889,173 @@ export class SvgInteractionService {
                 ref.closed.subscribe(() => this.pageViewerState.endInventoryDialog());
             };
 
+            const selectRange = (button: SVGElement, event: Event) => {
+                const unit = this.unit();
+                const range = this.inventoryRangeForButton(button);
+                if (!unit || !range) return;
+
+                const clickedMode = this.validInventoryModeForButton(entry, button);
+                const selectedMode = getSelectedInventoryControlMode(entry);
+                const forceSelected = !!clickedMode && clickedMode !== selectedMode;
+
+                if (clickedMode) {
+                    setInventoryControlMode(entry, clickedMode);
+                }
+                const targets = unit.getInventoryControlTargets();
+                if (targets.length === 0) {
+                    unit.toggleInventoryControlSelectedRange(entry, range, forceSelected);
+                } else if (targets.length === 1) {
+                    unit.setInventoryControlSelectedTarget(entry, targets[0].id);
+                } else {
+                    this.showInventoryTargetPicker(entry, button, event, targets);
+                }
+            };
+
             el.classList.add('interactive');
-            el.style.cursor = 'pointer';
-            el.addEventListener('click', (evt: Event) => {
-                openInventoryDialog();
-            }, { passive: false, signal });
+            this.inventoryDialogButtons(el).forEach(button => {
+                button.classList.add('interactive');
+                button.style.cursor = 'pointer';
+                button.addEventListener('click', (evt: Event) => {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    openInventoryDialog();
+                }, { passive: false, signal });
+            });
+            this.inventoryRangeButtons(el).forEach(button => {
+                button.classList.add('interactive');
+                button.style.cursor = 'pointer';
+                button.addEventListener('click', (evt: Event) => {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    selectRange(button, evt);
+                }, { passive: false, signal });
+            });
         });
+    }
+
+    private inventoryDialogButtons(entryEl: SVGElement): SVGElement[] {
+        return [
+            ...Array.from(entryEl.querySelectorAll<SVGElement>(':scope > .mainButton')),
+            ...Array.from(entryEl.querySelectorAll<SVGElement>(':scope > .alternativeMode > .alternativeModeButton'))
+        ];
+    }
+
+    private inventoryRangeButtons(entryEl: SVGElement): SVGElement[] {
+        return Array.from(entryEl.querySelectorAll<SVGElement>(this.inventoryRangeButtonSelector()))
+            .filter(button => button.parentNode === entryEl
+                || (button.parentElement?.classList.contains('alternativeMode') && button.parentElement.parentNode === entryEl));
+    }
+
+    private inventoryRangeButtonSelector(): string {
+        return INVENTORY_RANGE_BUTTON_CLASSES
+            .map(([className]) => `.${className}`)
+            .join(', ');
+    }
+
+    private inventoryRangeForButton(button: SVGElement): SheetInventoryRangeKey | null {
+        return INVENTORY_RANGE_BUTTON_CLASSES.find(([className]) => button.classList.contains(className))?.[1] ?? null;
+    }
+
+    private validInventoryModeForButton(entry: MountedEquipment, button: SVGElement): string | null {
+        const modeEl = button.closest('.alternativeMode');
+        if (!modeEl || modeEl.parentNode !== entry.el) return null;
+        const mode = modeEl.getAttribute('mode');
+        if (!mode) return null;
+        return getInventoryControlModes(entry).some(candidate => candidate.mode === mode) ? mode : null;
+    }
+
+    private showInventoryTargetPicker(entry: MountedEquipment, button: SVGElement, _event: Event, targets: InventoryControlRuntimeTarget[]): void {
+        const unit = this.unit();
+        if (!unit) return;
+        const selectedTargetId = unit.getInventoryControlSelectedTarget(entry.id) ?? null;
+        this.removePicker();
+        const portal = new ComponentPortal(WeaponTargetChoiceMenuComponent, null, this.injector);
+        const { componentRef } = this.overlayManager.createManagedOverlay(SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY, button as unknown as HTMLElement, portal, {
+            hasBackdrop: false,
+            panelClass: 'weapon-target-choice-overlay-panel',
+            closeOnOutsideClick: true,
+            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            positions: [
+                { originX: 'end', originY: 'center', overlayX: 'start', overlayY: 'center', offsetX: 4 },
+                { originX: 'start', originY: 'center', overlayX: 'end', overlayY: 'center', offsetX: -4 },
+                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 }
+            ]
+        });
+        componentRef.setInput('targets', targets);
+        componentRef.setInput('selectedTargetId', selectedTargetId);
+        componentRef.setInput('targetNumberTexts', this.inventoryTargetNumberTexts(entry, targets));
+        componentRef.changeDetectorRef.detectChanges();
+
+        outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(targetId => {
+            unit.setInventoryControlSelectedTarget(entry, targetId);
+            this.overlayManager.closeManagedOverlay(SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY);
+        });
+    }
+
+    private inventoryTargetNumberTexts(entry: MountedEquipment, targets: InventoryControlRuntimeTarget[]): Readonly<Record<InventoryControlRuntimeTargetId, string>> {
+        return Object.fromEntries(targets
+            .map(target => [target.id, this.inventoryTargetNumberText(entry, target)] as const)
+            .filter(([, targetNumber]) => targetNumber !== ''));
+    }
+
+    private inventoryTargetNumberText(entry: MountedEquipment, target: InventoryControlRuntimeTarget): string {
+        const rangeSelection = this.inventoryRangeSelectionForTarget(entry, target.distance);
+        if (!rangeSelection) return '';
+        if (rangeSelection.outOfLongRange) return 'X';
+
+        const unit = this.unit();
+        if (!unit) return '';
+        const skill = entry.physical ? unit.pilotingSkill() : unit.gunnerySkill();
+        const movementModifier = getMotiveModeTargetNumberModifier(unit.turnState().moveMode());
+        const minimumRangeModifier = this.inventoryMinimumRangeModifier(entry, target.distance);
+        const hitModifier = this.parseNumericCell(this.inventoryDisplayText(entry, 'hit')) ?? 0;
+        const total = skill + movementModifier + target.tnModifier + this.inventoryRangeModifier(rangeSelection.range) + minimumRangeModifier + hitModifier;
+        return total.toString();
+    }
+
+    private inventoryRangeSelectionForTarget(entry: MountedEquipment, distance: number): { range: SheetInventoryRangeKey; outOfLongRange: boolean } | null {
+        const thresholds = (['short', 'medium', 'long'] as const)
+            .map(range => ({ range, value: this.parseNumericCell(this.inventoryDisplayText(entry, `range_${range}`)) }))
+            .filter((item): item is { range: InventoryRangeKey; value: number } => item.value !== null);
+        if (thresholds.length === 0) return null;
+        for (const threshold of thresholds) {
+            if (distance <= threshold.value) return { range: threshold.range, outOfLongRange: false };
+        }
+        return { range: 'extreme', outOfLongRange: true };
+    }
+
+    private inventoryMinimumRangeModifier(entry: MountedEquipment, distance: number): number {
+        const min = this.parseNumericCell(this.inventoryDisplayText(entry, 'range_min'));
+        if (min === null || min <= 0 || distance > min) return 0;
+        return (min - distance) + 1;
+    }
+
+    private inventoryDisplayText(entry: MountedEquipment, className: string): string {
+        const selectedMode = entry.el?.querySelector(':scope > .alternativeMode.selected');
+        const modeValue = selectedMode ? this.directSvgText(selectedMode, `.${className}`) : '';
+        if (modeValue && modeValue !== '—') return modeValue;
+        return entry.el ? this.directSvgText(entry.el, `.${className}`) : '';
+    }
+
+    private directSvgText(parent: Element, selector: string): string {
+        return (parent.querySelector(`:scope > ${selector}`)?.textContent ?? '').trim();
+    }
+
+    private parseNumericCell(value: string): number | null {
+        const text = value.trim();
+        if (!/^[-+]?\d+(?:\.\d+)?$/.test(text)) return null;
+        const parsed = Number(text);
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    private inventoryRangeModifier(range: SheetInventoryRangeKey): number {
+        switch (range) {
+            case 'medium': return 2;
+            case 'long': return 4;
+            case 'extreme': return 6;
+            default: return 0;
+        }
     }
 
     private setupAmmoProfileInteractions(svg: SVGSVGElement, signal: AbortSignal) {
@@ -1441,6 +1624,7 @@ export class SvgInteractionService {
         this.currentHighlightedElement = null;
         this.state.clickTarget = null;
         this.state.heatMarkerData.set(null);
+        this.overlayManager.closeManagedOverlay(SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY);
         this.unit.set(null);
     }
 }

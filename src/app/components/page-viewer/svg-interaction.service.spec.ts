@@ -10,8 +10,12 @@ import { OptionsService } from '../../services/options.service';
 import { PickerFactoryService } from '../../services/picker-factory.service';
 import { ToastService } from '../../services/toast.service';
 import { AmmoEquipment, WeaponEquipment } from '../../models/equipment.model';
+import type { MountedEquipment } from '../../models/force-serialization';
+import { InventoryControlRuntimeState, type InventoryControlRuntimeRangeKey } from '../../models/inventory-control-runtime-state.model';
+import { INVENTORY_CONTROL_MODE_STATE } from '../../utils/inventory-control.util';
 import { SvgInteractionService } from './svg-interaction.service';
 import type { ZoomPanServiceInterface } from './zoom-pan.interface';
+import { PageViewerStateService } from './internal/page-viewer-state.service';
 
 type SvgInteractionServicePrivate = {
     addSvgTapHandler(
@@ -28,18 +32,31 @@ type SvgInteractionServicePrivate = {
 describe('SvgInteractionService', () => {
     let service: SvgInteractionServicePrivate;
     let zoomPanService: ZoomPanServiceInterface;
+    let dialogsService: { createDialog: jasmine.Spy };
+    let forceBuilderService: { selectUnit: jasmine.Spy; editPilotOfUnit: jasmine.Spy };
+    let pickerFactory: { createChoicePicker: jasmine.Spy; createNumericPicker: jasmine.Spy };
+    let pageViewerState: PageViewerStateService;
 
     beforeEach(() => {
         zoomPanService = {
             pointerMoved: false,
             isPanning: false
         };
+        dialogsService = { createDialog: jasmine.createSpy('createDialog').and.returnValue({ closed: { subscribe: jasmine.createSpy('subscribe') } }) };
+        forceBuilderService = {
+            selectUnit: jasmine.createSpy('selectUnit'),
+            editPilotOfUnit: jasmine.createSpy('editPilotOfUnit')
+        };
+        pickerFactory = {
+            createChoicePicker: jasmine.createSpy('createChoicePicker').and.returnValue({ destroy: jasmine.createSpy('destroy') }),
+            createNumericPicker: jasmine.createSpy('createNumericPicker')
+        };
 
         TestBed.configureTestingModule({
             providers: [
                 SvgInteractionService,
                 { provide: DataService, useValue: { getEquipments: () => ({}) } },
-                { provide: DialogsService, useValue: { createDialog: jasmine.createSpy('createDialog') } },
+                { provide: DialogsService, useValue: dialogsService },
                 {
                     provide: EquipmentInteractionRegistryService,
                     useValue: {
@@ -49,8 +66,9 @@ describe('SvgInteractionService', () => {
                         })
                     }
                 },
-                { provide: ForceBuilderService, useValue: { editPilotOfUnit: jasmine.createSpy('editPilotOfUnit') } },
+                { provide: ForceBuilderService, useValue: forceBuilderService },
                 { provide: LayoutService, useValue: {} },
+                PageViewerStateService,
                 {
                     provide: OptionsService,
                     useValue: {
@@ -64,15 +82,13 @@ describe('SvgInteractionService', () => {
                 },
                 {
                     provide: PickerFactoryService,
-                    useValue: {
-                        createChoicePicker: jasmine.createSpy('createChoicePicker'),
-                        createNumericPicker: jasmine.createSpy('createNumericPicker')
-                    }
+                    useValue: pickerFactory
                 },
                 { provide: ToastService, useValue: { showToast: jasmine.createSpy('showToast') } }
             ]
         });
 
+        pageViewerState = TestBed.inject(PageViewerStateService);
         const injectedService = TestBed.inject(SvgInteractionService);
         injectedService.initialize(
             { nativeElement: document.createElement('div') },
@@ -80,6 +96,156 @@ describe('SvgInteractionService', () => {
             zoomPanService
         );
         service = injectedService as unknown as SvgInteractionServicePrivate;
+    });
+
+    it('opens the weapon equipment dialog only from main inventory buttons', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit();
+        pageViewerState.setForceUnits([unit]);
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        entry.el!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        (entry.el!.querySelector('.shrButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(dialogsService.createDialog).not.toHaveBeenCalled();
+
+        (entry.el!.querySelector('.mainButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        expect(dialogsService.createDialog).toHaveBeenCalledTimes(1);
+        expect(dialogsService.createDialog.calls.mostRecent().args[1].data.unitIndex).toBe(0);
+    });
+
+    it('opens the weapon equipment dialog from alternative mode buttons', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit(`
+            <g class="inventoryEntry">
+                <rect class="mainButton inventoryEntryButton"></rect>
+                <g class="name"><text>MML 9</text></g>
+                <g class="alternativeMode" mode="LRM">
+                    <g class="name"><text>LRM</text></g>
+                    <g class="damage"><text>1/Msl</text></g>
+                    <rect class="alternativeModeButton inventoryEntryButton"></rect>
+                </g>
+            </g>
+        `);
+        pageViewerState.setForceUnits([unit]);
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        (entry.el!.querySelector('.alternativeModeButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        expect(dialogsService.createDialog).toHaveBeenCalledTimes(1);
+    });
+
+    it('toggles sheet range buttons through inventory control runtime state', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit();
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+        const shortButton = entry.el!.querySelector('.shrButton') as SVGElement;
+        const mediumButton = entry.el!.querySelector('.medButton') as SVGElement;
+
+        shortButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeTrue();
+        expect(unit.getInventoryControlSelectedRange(entry.id)).toBe('short');
+        expect(entry.el!.classList.contains('selected-range-short')).toBeTrue();
+
+        mediumButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeTrue();
+        expect(unit.getInventoryControlSelectedRange(entry.id)).toBe('medium');
+        expect(entry.el!.classList.contains('selected-range-short')).toBeFalse();
+        expect(entry.el!.classList.contains('selected-range-medium')).toBeTrue();
+
+        mediumButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeFalse();
+        expect(unit.getInventoryControlSelectedRange(entry.id)).toBeUndefined();
+        expect(entry.el!.classList.contains('selected-range-medium')).toBeFalse();
+    });
+
+    it('colors selected sheet inventory rows from their selected target', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit();
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { color: '#00798c' });
+        unit.setInventoryControlSelectedTarget(entry, 'A');
+        expect(entry.el!.style.getPropertyValue('--inventory-control-selection-color')).toBe('#00798c');
+
+        unit.setInventoryControlSelectedRange(entry, 'short');
+        expect(entry.el!.style.getPropertyValue('--inventory-control-selection-color')).toBe('');
+    });
+
+    it('assigns the single target when a sheet range button is clicked with one target', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit();
+        unit.createInventoryControlTarget();
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        (entry.el!.querySelector('.shrButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        expect(unit.getInventoryControlSelectedTarget(entry.id)).toBe('A');
+        expect(unit.getInventoryControlSelectedRange(entry.id)).toBeUndefined();
+    });
+
+    it('opens a target picker with target numbers when sheet range is clicked with multiple targets', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit();
+        unit.createInventoryControlTarget();
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 4 });
+        unit.updateInventoryControlTarget('B', { distance: 8, tnModifier: 1 });
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        (entry.el!.querySelector('.shrButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        expect(pickerFactory.createChoicePicker).not.toHaveBeenCalled();
+        const choices = Array.from(document.body.querySelectorAll('.weapon-target-choice-menu .target-choice:not(.empty-choice)')) as HTMLButtonElement[];
+        expect(choices.map(choice => choice.querySelector('.target-choice-token')?.textContent?.trim())).toEqual(['A', 'B']);
+        expect(choices.map(choice => choice.querySelector('.target-choice-tn')?.textContent?.trim())).toEqual(['6', '9']);
+
+        choices[1].click();
+        expect(unit.getInventoryControlSelectedTarget(entry.id)).toBe('B');
+    });
+
+    it('switches to a valid alternative mode before selecting its sheet range button', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit(`
+            <g class="inventoryEntry">
+                <rect class="mainButton inventoryEntryButton"></rect>
+                <rect class="shrButton inventoryEntryButton"></rect>
+                <g class="name"><text>MML 9</text></g>
+                <text class="range_short">3</text>
+                <g class="alternativeMode" mode="w/Artemis IV">
+                    <g class="name"><text>w/Artemis IV</text></g>
+                    <rect class="medButton inventoryEntryButton"></rect>
+                </g>
+                <g class="alternativeMode" mode="LRM">
+                    <g class="name"><text>LRM</text></g>
+                    <g class="damage"><text>1/Msl</text></g>
+                    <text class="range_medium">14</text>
+                    <rect class="medButton inventoryEntryButton"></rect>
+                </g>
+            </g>
+        `);
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+        const invalidModeRange = entry.el!.querySelector('.alternativeMode[mode="w/Artemis IV"] .medButton') as SVGElement;
+        const lrmRange = entry.el!.querySelector('.alternativeMode[mode="LRM"] .medButton') as SVGElement;
+
+        expect(entry.el!.querySelector(':scope > .alternativeMode.selected')?.getAttribute('mode')).toBe('LRM');
+        expect(entry.el!.classList.contains('selected')).toBeFalse();
+        expect(entry.el!.classList.contains('selected-alternative-mode')).toBeFalse();
+
+        lrmRange.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(entry.states.get(INVENTORY_CONTROL_MODE_STATE)).toBe('LRM');
+        expect(entry.el!.querySelector(':scope > .alternativeMode.selected')?.getAttribute('mode')).toBe('LRM');
+        expect(unit.getInventoryControlSelectedRange(entry.id)).toBe('medium');
+        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeTrue();
+
+        lrmRange.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeFalse();
+        expect(unit.getInventoryControlSelectedRange(entry.id)).toBeUndefined();
+
+        invalidModeRange.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(entry.states.get(INVENTORY_CONTROL_MODE_STATE)).toBe('LRM');
+        expect(unit.getInventoryControlSelectedRange(entry.id)).toBe('medium');
     });
 
     it('keeps a captured pen tap alive when hover retargeting fires pointerleave before pointerup', () => {
@@ -253,4 +419,70 @@ function createHeatElement(heat: number, centerY: number): SVGElement {
         toJSON: () => ({})
     } as DOMRect);
     return element;
+}
+
+function createInventoryInteractionUnit(html = `
+    <g class="inventoryEntry">
+        <rect class="mainButton inventoryEntryButton"></rect>
+        <rect class="shrButton inventoryEntryButton"></rect>
+        <rect class="medButton inventoryEntryButton"></rect>
+        <rect class="lngButton inventoryEntryButton"></rect>
+        <rect class="extButton inventoryEntryButton"></rect>
+        <g class="name"><text>Laser</text></g>
+        <text class="range_short">3</text>
+        <text class="range_medium">6</text>
+        <text class="range_long">9</text>
+    </g>
+`): { svg: SVGSVGElement; entry: MountedEquipment; unit: any } {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.innerHTML = html;
+    const entryEl = svg.querySelector('.inventoryEntry') as SVGElement;
+    const equipment = new WeaponEquipment({
+        id: 'Laser',
+        name: 'Laser',
+        type: 'weapon',
+        weapon: { ammoType: 'NA', ranges: [3, 6, 9, 12] }
+    });
+    const entry = {
+        owner: undefined as any,
+        id: 'laser',
+        name: 'laser',
+        equipment,
+        states: new Map<string, string>(),
+        el: entryEl,
+        destroyed: false,
+        linkedWith: null,
+    } as MountedEquipment;
+    const unit = {
+        id: 'unit-a',
+        getInventory: () => [entry],
+        getCritSlots: () => [],
+        getUnit: () => ({ comp: [] }),
+        readOnly: () => false,
+        hasDirectInventory: () => true,
+        gunnerySkill: () => 4,
+        pilotingSkill: () => 5,
+        turnState: () => ({
+            moveMode: () => null,
+            airborne: () => false,
+        }),
+        setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
+        rules: {}
+    };
+    const runtime = new InventoryControlRuntimeState(() => unit.getInventory());
+    Object.assign(unit, {
+        getInventoryControlTargets: () => runtime.getTargets(),
+        getInventoryControlSelectedTarget: (entryId: string) => runtime.getSelectedTarget(entryId),
+        isInventoryControlEntrySelected: (entryId: string) => runtime.isEntrySelected(entryId),
+        getInventoryControlSelectedRange: (entryId: string) => runtime.getSelectedRange(entryId),
+        setInventoryControlEntrySelected: (selectedEntry: MountedEquipment, selected: boolean) => runtime.setEntrySelected(selectedEntry, selected),
+        setInventoryControlSelectedRange: (selectedEntry: MountedEquipment, range: InventoryControlRuntimeRangeKey | null) => runtime.setSelectedRange(selectedEntry, range),
+        toggleInventoryControlSelectedRange: (selectedEntry: MountedEquipment, range: InventoryControlRuntimeRangeKey, forceSelected = false) => runtime.toggleSelectedRange(selectedEntry, range, forceSelected),
+        setInventoryControlSelectedTarget: (selectedEntry: MountedEquipment, targetId: string | null) => runtime.setSelectedTarget(selectedEntry, targetId),
+        createInventoryControlTarget: () => runtime.createTarget(),
+        updateInventoryControlTarget: (targetId: string, patch: any) => runtime.updateTarget(targetId, patch),
+        syncInventoryControlSelectionSvg: () => runtime.syncSelectionSvg()
+    });
+    entry.owner = unit as any;
+    return { svg, entry, unit };
 }

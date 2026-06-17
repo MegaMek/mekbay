@@ -190,6 +190,7 @@
                                             [disabled]="!canSelectRange(row, range)"
                                             [class.selected-range]="isRangeSelected(row, range)"
                                             [class.out-of-range]="isOutOfLongRange(row)"
+                                            [style.--range-selection-color]="targetRangeSelectionColor(row)"
                                             (click)="selectRange(row, range)">
                                             {{ rangeValue(row, range) }}
                                         </button>

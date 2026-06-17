@@ -1,8 +1,10 @@
 import type { MountedEquipment } from './force-serialization';
 
-export type InventoryControlRuntimeRangeKey = 'min' | 'short' | 'medium' | 'long';
+export type InventoryControlRuntimeRangeKey = 'short' | 'medium' | 'long' | 'extreme';
 
-type InventoryControlRuntimeHighlightRangeKey = Exclude<InventoryControlRuntimeRangeKey, 'min'> | 'extreme';
+type InventoryControlRuntimeHighlightRangeKey = InventoryControlRuntimeRangeKey;
+
+const INVENTORY_CONTROL_SELECTION_COLOR_PROPERTY = '--inventory-control-selection-color';
 
 const INVENTORY_CONTROL_RANGE_CLASS_NAMES: Record<InventoryControlRuntimeHighlightRangeKey, string> = {
     short: 'selected-range-short',
@@ -13,18 +15,18 @@ const INVENTORY_CONTROL_RANGE_CLASS_NAMES: Record<InventoryControlRuntimeHighlig
 
 export const INVENTORY_CONTROL_TARGET_MAX_COUNT = 12;
 export const INVENTORY_CONTROL_TARGET_COLORS = [
-    '#d1495b',
-    '#00798c',
-    '#edae49',
-    '#66a182',
-    '#8d6a9f',
-    '#f26419',
-    '#2e86ab',
-    '#a23b72',
-    '#6a994e',
-    '#c44536',
-    '#4d908e',
-    '#b08968'
+    '#c0f7ff',
+    '#ffebca',
+    '#c6ffe1',
+    '#ecc6ff',
+    '#ddffc0',
+    '#ffc6c6',
+    '#6fb3bd',
+    '#eacc80',
+    '#8ed2ad',
+    '#ab77c6',
+    '#a9d087',
+    '#d5a790',
 ] as const;
 
 export type InventoryControlRuntimeTargetId = string;
@@ -37,6 +39,8 @@ export interface InventoryControlRuntimeTarget {
     distance: number;
     tnModifier: number;
 }
+
+export type InventoryControlRuntimeTargetNumberText = (entry: MountedEquipment, target: InventoryControlRuntimeTarget) => string | null;
 
 export interface InventoryControlRuntimeSelectionSnapshot {
     selectedEntryIds: Set<string>;
@@ -62,7 +66,10 @@ export class InventoryControlRuntimeState {
     private readonly selectedTargets = new Map<string, InventoryControlRuntimeTargetId>();
     private readonly targets = new Map<InventoryControlRuntimeTargetId, InventoryControlRuntimeTarget>();
 
-    constructor(private readonly getInventory: () => MountedEquipment[]) {}
+    constructor(
+        private readonly getInventory: () => MountedEquipment[],
+        private readonly targetNumberText: InventoryControlRuntimeTargetNumberText | null = null
+    ) {}
 
     getSelectionSnapshot(): InventoryControlRuntimeSelectionSnapshot {
         return {
@@ -125,6 +132,11 @@ export class InventoryControlRuntimeState {
         this.syncEntrySelectionSvg(entry);
     }
 
+    toggleSelectedRange(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey, forceSelected = false): void {
+        const selected = this.selectedEntryIds.has(entry.id) && this.selectedRanges.get(entry.id) === range;
+        this.setSelectedRange(entry, !forceSelected && selected ? null : range);
+    }
+
     setSelectedAmmoOption(entryId: string, optionId: string): void {
         this.selectedAmmoOptions.set(entryId, optionId);
     }
@@ -183,6 +195,7 @@ export class InventoryControlRuntimeState {
             ...(patch.tnModifier !== undefined && { tnModifier: Number.isFinite(patch.tnModifier) ? patch.tnModifier : target.tnModifier })
         };
         this.targets.set(targetId, updated);
+        this.syncSelectionSvg();
         return { ...updated };
     }
 
@@ -258,12 +271,43 @@ export class InventoryControlRuntimeState {
         if (!el) return;
         const selected = this.selectedEntryIds.has(entry.id);
         const selectedRange = selected ? this.entrySelectedHighlightRange(entry) : null;
+        const targetNumberText = this.entrySelectedTargetNumberText(entry, selected);
         const hasSelectedMode = !!el.querySelector(':scope > .alternativeMode.selected');
-        el.classList.toggle('selected', selected || hasSelectedMode);
-        el.classList.toggle('selected-alternative-mode', hasSelectedMode);
+        this.syncEntrySelectionColorSvg(entry, el, selected);
+        this.syncEntryTargetNumberSvg(el, targetNumberText);
+        el.classList.toggle('selected', selected);
+        el.classList.toggle('selected-alternative-mode', selected && hasSelectedMode);
+        el.classList.toggle('selected-target-out-of-range', targetNumberText === 'X');
         for (const [range, className] of Object.entries(INVENTORY_CONTROL_RANGE_CLASS_NAMES) as [InventoryControlRuntimeHighlightRangeKey, string][]) {
             el.classList.toggle(className, selectedRange === range);
         }
+    }
+
+    private syncEntrySelectionColorSvg(entry: MountedEquipment, el: SVGElement, selected: boolean): void {
+        const targetId = selected ? this.selectedTargets.get(entry.id) : undefined;
+        const color = targetId ? this.targets.get(targetId)?.color : undefined;
+        if (color) {
+            el.style.setProperty(INVENTORY_CONTROL_SELECTION_COLOR_PROPERTY, color);
+        } else {
+            el.style.removeProperty(INVENTORY_CONTROL_SELECTION_COLOR_PROPERTY);
+        }
+    }
+
+    private syncEntryTargetNumberSvg(el: SVGElement, targetNumberText: string | null): void {
+        const rect = el.querySelector<SVGElement>(':scope > .targetTn-rect');
+        const text = el.querySelector<SVGElement>(':scope > .targetTn-text');
+        if (!rect || !text) return;
+
+        const visible = !!targetNumberText;
+        rect.setAttribute('display', visible ? 'block' : 'none');
+        text.setAttribute('display', visible ? 'block' : 'none');
+        text.textContent = targetNumberText ?? '';
+    }
+
+    private entrySelectedTargetNumberText(entry: MountedEquipment, selected: boolean): string | null {
+        const targetId = selected ? this.selectedTargets.get(entry.id) : undefined;
+        const target = targetId ? this.targets.get(targetId) : undefined;
+        return target && this.targetNumberText ? this.targetNumberText(entry, target) : null;
     }
 
     private entrySelectedHighlightRange(entry: MountedEquipment): InventoryControlRuntimeHighlightRangeKey | null {
@@ -273,8 +317,7 @@ export class InventoryControlRuntimeState {
             return target ? this.rangeForTargetDistance(entry, target.distance) : null;
         }
 
-        const selectedRange = this.selectedRanges.get(entry.id);
-        return selectedRange && selectedRange !== 'min' ? selectedRange : null;
+        return this.selectedRanges.get(entry.id) ?? null;
     }
 
     private rangeForTargetDistance(entry: MountedEquipment, distance: number): InventoryControlRuntimeHighlightRangeKey | null {
@@ -284,7 +327,7 @@ export class InventoryControlRuntimeState {
         if (Number.isFinite(shortRange) && distance <= shortRange) return 'short';
         if (Number.isFinite(mediumRange) && distance <= mediumRange) return 'medium';
         if (Number.isFinite(longRange) && distance <= longRange) return 'long';
-        if (Number.isFinite(extremeRange) && extremeRange > 0 && distance <= extremeRange) return 'extreme';
+        if (Number.isFinite(extremeRange) && extremeRange > 0) return 'extreme';
         return null;
     }
 

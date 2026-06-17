@@ -36,7 +36,6 @@ import {
 } from '../../utils/inventory-control.util';
 
 const RANGE_LABELS: Record<InventoryRangeKey, string> = {
-    min: 'Min',
     short: 'Sht',
     medium: 'Med',
     long: 'Lng'
@@ -51,7 +50,7 @@ interface WeaponEquipmentDialogRegistry {
 }
 
 type HeatDissipationWithWings = HeatDissipationState & { totalDissipationWithWings?: number };
-type TargetRangeKey = Exclude<InventoryRangeKey, 'min'> | 'extreme';
+type TargetRangeKey = InventoryRangeKey | 'extreme';
 
 interface HeatAwareRules {
     heatDissipation: () => HeatDissipationWithWings | null;
@@ -552,6 +551,11 @@ export class WeaponEquipmentDialogComponent {
         return this.targetForRow(row)?.color ?? null;
     }
 
+    targetRangeSelectionColor(row: InventoryControlRow): string | null {
+        if (this.isOutOfLongRange(row)) return null;
+        return this.targetSelectionColor(row);
+    }
+
     onRowTargetSelectorClick(event: MouseEvent, row: InventoryControlRow): void {
         event.stopPropagation();
         if (!this.isSelectable(row)) return;
@@ -763,7 +767,6 @@ export class WeaponEquipmentDialogComponent {
     }
 
     canSelectRange(row: InventoryControlRow, range: InventoryRangeKey): boolean {
-        if (range === 'min') return false;
         if (this.targetForRow(row)) return false;
         const value = this.rangeValue(row, range);
         return this.isSelectable(row) && value !== '—';
@@ -771,14 +774,7 @@ export class WeaponEquipmentDialogComponent {
 
     selectRange(row: InventoryControlRow, range: InventoryRangeKey): void {
         if (!this.canSelectRange(row, range)) return;
-        const wasSelectedRange = this.unit().getInventoryControlSelectedRange(row.id) === range;
-        if (wasSelectedRange) {
-            this.unit().setInventoryControlSelectedRange(row.entry, null);
-            this.refresh();
-            return;
-        }
-
-        this.unit().setInventoryControlSelectedRange(row.entry, range);
+        this.unit().toggleInventoryControlSelectedRange(row.entry, range);
         this.refresh();
     }
 
@@ -831,7 +827,7 @@ export class WeaponEquipmentDialogComponent {
 
         const thresholds = this.rangeKeys
             .map(range => ({ range, value: this.parseNumericCell(row.display[range]) }))
-            .filter((item): item is { range: Exclude<InventoryRangeKey, 'min'>; value: number } => item.value !== null);
+            .filter((item): item is { range: InventoryRangeKey; value: number } => item.value !== null);
         if (thresholds.length === 0) return null;
 
         for (const threshold of thresholds) {

@@ -1901,7 +1901,36 @@ hr.divider {
             &.selected-alternative-mode.selected-range-long>.alternativeMode.selected>.lngButton,
             &.selected-alternative-mode.selected-range-extreme>.alternativeMode.selected>.alternativeModeButton,
             &.selected-alternative-mode.selected-range-extreme>.alternativeMode.selected>.extButton {
-                fill: var(--bt-yellow);
+                fill: var(--inventory-control-selection-color, var(--bt-yellow));
+            }
+
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.shrButton,
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.medButton,
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.lngButton,
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.extButton,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.shrButton,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.medButton,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.lngButton,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.extButton {
+                fill: var(--damage-color);
+            }
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.range_short,
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.range_medium,
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.range_long,
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.range_extreme,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.range_short,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.range_medium,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.range_long,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.range_extreme {
+                fill: #fff;
+            }
+
+            &.selected.selected-target-out-of-range>.targetTn-rect {
+                fill: var(--damage-color);
+            }
+            
+            &.selected.selected-target-out-of-range>.targetTn-text {
+                fill: #fff;
             }
         }
 
@@ -1916,10 +1945,6 @@ hr.divider {
 
             &:active>.inventoryEntryButton {
                 filter: brightness(1.03);
-            }
-
-            &.selected:not(.selected-range-short):not(.selected-range-medium):not(.selected-range-long):not(.selected-range-extreme)>.alternativeModeButton {
-                fill: var(--bt-yellow);
             }
         }
 

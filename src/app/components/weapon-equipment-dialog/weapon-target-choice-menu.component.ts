@@ -28,9 +28,9 @@ import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } f
                         <span class="target-choice-token" [style.background]="target.color">{{ target.letter }}</span>
                         @if (targetNumberText(target.id); as targetNumber) {
                             @if (targetNumber == '') {
-                                <span class="target-choice-tn "></span>
+                                <span class="target-choice-tn"></span>
                             } @else if (targetNumber == 'X') {
-                                <span class="target-choice-tn out-of-range" title="Out of range">X</span>
+                                <span class="target-choice-tn square out-of-range" title="Out of range">X</span>
                             } @else {
                                 <span class="target-choice-tn square">{{ targetNumber }}</span>
                             }
@@ -95,10 +95,6 @@ import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } f
             line-height: 1;
             white-space: nowrap;
 
-            &.out-of-range {
-                color: var(--damage-color);
-            }
-
             &.square {
                 display: inline-flex;
                 align-items: center;
@@ -108,6 +104,11 @@ import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } f
                 border: 1px solid var(--text-color-secondary);
                 font-size: 10px;
                 font-weight: 700;
+            }
+
+            &.out-of-range {
+                color: var(--damage-color);
+                border-color: var(--damage-color);
             }
         }
     `]

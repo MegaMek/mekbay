@@ -694,7 +694,7 @@
 
 .range-cell.selected-range {
     border-color: var(--bt-yellow-strong);
-    background: var(--bt-yellow);
+    background: var(--range-selection-color, var(--bt-yellow));
     color: #111;
     font-weight: 700;
 }
