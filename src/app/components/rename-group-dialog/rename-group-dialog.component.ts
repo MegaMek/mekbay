@@ -52,26 +52,26 @@ import { FormationRequirementEngine } from '../../utils/formation-requirement-en
  */
 
 export interface RenameGroupDialogData {
-    group: UnitGroup;
+  group: UnitGroup;
 }
 
 export interface RenameGroupDialogResult {
-    /** Custom group name (empty string = unset / auto-generate). */
-    name: string;
-    /** Selected formation definition, or null to clear. */
-    formation: FormationTypeDefinition | null;
-    action: 'confirm' | 'unset';
+  /** Custom group name (empty string = unset / auto-generate). */
+  name: string;
+  /** Selected formation definition, or null to clear. */
+  formation: FormationTypeDefinition | null;
+  action: 'confirm' | 'unset';
 }
 
 @Component({
-    selector: 'rename-group-dialog',
-    standalone: true,
-    changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [FormationInfoComponent],
-    host: {
-        class: 'fullscreen-dialog-host glass'
-    },
-    template: `
+  selector: 'rename-group-dialog',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [FormationInfoComponent],
+  host: {
+    class: 'fullscreen-dialog-host glass'
+  },
+  template: `
     <div class="wide-dialog">
       <div class="wide-dialog-body">
 
@@ -171,7 +171,7 @@ export interface RenameGroupDialogResult {
       </div>
     </div>
     `,
-    styles: [`
+  styles: [`
         .hint {
             font-size: 0.85em;
             color: var(--text-color-tertiary);
@@ -336,188 +336,188 @@ export interface RenameGroupDialogResult {
 })
 
 export class RenameGroupDialogComponent {
-    inputRef = viewChild.required<ElementRef<HTMLDivElement>>('inputRef');
-    formationTriggerWrapper = viewChild.required<ElementRef<HTMLDivElement>>('formationTriggerWrapper');
+  inputRef = viewChild.required<ElementRef<HTMLDivElement>>('inputRef');
+  formationTriggerWrapper = viewChild.required<ElementRef<HTMLDivElement>>('formationTriggerWrapper');
 
-    public dialogRef: DialogRef<RenameGroupDialogResult | null, RenameGroupDialogComponent> = inject(DialogRef);
-    readonly data: RenameGroupDialogData = inject(DIALOG_DATA);
-    private optionsService = inject(OptionsService);
-    private overlayManager = inject(OverlayManagerService);
-    private injector = inject(Injector);
-    private destroyRef = inject(DestroyRef);
+  public dialogRef: DialogRef<RenameGroupDialogResult | null, RenameGroupDialogComponent> = inject(DialogRef);
+  readonly data: RenameGroupDialogData = inject(DIALOG_DATA);
+  private optionsService = inject(OptionsService);
+  private overlayManager = inject(OverlayManagerService);
+  private injector = inject(Injector);
+  private destroyRef = inject(DestroyRef);
 
-    /** Tracks whether the name input has text */
-    nameHasText = signal<boolean>(!!this.data.group.name());
+  /** Tracks whether the name input has text */
+  nameHasText = signal<boolean>(!!this.data.group.name());
 
-    /** Currently selected formation */
-    selectedFormation = signal<FormationTypeDefinition | null>(this.data.group.formation());
+  /** Currently selected formation */
+  selectedFormation = signal<FormationTypeDefinition | null>(this.data.group.formation());
 
-    /** All formation definitions with validity flag. */
-    formationDisplayList: FormationDisplayItem[] = (() => {
-        const validMatches = FormationNamerUtil.getAvailableFormationDefinitions(this.data.group);
-        const validMap = new Map(validMatches.map(m => [m.definition.id, m]));
-        return getFormationDefinitions()
-            .filter(def => FormationRequirementEngine.hasBlueprint(def.id))
-            .map(def => {
-                const match = validMap.get(def.id);
-                return {
-                    definition: def,
-                  displayName: FormationNamerUtil.composeFormationDisplayName(def, this.data.group, match?.requirementsFiltered ?? false),
-                    isValid: !!match,
-                  requirementsFiltered: match?.requirementsFiltered ?? false,
-                  requirementsFilterCompositionName: match?.requirementsFilterCompositionName,
-                  requirementsFilterNotice: match?.requirementsFilterNotice,
-                };
-            });
-    })();
+  /** All formation definitions with validity flag. */
+  formationDisplayList: FormationDisplayItem[] = (() => {
+    const validMatches = FormationNamerUtil.getAvailableFormationDefinitions(this.data.group);
+    const validMap = new Map(validMatches.map(m => [m.definition.id, m]));
+    return getFormationDefinitions()
+      .filter(def => FormationRequirementEngine.hasBlueprint(def.id))
+      .map(def => {
+        const match = validMap.get(def.id);
+        return {
+          definition: def,
+          displayName: FormationNamerUtil.composeFormationDisplayName(def, this.data.group, match?.requirementsFiltered ?? false),
+          isValid: !!match,
+          requirementsFiltered: match?.requirementsFiltered ?? false,
+          requirementsFilterCompositionName: match?.requirementsFilterCompositionName,
+          requirementsFilterNotice: match?.requirementsFilterNotice,
+        };
+      });
+  })();
 
-    /** Whether the currently selected formation is valid for the group. */
-    isSelectedFormationValid = computed<boolean>(() => {
-        const sel = this.selectedFormation();
-        if (!sel || isNoFormation(sel)) return true;
-        return this.formationDisplayList.some(f => f.definition.id === sel.id && f.isValid);
-    });
+  /** Whether the currently selected formation is valid for the group. */
+  isSelectedFormationValid = computed<boolean>(() => {
+    const sel = this.selectedFormation();
+    if (!sel || isNoFormation(sel)) return true;
+    return this.formationDisplayList.some(f => f.definition.id === sel.id && f.isValid);
+  });
 
-    /** Whether the currently selected formation required organization-level filtering. */
-    isSelectedFormationRequirementsFiltered = computed<boolean>(() => {
-        const sel = this.selectedFormation();
-        if (!sel || isNoFormation(sel)) return false;
-      return this.formationDisplayList.some(f => f.definition.id === sel.id && f.isValid && f.requirementsFiltered);
-    });
+  /** Whether the currently selected formation required organization-level filtering. */
+  isSelectedFormationRequirementsFiltered = computed<boolean>(() => {
+    const sel = this.selectedFormation();
+    if (!sel || isNoFormation(sel)) return false;
+    return this.formationDisplayList.some(f => f.definition.id === sel.id && f.isValid && f.requirementsFiltered);
+  });
 
-    selectedFormationRequirementsFilterNotice = computed<string | undefined>(() => {
-      const sel = this.selectedFormation();
-      if (!sel || isNoFormation(sel)) return undefined;
-      return this.formationDisplayList.find(f => f.definition.id === sel.id && f.isValid)?.requirementsFilterNotice;
-    });
+  selectedFormationRequirementsFilterNotice = computed<string | undefined>(() => {
+    const sel = this.selectedFormation();
+    if (!sel || isNoFormation(sel)) return undefined;
+    return this.formationDisplayList.find(f => f.definition.id === sel.id && f.isValid)?.requirementsFilterNotice;
+  });
 
-    selectedFormationRequirementsFilterCompositionName = computed<string | undefined>(() => {
-      const sel = this.selectedFormation();
-      if (!sel || isNoFormation(sel)) return undefined;
-      return this.formationDisplayList.find(f => f.definition.id === sel.id && f.isValid)?.requirementsFilterCompositionName;
-    });
+  selectedFormationRequirementsFilterCompositionName = computed<string | undefined>(() => {
+    const sel = this.selectedFormation();
+    if (!sel || isNoFormation(sel)) return undefined;
+    return this.formationDisplayList.find(f => f.definition.id === sel.id && f.isValid)?.requirementsFilterCompositionName;
+  });
 
-    /** Placeholder name based on the currently selected formation. */
-    placeholderName = computed<string>(() => {
-        const sel = this.selectedFormation();
-        if (sel && !isNoFormation(sel)) {
-        return FormationNamerUtil.composeFormationDisplayName(
-          sel,
-          this.data.group,
-          this.isSelectedFormationRequirementsFiltered(),
-        );
-        }
-        return this.data.group.organizationalName() ?? 'Group';
-    });
-
-    constructor() { }
-
-    /** Clear the name input */
-    clearName(): void {
-        const nativeEl = this.inputRef().nativeElement;
-        if (!nativeEl) return;
-        nativeEl.textContent = '';
-        nativeEl.innerHTML = '';
-        this.nameHasText.set(false);
-        nativeEl.focus();
+  /** Placeholder name based on the currently selected formation. */
+  placeholderName = computed<string>(() => {
+    const sel = this.selectedFormation();
+    if (sel && !isNoFormation(sel)) {
+      return FormationNamerUtil.composeFormationDisplayName(
+        sel,
+        this.data.group,
+        this.isSelectedFormationRequirementsFiltered(),
+      );
     }
+    return this.data.group.organizationalName() ?? 'Group';
+  });
 
-    /** Clear leftover <br> / whitespace so :empty placeholder works */
-    onInputCleanup(event: Event): void {
-        const el = event.target as HTMLElement;
-        const hasText = !!el.textContent?.trim();
-        this.nameHasText.set(hasText);
-        if (!hasText) {
-            el.innerHTML = '';
-        }
+  constructor() { }
+
+  /** Clear the name input */
+  clearName(): void {
+    const nativeEl = this.inputRef().nativeElement;
+    if (!nativeEl) return;
+    nativeEl.textContent = '';
+    nativeEl.innerHTML = '';
+    this.nameHasText.set(false);
+    nativeEl.focus();
+  }
+
+  /** Clear leftover <br> / whitespace so :empty placeholder works */
+  onInputCleanup(event: Event): void {
+    const el = event.target as HTMLElement;
+    const hasText = !!el.textContent?.trim();
+    this.nameHasText.set(hasText);
+    if (!hasText) {
+      el.innerHTML = '';
     }
+  }
 
-    /** Expose isNoFormation to the template */
-    isNoFormation = isNoFormation;
+  /** Expose isNoFormation to the template */
+  isNoFormation = isNoFormation;
 
-    /** Get requirements text for a formation definition. */
-    getRequirementsText(formation: FormationTypeDefinition): string | null {
-        if (!formation.requirements) return null;
-      const requirements = formation.requirements(this.data.group.force.gameSystem);
-      return requirements ? formatSummaryMovement(requirements, this.optionsService.options().ASUseHex) : null;
+  /** Get requirements text for a formation definition. */
+  getRequirementsText(formation: FormationTypeDefinition): string | null {
+    if (!formation.requirements) return null;
+    const requirements = formation.requirements(this.data.group.force.gameSystem);
+    return requirements ? formatSummaryMovement(requirements, this.optionsService.options().ASUseHex) : null;
+  }
+
+  /** Get parent formation requirements text */
+  getParentRequirementsText(formation: FormationTypeDefinition): string | null {
+    if (!formationInheritsParentEffects(formation) || !formation.parent) return null;
+    const parent = getFormationDefinition(formation.parent);
+    if (!parent?.requirements) return null;
+    const requirements = parent.requirements(this.data.group.force.gameSystem);
+    return requirements ? formatSummaryMovement(requirements, this.optionsService.options().ASUseHex) : null;
+  }
+
+  /** Get parent formation name */
+  getParentFormationName(formation: FormationTypeDefinition): string {
+    if (!formationInheritsParentEffects(formation) || !formation.parent) return '';
+    return getFormationDefinition(formation.parent)?.name ?? '';
+  }
+
+  /** Compose a display name for a formation definition */
+  getDisplayName(definition: FormationTypeDefinition): string {
+    return FormationNamerUtil.composeFormationDisplayName(definition, this.data.group, this.isSelectedFormationRequirementsFiltered());
+  }
+
+  submit(): void {
+    const name = this.inputRef().nativeElement.textContent?.trim() || '';
+    this.dialogRef.close({ name, formation: this.selectedFormation(), action: 'confirm' });
+  }
+
+  submitUnset(): void {
+    this.dialogRef.close({ name: '', formation: null, action: 'unset' });
+  }
+
+  fillRandomFormation(): void {
+    const validList = this.formationDisplayList.filter(item => item.isValid);
+    if (validList.length === 0) {
+      this.selectedFormation.set(null);
+      return;
     }
+    const currentId = this.selectedFormation()?.id ?? null;
+    const candidates = validList.length > 1
+      ? validList.filter(item => item.definition.id !== currentId)
+      : validList;
+    const randomIndex = Math.floor(Math.random() * candidates.length);
+    this.selectedFormation.set(candidates[randomIndex].definition);
+  }
 
-    /** Get parent formation requirements text */
-    getParentRequirementsText(formation: FormationTypeDefinition): string | null {
-      if (!formationInheritsParentEffects(formation) || !formation.parent) return null;
-        const parent = getFormationDefinition(formation.parent);
-        if (!parent?.requirements) return null;
-        const requirements = parent.requirements(this.data.group.force.gameSystem);
-        return requirements ? formatSummaryMovement(requirements, this.optionsService.options().ASUseHex) : null;
-    }
+  toggleFormationDropdown(): void {
+    this.overlayManager.closeManagedOverlay('formation-dropdown');
 
-    /** Get parent formation name */
-    getParentFormationName(formation: FormationTypeDefinition): string {
-      if (!formationInheritsParentEffects(formation) || !formation.parent) return '';
-        return getFormationDefinition(formation.parent)?.name ?? '';
-    }
+    const triggerWrapper = this.formationTriggerWrapper();
+    if (!triggerWrapper) return;
 
-    /** Compose a display name for a formation definition */
-    getDisplayName(definition: FormationTypeDefinition): string {
-        return FormationNamerUtil.composeFormationDisplayName(definition, this.data.group, this.isSelectedFormationRequirementsFiltered());
-    }
+    const portal = new ComponentPortal(FormationDropdownPanelComponent, null, this.injector);
 
-    submit(): void {
-        const name = this.inputRef().nativeElement.textContent?.trim() || '';
-        this.dialogRef.close({ name, formation: this.selectedFormation(), action: 'confirm' });
-    }
+    const { componentRef } = this.overlayManager.createManagedOverlay(
+      'formation-dropdown',
+      triggerWrapper,
+      portal,
+      {
+        closeOnOutsideClick: true,
+        panelClass: 'formation-dropdown-overlay',
+        matchTriggerWidth: true,
+        anchorActiveSelector: '.none-option.active, .formation-option-wrapper.active'
+      }
+    );
 
-    submitUnset(): void {
-        this.dialogRef.close({ name: '', formation: null, action: 'unset' });
-    }
+    componentRef.setInput('formations', this.formationDisplayList);
+    componentRef.setInput('selectedFormationId', this.selectedFormation()?.id ?? null);
+    componentRef.setInput('gameSystem', this.data.group.force.gameSystem);
 
-    fillRandomFormation(): void {
-        const validList = this.formationDisplayList.filter(item => item.isValid);
-        if (validList.length === 0) {
-            this.selectedFormation.set(null);
-            return;
-        }
-        const currentId = this.selectedFormation()?.id ?? null;
-        const candidates = validList.length > 1
-            ? validList.filter(item => item.definition.id !== currentId)
-            : validList;
-        const randomIndex = Math.floor(Math.random() * candidates.length);
-        this.selectedFormation.set(candidates[randomIndex].definition);
-    }
-
-    toggleFormationDropdown(): void {
+    outputToObservable(componentRef.instance.selected)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((formation: FormationTypeDefinition | null) => {
+        this.selectedFormation.set(formation);
         this.overlayManager.closeManagedOverlay('formation-dropdown');
+      });
+  }
 
-        const triggerWrapper = this.formationTriggerWrapper();
-        if (!triggerWrapper) return;
-
-        const portal = new ComponentPortal(FormationDropdownPanelComponent, null, this.injector);
-
-        const { componentRef } = this.overlayManager.createManagedOverlay(
-            'formation-dropdown',
-            triggerWrapper,
-            portal,
-            {
-                closeOnOutsideClick: true,
-                panelClass: 'formation-dropdown-overlay',
-                matchTriggerWidth: true,
-                anchorActiveSelector: '.none-option.active, .formation-option-wrapper.active'
-            }
-        );
-
-        componentRef.setInput('formations', this.formationDisplayList);
-        componentRef.setInput('selectedFormationId', this.selectedFormation()?.id ?? null);
-        componentRef.setInput('gameSystem', this.data.group.force.gameSystem);
-
-        outputToObservable(componentRef.instance.selected)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((formation: FormationTypeDefinition | null) => {
-                this.selectedFormation.set(formation);
-                this.overlayManager.closeManagedOverlay('formation-dropdown');
-            });
-    }
-
-    close(value: RenameGroupDialogResult | null = null): void {
-        this.dialogRef.close(value);
-    }
+  close(value: RenameGroupDialogResult | null = null): void {
+    this.dialogRef.close(value);
+  }
 }
