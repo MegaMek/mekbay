@@ -266,10 +266,6 @@ export class WeaponsEquipmentPanelComponent {
         });
     }
 
-    compactLayout(): boolean {
-        return this.layoutService.windowWidth() <= 760;
-    }
-
     groupHasAmmo(group: InventoryControlGroup): boolean {
         return group.rows.some(row => this.rowTracksAmmo(row));
     }

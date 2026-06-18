@@ -62,10 +62,10 @@
                         [cdkDropListDisabled]="!group.sortable || readOnly()"
                         (cdkDropListDropped)="drop($event, group)">
                         @for (row of group.rows; track row.id) {
-                            <div class="weapon-equipment-row" cdkDrag cdkDragLockAxis="y" cdkDragBoundary=".weapon-equipment-section" cdkDragPreviewContainer="parent" [cdkDragStartDelay]="layoutService.isTouchInput() && compactLayout() ? 200 : 0" [cdkDragDisabled]="!group.sortable || readOnly()" [class.destroyed-entry]="row.destroyed" [class.disabled-entry]="!row.destroyed && row.disabled" (pointerdown)="cacheDragPreviewCellWidths($event)" (cdkDragStarted)="onDragStarted($event)">
+                            <div class="weapon-equipment-row" cdkDrag cdkDragLockAxis="y" cdkDragBoundary=".weapon-equipment-section" cdkDragPreviewContainer="parent" [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0" [cdkDragDisabled]="!group.sortable || readOnly()" [class.destroyed-entry]="row.destroyed" [class.disabled-entry]="!row.destroyed && row.disabled" (pointerdown)="cacheDragPreviewCellWidths($event)" (cdkDragStarted)="onDragStarted($event)">
                                 <span class="grid-fill grid-fill-left" aria-hidden="true"></span>
                                 <div class="drag-cell">
-                                    @if (group.sortable && !compactLayout()) {
+                                    @if (group.sortable) {
                                         <button class="drag-handle" type="button" cdkDragHandle aria-label="Reorder">::::</button>
                                     }
                                 </div>
