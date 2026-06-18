@@ -47,7 +47,8 @@
 
 .weapon-equipment-header {
     position: sticky;
-    top: var(--weapon-equipment-title-height);
+    margin-top: -1px;
+    top: calc(var(--weapon-equipment-title-height) - 1px);
     z-index: 2;
     background: var(--background-color);
     color: var(--text-color-secondary);
@@ -572,17 +573,4 @@
 }
 
 @container (max-width: 760px) {
-    .weapons-equipment-panel {
-        align-items: stretch;
-        max-width: 100%;
-        overflow-x: visible;
-        overflow-y: visible;
-    }
-
-    .weapon-equipment-grid {
-        width: max-content;
-        max-width: none;
-        min-width: 100%;
-        touch-action: pan-x pan-y pinch-zoom;
-    }
 }

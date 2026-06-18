@@ -417,18 +417,6 @@ weapons-equipment-panel {
 }
 
 @container (max-width: 760px) {
-    .equipment-swipe-body {
-        overflow-x: auto;
-        overscroll-behavior-x: contain;
-        touch-action: pan-x pan-y pinch-zoom;
-        -webkit-overflow-scrolling: touch;
-    }
-
-    .equipment-swipe-panel {
-        width: max-content;
-        min-width: 100%;
-    }
-
     .equipment-dialog-title-row {
         text-align: left;
         justify-content: start;
