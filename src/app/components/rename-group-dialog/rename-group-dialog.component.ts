@@ -159,11 +159,10 @@ export interface RenameGroupDialogResult {
             }
           }
         </div>
-
+        @if (!data.group.formationLock) {
+            <p class="formation-hint">The formation will change dynamically based on group composition. Confirm to lock it in.</p>
+        }
       </div>
-      @if (!data.group.formationLock) {
-        <p class="formation-hint">The formation will change dynamically based on group composition. Confirm to lock it in.</p>
-      }
       <div class="wide-dialog-actions">
         <button (click)="submit()" class="bt-button">CONFIRM</button>
         <button (click)="submitUnset()" class="bt-button">UNSET</button>
@@ -293,7 +292,7 @@ export interface RenameGroupDialogResult {
 
         .formation-hint {
             font-size: 0.85em;
-            color: var(--text-color-tertiary);
+            color: var(--bt-yellow);
             margin: 4px 0 0;
             text-align: center;
         }

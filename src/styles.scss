@@ -1094,6 +1094,7 @@ h3 {
     flex: 1 1 auto;
     overflow-y: auto;
     min-height: 0;
+    padding-bottom: 16px;
 }
 
 /* Row of .form-fields placed side-by-side; stacks below 400cqi */
@@ -1114,7 +1115,8 @@ h3 {
 }
 
 .wide-dialog-actions {
-    padding-top: 16px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 8px;
     display: flex;
     gap: 8px;
     justify-content: center;

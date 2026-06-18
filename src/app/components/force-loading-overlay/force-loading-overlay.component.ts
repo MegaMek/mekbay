@@ -114,6 +114,12 @@ export interface ForceLoadingOverlayData {
         </div>
     `,
     styles: [`
+
+        .wide-dialog-actions {
+            border: 0;
+            margin-top: 0;
+        }
+
         .force-list {
             display: flex;
             flex-direction: column;
