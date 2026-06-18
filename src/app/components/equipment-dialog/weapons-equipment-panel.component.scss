@@ -1,4 +1,4 @@
-.weapon-equipment-dialog {
+.weapons-equipment-panel {
     --weapon-equipment-title-height: 30px;
     --weapon-equipment-content-columns: 24px 28px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(4, 42px) fit-content(420px);
     --weapon-equipment-columns: minmax(0, 1fr) var(--weapon-equipment-content-columns) minmax(0, 1fr);
@@ -11,15 +11,15 @@
     }
 }
 
-.weapon-equipment-dialog.hide-actions-column {
+.weapons-equipment-panel.hide-actions-column {
     --weapon-equipment-content-columns: 24px 28px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(4, 42px);
 }
 
-.weapon-equipment-dialog.has-targets {
+.weapons-equipment-panel.has-targets {
     --weapon-equipment-content-columns: 24px 28px 38px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(4, 42px) fit-content(420px);
 }
 
-.weapon-equipment-dialog.has-targets.hide-actions-column {
+.weapons-equipment-panel.has-targets.hide-actions-column {
     --weapon-equipment-content-columns: 24px 28px 38px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(4, 42px);
 }
 
@@ -311,43 +311,43 @@
     min-width: 0;
 }
 
-.weapon-equipment-dialog.has-targets .name-cell {
+.weapons-equipment-panel.has-targets .name-cell {
     grid-column: 5;
 }
 
-.weapon-equipment-dialog.has-targets .hit-cell {
+.weapons-equipment-panel.has-targets .hit-cell {
     grid-column: 6;
 }
 
-.weapon-equipment-dialog.has-targets .location-cell {
+.weapons-equipment-panel.has-targets .location-cell {
     grid-column: 7;
 }
 
-.weapon-equipment-dialog.has-targets .heat-cell {
+.weapons-equipment-panel.has-targets .heat-cell {
     grid-column: 8;
 }
 
-.weapon-equipment-dialog.has-targets .damage-cell {
+.weapons-equipment-panel.has-targets .damage-cell {
     grid-column: 9;
 }
 
-.weapon-equipment-dialog.has-targets .min-cell {
+.weapons-equipment-panel.has-targets .min-cell {
     grid-column: 10;
 }
 
-.weapon-equipment-dialog.has-targets .range-short {
+.weapons-equipment-panel.has-targets .range-short {
     grid-column: 11;
 }
 
-.weapon-equipment-dialog.has-targets .range-medium {
+.weapons-equipment-panel.has-targets .range-medium {
     grid-column: 12;
 }
 
-.weapon-equipment-dialog.has-targets .range-long {
+.weapons-equipment-panel.has-targets .range-long {
     grid-column: 13;
 }
 
-.weapon-equipment-dialog.has-targets .actions-cell {
+.weapons-equipment-panel.has-targets .actions-cell {
     grid-column: 14;
 }
 
@@ -572,7 +572,7 @@
 }
 
 @container (max-width: 760px) {
-    .weapon-equipment-dialog {
+    .weapons-equipment-panel {
         align-items: stretch;
         max-width: 100%;
         overflow-x: visible;

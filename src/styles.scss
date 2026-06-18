@@ -237,7 +237,7 @@ hr {
     box-sizing: border-box;
     width: 100vw;
     pointer-events: auto;
-    padding: 16px;
+    padding: 0;
     max-height: 100%;
 
     &.fullheight {
@@ -251,6 +251,12 @@ hr {
 
     &.nopadding {
         padding: 0;
+    }
+
+    & > .content {
+        display: block;
+        max-width: 600px;
+        padding: 16px;
     }
 }
 
@@ -979,7 +985,7 @@ hr {
 }
 
 // specific for inventory dialog, to make the input fields smaller and more compact
-.weapon-equipment-dialog {
+.weapons-equipment-panel {
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -1058,9 +1064,10 @@ hr {
 .wide-dialog {
     display: flex;
     flex-direction: column;
-    width: 90vw;
+    width: 100vw;
     max-width: 700px;
-    max-height: calc(100dvh - 32px);
+    padding: 16px;
+    max-height: 100vh;
     text-align: center;
     box-sizing: border-box;
     container-type: inline-size;

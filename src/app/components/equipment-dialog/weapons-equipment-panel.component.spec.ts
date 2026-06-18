@@ -971,7 +971,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(component.hasActionsColumn()).toBeFalse();
 
         fixture.detectChanges();
-        const root = fixture.nativeElement.querySelector('.weapon-equipment-dialog') as HTMLElement;
+        const root = fixture.nativeElement.querySelector('.weapons-equipment-panel') as HTMLElement;
         expect(root.classList.contains('hide-actions-column')).toBeTrue();
         expect(fixture.nativeElement.querySelector('.ammo-header')).toBeNull();
         expect(fixture.nativeElement.querySelector('.controls-header')).toBeNull();

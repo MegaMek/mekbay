@@ -1,10 +1,11 @@
 .equipment-dialog {
     max-width: 1000px;
-    max-height: calc(100dvh - 24px);
     width: 100%;
     align-items: stretch;
     gap: 6px;
     min-height: 0;
+    padding-left: 0px;
+    padding-right: 0px;
 }
 
 .equipment-dialog-title-row {
@@ -13,7 +14,7 @@
     align-items: center;
     justify-content: center;
     min-height: 34px;
-    padding-inline: 96px;
+    padding-inline: 104px;
     margin: 0;
     text-align: center;
 }
@@ -36,8 +37,8 @@
 
 .title-buttons {
     position: absolute;
-    right: 0;
     top: 0;
+    right: 16px;
     display: flex;
     flex-direction: row;
     gap: 8px;
@@ -228,6 +229,9 @@ weapons-equipment-panel {
     gap: 12px;
     width: 100%;
     min-height: 34px;
+    padding-left: 16px;
+    padding-right: 16px;
+    box-sizing: border-box;
 }
 
 .equipment-dialog-footer-center {
@@ -421,16 +425,15 @@ weapons-equipment-panel {
     }
 
     .equipment-swipe-panel {
-        justify-content: flex-start;
         width: max-content;
         min-width: 100%;
     }
 
     .equipment-dialog-title-row {
-        padding-inline: 0px;
-        padding-right: 96px;
         text-align: left;
-        justify-content: space-between;
+        justify-content: start;
+        padding-right: 104px;
+        padding-left: 16px;
     }
 
     .equipment-tabs {
