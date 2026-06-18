@@ -380,6 +380,10 @@ export class CBTForceUnit extends ForceUnit {
         this.inventoryControlRuntime.clearSelection();
     }
 
+    clearInventoryControlTargets(): void {
+        this.inventoryControlRuntime.resetTargets();
+    }
+
     private reconcileInventoryControlSelection(): void {
         this.inventoryControlRuntime.reconcile();
     }
@@ -813,6 +817,7 @@ export class CBTForceUnit extends ForceUnit {
     
     public endTurn() {
         this.clearInventoryControlSelection();
+        this.clearInventoryControlTargets();
         // deselect all inventory items
         this.getInventory().forEach(entry => {
             if (!entry.el) return;
