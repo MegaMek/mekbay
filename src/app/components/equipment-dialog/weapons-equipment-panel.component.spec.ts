@@ -725,7 +725,6 @@ describe('WeaponsEquipmentPanelComponent', () => {
             dissipationWidth: 10,
             pendingWidth: 30
         }));
-        expect(component.consumeButtonLabel()).toBe('CONSUME HEAT & AMMO');
 
         await component.consumeSelectedHeatAndAmmo();
 
@@ -751,7 +750,6 @@ describe('WeaponsEquipmentPanelComponent', () => {
         fixture.detectChanges();
 
         expect(component.selectedHeatProjection()).toBeNull();
-        expect(component.consumeButtonLabel()).toBe('CONSUME AMMO');
 
         await component.consumeSelectedHeatAndAmmo();
 

@@ -212,7 +212,7 @@ describe('EquipmentDialogComponent', () => {
         fixture.detectChanges();
 
         const footerCenter = fixture.nativeElement.querySelector('.equipment-dialog-footer-center') as HTMLElement;
-        expect(footerCenter.textContent).toContain('CONSUME HEAT & AMMO');
+        expect(footerCenter.textContent).toContain('FIRE');
         expect(footerCenter.textContent).toContain('DISMISS');
         expect(footerCenter.querySelector('button[aria-label="Reset"]')).not.toBeNull();
     });

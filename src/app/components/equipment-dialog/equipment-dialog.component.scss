@@ -403,6 +403,16 @@
     color: var(--text-color-secondary);
 }
 
+.fire-button {
+    color: #fff;
+    background-color: #f002;
+
+    &:hover {
+        color: #fff;
+        background-color: #f006;
+    }
+}
+
 @container (max-width: 760px) {
     .equipment-dialog-title-row {
         padding-inline: 0px;

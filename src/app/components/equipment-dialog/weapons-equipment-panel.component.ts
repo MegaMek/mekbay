@@ -348,10 +348,6 @@ export class WeaponsEquipmentPanelComponent {
         return this.selectedRows().length > 0;
     }
 
-    consumeButtonLabel(): string {
-        return this.selectedHeatProjection() ? 'CONSUME HEAT & AMMO' : 'CONSUME AMMO';
-    }
-
     canSelectRange(row: InventoryControlRow, range: InventoryRangeKey): boolean {
         if (this.targetForRow(row)) return false;
         const value = this.rangeValue(row, range);

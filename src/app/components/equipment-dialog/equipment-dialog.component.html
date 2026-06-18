@@ -90,7 +90,7 @@
                                 </div>
                             </div>
                         }
-                        <button class="bt-button" type="button" [disabled]="readOnly()" (click)="weaponsPanel.consumeSelectedHeatAndAmmo()">{{ weaponsPanel.consumeButtonLabel() }}</button>
+                        <button class="bt-button danger fire-button" type="button" [disabled]="readOnly()" (click)="weaponsPanel.consumeSelectedHeatAndAmmo()">FIRE</button>
                     </div>
                 }
                 <button class="bt-button square" type="button" aria-label="Reset" title="Reset" (click)="weaponsPanel.resetSelections()">
