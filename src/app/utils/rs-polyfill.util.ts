@@ -32,7 +32,7 @@
  */
 
 import { heatLevels, REMOTE_HOST } from "../models/common.model";
-import type { Unit } from "../models/units.model";
+import type { Unit, UnitType } from "../models/units.model";
 
 interface InventoryRangeButtonColumn {
     className: string;
@@ -103,7 +103,7 @@ export class RsPolyfillUtil {
         }
         this.addHeatLevels(svg);
         this.addApplyHeatButton(svg);
-        this.addCrewSkillsButtons(svg);
+        this.addCrewSkillsButtons(svg, unit.type);
         this.addCrewNamesButtons(svg);
         this.addCrewDamageClasses(unit, svg);
         this.addInventoryLines(svg);
@@ -186,7 +186,7 @@ export class RsPolyfillUtil {
         }
     }
 
-    private static addCrewSkillsButtons(svg: SVGSVGElement): void {
+    private static addCrewSkillsButtons(svg: SVGSVGElement, unitType: UnitType): void {
         if (svg.querySelector('.crewSkillButton')) return; // Avoid duplicates
         const skillTargets = [
             { textElement: 'gunnerySkill0', crewId: 0, skill: 'gunnery' },
@@ -210,17 +210,28 @@ export class RsPolyfillUtil {
             if (!yAttr || !xAttr) return;
             let textY = parseFloat(yAttr) - 2;
             let textX = parseFloat(xAttr);
-            textElement.setAttribute('text-anchor', 'middle');
+            textElement.setAttribute('text-anchor', 'left');
             textElement.setAttribute('dominant-baseline', 'middle');
             const prevStyle = textElement.getAttribute('style') || '';
             textElement.classList.add('skillValue');
-            textElement.setAttribute('style', prevStyle.replace(/font-size\s*:\s*[^;]+;?/g, 'font-size:11px;font-weight:bold;'));
+            textElement.setAttribute('style', prevStyle.replace(/font-size\s*:\s*[^;]+;?/g, 'font-size:12px;font-weight:bold;'));
+            if (unitType === 'Mek' || unitType === 'Tank' || unitType === 'VTOL' || unitType === 'Naval') {
+                if (skillTarget.skill === 'piloting') {
+                    textElement.setAttribute('x', (textX - 6).toString());
+                } else {
+                    textElement.setAttribute('x', (textX - 3).toString());
+                }
+            } else if (unitType === 'Aero') {
+                if (skillTarget.skill === 'piloting') {
+                    textElement.setAttribute('x', (textX - 2).toString());
+                }
+            }
             textElement.setAttribute('y', textY.toString());
 
-            const rectWidth = 12;
+            const rectWidth = 30;
             const rectHeight = 12;
 
-            const rectX = (textX - rectWidth / 2);
+            const rectX = (textX - rectWidth / 2) + 5;
             const rectY = (textY - rectHeight / 2) - 0.7;
 
             const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
