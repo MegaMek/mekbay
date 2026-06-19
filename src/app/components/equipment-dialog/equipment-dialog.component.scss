@@ -192,6 +192,19 @@ weapons-equipment-panel {
     width: 100%;
 }
 
+ammo-loadout-panel {
+    min-width: 400px;
+    padding-inline: 16px;
+    padding-top: 8px;
+    
+
+    @media (max-width: 600px) {
+        min-width: 0;
+        width: 100%;
+        padding-inline: 8px;
+    }
+}
+
 .equipment-swipe-body {
     flex: 1 1 auto;
     min-height: 0;
