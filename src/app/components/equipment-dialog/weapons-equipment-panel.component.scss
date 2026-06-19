@@ -119,10 +119,6 @@
     grid-column: -2 / -1;
 }
 
-.meta-cell {
-    width: 100%;
-}
-
 .centered-header,
 .centered-cell {
     display: inline-flex;
@@ -425,15 +421,16 @@
     min-width: 32px;
     height: 26px;
     padding: 0 4px;
-    border: 1px solid transparent;
+    border: 1px solid var(--border-color);
     background: transparent;
     color: inherit;
     font: inherit;
+    cursor: pointer;
 }
 
-.range-cell:not(:disabled) {
-    border-color: var(--border-color);
-    cursor: pointer;
+.range-cell:disabled {
+    cursor: not-allowed;
+    color: var(--text-color-tertiary);
 }
 
 .weapon-equipment-row.destroyed-entry .range-cell:not(:disabled) {
@@ -454,10 +451,7 @@
     font-weight: 800;
 }
 
-.range-label {
-    display: none;
-}
-
+.grouped-cells,
 .range-cells {
     display: contents;
 }
@@ -573,4 +567,117 @@
 }
 
 @container (max-width: 760px) {
+    .grid-fill,
+    .weapon-equipment-header {
+        display: none;
+    }
+
+    .weapon-equipment-grid {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .weapon-equipment-list {
+        margin-top: 1px;
+    }
+
+    .weapon-equipment-section {
+        display: flex;
+        flex-direction: column;
+    }    
+    
+    .weapon-equipment-row {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: baseline;
+        width: calc(100% - 4px);
+        box-sizing: border-box;
+        gap: 4px 16px;
+        padding: 5px 10px;
+        margin: 2px;
+        font-size: 1.1em;
+        border: 1px solid var(--border-color);
+
+        &:last-child {
+            border-bottom: 1px solid var(--border-color);
+        }
+    }
+
+    .drag-cell {
+        display: none;
+    }
+
+    .ammo-cell {
+        align-items: baseline;
+    }
+
+    .grouped-cells {
+        display: flex;
+        flex-direction: row;
+        gap: 8px;
+        align-items: center;
+        box-sizing: border-box;
+
+        &.group-identity {
+            width: 100%;
+            height: 32px;
+        }
+    }
+
+    .centered-cell {
+        justify-content: flex-start;
+        gap: 4px;
+    }
+    
+    .meta-cell::before {
+        content: attr(data-label);
+        color: var(--text-color-secondary);
+        font-weight: 700;
+        white-space: nowrap;
+        font-size: 0.9em;
+    }
+
+    .tn-cell:empty {
+        display: none;
+    }
+
+    .name-cell {
+        font-size: 1.2em;
+    }
+
+    .hit-cell, .location-cell, .heat-cell, .min-cell {
+        width: 48px;
+    }
+
+    .min-value {
+        display: flex;
+        height: 26px;
+        align-items: center;
+    }
+    
+    .damage-cell {
+        width: unset;
+        min-width: 0;
+        flex-grow: 1;
+    }
+
+    .range-cells {
+        width: unset;
+        display: flex;
+        flex-direction: row;
+    }
+}
+
+@media (max-width: 360px) {
+    .meta-cell {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+    }
+
+    .hit-cell, .location-cell, .heat-cell, .min-cell {
+        width: 32px;
+    }
 }

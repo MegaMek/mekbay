@@ -64,104 +64,116 @@
                         @for (row of group.rows; track row.id) {
                             <div class="weapon-equipment-row" cdkDrag cdkDragLockAxis="y" cdkDragBoundary=".weapon-equipment-section" cdkDragPreviewContainer="parent" [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0" [cdkDragDisabled]="!group.sortable || readOnly()" [class.destroyed-entry]="row.destroyed" [class.disabled-entry]="!row.destroyed && row.disabled" (pointerdown)="cacheDragPreviewCellWidths($event)" (cdkDragStarted)="onDragStarted($event)">
                                 <span class="grid-fill grid-fill-left" aria-hidden="true"></span>
-                                <div class="drag-cell">
-                                    @if (group.sortable) {
-                                        <button class="drag-handle" type="button" cdkDragHandle aria-label="Reorder">::::</button>
-                                    }
-                                </div>
-                                <div class="select-cell">
-                                    @if (isSelectable(row)) {
-                                        @if (hasTargets()) {
-                                            <button
-                                                class="target-selector"
-                                                type="button"
-                                                [class.target-selected]="!!targetForRow(row)"
-                                                [style.background]="targetSelectionColor(row)"
-                                                [attr.aria-label]="targetForRow(row) ? 'Selected target ' + targetSelectionLabel(row) : 'No selected target'"
-                                                (click)="onRowTargetSelectorClick($event, row)">
-                                                {{ targetSelectionLabel(row) }}
-                                            </button>
-                                        } @else {
-                                            <input type="checkbox" class="bt-checkbox" [checked]="isSelected(row)" (change)="toggleSelected(row)">
+                                <span class="grouped-cells group-identity">
+                                    <div class="drag-cell">
+                                        @if (group.sortable) {
+                                            <button class="drag-handle" type="button" cdkDragHandle aria-label="Reorder">::::</button>
                                         }
-                                    }
-                                </div>
-                                @if (hasTargets()) {
-                                    <span class="tn-cell" [class.out-of-range]="isOutOfLongRange(row)" [tooltip]="targetNumberTooltip(row)">
-                                        @if (targetNumberText(row); as tnText) {
-                                            <span class="tn-value">{{ tnText }}</span>
+                                    </div>
+                                    <div class="select-cell">
+                                        @if (isSelectable(row)) {
+                                            @if (hasTargets()) {
+                                                <button
+                                                    class="target-selector"
+                                                    type="button"
+                                                    [class.target-selected]="!!targetForRow(row)"
+                                                    [style.background]="targetSelectionColor(row)"
+                                                    [attr.aria-label]="targetForRow(row) ? 'Selected target ' + targetSelectionLabel(row) : 'No selected target'"
+                                                    (click)="onRowTargetSelectorClick($event, row)">
+                                                    {{ targetSelectionLabel(row) }}
+                                                </button>
+                                            } @else {
+                                                <input type="checkbox" class="bt-checkbox" [checked]="isSelected(row)" (change)="toggleSelected(row)">
+                                            }
                                         }
+                                    </div>
+                                    @if (hasTargets()) {
+                                        <span class="tn-cell" [class.out-of-range]="isOutOfLongRange(row)" [tooltip]="targetNumberTooltip(row)">
+                                            @if (targetNumberText(row); as tnText) {
+                                                <span class="tn-value">{{ tnText }}</span>
+                                            }
+                                        </span>
+                                    }
+                                    <div class="name-cell">
+                                        <span>{{ row.display.name }}</span>
+                                        @for (modifier of row.modifiers; track modifier.name) {
+                                            <span class="modifier" [class.destroyed]="modifier.destroyed">{{ modifier.name }}</span>
+                                        }
+                                        @if (modeChoice(row); as choice) {
+                                            @if ((choice.choices?.length ?? 0) > 1 && !choice.disabled && !readOnly()) {
+                                                <multiline-dropdown
+                                                    class="mode-choice"
+                                                    [title]="choice.label"
+                                                    [label]="choice.label"
+                                                    [options]="handlerDropdownOptions(choice)"
+                                                    [value]="handlerDropdownValue(choice)"
+                                                    [disabled]="choice.disabled || readOnly()"
+                                                    (valueChange)="selectHandlerDropdown(row, choice, $event)"
+                                                />
+                                            } @else {
+                                                <span class="mode-badge">{{ modeText(row, choice) }}</span>
+                                            }
+                                        }
+                                    </div>
+                                </span>
+                                <span class="grouped-cells group-stats">
+                                    <span class="centered-cell hit-cell meta-cell" data-label="Hit">{{ row.display.hit }}</span>
+                                    <span class="centered-cell location-cell meta-cell" data-label="Loc">{{ row.display.location }}</span>
+                                    <span class="centered-cell heat-cell meta-cell" data-label="Ht">{{ row.display.heat }}</span>
+                                    <span class="centered-cell damage-cell meta-cell" data-label="Dmg">{{ row.display.damage }}</span>
+                                </span>
+                                <span class="grouped-cells group-ranges">
+                                    <span class="centered-cell min-cell meta-cell" data-label="Min">
+                                        <span class="min-value">{{ row.display.min }}</span>
                                     </span>
-                                }
-                                <div class="name-cell">
-                                    <span>{{ row.display.name }}</span>
-                                    @for (modifier of row.modifiers; track modifier.name) {
-                                        <span class="modifier" [class.destroyed]="modifier.destroyed">{{ modifier.name }}</span>
-                                    }
-                                    @if (modeChoice(row); as choice) {
-                                        @if ((choice.choices?.length ?? 0) > 1 && !choice.disabled && !readOnly()) {
-                                            <multiline-dropdown
-                                                class="mode-choice"
-                                                [title]="choice.label"
-                                                [label]="choice.label"
-                                                [options]="handlerDropdownOptions(choice)"
-                                                [value]="handlerDropdownValue(choice)"
-                                                [disabled]="choice.disabled || readOnly()"
-                                                (valueChange)="selectHandlerDropdown(row, choice, $event)"
-                                            />
-                                        } @else {
-                                            <span class="mode-badge">{{ modeText(row, choice) }}</span>
-                                        }
-                                    }
-                                </div>
-                                <span class="centered-cell hit-cell meta-cell" data-label="Hit">{{ row.display.hit }}</span>
-                                <span class="centered-cell location-cell meta-cell" data-label="Loc">{{ row.display.location }}</span>
-                                <span class="centered-cell heat-cell meta-cell" data-label="Ht">{{ row.display.heat }}</span>
-                                <span class="centered-cell damage-cell meta-cell" data-label="Dmg">{{ row.display.damage }}</span>
-                                <span class="centered-cell min-cell meta-cell" data-label="Min">{{ row.display.min }}</span>
-                                <span class="range-cells">
-                                    <span class="range-label">Range:</span>
-                                    @for (range of rangeKeys; track range) {
-                                        <button
-                                            class="range-cell"
-                                            type="button"
-                                            [attr.data-label]="rangeLabel(range)"
-                                            [class.range-short]="range === 'short'"
-                                            [class.range-medium]="range === 'medium'"
-                                            [class.range-long]="range === 'long'"
-                                            [disabled]="!canSelectRange(row, range)"
-                                            [class.selected-range]="isRangeSelected(row, range)"
-                                            [class.out-of-range]="isOutOfLongRange(row)"
-                                            [style.--range-selection-color]="targetRangeSelectionColor(row)"
-                                            (click)="selectRange(row, range)">
-                                            {{ rangeValue(row, range) }}
-                                        </button>
-                                    }
+                                    <span class="grouped-cells range-cells meta-cell" data-label="Range">
+                                        <span class="range-cells">
+                                            @for (range of rangeKeys; track range) {
+                                                <button
+                                                    class="range-cell"
+                                                    type="button"
+                                                    [attr.data-label]="rangeLabel(range)"
+                                                    [class.range-short]="range === 'short'"
+                                                    [class.range-medium]="range === 'medium'"
+                                                    [class.range-long]="range === 'long'"
+                                                    [disabled]="!canSelectRange(row, range)"
+                                                    [class.selected-range]="isRangeSelected(row, range)"
+                                                    [class.out-of-range]="isOutOfLongRange(row)"
+                                                    [style.--range-selection-color]="targetRangeSelectionColor(row)"
+                                                    (click)="selectRange(row, range)">
+                                                    {{ rangeValue(row, range) }}
+                                                </button>
+                                            }
+                                        </span>
+                                    </span>
                                 </span>
                                 @if (hasActionsColumn()) {
+                                <span class="grouped-cells group-actions">
                                     <div class="actions-cell" [class.empty-row-actions]="!rowHasActions(row)">
-                                        <div class="ammo-cell" [attr.data-label]="rowTracksAmmo(row) && !ammoDepleted(row) ? 'Ammo' : ''" [class.empty-row-ammo]="!rowTracksAmmo(row)" [class.empty-ammo]="ammoDepleted(row)" [class.destroyed-ammo]="ammoDestroyed(row)">
-                                            @if (rowHasAmmo(row)) {
-                                                @if (showAmmoDropdown(row)) {
-                                                    <multiline-dropdown
-                                                        class="ammo-choice"
-                                                        title="Ammo"
-                                                        label="Ammo"
-                                                        [options]="ammoDropdownOptions(row)"
-                                                        [value]="selectedAmmoOption(row)"
-                                                        [disabled]="readOnly()"
-                                                        (valueChange)="selectAmmoOption(row, $event)"
-                                                    />
-                                                } @else {
-                                                    <span class="ammo-choice-static">{{ ammoText(row) }}</span>
+                                        <div class="ammo-cell meta-cell" [attr.data-label]="rowTracksAmmo(row) && !ammoDepleted(row) ? 'Ammo' : ''" [class.empty-row-ammo]="!rowTracksAmmo(row)" [class.empty-ammo]="ammoDepleted(row)" [class.destroyed-ammo]="ammoDestroyed(row)">
+                                            <span class="grouped-cells">
+                                                @if (rowHasAmmo(row)) {
+                                                    @if (showAmmoDropdown(row)) {
+                                                        <multiline-dropdown
+                                                            class="ammo-choice"
+                                                            title="Ammo"
+                                                            label="Ammo"
+                                                            [options]="ammoDropdownOptions(row)"
+                                                            [value]="selectedAmmoOption(row)"
+                                                            [disabled]="readOnly()"
+                                                            (valueChange)="selectAmmoOption(row, $event)"
+                                                        />
+                                                    } @else {
+                                                        <span class="ammo-choice-static">{{ ammoText(row) }}</span>
+                                                    }
+                                                } @else if (rowTracksAmmo(row)) {
+                                                    <span class="ammo-choice-static">NO AMMO</span>
+                                                }                                            
+                                                @if (!readOnly() && rowTracksAmmo(row) && (canAdjustAmmo(row, 1) || canAdjustAmmo(row, -1))) {
+                                                    <button class="bt-button tiny ammo-stepper-button" type="button" aria-label="Decrease ammo" title="Decrease Ammo" [disabled]="!canAdjustAmmo(row, 1)" (click)="adjustAmmo(row, 1)">-</button>
+                                                    <button class="bt-button tiny ammo-stepper-button" type="button" aria-label="Increase ammo" title="Increase Ammo" [disabled]="!canAdjustAmmo(row, -1)" (click)="adjustAmmo(row, -1)">+</button>
                                                 }
-                                            } @else if (rowTracksAmmo(row)) {
-                                                <span class="ammo-choice-static">NO AMMO</span>
-                                            }                                            
-                                            @if (!readOnly() && rowTracksAmmo(row) && (canAdjustAmmo(row, 1) || canAdjustAmmo(row, -1))) {
-                                                <button class="bt-button tiny ammo-stepper-button" type="button" aria-label="Decrease ammo" title="Decrease Ammo" [disabled]="!canAdjustAmmo(row, 1)" (click)="adjustAmmo(row, 1)">-</button>
-                                                <button class="bt-button tiny ammo-stepper-button" type="button" aria-label="Increase ammo" title="Increase Ammo" [disabled]="!canAdjustAmmo(row, -1)" (click)="adjustAmmo(row, -1)">+</button>
-                                            }
+                                            </span>
                                         </div>
                                         <div class="controls-cell" [class.empty-row-controls]="!rowHasControls(row)">
                                             @for (choice of handlerChoices(row); track choice.label) {
@@ -195,6 +207,7 @@
                                             }
                                         </div>
                                     </div>
+                                </span>
                                 }
                                 <span class="grid-fill grid-fill-right" aria-hidden="true"></span>
                             </div>
