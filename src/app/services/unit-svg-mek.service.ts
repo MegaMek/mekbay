@@ -35,7 +35,7 @@ import { uidTranslations } from "../models/common.model";
 import type { CriticalSlot, MountedEquipment } from "../models/force-serialization";
 import { UnitSvgService } from "./unit-svg.service";
 import { AmmoEquipment } from "../models/equipment.model";
-import type { MekRules } from "../models/rules/mek-rules";
+import { MekRules } from "../models/rules/mek-rules";
 import { resolveHitModifier } from "../models/rules/hit-modifier.util";
 import { getCriticalSlotAmmoProfileKey } from "../utils/ammo-interaction.util";
 
@@ -246,6 +246,18 @@ export class UnitSvgMekService extends UnitSvgService {
             // Hit modifier badge
             this.renderHitModEntry(entry, resolveHitModifier(entry, state.hitMod || 0));
         });
+        this.renderInventoryControlSelection();
+    }
+
+    protected override getInventoryTargetHitModifier(entry: MountedEquipment): number {
+        const state = this.mekRules.computeAllEntryStates().get(entry);
+        const hitModifier = resolveHitModifier(entry, state?.hitMod ?? 0);
+        return typeof hitModifier === 'number' ? hitModifier - this.inventoryTargetHeatFireModifier(entry) : 0;
+    }
+
+    override inventoryTargetHeatFireModifier(entry: MountedEquipment): number {
+        if (entry.physical || entry.equipment?.flags.has('F_CLUB') || entry.equipment?.flags.has('F_HAND_WEAPON')) return 0;
+        return MekRules.getHeatEffects(this.unit.getHeat().current).fireModifier;
     }
 
     protected override updateTurnState() {

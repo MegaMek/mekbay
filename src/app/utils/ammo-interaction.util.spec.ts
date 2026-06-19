@@ -2,7 +2,7 @@ import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import type { CriticalSlot, MountedEquipment } from '../models/force-serialization';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
-import { changeAmmoGroupRemaining, getAmmoControlEntriesForUnitWeapons, getAmmoControlGroups, getAmmoEntryRemaining, getAmmoGroupRemaining, type AmmoControlEntry } from './ammo-interaction.util';
+import { changeAmmoEntryRemaining, changeAmmoGroupRemaining, getAmmoControlEntriesForUnitWeapons, getAmmoControlGroups, getAmmoEntryRemaining, getAmmoGroupRemaining, type AmmoControlEntry } from './ammo-interaction.util';
 
 function createAmmo(id: string, shortName: string): AmmoEquipment {
     return new AmmoEquipment({
@@ -15,12 +15,24 @@ function createAmmo(id: string, shortName: string): AmmoEquipment {
 }
 
 function createContext(equipment: Record<string, AmmoEquipment>): HandlerContext {
+    const toasts: Array<{ id: string; message: string; type: 'info' | 'success' | 'error'; data?: Record<string, unknown> }> = [];
+    const showToast = jasmine.createSpy('showToast').and.callFake((message: string, type: 'info' | 'success' | 'error', id?: string, data?: Record<string, unknown>) => {
+        const toastId = id ?? `toast-${toasts.length + 1}`;
+        const existingIndex = toasts.findIndex(toast => toast.id === toastId);
+        if (existingIndex === -1) {
+            toasts.push({ id: toastId, message, type, data });
+        } else {
+            toasts[existingIndex] = { id: toastId, message, type, data };
+        }
+        return toastId;
+    });
     return {
         dataService: {
             getEquipments: () => equipment,
         },
         toastService: {
-            showToast: jasmine.createSpy('showToast'),
+            showToast,
+            toasts: () => toasts,
         },
         dialogsService: {},
     } as unknown as HandlerContext;
@@ -51,6 +63,7 @@ function createEntry(params: {
         sourceType: 'inventory',
         locationLabel: 'BD',
         displayName: params.ammo.name,
+        displayBinName: '#1 Bin',
         currentAmmo: params.ammo,
         originalAmmo: params.ammo,
         originalTotalAmmo: params.totalAmmo ?? 5,
@@ -86,6 +99,7 @@ function createCritEntry(params: {
         sourceType: 'crit',
         locationLabel: params.loc,
         displayName: params.ammo.name,
+        displayBinName: `#1 Bin`,
         currentAmmo: params.ammo,
         originalAmmo: params.ammo,
         originalTotalAmmo: 5,
@@ -130,13 +144,53 @@ describe('ammo interaction direct inventory groups', () => {
             'inventory:Clan Ultra AC/20 Ammo@BD#1.0',
             'inventory:Clan Ultra AC/20 Ammo@BD#1.1',
         ]);
+        expect(groups[0].entries.map(entry => entry.displayBinName)).toEqual(['#1 Bin', '#2 Bin']);
+        expect(groups[0].locations).toEqual([{ loc: 'BD', quantity: 2, state: 'normal' }]);
         expect(groups[0].totalAmmo).toBe(10);
         expect(groups[1].displayName).toBe('Clan Ultra AC/20 Precision Ammo');
         expect(groups[1].expandable).toBeFalse();
+        expect(groups[1].locations).toEqual([{ loc: 'BD', quantity: 1, state: 'normal' }]);
         expect(groups[1].totalAmmo).toBe(4);
     });
 
-    it('groups crit ammo by current ammo type and location', () => {
+    it('summarizes grouped ammo locations with exposed and destroyed states', () => {
+        const owner = {
+            id: 'unit-1',
+            setCritSlot: jasmine.createSpy('setCritSlot'),
+            getUnit: () => ({ techBase: 'Clan' }),
+            getLocations: () => ({
+                LT: { armor: 2 },
+                'LT-rear': { armor: 6 },
+                RT: { armor: 3 },
+            }),
+            locations: {
+                armor: new Map([
+                    ['LT', { loc: 'LT', rear: false, points: 10 }],
+                    ['LT-rear', { loc: 'LT', rear: true, points: 6 }],
+                    ['CT', { loc: 'CT', rear: false, points: 12 }],
+                    ['RT', { loc: 'RT', rear: false, points: 10 }],
+                ]),
+            },
+            svg: () => null,
+        } as unknown as Pick<CBTForceUnit, 'id' | 'setCritSlot' | 'getUnit'>;
+        const entries = [
+            createCritEntry({ id: 'ammo-lt-0', loc: 'LT', slot: 0, ammo: standardAmmo, owner }),
+            createCritEntry({ id: 'ammo-lt-1', loc: 'LT', slot: 1, ammo: standardAmmo, owner }),
+            createCritEntry({ id: 'ammo-ct-2', loc: 'CT', slot: 2, ammo: standardAmmo, destroyed: true, owner }),
+            createCritEntry({ id: 'ammo-ct-3', loc: 'CT', slot: 3, ammo: standardAmmo, destroyed: true, owner }),
+            createCritEntry({ id: 'ammo-rt-4', loc: 'RT', slot: 4, ammo: standardAmmo, owner }),
+        ];
+
+        const group = getAmmoControlGroups(entries)[0];
+
+        expect(group.locations).toEqual([
+            { loc: 'LT', quantity: 2, state: 'exposed' },
+            { loc: 'CT', quantity: 2, state: 'destroyed' },
+            { loc: 'RT', quantity: 1, state: 'normal' },
+        ]);
+    });
+
+    it('numbers crit ammo bins in visible order with their locations', () => {
         const owner = {
             id: 'unit-1',
             setCritSlot: jasmine.createSpy('setCritSlot'),
@@ -151,16 +205,12 @@ describe('ammo interaction direct inventory groups', () => {
 
         const groups = getAmmoControlGroups(entries);
 
-        expect(groups.length).toBe(2);
-        expect(groups[0].locationLabel).toBe('LT');
+        expect(groups.length).toBe(1);
         expect(groups[0].displayName).toBe('Clan Ultra AC/20 Ammo');
         expect(groups[0].expandable).toBeTrue();
-        expect(groups[0].entries.length).toBe(2);
-        expect(groups[0].entries.map(entry => (entry.source as CriticalSlot).slot)).toEqual([1, 5]);
-        expect(groups[0].totalAmmo).toBe(10);
-        expect(groups[1].locationLabel).toBe('RT');
-        expect(groups[1].expandable).toBeFalse();
-        expect(groups[1].totalAmmo).toBe(5);
+        expect(groups[0].entries.map(entry => (entry.source as CriticalSlot).slot)).toEqual([0, 1, 5]);
+        expect(groups[0].entries.map(entry => entry.displayBinName)).toEqual(['#1 Bin', '#2 Bin', '#3 Bin']);
+        expect(groups[0].totalAmmo).toBe(15);
     });
 
     it('matches zero-rack ammo types such as Gauss by ammo type', () => {
@@ -222,6 +272,24 @@ describe('ammo interaction direct inventory groups', () => {
         expect(entries[0].consumed).toBe(0);
         expect(entries[1].consumed).toBe(5);
         expect(getAmmoGroupRemaining(group)).toBe(5);
+    });
+
+    it('accumulates repeated same-direction ammo deltas into a reused toast', () => {
+        const owner = createOwner();
+        const context = createContext({ [standardAmmo.internalName]: standardAmmo });
+        const entry = createEntry({ id: 'Clan Ultra AC/20 Ammo@BD#1.0', ammo: standardAmmo, owner });
+
+        expect(changeAmmoEntryRemaining(entry, -1, context)).toBeTrue();
+        expect(changeAmmoEntryRemaining(entry, -1, context)).toBeTrue();
+        expect(changeAmmoEntryRemaining(entry, -1, context)).toBeTrue();
+
+        expect(context.toastService.showToast).toHaveBeenCalledWith('-1 from BD Clan Ultra AC/20 (4/5)', 'info', 'ammo-control-unit-1-inventory:Clan Ultra AC/20 Ammo@BD#1.0', { ammoDeltaRemaining: -1 });
+        expect(context.toastService.showToast).toHaveBeenCalledWith('-2 from BD Clan Ultra AC/20 (3/5)', 'info', 'ammo-control-unit-1-inventory:Clan Ultra AC/20 Ammo@BD#1.0', { ammoDeltaRemaining: -2 });
+        expect(context.toastService.showToast).toHaveBeenCalledWith('-3 from BD Clan Ultra AC/20 (2/5)', 'info', 'ammo-control-unit-1-inventory:Clan Ultra AC/20 Ammo@BD#1.0', { ammoDeltaRemaining: -3 });
+
+        expect(changeAmmoEntryRemaining(entry, 1, context)).toBeTrue();
+
+        expect(context.toastService.showToast).toHaveBeenCalledWith('+1 to BD Clan Ultra AC/20 (3/5)', 'info', 'ammo-control-unit-1-inventory:Clan Ultra AC/20 Ammo@BD#1.0', { ammoDeltaRemaining: 1 });
     });
 
     it('skips destroyed crit bins when changing grouped ammo quantity', () => {

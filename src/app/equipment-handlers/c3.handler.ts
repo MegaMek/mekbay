@@ -45,7 +45,7 @@ export class C3Handler extends EquipmentInteractionHandler {
     getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {
         return [
             {
-                label: 'Configure network',
+                label: 'Configure',
                 value: 'c3-network-configuration',
                 disabled: equipment.destroyed,
                 displayType: 'button'

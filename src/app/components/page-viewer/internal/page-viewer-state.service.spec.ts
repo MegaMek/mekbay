@@ -21,6 +21,21 @@ describe('PageViewerStateService', () => {
         expect(service.effectiveVisiblePageCount()).toBe(1);
     });
 
+    it('tracks open inventory dialogs', () => {
+        expect(service.inventoryDialogOpen()).toBeFalse();
+
+        service.beginInventoryDialog();
+        service.beginInventoryDialog();
+
+        expect(service.inventoryDialogOpen()).toBeTrue();
+
+        service.endInventoryDialog();
+        expect(service.inventoryDialogOpen()).toBeTrue();
+
+        service.endInventoryDialog();
+        expect(service.inventoryDialogOpen()).toBeFalse();
+    });
+
     it('normalizes indices against the current force units', () => {
         service.setForceUnits([{ id: 'a' }, { id: 'b' }, { id: 'c' }] as never[]);
 
@@ -48,5 +63,6 @@ describe('PageViewerStateService', () => {
         expect(service.suppressSelectionRedisplay()).toBeFalse();
         expect(service.viewStartIndex()).toBe(0);
         expect(service.activeTransition().phase).toBe('idle');
+        expect(service.inventoryDialogOpen()).toBeFalse();
     });
 });

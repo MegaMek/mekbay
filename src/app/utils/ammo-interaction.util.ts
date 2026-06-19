@@ -2,7 +2,7 @@ import { firstValueFrom } from 'rxjs';
 import { SetAmmoDialogComponent, type SetAmmoDialogData } from '../components/set-ammo-dialog/set-ammo.dialog.component';
 import { AmmoEquipment, WeaponEquipment, type EquipmentMap } from '../models/equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
-import type { CriticalSlot, MountedEquipment } from '../models/force-serialization';
+import type { CriticalSlot, LocationData, MountedEquipment } from '../models/force-serialization';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 
 export interface AmmoControlEntry {
@@ -12,6 +12,7 @@ export interface AmmoControlEntry {
     sourceType: 'crit' | 'inventory';
     locationLabel: string;
     displayName: string;
+    displayBinName: string;
     currentAmmo: AmmoEquipment;
     originalAmmo: AmmoEquipment;
     originalTotalAmmo: number;
@@ -20,11 +21,17 @@ export interface AmmoControlEntry {
     destroyed: boolean;
 }
 
+export interface AmmoControlGroupLocation {
+    loc: string;
+    quantity: number;
+    state: 'normal' | 'exposed' | 'destroyed';
+}
+
 export interface AmmoControlGroup {
     id: string;
     entries: AmmoControlEntry[];
-    locationLabel: string;
     displayName: string;
+    locations: AmmoControlGroupLocation[];
     totalAmmo: number;
     consumed: number;
     destroyed: boolean;
@@ -41,6 +48,30 @@ export function formatAmmoName(ammo: AmmoEquipment): string {
 
 function getAmmoControlDisplayName(ammo: AmmoEquipment): string {
     return ammo.name.endsWith(' Ammo') ? ammo.name.slice(0, -5) : ammo.name;
+}
+
+export function getBattleArmorTrooperNumber(locationLabel: string): number | null {
+    const match = locationLabel.trim().match(/^(?:Trooper\s+|T)(\d+)$/i);
+    if (!match) return null;
+    const trooperNumber = Number(match[1]);
+    return Number.isInteger(trooperNumber) && trooperNumber > 0 ? trooperNumber : null;
+}
+
+export function formatBattleArmorTrooperLocation(locationLabel: string): string {
+    const trooperNumber = getBattleArmorTrooperNumber(locationLabel);
+    return trooperNumber === null ? locationLabel : `T${trooperNumber}`;
+}
+
+export function isBattleArmorTrooperLocationDestroyed(unit: CBTForceUnit, locationLabel: string): boolean {
+    if (unit.getUnit().subtype !== 'Battle Armor') return false;
+    const trooperNumber = getBattleArmorTrooperNumber(locationLabel);
+    if (trooperNumber === null) return false;
+
+    return unit.isArmorLocCommittedDestroyed(`T${trooperNumber}`, false);
+}
+
+function formatAmmoBinName(index: number): string {
+    return `#${index} Bin`;
 }
 
 export function getCriticalSlotAmmoProfileKey(criticalSlot: CriticalSlot): string | null {
@@ -76,13 +107,15 @@ function createCriticalSlotAmmoControlEntry(unit: CBTForceUnit, criticalSlot: Cr
     if (!originalAmmo) return null;
 
     const totalAmmo = getCriticalSlotTotalAmmo(unit, criticalSlot);
+    const locationLabel = criticalSlot.loc ?? 'Ammo';
     return {
         id: `crit:${criticalSlot.loc ?? ''}:${criticalSlot.slot ?? ''}:${criticalSlot.name ?? criticalSlot.id}`,
         owner: unit,
         source: criticalSlot,
         sourceType: 'crit',
-        locationLabel: criticalSlot.loc ?? 'Ammo',
+        locationLabel,
         displayName: getAmmoControlDisplayName(criticalSlot.eq),
+        displayBinName: formatAmmoBinName(1),
         currentAmmo: criticalSlot.eq,
         originalAmmo,
         originalTotalAmmo: getOriginalTotalAmmo(unit, criticalSlot),
@@ -128,19 +161,22 @@ function createInventoryAmmoControlEntry(unit: CBTForceUnit, inventoryEntry: Mou
 
     const originalTotalAmmo = getInventoryOriginalTotalAmmo(inventoryEntry);
     const totalAmmo = inventoryEntry.totalAmmo ?? originalTotalAmmo;
+    const locationLabel = Array.from(inventoryEntry.locations ?? []).join('/') || 'Ammo';
+    const destroyed = !!inventoryEntry.destroyed || isBattleArmorTrooperLocationDestroyed(unit, locationLabel);
     return {
         id: `inventory:${inventoryEntry.id}`,
         owner: unit,
         source: inventoryEntry,
         sourceType: 'inventory',
-        locationLabel: Array.from(inventoryEntry.locations ?? []).join('/') || 'Ammo',
+        locationLabel,
         displayName: getAmmoControlDisplayName(currentAmmo),
+        displayBinName: formatAmmoBinName(1),
         currentAmmo,
         originalAmmo: inventoryEntry.equipment,
         originalTotalAmmo,
         totalAmmo,
         consumed: inventoryEntry.consumed ?? 0,
-        destroyed: !!inventoryEntry.destroyed
+        destroyed
     };
 }
 
@@ -227,7 +263,7 @@ export function getAmmoControlGroups(entries: AmmoControlEntry[]): AmmoControlGr
     const keyedGroups = new Map<string, AmmoControlGroup>();
 
     for (const entry of entries) {
-        const key = `${entry.sourceType}:${entry.currentAmmo.internalName}:${entry.locationLabel}`;
+        const key = `${entry.sourceType}:${entry.currentAmmo.internalName}`;
         const existingGroup = keyedGroups.get(key);
         if (existingGroup) {
             existingGroup.entries.push(entry);
@@ -247,20 +283,61 @@ function createAmmoControlGroup(entries: AmmoControlEntry[]): AmmoControlGroup {
     const group: AmmoControlGroup = {
         id: entries.map(entry => entry.id).join('|'),
         entries,
-        locationLabel: firstEntry.locationLabel,
         displayName: firstEntry.displayName,
         totalAmmo: 0,
         consumed: 0,
         destroyed: false,
-        expandable: false
+        expandable: false,
+        locations: [],
     };
     syncGroupTotals(group);
     return group;
 }
 
+function getArmorDamage(locationData: LocationData | undefined): number {
+    return (locationData?.armor ?? 0) + (locationData?.pendingArmor ?? 0);
+}
+
+function isAmmoLocationExposed(entry: AmmoControlEntry, loc: string): boolean {
+    const armor = entry.owner.locations?.armor;
+    if (!armor) return false;
+
+    const locations = entry.owner.getLocations?.() ?? {};
+    const armorKeys = [loc, `${loc}-rear`].filter(armorKey => armor.has(armorKey));
+    return armorKeys.some(armorKey => {
+        const armorPoints = armor.get(armorKey)?.points ?? 0;
+        return armorPoints > 0 && armorPoints - getArmorDamage(locations[armorKey]) <= 0;
+    });
+}
+
+function getAmmoEntryLocationState(entry: AmmoControlEntry): AmmoControlGroupLocation['state'] {
+    if (entry.destroyed) return 'destroyed';
+    return isAmmoLocationExposed(entry, entry.locationLabel) ? 'exposed' : 'normal';
+}
+
+function getAmmoControlGroupLocations(entries: AmmoControlEntry[]): AmmoControlGroupLocation[] {
+    const groupedLocations = new Map<string, AmmoControlGroupLocation>();
+    for (const entry of entries) {
+        const state = getAmmoEntryLocationState(entry);
+        const key = `${entry.locationLabel}:${state}`;
+        const location = groupedLocations.get(key);
+        if (location) {
+            location.quantity += 1;
+        } else {
+            groupedLocations.set(key, { loc: entry.locationLabel, quantity: 1, state });
+        }
+    }
+
+    return Array.from(groupedLocations.values());
+}
+
 function syncGroupTotals(group: AmmoControlGroup): void {
     group.entries.sort(compareAmmoControlEntryOrder);
+    group.entries.forEach((entry, index) => {
+        entry.displayBinName = formatAmmoBinName(index + 1);
+    });
     group.id = group.entries.map(entry => entry.id).join('|');
+    group.locations = getAmmoControlGroupLocations(group.entries);
     group.totalAmmo = group.entries.reduce((total, entry) => total + entry.totalAmmo, 0);
     group.consumed = group.entries.reduce((total, entry) => total + entry.consumed, 0);
     group.destroyed = group.entries.every(entry => entry.destroyed);
@@ -272,8 +349,6 @@ function sortAmmoControlGroups(groups: AmmoControlGroup[]): AmmoControlGroup[] {
         if (a.destroyed !== b.destroyed) return a.destroyed ? 1 : -1;
         const nameCompare = a.displayName.localeCompare(b.displayName);
         if (nameCompare !== 0) return nameCompare;
-        const locationCompare = a.locationLabel.localeCompare(b.locationLabel);
-        if (locationCompare !== 0) return locationCompare;
         return a.id.localeCompare(b.id);
     });
 }
@@ -290,7 +365,7 @@ function syncEntryFromSource(entry: AmmoControlEntry, equipmentMap: EquipmentMap
         entry.originalTotalAmmo = getInventoryOriginalTotalAmmo(source);
         entry.totalAmmo = source.totalAmmo ?? entry.originalTotalAmmo;
         entry.consumed = source.consumed ?? 0;
-        entry.destroyed = !!source.destroyed;
+        entry.destroyed = !!source.destroyed || isBattleArmorTrooperLocationDestroyed(entry.owner, entry.locationLabel);
         return;
     }
 
@@ -307,12 +382,22 @@ function syncEntryFromSource(entry: AmmoControlEntry, equipmentMap: EquipmentMap
 }
 
 function showAmmoToast(entry: AmmoControlEntry, deltaRemaining: number, context: HandlerContext): void {
-    const amountText = deltaRemaining > 0 ? `+${deltaRemaining}` : deltaRemaining.toString();
+    const toastId = `ammo-control-${entry.owner.id}-${entry.id}`;
+    const existingDelta = readAmmoToastDelta(context, toastId, deltaRemaining);
+    const accumulatedDelta = existingDelta + deltaRemaining;
+    const amountText = accumulatedDelta > 0 ? `+${accumulatedDelta}` : accumulatedDelta.toString();
     context.toastService.showToast(
-        `${amountText} ${deltaRemaining >= 0 ? 'to' : 'from'} ${entry.locationLabel} ${entry.displayName} (${getAmmoEntryRemaining(entry)}/${entry.totalAmmo})`,
+        `${amountText} ${accumulatedDelta >= 0 ? 'to' : 'from'} ${entry.locationLabel} ${entry.displayName} (${getAmmoEntryRemaining(entry)}/${entry.totalAmmo})`,
         'info',
-        `ammo-control-${entry.owner.id}-${entry.id}`
+        toastId,
+        { ammoDeltaRemaining: accumulatedDelta }
     );
+}
+
+function readAmmoToastDelta(context: HandlerContext, toastId: string, deltaRemaining: number): number {
+    const existingToast = context.toastService.toasts().find(toast => toast.id === toastId);
+    const delta = existingToast?.data?.['ammoDeltaRemaining'];
+    return typeof delta === 'number' && Math.sign(delta) === Math.sign(deltaRemaining) ? delta : 0;
 }
 
 export function changeAmmoEntryRemaining(entry: AmmoControlEntry, deltaRemaining: number, context: HandlerContext): boolean {
@@ -333,26 +418,34 @@ export function changeAmmoEntryRemaining(entry: AmmoControlEntry, deltaRemaining
     return true;
 }
 
+export function changeAmmoEntriesRemaining(entries: AmmoControlEntry[], deltaRemaining: number, context: HandlerContext): boolean {
+    if (deltaRemaining === 0) return false;
+    const sortedEntries = [...entries].sort(compareAmmoControlEntryOrder);
+    const reversedEntries = [...sortedEntries].reverse();
+    let remainingAdjustment = Math.abs(deltaRemaining);
+    let changed = false;
+
+    while (remainingAdjustment > 0) {
+        const target = deltaRemaining < 0
+            ? reversedEntries.find(entry => !entry.destroyed && getAmmoEntryRemaining(entry) > 0)
+            : reversedEntries.find(entry => {
+                const remaining = getAmmoEntryRemaining(entry);
+                return !entry.destroyed && remaining > 0 && remaining < entry.totalAmmo;
+            }) ?? sortedEntries.find(entry => !entry.destroyed && getAmmoEntryRemaining(entry) < entry.totalAmmo);
+        if (!target || !changeAmmoEntryRemaining(target, deltaRemaining < 0 ? -1 : 1, context)) break;
+        changed = true;
+        remainingAdjustment -= 1;
+    }
+
+    return changed;
+}
+
 export function getAmmoGroupRemaining(group: AmmoControlGroup): number {
     return group.entries.reduce((total, entry) => total + getAmmoEntryRemaining(entry), 0);
 }
 
 export function changeAmmoGroupRemaining(group: AmmoControlGroup, deltaRemaining: number, context: HandlerContext): boolean {
-    if (group.entries.length === 1) return changeAmmoEntryRemaining(group.entries[0], deltaRemaining, context);
-
-    const sortedEntries = [...group.entries].sort(compareAmmoControlEntryOrder);
-    let changed = false;
-
-    if (deltaRemaining < 0) {
-        const target = [...sortedEntries].reverse().find(entry => !entry.destroyed && getAmmoEntryRemaining(entry) > 0);
-        if (target) changed = changeAmmoEntryRemaining(target, -1, context);
-    } else if (deltaRemaining > 0) {
-        const target = [...sortedEntries].reverse().find(entry => {
-            const remaining = getAmmoEntryRemaining(entry);
-            return !entry.destroyed && remaining > 0 && remaining < entry.totalAmmo;
-        }) ?? sortedEntries.find(entry => !entry.destroyed && getAmmoEntryRemaining(entry) < entry.totalAmmo);
-        if (target) changed = changeAmmoEntryRemaining(target, 1, context);
-    }
+    const changed = changeAmmoEntriesRemaining(group.entries, deltaRemaining, context);
 
     if (changed) syncGroupTotals(group);
     return changed;
@@ -498,7 +591,7 @@ export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerCont
     const appliedDelta = getAmmoGroupRemaining(group) - previousRemaining;
     if (appliedDelta !== 0) {
         context.toastService.showToast(
-            `${appliedDelta > 0 ? `+${appliedDelta}` : appliedDelta.toString()} ${appliedDelta >= 0 ? 'to' : 'from'} ${group.locationLabel} ${group.displayName} (${getAmmoGroupRemaining(group)}/${group.totalAmmo})`,
+            `${appliedDelta > 0 ? `+${appliedDelta}` : appliedDelta.toString()} ${appliedDelta >= 0 ? 'to' : 'from'} ${group.displayName} (${getAmmoGroupRemaining(group)}/${group.totalAmmo})`,
             'info',
             `ammo-control-${firstEntry.owner.id}-${group.id}`
         );

@@ -55,6 +55,8 @@ import { MekRules } from './rules/mek-rules';
 import { AeroRules } from './rules/aero-rules';
 import { InfantryRules } from './rules/infantry-rules';
 import { VehicleRules } from './rules/vehicle-rules';
+import { type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeSelectionSnapshot, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from './inventory-control-runtime-state.model';
+import { CBTInventoryControlRuntime } from './cbt-inventory-control-runtime.model';
 
 /*
  * Author: Drake
@@ -73,6 +75,8 @@ export class CBTForceUnit extends ForceUnit {
         internal: Map<string, { loc: string; points?: number }>;
     };
     protected override state: CBTForceUnitState;
+    readonly inventoryControl = new CBTInventoryControlRuntime(this);
+    private readonly inventoryControlRuntime = this.inventoryControl;
 
     readonly alias = computed<string | undefined>(() => {
         const pilot = this.getCrewMember(0);
@@ -112,6 +116,7 @@ export class CBTForceUnit extends ForceUnit {
      */
     writeCrits(crits: CriticalSlot[]): void {
         this.state.crits.set(crits);
+        this.inventoryControl.markInventoryViewChanged();
     }
 
     private createRules(): UnitTypeRules {
@@ -218,6 +223,7 @@ export class CBTForceUnit extends ForceUnit {
 
     setCritSlots(critSlots: CriticalSlot[], initialization: boolean = false) {
         this.state.crits.set(critSlots);
+        this.inventoryControl.markInventoryViewChanged();
         if (!initialization) {
             this.evaluateDestroyed();
             this.setModified();
@@ -289,6 +295,7 @@ export class CBTForceUnit extends ForceUnit {
 
     setInventory(inventory: MountedEquipment[], initialization: boolean = false) {
         this.state.inventory.set(inventory);
+        this.inventoryControl.markInventoryViewChanged();
         if (!initialization) {
             this.setModified();
         }
@@ -303,6 +310,86 @@ export class CBTForceUnit extends ForceUnit {
             inventory.push(inventoryEntry);
         }
         this.setInventory(inventory);
+    }
+
+    getInventoryControlSelectionSnapshot(): InventoryControlRuntimeSelectionSnapshot {
+        return this.inventoryControlRuntime.getSelectionSnapshot();
+    }
+
+    getInventoryControlTargets(): InventoryControlRuntimeTarget[] {
+        return this.inventoryControlRuntime.getTargets();
+    }
+
+    getInventoryControlTarget(targetId: InventoryControlRuntimeTargetId): InventoryControlRuntimeTarget | undefined {
+        return this.inventoryControlRuntime.getTarget(targetId);
+    }
+
+    getInventoryControlSelectedTarget(entryId: string): InventoryControlRuntimeTargetId | undefined {
+        return this.inventoryControlRuntime.getSelectedTarget(entryId);
+    }
+
+    isInventoryControlEntrySelected(entryId: string): boolean {
+        return this.inventoryControlRuntime.isEntrySelected(entryId);
+    }
+
+    getInventoryControlSelectedRange(entryId: string): InventoryControlRuntimeRangeKey | undefined {
+        return this.inventoryControlRuntime.getSelectedRange(entryId);
+    }
+
+    getInventoryControlSelectedAmmoOption(entryId: string): string | undefined {
+        return this.inventoryControlRuntime.getSelectedAmmoOption(entryId);
+    }
+
+    setInventoryControlEntrySelected(entry: MountedEquipment, selected: boolean): void {
+        this.inventoryControlRuntime.setEntrySelected(entry, selected);
+    }
+
+    setInventoryControlSelectedRange(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey | null): void {
+        this.inventoryControlRuntime.setSelectedRange(entry, range);
+    }
+
+    toggleInventoryControlSelectedRange(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey, forceSelected = false): void {
+        this.inventoryControlRuntime.toggleSelectedRange(entry, range, forceSelected);
+    }
+
+    setInventoryControlSelectedAmmoOption(entryId: string, optionId: string): void {
+        this.inventoryControlRuntime.setSelectedAmmoOption(entryId, optionId);
+    }
+
+    setInventoryControlSelectedTarget(entry: MountedEquipment, targetId: InventoryControlRuntimeTargetId | null): void {
+        this.inventoryControlRuntime.setSelectedTarget(entry, targetId);
+    }
+
+    createInventoryControlTarget(): InventoryControlRuntimeTarget | null {
+        return this.inventoryControlRuntime.createTarget();
+    }
+
+    updateInventoryControlTarget(targetId: InventoryControlRuntimeTargetId, patch: Partial<Omit<InventoryControlRuntimeTarget, 'id' | 'letter'>>): InventoryControlRuntimeTarget | null {
+        return this.inventoryControlRuntime.updateTarget(targetId, patch);
+    }
+
+    deleteInventoryControlTarget(targetId: InventoryControlRuntimeTargetId): void {
+        this.inventoryControlRuntime.deleteTarget(targetId);
+    }
+
+    resetInventoryControlTargets(): void {
+        this.inventoryControlRuntime.resetTargets();
+    }
+
+    clearInventoryControlSelection(): void {
+        this.inventoryControlRuntime.clearSelection();
+    }
+
+    clearInventoryControlTargets(): void {
+        this.inventoryControlRuntime.resetTargets();
+    }
+
+    private reconcileInventoryControlSelection(): void {
+        this.inventoryControlRuntime.reconcile();
+    }
+
+    syncInventoryControlSelectionSvg(): void {
+        this.inventoryControlRuntime.syncSelectionSvg();
     }
 
     get getLocations() {
@@ -729,6 +816,8 @@ export class CBTForceUnit extends ForceUnit {
     }
     
     public endTurn() {
+        this.clearInventoryControlSelection();
+        this.clearInventoryControlTargets();
         // deselect all inventory items
         this.getInventory().forEach(entry => {
             if (!entry.el) return;
@@ -762,6 +851,8 @@ export class CBTForceUnit extends ForceUnit {
         this._formationCommander.set(data.commander ?? false);
         if (data.state) {
             this.state.update(data.state);
+            this.reconcileInventoryControlSelection();
+            this.syncInventoryControlSelectionSvg();
         }
     }
 

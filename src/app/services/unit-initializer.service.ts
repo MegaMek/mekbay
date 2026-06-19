@@ -336,6 +336,10 @@ export class UnitInitializerService {
             if (eq && eq.flags.has('F_WEAPON_ENHANCEMENT')) {
                 if (!eq.flags.has('F_RISC_LASER_PULSE_MODULE')) {
                     svg.querySelector(`.inventoryEntryButton[inventory-id="${id}"]`)?.remove();
+                    svg.querySelector(`.shrButton[inventory-id="${id}"]`)?.remove();
+                    svg.querySelector(`.medButton[inventory-id="${id}"]`)?.remove();
+                    svg.querySelector(`.lngButton[inventory-id="${id}"]`)?.remove();
+                    svg.querySelector(`.extButton[inventory-id="${id}"]`)?.remove();
                 }
             }
             const baseHitModClean = (baseHitMod || '').replace('−', '-');

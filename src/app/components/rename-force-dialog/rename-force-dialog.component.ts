@@ -321,7 +321,7 @@ export interface RenameForceDialogResult {
 
         .hint {
             font-size: 0.85em;
-            color: var(--text-color-tertiary);
+            color: var(--bt-yellow);
             margin: 0;
             text-align: center;
             

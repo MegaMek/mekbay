@@ -36,6 +36,8 @@ import { ChangeDetectionStrategy, Component, computed, type ElementRef, inject, 
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import type { AmmoEquipment } from '../../models/equipment.model';
 import { DialogsService } from '../../services/dialogs.service';
+import { MultilineDropdownComponent } from '../multiline-dropdown/multiline-dropdown.component';
+import type { MultilineDropdownOption } from '../multiline-dropdown/multiline-dropdown.component';
 
 /*
  * Author: Drake
@@ -53,7 +55,7 @@ export interface SetAmmoDialogData {
     selector: 'set-ammo-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
+    imports: [MultilineDropdownComponent],
     host: {
         class: 'fullscreen-dialog-host glass'
     },
@@ -63,32 +65,19 @@ export interface SetAmmoDialogData {
             <div class="form-row">
                 <div class="form-fields">
                     <label class="field-label">Ammo Type</label>
-                    <select
-                        class="field-input"
-                        #inputNameRef
-                        id="inputName"
-                        (change)="onAmmoTypeChange($event)"
-                        required
-                    >
-                        @for (ammo of data.ammoOptions; let i = $index; track i) {
-                            <option
-                                [value]="ammo.internalName"
-                                [selected]="ammo.internalName === data.currentAmmo.internalName"
-                            >
-                            @if (mixedTechBase() && ammo.techBase !== 'All') {
-                                [{{ ammo.techBase === 'IS' ? 'IS' : ammo.techBase === 'Clan' ? 'CL' : '*' }}]&nbsp;
-                            }
-                            {{ ammo.name }}
-                            @if (data.ammoOptions.length > 1
-                            && ammo.internalName === data.originalAmmo.internalName
-                            && data.originalAmmo.internalName != data.currentAmmo.internalName){&nbsp;\u2605}
-                            </option>
-                        }
-                    </select>
+                    <multiline-dropdown
+                        class="ammo-select"
+                        controlId="inputName"
+                        label="Ammo Type"
+                        [options]="ammoDropdownOptions()"
+                        [value]="selectedAmmoName()"
+                        (valueChange)="setSelectedAmmo($event)"
+                    />
                 </div>
                 <div class="form-fields ammo-quantity">
                     <label class="field-label">Quantity</label>
                     <div class="quantity-group">
+                    <button class="bt-button square-small quantity-adjust" type="button" (click)="adjustQuantity(-1)">-</button>
                     <input
                         class="field-input"
                         #inputQuantityRef
@@ -102,6 +91,7 @@ export interface SetAmmoDialogData {
                         (keydown.enter)="submit()"
                         required
                     />
+                    <button class="bt-button square-small quantity-adjust" type="button" (click)="adjustQuantity(1)">+</button>
                     <span class="max-quantity">/{{ currentMaxQuantity() }}</span>
                     </div>
                 </div>
@@ -120,14 +110,19 @@ export interface SetAmmoDialogData {
                 align-self: center;
             }
         }
+
+        .ammo-select {
+            width: 100%;
+        }
+        
         .ammo-quantity {
             flex: 0 0 auto;
         }
 
         .quantity-group {
             display: flex;
-            align-items: baseline;
-            gap: 2px;
+            align-items: center;
+            gap: 4px;
         }
 
         .max-quantity {
@@ -154,25 +149,32 @@ export interface SetAmmoDialogData {
             -webkit-appearance: none;
             margin: 0;
         }
+
+        .quantity-adjust {
+            width: 32px;
+            height: 32px;
+            min-width: 32px;
+        }
     `]
 })
 
 export class SetAmmoDialogComponent {
     private dialogsService = inject(DialogsService)
-    inputNameRef = viewChild.required<ElementRef<HTMLSelectElement>>('inputNameRef');
     inputQuantityRef = viewChild.required<ElementRef<HTMLInputElement>>('inputQuantityRef');
     public dialogRef: DialogRef<{name: string; quantity: number, totalAmmo: number} | null, SetAmmoDialogComponent> = inject(DialogRef);
     readonly data: SetAmmoDialogData = inject(DIALOG_DATA);
     public totalKgAvailable: number;
     
-    // Add a signal to track the currently selected ammo
-    private selectedAmmoName = signal(this.data.currentAmmo.internalName);
+    selectedAmmoName = signal(this.data.currentAmmo.internalName);
     mixedTechBase = computed(() => {
         return this.data.ammoOptions.some(ammo => ammo.techBase === 'Clan') &&
             this.data.ammoOptions.some(ammo => ammo.techBase === 'IS');
     });
+    ammoDropdownOptions = computed<MultilineDropdownOption[]>(() => this.data.ammoOptions.map(ammo => ({
+        value: ammo.internalName,
+        label: this.getAmmoDisplayText(ammo),
+    })));
     
-    // Computed property for current max quantity
     public currentMaxQuantity = computed(() => {
         const selectedAmmo = this.data.ammoOptions.find(
             ammo => ammo.internalName === this.selectedAmmoName()
@@ -187,13 +189,22 @@ export class SetAmmoDialogComponent {
         this.totalKgAvailable = this.data.originalAmmo.kgPerShot * this.data.originalTotalAmmo;
     }
 
-    // Add method to handle ammo type change
-    onAmmoTypeChange(event: Event) {
-        const selectElement = event.target as HTMLSelectElement;
+    getAmmoDisplayText(ammo: AmmoEquipment): string {
+        const techPrefix = this.mixedTechBase() && ammo.techBase !== 'All'
+            ? `[${ammo.techBase === 'IS' ? 'IS' : ammo.techBase === 'Clan' ? 'CL' : '*'}] `
+            : '';
+        const originalMarker = this.data.ammoOptions.length > 1
+            && ammo.internalName === this.data.originalAmmo.internalName
+            && this.data.originalAmmo.internalName != this.data.currentAmmo.internalName
+            ? ' \u2605'
+            : '';
+        return `${techPrefix}${ammo.name}${originalMarker}`;
+    }
+
+    setSelectedAmmo(internalName: string) {
         const previousMaxQuantity = this.currentMaxQuantity();
-        this.selectedAmmoName.set(selectElement.value);
+        this.selectedAmmoName.set(internalName);
         
-        // Reset quantity input to not exceed new max
         const nativeEl = this.inputQuantityRef().nativeElement;
         const currentQuantity = Number(nativeEl.value);
         const newMaxQuantity = this.currentMaxQuantity();
@@ -204,6 +215,15 @@ export class SetAmmoDialogComponent {
         }
     }
 
+    adjustQuantity(delta: number) {
+        const nativeEl = this.inputQuantityRef().nativeElement;
+        const currentQuantity = nativeEl.value === '' ? this.data.quantity : Number(nativeEl.value);
+        if (isNaN(currentQuantity)) return;
+
+        const nextQuantity = Math.max(0, Math.min(this.currentMaxQuantity(), currentQuantity + delta));
+        nativeEl.value = nextQuantity.toString();
+    }
+
     async dump() {
         const result = await this.dialogsService.requestConfirmation('Are you sure you want to dump all ammo?', 'Confirm Dump', 'danger')
         if (result) {
@@ -212,7 +232,7 @@ export class SetAmmoDialogComponent {
     }
 
     submit() {
-        const selectedInternalName = this.inputNameRef().nativeElement.value;
+        const selectedInternalName = this.selectedAmmoName();
         let selectedAmmo = this.data.ammoOptions.find(
             ammo => ammo.internalName === selectedInternalName
         );

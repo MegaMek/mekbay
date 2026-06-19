@@ -12,6 +12,7 @@
     --background-color: #141414;
     --background-color-menu: #292929;
     --background-color-light: #313131;
+    --background-warning: orange;
     --background-input: rgba(40, 40, 40, 0.5);
     --background-highlight: #3D3D3D;
     --background-highlight-bright: #7A7A7A;
@@ -115,6 +116,13 @@ body {
 :root.keyboard-navigation *:focus {
     outline: 2px solid var(--primary-focus-color-highlight) !important;
     outline-offset: 2px !important;
+}
+
+:root.keyboard-navigation .cdk-dialog-container:focus,
+:root.keyboard-navigation .fullscreen-dialog-host:focus,
+:root.keyboard-navigation .wide-dialog:focus {
+    outline: none !important;
+    outline-offset: 0 !important;
 }
 
 @media print {
@@ -229,7 +237,7 @@ hr {
     box-sizing: border-box;
     width: 100vw;
     pointer-events: auto;
-    padding: 16px;
+    padding: 0;
     max-height: 100%;
 
     &.fullheight {
@@ -243,6 +251,12 @@ hr {
 
     &.nopadding {
         padding: 0;
+    }
+
+    & > .content {
+        display: block;
+        max-width: 600px;
+        padding: 16px;
     }
 }
 
@@ -646,6 +660,14 @@ hr {
         background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
     }
 
+    &.tiny {
+        background-size: 8px 2px, 2px 8px, 8px 2px, 2px 8px, 8px 2px, 2px 8px, 8px 2px, 2px 8px;
+
+        &:hover {
+            background-size: 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
+        }
+    }
+
     &.selected {
         border-color: white;
         background-color: var(--bt-yellow);
@@ -741,6 +763,7 @@ hr {
         width: 40px;
         height: 40px;
         overflow: hidden;
+        min-width: 40px;
     }
 
     &.square-small {
@@ -749,6 +772,7 @@ hr {
         width: 32px;
         height: 32px;
         overflow: hidden;
+        min-width: 32px;
     }
 
     &.square-large {
@@ -757,6 +781,7 @@ hr {
         width: 48px;
         height: 48px;
         overflow: hidden;
+        min-width: 48px;
     }
 
     &.borderless {
@@ -923,7 +948,7 @@ hr {
         flex: 1 1 auto;
         min-width: 0;
         font-family: inherit;
-        font-size: 1.5em;
+        font-size: 1.2em;
         padding: 4px 4px 6px 4px;
         box-sizing: border-box;
         background: var(--background-input);
@@ -959,6 +984,74 @@ hr {
     }
 }
 
+// specific for inventory dialog, to make the input fields smaller and more compact
+.weapons-equipment-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    text-align: left;
+
+    .field-label {
+        font-size: 0.85em;
+        color: var(--text-color-secondary);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        letter-spacing: 0.1em;
+
+        &.centered {
+            text-align: center;
+        }
+        
+        .optional {
+            font-weight: normal;
+            text-transform: none;
+            font-style: italic;
+        }
+    }
+
+    &.disabled .field-label {
+        color: var(--text-color-tertiary);
+    }
+
+    .field-input {
+        width: 100%;
+        flex: 1 1 auto;
+        min-width: 0;
+        font-family: inherit;
+        font-size: inherit;
+        box-sizing: border-box;
+        background: transparent;
+        color: white;
+        border: 0;
+        outline: none;
+        white-space: normal;
+        overflow-wrap: break-word;
+        word-break: break-word;
+
+        &:focus {
+            outline: none;
+        }
+
+        &:disabled {
+            color: var(--text-color-tertiary);
+            cursor: not-allowed;
+        }
+
+        &[contenteditable]:empty::before {
+            content: attr(data-placeholder);
+            color: #888;
+            pointer-events: none;
+        }
+    }
+
+    select.field-input {
+        cursor: pointer;
+        text-overflow: ellipsis;
+    }
+}
+
 /* ── Wide Dialog ──
  * CSS convention for fullscreen-dialog-host glass dialogs.
  * Structure:
@@ -971,17 +1064,34 @@ hr {
 .wide-dialog {
     display: flex;
     flex-direction: column;
-    width: 90vw;
+    width: 100vw;
     max-width: 700px;
-    max-height: calc(100dvh - 32px);
+    padding: 16px;
+    max-height: 100vh;
     text-align: center;
     box-sizing: border-box;
     container-type: inline-size;
 }
 
+h2 {
+    font-size: 1.5em;
+}
+
+h2 {
+    font-size: 1.3em;
+}
+
+h3 {
+    font-size: 1.2em;
+}
+
 .wide-dialog-title {
     margin: 8px 0;
     flex-shrink: 0;
+
+    @media (max-height: 400px) {
+        margin: 2px 0;
+    }
 }
 
 .wide-dialog-body {
@@ -991,6 +1101,7 @@ hr {
     flex: 1 1 auto;
     overflow-y: auto;
     min-height: 0;
+    padding-bottom: 16px;
 }
 
 /* Row of .form-fields placed side-by-side; stacks below 400cqi */
@@ -1011,7 +1122,8 @@ hr {
 }
 
 .wide-dialog-actions {
-    padding-top: 16px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 8px;
     display: flex;
     gap: 8px;
     justify-content: center;
@@ -1688,7 +1800,6 @@ hr.divider {
         }
 
         /* Skills */
-        #ammoProfile text,
         .skillValue {
             fill: #00f;
         }
@@ -1789,8 +1900,53 @@ hr.divider {
                 filter: brightness(1.03);
             }
 
-            &.selected>.inventoryEntryButton {
-                fill: var(--bt-yellow);
+            &.selected:not(.selected-alternative-mode):not(.selected-range-short):not(.selected-range-medium):not(.selected-range-long):not(.selected-range-extreme)>.inventoryEntryButton,
+            &.selected-range-short:not(.selected-alternative-mode)>.mainButton,
+            &.selected-range-short:not(.selected-alternative-mode)>.shrButton,
+            &.selected-range-medium:not(.selected-alternative-mode)>.mainButton,
+            &.selected-range-medium:not(.selected-alternative-mode)>.medButton,
+            &.selected-range-long:not(.selected-alternative-mode)>.mainButton,
+            &.selected-range-long:not(.selected-alternative-mode)>.lngButton,
+            &.selected-range-extreme:not(.selected-alternative-mode)>.mainButton,
+            &.selected-range-extreme:not(.selected-alternative-mode)>.extButton,
+            &.selected-alternative-mode.selected-range-short>.alternativeMode.selected>.alternativeModeButton,
+            &.selected-alternative-mode.selected-range-short>.alternativeMode.selected>.shrButton,
+            &.selected-alternative-mode.selected-range-medium>.alternativeMode.selected>.alternativeModeButton,
+            &.selected-alternative-mode.selected-range-medium>.alternativeMode.selected>.medButton,
+            &.selected-alternative-mode.selected-range-long>.alternativeMode.selected>.alternativeModeButton,
+            &.selected-alternative-mode.selected-range-long>.alternativeMode.selected>.lngButton,
+            &.selected-alternative-mode.selected-range-extreme>.alternativeMode.selected>.alternativeModeButton,
+            &.selected-alternative-mode.selected-range-extreme>.alternativeMode.selected>.extButton {
+                fill: var(--inventory-control-selection-color, var(--bt-yellow));
+            }
+
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.shrButton,
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.medButton,
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.lngButton,
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.extButton,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.shrButton,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.medButton,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.lngButton,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.extButton {
+                fill: var(--damage-color);
+            }
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.range_short,
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.range_medium,
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.range_long,
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.range_extreme,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.range_short,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.range_medium,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.range_long,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.range_extreme {
+                fill: #fff;
+            }
+
+            &.selected.selected-target-out-of-range>.targetTn-rect {
+                fill: var(--damage-color);
+            }
+            
+            &.selected.selected-target-out-of-range>.targetTn-text {
+                fill: #fff;
             }
         }
 
@@ -1805,10 +1961,6 @@ hr.divider {
 
             &:active>.inventoryEntryButton {
                 filter: brightness(1.03);
-            }
-
-            &.selected>.inventoryEntryButton {
-                fill: var(--bt-yellow);
             }
         }
 
@@ -2175,7 +2327,6 @@ hr.divider {
             filter: invert(1) brightness(0.6) saturate(50) hue-rotate(217deg) contrast(1.5) !important;
         }
 
-        #ammoProfile text,
         .skillValue {
             fill: #bbf;
         }

@@ -49,6 +49,7 @@ import { shareUrlWithClipboardFallback } from '../../utils/clipboard.util';
 import { buildShareUrl } from '../../utils/share-url.util';
 import { buildPublicTagSearchQueryParameters } from '../../utils/unit-search-public-tags-url.util';
 import { getUnitVariantGroupIdentity } from '../../utils/unit-variant.util';
+import { removeAccents } from '../../utils/string.util';
 
 type CollectionRowType = 'chassis' | 'name';
 
@@ -296,14 +297,19 @@ export class CollectionDialogComponent {
     });
 
     readonly chassisSuggestions = computed(() => {
-        const text = this.addChassisText().trim().toLowerCase();
+        const text = this.normalizeQuickAddSearchText(this.addChassisText());
         const selectedKey = this.selectedAddChassisKey();
         if (!text) {
             return this.chassisOptions().slice(0, 10);
         }
 
-        const suggestions = this.chassisOptions()
-            .filter(option => option.inputLabel.toLowerCase().includes(text))
+        const searchTokens = parseSearchQuery(this.addChassisText().trim());
+        const exactSuggestions = this.chassisOptions()
+            .filter(option => this.isExactQuickAddChassisMatch(option, text));
+        const exactSuggestionKeys = new Set(exactSuggestions.map(option => option.key));
+        const partialSuggestions = this.chassisOptions()
+            .filter(option => !exactSuggestionKeys.has(option.key) && matchesSearch(this.getQuickAddChassisSearchText(option), searchTokens, true));
+        const suggestions = [...exactSuggestions, ...partialSuggestions]
             .slice(0, 10);
 
         if (selectedKey && !suggestions.some(option => option.key === selectedKey)) {
@@ -325,12 +331,12 @@ export class CollectionDialogComponent {
             }
         }
 
-        const text = this.addChassisText().trim().toLowerCase();
+        const text = this.normalizeQuickAddSearchText(this.addChassisText());
         if (!text) {
             return null;
         }
 
-        return this.chassisOptions().find(option => option.inputLabel.toLowerCase() === text) ?? null;
+        return this.chassisOptions().find(option => this.normalizeQuickAddSearchText(option.inputLabel) === text) ?? null;
     });
 
     readonly quickAddModelOptions = computed((): ModelOption[] => {
@@ -993,6 +999,19 @@ export class CollectionDialogComponent {
 
     private getQuickAddModelSearchText(unit: Unit): string {
         return `${unit.chassis ?? ''} ${unit.model ?? ''} ${unit.name ?? ''}`;
+    }
+
+    private getQuickAddChassisSearchText(option: ChassisOption): string {
+        return `${option.inputLabel} ${option.label} ${option.unit.chassis ?? ''}`;
+    }
+
+    private isExactQuickAddChassisMatch(option: ChassisOption, normalizedText: string): boolean {
+        return [option.inputLabel, option.label, option.unit.chassis ?? '']
+            .some(value => this.normalizeQuickAddSearchText(value) === normalizedText);
+    }
+
+    private normalizeQuickAddSearchText(value: string): string {
+        return removeAccents(value.trim().toLowerCase());
     }
 
     private getChassisUnitList(unit: Unit): Unit[] {

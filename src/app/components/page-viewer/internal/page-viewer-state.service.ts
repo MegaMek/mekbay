@@ -25,6 +25,9 @@ export class PageViewerStateService {
     readonly activePages = signal<PageViewerPageDescriptor[]>([]);
     readonly shadowPages = signal<PageViewerShadowDescriptor[]>([]);
     readonly transientShadowPages = signal<PageViewerShadowDescriptor[]>([]);
+    private readonly openInventoryDialogCount = signal(0);
+
+    readonly inventoryDialogOpen = computed(() => this.openInventoryDialogCount() > 0);
 
     readonly effectiveVisiblePageCount = computed(() => {
         if (!this.allowMultipleActiveSheets()) {
@@ -45,6 +48,14 @@ export class PageViewerStateService {
 
     setViewStartIndex(index: number): void {
         this.viewStartIndex.set(this.normalizeIndex(index));
+    }
+
+    beginInventoryDialog(): void {
+        this.openInventoryDialogCount.update(count => count + 1);
+    }
+
+    endInventoryDialog(): void {
+        this.openInventoryDialogCount.update(count => Math.max(0, count - 1));
     }
 
     normalizeIndex(index: number): number {
@@ -70,5 +81,6 @@ export class PageViewerStateService {
         this.activePages.set([]);
         this.shadowPages.set([]);
         this.transientShadowPages.set([]);
+        this.openInventoryDialogCount.set(0);
     }
 }

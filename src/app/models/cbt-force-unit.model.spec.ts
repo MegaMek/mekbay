@@ -3,9 +3,11 @@ import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment, WeaponEquipment, type EquipmentMap } from './equipment.model';
 import { CBTForce } from './cbt-force.model';
 import { CBTForceUnit } from './cbt-force-unit.model';
+import { INVENTORY_CONTROL_TARGET_MAX_COUNT } from './inventory-control-runtime-state.model';
 import type { CBTSerializedUnit } from './force-serialization';
 import { DataService } from '../services/data.service';
 import { UnitInitializerService } from '../services/unit-initializer.service';
+import { UnitSvgService } from '../services/unit-svg.service';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import type { Unit } from './units.model';
 
@@ -62,6 +64,13 @@ function createVehicleSvg(): SVGSVGElement {
             <g class="inventoryEntry" id="CLUltraAC20@FR#0" baseHitMod="0">
                 <g class="name"><text>Ultra AC/20</text></g>
                 <text class="location">FR</text>
+                <text class="range_short">4</text>
+                <text class="range_medium">8</text>
+                <text class="range_long">12</text>
+                <rect class="hitMod-rect" display="block"></rect>
+                <text class="hitMod-text" display="block">+0</text>
+                <rect class="targetTn-rect" display="none"></rect>
+                <text class="targetTn-text" display="none"></text>
             </g>
             <g id="ammoProfile"><text>Ammo: (Ultra AC/20) 30</text></g>
         </svg>
@@ -201,5 +210,154 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(repairedAmmoEntries.map(entry => entry.ammo)).toEqual([undefined, undefined, undefined, undefined, undefined, undefined]);
         expect(repairedAmmoEntries.map(entry => entry.totalAmmo)).toEqual([5, 5, 5, 5, 5, 5]);
         expect(repairedAmmoEntries.map(entry => entry.consumed)).toEqual([0, 0, 0, 0, 0, 0]);
+    });
+
+    it('keeps inventory control targets transient and upgrades existing selections to the first target', () => {
+        const forceUnit = createForceUnit();
+        initialize(forceUnit);
+        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
+
+        forceUnit.setInventoryControlSelectedRange(weaponEntry, 'medium');
+        const target = forceUnit.createInventoryControlTarget();
+
+        expect(target?.id).toBe('A');
+        expect(forceUnit.isInventoryControlEntrySelected(weaponEntry.id)).toBeTrue();
+        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBe('A');
+        expect(forceUnit.getInventoryControlSelectedRange(weaponEntry.id)).toBeUndefined();
+
+        const serialized = forceUnit.serialize();
+        expect(JSON.stringify(serialized)).not.toContain('Target A');
+        expect(serialized.state.inventory).toBeUndefined();
+    });
+
+    it('reuses deleted target letters and caps targets at twelve', () => {
+        const forceUnit = createForceUnit();
+        initialize(forceUnit);
+
+        expect(forceUnit.createInventoryControlTarget()?.id).toBe('A');
+        expect(forceUnit.createInventoryControlTarget()?.id).toBe('B');
+        expect(forceUnit.createInventoryControlTarget()?.id).toBe('C');
+
+        forceUnit.deleteInventoryControlTarget('B');
+        expect(forceUnit.createInventoryControlTarget()?.id).toBe('B');
+        expect(forceUnit.getInventoryControlTargets().map(target => target.id)).toEqual(['A', 'B', 'C']);
+
+        while (forceUnit.getInventoryControlTargets().length < INVENTORY_CONTROL_TARGET_MAX_COUNT) {
+            expect(forceUnit.createInventoryControlTarget()).not.toBeNull();
+        }
+        expect(forceUnit.createInventoryControlTarget()).toBeNull();
+        expect(forceUnit.getInventoryControlTargets().length).toBe(INVENTORY_CONTROL_TARGET_MAX_COUNT);
+    });
+
+    it('deselects entries assigned to deleted targets and clears all target selections on reset', () => {
+        const forceUnit = createForceUnit();
+        initialize(forceUnit);
+        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
+
+        forceUnit.createInventoryControlTarget();
+        forceUnit.createInventoryControlTarget();
+        forceUnit.setInventoryControlSelectedTarget(weaponEntry, 'B');
+        expect(forceUnit.isInventoryControlEntrySelected(weaponEntry.id)).toBeTrue();
+        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBe('B');
+
+        forceUnit.deleteInventoryControlTarget('B');
+        expect(forceUnit.getInventoryControlTargets().map(target => target.id)).toEqual(['A']);
+        expect(forceUnit.isInventoryControlEntrySelected(weaponEntry.id)).toBeFalse();
+        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBeUndefined();
+
+        forceUnit.setInventoryControlSelectedTarget(weaponEntry, 'A');
+        forceUnit.resetInventoryControlTargets();
+        expect(forceUnit.getInventoryControlTargets()).toEqual([]);
+        expect(forceUnit.isInventoryControlEntrySelected(weaponEntry.id)).toBeFalse();
+        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBeUndefined();
+    });
+
+    it('does not mutate hit modifier or render target TN text during runtime target selection sync', () => {
+        const forceUnit = createForceUnit();
+        initialize(forceUnit);
+        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
+        const hitModText = weaponEntry.el!.querySelector(':scope > .hitMod-text') as SVGTextElement;
+        const targetTnRect = weaponEntry.el!.querySelector(':scope > .targetTn-rect') as SVGRectElement;
+        const targetTnText = weaponEntry.el!.querySelector(':scope > .targetTn-text') as SVGTextElement;
+
+        forceUnit.createInventoryControlTarget();
+        forceUnit.updateInventoryControlTarget('A', { distance: 8, tnModifier: 1 });
+        forceUnit.setInventoryControlSelectedTarget(weaponEntry, 'A');
+
+        expect(hitModText.textContent).toBe('+0');
+        expect(targetTnRect.getAttribute('display')).toBe('none');
+        expect(targetTnText.getAttribute('display')).toBe('none');
+        expect(targetTnText.textContent).toBe('');
+
+        forceUnit.setInventoryControlSelectedTarget(weaponEntry, null);
+
+        expect(hitModText.textContent).toBe('+0');
+        expect(targetTnRect.getAttribute('display')).toBe('none');
+        expect(targetTnText.getAttribute('display')).toBe('none');
+        expect(targetTnText.textContent).toBe('');
+    });
+
+    it('keeps target selection state independent of SVG presentation rendering', () => {
+        const forceUnit = createForceUnit();
+        initialize(forceUnit);
+        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
+        const targetTnText = weaponEntry.el!.querySelector(':scope > .targetTn-text') as SVGTextElement;
+
+        forceUnit.createInventoryControlTarget();
+        forceUnit.updateInventoryControlTarget('A', { distance: 13 });
+        forceUnit.setInventoryControlSelectedTarget(weaponEntry, 'A');
+
+        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBe('A');
+        expect(targetTnText.textContent).toBe('');
+
+        forceUnit.setInventoryControlSelectedTarget(weaponEntry, null);
+
+        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBeUndefined();
+        expect(targetTnText.textContent).toBe('');
+    });
+
+    it('preserves valid target assignments across updates and prunes stale entry assignments', () => {
+        const forceUnit = createForceUnit();
+        initialize(forceUnit);
+        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
+        forceUnit.createInventoryControlTarget();
+        forceUnit.setInventoryControlSelectedTarget(weaponEntry, 'A');
+        forceUnit.setInventoryControlSelectedAmmoOption(weaponEntry.id, 'ammo-option');
+
+        forceUnit.update({
+            id: forceUnit.id,
+            unit: forceUnit.getUnit().name,
+            state: {
+                crew: forceUnit.getCrewMembers().map(crew => crew.serialize()),
+                crits: [],
+                heat: { current: 0, previous: 0 },
+                locations: {},
+                modified: false,
+                destroyed: false,
+                shutdown: false,
+            },
+        } as CBTSerializedUnit);
+
+        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBe('A');
+        expect(forceUnit.getInventoryControlSelectionSnapshot().selectedAmmoOptions.get(weaponEntry.id)).toBe('ammo-option');
+
+        forceUnit.setInventory([]);
+        forceUnit.update({
+            id: forceUnit.id,
+            unit: forceUnit.getUnit().name,
+            state: {
+                crew: forceUnit.getCrewMembers().map(crew => crew.serialize()),
+                crits: [],
+                heat: { current: 0, previous: 0 },
+                locations: {},
+                modified: false,
+                destroyed: false,
+                shutdown: false,
+            },
+        } as CBTSerializedUnit);
+
+        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBeUndefined();
+        expect(forceUnit.getInventoryControlSelectionSnapshot().selectedAmmoOptions.has(weaponEntry.id)).toBeFalse();
+        expect(forceUnit.isInventoryControlEntrySelected(weaponEntry.id)).toBeFalse();
     });
 });

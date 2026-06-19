@@ -489,6 +489,32 @@ describe('DataService', () => {
         expect(dbServiceMock.saveForce).toHaveBeenCalledWith(jasmine.objectContaining({ instanceId: 'force-missing' }));
     });
 
+    it('saves an owned cloud-only force locally when opened', async () => {
+        const cloudRawForce = {
+            version: 1,
+            instanceId: 'force-cloud-owned',
+            timestamp: '2026-04-05T00:00:00Z',
+            type: GameSystem.CLASSIC,
+            name: 'Owned Cloud Force',
+            owned: true,
+            groups: [],
+        };
+        dbServiceMock.getForce.and.resolveTo(null);
+        wsServiceMock.sendAndWaitForResponse.and.resolveTo({ data: cloudRawForce });
+        spyOn<any>(service, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
+
+        const force = await service.getForce('force-cloud-owned', true);
+
+        expect(force?.name).toBe('Owned Cloud Force');
+        expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith({
+            action: 'getForce',
+            uuid: 'user-1',
+            instanceId: 'force-cloud-owned',
+            ownedOnly: true,
+        });
+        expect(dbServiceMock.saveForce).toHaveBeenCalledOnceWith(cloudRawForce as any);
+    });
+
     it('updates force tags through the lightweight local and cloud path', async () => {
         dbServiceMock.updateForceTags.and.resolveTo({
             version: 1,

@@ -73,9 +73,22 @@ export class InfantryRules implements UnitTypeRules {
 
     /** Mark inventory entries as destroyed when the T1 armor location is gone. */
     evaluateInventoryDestruction(): void {
+        const squadSize = this.unit.getUnit().squadSize ?? 1;
+        let allSquadsDestroyed = true;
+        for (let i = 1; i <= squadSize; i++) {
+            if (!this.unit.isArmorLocCommittedDestroyed(`T${i}`)) {
+                allSquadsDestroyed = false;
+                break;
+            }
+        }
         const t1Destroyed = this.unit.isArmorLocDestroyed('T1');
         for (const entry of this.unit.getInventory()) {
-            if (entry.equipment) {
+            if (!entry.equipment) continue;
+            entry.destroyed = allSquadsDestroyed;
+            if (allSquadsDestroyed) continue;
+            
+            // TODO: not working, locations is empty for Infantry!!!! FIX ME!
+            if (entry.locations?.has('SSW')) { 
                 entry.destroyed = t1Destroyed;
             }
         }

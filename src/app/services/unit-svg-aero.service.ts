@@ -54,42 +54,45 @@ export class UnitSvgAeroService extends UnitSvgService {
 
         // Update hsPips (visual damaged/fresh/disabled)
         const hsPipsContainer = svg.querySelector('.hsPips');
-        if (hsPipsContainer) {
-            const allHsPips = Array.from(hsPipsContainer.querySelectorAll('.pip')) as SVGElement[];
-            let idx = 0;
-            allHsPips.forEach(pip => {
-                if (idx < dissipation.damagedCount) {
-                    if (!pip.classList.contains('damaged')) {
-                        pip.classList.add('fresh');
-                        pip.classList.add('damaged');
-                    } else {
-                        pip.classList.remove('fresh');
-                    }
-                } else {
-                    if (pip.classList.contains('damaged')) {
-                        pip.classList.add('fresh');
-                        pip.classList.remove('damaged');
-                    } else {
-                        pip.classList.remove('fresh');
-                    }
-                }
-                idx++;
-            });
 
-            idx = 0;
-            allHsPips.reverse().forEach(pip => {
-                if (idx < dissipation.heatsinksOff) {
-                    if (!pip.classList.contains('disabled')) {
-                        pip.classList.add('disabled');
-                    }
+        // This unit has no heatsink pips, lets skip all, probably is a vessel or something.
+        // TODO: implement this better...
+        if (!hsPipsContainer) return;
+        
+        const allHsPips = Array.from(hsPipsContainer.querySelectorAll('.pip')) as SVGElement[];
+        let idx = 0;
+        allHsPips.forEach(pip => {
+            if (idx < dissipation.damagedCount) {
+                if (!pip.classList.contains('damaged')) {
+                    pip.classList.add('fresh');
+                    pip.classList.add('damaged');
                 } else {
-                    if (pip.classList.contains('disabled')) {
-                        pip.classList.remove('disabled');
-                    }
+                    pip.classList.remove('fresh');
                 }
-                idx++;
-            });
-        }
+            } else {
+                if (pip.classList.contains('damaged')) {
+                    pip.classList.add('fresh');
+                    pip.classList.remove('damaged');
+                } else {
+                    pip.classList.remove('fresh');
+                }
+            }
+            idx++;
+        });
+
+        idx = 0;
+        allHsPips.reverse().forEach(pip => {
+            if (idx < dissipation.heatsinksOff) {
+                if (!pip.classList.contains('disabled')) {
+                    pip.classList.add('disabled');
+                }
+            } else {
+                if (pip.classList.contains('disabled')) {
+                    pip.classList.remove('disabled');
+                }
+            }
+            idx++;
+        });
 
         // Update heatsink count display
         const hsCountElement = svg.querySelector('#hsCount');
