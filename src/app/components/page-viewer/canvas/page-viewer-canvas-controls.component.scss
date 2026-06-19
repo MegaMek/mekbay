@@ -3,6 +3,139 @@
  * See license header in component file.
  */
 
+:host {
+    display: block;
+    flex: 0 0 auto;
+    min-width: 0;
+    min-height: 0;
+}
+
+.controls-bar {
+    --control-size: 44px;
+    box-sizing: border-box;
+    width: 100%;
+    height: 64px;
+    min-height: 64px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    background: color-mix(in srgb, var(--background-color) 92%, #000 8%);
+    border-top: 1px solid var(--border-color);
+    z-index: 4;
+    overflow-x: auto;
+    overflow-y: hidden;
+    pointer-events: auto;
+}
+
+.controls-bar.dock-top {
+    border-top: none;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.controls-bar.dock-right {
+    width: 64px;
+    min-width: 64px;
+    height: 100%;
+    min-height: 0;
+    flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border-top: none;
+    border-left: 1px solid var(--border-color);
+}
+
+.bar-button,
+.color-button {
+    flex: 0 0 auto;
+    width: var(--control-size);
+    height: var(--control-size);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid color-mix(in srgb, var(--border-color) 70%, #fff 30%);
+    background: color-mix(in srgb, var(--background-color) 78%, #fff 22%);
+    color: var(--text-color);
+    cursor: pointer;
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+.bar-button:hover,
+.bar-button.active,
+.color-button.selected {
+    border-color: var(--accent-color);
+    box-shadow: inset 0 0 0 1px var(--accent-color);
+}
+
+.bar-button img {
+    width: 24px;
+    height: 24px;
+    pointer-events: none;
+}
+
+.draw-button.active {
+    box-shadow: inset 0 0 0 2px #fff;
+}
+
+.bar-divider {
+    flex: 0 0 1px;
+    width: 1px;
+    height: 36px;
+    background: var(--border-color);
+}
+
+.dock-right .bar-divider {
+    width: 36px;
+    height: 1px;
+}
+
+.bar-tools,
+.bar-colors {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+
+.dock-right .bar-tools,
+.dock-right .bar-colors {
+    flex-direction: column;
+}
+
+.color-button {
+    width: 32px;
+    height: 32px;
+    border-color: #fff;
+}
+
+.bar-slider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+    color: var(--text-color);
+}
+
+.bar-slider input[type="range"] {
+    width: 160px;
+}
+
+.bar-slider span {
+    min-width: 24px;
+    text-align: center;
+    font-size: 14px;
+}
+
+.dock-right .bar-slider {
+    writing-mode: vertical-rl;
+}
+
+.dock-right .bar-slider input[type="range"] {
+    width: 120px;
+}
+
 /* Controls Container */
 .fab-container {
     position: fixed;

@@ -79,7 +79,8 @@ const PAGE_TARGETS_OVERLAY_PREFIX = 'page-viewer-targets';
     imports: [CommonModule],
     templateUrl: './page-interaction-overlay.component.html',
     host: {
-        '[class.fixed-mode]': 'mode() === "fixed"'
+        '[class.fixed-mode]': 'mode() === "fixed"',
+        '[class.toolbar-surface]': 'surface() === "toolbar"'
     },
     styleUrls: [`./page-interaction-overlay.component.scss`]
 })
@@ -102,6 +103,7 @@ export class PageInteractionOverlayComponent {
     // Inputs
     unit = input<CBTForceUnit | null>(null);
     force = input<CBTForce | null>(null);
+    surface = input<'page' | 'toolbar'>('page');
     
     /**
      * When 'fixed', the overlay is bound to the container and stays stable during zoom/pan.
@@ -158,6 +160,8 @@ export class PageInteractionOverlayComponent {
     });
 
     turnTrackerVisible = computed(() => !this.pageViewerState.inventoryDialogOpen());
+    toolbarVisible = computed(() => this.surface() === 'toolbar' && this.turnTrackerVisible() && !!this.unit());
+    pagePhaseControlsVisible = computed(() => this.surface() === 'page' && this.turnTrackerVisible() && this.dirtyPhase());
 
     constructor() {
         effect(() => {

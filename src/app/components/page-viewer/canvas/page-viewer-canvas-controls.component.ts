@@ -43,6 +43,9 @@ import { PageViewerCanvasService } from './page-viewer-canvas.service';
 import { DialogsService } from '../../../services/dialogs.service';
 import type { ForceUnit } from '../../../models/force-unit.model';
 
+export type PageViewerControlsDock = 'bottom' | 'top' | 'right';
+type PageViewerControlsLayout = 'fab' | 'bar';
+
 /*
  * Author: Drake
  * 
@@ -62,6 +65,95 @@ import type { ForceUnit } from '../../../models/force-unit.model';
     selector: 'page-viewer-canvas-controls',
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
+        @if (layout() === 'bar') {
+            <div class="controls-bar"
+                 [class.dock-top]="dock() === 'top'"
+                 [class.dock-right]="dock() === 'right'"
+                 [class.dock-bottom]="dock() === 'bottom'"
+                 (pointerdown)="$event.stopPropagation()"
+                 (pointerup)="$event.stopPropagation()"
+                 (pointermove)="$event.stopPropagation()"
+                 (click)="$event.stopPropagation()"
+                 (dblclick)="$event.stopPropagation()">
+                <button class="bar-button dock-button preventZoomReset" type="button" (click)="cycleDock()" [attr.aria-label]="dockButtonLabel()" [title]="dockButtonLabel()">
+                    <svg aria-hidden="true" fill="none" width="24px" height="24px" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        @if (dock() === 'bottom') {
+                            <path d="M4 5h16v14H4z"></path><path d="M4 15h16"></path>
+                        } @else if (dock() === 'top') {
+                            <path d="M4 5h16v14H4z"></path><path d="M4 9h16"></path>
+                        } @else {
+                            <path d="M4 5h16v14H4z"></path><path d="M16 5v14"></path>
+                        }
+                    </svg>
+                </button>
+
+                <ng-content></ng-content>
+
+                <span class="bar-divider"></span>
+
+                <button class="bar-button draw-button preventZoomReset" type="button"
+                        [style]="mainFabStyle()"
+                        [class.active]="canvasService.isActive()"
+                        (click)="canvasService.toggleDrawMode()"
+                        aria-label="Toggle Draw Mode"
+                        title="Draw Mode">
+                    @if (canvasService.mode() === 'eraser') {
+                        <svg fill="currentColor" width="24px" height="24px" viewBox="0 5 20 22" version="1.1"
+                             xmlns="http://www.w3.org/2000/svg">
+                            <path d="M2.125 13.781l7.938-7.938c0.719-0.719 1.813-0.719 2.531 0l7.688 7.688c0.719 0.719 0.719 1.844 0 2.563l-7.938 7.938c-2.813 2.813-7.375 2.813-10.219 0-2.813-2.813-2.813-7.438 0-10.25zM11.063 22.75l-7.656-7.688c-2.125 2.125-2.125 5.563 0 7.688s5.531 2.125 7.656 0z"></path>
+                        </svg>
+                    } @else {
+                        <svg fill="currentColor" width="22px" height="22px" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M290.74 93.24l128.02 128.02-277.99 277.99-114.14 12.6C11.35 513.54-1.56 500.62.14 485.34l12.7-114.22 277.9-277.88zm207.2-19.06l-60.11-60.11c-18.75-18.75-49.16-18.75-67.91 0l-56.55 56.55 128.02 128.02 56.55-56.55c18.75-18.76 18.75-49.16 0-67.91z" />
+                        </svg>
+                    }
+                </button>
+
+                @if (canvasService.isActive()) {
+                    <div class="bar-tools">
+                        <button class="bar-button preventZoomReset" type="button" (click)="requestPrintCurrentUnit()" aria-label="Print Canvas" title="Print Canvas">
+                            <img src="/images/print.svg" alt="">
+                        </button>
+                        <button class="bar-button preventZoomReset" type="button" (click)="requestClearCurrentUnitCanvas()" aria-label="Clear Current Unit Canvas" title="Clear Canvas">
+                            <img src="/images/delete.svg" alt="">
+                        </button>
+                        <button class="bar-button preventZoomReset" type="button" [class.active]="canvasService.mode() === 'eraser'" (click)="canvasService.toggleEraser()" aria-label="Eraser" title="Eraser">
+                            <svg fill="currentColor" width="20px" height="20px" viewBox="0 5 20 22" version="1.1"
+                                 xmlns="http://www.w3.org/2000/svg">
+                                <path d="M2.125 13.781l7.938-7.938c0.719-0.719 1.813-0.719 2.531 0l7.688 7.688c0.719 0.719 0.719 1.844 0 2.563l-7.938 7.938c-2.813 2.813-7.375 2.813-10.219 0-2.813-2.813-2.813-7.438 0-10.25zM11.063 22.75l-7.656-7.688c-2.125 2.125-2.125 5.563 0 7.688s5.531 2.125 7.656 0z"></path>
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div class="bar-colors">
+                        @for (color of canvasService.colorOptions; let i = $index; track i) {
+                            <button class="color-button preventZoomReset" type="button"
+                                    [style.backgroundColor]="color"
+                                    [class.selected]="canvasService.brushColor() === color && canvasService.mode() === 'brush'"
+                                    (click)="canvasService.setBrushColor(color)"
+                                    [attr.aria-label]="'Set color ' + color">
+                            </button>
+                        }
+                    </div>
+
+                    <label class="bar-slider">
+                           <input type="range"
+                               [min]="canvasService.MIN_STROKE_SIZE"
+                               [max]="canvasService.MAX_STROKE_SIZE"
+                               [value]="canvasService.strokeSize()"
+                               (input)="onStrokeSizeChange($event)"
+                               aria-label="Brush Size"
+                               (pointerdown)="$event.stopPropagation()"
+                               (pointerup)="$event.stopPropagation()"
+                               (pointermove)="$event.stopPropagation()"
+                               (click)="$event.stopPropagation()"
+                               (dblclick)="$event.stopPropagation()"
+                               (contextmenu)="$event.stopPropagation()" />
+                        <span>{{ canvasService.strokeSize() }}</span>
+                    </label>
+                }
+            </div>
+        } @else {
         <div class="fab-container" 
              (pointerdown)="$event.stopPropagation()" 
              (pointerup)="$event.stopPropagation()"
@@ -137,6 +229,7 @@ import type { ForceUnit } from '../../../models/force-unit.model';
                 </div>
             }
         </div>
+        }
     `,
     styleUrl: './page-viewer-canvas-controls.component.scss'
 })
@@ -146,9 +239,12 @@ export class PageViewerCanvasControlsComponent {
 
     // Input for current unit
     unit = input<ForceUnit | null>(null);
+    layout = input<PageViewerControlsLayout>('fab');
+    dock = input<PageViewerControlsDock>('bottom');
 
     clearRequested = output<'unit' | 'force'>();
     printRequested = output<void>();
+    dockChange = output<PageViewerControlsDock>();
 
     mainFabStyle = computed(() => {
         const mode = this.canvasService.mode();
@@ -164,6 +260,26 @@ export class PageViewerCanvasControlsComponent {
     onStrokeSizeChange(event: Event): void {
         const value = +(event.target as HTMLInputElement).value;
         this.canvasService.setStrokeSize(value);
+    }
+
+    cycleDock(): void {
+        const nextDock: Record<PageViewerControlsDock, PageViewerControlsDock> = {
+            bottom: 'top',
+            top: 'right',
+            right: 'bottom'
+        };
+
+        this.dockChange.emit(nextDock[this.dock()]);
+    }
+
+    dockButtonLabel(): string {
+        const nextDock: Record<PageViewerControlsDock, string> = {
+            bottom: 'Dock controls to top',
+            top: 'Dock controls to right',
+            right: 'Dock controls to bottom'
+        };
+
+        return nextDock[this.dock()];
     }
 
     async requestClearCurrentUnitCanvas(): Promise<void> {

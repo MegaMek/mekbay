@@ -1,29 +1,35 @@
-<viewer-stage #container
-              [swiping]="stageSwiping()"
-              [multipleVisible]="effectiveVisiblePageCount() > 1"
-              [atMinZoom]="isFullyVisible()">
-    <!-- Swipe wrapper handles X translation during swipe (separate from zoom) -->
-    <div #swipeWrapper class="swipe-wrapper">
-        <!-- Content wrapper receives zoom/pan transforms, contains all pages -->
-        <div #content class="page-content">
-            @for (page of rewriteActivePages(); track page.key) {
-                <viewer-page [descriptor]="page"></viewer-page>
-            }
-            @for (shadow of rewriteShadowPages(); track shadow.key) {
-                <viewer-shadow-page [descriptor]="shadow"></viewer-shadow-page>
-            }
-        </div>
+<div class="viewer-shell" [class.dock-top]="controlsDock() === 'top'" [class.dock-right]="controlsDock() === 'right'" [class.dock-bottom]="controlsDock() === 'bottom'">
+    <div class="viewer-stage-slot">
+        <viewer-stage #container
+                      [swiping]="stageSwiping()"
+                      [multipleVisible]="effectiveVisiblePageCount() > 1"
+                      [atMinZoom]="isFullyVisible()">
+            <!-- Swipe wrapper handles X translation during swipe (separate from zoom) -->
+            <div #swipeWrapper class="swipe-wrapper">
+                <!-- Content wrapper receives zoom/pan transforms, contains all pages -->
+                <div #content class="page-content">
+                    @for (page of rewriteActivePages(); track page.key) {
+                        <viewer-page [descriptor]="page"></viewer-page>
+                    }
+                    @for (shadow of rewriteShadowPages(); track shadow.key) {
+                        <viewer-shadow-page [descriptor]="shadow"></viewer-shadow-page>
+                    }
+                </div>
+            </div>
+
+            <!-- Fixed interaction overlay container for single-page mode -->
+            <!-- When only 1 page is visible, the overlay is placed here to stay fixed during zoom/pan -->
+            <div #fixedOverlayContainer class="fixed-overlay-container"></div>
+        </viewer-stage>
     </div>
 
-    <!-- Fixed interaction overlay container for single-page mode -->
-    <!-- When only 1 page is visible, the overlay is placed here to stay fixed during zoom/pan -->
-    <div #fixedOverlayContainer class="fixed-overlay-container"></div>
-</viewer-stage>
-
-<!-- Canvas controls (FAB) - global for all canvases -->
-@if (!readOnly()) {
-    <page-viewer-canvas-controls [unit]="unit()" (clearRequested)="onCanvasClearRequested($event)" (printRequested)="onPrintRequested()"></page-viewer-canvas-controls>
-}
+    <!-- Unified controls bar - reserves space outside the active sheet area -->
+    @if (!readOnly()) {
+        <page-viewer-canvas-controls layout="bar" [dock]="controlsDock()" (dockChange)="setControlsDock($event)" [unit]="unit()" (clearRequested)="onCanvasClearRequested($event)" (printRequested)="onPrintRequested()">
+            <page-interaction-overlay surface="toolbar" [unit]="unit()" [force]="force()"></page-interaction-overlay>
+        </page-viewer-canvas-controls>
+    }
+</div>
 
 <!-- Heat diff markers for each interaction service -->
 @if (!readOnly()) {

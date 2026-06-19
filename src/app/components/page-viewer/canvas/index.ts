@@ -33,4 +33,4 @@
 
 export { PageViewerCanvasService } from './page-viewer-canvas.service';
 export { PageCanvasOverlayComponent } from './page-canvas-overlay.component';
-export { PageViewerCanvasControlsComponent } from './page-viewer-canvas-controls.component';
+export { PageViewerCanvasControlsComponent, type PageViewerControlsDock } from './page-viewer-canvas-controls.component';

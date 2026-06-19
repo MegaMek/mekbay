@@ -71,11 +71,13 @@ import { SvgInteractionService } from './svg-interaction.service';
 import { HeatDiffMarkerComponent, type HeatDiffMarkerData } from '../heat-diff-marker/heat-diff-marker.component';
 import {
     PageViewerCanvasService,
-    PageViewerCanvasControlsComponent
+    PageViewerCanvasControlsComponent,
+    type PageViewerControlsDock
 } from './canvas';
 import { ViewerStageComponent } from './parts/viewer-stage/viewer-stage.component';
 import { ViewerPageComponent } from './parts/viewer-page/viewer-page.component';
 import { ViewerShadowPageComponent } from './parts/viewer-shadow-page/viewer-shadow-page.component';
+import { PageInteractionOverlayComponent } from './overlay';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
 import { PageViewerNavigationService } from './internal/page-viewer-navigation.service';
 import { PageViewerRenderModelService } from './internal/page-viewer-render-model.service';
@@ -164,7 +166,7 @@ type ShadowDirection = 'left' | 'right';
         PageViewerSwipeRendererService,
         PageViewerWrapperLayoutService
     ],
-    imports: [ViewerStageComponent, ViewerPageComponent, ViewerShadowPageComponent, HeatDiffMarkerComponent, PageViewerCanvasControlsComponent],
+    imports: [ViewerStageComponent, ViewerPageComponent, ViewerShadowPageComponent, HeatDiffMarkerComponent, PageViewerCanvasControlsComponent, PageInteractionOverlayComponent],
     templateUrl: './page-viewer.component.html',
     styleUrls: ['./page-viewer.component.scss']
 })
@@ -247,6 +249,7 @@ export class PageViewerComponent implements AfterViewInit {
     // State
     loadError = signal<string | null>(null);
     currentSvg = signal<SVGSVGElement | null>(null);
+    readonly controlsDock = signal<PageViewerControlsDock>('bottom');
 
     // Track displayed units
     private displayedUnits = signal<CBTForceUnit[]>([]);
@@ -552,6 +555,11 @@ export class PageViewerComponent implements AfterViewInit {
         // Setting this signal triggers the unit effect to re-run, which handles
         // the initial displayUnit() call with the correct viewStartIndex.
         this.viewInitialized.set(true);
+    }
+
+    setControlsDock(dock: PageViewerControlsDock): void {
+        this.controlsDock.set(dock);
+        requestAnimationFrame(() => this.handleResize());
     }
 
     // ========== Initialization ==========

@@ -11,16 +11,11 @@
     overflow: hidden;
 }
 
-.container {
-    display: block;
-    position: absolute;
-    box-sizing: border-box;
-    pointer-events: none;
-    overflow: hidden;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
+:host.toolbar-surface {
+    display: contents;
+    position: static;
+    pointer-events: auto;
+    overflow: visible;
 }
 
 .overlay-button {
@@ -40,14 +35,18 @@
     }
 }
 
-.top-right-controls {
-    position: absolute;
-    top: 8px;
-    right: 8px;
+.toolbar-controls {
+    position: static;
     display: flex;
+    justify-content: center;
     align-items: center;
     gap: 8px;
     pointer-events: auto;
+}
+
+:host-context(.dock-right) .toolbar-controls {
+    flex-direction: column;
+    flex-wrap: nowrap;
 }
 
 .overlay-round-button {
