@@ -46,7 +46,7 @@
     right: 8px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     pointer-events: auto;
 }
 
@@ -54,17 +54,23 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
-    height: 40px;
+    width: 37px;
+    height: 37px;
     border-radius: 50%;
-    border: 1pt solid #000;
-    background: rgba(255, 255, 255, 0.78);
-    color: #000;
+    border: 1pt solid #fff;
+    background: #000;
+    color: #fff;
+
+    svg {
+        width: 24px;
+        height: 24px;
+    }
 }
 
-.overlay-round-button svg {
-    width: 24px;
-    height: 24px;
+:host-context(.night-mode) .overlay-round-button {
+    border-color: #000;
+    background: #fff;
+    color: #000;
 }
 
 .phase-controls {
@@ -158,12 +164,6 @@
             stroke-width: 0;
         }
     }
-}
-
-:host-context(.night-mode) .overlay-round-button {
-    border-color: #fff;
-    background: rgba(20, 20, 20, 0.82);
-    color: #fff;
 }
 
 @media print {

@@ -2,7 +2,7 @@
     <div class="wide-dialog-title equipment-dialog-title-row">
         <h2>{{ unitTitle() }}</h2>
         <div class="title-buttons">
-            <button class="target-title-button preventZoomReset" type="button" aria-label="Targets" title="Targets" (click)="openTargets($event)">
+            <button class="overlay-round-button preventZoomReset" type="button" aria-label="Targets" title="Targets" (click)="openTargets($event)">
                 <svg aria-hidden="true" stroke="currentColor" stroke-width="1.5" fill="none" height="24px" width="24px" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="2"></circle><path d="M12 1v5M12 18v5M1 12h5M18 12h5"></path></svg>
             </button>
             @if (!readOnly()) {
