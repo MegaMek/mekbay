@@ -263,7 +263,7 @@ ammo-loadout-panel {
 .equipment-dialog-footer {
     display: grid;
     grid-template-columns: minmax(0, 1fr) max-content minmax(0, 1fr);
-    align-items: center;
+    align-items: flex-end;
     gap: 12px;
     width: 100%;
     min-height: 34px;
@@ -274,7 +274,7 @@ ammo-loadout-panel {
 
 .equipment-dialog-footer-center {
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: center;
     gap: 8px;
     min-width: max-content;
@@ -283,7 +283,8 @@ ammo-loadout-panel {
 }
 
 .selected-weapons-panel {
-    display: inline-flex;
+    display: flex;
+    flex-direction: row;
     gap: 8px;
     align-items: center;
     flex-wrap: wrap;
@@ -464,6 +465,11 @@ ammo-loadout-panel {
 
     .equipment-tabs {
         justify-content: stretch;
+    }
+
+    .selected-weapons-panel {
+        flex-direction: column;
+        gap: 4px;
     }
 
     .equipment-tab {
