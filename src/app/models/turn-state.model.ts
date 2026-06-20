@@ -5,6 +5,16 @@ import type { CriticalSlot } from "./force-serialization";
 import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "./common.model";
 import type { CBTForceUnitState } from "./cbt-force-unit-state.model";
 import { MekRules } from "./rules/mek-rules";
+import {
+    getAttackerMovementModifier,
+    getTargetMovementDistanceModifier,
+    getTargetMoveTypeModifier,
+    getTargetStanceModifier,
+    getTargetUnitTypeModifier,
+    TN_JUMPED_MODIFIER,
+    TN_SKIDDING_MODIFIER,
+    type TnSpotterMoveMode,
+} from "./target-number-calculator.model";
 
 export interface PSRCheck {
     fallCheck?: number;
@@ -32,6 +42,10 @@ export class TurnState {
     dmgReceived = signal<number>(0);
     private psrChecks = signal<PSRChecks>({});
     applyMovePSR = signal<boolean>(true);
+    spotting = signal<boolean>(false);
+    indirectFire = signal<boolean>(false);
+    spotterMoveMode = signal<TnSpotterMoveMode>('stationary');
+    spotterDeclaredAttacks = signal<boolean>(false);
 
     dirty = computed<boolean>(() => {
         const heat = this.unitState.heat();
@@ -40,12 +54,17 @@ export class TurnState {
         const moveDistance = this.moveDistance();
         const psrChecks = this.psrChecks();
         const dmgReceived = this.dmgReceived();
+        const indirectFire = this.indirectFire();
         const unconsolidatedCrits = this.unitState.hasUnconsolidatedCrits();
         const unconsolidatedLocations = this.unitState.hasUnconsolidatedLocations();
         return airborne !== null
             || moveMode !== null
             || moveDistance !== null
             || dmgReceived != 0
+            || this.spotting()
+            || indirectFire
+            || (indirectFire && this.spotterMoveMode() !== 'stationary')
+            || (indirectFire && this.spotterDeclaredAttacks())
             || Object.keys(psrChecks).length > 0
             || unconsolidatedCrits
             || unconsolidatedLocations
@@ -261,49 +280,32 @@ export class TurnState {
 
     getTargetModifierAsAttacker = computed<number>(() => {
         const baseUnit = this.unitState.unit.getUnit();
-        if (baseUnit.type === 'Infantry') return 0;
-        let mod = 0;
-        const moveMode = this.moveMode();
-        if (moveMode === 'walk') {
+        let mod = baseUnit.type === 'Infantry' ? 0 : getAttackerMovementModifier(this.moveMode());
+        if (this.spotting()) { mod += 1; }
+        if (this.indirectFire()) {
             mod += 1;
-        } else if (moveMode === 'run') {
-            mod += 2;
-        } else if (moveMode === 'jump') {
-            mod += 3;
+            mod += getAttackerMovementModifier(this.spotterMoveMode());
+            if (this.spotterDeclaredAttacks()) { mod += 1; }
         }
         return mod;
     });
 
     getTargetModifierAsDefender = computed<number>(() => {
         let mod = 0;
-        if (this.unitState.prone()) { mod += 1; }
-        if (this.unitState.immobile()) { mod -= 4; }
-        if (this.unitState.skidding()) { mod += 2; }
+        if (this.unitState.prone()) { mod += getTargetStanceModifier('prone', 1); }
+        if (this.unitState.immobile()) { mod += getTargetStanceModifier('immobile', 1); }
+        if (this.unitState.skidding()) { mod += TN_SKIDDING_MODIFIER; }
         const moveMode = this.moveMode();
         if (moveMode !== 'stationary' && moveMode !== null) {
-            if (moveMode === 'jump') { mod += 1; }
+            if (moveMode === 'jump') { mod += TN_JUMPED_MODIFIER; }
             const moveDistance = this.moveDistance() || 0;
-            if (moveDistance >= 3 && moveDistance <= 4) {
-                mod += 1;
-            } else if (moveDistance >= 5 && moveDistance <= 6) {
-                mod += 2;
-            } else if (moveDistance >= 7 && moveDistance <= 9) {
-                mod += 3;
-            } else if (moveDistance >= 10 && moveDistance <= 17) {
-                mod += 4;
-            } else if (moveDistance >= 18 && moveDistance <= 24) {
-                mod += 5;
-            } else if (moveDistance >= 25) {
-                mod += 6;
-            }
+            mod += getTargetMovementDistanceModifier(moveDistance);
         }
         const baseUnit = this.unitState.unit.getUnit();
         if (baseUnit.subtype === 'Battle Armor') {
-            mod += 1;
+            mod += getTargetUnitTypeModifier('battle-armor');
         }
-        if (baseUnit.moveType === 'VTOL' || baseUnit.moveType === 'WiGE') {
-            mod += 1;
-        }
+        mod += getTargetMoveTypeModifier(baseUnit.moveType);
         return mod;
     });
 

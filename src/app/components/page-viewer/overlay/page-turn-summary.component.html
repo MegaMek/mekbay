@@ -1,7 +1,7 @@
 <div class="summary glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
-    <div class="header">Turn Tracker</div>
+    <div class="header">TURN TRACKER</div>
     <div class="group">
-        <div class="phaseTitle">Movement</div>
+        <div class="sectionTitle">Movement</div>
         <div class="summary-entry">
             @if (canSwitchAirborneMode()) {
             <div class="row grid">
@@ -16,7 +16,7 @@
             </div>
             }
             @if (canSwitchAirborneMode() === false || airborne() !== null) {
-            <div class="row grid">
+            <div class="row">
                 @for (moveMode of moveModes(); track moveMode.mode) {
                 @let mode = moveMode.mode;
                 <button type="button" class="bt-button move-button" [class.selected]="currentMoveMode() === mode"
@@ -29,88 +29,127 @@
                             fill="currentColor"></path>
                     </svg>
                     } @else {
-                    {{ moveMode.label }}
+                    <span>{{ moveMode.label }}</span>
+                    @if (moveModeModifierLabel(mode); as modifierLabel) {
+                        <span class="modifier-badge">{{ modifierLabel }}</span>
+                    }
                     }
                 </button>
                 }
             </div>
             @if (currentMoveMode() !== 'stationary' && currentMoveMode() !== null) {
             <div class="row">
-                <div class="move-slider-container" #sliderContainer tabindex="0" (keydown)="onKeyDown($event)">
-                    <input class="range" type="range" [attr.min]="MOVE_MIN" [attr.max]="moveMax()"
-                        [value]="moveDistance()" (input)="onMoveDistanceInput($event)" aria-label="Move distance" />
-                    <div class="thumb-marker" [style.left.%]="moveDistancePercent()" (pointerdown)="startDrag($event)">
-                        <div class="hex" [class.valueAssigned]="hasMoveDistance()" [class.danger]="overDistance()">{{
-                            moveDistanceLabel() }}</div>
-                    </div>
-                </div>
+                <hex-slider
+                    class="move-slider"
+                    [min]="MOVE_MIN"
+                    [max]="moveMax()"
+                    [step]="1"
+                    [value]="moveDistance()"
+                    [ticks]="moveDistanceTicks()"
+                    [label]="moveDistanceLabel()"
+                    [ariaLabel]="'Move distance'"
+                    [valueAssigned]="hasMoveDistance()"
+                    [danger]="overDistance()"
+                    (valueChange)="setMoveDistance($event)"></hex-slider>
             </div>
             }
             }
         </div>
     </div>
-    <div class="phaseTitle">As Attacker</div>
+    <div class="sectionTitle">As Attacker</div>
     <div class="summary-entry">
+        <div class="row grid">
+            <button type="button" class="bt-button move-button" [class.selected]="spotting()" [attr.aria-pressed]="spotting()" (click)="toggleSpotting()">
+                <span>Spotting</span><span class="modifier-badge">+1</span>
+            </button>
+            <button type="button" class="bt-button move-button" [class.selected]="indirectFire()" [attr.aria-pressed]="indirectFire()" (click)="toggleIndirectFire()">
+                <span>Indirect Fire</span><span class="modifier-badge">+1</span>
+            </button>
+        </div>
+        @if (indirectFire()) {
+        <div class="spotter-section framed-borders">
+            <div class="sectionTitle">Spotter</div>
+            <div class="row">
+                <button type="button" class="bt-button move-button" [class.selected]="currentSpotterMoveMode() === 'stationary'" [attr.aria-pressed]="currentSpotterMoveMode() === 'stationary'" (click)="selectSpotterMove('stationary')">
+                    <svg width="16px" height="16px" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"
+                        preserveAspectRatio="xMidYMid meet">
+                        <path
+                            d="M32 2C15.432 2 2 15.432 2 32c-.001 16.568 13.432 30 30 30s30.001-13.432 30-30c.001-16.568-13.432-30-30-30zM9 38V26h46v12H9z"
+                            fill="currentColor"></path>
+                    </svg>
+                </button>
+                <button type="button" class="bt-button move-button" [class.selected]="currentSpotterMoveMode() === 'walk'" [attr.aria-pressed]="currentSpotterMoveMode() === 'walk'" (click)="selectSpotterMove('walk')"><span>Walk</span><span class="modifier-badge">+1</span></button>
+                <button type="button" class="bt-button move-button" [class.selected]="currentSpotterMoveMode() === 'run'" [attr.aria-pressed]="currentSpotterMoveMode() === 'run'" (click)="selectSpotterMove('run')"><span>Run</span><span class="modifier-badge">+2</span></button>
+                <button type="button" class="bt-button move-button" [class.selected]="currentSpotterMoveMode() === 'jump'" [attr.aria-pressed]="currentSpotterMoveMode() === 'jump'" (click)="selectSpotterMove('jump')"><span>Jump</span><span class="modifier-badge">+3</span></button>
+            </div>
+            <div class="row grid">
+                <button type="button" class="bt-button move-button" [class.selected]="spotterDeclaredAttacks()" [attr.aria-pressed]="spotterDeclaredAttacks()" (click)="toggleSpotterDeclaredAttacks()">
+                    <span>Declared Attacks</span><span class="modifier-badge">+1</span>
+                </button>
+            </div>
+        </div>
+        }
         <div class="row">
             @let modifierAtk = getTargetModifierAsAttacker();
-            <span>Attack Modifier:</span><span>{{ modifierAtk >= 0 ? '+' : '' }}{{ modifierAtk }}</span>
+            <span>Attack Modifier:</span><span class="modifier important">{{ modifierAtk >= 0 ? '+' : '' }}{{ modifierAtk }}</span>
         </div>
     </div>
     <div class="group">
-        <div class="phaseTitle">As Defender</div>
+        <div class="sectionTitle">As Defender</div>
         <div class="summary-entry">
             <div class="row">
-                <span>Target Modifier:</span><span>{{ getTargetModifierAsDefender() }}</span>
+                <span>Target Modifier:</span><span class="modifier important">{{ getTargetModifierAsDefender() }}</span>
             </div>
         </div>
         <div class="summary-entry">
             <div class="row">
-                <span>Damage received:</span><span>{{ damageReceived() }}</span>
+                <span>Damage received:</span><span class="modifier warning">{{ damageReceived() }}</span>
             </div>
         </div>
     </div>
     @if (tracksHeat()) {
     <div class="group">
-        <div class="phaseTitle">Heat</div>
-        <div class="summary-entry">
-            <div class="row"><span>Movement:</span><span>{{ (heatFromMovement() > 0 ? '+' : '') +  heatFromMovement() }}</span></div>
+        <div class="sectionTitle">Heat</div>
+        <div class="summary-entry heat-modifiers">
+            <div class="row"><span>Movement:</span><span class="modifier heat">{{ (heatFromMovement() > 0 ? '+' : '') +  heatFromMovement() }}</span></div>
             @if (heatGeneratedFromDamagedEngine() > 0) {
-                <div class="row"><span>Damaged Engine:</span><span class="danger">+{{ heatGeneratedFromDamagedEngine() }}</span></div>
+                <div class="row"><span>Damaged Engine:</span><span class="modifier heat">+{{ heatGeneratedFromDamagedEngine() }}</span></div>
             }
         </div>
     </div>
     }
     @if (psrModifiers().length > 0) {
     <div class="group">
-        <div class="phaseTitle">PSR Modifiers</div>
+        <div class="sectionTitle">PSR Modifiers</div>
         <div class="summary-entry psr-modifiers">
             @for (modifier of psrModifiers(); track $index) {
             <div class="row wrap">
                 <span>{{ modifier.reason }}</span>
-                <span>{{ modifier.pilotCheck! >= 0 ? '+' : '' }}{{ modifier.pilotCheck }}</span>
+                <span class="modifier danger">{{ modifier.pilotCheck! >= 0 ? '+' : '' }}{{ modifier.pilotCheck }}</span>
             </div>
             }
         </div>
     </div>
     }
-    @if (falling()) {
-    <button role="button" class="summary-entry bt-button danger" tabindex="0">
-        ⚠ FALLING! ⚠
-    </button>
-    } @else if (hasPSRChecks()) {
-    <button role="button" class="summary-entry bt-button warning" (click)="openPsrWarning($event)" tabindex="0">
-        ⚠ PSR Checks! ({{ PSRChecksCount() }})
-    </button>
-    }
-    @if (dirty()) {
-    <button role="button" class="summary-entry bt-button" tabindex="0" (click)="endTurn()">
-        End Turn
-    </button>
-    }
-    @if (endTurnForAllButtonVisible()) {
-    <button role="button" class="summary-entry bt-button" tabindex="0" (click)="endTurnForAll($event)">
-        End Turn for All Units
-    </button>
-    }
-    <span style="font-size: 9px; text-align: center;">This feature is currently under development.</span>
+    <div class="summary-entry">
+        @if (falling()) {
+            <button role="button" class="summary-entry bt-button danger" tabindex="0">
+                ⚠ FALLING! ⚠
+            </button>
+        } @else if (hasPSRChecks()) {
+            <button role="button" class="summary-entry bt-button warning" (click)="openPsrWarning($event)" tabindex="0">
+                ⚠ PSR Checks! ({{ PSRChecksCount() }})
+            </button>
+        }
+        @if (dirty()) {
+            <button role="button" class="summary-entry bt-button" tabindex="0" (click)="endTurn()">
+                End Turn
+            </button>
+        }
+        @if (endTurnForAllButtonVisible()) {
+            <button role="button" class="summary-entry bt-button" tabindex="0" (click)="endTurnForAll($event)">
+                End Turn for All Units
+            </button>
+        }
+    </div>
 </div>

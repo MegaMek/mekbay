@@ -62,3 +62,10 @@ export function formatPilotingDisplay(pilotingSkill: number, psrModifier: number
     const sign = psrModifier > 0 ? '+' : '';
     return `${pilotingSkill}${sign}${psrModifier}`;
 }
+
+/** Format a gunnery skill value for display, applying the unit's own attack modifier. */
+export function formatGunneryDisplay(gunnerySkill: number, attackerModifier: number): string {
+    if (!attackerModifier) return gunnerySkill.toString();
+    const sign = attackerModifier > 0 ? '+' : '';
+    return `${gunnerySkill}${sign}${attackerModifier}`;
+}

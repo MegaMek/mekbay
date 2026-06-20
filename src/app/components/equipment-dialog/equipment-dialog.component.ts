@@ -1,8 +1,7 @@
-import { ChangeDetectionStrategy, Component, computed, type ComponentRef, DestroyRef, type ElementRef, inject, Injector, isSignal, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, type ElementRef, inject, Injector, isSignal, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { getAmmoControlEntriesForUnitWeapons } from '../../utils/ammo-interaction.util';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
@@ -13,7 +12,7 @@ import { AmmoLoadoutPanelComponent, type AmmoLoadoutPanelData } from './ammo-loa
 import type { EquipmentDialogData, EquipmentDialogTab } from './equipment-dialog.model';
 import { PageInteractionOverlayComponent } from '../page-viewer/overlay/page-interaction-overlay.component';
 import { PageTurnSummaryPanelComponent } from '../page-viewer/overlay/page-turn-summary.component';
-import { WeaponTargetsMenuComponent, type WeaponTargetUpdateRequest } from '../equipment-dialog/weapon-targets-menu.component';
+import { WeaponTargetsOverlayController } from './weapon-targets-overlay.controller';
 
 const WEAPON_TARGETS_OVERLAY_KEY = 'weapon-equipment-targets';
 const WEAPON_TARGET_CHOICE_OVERLAY_KEY = 'weapon-equipment-target-choice';
@@ -37,11 +36,17 @@ export class EquipmentDialogComponent {
     private readonly overlayManager = inject(OverlayManagerService);
     private readonly injector = inject(Injector);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly targetsOverlay = new WeaponTargetsOverlayController({
+        overlay: this.overlay,
+        overlayManager: this.overlayManager,
+        injector: this.injector,
+        destroyRef: this.destroyRef,
+        dialogsService: this.data.context.dialogsService
+    });
     private readonly turnSummaryParent = {
         unit: () => this.unit(),
         force: () => null
     };
-    private targetsCompRef: ComponentRef<WeaponTargetsMenuComponent> | null = null;
     readonly tabs: ReadonlyArray<{ id: EquipmentDialogTab; label: string }> = [
         { id: 'weapons', label: 'Weapons & Equipment' },
         { id: 'ammo', label: 'Ammo Loadout' }
@@ -154,54 +159,17 @@ export class EquipmentDialogComponent {
     openTargets(event: MouseEvent): void {
         event.stopPropagation();
 
-        if (this.overlayManager.has(WEAPON_TARGETS_OVERLAY_KEY)) {
-            this.overlayManager.closeManagedOverlay(WEAPON_TARGETS_OVERLAY_KEY);
-            this.targetsCompRef = null;
+        if (this.targetsOverlay.has(WEAPON_TARGETS_OVERLAY_KEY)) {
+            this.targetsOverlay.close(WEAPON_TARGETS_OVERLAY_KEY);
             return;
         }
 
         const target = event.currentTarget as HTMLElement;
-        const portal = new ComponentPortal(WeaponTargetsMenuComponent, null, this.injector);
-        const { componentRef, closed } = this.overlayManager.createManagedOverlay(WEAPON_TARGETS_OVERLAY_KEY, target, portal, {
-            hasBackdrop: false,
-            panelClass: 'weapon-targets-overlay-panel',
-            closeOnOutsideClick: false,
-            closeOnOutsideClickOnly: true,
-            scrollStrategy: this.overlay.scrollStrategies.reposition(),
-            positions: [
-                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
-                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
-                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
-                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
-            ]
-        });
-        this.targetsCompRef = componentRef;
-        this.syncTargetsOverlayInputs();
-
-        outputToObservable(componentRef.instance.addRequest).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-            this.unit().createInventoryControlTarget();
-            this.syncTargetsOverlayInputs();
-        });
-        outputToObservable(componentRef.instance.resetRequest).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-            this.unit().resetInventoryControlTargets();
-            this.syncTargetsOverlayInputs();
-        });
-        outputToObservable(componentRef.instance.updateRequest).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((request: WeaponTargetUpdateRequest) => {
-            this.unit().updateInventoryControlTarget(request.targetId, request.patch);
-            this.syncTargetsOverlayInputs();
-        });
-        outputToObservable(componentRef.instance.deleteRequest).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(targetId => {
-            this.unit().deleteInventoryControlTarget(targetId);
-            this.syncTargetsOverlayInputs();
-        });
-        outputToObservable(componentRef.instance.colorPickerOpened).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-            this.overlayManager.blockCloseUntil(WEAPON_TARGETS_OVERLAY_KEY);
-        });
-        outputToObservable(componentRef.instance.colorPickerClosed).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-            this.overlayManager.unblockClose(WEAPON_TARGETS_OVERLAY_KEY);
-        });
-        closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-            this.targetsCompRef = null;
+        this.targetsOverlay.open({
+            overlayKey: WEAPON_TARGETS_OVERLAY_KEY,
+            target,
+            unit: this.unit(),
+            readOnly: () => this.readOnly()
         });
     }
 
@@ -416,20 +384,12 @@ export class EquipmentDialogComponent {
         return typeof method === 'function' ? method.call(turnState) as T : fallback;
     }
 
-    private syncTargetsOverlayInputs(): void {
-        if (!this.targetsCompRef) return;
-        this.targetsCompRef.setInput('targets', this.targets());
-        this.targetsCompRef.setInput('readOnly', this.readOnly());
-        this.targetsCompRef.changeDetectorRef.detectChanges();
-        this.overlayManager.repositionAll();
-    }
-
     private closeUnitOverlays(unitId: string): void {
         this.overlayManager.closeManagedOverlay(this.turnSummaryOverlayKey(unitId));
         this.overlayManager.closeManagedOverlay(this.psrWarningOverlayKey(unitId));
         this.overlayManager.closeManagedOverlay(WEAPON_TARGETS_OVERLAY_KEY);
         this.overlayManager.closeManagedOverlay(WEAPON_TARGET_CHOICE_OVERLAY_KEY);
-        this.targetsCompRef = null;
+        this.targetsOverlay.clearRef();
     }
 
     private turnSummaryOverlayKey(unitId = this.unit().id): string {

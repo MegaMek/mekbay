@@ -244,7 +244,7 @@ export interface EquipmentStats {
 
 export interface WeaponData {
     heat: number;
-    damage: string | number;
+    damage: string | number | Array<number>;
     explosionDamage: number;
     rackSize: number;
     ammoType: AmmoType;
@@ -500,7 +500,7 @@ export class WeaponEquipment extends Equipment {
     }
 
     get heat(): number { return this.weapon.heat; }
-    get damage(): string | number { return this.weapon.damage; }
+    get damage(): string | number | Array<number> { return this.weapon.damage; }
     get rackSize(): number { return this.weapon.rackSize; }
     get ammoType(): AmmoType { return this.weapon.ammoType; }
     get ranges(): number[] { return this.weapon.ranges; }

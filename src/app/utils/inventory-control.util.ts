@@ -3,6 +3,7 @@ import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { CriticalSlot, MountedEquipment } from '../models/force-serialization';
 import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../models/inventory-control-runtime-state.model';
 import { computeLinkedModifiers, isMountedDestroyed, resolveHitModifier } from '../models/rules/hit-modifier.util';
+import { resolveWeaponRangeDamageText, WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, type WeaponRangeKey } from '../models/rules/weapon-range-rules.util';
 import { formatBattleArmorTrooperLocation, getBattleArmorTrooperNumber, isBattleArmorTrooperLocationDestroyed } from './ammo-interaction.util';
 
 export const INVENTORY_CONTROL_MODE_STATE = 'inventory_control_mode';
@@ -60,6 +61,7 @@ export interface InventoryControlRow {
     id: string;
     entry: MountedEquipment;
     category: InventoryControlGroupId;
+    additionalHitModifier: number;
     destroyed: boolean;
     disabled: boolean;
     originalIndex: number;
@@ -103,6 +105,7 @@ const GROUP_TITLES: Record<InventoryControlGroupId, string> = {
 };
 
 const JAMMED_STATE_VALUE = 'jammed';
+export const BUILT_IN_ONE_SHOT_AMMO_OPTION_ID = '__built_in_one_shot__';
 
 export function inventoryControlSortKey(groupId: InventoryControlGroupId): string {
     return `${INVENTORY_CONTROL_SORT_STATE}:${groupId}`;
@@ -190,7 +193,16 @@ function getInventoryControlAmmoSummary(
     mode: string | null,
     locationLock?: string
 ): InventoryControlAmmoSummary {
-    if (!(entry.equipment instanceof WeaponEquipment) || entry.equipment.ammoType === 'NA') {
+    if (!(entry.equipment instanceof WeaponEquipment)) {
+        return { tracksAmmo: false, remaining: 0, total: 0, options: [] };
+    }
+
+    const builtInShotCapacity = getBuiltInOneShotCapacity(entry);
+    if (builtInShotCapacity > 0) {
+        return getBuiltInOneShotAmmoSummary(entry, builtInShotCapacity);
+    }
+
+    if (entry.equipment.ammoType === 'NA') {
         return { tracksAmmo: false, remaining: 0, total: 0, options: [] };
     }
 
@@ -213,6 +225,42 @@ function getInventoryControlAmmoSummary(
             destroyed: source.destroyed,
             disabled: source.destroyed
         }))
+    };
+}
+
+export function getBuiltInOneShotCapacity(entry: MountedEquipment): number {
+    if (!(entry.equipment instanceof WeaponEquipment)) return 0;
+    if (entry.equipment.flags.has('F_DOUBLE_ONE_SHOT')) return 2;
+    if (entry.equipment.flags.has('F_ONE_SHOT')) return 1;
+    return 0;
+}
+
+export function getBuiltInOneShotConsumed(entry: MountedEquipment): number {
+    const capacity = getBuiltInOneShotCapacity(entry);
+    if (capacity <= 0) return 0;
+    const consumed = entry.critSlots?.[0]?.consumed ?? entry.consumed ?? 0;
+    return Math.max(0, Math.min(capacity, consumed));
+}
+
+export function isBuiltInOneShotAmmoOption(optionId: string): boolean {
+    return optionId === BUILT_IN_ONE_SHOT_AMMO_OPTION_ID;
+}
+
+function getBuiltInOneShotAmmoSummary(entry: MountedEquipment, capacity: number): InventoryControlAmmoSummary {
+    const consumed = getBuiltInOneShotConsumed(entry);
+    const remaining = Math.max(0, capacity - consumed);
+    return {
+        tracksAmmo: true,
+        remaining,
+        total: capacity,
+        options: [{
+            id: BUILT_IN_ONE_SHOT_AMMO_OPTION_ID,
+            label: `Built-in (${remaining}/${capacity})`,
+            remaining,
+            total: capacity,
+            destroyed: false,
+            disabled: remaining <= 0
+        }]
     };
 }
 
@@ -325,7 +373,8 @@ function buildInventoryControlRow(
     const destroyed = options.destroyed ?? isMountedDestroyed(entry);
     const disabled = isInventoryControlEntryDisabled(entry, state);
     const category = getEntryCategory(entry);
-    const hitModifier = resolveHitModifier(entry, state?.hitMod ?? computeLinkedModifiers(entry));
+    const additionalHitModifier = state?.hitMod ?? computeLinkedModifiers(entry);
+    const hitModifier = resolveHitModifier(entry, additionalHitModifier);
     const hit = formatHitModifier(hitModifier);
     const base = readEntryDisplayData(entry.el, hit);
     if (options.locationLock) {
@@ -334,18 +383,21 @@ function buildInventoryControlRow(
     const { modes, modifiers } = readInventoryControlModesAndModifiers(entry);
     const selectedMode = getSelectedMode(entry, modes);
     syncSvgMode(entry, selectedMode, disabled);
-    const selectedModeData = selectedMode ? modes.find(mode => mode.mode === selectedMode)?.data : null;
     const rowEntry = createInventoryControlRowEntry(entry, options);
+    const selectedModeData = selectedMode ? modes.find(mode => mode.mode === selectedMode)?.data : null;
+    const display = selectedModeData ? mergeModeData(base, selectedModeData) : base;
+    const selectedRange = entry.owner.getInventoryControlSelectedRange?.(rowEntry.id) ?? null;
 
     return {
         id: rowEntry.id,
         entry: rowEntry,
         category,
+        additionalHitModifier,
         destroyed,
         disabled,
         originalIndex,
         base,
-        display: selectedModeData ? mergeModeData(base, selectedModeData) : base,
+        display: applySelectedRangeDisplay(rowEntry, display, selectedRange, additionalHitModifier),
         modes,
         modifiers,
         selectedMode,
@@ -429,7 +481,7 @@ function readEntryDisplayData(el: SVGElement, hit: string): InventoryControlDisp
         name: readDirectText(el, '.name') || el.getAttribute('id') || '',
         location: normalizeCell(readDirectText(el, '.location')),
         heat: normalizeCell(readDirectText(el, '.heat')),
-        damage: normalizeCell(readDirectText(el, '.damage')),
+        damage: normalizeCell(readDamageText(el)),
         hit,
         min: normalizeCell(readDirectText(el, '.range_min')),
         short: normalizeCell(readDirectText(el, '.range_short')),
@@ -606,6 +658,22 @@ function normalizeEquipmentName(value: string): string {
     return value.toLocaleLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
+function applySelectedRangeDisplay(
+    entry: MountedEquipment,
+    display: InventoryControlDisplayData,
+    selectedRange: WeaponRangeKey | null,
+    additionalHitModifier: number
+): InventoryControlDisplayData {
+    const damage = resolveWeaponRangeDamageText(entry, selectedRange, display.damage);
+    const hit = formatHitModifier(resolveHitModifier(entry, additionalHitModifier, selectedRange));
+    if (damage === null && hit === display.hit) return display;
+    return {
+        ...display,
+        damage: damage ?? display.damage,
+        hit
+    };
+}
+
 function mergeModeData(base: InventoryControlDisplayData, modeData: InventoryControlDisplayData): InventoryControlDisplayData {
     return {
         name: base.name,
@@ -627,6 +695,14 @@ function hasModeData(data: InventoryControlDisplayData): boolean {
 
 function readDirectText(el: Element, selector: string): string {
     return (el.querySelector(`:scope > ${selector}`)?.textContent ?? '').trim();
+}
+
+function readDamageText(el: Element): string {
+    const damageEl = el.querySelector(':scope > .damage');
+    const originalText = damageEl
+        ?.querySelector(`:scope > text[${WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE}]`)
+        ?.getAttribute(WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE);
+    return (originalText ?? damageEl?.textContent ?? '').trim();
 }
 
 function normalizeCell(value: string): string {

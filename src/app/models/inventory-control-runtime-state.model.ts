@@ -1,5 +1,6 @@
 import { signal } from '@angular/core';
 import type { MountedEquipment } from './force-serialization';
+import type { TnTargetNumberCalculatorState, TnTargetUnitType } from './target-number-calculator.model';
 
 export type InventoryControlRuntimeRangeKey = 'short' | 'medium' | 'long' | 'extreme';
 
@@ -26,8 +27,10 @@ export interface InventoryControlRuntimeTarget {
     letter: string;
     name: string;
     color: string;
+    unitType?: TnTargetUnitType;
     distance: number;
     tnModifier: number;
+    tnCalculator?: TnTargetNumberCalculatorState;
 }
 
 export interface InventoryControlRuntimeSelectionSnapshot {
@@ -157,6 +160,7 @@ export class InventoryControlRuntimeState {
             letter: targetId,
             name: `Target ${targetId}`,
             color: INVENTORY_CONTROL_TARGET_COLORS[targetIndex % INVENTORY_CONTROL_TARGET_COLORS.length],
+            unitType: 'mek-biped',
             distance: 0,
             tnModifier: 0
         };
@@ -188,8 +192,10 @@ export class InventoryControlRuntimeState {
             ...target,
             ...(patch.name !== undefined && { name: patch.name }),
             ...(patch.color !== undefined && { color: patch.color }),
+            ...(patch.unitType !== undefined && { unitType: patch.unitType }),
             ...(patch.distance !== undefined && { distance: Math.max(0, Number.isFinite(patch.distance) ? patch.distance : target.distance) }),
-            ...(patch.tnModifier !== undefined && { tnModifier: Number.isFinite(patch.tnModifier) ? patch.tnModifier : target.tnModifier })
+            ...(patch.tnModifier !== undefined && { tnModifier: Number.isFinite(patch.tnModifier) ? patch.tnModifier : target.tnModifier }),
+            ...(patch.tnCalculator !== undefined && { tnCalculator: { ...patch.tnCalculator } })
         };
         this.updateTargets(targets => targets.set(targetId, updated));
         return { ...updated };

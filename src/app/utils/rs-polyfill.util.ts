@@ -659,6 +659,7 @@ export class RsPolyfillUtil {
         const entryButtonLimitX = this.findInventoryEntryButtonLimitX(svg, rangeButtonColumns);
         const unitDataPanel = svg.querySelector('#unitDataPanel') as SVGSVGElement;
         if (unitDataPanel) {
+            unitDataPanel.parentElement?.appendChild(unitDataPanel);
             let frame = unitDataPanel.querySelector('.frame') as SVGGraphicsElement;
             if (!frame) {
                 const paths = unitDataPanel.querySelectorAll('path');
@@ -739,6 +740,7 @@ export class RsPolyfillUtil {
             rect.setAttribute('inventory-id', id);
             rect.setAttribute('class', 'inventoryEntryButton mainButton interactive screen-only');
             nameEl.parentElement?.insertBefore(rect, nameEl.parentElement.firstChild);
+            this.addAimedShotWarningText(nameEl.parentElement, rectX + rectWidth, rectY, rectHeight);
             this.addRangeButtons(nameEl.parentElement, rangeButtonColumns, id, null, rectY, rectHeight);
 
             const alternativeModes = group.querySelectorAll('.alternativeMode');
@@ -758,6 +760,32 @@ export class RsPolyfillUtil {
                 this.addRangeButtons(mode, rangeButtonColumns, id, modeName, modeBBox.y, rectHeight);
             });
         });
+    }
+
+    private static addAimedShotWarningText(parent: Element | null | undefined, x: number, y: number, height: number): void {
+        if (!parent || parent.querySelector(':scope > .targetAimedShotWarning-text')) return;
+
+        const warningRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        warningRect.setAttribute('class', 'targetAimedShotWarning-rect screen-only');
+        warningRect.setAttribute('x', x.toString());
+        warningRect.setAttribute('y', y.toString());
+        warningRect.setAttribute('width', '29');
+        warningRect.setAttribute('height', height.toString());
+        warningRect.setAttribute('fill', '#d12020');
+        warningRect.setAttribute('display', 'none');
+        parent.appendChild(warningRect);
+
+        const warningText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        warningText.setAttribute('class', 'targetAimedShotWarning-text screen-only');
+        warningText.setAttribute('x', (x + 2).toString());
+        warningText.setAttribute('y', (y + height / 2).toString());
+        warningText.setAttribute('dominant-baseline', 'central');
+        warningText.setAttribute('fill', '#fefefe');
+        warningText.setAttribute('font-size', '7');
+        warningText.setAttribute('font-weight', '500');
+        warningText.setAttribute('display', 'none');
+        warningText.textContent = '';
+        parent.appendChild(warningText);
     }
 
     private static findInventoryRangeButtonColumns(svg: SVGSVGElement): InventoryRangeButtonColumn[] {

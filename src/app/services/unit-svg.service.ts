@@ -41,18 +41,17 @@ import { LINKED_LOCATIONS } from "../models/common.model";
 import { LoggerService } from './logger.service';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { resolveHitModifier, computeLinkedModifiers } from '../models/rules/hit-modifier.util';
-import { formatPilotingDisplay } from '../models/rules/unit-type-rules';
+import { resolveWeaponRangeDamageText, WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE } from '../models/rules/weapon-range-rules.util';
+import { formatGunneryDisplay, formatPilotingDisplay } from '../models/rules/unit-type-rules';
 import { AmmoEquipment } from '../models/equipment.model';
 import { formatAmmoName } from '../utils/ammo-interaction.util';
 import { getMotiveModeLabel, getMotiveModeTargetNumberModifier } from '../models/motiveModes.model';
 import { inventoryTargetCategory, inventoryTargetNumberText, readInventoryTargetDisplay } from '../utils/inventory-target-number.util';
 import type { InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 
-type InventoryControlSvgRangeKey = InventoryControlRuntimeRangeKey;
-
 const INVENTORY_CONTROL_SELECTION_COLOR_PROPERTY = '--inventory-control-selection-color';
 
-const INVENTORY_CONTROL_RANGE_CLASS_NAMES: Record<InventoryControlSvgRangeKey, string> = {
+const INVENTORY_CONTROL_RANGE_CLASS_NAMES: Record<InventoryControlRuntimeRangeKey, string> = {
     short: 'selected-range-short',
     medium: 'selected-range-medium',
     long: 'selected-range-long',
@@ -281,6 +280,7 @@ export class UnitSvgService {
         const svg = this.unit.svg();
         if (!svg) return;
         const PSRMod = this.unit.PSRModifiers();
+        const attackerModifier = this.unit.turnState().getTargetModifierAsAttacker();
 
         // Check if all crew members have default values (no name and default skills)
         const allCrewDefault = crew.every(member => 
@@ -339,7 +339,7 @@ export class UnitSvgService {
                     if (skill.name === 'piloting') {
                         svgElement.textContent = formatPilotingDisplay(skillValue, PSRMod?.modifier ?? 0);
                     } else {
-                        svgElement.textContent = skillValue.toString();
+                        svgElement.textContent = formatGunneryDisplay(skillValue, attackerModifier);
                     }
                 }
             });
@@ -711,21 +711,23 @@ export class UnitSvgService {
         ammoProfileEl.textContent = ammoList ? `Ammo: ${ammoList}` : 'Ammo:';
     }
 
-    /** Override to inject global fire modifiers (e.g. heat penalties). */
-    protected getGlobalFireModifier(): number { return 0; }
+    protected resolveInventoryControlHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {
+        return resolveHitModifier(entry, computeLinkedModifiers(entry), range);
+    }
 
     /** Override to inject entry-specific effective hit modifiers. */
-    protected getInventoryTargetHitModifier(entry: MountedEquipment): number {
-        const hitModifier = resolveHitModifier(entry, this.getGlobalFireModifier() + computeLinkedModifiers(entry));
+    protected getInventoryTargetHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number {
+        const hitModifier = this.resolveInventoryControlHitModifier(entry, range);
         return typeof hitModifier === 'number' ? hitModifier - this.inventoryTargetHeatFireModifier(entry) : 0;
     }
 
     inventoryTargetHeatFireModifier(entry: MountedEquipment): number {
-        return inventoryTargetCategory(entry) === 'ranged' ? this.getGlobalFireModifier() : 0;
+        return 0;
     }
 
     inventoryTargetNumberText(entry: MountedEquipment, target: InventoryControlRuntimeTarget): string | null {
         const moveMode = this.unit.turnState().moveMode();
+        const range = this.inventoryControlRangeForTargetDistance(entry, target.distance);
         const text = inventoryTargetNumberText({
             entry,
             category: inventoryTargetCategory(entry),
@@ -735,7 +737,7 @@ export class UnitSvgService {
             pilotingSkill: this.unit.pilotingSkill(),
             movementModifier: getMotiveModeTargetNumberModifier(moveMode),
             movementLabel: moveMode ? getMotiveModeLabel(moveMode, this.unit.getUnit(), this.unit.turnState().airborne() ?? false) : 'None',
-            hitModifier: this.getInventoryTargetHitModifier(entry),
+            hitModifier: this.getInventoryTargetHitModifier(entry, range),
             heatFireModifier: this.inventoryTargetHeatFireModifier(entry)
         });
         return text || null;
@@ -757,10 +759,14 @@ export class UnitSvgService {
             const hasSelectedMode = !!entry.el.querySelector(':scope > .alternativeMode.selected');
 
             this.renderInventoryControlSelectionColor(entry, target);
+            this.renderInventoryControlRangeDamageEntry(entry, selectedRange);
+            if (!entry.destroyed) {
+                this.renderHitModEntry(entry, this.resolveInventoryControlHitModifier(entry, selectedRange));
+            }
             entry.el.classList.toggle('selected', selected);
             entry.el.classList.toggle('selected-alternative-mode', selected && hasSelectedMode);
             this.renderInventoryControlTargetNumberEntry(entry, targetNumberText);
-            for (const [range, className] of Object.entries(INVENTORY_CONTROL_RANGE_CLASS_NAMES) as [InventoryControlSvgRangeKey, string][]) {
+            for (const [range, className] of Object.entries(INVENTORY_CONTROL_RANGE_CLASS_NAMES) as [InventoryControlRuntimeRangeKey, string][]) {
                 entry.el.classList.toggle(className, selectedRange === range);
             }
         }
@@ -790,16 +796,57 @@ export class UnitSvgService {
         el.classList.toggle('selected-target-out-of-range', targetNumberText === 'X');
     }
 
+    private renderInventoryControlAimedShotWarning(entry: MountedEquipment, warningText: string | null): void {
+        const el = entry.el;
+        if (!el) return;
+        const warning = el.querySelector<SVGElement>(':scope > .targetAimedShotWarning-text');
+        if (!warning) return;
+
+        const visible = !!warningText;
+        const warningRect = el.querySelector<SVGElement>(':scope > .targetAimedShotWarning-rect');
+        if (warningRect) {
+            warningRect.setAttribute('display', visible ? 'block' : 'none');
+        }
+        warning.setAttribute('display', visible ? 'block' : 'none');
+        warning.textContent = visible ? 'NO AIM' : '';
+        el.classList.toggle('selected-target-aimed-shot-denied', visible);
+        if (visible && warningText) {
+            warning.setAttribute('aria-label', warningText);
+        } else {
+            warning.removeAttribute('aria-label');
+        }
+    }
+
+    private renderInventoryControlRangeDamageEntry(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey | null): void {
+        const text = entry.el?.querySelector<SVGElement>(':scope > .damage > text');
+        if (!text) return;
+
+        const originalDamage = text.getAttribute(WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE);
+        const damage = resolveWeaponRangeDamageText(entry, range, originalDamage ?? text.textContent);
+        if (damage === null) {
+            if (originalDamage !== null) {
+                text.textContent = originalDamage;
+                text.removeAttribute(WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE);
+            }
+            return;
+        }
+
+        if (originalDamage === null) {
+            text.setAttribute(WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, text.textContent ?? '');
+        }
+        text.textContent = damage;
+    }
+
     private inventoryControlSelectedRange(
         entry: MountedEquipment,
         selectedRanges: Map<string, InventoryControlRuntimeRangeKey>,
         target: InventoryControlRuntimeTarget | undefined
-    ): InventoryControlSvgRangeKey | null {
+    ): InventoryControlRuntimeRangeKey | null {
         if (target) return this.inventoryControlRangeForTargetDistance(entry, target.distance);
         return selectedRanges.get(entry.id) ?? null;
     }
 
-    private inventoryControlRangeForTargetDistance(entry: MountedEquipment, distance: number): InventoryControlSvgRangeKey | null {
+    private inventoryControlRangeForTargetDistance(entry: MountedEquipment, distance: number): InventoryControlRuntimeRangeKey | null {
         const ranges = (entry.equipment as { ranges?: unknown } | undefined)?.ranges;
         if (!Array.isArray(ranges)) return null;
         const [shortRange, mediumRange, longRange, extremeRange] = ranges.map(value => Number(value));
@@ -846,7 +893,6 @@ export class UnitSvgService {
     protected updateInventory() {
         const svg = this.unit.svg();
         if (!svg) return;
-        const globalFireMod = this.getGlobalFireModifier();
         this.unit.getInventory().forEach(entry => {
             if (!entry.el) return;
             // Inventory state
@@ -860,8 +906,7 @@ export class UnitSvgService {
             if (entry.destroyed) {
                 this.renderHitModEntry(entry, null);
             } else {
-                const additionalMod = globalFireMod + computeLinkedModifiers(entry);
-                this.renderHitModEntry(entry, resolveHitModifier(entry, additionalMod));
+                this.renderHitModEntry(entry, this.resolveInventoryControlHitModifier(entry));
             }
         });
         this.renderInventoryControlSelection();

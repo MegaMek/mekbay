@@ -75,6 +75,7 @@ function entry(params: {
     id: string;
     equipment?: WeaponEquipment | MiscEquipment | AmmoEquipment;
     physical?: boolean;
+    baseHitMod?: string;
     destroyed?: boolean;
     el?: SVGElement;
     states?: Map<string, string>;
@@ -99,6 +100,7 @@ function entry(params: {
         name: params.id,
         equipment: params.equipment,
         physical: params.physical ?? false,
+        baseHitMod: params.baseHitMod,
         destroyed: params.destroyed ?? false,
         states: params.states ?? new Map<string, string>(),
         el: params.el,
@@ -420,6 +422,118 @@ describe('WeaponsEquipmentPanelComponent', () => {
         component.selectRange(row, 'medium');
         expect(component.isSelected(row)).toBeFalse();
         expect(component.isRangeSelected(row, 'medium')).toBeFalse();
+    });
+
+    it('uses selected range for variable damage arrays and pulse hit modifiers', () => {
+        const vspLaser = entry({
+            id: 'vsp',
+            baseHitMod: '-4',
+            equipment: new WeaponEquipment({
+                id: 'ISMediumVSPLaser',
+                name: 'Medium VSP Laser',
+                type: 'weapon',
+                flags: ['F_DIRECT_FIRE','F_PULSE','F_VSP'],
+                weapon: { ammoType: 'NA', heat: 7, damage: [9, 7, 5], ranges: [2, 5, 9, 13] }
+            }),
+            el: svgEntry('<g><g class="name"><text>Medium VSP Laser</text></g><g class="damage"><text>9/7/5 [Variable]</text></g><text class="range_short">2</text><text class="range_medium">5</text><text class="range_long">9</text></g>')
+        });
+        const { component, fixture, unit } = createComponent([vspLaser]);
+        let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        component.selectRange(row, 'short');
+        fixture.detectChanges();
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(row.display.damage).toBe('9 [Variable]');
+        expect(row.display.hit).toBe('-3');
+
+        component.selectRange(row, 'medium');
+        fixture.detectChanges();
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(row.display.damage).toBe('7 [Variable]');
+        expect(row.display.hit).toBe('-2');
+
+        component.selectRange(row, 'long');
+        fixture.detectChanges();
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(row.display.damage).toBe('5 [Variable]');
+        expect(row.display.hit).toBe('-1');
+
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 1, tnCalculator: { stance: 'immobile', targetLocation: 'CT' } });
+        unit.setInventoryControlSelectedTarget(row.entry, 'A');
+        unit.inventoryControl.markInventoryViewChanged();
+        fixture.detectChanges();
+
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(component.damageText(row)).toBe('9 [Variable]');
+        expect(component.hitText(row)).toBe('-3');
+        expect(component.targetNumberText(row)).toBe('1');
+    });
+
+    it('tracks built-in one-shot weapon shots through consumed inventory state', async () => {
+        const rocket = entry({
+            id: 'rocket',
+            equipment: new WeaponEquipment({
+                id: 'RL20',
+                name: 'Rocket Launcher 20',
+                type: 'weapon',
+                flags: ['F_ONE_SHOT'],
+                weapon: { ammoType: 'ROCKET_LAUNCHER', rackSize: 20, heat: 5, damage: 'cluster', ranges: [3, 7, 12, 18] }
+            }),
+            el: svgEntry('<g><g class="name"><text>Rocket Launcher 20</text></g><text class="heat">5</text><text class="range_short">3</text><text class="range_medium">7</text><text class="range_long">12</text></g>')
+        });
+        const { component, fixture } = createComponent([rocket]);
+        let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(row.ammo.tracksAmmo).toBeTrue();
+        expect(row.ammo.remaining).toBe(1);
+        expect(row.ammo.total).toBe(1);
+        expect(component.rowHasAmmo(row)).toBeTrue();
+
+        component.toggleSelected(row);
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(rocket.consumed).toBe(1);
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(row.ammo.remaining).toBe(0);
+        expect(component.rowHasAmmo(row)).toBeTrue();
+        expect(component.canAdjustAmmo(row, 1)).toBeFalse();
+        expect(component.canAdjustAmmo(row, -1)).toBeTrue();
+        fixture.detectChanges();
+        const depletedButtons = Array.from(fixture.nativeElement.querySelectorAll('.ammo-stepper-button')) as HTMLButtonElement[];
+        expect(depletedButtons.length).toBe(2);
+        expect(depletedButtons[0].disabled).toBeTrue();
+        expect(depletedButtons[1].disabled).toBeFalse();
+
+        component.adjustAmmo(row, -1);
+
+        expect(rocket.consumed).toBeUndefined();
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(row.ammo.remaining).toBe(1);
+    });
+
+    it('stores built-in one-shot consumption on the owning critical slot when present', () => {
+        const critSlot: CriticalSlot = { id: 'RL20@RT#0', loc: 'RT', slot: 0 };
+        const rocket = entry({
+            id: 'rocket',
+            critSlots: [critSlot],
+            equipment: new WeaponEquipment({
+                id: 'RL20',
+                name: 'Rocket Launcher 20',
+                type: 'weapon',
+                flags: ['F_ONE_SHOT'],
+                weapon: { ammoType: 'ROCKET_LAUNCHER', rackSize: 20, heat: 5, damage: 'cluster', ranges: [3, 7, 12, 18] }
+            }),
+            el: svgEntry('<g><g class="name"><text>Rocket Launcher 20</text></g><text class="heat">5</text><text class="range_short">3</text><text class="range_medium">7</text><text class="range_long">12</text></g>')
+        });
+        const { component, unit } = createComponent([rocket]);
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        component.adjustAmmo(row, 1);
+
+        expect(critSlot.consumed).toBe(1);
+        expect(unit.setCritSlot).toHaveBeenCalledWith(critSlot);
+        expect(rocket.consumed).toBeUndefined();
     });
 
     it('computes target distance range state without mutating SVG classes directly', () => {

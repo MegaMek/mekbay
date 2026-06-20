@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, afterNextRender, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { ColorPickerButtonComponent } from '../color-picker-button/color-picker-button.component';
 import {
     INVENTORY_CONTROL_TARGET_COLORS,
@@ -6,6 +6,7 @@ import {
     type InventoryControlRuntimeTarget,
     type InventoryControlRuntimeTargetId
 } from '../../models/inventory-control-runtime-state.model';
+import { TooltipDirective } from '../../directives/tooltip.directive';
 
 export interface WeaponTargetUpdateRequest {
     targetId: InventoryControlRuntimeTargetId;
@@ -16,10 +17,7 @@ export interface WeaponTargetUpdateRequest {
     selector: 'weapon-targets-menu',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [ColorPickerButtonComponent],
-    host: {
-        '[class.ready]': 'ready()'
-    },
+    imports: [ColorPickerButtonComponent, TooltipDirective],
     template: `
         <div class="weapon-targets-menu glass framed-borders has-shadow">
             <div class="weapon-targets-header">
@@ -35,6 +33,11 @@ export interface WeaponTargetUpdateRequest {
                 @if (targets().length === 0) {
                     <div class="weapon-targets-empty">No targets</div>
                 } @else {
+                    @if (unassignedMovement()) {
+                        <div class="movement-disclaimer">
+                            <span>Don't forget to select your movement for proper TN calculation!</span>
+                        </div>
+                    }
                     @for (target of targets(); track target.id) {
                         <div class="weapon-target-row">
                             <div class="target-wrapper">
@@ -61,13 +64,18 @@ export interface WeaponTargetUpdateRequest {
                                         </span>
                                     </div>
                                     <div class="target-number-field">
-                                        <span>TN Modifier</span>
+                                        <span class="tn-modifier-label" [tooltip]="tnModifierTooltip">TN Modifier <span class="info-notice" aria-hidden="true">i</span></span>
                                         <span class="target-stepper">
                                             <button class="bt-button square-small" type="button" (click)="stepTnModifier(target, -1)">-</button>
                                             <input class="value" type="number" step="1" [value]="target.tnModifier" (input)="updateTnModifier(target.id, $any($event.target).value)">
                                             <button class="bt-button square-small" type="button" (click)="stepTnModifier(target, 1)">+</button>
                                         </span>
                                     </div>
+                                    <button class="bt-button square-small" type="button" (click)="openTnCalculator(target.id)" aria-label="Open TN calculator" title="Open TN calculator">
+                                        <svg fill="currentColor" width="16px" height="16px" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M116,184a12,12,0,0,1-12,12H84v20a12,12,0,0,1-24,0V196H40a12,12,0,0,1,0-24H60V152a12,12,0,0,1,24,0v20h20A12,12,0,0,1,116,184ZM104,60H40a12,12,0,0,0,0,24h64a12,12,0,0,0,0-24Zm48,116.06641h64a12,12,0,0,0,0-24H152a12,12,0,0,0,0,24Zm64,15.86718H152a12,12,0,0,0,0,24h64a12,12,0,0,0,0-24Zm-64.48535-87.44824a12.00033,12.00033,0,0,0,16.9707,0L184,88.9707l15.51465,15.51465a12.0001,12.0001,0,0,0,16.9707-16.9707L200.9707,72l15.51465-15.51465a12.0001,12.0001,0,0,0-16.9707-16.9707L184,55.0293,168.48535,39.51465a12.0001,12.0001,0,0,0-16.9707,16.9707L167.0293,72,151.51465,87.51465A12.00062,12.00062,0,0,0,151.51465,104.48535Z"/>
+                                        </svg>
+                                    </button>
                                 </div>
                             </div>
                             <div class="target-delete-row">
@@ -83,10 +91,6 @@ export interface WeaponTargetUpdateRequest {
         </div>
     `,
     styles: [`
-        :host:not(.ready) .bt-button {
-            transition: none !important;
-        }
-
         @media print {
             :host {
                 display: none !important;
@@ -109,9 +113,9 @@ export interface WeaponTargetUpdateRequest {
             justify-content: space-between;
             gap: 8px;
             align-items: center;
-            padding: 10px 12px;
+            padding: 8px 12px;
             border-bottom: 1px solid var(--border-color);
-            color: var(--text-color-secondary);
+            color: var(--text-color);
             text-transform: uppercase;
             font-size: 0.82rem;
             letter-spacing: 0;
@@ -219,6 +223,15 @@ export interface WeaponTargetUpdateRequest {
             white-space: nowrap;
         }
 
+        .tn-modifier-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            width: fit-content;
+            max-width: 100%;
+            cursor: help;
+        }
+
         .target-stepper {
             display: flex;
             align-items: center;
@@ -275,6 +288,17 @@ export interface WeaponTargetUpdateRequest {
                 color: var(--damage-color);
             }
         }
+        
+        .movement-disclaimer {
+            width: 100%;
+            font-size: 0.8rem;
+            padding: 2px;
+            font-weight: 500;
+            box-sizing: border-box;
+            text-align: center;
+            background-color: orange;
+            color: black;
+        }
 
         @container (max-width: 500px) {
             .weapon-target-row {
@@ -301,22 +325,20 @@ export interface WeaponTargetUpdateRequest {
     `]
 })
 export class WeaponTargetsMenuComponent {
+    readonly tnModifierTooltip = 'Target-side TN modifier for this target. Use it for target movement, terrain, cover, stance, and similar target conditions. It is added separately from your unit skill, your movement, range, heat, and weapon modifiers. The calculator can fill it, and you can still override it manually.';
     readonly targets = input<InventoryControlRuntimeTarget[]>([]);
     readonly colors = input<readonly string[]>(INVENTORY_CONTROL_TARGET_COLORS);
     readonly maxTargets = input(INVENTORY_CONTROL_TARGET_MAX_COUNT);
-    readonly ready = signal(false);
+    readonly unassignedMovement = input(false);
     readonly readOnly = input(false);
 
     readonly addRequest = output<void>();
     readonly resetRequest = output<void>();
     readonly updateRequest = output<WeaponTargetUpdateRequest>();
     readonly deleteRequest = output<InventoryControlRuntimeTargetId>();
+    readonly calculatorRequest = output<InventoryControlRuntimeTargetId>();
     readonly colorPickerOpened = output<void>();
     readonly colorPickerClosed = output<void>();
-
-    constructor() {
-        afterNextRender(() => this.ready.set(true));
-    }
 
     updateName(targetId: InventoryControlRuntimeTargetId, name: string): void {
         this.updateRequest.emit({ targetId, patch: { name } });
@@ -340,6 +362,10 @@ export class WeaponTargetsMenuComponent {
 
     stepTnModifier(target: InventoryControlRuntimeTarget, delta: number): void {
         this.updateRequest.emit({ targetId: target.id, patch: { tnModifier: target.tnModifier + delta } });
+    }
+
+    openTnCalculator(targetId: InventoryControlRuntimeTargetId): void {
+        this.calculatorRequest.emit(targetId);
     }
 
     private parseNumber(value: string, fallback: number, clampMinZero: boolean): number {

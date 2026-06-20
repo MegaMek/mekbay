@@ -33,6 +33,7 @@
 
 import type { MountedEquipment } from '../force-serialization';
 import { WeaponEquipment } from '../equipment.model';
+import { resolveWeaponRangeHitModifier, type WeaponRangeKey } from './weapon-range-rules.util';
 
 /**
  * Pure game-rules utilities for hit modifier calculation.
@@ -74,8 +75,15 @@ export function computeLinkedModifiers(entry: MountedEquipment): number {
  * @param entry             - the mounted equipment entry
  * @param additionalModifiers - pre-computed modifiers to add (global fire mod, linked mods, etc.)
  */
-export function resolveHitModifier(entry: MountedEquipment, additionalModifiers: number): number | 'Vs' | '*' | null {
-    if (entry.baseHitMod === 'Vs' || entry.baseHitMod === '*') {
+export function resolveHitModifier(entry: MountedEquipment, additionalModifiers: number, range?: WeaponRangeKey | null): number | 'Vs' | '*' | null {
+    if (entry.baseHitMod === 'Vs') {
+        return entry.baseHitMod;
+    }
+    if (entry.baseHitMod === '*') {
+        const rangeHitModValue = resolveWeaponRangeHitModifier(entry, range);
+        if (rangeHitModValue !== null) {
+            return rangeHitModValue + additionalModifiers;
+        }
         return entry.baseHitMod;
     }
     if (!entry.equipment && !entry.physical) {
@@ -95,7 +103,8 @@ export function resolveHitModifier(entry: MountedEquipment, additionalModifiers:
             }
         }
     }
-    const baseHitModValue = parseInt(entry.baseHitMod || '0');
+    const rangeHitModValue = resolveWeaponRangeHitModifier(entry, range);
+    const baseHitModValue = rangeHitModValue ?? parseInt(entry.baseHitMod || '0');
     if (isNaN(baseHitModValue)) {
         return null;
     }

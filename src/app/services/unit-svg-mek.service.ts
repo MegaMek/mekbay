@@ -37,7 +37,10 @@ import { UnitSvgService } from "./unit-svg.service";
 import { AmmoEquipment } from "../models/equipment.model";
 import { MekRules } from "../models/rules/mek-rules";
 import { resolveHitModifier } from "../models/rules/hit-modifier.util";
+import type { WeaponRangeKey } from "../models/rules/weapon-range-rules.util";
 import { getCriticalSlotAmmoProfileKey } from "../utils/ammo-interaction.util";
+
+type MekEntryState = { isDamaged: boolean; isDisabled: boolean; hitMod: number };
 
 /*
  * Author: Drake
@@ -45,6 +48,7 @@ import { getCriticalSlotAmmoProfileKey } from "../utils/ammo-interaction.util";
 export class UnitSvgMekService extends UnitSvgService {
     // Mek-specific SVG handling logic goes here
     private get mekRules(): MekRules { return this.unit.rules as MekRules; }
+    private currentEntryStates: Map<MountedEquipment, MekEntryState> | null = null;
 
     protected override updateAllDisplays() {
         if (!this.unit.svg()) return;
@@ -212,47 +216,51 @@ export class UnitSvgMekService extends UnitSvgService {
 
         // Inventory entries — state from rules, rendering here
         const entryStates = this.mekRules.computeAllEntryStates();
-        this.unit.getInventory().forEach(entry => {
-            if (!entry.el || !entry.locations) return;
+        this.currentEntryStates = entryStates;
+        try {
+            this.unit.getInventory().forEach(entry => {
+                if (!entry.el || !entry.locations) return;
 
-            const state = entryStates.get(entry);
-            if (!state) return;
+                const state = entryStates.get(entry);
+                if (!state) return;
 
-            // Physical / melee damage display (reads base values from DOM, computes via rules)
-            if (entry.physical) {
-                switch (entry.name) {
-                    case 'charge':
-                        this.renderChargeSpikeBonus(entry, physical.spikeBonus);
-                        break;
-                    case 'punch':
-                        this.renderMeleeDamage(entry, 'punch', Array.from(entry.locations)[0]);
-                        break;
-                    case 'club':
-                        this.renderMeleeDamage(entry, 'club');
-                        break;
-                    case 'kick [talons]':
-                    case 'kick':
-                        this.renderMeleeDamage(entry, 'kick');
-                        break;
+                // Physical / melee damage display (reads base values from DOM, computes via rules)
+                if (entry.physical) {
+                    switch (entry.name) {
+                        case 'charge':
+                            this.renderChargeSpikeBonus(entry, physical.spikeBonus);
+                            break;
+                        case 'punch':
+                            this.renderMeleeDamage(entry, 'punch', Array.from(entry.locations)[0]);
+                            break;
+                        case 'club':
+                            this.renderMeleeDamage(entry, 'club');
+                            break;
+                        case 'kick [talons]':
+                        case 'kick':
+                            this.renderMeleeDamage(entry, 'kick');
+                            break;
+                    }
+                } else if (entry.equipment?.flags.has('F_CLUB') || entry.equipment?.flags.has('F_HAND_WEAPON')) {
+                    this.renderMeleeDamage(entry, 'physWeapon', undefined, !!entry.equipment?.flags.has('S_FLAIL'));
                 }
-            } else if (entry.equipment?.flags.has('F_CLUB') || entry.equipment?.flags.has('F_HAND_WEAPON')) {
-                this.renderMeleeDamage(entry, 'physWeapon', undefined, !!entry.equipment?.flags.has('S_FLAIL'));
-            }
 
-            entry.el.classList.toggle('disabledInventory', state.isDisabled);
-            entry.el.classList.toggle('damagedInventory', state.isDamaged);
-            if (state.isDamaged || state.isDisabled) entry.el.classList.remove('selected');
+                entry.el.classList.toggle('disabledInventory', state.isDisabled);
+                entry.el.classList.toggle('damagedInventory', state.isDamaged);
+                if (state.isDamaged || state.isDisabled) entry.el.classList.remove('selected');
 
-            // Hit modifier badge
-            this.renderHitModEntry(entry, resolveHitModifier(entry, state.hitMod || 0));
-        });
-        this.renderInventoryControlSelection();
+                // Hit modifier badge
+                this.renderHitModEntry(entry, this.resolveInventoryControlHitModifier(entry));
+            });
+            this.renderInventoryControlSelection();
+        } finally {
+            this.currentEntryStates = null;
+        }
     }
 
-    protected override getInventoryTargetHitModifier(entry: MountedEquipment): number {
-        const state = this.mekRules.computeAllEntryStates().get(entry);
-        const hitModifier = resolveHitModifier(entry, state?.hitMod ?? 0);
-        return typeof hitModifier === 'number' ? hitModifier - this.inventoryTargetHeatFireModifier(entry) : 0;
+    protected override resolveInventoryControlHitModifier(entry: MountedEquipment, range?: WeaponRangeKey | null): number | 'Vs' | '*' | null {
+        const state = this.currentEntryStates?.get(entry) ?? this.mekRules.computeEntryState(entry);
+        return resolveHitModifier(entry, state.hitMod, range);
     }
 
     override inventoryTargetHeatFireModifier(entry: MountedEquipment): number {

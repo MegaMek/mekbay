@@ -37,11 +37,8 @@ import {
     inject,
     Injector,
     input,
-    viewChild,
-    type ElementRef,
     output,
-    computed,
-    DestroyRef
+    computed
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Overlay } from '@angular/cdk/overlay';
@@ -49,6 +46,8 @@ import { ComponentPortal } from '@angular/cdk/portal';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
 import { canChangeAirborneGround, type MotiveModeOption, type MotiveModes } from '../../../models/motiveModes.model';
+import { getAttackerMovementModifier, type TnSpotterMoveMode } from '../../../models/target-number-calculator.model';
+import { HexSliderComponent } from '../../hex-slider/hex-slider.component';
 
 /*
  * Author: Drake
@@ -60,7 +59,7 @@ import { canChangeAirborneGround, type MotiveModeOption, type MotiveModes } from
 
 @Component({
     selector: 'page-turn-summary-panel',
-    imports: [CommonModule],
+    imports: [CommonModule, HexSliderComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './page-turn-summary.component.html',
     styleUrl: './page-turn-summary.component.scss'
@@ -73,18 +72,10 @@ export class PageTurnSummaryPanelComponent {
     private injector = inject(Injector);
     private overlay = inject(Overlay);
     private parent = inject(PageInteractionOverlayComponent);
-    private destroyRef = inject(DestroyRef);
     unit = this.parent.unit;
     force = this.parent.force;
-    sliderContainer = viewChild<ElementRef<HTMLDivElement>>('sliderContainer');
-    private activePointerId: number | null = null;
-    private activeDragTarget: Element | null = null;
     endTurnForAllButtonVisible = input<boolean>(false);
     endTurnForAllClicked = output<void>();
-
-    constructor() {
-        this.destroyRef.onDestroy(() => this.stopDrag());
-    }
 
     endTurnForAll(event: MouseEvent) {
         event.stopPropagation();
@@ -127,6 +118,12 @@ export class PageTurnSummaryPanelComponent {
         return u.turnState().moveMode();
     });
 
+    moveModeModifierLabel(mode: MotiveModes): string | null {
+        const modifier = getAttackerMovementModifier(mode);
+        if (modifier === 0) return null;
+        return modifier > 0 ? `+${modifier}` : `${modifier}`;
+    }
+
     getTargetModifierAsDefender = computed(() => {
         const u = this.unit();
         let value = 0;
@@ -143,6 +140,30 @@ export class PageTurnSummaryPanelComponent {
             value = u.turnState().getTargetModifierAsAttacker();
         }
         return value;
+    });
+
+    spotting = computed(() => {
+        const u = this.unit();
+        if (!u) return false;
+        return u.turnState().spotting();
+    });
+
+    indirectFire = computed(() => {
+        const u = this.unit();
+        if (!u) return false;
+        return u.turnState().indirectFire();
+    });
+
+    currentSpotterMoveMode = computed<TnSpotterMoveMode>(() => {
+        const u = this.unit();
+        if (!u) return 'stationary';
+        return u.turnState().spotterMoveMode();
+    });
+
+    spotterDeclaredAttacks = computed(() => {
+        const u = this.unit();
+        if (!u) return false;
+        return u.turnState().spotterDeclaredAttacks();
     });
 
     tracksHeat = computed(() => {
@@ -259,6 +280,38 @@ export class PageTurnSummaryPanelComponent {
         turnState.applyMovePSR.set(true);
     }
 
+    toggleSpotting() {
+        const u = this.unit();
+        if (!u) return;
+        const turnState = u.turnState();
+        turnState.spotting.set(!turnState.spotting());
+    }
+
+    toggleIndirectFire() {
+        const u = this.unit();
+        if (!u) return;
+        const turnState = u.turnState();
+        const next = !turnState.indirectFire();
+        turnState.indirectFire.set(next);
+        if (!next) {
+            turnState.spotterMoveMode.set('stationary');
+            turnState.spotterDeclaredAttacks.set(false);
+        }
+    }
+
+    selectSpotterMove(mode: TnSpotterMoveMode) {
+        const u = this.unit();
+        if (!u) return;
+        u.turnState().spotterMoveMode.set(mode);
+    }
+
+    toggleSpotterDeclaredAttacks() {
+        const u = this.unit();
+        if (!u) return;
+        const turnState = u.turnState();
+        turnState.spotterDeclaredAttacks.set(!turnState.spotterDeclaredAttacks());
+    }
+
     overDistance = computed<boolean>(() => {
         const u = this.unit();
         if (!u) return false;
@@ -287,10 +340,9 @@ export class PageTurnSummaryPanelComponent {
         return Math.min(this.MOVE_MAX, u.turnState().maxDistanceCurrentMoveMode());
     });
 
-    moveDistancePercent = computed(() => {
-        const max = this.moveMax();
-        const val = this.moveDistance() || 0;
-        return Math.max(0, Math.min(100, (val / max) * 100));
+    moveDistanceTicks = computed(() => {
+        const max = Math.max(this.MOVE_MIN, this.moveMax() + 1);
+        return Array.from({ length: max }, (_value, index) => index);
     });
 
     hasMoveDistance = computed(() => {
@@ -307,88 +359,10 @@ export class PageTurnSummaryPanelComponent {
         return `${v}`;
     });
 
-    private percentToValue(percent: number): number {
-        const max = this.moveMax();
-        const v = this.MOVE_MIN + percent * (max - this.MOVE_MIN);
-        return this.alignToStep(v);
-    }
-
-    private alignToStep(value: number): number {
-        const max = this.moveMax();
-        const stepped = Math.round(value / 1);
-        return Math.max(this.MOVE_MIN, Math.min(max, stepped));
-    }
-
-    onMoveDistanceInput(event: Event) {
-        const el = event.target as HTMLInputElement;
-        const value = Number(el.value || 0);
-        const u = this.unit();
-        if (!u) return;
-        u.turnState().moveDistance.set(this.alignToStep(value));
-    }
-
-    // Pointer down on the visual hex: start capturing and listen for moves
-    startDrag(event: PointerEvent) {
-        event.preventDefault();
-        const container = this.sliderContainer()?.nativeElement;
-        if (!container) return;
-        this.stopDrag();
-        this.activePointerId = event.pointerId;
-        this.activeDragTarget = event.target instanceof Element ? event.target : null;
-        try {
-            this.activeDragTarget?.setPointerCapture(this.activePointerId);
-        } catch { /* ignore */ }
-        window.addEventListener('pointermove', this.onPointerMove);
-        window.addEventListener('pointerup', this.onPointerEnd);
-        window.addEventListener('pointercancel', this.onPointerEnd);
-        this.onPointerMove(event);
-    }
-
-    private onPointerMove = (ev: PointerEvent) => {
-        if (this.activePointerId != null && ev.pointerId !== this.activePointerId) return;
-        const container = this.sliderContainer()?.nativeElement;
-        if (!container) return;
-        const rect = container.getBoundingClientRect();
-        const x = ev.clientX - rect.left;
-        const percent = Math.max(0, Math.min(1, rect.width > 0 ? x / rect.width : 0));
-        const value = this.percentToValue(percent);
+    setMoveDistance(value: number) {
         const u = this.unit();
         if (!u) return;
         u.turnState().moveDistance.set(value);
-    };
-
-    private onPointerEnd = (ev: PointerEvent) => {
-        this.stopDrag(ev);
-    };
-
-    private stopDrag(ev?: PointerEvent): void {
-        if (ev && this.activePointerId != null && ev.pointerId !== this.activePointerId) {
-            return;
-        }
-
-        if (this.activePointerId != null) {
-            try {
-                this.activeDragTarget?.releasePointerCapture(this.activePointerId);
-            } catch { /* ignore */ }
-        }
-        this.activePointerId = null;
-        this.activeDragTarget = null;
-        window.removeEventListener('pointermove', this.onPointerMove);
-        window.removeEventListener('pointerup', this.onPointerEnd);
-        window.removeEventListener('pointercancel', this.onPointerEnd);
-    }
-
-    // Keyboard support when the slider container is focused
-    onKeyDown(event: KeyboardEvent) {
-        const u = this.unit();
-        if (!u) return;
-        let delta = 0;
-        if (event.key === 'ArrowRight' || event.key === 'ArrowUp') delta = 1;
-        if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') delta = -1;
-        if (delta === 0) return;
-        event.preventDefault();
-        const next = this.alignToStep((u.turnState().moveDistance() || 0) + delta);
-        u.turnState().moveDistance.set(next);
     }
 }
 

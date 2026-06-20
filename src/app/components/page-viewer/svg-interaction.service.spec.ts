@@ -179,44 +179,6 @@ describe('SvgInteractionService', () => {
         expect(pageViewerState.inventoryDialogOpen()).toBeFalse();
     });
 
-    it('toggles sheet range buttons through inventory control runtime state', () => {
-        const { svg, entry, unit } = createInventoryInteractionUnit();
-        service.updateUnit(unit);
-        service.setupInteractions(svg);
-        const shortButton = entry.el!.querySelector('.shrButton') as SVGElement;
-        const mediumButton = entry.el!.querySelector('.medButton') as SVGElement;
-
-        shortButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeTrue();
-        expect(unit.getInventoryControlSelectedRange(entry.id)).toBe('short');
-        expect(entry.el!.classList.contains('selected-range-short')).toBeTrue();
-
-        mediumButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeTrue();
-        expect(unit.getInventoryControlSelectedRange(entry.id)).toBe('medium');
-        expect(entry.el!.classList.contains('selected-range-short')).toBeFalse();
-        expect(entry.el!.classList.contains('selected-range-medium')).toBeTrue();
-
-        mediumButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeFalse();
-        expect(unit.getInventoryControlSelectedRange(entry.id)).toBeUndefined();
-        expect(entry.el!.classList.contains('selected-range-medium')).toBeFalse();
-    });
-
-    it('colors selected sheet inventory rows from their selected target', () => {
-        const { svg, entry, unit } = createInventoryInteractionUnit();
-        service.updateUnit(unit);
-        service.setupInteractions(svg);
-
-        unit.createInventoryControlTarget();
-        unit.updateInventoryControlTarget('A', { color: '#00798c' });
-        unit.setInventoryControlSelectedTarget(entry, 'A');
-        expect(entry.el!.style.getPropertyValue('--inventory-control-selection-color')).toBe('#00798c');
-
-        unit.setInventoryControlSelectedRange(entry, 'short');
-        expect(entry.el!.style.getPropertyValue('--inventory-control-selection-color')).toBe('');
-    });
-
     it('assigns the single target when a sheet range button is clicked with one target', () => {
         const { svg, entry, unit } = createInventoryInteractionUnit();
         unit.createInventoryControlTarget();

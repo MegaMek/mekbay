@@ -216,31 +216,4 @@ describe('EquipmentDialogComponent', () => {
         expect(footerCenter.textContent).toContain('DISMISS');
         expect(footerCenter.querySelector('button[aria-label="Reset"]')).not.toBeNull();
     });
-
-    it('upgrades selected weapons when the first target is added and clears selections when that target is deleted', () => {
-        const laser = weaponEntry('laser');
-        const unit = createUnit('unit-a', [laser]);
-        const { fixture, component, overlayManager } = createDialog({ unit, context: createContext() });
-        const targetsOverlay = createTargetsMenuOverlay();
-        overlayManager.createManagedOverlay.and.returnValue(targetsOverlay.overlayRef as any);
-        const panel = component.currentWeaponsPanel()!;
-        const row = panel.groups().find(group => group.id === 'ranged')!.rows[0];
-
-        panel.toggleSelected(row);
-        expect(panel.isSelected(row)).toBeTrue();
-        expect(panel.targetForRow(row)).toBeNull();
-
-        component.openTargets(new MouseEvent('click'));
-        targetsOverlay.instance.addRequest.emit(undefined);
-        fixture.detectChanges();
-
-        expect(panel.isSelected(row)).toBeTrue();
-        expect(panel.targetForRow(row)?.id).toBe('A');
-
-        targetsOverlay.instance.deleteRequest.emit('A');
-        fixture.detectChanges();
-
-        expect(panel.isSelected(row)).toBeFalse();
-        expect(panel.targetForRow(row)).toBeNull();
-    });
 });
