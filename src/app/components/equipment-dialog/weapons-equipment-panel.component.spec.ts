@@ -459,7 +459,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(row.display.hit).toBe('-1');
 
         unit.createInventoryControlTarget();
-        unit.updateInventoryControlTarget('A', { distance: 1, tnCalculator: { stance: 'immobile', targetLocation: 'CT' } });
+        unit.updateInventoryControlTarget('A', { distance: 1, tnCalculator: { stance: 'immobile' } });
         unit.setInventoryControlSelectedTarget(row.entry, 'A');
         unit.inventoryControl.markInventoryViewChanged();
         fixture.detectChanges();

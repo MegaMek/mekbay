@@ -41,12 +41,12 @@
             <div class="row">
                 <hex-slider
                     class="move-slider"
-                    [min]="MOVE_MIN"
+                    [min]="0"
                     [max]="moveMax()"
                     [step]="1"
                     [value]="moveDistance()"
                     [ticks]="moveDistanceTicks()"
-                    [label]="moveDistanceLabel()"
+                    [label]="moveDistance()"
                     [ariaLabel]="'Move distance'"
                     [valueAssigned]="hasMoveDistance()"
                     [danger]="overDistance()"
@@ -62,33 +62,7 @@
             <button type="button" class="bt-button move-button" [class.selected]="spotting()" [attr.aria-pressed]="spotting()" (click)="toggleSpotting()">
                 <span>Spotting</span><span class="modifier-badge">+1</span>
             </button>
-            <button type="button" class="bt-button move-button" [class.selected]="indirectFire()" [attr.aria-pressed]="indirectFire()" (click)="toggleIndirectFire()">
-                <span>Indirect Fire</span><span class="modifier-badge">+1</span>
-            </button>
         </div>
-        @if (indirectFire()) {
-        <div class="spotter-section framed-borders">
-            <div class="sectionTitle">Spotter</div>
-            <div class="row">
-                <button type="button" class="bt-button move-button" [class.selected]="currentSpotterMoveMode() === 'stationary'" [attr.aria-pressed]="currentSpotterMoveMode() === 'stationary'" (click)="selectSpotterMove('stationary')">
-                    <svg width="16px" height="16px" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"
-                        preserveAspectRatio="xMidYMid meet">
-                        <path
-                            d="M32 2C15.432 2 2 15.432 2 32c-.001 16.568 13.432 30 30 30s30.001-13.432 30-30c.001-16.568-13.432-30-30-30zM9 38V26h46v12H9z"
-                            fill="currentColor"></path>
-                    </svg>
-                </button>
-                <button type="button" class="bt-button move-button" [class.selected]="currentSpotterMoveMode() === 'walk'" [attr.aria-pressed]="currentSpotterMoveMode() === 'walk'" (click)="selectSpotterMove('walk')"><span>Walk</span><span class="modifier-badge">+1</span></button>
-                <button type="button" class="bt-button move-button" [class.selected]="currentSpotterMoveMode() === 'run'" [attr.aria-pressed]="currentSpotterMoveMode() === 'run'" (click)="selectSpotterMove('run')"><span>Run</span><span class="modifier-badge">+2</span></button>
-                <button type="button" class="bt-button move-button" [class.selected]="currentSpotterMoveMode() === 'jump'" [attr.aria-pressed]="currentSpotterMoveMode() === 'jump'" (click)="selectSpotterMove('jump')"><span>Jump</span><span class="modifier-badge">+3</span></button>
-            </div>
-            <div class="row grid">
-                <button type="button" class="bt-button move-button" [class.selected]="spotterDeclaredAttacks()" [attr.aria-pressed]="spotterDeclaredAttacks()" (click)="toggleSpotterDeclaredAttacks()">
-                    <span>Declared Attacks</span><span class="modifier-badge">+1</span>
-                </button>
-            </div>
-        </div>
-        }
         <div class="row">
             @let modifierAtk = getTargetModifierAsAttacker();
             <span>Attack Modifier:</span><span class="modifier important">{{ modifierAtk >= 0 ? '+' : '' }}{{ modifierAtk }}</span>

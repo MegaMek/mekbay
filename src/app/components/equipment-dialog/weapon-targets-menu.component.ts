@@ -325,7 +325,7 @@ export interface WeaponTargetUpdateRequest {
     `]
 })
 export class WeaponTargetsMenuComponent {
-    readonly tnModifierTooltip = 'Target-side TN modifier for this target. Use it for target movement, terrain, cover, stance, and similar target conditions. It is added separately from your unit skill, your movement, range, heat, and weapon modifiers. The calculator can fill it, and you can still override it manually.';
+    readonly tnModifierTooltip = 'Target-side TN modifier for this target. Use it for target movement, indirect fire, spotter movement, terrain, cover, stance, and similar target conditions. It is added separately from your unit skill, your movement, range, heat, and weapon modifiers. The calculator can fill it, and you can still override it manually.';
     readonly targets = input<InventoryControlRuntimeTarget[]>([]);
     readonly colors = input<readonly string[]>(INVENTORY_CONTROL_TARGET_COLORS);
     readonly maxTargets = input(INVENTORY_CONTROL_TARGET_MAX_COUNT);

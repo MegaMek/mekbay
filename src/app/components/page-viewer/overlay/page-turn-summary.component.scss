@@ -92,14 +92,6 @@
     transition: border 0.2s ease-in-out, background 0.2s ease-in-out, color 0.2s ease-in-out;
 }
 
-.spotter-section {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 4px;
-    background-color: rgba(0, 0, 0, 0.2);
-}
-
 @media print {
     :host {
         display: none !important;

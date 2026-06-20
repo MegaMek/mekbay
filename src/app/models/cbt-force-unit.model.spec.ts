@@ -385,7 +385,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
 
         forceUnit.createInventoryControlTarget();
-        forceUnit.updateInventoryControlTarget('A', { distance: 1, tnCalculator: { stance: 'immobile', targetLocation: 'CT' } });
+        forceUnit.updateInventoryControlTarget('A', { distance: 1, tnCalculator: { stance: 'immobile' } });
         forceUnit.setInventoryControlSelectedTarget(weaponEntry, 'A');
         svgService.refreshInventory();
 

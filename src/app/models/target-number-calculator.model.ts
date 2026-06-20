@@ -39,7 +39,6 @@ export const TN_SKIDDING_MODIFIER = 2;
 export const TN_BATTLE_ARMOR_MODIFIER = 1;
 export const TN_AIRBORNE_MOVE_TYPE_MODIFIER = 1;
 export const TN_PARTIAL_COVER_MODIFIER = 1;
-export const TN_HEAD_LOCATION_MODIFIER = 7;
 
 export type TnTargetUnitType =
     | 'mek-biped'
@@ -108,7 +107,6 @@ export type TnTargetStance = 'none' | 'prone' | 'immobile';
 export type TnInterveningWoods = 'none' | 'light1' | 'light2' | 'heavy1';
 export type TnTargetHexCover = 'none' | 'light' | 'heavy';
 export type TnAttackDirection = 'front' | 'left' | 'rear' | 'right';
-export type TnTargetLocation = string;
 export type TnSpotterMoveMode = 'stationary' | 'walk' | 'run' | 'jump';
 
 export interface TnTargetNumberCalculatorState {
@@ -121,59 +119,15 @@ export interface TnTargetNumberCalculatorState {
     targetHexCover?: TnTargetHexCover;
     partialCover?: boolean;
     attackDirection?: TnAttackDirection;
-    targetLocation?: TnTargetLocation | null;
+    indirectFire?: boolean;
+    spotterMoveMode?: TnSpotterMoveMode;
+    spotterDeclaredAttacks?: boolean;
 }
 
 export interface TnTargetNumberCalculationInput extends TnTargetNumberCalculatorState {
     unitType?: TnTargetUnitType;
     range?: number;
 }
-
-export interface TnTargetLocationOption {
-    value: TnTargetLocation;
-    label: string;
-}
-
-const DEFAULT_TARGET_LOCATIONS: readonly TnTargetLocationOption[] = [
-    { value: 'FRONT', label: 'Front' },
-    { value: 'LEFT', label: 'Left' },
-    { value: 'REAR', label: 'Rear' },
-    { value: 'RIGHT', label: 'Right' },
-] as const;
-
-const MEK_TARGET_LOCATIONS: readonly TnTargetLocationOption[] = [
-    { value: 'HD', label: 'HD' },
-    { value: 'CT', label: 'CT' },
-    { value: 'LT', label: 'LT' },
-    { value: 'RT', label: 'RT' },
-    { value: 'LA', label: 'LA' },
-    { value: 'RA', label: 'RA' },
-    { value: 'LL', label: 'LL' },
-    { value: 'RL', label: 'RL' },
-] as const;
-
-const QUAD_TARGET_LOCATIONS: readonly TnTargetLocationOption[] = [
-    { value: 'HD', label: 'HD' },
-    { value: 'CT', label: 'CT' },
-    { value: 'LT', label: 'LT' },
-    { value: 'RT', label: 'RT' },
-    { value: 'FLL', label: 'FLL' },
-    { value: 'FRL', label: 'FRL' },
-    { value: 'RLL', label: 'RLL' },
-    { value: 'RRL', label: 'RRL' },
-] as const;
-
-const TRIPOD_TARGET_LOCATIONS: readonly TnTargetLocationOption[] = [
-    { value: 'HD', label: 'HD' },
-    { value: 'CT', label: 'CT' },
-    { value: 'LT', label: 'LT' },
-    { value: 'RT', label: 'RT' },
-    { value: 'LA', label: 'LA' },
-    { value: 'RA', label: 'RA' },
-    { value: 'LL', label: 'LL' },
-    { value: 'RL', label: 'RL' },
-    { value: 'CL', label: 'CL' },
-] as const;
 
 export function getTargetMovementDistanceModifier(distance: number | null | undefined): number {
     const bracket = getTargetMovementBracketForDistance(distance ?? 0);
@@ -219,17 +173,11 @@ export function getTargetHexCoverModifier(cover: TnTargetHexCover | null | undef
     }
 }
 
-export function getTargetLocationModifier(stance: TnTargetStance | null | undefined, location: TnTargetLocation | null | undefined): number {
-    return stance === 'immobile' && location === 'HD' ? TN_HEAD_LOCATION_MODIFIER : 0;
-}
-
-export function getTargetLocationOptions(unitType: TnTargetUnitType | null | undefined): readonly TnTargetLocationOption[] {
-    switch (unitType) {
-        case 'mek-quad': return QUAD_TARGET_LOCATIONS;
-        case 'mek-tripod': return TRIPOD_TARGET_LOCATIONS;
-        case 'mek-biped': return MEK_TARGET_LOCATIONS;
-        default: return DEFAULT_TARGET_LOCATIONS;
-    }
+export function getIndirectFireModifier(indirectFire: boolean | null | undefined, spotterMoveMode: TnSpotterMoveMode | null | undefined, spotterDeclaredAttacks: boolean | null | undefined): number {
+    if (!indirectFire) return 0;
+    return 1
+        + getAttackerMovementModifier(spotterMoveMode ?? 'stationary')
+        + (spotterDeclaredAttacks ? 1 : 0);
 }
 
 export function calculateTargetTnModifier(input: TnTargetNumberCalculationInput): number {
@@ -248,7 +196,7 @@ export function calculateTargetTnModifier(input: TnTargetNumberCalculationInput)
     total += getInterveningWoodsModifier(input.interveningWoods);
     total += getTargetHexCoverModifier(input.targetHexCover);
     total += input.partialCover && range > 0 && stance !== 'prone' ? TN_PARTIAL_COVER_MODIFIER : 0;
-    total += getTargetLocationModifier(stance, input.targetLocation);
+    total += getIndirectFireModifier(input.indirectFire, input.spotterMoveMode, input.spotterDeclaredAttacks);
 
     return total;
 }

@@ -64,6 +64,12 @@
     display: inline-block;
 }
 
+.tick-label.dot-label {
+    font-size: 0.72em;
+    line-height: 1;
+    color: #666;
+}
+
 .thumb-marker {
     position: absolute;
     inset-block-start: 50%;
@@ -89,6 +95,11 @@
     clip-path: polygon(25% 6.7%, 75% 6.7%, 100% 50%, 75% 93.3%, 25% 93.3%, 0% 50%);
     -webkit-user-select: none;
     user-select: none;
+}
+
+.hex.compact-label {
+    font-size: 0.68em;
+    letter-spacing: 0;
 }
 
 .hex.value-assigned {

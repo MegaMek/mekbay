@@ -50,16 +50,11 @@ const AIMED_SHOT_CLUSTER_AMMO_TYPES = new Set<AmmoType>([
 const T_BOLT_AMMO_TYPES = new Set<AmmoType>(['TBOLT_5', 'TBOLT_10', 'TBOLT_15', 'TBOLT_20']);
 const FLAK_AMMO_TYPES = new Set<AmmoType>(['AC', 'AC_ULTRA', 'AC_ULTRA_THB']);
 
-export function isAimedShotTarget(target: InventoryControlRuntimeTarget | null | undefined): boolean {
-    return isAimedShotCalculator(target?.tnCalculator);
-}
-
 export function canPerformAimedShot(entry: MountedEquipment, calculator: TnTargetNumberCalculatorState | null | undefined, context: AimedShotAmmoContext = {}): boolean {
     return aimedShotNotAllowedText(entry, calculator, context) === null;
 }
 
 export function aimedShotNotAllowedText(entry: MountedEquipment, calculator: TnTargetNumberCalculatorState | null | undefined, context: AimedShotAmmoContext = {}): string | null {
-    if (!isAimedShotCalculator(calculator)) return null;
     const eligibility = resolveAimedShotEligibility(entry, { ...context, mode: context.mode ?? 'targeting-computer' });
     return eligibility.allowed ? null : `No aimed shot: ${eligibility.reason}`;
 }
@@ -95,10 +90,6 @@ function disallowsAimedShotByAmmo(weapon: WeaponEquipment, ammo: AmmoEquipment |
     if (ammo?.hasMunitionType('M_CLUSTER') && (ammoType === 'AC_LBX' || ammoType === 'AC_LBX_THB' || ammoType === 'SBGAUSS')) return true;
     if (ammo?.hasMunitionType('M_FLAK') && FLAK_AMMO_TYPES.has(ammoType)) return true;
     return false;
-}
-
-function isAimedShotCalculator(calculator: TnTargetNumberCalculatorState | null | undefined): boolean {
-    return calculator?.stance === 'immobile' && !!calculator.targetLocation;
 }
 
 function hasMultiShotMode(selectedMode: string | null | undefined): boolean {

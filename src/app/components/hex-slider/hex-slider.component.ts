@@ -52,6 +52,7 @@ import {
     styleUrl: './hex-slider.component.scss'
 })
 export class HexSliderComponent {
+    private readonly condensedTickThreshold = 12;
     private readonly destroyRef = inject(DestroyRef);
     private readonly sliderScale = viewChild<ElementRef<HTMLDivElement>>('sliderScale');
     private activePointerId: number | null = null;
@@ -62,10 +63,12 @@ export class HexSliderComponent {
     readonly step = input<number>(1);
     readonly value = input<number>(0);
     readonly ticks = input<readonly number[] | null>(null);
-    readonly label = input<string | null>(null);
+    readonly tickLabels = input<readonly string[] | null>(null);
+    readonly label = input<string | number | null>(null);
     readonly ariaLabel = input<string>('Value');
     readonly valueAssigned = input<boolean>(false);
     readonly danger = input<boolean>(false);
+    readonly compactLabel = input<boolean>(false);
 
     readonly valueChange = output<number>();
 
@@ -88,6 +91,8 @@ export class HexSliderComponent {
         if (count > 50) return [min, max];
         return Array.from({ length: count }, (_value, index) => this.roundValue(min + index * step));
     });
+    readonly condenseTickLabels = computed(() => this.tickLabels() === null && this.displayTicks().length > this.condensedTickThreshold);
+    readonly condensedTickInterval = computed(() => this.displayTicks().length >= 30 ? 10 : 5);
 
     constructor() {
         this.destroyRef.onDestroy(() => this.stopDrag());
@@ -98,6 +103,18 @@ export class HexSliderComponent {
         const max = this.maxValue();
         if (max <= min) return 0;
         return Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100));
+    }
+
+    tickLabel(tick: number): string {
+        const labels = this.tickLabels();
+        if (!labels) return this.isCondensedDotTick(tick) ? '•' : `${tick}`;
+        const index = this.displayTicks().indexOf(tick);
+        return labels[index] ?? `${tick}`;
+    }
+
+    isCondensedDotTick(tick: number): boolean {
+        if (!this.condenseTickLabels()) return false;
+        return !this.isMajorCondensedTick(tick);
     }
 
     startDrag(event: PointerEvent): void {
@@ -173,6 +190,16 @@ export class HexSliderComponent {
         const step = this.stepValue();
         const stepped = min + Math.round((value - min) / step) * step;
         return Math.max(min, Math.min(max, this.roundValue(stepped)));
+    }
+
+    private isMajorCondensedTick(tick: number): boolean {
+        const min = this.minValue();
+        const max = this.maxValue();
+        if (tick === min || tick === max) return true;
+        const offset = this.roundValue(tick - min);
+        const interval = this.condensedTickInterval();
+        const remainder = Math.abs(offset % interval);
+        return remainder < 0.000001 || Math.abs(remainder - interval) < 0.000001;
     }
 
     private normalizeNumber(value: number, fallback: number): number {

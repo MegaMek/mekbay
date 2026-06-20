@@ -46,7 +46,7 @@ import { ComponentPortal } from '@angular/cdk/portal';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
 import { canChangeAirborneGround, type MotiveModeOption, type MotiveModes } from '../../../models/motiveModes.model';
-import { getAttackerMovementModifier, type TnSpotterMoveMode } from '../../../models/target-number-calculator.model';
+import { getAttackerMovementModifier } from '../../../models/target-number-calculator.model';
 import { HexSliderComponent } from '../../hex-slider/hex-slider.component';
 
 /*
@@ -65,9 +65,6 @@ import { HexSliderComponent } from '../../hex-slider/hex-slider.component';
     styleUrl: './page-turn-summary.component.scss'
 })
 export class PageTurnSummaryPanelComponent {
-    readonly MOVE_MIN = 0;
-    readonly MOVE_MAX = 25;
-
     private overlayManager = inject(OverlayManagerService);
     private injector = inject(Injector);
     private overlay = inject(Overlay);
@@ -146,24 +143,6 @@ export class PageTurnSummaryPanelComponent {
         const u = this.unit();
         if (!u) return false;
         return u.turnState().spotting();
-    });
-
-    indirectFire = computed(() => {
-        const u = this.unit();
-        if (!u) return false;
-        return u.turnState().indirectFire();
-    });
-
-    currentSpotterMoveMode = computed<TnSpotterMoveMode>(() => {
-        const u = this.unit();
-        if (!u) return 'stationary';
-        return u.turnState().spotterMoveMode();
-    });
-
-    spotterDeclaredAttacks = computed(() => {
-        const u = this.unit();
-        if (!u) return false;
-        return u.turnState().spotterDeclaredAttacks();
     });
 
     tracksHeat = computed(() => {
@@ -287,31 +266,6 @@ export class PageTurnSummaryPanelComponent {
         turnState.spotting.set(!turnState.spotting());
     }
 
-    toggleIndirectFire() {
-        const u = this.unit();
-        if (!u) return;
-        const turnState = u.turnState();
-        const next = !turnState.indirectFire();
-        turnState.indirectFire.set(next);
-        if (!next) {
-            turnState.spotterMoveMode.set('stationary');
-            turnState.spotterDeclaredAttacks.set(false);
-        }
-    }
-
-    selectSpotterMove(mode: TnSpotterMoveMode) {
-        const u = this.unit();
-        if (!u) return;
-        u.turnState().spotterMoveMode.set(mode);
-    }
-
-    toggleSpotterDeclaredAttacks() {
-        const u = this.unit();
-        if (!u) return;
-        const turnState = u.turnState();
-        turnState.spotterDeclaredAttacks.set(!turnState.spotterDeclaredAttacks());
-    }
-
     overDistance = computed<boolean>(() => {
         const u = this.unit();
         if (!u) return false;
@@ -332,16 +286,16 @@ export class PageTurnSummaryPanelComponent {
 
     moveMax = computed(() => {
         const u = this.unit();
-        if (!u) return this.MOVE_MAX;
+        if (!u) return 0;
         const baseUnit = u.getUnit();
-        if (!baseUnit) return this.MOVE_MAX;
+        if (!baseUnit) return 0;
         const mode = u.turnState().moveMode();
-        if (!mode) return this.MOVE_MAX;
-        return Math.min(this.MOVE_MAX, u.turnState().maxDistanceCurrentMoveMode());
+        if (!mode) return 0;
+        return u.turnState().maxDistanceCurrentMoveMode();
     });
 
     moveDistanceTicks = computed(() => {
-        const max = Math.max(this.MOVE_MIN, this.moveMax() + 1);
+        const max = Math.max(0, this.moveMax() + 1);
         return Array.from({ length: max }, (_value, index) => index);
     });
 
@@ -349,14 +303,6 @@ export class PageTurnSummaryPanelComponent {
         const u = this.unit();
         if (!u) return false;
         return u.turnState().moveDistance() !== null;
-    });
-
-    moveDistanceLabel = computed(() => {
-        const v = this.moveDistance();
-        if (v >= this.MOVE_MAX) {
-            return `${this.MOVE_MAX}+`;
-        }
-        return `${v}`;
     });
 
     setMoveDistance(value: number) {

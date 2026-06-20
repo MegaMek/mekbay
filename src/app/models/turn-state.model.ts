@@ -13,7 +13,6 @@ import {
     getTargetUnitTypeModifier,
     TN_JUMPED_MODIFIER,
     TN_SKIDDING_MODIFIER,
-    type TnSpotterMoveMode,
 } from "./target-number-calculator.model";
 
 export interface PSRCheck {
@@ -43,9 +42,6 @@ export class TurnState {
     private psrChecks = signal<PSRChecks>({});
     applyMovePSR = signal<boolean>(true);
     spotting = signal<boolean>(false);
-    indirectFire = signal<boolean>(false);
-    spotterMoveMode = signal<TnSpotterMoveMode>('stationary');
-    spotterDeclaredAttacks = signal<boolean>(false);
 
     dirty = computed<boolean>(() => {
         const heat = this.unitState.heat();
@@ -54,7 +50,6 @@ export class TurnState {
         const moveDistance = this.moveDistance();
         const psrChecks = this.psrChecks();
         const dmgReceived = this.dmgReceived();
-        const indirectFire = this.indirectFire();
         const unconsolidatedCrits = this.unitState.hasUnconsolidatedCrits();
         const unconsolidatedLocations = this.unitState.hasUnconsolidatedLocations();
         return airborne !== null
@@ -62,9 +57,6 @@ export class TurnState {
             || moveDistance !== null
             || dmgReceived != 0
             || this.spotting()
-            || indirectFire
-            || (indirectFire && this.spotterMoveMode() !== 'stationary')
-            || (indirectFire && this.spotterDeclaredAttacks())
             || Object.keys(psrChecks).length > 0
             || unconsolidatedCrits
             || unconsolidatedLocations
@@ -282,11 +274,6 @@ export class TurnState {
         const baseUnit = this.unitState.unit.getUnit();
         let mod = baseUnit.type === 'Infantry' ? 0 : getAttackerMovementModifier(this.moveMode());
         if (this.spotting()) { mod += 1; }
-        if (this.indirectFire()) {
-            mod += 1;
-            mod += getAttackerMovementModifier(this.spotterMoveMode());
-            if (this.spotterDeclaredAttacks()) { mod += 1; }
-        }
         return mod;
     });
 
