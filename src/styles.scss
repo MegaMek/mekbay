@@ -1064,10 +1064,10 @@ hr {
 .wide-dialog {
     display: flex;
     flex-direction: column;
-    width: 100vw;
+    width: 100dvw;
     max-width: 700px;
     padding: 16px;
-    max-height: 100vh;
+    max-height: 100dvh;
     text-align: center;
     box-sizing: border-box;
     container-type: inline-size;
@@ -1166,6 +1166,20 @@ span {
     &.danger {
         color: var(--danger);
     }
+}
+
+.info-notice {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 12px;
+    block-size: 12px;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    font-size: 0.60rem;
+    font-weight: 600;
+    line-height: 0;
+    text-transform: none;
 }
 
 .popup-menu {
