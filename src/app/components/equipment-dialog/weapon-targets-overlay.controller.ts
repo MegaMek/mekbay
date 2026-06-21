@@ -20,7 +20,7 @@ const TN_CALCULATOR_OVERLAY_POSITIONS = [
     { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
     { originX: 'end', originY: 'center', overlayX: 'start', overlayY: 'center', offsetX: 4 },
 ];
-const TN_CALCULATOR_FULLSCREEN_QUERY = '(max-width: 500px)';
+const TN_CALCULATOR_FULLSCREEN_QUERY = '(max-width: 600px)';
 
 export interface WeaponTargetsOverlayControllerDeps {
     overlay: Overlay;
