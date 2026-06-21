@@ -391,7 +391,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         expect(targetTnText.textContent).toBe('1');
 
-        forceUnit.updateInventoryControlTarget('A', { tnCalculator: { stance: 'none' } });
+        forceUnit.updateInventoryControlTarget('A', { tnCalculator: { stance: 'normal' } });
         svgService.refreshInventory();
     });
 

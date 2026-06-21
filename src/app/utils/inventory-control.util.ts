@@ -61,6 +61,7 @@ export interface InventoryControlRow {
     id: string;
     entry: MountedEquipment;
     category: InventoryControlGroupId;
+    tracksAmmo: boolean;
     additionalHitModifier: number;
     destroyed: boolean;
     disabled: boolean;
@@ -387,11 +388,13 @@ function buildInventoryControlRow(
     const selectedModeData = selectedMode ? modes.find(mode => mode.mode === selectedMode)?.data : null;
     const display = selectedModeData ? mergeModeData(base, selectedModeData) : base;
     const selectedRange = entry.owner.getInventoryControlEntryRange?.(rowEntry.id) ?? null;
+    const ammo = getInventoryControlAmmoSummary(entry, ammoSources, selectedMode, options.locationLock);
 
     return {
         id: rowEntry.id,
         entry: rowEntry,
         category,
+        tracksAmmo: ammo.tracksAmmo,
         additionalHitModifier,
         destroyed,
         disabled,
@@ -401,7 +404,7 @@ function buildInventoryControlRow(
         modes,
         modifiers,
         selectedMode,
-        ammo: getInventoryControlAmmoSummary(entry, ammoSources, selectedMode, options.locationLock)
+        ammo
     };
 }
 

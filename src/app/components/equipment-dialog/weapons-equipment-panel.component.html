@@ -150,31 +150,34 @@
                                 @if (hasActionsColumn()) {
                                 <span class="grouped-cells group-actions">
                                     <div class="actions-cell" [class.empty-row-actions]="!rowHasActions(row)">
-                                        <div class="ammo-cell meta-cell" [attr.data-label]="rowTracksAmmo(row) ? 'Ammo' : ''" [class.empty-row-ammo]="!rowTracksAmmo(row)" [class.empty-ammo]="ammoDepleted(row)" [class.destroyed-ammo]="ammoDestroyed(row)">
+                                        @if (row.tracksAmmo) {
+                                        @let ammo = ammoState(row);
+                                        <div class="ammo-cell meta-cell" data-label="Ammo" [class.empty-ammo]="ammo.depleted" [class.destroyed-ammo]="ammo.destroyed">
                                             <span class="grouped-cells">
-                                                @if (rowHasAmmo(row)) {
-                                                    @if (showAmmoDropdown(row)) {
+                                                @if (ammo.hasAmmo) {
+                                                    @if (ammo.showDropdown) {
                                                         <multiline-dropdown
                                                             class="bt-button tiny ammo-choice"
                                                             title="Ammo"
                                                             label="Ammo"
                                                             [options]="ammoDropdownOptions(row)"
-                                                            [value]="selectedAmmoOption(row)"
+                                                            [value]="ammo.selectedOptionId"
                                                             [disabled]="readOnly()"
                                                             (valueChange)="selectAmmoOption(row, $event)"
                                                         />
                                                     } @else {
-                                                        <span class="ammo-choice-static">{{ ammoText(row) }}</span>
+                                                        <span class="ammo-choice-static">{{ ammo.text }}</span>
                                                     }
-                                                } @else if (rowTracksAmmo(row)) {
+                                                } @else {
                                                     <span class="ammo-choice-static">NO AMMO</span>
-                                                }                                            
-                                                @if (!readOnly() && rowTracksAmmo(row) && (canAdjustAmmo(row, 1) || canAdjustAmmo(row, -1))) {
-                                                    <button class="bt-button tiny ammo-stepper-button" type="button" aria-label="Decrease ammo" title="Decrease Ammo" [disabled]="!canAdjustAmmo(row, 1)" (click)="adjustAmmo(row, 1)">-</button>
-                                                    <button class="bt-button tiny ammo-stepper-button" type="button" aria-label="Increase ammo" title="Increase Ammo" [disabled]="!canAdjustAmmo(row, -1)" (click)="adjustAmmo(row, -1)">+</button>
+                                                }
+                                                @if (ammo.canDecrease || ammo.canIncrease) {
+                                                    <button class="bt-button tiny ammo-stepper-button" type="button" aria-label="Decrease ammo" title="Decrease Ammo" [disabled]="!ammo.canDecrease" (click)="adjustAmmo(row, 1)">-</button>
+                                                    <button class="bt-button tiny ammo-stepper-button" type="button" aria-label="Increase ammo" title="Increase Ammo" [disabled]="!ammo.canIncrease" (click)="adjustAmmo(row, -1)">+</button>
                                                 }
                                             </span>
                                         </div>
+                                        }
                                         <div class="controls-cell" [class.empty-row-controls]="!rowHasControls(row)">
                                             @for (choice of handlerChoices(row); track choice.label) {
                                                 @switch (choice.displayType) {

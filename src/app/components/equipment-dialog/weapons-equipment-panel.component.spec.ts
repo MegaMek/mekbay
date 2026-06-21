@@ -485,10 +485,10 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const { component, fixture } = createComponent([rocket]);
         let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
-        expect(row.ammo.tracksAmmo).toBeTrue();
+        expect(row.tracksAmmo).toBeTrue();
         expect(row.ammo.remaining).toBe(1);
         expect(row.ammo.total).toBe(1);
-        expect(component.rowHasAmmo(row)).toBeTrue();
+        expect(component.ammoState(row).hasAmmo).toBeTrue();
 
         component.toggleSelected(row);
         await component.consumeSelectedHeatAndAmmo();
@@ -496,9 +496,9 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(rocket.consumed).toBe(1);
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         expect(row.ammo.remaining).toBe(0);
-        expect(component.rowHasAmmo(row)).toBeTrue();
-        expect(component.canAdjustAmmo(row, 1)).toBeFalse();
-        expect(component.canAdjustAmmo(row, -1)).toBeTrue();
+        expect(component.ammoState(row).hasAmmo).toBeTrue();
+        expect(component.ammoState(row).canDecrease).toBeFalse();
+        expect(component.ammoState(row).canIncrease).toBeTrue();
         fixture.detectChanges();
         const depletedButtons = Array.from(fixture.nativeElement.querySelectorAll('.ammo-stepper-button')) as HTMLButtonElement[];
         expect(depletedButtons.length).toBe(2);
@@ -888,8 +888,8 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(buttons[0].textContent?.trim()).toBe('-');
         expect(buttons[1].textContent?.trim()).toBe('+');
 
-        expect(component.canAdjustAmmo(row, 1)).toBeTrue();
-        expect(component.canAdjustAmmo(row, -1)).toBeTrue();
+        expect(component.ammoState(row).canDecrease).toBeTrue();
+        expect(component.ammoState(row).canIncrease).toBeTrue();
         component.adjustAmmo(row, 1);
 
         expect(ammoBin.consumed).toBe(2);
@@ -907,7 +907,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         }
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         expect(ammoBin.consumed).toBe(0);
-        expect(component.canAdjustAmmo(row, -1)).toBeFalse();
+        expect(component.ammoState(row).canIncrease).toBeFalse();
 
         for (let i = 0; i < 6; i++) {
             row = component.groups().find(group => group.id === 'ranged')!.rows[0];
@@ -915,7 +915,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         }
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         expect(ammoBin.consumed).toBe(5);
-        expect(component.canAdjustAmmo(row, 1)).toBeFalse();
+        expect(component.ammoState(row).canDecrease).toBeFalse();
     });
 
     it('switches to another compatible ammo bin after the selected bin is depleted', async () => {
@@ -931,7 +931,9 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const { component } = createComponent([atm, leftBin, rightBin], equipmentMap, [], new Map(), { tracksHeat: false });
         let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
-        expect(component.selectedAmmoOption(row)).toBe(row.ammo.options[0].id);
+        component.selectAmmoOption(row, row.ammo.options[0].id);
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(component.ammoState(row).selectedOptionId).toBe(row.ammo.options[0].id);
         component.toggleSelected(row);
 
         await component.consumeSelectedHeatAndAmmo();
@@ -939,8 +941,8 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(leftBin.consumed).toBe(1);
         expect(rightBin.consumed).toBe(0);
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
-        expect(component.selectedAmmoOption(row)).toBe(row.ammo.options[1].id);
-        expect(component.ammoText(row)).toBe('[RT] ATM 6 Standard (5/5)');
+        expect(component.ammoState(row).selectedOptionId).toBe(row.ammo.options[1].id);
+        expect(component.ammoState(row).text).toBe('[RT] ATM 6 Standard (5/5)');
 
         await component.consumeSelectedHeatAndAmmo();
 
@@ -980,15 +982,15 @@ describe('WeaponsEquipmentPanelComponent', () => {
         rows = component.groups().find(group => group.id === 'ranged')!.rows;
         weapon1 = rows[0];
         weapon2 = rows[1];
-        expect(component.selectedAmmoOption(weapon1)).toBe(weapon1.ammo.options[0].id);
-        expect(component.selectedAmmoOption(weapon2)).toBe(weapon2.ammo.options[0].id);
+        expect(component.ammoState(weapon1).selectedOptionId).toBe(weapon1.ammo.options[0].id);
+        expect(component.ammoState(weapon2).selectedOptionId).toBe(weapon2.ammo.options[0].id);
 
         component.selectAmmoOption(weapon2, weapon2.ammo.options[1].id);
         rows = component.groups().find(group => group.id === 'ranged')!.rows;
         weapon1 = rows[0];
         weapon2 = rows[1];
-        expect(component.selectedAmmoOption(weapon2)).toBe(weapon2.ammo.options[1].id);
-        expect(component.ammoText(weapon2)).toBe('[RT] SRM 6 Smoke (0/1)');
+        expect(component.ammoState(weapon2).selectedOptionId).toBe(weapon2.ammo.options[1].id);
+        expect(component.ammoState(weapon2).text).toBe('[RT] SRM 6 Smoke (0/1)');
 
         component.adjustAmmo(weapon2, -1);
         rows = component.groups().find(group => group.id === 'ranged')!.rows;
@@ -996,10 +998,10 @@ describe('WeaponsEquipmentPanelComponent', () => {
         weapon2 = rows[1];
         expect(leftBin.consumed).toBe(1);
         expect(rightBin.consumed).toBe(0);
-        expect(component.selectedAmmoOption(weapon1)).toBe(weapon1.ammo.options[0].id);
-        expect(component.ammoText(weapon1)).toBe('[LT] SRM 6 Smoke (4/5)');
-        expect(component.selectedAmmoOption(weapon2)).toBe(weapon2.ammo.options[1].id);
-        expect(component.ammoText(weapon2)).toBe('[RT] SRM 6 Smoke (1/1)');
+        expect(component.ammoState(weapon1).selectedOptionId).toBe(weapon1.ammo.options[0].id);
+        expect(component.ammoState(weapon1).text).toBe('[LT] SRM 6 Smoke (4/5)');
+        expect(component.ammoState(weapon2).selectedOptionId).toBe(weapon2.ammo.options[1].id);
+        expect(component.ammoState(weapon2).text).toBe('[RT] SRM 6 Smoke (1/1)');
 
         await component.consumeSelectedHeatAndAmmo();
 
@@ -1008,10 +1010,45 @@ describe('WeaponsEquipmentPanelComponent', () => {
         rows = component.groups().find(group => group.id === 'ranged')!.rows;
         weapon1 = rows[0];
         weapon2 = rows[1];
-        expect(component.selectedAmmoOption(weapon1)).toBe(weapon1.ammo.options[0].id);
-        expect(component.ammoText(weapon1)).toBe('[LT] SRM 6 Smoke (3/5)');
-        expect(component.selectedAmmoOption(weapon2)).toBe(weapon2.ammo.options[0].id);
-        expect(component.ammoText(weapon2)).toBe('[LT] SRM 6 Smoke (3/5)');
+        expect(component.ammoState(weapon1).selectedOptionId).toBe(weapon1.ammo.options[0].id);
+        expect(component.ammoState(weapon1).text).toBe('[LT] SRM 6 Smoke (3/5)');
+        expect(component.ammoState(weapon2).selectedOptionId).toBe(weapon2.ammo.options[0].id);
+        expect(component.ammoState(weapon2).text).toBe('[LT] SRM 6 Smoke (3/5)');
+    });
+
+    it('does not move later weapons to a manually restored low-ammo bin', () => {
+        const standardAmmo = ammo('SRM 6 Smoke', 'MML', 6);
+        const weapons = Array.from({ length: 5 }, (_value, index) => entry({
+            id: `srm-${index + 1}`,
+            equipment: weapon('SRM 6', 'MML', 6),
+            el: svgEntry('<g><g class="name"><text>SRM 6</text></g><text class="heat">4</text><text class="range_short">3</text></g>')
+        }));
+        const lowBin = entry({ id: 'right-ammo', equipment: standardAmmo, totalAmmo: 10, consumed: 10, locations: new Set(['RT']) });
+        const mainBin = entry({ id: 'left-ammo', equipment: standardAmmo, totalAmmo: 30, consumed: 20, locations: new Set(['LT']) });
+        const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
+        const { component } = createComponent([...weapons, lowBin, mainBin], equipmentMap, [], new Map(), { tracksHeat: false });
+        let rows = component.groups().find(group => group.id === 'ranged')!.rows;
+        let weapon2 = rows[1];
+
+        expect(rows.map(row => component.ammoState(row).selectedOptionId)).toEqual(rows.map(row => row.ammo.options[1].id));
+
+        component.selectAmmoOption(weapon2, weapon2.ammo.options[0].id);
+        rows = component.groups().find(group => group.id === 'ranged')!.rows;
+        weapon2 = rows[1];
+        expect(component.ammoState(weapon2).selectedOptionId).toBe(weapon2.ammo.options[0].id);
+        expect(component.ammoState(weapon2).text).toBe('[RT] SRM 6 Smoke (0/10)');
+
+        component.adjustAmmo(weapon2, -1);
+
+        rows = component.groups().find(group => group.id === 'ranged')!.rows;
+        weapon2 = rows[1];
+        expect(lowBin.consumed).toBe(9);
+        expect(component.ammoState(weapon2).selectedOptionId).toBe(weapon2.ammo.options[0].id);
+        expect(component.ammoState(weapon2).text).toBe('[RT] SRM 6 Smoke (1/10)');
+        expect(rows.filter(row => row.id !== weapon2.id).map(row => component.ammoState(row).selectedOptionId))
+            .toEqual(rows.filter(row => row.id !== weapon2.id).map(row => row.ammo.options[1].id));
+        expect(rows.filter(row => row.id !== weapon2.id).map(row => component.ammoState(row).text))
+            .toEqual(rows.filter(row => row.id !== weapon2.id).map(() => '[LT] SRM 6 Smoke (10/30)'));
     });
 
     it('does not switch to a different ammo type after the selected bin is depleted', async () => {
@@ -1034,7 +1071,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         component.selectAmmoOption(row, row.ammo.options[1].id);
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
-        expect(component.ammoText(row)).toBe('[LT] LRM 15 Smoke (1/1)');
+        expect(component.ammoState(row).text).toBe('[LT] LRM 15 Smoke (1/1)');
         component.toggleSelected(row);
 
         await component.consumeSelectedHeatAndAmmo();
@@ -1042,8 +1079,8 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(smokeBin.consumed).toBe(1);
         expect(fragBin.consumed).toBe(5);
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
-        expect(component.selectedAmmoOption(row)).toBe(row.ammo.options[1].id);
-        expect(component.ammoText(row)).toBe('[LT] LRM 15 Smoke (0/1)');
+        expect(component.ammoState(row).selectedOptionId).toBe(row.ammo.options[1].id);
+        expect(component.ammoState(row).text).toBe('[LT] LRM 15 Smoke (0/1)');
 
         await component.consumeSelectedHeatAndAmmo();
 
@@ -1177,11 +1214,11 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(component.hasAmmoColumn()).toBeTrue();
         expect(component.hasControlsColumn()).toBeFalse();
         expect(component.hasActionsColumn()).toBeTrue();
-        expect(component.groupHasAmmo(rangedGroup)).toBeTrue();
+        expect(component.groupTracksAmmo(rangedGroup)).toBeTrue();
         expect(component.groupHasControls(rangedGroup)).toBeFalse();
         expect(component.groupHasActions(rangedGroup)).toBeTrue();
         expect(component.groupActionsHeader(rangedGroup)).toBe('Ammo');
-        expect(component.groupHasAmmo(physicalGroup)).toBeFalse();
+        expect(component.groupTracksAmmo(physicalGroup)).toBeFalse();
         expect(component.groupHasControls(physicalGroup)).toBeFalse();
         expect(component.groupHasActions(physicalGroup)).toBeFalse();
         expect(component.groupActionsHeader(physicalGroup)).toBe('');
@@ -1198,6 +1235,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(physicalSection.querySelector('.controls-header')).toBeNull();
         expect(physicalSection.querySelector('.actions-cell')).not.toBeNull();
         expect(physicalSection.querySelector('.actions-cell')?.classList.contains('empty-row-actions')).toBeTrue();
+        expect(physicalSection.querySelector('.ammo-cell')).toBeNull();
         expect(rangedSection.querySelector('.name-cell .mode-badge')?.textContent?.trim()).toBe('STD');
     });
 
@@ -1256,8 +1294,8 @@ describe('WeaponsEquipmentPanelComponent', () => {
         let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         expect(row.selectedMode).toBe('Standard');
         expect(component.modeChoice(row)?.choices?.map(choice => choice.label)).toEqual(['STD', 'ER', 'HE']);
-        expect(component.ammoText(row)).toBe('ATM 6 Standard (8/10)');
-        expect(component.ammoDepleted(row)).toBeFalse();
+        expect(component.ammoState(row).text).toBe('ATM 6 Standard (8/10)');
+        expect(component.ammoState(row).depleted).toBeFalse();
         expect(row.ammo.options.map(option => option.label)).toEqual(['ATM 6 Standard (8/10)']);
         fixture.detectChanges();
         const inlineMode = fixture.nativeElement.querySelector('.name-cell .mode-choice') as HTMLElement;
@@ -1265,20 +1303,20 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         await component.handleChoice(row, { ...component.modeChoice(row)!, value: 'Extended Range', label: 'ER' });
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
-        expect(component.rowTracksAmmo(row)).toBeTrue();
-        expect(component.rowHasAmmo(row)).toBeFalse();
-        expect(component.ammoText(row)).toBe('');
-        expect(component.ammoDepleted(row)).toBeTrue();
+        expect(row.tracksAmmo).toBeTrue();
+        expect(component.ammoState(row).hasAmmo).toBeFalse();
+        expect(component.ammoState(row).text).toBe('');
+        expect(component.ammoState(row).depleted).toBeTrue();
         component.selectAmmoOption(row, row.ammo.options[0].id);
-        expect(component.selectedAmmoOption(row)).toBe(row.ammo.options[0].id);
+        expect(component.ammoState(row).selectedOptionId).toBe(row.ammo.options[0].id);
 
         await component.handleChoice(row, { ...component.modeChoice(row)!, value: 'High Explosive', label: 'HE' });
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
-        expect(component.rowTracksAmmo(row)).toBeTrue();
-        expect(component.rowHasAmmo(row)).toBeFalse();
-        expect(component.ammoText(row)).toBe('');
-        expect(component.ammoDepleted(row)).toBeTrue();
-        expect(component.ammoDestroyed(row)).toBeFalse();
+        expect(row.tracksAmmo).toBeTrue();
+        expect(component.ammoState(row).hasAmmo).toBeFalse();
+        expect(component.ammoState(row).text).toBe('');
+        expect(component.ammoState(row).depleted).toBeTrue();
+        expect(component.ammoState(row).destroyed).toBeFalse();
     });
 
     it('uses a flat dropdown only when multiple compatible ammo sources exist', () => {
@@ -1298,8 +1336,8 @@ describe('WeaponsEquipmentPanelComponent', () => {
             '[LT] ATM 6 Standard (9/10)',
             '[RT] ATM 6 Standard (5/10)'
         ]);
-        expect(component.selectedAmmoOption(row)).toBe(row.ammo.options[0].id);
-        expect(component.ammoText(row)).toBe('[LT] ATM 6 Standard (9/10)');
+        expect(component.ammoState(row).selectedOptionId).toBe(row.ammo.options[0].id);
+        expect(component.ammoState(row).text).toBe('[LT] ATM 6 Standard (9/10)');
     });
 
     it('shows No ammo only when a weapon has no ammo choices', () => {
@@ -1312,10 +1350,10 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
         expect(row.ammo.options).toEqual([]);
-        expect(component.rowTracksAmmo(row)).toBeTrue();
-        expect(component.rowHasAmmo(row)).toBeFalse();
-        expect(component.ammoDepleted(row)).toBeTrue();
-        expect(component.ammoText(row)).toBe('');
+        expect(row.tracksAmmo).toBeTrue();
+        expect(component.ammoState(row).hasAmmo).toBeFalse();
+        expect(component.ammoState(row).depleted).toBeTrue();
+        expect(component.ammoState(row).text).toBe('');
         fixture.detectChanges();
         expect((fixture.nativeElement.querySelector('.ammo-cell') as HTMLElement).textContent?.trim()).toBe('NO AMMO');
         expect(fixture.nativeElement.querySelectorAll('.ammo-stepper-button').length).toBe(0);
@@ -1338,12 +1376,12 @@ describe('WeaponsEquipmentPanelComponent', () => {
             { remaining: 0, destroyed: false },
             { remaining: 0, destroyed: false }
         ]);
-        expect(component.showAmmoDropdown(row)).toBeFalse();
-        expect(component.rowTracksAmmo(row)).toBeTrue();
-        expect(component.rowHasAmmo(row)).toBeFalse();
-        expect(component.ammoText(row)).toBe('');
-        expect(component.ammoDepleted(row)).toBeTrue();
-        expect(component.ammoDestroyed(row)).toBeFalse();
+        expect(component.ammoState(row).showDropdown).toBeFalse();
+        expect(row.tracksAmmo).toBeTrue();
+        expect(component.ammoState(row).hasAmmo).toBeFalse();
+        expect(component.ammoState(row).text).toBe('');
+        expect(component.ammoState(row).depleted).toBeTrue();
+        expect(component.ammoState(row).destroyed).toBeFalse();
         fixture.detectChanges();
         expect((fixture.nativeElement.querySelector('.ammo-cell') as HTMLElement).textContent?.trim()).toBe('NO AMMO');
         expect(fixture.nativeElement.querySelectorAll('.ammo-stepper-button').length).toBe(0);
@@ -1366,12 +1404,12 @@ describe('WeaponsEquipmentPanelComponent', () => {
             { remaining: 0, destroyed: true },
             { remaining: 0, destroyed: true }
         ]);
-        expect(component.showAmmoDropdown(row)).toBeFalse();
-        expect(component.rowTracksAmmo(row)).toBeTrue();
-        expect(component.rowHasAmmo(row)).toBeFalse();
-        expect(component.ammoText(row)).toBe('');
-        expect(component.ammoDepleted(row)).toBeTrue();
-        expect(component.ammoDestroyed(row)).toBeFalse();
+        expect(component.ammoState(row).showDropdown).toBeFalse();
+        expect(row.tracksAmmo).toBeTrue();
+        expect(component.ammoState(row).hasAmmo).toBeFalse();
+        expect(component.ammoState(row).text).toBe('');
+        expect(component.ammoState(row).depleted).toBeTrue();
+        expect(component.ammoState(row).destroyed).toBeFalse();
         fixture.detectChanges();
         expect((fixture.nativeElement.querySelector('.ammo-cell') as HTMLElement).textContent?.trim()).toBe('NO AMMO');
         expect(fixture.nativeElement.querySelectorAll('.ammo-stepper-button').length).toBe(0);
@@ -1396,7 +1434,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const row = created.component.groups().find(group => group.id === 'ranged')!.rows[0];
 
         expect(row.ammo.options.map(option => option.label)).toEqual(['MML 9/LRM Artemis (23/26)']);
-        expect(created.component.ammoText(row)).toBe('MML 9/LRM Artemis (23/26)');
+        expect(created.component.ammoState(row).text).toBe('MML 9/LRM Artemis (23/26)');
     });
 
     it('counts destroyed ammo bins as empty inside grouped ammo', () => {
@@ -1421,8 +1459,8 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(row.ammo.options.map(option => ({ label: option.label, destroyed: option.destroyed, disabled: option.disabled }))).toEqual([
             { label: 'MML 9/LRM Artemis (13/26)', destroyed: false, disabled: false }
         ]);
-        expect(created.component.ammoText(row)).toBe('MML 9/LRM Artemis (13/26)');
-        expect(created.component.ammoDestroyed(row)).toBeFalse();
+        expect(created.component.ammoState(row).text).toBe('MML 9/LRM Artemis (13/26)');
+        expect(created.component.ammoState(row).destroyed).toBeFalse();
     });
 
     it('prefers a non-destroyed non-empty ammo bin when mode changes', async () => {
@@ -1453,9 +1491,9 @@ describe('WeaponsEquipmentPanelComponent', () => {
             { label: '[RT] ATM 6 ER (0/10)', disabled: false, destroyed: false },
             { label: '[CT] ATM 6 ER (6/10)', disabled: false, destroyed: false },
         ]);
-        expect(component.selectedAmmoOption(row)).toBe(row.ammo.options[2].id);
-        expect(component.ammoText(row)).toBe('[CT] ATM 6 ER (6/10)');
-        expect(component.ammoDestroyed(row)).toBeFalse();
+        expect(component.ammoState(row).selectedOptionId).toBe(row.ammo.options[2].id);
+        expect(component.ammoState(row).text).toBe('[CT] ATM 6 ER (6/10)');
+        expect(component.ammoState(row).destroyed).toBeFalse();
     });
 
     it('includes ammo location labels for units with critical slots', () => {
@@ -1478,6 +1516,6 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const { component } = createComponent([atm], equipmentMap, [critSlot]);
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
-        expect(component.ammoText(row)).toBe('ATM 6 Standard (10/20)');
+        expect(component.ammoState(row).text).toBe('ATM 6 Standard (10/20)');
     });
 });
