@@ -562,12 +562,12 @@
 .mode-choice,
 .control-select,
 .ammo-choice {
-    border: 1px solid var(--border-color);
     background: var(--background-input);
     min-height: 24px;
     align-items: center;
     display: flex;
     font-size: 0.8rem;
+    align-self: stretch;
 }
 
 @container (max-width: 760px) {

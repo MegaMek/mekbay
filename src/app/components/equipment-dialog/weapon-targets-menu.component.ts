@@ -52,8 +52,6 @@ export interface WeaponTargetCalculatorRequest {
                                         [value]="target.color"
                                         [colors]="colors()"
                                         [ariaLabel]="'Choose color for ' + target.name"
-                                        (pickerOpened)="colorPickerOpened.emit()"
-                                        (pickerClosed)="colorPickerClosed.emit()"
                                         (valueChange)="updateColor(target.id, $event)">
                                         {{ target.letter }}
                                     </color-picker-button>
@@ -342,8 +340,6 @@ export class WeaponTargetsMenuComponent {
     readonly updateRequest = output<WeaponTargetUpdateRequest>();
     readonly deleteRequest = output<InventoryControlRuntimeTargetId>();
     readonly calculatorRequest = output<WeaponTargetCalculatorRequest>();
-    readonly colorPickerOpened = output<void>();
-    readonly colorPickerClosed = output<void>();
 
     updateName(targetId: InventoryControlRuntimeTargetId, name: string): void {
         this.updateRequest.emit({ targetId, patch: { name } });

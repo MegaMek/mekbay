@@ -91,12 +91,6 @@ export class WeaponTargetsOverlayController {
             options.unit.deleteInventoryControlTarget(targetId);
             this.syncAfterTargetUpdate(options);
         });
-        outputToObservable(componentRef.instance.colorPickerOpened).pipe(takeUntilDestroyed(this.deps.destroyRef)).subscribe(() => {
-            this.deps.overlayManager.blockCloseUntil(options.overlayKey);
-        });
-        outputToObservable(componentRef.instance.colorPickerClosed).pipe(takeUntilDestroyed(this.deps.destroyRef)).subscribe(() => {
-            this.deps.overlayManager.unblockClose(options.overlayKey);
-        });
         closed.pipe(takeUntilDestroyed(this.deps.destroyRef)).subscribe(() => {
             this.closeTnCalculator(options.overlayKey);
             if (this.targetsCompRef === componentRef) {
