@@ -100,8 +100,7 @@ export class PageInteractionOverlayComponent {
         overlay: this.overlay,
         overlayManager: this.overlayManager,
         injector: this.injector,
-        destroyRef: this.destroyRef,
-        dialogsService: this.dialogsService
+        destroyRef: this.destroyRef
     });
 
     // Inputs

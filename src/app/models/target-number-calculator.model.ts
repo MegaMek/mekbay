@@ -89,18 +89,9 @@ export const TN_TARGET_MOVEMENT_BRACKETS: readonly TnTargetMovementBracket[] = [
 ] as const;
 
 export const TN_TARGET_MOVE_TYPE_OPTIONS: readonly { value: MoveType | ''; label: string }[] = [
-    { value: '', label: 'None' },
-    { value: 'Biped', label: 'Biped' },
-    { value: 'Quad', label: 'Quad' },
-    { value: 'Tripod', label: 'Tripod' },
-    { value: 'Tracked', label: 'Tracked' },
-    { value: 'Wheeled', label: 'Wheeled' },
-    { value: 'Hover', label: 'Hover' },
+    { value: '', label: 'Any' },
     { value: 'VTOL', label: 'VTOL' },
     { value: 'WiGE', label: 'WiGE' },
-    { value: 'Jump', label: 'Jump' },
-    { value: 'UMU', label: 'UMU' },
-    { value: 'Naval', label: 'Naval' },
 ] as const;
 
 export type TnTargetStance = 'none' | 'prone' | 'immobile';

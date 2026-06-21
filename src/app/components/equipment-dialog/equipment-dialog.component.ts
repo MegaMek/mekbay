@@ -40,8 +40,7 @@ export class EquipmentDialogComponent {
         overlay: this.overlay,
         overlayManager: this.overlayManager,
         injector: this.injector,
-        destroyRef: this.destroyRef,
-        dialogsService: this.data.context.dialogsService
+        destroyRef: this.destroyRef
     });
     private readonly turnSummaryParent = {
         unit: () => this.unit(),
