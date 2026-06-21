@@ -102,7 +102,7 @@
                                         @if (modeChoice(row); as choice) {
                                             @if ((choice.choices?.length ?? 0) > 1 && !choice.disabled && !readOnly()) {
                                                 <multiline-dropdown
-                                                    class="mode-choice"
+                                                    class="bt-button tiny mode-choice"
                                                     [title]="choice.label"
                                                     [label]="choice.label"
                                                     [options]="handlerDropdownOptions(choice)"
@@ -150,12 +150,12 @@
                                 @if (hasActionsColumn()) {
                                 <span class="grouped-cells group-actions">
                                     <div class="actions-cell" [class.empty-row-actions]="!rowHasActions(row)">
-                                        <div class="ammo-cell meta-cell" [attr.data-label]="rowTracksAmmo(row) && !ammoDepleted(row) ? 'Ammo' : ''" [class.empty-row-ammo]="!rowTracksAmmo(row)" [class.empty-ammo]="ammoDepleted(row)" [class.destroyed-ammo]="ammoDestroyed(row)">
+                                        <div class="ammo-cell meta-cell" [attr.data-label]="rowTracksAmmo(row) ? 'Ammo' : ''" [class.empty-row-ammo]="!rowTracksAmmo(row)" [class.empty-ammo]="ammoDepleted(row)" [class.destroyed-ammo]="ammoDestroyed(row)">
                                             <span class="grouped-cells">
                                                 @if (rowHasAmmo(row)) {
                                                     @if (showAmmoDropdown(row)) {
                                                         <multiline-dropdown
-                                                            class="ammo-choice"
+                                                            class="bt-button tiny ammo-choice"
                                                             title="Ammo"
                                                             label="Ammo"
                                                             [options]="ammoDropdownOptions(row)"
@@ -180,7 +180,7 @@
                                                 @switch (choice.displayType) {
                                                     @case ('dropdown') {
                                                         <multiline-dropdown
-                                                            class="control-select"
+                                                            class="bt-button tiny control-select"
                                                             [title]="choice.label"
                                                             [label]="choice.label"
                                                             [options]="handlerDropdownOptions(choice)"

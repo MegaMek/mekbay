@@ -37,19 +37,19 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import type { MoveType } from '../../models/units.model';
 import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { HexSliderComponent } from '../hex-slider/hex-slider.component';
+import { MultilineDropdownComponent, type MultilineDropdownOption } from '../multiline-dropdown/multiline-dropdown.component';
 import {
     calculateTargetTnModifier,
     getIndirectFireModifier,
-    getTargetMoveTypeModifier,
     getTargetMovementBracketModifier,
     getTargetUnitTypeModifier,
     TN_TARGET_MOVE_TYPE_OPTIONS,
     TN_TARGET_MOVEMENT_BRACKETS,
     TN_TARGET_UNIT_TYPE_OPTIONS,
+    ADJACENT_RANGE,
     type TnAttackDirection,
     type TnInterveningWoods,
     type TnTargetHexCover,
-    type TnTargetMovementBracketId,
     type TnTargetNumberCalculatorState,
     type TnTargetStance,
     type TnTargetUnitType,
@@ -68,7 +68,7 @@ export interface TnCalculatorDialogResult {
 @Component({
     selector: 'tn-calculator-dialog',
     standalone: true,
-    imports: [CommonModule, HexSliderComponent],
+    imports: [CommonModule, HexSliderComponent, MultilineDropdownComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         class: 'tn-calculator-host'
@@ -131,12 +131,12 @@ export interface TnCalculatorDialogResult {
                                 [label]="targetMovementBracketLabel()"
                                 [modifierLabel]="targetMovementModifierLabel()"
                                 [ariaLabel]="'Target movement bracket'"
-                                [valueAssigned]="stance() === 'none'"
+                                [valueAssigned]="stance() === 'normal'"
                                 [compactLabel]="true"
                                 (valueChange)="setTargetMovementBracketIndex($event)"></hex-slider>
                         </div>
                         <div class="button-row">
-                            <button type="button" class="bt-button move-button" [class.selected]="jumped()" [attr.aria-pressed]="jumped()" (click)="toggleJumped()"><span>Jumped</span><span class="modifier-badge">+1</span></button>
+                            <button type="button" class="bt-button move-button" [class.selected]="isAirborne()" [attr.aria-pressed]="isAirborne()" (click)="toggleAirborne()"><span>Jumped / Airborne</span><span class="modifier-badge">+1</span></button>
                             <button type="button" class="bt-button move-button" [class.selected]="skidding()" [attr.aria-pressed]="skidding()" (click)="toggleSkidding()"><span>Skidding</span><span class="modifier-badge">+2</span></button>
                         </div>
                         <div class="button-row" role="group" aria-label="Target stance">
@@ -167,20 +167,15 @@ export interface TnCalculatorDialogResult {
                     <section class="tn-section target-identity-section">
                         <div class="section-title">Target Identity</div>
                         <div class="field-row">
-                            <label for="tnTargetUnitType"><span>Unit type</span>@if (unitTypeModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }</label>
-                            <select id="tnTargetUnitType" class="bt-select" [value]="unitType()" (change)="onUnitTypeChange($event)">
-                                @for (option of unitTypeOptions; track option.value) {
-                                    <option [value]="option.value">{{ option.label }}</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="field-row">
-                            <label for="tnTargetMoveType"><span>Move type</span>@if (moveTypeModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }</label>
-                            <select id="tnTargetMoveType" class="bt-select" [value]="targetMoveType() ?? ''" (change)="onMoveTypeChange($event)">
-                                @for (option of moveTypeOptions; track option.value) {
-                                    <option [value]="option.value">{{ option.label }}</option>
-                                }
-                            </select>
+                            <label for="tnTargetUnitType">Unit Type</label>
+                            <multiline-dropdown
+                                class="bt-button identity-choice"
+                                [class.selected]="unitTypeSelectedHasModifier()"
+                                controlId="tnTargetUnitType"
+                                [label]="'Unit Type'"
+                                [options]="unitTypeDropdownOptions()"
+                                [value]="unitType()"
+                                (valueChange)="selectUnitType($event)" />
                         </div>
                     </section>
 
@@ -225,7 +220,7 @@ export interface TnCalculatorDialogResult {
                                 </span>
                             </div>
                             <div class="button-row">
-                            <button type="button" class="bt-button move-button partial-cover" [class.selected]="partialCover()" [attr.aria-pressed]="partialCover()" [disabled]="partialCoverDisabled()" (click)="togglePartialCover()"><span>Partial Cover or Depth 1</span><span class="modifier-badge">+1</span></button>
+                            <button type="button" class="bt-button move-button partial-cover" [class.selected]="partialCover()" [attr.aria-pressed]="partialCover()" [disabled]="partialCoverDisabled()" (click)="togglePartialCover()"><span>Partial Cover / Depth 1</span><span class="modifier-badge">+1</span></button>
                             </div>
                         </div>
 
@@ -235,7 +230,7 @@ export interface TnCalculatorDialogResult {
             </div>
         </div>
         <div class="tn-actions">
-            <div class="total-box">Target TN Modifier: <strong>{{ signedTotal() }}</strong></div>
+            <div class="total-box">Target TN Modifier: <span class="modifier">{{ signedTotal() }}</span></div>
             <button class="bt-button primary" type="button" (click)="apply()">APPLY</button>
             <button class="bt-button" type="button" (click)="close()">CANCEL</button>
         </div>
@@ -508,6 +503,13 @@ export interface TnCalculatorDialogResult {
             min-width: 0;
         }
 
+        .identity-choice {
+            flex: 1 1 auto;
+            min-width: 0;
+            width: 100%;
+            display: flex;
+        }
+
         .toggle-button.selected,
         .segment-button.selected {
             background: var(--selection-bg, #555);
@@ -604,11 +606,15 @@ export interface TnCalculatorDialogResult {
             margin-right: auto;
             font-weight: 500;
             color: var(--text-color-secondary);
-        }
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
 
-        .total-box strong {
-            color: var(--text-color);
-            font-size: 1.05rem;
+            .modifier {
+                color: var(--text-color);
+                font-size: 1.1em;
+                min-height: 28px;
+            }
         }
 
         @media (max-width: 1000px) {
@@ -651,25 +657,6 @@ export interface TnCalculatorDialogResult {
                 content: none;
             }
 
-            .field-row {
-                align-items: stretch;
-                flex-direction: column;
-            }
-
-            .field-row label {
-                flex: 0 0 auto;
-            }
-
-            .target-identity-section {
-                display: grid;
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-                gap: 2px 6px;
-            }
-
-            .target-identity-section .section-title {
-                grid-column: 1 / -1;
-            }
-
             .total-box {
                 width: 100%;
             }
@@ -703,6 +690,11 @@ export class TnCalculatorDialogComponent {
     readonly target = this.data.target;
     readonly unitTypeOptions = TN_TARGET_UNIT_TYPE_OPTIONS;
     readonly moveTypeOptions = TN_TARGET_MOVE_TYPE_OPTIONS;
+    readonly unitTypeDropdownOptions = computed<MultilineDropdownOption[]>(() => this.unitTypeOptions.map(option => ({
+        value: option.value,
+        label: option.label,
+        modifierLabel: this.formatNonZeroModifier(getTargetUnitTypeModifier(option.value)),
+    })));
     readonly movementBrackets = TN_TARGET_MOVEMENT_BRACKETS;
     readonly movementTicks = this.movementBrackets.map((_bracket, index) => index);
     readonly movementTickLabels = this.movementBrackets.map(bracket => bracket.label);
@@ -711,13 +703,12 @@ export class TnCalculatorDialogComponent {
     readonly unitType = signal<TnTargetUnitType>(this.initialUnitType);
     readonly targetMoveType = signal<MoveType | null>(this.normalizeTargetMoveType(this.initialCalculator?.targetMoveType));
     readonly targetMovementBracketIndex = signal<number>(this.indexFromStoredMovementBracket());
-    readonly jumped = signal<boolean>(this.initialCalculator?.jumped ?? false);
     readonly skidding = signal<boolean>(this.initialCalculator?.skidding ?? false);
-    readonly stance = signal<TnTargetStance>(this.initialCalculator?.stance ?? 'none');
+    readonly stance = signal<TnTargetStance>(this.initialCalculator?.stance ?? 'normal');
     readonly interveningWoods = signal<TnInterveningWoods>(this.normalizeInterveningWoods(this.initialCalculator?.interveningWoods as TnInterveningWoods | 'heavy1' | null | undefined));
     readonly targetHexCover = signal<TnTargetHexCover>(this.initialCalculator?.targetHexCover ?? 'none');
     readonly range = signal<number>(Math.max(0, this.data.target.distance ?? 1));
-    readonly partialCover = signal<boolean>((this.initialCalculator?.partialCover ?? false) && this.range() > 1);
+    readonly partialCover = signal<boolean>((this.initialCalculator?.partialCover ?? false) && this.range() > ADJACENT_RANGE);
     readonly attackDirection = signal<TnAttackDirection>(this.initialCalculator?.attackDirection ?? 'front');
     readonly indirectFire = signal<boolean>(this.initialCalculator?.indirectFire ?? false);
     readonly secondaryTarget = signal<boolean>(this.initialCalculator?.secondaryTarget ?? false);
@@ -725,24 +716,23 @@ export class TnCalculatorDialogComponent {
     readonly spotterMoveMode = signal<TnSpotterMoveMode>(this.initialCalculator?.spotterMoveMode ?? 'stationary');
     readonly spotterDeclaredAttacks = signal<boolean>(this.initialCalculator?.spotterDeclaredAttacks ?? false);
     readonly renderReady = signal(false);
+    readonly unitTypeSelectedHasModifier = computed(() => this.unitTypeDropdownOptions().some(option => option.value === this.unitType() && !!option.modifierLabel));
 
-    readonly partialCoverDisabled = computed(() => this.range() <= 1);
-    readonly proneLabel = computed(() => this.range() <= 1 ? 'Prone (Adjacent)' : 'Prone');
-    readonly proneModifierLabel = computed(() => this.range() <= 1 ? '-2' : '+1');
+    readonly partialCoverDisabled = computed(() => this.range() <= ADJACENT_RANGE);
+    readonly proneLabel = computed(() => this.range() <= ADJACENT_RANGE ? 'Prone (Adjacent)' : 'Prone');
+    readonly proneModifierLabel = computed(() => this.range() <= ADJACENT_RANGE ? '-2' : '+1');
     readonly targetMovementBracket = computed(() => this.movementBrackets[this.targetMovementBracketIndex()] ?? this.movementBrackets[0]);
     readonly targetMovementBracketLabel = computed(() => this.targetMovementBracket().label);
-    readonly targetMovementModifier = computed(() => this.stance() === 'none' ? getTargetMovementBracketModifier(this.targetMovementBracket().id) : 0);
-    readonly targetMovementModifierLabel = computed(() => this.stance() === 'none' ? this.formatModifier(this.targetMovementModifier()) : null);
-    readonly unitTypeModifierLabel = computed(() => this.formatNonZeroModifier(getTargetUnitTypeModifier(this.unitType())));
-    readonly moveTypeModifierLabel = computed(() => this.formatNonZeroModifier(getTargetMoveTypeModifier(this.targetMoveType())));
+    readonly targetMovementModifier = computed(() => getTargetMovementBracketModifier(this.targetMovementBracket().id));
+    readonly targetMovementModifierLabel = computed(() => this.formatModifier(this.targetMovementModifier()));
+    readonly isAirborne = computed(() => this.targetMoveType() === 'Jump' || this.targetMoveType() === 'VTOL' || this.targetMoveType() === 'WiGE');
     readonly rangeLabel = computed(() => `${this.range()}`);
     readonly indirectFireModifier = computed(() => getIndirectFireModifier(this.indirectFire(), this.spotterMoveMode(), this.spotterDeclaredAttacks()));
     readonly totalModifier = computed(() => calculateTargetTnModifier({
         unitType: this.unitType(),
         range: this.range(),
         targetMoveType: this.targetMoveType(),
-        targetMovementBracket: this.stance() === 'none' ? this.targetMovementBracket().id : null,
-        jumped: this.jumped(),
+        targetMovementBracket: this.stance() === 'normal' ? this.targetMovementBracket().id : null,
         skidding: this.skidding(),
         stance: this.stance(),
         interveningWoods: this.interveningWoods(),
@@ -788,22 +778,18 @@ export class TnCalculatorDialogComponent {
     constructor() {
         afterNextRender(() => this.renderReady.set(true));
 
-        if (this.stance() !== 'none') {
-            this.jumped.set(false);
+        if (this.stance() !== 'normal') {
+            this.clearJumpMoveType();
             this.skidding.set(false);
         }
     }
 
-    onUnitTypeChange(event: Event): void {
-        this.unitType.set((event.target as HTMLSelectElement).value as TnTargetUnitType);
+    selectUnitType(value: string): void {
+        this.unitType.set(value as TnTargetUnitType);
     }
 
-    onMoveTypeChange(event: Event): void {
-        const value = (event.target as HTMLSelectElement).value as MoveType | '';
-        this.targetMoveType.set(value === '' ? null : value);
-    }
-
-    private normalizeTargetMoveType(value: MoveType | null | undefined): MoveType | null {
+    private normalizeTargetMoveType(value: MoveType | '' | null | undefined): MoveType | null {
+        if (value === 'Jump') return 'Jump';
         return value === 'VTOL' || value === 'WiGE' ? value : null;
     }
 
@@ -816,8 +802,8 @@ export class TnCalculatorDialogComponent {
         this.clearStanceForMovement();
     }
 
-    toggleJumped(): void {
-        this.jumped.set(!this.jumped());
+    toggleAirborne(): void {
+        this.targetMoveType.set(this.isAirborne() ? null : 'Jump');
         this.clearStanceForMovement();
     }
 
@@ -827,10 +813,10 @@ export class TnCalculatorDialogComponent {
     }
 
     selectStance(stance: TnTargetStance): void {
-        const next = this.stance() === stance ? 'none' : stance;
+        const next = this.stance() === stance ? 'normal' : stance;
         this.stance.set(next);
-        if (next !== 'none') {
-            this.jumped.set(false);
+        if (next !== 'normal') {
+            this.clearJumpMoveType();
             this.skidding.set(false);
         }
         if (next === 'prone') {
@@ -854,7 +840,7 @@ export class TnCalculatorDialogComponent {
         const next = !this.partialCover();
         this.partialCover.set(next);
         if (next && this.stance() === 'prone') {
-            this.stance.set('none');
+            this.stance.set('normal');
         }
     }
 
@@ -899,8 +885,7 @@ export class TnCalculatorDialogComponent {
     apply(): void {
         const state: TnTargetNumberCalculatorState = {
             targetMoveType: this.targetMoveType(),
-            targetMovementBracket: this.stance() === 'none' ? this.targetMovementBracket().id : null,
-            jumped: this.jumped(),
+            targetMovementBracket: this.stance() === 'normal' ? this.targetMovementBracket().id : null,
             skidding: this.skidding(),
             stance: this.stance(),
             interveningWoods: this.interveningWoods(),
@@ -937,8 +922,14 @@ export class TnCalculatorDialogComponent {
     }
 
     private clearStanceForMovement(): void {
-        if (this.stance() !== 'none') {
-            this.stance.set('none');
+        if (this.stance() !== 'normal') {
+            this.stance.set('normal');
+        }
+    }
+
+    private clearJumpMoveType(): void {
+        if (this.targetMoveType() === 'Jump') {
+            this.targetMoveType.set(null);
         }
     }
 

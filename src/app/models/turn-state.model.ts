@@ -11,7 +11,7 @@ import {
     getTargetMoveTypeModifier,
     getTargetStanceModifier,
     getTargetUnitTypeModifier,
-    TN_JUMPED_MODIFIER,
+    TN_AIRBORNE_MOVE_TYPE_MODIFIER,
     TN_SKIDDING_MODIFIER,
 } from "./target-number-calculator.model";
 
@@ -284,7 +284,7 @@ export class TurnState {
         if (this.unitState.skidding()) { mod += TN_SKIDDING_MODIFIER; }
         const moveMode = this.moveMode();
         if (moveMode !== 'stationary' && moveMode !== null) {
-            if (moveMode === 'jump') { mod += TN_JUMPED_MODIFIER; }
+            if (moveMode === 'jump') { mod += TN_AIRBORNE_MOVE_TYPE_MODIFIER; }
             const moveDistance = this.moveDistance() || 0;
             mod += getTargetMovementDistanceModifier(moveDistance);
         }

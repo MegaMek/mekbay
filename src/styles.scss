@@ -392,10 +392,6 @@ hr {
     background-size: 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
     background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
 
-    &.small {
-        padding: 2px 8px;
-    }
-
     &:hover {
         background-image:
             linear-gradient(white, white),

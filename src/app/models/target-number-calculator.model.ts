@@ -34,13 +34,14 @@
 import type { MotiveModes } from './motiveModes.model';
 import type { MoveType } from './units.model';
 
-export const TN_JUMPED_MODIFIER = 1;
 export const TN_SKIDDING_MODIFIER = 2;
 export const TN_BATTLE_ARMOR_MODIFIER = 1;
 export const TN_AIRBORNE_MOVE_TYPE_MODIFIER = 1;
 export const TN_PARTIAL_COVER_MODIFIER = 1;
 export const TN_SECONDARY_TARGET_MODIFIER = 1;
 export const TN_SECONDARY_TARGET_SIDE_BACK_MODIFIER = 2;
+
+export const ADJACENT_RANGE = 1;
 
 export type TnTargetUnitType =
     | 'mek-biped'
@@ -92,11 +93,12 @@ export const TN_TARGET_MOVEMENT_BRACKETS: readonly TnTargetMovementBracket[] = [
 
 export const TN_TARGET_MOVE_TYPE_OPTIONS: readonly { value: MoveType | ''; label: string }[] = [
     { value: '', label: 'Any' },
+    { value: 'Jump', label: 'Jump' },
     { value: 'VTOL', label: 'VTOL' },
     { value: 'WiGE', label: 'WiGE' },
 ] as const;
 
-export type TnTargetStance = 'none' | 'prone' | 'immobile';
+export type TnTargetStance = 'normal' | 'prone' | 'immobile';
 export type TnInterveningWoods = 'none' | 'light1' | 'light2';
 export type TnTargetHexCover = 'none' | 'light' | 'heavy';
 export type TnAttackDirection = 'front' | 'left' | 'rear' | 'right';
@@ -105,7 +107,6 @@ export type TnSpotterMoveMode = 'stationary' | 'walk' | 'run' | 'jump';
 export interface TnTargetNumberCalculatorState {
     targetMoveType?: MoveType | null;
     targetMovementBracket?: TnTargetMovementBracketId | null;
-    jumped?: boolean;
     skidding?: boolean;
     stance?: TnTargetStance;
     interveningWoods?: TnInterveningWoods;
@@ -142,11 +143,11 @@ export function getTargetUnitTypeModifier(unitType: TnTargetUnitType | null | un
 }
 
 export function getTargetMoveTypeModifier(moveType: MoveType | null | undefined): number {
-    return moveType === 'VTOL' || moveType === 'WiGE' ? TN_AIRBORNE_MOVE_TYPE_MODIFIER : 0;
+    return moveType === 'Jump' || moveType === 'VTOL' || moveType === 'WiGE' ? TN_AIRBORNE_MOVE_TYPE_MODIFIER : 0;
 }
 
 export function getTargetStanceModifier(stance: TnTargetStance | null | undefined, range: number): number {
-    if (stance === 'prone') return range <= 0 ? -2 : 1;
+    if (stance === 'prone') return range <= ADJACENT_RANGE ? -2 : 1;
     if (stance === 'immobile') return -4;
     return 0;
 }
@@ -176,20 +177,19 @@ export function getIndirectFireModifier(indirectFire: boolean | null | undefined
 
 export function calculateTargetTnModifier(input: TnTargetNumberCalculationInput): number {
     const range = Math.max(0, input.range ?? 0);
-    const stance = input.stance ?? 'none';
+    const stance = input.stance ?? 'normal';
     let total = 0;
 
     total += getTargetUnitTypeModifier(input.unitType);
-    total += getTargetMoveTypeModifier(input.targetMoveType);
-    if (stance === 'none') {
+    if (stance === 'normal') {
+        total += getTargetMoveTypeModifier(input.targetMoveType);
         total += getTargetMovementBracketModifier(input.targetMovementBracket);
-        total += input.jumped ? TN_JUMPED_MODIFIER : 0;
         total += input.skidding ? TN_SKIDDING_MODIFIER : 0;
     }
     total += getTargetStanceModifier(stance, range);
     total += getInterveningWoodsModifier(input.interveningWoods);
     total += getTargetHexCoverModifier(input.targetHexCover);
-    total += input.partialCover && range > 0 && stance !== 'prone' ? TN_PARTIAL_COVER_MODIFIER : 0;
+    total += input.partialCover && range > ADJACENT_RANGE && stance !== 'prone' ? TN_PARTIAL_COVER_MODIFIER : 0;
     total += input.secondaryTarget ? TN_SECONDARY_TARGET_MODIFIER : 0;
     total += !input.secondaryTarget && input.secondaryTargetSideBack ? TN_SECONDARY_TARGET_SIDE_BACK_MODIFIER : 0;
     total += getIndirectFireModifier(input.indirectFire, input.spotterMoveMode, input.spotterDeclaredAttacks);

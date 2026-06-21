@@ -42,6 +42,7 @@ import { OverlayManagerService } from '../../services/overlay-manager.service';
 export interface MultilineDropdownOption {
     value: string;
     label: string;
+    modifierLabel?: string | null;
     disabled?: boolean;
     destroyed?: boolean;
 }
@@ -76,6 +77,9 @@ export interface MultilineDropdownOption {
                     (mouseenter)="hovered.emit(optionIndex)"
                 >
                     <span class="multiline-dropdown-option-label">{{ option.label }}</span>
+                    @if (option.modifierLabel; as modifierLabel) {
+                        <span class="modifier-badge">{{ modifierLabel }}</span>
+                    }
                 </button>
             }
         </div>
@@ -95,7 +99,10 @@ export interface MultilineDropdownOption {
         }
 
         .multiline-dropdown-option {
-            display: block;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
             width: 100%;
             padding: 6px;
             border: 0;
@@ -140,6 +147,23 @@ export interface MultilineDropdownOption {
             white-space: normal;
             overflow-wrap: normal;
             word-break: normal;
+        }
+
+        .modifier-badge {
+            flex: 0 0 24px;
+            inline-size: 24px;
+            block-size: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--border-color);
+            background: rgba(0, 0, 0, 0.6);
+            color: var(--text-color);
+            font-weight: 600;
+            font-size: 0.78em;
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+            box-sizing: border-box;
         }
     `]
 })
@@ -186,6 +210,9 @@ class MultilineDropdownPanelComponent {
                 (keydown)="onTriggerKeydown($event)"
             >
                 <span class="multiline-dropdown-label">{{ selectedLabel() }}</span>
+                @if (selectedOption()?.modifierLabel; as modifierLabel) {
+                    <span class="modifier-badge">{{ modifierLabel }}</span>
+                }
                 <span class="multiline-dropdown-measure" aria-hidden="true">
                     @for (option of options(); track option.value) {
                         <span class="multiline-dropdown-measure-option">{{ option.label }}</span>
@@ -211,13 +238,17 @@ class MultilineDropdownPanelComponent {
 
         .multiline-dropdown-trigger {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-columns: minmax(0, 1fr) auto auto;
             align-items: center;
             width: 100%;
             height: 100%;
             gap: 4px;
             text-align: left;
+            background: transparent;
+            border: 0;
             cursor: pointer;
+            color: inherit;
+            font-weight: inherit;
         }
 
         .multiline-dropdown-trigger.destroyed {
@@ -243,6 +274,7 @@ class MultilineDropdownPanelComponent {
             visibility: hidden;
             white-space: nowrap;
             pointer-events: none;
+            line-height: 0;
         }
 
         .multiline-dropdown-measure-option {
@@ -252,11 +284,31 @@ class MultilineDropdownPanelComponent {
         }
 
         .multiline-dropdown-arrow {
-            grid-column: 2;
+            grid-column: 3;
             grid-row: 1;
             flex: 0 0 auto;
-            color: var(--text-color-secondary);
-            font-size: 0.8em;
+            color: inherit;
+            font-size: 1.1em;
+            line-height: 0;
+        }
+
+        .modifier-badge {
+            grid-column: 2;
+            grid-row: 1;
+            flex: 0 0 24px;
+            inline-size: 24px;
+            block-size: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--border-color);
+            background: #000;
+            color: var(--text-color);
+            font-weight: 600;
+            font-size: 0.78em;
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+            box-sizing: border-box;
         }
     `]
 })
