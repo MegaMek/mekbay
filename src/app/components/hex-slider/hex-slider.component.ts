@@ -39,6 +39,7 @@ import {
     inject,
     input,
     output,
+    signal,
     viewChild,
     type ElementRef
 } from '@angular/core';
@@ -69,6 +70,7 @@ export class HexSliderComponent {
     readonly valueAssigned = input<boolean>(false);
     readonly danger = input<boolean>(false);
     readonly compactLabel = input<boolean>(false);
+    readonly modifierLabel = input<string | null>(null);
 
     readonly valueChange = output<number>();
 
@@ -93,6 +95,8 @@ export class HexSliderComponent {
     });
     readonly condenseTickLabels = computed(() => this.tickLabels() === null && this.displayTicks().length > this.condensedTickThreshold);
     readonly condensedTickInterval = computed(() => this.displayTicks().length >= 30 ? 10 : 5);
+    readonly touchDragging = signal(false);
+    readonly visibleModifierLabel = computed(() => this.valueAssigned() ? this.modifierLabel() : null);
 
     constructor() {
         this.destroyRef.onDestroy(() => this.stopDrag());
@@ -122,6 +126,7 @@ export class HexSliderComponent {
         this.stopDrag();
         this.activePointerId = event.pointerId;
         this.activeDragTarget = event.target instanceof Element ? event.target : null;
+        this.touchDragging.set(event.pointerType === 'touch');
         try {
             this.activeDragTarget?.setPointerCapture(this.activePointerId);
         } catch { /* ignore */ }
@@ -174,6 +179,7 @@ export class HexSliderComponent {
         }
         this.activePointerId = null;
         this.activeDragTarget = null;
+        this.touchDragging.set(false);
         window.removeEventListener('pointermove', this.onPointerMove);
         window.removeEventListener('pointerup', this.onPointerEnd);
         window.removeEventListener('pointercancel', this.onPointerEnd);

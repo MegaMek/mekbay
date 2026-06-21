@@ -1,5 +1,6 @@
 <div
     class="hex-slider"
+    [class.has-modifier]="visibleModifierLabel() !== null"
     role="slider"
     tabindex="0"
     [attr.aria-label]="ariaLabel()"
@@ -17,7 +18,15 @@
             </span>
         }
         <div class="thumb-marker" [style.left.%]="valuePercent()" aria-hidden="true">
-            <div class="hex" [class.value-assigned]="valueAssigned()" [class.danger]="danger()" [class.compact-label]="compactLabel()">{{ valueLabel() }}</div>
+            @if (touchDragging()) {
+                <div class="floating-value-label">{{ valueLabel() }}</div>
+            }
+            <div class="hex" [class.value-assigned]="valueAssigned()" [class.danger]="danger()" [class.compact-label]="compactLabel()" [class.has-modifier]="visibleModifierLabel() !== null">
+                <span class="hex-value-label">{{ valueLabel() }}</span>
+                @if (visibleModifierLabel(); as modifier) {
+                    <span class="modifier-badge">{{ modifier }}</span>
+                }
+            </div>
         </div>
     </div>
 </div>

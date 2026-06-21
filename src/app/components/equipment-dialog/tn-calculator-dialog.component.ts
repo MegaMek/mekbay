@@ -40,7 +40,9 @@ import { HexSliderComponent } from '../hex-slider/hex-slider.component';
 import {
     calculateTargetTnModifier,
     getIndirectFireModifier,
+    getTargetMoveTypeModifier,
     getTargetMovementBracketModifier,
+    getTargetUnitTypeModifier,
     TN_TARGET_MOVE_TYPE_OPTIONS,
     TN_TARGET_MOVEMENT_BRACKETS,
     TN_TARGET_UNIT_TYPE_OPTIONS,
@@ -94,8 +96,8 @@ export interface TnCalculatorDialogResult {
                             </button>
                         </div>
                         @if (indirectFire()) {
-                        <div class="section-title secondary">Spotter</div>
-                        <div class="spotter-section framed-borders muted-frame">
+                            <div class="spotter-section framed-borders muted-frame">
+                            <div class="section-title secondary">Spotter</div>
                             <div class="button-row spotter-move-row">
                                 <button type="button" class="bt-button move-button" [class.selected]="spotterMoveMode() === 'stationary'" [attr.aria-pressed]="spotterMoveMode() === 'stationary'" (click)="selectSpotterMove('stationary')">
                                     <svg width="16px" height="16px" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
@@ -127,6 +129,7 @@ export interface TnCalculatorDialogResult {
                                 [ticks]="movementTicks"
                                 [tickLabels]="movementTickLabels"
                                 [label]="targetMovementBracketLabel()"
+                                [modifierLabel]="targetMovementModifierLabel()"
                                 [ariaLabel]="'Target movement bracket'"
                                 [valueAssigned]="stance() === 'none'"
                                 [compactLabel]="true"
@@ -164,7 +167,7 @@ export interface TnCalculatorDialogResult {
                     <section class="tn-section target-identity-section">
                         <div class="section-title">Target Identity</div>
                         <div class="field-row">
-                            <label for="tnTargetUnitType">Unit type</label>
+                            <label for="tnTargetUnitType"><span>Unit type</span>@if (unitTypeModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }</label>
                             <select id="tnTargetUnitType" class="bt-select" [value]="unitType()" (change)="onUnitTypeChange($event)">
                                 @for (option of unitTypeOptions; track option.value) {
                                     <option [value]="option.value">{{ option.label }}</option>
@@ -172,7 +175,7 @@ export interface TnCalculatorDialogResult {
                             </select>
                         </div>
                         <div class="field-row">
-                            <label for="tnTargetMoveType">Move type</label>
+                            <label for="tnTargetMoveType"><span>Move type</span>@if (moveTypeModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }</label>
                             <select id="tnTargetMoveType" class="bt-select" [value]="targetMoveType() ?? ''" (change)="onMoveTypeChange($event)">
                                 @for (option of moveTypeOptions; track option.value) {
                                     <option [value]="option.value">{{ option.label }}</option>
@@ -197,10 +200,10 @@ export interface TnCalculatorDialogResult {
                             <span class="choice-caption"><span>{{ targetHexCoverCaption() }}</span></span>
                         </div>
                         
-                        @if (indirectFire()) {
-                        <div class="section-title secondary">From the Spotter line of sight</div>
-                        }
                         <div class="terrain-group" [class.framed-borders]="indirectFire()" [class.muted-frame]="indirectFire()">
+                            @if (indirectFire()) {
+                            <div class="section-title secondary">From the Spotter Line of Sight</div>
+                            }
                             <div class="choice-line">
                                 <span class="choice-label"><span>Intervening</span>@if (woodsModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }</span>
                                 <div class="icon-choice-row" role="group" aria-label="Intervening woods">
@@ -345,6 +348,11 @@ export interface TnCalculatorDialogResult {
             }
         }
 
+        .framed-borders .section-title {
+            padding-top: 0px;
+            margin-top: -2px;
+        }
+
         .row {
             display: flex;
             flex-direction: row;
@@ -479,6 +487,13 @@ export interface TnCalculatorDialogResult {
             color: var(--text-color-secondary);
             font-size: 0.8rem;
             font-weight: 500;
+        }
+
+        .field-row label {
+            display: inline-flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 4px;
         }
 
         .choice-label {
@@ -717,6 +732,9 @@ export class TnCalculatorDialogComponent {
     readonly targetMovementBracket = computed(() => this.movementBrackets[this.targetMovementBracketIndex()] ?? this.movementBrackets[0]);
     readonly targetMovementBracketLabel = computed(() => this.targetMovementBracket().label);
     readonly targetMovementModifier = computed(() => this.stance() === 'none' ? getTargetMovementBracketModifier(this.targetMovementBracket().id) : 0);
+    readonly targetMovementModifierLabel = computed(() => this.stance() === 'none' ? this.formatModifier(this.targetMovementModifier()) : null);
+    readonly unitTypeModifierLabel = computed(() => this.formatNonZeroModifier(getTargetUnitTypeModifier(this.unitType())));
+    readonly moveTypeModifierLabel = computed(() => this.formatNonZeroModifier(getTargetMoveTypeModifier(this.targetMoveType())));
     readonly rangeLabel = computed(() => `${this.range()}`);
     readonly indirectFireModifier = computed(() => getIndirectFireModifier(this.indirectFire(), this.spotterMoveMode(), this.spotterDeclaredAttacks()));
     readonly totalModifier = computed(() => calculateTargetTnModifier({
@@ -934,5 +952,13 @@ export class TnCalculatorDialogComponent {
     private alignToStep(value: number, min: number, max: number): number {
         const stepped = Math.round(value / 1);
         return Math.max(min, Math.min(max, Number.isFinite(stepped) ? stepped : min));
+    }
+
+    private formatNonZeroModifier(value: number): string | null {
+        return value === 0 ? null : this.formatModifier(value);
+    }
+
+    private formatModifier(value: number): string {
+        return value >= 0 ? `+${value}` : `${value}`;
     }
 }
