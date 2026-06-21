@@ -138,24 +138,6 @@ function createDialog(data: EquipmentDialogData) {
     return { fixture, component: fixture.componentInstance, dialogRef, shortcutService, overlayManager };
 }
 
-function createTargetsMenuOverlay() {
-    const instance = {
-        addRequest: new FakeOutput<void>(),
-        resetRequest: new FakeOutput<void>(),
-        updateRequest: new FakeOutput<any>(),
-        deleteRequest: new FakeOutput<string>(),
-        colorPickerOpened: new FakeOutput<void>(),
-        colorPickerClosed: new FakeOutput<void>()
-    };
-    const componentRef = {
-        instance,
-        setInput: jasmine.createSpy('setInput'),
-        changeDetectorRef: { detectChanges: jasmine.createSpy('detectChanges') }
-    };
-    const closed = new Subject<void>();
-    return { instance, overlayRef: { componentRef, closed } };
-}
-
 function createContext(): EquipmentDialogContext {
     return {
         toastService: { showToast: jasmine.createSpy('showToast') },

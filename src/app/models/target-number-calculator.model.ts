@@ -40,6 +40,7 @@ export const TN_BATTLE_ARMOR_MODIFIER = 1;
 export const TN_AIRBORNE_MOVE_TYPE_MODIFIER = 1;
 export const TN_PARTIAL_COVER_MODIFIER = 1;
 export const TN_SECONDARY_TARGET_MODIFIER = 1;
+export const TN_SECONDARY_TARGET_SIDE_BACK_MODIFIER = 2;
 
 export type TnTargetUnitType =
     | 'mek-biped'
@@ -113,6 +114,7 @@ export interface TnTargetNumberCalculatorState {
     attackDirection?: TnAttackDirection;
     indirectFire?: boolean;
     secondaryTarget?: boolean;
+    secondaryTargetSideBack?: boolean;
     spotterMoveMode?: TnSpotterMoveMode;
     spotterDeclaredAttacks?: boolean;
 }
@@ -189,6 +191,7 @@ export function calculateTargetTnModifier(input: TnTargetNumberCalculationInput)
     total += getTargetHexCoverModifier(input.targetHexCover);
     total += input.partialCover && range > 0 && stance !== 'prone' ? TN_PARTIAL_COVER_MODIFIER : 0;
     total += input.secondaryTarget ? TN_SECONDARY_TARGET_MODIFIER : 0;
+    total += !input.secondaryTarget && input.secondaryTargetSideBack ? TN_SECONDARY_TARGET_SIDE_BACK_MODIFIER : 0;
     total += getIndirectFireModifier(input.indirectFire, input.spotterMoveMode, input.spotterDeclaredAttacks);
 
     return total;

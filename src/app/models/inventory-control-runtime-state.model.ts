@@ -165,7 +165,7 @@ export class InventoryControlRuntimeState {
             name: `Target ${targetId}`,
             color: INVENTORY_CONTROL_TARGET_COLORS[targetIndex % INVENTORY_CONTROL_TARGET_COLORS.length],
             unitType: 'mek-biped',
-            distance: 0,
+            distance: 1,
             tnModifier: 0
         };
         this.updateTargets(nextTargets => nextTargets.set(targetId, target));

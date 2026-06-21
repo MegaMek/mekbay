@@ -81,11 +81,16 @@ export interface TnCalculatorDialogResult {
 
                         <div class="section-title">Attack Method</div>
                         <div class="button-row">
-                            <button type="button" class="bt-button move-button" [class.selected]="indirectFire()" [attr.aria-pressed]="indirectFire()" (click)="toggleIndirectFire()">
-                                <span>Indirect Fire</span><span class="modifier-badge">+1</span>
-                            </button>
                             <button type="button" class="bt-button move-button" [class.selected]="secondaryTarget()" [attr.aria-pressed]="secondaryTarget()" (click)="toggleSecondaryTarget()">
                                 <span>Secondary Target</span><span class="modifier-badge">+1</span>
+                            </button>
+                            <button type="button" class="bt-button move-button" [class.selected]="secondaryTargetSideBack()" [attr.aria-pressed]="secondaryTargetSideBack()" (click)="toggleSecondaryTargetSideBack()">
+                                <span>Secondary (Side/Back)</span><span class="modifier-badge">+2</span>
+                            </button>
+                        </div>
+                        <div class="button-row">
+                            <button type="button" class="bt-button move-button" [class.selected]="indirectFire()" [attr.aria-pressed]="indirectFire()" (click)="toggleIndirectFire()">
+                                <span>Indirect Fire</span><span class="modifier-badge">+1</span>
                             </button>
                         </div>
                         @if (indirectFire()) {
@@ -217,7 +222,7 @@ export interface TnCalculatorDialogResult {
                                 </span>
                             </div>
                             <div class="button-row">
-                            <button type="button" class="bt-button move-button partial-cover" [class.selected]="partialCover()" [attr.aria-pressed]="partialCover()" [disabled]="partialCoverDisabled()" (click)="togglePartialCover()"><span>Partial Cover</span><span class="modifier-badge">+1</span></button>
+                            <button type="button" class="bt-button move-button partial-cover" [class.selected]="partialCover()" [attr.aria-pressed]="partialCover()" [disabled]="partialCoverDisabled()" (click)="togglePartialCover()"><span>Partial Cover or Depth 1</span><span class="modifier-badge">+1</span></button>
                             </div>
                         </div>
 
@@ -696,18 +701,19 @@ export class TnCalculatorDialogComponent {
     readonly stance = signal<TnTargetStance>(this.initialCalculator?.stance ?? 'none');
     readonly interveningWoods = signal<TnInterveningWoods>(this.normalizeInterveningWoods(this.initialCalculator?.interveningWoods as TnInterveningWoods | 'heavy1' | null | undefined));
     readonly targetHexCover = signal<TnTargetHexCover>(this.initialCalculator?.targetHexCover ?? 'none');
-    readonly range = signal<number>(Math.max(0, this.data.target.distance ?? 0));
-    readonly partialCover = signal<boolean>((this.initialCalculator?.partialCover ?? false) && this.range() > 0);
+    readonly range = signal<number>(Math.max(0, this.data.target.distance ?? 1));
+    readonly partialCover = signal<boolean>((this.initialCalculator?.partialCover ?? false) && this.range() > 1);
     readonly attackDirection = signal<TnAttackDirection>(this.initialCalculator?.attackDirection ?? 'front');
     readonly indirectFire = signal<boolean>(this.initialCalculator?.indirectFire ?? false);
     readonly secondaryTarget = signal<boolean>(this.initialCalculator?.secondaryTarget ?? false);
+    readonly secondaryTargetSideBack = signal<boolean>((this.initialCalculator?.secondaryTargetSideBack ?? false) && !(this.initialCalculator?.secondaryTarget ?? false));
     readonly spotterMoveMode = signal<TnSpotterMoveMode>(this.initialCalculator?.spotterMoveMode ?? 'stationary');
     readonly spotterDeclaredAttacks = signal<boolean>(this.initialCalculator?.spotterDeclaredAttacks ?? false);
     readonly renderReady = signal(false);
 
-    readonly partialCoverDisabled = computed(() => this.range() <= 0);
-    readonly proneLabel = computed(() => this.range() <= 0 ? 'Prone (Adjacent)' : 'Prone');
-    readonly proneModifierLabel = computed(() => this.range() <= 0 ? '-2' : '+1');
+    readonly partialCoverDisabled = computed(() => this.range() <= 1);
+    readonly proneLabel = computed(() => this.range() <= 1 ? 'Prone (Adjacent)' : 'Prone');
+    readonly proneModifierLabel = computed(() => this.range() <= 1 ? '-2' : '+1');
     readonly targetMovementBracket = computed(() => this.movementBrackets[this.targetMovementBracketIndex()] ?? this.movementBrackets[0]);
     readonly targetMovementBracketLabel = computed(() => this.targetMovementBracket().label);
     readonly targetMovementModifier = computed(() => this.stance() === 'none' ? getTargetMovementBracketModifier(this.targetMovementBracket().id) : 0);
@@ -727,6 +733,7 @@ export class TnCalculatorDialogComponent {
         attackDirection: this.attackDirection(),
         indirectFire: this.indirectFire(),
         secondaryTarget: this.secondaryTarget(),
+        secondaryTargetSideBack: this.secondaryTargetSideBack(),
         spotterMoveMode: this.spotterMoveMode(),
         spotterDeclaredAttacks: this.spotterDeclaredAttacks(),
     }));
@@ -843,7 +850,19 @@ export class TnCalculatorDialogComponent {
     }
 
     toggleSecondaryTarget(): void {
-        this.secondaryTarget.set(!this.secondaryTarget());
+        const next = !this.secondaryTarget();
+        this.secondaryTarget.set(next);
+        if (next) {
+            this.secondaryTargetSideBack.set(false);
+        }
+    }
+
+    toggleSecondaryTargetSideBack(): void {
+        const next = !this.secondaryTargetSideBack();
+        this.secondaryTargetSideBack.set(next);
+        if (next) {
+            this.secondaryTarget.set(false);
+        }
     }
 
     selectSpotterMove(mode: TnSpotterMoveMode): void {
@@ -872,6 +891,7 @@ export class TnCalculatorDialogComponent {
             attackDirection: this.attackDirection(),
             indirectFire: this.indirectFire(),
             secondaryTarget: this.secondaryTarget(),
+            secondaryTargetSideBack: this.secondaryTargetSideBack(),
             spotterMoveMode: this.indirectFire() ? this.spotterMoveMode() : 'stationary',
             spotterDeclaredAttacks: this.indirectFire() && this.spotterDeclaredAttacks(),
         };
