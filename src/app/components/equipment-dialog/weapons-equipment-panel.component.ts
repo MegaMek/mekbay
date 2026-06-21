@@ -104,7 +104,6 @@ export class WeaponsEquipmentPanelComponent {
     readonly unitInput = input.required<CBTForceUnit>({ alias: 'unit' });
     readonly contextInput = input.required<EquipmentDialogContext>({ alias: 'context' });
     readonly readOnlyInput = input<boolean | undefined>(undefined, { alias: 'readOnly' });
-    private targetChoiceCompRef: ComponentRef<WeaponTargetChoiceMenuComponent> | null = null;
     private pendingDragPreviewSizing: DragPreviewSizing | null = null;
     readonly rangeKeys: InventoryRangeKey[] = ['short', 'medium', 'long'];
     readonly unit = computed(() => this.unitInput());
@@ -156,7 +155,6 @@ export class WeaponsEquipmentPanelComponent {
     constructor() {
         this.destroyRef.onDestroy(() => {
             this.overlayManager.closeManagedOverlay(WEAPON_TARGET_CHOICE_OVERLAY_KEY);
-            this.targetChoiceCompRef = null;
         });
     }
 
@@ -255,7 +253,6 @@ export class WeaponsEquipmentPanelComponent {
                 { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 }
             ]
         });
-        this.targetChoiceCompRef = componentRef;
         componentRef.setInput('targets', this.targets());
         componentRef.setInput('selectedTargetId', selectedTargetId);
         componentRef.setInput('targetNumberTexts', targetNumberTexts);
@@ -264,10 +261,6 @@ export class WeaponsEquipmentPanelComponent {
         outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(targetId => {
             onSelect(targetId);
             this.overlayManager.closeManagedOverlay(WEAPON_TARGET_CHOICE_OVERLAY_KEY);
-            this.targetChoiceCompRef = null;
-        });
-        closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-            this.targetChoiceCompRef = null;
         });
     }
 
