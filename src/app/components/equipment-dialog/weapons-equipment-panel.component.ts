@@ -105,6 +105,7 @@ export class WeaponsEquipmentPanelComponent {
     readonly contextInput = input.required<EquipmentDialogContext>({ alias: 'context' });
     readonly readOnlyInput = input<boolean | undefined>(undefined, { alias: 'readOnly' });
     private pendingDragPreviewSizing: DragPreviewSizing | null = null;
+    private readonly manuallySelectedDepletedAmmo = new Map<string, string>();
     readonly rangeKeys: InventoryRangeKey[] = ['short', 'medium', 'long'];
     readonly unit = computed(() => this.unitInput());
     readonly context = computed(() => this.contextInput());
@@ -489,6 +490,9 @@ export class WeaponsEquipmentPanelComponent {
         const selectedOption = selectedOptionId
             ? row.ammo.options.find((option: InventoryControlAmmoOption) => option.id === selectedOptionId)
             : undefined;
+        if (selectedOption && this.isManuallySelectedDepletedAmmo(row, selectedOption)) {
+            return selectedOption.id;
+        }
         if (selectedOption && (!this.hasAvailableAmmoOption(row) || this.isUsableAmmoOption(selectedOption))) {
             return selectedOption.id;
         }
@@ -508,6 +512,12 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     selectAmmoOption(row: InventoryControlRow, value: string): void {
+        const option = row.ammo.options.find((ammoOption: InventoryControlAmmoOption) => ammoOption.id === value);
+        if (option && !option.destroyed && option.remaining <= 0) {
+            this.manuallySelectedDepletedAmmo.set(row.id, option.id);
+        } else {
+            this.manuallySelectedDepletedAmmo.delete(row.id);
+        }
         this.unit().setInventoryControlEntryAmmoOption(row.id, value);
     }
 
@@ -669,6 +679,15 @@ export class WeaponsEquipmentPanelComponent {
 
     private isUsableAmmoOption(option: InventoryControlAmmoOption): boolean {
         return !option.destroyed && option.remaining > 0;
+    }
+
+    private isManuallySelectedDepletedAmmo(row: InventoryControlRow, option: InventoryControlAmmoOption): boolean {
+        if (this.manuallySelectedDepletedAmmo.get(row.id) !== option.id) return false;
+        if (this.isUsableAmmoOption(option)) {
+            this.manuallySelectedDepletedAmmo.delete(row.id);
+            return false;
+        }
+        return !option.destroyed;
     }
 
     private sameAmmoType(left: InventoryControlAmmoOption, right: InventoryControlAmmoOption): boolean {
