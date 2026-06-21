@@ -77,7 +77,7 @@ export interface TnCalculatorDialogResult {
         <div class="tn-dialog-body">
             <div class="tn-grid">
                 <div class="tn-column">
-                    <section class="tn-section">
+                    <section class="tn-section attack-method-section">
 
                         <div class="section-title">Attack Method</div>
                         <div class="button-row">
@@ -110,7 +110,7 @@ export interface TnCalculatorDialogResult {
                         }
                     </section>
 
-                    <section class="tn-section">
+                    <section class="tn-section target-movement-section">
                         <div class="section-title">Target Movement</div>
                         <div class="row">
                             <hex-slider
@@ -137,7 +137,7 @@ export interface TnCalculatorDialogResult {
                         </div>
                     </section>
 
-                    <section class="tn-section">
+                    <section class="tn-section range-section">
                         <div class="section-title">Range</div>
                         <div class="row">
                             <hex-slider
@@ -176,7 +176,7 @@ export interface TnCalculatorDialogResult {
                         </div>
                     </section>
 
-                    <section class="tn-section">
+                    <section class="tn-section other-section">
                         <div class="section-title">Other</div>
                         <div class="choice-line">
                             <span class="choice-label"><span>Cover</span>@if (targetHexCoverModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }</span>
@@ -603,6 +603,30 @@ export interface TnCalculatorDialogResult {
                 column-gap: 8px;
             }
 
+            .tn-column {
+                display: contents;
+            }
+
+            .attack-method-section {
+                order: 1;
+            }
+
+            .target-identity-section {
+                order: 2;
+            }
+
+            .target-movement-section {
+                order: 3;
+            }
+
+            .other-section {
+                order: 4;
+            }
+
+            .range-section {
+                order: 5;
+            }
+
             .tn-grid::before {
                 content: none;
             }
@@ -890,9 +914,5 @@ export class TnCalculatorDialogComponent {
     private alignToStep(value: number, min: number, max: number): number {
         const stepped = Math.round(value / 1);
         return Math.max(min, Math.min(max, Number.isFinite(stepped) ? stepped : min));
-    }
-
-    private formatModifier(value: number): string {
-        return value >= 0 ? `+${value}` : `${value}`;
     }
 }
