@@ -551,6 +551,6 @@ export const SORT_OPTIONS: SortOption[] = [
             gameSystem: f.game,
             // slotIcon: f.slotIcon
         } as SortOption)),
-    { key: MEGAMEK_RARITY_PRODUCTION_SORT_KEY, label: 'RAT Rarity (P)', slotLabel: 'RAT Rarity (P)' },
-    { key: MEGAMEK_RARITY_SALVAGE_SORT_KEY, label: 'RAT Rarity (S)', slotLabel: 'RAT Rarity (S)' },
+    { key: MEGAMEK_RARITY_PRODUCTION_SORT_KEY, label: 'RAT Requisition', slotLabel: 'RAT Requisition' },
+    { key: MEGAMEK_RARITY_SALVAGE_SORT_KEY, label: 'RAT Salvage', slotLabel: 'RAT Salvage' },
 ];
