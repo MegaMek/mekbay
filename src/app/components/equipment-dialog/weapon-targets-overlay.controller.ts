@@ -140,9 +140,11 @@ export class WeaponTargetsOverlayController {
         }));
 
         this.deps.overlayManager.blockCloseUntil(options.overlayKey);
-        const overlayOrigin = this.tnCalculatorFullscreen() ? null : request.origin;
+        const fullscreen = this.tnCalculatorFullscreen();
+        const overlayOrigin = fullscreen ? null : request.origin;
         const { closed } = this.deps.overlayManager.createManagedOverlay(overlayKey, overlayOrigin, portal, {
-            hasBackdrop: false,
+            hasBackdrop: fullscreen,
+            backdropClass: fullscreen ? 'cdk-overlay-dark-backdrop' : undefined,
             panelClass: 'tn-calculator-overlay-panel',
             closeOnOutsideClick: false,
             closeOnOutsideClickOnly: true,
