@@ -871,9 +871,16 @@ export class SvgInteractionService {
                 const unit = this.unit();
                 if (!unit) return;
 
+                const clickedMode = this.validInventoryModeForButton(entry, button);
+                const selectedMode = getSelectedInventoryControlMode(entry);
+                const forceSelected = !!clickedMode && clickedMode !== selectedMode;
+                if (clickedMode) {
+                    setInventoryControlMode(entry, clickedMode);
+                }
+
                 const updated = selectInventoryControlEntry(unit, entry, (selectedTargetId, targets) => {
                     this.showInventoryTargetPicker(entry, button, selectedTargetId, targets);
-                });
+                }, forceSelected);
                 if (updated) {
                     this.removePicker();
                 }

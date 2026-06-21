@@ -149,6 +149,70 @@ describe('SvgInteractionService', () => {
         expect(unit.isInventoryControlEntrySelected(entry.id)).toBeTrue();
     });
 
+    it('switches mode from alternative mode buttons before selecting inventory entries', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit(`
+            <g class="inventoryEntry">
+                <rect class="mainButton inventoryEntryButton"></rect>
+                <g class="name"><text>ATM 6</text></g>
+                <g class="alternativeMode" mode="Standard">
+                    <g class="name"><text>Standard</text></g>
+                    <g class="damage"><text>2/Msl</text></g>
+                    <rect class="alternativeModeButton inventoryEntryButton"></rect>
+                </g>
+                <g class="alternativeMode" mode="High Explosive">
+                    <g class="name"><text>High Explosive</text></g>
+                    <g class="damage"><text>3/Msl</text></g>
+                    <rect class="alternativeModeButton inventoryEntryButton"></rect>
+                </g>
+            </g>
+        `);
+        pageViewerState.setForceUnits([unit]);
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        (entry.el!.querySelector('.alternativeMode[mode="High Explosive"] .alternativeModeButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        expect(entry.states.get(INVENTORY_CONTROL_MODE_STATE)).toBe('High Explosive');
+        expect(entry.el!.querySelector(':scope > .alternativeMode.selected')?.getAttribute('mode')).toBe('High Explosive');
+        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeTrue();
+    });
+
+    it('keeps selected alternative mode entries on when switching to another mode button', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit(`
+            <g class="inventoryEntry">
+                <rect class="mainButton inventoryEntryButton"></rect>
+                <g class="name"><text>ATM 6</text></g>
+                <g class="alternativeMode" mode="Standard">
+                    <g class="name"><text>Standard</text></g>
+                    <g class="damage"><text>2/Msl</text></g>
+                    <rect class="alternativeModeButton inventoryEntryButton"></rect>
+                </g>
+                <g class="alternativeMode" mode="Extended Range">
+                    <g class="name"><text>Extended Range</text></g>
+                    <g class="damage"><text>1/Msl</text></g>
+                    <rect class="alternativeModeButton inventoryEntryButton"></rect>
+                </g>
+            </g>
+        `);
+        pageViewerState.setForceUnits([unit]);
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+        const standardButton = entry.el!.querySelector('.alternativeMode[mode="Standard"] .alternativeModeButton') as SVGElement;
+        const extendedRangeButton = entry.el!.querySelector('.alternativeMode[mode="Extended Range"] .alternativeModeButton') as SVGElement;
+
+        standardButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        extendedRangeButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        expect(entry.states.get(INVENTORY_CONTROL_MODE_STATE)).toBe('Extended Range');
+        expect(entry.el!.querySelector(':scope > .alternativeMode.selected')?.getAttribute('mode')).toBe('Extended Range');
+        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeTrue();
+
+        extendedRangeButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        expect(entry.states.get(INVENTORY_CONTROL_MODE_STATE)).toBe('Extended Range');
+        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeFalse();
+    });
+
     it('opens ammo profile in the equipment dialog with unit navigation and inventory-dialog lifecycle', () => {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         const ammoProfile = document.createElementNS('http://www.w3.org/2000/svg', 'g');

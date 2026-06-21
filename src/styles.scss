@@ -1926,6 +1926,7 @@ hr.divider {
             &.selected-range-long:not(.selected-alternative-mode)>.lngButton,
             &.selected-range-extreme:not(.selected-alternative-mode)>.mainButton,
             &.selected-range-extreme:not(.selected-alternative-mode)>.extButton,
+            &.selected.selected-alternative-mode:not(.selected-range-short):not(.selected-range-medium):not(.selected-range-long):not(.selected-range-extreme)>.alternativeMode.selected>.inventoryEntryButton,
             &.selected-alternative-mode.selected-range-short>.alternativeMode.selected>.alternativeModeButton,
             &.selected-alternative-mode.selected-range-short>.alternativeMode.selected>.shrButton,
             &.selected-alternative-mode.selected-range-medium>.alternativeMode.selected>.alternativeModeButton,
@@ -2364,22 +2365,19 @@ hr.divider {
 
 
         .inventoryEntry {
-            &.selected>text {
-                fill: #000;
-            }
-
-            &.selected>g:not(.alternativeMode):not(.weaponQuirks):not(.linked)>text {
-                fill: #000;
-            }
-        }
-
-        .inventoryEntry>.alternativeMode {
-            &.selected>text {
-                fill: #000;
-            }
-
-            &.selected>g>text {
-                fill: #000;
+            &.selected-range-short .range_medium,
+            &.selected-range-short .range_long,
+            &.selected-range-short .range_extreme,
+            &.selected-range-medium .range_short,
+            &.selected-range-medium .range_long,
+            &.selected-range-medium .range_extreme,
+            &.selected-range-long .range_short,
+            &.selected-range-long .range_medium,
+            &.selected-range-long .range_extreme,
+            &.selected-range-extreme .range_short,
+            &.selected-range-extreme .range_medium,
+            &.selected-range-extreme .range_long {
+                fill: #666;
             }
         }
 

@@ -151,22 +151,25 @@ export function isInventoryControlSelectableEntry(entry: MountedEquipment): bool
 export function selectInventoryControlEntry(
     unit: CBTForceUnit,
     entry: MountedEquipment,
-    chooseTarget?: (selectedTargetId: InventoryControlRuntimeTargetId | null, targets: readonly InventoryControlRuntimeTarget[]) => void
+    chooseTarget?: (selectedTargetId: InventoryControlRuntimeTargetId | null, targets: readonly InventoryControlRuntimeTarget[]) => void,
+    forceSelected = false
 ): boolean {
     if (!isInventoryControlSelectableEntry(entry)) return false;
 
     const targets = unit.getInventoryControlTargets();
     if (targets.length === 0) {
-        unit.setInventoryControlEntrySelected(entry, !unit.isInventoryControlEntrySelected(entry.id));
+        unit.setInventoryControlEntrySelected(entry, forceSelected || !unit.isInventoryControlEntrySelected(entry.id));
         return true;
     }
 
     if (targets.length === 1) {
         const targetId = targets[0].id;
         const selectedTargetId = unit.getInventoryControlEntryTargetId(entry.id);
-        unit.setInventoryControlEntryTarget(entry, selectedTargetId === targetId ? null : targetId);
+        unit.setInventoryControlEntryTarget(entry, !forceSelected && selectedTargetId === targetId ? null : targetId);
         return true;
     }
+
+    if (forceSelected && unit.getInventoryControlEntryTargetId(entry.id)) return true;
 
     chooseTarget?.(unit.getInventoryControlEntryTargetId(entry.id) ?? null, targets);
     return false;
