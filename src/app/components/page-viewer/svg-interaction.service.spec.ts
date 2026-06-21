@@ -187,12 +187,12 @@ describe('SvgInteractionService', () => {
 
         (entry.el!.querySelector('.shrButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 
-        expect(unit.getInventoryControlSelectedTarget(entry.id)).toBe('A');
-        expect(unit.getInventoryControlSelectedRange(entry.id)).toBeUndefined();
+        expect(unit.getInventoryControlEntryTargetId(entry.id)).toBe('A');
+        expect(unit.getInventoryControlEntryRange(entry.id)).toBeUndefined();
 
         (entry.el!.querySelector('.shrButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 
-        expect(unit.getInventoryControlSelectedTarget(entry.id)).toBeUndefined();
+        expect(unit.getInventoryControlEntryTargetId(entry.id)).toBeUndefined();
         expect(unit.isInventoryControlEntrySelected(entry.id)).toBeFalse();
     });
 
@@ -213,7 +213,7 @@ describe('SvgInteractionService', () => {
         expect(choices.map(choice => choice.querySelector('.target-choice-tn')?.textContent?.trim())).toEqual(['6', '9']);
 
         choices[1].click();
-        expect(unit.getInventoryControlSelectedTarget(entry.id)).toBe('B');
+        expect(unit.getInventoryControlEntryTargetId(entry.id)).toBe('B');
     });
 
     it('shows target picker target numbers for physical entries without range thresholds', () => {
@@ -269,16 +269,16 @@ describe('SvgInteractionService', () => {
         lrmRange.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
         expect(entry.states.get(INVENTORY_CONTROL_MODE_STATE)).toBe('LRM');
         expect(entry.el!.querySelector(':scope > .alternativeMode.selected')?.getAttribute('mode')).toBe('LRM');
-        expect(unit.getInventoryControlSelectedRange(entry.id)).toBe('medium');
+        expect(unit.getInventoryControlEntryRange(entry.id)).toBe('medium');
         expect(unit.isInventoryControlEntrySelected(entry.id)).toBeTrue();
 
         lrmRange.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
         expect(unit.isInventoryControlEntrySelected(entry.id)).toBeFalse();
-        expect(unit.getInventoryControlSelectedRange(entry.id)).toBeUndefined();
+        expect(unit.getInventoryControlEntryRange(entry.id)).toBeUndefined();
 
         invalidModeRange.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
         expect(entry.states.get(INVENTORY_CONTROL_MODE_STATE)).toBe('LRM');
-        expect(unit.getInventoryControlSelectedRange(entry.id)).toBe('medium');
+        expect(unit.getInventoryControlEntryRange(entry.id)).toBe('medium');
     });
 
     it('keeps a captured pen tap alive when hover retargeting fires pointerleave before pointerup', () => {
@@ -505,13 +505,13 @@ function createInventoryInteractionUnit(html = `
     const runtime = new InventoryControlRuntimeState(() => unit.getInventory());
     Object.assign(unit, {
         getInventoryControlTargets: () => runtime.getTargets(),
-        getInventoryControlSelectedTarget: (entryId: string) => runtime.getSelectedTarget(entryId),
+        getInventoryControlEntryTargetId: (entryId: string) => runtime.getEntryTargetId(entryId),
         isInventoryControlEntrySelected: (entryId: string) => runtime.isEntrySelected(entryId),
-        getInventoryControlSelectedRange: (entryId: string) => runtime.getSelectedRange(entryId),
+        getInventoryControlEntryRange: (entryId: string) => runtime.getEntryRange(entryId),
         setInventoryControlEntrySelected: (selectedEntry: MountedEquipment, selected: boolean) => runtime.setEntrySelected(selectedEntry, selected),
-        setInventoryControlSelectedRange: (selectedEntry: MountedEquipment, range: InventoryControlRuntimeRangeKey | null) => runtime.setSelectedRange(selectedEntry, range),
-        toggleInventoryControlSelectedRange: (selectedEntry: MountedEquipment, range: InventoryControlRuntimeRangeKey, forceSelected = false) => runtime.toggleSelectedRange(selectedEntry, range, forceSelected),
-        setInventoryControlSelectedTarget: (selectedEntry: MountedEquipment, targetId: string | null) => runtime.setSelectedTarget(selectedEntry, targetId),
+        setInventoryControlEntryRange: (selectedEntry: MountedEquipment, range: InventoryControlRuntimeRangeKey | null) => runtime.setEntryRange(selectedEntry, range),
+        toggleInventoryControlEntryRange: (selectedEntry: MountedEquipment, range: InventoryControlRuntimeRangeKey, forceSelected = false) => runtime.toggleEntryRange(selectedEntry, range, forceSelected),
+        setInventoryControlEntryTarget: (selectedEntry: MountedEquipment, targetId: string | null) => runtime.setEntryTarget(selectedEntry, targetId),
         createInventoryControlTarget: () => runtime.createTarget(),
         updateInventoryControlTarget: (targetId: string, patch: any) => runtime.updateTarget(targetId, patch),
         syncInventoryControlSelectionSvg: () => runtime.syncSelectionSvg()

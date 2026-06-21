@@ -17,18 +17,18 @@ function addRuntimeSelection(unit: CBTForceUnit): CBTForceUnit {
 
     Object.assign(unit, {
         inventoryControl: runtime,
-        getInventoryControlSelectionSnapshot: () => runtime.getSelectionSnapshot(),
+        getInventoryControlSnapshot: () => runtime.getSnapshot(),
         getInventoryControlTargets: () => runtime.getTargets(),
         getInventoryControlTarget: (targetId: InventoryControlRuntimeTargetId) => runtime.getTarget(targetId),
-        getInventoryControlSelectedTarget: (entryId: string) => runtime.getSelectedTarget(entryId),
+        getInventoryControlEntryTargetId: (entryId: string) => runtime.getEntryTargetId(entryId),
         isInventoryControlEntrySelected: (entryId: string) => runtime.isEntrySelected(entryId),
-        getInventoryControlSelectedRange: (entryId: string) => runtime.getSelectedRange(entryId),
-        getInventoryControlSelectedAmmoOption: (entryId: string) => runtime.getSelectedAmmoOption(entryId),
+        getInventoryControlEntryRange: (entryId: string) => runtime.getEntryRange(entryId),
+        getInventoryControlEntryAmmoOption: (entryId: string) => runtime.getEntryAmmoOption(entryId),
         setInventoryControlEntrySelected: (entry: MountedEquipment, selected: boolean) => runtime.setEntrySelected(entry, selected),
-        setInventoryControlSelectedRange: (entry: MountedEquipment, range: 'short' | 'medium' | 'long' | null) => runtime.setSelectedRange(entry, range),
-        toggleInventoryControlSelectedRange: (entry: MountedEquipment, range: 'short' | 'medium' | 'long', forceSelected = false) => runtime.toggleSelectedRange(entry, range, forceSelected),
-        setInventoryControlSelectedAmmoOption: (entryId: string, optionId: string) => runtime.setSelectedAmmoOption(entryId, optionId),
-        setInventoryControlSelectedTarget: (entry: MountedEquipment, targetId: InventoryControlRuntimeTargetId | null) => runtime.setSelectedTarget(entry, targetId),
+        setInventoryControlEntryRange: (entry: MountedEquipment, range: 'short' | 'medium' | 'long' | null) => runtime.setEntryRange(entry, range),
+        toggleInventoryControlEntryRange: (entry: MountedEquipment, range: 'short' | 'medium' | 'long', forceSelected = false) => runtime.toggleEntryRange(entry, range, forceSelected),
+        setInventoryControlEntryAmmoOption: (entryId: string, optionId: string) => runtime.setEntryAmmoOption(entryId, optionId),
+        setInventoryControlEntryTarget: (entry: MountedEquipment, targetId: InventoryControlRuntimeTargetId | null) => runtime.setEntryTarget(entry, targetId),
         createInventoryControlTarget: () => runtime.createTarget(),
         updateInventoryControlTarget: (targetId: InventoryControlRuntimeTargetId, patch: Partial<Omit<InventoryControlRuntimeTarget, 'id' | 'letter'>>) => runtime.updateTarget(targetId, patch),
         deleteInventoryControlTarget: (targetId: InventoryControlRuntimeTargetId) => runtime.deleteTarget(targetId),
@@ -460,7 +460,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         unit.createInventoryControlTarget();
         unit.updateInventoryControlTarget('A', { distance: 1, tnCalculator: { stance: 'immobile' } });
-        unit.setInventoryControlSelectedTarget(row.entry, 'A');
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
         unit.inventoryControl.markInventoryViewChanged();
         fixture.detectChanges();
 
@@ -543,7 +543,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         unit.createInventoryControlTarget();
         unit.updateInventoryControlTarget('A', { distance: 10 });
-        unit.setInventoryControlSelectedTarget(laser, 'A');
+        unit.setInventoryControlEntryTarget(laser, 'A');
 
         expect(component.isOutOfLongRange(row)).toBeTrue();
         expect(component.isRangeSelected(row, 'long')).toBeFalse();
@@ -562,7 +562,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         unit.inventoryControl.markInventoryViewChanged();
         fixture.detectChanges();
 
-        expect(unit.getInventoryControlSelectedTarget(row.id)).toBe('A');
+        expect(unit.getInventoryControlEntryTargetId(row.id)).toBe('A');
         expect(component.isSelected(row)).toBeTrue();
         const selector = fixture.nativeElement.querySelector('.weapon-equipment-row .target-selector') as HTMLButtonElement;
         expect(selector.textContent?.trim()).toBe('A');
@@ -570,7 +570,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         selector.click();
         fixture.detectChanges();
 
-        expect(unit.getInventoryControlSelectedTarget(row.id)).toBeUndefined();
+        expect(unit.getInventoryControlEntryTargetId(row.id)).toBeUndefined();
         expect(component.isSelected(row)).toBeFalse();
     });
 
@@ -593,7 +593,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         choices[2].click();
         fixture.detectChanges();
 
-        expect(unit.getInventoryControlSelectedTarget(row.id)).toBe('B');
+        expect(unit.getInventoryControlEntryTargetId(row.id)).toBe('B');
         expect(component.isSelected(row)).toBeTrue();
         fixture.destroy();
     });
@@ -624,15 +624,15 @@ describe('WeaponsEquipmentPanelComponent', () => {
         headerSelector.click();
         fixture.detectChanges();
 
-        expect(unit.getInventoryControlSelectedTarget(firstRow.id)).toBe('A');
-        expect(unit.getInventoryControlSelectedTarget(secondRow.id)).toBe('A');
-        expect(unit.getInventoryControlSelectedTarget(brokenRow.id)).toBeUndefined();
-        expect(unit.getInventoryControlSelectedTarget(disabledRow.id)).toBeUndefined();
-        expect(unit.getInventoryControlSelectedTarget(punchRow.id)).toBeUndefined();
+        expect(unit.getInventoryControlEntryTargetId(firstRow.id)).toBe('A');
+        expect(unit.getInventoryControlEntryTargetId(secondRow.id)).toBe('A');
+        expect(unit.getInventoryControlEntryTargetId(brokenRow.id)).toBeUndefined();
+        expect(unit.getInventoryControlEntryTargetId(disabledRow.id)).toBeUndefined();
+        expect(unit.getInventoryControlEntryTargetId(punchRow.id)).toBeUndefined();
         expect(component.groupTargetSelection(component.groups().find(group => group.id === 'ranged')!)?.id).toBe('A');
 
-        unit.setInventoryControlSelectedTarget(brokenRow.entry, 'A');
-        unit.setInventoryControlSelectedTarget(disabledRow.entry, 'A');
+        unit.setInventoryControlEntryTarget(brokenRow.entry, 'A');
+        unit.setInventoryControlEntryTarget(disabledRow.entry, 'A');
 
         (rangedSection.querySelector('.select-header .target-selector') as HTMLButtonElement).click();
         fixture.detectChanges();
@@ -650,7 +650,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         unit.createInventoryControlTarget();
         unit.updateInventoryControlTarget('A', { distance: 8, tnModifier: 1 });
-        unit.setInventoryControlSelectedTarget(row.entry, 'A');
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
         unit.inventoryControl.markInventoryViewChanged();
         fixture.detectChanges();
 
@@ -681,7 +681,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         unit.createInventoryControlTarget();
         unit.updateInventoryControlTarget('A', { distance: 4, tnModifier: 1 });
-        unit.setInventoryControlSelectedTarget(row.entry, 'A');
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
         unit.inventoryControl.markInventoryViewChanged();
         fixture.detectChanges();
 
@@ -704,7 +704,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const row = component.groups().find(group => group.id === 'physical')!.rows[0];
         unit.createInventoryControlTarget();
         unit.updateInventoryControlTarget('A', { distance: 10, tnModifier: 1 });
-        unit.setInventoryControlSelectedTarget(row.entry, 'A');
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
         unit.inventoryControl.markInventoryViewChanged();
 
         expect(component.isRangeSelected(row, 'short')).toBeFalse();
@@ -726,7 +726,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         unit.createInventoryControlTarget();
         unit.updateInventoryControlTarget('A', { distance: 11, tnModifier: 1 });
-        unit.setInventoryControlSelectedTarget(row.entry, 'A');
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
         unit.inventoryControl.markInventoryViewChanged();
         fixture.detectChanges();
 
@@ -805,8 +805,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(component.isSelected(laserRow)).toBeFalse();
         expect(component.isRangeSelected(laserRow, 'medium')).toBeFalse();
         expect(component.isSelected(punchRow)).toBeFalse();
-        expect(unit.getInventoryControlSelectionSnapshot().selectedEntryIds.size).toBe(0);
-        expect(unit.getInventoryControlSelectionSnapshot().selectedRanges.size).toBe(0);
+        expect(unit.getInventoryControlSnapshot().entryStates.size).toBe(0);
     });
 
     it('raises selected weapon heat before dissipation and consumes shared ammo bins', async () => {

@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import type { MountedEquipment } from './force-serialization';
 import type { TnTargetNumberCalculatorState, TnTargetUnitType } from './target-number-calculator.model';
 
@@ -33,12 +33,16 @@ export interface InventoryControlRuntimeTarget {
     tnCalculator?: TnTargetNumberCalculatorState;
 }
 
-export interface InventoryControlRuntimeSelectionSnapshot {
-    selectedEntryIds: Set<string>;
-    selectedRanges: Map<string, InventoryControlRuntimeRangeKey>;
-    selectedAmmoOptions: Map<string, string>;
-    selectedTargets: Map<string, InventoryControlRuntimeTargetId>;
+export interface InventoryControlRuntimeSnapshot {
+    entryStates: Map<string, InventoryControlRuntimeEntryState>;
     targets: InventoryControlRuntimeTarget[];
+}
+
+export interface InventoryControlRuntimeEntryState {
+    selected: boolean;
+    range?: InventoryControlRuntimeRangeKey;
+    ammoOption?: string;
+    targetId?: InventoryControlRuntimeTargetId;
 }
 
 export function getInventoryControlTargetLetter(index: number): string {
@@ -51,28 +55,19 @@ function getInventoryControlTargetIndex(targetId: InventoryControlRuntimeTargetI
 }
 
 export class InventoryControlRuntimeState {
-    private readonly selectedEntryIdsState = signal<Set<string>>(new Set());
-    private readonly selectedRangesState = signal<Map<string, InventoryControlRuntimeRangeKey>>(new Map());
-    private readonly selectedAmmoOptionsState = signal<Map<string, string>>(new Map());
-    private readonly selectedTargetsState = signal<Map<string, InventoryControlRuntimeTargetId>>(new Map());
+    private readonly entryStatesState = signal<Map<string, InventoryControlRuntimeEntryState>>(new Map());
     private readonly targetsState = signal<Map<InventoryControlRuntimeTargetId, InventoryControlRuntimeTarget>>(new Map());
     private readonly inventoryViewVersionState = signal(0);
 
-    readonly selectedEntryIds = this.selectedEntryIdsState.asReadonly();
-    readonly selectedRanges = this.selectedRangesState.asReadonly();
-    readonly selectedAmmoOptions = this.selectedAmmoOptionsState.asReadonly();
-    readonly selectedTargets = this.selectedTargetsState.asReadonly();
+    readonly entryStates = computed<ReadonlyMap<string, Readonly<InventoryControlRuntimeEntryState>>>(() => this.cloneEntryStates(this.entryStatesState()));
     readonly targetsMap = this.targetsState.asReadonly();
     readonly inventoryViewVersion = this.inventoryViewVersionState.asReadonly();
 
     constructor(private readonly getInventory: () => MountedEquipment[]) {}
 
-    getSelectionSnapshot(): InventoryControlRuntimeSelectionSnapshot {
+    getSnapshot(): InventoryControlRuntimeSnapshot {
         return {
-            selectedEntryIds: new Set(this.selectedEntryIds()),
-            selectedRanges: new Map(this.selectedRanges()),
-            selectedAmmoOptions: new Map(this.selectedAmmoOptions()),
-            selectedTargets: new Map(this.selectedTargets()),
+            entryStates: this.cloneEntryStates(this.entryStatesState()),
             targets: this.getTargets()
         };
     }
@@ -88,63 +83,72 @@ export class InventoryControlRuntimeState {
         return target ? { ...target } : undefined;
     }
 
-    getSelectedTarget(entryId: string): InventoryControlRuntimeTargetId | undefined {
-        return this.selectedTargets().get(entryId);
+    getEntryState(entryId: string): InventoryControlRuntimeEntryState | undefined {
+        const entryState = this.entryStatesState().get(entryId);
+        return entryState ? { ...entryState } : undefined;
+    }
+
+    getEntryTargetId(entryId: string): InventoryControlRuntimeTargetId | undefined {
+        return this.entryStatesState().get(entryId)?.targetId;
     }
 
     isEntrySelected(entryId: string): boolean {
-        return this.selectedEntryIds().has(entryId);
+        return this.entryStatesState().get(entryId)?.selected ?? false;
     }
 
-    getSelectedRange(entryId: string): InventoryControlRuntimeRangeKey | undefined {
-        return this.selectedRanges().get(entryId);
+    getEntryRange(entryId: string): InventoryControlRuntimeRangeKey | undefined {
+        return this.entryStatesState().get(entryId)?.range;
     }
 
-    getSelectedAmmoOption(entryId: string): string | undefined {
-        return this.selectedAmmoOptions().get(entryId);
+    getEntryAmmoOption(entryId: string): string | undefined {
+        return this.entryStatesState().get(entryId)?.ammoOption;
     }
 
     setEntrySelected(entry: MountedEquipment, selected: boolean): void {
-        if (selected) {
-            this.updateSelectedEntryIds(selectedEntryIds => selectedEntryIds.add(entry.id));
-        } else {
-            this.updateSelectedEntryIds(selectedEntryIds => selectedEntryIds.delete(entry.id));
-            this.updateSelectedRanges(selectedRanges => selectedRanges.delete(entry.id));
-            this.updateSelectedTargets(selectedTargets => selectedTargets.delete(entry.id));
-        }
+        this.updateEntryState(entry.id, entryState => {
+            entryState.selected = selected;
+            if (!selected) {
+                delete entryState.range;
+                delete entryState.targetId;
+            }
+        });
     }
 
-    setSelectedRange(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey | null): void {
-        if (range === null) {
-            this.updateSelectedEntryIds(selectedEntryIds => selectedEntryIds.delete(entry.id));
-            this.updateSelectedRanges(selectedRanges => selectedRanges.delete(entry.id));
-            this.updateSelectedTargets(selectedTargets => selectedTargets.delete(entry.id));
-        } else {
-            this.updateSelectedEntryIds(selectedEntryIds => selectedEntryIds.add(entry.id));
-            this.updateSelectedRanges(selectedRanges => selectedRanges.set(entry.id, range));
-            this.updateSelectedTargets(selectedTargets => selectedTargets.delete(entry.id));
-        }
+    setEntryRange(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey | null): void {
+        this.updateEntryState(entry.id, entryState => {
+            entryState.selected = range !== null;
+            if (range === null) {
+                delete entryState.range;
+            } else {
+                entryState.range = range;
+            }
+            delete entryState.targetId;
+        });
     }
 
-    toggleSelectedRange(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey, forceSelected = false): void {
-        const selected = this.selectedEntryIds().has(entry.id) && this.selectedRanges().get(entry.id) === range;
-        this.setSelectedRange(entry, !forceSelected && selected ? null : range);
+    toggleEntryRange(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey, forceSelected = false): void {
+        const entryState = this.entryStatesState().get(entry.id);
+        const selected = (entryState?.selected ?? false) && entryState?.range === range;
+        this.setEntryRange(entry, !forceSelected && selected ? null : range);
     }
 
-    setSelectedAmmoOption(entryId: string, optionId: string): void {
-        this.updateSelectedAmmoOptions(selectedAmmoOptions => selectedAmmoOptions.set(entryId, optionId));
+    setEntryAmmoOption(entryId: string, optionId: string): void {
+        this.updateEntryState(entryId, entryState => {
+            entryState.ammoOption = optionId;
+        });
     }
 
-    setSelectedTarget(entry: MountedEquipment, targetId: InventoryControlRuntimeTargetId | null): void {
-        if (targetId === null || !this.targetsMap().has(targetId)) {
-            this.updateSelectedEntryIds(selectedEntryIds => selectedEntryIds.delete(entry.id));
-            this.updateSelectedTargets(selectedTargets => selectedTargets.delete(entry.id));
-            this.updateSelectedRanges(selectedRanges => selectedRanges.delete(entry.id));
-        } else {
-            this.updateSelectedEntryIds(selectedEntryIds => selectedEntryIds.add(entry.id));
-            this.updateSelectedTargets(selectedTargets => selectedTargets.set(entry.id, targetId));
-            this.updateSelectedRanges(selectedRanges => selectedRanges.delete(entry.id));
-        }
+    setEntryTarget(entry: MountedEquipment, targetId: InventoryControlRuntimeTargetId | null): void {
+        const validTargetId = targetId !== null && this.targetsMap().has(targetId) ? targetId : null;
+        this.updateEntryState(entry.id, entryState => {
+            entryState.selected = validTargetId !== null;
+            if (validTargetId === null) {
+                delete entryState.targetId;
+            } else {
+                entryState.targetId = validTargetId;
+            }
+            delete entryState.range;
+        });
     }
 
     createTarget(): InventoryControlRuntimeTarget | null {
@@ -167,17 +171,14 @@ export class InventoryControlRuntimeState {
         this.updateTargets(nextTargets => nextTargets.set(targetId, target));
 
         if (wasEmpty) {
-            const selectedEntryIds = this.selectedEntryIds();
-            this.updateSelectedTargets(selectedTargets => {
-                for (const entryId of selectedEntryIds) {
-                    if (!selectedTargets.has(entryId)) {
-                        selectedTargets.set(entryId, targetId);
+            this.updateEntryStates(entryStates => {
+                for (const entryState of entryStates.values()) {
+                    if (entryState.selected && !entryState.targetId) {
+                        entryState.targetId = targetId;
                     }
-                }
-            });
-            this.updateSelectedRanges(selectedRanges => {
-                for (const entryId of selectedEntryIds) {
-                    selectedRanges.delete(entryId);
+                    if (entryState.selected) {
+                        delete entryState.range;
+                    }
                 }
             });
         }
@@ -205,82 +206,49 @@ export class InventoryControlRuntimeState {
         const targets = new Map(this.targetsMap());
         if (!targets.delete(targetId)) return;
         this.targetsState.set(targets);
-        const deselectedEntryIds = new Set<string>();
-        this.updateSelectedTargets(selectedTargets => {
-            for (const [entryId, selectedTargetId] of selectedTargets) {
-                if (selectedTargetId === targetId) {
-                    selectedTargets.delete(entryId);
-                    deselectedEntryIds.add(entryId);
+        this.updateEntryStates(entryStates => {
+            for (const entryState of entryStates.values()) {
+                if (entryState.targetId === targetId || targets.size === 0) {
+                    entryState.selected = false;
+                    delete entryState.range;
+                    delete entryState.targetId;
                 }
             }
         });
-        this.updateSelectedEntryIds(selectedEntryIds => {
-            for (const entryId of deselectedEntryIds) {
-                selectedEntryIds.delete(entryId);
-            }
-        });
-        this.updateSelectedRanges(selectedRanges => {
-            for (const entryId of deselectedEntryIds) {
-                selectedRanges.delete(entryId);
-            }
-        });
-        if (targets.size === 0) {
-            this.selectedTargetsState.set(new Map());
-            this.selectedEntryIdsState.set(new Set());
-            this.selectedRangesState.set(new Map());
-        }
     }
 
     resetTargets(): void {
         this.targetsState.set(new Map());
-        this.selectedTargetsState.set(new Map());
-        this.selectedEntryIdsState.set(new Set());
-        this.selectedRangesState.set(new Map());
+        this.updateEntryStates(entryStates => {
+            for (const entryState of entryStates.values()) {
+                entryState.selected = false;
+                delete entryState.range;
+                delete entryState.targetId;
+            }
+        });
     }
 
     clearSelection(): void {
-        this.selectedEntryIdsState.set(new Set());
-        this.selectedRangesState.set(new Map());
-        this.selectedAmmoOptionsState.set(new Map());
-        this.selectedTargetsState.set(new Map());
+        this.entryStatesState.set(new Map());
     }
 
     reconcile(): void {
         const validEntryIds = new Set(this.getInventory().map(entry => entry.id));
         const validTargetIds = new Set(this.targetsMap().keys());
 
-        const selectedEntryIds = new Set(this.selectedEntryIds());
-        const selectedRanges = new Map(this.selectedRanges());
-        const selectedAmmoOptions = new Map(this.selectedAmmoOptions());
-        const selectedTargets = new Map(this.selectedTargets());
-
-        for (const entryId of Array.from(selectedEntryIds)) {
-            if (!validEntryIds.has(entryId)) {
-                selectedEntryIds.delete(entryId);
+        this.updateEntryStates(entryStates => {
+            for (const [entryId, entryState] of entryStates) {
+                if (!validEntryIds.has(entryId)) {
+                    entryStates.delete(entryId);
+                    continue;
+                }
+                if (entryState.targetId && !validTargetIds.has(entryState.targetId)) {
+                    entryState.selected = false;
+                    delete entryState.range;
+                    delete entryState.targetId;
+                }
             }
-        }
-        for (const entryId of Array.from(selectedRanges.keys())) {
-            if (!validEntryIds.has(entryId)) {
-                selectedRanges.delete(entryId);
-            }
-        }
-        for (const entryId of Array.from(selectedAmmoOptions.keys())) {
-            if (!validEntryIds.has(entryId)) {
-                selectedAmmoOptions.delete(entryId);
-            }
-        }
-        for (const [entryId, targetId] of Array.from(selectedTargets.entries())) {
-            if (!validEntryIds.has(entryId) || !validTargetIds.has(targetId)) {
-                selectedTargets.delete(entryId);
-                selectedEntryIds.delete(entryId);
-                selectedRanges.delete(entryId);
-            }
-        }
-
-        this.selectedEntryIdsState.set(selectedEntryIds);
-        this.selectedRangesState.set(selectedRanges);
-        this.selectedAmmoOptionsState.set(selectedAmmoOptions);
-        this.selectedTargetsState.set(selectedTargets);
+        });
     }
 
     markInventoryViewChanged(): void {
@@ -299,36 +267,44 @@ export class InventoryControlRuntimeState {
         return null;
     }
 
-    private updateSelectedEntryIds(mutator: (selectedEntryIds: Set<string>) => void): void {
-        this.selectedEntryIdsState.update(current => {
-            const next = new Set(current);
+    private updateEntryState(entryId: string, mutator: (entryState: InventoryControlRuntimeEntryState) => void): void {
+        this.updateEntryStates(entryStates => {
+            const entryState = entryStates.get(entryId) ?? { selected: false };
+            mutator(entryState);
+            entryStates.set(entryId, entryState);
+        });
+    }
+
+    private updateEntryStates(mutator: (entryStates: Map<string, InventoryControlRuntimeEntryState>) => void): void {
+        this.entryStatesState.update(current => {
+            const next = this.cloneEntryStates(current);
             mutator(next);
+            for (const [entryId, entryState] of next) {
+                const normalizedEntryState = this.normalizeEntryState(entryState);
+                if (normalizedEntryState) {
+                    next.set(entryId, normalizedEntryState);
+                } else {
+                    next.delete(entryId);
+                }
+            }
             return next;
         });
     }
 
-    private updateSelectedRanges(mutator: (selectedRanges: Map<string, InventoryControlRuntimeRangeKey>) => void): void {
-        this.selectedRangesState.update(current => {
-            const next = new Map(current);
-            mutator(next);
-            return next;
-        });
+    private normalizeEntryState(entryState: InventoryControlRuntimeEntryState): InventoryControlRuntimeEntryState | null {
+        if (!entryState.selected) {
+            delete entryState.range;
+            delete entryState.targetId;
+        }
+        if (entryState.targetId) {
+            delete entryState.range;
+        }
+        if (!entryState.selected && entryState.ammoOption === undefined) return null;
+        return { ...entryState };
     }
 
-    private updateSelectedAmmoOptions(mutator: (selectedAmmoOptions: Map<string, string>) => void): void {
-        this.selectedAmmoOptionsState.update(current => {
-            const next = new Map(current);
-            mutator(next);
-            return next;
-        });
-    }
-
-    private updateSelectedTargets(mutator: (selectedTargets: Map<string, InventoryControlRuntimeTargetId>) => void): void {
-        this.selectedTargetsState.update(current => {
-            const next = new Map(current);
-            mutator(next);
-            return next;
-        });
+    private cloneEntryStates(entryStates: Map<string, InventoryControlRuntimeEntryState>): Map<string, InventoryControlRuntimeEntryState> {
+        return new Map(Array.from(entryStates, ([entryId, entryState]) => [entryId, { ...entryState }]));
     }
 
     private updateTargets(mutator: (targets: Map<InventoryControlRuntimeTargetId, InventoryControlRuntimeTarget>) => void): void {

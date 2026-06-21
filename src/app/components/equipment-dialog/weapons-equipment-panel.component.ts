@@ -123,10 +123,10 @@ export class WeaponsEquipmentPanelComponent {
     readonly hasControlsColumn = computed(() => this.groups().some(group => this.groupHasControls(group)));
     readonly hasActionsColumn = computed(() => this.groups().some(group => this.groupHasActions(group)));
     readonly selectedRows = computed(() => {
-        const selectedEntryIds = this.inventoryControl().selectedEntryIds();
+        const entryStates = this.inventoryControl().entryStates();
         return this.groups()
             .flatMap(group => group.rows)
-            .filter(row => selectedEntryIds.has(row.id));
+            .filter(row => entryStates.get(row.id)?.selected ?? false);
     });
     readonly selectedHeatTotal = computed(() => this.selectedRows()
         .reduce((total, row) => total + this.heatValue(row), 0));
@@ -161,7 +161,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     targetForRow(row: InventoryControlRow): InventoryControlRuntimeTarget | null {
-        const targetId = this.unit().getInventoryControlSelectedTarget(row.id);
+        const targetId = this.unit().getInventoryControlEntryTargetId(row.id);
         return targetId ? this.targets().find(target => target.id === targetId) ?? null : null;
     }
 
@@ -185,7 +185,7 @@ export class WeaponsEquipmentPanelComponent {
                 event.currentTarget as HTMLElement,
                 selectedTargetId,
                 targetId => {
-                    this.unit().setInventoryControlSelectedTarget(row.entry, targetId);
+                    this.unit().setInventoryControlEntryTarget(row.entry, targetId);
                 },
                 this.targetChoiceTargetNumberTexts(row)
             );
@@ -195,8 +195,8 @@ export class WeaponsEquipmentPanelComponent {
     groupTargetSelection(group: InventoryControlGroup): InventoryControlRuntimeTarget | null {
         const rows = this.groupActiveSelectableRows(group);
         if (rows.length === 0) return null;
-        const firstTargetId = this.unit().getInventoryControlSelectedTarget(rows[0].id);
-        if (!firstTargetId || !rows.every(row => this.unit().getInventoryControlSelectedTarget(row.id) === firstTargetId)) {
+        const firstTargetId = this.unit().getInventoryControlEntryTargetId(rows[0].id);
+        if (!firstTargetId || !rows.every(row => this.unit().getInventoryControlEntryTargetId(row.id) === firstTargetId)) {
             return null;
         }
         return this.targets().find(target => target.id === firstTargetId) ?? null;
@@ -204,7 +204,7 @@ export class WeaponsEquipmentPanelComponent {
 
     groupSomeTargetRowsSelected(group: InventoryControlGroup): boolean {
         const rows = this.groupActiveSelectableRows(group);
-        const selectedCount = rows.filter(row => !!this.unit().getInventoryControlSelectedTarget(row.id)).length;
+        const selectedCount = rows.filter(row => !!this.unit().getInventoryControlEntryTargetId(row.id)).length;
         return selectedCount > 0 && selectedCount < rows.length;
     }
 
@@ -230,7 +230,7 @@ export class WeaponsEquipmentPanelComponent {
     private setGroupTarget(group: InventoryControlGroup, targetId: InventoryControlRuntimeTargetId | null): void {
         const rows = targetId ? this.groupActiveSelectableRows(group) : this.groupSelectableRows(group);
         for (const row of rows) {
-            this.unit().setInventoryControlSelectedTarget(row.entry, targetId);
+            this.unit().setInventoryControlEntryTarget(row.entry, targetId);
         }
     }
 
@@ -357,7 +357,7 @@ export class WeaponsEquipmentPanelComponent {
 
     selectRange(row: InventoryControlRow, range: InventoryRangeKey): void {
         if (!this.canSelectRange(row, range)) return;
-        this.unit().toggleInventoryControlSelectedRange(row.entry, range);
+        this.unit().toggleInventoryControlEntryRange(row.entry, range);
     }
 
     isRangeSelected(row: InventoryControlRow, range: InventoryRangeKey): boolean {
@@ -366,7 +366,7 @@ export class WeaponsEquipmentPanelComponent {
         if (targetRange) {
             return !targetRange.outOfLongRange && targetRange.range === range;
         }
-        return this.unit().getInventoryControlSelectedRange(row.id) === range;
+        return this.unit().getInventoryControlEntryRange(row.id) === range;
     }
 
     isOutOfLongRange(row: InventoryControlRow): boolean {
@@ -396,7 +396,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     damageText(row: InventoryControlRow): string {
-        const range = this.targetRangeSelection(row)?.range ?? this.unit().getInventoryControlSelectedRange(row.id) ?? null;
+        const range = this.targetRangeSelection(row)?.range ?? this.unit().getInventoryControlEntryRange(row.id) ?? null;
         return resolveWeaponRangeDamageText(row.entry, range, row.display.damage) ?? row.display.damage;
     }
 
@@ -492,7 +492,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     selectedAmmoOption(row: InventoryControlRow): string {
-        const selectedOptionId = this.unit().getInventoryControlSelectedAmmoOption(row.id);
+        const selectedOptionId = this.unit().getInventoryControlEntryAmmoOption(row.id);
         const selectedOption = selectedOptionId
             ? row.ammo.options.find((option: InventoryControlAmmoOption) => option.id === selectedOptionId)
             : undefined;
@@ -515,7 +515,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     selectAmmoOption(row: InventoryControlRow, value: string): void {
-        this.unit().setInventoryControlSelectedAmmoOption(row.id, value);
+        this.unit().setInventoryControlEntryAmmoOption(row.id, value);
     }
 
     canAdjustAmmo(row: InventoryControlRow, delta: number): boolean {

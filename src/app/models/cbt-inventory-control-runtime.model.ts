@@ -12,18 +12,18 @@ export class CBTInventoryControlRuntime extends InventoryControlRuntimeState {
         this.markInventoryViewChanged();
     }
 
-    override setSelectedRange(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey | null): void {
-        super.setSelectedRange(entry, range);
+    override setEntryRange(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey | null): void {
+        super.setEntryRange(entry, range);
         this.markInventoryViewChanged();
     }
 
-    override setSelectedAmmoOption(entryId: string, optionId: string): void {
-        super.setSelectedAmmoOption(entryId, optionId);
+    override setEntryAmmoOption(entryId: string, optionId: string): void {
+        super.setEntryAmmoOption(entryId, optionId);
         this.markInventoryViewChanged();
     }
 
-    override setSelectedTarget(entry: MountedEquipment, targetId: InventoryControlRuntimeTargetId | null): void {
-        super.setSelectedTarget(entry, targetId);
+    override setEntryTarget(entry: MountedEquipment, targetId: InventoryControlRuntimeTargetId | null): void {
+        super.setEntryTarget(entry, targetId);
         this.markInventoryViewChanged();
     }
 

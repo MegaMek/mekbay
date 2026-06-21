@@ -268,13 +268,13 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         initialize(forceUnit);
         const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
 
-        forceUnit.setInventoryControlSelectedRange(weaponEntry, 'medium');
+        forceUnit.setInventoryControlEntryRange(weaponEntry, 'medium');
         const target = forceUnit.createInventoryControlTarget();
 
         expect(target?.id).toBe('A');
         expect(forceUnit.isInventoryControlEntrySelected(weaponEntry.id)).toBeTrue();
-        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBe('A');
-        expect(forceUnit.getInventoryControlSelectedRange(weaponEntry.id)).toBeUndefined();
+        expect(forceUnit.getInventoryControlEntryTargetId(weaponEntry.id)).toBe('A');
+        expect(forceUnit.getInventoryControlEntryRange(weaponEntry.id)).toBeUndefined();
 
         const serialized = forceUnit.serialize();
         expect(JSON.stringify(serialized)).not.toContain('Target A');
@@ -307,20 +307,20 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         forceUnit.createInventoryControlTarget();
         forceUnit.createInventoryControlTarget();
-        forceUnit.setInventoryControlSelectedTarget(weaponEntry, 'B');
+        forceUnit.setInventoryControlEntryTarget(weaponEntry, 'B');
         expect(forceUnit.isInventoryControlEntrySelected(weaponEntry.id)).toBeTrue();
-        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBe('B');
+        expect(forceUnit.getInventoryControlEntryTargetId(weaponEntry.id)).toBe('B');
 
         forceUnit.deleteInventoryControlTarget('B');
         expect(forceUnit.getInventoryControlTargets().map(target => target.id)).toEqual(['A']);
         expect(forceUnit.isInventoryControlEntrySelected(weaponEntry.id)).toBeFalse();
-        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBeUndefined();
+        expect(forceUnit.getInventoryControlEntryTargetId(weaponEntry.id)).toBeUndefined();
 
-        forceUnit.setInventoryControlSelectedTarget(weaponEntry, 'A');
+        forceUnit.setInventoryControlEntryTarget(weaponEntry, 'A');
         forceUnit.resetInventoryControlTargets();
         expect(forceUnit.getInventoryControlTargets()).toEqual([]);
         expect(forceUnit.isInventoryControlEntrySelected(weaponEntry.id)).toBeFalse();
-        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBeUndefined();
+        expect(forceUnit.getInventoryControlEntryTargetId(weaponEntry.id)).toBeUndefined();
     });
 
     it('does not mutate hit modifier or render target TN text during runtime target selection sync', () => {
@@ -333,14 +333,14 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         forceUnit.createInventoryControlTarget();
         forceUnit.updateInventoryControlTarget('A', { distance: 8, tnModifier: 1 });
-        forceUnit.setInventoryControlSelectedTarget(weaponEntry, 'A');
+        forceUnit.setInventoryControlEntryTarget(weaponEntry, 'A');
 
         expect(hitModText.textContent).toBe('+0');
         expect(targetTnRect.getAttribute('display')).toBe('none');
         expect(targetTnText.getAttribute('display')).toBe('none');
         expect(targetTnText.textContent).toBe('');
 
-        forceUnit.setInventoryControlSelectedTarget(weaponEntry, null);
+        forceUnit.setInventoryControlEntryTarget(weaponEntry, null);
 
         expect(hitModText.textContent).toBe('+0');
         expect(targetTnRect.getAttribute('display')).toBe('none');
@@ -356,22 +356,22 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const hitModText = weaponEntry.el!.querySelector(':scope > .hitMod-text') as SVGTextElement;
         const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
 
-        forceUnit.setInventoryControlSelectedRange(weaponEntry, 'short');
+        forceUnit.setInventoryControlEntryRange(weaponEntry, 'short');
         svgService.refreshInventory();
         expect(damageText.textContent).toBe('9 [Variable]');
         expect(hitModText.textContent).toBe('-3');
 
-        forceUnit.setInventoryControlSelectedRange(weaponEntry, 'medium');
+        forceUnit.setInventoryControlEntryRange(weaponEntry, 'medium');
         svgService.refreshInventory();
         expect(damageText.textContent).toBe('7 [Variable]');
         expect(hitModText.textContent).toBe('-2');
 
-        forceUnit.setInventoryControlSelectedRange(weaponEntry, 'long');
+        forceUnit.setInventoryControlEntryRange(weaponEntry, 'long');
         svgService.refreshInventory();
         expect(damageText.textContent).toBe('5 [Variable]');
         expect(hitModText.textContent).toBe('-1');
 
-        forceUnit.setInventoryControlSelectedRange(weaponEntry, null);
+        forceUnit.setInventoryControlEntryRange(weaponEntry, null);
         svgService.refreshInventory();
         expect(damageText.textContent).toBe('9/7/5 [Variable]');
         expect(hitModText.textContent).toBe('-4');
@@ -386,7 +386,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         forceUnit.createInventoryControlTarget();
         forceUnit.updateInventoryControlTarget('A', { distance: 1, tnCalculator: { stance: 'immobile' } });
-        forceUnit.setInventoryControlSelectedTarget(weaponEntry, 'A');
+        forceUnit.setInventoryControlEntryTarget(weaponEntry, 'A');
         svgService.refreshInventory();
 
         expect(targetTnText.textContent).toBe('1');
@@ -403,14 +403,14 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         forceUnit.createInventoryControlTarget();
         forceUnit.updateInventoryControlTarget('A', { distance: 13 });
-        forceUnit.setInventoryControlSelectedTarget(weaponEntry, 'A');
+        forceUnit.setInventoryControlEntryTarget(weaponEntry, 'A');
 
-        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBe('A');
+        expect(forceUnit.getInventoryControlEntryTargetId(weaponEntry.id)).toBe('A');
         expect(targetTnText.textContent).toBe('');
 
-        forceUnit.setInventoryControlSelectedTarget(weaponEntry, null);
+        forceUnit.setInventoryControlEntryTarget(weaponEntry, null);
 
-        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBeUndefined();
+        expect(forceUnit.getInventoryControlEntryTargetId(weaponEntry.id)).toBeUndefined();
         expect(targetTnText.textContent).toBe('');
     });
 
@@ -419,8 +419,8 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         initialize(forceUnit);
         const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
         forceUnit.createInventoryControlTarget();
-        forceUnit.setInventoryControlSelectedTarget(weaponEntry, 'A');
-        forceUnit.setInventoryControlSelectedAmmoOption(weaponEntry.id, 'ammo-option');
+        forceUnit.setInventoryControlEntryTarget(weaponEntry, 'A');
+        forceUnit.setInventoryControlEntryAmmoOption(weaponEntry.id, 'ammo-option');
 
         forceUnit.update({
             id: forceUnit.id,
@@ -436,8 +436,8 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             },
         } as CBTSerializedUnit);
 
-        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBe('A');
-        expect(forceUnit.getInventoryControlSelectionSnapshot().selectedAmmoOptions.get(weaponEntry.id)).toBe('ammo-option');
+        expect(forceUnit.getInventoryControlEntryTargetId(weaponEntry.id)).toBe('A');
+        expect(forceUnit.getInventoryControlSnapshot().entryStates.get(weaponEntry.id)?.ammoOption).toBe('ammo-option');
 
         forceUnit.setInventory([]);
         forceUnit.update({
@@ -454,8 +454,8 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             },
         } as CBTSerializedUnit);
 
-        expect(forceUnit.getInventoryControlSelectedTarget(weaponEntry.id)).toBeUndefined();
-        expect(forceUnit.getInventoryControlSelectionSnapshot().selectedAmmoOptions.has(weaponEntry.id)).toBeFalse();
+        expect(forceUnit.getInventoryControlEntryTargetId(weaponEntry.id)).toBeUndefined();
+        expect(forceUnit.getInventoryControlSnapshot().entryStates.has(weaponEntry.id)).toBeFalse();
         expect(forceUnit.isInventoryControlEntrySelected(weaponEntry.id)).toBeFalse();
     });
 });

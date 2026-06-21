@@ -1,7 +1,7 @@
 import { AmmoEquipment, WeaponEquipment, type EquipmentMap } from '../models/equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { CriticalSlot, MountedEquipment } from '../models/force-serialization';
-import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../models/inventory-control-runtime-state.model';
+import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../models/inventory-control-runtime-state.model';
 import { computeLinkedModifiers, isMountedDestroyed, resolveHitModifier } from '../models/rules/hit-modifier.util';
 import { resolveWeaponRangeDamageText, WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, type WeaponRangeKey } from '../models/rules/weapon-range-rules.util';
 import { formatBattleArmorTrooperLocation, getBattleArmorTrooperNumber, isBattleArmorTrooperLocationDestroyed } from './ammo-interaction.util';
@@ -162,12 +162,12 @@ export function selectInventoryControlEntry(
 
     if (targets.length === 1) {
         const targetId = targets[0].id;
-        const selectedTargetId = unit.getInventoryControlSelectedTarget(entry.id);
-        unit.setInventoryControlSelectedTarget(entry, selectedTargetId === targetId ? null : targetId);
+        const selectedTargetId = unit.getInventoryControlEntryTargetId(entry.id);
+        unit.setInventoryControlEntryTarget(entry, selectedTargetId === targetId ? null : targetId);
         return true;
     }
 
-    chooseTarget?.(unit.getInventoryControlSelectedTarget(entry.id) ?? null, targets);
+    chooseTarget?.(unit.getInventoryControlEntryTargetId(entry.id) ?? null, targets);
     return false;
 }
 
@@ -386,7 +386,7 @@ function buildInventoryControlRow(
     const rowEntry = createInventoryControlRowEntry(entry, options);
     const selectedModeData = selectedMode ? modes.find(mode => mode.mode === selectedMode)?.data : null;
     const display = selectedModeData ? mergeModeData(base, selectedModeData) : base;
-    const selectedRange = entry.owner.getInventoryControlSelectedRange?.(rowEntry.id) ?? null;
+    const selectedRange = entry.owner.getInventoryControlEntryRange?.(rowEntry.id) ?? null;
 
     return {
         id: rowEntry.id,
@@ -719,8 +719,8 @@ function formatHitModifier(hitModifier: number | 'Vs' | '*' | null): string {
 export function syncSvgMode(entry: MountedEquipment, mode: string | null, disabled = isInventoryControlEntryDisabled(entry, getEntryStates(entry.owner).get(entry))): void {
     const el = entry.el;
     if (!el) return;
-    const ownerSelection = entry.owner as { isInventoryControlEntrySelected?: (entryId: string) => boolean };
-    const selected = ownerSelection.isInventoryControlEntrySelected?.(entry.id) ?? false;
+    const ownerSelection = entry.owner as { getInventoryControlEntryState?: (entryId: string) => InventoryControlRuntimeEntryState | undefined };
+    const selected = ownerSelection.getInventoryControlEntryState?.(entry.id)?.selected ?? false;
 
     let hasSelectedMode = false;
     el.querySelectorAll(':scope > .alternativeMode').forEach(optionEl => {

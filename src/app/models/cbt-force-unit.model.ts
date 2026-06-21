@@ -55,7 +55,7 @@ import { MekRules } from './rules/mek-rules';
 import { AeroRules } from './rules/aero-rules';
 import { InfantryRules } from './rules/infantry-rules';
 import { VehicleRules } from './rules/vehicle-rules';
-import { type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeSelectionSnapshot, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from './inventory-control-runtime-state.model';
+import { type InventoryControlRuntimeEntryState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeSnapshot, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from './inventory-control-runtime-state.model';
 import { CBTInventoryControlRuntime } from './cbt-inventory-control-runtime.model';
 
 /*
@@ -312,8 +312,12 @@ export class CBTForceUnit extends ForceUnit {
         this.setInventory(inventory);
     }
 
-    getInventoryControlSelectionSnapshot(): InventoryControlRuntimeSelectionSnapshot {
-        return this.inventoryControlRuntime.getSelectionSnapshot();
+    getInventoryControlSnapshot(): InventoryControlRuntimeSnapshot {
+        return this.inventoryControlRuntime.getSnapshot();
+    }
+
+    getInventoryControlEntryState(entryId: string): InventoryControlRuntimeEntryState | undefined {
+        return this.inventoryControlRuntime.getEntryState(entryId);
     }
 
     getInventoryControlTargets(): InventoryControlRuntimeTarget[] {
@@ -324,40 +328,40 @@ export class CBTForceUnit extends ForceUnit {
         return this.inventoryControlRuntime.getTarget(targetId);
     }
 
-    getInventoryControlSelectedTarget(entryId: string): InventoryControlRuntimeTargetId | undefined {
-        return this.inventoryControlRuntime.getSelectedTarget(entryId);
+    getInventoryControlEntryTargetId(entryId: string): InventoryControlRuntimeTargetId | undefined {
+        return this.inventoryControlRuntime.getEntryTargetId(entryId);
     }
 
     isInventoryControlEntrySelected(entryId: string): boolean {
         return this.inventoryControlRuntime.isEntrySelected(entryId);
     }
 
-    getInventoryControlSelectedRange(entryId: string): InventoryControlRuntimeRangeKey | undefined {
-        return this.inventoryControlRuntime.getSelectedRange(entryId);
+    getInventoryControlEntryRange(entryId: string): InventoryControlRuntimeRangeKey | undefined {
+        return this.inventoryControlRuntime.getEntryRange(entryId);
     }
 
-    getInventoryControlSelectedAmmoOption(entryId: string): string | undefined {
-        return this.inventoryControlRuntime.getSelectedAmmoOption(entryId);
+    getInventoryControlEntryAmmoOption(entryId: string): string | undefined {
+        return this.inventoryControlRuntime.getEntryAmmoOption(entryId);
     }
 
     setInventoryControlEntrySelected(entry: MountedEquipment, selected: boolean): void {
         this.inventoryControlRuntime.setEntrySelected(entry, selected);
     }
 
-    setInventoryControlSelectedRange(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey | null): void {
-        this.inventoryControlRuntime.setSelectedRange(entry, range);
+    setInventoryControlEntryRange(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey | null): void {
+        this.inventoryControlRuntime.setEntryRange(entry, range);
     }
 
-    toggleInventoryControlSelectedRange(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey, forceSelected = false): void {
-        this.inventoryControlRuntime.toggleSelectedRange(entry, range, forceSelected);
+    toggleInventoryControlEntryRange(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey, forceSelected = false): void {
+        this.inventoryControlRuntime.toggleEntryRange(entry, range, forceSelected);
     }
 
-    setInventoryControlSelectedAmmoOption(entryId: string, optionId: string): void {
-        this.inventoryControlRuntime.setSelectedAmmoOption(entryId, optionId);
+    setInventoryControlEntryAmmoOption(entryId: string, optionId: string): void {
+        this.inventoryControlRuntime.setEntryAmmoOption(entryId, optionId);
     }
 
-    setInventoryControlSelectedTarget(entry: MountedEquipment, targetId: InventoryControlRuntimeTargetId | null): void {
-        this.inventoryControlRuntime.setSelectedTarget(entry, targetId);
+    setInventoryControlEntryTarget(entry: MountedEquipment, targetId: InventoryControlRuntimeTargetId | null): void {
+        this.inventoryControlRuntime.setEntryTarget(entry, targetId);
     }
 
     createInventoryControlTarget(): InventoryControlRuntimeTarget | null {

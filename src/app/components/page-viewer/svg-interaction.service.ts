@@ -893,13 +893,13 @@ export class SvgInteractionService {
                 }
                 const targets = unit.getInventoryControlTargets();
                 if (targets.length === 0) {
-                    unit.toggleInventoryControlSelectedRange(entry, range, forceSelected);
+                    unit.toggleInventoryControlEntryRange(entry, range, forceSelected);
                 } else if (targets.length === 1) {
                     const targetId = targets[0].id;
-                    const selectedTargetId = unit.getInventoryControlSelectedTarget(entry.id);
-                    unit.setInventoryControlSelectedTarget(entry, !forceSelected && selectedTargetId === targetId ? null : targetId);
+                    const selectedTargetId = unit.getInventoryControlEntryTargetId(entry.id);
+                    unit.setInventoryControlEntryTarget(entry, !forceSelected && selectedTargetId === targetId ? null : targetId);
                 } else {
-                    this.showInventoryTargetPicker(entry, button, unit.getInventoryControlSelectedTarget(entry.id) ?? null, targets);
+                    this.showInventoryTargetPicker(entry, button, unit.getInventoryControlEntryTargetId(entry.id) ?? null, targets);
                 }
             };
 
@@ -984,7 +984,7 @@ export class SvgInteractionService {
         componentRef.changeDetectorRef.detectChanges();
 
         outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(targetId => {
-            unit.setInventoryControlSelectedTarget(entry, targetId);
+            unit.setInventoryControlEntryTarget(entry, targetId);
             this.overlayManager.closeManagedOverlay(SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY);
         });
     }

@@ -47,7 +47,7 @@ import { AmmoEquipment } from '../models/equipment.model';
 import { formatAmmoName } from '../utils/ammo-interaction.util';
 import { getMotiveModeLabel, getMotiveModeTargetNumberModifier } from '../models/motiveModes.model';
 import { inventoryTargetCategory, inventoryTargetNumberText, readInventoryTargetDisplay } from '../utils/inventory-target-number.util';
-import type { InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
+import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 
 const INVENTORY_CONTROL_SELECTION_COLOR_PROPERTY = '--inventory-control-selection-color';
 
@@ -745,17 +745,16 @@ export class UnitSvgService {
 
     protected renderInventoryControlSelection(): void {
         this.unit.inventoryControl.inventoryViewVersion();
-        const selectedEntryIds = this.unit.inventoryControl.selectedEntryIds();
-        const selectedRanges = this.unit.inventoryControl.selectedRanges();
-        const selectedTargets = this.unit.inventoryControl.selectedTargets();
+        const entryStates = this.unit.inventoryControl.entryStates();
         const targets = this.unit.inventoryControl.targetsMap();
         for (const entry of this.unit.getInventory()) {
             if (!entry.el) continue;
-            const selected = selectedEntryIds.has(entry.id);
-            const targetId = selectedTargets.get(entry.id);
+            const entryState = entryStates.get(entry.id);
+            const selected = entryState?.selected ?? false;
+            const targetId = entryState?.targetId;
             const target = targetId ? targets.get(targetId) : undefined;
             const targetNumberText = selected && target ? this.inventoryTargetNumberText(entry, target) : null;
-            const selectedRange = selected ? this.inventoryControlSelectedRange(entry, selectedRanges, target) : null;
+            const selectedRange = selected ? this.inventoryControlSelectedRange(entry, entryState, target) : null;
             const hasSelectedMode = !!entry.el.querySelector(':scope > .alternativeMode.selected');
 
             this.renderInventoryControlSelectionColor(entry, target);
@@ -839,11 +838,11 @@ export class UnitSvgService {
 
     private inventoryControlSelectedRange(
         entry: MountedEquipment,
-        selectedRanges: Map<string, InventoryControlRuntimeRangeKey>,
+        entryState: InventoryControlRuntimeEntryState | undefined,
         target: InventoryControlRuntimeTarget | undefined
     ): InventoryControlRuntimeRangeKey | null {
         if (target) return this.inventoryControlRangeForTargetDistance(entry, target.distance);
-        return selectedRanges.get(entry.id) ?? null;
+        return entryState?.range ?? null;
     }
 
     private inventoryControlRangeForTargetDistance(entry: MountedEquipment, distance: number): InventoryControlRuntimeRangeKey | null {
