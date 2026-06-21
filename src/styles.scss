@@ -2365,6 +2365,12 @@ hr.divider {
 
 
         .inventoryEntry {
+            &.selected:not(.selected-alternative-mode)>text:not(.hitMod-text):not(.targetTn-text):not(.targetAimedShotWarning-text),
+            &.selected:not(.selected-alternative-mode)>g:not(.alternativeMode) text,
+            &.selected.selected-alternative-mode>.alternativeMode.selected text {
+                fill: #000;
+            }
+
             &.selected-range-short .range_medium,
             &.selected-range-short .range_long,
             &.selected-range-short .range_extreme,
@@ -2376,8 +2382,12 @@ hr.divider {
             &.selected-range-long .range_extreme,
             &.selected-range-extreme .range_short,
             &.selected-range-extreme .range_medium,
-            &.selected-range-extreme .range_long {
-                fill: #666;
+            &.selected-range-extreme .range_long,
+            &.selected.selected-alternative-mode>.alternativeMode:not(.selected) .range_short,
+            &.selected.selected-alternative-mode>.alternativeMode:not(.selected) .range_medium,
+            &.selected.selected-alternative-mode>.alternativeMode:not(.selected) .range_long,
+            &.selected.selected-alternative-mode>.alternativeMode:not(.selected) .range_extreme {
+                fill: #888 !important;
             }
         }
 
