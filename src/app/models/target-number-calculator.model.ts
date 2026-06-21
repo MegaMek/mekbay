@@ -39,6 +39,7 @@ export const TN_SKIDDING_MODIFIER = 2;
 export const TN_BATTLE_ARMOR_MODIFIER = 1;
 export const TN_AIRBORNE_MOVE_TYPE_MODIFIER = 1;
 export const TN_PARTIAL_COVER_MODIFIER = 1;
+export const TN_SECONDARY_TARGET_MODIFIER = 1;
 
 export type TnTargetUnitType =
     | 'mek-biped'
@@ -95,7 +96,7 @@ export const TN_TARGET_MOVE_TYPE_OPTIONS: readonly { value: MoveType | ''; label
 ] as const;
 
 export type TnTargetStance = 'none' | 'prone' | 'immobile';
-export type TnInterveningWoods = 'none' | 'light1' | 'light2' | 'heavy1';
+export type TnInterveningWoods = 'none' | 'light1' | 'light2';
 export type TnTargetHexCover = 'none' | 'light' | 'heavy';
 export type TnAttackDirection = 'front' | 'left' | 'rear' | 'right';
 export type TnSpotterMoveMode = 'stationary' | 'walk' | 'run' | 'jump';
@@ -111,6 +112,7 @@ export interface TnTargetNumberCalculatorState {
     partialCover?: boolean;
     attackDirection?: TnAttackDirection;
     indirectFire?: boolean;
+    secondaryTarget?: boolean;
     spotterMoveMode?: TnSpotterMoveMode;
     spotterDeclaredAttacks?: boolean;
 }
@@ -150,8 +152,7 @@ export function getTargetStanceModifier(stance: TnTargetStance | null | undefine
 export function getInterveningWoodsModifier(woods: TnInterveningWoods | null | undefined): number {
     switch (woods) {
         case 'light1': return 1;
-        case 'light2':
-        case 'heavy1': return 2;
+        case 'light2': return 2;
         default: return 0;
     }
 }
@@ -187,6 +188,7 @@ export function calculateTargetTnModifier(input: TnTargetNumberCalculationInput)
     total += getInterveningWoodsModifier(input.interveningWoods);
     total += getTargetHexCoverModifier(input.targetHexCover);
     total += input.partialCover && range > 0 && stance !== 'prone' ? TN_PARTIAL_COVER_MODIFIER : 0;
+    total += input.secondaryTarget ? TN_SECONDARY_TARGET_MODIFIER : 0;
     total += getIndirectFireModifier(input.indirectFire, input.spotterMoveMode, input.spotterDeclaredAttacks);
 
     return total;

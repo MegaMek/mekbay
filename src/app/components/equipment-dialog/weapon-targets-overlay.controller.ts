@@ -14,7 +14,13 @@ const WEAPON_TARGET_OVERLAY_POSITIONS = [
     { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
     { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
 ];
-const TN_CALCULATOR_FULLSCREEN_QUERY = '(max-width: 700px)';
+const TN_CALCULATOR_OVERLAY_POSITIONS = [
+    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+    { originX: 'start', originY: 'center', overlayX: 'end', overlayY: 'center', offsetX: -4 },
+    { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+    { originX: 'end', originY: 'center', overlayX: 'start', overlayY: 'center', offsetX: 4 },
+];
+const TN_CALCULATOR_FULLSCREEN_QUERY = '(max-width: 500px)';
 
 export interface WeaponTargetsOverlayControllerDeps {
     overlay: Overlay;
@@ -149,7 +155,7 @@ export class WeaponTargetsOverlayController {
             closeOnOutsideClick: false,
             closeOnOutsideClickOnly: true,
             scrollStrategy: this.deps.overlay.scrollStrategies.reposition(),
-            positions: WEAPON_TARGET_OVERLAY_POSITIONS,
+            positions: TN_CALCULATOR_OVERLAY_POSITIONS
         });
         this.tnCalculatorTargetId = request.targetId;
         closed.pipe(takeUntilDestroyed(this.deps.destroyRef)).subscribe(() => {

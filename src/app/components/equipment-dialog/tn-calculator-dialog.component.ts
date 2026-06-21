@@ -73,7 +73,7 @@ export interface TnCalculatorDialogResult {
     },
     template: `
     <div class="tn-dialog glass framed-borders has-shadow" [class.ready]="renderReady()">
-        <h2 class="tn-dialog-title">Target {{ target.letter }}</h2>
+        <h2 class="tn-dialog-title"><span class="target-color-square" [style.background]="target.color">{{ target.letter }}</span><span>{{ target.name }}</span></h2>
         <div class="tn-dialog-body">
             <div class="tn-grid">
                 <section class="tn-section">
@@ -83,10 +83,13 @@ export interface TnCalculatorDialogResult {
                         <button type="button" class="bt-button move-button" [class.selected]="indirectFire()" [attr.aria-pressed]="indirectFire()" (click)="toggleIndirectFire()">
                             <span>Indirect Fire</span><span class="modifier-badge">+1</span>
                         </button>
+                        <button type="button" class="bt-button move-button" [class.selected]="secondaryTarget()" [attr.aria-pressed]="secondaryTarget()" (click)="toggleSecondaryTarget()">
+                            <span>Secondary Target</span><span class="modifier-badge">+1</span>
+                        </button>
                     </div>
                     @if (indirectFire()) {
+                    <div class="section-title secondary">Spotter</div>
                     <div class="spotter-section framed-borders muted-frame">
-                        <div class="section-title">Spotter</div>
                         <div class="button-row spotter-move-row">
                             <button type="button" class="bt-button move-button" [class.selected]="spotterMoveMode() === 'stationary'" [attr.aria-pressed]="spotterMoveMode() === 'stationary'" (click)="selectSpotterMove('stationary')">
                                 <svg width="16px" height="16px" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
@@ -162,17 +165,17 @@ export interface TnCalculatorDialogResult {
                             <button type="button" class="bt-button icon-choice" [class.selected]="targetHexCover() === 'light'" [attr.aria-pressed]="targetHexCover() === 'light'" (click)="selectTargetHexCover('light')">
                                 <svg viewBox="0 0 512 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
                             </button>
-                            <button type="button" class="bt-button icon-choice" [class.selected]="targetHexCover() === 'heavy'" [attr.aria-pressed]="targetHexCover() === 'heavy'" (click)="selectTargetHexCover('heavy')">
-                                <svg viewBox="0 0 512 512" aria-hidden="true"><path d="M346.483,226.653c-58.176-75.765-90.498-181.813-90.498-181.813s-32.318,106.048-90.505,181.813c0,0,26.66,16.09,41.21,7.569c0,0-14.55,65.341-79.995,151.514c58.176,18.923,101.81-12.328,101.81-12.328v93.75h54.962v-93.75c0,0,43.642,31.25,101.817,12.328c-65.457-86.174-79.995-151.514-79.995-151.514C319.826,242.743,346.483,226.653,346.483,226.653z"/><path d="M160.886,307.087c-19.185-35.761-24.363-59.015-24.363-59.015c8.768,5.141,23.33-1.454,31.475-5.756c-44.519-57.936-69.158-138.977-69.158-138.977s-24.711,81.041-69.23,138.977c0,0,20.361,12.283,31.542,5.756c0,0-11.181,49.956-61.151,115.88c44.451,14.426,77.788-9.443,77.788-9.443v71.674h42.034v-71.674c0,0,3.035,2.151,8.415,4.759C141.633,340.391,152.332,322.817,160.886,307.087z"/><path d="M450.849,248.071c11.121,6.527,31.474-5.756,31.474-5.756c-44.454-57.936-69.155-138.977-69.155-138.977s-24.711,81.041-69.173,138.977c0,0,23.012,14.229,31.486,5.756c0,0-5.178,23.328-24.442,59.09c8.566,15.655,19.331,33.303,32.723,52.106c5.381-2.608,8.423-4.759,8.423-4.759v71.674h41.967v-71.674c0,0,33.394,23.869,77.848,9.443C461.97,298.027,450.849,248.071,450.849,248.071z"/></svg>
+                            <button type="button" class="bt-button icon-choice double-tree" [class.selected]="targetHexCover() === 'heavy'" [attr.aria-pressed]="targetHexCover() === 'heavy'" (click)="selectTargetHexCover('heavy')">
+                                    <svg viewBox="0 0 724 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/><path transform="translate(212 0)" d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
                             </button>
                         </div>
                         <span class="choice-caption"><span>{{ targetHexCoverCaption() }}</span></span>
                     </div>
                     
+                    @if (indirectFire()) {
+                    <div class="section-title secondary">From the Spotter line of sight</div>
+                    }
                     <div class="terrain-group" [class.framed-borders]="indirectFire()" [class.muted-frame]="indirectFire()">
-                        @if (indirectFire()) {
-                        <div class="section-title">From the Spotter line of sight</div>
-                        }
                         <div class="choice-line">
                             <span class="choice-label"><span>Intervening</span>@if (woodsModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }</span>
                             <div class="icon-choice-row" role="group" aria-label="Intervening woods">
@@ -181,14 +184,17 @@ export interface TnCalculatorDialogResult {
                                     <svg viewBox="0 0 512 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
                                 </button>
                                 <button type="button" class="bt-button icon-choice double-tree" [class.selected]="interveningWoods() === 'light2'" [attr.aria-pressed]="interveningWoods() === 'light2'" (click)="selectInterveningWoods('light2')">
-                                    <svg viewBox="0 0 512 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
-                                    <svg viewBox="0 0 512 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
-                                </button>
-                                <button type="button" class="bt-button icon-choice" [class.selected]="interveningWoods() === 'heavy1'" [attr.aria-pressed]="interveningWoods() === 'heavy1'" (click)="selectInterveningWoods('heavy1')">
-                                    <svg viewBox="0 0 512 512" aria-hidden="true"><path d="M346.483,226.653c-58.176-75.765-90.498-181.813-90.498-181.813s-32.318,106.048-90.505,181.813c0,0,26.66,16.09,41.21,7.569c0,0-14.55,65.341-79.995,151.514c58.176,18.923,101.81-12.328,101.81-12.328v93.75h54.962v-93.75c0,0,43.642,31.25,101.817,12.328c-65.457-86.174-79.995-151.514-79.995-151.514C319.826,242.743,346.483,226.653,346.483,226.653z"/><path d="M160.886,307.087c-19.185-35.761-24.363-59.015-24.363-59.015c8.768,5.141,23.33-1.454,31.475-5.756c-44.519-57.936-69.158-138.977-69.158-138.977s-24.711,81.041-69.23,138.977c0,0,20.361,12.283,31.542,5.756c0,0-11.181,49.956-61.151,115.88c44.451,14.426,77.788-9.443,77.788-9.443v71.674h42.034v-71.674c0,0,3.035,2.151,8.415,4.759C141.633,340.391,152.332,322.817,160.886,307.087z"/><path d="M450.849,248.071c11.121,6.527,31.474-5.756,31.474-5.756c-44.454-57.936-69.155-138.977-69.155-138.977s-24.711,81.041-69.173,138.977c0,0,23.012,14.229,31.486,5.756c0,0-5.178,23.328-24.442,59.09c8.566,15.655,19.331,33.303,32.723,52.106c5.381-2.608,8.423-4.759,8.423-4.759v71.674h41.967v-71.674c0,0,33.394,23.869,77.848,9.443C461.97,298.027,450.849,248.071,450.849,248.071z"/></svg>
+                                    <svg viewBox="0 0 724 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/><path transform="translate(212 0)" d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
                                 </button>
                             </div>
-                            <span class="choice-caption"><span>{{ woodsCaption() }}</span></span>
+                            <span class="choice-caption woods-caption">
+                                @if (interveningWoods() === 'light2') {
+                                    <span>2 Light Woods or</span>
+                                    <span>1 Heavy Wood</span>
+                                } @else {
+                                    <span>{{ woodsCaption() }}</span>
+                                }
+                            </span>
                         </div>
                         <div class="button-row">
                         <button type="button" class="bt-button move-button partial-cover" [class.selected]="partialCover()" [attr.aria-pressed]="partialCover()" [disabled]="partialCoverDisabled()" (click)="togglePartialCover()"><span>Partial Cover</span><span class="modifier-badge">+1</span></button>
@@ -231,7 +237,7 @@ export interface TnCalculatorDialogResult {
 
         .tn-dialog {
             pointer-events: auto;
-            width: min(760px, calc(100vw - 20px));
+            width: min(800px, calc(100dvw - 20px));
             max-height: min(86dvh, 720px);
             display: flex;
             flex-direction: column;
@@ -241,6 +247,10 @@ export interface TnCalculatorDialogResult {
         }
 
         .tn-dialog-title {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
             font-weight: bold;
             text-align: center;
             padding: 8px 12px;
@@ -249,6 +259,21 @@ export interface TnCalculatorDialogResult {
             margin: 0;
             border-bottom: 1px solid var(--border-color);
             text-transform: uppercase;
+        }
+
+        .target-color-square {
+            inline-size: 16px;
+            block-size: 16px;
+            flex: 0 0 16px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--border-color);
+            color: #000;
+            font-size: 0.7rem;
+            font-weight: 800;
+            line-height: 1;
+            box-sizing: border-box;
         }
 
         .tn-dialog-body {
@@ -265,8 +290,22 @@ export interface TnCalculatorDialogResult {
         .tn-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 8px;
+            column-gap: 24px;
+            row-gap: 8px;
             align-items: start;
+            position: relative;
+        }
+
+        .tn-grid::before {
+            content: '';
+            position: absolute;
+            inset-block: 0;
+            inset-inline-start: 50%;
+            width: 1px;
+            transform: translateX(-50%);
+            background: var(--border-color);
+            opacity: 0.7;
+            pointer-events: none;
         }
 
         .tn-section {
@@ -284,6 +323,10 @@ export interface TnCalculatorDialogResult {
             font-size: 0.9em;
             letter-spacing: 0;
             padding: 4px;
+
+            &.secondary {
+                font-size: 0.8em;
+            }
         }
 
         .row {
@@ -324,7 +367,8 @@ export interface TnCalculatorDialogResult {
             display: flex;
             flex-direction: column;
             gap: 4px;
-            padding: 4px;
+            padding: 8px;
+            background-color: rgba(0, 0, 0, 0.2);
         }
 
         .tn-slider {
@@ -401,7 +445,7 @@ export interface TnCalculatorDialogResult {
             display: flex;
             flex-direction: column;
             gap: 4px;
-            padding: 4px;
+            padding: 8px;
             background-color: rgba(0, 0, 0, 0.2);
         }
 
@@ -488,17 +532,25 @@ export interface TnCalculatorDialogResult {
         }
 
         .double-tree svg {
-            inline-size: 15px;
-            margin-inline: -3px;
+            inline-size: 28px;
+            margin-inline: 0;
         }
 
         .choice-caption {
-            min-width: 104px;
+            flex: 1 1 auto;
+            margin-left: auto;
             color: var(--text-color-secondary);
-            font-size: 0.8rem;
+            font-size: 0.78rem;
             display: inline-flex;
             align-items: center;
             gap: 4px;
+        }
+
+        .woods-caption {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0;
+            line-height: 1.1;
         }
 
         .partial-cover {
@@ -528,21 +580,20 @@ export interface TnCalculatorDialogResult {
             font-size: 1.05rem;
         }
 
-        @media (max-width: 700px) {
-            :host {
-                width: 100dvw;
-                max-height: 100dvh;
-            }
-
+        @media (max-width: 1000px) {
             .tn-dialog {
-                width: calc(100dvw - 8px);
+                width: min(400px, calc(100dvw - 8px));
                 max-height: calc(100dvh - 8px);
-                margin: 4px;
-                box-sizing: border-box;
             }
 
             .tn-grid {
                 grid-template-columns: minmax(0, 1fr);
+                row-gap: 8px;
+                column-gap: 8px;
+            }
+
+            .tn-grid::before {
+                content: none;
             }
 
             .field-row {
@@ -566,6 +617,20 @@ export interface TnCalculatorDialogResult {
 
             .total-box {
                 width: 100%;
+            }
+        }
+
+        @media (max-width: 400px) {
+            :host {
+                width: 100dvw;
+                max-height: 100dvh;
+            }
+
+            .tn-dialog {
+                width: calc(100dvw - 8px);
+                max-height: calc(100dvh - 8px);
+                margin: 4px;
+                box-sizing: border-box;
             }
         }
     `]
@@ -594,12 +659,13 @@ export class TnCalculatorDialogComponent {
     readonly jumped = signal<boolean>(this.initialCalculator?.jumped ?? false);
     readonly skidding = signal<boolean>(this.initialCalculator?.skidding ?? false);
     readonly stance = signal<TnTargetStance>(this.initialCalculator?.stance ?? 'none');
-    readonly interveningWoods = signal<TnInterveningWoods>(this.initialCalculator?.interveningWoods ?? 'none');
+    readonly interveningWoods = signal<TnInterveningWoods>(this.normalizeInterveningWoods(this.initialCalculator?.interveningWoods as TnInterveningWoods | 'heavy1' | null | undefined));
     readonly targetHexCover = signal<TnTargetHexCover>(this.initialCalculator?.targetHexCover ?? 'none');
     readonly range = signal<number>(Math.max(0, this.data.target.distance ?? 0));
     readonly partialCover = signal<boolean>((this.initialCalculator?.partialCover ?? false) && this.range() > 0);
     readonly attackDirection = signal<TnAttackDirection>(this.initialCalculator?.attackDirection ?? 'front');
     readonly indirectFire = signal<boolean>(this.initialCalculator?.indirectFire ?? false);
+    readonly secondaryTarget = signal<boolean>(this.initialCalculator?.secondaryTarget ?? false);
     readonly spotterMoveMode = signal<TnSpotterMoveMode>(this.initialCalculator?.spotterMoveMode ?? 'stationary');
     readonly spotterDeclaredAttacks = signal<boolean>(this.initialCalculator?.spotterDeclaredAttacks ?? false);
     readonly renderReady = signal(false);
@@ -625,6 +691,7 @@ export class TnCalculatorDialogComponent {
         partialCover: this.partialCover(),
         attackDirection: this.attackDirection(),
         indirectFire: this.indirectFire(),
+        secondaryTarget: this.secondaryTarget(),
         spotterMoveMode: this.spotterMoveMode(),
         spotterDeclaredAttacks: this.spotterDeclaredAttacks(),
     }));
@@ -632,16 +699,14 @@ export class TnCalculatorDialogComponent {
     readonly woodsCaption = computed(() => {
         switch (this.interveningWoods()) {
             case 'light1': return '1 Light Wood';
-            case 'light2': return '2 Light Woods';
-            case 'heavy1': return '1 Heavy Wood';
+            case 'light2': return '2 Light Woods or 1 Heavy Wood';
             default: return 'No woods';
         }
     });
     readonly woodsModifierLabel = computed(() => {
         switch (this.interveningWoods()) {
             case 'light1': return '+1';
-            case 'light2':
-            case 'heavy1': return '+2';
+            case 'light2': return '+2';
             default: return null;
         }
     });
@@ -680,6 +745,10 @@ export class TnCalculatorDialogComponent {
 
     private normalizeTargetMoveType(value: MoveType | null | undefined): MoveType | null {
         return value === 'VTOL' || value === 'WiGE' ? value : null;
+    }
+
+    private normalizeInterveningWoods(value: TnInterveningWoods | 'heavy1' | null | undefined): TnInterveningWoods {
+        return value === 'heavy1' ? 'light2' : value ?? 'none';
     }
 
     setTargetMovementBracketIndex(value: number): void {
@@ -738,6 +807,10 @@ export class TnCalculatorDialogComponent {
         }
     }
 
+    toggleSecondaryTarget(): void {
+        this.secondaryTarget.set(!this.secondaryTarget());
+    }
+
     selectSpotterMove(mode: TnSpotterMoveMode): void {
         this.spotterMoveMode.set(mode);
     }
@@ -763,6 +836,7 @@ export class TnCalculatorDialogComponent {
             partialCover: this.partialCover() && !this.partialCoverDisabled(),
             attackDirection: this.attackDirection(),
             indirectFire: this.indirectFire(),
+            secondaryTarget: this.secondaryTarget(),
             spotterMoveMode: this.indirectFire() ? this.spotterMoveMode() : 'stationary',
             spotterDeclaredAttacks: this.indirectFire() && this.spotterDeclaredAttacks(),
         };
