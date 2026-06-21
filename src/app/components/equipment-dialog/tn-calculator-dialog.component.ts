@@ -76,149 +76,153 @@ export interface TnCalculatorDialogResult {
         <h2 class="tn-dialog-title"><span class="target-color-square" [style.background]="target.color">{{ target.letter }}</span><span>{{ target.name }}</span></h2>
         <div class="tn-dialog-body">
             <div class="tn-grid">
-                <section class="tn-section">
+                <div class="tn-column">
+                    <section class="tn-section">
 
-                    <div class="section-title">Attack Method</div>
-                    <div class="button-row">
-                        <button type="button" class="bt-button move-button" [class.selected]="indirectFire()" [attr.aria-pressed]="indirectFire()" (click)="toggleIndirectFire()">
-                            <span>Indirect Fire</span><span class="modifier-badge">+1</span>
-                        </button>
-                        <button type="button" class="bt-button move-button" [class.selected]="secondaryTarget()" [attr.aria-pressed]="secondaryTarget()" (click)="toggleSecondaryTarget()">
-                            <span>Secondary Target</span><span class="modifier-badge">+1</span>
-                        </button>
-                    </div>
-                    @if (indirectFire()) {
-                    <div class="section-title secondary">Spotter</div>
-                    <div class="spotter-section framed-borders muted-frame">
-                        <div class="button-row spotter-move-row">
-                            <button type="button" class="bt-button move-button" [class.selected]="spotterMoveMode() === 'stationary'" [attr.aria-pressed]="spotterMoveMode() === 'stationary'" (click)="selectSpotterMove('stationary')">
-                                <svg width="16px" height="16px" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
-                                    <path d="M32 2C15.432 2 2 15.432 2 32c-.001 16.568 13.432 30 30 30s30.001-13.432 30-30c.001-16.568-13.432-30-30-30zM9 38V26h46v12H9z" fill="currentColor"></path>
-                                </svg>
-                            </button>
-                            <button type="button" class="bt-button move-button" [class.selected]="spotterMoveMode() === 'walk'" [attr.aria-pressed]="spotterMoveMode() === 'walk'" (click)="selectSpotterMove('walk')"><span>Walk</span><span class="modifier-badge">+1</span></button>
-                            <button type="button" class="bt-button move-button" [class.selected]="spotterMoveMode() === 'run'" [attr.aria-pressed]="spotterMoveMode() === 'run'" (click)="selectSpotterMove('run')"><span>Run</span><span class="modifier-badge">+2</span></button>
-                            <button type="button" class="bt-button move-button" [class.selected]="spotterMoveMode() === 'jump'" [attr.aria-pressed]="spotterMoveMode() === 'jump'" (click)="selectSpotterMove('jump')"><span>Jump</span><span class="modifier-badge">+3</span></button>
-                        </div>
+                        <div class="section-title">Attack Method</div>
                         <div class="button-row">
-                            <button type="button" class="bt-button move-button" [class.selected]="spotterDeclaredAttacks()" [attr.aria-pressed]="spotterDeclaredAttacks()" (click)="toggleSpotterDeclaredAttacks()">
-                                <span>Declared Attacks</span><span class="modifier-badge">+1</span>
+                            <button type="button" class="bt-button move-button" [class.selected]="indirectFire()" [attr.aria-pressed]="indirectFire()" (click)="toggleIndirectFire()">
+                                <span>Indirect Fire</span><span class="modifier-badge">+1</span>
+                            </button>
+                            <button type="button" class="bt-button move-button" [class.selected]="secondaryTarget()" [attr.aria-pressed]="secondaryTarget()" (click)="toggleSecondaryTarget()">
+                                <span>Secondary Target</span><span class="modifier-badge">+1</span>
                             </button>
                         </div>
-                    </div>
-                    }
-            </section>
-
-                <section class="tn-section target-identity-section">
-                    <div class="section-title">Target Identity</div>
-                    <div class="field-row">
-                        <label for="tnTargetUnitType">Unit type</label>
-                        <select id="tnTargetUnitType" class="bt-select" [value]="unitType()" (change)="onUnitTypeChange($event)">
-                            @for (option of unitTypeOptions; track option.value) {
-                                <option [value]="option.value">{{ option.label }}</option>
-                            }
-                        </select>
-                    </div>
-                    <div class="field-row">
-                        <label for="tnTargetMoveType">Move type</label>
-                        <select id="tnTargetMoveType" class="bt-select" [value]="targetMoveType() ?? ''" (change)="onMoveTypeChange($event)">
-                            @for (option of moveTypeOptions; track option.value) {
-                                <option [value]="option.value">{{ option.label }}</option>
-                            }
-                        </select>
-                    </div>
-                </section>
-
-                <section class="tn-section">
-                    <div class="section-title">Target Movement</div>
-                    <div class="row">
-                        <hex-slider
-                            class="tn-slider"
-                            [min]="MOVEMENT_MIN"
-                            [max]="MOVEMENT_MAX"
-                            [step]="1"
-                            [value]="targetMovementBracketIndex()"
-                            [ticks]="movementTicks"
-                            [tickLabels]="movementTickLabels"
-                            [label]="targetMovementBracketLabel()"
-                            [ariaLabel]="'Target movement bracket'"
-                            [valueAssigned]="stance() === 'none'"
-                            [compactLabel]="true"
-                            (valueChange)="setTargetMovementBracketIndex($event)"></hex-slider>
-                    </div>
-                    <div class="button-row">
-                        <button type="button" class="bt-button move-button" [class.selected]="jumped()" [attr.aria-pressed]="jumped()" (click)="toggleJumped()"><span>Jumped</span><span class="modifier-badge">+1</span></button>
-                        <button type="button" class="bt-button move-button" [class.selected]="skidding()" [attr.aria-pressed]="skidding()" (click)="toggleSkidding()"><span>Skidding</span><span class="modifier-badge">+2</span></button>
-                    </div>
-                    <div class="button-row" role="group" aria-label="Target stance">
-                        <button type="button" class="bt-button move-button" [class.selected]="stance() === 'prone'" [attr.aria-pressed]="stance() === 'prone'" (click)="selectStance('prone')"><span>{{ proneLabel() }}</span><span class="modifier-badge">{{ proneModifierLabel() }}</span></button>
-                        <button type="button" class="bt-button move-button" [class.selected]="stance() === 'immobile'" [attr.aria-pressed]="stance() === 'immobile'" (click)="selectStance('immobile')"><span>Immobile</span><span class="modifier-badge">-4</span></button>
-                    </div>
-                </section>
-
-                <section class="tn-section">
-                    <div class="section-title">Other</div>
-                    <div class="choice-line">
-                        <span class="choice-label"><span>Cover</span>@if (targetHexCoverModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }</span>
-                        <div class="icon-choice-row" role="group" aria-label="Target hex cover">
-                            <button type="button" class="bt-button icon-choice none-choice" [class.selected]="targetHexCover() === 'none'" [attr.aria-pressed]="targetHexCover() === 'none'" (click)="selectTargetHexCover('none')">X</button>
-                            <button type="button" class="bt-button icon-choice" [class.selected]="targetHexCover() === 'light'" [attr.aria-pressed]="targetHexCover() === 'light'" (click)="selectTargetHexCover('light')">
-                                <svg viewBox="0 0 512 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
-                            </button>
-                            <button type="button" class="bt-button icon-choice double-tree" [class.selected]="targetHexCover() === 'heavy'" [attr.aria-pressed]="targetHexCover() === 'heavy'" (click)="selectTargetHexCover('heavy')">
-                                    <svg viewBox="0 0 724 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/><path transform="translate(212 0)" d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
-                            </button>
-                        </div>
-                        <span class="choice-caption"><span>{{ targetHexCoverCaption() }}</span></span>
-                    </div>
-                    
-                    @if (indirectFire()) {
-                    <div class="section-title secondary">From the Spotter line of sight</div>
-                    }
-                    <div class="terrain-group" [class.framed-borders]="indirectFire()" [class.muted-frame]="indirectFire()">
-                        <div class="choice-line">
-                            <span class="choice-label"><span>Intervening</span>@if (woodsModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }</span>
-                            <div class="icon-choice-row" role="group" aria-label="Intervening woods">
-                                <button type="button" class="bt-button icon-choice none-choice" [class.selected]="interveningWoods() === 'none'" [attr.aria-pressed]="interveningWoods() === 'none'" (click)="selectInterveningWoods('none')">X</button>
-                                <button type="button" class="bt-button icon-choice" [class.selected]="interveningWoods() === 'light1'" [attr.aria-pressed]="interveningWoods() === 'light1'" (click)="selectInterveningWoods('light1')">
-                                    <svg viewBox="0 0 512 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
+                        @if (indirectFire()) {
+                        <div class="section-title secondary">Spotter</div>
+                        <div class="spotter-section framed-borders muted-frame">
+                            <div class="button-row spotter-move-row">
+                                <button type="button" class="bt-button move-button" [class.selected]="spotterMoveMode() === 'stationary'" [attr.aria-pressed]="spotterMoveMode() === 'stationary'" (click)="selectSpotterMove('stationary')">
+                                    <svg width="16px" height="16px" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+                                        <path d="M32 2C15.432 2 2 15.432 2 32c-.001 16.568 13.432 30 30 30s30.001-13.432 30-30c.001-16.568-13.432-30-30-30zM9 38V26h46v12H9z" fill="currentColor"></path>
+                                    </svg>
                                 </button>
-                                <button type="button" class="bt-button icon-choice double-tree" [class.selected]="interveningWoods() === 'light2'" [attr.aria-pressed]="interveningWoods() === 'light2'" (click)="selectInterveningWoods('light2')">
-                                    <svg viewBox="0 0 724 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/><path transform="translate(212 0)" d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
+                                <button type="button" class="bt-button move-button" [class.selected]="spotterMoveMode() === 'walk'" [attr.aria-pressed]="spotterMoveMode() === 'walk'" (click)="selectSpotterMove('walk')"><span>Walk</span><span class="modifier-badge">+1</span></button>
+                                <button type="button" class="bt-button move-button" [class.selected]="spotterMoveMode() === 'run'" [attr.aria-pressed]="spotterMoveMode() === 'run'" (click)="selectSpotterMove('run')"><span>Run</span><span class="modifier-badge">+2</span></button>
+                                <button type="button" class="bt-button move-button" [class.selected]="spotterMoveMode() === 'jump'" [attr.aria-pressed]="spotterMoveMode() === 'jump'" (click)="selectSpotterMove('jump')"><span>Jump</span><span class="modifier-badge">+3</span></button>
+                            </div>
+                            <div class="button-row">
+                                <button type="button" class="bt-button move-button" [class.selected]="spotterDeclaredAttacks()" [attr.aria-pressed]="spotterDeclaredAttacks()" (click)="toggleSpotterDeclaredAttacks()">
+                                    <span>Declared Attacks</span><span class="modifier-badge">+1</span>
                                 </button>
                             </div>
-                            <span class="choice-caption woods-caption">
-                                @if (interveningWoods() === 'light2') {
-                                    <span>2 Light Woods or</span>
-                                    <span>1 Heavy Wood</span>
-                                } @else {
-                                    <span>{{ woodsCaption() }}</span>
-                                }
-                            </span>
+                        </div>
+                        }
+                    </section>
+
+                    <section class="tn-section">
+                        <div class="section-title">Target Movement</div>
+                        <div class="row">
+                            <hex-slider
+                                class="tn-slider"
+                                [min]="MOVEMENT_MIN"
+                                [max]="MOVEMENT_MAX"
+                                [step]="1"
+                                [value]="targetMovementBracketIndex()"
+                                [ticks]="movementTicks"
+                                [tickLabels]="movementTickLabels"
+                                [label]="targetMovementBracketLabel()"
+                                [ariaLabel]="'Target movement bracket'"
+                                [valueAssigned]="stance() === 'none'"
+                                [compactLabel]="true"
+                                (valueChange)="setTargetMovementBracketIndex($event)"></hex-slider>
                         </div>
                         <div class="button-row">
-                        <button type="button" class="bt-button move-button partial-cover" [class.selected]="partialCover()" [attr.aria-pressed]="partialCover()" [disabled]="partialCoverDisabled()" (click)="togglePartialCover()"><span>Partial Cover</span><span class="modifier-badge">+1</span></button>
+                            <button type="button" class="bt-button move-button" [class.selected]="jumped()" [attr.aria-pressed]="jumped()" (click)="toggleJumped()"><span>Jumped</span><span class="modifier-badge">+1</span></button>
+                            <button type="button" class="bt-button move-button" [class.selected]="skidding()" [attr.aria-pressed]="skidding()" (click)="toggleSkidding()"><span>Skidding</span><span class="modifier-badge">+2</span></button>
                         </div>
-                    </div>
+                        <div class="button-row" role="group" aria-label="Target stance">
+                            <button type="button" class="bt-button move-button" [class.selected]="stance() === 'prone'" [attr.aria-pressed]="stance() === 'prone'" (click)="selectStance('prone')"><span>{{ proneLabel() }}</span><span class="modifier-badge">{{ proneModifierLabel() }}</span></button>
+                            <button type="button" class="bt-button move-button" [class.selected]="stance() === 'immobile'" [attr.aria-pressed]="stance() === 'immobile'" (click)="selectStance('immobile')"><span>Immobile</span><span class="modifier-badge">-4</span></button>
+                        </div>
+                    </section>
 
-                </section>
+                    <section class="tn-section">
+                        <div class="section-title">Range</div>
+                        <div class="row">
+                            <hex-slider
+                                class="tn-slider"
+                                [min]="RANGE_MIN"
+                                [max]="RANGE_MAX"
+                                [step]="1"
+                                [value]="range()"
+                                [ticks]="rangeTicks"
+                                [label]="rangeLabel()"
+                                [ariaLabel]="'Range'"
+                                [valueAssigned]="true"
+                                (valueChange)="setRangeValue($event)"></hex-slider>
+                        </div>
+                    </section>
+                </div>
 
-                <section class="tn-section">
-                    <div class="section-title">Range</div>
-                    <div class="row">
-                        <hex-slider
-                            class="tn-slider"
-                            [min]="RANGE_MIN"
-                            [max]="RANGE_MAX"
-                            [step]="1"
-                            [value]="range()"
-                            [ticks]="rangeTicks"
-                            [label]="rangeLabel()"
-                            [ariaLabel]="'Range'"
-                            [valueAssigned]="true"
-                            (valueChange)="setRangeValue($event)"></hex-slider>
-                    </div>
-                </section>
+                <div class="tn-column">
+                    <section class="tn-section target-identity-section">
+                        <div class="section-title">Target Identity</div>
+                        <div class="field-row">
+                            <label for="tnTargetUnitType">Unit type</label>
+                            <select id="tnTargetUnitType" class="bt-select" [value]="unitType()" (change)="onUnitTypeChange($event)">
+                                @for (option of unitTypeOptions; track option.value) {
+                                    <option [value]="option.value">{{ option.label }}</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="field-row">
+                            <label for="tnTargetMoveType">Move type</label>
+                            <select id="tnTargetMoveType" class="bt-select" [value]="targetMoveType() ?? ''" (change)="onMoveTypeChange($event)">
+                                @for (option of moveTypeOptions; track option.value) {
+                                    <option [value]="option.value">{{ option.label }}</option>
+                                }
+                            </select>
+                        </div>
+                    </section>
+
+                    <section class="tn-section">
+                        <div class="section-title">Other</div>
+                        <div class="choice-line">
+                            <span class="choice-label"><span>Cover</span>@if (targetHexCoverModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }</span>
+                            <div class="icon-choice-row" role="group" aria-label="Target hex cover">
+                                <button type="button" class="bt-button icon-choice none-choice" [class.selected]="targetHexCover() === 'none'" [attr.aria-pressed]="targetHexCover() === 'none'" (click)="selectTargetHexCover('none')">X</button>
+                                <button type="button" class="bt-button icon-choice" [class.selected]="targetHexCover() === 'light'" [attr.aria-pressed]="targetHexCover() === 'light'" (click)="selectTargetHexCover('light')">
+                                    <svg viewBox="0 0 512 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
+                                </button>
+                                <button type="button" class="bt-button icon-choice double-tree" [class.selected]="targetHexCover() === 'heavy'" [attr.aria-pressed]="targetHexCover() === 'heavy'" (click)="selectTargetHexCover('heavy')">
+                                        <svg viewBox="0 0 724 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/><path transform="translate(212 0)" d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
+                                </button>
+                            </div>
+                            <span class="choice-caption"><span>{{ targetHexCoverCaption() }}</span></span>
+                        </div>
+                        
+                        @if (indirectFire()) {
+                        <div class="section-title secondary">From the Spotter line of sight</div>
+                        }
+                        <div class="terrain-group" [class.framed-borders]="indirectFire()" [class.muted-frame]="indirectFire()">
+                            <div class="choice-line">
+                                <span class="choice-label"><span>Intervening</span>@if (woodsModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }</span>
+                                <div class="icon-choice-row" role="group" aria-label="Intervening woods">
+                                    <button type="button" class="bt-button icon-choice none-choice" [class.selected]="interveningWoods() === 'none'" [attr.aria-pressed]="interveningWoods() === 'none'" (click)="selectInterveningWoods('none')">X</button>
+                                    <button type="button" class="bt-button icon-choice" [class.selected]="interveningWoods() === 'light1'" [attr.aria-pressed]="interveningWoods() === 'light1'" (click)="selectInterveningWoods('light1')">
+                                        <svg viewBox="0 0 512 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
+                                    </button>
+                                    <button type="button" class="bt-button icon-choice double-tree" [class.selected]="interveningWoods() === 'light2'" [attr.aria-pressed]="interveningWoods() === 'light2'" (click)="selectInterveningWoods('light2')">
+                                        <svg viewBox="0 0 724 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/><path transform="translate(212 0)" d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
+                                    </button>
+                                </div>
+                                <span class="choice-caption woods-caption">
+                                    @if (interveningWoods() === 'light2') {
+                                        <span>2 Light Woods or</span>
+                                        <span>1 Heavy Wood</span>
+                                    } @else {
+                                        <span>{{ woodsCaption() }}</span>
+                                    }
+                                </span>
+                            </div>
+                            <div class="button-row">
+                            <button type="button" class="bt-button move-button partial-cover" [class.selected]="partialCover()" [attr.aria-pressed]="partialCover()" [disabled]="partialCoverDisabled()" (click)="togglePartialCover()"><span>Partial Cover</span><span class="modifier-badge">+1</span></button>
+                            </div>
+                        </div>
+
+                    </section>
+                </div>
 
             </div>
         </div>
@@ -294,6 +298,13 @@ export interface TnCalculatorDialogResult {
             row-gap: 8px;
             align-items: start;
             position: relative;
+        }
+
+        .tn-column {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 0;
         }
 
         .tn-grid::before {
