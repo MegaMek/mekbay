@@ -107,6 +107,21 @@ export class OverlayManagerService {
         return blocked;
     }
 
+    private isInsideChildOverlay(entry: ManagedEntry, targetNode: Node): boolean {
+        const overlayEl = entry.overlayRef.overlayElement;
+        if (!overlayEl) return false;
+        for (const candidate of this.managed.values()) {
+            if (candidate === entry) continue;
+            const candidateOverlayEl = candidate.overlayRef.overlayElement;
+            const candidateTriggerEl = candidate.triggerElement;
+            if (!candidateOverlayEl || !candidateTriggerEl) continue;
+            if (candidateOverlayEl.contains(targetNode) && overlayEl.contains(candidateTriggerEl)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     constructor() {
         effect(() => {
             this.layoutService.windowWidth();
@@ -250,7 +265,7 @@ export class OverlayManagerService {
                         return;
                     }
                     // Ignore pointerdown that started inside the overlay or trigger element
-                    if (overlayEl?.contains(targetNode) || (triggerEl && triggerEl.contains && triggerEl.contains(targetNode))) {
+                    if (overlayEl?.contains(targetNode) || (triggerEl && triggerEl.contains && triggerEl.contains(targetNode)) || this.isInsideChildOverlay(entry, targetNode)) {
                         return;
                     }
                     // Close immediately on outside pointer-down
@@ -275,7 +290,7 @@ export class OverlayManagerService {
                 if (entry.closeAreaElement && !this.isInsideArea(ev, entry.closeAreaElement)) {
                     return;
                 }
-                if (overlayEl.contains(clicked) || (triggerEl && triggerEl.contains && triggerEl.contains(clicked))) {
+                    if (overlayEl.contains(clicked) || (triggerEl && triggerEl.contains && triggerEl.contains(clicked)) || this.isInsideChildOverlay(entry, clicked)) {
                     return;
                 }
                 // Stop the event from propagating to prevent triggering other UI elements
@@ -298,7 +313,7 @@ export class OverlayManagerService {
                         return;
                     }
                     // Ignore pointerdown that started inside the overlay or trigger element
-                    if (overlayEl?.contains(targetNode) || (triggerEl && triggerEl.contains && triggerEl.contains(targetNode))) {
+                    if (overlayEl?.contains(targetNode) || (triggerEl && triggerEl.contains && triggerEl.contains(targetNode)) || this.isInsideChildOverlay(entry, targetNode)) {
                         return;
                     }
                     // Consume the pointerdown so underlying gesture handlers do not enter
@@ -325,7 +340,7 @@ export class OverlayManagerService {
                         // pointer up considered a click -> ensure it occurred outside overlay/trigger before closing
                         const overlayEl = overlayRef.overlayElement;
                         const targetNode = ev.target as Node;
-                        if (!overlayEl?.contains(targetNode) && !(triggerEl && triggerEl.contains && triggerEl.contains(targetNode))) {
+                        if (!overlayEl?.contains(targetNode) && !(triggerEl && triggerEl.contains && triggerEl.contains(targetNode)) && !this.isInsideChildOverlay(entry, targetNode)) {
                             // Stop the event from propagating to prevent triggering other UI elements
                             ev.stopPropagation();
                             ev.preventDefault();
@@ -355,7 +370,7 @@ export class OverlayManagerService {
                     return;
                 }
                 const clicked = ev.target as Node;
-                if (overlayEl.contains(clicked) || (triggerEl && triggerEl.contains && triggerEl.contains(clicked))) {
+                if (overlayEl.contains(clicked) || (triggerEl && triggerEl.contains && triggerEl.contains(clicked)) || this.isInsideChildOverlay(entry, clicked)) {
                     return;
                 }
                 // Stop the event from propagating to prevent triggering other UI elements
