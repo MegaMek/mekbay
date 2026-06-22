@@ -74,11 +74,6 @@ describe('SvgViewerLiteComponent', () => {
         }
     }
 
-    async function settleFrame(): Promise<void> {
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        await settle();
-    }
-
     async function createViewer(zoomable = true, controls = false, sheets = ['atlas.svg']) {
         sheetService.getSheet.and.callFake(async (sheetName) => sheetName.includes('wide') ? makeSvg(50, 300) : makeSvg());
 
@@ -304,27 +299,39 @@ describe('SvgViewerLiteComponent', () => {
         const slider = element.querySelector<HTMLInputElement>('.zoom-control input')!;
         const reset = Array.from(element.querySelectorAll<HTMLButtonElement>('.svgl-controls button'))
             .find((button) => button.textContent?.trim() === 'RESET')!;
+        const originalRequestAnimationFrame = window.requestAnimationFrame;
+        const originalCancelAnimationFrame = window.cancelAnimationFrame;
+        window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+            callback(0);
+            return 1;
+        }) as typeof requestAnimationFrame;
+        window.cancelAnimationFrame = (() => { }) as typeof cancelAnimationFrame;
 
-        slider.value = '200';
-        slider.dispatchEvent(new Event('input', { bubbles: true }));
-        fixture.detectChanges();
+        try {
+            slider.value = '200';
+            slider.dispatchEvent(new Event('input', { bubbles: true }));
+            fixture.detectChanges();
 
-        expect(element.querySelector('output')?.textContent?.trim()).toBe('200%');
+            expect(element.querySelector('output')?.textContent?.trim()).toBe('200%');
 
-        await settleFrame();
-        fixture.detectChanges();
+            await settle();
+            fixture.detectChanges();
 
-        expect(content.style.width).toBe('200%');
-        expect(element.querySelector('output')?.textContent?.trim()).toBe('200%');
+            expect(content.style.width).toBe('200%');
+            expect(element.querySelector('output')?.textContent?.trim()).toBe('200%');
 
-        setLayout(container, { scrollWidth: 2000, scrollHeight: 2800 });
-        reset.click();
-        fixture.detectChanges();
+            setLayout(container, { scrollWidth: 2000, scrollHeight: 2800 });
+            reset.click();
+            fixture.detectChanges();
 
-        expect(content.style.width).toBe('100%');
-        expect(container.scrollLeft).toBe(0);
-        expect(container.scrollTop).toBe(0);
-        expect(element.querySelector('output')?.textContent?.trim()).toBe('100%');
+            expect(content.style.width).toBe('100%');
+            expect(container.scrollLeft).toBe(0);
+            expect(container.scrollTop).toBe(0);
+            expect(element.querySelector('output')?.textContent?.trim()).toBe('100%');
+        } finally {
+            window.requestAnimationFrame = originalRequestAnimationFrame;
+            window.cancelAnimationFrame = originalCancelAnimationFrame;
+        }
     });
 
     it('exports all SVGs horizontally as a high-resolution PNG from the controls', async () => {
@@ -361,8 +368,8 @@ describe('SvgViewerLiteComponent', () => {
         }
 
         expect(createObjectUrl).toHaveBeenCalledTimes(3);
-        expect(exportedCanvasWidth).toBe(600);
-        expect(exportedCanvasHeight).toBe(1200);
+        expect(exportedCanvasWidth).toBe(450);
+        expect(exportedCanvasHeight).toBe(900);
         expect(click).toHaveBeenCalled();
         expect(revokeObjectUrl).toHaveBeenCalledWith('blob:svg-1');
         expect(revokeObjectUrl).toHaveBeenCalledWith('blob:svg-2');

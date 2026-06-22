@@ -9,7 +9,7 @@ import { SimpleSliderComponent } from '../simple-slider/simple-slider.component'
 
 type Point = { x: number; y: number };
 
-type TouchGesture = {
+type PointerGesture = {
     count: number;
     center: Point;
     distance: number;
@@ -49,7 +49,7 @@ export class SvgViewerLiteComponent {
     private readonly pngExportScale = 3;
     private readonly zoomEpsilon = 0.001;
     private readonly activePointers = new Map<number, Point>();
-    private touchGesture: TouchGesture | null = null;
+    private pointerGesture: PointerGesture | null = null;
     private pendingSliderZoomPercent: number | null = null;
     private sliderZoomFrameId: number | null = null;
 
@@ -256,7 +256,7 @@ export class SvgViewerLiteComponent {
 
         const container = this.containerRef().nativeElement;
         this.activePointers.set(event.pointerId, this.clientPoint(event));
-        this.resetTouchGesture();
+        this.resetPointerGesture();
         this.refreshZoomPanActive();
 
         try {
@@ -264,7 +264,7 @@ export class SvgViewerLiteComponent {
         } catch { /* ignore capture errors */ }
 
         if (this.isZoomedIn()) {
-            this.consumeTouch(event, true);
+            this.consumePointer(event, true);
         }
     };
 
@@ -289,27 +289,25 @@ export class SvgViewerLiteComponent {
             this.containerRef().nativeElement.releasePointerCapture(event.pointerId);
         } catch { /* ignore release errors */ }
 
-        this.resetTouchGesture();
+        this.resetPointerGesture();
         this.refreshZoomPanActive();
 
         if (this.isZoomedIn()) {
-            this.consumeTouch(event, true);
+            this.consumePointer(event, true);
         }
     };
 
     private handlePinch(): void {
-        const nextGesture = this.currentTouchGesture();
+        const nextGesture = this.currentPointerGesture();
         if (!nextGesture) return;
 
-        if (!this.touchGesture || this.touchGesture.count < 2) {
-            this.touchGesture = nextGesture;
+        if (!this.pointerGesture || this.pointerGesture.count < 2) {
+            this.pointerGesture = nextGesture;
             return;
         }
 
-        const previous = this.touchGesture;
-        const container = this.containerRef().nativeElement;
-        container.scrollLeft += previous.center.x - nextGesture.center.x;
-        container.scrollTop += previous.center.y - nextGesture.center.y;
+        const previous = this.pointerGesture;
+        this.panBy(previous.center.x - nextGesture.center.x, previous.center.y - nextGesture.center.y);
 
         if (previous.distance > 0) {
             this.zoomAt(nextGesture.center, this.scale * (nextGesture.distance / previous.distance));
@@ -317,31 +315,35 @@ export class SvgViewerLiteComponent {
             this.clampScroll();
         }
 
-        this.touchGesture = this.currentTouchGesture();
+        this.pointerGesture = this.currentPointerGesture();
     }
 
     private handlePointerPan(event: PointerEvent): void {
-        const nextGesture = this.currentTouchGesture();
+        const nextGesture = this.currentPointerGesture();
         if (!nextGesture) return;
 
-        if (!this.touchGesture || this.touchGesture.count !== 1) {
-            this.touchGesture = nextGesture;
+        if (!this.pointerGesture || this.pointerGesture.count !== 1) {
+            this.pointerGesture = nextGesture;
             return;
         }
 
-        const dx = this.touchGesture.center.x - nextGesture.center.x;
-        const dy = this.touchGesture.center.y - nextGesture.center.y;
+        const dx = this.pointerGesture.center.x - nextGesture.center.x;
+        const dy = this.pointerGesture.center.y - nextGesture.center.y;
         if (!this.isZoomedIn() && !this.canScrollBy(dx, dy)) {
-            this.touchGesture = nextGesture;
+            this.pointerGesture = nextGesture;
             return;
         }
 
-        this.consumeTouch(event, this.isZoomedIn());
+        this.consumePointer(event, this.isZoomedIn());
+        this.panBy(dx, dy);
+        this.pointerGesture = this.currentPointerGesture();
+    }
+
+    private panBy(dx: number, dy: number): void {
         const container = this.containerRef().nativeElement;
         container.scrollLeft += dx;
         container.scrollTop += dy;
         this.clampScroll();
-        this.touchGesture = this.currentTouchGesture();
     }
 
     private canStartPan(event: PointerEvent): boolean {
@@ -377,7 +379,7 @@ export class SvgViewerLiteComponent {
         this.cancelPendingSliderZoom();
         this.scale = 1;
         this.activePointers.clear();
-        this.touchGesture = null;
+        this.pointerGesture = null;
         this.applyScale();
         this.syncZoomPercent();
 
@@ -496,11 +498,11 @@ export class SvgViewerLiteComponent {
             || maxTop > 0 && ((dy < 0 && container.scrollTop > 0) || (dy > 0 && container.scrollTop < maxTop));
     }
 
-    private resetTouchGesture(): void {
-        this.touchGesture = this.currentTouchGesture();
+    private resetPointerGesture(): void {
+        this.pointerGesture = this.currentPointerGesture();
     }
 
-    private currentTouchGesture(): TouchGesture | null {
+    private currentPointerGesture(): PointerGesture | null {
         const points = Array.from(this.activePointers.values()).slice(0, 2).map((point) => this.toLocalPoint(point));
         if (points.length === 0) return null;
         if (points.length === 1) return { count: 1, center: points[0], distance: 0 };
@@ -541,7 +543,7 @@ export class SvgViewerLiteComponent {
         this.zoomPanActiveChange.emit(active);
     }
 
-    private consumeTouch(event: Event, stopPropagation: boolean): void {
+    private consumePointer(event: Event, stopPropagation: boolean): void {
         event.preventDefault();
         if (stopPropagation) event.stopPropagation();
     }
