@@ -7,12 +7,12 @@ import { SheetService } from '../../services/sheet.service';
 import { LoggerService } from '../../services/logger.service';
 import { SvgViewerLiteComponent } from './svg-viewer-lite.component';
 
-function makeSvg(): SVGSVGElement {
+function makeSvg(width = 100, height = 200): SVGSVGElement {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('id', 'source-sheet');
-    svg.setAttribute('viewBox', '0 0 100 200');
-    svg.setAttribute('width', '100');
-    svg.setAttribute('height', '200');
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.setAttribute('width', width.toString());
+    svg.setAttribute('height', height.toString());
     return svg;
 }
 
@@ -74,12 +74,18 @@ describe('SvgViewerLiteComponent', () => {
         }
     }
 
-    async function createViewer(zoomable = true) {
-        sheetService.getSheet.and.resolveTo(makeSvg());
+    async function settleFrame(): Promise<void> {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        await settle();
+    }
+
+    async function createViewer(zoomable = true, controls = false, sheets = ['atlas.svg']) {
+        sheetService.getSheet.and.callFake(async (sheetName) => sheetName.includes('wide') ? makeSvg(50, 300) : makeSvg());
 
         const fixture = TestBed.createComponent(SvgViewerLiteComponent);
-        fixture.componentRef.setInput('unit', createEmptyUnit({ sheets: ['atlas.svg'] }));
+        fixture.componentRef.setInput('unit', createEmptyUnit({ sheets }));
         fixture.componentRef.setInput('zoomable', zoomable);
+        fixture.componentRef.setInput('controls', controls);
         fixture.detectChanges();
         await settle();
         fixture.detectChanges();
@@ -245,6 +251,17 @@ describe('SvgViewerLiteComponent', () => {
         expect(activity).toHaveBeenCalledWith(true);
     });
 
+    it('pans vertically with mouse drag at minimum zoom', async () => {
+        const { container } = await createViewer();
+        const startTop = container.scrollTop;
+
+        pointer(container, 'pointerdown', { pointerId: 1, pointerType: 'mouse', button: 0, clientX: 500, clientY: 300 });
+        pointer(container, 'pointermove', { pointerId: 1, pointerType: 'mouse', button: 0, clientX: 500, clientY: 220 });
+        pointer(container, 'pointerup', { pointerId: 1, pointerType: 'mouse', button: 0, clientX: 500, clientY: 220 });
+
+        expect(container.scrollTop).toBeGreaterThan(startTop);
+    });
+
     it('switches cleanly between one-finger pan and two-finger pinch', async () => {
         const { container, content } = await createViewer();
 
@@ -268,5 +285,87 @@ describe('SvgViewerLiteComponent', () => {
         expect(afterPan).toBeGreaterThan(0);
         expect(afterPinchScale).toBeGreaterThan(scale);
         expect(container.scrollTop).toBeGreaterThan(afterPan);
+    });
+
+    it('renders bottom controls only when requested', async () => {
+        const withoutControls = await createViewer();
+        expect(withoutControls.element.querySelector('.svgl-controls')).toBeNull();
+
+        const withControls = await createViewer(true, true);
+        const controls = withControls.element.querySelector('.svgl-controls');
+
+        expect(controls).not.toBeNull();
+        expect(controls?.querySelector('button.bt-button')?.textContent?.trim()).toBe('RESET');
+        expect(controls?.textContent).toContain('100%');
+    });
+
+    it('changes zoom with the slider and resets it from the controls', async () => {
+        const { container, content, element, fixture } = await createViewer(true, true);
+        const slider = element.querySelector<HTMLInputElement>('.zoom-control input')!;
+        const reset = Array.from(element.querySelectorAll<HTMLButtonElement>('.svgl-controls button'))
+            .find((button) => button.textContent?.trim() === 'RESET')!;
+
+        slider.value = '200';
+        slider.dispatchEvent(new Event('input', { bubbles: true }));
+        fixture.detectChanges();
+
+        expect(element.querySelector('output')?.textContent?.trim()).toBe('200%');
+
+        await settleFrame();
+        fixture.detectChanges();
+
+        expect(content.style.width).toBe('200%');
+        expect(element.querySelector('output')?.textContent?.trim()).toBe('200%');
+
+        setLayout(container, { scrollWidth: 2000, scrollHeight: 2800 });
+        reset.click();
+        fixture.detectChanges();
+
+        expect(content.style.width).toBe('100%');
+        expect(container.scrollLeft).toBe(0);
+        expect(container.scrollTop).toBe(0);
+        expect(element.querySelector('output')?.textContent?.trim()).toBe('100%');
+    });
+
+    it('exports all SVGs horizontally as a high-resolution PNG from the controls', async () => {
+        const { element } = await createViewer(true, true, ['atlas.svg', 'atlas-wide.svg']);
+        const exportButton = Array.from(element.querySelectorAll<HTMLButtonElement>('.svgl-controls button'))
+            .find((button) => button.textContent?.trim() === 'EXPORT PNG')!;
+        const originalImage = window.Image;
+        const createObjectUrl = spyOn(URL, 'createObjectURL').and.returnValues('blob:svg-1', 'blob:svg-2', 'blob:png');
+        const revokeObjectUrl = spyOn(URL, 'revokeObjectURL').and.stub();
+        const click = spyOn(HTMLAnchorElement.prototype, 'click').and.stub();
+        spyOn(CanvasRenderingContext2D.prototype, 'drawImage').and.stub();
+        let exportedCanvasWidth = 0;
+        let exportedCanvasHeight = 0;
+        spyOn(HTMLCanvasElement.prototype, 'toBlob').and.callFake(function (this: HTMLCanvasElement, callback: BlobCallback) {
+            exportedCanvasWidth = this.width;
+            exportedCanvasHeight = this.height;
+            callback(new Blob(['png'], { type: 'image/png' }));
+        });
+        class FakeImage {
+            onload: (() => void) | null = null;
+            onerror: (() => void) | null = null;
+
+            set src(_value: string) {
+                queueMicrotask(() => this.onload?.());
+            }
+        }
+        window.Image = FakeImage as unknown as typeof Image;
+
+        try {
+            exportButton.click();
+            await settle();
+        } finally {
+            window.Image = originalImage;
+        }
+
+        expect(createObjectUrl).toHaveBeenCalledTimes(3);
+        expect(exportedCanvasWidth).toBe(600);
+        expect(exportedCanvasHeight).toBe(1200);
+        expect(click).toHaveBeenCalled();
+        expect(revokeObjectUrl).toHaveBeenCalledWith('blob:svg-1');
+        expect(revokeObjectUrl).toHaveBeenCalledWith('blob:svg-2');
+        expect(revokeObjectUrl).toHaveBeenCalledWith('blob:png');
     });
 });

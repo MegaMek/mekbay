@@ -1,10 +1,11 @@
-import { Component, ChangeDetectionStrategy, signal, effect, input, output, inject, viewChild, type ElementRef } from '@angular/core';
+import { Component, ChangeDetectionStrategy, DestroyRef, signal, effect, input, output, inject, viewChild, type ElementRef } from '@angular/core';
 
 import type { Unit } from '../../models/units.model';
 import { SheetService } from '../../services/sheet.service';
 import { OptionsService } from '../../services/options.service';
 import { LoggerService } from '../../services/logger.service';
 import { REMOTE_HOST } from '../../models/common.model';
+import { SimpleSliderComponent } from '../simple-slider/simple-slider.component';
 
 type Point = { x: number; y: number };
 
@@ -17,31 +18,40 @@ type TouchGesture = {
 @Component({
     selector: 'svg-viewer-lite',
     standalone: true,
-    imports: [],
+    imports: [SimpleSliderComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './svg-viewer-lite.component.html',
     styleUrls: ['./svg-viewer-lite.component.css']
 })
 export class SvgViewerLiteComponent {
     logger = inject(LoggerService);
+    private destroyRef = inject(DestroyRef);
     private sheetService = inject(SheetService);
     private optionsService = inject(OptionsService);
 
     unit = input<Unit | null>(null);
     zoomable = input<boolean>(false);
+    controls = input<boolean>(false);
     zoomPanActiveChange = output<boolean>();
 
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
     contentRef = viewChild.required<ElementRef<HTMLDivElement>>('content');
 
+    readonly minZoomPercent = 100;
+    readonly maxZoomPercent = 300;
+    readonly zoomPercent = signal(this.minZoomPercent);
+
     private svgs = signal<SVGSVGElement[]>([]);
     private svgsAttached = signal(false);
     private scale = 1;
     private zoomPanActive = false;
-    private readonly maxScale = 6;
+    private readonly maxScale = this.maxZoomPercent / 100;
+    private readonly pngExportScale = 3;
     private readonly zoomEpsilon = 0.001;
     private readonly activePointers = new Map<number, Point>();
     private touchGesture: TouchGesture | null = null;
+    private pendingSliderZoomPercent: number | null = null;
+    private sliderZoomFrameId: number | null = null;
 
     // Reactive effect: load sheet when unit changes
     constructor() {
@@ -124,6 +134,7 @@ export class SvgViewerLiteComponent {
             this.applyScale();
             this.clampScroll();
         });
+        this.destroyRef.onDestroy(() => this.cancelPendingSliderZoom());
     }
 
     private injectFluffToSvg(svg: SVGSVGElement, imageUrl: string) {
@@ -241,7 +252,7 @@ export class SvgViewerLiteComponent {
     };
 
     private readonly onPointerDown = (event: PointerEvent): void => {
-        if (!this.zoomable() || event.pointerType !== 'touch') return;
+        if (!this.zoomable() || !this.canStartPan(event)) return;
 
         const container = this.containerRef().nativeElement;
         this.activePointers.set(event.pointerId, this.clientPoint(event));
@@ -258,17 +269,17 @@ export class SvgViewerLiteComponent {
     };
 
     private readonly onPointerMove = (event: PointerEvent): void => {
-        if (!this.zoomable() || event.pointerType !== 'touch' || !this.activePointers.has(event.pointerId)) return;
+        if (!this.zoomable() || !this.activePointers.has(event.pointerId)) return;
 
         this.activePointers.set(event.pointerId, this.clientPoint(event));
 
-        if (this.activePointers.size > 1) {
+        if (event.pointerType === 'touch' && this.activePointers.size > 1) {
             event.preventDefault();
             this.handlePinch();
             return;
         }
 
-        this.handleTouchPan(event);
+        this.handlePointerPan(event);
     };
 
     private readonly onPointerEnd = (event: PointerEvent): void => {
@@ -309,7 +320,7 @@ export class SvgViewerLiteComponent {
         this.touchGesture = this.currentTouchGesture();
     }
 
-    private handleTouchPan(event: PointerEvent): void {
+    private handlePointerPan(event: PointerEvent): void {
         const nextGesture = this.currentTouchGesture();
         if (!nextGesture) return;
 
@@ -333,6 +344,16 @@ export class SvgViewerLiteComponent {
         this.touchGesture = this.currentTouchGesture();
     }
 
+    private canStartPan(event: PointerEvent): boolean {
+        if (event.pointerType === 'touch') return true;
+        if (event.pointerType !== 'mouse' || event.button !== 0) return false;
+
+        const container = this.containerRef().nativeElement;
+        return this.isZoomedIn()
+            || container.scrollHeight > container.clientHeight
+            || container.scrollWidth > container.clientWidth;
+    }
+
     private zoomAt(point: Point, nextScale: number): void {
         const container = this.containerRef().nativeElement;
         const scale = this.clamp(nextScale, 1, this.maxScale);
@@ -344,6 +365,7 @@ export class SvgViewerLiteComponent {
 
         this.scale = scale;
         this.applyScale();
+        this.syncZoomPercent();
         content.getBoundingClientRect();
         container.scrollLeft = contentX * scale + content.offsetLeft - point.x;
         container.scrollTop = contentY * scale + content.offsetTop - point.y;
@@ -351,11 +373,13 @@ export class SvgViewerLiteComponent {
         this.refreshZoomPanActive();
     }
 
-    private resetZoom(): void {
+    resetZoom(): void {
+        this.cancelPendingSliderZoom();
         this.scale = 1;
         this.activePointers.clear();
         this.touchGesture = null;
         this.applyScale();
+        this.syncZoomPercent();
 
         const container = this.containerRef().nativeElement;
         container.scrollLeft = 0;
@@ -363,8 +387,94 @@ export class SvgViewerLiteComponent {
         this.refreshZoomPanActive();
     }
 
+    setZoomPercent(value: number): void {
+        if (!Number.isFinite(value)) return;
+
+        const percent = this.clamp(value, this.minZoomPercent, this.maxZoomPercent);
+        this.zoomPercent.set(percent);
+        this.pendingSliderZoomPercent = percent;
+
+        if (this.sliderZoomFrameId !== null) return;
+
+        this.sliderZoomFrameId = requestAnimationFrame(() => {
+            this.sliderZoomFrameId = null;
+            const nextPercent = this.pendingSliderZoomPercent;
+            this.pendingSliderZoomPercent = null;
+            if (nextPercent === null) return;
+
+            const container = this.containerRef().nativeElement;
+            this.zoomAt({ x: container.clientWidth / 2, y: container.clientHeight / 2 }, nextPercent / 100);
+        });
+    }
+
+    async exportPng(): Promise<void> {
+        const svgs = this.svgs();
+        if (svgs.length === 0) return;
+
+        const entries = svgs.map((svg) => ({ svg, size: this.getSvgExportSize(svg), url: '' }));
+
+        try {
+            for (const entry of entries) {
+                const serialized = new XMLSerializer().serializeToString(entry.svg);
+                const svgBlob = new Blob([serialized], { type: 'image/svg+xml;charset=utf-8' });
+                entry.url = URL.createObjectURL(svgBlob);
+            }
+
+            const images = await Promise.all(entries.map((entry) => this.loadImage(entry.url)));
+            const width = entries.reduce((sum, entry) => sum + entry.size.width, 0);
+            const height = Math.max(...entries.map((entry) => entry.size.height));
+            const canvas = document.createElement('canvas');
+            canvas.width = width * this.pngExportScale;
+            canvas.height = height * this.pngExportScale;
+            const context = canvas.getContext('2d');
+            if (!context) return;
+
+            context.scale(this.pngExportScale, this.pngExportScale);
+            context.fillStyle = '#ffffff';
+            context.fillRect(0, 0, width, height);
+
+            let x = 0;
+            for (let index = 0; index < images.length; index += 1) {
+                const size = entries[index].size;
+                context.drawImage(images[index], x, 0, size.width, size.height);
+                x += size.width;
+            }
+
+            const pngBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+            if (!pngBlob) return;
+
+            const pngUrl = URL.createObjectURL(pngBlob);
+            try {
+                const link = document.createElement('a');
+                link.href = pngUrl;
+                link.download = `${this.exportFileName()}.png`;
+                link.click();
+            } finally {
+                URL.revokeObjectURL(pngUrl);
+            }
+        } catch (err) {
+            this.logger.error('svg-viewer-lite: failed to export PNG: ' + JSON.stringify(err));
+        } finally {
+            for (const entry of entries) {
+                if (entry.url) URL.revokeObjectURL(entry.url);
+            }
+        }
+    }
+
     private applyScale(): void {
         this.contentRef().nativeElement.style.width = `${this.scale * 100}%`;
+    }
+
+    private syncZoomPercent(): void {
+        this.zoomPercent.set(Math.round(this.scale * 100));
+    }
+
+    private cancelPendingSliderZoom(): void {
+        this.pendingSliderZoomPercent = null;
+        if (this.sliderZoomFrameId === null) return;
+
+        cancelAnimationFrame(this.sliderZoomFrameId);
+        this.sliderZoomFrameId = null;
     }
 
     private onResize(): void {
@@ -434,6 +544,29 @@ export class SvgViewerLiteComponent {
     private consumeTouch(event: Event, stopPropagation: boolean): void {
         event.preventDefault();
         if (stopPropagation) event.stopPropagation();
+    }
+
+    private loadImage(url: string): Promise<HTMLImageElement> {
+        return new Promise((resolve, reject) => {
+            const image = new Image();
+            image.onload = () => resolve(image);
+            image.onerror = () => reject(new Error('Failed to load SVG image'));
+            image.src = url;
+        });
+    }
+
+    private getSvgExportSize(svg: SVGSVGElement): { width: number; height: number } {
+        const viewBox = svg.viewBox?.baseVal;
+        const rect = svg.getBoundingClientRect();
+        const width = viewBox?.width || Number.parseFloat(svg.getAttribute('width') ?? '') || rect.width || 1000;
+        const height = viewBox?.height || Number.parseFloat(svg.getAttribute('height') ?? '') || rect.height || 1000;
+        return { width: Math.ceil(width), height: Math.ceil(height) };
+    }
+
+    private exportFileName(): string {
+        const unit = this.unit();
+        const name = [unit?.chassis, unit?.model].filter(Boolean).join('-') || unit?.name || 'record-sheet';
+        return name.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '') || 'record-sheet';
     }
 
     private clamp(value: number, min: number, max: number): number {

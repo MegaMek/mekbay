@@ -1,3 +1,14 @@
-<div #container class="svgl-container" [class.zoomable]="zoomable()">
+<div #container class="svgl-container" [class.zoomable]="zoomable() || controls()">
 	<div #content class="svgl-content"></div>
 </div>
+@if (controls()) {
+	<div class="svgl-controls glass">
+		<label class="zoom-control">
+			<simple-slider [min]="minZoomPercent" [max]="maxZoomPercent" [step]="5" [value]="zoomPercent()"
+				ariaLabel="Zoom" (valueChange)="setZoomPercent($event)"></simple-slider>
+			<output>{{ zoomPercent() }}%</output>
+		</label>
+		<button type="button" class="bt-button" (click)="resetZoom()">RESET</button>
+		<button type="button" class="bt-button" (click)="exportPng()">EXPORT PNG</button>
+	</div>
+}
