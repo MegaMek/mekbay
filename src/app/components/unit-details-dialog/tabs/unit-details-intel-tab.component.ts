@@ -36,6 +36,7 @@ import { CommonModule } from '@angular/common';
 import type { Unit, UnitFluffCatalogEntry, UnitImageFluff } from '../../../models/units.model';
 import { REMOTE_HOST } from '../../../models/common.model';
 import { DataService } from '../../../services/data.service';
+import { LoadingSpinnerComponent } from '../../loading-spinner/loading-spinner.component';
 
 interface ManufacturerFactoryDisplay {
     pairedText: string;
@@ -46,7 +47,7 @@ interface ManufacturerFactoryDisplay {
 @Component({
     selector: 'unit-details-intel-tab',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [CommonModule, LoadingSpinnerComponent],
     templateUrl: './unit-details-intel-tab.component.html',
     styleUrls: ['./unit-details-intel-tab.component.css']
 })

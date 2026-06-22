@@ -156,14 +156,7 @@
                         </div>
                     </div>
                     @if (this.dataService.isDownloading() || this.dataService.isCloudForceLoading()) {
-                    <div class="spinner-container">
-                        <div class="spinner">
-                            <div class="ring"></div>
-                        </div>
-                        <div>
-                            Downloading data...
-                        </div>
-                    </div>
+                    <loading-spinner class="spinner-container" message="Downloading data..." ariaLabel="Downloading data"></loading-spinner>
                     }
                 </div>
             </div>

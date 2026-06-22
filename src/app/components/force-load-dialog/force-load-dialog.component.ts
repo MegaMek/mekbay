@@ -78,6 +78,7 @@ import { naturalCompare } from '../../utils/sort.util';
 import type { Era } from '../../models/eras.model';
 import type { Faction } from '../../models/factions.model';
 import { CompactFilterMenuComponent } from '../compact-filter-menu/compact-filter-menu.component';
+import { LoadingSpinnerComponent } from '../loading-spinner/loading-spinner.component';
 
 /*
  * Author: Drake
@@ -146,7 +147,7 @@ const DEFAULT_OPERATION_SORT_DIRECTION: SortDirection = 'desc';
     selector: 'force-load-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, MeasureClampOverflowDirective, UnitIconComponent, OpPreviewComponent, FactionImgPipe, ForceTagsComponent, CompactFilterMenuComponent],
+    imports: [CommonModule, ScrollingModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, MeasureClampOverflowDirective, UnitIconComponent, OpPreviewComponent, FactionImgPipe, ForceTagsComponent, CompactFilterMenuComponent, LoadingSpinnerComponent],
     templateUrl: './force-load-dialog.component.html',
     styleUrls: ['./force-load-dialog.component.css']
 })

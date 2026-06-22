@@ -69,12 +69,14 @@ describe('UnitDetailsIntelTabComponent', () => {
 
         const element = fixture.nativeElement as HTMLElement;
         expect(element.querySelector('.fluff-content')?.classList.contains('image-only')).toBeFalse();
+        expect(element.querySelector('loading-spinner')?.textContent?.trim()).toBe('Loading intel...');
 
         resolveFluff({ img: 'awesome.png' });
         await settleMicrotasks();
         fixture.detectChanges();
 
         expect(element.querySelector('.fluff-content')?.classList.contains('image-only')).toBeTrue();
+        expect(element.querySelector('loading-spinner')).toBeNull();
     });
 
     it('groups paired manufacturers and primary factories under a combined section', async () => {

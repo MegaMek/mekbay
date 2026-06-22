@@ -63,6 +63,7 @@ import { isAndroid, isIOS, isRunningStandalone } from './utils/platform.util';
 import { GameService } from './services/game.service';
 import { AccountAuthService } from './services/account-auth.service';
 import { AppUpdateService } from './services/app-update.service';
+import { LoadingSpinnerComponent } from './components/loading-spinner/loading-spinner.component';
 
 import { GameSystem } from './models/common.model';
 import { Router, RouterOutlet } from '@angular/router';
@@ -89,6 +90,7 @@ const PENDING_UPDATE_RELOAD_AFTER_NO_FOCUS_MS = 6 * 60 * 60 * 1000; // 6 hours
     UnitSearchComponent,
     OverlayModule,
     PortalModule,
+    LoadingSpinnerComponent,
     RouterOutlet
 ],
     templateUrl: './app.html',
