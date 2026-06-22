@@ -343,7 +343,7 @@
                 </div>
             }
         }
-        <div class="tab-footer glass">
+        <div class="tab-footer">
             @if (activeTab() === 'Hangar') {
             <input #mulFileInput type="file" accept=".mul,application/xml,text/xml" class="hidden-file-input" (change)="onMulFileSelected($event)" />
             <button type="button" class="bt-button mul-load-btn" (click)="openMulFilePicker()">Load from MUL...</button>

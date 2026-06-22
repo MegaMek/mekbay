@@ -2,7 +2,7 @@
 	<div #content class="svgl-content"></div>
 </div>
 @if (controls()) {
-	<div class="svgl-controls glass">
+	<div class="svgl-controls">
 		<label class="zoom-control">
 			<simple-slider [min]="minZoomPercent" [max]="maxZoomPercent" [step]="5" [value]="zoomPercent()"
 				ariaLabel="Zoom" (valueChange)="setZoomPercent($event)"></simple-slider>
