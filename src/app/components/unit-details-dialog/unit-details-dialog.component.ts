@@ -56,6 +56,7 @@ import { UnitDetailsVariantsTabComponent, type VariantsTabState, DEFAULT_VARIANT
 import { GameService } from '../../services/game.service';
 import { UnitDetailsCardTabComponent } from './tabs/unit-details-card-tab.component';
 import { UnitTagsComponent, type TagClickEvent } from '../unit-tags/unit-tags.component';
+import { SimpleSliderComponent } from '../simple-slider/simple-slider.component';
 import { TaggingService } from '../../services/tagging.service';
 import { UrlService } from '../../services/url.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -63,6 +64,7 @@ import { LayoutService } from '../../services/layout.service';
 import { buildUnitShareLinks } from '../../utils/force-url.util';
 import { ConfirmDialogComponent, type ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
+import { isMegaMekRaritySortKey, SORT_OPTIONS } from '../../services/unit-search-filters.model';
 
 /*
  * Author: Drake
@@ -91,7 +93,7 @@ export interface UnitDetailsChangeAction {
 @Component({
     selector: 'unit-details-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, SwipeDirective, LongPressDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent, UnitDetailsVariantsTabComponent, UnitTagsComponent],
+    imports: [CommonModule, BaseDialogComponent, SwipeDirective, LongPressDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent, UnitDetailsVariantsTabComponent, UnitTagsComponent, SimpleSliderComponent],
     templateUrl: './unit-details-dialog.component.html',
     styleUrls: ['./unit-details-dialog.component.css'],
     host: {
@@ -117,6 +119,7 @@ export class UnitDetailsDialogComponent {
     change = output<{ oldUnit: ForceUnit; newUnit: Unit }>();
     indexChange = output<number>();
     baseDialogRef = viewChild('baseDialog', { read: ElementRef });
+    sheetTabRef = viewChild<UnitDetailsSheetTabComponent>(UnitDetailsSheetTabComponent);
     currentPanelRef = viewChild<ElementRef<HTMLElement>>('currentPanel');
     incomingPanelRef = viewChild<ElementRef<HTMLElement>>('incomingPanel');
     shareButtonInActions = computed(() => this.layoutService.windowWidth() > 600);
@@ -208,6 +211,7 @@ export class UnitDetailsDialogComponent {
 
     /** View mode for variants tab (persisted while dialog is open) */
     variantsTabState = signal<VariantsTabState>({ ...DEFAULT_VARIANTS_TAB_STATE });
+    readonly variantSortOptions = SORT_OPTIONS.filter(opt => opt.key !== '' && !isMegaMekRaritySortKey(opt.key));
 
     // Header unit - shows the most visible unit during swipe
     headerUnit = computed(() => {
@@ -669,6 +673,33 @@ export class UnitDetailsDialogComponent {
 
     public onSheetZoomPanActiveChange(active: boolean): void {
         this.sheetZoomPanActive.set(active);
+    }
+
+    public setSheetZoomPercent(value: number): void {
+        this.sheetTabRef()?.setZoomPercent(value);
+    }
+
+    public resetSheetZoom(): void {
+        this.sheetTabRef()?.resetZoom();
+    }
+
+    public exportSheetPng(): void {
+        this.sheetTabRef()?.exportPng();
+    }
+
+    public setVariantSortOrder(key: string): void {
+        this.variantsTabState.update(state => ({ ...state, sortKey: key }));
+    }
+
+    public setVariantSortDirection(direction: 'asc' | 'desc'): void {
+        this.variantsTabState.update(state => ({ ...state, sortDirection: direction }));
+    }
+
+    public toggleVariantViewMode(): void {
+        this.variantsTabState.update(state => ({
+            ...state,
+            viewMode: state.viewMode === 'expanded' ? 'compact' : 'expanded',
+        }));
     }
 
     public onSwipeStart(event: SwipeStartEvent): void {

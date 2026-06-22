@@ -74,13 +74,12 @@ describe('SvgViewerLiteComponent', () => {
         }
     }
 
-    async function createViewer(zoomable = true, controls = false, sheets = ['atlas.svg']) {
+    async function createViewer(zoomable = true, _controls = false, sheets = ['atlas.svg']) {
         sheetService.getSheet.and.callFake(async (sheetName) => sheetName.includes('wide') ? makeSvg(50, 300) : makeSvg());
 
         const fixture = TestBed.createComponent(SvgViewerLiteComponent);
         fixture.componentRef.setInput('unit', createEmptyUnit({ sheets }));
         fixture.componentRef.setInput('zoomable', zoomable);
-        fixture.componentRef.setInput('controls', controls);
         fixture.detectChanges();
         await settle();
         fixture.detectChanges();
@@ -329,23 +328,27 @@ describe('SvgViewerLiteComponent', () => {
         expect(container.scrollTop).toBeGreaterThan(afterPan);
     });
 
-    it('renders bottom controls only when requested', async () => {
-        const withoutControls = await createViewer();
-        expect(withoutControls.element.querySelector('.svgl-controls')).toBeNull();
+    it('clears stale touch pointers when a new primary touch gesture starts', async () => {
+        const { container, content } = await createViewer();
 
-        const withControls = await createViewer(true, true);
-        const controls = withControls.element.querySelector('.svgl-controls');
+        wheel(container, { ctrlKey: true, deltaY: -120 });
+        const scale = parseFloat(content.style.width) / 100;
+        setLayout(container, { scrollWidth: Math.round(1000 * scale), scrollHeight: Math.round(1400 * scale) });
 
-        expect(controls).not.toBeNull();
-        expect(controls?.querySelector('button.bt-button')?.textContent?.trim()).toBe('RESET');
-        expect(controls?.textContent).toContain('100%');
+        pointer(container, 'pointerdown', { pointerId: 1, pointerType: 'touch', isPrimary: true, clientX: 300, clientY: 300 });
+        pointer(container, 'pointerdown', { pointerId: 2, pointerType: 'touch', isPrimary: false, clientX: 700, clientY: 300 });
+
+        const startTop = container.scrollTop;
+        pointer(container, 'pointerdown', { pointerId: 3, pointerType: 'touch', isPrimary: true, clientX: 500, clientY: 300 });
+        pointer(container, 'pointermove', { pointerId: 3, pointerType: 'touch', isPrimary: true, clientX: 500, clientY: 220 });
+        pointer(container, 'pointerup', { pointerId: 3, pointerType: 'touch', isPrimary: true, clientX: 500, clientY: 220 });
+
+        expect(container.scrollTop).toBeGreaterThan(startTop);
+        expect(parseFloat(content.style.width)).toBeCloseTo(scale * 100, 3);
     });
 
-    it('changes zoom with the slider and resets it from the controls', async () => {
-        const { container, content, element, fixture } = await createViewer(true, true);
-        const slider = element.querySelector<HTMLInputElement>('.zoom-control input')!;
-        const reset = Array.from(element.querySelectorAll<HTMLButtonElement>('.svgl-controls button'))
-            .find((button) => button.textContent?.trim() === 'RESET')!;
+    it('changes zoom from the public zoom API and resets it', async () => {
+        const { container, content, fixture } = await createViewer();
         const originalRequestAnimationFrame = window.requestAnimationFrame;
         const originalCancelAnimationFrame = window.cancelAnimationFrame;
         window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
@@ -355,36 +358,33 @@ describe('SvgViewerLiteComponent', () => {
         window.cancelAnimationFrame = (() => { }) as typeof cancelAnimationFrame;
 
         try {
-            slider.value = '200';
-            slider.dispatchEvent(new Event('input', { bubbles: true }));
+            fixture.componentInstance.setZoomPercent(200);
             fixture.detectChanges();
 
-            expect(element.querySelector('output')?.textContent?.trim()).toBe('200%');
+            expect(fixture.componentInstance.zoomPercent()).toBe(200);
 
             await settle();
             fixture.detectChanges();
 
             expect(content.style.width).toBe('200%');
-            expect(element.querySelector('output')?.textContent?.trim()).toBe('200%');
+            expect(fixture.componentInstance.zoomPercent()).toBe(200);
 
             setLayout(container, { scrollWidth: 2000, scrollHeight: 2800 });
-            reset.click();
+            fixture.componentInstance.resetZoom();
             fixture.detectChanges();
 
             expect(content.style.width).toBe('100%');
             expect(container.scrollLeft).toBe(0);
             expect(container.scrollTop).toBe(0);
-            expect(element.querySelector('output')?.textContent?.trim()).toBe('100%');
+            expect(fixture.componentInstance.zoomPercent()).toBe(100);
         } finally {
             window.requestAnimationFrame = originalRequestAnimationFrame;
             window.cancelAnimationFrame = originalCancelAnimationFrame;
         }
     });
 
-    it('exports all SVGs horizontally as a high-resolution PNG from the controls', async () => {
-        const { element } = await createViewer(true, true, ['atlas.svg', 'atlas-wide.svg']);
-        const exportButton = Array.from(element.querySelectorAll<HTMLButtonElement>('.svgl-controls button'))
-            .find((button) => button.textContent?.trim() === 'EXPORT PNG')!;
+    it('exports all SVGs horizontally as a high-resolution PNG', async () => {
+        const { fixture } = await createViewer(true, false, ['atlas.svg', 'atlas-wide.svg']);
         const originalImage = window.Image;
         const createObjectUrl = spyOn(URL, 'createObjectURL').and.returnValues('blob:svg-1', 'blob:svg-2', 'blob:png');
         const revokeObjectUrl = spyOn(URL, 'revokeObjectURL').and.stub();
@@ -408,7 +408,7 @@ describe('SvgViewerLiteComponent', () => {
         window.Image = FakeImage as unknown as typeof Image;
 
         try {
-            exportButton.click();
+            await fixture.componentInstance.exportPng();
             await settle();
         } finally {
             window.Image = originalImage;

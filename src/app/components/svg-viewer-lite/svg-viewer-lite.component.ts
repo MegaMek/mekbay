@@ -5,7 +5,6 @@ import { SheetService } from '../../services/sheet.service';
 import { OptionsService } from '../../services/options.service';
 import { LoggerService } from '../../services/logger.service';
 import { REMOTE_HOST } from '../../models/common.model';
-import { SimpleSliderComponent } from '../simple-slider/simple-slider.component';
 
 type Point = { x: number; y: number };
 
@@ -18,7 +17,7 @@ type PointerGesture = {
 @Component({
     selector: 'svg-viewer-lite',
     standalone: true,
-    imports: [SimpleSliderComponent],
+    imports: [],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './svg-viewer-lite.component.html',
     styleUrls: ['./svg-viewer-lite.component.css']
@@ -31,7 +30,6 @@ export class SvgViewerLiteComponent {
 
     unit = input<Unit | null>(null);
     zoomable = input<boolean>(false);
-    controls = input<boolean>(false);
     zoomPanActiveChange = output<boolean>();
 
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
@@ -261,6 +259,10 @@ export class SvgViewerLiteComponent {
     private readonly onPointerDown = (event: PointerEvent): void => {
         if (!this.zoomable() || !this.canStartPan(event)) return;
 
+        if (event.pointerType === 'touch' && event.isPrimary && this.activePointers.size > 0) {
+            this.clearPointerState();
+        }
+
         const container = this.containerRef().nativeElement;
         this.activePointers.set(event.pointerId, this.clientPoint(event));
         this.pointerStarts.set(event.pointerId, this.clientPoint(event));
@@ -275,6 +277,13 @@ export class SvgViewerLiteComponent {
             this.consumePointer(event, true);
         }
     };
+
+    private clearPointerState(): void {
+        this.activePointers.clear();
+        this.pointerStarts.clear();
+        this.pointerGesture = null;
+        this.refreshZoomPanActive();
+    }
 
     private readonly onPointerMove = (event: PointerEvent): void => {
         if (!this.zoomable() || !this.activePointers.has(event.pointerId)) return;
@@ -428,10 +437,8 @@ export class SvgViewerLiteComponent {
     resetZoom(): void {
         this.cancelPendingSliderZoom();
         this.scale = 1;
-        this.activePointers.clear();
-        this.pointerStarts.clear();
+        this.clearPointerState();
         this.lastTap = null;
-        this.pointerGesture = null;
         this.applyScale();
         this.syncZoomPercent();
 

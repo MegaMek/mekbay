@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, output } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, output, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { Unit } from '../../../models/units.model';
 import { SvgViewerLiteComponent } from '../../svg-viewer-lite/svg-viewer-lite.component';
@@ -46,4 +46,30 @@ import { SvgViewerLiteComponent } from '../../svg-viewer-lite/svg-viewer-lite.co
 export class UnitDetailsSheetTabComponent {
     unit = input.required<Unit>();
     zoomPanActiveChange = output<boolean>();
+
+    private viewer = viewChild<SvgViewerLiteComponent>(SvgViewerLiteComponent);
+
+    get minZoomPercent(): number {
+        return this.viewer()?.minZoomPercent ?? 100;
+    }
+
+    get maxZoomPercent(): number {
+        return this.viewer()?.maxZoomPercent ?? 300;
+    }
+
+    zoomPercent(): number {
+        return this.viewer()?.zoomPercent() ?? this.minZoomPercent;
+    }
+
+    setZoomPercent(value: number): void {
+        this.viewer()?.setZoomPercent(value);
+    }
+
+    resetZoom(): void {
+        this.viewer()?.resetZoom();
+    }
+
+    exportPng(): void {
+        this.viewer()?.exportPng();
+    }
 }

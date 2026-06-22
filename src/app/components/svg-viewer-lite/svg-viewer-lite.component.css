@@ -32,39 +32,3 @@
     width: 100%;
     margin: 0 auto;
 }
-
-.svgl-controls {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 8px;
-    flex: 0 0 auto;
-    padding: 8px 12px;
-    border-top: 1px solid var(--border-color);
-    flex-wrap: nowrap;
-}
-
-.zoom-control {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex: 1 1 200px;
-    min-width: 0;
-    max-width: 200px;
-}
-
-.zoom-control simple-slider {
-    flex: 1 1 140px;
-    min-width: 80px;
-}
-
-.zoom-control output {
-    min-width: 4ch;
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-}
-
-.svgl-controls .bt-button {
-    flex: 0 0 auto;
-    white-space: nowrap;
-}
