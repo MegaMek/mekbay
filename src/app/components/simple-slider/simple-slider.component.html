@@ -1,0 +1,6 @@
+<div class="simple-slider-container" [class.disabled]="disabled()" [style.--simple-slider-thumb-left.%]="percent()">
+    <div class="simple-slider-track"></div>
+    <div class="simple-slider-fill" [style.width.%]="percent()"></div>
+    <input class="simple-slider-input" type="range" [attr.aria-label]="ariaLabel()" [min]="min()" [max]="max()"
+        [step]="step()" [value]="value()" [disabled]="disabled()" (input)="onInput($event)" />
+</div>
