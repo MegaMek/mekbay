@@ -303,6 +303,33 @@ describe('SvgViewerLiteComponent', () => {
         expect(content.style.width).toBe('250%');
     });
 
+    it('ignores synthetic mouse double-click after touch double-tap zooms in', async () => {
+        const { container, content } = await createViewer();
+
+        pointer(container, 'pointerdown', { pointerId: 1, clientX: 500, clientY: 300 });
+        pointer(container, 'pointerup', { pointerId: 1, clientX: 500, clientY: 300 });
+        pointer(container, 'pointerdown', { pointerId: 2, clientX: 500, clientY: 300 });
+        pointer(container, 'pointerup', { pointerId: 2, clientX: 500, clientY: 300 });
+        doubleClick(container, { clientX: 500, clientY: 300 });
+
+        expect(content.style.width).toBe('250%');
+    });
+
+    it('ignores synthetic mouse double-click after touch double-tap resets zoom', async () => {
+        const { container, content } = await createViewer();
+
+        doubleClick(container, { clientX: 500, clientY: 300 });
+        expect(content.style.width).toBe('250%');
+
+        pointer(container, 'pointerdown', { pointerId: 1, clientX: 500, clientY: 300 });
+        pointer(container, 'pointerup', { pointerId: 1, clientX: 500, clientY: 300 });
+        pointer(container, 'pointerdown', { pointerId: 2, clientX: 500, clientY: 300 });
+        pointer(container, 'pointerup', { pointerId: 2, clientX: 500, clientY: 300 });
+        doubleClick(container, { clientX: 500, clientY: 300 });
+
+        expect(content.style.width).toBe('100%');
+    });
+
     it('pans vertically with mouse drag at minimum zoom', async () => {
         const { container } = await createViewer();
         const startTop = container.scrollTop;

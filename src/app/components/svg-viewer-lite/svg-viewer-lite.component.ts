@@ -45,11 +45,13 @@ export class SvgViewerLiteComponent {
     private readonly doubleTapZoomScale = 2.5;
     private readonly doubleTapMaxMs = 300;
     private readonly tapMaxDistance = 12;
+    private readonly syntheticMouseAfterTouchMs = 800;
     private readonly pngExportScale = 3;
     private readonly zoomEpsilon = 0.001;
     private readonly activePointers = new Map<number, Point>();
     private readonly pointerStarts = new Map<number, Point>();
     private lastTap: { time: number; point: Point } | null = null;
+    private ignoreMouseDoubleClickUntil = 0;
     private pointerGesture: PointerGesture | null = null;
     private pendingSliderZoomPercent: number | null = null;
     private sliderZoomFrameId: number | null = null;
@@ -317,6 +319,8 @@ export class SvgViewerLiteComponent {
         if (!this.zoomable()) return;
 
         this.consumePointer(event, true);
+        if (Date.now() < this.ignoreMouseDoubleClickUntil) return;
+
         this.toggleZoomAt(this.localPoint(event));
     };
 
@@ -401,6 +405,7 @@ export class SvgViewerLiteComponent {
 
         this.lastTap = null;
         this.consumePointer(event, true);
+        this.ignoreMouseDoubleClickUntil = now + this.syntheticMouseAfterTouchMs;
         this.toggleZoomAt(this.toLocalPoint(point));
     }
 
