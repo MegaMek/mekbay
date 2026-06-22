@@ -52,38 +52,42 @@ describe('UnitDetailsSheetTabComponent', () => {
         return fixture;
     }
 
-    it('renders controls outside the svg viewer', async () => {
+    it('does not render controls inside the svg viewer', async () => {
         const fixture = await createComponent();
         const element = fixture.nativeElement as HTMLElement;
         const viewer = element.querySelector('svg-viewer-lite');
-        const controls = element.querySelector('.sheet-controls');
 
         expect(viewer).not.toBeNull();
-        expect(controls).not.toBeNull();
         expect(viewer?.querySelector('.sheet-controls')).toBeNull();
         expect(viewer?.querySelector('.svgl-controls')).toBeNull();
     });
 
-    it('wires detached controls to the viewer instance', async () => {
+    it('proxies controls actions to the viewer instance', async () => {
         const fixture = await createComponent();
-        const element = fixture.nativeElement as HTMLElement;
+        const component = fixture.componentInstance;
         const viewer = fixture.debugElement.query(By.directive(SvgViewerLiteComponent)).componentInstance as SvgViewerLiteComponent;
-        const slider = element.querySelector<HTMLInputElement>('.zoom-control input')!;
-        const reset = Array.from(element.querySelectorAll<HTMLButtonElement>('.sheet-controls button'))
-            .find((button) => button.textContent?.trim() === 'RESET')!;
-        const exportButton = Array.from(element.querySelectorAll<HTMLButtonElement>('.sheet-controls button'))
-            .find((button) => button.textContent?.trim() === 'EXPORT PNG')!;
         const setZoom = spyOn(viewer, 'setZoomPercent').and.stub();
         const resetZoom = spyOn(viewer, 'resetZoom').and.stub();
         const exportPng = spyOn(viewer, 'exportPng').and.resolveTo();
 
-        slider.value = '150';
-        slider.dispatchEvent(new Event('input', { bubbles: true }));
-        reset.click();
-        exportButton.click();
+        component.setZoomPercent(150);
+        component.resetZoom();
+        component.exportPng();
 
         expect(setZoom).toHaveBeenCalledWith(150);
         expect(resetZoom).toHaveBeenCalled();
         expect(exportPng).toHaveBeenCalled();
+    });
+
+    it('exposes the live viewer zoom-pan state', async () => {
+        const fixture = await createComponent();
+        const component = fixture.componentInstance;
+        const viewer = fixture.debugElement.query(By.directive(SvgViewerLiteComponent)).componentInstance as SvgViewerLiteComponent;
+        spyOn(viewer, 'isZoomPanActive').and.returnValue(false);
+
+        expect(component.isZoomPanActive()).toBeFalse();
+
+        (viewer.isZoomPanActive as jasmine.Spy).and.returnValue(true);
+        expect(component.isZoomPanActive()).toBeTrue();
     });
 });

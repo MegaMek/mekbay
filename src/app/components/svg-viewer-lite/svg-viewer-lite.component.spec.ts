@@ -253,10 +253,8 @@ describe('SvgViewerLiteComponent', () => {
         expect(container.scrollTop).toBeLessThanOrEqual(200);
     });
 
-    it('pans with one touch while zoomed in and emits zoom-pan activity', async () => {
+    it('pans with one touch while zoomed in and reports live zoom-pan activity', async () => {
         const { container, content, fixture } = await createViewer();
-        const activity = jasmine.createSpy('zoomPanActiveChange');
-        fixture.componentInstance.zoomPanActiveChange.subscribe(activity);
 
         wheel(container, { ctrlKey: true, deltaY: -240 });
         const scale = parseFloat(content.style.width) / 100;
@@ -268,7 +266,7 @@ describe('SvgViewerLiteComponent', () => {
         pointer(container, 'pointerup', { pointerId: 1, clientX: 500, clientY: 220 });
 
         expect(container.scrollTop).toBeGreaterThan(startTop);
-        expect(activity).toHaveBeenCalledWith(true);
+        expect(fixture.componentInstance.isZoomPanActive()).toBeTrue();
     });
 
     it('toggles zoom on touch double-tap', async () => {
@@ -290,6 +288,19 @@ describe('SvgViewerLiteComponent', () => {
         expect(content.style.width).toBe('100%');
         expect(container.scrollLeft).toBe(0);
         expect(container.scrollTop).toBe(0);
+    });
+
+    it('does not immediately toggle back from one touch double-tap', async () => {
+        const { container, content } = await createViewer();
+
+        pointer(container, 'pointerdown', { pointerId: 1, clientX: 500, clientY: 300 });
+        pointer(container, 'pointerup', { pointerId: 1, clientX: 500, clientY: 300 });
+        pointer(container, 'pointerdown', { pointerId: 2, clientX: 500, clientY: 300 });
+        pointer(container, 'pointerup', { pointerId: 2, clientX: 500, clientY: 300 });
+        pointer(container, 'pointerdown', { pointerId: 3, clientX: 500, clientY: 300 });
+        pointer(container, 'pointerup', { pointerId: 3, clientX: 500, clientY: 300 });
+
+        expect(content.style.width).toBe('250%');
     });
 
     it('pans vertically with mouse drag at minimum zoom', async () => {

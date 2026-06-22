@@ -78,8 +78,7 @@
                 }
 
                 @if (activeTab() === 'Sheet') {
-                <unit-details-sheet-tab [unit]="unit"
-                    (zoomPanActiveChange)="onSheetZoomPanActiveChange($event)"></unit-details-sheet-tab>
+                <unit-details-sheet-tab [unit]="unit"></unit-details-sheet-tab>
                 }
 
                 @if (activeTab() === 'Card') {
@@ -116,8 +115,7 @@
                 }
 
                 @if (activeTab() === 'Sheet') {
-                <unit-details-sheet-tab [unit]="incomingUnit()!"
-                    (zoomPanActiveChange)="onSheetZoomPanActiveChange($event)"></unit-details-sheet-tab>
+                <unit-details-sheet-tab [unit]="incomingUnit()!"></unit-details-sheet-tab>
                 }
 
                 @if (activeTab() === 'Card') {

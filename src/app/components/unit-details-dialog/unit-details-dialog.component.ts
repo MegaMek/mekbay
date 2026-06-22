@@ -203,7 +203,6 @@ export class UnitDetailsDialogComponent {
     isSwiping = signal(false);
     swipeDeltaX = signal(0); // Raw swipe delta for header calculation
     incomingPanelScrollTop = signal(0);
-    sheetZoomPanActive = signal(false);
 
     // CSS custom properties for panel positions
     currentPanelOffset = signal('0');
@@ -281,9 +280,6 @@ export class UnitDetailsDialogComponent {
         effect(() => {
             this.unit;
             const activeTab = this.activeTab();
-            if (activeTab !== 'Sheet') {
-                this.sheetZoomPanActive.set(false);
-            }
             this.urlService.setQueryParams({
                 shareUnit: this.unit.name,
                 tab: activeTab,
@@ -661,7 +657,7 @@ export class UnitDetailsDialogComponent {
         // Don't block if already swiping - only block before swipe starts
         if (this.isSwiping()) return false;
 
-        if (this.activeTab() === 'Sheet' && this.sheetZoomPanActive()) return true;
+        if (this.activeTab() === 'Sheet' && this.isSheetSwipeBlocked()) return true;
 
         // Block if animation is in progress
         if (this.isSwipeAnimating()) return true;
@@ -671,8 +667,8 @@ export class UnitDetailsDialogComponent {
         return (index === 0 && !this.hasNext) || (index === this.unitList().length - 1 && !this.hasPrev);
     };
 
-    public onSheetZoomPanActiveChange(active: boolean): void {
-        this.sheetZoomPanActive.set(active);
+    private isSheetSwipeBlocked(): boolean {
+        return this.sheetTabRef()?.isZoomPanActive() ?? false;
     }
 
     public setSheetZoomPercent(value: number): void {

@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, DestroyRef, signal, effect, input, output, inject, viewChild, type ElementRef } from '@angular/core';
+import { Component, ChangeDetectionStrategy, DestroyRef, signal, effect, input, inject, viewChild, type ElementRef } from '@angular/core';
 
 import type { Unit } from '../../models/units.model';
 import { SheetService } from '../../services/sheet.service';
@@ -30,7 +30,6 @@ export class SvgViewerLiteComponent {
 
     unit = input<Unit | null>(null);
     zoomable = input<boolean>(false);
-    zoomPanActiveChange = output<boolean>();
 
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
     contentRef = viewChild.required<ElementRef<HTMLDivElement>>('content');
@@ -42,7 +41,6 @@ export class SvgViewerLiteComponent {
     private svgs = signal<SVGSVGElement[]>([]);
     private svgsAttached = signal(false);
     private scale = 1;
-    private zoomPanActive = false;
     private readonly maxScale = this.maxZoomPercent / 100;
     private readonly doubleTapZoomScale = 2.5;
     private readonly doubleTapMaxMs = 300;
@@ -267,7 +265,6 @@ export class SvgViewerLiteComponent {
         this.activePointers.set(event.pointerId, this.clientPoint(event));
         this.pointerStarts.set(event.pointerId, this.clientPoint(event));
         this.resetPointerGesture();
-        this.refreshZoomPanActive();
 
         try {
             container.setPointerCapture(event.pointerId);
@@ -282,7 +279,6 @@ export class SvgViewerLiteComponent {
         this.activePointers.clear();
         this.pointerStarts.clear();
         this.pointerGesture = null;
-        this.refreshZoomPanActive();
     }
 
     private readonly onPointerMove = (event: PointerEvent): void => {
@@ -311,7 +307,6 @@ export class SvgViewerLiteComponent {
         } catch { /* ignore release errors */ }
 
         this.resetPointerGesture();
-        this.refreshZoomPanActive();
 
         if (this.isZoomedIn()) {
             this.consumePointer(event, true);
@@ -395,11 +390,14 @@ export class SvgViewerLiteComponent {
 
         const now = Date.now();
         const previousTap = this.lastTap;
-        this.lastTap = { time: now, point };
+        const isDoubleTap = previousTap
+            && now - previousTap.time <= this.doubleTapMaxMs
+            && Math.hypot(point.x - previousTap.point.x, point.y - previousTap.point.y) <= this.tapMaxDistance;
 
-        if (!previousTap) return;
-        if (now - previousTap.time > this.doubleTapMaxMs) return;
-        if (Math.hypot(point.x - previousTap.point.x, point.y - previousTap.point.y) > this.tapMaxDistance) return;
+        if (!isDoubleTap) {
+            this.lastTap = { time: now, point };
+            return;
+        }
 
         this.lastTap = null;
         this.consumePointer(event, true);
@@ -431,7 +429,6 @@ export class SvgViewerLiteComponent {
         container.scrollLeft = contentX * scale + content.offsetLeft - point.x;
         container.scrollTop = contentY * scale + content.offsetTop - point.y;
         this.clampScroll();
-        this.refreshZoomPanActive();
     }
 
     resetZoom(): void {
@@ -445,7 +442,6 @@ export class SvgViewerLiteComponent {
         const container = this.containerRef().nativeElement;
         container.scrollLeft = 0;
         container.scrollTop = 0;
-        this.refreshZoomPanActive();
     }
 
     setZoomPercent(value: number): void {
@@ -594,12 +590,8 @@ export class SvgViewerLiteComponent {
         return this.scale > 1 + this.zoomEpsilon;
     }
 
-    private refreshZoomPanActive(): void {
-        const active = this.zoomable() && (this.isZoomedIn() || this.activePointers.size > 1);
-        if (active === this.zoomPanActive) return;
-
-        this.zoomPanActive = active;
-        this.zoomPanActiveChange.emit(active);
+    isZoomPanActive(): boolean {
+        return this.zoomable() && (this.isZoomedIn() || this.activePointers.size > 1);
     }
 
     private consumePointer(event: Event, stopPropagation: boolean): void {
