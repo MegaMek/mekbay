@@ -168,6 +168,16 @@ describe('SvgViewerLiteComponent', () => {
         container.dispatchEvent(event);
     }
 
+    function doubleClick(container: HTMLElement, init: MouseEventInit = {}): void {
+        container.dispatchEvent(new MouseEvent('dblclick', {
+            bubbles: true,
+            cancelable: true,
+            clientX: 510,
+            clientY: 270,
+            ...init,
+        }));
+    }
+
     it('loads cloned sheets into the content surface at fit-width scale', async () => {
         const { container, content, svg } = await createViewer();
 
@@ -217,6 +227,22 @@ describe('SvgViewerLiteComponent', () => {
         expect(container.scrollTop).toBeGreaterThan(0);
     });
 
+    it('toggles zoom on mouse double-click at the input position', async () => {
+        const { container, content } = await createViewer();
+        setLayout(container, { scrollWidth: 2500, scrollHeight: 3500 });
+
+        doubleClick(container, { clientX: 760, clientY: 270 });
+
+        expect(content.style.width).toBe('250%');
+        expect(container.scrollLeft).toBeGreaterThan(0);
+
+        doubleClick(container, { clientX: 760, clientY: 270 });
+
+        expect(content.style.width).toBe('100%');
+        expect(container.scrollLeft).toBe(0);
+        expect(container.scrollTop).toBe(0);
+    });
+
     it('clamps scroll when the container resizes', async () => {
         const { container } = await createViewer();
         container.scrollLeft = 500;
@@ -244,6 +270,27 @@ describe('SvgViewerLiteComponent', () => {
 
         expect(container.scrollTop).toBeGreaterThan(startTop);
         expect(activity).toHaveBeenCalledWith(true);
+    });
+
+    it('toggles zoom on touch double-tap', async () => {
+        const { container, content } = await createViewer();
+
+        pointer(container, 'pointerdown', { pointerId: 1, clientX: 500, clientY: 300 });
+        pointer(container, 'pointerup', { pointerId: 1, clientX: 500, clientY: 300 });
+        pointer(container, 'pointerdown', { pointerId: 2, clientX: 500, clientY: 300 });
+        pointer(container, 'pointerup', { pointerId: 2, clientX: 500, clientY: 300 });
+        setLayout(container, { scrollWidth: 2500, scrollHeight: 3500 });
+
+        expect(content.style.width).toBe('250%');
+
+        pointer(container, 'pointerdown', { pointerId: 3, clientX: 500, clientY: 300 });
+        pointer(container, 'pointerup', { pointerId: 3, clientX: 500, clientY: 300 });
+        pointer(container, 'pointerdown', { pointerId: 4, clientX: 500, clientY: 300 });
+        pointer(container, 'pointerup', { pointerId: 4, clientX: 500, clientY: 300 });
+
+        expect(content.style.width).toBe('100%');
+        expect(container.scrollLeft).toBe(0);
+        expect(container.scrollTop).toBe(0);
     });
 
     it('pans vertically with mouse drag at minimum zoom', async () => {

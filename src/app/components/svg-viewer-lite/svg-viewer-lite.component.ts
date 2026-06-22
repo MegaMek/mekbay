@@ -46,9 +46,14 @@ export class SvgViewerLiteComponent {
     private scale = 1;
     private zoomPanActive = false;
     private readonly maxScale = this.maxZoomPercent / 100;
+    private readonly doubleTapZoomScale = 2.5;
+    private readonly doubleTapMaxMs = 300;
+    private readonly tapMaxDistance = 12;
     private readonly pngExportScale = 3;
     private readonly zoomEpsilon = 0.001;
     private readonly activePointers = new Map<number, Point>();
+    private readonly pointerStarts = new Map<number, Point>();
+    private lastTap: { time: number; point: Point } | null = null;
     private pointerGesture: PointerGesture | null = null;
     private pendingSliderZoomPercent: number | null = null;
     private sliderZoomFrameId: number | null = null;
@@ -110,6 +115,7 @@ export class SvgViewerLiteComponent {
             container.addEventListener('pointermove', this.onPointerMove);
             container.addEventListener('pointerup', this.onPointerEnd);
             container.addEventListener('pointercancel', this.onPointerEnd);
+            container.addEventListener('dblclick', this.onDoubleClick);
 
             const resizeObserver = typeof ResizeObserver === 'undefined'
                 ? null
@@ -122,6 +128,7 @@ export class SvgViewerLiteComponent {
                 container.removeEventListener('pointermove', this.onPointerMove);
                 container.removeEventListener('pointerup', this.onPointerEnd);
                 container.removeEventListener('pointercancel', this.onPointerEnd);
+                container.removeEventListener('dblclick', this.onDoubleClick);
                 resizeObserver?.disconnect();
             });
         });
@@ -256,6 +263,7 @@ export class SvgViewerLiteComponent {
 
         const container = this.containerRef().nativeElement;
         this.activePointers.set(event.pointerId, this.clientPoint(event));
+        this.pointerStarts.set(event.pointerId, this.clientPoint(event));
         this.resetPointerGesture();
         this.refreshZoomPanActive();
 
@@ -283,7 +291,11 @@ export class SvgViewerLiteComponent {
     };
 
     private readonly onPointerEnd = (event: PointerEvent): void => {
-        if (!this.activePointers.delete(event.pointerId)) return;
+        if (!this.activePointers.has(event.pointerId)) return;
+
+        this.handleTouchTap(event);
+        this.activePointers.delete(event.pointerId);
+        this.pointerStarts.delete(event.pointerId);
 
         try {
             this.containerRef().nativeElement.releasePointerCapture(event.pointerId);
@@ -295,6 +307,13 @@ export class SvgViewerLiteComponent {
         if (this.isZoomedIn()) {
             this.consumePointer(event, true);
         }
+    };
+
+    private readonly onDoubleClick = (event: MouseEvent): void => {
+        if (!this.zoomable()) return;
+
+        this.consumePointer(event, true);
+        this.toggleZoomAt(this.localPoint(event));
     };
 
     private handlePinch(): void {
@@ -356,6 +375,37 @@ export class SvgViewerLiteComponent {
             || container.scrollWidth > container.clientWidth;
     }
 
+    private handleTouchTap(event: PointerEvent): void {
+        if (event.pointerType !== 'touch' || this.activePointers.size !== 1) return;
+
+        const start = this.pointerStarts.get(event.pointerId);
+        if (!start) return;
+
+        const point = this.clientPoint(event);
+        if (Math.hypot(point.x - start.x, point.y - start.y) > this.tapMaxDistance) return;
+
+        const now = Date.now();
+        const previousTap = this.lastTap;
+        this.lastTap = { time: now, point };
+
+        if (!previousTap) return;
+        if (now - previousTap.time > this.doubleTapMaxMs) return;
+        if (Math.hypot(point.x - previousTap.point.x, point.y - previousTap.point.y) > this.tapMaxDistance) return;
+
+        this.lastTap = null;
+        this.consumePointer(event, true);
+        this.toggleZoomAt(this.toLocalPoint(point));
+    }
+
+    private toggleZoomAt(point: Point): void {
+        if (this.isZoomedIn()) {
+            this.resetZoom();
+            return;
+        }
+
+        this.zoomAt(point, this.doubleTapZoomScale);
+    }
+
     private zoomAt(point: Point, nextScale: number): void {
         const container = this.containerRef().nativeElement;
         const scale = this.clamp(nextScale, 1, this.maxScale);
@@ -379,6 +429,8 @@ export class SvgViewerLiteComponent {
         this.cancelPendingSliderZoom();
         this.scale = 1;
         this.activePointers.clear();
+        this.pointerStarts.clear();
+        this.lastTap = null;
         this.pointerGesture = null;
         this.applyScale();
         this.syncZoomPercent();
