@@ -596,7 +596,7 @@ export class SvgViewerLiteComponent {
     }
 
     isZoomPanActive(): boolean {
-        return this.zoomable() && (this.isZoomedIn() || this.activePointers.size > 1);
+        return this.zoomable() && this.isZoomedIn();
     }
 
     private consumePointer(event: Event, stopPropagation: boolean): void {
