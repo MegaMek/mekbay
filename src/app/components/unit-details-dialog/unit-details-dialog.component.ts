@@ -33,6 +33,7 @@
 
 import { Component, inject, ElementRef, signal, ChangeDetectionStrategy, output, viewChild, effect, computed, type Signal, isSignal, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { CdkMenuModule } from '@angular/cdk/menu';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import type { Unit } from '../../models/units.model';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
@@ -93,7 +94,7 @@ export interface UnitDetailsChangeAction {
 @Component({
     selector: 'unit-details-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, SwipeDirective, LongPressDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent, UnitDetailsVariantsTabComponent, UnitTagsComponent, SimpleSliderComponent],
+    imports: [CommonModule, CdkMenuModule, BaseDialogComponent, SwipeDirective, LongPressDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent, UnitDetailsVariantsTabComponent, UnitTagsComponent, SimpleSliderComponent],
     templateUrl: './unit-details-dialog.component.html',
     styleUrls: ['./unit-details-dialog.component.css'],
     host: {
@@ -680,7 +681,16 @@ export class UnitDetailsDialogComponent {
     }
 
     public exportSheetPng(): void {
-        this.sheetTabRef()?.exportPng();
+        void this.sheetTabRef()?.exportPng();
+    }
+
+    public async copySheetPngToClipboard(): Promise<void> {
+        try {
+            await this.sheetTabRef()?.copyPngToClipboard();
+            this.toastService.showToast('Record sheet copied to clipboard', 'success');
+        } catch {
+            this.toastService.showToast('Could not copy the record sheet image to the clipboard.', 'error');
+        }
     }
 
     public setVariantSortOrder(key: string): void {

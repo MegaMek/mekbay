@@ -72,7 +72,11 @@ export class UnitDetailsSheetTabComponent {
         this.viewer()?.resetZoom();
     }
 
-    exportPng(): void {
-        this.viewer()?.exportPng();
+    exportPng(): Promise<void> {
+        return this.viewer()?.exportPng() ?? Promise.resolve();
+    }
+
+    copyPngToClipboard(): Promise<void> {
+        return this.viewer()?.copyPngToClipboard() ?? Promise.resolve();
     }
 }

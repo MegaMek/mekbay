@@ -460,4 +460,58 @@ describe('SvgViewerLiteComponent', () => {
         expect(revokeObjectUrl).toHaveBeenCalledWith('blob:svg-2');
         expect(revokeObjectUrl).toHaveBeenCalledWith('blob:png');
     });
+
+    it('copies the PNG through the async image clipboard API when available', async () => {
+        const { fixture } = await createViewer(true, false, ['atlas.svg']);
+        const originalImage = window.Image;
+        const originalClipboardDescriptor = Object.getOwnPropertyDescriptor(Navigator.prototype, 'clipboard')
+            ?? Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+        const originalClipboardItem = window.ClipboardItem;
+        const clipboardWrite = jasmine.createSpy('write').and.resolveTo();
+        const createObjectUrl = spyOn(URL, 'createObjectURL').and.returnValue('blob:svg-1');
+        const revokeObjectUrl = spyOn(URL, 'revokeObjectURL').and.stub();
+        spyOn(CanvasRenderingContext2D.prototype, 'drawImage').and.stub();
+        let copiedCanvasWidth = 0;
+        let copiedCanvasHeight = 0;
+        spyOn(HTMLCanvasElement.prototype, 'toBlob').and.callFake(function (this: HTMLCanvasElement, callback: BlobCallback) {
+            copiedCanvasWidth = this.width;
+            copiedCanvasHeight = this.height;
+            callback(new Blob(['png'], { type: 'image/png' }));
+        });
+        class FakeClipboardItem {
+            constructor(public readonly items: Record<string, Blob>) { }
+        }
+        class FakeImage {
+            onload: (() => void) | null = null;
+            onerror: (() => void) | null = null;
+
+            set src(_value: string) {
+                queueMicrotask(() => this.onload?.());
+            }
+        }
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { write: clipboardWrite } });
+        Object.defineProperty(window, 'ClipboardItem', { configurable: true, value: FakeClipboardItem });
+        window.Image = FakeImage as unknown as typeof Image;
+
+        try {
+            await fixture.componentInstance.copyPngToClipboard();
+            await settle();
+        } finally {
+            window.Image = originalImage;
+            Object.defineProperty(window, 'ClipboardItem', { configurable: true, value: originalClipboardItem });
+            if (originalClipboardDescriptor) {
+                Object.defineProperty(navigator, 'clipboard', originalClipboardDescriptor);
+            } else {
+                Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
+            }
+        }
+
+        expect(createObjectUrl).toHaveBeenCalledTimes(1);
+        expect(copiedCanvasWidth).toBe(300);
+        expect(copiedCanvasHeight).toBe(600);
+        expect(clipboardWrite).toHaveBeenCalledTimes(1);
+        const clipboardItem = clipboardWrite.calls.mostRecent().args[0][0] as FakeClipboardItem;
+        expect(clipboardItem.items['image/png']).toEqual(jasmine.any(Blob));
+        expect(revokeObjectUrl).toHaveBeenCalledWith('blob:svg-1');
+    });
 });
