@@ -883,6 +883,10 @@ export class SvgInteractionService {
                 }, forceSelected);
                 if (updated) {
                     this.removePicker();
+                } else if (button.classList.contains('mainButton') && entry.el?.classList.contains('bay')) {
+                    // This is a poorly designed workaround to allow toggling the bay entry selection.
+                    unit.setInventoryControlEntrySelected(entry, forceSelected || !unit.isInventoryControlEntrySelected(entry.id));
+                    this.removePicker();
                 }
             };
 
