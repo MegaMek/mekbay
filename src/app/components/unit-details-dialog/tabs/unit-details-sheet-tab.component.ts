@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { Unit } from '../../../models/units.model';
 import { SvgViewerLiteComponent } from '../../svg-viewer-lite/svg-viewer-lite.component';
@@ -45,4 +45,5 @@ import { SvgViewerLiteComponent } from '../../svg-viewer-lite/svg-viewer-lite.co
 })
 export class UnitDetailsSheetTabComponent {
     unit = input.required<Unit>();
+    zoomPanActiveChange = output<boolean>();
 }
