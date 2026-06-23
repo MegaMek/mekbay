@@ -72,7 +72,15 @@ export class UnitDetailsSheetTabComponent {
         this.viewer()?.resetZoom();
     }
 
-    exportPng(): Promise<void> {
-        return this.viewer()?.exportPng() ?? Promise.resolve();
+    downloadPng(): Promise<void> {
+        return this.viewer()?.downloadPng() ?? Promise.resolve();
+    }
+
+    openPng(): Promise<void> {
+        return this.viewer()?.openPng() ?? Promise.resolve();
+    }
+
+    copyPngToClipboard(): Promise<void> {
+        return this.viewer()?.copyPngToClipboard() ?? Promise.resolve();
     }
 }

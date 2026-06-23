@@ -469,11 +469,28 @@ export class SvgViewerLiteComponent {
         });
     }
 
-    async exportPng(): Promise<void> {
+    async downloadPng(): Promise<void> {
+        try {
+            await SvgExportUtil.downloadPng(this.svgs(), this.exportFileName());
+        } catch (err) {
+            this.logger.error('svg-viewer-lite: failed to download PNG: ' + JSON.stringify(err));
+        }
+    }
+    
+    async openPng(): Promise<void> {
         try {
             await SvgExportUtil.openPng(this.svgs());
         } catch (err) {
             this.logger.error('svg-viewer-lite: failed to open PNG: ' + JSON.stringify(err));
+        }
+    }
+    
+    async copyPngToClipboard(): Promise<void> {
+        try {
+            await SvgExportUtil.copyPngToClipboard(this.svgs(), this.exportFileName());
+        } catch (err) {
+            this.logger.error('svg-viewer-lite: failed to copy PNG to clipboard: ' + JSON.stringify(err));
+            throw err;
         }
     }
 
