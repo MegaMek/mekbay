@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -74,9 +74,5 @@ export class UnitDetailsSheetTabComponent {
 
     exportPng(): Promise<void> {
         return this.viewer()?.exportPng() ?? Promise.resolve();
-    }
-
-    copyPngToClipboard(): Promise<void> {
-        return this.viewer()?.copyPngToClipboard() ?? Promise.resolve();
     }
 }

@@ -136,13 +136,8 @@
                 <output>{{ sheetTabRef()?.zoomPercent() ?? 100 }}%</output>
             </label>
             <button type="button" class="bt-button" (click)="resetSheetZoom()">Reset</button>
-            <button type="button" class="bt-button" [cdkMenuTriggerFor]="sheetExportMenu">Export</button>
-            <ng-template #sheetExportMenu>
-                <div class="popup-menu glass framed-borders has-shadow" cdkMenu>
-                    <button type="button" class="menu-item" cdkMenuItem (click)="exportSheetPng()">Download PNG</button>
-                    <button type="button" class="menu-item" cdkMenuItem (click)="copySheetPngToClipboard()">Copy to Clipboard</button>
-                </div>
-            </ng-template>
+            <button type="button" class="bt-button" (click)="exportSheetPng()">Export</button>
+
         </div>
         }
         @if (activeTab() === 'Variants') {

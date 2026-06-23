@@ -421,26 +421,4 @@ describe('SvgViewerLiteComponent', () => {
             window.cancelAnimationFrame = originalCancelAnimationFrame;
         }
     });
-
-    it('sends all SVGs to the reusable PNG download utility', async () => {
-        const { fixture } = await createViewer(true, false, ['atlas.svg', 'atlas-wide.svg']);
-        const downloadPng = spyOn(SvgExportUtil, 'downloadPng').and.resolveTo();
-
-        await fixture.componentInstance.exportPng();
-
-        const svgs = downloadPng.calls.mostRecent().args[0];
-        expect(svgs.length).toBe(2);
-        expect(downloadPng).toHaveBeenCalledWith(svgs, 'Test-TST-1');
-    });
-
-    it('sends all SVGs to the reusable clipboard utility', async () => {
-        const { fixture } = await createViewer(true, false, ['atlas.svg']);
-        const copyPngToClipboard = spyOn(SvgExportUtil, 'copyPngToClipboard').and.resolveTo();
-
-        await fixture.componentInstance.copyPngToClipboard();
-
-        const svgs = copyPngToClipboard.calls.mostRecent().args[0];
-        expect(svgs.length).toBe(1);
-        expect(copyPngToClipboard).toHaveBeenCalledWith(svgs, 'Test-TST-1');
-    });
 });

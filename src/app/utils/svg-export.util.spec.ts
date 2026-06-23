@@ -93,6 +93,28 @@ describe('SvgExportUtil', () => {
         expect(revokeObjectUrl).toHaveBeenCalledWith('blob:png');
     });
 
+    it('opens rendered SVGs as a 3x PNG in a new tab', async () => {
+        mockFontFetch();
+        spyOn(URL, 'createObjectURL').and.returnValues('blob:svg', 'blob:png');
+        const revokeObjectUrl = spyOn(URL, 'revokeObjectURL').and.stub();
+        const open = spyOn(window, 'open').and.returnValue({} as Window);
+        spyOn(CanvasRenderingContext2D.prototype, 'drawImage').and.stub();
+        let canvasWidth = 0;
+        let canvasHeight = 0;
+        spyOn(HTMLCanvasElement.prototype, 'toBlob').and.callFake(function (this: HTMLCanvasElement, callback: BlobCallback) {
+            canvasWidth = this.width;
+            canvasHeight = this.height;
+            callback(pngBlob());
+        });
+
+        await withFakeSvgImage(() => SvgExportUtil.openPng([makeSvg()]));
+
+        expect(canvasWidth).toBe(300);
+        expect(canvasHeight).toBe(600);
+        expect(open).toHaveBeenCalledWith('blob:png', '_blank', 'noopener');
+        expect(revokeObjectUrl).toHaveBeenCalledWith('blob:svg');
+    });
+
     it('shares rendered SVGs as a 3x PNG file', async () => {
         mockFontFetch();
         const originalCanShare = Object.getOwnPropertyDescriptor(Navigator.prototype, 'canShare') ?? Object.getOwnPropertyDescriptor(navigator, 'canShare');

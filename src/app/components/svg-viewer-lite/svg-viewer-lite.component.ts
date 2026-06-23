@@ -471,18 +471,9 @@ export class SvgViewerLiteComponent {
 
     async exportPng(): Promise<void> {
         try {
-            await SvgExportUtil.downloadPng(this.svgs(), this.exportFileName());
+            await SvgExportUtil.openPng(this.svgs());
         } catch (err) {
-            this.logger.error('svg-viewer-lite: failed to export PNG: ' + JSON.stringify(err));
-        }
-    }
-
-    async copyPngToClipboard(): Promise<void> {
-        try {
-            await SvgExportUtil.copyPngToClipboard(this.svgs(), this.exportFileName());
-        } catch (err) {
-            this.logger.error('svg-viewer-lite: failed to copy PNG to clipboard: ' + JSON.stringify(err));
-            throw err;
+            this.logger.error('svg-viewer-lite: failed to open PNG: ' + JSON.stringify(err));
         }
     }
 
