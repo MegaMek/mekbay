@@ -5,6 +5,7 @@ import { SheetService } from '../../services/sheet.service';
 import { OptionsService } from '../../services/options.service';
 import { LoggerService } from '../../services/logger.service';
 import { REMOTE_HOST } from '../../models/common.model';
+import { SvgExportUtil } from '../../utils/svg-export.util';
 
 type Point = { x: number; y: number };
 
@@ -13,8 +14,6 @@ type PointerGesture = {
     center: Point;
     distance: number;
 };
-
-const PNG_MIME_TYPE = 'image/png';
 
 @Component({
     selector: 'svg-viewer-lite',
@@ -48,7 +47,6 @@ export class SvgViewerLiteComponent {
     private readonly doubleTapMaxMs = 300;
     private readonly tapMaxDistance = 12;
     private readonly syntheticMouseAfterTouchMs = 800;
-    private readonly pngExportScale = 3;
     private readonly zoomEpsilon = 0.001;
     private readonly activePointers = new Map<number, Point>();
     private readonly pointerStarts = new Map<number, Point>();
@@ -473,10 +471,7 @@ export class SvgViewerLiteComponent {
 
     async exportPng(): Promise<void> {
         try {
-            const pngBlob = await this.renderPngBlob();
-            if (!pngBlob) return;
-
-            this.downloadPngBlob(pngBlob);
+            await SvgExportUtil.downloadPng(this.svgs(), this.exportFileName());
         } catch (err) {
             this.logger.error('svg-viewer-lite: failed to export PNG: ' + JSON.stringify(err));
         }
@@ -484,80 +479,11 @@ export class SvgViewerLiteComponent {
 
     async copyPngToClipboard(): Promise<void> {
         try {
-            if (!this.canUseAsyncImageClipboard()) {
-                throw new Error('Image clipboard writes are not supported by this browser');
-            }
-
-            const pngBlob = await this.renderPngBlob();
-            if (!pngBlob) throw new Error('No PNG data was generated');
-
-            await navigator.clipboard.write([
-                new ClipboardItem({ [PNG_MIME_TYPE]: pngBlob }),
-            ]);
+            await SvgExportUtil.copyPngToClipboard(this.svgs(), this.exportFileName());
         } catch (err) {
             this.logger.error('svg-viewer-lite: failed to copy PNG to clipboard: ' + JSON.stringify(err));
             throw err;
         }
-    }
-
-    private async renderPngBlob(): Promise<Blob | null> {
-        const svgs = this.svgs();
-        if (svgs.length === 0) return null;
-
-        const entries = svgs.map((svg) => ({ svg, size: this.getSvgExportSize(svg), url: '' }));
-
-        try {
-            for (const entry of entries) {
-                const serialized = new XMLSerializer().serializeToString(entry.svg);
-                const svgBlob = new Blob([serialized], { type: 'image/svg+xml;charset=utf-8' });
-                entry.url = URL.createObjectURL(svgBlob);
-            }
-
-            const images = await Promise.all(entries.map((entry) => this.loadImage(entry.url)));
-            const width = entries.reduce((sum, entry) => sum + entry.size.width, 0);
-            const height = Math.max(...entries.map((entry) => entry.size.height));
-            const canvas = document.createElement('canvas');
-            canvas.width = width * this.pngExportScale;
-            canvas.height = height * this.pngExportScale;
-            const context = canvas.getContext('2d');
-            if (!context) return null;
-
-            context.scale(this.pngExportScale, this.pngExportScale);
-            context.fillStyle = '#ffffff';
-            context.fillRect(0, 0, width, height);
-
-            let x = 0;
-            for (let index = 0; index < images.length; index += 1) {
-                const size = entries[index].size;
-                context.drawImage(images[index], x, 0, size.width, size.height);
-                x += size.width;
-            }
-
-            const pngBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
-            return pngBlob;
-        } finally {
-            for (const entry of entries) {
-                if (entry.url) URL.revokeObjectURL(entry.url);
-            }
-        }
-    }
-
-    private downloadPngBlob(pngBlob: Blob): void {
-        const pngUrl = URL.createObjectURL(pngBlob);
-        try {
-            const link = document.createElement('a');
-            link.href = pngUrl;
-            link.download = `${this.exportFileName()}.png`;
-            link.click();
-        } finally {
-            URL.revokeObjectURL(pngUrl);
-        }
-    }
-
-    private canUseAsyncImageClipboard(): boolean {
-        return typeof navigator.clipboard?.write === 'function'
-            && typeof ClipboardItem !== 'undefined'
-            && (!ClipboardItem.supports || ClipboardItem.supports(PNG_MIME_TYPE));
     }
 
     private applyScale(): void {
@@ -639,23 +565,6 @@ export class SvgViewerLiteComponent {
     private consumePointer(event: Event, stopPropagation: boolean): void {
         event.preventDefault();
         if (stopPropagation) event.stopPropagation();
-    }
-
-    private loadImage(url: string): Promise<HTMLImageElement> {
-        return new Promise((resolve, reject) => {
-            const image = new Image();
-            image.onload = () => resolve(image);
-            image.onerror = () => reject(new Error('Failed to load SVG image'));
-            image.src = url;
-        });
-    }
-
-    private getSvgExportSize(svg: SVGSVGElement): { width: number; height: number } {
-        const viewBox = svg.viewBox?.baseVal;
-        const rect = svg.getBoundingClientRect();
-        const width = viewBox?.width || Number.parseFloat(svg.getAttribute('width') ?? '') || rect.width || 1000;
-        const height = viewBox?.height || Number.parseFloat(svg.getAttribute('height') ?? '') || rect.height || 1000;
-        return { width: Math.ceil(width), height: Math.ceil(height) };
     }
 
     private exportFileName(): string {

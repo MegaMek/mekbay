@@ -6,6 +6,7 @@ import { OptionsService } from '../../services/options.service';
 import { SheetService } from '../../services/sheet.service';
 import { LoggerService } from '../../services/logger.service';
 import { SvgViewerLiteComponent } from './svg-viewer-lite.component';
+import { SvgExportUtil } from '../../utils/svg-export.util';
 
 function makeSvg(width = 100, height = 200): SVGSVGElement {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -421,97 +422,25 @@ describe('SvgViewerLiteComponent', () => {
         }
     });
 
-    it('exports all SVGs horizontally as a high-resolution PNG', async () => {
+    it('sends all SVGs to the reusable PNG download utility', async () => {
         const { fixture } = await createViewer(true, false, ['atlas.svg', 'atlas-wide.svg']);
-        const originalImage = window.Image;
-        const createObjectUrl = spyOn(URL, 'createObjectURL').and.returnValues('blob:svg-1', 'blob:svg-2', 'blob:png');
-        const revokeObjectUrl = spyOn(URL, 'revokeObjectURL').and.stub();
-        const click = spyOn(HTMLAnchorElement.prototype, 'click').and.stub();
-        spyOn(CanvasRenderingContext2D.prototype, 'drawImage').and.stub();
-        let exportedCanvasWidth = 0;
-        let exportedCanvasHeight = 0;
-        spyOn(HTMLCanvasElement.prototype, 'toBlob').and.callFake(function (this: HTMLCanvasElement, callback: BlobCallback) {
-            exportedCanvasWidth = this.width;
-            exportedCanvasHeight = this.height;
-            callback(new Blob(['png'], { type: 'image/png' }));
-        });
-        class FakeImage {
-            onload: (() => void) | null = null;
-            onerror: (() => void) | null = null;
+        const downloadPng = spyOn(SvgExportUtil, 'downloadPng').and.resolveTo();
 
-            set src(_value: string) {
-                queueMicrotask(() => this.onload?.());
-            }
-        }
-        window.Image = FakeImage as unknown as typeof Image;
+        await fixture.componentInstance.exportPng();
 
-        try {
-            await fixture.componentInstance.exportPng();
-            await settle();
-        } finally {
-            window.Image = originalImage;
-        }
-
-        expect(createObjectUrl).toHaveBeenCalledTimes(3);
-        expect(exportedCanvasWidth).toBe(450);
-        expect(exportedCanvasHeight).toBe(900);
-        expect(click).toHaveBeenCalled();
-        expect(revokeObjectUrl).toHaveBeenCalledWith('blob:svg-1');
-        expect(revokeObjectUrl).toHaveBeenCalledWith('blob:svg-2');
-        expect(revokeObjectUrl).toHaveBeenCalledWith('blob:png');
+        const svgs = downloadPng.calls.mostRecent().args[0];
+        expect(svgs.length).toBe(2);
+        expect(downloadPng).toHaveBeenCalledWith(svgs, 'Test-TST-1');
     });
 
-    it('copies the PNG through the async image clipboard API when available', async () => {
+    it('sends all SVGs to the reusable clipboard utility', async () => {
         const { fixture } = await createViewer(true, false, ['atlas.svg']);
-        const originalImage = window.Image;
-        const originalClipboardDescriptor = Object.getOwnPropertyDescriptor(Navigator.prototype, 'clipboard')
-            ?? Object.getOwnPropertyDescriptor(navigator, 'clipboard');
-        const originalClipboardItem = window.ClipboardItem;
-        const clipboardWrite = jasmine.createSpy('write').and.resolveTo();
-        const createObjectUrl = spyOn(URL, 'createObjectURL').and.returnValue('blob:svg-1');
-        const revokeObjectUrl = spyOn(URL, 'revokeObjectURL').and.stub();
-        spyOn(CanvasRenderingContext2D.prototype, 'drawImage').and.stub();
-        let copiedCanvasWidth = 0;
-        let copiedCanvasHeight = 0;
-        spyOn(HTMLCanvasElement.prototype, 'toBlob').and.callFake(function (this: HTMLCanvasElement, callback: BlobCallback) {
-            copiedCanvasWidth = this.width;
-            copiedCanvasHeight = this.height;
-            callback(new Blob(['png'], { type: 'image/png' }));
-        });
-        class FakeClipboardItem {
-            constructor(public readonly items: Record<string, Blob>) { }
-        }
-        class FakeImage {
-            onload: (() => void) | null = null;
-            onerror: (() => void) | null = null;
+        const copyPngToClipboard = spyOn(SvgExportUtil, 'copyPngToClipboard').and.resolveTo();
 
-            set src(_value: string) {
-                queueMicrotask(() => this.onload?.());
-            }
-        }
-        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { write: clipboardWrite } });
-        Object.defineProperty(window, 'ClipboardItem', { configurable: true, value: FakeClipboardItem });
-        window.Image = FakeImage as unknown as typeof Image;
+        await fixture.componentInstance.copyPngToClipboard();
 
-        try {
-            await fixture.componentInstance.copyPngToClipboard();
-            await settle();
-        } finally {
-            window.Image = originalImage;
-            Object.defineProperty(window, 'ClipboardItem', { configurable: true, value: originalClipboardItem });
-            if (originalClipboardDescriptor) {
-                Object.defineProperty(navigator, 'clipboard', originalClipboardDescriptor);
-            } else {
-                Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
-            }
-        }
-
-        expect(createObjectUrl).toHaveBeenCalledTimes(1);
-        expect(copiedCanvasWidth).toBe(300);
-        expect(copiedCanvasHeight).toBe(600);
-        expect(clipboardWrite).toHaveBeenCalledTimes(1);
-        const clipboardItem = clipboardWrite.calls.mostRecent().args[0][0] as FakeClipboardItem;
-        expect(clipboardItem.items['image/png']).toEqual(jasmine.any(Blob));
-        expect(revokeObjectUrl).toHaveBeenCalledWith('blob:svg-1');
+        const svgs = copyPngToClipboard.calls.mostRecent().args[0];
+        expect(svgs.length).toBe(1);
+        expect(copyPngToClipboard).toHaveBeenCalledWith(svgs, 'Test-TST-1');
     });
 });
