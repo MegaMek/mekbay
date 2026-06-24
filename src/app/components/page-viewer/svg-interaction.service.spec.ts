@@ -559,9 +559,13 @@ function createInventoryInteractionUnit(html = `
         hasDirectInventory: () => true,
         gunnerySkill: () => 4,
         pilotingSkill: () => 5,
+        effectiveGunnerySkill: () => 4,
+        effectivePilotingSkill: () => 5,
         turnState: () => ({
             moveMode: () => null,
             airborne: () => false,
+            getAttackMovementModifier: () => 0,
+            getSpottingModifier: () => 0,
         }),
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
         rules: {}

@@ -44,6 +44,7 @@ import { CBTForceUnitState } from './cbt-force-unit-state.model';
 import { UnitSvgMekService } from '../services/unit-svg-mek.service';
 import { UnitSvgAeroService } from '../services/unit-svg-aero.service';
 import { UnitSvgInfantryService } from '../services/unit-svg-infantry.service';
+import { UnitSvgVehicleService } from '../services/unit-svg-vehicle.service';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { AmmoEquipment, WeaponEquipment } from './equipment.model';
 import { C3NetworkUtil } from '../utils/c3-network.util';
@@ -54,6 +55,7 @@ import type { UnitTypeRules } from './rules/unit-type-rules';
 import { MekRules } from './rules/mek-rules';
 import { AeroRules } from './rules/aero-rules';
 import { InfantryRules } from './rules/infantry-rules';
+import { ProtoMekRules } from './rules/protomek-rules';
 import { VehicleRules } from './rules/vehicle-rules';
 import { type InventoryControlRuntimeEntryState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeSnapshot, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from './inventory-control-runtime-state.model';
 import { CBTInventoryControlRuntime } from './cbt-inventory-control-runtime.model';
@@ -124,6 +126,7 @@ export class CBTForceUnit extends ForceUnit {
             case 'Mek': return new MekRules(this);
             case 'Aero': return new AeroRules(this);
             case 'Infantry': return new InfantryRules(this);
+            case 'ProtoMek': return new ProtoMekRules(this);
             default: return new VehicleRules(this);
         }
     }
@@ -176,6 +179,11 @@ export class CBTForceUnit extends ForceUnit {
                         break;
                     case 'Infantry':
                         this._svgService = new UnitSvgInfantryService(this, this.unitInitializer);
+                        break;
+                    case 'Tank':
+                    case 'VTOL':
+                    case 'Naval':
+                        this._svgService = new UnitSvgVehicleService(this, this.unitInitializer);
                         break;
                     default:
                         this._svgService = new UnitSvgService(this, this.unitInitializer);
@@ -590,6 +598,18 @@ export class CBTForceUnit extends ForceUnit {
         let piloting = pilot.getSkill('piloting');
         return piloting;
     });
+
+    public gunneryModifier = computed<number>(() => {
+        return this.rules.gunneryModifier();
+    });
+
+    public pilotingModifier = computed<number>(() => {
+        return this.rules.pilotingModifier();
+    });
+
+    public effectiveGunnerySkill = computed<number>(() => this.gunnerySkill() + this.gunneryModifier());
+
+    public effectivePilotingSkill = computed<number>(() => this.pilotingSkill() + this.pilotingModifier());
 
     public customAmmoBvVariation = computed<number>(() => {
         if (!this.isLoaded()) return 0; // Ensure unit is loaded so that inventory and crits are available

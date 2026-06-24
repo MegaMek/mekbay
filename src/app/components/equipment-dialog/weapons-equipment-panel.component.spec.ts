@@ -154,6 +154,14 @@ function createComponent(
     const heat: HeatProfile = { current: 2, previous: 1, next: options.heatNext };
     const rules = {
         computeAllEntryStates: () => entryStates,
+        getAttackMovementModifier: (moveMode: MotiveModes | null | undefined) => {
+            switch (moveMode) {
+                case 'walk': return 1;
+                case 'run': return 2;
+                case 'jump': return 3;
+                default: return 0;
+            }
+        },
         ...(options.tracksHeat === false ? {} : {
             heatDissipation: () => ({
                 totalPips: 10,
@@ -175,6 +183,8 @@ function createComponent(
         turnState: () => ({
             moveMode: () => options.moveMode ?? null,
             airborne: () => false,
+            getAttackMovementModifier: () => rules.getAttackMovementModifier(options.moveMode ?? null),
+            getSpottingModifier: () => 0,
         }),
         svgService: {
             inventoryTargetHeatFireModifier: () => 0

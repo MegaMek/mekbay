@@ -60,7 +60,7 @@ import { EquipmentDialogComponent } from '../equipment-dialog/equipment-dialog.c
 import type { EquipmentDialogContext, EquipmentDialogData, EquipmentDialogTab } from '../equipment-dialog/equipment-dialog.model';
 import { WeaponTargetChoiceMenuComponent } from '../../components/equipment-dialog/weapon-target-choice-menu.component';
 import { getInventoryControlModes, getSelectedInventoryControlMode, selectInventoryControlEntry, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
-import { getMotiveModeLabel, getMotiveModeTargetNumberModifier } from '../../models/motiveModes.model';
+import { getMotiveModeLabel } from '../../models/motiveModes.model';
 import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { inventoryTargetCategory, inventoryTargetNumberText, parseInventoryTargetNumberCell, readInventoryTargetDisplay, readInventoryTargetText } from '../../utils/inventory-target-number.util';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
@@ -1013,6 +1013,8 @@ export class SvgInteractionService {
         if (svgText) return svgText;
 
         const moveMode = unit.turnState().moveMode();
+        const movementModifier = unit.turnState().getAttackMovementModifier();
+        const spotterModifier = unit.turnState().getSpottingModifier();
         const heatFireModifier = unit.svgService?.inventoryTargetHeatFireModifier(entry) ?? 0;
         const hitModifier = parseInventoryTargetNumberCell(readInventoryTargetText(entry, 'hit')) ?? 0;
         return inventoryTargetNumberText({
@@ -1020,10 +1022,11 @@ export class SvgInteractionService {
             category: inventoryTargetCategory(entry),
             display: readInventoryTargetDisplay(entry),
             target,
-            gunnerySkill: unit.gunnerySkill(),
-            pilotingSkill: unit.pilotingSkill(),
-            movementModifier: getMotiveModeTargetNumberModifier(moveMode),
+            gunnerySkill: unit.effectiveGunnerySkill(),
+            pilotingSkill: unit.effectivePilotingSkill(),
             movementLabel: moveMode ? getMotiveModeLabel(moveMode, unit.getUnit(), unit.turnState().airborne() ?? false) : 'None',
+            movementModifier: movementModifier,
+            spottingModifier: spotterModifier,
             hitModifier: hitModifier - heatFireModifier,
             heatFireModifier
         });

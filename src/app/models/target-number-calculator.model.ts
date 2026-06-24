@@ -171,7 +171,7 @@ export function getTargetHexCoverModifier(cover: TnTargetHexCover | null | undef
 export function getIndirectFireModifier(indirectFire: boolean | null | undefined, spotterMoveMode: TnSpotterMoveMode | null | undefined, spotterDeclaredAttacks: boolean | null | undefined): number {
     if (!indirectFire) return 0;
     return 1
-        + getAttackerMovementModifier(spotterMoveMode ?? 'stationary')
+        + getDefaultAttackerMovementModifier(spotterMoveMode ?? 'stationary')
         + (spotterDeclaredAttacks ? 1 : 0);
 }
 
@@ -197,7 +197,7 @@ export function calculateTargetTnModifier(input: TnTargetNumberCalculationInput)
     return total;
 }
 
-export function getAttackerMovementModifier(moveMode: MotiveModes | null | undefined): number {
+export function getDefaultAttackerMovementModifier(moveMode: MotiveModes | null | undefined): number {
     switch (moveMode) {
         case 'walk': return 1;
         case 'run': return 2;
