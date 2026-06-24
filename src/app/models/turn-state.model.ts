@@ -276,6 +276,16 @@ export class TurnState {
         return this.unitState.unit.rules.getAttackMovementModifier(this.moveMode());
     });
 
+    attackMovementModifierCanApply = computed<boolean>(() => {
+        const unit = this.unitState.unit;
+        return unit.getAvailableMotiveModes()
+            .some(option => unit.rules.getAttackMovementModifier(option.mode) !== 0);
+    });
+
+    missingAttackMovementModifier = computed<boolean>(() => {
+        return this.moveMode() === null && this.attackMovementModifierCanApply();
+    });
+
     getTotalTargetModifierAsAttacker = computed<number>(() => {
         let modifier = this.unitState.unit.gunneryModifier();
         modifier += this.getAttackMovementModifier();

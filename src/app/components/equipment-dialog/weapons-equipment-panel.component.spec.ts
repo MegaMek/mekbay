@@ -121,6 +121,7 @@ interface CreateComponentOptions {
     gunnerySkill?: number;
     pilotingSkill?: number;
     moveMode?: MotiveModes | null;
+    attackMovementCanAffectTargetNumbers?: boolean;
 }
 
 function createComponent(
@@ -184,6 +185,7 @@ function createComponent(
             moveMode: () => options.moveMode ?? null,
             airborne: () => false,
             getAttackMovementModifier: () => rules.getAttackMovementModifier(options.moveMode ?? null),
+            missingAttackMovementModifier: () => (options.moveMode ?? null) === null && (options.attackMovementCanAffectTargetNumbers ?? true),
             getSpottingModifier: () => 0,
         }),
         svgService: {
@@ -447,7 +449,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
             }),
             el: svgEntry('<g><g class="name"><text>Medium VSP Laser</text></g><g class="damage"><text>9/7/5 [Variable]</text></g><text class="range_short">2</text><text class="range_medium">5</text><text class="range_long">9</text></g>')
         });
-        const { component, fixture, unit } = createComponent([vspLaser]);
+        const { component, fixture, unit } = createComponent([vspLaser], {}, [], new Map(), { moveMode: 'stationary' });
         let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
         component.selectRange(row, 'short');
@@ -598,7 +600,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         fixture.detectChanges();
         const choices = Array.from(document.body.querySelectorAll('.weapon-target-choice-menu .target-choice')) as HTMLButtonElement[];
         expect(choices.map(choice => choice.querySelector('.target-choice-token')?.textContent?.trim())).toEqual(['—', 'A', 'B']);
-        expect(choices.map(choice => choice.querySelector('.target-choice-tn')?.textContent?.trim() ?? '')).toEqual(['', '4', '7']);
+        expect(choices.map(choice => choice.querySelector('.target-choice-tn')?.textContent?.trim() ?? '')).toEqual(['', 'M?', 'M?']);
 
         choices[2].click();
         fixture.detectChanges();
@@ -684,9 +686,33 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(selectedRangeCell.style.getPropertyValue('--range-selection-color')).toBe(INVENTORY_CONTROL_TARGET_COLORS[0]);
     });
 
+    it('shows movement placeholder for target numbers when movement is unassigned and affects TN', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>') });
+        const { component, unit } = createComponent([laser], {}, [], new Map(), { gunnerySkill: 4 });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 4, tnModifier: 1 });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+        unit.inventoryControl.markInventoryViewChanged();
+
+        expect(component.targetNumberText(row)).toBe('M?');
+        expect(component.targetNumberTooltip(row)).toEqual([{ value: 'Select movement to calculate TN', isHeader: true }]);
+    });
+
+    it('does not show movement placeholder for unassigned target rows', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>') });
+        const { component, unit } = createComponent([laser], {}, [], new Map(), { gunnerySkill: 4 });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.inventoryControl.markInventoryViewChanged();
+
+        expect(component.targetNumberText(row)).toBe('');
+        expect(component.targetNumberTooltip(row)).toBeNull();
+    });
+
     it('shows heat fire modifiers as a separate target number term', () => {
         const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>') });
-        const { component, fixture, unit } = createComponent([laser], {}, [], new Map([[laser, { isDamaged: false, isDisabled: false, hitMod: 3 }]]), { gunnerySkill: 4 });
+        const { component, fixture, unit } = createComponent([laser], {}, [], new Map([[laser, { isDamaged: false, isDisabled: false, hitMod: 3 }]]), { gunnerySkill: 4, moveMode: 'stationary' });
         (unit.svgService as any).inventoryTargetHeatFireModifier = () => 2;
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         unit.createInventoryControlTarget();
@@ -698,7 +724,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(component.targetNumberText(row)).toBe('10');
         expect(component.targetNumberTooltip(row)).toEqual([
             { label: 'Gunnery', value: '4' },
-            { label: 'Movement (None)', value: '+0' },
+            { label: 'Movement (Stationary)', value: '+0' },
             { label: 'Target (A)', value: '+1' },
             { label: 'Range (Medium)', value: '+2' },
             { label: 'Hit Modifier', value: '+1' },
@@ -710,7 +736,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
     it('uses piloting skill for physical target numbers', () => {
         const punch = entry({ id: 'punch', physical: true, el: svgEntry('<g><g class="name"><text>Punch</text></g></g>') });
-        const { component, unit } = createComponent([punch], {}, [], new Map(), { pilotingSkill: 6 });
+        const { component, unit } = createComponent([punch], {}, [], new Map(), { pilotingSkill: 6, moveMode: 'stationary' });
         const row = component.groups().find(group => group.id === 'physical')!.rows[0];
         unit.createInventoryControlTarget();
         unit.updateInventoryControlTarget('A', { distance: 10, tnModifier: 1 });
@@ -723,7 +749,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(component.targetNumberText(row)).toBe('7');
         expect(component.targetNumberTooltip(row)).toEqual([
             { label: 'Piloting', value: '6' },
-            { label: 'Movement (None)', value: '+0' },
+            { label: 'Movement (Stationary)', value: '+0' },
             { label: 'Target (A)', value: '+1' },
             { isBreak: true },
             { label: 'Total', value: '7', isHeader: true },

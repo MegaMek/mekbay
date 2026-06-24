@@ -1272,6 +1272,7 @@ export class SvgInteractionService {
 
         const moveMode = unit.turnState().moveMode();
         const movementModifier = unit.turnState().getAttackMovementModifier();
+        const missingMovementModifier = unit.turnState().missingAttackMovementModifier();
         const spotterModifier = unit.turnState().getSpottingModifier();
         const heatFireModifier = unit.svgService?.inventoryTargetHeatFireModifier(entry) ?? 0;
         const hitModifier = parseInventoryTargetNumberCell(readInventoryTargetText(entry, 'hit')) ?? 0;
@@ -1284,6 +1285,7 @@ export class SvgInteractionService {
             pilotingSkill: unit.effectivePilotingSkill(),
             movementLabel: moveMode ? getMotiveModeLabel(moveMode, unit.getUnit(), unit.turnState().airborne() ?? false) : 'None',
             movementModifier: movementModifier,
+            missingMovementModifier,
             spottingModifier: spotterModifier,
             hitModifier: hitModifier - heatFireModifier,
             heatFireModifier

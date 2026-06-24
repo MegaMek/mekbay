@@ -728,6 +728,7 @@ export class UnitSvgService {
     inventoryTargetNumberText(entry: MountedEquipment, target: InventoryControlRuntimeTarget): string | null {
         const moveMode = this.unit.turnState().moveMode();
         const movementModifier = this.unit.turnState().getAttackMovementModifier();
+        const missingMovementModifier = this.unit.turnState().missingAttackMovementModifier();
         const spotterModifier = this.unit.turnState().getSpottingModifier();
         const range = this.inventoryControlRangeForTargetDistance(entry, target.distance);
         const text = inventoryTargetNumberText({
@@ -739,6 +740,7 @@ export class UnitSvgService {
             pilotingSkill: this.unit.effectivePilotingSkill(),
             movementLabel: moveMode ? getMotiveModeLabel(moveMode, this.unit.getUnit(), this.unit.turnState().airborne() ?? false) : 'None',
             movementModifier: movementModifier,
+            missingMovementModifier,
             spottingModifier: spotterModifier,
             hitModifier: this.getInventoryTargetHitModifier(entry, range),
             heatFireModifier: this.inventoryTargetHeatFireModifier(entry)

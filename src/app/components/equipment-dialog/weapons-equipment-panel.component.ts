@@ -450,6 +450,7 @@ export class WeaponsEquipmentPanelComponent {
         this.inventoryControl().inventoryViewVersion();
         const moveMode = this.unit().turnState().moveMode();
         const movementModifier = this.unit().turnState().getAttackMovementModifier();
+        const missingMovementModifier = this.unit().turnState().missingAttackMovementModifier();
         const spotterModifier = this.unit().turnState().getSpottingModifier();
         const heatFireModifier = this.unit().svgService?.inventoryTargetHeatFireModifier(row.entry) ?? 0;
         const hitModifier = parseInventoryTargetNumberCell(this.hitTextForTarget(row, target)) ?? 0;
@@ -462,6 +463,7 @@ export class WeaponsEquipmentPanelComponent {
             pilotingSkill: this.unit().pilotingSkill(),
             movementLabel: moveMode ? getMotiveModeLabel(moveMode, this.unit().getUnit(), this.unit().turnState().airborne() ?? false) : 'None',
             movementModifier: movementModifier,
+            missingMovementModifier,
             spottingModifier: spotterModifier,
             hitModifier: hitModifier - heatFireModifier,
             heatFireModifier

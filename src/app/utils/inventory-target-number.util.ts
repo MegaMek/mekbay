@@ -27,6 +27,7 @@ export interface InventoryTargetNumberInput {
     pilotingSkill: number;
     movementLabel: string;
     movementModifier: number;
+    missingMovementModifier?: boolean;
     spottingModifier: number;
     hitModifier: number;
     heatFireModifier?: number;
@@ -82,7 +83,9 @@ export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberI
 
 export function inventoryTargetNumberText(input: InventoryTargetNumberInput): string {
     const rangeSelection = inventoryTargetRangeSelection(input);
+    if (!rangeSelection) return '';
     if (rangeSelection?.outOfLongRange) return 'X';
+    if (input.missingMovementModifier) return 'M?';
     const breakdown = inventoryTargetNumberBreakdown(input);
     return breakdown === null ? '' : breakdown.total.toString();
 }
@@ -92,6 +95,13 @@ export function inventoryTargetNumberBreakdown(input: InventoryTargetNumberInput
     if (!target) return null;
     const rangeSelection = inventoryTargetRangeSelection(input);
     if (!rangeSelection) return null;
+    if (input.missingMovementModifier) {
+        return {
+            total: 0,
+            rangeSelection,
+            lines: [{ value: 'Select movement to calculate TN', isHeader: true }]
+        };
+    }
 
     const physical = isPhysicalInventoryTargetNumberEntry(input.entry, input.category);
     const skillLabel = physical ? 'Piloting' : 'Gunnery';
