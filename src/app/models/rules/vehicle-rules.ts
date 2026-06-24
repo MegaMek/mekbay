@@ -246,6 +246,15 @@ export class VehicleRules extends UnitTypeRulesBase {
     override readonly PSRModifiers = computed<{ modifier: number; modifiers: PSRCheck[] }>(() => {
         const status = this.systemsStatus();
         const modifiers: PSRCheck[] = [];
+        let preExisting = 0;
+        const hardenedArmor = this.unit.getUnit().armorType === 'Hardened';
+        if (hardenedArmor) {
+            preExisting += 1;
+            modifiers.push({
+                pilotCheck: 1,
+                reason: 'Mounts Hardened Armor'
+            });
+        }
         if (status.commanderHit) {
             modifiers.push({ pilotCheck: 1, reason: 'Commander hit' });
         }
@@ -265,7 +274,7 @@ export class VehicleRules extends UnitTypeRulesBase {
                 appliedMotivePilotingLevels.add(motiveHit.level);
             }
         }
-        return { modifier: status.pilotingModifier, modifiers };
+        return { modifier: status.pilotingModifier + preExisting, modifiers };
     });
 
     override readonly PSRTargetRoll = computed<number>(() => this.unit.pilotingSkill() + this.PSRModifiers().modifier);
