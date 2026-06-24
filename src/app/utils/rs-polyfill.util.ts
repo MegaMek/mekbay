@@ -101,6 +101,8 @@ export class RsPolyfillUtil {
         if (unit.type !== 'Mek') {
             this.addCriticalLocs(svg);
         }
+        this.addMotiveHitPips(svg);
+        this.addVtolRotorHitsCounter(unit, svg);
         this.addHeatLevels(svg);
         this.addApplyHeatButton(svg);
         this.addCrewSkillsButtons(svg, unit.type);
@@ -184,6 +186,101 @@ export class RsPolyfillUtil {
                 }
             }
         }
+    }
+
+    private static addMotiveHitPips(svg: SVGSVGElement): void {
+        ['motive_system_hit_2', 'motive_system_hit_3'].forEach(id => {
+            const motiveEl = svg.getElementById(id) as SVGGraphicsElement | null;
+            if (!motiveEl || svg.getElementById(`${id}_pips`)) return;
+
+            let bbox: DOMRect;
+            try {
+                bbox = motiveEl.getBBox();
+            } catch {
+                return;
+            }
+
+            const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            group.setAttribute('id', `${id}_pips`);
+            group.setAttribute('class', 'motiveHitPips screen-only');
+            group.setAttribute('critId', id);
+
+            const cellWidth = bbox.width / 3;
+            const cellHeight = bbox.height / 3;
+            const radius = Math.min(cellWidth, cellHeight) * 0.4;
+            const yOffset = bbox.height + 1;
+            for (let index = 0; index < 9; index++) {
+                const column = index % 3;
+                const row = Math.floor(index / 3);
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('class', 'motiveHitPip hidden');
+                circle.setAttribute('cx', (bbox.x + cellWidth * (column + 0.5)).toString());
+                circle.setAttribute('cy', (bbox.y + yOffset + cellHeight * (row + 0.5)).toString());
+                circle.setAttribute('r', radius.toString());
+                group.appendChild(circle);
+            }
+
+            motiveEl.parentElement?.appendChild(group);
+        });
+    }
+
+    private static addVtolRotorHitsCounter(unit: Unit, svg: SVGSVGElement): void {
+        if (unit.type !== 'VTOL' || svg.getElementById('rotor_hits_group')) return;
+
+        const rotorArmorText = svg.getElementById('textArmor_RO') as SVGTextElement | null;
+        if (!rotorArmorText) return;
+
+        const xAttr = rotorArmorText.getAttribute('x');
+        const yAttr = rotorArmorText.getAttribute('y');
+        if (!xAttr || !yAttr) return;
+
+        const centerX = parseFloat(xAttr);
+        const labelY = parseFloat(yAttr) - 10;
+        if (!Number.isFinite(centerX) || !Number.isFinite(labelY)) return;
+
+        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        group.setAttribute('id', 'rotor_hits_group');
+        group.setAttribute('class', 'screen-only critLoc counterGroup rotorHitsControl');
+        group.setAttribute('critId', 'rotor');
+        group.setAttribute('type', 'rotor');
+        group.setAttribute('transform', `translate(0 -40)`);
+
+        const rectWidth = 36;
+        const rectHeight = 24;
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', (centerX - rectWidth / 2).toString());
+        rect.setAttribute('y', (labelY - 8).toString());
+        rect.setAttribute('width', rectWidth.toString());
+        rect.setAttribute('height', rectHeight.toString());
+        rect.setAttribute('fill', '#fff');
+        rect.setAttribute('stroke', '#000');
+        rect.setAttribute('stroke-width', '0.8');
+
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('x', centerX.toString());
+        label.setAttribute('y', labelY.toString());
+        label.setAttribute('text-anchor', 'middle');
+        label.setAttribute('dominant-baseline', 'middle');
+        label.setAttribute('font-family', 'Roboto, sans-serif');
+        label.setAttribute('font-size', '7');
+        label.setAttribute('font-weight', 'bold');
+        label.textContent = 'Rotor Hits';
+
+        const counter = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        counter.setAttribute('id', 'rotor_hits_counter');
+        counter.setAttribute('x', centerX.toString());
+        counter.setAttribute('y', (labelY + 9).toString());
+        counter.setAttribute('text-anchor', 'middle');
+        counter.setAttribute('dominant-baseline', 'middle');
+        counter.setAttribute('font-family', 'Roboto, sans-serif');
+        counter.setAttribute('font-size', '10');
+        counter.setAttribute('font-weight', 'bold');
+        counter.textContent = '0';
+
+        group.appendChild(rect);
+        group.appendChild(label);
+        group.appendChild(counter);
+        rotorArmorText.parentElement?.parentElement?.appendChild(group);
     }
 
     private static addCrewSkillsButtons(svg: SVGSVGElement, unitType: UnitType): void {

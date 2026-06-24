@@ -4,9 +4,7 @@ import { getMotiveModeMaxDistance, type MotiveModes } from "./motiveModes.model"
 import type { CriticalSlot } from "./force-serialization";
 import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "./common.model";
 import type { CBTForceUnitState } from "./cbt-force-unit-state.model";
-import { MekRules } from "./rules/mek-rules";
 import {
-    getAttackerMovementModifier,
     getTargetMovementDistanceModifier,
     getTargetMoveTypeModifier,
     getTargetStanceModifier,
@@ -270,14 +268,32 @@ export class TurnState {
         }
     });
 
-    getTargetModifierAsAttacker = computed<number>(() => {
-        const baseUnit = this.unitState.unit.getUnit();
-        let mod = baseUnit.type === 'Infantry' ? 0 : getAttackerMovementModifier(this.moveMode());
-        if (this.spotting()) { mod += 1; }
-        return mod;
+    getSpottingModifier = computed<number>(() => {
+        return this.spotting() ? 1 : 0;
     });
 
-    getTargetModifierAsDefender = computed<number>(() => {
+    getAttackMovementModifier = computed<number>(() => {
+        return this.unitState.unit.rules.getAttackMovementModifier(this.moveMode());
+    });
+
+    attackMovementModifierCanApply = computed<boolean>(() => {
+        const unit = this.unitState.unit;
+        return unit.getAvailableMotiveModes()
+            .some(option => unit.rules.getAttackMovementModifier(option.mode) !== 0);
+    });
+
+    missingAttackMovementModifier = computed<boolean>(() => {
+        return this.moveMode() === null && this.attackMovementModifierCanApply();
+    });
+
+    getTotalTargetModifierAsAttacker = computed<number>(() => {
+        let modifier = this.unitState.unit.gunneryModifier();
+        modifier += this.getAttackMovementModifier();
+        modifier += this.getSpottingModifier();
+        return modifier;
+    });
+
+    getTotalTargetModifierAsDefender = computed<number>(() => {
         let mod = 0;
         if (this.unitState.prone()) { mod += getTargetStanceModifier('prone', 1); }
         if (this.unitState.immobile()) { mod += getTargetStanceModifier('immobile', 1); }
@@ -428,20 +444,9 @@ export class TurnState {
         }
         const forceUnit = this.unitState.unit;
         const rules = forceUnit.rules;
-        if (rules instanceof MekRules) {
-            const movement = rules.movementState();
-            if (moveMode === 'walk') {
-                return movement?.maxWalk ?? 0;
-            }
-            if (moveMode === 'run') {
-                return movement?.maxRun ?? 0;
-            }
-            if (moveMode === 'jump') {
-                return movement?.jump ?? 0;
-            }
-            if (moveMode === 'UMU') {
-                return movement?.UMU ?? 0;
-            }
+        const rulesMaxDistance = rules.getMaxDistanceForMoveMode(moveMode);
+        if (rulesMaxDistance !== null) {
+            return rulesMaxDistance;
         }
         const unit = this.unitState.unit.getUnit();
         return getMotiveModeMaxDistance(moveMode, unit, airborne ?? false);

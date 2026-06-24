@@ -272,26 +272,63 @@ export class CBTPrintUtil {
 
         await Promise.all([
             ...svgImages.map(img => new Promise<void>((resolve) => {
-                const done = () => resolve();
                 const href = this.getImageHref(img);
                 if (!href || href.startsWith('data:')) return resolve();
 
-                img.addEventListener('load', done, { once: true });
-                img.addEventListener('error', done, { once: true });
-                setTimeout(done, 4000);
+                let settled = false;
+                const done = (loaded: boolean) => {
+                    if (settled) return;
+                    settled = true;
+                    if (!loaded) {
+                        this.fallbackFluffImageToReferenceTables(img);
+                    }
+                    resolve();
+                };
+
+                img.addEventListener('load', () => done(true), { once: true });
+                img.addEventListener('error', () => done(false), { once: true });
+                setTimeout(() => done(false), 4000);
             })),
             ...htmlImages.map(img => new Promise<void>((resolve) => {
                 if (img.complete) {
+                    if (img.naturalWidth === 0) {
+                        this.fallbackFluffImageToReferenceTables(img);
+                    }
                     resolve();
                     return;
                 }
 
-                const done = () => resolve();
-                img.addEventListener('load', done, { once: true });
-                img.addEventListener('error', done, { once: true });
-                setTimeout(done, 4000);
+                let settled = false;
+                const done = (loaded: boolean) => {
+                    if (settled) return;
+                    settled = true;
+                    if (!loaded) {
+                        this.fallbackFluffImageToReferenceTables(img);
+                    }
+                    resolve();
+                };
+                img.addEventListener('load', () => done(true), { once: true });
+                img.addEventListener('error', () => done(false), { once: true });
+                setTimeout(() => done(img.complete && img.naturalWidth > 0), 4000);
             }))
         ]);
+    }
+
+    private static fallbackFluffImageToReferenceTables(image: Element): void {
+        if (image.id !== 'fluff-image-injected') {
+            return;
+        }
+
+        const svg = image.closest('svg') as SVGSVGElement | null;
+        if (!svg) {
+            return;
+        }
+
+        const injectedEl = svg.getElementById('fluff-image-fo') as SVGElement | null;
+        (injectedEl ?? image as SVGElement).style.setProperty('display', 'none');
+        svg.querySelectorAll<SVGGraphicsElement>('.referenceTable').forEach((referenceTable) => {
+            referenceTable.style.display = 'block';
+        });
     }
 
     private static async nextAnimationFrames(n: number = 1): Promise<void> {

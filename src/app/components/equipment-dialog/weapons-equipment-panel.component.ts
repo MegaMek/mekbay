@@ -16,10 +16,10 @@ import { WeaponTargetChoiceMenuComponent } from '../equipment-dialog/weapon-targ
 import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import type { TooltipLine } from '../tooltip/tooltip.component';
-import { formatInventoryTargetSignedModifier, inventoryTargetNumberBreakdown, inventoryTargetNumberText, inventoryTargetRangeSelection, parseInventoryTargetNumberCell, type InventoryTargetRangeKey } from '../../utils/inventory-target-number.util';
+import { formatInventoryTargetSignedModifier, inventoryTargetNumberBreakdown, InventoryTargetNumberInput, inventoryTargetNumberText, inventoryTargetRangeSelection, parseInventoryTargetNumberCell, type InventoryTargetRangeKey } from '../../utils/inventory-target-number.util';
 import { resolveHitModifier } from '../../models/rules/hit-modifier.util';
 import { resolveWeaponRangeDamageText } from '../../models/rules/weapon-range-rules.util';
-import { getMotiveModeLabel, getMotiveModeTargetNumberModifier } from '../../models/motiveModes.model';
+import { getMotiveModeLabel } from '../../models/motiveModes.model';
 import type { EquipmentDialogContext } from './equipment-dialog.model';
 import {
     formatInventoryControlModeName,
@@ -446,9 +446,12 @@ export class WeaponsEquipmentPanelComponent {
         return breakdown === null ? null : { total: breakdown.total, lines: breakdown.lines };
     }
 
-    private targetNumberInput(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null) {
+    private targetNumberInput(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null): InventoryTargetNumberInput {
         this.inventoryControl().inventoryViewVersion();
         const moveMode = this.unit().turnState().moveMode();
+        const movementModifier = this.unit().turnState().getAttackMovementModifier();
+        const missingMovementModifier = this.unit().turnState().missingAttackMovementModifier();
+        const spotterModifier = this.unit().turnState().getSpottingModifier();
         const heatFireModifier = this.unit().svgService?.inventoryTargetHeatFireModifier(row.entry) ?? 0;
         const hitModifier = parseInventoryTargetNumberCell(this.hitTextForTarget(row, target)) ?? 0;
         return {
@@ -458,8 +461,10 @@ export class WeaponsEquipmentPanelComponent {
             target,
             gunnerySkill: this.unit().gunnerySkill(),
             pilotingSkill: this.unit().pilotingSkill(),
-            movementModifier: getMotiveModeTargetNumberModifier(moveMode),
             movementLabel: moveMode ? getMotiveModeLabel(moveMode, this.unit().getUnit(), this.unit().turnState().airborne() ?? false) : 'None',
+            movementModifier: movementModifier,
+            missingMovementModifier,
+            spottingModifier: spotterModifier,
             hitModifier: hitModifier - heatFireModifier,
             heatFireModifier
         };

@@ -1,6 +1,27 @@
 import { RsPolyfillUtil } from './rs-polyfill.util';
 
 describe('RsPolyfillUtil', () => {
+    it('adds hidden 3x3 motive hit pip overlays below repeatable motive hit controls', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const motiveHit2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        motiveHit2.setAttribute('id', 'motive_system_hit_2');
+        const motiveHit3 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        motiveHit3.setAttribute('id', 'motive_system_hit_3');
+        (motiveHit2 as unknown as { getBBox: () => DOMRect }).getBBox = () => ({ x: 10, y: 20, width: 9, height: 9 } as DOMRect);
+        (motiveHit3 as unknown as { getBBox: () => DOMRect }).getBBox = () => ({ x: 30, y: 20, width: 9, height: 9 } as DOMRect);
+        svg.append(motiveHit2, motiveHit3);
+
+        (RsPolyfillUtil as unknown as { addMotiveHitPips: (svg: SVGSVGElement) => void }).addMotiveHitPips(svg);
+
+        const pips2 = svg.querySelectorAll('#motive_system_hit_2_pips .motiveHitPip');
+        const pips3 = svg.querySelectorAll('#motive_system_hit_3_pips .motiveHitPip');
+        expect(pips2.length).toBe(9);
+        expect(pips3.length).toBe(9);
+        expect(Array.from(pips2).every(pip => pip.classList.contains('hidden'))).toBeTrue();
+        expect((pips2[0] as SVGCircleElement).getAttribute('cx')).toBe('11.5');
+        expect((pips2[0] as SVGCircleElement).getAttribute('cy')).toBe('31.5');
+    });
+
     it('adds target TN overlay elements beside existing hit modifier elements', () => {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.innerHTML = `

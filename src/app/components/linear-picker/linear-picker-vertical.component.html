@@ -1,13 +1,13 @@
-<div #picker class="linear-picker" [class.light-theme]="lightTheme()" [class.touch]="this.layoutService.isTouchInput()" [class.horizontal]="horizontal()"
-    [class.vertical]="!horizontal()" [class.label-right]="labelOnRight()">
+<div #picker class="linear-picker linear-picker-vertical" [class.light-theme]="lightTheme()" [class.touch]="layoutService.isTouchInput()"
+    [class.label-right]="labelOnRight()">
     @for (choice of values(); let i = $index; track choice.value) {
     @switch(choice.displayType) {
     @case ('dropdown') {
     <div class="value-cell dropdown-cell" [class.selected]="isSelected(choice)"
         [class.highlight]="isHovered(choice) && !choice.disabled" [class.disabled]="choice.disabled"
         [class.active]="choice.active">
-        <label [for]="'dropdown-' + i">{{ choice.label }}</label>
-        <select [id]="'dropdown-' + i" [title]="choice.label" (change)="handleDropdownChange($event, choice)">
+        <label [for]="'dropdown-vertical-' + i">{{ choice.label }}</label>
+        <select [id]="'dropdown-vertical-' + i" [title]="choice.label" (change)="handleDropdownChange($event, choice)">
             @for (option of choice.choices; track option.value) {
             <option [value]="option.value" [selected]="option.value === choice.value">{{ option.label }}</option>
             }

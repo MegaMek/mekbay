@@ -275,6 +275,9 @@ export interface CriticalSlot {
     loc?: string; // Location of the critical slot (HD, LT, RT, ...)
     slot?: number; // Slot number of the critical slot
     hits?: number; // How many hits did this location receive. If is an armored location, this is the number of hits it has taken
+    pendingHits?: number; // Pending hit delta for count-based criticals, such as VTOL rotor hits
+    hitTimestamps?: number[]; // Committed hit timestamps for count-based criticals that need chronological application
+    pendingHitTimestamps?: number[]; // Pending addition timestamps for count-based criticals
     totalAmmo?: number; // If is an ammo slot: how much total ammo is in this slot.
     consumed?: number; // If is an ammo slot: how much ammo have been consumed. If is a F_MODULAR_ARMOR, is the armor points used
     destroying?: number; // If this location is in the process of being destroyed. Contains the timestamp of when the destruction started
@@ -338,6 +341,9 @@ export const CRIT_SLOT_SCHEMA = Sanitizer.schema<CriticalSlot>()
     .string('loc')
     .number('slot')
     .number('hits')
+    .number('pendingHits')
+    .custom('hitTimestamps', sanitizeTimestampArray)
+    .custom('pendingHitTimestamps', sanitizeTimestampArray)
     .number('totalAmmo')
     .number('consumed')
     .number('destroying')
@@ -349,6 +355,14 @@ export const CRIT_SLOT_SCHEMA = Sanitizer.schema<CriticalSlot>()
     .string('originalName')
     .boolean('armored')
     .build();
+
+function sanitizeTimestampArray(value: unknown): number[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const timestamps = value
+        .map(timestamp => typeof timestamp === 'number' ? timestamp : Number(timestamp))
+        .filter(timestamp => Number.isFinite(timestamp));
+    return timestamps.length > 0 ? timestamps : undefined;
+}
 
 export const INVENTORY_SCHEMA = Sanitizer.schema<SerializedInventory>()
     .string('id')

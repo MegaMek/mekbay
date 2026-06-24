@@ -45,7 +45,7 @@ import { resolveWeaponRangeDamageText, WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBU
 import { formatGunneryDisplay, formatPilotingDisplay } from '../models/rules/unit-type-rules';
 import { AmmoEquipment } from '../models/equipment.model';
 import { formatAmmoName } from '../utils/ammo-interaction.util';
-import { getMotiveModeLabel, getMotiveModeTargetNumberModifier } from '../models/motiveModes.model';
+import { getMotiveModeLabel } from '../models/motiveModes.model';
 import { inventoryTargetCategory, inventoryTargetNumberText, readInventoryTargetDisplay } from '../utils/inventory-target-number.util';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 
@@ -280,7 +280,7 @@ export class UnitSvgService {
         const svg = this.unit.svg();
         if (!svg) return;
         const PSRMod = this.unit.PSRModifiers();
-        const attackerModifier = this.unit.turnState().getTargetModifierAsAttacker();
+        const attackerModifier = this.unit.turnState().getTotalTargetModifierAsAttacker();
 
         // Check if all crew members have default values (no name and default skills)
         const allCrewDefault = crew.every(member => 
@@ -727,16 +727,21 @@ export class UnitSvgService {
 
     inventoryTargetNumberText(entry: MountedEquipment, target: InventoryControlRuntimeTarget): string | null {
         const moveMode = this.unit.turnState().moveMode();
+        const movementModifier = this.unit.turnState().getAttackMovementModifier();
+        const missingMovementModifier = this.unit.turnState().missingAttackMovementModifier();
+        const spotterModifier = this.unit.turnState().getSpottingModifier();
         const range = this.inventoryControlRangeForTargetDistance(entry, target.distance);
         const text = inventoryTargetNumberText({
             entry,
             category: inventoryTargetCategory(entry),
             display: readInventoryTargetDisplay(entry),
             target,
-            gunnerySkill: this.unit.gunnerySkill(),
-            pilotingSkill: this.unit.pilotingSkill(),
-            movementModifier: getMotiveModeTargetNumberModifier(moveMode),
+            gunnerySkill: this.unit.effectiveGunnerySkill(),
+            pilotingSkill: this.unit.effectivePilotingSkill(),
             movementLabel: moveMode ? getMotiveModeLabel(moveMode, this.unit.getUnit(), this.unit.turnState().airborne() ?? false) : 'None',
+            movementModifier: movementModifier,
+            missingMovementModifier,
+            spottingModifier: spotterModifier,
             hitModifier: this.getInventoryTargetHitModifier(entry, range),
             heatFireModifier: this.inventoryTargetHeatFireModifier(entry)
         });
@@ -931,6 +936,7 @@ export class UnitSvgService {
         }
         // Update move mode display
         const moveMode = turnState.moveMode();
+        const moveModifier = turnState.getAttackMovementModifier();
         let el: SVGElement | null = null;
         const mpWalkEl = svg.getElementById('mpWalk') as SVGElement | null;
         const mpRunEl = svg.getElementById('mpRun') as SVGElement | null;
@@ -944,57 +950,55 @@ export class UnitSvgService {
         } else if (moveMode === 'jump' || moveMode === 'UMU') {
             el = mpJumpEl ?? mpAltMode;
         }
-        // cleanup
-        for (const otherEl of [mpWalkEl, mpRunEl, mpJumpEl, mpAltMode]) {
-            if (!otherEl) continue;
-            if (!el) {
-                otherEl?.classList.remove('unusedMoveMode');
-                otherEl?.classList.remove('currentMoveMode');
-                const sibling = otherEl.previousElementSibling as SVGElement | null;
-                sibling?.classList.remove('unusedMoveMode');
-                sibling?.classList.remove('currentMoveMode');
-                // Use an ID selector and the generic overload so TypeScript treats results as SVGElement
-                svg.querySelectorAll<SVGElement>(`.${CSS.escape(otherEl.id)}-rect`).forEach((rectEl: SVGElement) => {
-                    rectEl.style.display = 'none';
-                });
-            } else
-                if (otherEl !== el || (moveMode === 'stationary')) {
-                    otherEl?.classList.add('unusedMoveMode');
-                    otherEl?.classList.remove('currentMoveMode');
-                    const sibling = otherEl.previousElementSibling as SVGElement | null;
-                    sibling?.classList.add('unusedMoveMode');
-                    sibling?.classList.remove('currentMoveMode');
-                    // Use an ID selector and the generic overload so TypeScript treats results as SVGElement
-                    svg.querySelectorAll<SVGElement>(`.${CSS.escape(otherEl.id)}-rect`).forEach((rectEl: SVGElement) => {
-                        rectEl.style.display = 'none';
-                    });
-                }
+        const movementEls = [mpWalkEl, mpRunEl, mpJumpEl, mpAltMode].filter((candidate): candidate is SVGElement => candidate !== null);
+        for (const otherEl of movementEls) {
+            otherEl.classList.remove('unusedMoveMode', 'currentMoveMode');
+            const sibling = otherEl.previousElementSibling as SVGElement | null;
+            sibling?.classList.remove('unusedMoveMode', 'currentMoveMode');
+            svg.querySelectorAll<SVGElement>(`.${CSS.escape(otherEl.id)}-rect`).forEach((rectEl: SVGElement) => {
+                rectEl.style.display = 'none';
+            });
         }
-        if (el) {
-            if (moveMode === 'stationary') {
-                svg.querySelectorAll<SVGElement>(`.${CSS.escape(el.id)}-rect`).forEach((rectEl: SVGElement) => {
-                    rectEl.style.display = 'block';
-                });
-                const textEl = svg.querySelector<SVGElement>(`text.${CSS.escape(el.id)}-rect`);
-                if (textEl) {
-                    textEl.textContent = '+0';
-                }
-            } else {
-                el.classList.add('currentMoveMode');
-                el.classList.remove('unusedMoveMode');
-                const sibling = el.previousElementSibling as SVGElement | null;
-                sibling?.classList.add('currentMoveMode');
-                sibling?.classList.remove('unusedMoveMode');
-                svg.querySelectorAll<SVGElement>(`.${CSS.escape(el.id)}-rect`).forEach((rectEl: SVGElement) => {
-                    rectEl.style.display = 'block';
-                });
-                if (el === mpWalkEl) {
-                    const textEl = svg.querySelector<SVGElement>(`text.${CSS.escape(el.id)}-rect`);
-                    if (textEl) {
-                        textEl.textContent = '+1'; // Needed to counter the Stationary +0
-                    }
-                }
+
+        if (!el || moveMode === null) return;
+
+        const hasAttackMovementModifier = movementEls.some(moveEl => {
+            const candidateMode = moveEl === mpWalkEl ? 'walk'
+                : moveEl === mpRunEl ? 'run'
+                    : moveEl === mpJumpEl || moveEl === mpAltMode ? 'jump'
+                        : null;
+            return candidateMode !== null && unit.rules.getAttackMovementModifier(candidateMode) !== 0;
+        });
+
+        if (moveMode !== 'stationary') {
+            for (const otherEl of movementEls) {
+                const isCurrent = otherEl === el;
+                otherEl.classList.toggle('currentMoveMode', isCurrent);
+                otherEl.classList.toggle('unusedMoveMode', !isCurrent);
+                const sibling = otherEl.previousElementSibling as SVGElement | null;
+                sibling?.classList.toggle('currentMoveMode', isCurrent);
+                sibling?.classList.toggle('unusedMoveMode', !isCurrent);
+            }
+        } else {
+            for (const otherEl of movementEls) {
+                otherEl.classList.add('unusedMoveMode');
+                const sibling = otherEl.previousElementSibling as SVGElement | null;
+                sibling?.classList.add('unusedMoveMode');
             }
         }
+
+        if (!hasAttackMovementModifier) return;
+
+        svg.querySelectorAll<SVGElement>(`.${CSS.escape(el.id)}-rect`).forEach((rectEl: SVGElement) => {
+            rectEl.style.display = 'block';
+        });
+        const textEl = svg.querySelector<SVGElement>(`text.${CSS.escape(el.id)}-rect`);
+        if (textEl) {
+            textEl.textContent = this.formatSignedModifier(moveModifier);
+        }
+    }
+
+    private formatSignedModifier(modifier: number): string {
+        return modifier >= 0 ? `+${modifier}` : modifier.toString();
     }
 }

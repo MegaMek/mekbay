@@ -119,6 +119,7 @@ export class UnitSvgInfantryService extends UnitSvgService {
         if (!svg) return;
         // Delegate state computation to the rules layer (handles pending damage too)
         this.infantryRules.evaluateInventoryDestruction();
+        super.updateInventory();
         this.unit.getInventory().forEach(entry => {
             if (!entry.el?.getAttribute('SSW')) return;
             if (entry.destroyed) {

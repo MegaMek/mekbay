@@ -68,15 +68,15 @@ describe('UnitDetailsSheetTabComponent', () => {
         const viewer = fixture.debugElement.query(By.directive(SvgViewerLiteComponent)).componentInstance as SvgViewerLiteComponent;
         const setZoom = spyOn(viewer, 'setZoomPercent').and.stub();
         const resetZoom = spyOn(viewer, 'resetZoom').and.stub();
-        const exportPng = spyOn(viewer, 'exportPng').and.resolveTo();
+        const downloadPng = spyOn(viewer, 'downloadPng').and.resolveTo();
 
         component.setZoomPercent(150);
         component.resetZoom();
-        component.exportPng();
+        component.downloadPng();
 
         expect(setZoom).toHaveBeenCalledWith(150);
         expect(resetZoom).toHaveBeenCalled();
-        expect(exportPng).toHaveBeenCalled();
+        expect(downloadPng).toHaveBeenCalled();
     });
 
     it('exposes the live viewer zoom-pan state', async () => {

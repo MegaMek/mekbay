@@ -96,8 +96,6 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
  */
 export function formatPilotingDisplay(pilotingSkill: number, psrModifier: number): string {
     if (!psrModifier) return pilotingSkill.toString();
-    const target = pilotingSkill + psrModifier;
-    // if (target > 12) return 'FAIL';
     const sign = psrModifier > 0 ? '+' : '';
     return `${pilotingSkill}${sign}${psrModifier}`;
 }

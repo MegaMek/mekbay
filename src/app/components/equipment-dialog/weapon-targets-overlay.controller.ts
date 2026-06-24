@@ -108,7 +108,7 @@ export class WeaponTargetsOverlayController {
         if (!this.targetsCompRef) return;
         this.targetsCompRef.setInput('targets', options.unit.getInventoryControlTargets());
         this.targetsCompRef.setInput('readOnly', options.readOnly ? options.readOnly() : options.unit.readOnly());
-        this.targetsCompRef.setInput('unassignedMovement', options.unit.turnState().moveMode() === null);
+        this.targetsCompRef.setInput('unassignedMovement', options.unit.turnState().missingAttackMovementModifier());
         this.targetsCompRef.changeDetectorRef.detectChanges();
         this.deps.overlayManager.repositionAll();
     }

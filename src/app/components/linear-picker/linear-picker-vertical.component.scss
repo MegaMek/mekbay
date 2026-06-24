@@ -1,0 +1,51 @@
+.linear-picker-vertical {
+    display: flex;
+    flex-direction: column;
+}
+
+.value-cell.selected[data-title]::before {
+    position: absolute;
+    top: 0;
+    right: 100%;
+    height: 100%;
+    min-height: 100%;
+    display: flex;
+    align-items: center;
+    padding-left: 12px;
+    padding-right: 12px;
+    border: 2px solid #000;
+    content: attr(data-title);
+    background-color: #000;
+    color: #fff;
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    box-sizing: border-box;
+    font-weight: bold;
+}
+
+.linear-picker-vertical.label-right .value-cell.selected[data-title]::before {
+    right: auto;
+    left: 100%;
+}
+
+.value-cell {
+    padding: 2px 8px;
+}
+
+.linear-picker-vertical.touch .value-cell {
+    padding: 3px 64px 3px 8px;
+    font-size: 0.9em;
+    text-align: right;
+}
+
+.value-cell.selected {
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
+}
+
+.linear-picker-vertical.light-theme .value-cell.selected[data-title]::before {
+    background: #fff;
+    color: #000;
+    border-color: #000;
+}

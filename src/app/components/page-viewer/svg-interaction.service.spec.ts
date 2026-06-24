@@ -38,6 +38,7 @@ describe('SvgInteractionService', () => {
     let forceBuilderService: { selectUnit: jasmine.Spy; editPilotOfUnit: jasmine.Spy };
     let pickerFactory: { createChoicePicker: jasmine.Spy; createNumericPicker: jasmine.Spy };
     let pageViewerState: PageViewerStateService;
+    let options: { pickerStyle: 'default' | 'linear' | 'radial'; quickActions: string; sheetsColor: string; useAutomations: boolean };
 
     beforeEach(() => {
         zoomPanService = {
@@ -63,6 +64,12 @@ describe('SvgInteractionService', () => {
             createChoicePicker: jasmine.createSpy('createChoicePicker').and.returnValue({ destroy: jasmine.createSpy('destroy') }),
             createNumericPicker: jasmine.createSpy('createNumericPicker')
         };
+        options = {
+            pickerStyle: 'default',
+            quickActions: 'disabled',
+            sheetsColor: 'day',
+            useAutomations: true
+        };
 
         TestBed.configureTestingModule({
             providers: [
@@ -84,12 +91,7 @@ describe('SvgInteractionService', () => {
                 {
                     provide: OptionsService,
                     useValue: {
-                        options: () => ({
-                            pickerStyle: 'default',
-                            quickActions: 'disabled',
-                            sheetsColor: 'day',
-                            useAutomations: true
-                        })
+                        options: () => options
                     }
                 },
                 {
@@ -241,6 +243,247 @@ describe('SvgInteractionService', () => {
 
         dialogClosedCallbacks[0]();
         expect(pageViewerState.inventoryDialogOpen()).toBeFalse();
+    });
+
+    it('updates sensor hit tiers from critical hit state', () => {
+        const { svg, unit, sensorHit3, sensorHit4, sensorHit1 } = createSensorHitInteractionUnit();
+        sensorHit3.classList.add('damaged');
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(sensorHit3, 61);
+        expect(activeSensorHitLevels(unit)).toEqual([1, 2, 3]);
+
+        tap(sensorHit3, 62);
+        expect(activeSensorHitLevels(unit)).toEqual([1, 2]);
+
+        tap(sensorHit4, 63);
+        expect(activeSensorHitLevels(unit)).toEqual([1, 2, 3, 4]);
+
+        tap(sensorHit1, 64);
+        expect(activeSensorHitLevels(unit)).toEqual([1]);
+    });
+
+    it('adds pending VTOL rotor hits with the rotor counter picker delta', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const rotorGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        rotorGroup.setAttribute('id', 'rotor_hits_group');
+        rotorGroup.setAttribute('class', 'critLoc counterGroup rotorHitsControl');
+        rotorGroup.setAttribute('critId', 'rotor');
+        rotorGroup.setAttribute('type', 'rotor');
+        svg.appendChild(rotorGroup);
+
+        const rotorCrit = { id: 'rotor', hits: 2, pendingHits: 1 };
+        const unit = {
+            id: 'unit-vtol',
+            getUnit: () => ({ type: 'VTOL' }),
+            getInventory: () => [],
+            getCritLoc: (id: string) => id === 'rotor' ? rotorCrit : null,
+            setCritLoc: jasmine.createSpy('setCritLoc').and.callFake((crit) => {
+                Object.assign(rotorCrit, crit);
+            }),
+            getCritSlots: () => [rotorCrit],
+        };
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(rotorGroup, 65);
+
+        expect(pickerFactory.createNumericPicker).toHaveBeenCalledWith(jasmine.objectContaining({
+            min: -3,
+            max: 17,
+            selected: 1,
+            title: 'Rotor Hits',
+        }));
+
+        pickerFactory.createNumericPicker.calls.mostRecent().args[0].onPick({ value: 5 });
+
+        expect(unit.setCritLoc).toHaveBeenCalledWith(jasmine.objectContaining({
+            id: 'rotor',
+            hits: 2,
+            pendingHits: 6,
+            destroying: undefined,
+            destroyed: undefined,
+        }));
+    });
+
+    it('uses the vertical linear picker for VTOL rotor hits when linear pickers are preferred', () => {
+        options.pickerStyle = 'linear';
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const rotorGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        rotorGroup.setAttribute('id', 'rotor_hits_group');
+        rotorGroup.setAttribute('class', 'critLoc counterGroup rotorHitsControl');
+        rotorGroup.setAttribute('critId', 'rotor');
+        rotorGroup.setAttribute('type', 'rotor');
+        spyOn(rotorGroup, 'getBoundingClientRect').and.returnValue({
+            x: 100,
+            y: 150,
+            top: 150,
+            bottom: 170,
+            left: 100,
+            right: 120,
+            width: 20,
+            height: 20,
+            toJSON: () => ({})
+        } as DOMRect);
+        svg.appendChild(rotorGroup);
+
+        const rotorCrit = { id: 'rotor', hits: 2, pendingHits: 1 };
+        const unit = {
+            id: 'unit-vtol',
+            getUnit: () => ({ type: 'VTOL' }),
+            getInventory: () => [],
+            getCritLoc: (id: string) => id === 'rotor' ? rotorCrit : null,
+            setCritLoc: jasmine.createSpy('setCritLoc'),
+            getCritSlots: () => [rotorCrit],
+        };
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(rotorGroup, 71);
+
+        expect(pickerFactory.createChoicePicker).toHaveBeenCalledWith(jasmine.objectContaining({
+            title: 'Rotor Hits',
+            selected: 1,
+            suggestedStyle: 'linear',
+            targetType: 'motive',
+            horizontal: false,
+        }));
+        expect(pickerFactory.createNumericPicker).not.toHaveBeenCalled();
+    });
+
+    it('opens a delta picker for repeatable motive hits and stores pending timestamps', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const motiveHit = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        motiveHit.setAttribute('id', 'motive_system_hit_2');
+        motiveHit.classList.add('critLoc');
+        svg.appendChild(motiveHit);
+
+        const motiveCrit = { id: 'motive_system_hit_2', hits: 2, hitTimestamps: [10, 20] };
+        const unit = {
+            id: 'unit-tank',
+            getUnit: () => ({ type: 'Tank' }),
+            getInventory: () => [],
+            getCritLoc: (id: string) => id === 'motive_system_hit_2' ? motiveCrit : null,
+            setCritLoc: jasmine.createSpy('setCritLoc').and.callFake((crit) => {
+                Object.assign(motiveCrit, crit);
+            }),
+            getCritSlots: () => [motiveCrit],
+        };
+        spyOn(Date, 'now').and.returnValue(1000);
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(motiveHit, 69);
+
+        expect(pickerFactory.createNumericPicker).toHaveBeenCalledWith(jasmine.objectContaining({
+            min: -2,
+            max: 9,
+            selected: 1,
+            title: 'Motive Hits (Medium)',
+        }));
+
+        pickerFactory.createNumericPicker.calls.mostRecent().args[0].onPick({ value: 3 });
+
+        expect(unit.setCritLoc).toHaveBeenCalledWith(jasmine.objectContaining({
+            id: 'motive_system_hit_2',
+            hits: 2,
+            hitTimestamps: [10, 20],
+            pendingHits: 3,
+            pendingHitTimestamps: [1000, 1001, 1002],
+            destroying: undefined,
+            destroyed: undefined,
+        }));
+    });
+
+    it('uses the vertical linear picker for repeatable motive hits when linear pickers are preferred', () => {
+        options.pickerStyle = 'linear';
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const motiveHit = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        motiveHit.setAttribute('id', 'motive_system_hit_3');
+        motiveHit.classList.add('critLoc');
+        spyOn(motiveHit, 'getBoundingClientRect').and.returnValue({
+            x: 100,
+            y: 150,
+            top: 150,
+            bottom: 170,
+            left: 100,
+            right: 120,
+            width: 20,
+            height: 20,
+            toJSON: () => ({})
+        } as DOMRect);
+        svg.appendChild(motiveHit);
+
+        const motiveCrit = { id: 'motive_system_hit_3', hits: 2, hitTimestamps: [10, 20] };
+        const unit = {
+            id: 'unit-tank',
+            getUnit: () => ({ type: 'Tank' }),
+            getInventory: () => [],
+            getCritLoc: (id: string) => id === 'motive_system_hit_3' ? motiveCrit : null,
+            setCritLoc: jasmine.createSpy('setCritLoc'),
+            getCritSlots: () => [motiveCrit],
+        };
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(motiveHit, 70);
+
+        expect(pickerFactory.createChoicePicker).toHaveBeenCalledWith(jasmine.objectContaining({
+            title: 'Motive Hits (Heavy)',
+            selected: 1,
+            suggestedStyle: 'linear',
+            targetType: 'motive',
+            horizontal: false,
+        }));
+        expect(pickerFactory.createNumericPicker).not.toHaveBeenCalled();
+    });
+
+    it('adds one pending rotor hit for positive RO armor damage and removes one for repair', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const roLocation = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        roLocation.classList.add('unitLocation');
+        roLocation.setAttribute('loc', 'RO');
+        svg.appendChild(roLocation);
+
+        let armorHits = 0;
+        const rotorCrit = { id: 'rotor', hits: 2, pendingHits: 0 };
+        const unit = {
+            id: 'unit-vtol',
+            getUnit: () => ({ type: 'VTOL' }),
+            getInventory: () => [],
+            getArmorPoints: () => 10,
+            getArmorHits: () => armorHits,
+            addArmorHits: jasmine.createSpy('addArmorHits').and.callFake((_loc: string, hits: number) => {
+                armorHits += hits;
+            }),
+            getCritSlotsAsMatrix: () => ({}),
+            getCritLoc: (id: string) => id === 'rotor' ? rotorCrit : null,
+            setCritLoc: jasmine.createSpy('setCritLoc').and.callFake((crit) => {
+                Object.assign(rotorCrit, crit);
+            }),
+        };
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(roLocation, 66);
+        pickerFactory.createNumericPicker.calls.mostRecent().args[0].onPick({ value: 5 });
+
+        expect(unit.addArmorHits).toHaveBeenCalledWith('RO', 5, false, false);
+        expect(unit.setCritLoc).toHaveBeenCalledWith(jasmine.objectContaining({ id: 'rotor', hits: 2, pendingHits: 1 }));
+
+        tap(roLocation, 67);
+        pickerFactory.createNumericPicker.calls.mostRecent().args[0].onPick({ value: -3 });
+
+        expect(unit.addArmorHits).toHaveBeenCalledWith('RO', -3, false, false);
+        expect(unit.setCritLoc).toHaveBeenCalledWith(jasmine.objectContaining({ id: 'rotor', hits: 2, pendingHits: undefined }));
+
+        rotorCrit.hits = 20;
+        rotorCrit.pendingHits = 0;
+        tap(roLocation, 68);
+        pickerFactory.createNumericPicker.calls.mostRecent().args[0].onPick({ value: 1 });
+
+        expect(unit.setCritLoc).toHaveBeenCalledWith(jasmine.objectContaining({ id: 'rotor', hits: 20, pendingHits: undefined }));
     });
 
     it('assigns the single target when a sheet range button is clicked with one target', () => {
@@ -518,6 +761,48 @@ function createHeatElement(heat: number, centerY: number): SVGElement {
     return element;
 }
 
+function tap(el: SVGElement, pointerId: number): void {
+    el.dispatchEvent(createPointerEvent('pointerdown', { pointerId, pointerType: 'mouse', button: 0, buttons: 1 }));
+    el.dispatchEvent(createPointerEvent('pointerup', { pointerId, pointerType: 'mouse', button: 0 }));
+}
+
+function createSensorHitInteractionUnit(): { svg: SVGSVGElement; unit: any; sensorHit1: SVGElement; sensorHit3: SVGElement; sensorHit4: SVGElement } {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const crits = [1, 2, 3, 4].map(level => ({ id: `sensor_hit_${level}` }));
+    const sensorHitEls = crits.map(crit => {
+        const el = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        el.classList.add('critLoc');
+        el.setAttribute('id', crit.id);
+        svg.appendChild(el);
+        return el;
+    });
+    const unit = {
+        id: 'unit-a',
+        getUnit: () => ({ type: 'Vehicle' }),
+        getInventory: () => [],
+        getCritSlots: () => crits,
+        getCritLoc: (id: string) => crits.find(crit => crit.id === id) ?? null,
+        setCritLoc: jasmine.createSpy('setCritLoc'),
+        setCritSlots: jasmine.createSpy('setCritSlots').and.callFake((updatedCrits: typeof crits) => {
+            crits.splice(0, crits.length, ...updatedCrits);
+        }),
+    };
+
+    return {
+        svg,
+        unit,
+        sensorHit1: sensorHitEls[0],
+        sensorHit3: sensorHitEls[2],
+        sensorHit4: sensorHitEls[3]
+    };
+}
+
+function activeSensorHitLevels(unit: any): number[] {
+    return unit.getCritSlots()
+        .filter((crit: { destroying?: number }) => crit.destroying !== undefined)
+        .map((crit: { id: string }) => parseInt(crit.id.replace('sensor_hit_', ''), 10));
+}
+
 function createInventoryInteractionUnit(html = `
     <g class="inventoryEntry">
         <rect class="mainButton inventoryEntryButton"></rect>
@@ -559,9 +844,14 @@ function createInventoryInteractionUnit(html = `
         hasDirectInventory: () => true,
         gunnerySkill: () => 4,
         pilotingSkill: () => 5,
+        effectiveGunnerySkill: () => 4,
+        effectivePilotingSkill: () => 5,
         turnState: () => ({
             moveMode: () => null,
             airborne: () => false,
+            getAttackMovementModifier: () => 0,
+            missingAttackMovementModifier: () => false,
+            getSpottingModifier: () => 0,
         }),
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
         rules: {}

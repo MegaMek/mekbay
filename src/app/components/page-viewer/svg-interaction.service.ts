@@ -60,10 +60,11 @@ import { EquipmentDialogComponent } from '../equipment-dialog/equipment-dialog.c
 import type { EquipmentDialogContext, EquipmentDialogData, EquipmentDialogTab } from '../equipment-dialog/equipment-dialog.model';
 import { WeaponTargetChoiceMenuComponent } from '../../components/equipment-dialog/weapon-target-choice-menu.component';
 import { getInventoryControlModes, getSelectedInventoryControlMode, selectInventoryControlEntry, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
-import { getMotiveModeLabel, getMotiveModeTargetNumberModifier } from '../../models/motiveModes.model';
+import { getMotiveModeLabel } from '../../models/motiveModes.model';
 import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { inventoryTargetCategory, inventoryTargetNumberText, parseInventoryTargetNumberCell, readInventoryTargetDisplay, readInventoryTargetText } from '../../utils/inventory-target-number.util';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
+import { committedCriticalHitCount, isRepeatableMotiveHitId, motiveHitLevelFromId, MOTIVE_HIT_PIP_COUNT, pendingCriticalHitTimestamps } from '../../models/rules/vehicle-motive-hit.util';
 
 type SheetInventoryRangeKey = InventoryRangeKey | 'extreme';
 
@@ -73,7 +74,13 @@ const INVENTORY_RANGE_BUTTON_CLASSES: ReadonlyArray<readonly [string, SheetInven
     ['lngButton', 'long'],
     ['extButton', 'extreme']
 ];
+const VTOL_ROTOR_CRIT_ID = 'rotor';
+const VTOL_ROTOR_HITS_MAX = 20;
 const SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY = 'svg-inventory-target-choice';
+const REPEATABLE_MOTIVE_HIT_LABELS = new Map<number, string>([
+    [2, 'Medium'],
+    [3, 'Heavy']
+]);
 
 /*
  * Author: Drake
@@ -213,6 +220,7 @@ export class SvgInteractionService {
         this.setupPipInteractions(svg, signal);
         this.setupSoldierPipInteractions(svg, signal);
         this.setupArmorInteraction(svg, signal);
+        this.setupVtolRotorHitsInteraction(svg, signal);
         this.setupCritSlotInteractions(svg, signal);
         this.setupHeatInteractions(svg, signal);
         this.setupCritLocInteractions(svg, signal);
@@ -607,6 +615,9 @@ export class SvgInteractionService {
                             this.unit()?.addArmorHits(loc, valueToApply, rear, this.consolidateImmediately);
                         }
                     }
+                    if (loc === 'RO' && value !== 0) {
+                        this.applyVtolRotorHitDelta(unit, value > 0 ? 1 : -1, svg.getElementById('rotor_hits_group') as SVGElement | null);
+                    }
                     showArmorToast(value);
                 };
 
@@ -650,16 +661,235 @@ export class SvgInteractionService {
     private setupCritLocInteractions(svg: SVGSVGElement, signal: AbortSignal) {
         svg.querySelectorAll('.critLoc').forEach(el => {
             const svgEl = el as SVGElement;
+            if (this.critLocId(svgEl) === VTOL_ROTOR_CRIT_ID) return;
             this.addSvgTapHandler(svgEl, (evt: Event, primaryAction: boolean) => {
                 if (this.state.clickTarget !== svgEl) return;
-                const id = svgEl.getAttribute('id');
+                const id = this.critLocId(svgEl);
                 if (!id) return;
+                if (isRepeatableMotiveHitId(id)) {
+                    this.showMotiveHitPicker(evt, svgEl, id);
+                    return;
+                }
+                if (this.applySensorHitInteraction(id)) return;
                 let critLoc = this.unit()?.getCritLoc(id);
                 if (!critLoc) return;
                 critLoc.destroying = !!critLoc.destroying ? undefined : Date.now();
                 this.unit()?.setCritLoc(critLoc);
             }, signal);
         });
+    }
+
+    private setupVtolRotorHitsInteraction(svg: SVGSVGElement, signal: AbortSignal) {
+        const unit = this.unit();
+        if (!unit || unit.getUnit().type !== 'VTOL') return;
+
+        const rotorEl = svg.getElementById('rotor_hits_group') as SVGElement | null;
+        if (!rotorEl) return;
+
+        this.addSvgTapHandler(rotorEl, (event: PointerEvent) => {
+            if (this.state.clickTarget !== rotorEl) return;
+
+            const rotorCrit = unit.getCritLoc(VTOL_ROTOR_CRIT_ID);
+            const currentHits = Math.max(0, (rotorCrit?.hits ?? 0) + (rotorCrit?.pendingHits ?? 0));
+            this.showHitDeltaPicker(event, rotorEl, 'Rotor Hits', currentHits, VTOL_ROTOR_HITS_MAX - currentHits, (delta) => {
+                this.applyVtolRotorHitDelta(unit, delta, rotorEl);
+            });
+        }, signal);
+    }
+
+    private applyVtolRotorHitDelta(unit: CBTForceUnit, delta: number, rotorEl?: SVGElement | null): void {
+        if (delta === 0 || unit.getUnit().type !== 'VTOL') return;
+
+        const critLoc = unit.getCritLoc(VTOL_ROTOR_CRIT_ID) ?? { id: VTOL_ROTOR_CRIT_ID, name: VTOL_ROTOR_CRIT_ID };
+        const committedHits = Math.max(0, critLoc.hits ?? 0);
+        const pendingHits = critLoc.pendingHits ?? 0;
+        const totalHits = Math.max(0, Math.min(VTOL_ROTOR_HITS_MAX, committedHits + pendingHits + delta));
+        critLoc.id = VTOL_ROTOR_CRIT_ID;
+        critLoc.el = rotorEl ?? critLoc.el;
+        if (this.consolidateImmediately) {
+            critLoc.hits = totalHits;
+            critLoc.pendingHits = undefined;
+        } else {
+            const nextPendingHits = totalHits - committedHits;
+            critLoc.pendingHits = nextPendingHits === 0 ? undefined : nextPendingHits;
+        }
+        critLoc.destroying = undefined;
+        critLoc.destroyed = undefined;
+        unit.setCritLoc(critLoc);
+    }
+
+    private showMotiveHitPicker(event: Event, motiveEl: SVGElement, id: string): void {
+        const unit = this.unit();
+        if (!unit) return;
+
+        const critLoc = unit.getCritLoc(id) ?? { id, name: id, el: motiveEl };
+        const currentHits = Math.max(0, committedCriticalHitCount(critLoc) + (critLoc.pendingHits ?? 0));
+        const motiveHitLevel = motiveHitLevelFromId(id);
+        const motiveHitLabel = motiveHitLevel === null ? null : REPEATABLE_MOTIVE_HIT_LABELS.get(motiveHitLevel);
+        const title = motiveHitLabel ? `Motive Hits (${motiveHitLabel})` : 'Motive Hits';
+        this.showHitDeltaPicker(event, motiveEl, title, currentHits, MOTIVE_HIT_PIP_COUNT, (delta) => {
+            this.applyMotiveHitDelta(unit, id, delta, motiveEl);
+        });
+    }
+
+    private showHitDeltaPicker(
+        event: Event,
+        el: SVGElement,
+        title: string,
+        currentHits: number,
+        maxDelta: number,
+        onPick: (delta: number) => void
+    ): void {
+        const startValue = -currentHits;
+        const endValue = maxDelta;
+        const selectedValue = endValue >= 1 ? 1 : 0;
+        const applyHitDelta = (delta: number) => {
+            this.removePicker();
+            onPick(delta);
+        };
+        const position = event instanceof PointerEvent ? { x: event.clientX, y: event.clientY } : undefined;
+        const pickerStylePref = this.getUserPickerPreference();
+        if (pickerStylePref === 'radial' || pickerStylePref === 'default') {
+            this.showNumericPicker({
+                event,
+                el,
+                position,
+                title,
+                min: startValue,
+                max: endValue,
+                selected: selectedValue,
+                onPick: (result) => applyHitDelta(result.value),
+                onCancel: () => this.removePicker()
+            });
+        } else {
+            this.showChoicePicker({
+                event,
+                el,
+                position,
+                title,
+                values: this.hitDeltaChoices(startValue, endValue),
+                selected: selectedValue,
+                suggestedStyle: 'linear',
+                targetType: 'motive',
+                onPick: (val) => applyHitDelta(val.value as number),
+                onCancel: () => this.removePicker()
+            });
+        }
+    }
+
+    private applyMotiveHitDelta(unit: CBTForceUnit, id: string, delta: number, motiveEl?: SVGElement | null): void {
+        if (delta === 0) return;
+
+        const critLoc = unit.getCritLoc(id) ?? { id, name: id };
+        const committedHits = committedCriticalHitCount(critLoc);
+        const currentHits = Math.max(0, committedHits + (critLoc.pendingHits ?? 0));
+        const totalHits = Math.max(0, currentHits + delta);
+        const pendingHits = totalHits - committedHits;
+        critLoc.id = id;
+        critLoc.name = critLoc.name ?? id;
+        critLoc.el = motiveEl ?? critLoc.el;
+
+        if (this.consolidateImmediately) {
+            critLoc.hits = totalHits;
+            critLoc.hitTimestamps = this.updatedImmediateMotiveHitTimestamps(critLoc, totalHits, delta);
+            critLoc.pendingHits = undefined;
+            critLoc.pendingHitTimestamps = undefined;
+        } else {
+            critLoc.pendingHits = pendingHits === 0 ? undefined : pendingHits;
+            critLoc.pendingHitTimestamps = pendingHits > 0
+                ? this.updatedPendingMotiveHitTimestamps(critLoc, pendingHits)
+                : undefined;
+        }
+        critLoc.destroying = undefined;
+        critLoc.destroyed = undefined;
+        unit.setCritLoc(critLoc);
+    }
+
+    private updatedImmediateMotiveHitTimestamps(critLoc: CriticalSlot, totalHits: number, delta: number): number[] | undefined {
+        const committed = this.currentMotiveHitTimestamps(critLoc);
+        const timestamps = delta > 0
+            ? [...committed, ...this.newTimestamps(delta)]
+            : committed.slice(0, totalHits);
+        return timestamps.length > 0 ? timestamps.slice(0, totalHits) : undefined;
+    }
+
+    private currentMotiveHitTimestamps(critLoc: CriticalSlot): number[] {
+        const committed = (critLoc.hitTimestamps ?? [])
+            .filter(timestamp => Number.isFinite(timestamp))
+            .sort((a, b) => a - b);
+        const pendingHits = critLoc.pendingHits ?? 0;
+        if (pendingHits > 0) return [...committed, ...pendingCriticalHitTimestamps(critLoc).slice(0, pendingHits)].sort((a, b) => a - b);
+        if (pendingHits < 0) return committed.slice(0, Math.max(0, committed.length + pendingHits));
+        return committed;
+    }
+
+    private updatedPendingMotiveHitTimestamps(critLoc: CriticalSlot, pendingHits: number): number[] | undefined {
+        const current = pendingCriticalHitTimestamps(critLoc).slice(0, pendingHits);
+        const missing = pendingHits - current.length;
+        const timestamps = missing > 0 ? [...current, ...this.newTimestamps(missing)] : current;
+        return timestamps.length > 0 ? timestamps : undefined;
+    }
+
+    private newTimestamps(count: number): number[] {
+        const timestamp = Date.now();
+        return Array.from({ length: count }, (_value, index) => timestamp + index);
+    }
+
+    private hitDeltaChoices(startValue: number, endValue: number): PickerChoice[] {
+        const allowedValues = [0, 1, 2, 3, 4, 5, 10, 15, 20, -1, -2, -3, -4, -5, -10, -15, -20];
+        const values = allowedValues
+            .filter(value => value >= startValue && value <= endValue)
+            .map(value => ({ label: value.toString(), value }));
+
+        if (!values.some(value => value.value === startValue)) {
+            values.push({ label: startValue.toString(), value: startValue });
+        }
+        if (!values.some(value => value.value === endValue)) {
+            values.push({ label: endValue.toString(), value: endValue });
+        }
+        return values.sort((a, b) => a.value - b.value);
+    }
+
+    private critLocId(el: SVGElement): string | null {
+        return el.getAttribute('critId') || el.getAttribute('id');
+    }
+
+    private applySensorHitInteraction(id: string): boolean {
+        const unit = this.unit();
+        const targetLevel = this.sensorHitLevel(id);
+        if (!unit || targetLevel === null) return false;
+
+        const sensorCrits = unit.getCritSlots()
+            .map(crit => ({ crit, level: this.sensorHitLevel(crit.id || crit.name || '') }))
+            .filter((entry): entry is { crit: CriticalSlot; level: number } => entry.level !== null)
+            .sort((a, b) => a.level - b.level);
+        if (!sensorCrits.some(entry => entry.level === targetLevel)) return false;
+
+        const targetCrit = sensorCrits.find(entry => entry.level === targetLevel)?.crit;
+        const targetActive = targetCrit?.destroying !== undefined;
+        const highestActiveLevel = sensorCrits.reduce((highest, entry) => (
+            entry.crit.destroying !== undefined ? Math.max(highest, entry.level) : highest
+        ), 0);
+        const timestamp = Date.now();
+
+        sensorCrits.forEach(({ crit, level }) => {
+            let active: boolean;
+            if (highestActiveLevel > targetLevel) {
+                active = level <= targetLevel;
+            } else if (level === targetLevel && targetActive) {
+                active = false;
+            } else {
+                active = level <= targetLevel;
+            }
+            crit.destroying = active ? (crit.destroying ?? timestamp) : undefined;
+        });
+        unit.setCritSlots([...unit.getCritSlots()]);
+        return true;
+    }
+
+    private sensorHitLevel(id: string): number | null {
+        const match = id.match(/^sensor_hit_(\d+)$/);
+        return match ? parseInt(match[1], 10) : null;
     }
 
     private setupCritSlotInteractions(svg: SVGSVGElement, signal: AbortSignal) {
@@ -1013,6 +1243,9 @@ export class SvgInteractionService {
         if (svgText) return svgText;
 
         const moveMode = unit.turnState().moveMode();
+        const movementModifier = unit.turnState().getAttackMovementModifier();
+        const missingMovementModifier = unit.turnState().missingAttackMovementModifier();
+        const spotterModifier = unit.turnState().getSpottingModifier();
         const heatFireModifier = unit.svgService?.inventoryTargetHeatFireModifier(entry) ?? 0;
         const hitModifier = parseInventoryTargetNumberCell(readInventoryTargetText(entry, 'hit')) ?? 0;
         return inventoryTargetNumberText({
@@ -1020,10 +1253,12 @@ export class SvgInteractionService {
             category: inventoryTargetCategory(entry),
             display: readInventoryTargetDisplay(entry),
             target,
-            gunnerySkill: unit.gunnerySkill(),
-            pilotingSkill: unit.pilotingSkill(),
-            movementModifier: getMotiveModeTargetNumberModifier(moveMode),
+            gunnerySkill: unit.effectiveGunnerySkill(),
+            pilotingSkill: unit.effectivePilotingSkill(),
             movementLabel: moveMode ? getMotiveModeLabel(moveMode, unit.getUnit(), unit.turnState().airborne() ?? false) : 'None',
+            movementModifier: movementModifier,
+            missingMovementModifier,
+            spottingModifier: spotterModifier,
             hitModifier: hitModifier - heatFireModifier,
             heatFireModifier
         });

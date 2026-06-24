@@ -198,7 +198,7 @@ export class UnitInitializerService {
         const critSlotsEl = svg.querySelectorAll(`.critSlot`) as NodeListOf<SVGElement>;
         if (critSlotsEl.length === 0) return;
 
-        const criticalSlots: CriticalSlot[] = [];
+        const criticalSlots: CriticalSlot[] = unit.getCritSlots().filter(crit => !crit.loc || crit.slot === undefined);
         const critSlotMatrix = unit.getCritSlotsAsMatrix();
         const equipmentList = this.getDataService().getEquipments();
         let newSlotsFound = false;
@@ -263,12 +263,12 @@ export class UnitInitializerService {
         const critLocEls = svg.querySelectorAll(`.critLoc`) as NodeListOf<SVGElement>;
         if (critLocEls.length === 0) return;
 
-        const criticalLocs: CriticalSlot[] = [];
+        const criticalLocs: CriticalSlot[] = unit.getCritSlots().filter(crit => crit.loc && crit.slot !== undefined);
         const critLocs = unit.getCritSlots();
         let newLocsFound = false;
 
         critLocEls.forEach(el => {
-            const id = el.getAttribute('id');
+            const id = el.getAttribute('critId') || el.getAttribute('id');
             const type = el.getAttribute('type');
             if (!id || !type) return;
 

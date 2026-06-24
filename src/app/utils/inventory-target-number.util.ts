@@ -25,8 +25,10 @@ export interface InventoryTargetNumberInput {
     target: InventoryControlRuntimeTarget | null;
     gunnerySkill: number;
     pilotingSkill: number;
-    movementModifier: number;
     movementLabel: string;
+    movementModifier: number;
+    missingMovementModifier?: boolean;
+    spottingModifier: number;
     hitModifier: number;
     heatFireModifier?: number;
 }
@@ -81,7 +83,9 @@ export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberI
 
 export function inventoryTargetNumberText(input: InventoryTargetNumberInput): string {
     const rangeSelection = inventoryTargetRangeSelection(input);
+    if (!rangeSelection) return '';
     if (rangeSelection?.outOfLongRange) return 'X';
+    if (input.missingMovementModifier) return 'M?';
     const breakdown = inventoryTargetNumberBreakdown(input);
     return breakdown === null ? '' : breakdown.total.toString();
 }
@@ -91,6 +95,13 @@ export function inventoryTargetNumberBreakdown(input: InventoryTargetNumberInput
     if (!target) return null;
     const rangeSelection = inventoryTargetRangeSelection(input);
     if (!rangeSelection) return null;
+    if (input.missingMovementModifier) {
+        return {
+            total: 0,
+            rangeSelection,
+            lines: [{ value: 'Select movement to calculate TN', isHeader: true }]
+        };
+    }
 
     const physical = isPhysicalInventoryTargetNumberEntry(input.entry, input.category);
     const skillLabel = physical ? 'Piloting' : 'Gunnery';
@@ -99,10 +110,18 @@ export function inventoryTargetNumberBreakdown(input: InventoryTargetNumberInput
     const minimumRangeModifier = inventoryTargetMinimumRangeModifier(input.display.min, target.distance);
     const heatFireModifier = physical ? 0 : input.heatFireModifier ?? 0;
     const terms: TooltipLine[] = [
-        { label: skillLabel, value: skill.toString() },
-        { label: `Movement (${input.movementLabel})`, value: formatInventoryTargetSignedModifier(input.movementModifier) },
-        { label: `Target (${target.letter})`, value: formatInventoryTargetSignedModifier(target.tnModifier) },
+        { label: skillLabel, value: skill.toString() }
     ];
+
+    terms.push({ label: `Movement (${input.movementLabel})`, value: formatInventoryTargetSignedModifier(input.movementModifier) });
+
+    if (target.tnModifier !== 0) {
+        terms.push({ label: `Target (${target.letter})`, value: formatInventoryTargetSignedModifier(target.tnModifier) });
+    }
+
+    if (input.spottingModifier !== 0) {
+        terms.push({ label: 'Spotting', value: formatInventoryTargetSignedModifier(input.spottingModifier) });
+    }
 
     if (!physical) {
         terms.push({ label: `Range (${inventoryTargetRangeDisplayName(rangeSelection.range)})`, value: formatInventoryTargetSignedModifier(rangeModifier) });
@@ -117,7 +136,7 @@ export function inventoryTargetNumberBreakdown(input: InventoryTargetNumberInput
         terms.push({ label: 'Heat - Fire Modifier', value: formatInventoryTargetSignedModifier(heatFireModifier) });
     }
 
-    const total = skill + input.movementModifier + target.tnModifier + rangeModifier + minimumRangeModifier + input.hitModifier + heatFireModifier;
+    const total = skill + input.movementModifier + input.spottingModifier + target.tnModifier + rangeModifier + minimumRangeModifier + input.hitModifier + heatFireModifier;
     terms.push({ isBreak: true });
     terms.push({ label: 'Total', value: total.toString(), isHeader: true });
 
