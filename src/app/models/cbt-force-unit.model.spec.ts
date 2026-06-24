@@ -4,7 +4,7 @@ import { AmmoEquipment, WeaponEquipment, type EquipmentMap } from './equipment.m
 import { CBTForce } from './cbt-force.model';
 import { CBTForceUnit } from './cbt-force-unit.model';
 import { INVENTORY_CONTROL_TARGET_MAX_COUNT } from './inventory-control-runtime-state.model';
-import type { CBTSerializedUnit } from './force-serialization';
+import type { CBTSerializedUnit, CriticalSlot } from './force-serialization';
 import { DataService } from '../services/data.service';
 import { UnitInitializerService } from '../services/unit-initializer.service';
 import { UnitSvgService } from '../services/unit-svg.service';
@@ -197,6 +197,17 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         ]);
         expect(ammoEntries.map(entry => entry.totalAmmo)).toEqual([5, 5, 5, 5, 5, 5]);
         expect(ammoEntries.map(entry => entry.consumed)).toEqual([0, 0, 0, 0, 0, 0]);
+    });
+
+    it('filters available movement modes through unit rules', () => {
+        const forceUnit = createForceUnit();
+        initialize(forceUnit);
+
+        expect(forceUnit.getAvailableMotiveModes().some(option => option.mode === 'run')).toBeTrue();
+
+        forceUnit.writeCrits([{ id: 'flight_stabilizer_hit', destroyed: 1 } as CriticalSlot]);
+
+        expect(forceUnit.getAvailableMotiveModes().some(option => option.mode === 'run')).toBeFalse();
     });
 
     it('serializes and updates direct inventory ammo custom type, count, and total per bin', () => {

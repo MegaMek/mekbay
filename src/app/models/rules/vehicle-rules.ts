@@ -185,8 +185,8 @@ export class VehicleRules extends UnitTypeRulesBase {
         const runValueCoeff = status.hasWorkingSupercharger ? 2 : 1.5;
         let maxRun = walk === 0 ? 0 : Math.round(walk * runValueCoeff);
         if (status.flightStabilizerHit) {
-            run = walk;
-            maxRun = walk;
+            run = 0;
+            maxRun = 0;
         }
 
         return {
@@ -203,6 +203,11 @@ export class VehicleRules extends UnitTypeRulesBase {
         if (moveMode === 'walk') return movement.walk;
         if (moveMode === 'run') return movement.maxRun;
         return null;
+    }
+
+    override isMotiveModeAvailable(moveMode: MotiveModes): boolean {
+        if (moveMode === 'run' && this.systemsStatus().flightStabilizerHit) return false;
+        return true;
     }
 
     override getAttackMovementModifier(moveMode: MotiveModes | null | undefined): number {
