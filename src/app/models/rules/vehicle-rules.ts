@@ -205,6 +205,11 @@ export class VehicleRules extends UnitTypeRulesBase {
         return null;
     }
 
+    override isMotiveModeAvailable(moveMode: MotiveModes): boolean {
+        if (moveMode === 'run' && this.systemsStatus().flightStabilizerHit) return false;
+        return true;
+    }
+
     override getAttackMovementModifier(moveMode: MotiveModes | null | undefined): number {
         return getDefaultAttackerMovementModifier(moveMode);
     }

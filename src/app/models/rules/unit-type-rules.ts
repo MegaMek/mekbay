@@ -68,6 +68,9 @@ export interface UnitTypeRules {
     /** Unit-type-specific movement distance override. Return null to use base unit data. */
     getMaxDistanceForMoveMode(moveMode: MotiveModes): number | null;
 
+    /** Unit-type-specific movement mode availability. */
+    isMotiveModeAvailable(moveMode: MotiveModes): boolean;
+
     /** Unit-type-specific attack movement modifier. */
     getAttackMovementModifier(moveMode: MotiveModes | null | undefined): number;
 }
@@ -83,6 +86,10 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
 
     getMaxDistanceForMoveMode(_moveMode: MotiveModes): number | null {
         return null;
+    }
+
+    isMotiveModeAvailable(_moveMode: MotiveModes): boolean {
+        return true;
     }
 
     getAttackMovementModifier(_moveMode: MotiveModes | null | undefined): number {

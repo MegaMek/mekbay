@@ -830,7 +830,8 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     public getAvailableMotiveModes(): MotiveModeOption[] {
-        return getMotiveModesOptionsByUnit(this.getUnit(), this.turnState().airborne() ?? false);
+        return getMotiveModesOptionsByUnit(this.getUnit(), this.turnState().airborne() ?? false)
+            .filter(option => this._rules.isMotiveModeAvailable(option.mode));
     }
 
     /** Delegates to unit-type rules. Non-Mek types return { modifier: 0, modifiers: [] }. */

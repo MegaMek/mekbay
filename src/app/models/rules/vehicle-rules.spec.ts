@@ -183,7 +183,7 @@ describe('VehicleRules', () => {
         }));
     });
 
-    it('sets run MP equal to walk MP after a flight stabilizer hit', () => {
+    it('disables run movement after a flight stabilizer hit', () => {
         const superchargerEntry = entry({ equipment: equipment('Supercharger', ['F_MASC', 'S_SUPERCHARGER']) });
         const rules = createRulesHarness({
             crits: [crit('flight_stabilizer_hit', 10)],
@@ -193,10 +193,11 @@ describe('VehicleRules', () => {
 
         expect(rules.movementState()).toEqual(jasmine.objectContaining({
             walk: 8,
-            run: 8,
-            maxRun: 8,
+            run: 0,
+            maxRun: 0,
             moveImpaired: true,
         }));
+        expect(rules.isMotiveModeAvailable('run')).toBeFalse();
     });
 
     it('uses motive timestamp order for different final MP values', () => {
