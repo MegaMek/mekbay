@@ -31,8 +31,14 @@
  * affiliated with Microsoft.
  */
 
-import type { Signal } from '@angular/core';
+import { signal, type Signal } from '@angular/core';
+import type { MotiveModes } from '../motiveModes.model';
 import type { PSRCheck } from '../turn-state.model';
+
+export interface UnitSkillModifier {
+    modifier: number;
+    reason: string;
+}
 
 /**
  * Author: Drake
@@ -49,6 +55,39 @@ export interface UnitTypeRules {
 
     /** PSR target roll number (piloting skill + modifiers). Non-Mek types return 0. */
     readonly PSRTargetRoll: Signal<number>;
+
+    /** Gunnery skill modifiers from unit-type-specific rules. */
+    readonly gunneryModifier: Signal<number>;
+
+    /** Piloting skill modifiers from unit-type-specific rules. */
+    readonly pilotingModifier: Signal<number>;
+
+    /** Gunnery modifier breakdown for UI display. */
+    readonly gunneryModifiers: Signal<UnitSkillModifier[]>;
+
+    /** Unit-type-specific movement distance override. Return null to use base unit data. */
+    getMaxDistanceForMoveMode(moveMode: MotiveModes): number | null;
+
+    /** Unit-type-specific attack movement modifier. */
+    getAttackMovementModifier(moveMode: MotiveModes | null | undefined): number;
+}
+
+export abstract class UnitTypeRulesBase implements UnitTypeRules {
+    readonly PSRModifiers: Signal<{ modifier: number; modifiers: PSRCheck[] }> = signal({ modifier: 0, modifiers: [] });
+    readonly PSRTargetRoll: Signal<number> = signal(0);
+    readonly gunneryModifier: Signal<number> = signal(0);
+    readonly pilotingModifier: Signal<number> = signal(0);
+    readonly gunneryModifiers: Signal<UnitSkillModifier[]> = signal([]);
+
+    abstract evaluateDestroyed(): void;
+
+    getMaxDistanceForMoveMode(_moveMode: MotiveModes): number | null {
+        return null;
+    }
+
+    getAttackMovementModifier(_moveMode: MotiveModes | null | undefined): number {
+        return 0;
+    }
 }
 
 /**

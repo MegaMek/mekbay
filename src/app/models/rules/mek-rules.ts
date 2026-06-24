@@ -34,10 +34,12 @@
 import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { MountedEquipment } from '../force-serialization';
-import type { UnitTypeRules } from './unit-type-rules';
+import { UnitTypeRulesBase } from './unit-type-rules';
 import { LINKED_LOCATIONS, LEG_LOCATIONS, FOUR_LEGGED_LOCATIONS } from '../common.model';
 import type { PSRCheck } from '../turn-state.model';
 import { type HeatScaleEntry, HeatManagement, getHeatEffects } from './heat-management';
+import type { MotiveModes } from '../motiveModes.model';
+import { getDefaultAttackerMovementModifier } from '../target-number-calculator.model';
 
 type ArmLocation = 'LA' | 'RA';
 
@@ -45,11 +47,12 @@ type ArmLocation = 'LA' | 'RA';
  * Mek-specific game rules: destruction evaluation, systems status,
  * Piloting Skill Roll modifiers, and PSR target roll.
  */
-export class MekRules implements UnitTypeRules {
+export class MekRules extends UnitTypeRulesBase {
 
     private readonly heatMgmt: HeatManagement;
 
     constructor(private unit: CBTForceUnit) {
+        super();
         this.heatMgmt = new HeatManagement(unit);
     }
 
@@ -228,7 +231,7 @@ export class MekRules implements UnitTypeRules {
 
     // ── PSR ──────────────────────────────────────────────────────────────────
 
-    readonly PSRModifiers = computed<{ modifier: number; modifiers: PSRCheck[] }>(() => {
+    override readonly PSRModifiers = computed<{ modifier: number; modifiers: PSRCheck[] }>(() => {
         const ignoreLeg = new Set<string>();
         let preExisting = 0;
         const modifiers: PSRCheck[] = [];
@@ -370,12 +373,25 @@ export class MekRules implements UnitTypeRules {
         return { modifier: finalModifier, modifiers: modifiers };
     });
 
-    readonly PSRTargetRoll = computed<number>(() => {
+    override readonly PSRTargetRoll = computed<number>(() => {
         const pilot = this.unit.getCrewMember(0);
         const piloting = pilot?.getSkill('piloting') ?? 5;
         const modifiers = this.PSRModifiers();
         return piloting + modifiers.modifier;
     });
+
+    override getMaxDistanceForMoveMode(moveMode: MotiveModes): number | null {
+        const movement = this.movementState();
+        if (moveMode === 'walk') return movement?.maxWalk ?? 0;
+        if (moveMode === 'run') return movement?.maxRun ?? 0;
+        if (moveMode === 'jump') return movement?.jump ?? 0;
+        if (moveMode === 'UMU') return movement?.UMU ?? 0;
+        return null;
+    }
+
+    override getAttackMovementModifier(moveMode: MotiveModes | null | undefined): number {
+        return getDefaultAttackerMovementModifier(moveMode);
+    }
 
     // ── Heat Scale ───────────────────────────────────────────────────────────
 

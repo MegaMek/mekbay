@@ -31,19 +31,19 @@
  * affiliated with Microsoft.
  */
 
-import { signal } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
-import type { UnitTypeRules } from './unit-type-rules';
-import type { PSRCheck } from '../turn-state.model';
+import { UnitTypeRulesBase } from './unit-type-rules';
 
 /**
  * Author: Drake
  * 
  * Infantry / Battle Armor game rules.
  */
-export class InfantryRules implements UnitTypeRules {
+export class InfantryRules extends UnitTypeRulesBase {
 
-    constructor(private unit: CBTForceUnit) {}
+    constructor(private unit: CBTForceUnit) {
+        super();
+    }
 
     evaluateDestroyed(): void {
         this.evaluateInventoryDestruction();
@@ -94,7 +94,4 @@ export class InfantryRules implements UnitTypeRules {
         }
     }
 
-    /** Infantry does not support PSR. */
-    readonly PSRModifiers = signal<{ modifier: number; modifiers: PSRCheck[] }>({ modifier: 0, modifiers: [] });
-    readonly PSRTargetRoll = signal<number>(0);
 }

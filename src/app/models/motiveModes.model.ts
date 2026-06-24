@@ -83,16 +83,6 @@ export function getMotiveModeMaxDistance(mode: MotiveModes, unit: Unit, airborne
     }
 }
 
-export function getMotiveModeTargetNumberModifier(mode: MotiveModes | null | undefined): number {
-    switch (mode) {
-        case 'walk': return 1;
-        case 'run': return 2;
-        case 'jump':
-        case 'UMU': return 3;
-        default: return 0;
-    }
-}
-
 function canStationary(unit: Unit, airborne: boolean = false): boolean {
     return true;
 }
