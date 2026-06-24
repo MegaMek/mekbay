@@ -38,6 +38,7 @@ describe('SvgInteractionService', () => {
     let forceBuilderService: { selectUnit: jasmine.Spy; editPilotOfUnit: jasmine.Spy };
     let pickerFactory: { createChoicePicker: jasmine.Spy; createNumericPicker: jasmine.Spy };
     let pageViewerState: PageViewerStateService;
+    let options: { pickerStyle: 'default' | 'linear' | 'radial'; quickActions: string; sheetsColor: string; useAutomations: boolean };
 
     beforeEach(() => {
         zoomPanService = {
@@ -63,6 +64,12 @@ describe('SvgInteractionService', () => {
             createChoicePicker: jasmine.createSpy('createChoicePicker').and.returnValue({ destroy: jasmine.createSpy('destroy') }),
             createNumericPicker: jasmine.createSpy('createNumericPicker')
         };
+        options = {
+            pickerStyle: 'default',
+            quickActions: 'disabled',
+            sheetsColor: 'day',
+            useAutomations: true
+        };
 
         TestBed.configureTestingModule({
             providers: [
@@ -84,12 +91,7 @@ describe('SvgInteractionService', () => {
                 {
                     provide: OptionsService,
                     useValue: {
-                        options: () => ({
-                            pickerStyle: 'default',
-                            quickActions: 'disabled',
-                            sheetsColor: 'day',
-                            useAutomations: true
-                        })
+                        options: () => options
                     }
                 },
                 {
@@ -290,7 +292,7 @@ describe('SvgInteractionService', () => {
         expect(pickerFactory.createNumericPicker).toHaveBeenCalledWith(jasmine.objectContaining({
             min: -3,
             max: 17,
-            selected: 0,
+            selected: 1,
             title: 'Rotor Hits',
         }));
 
@@ -303,6 +305,51 @@ describe('SvgInteractionService', () => {
             destroying: undefined,
             destroyed: undefined,
         }));
+    });
+
+    it('uses the vertical linear picker for VTOL rotor hits when linear pickers are preferred', () => {
+        options.pickerStyle = 'linear';
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const rotorGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        rotorGroup.setAttribute('id', 'rotor_hits_group');
+        rotorGroup.setAttribute('class', 'critLoc counterGroup rotorHitsControl');
+        rotorGroup.setAttribute('critId', 'rotor');
+        rotorGroup.setAttribute('type', 'rotor');
+        spyOn(rotorGroup, 'getBoundingClientRect').and.returnValue({
+            x: 100,
+            y: 150,
+            top: 150,
+            bottom: 170,
+            left: 100,
+            right: 120,
+            width: 20,
+            height: 20,
+            toJSON: () => ({})
+        } as DOMRect);
+        svg.appendChild(rotorGroup);
+
+        const rotorCrit = { id: 'rotor', hits: 2, pendingHits: 1 };
+        const unit = {
+            id: 'unit-vtol',
+            getUnit: () => ({ type: 'VTOL' }),
+            getInventory: () => [],
+            getCritLoc: (id: string) => id === 'rotor' ? rotorCrit : null,
+            setCritLoc: jasmine.createSpy('setCritLoc'),
+            getCritSlots: () => [rotorCrit],
+        };
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(rotorGroup, 71);
+
+        expect(pickerFactory.createChoicePicker).toHaveBeenCalledWith(jasmine.objectContaining({
+            title: 'Rotor Hits',
+            selected: 1,
+            suggestedStyle: 'linear',
+            targetType: 'motive',
+            horizontal: false,
+        }));
+        expect(pickerFactory.createNumericPicker).not.toHaveBeenCalled();
     });
 
     it('opens a delta picker for repeatable motive hits and stores pending timestamps', () => {
@@ -333,7 +380,7 @@ describe('SvgInteractionService', () => {
             min: -2,
             max: 9,
             selected: 1,
-            title: 'Motive Hits',
+            title: 'Motive Hits (Medium)',
         }));
 
         pickerFactory.createNumericPicker.calls.mostRecent().args[0].onPick({ value: 3 });
@@ -347,6 +394,49 @@ describe('SvgInteractionService', () => {
             destroying: undefined,
             destroyed: undefined,
         }));
+    });
+
+    it('uses the vertical linear picker for repeatable motive hits when linear pickers are preferred', () => {
+        options.pickerStyle = 'linear';
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const motiveHit = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        motiveHit.setAttribute('id', 'motive_system_hit_3');
+        motiveHit.classList.add('critLoc');
+        spyOn(motiveHit, 'getBoundingClientRect').and.returnValue({
+            x: 100,
+            y: 150,
+            top: 150,
+            bottom: 170,
+            left: 100,
+            right: 120,
+            width: 20,
+            height: 20,
+            toJSON: () => ({})
+        } as DOMRect);
+        svg.appendChild(motiveHit);
+
+        const motiveCrit = { id: 'motive_system_hit_3', hits: 2, hitTimestamps: [10, 20] };
+        const unit = {
+            id: 'unit-tank',
+            getUnit: () => ({ type: 'Tank' }),
+            getInventory: () => [],
+            getCritLoc: (id: string) => id === 'motive_system_hit_3' ? motiveCrit : null,
+            setCritLoc: jasmine.createSpy('setCritLoc'),
+            getCritSlots: () => [motiveCrit],
+        };
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(motiveHit, 70);
+
+        expect(pickerFactory.createChoicePicker).toHaveBeenCalledWith(jasmine.objectContaining({
+            title: 'Motive Hits (Heavy)',
+            selected: 1,
+            suggestedStyle: 'linear',
+            targetType: 'motive',
+            horizontal: false,
+        }));
+        expect(pickerFactory.createNumericPicker).not.toHaveBeenCalled();
     });
 
     it('adds one pending rotor hit for positive RO armor damage and removes one for repair', () => {
@@ -760,6 +850,7 @@ function createInventoryInteractionUnit(html = `
             moveMode: () => null,
             airborne: () => false,
             getAttackMovementModifier: () => 0,
+            missingAttackMovementModifier: () => false,
             getSpottingModifier: () => 0,
         }),
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),

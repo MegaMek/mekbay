@@ -64,7 +64,7 @@ import { getMotiveModeLabel } from '../../models/motiveModes.model';
 import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { inventoryTargetCategory, inventoryTargetNumberText, parseInventoryTargetNumberCell, readInventoryTargetDisplay, readInventoryTargetText } from '../../utils/inventory-target-number.util';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
-import { committedCriticalHitCount, isRepeatableMotiveHitId, MOTIVE_HIT_PIP_COUNT, pendingCriticalHitTimestamps } from '../../models/rules/vehicle-motive-hit.util';
+import { committedCriticalHitCount, isRepeatableMotiveHitId, motiveHitLevelFromId, MOTIVE_HIT_PIP_COUNT, pendingCriticalHitTimestamps } from '../../models/rules/vehicle-motive-hit.util';
 
 type SheetInventoryRangeKey = InventoryRangeKey | 'extreme';
 
@@ -77,6 +77,10 @@ const INVENTORY_RANGE_BUTTON_CLASSES: ReadonlyArray<readonly [string, SheetInven
 const VTOL_ROTOR_CRIT_ID = 'rotor';
 const VTOL_ROTOR_HITS_MAX = 20;
 const SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY = 'svg-inventory-target-choice';
+const REPEATABLE_MOTIVE_HIT_LABELS = new Map<number, string>([
+    [2, 'Medium'],
+    [3, 'Heavy']
+]);
 
 /*
  * Author: Drake
@@ -687,41 +691,9 @@ export class SvgInteractionService {
 
             const rotorCrit = unit.getCritLoc(VTOL_ROTOR_CRIT_ID);
             const currentHits = Math.max(0, (rotorCrit?.hits ?? 0) + (rotorCrit?.pendingHits ?? 0));
-            const startValue = -currentHits;
-            const endValue = VTOL_ROTOR_HITS_MAX - currentHits;
-            const applyRotorHitDelta = (delta: number) => {
-                this.removePicker();
+            this.showHitDeltaPicker(event, rotorEl, 'Rotor Hits', currentHits, VTOL_ROTOR_HITS_MAX - currentHits, (delta) => {
                 this.applyVtolRotorHitDelta(unit, delta, rotorEl);
-            };
-
-            const position = { x: event.clientX, y: event.clientY };
-            const pickerStylePref = this.getUserPickerPreference();
-            if (pickerStylePref === 'radial' || pickerStylePref === 'default') {
-                this.showNumericPicker({
-                    event,
-                    el: rotorEl,
-                    position,
-                    title: 'Rotor Hits',
-                    min: startValue,
-                    max: endValue,
-                    selected: 0,
-                    onPick: (result) => applyRotorHitDelta(result.value),
-                    onCancel: () => this.removePicker()
-                });
-            } else {
-                this.showChoicePicker({
-                    event,
-                    el: rotorEl,
-                    position,
-                    title: 'Rotor Hits',
-                    values: this.rotorHitDeltaChoices(startValue, endValue),
-                    selected: 0,
-                    suggestedStyle: 'linear',
-                    targetType: 'armor',
-                    onPick: (val) => applyRotorHitDelta(val.value as number),
-                    onCancel: () => this.removePicker()
-                });
-            }
+            });
         }, signal);
     }
 
@@ -746,60 +718,60 @@ export class SvgInteractionService {
         unit.setCritLoc(critLoc);
     }
 
-    private rotorHitDeltaChoices(startValue: number, endValue: number): PickerChoice[] {
-        const allowedValues = [0, 1, 2, 3, 4, 5, 10, 15, 20, -1, -2, -3, -4, -5, -10, -15, -20];
-        const values = allowedValues
-            .filter(value => value >= startValue && value <= endValue)
-            .map(value => ({ label: value.toString(), value }));
-
-        if (!values.some(value => value.value === startValue)) {
-            values.push({ label: startValue.toString(), value: startValue });
-        }
-        if (!values.some(value => value.value === endValue)) {
-            values.push({ label: endValue.toString(), value: endValue });
-        }
-        return values.sort((a, b) => a.value - b.value);
-    }
-
     private showMotiveHitPicker(event: Event, motiveEl: SVGElement, id: string): void {
         const unit = this.unit();
         if (!unit) return;
 
         const critLoc = unit.getCritLoc(id) ?? { id, name: id, el: motiveEl };
         const currentHits = Math.max(0, committedCriticalHitCount(critLoc) + (critLoc.pendingHits ?? 0));
-        const startValue = -currentHits;
-        const endValue = MOTIVE_HIT_PIP_COUNT;
-        const selectedValue = endValue >= 1 ? 1 : 0;
-        const applyMotiveHitDelta = (delta: number) => {
-            this.removePicker();
+        const motiveHitLevel = motiveHitLevelFromId(id);
+        const motiveHitLabel = motiveHitLevel === null ? null : REPEATABLE_MOTIVE_HIT_LABELS.get(motiveHitLevel);
+        const title = motiveHitLabel ? `Motive Hits (${motiveHitLabel})` : 'Motive Hits';
+        this.showHitDeltaPicker(event, motiveEl, title, currentHits, MOTIVE_HIT_PIP_COUNT, (delta) => {
             this.applyMotiveHitDelta(unit, id, delta, motiveEl);
-        };
+        });
+    }
 
+    private showHitDeltaPicker(
+        event: Event,
+        el: SVGElement,
+        title: string,
+        currentHits: number,
+        maxDelta: number,
+        onPick: (delta: number) => void
+    ): void {
+        const startValue = -currentHits;
+        const endValue = maxDelta;
+        const selectedValue = endValue >= 1 ? 1 : 0;
+        const applyHitDelta = (delta: number) => {
+            this.removePicker();
+            onPick(delta);
+        };
         const position = event instanceof PointerEvent ? { x: event.clientX, y: event.clientY } : undefined;
         const pickerStylePref = this.getUserPickerPreference();
         if (pickerStylePref === 'radial' || pickerStylePref === 'default') {
             this.showNumericPicker({
                 event,
-                el: motiveEl,
+                el,
                 position,
-                title: 'Motive Hits',
+                title,
                 min: startValue,
                 max: endValue,
                 selected: selectedValue,
-                onPick: (result) => applyMotiveHitDelta(result.value),
+                onPick: (result) => applyHitDelta(result.value),
                 onCancel: () => this.removePicker()
             });
         } else {
             this.showChoicePicker({
                 event,
-                el: motiveEl,
+                el,
                 position,
-                title: 'Motive Hits',
-                values: this.motiveHitDeltaChoices(startValue, endValue),
+                title,
+                values: this.hitDeltaChoices(startValue, endValue),
                 selected: selectedValue,
                 suggestedStyle: 'linear',
-                targetType: 'crit',
-                onPick: (val) => applyMotiveHitDelta(val.value as number),
+                targetType: 'motive',
+                onPick: (val) => applyHitDelta(val.value as number),
                 onCancel: () => this.removePicker()
             });
         }
@@ -863,7 +835,7 @@ export class SvgInteractionService {
         return Array.from({ length: count }, (_value, index) => timestamp + index);
     }
 
-    private motiveHitDeltaChoices(startValue: number, endValue: number): PickerChoice[] {
+    private hitDeltaChoices(startValue: number, endValue: number): PickerChoice[] {
         const allowedValues = [0, 1, 2, 3, 4, 5, 10, 15, 20, -1, -2, -3, -4, -5, -10, -15, -20];
         const values = allowedValues
             .filter(value => value >= startValue && value <= endValue)

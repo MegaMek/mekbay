@@ -55,7 +55,7 @@ export interface PickerPosition {
 }
 
 /** Target context for picker styling/behavior hints */
-export type PickerTargetType = 'skill' | 'crit' | 'armor' | 'inventory' | 'heatsinks';
+export type PickerTargetType = 'skill' | 'crit' | 'armor' | 'inventory' | 'heatsinks' | 'motive';
 
 /** Choice value type - string or number */
 export type PickerValue = string | number;
