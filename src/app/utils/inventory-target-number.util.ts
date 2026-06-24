@@ -103,9 +103,7 @@ export function inventoryTargetNumberBreakdown(input: InventoryTargetNumberInput
         { label: skillLabel, value: skill.toString() }
     ];
 
-    if (input.movementModifier !== 0) {
-        terms.push({ label: `Movement (${input.movementLabel})`, value: formatInventoryTargetSignedModifier(input.movementModifier) });
-    }
+    terms.push({ label: `Movement (${input.movementLabel})`, value: formatInventoryTargetSignedModifier(input.movementModifier) });
 
     if (target.tnModifier !== 0) {
         terms.push({ label: `Target (${target.letter})`, value: formatInventoryTargetSignedModifier(target.tnModifier) });
