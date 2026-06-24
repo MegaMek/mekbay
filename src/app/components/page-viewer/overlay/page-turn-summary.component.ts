@@ -46,7 +46,6 @@ import { ComponentPortal } from '@angular/cdk/portal';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
 import { canChangeAirborneGround, type MotiveModeOption, type MotiveModes } from '../../../models/motiveModes.model';
-import { getAttackerMovementModifier } from '../../../models/target-number-calculator.model';
 import { HexSliderComponent } from '../../hex-slider/hex-slider.component';
 
 /*
@@ -116,25 +115,25 @@ export class PageTurnSummaryPanelComponent {
     });
 
     moveModeModifierLabel(mode: MotiveModes): string | null {
-        const modifier = getAttackerMovementModifier(mode);
+        const modifier = this.unit()?.rules.getAttackMovementModifier(mode) ?? 0;
         if (modifier === 0) return null;
         return modifier > 0 ? `+${modifier}` : `${modifier}`;
     }
 
-    getTargetModifierAsDefender = computed(() => {
+    getTotalTargetModifierAsDefender = computed(() => {
         const u = this.unit();
         let value = 0;
         if (u) {
-            value = u.turnState().getTargetModifierAsDefender();
+            value = u.turnState().getTotalTargetModifierAsDefender();
         }
         return value >= 0 ? `+${value}` : `${value}`;
     });
 
-    getTargetModifierAsAttacker = computed<number>(() => {
+    getTotalTargetModifierAsAttacker = computed<number>(() => {
         const u = this.unit();
         let value = 0;
         if (u) {
-            value = u.turnState().getTargetModifierAsAttacker();
+            value = u.turnState().getTotalTargetModifierAsAttacker();
         }
         return value;
     });
@@ -167,6 +166,12 @@ export class PageTurnSummaryPanelComponent {
         const unit = this.unit();
         if (!unit) return [];
         return unit.PSRModifiers().modifiers.filter(modifier => modifier.pilotCheck !== undefined && modifier.pilotCheck !== 0);
+    });
+
+    gunneryModifiers = computed(() => {
+        const unit = this.unit();
+        if (!unit) return [];
+        return unit.rules.gunneryModifiers().filter(modifier => modifier.modifier !== 0);
     });
 
     close() {
