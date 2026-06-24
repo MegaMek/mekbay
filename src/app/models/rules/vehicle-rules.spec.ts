@@ -113,6 +113,30 @@ describe('VehicleRules', () => {
         expect(rules.movementState().walk).toBe(4);
     });
 
+    it('applies repeatable motive damage chronologically but counts each piloting level once', () => {
+        const rules = createRulesHarness({
+            crits: [
+                { id: 'motive_system_hit_2', hits: 2, hitTimestamps: [10, 30] },
+                { id: 'motive_system_hit_3', hits: 1, hitTimestamps: [20] },
+            ],
+            walk: 8,
+            run: 12,
+        });
+
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({
+            walk: 3,
+            maxWalk: 8,
+            run: 5,
+            maxRun: 12,
+            moveImpaired: true,
+        }));
+        expect(rules.pilotingModifier()).toBe(5);
+        expect(rules.PSRModifiers().modifiers.filter(modifier => modifier.reason === 'Motive system hit')).toEqual([
+            { pilotCheck: 2, reason: 'Motive system hit' },
+            { pilotCheck: 3, reason: 'Motive system hit' },
+        ]);
+    });
+
     it('reduces VTOL walk MP by one for each committed rotor hit', () => {
         const rules = createRulesHarness({
             crits: [{ id: 'rotor', hits: 3, pendingHits: 2 }],

@@ -40,6 +40,7 @@ import type { CriticalSlot, MountedEquipment } from '../force-serialization';
 import { WeaponEquipment } from '../equipment.model';
 import { getDefaultAttackerMovementModifier } from '../target-number-calculator.model';
 import type { MotiveModes } from '../motiveModes.model';
+import { critId, timestampedMotiveHits, type MotiveHitTimestamp } from './vehicle-motive-hit.util';
 
 type VehicleEntryState = { isDamaged: boolean; isDisabled: boolean; hitMod: number };
 
@@ -59,7 +60,7 @@ interface VehicleSystemsStatus {
     sensorHits: number;
     rotorHits: number;
     flightStabilizerHit: boolean;
-    motiveHits: { level: number; timestamp: number }[];
+    motiveHits: MotiveHitTimestamp[];
     stabilizerLocations: Set<string>;
     gunneryModifier: number;
     pilotingModifier: number;
@@ -98,15 +99,7 @@ export class VehicleRules extends UnitTypeRulesBase {
             const match = this.critId(crit).match(/^sensor_hit_(\d+)$/);
             return match ? Math.max(highest, parseInt(match[1], 10)) : highest;
         }, 0);
-        const motiveHits = committed
-            .map(crit => {
-                const match = this.critId(crit).match(/^motive_system_hit_(\d+)$/);
-                return match && crit.destroyed
-                    ? { level: parseInt(match[1], 10), timestamp: crit.destroyed }
-                    : null;
-            })
-            .filter((hit): hit is { level: number; timestamp: number } => hit !== null)
-            .sort((a, b) => a.timestamp - b.timestamp);
+        const motiveHits = timestampedMotiveHits(crits);
         const stabilizerLocations = new Set<string>();
         for (const crit of committed) {
             const locations = STABILIZER_HIT_LOCATIONS[this.critId(crit)];
@@ -132,9 +125,11 @@ export class VehicleRules extends UnitTypeRulesBase {
             gunneryModifier += 1;
             pilotingModifier += 3;
         }
+        const appliedMotivePilotingLevels = new Set<number>();
         for (const motiveHit of motiveHits) {
-            if (motiveHit.level >= 1 && motiveHit.level <= 3) {
+            if (motiveHit.level >= 1 && motiveHit.level <= 3 && !appliedMotivePilotingLevels.has(motiveHit.level)) {
                 pilotingModifier += motiveHit.level;
+                appliedMotivePilotingLevels.add(motiveHit.level);
             }
         }
 
@@ -254,9 +249,11 @@ export class VehicleRules extends UnitTypeRulesBase {
         if (status.flightStabilizerHit) {
             modifiers.push({ pilotCheck: 3, reason: 'Flight stabilizer hit' });
         }
+        const appliedMotivePilotingLevels = new Set<number>();
         for (const motiveHit of status.motiveHits) {
-            if (motiveHit.level >= 1 && motiveHit.level <= 3) {
+            if (motiveHit.level >= 1 && motiveHit.level <= 3 && !appliedMotivePilotingLevels.has(motiveHit.level)) {
                 modifiers.push({ pilotCheck: motiveHit.level, reason: `Motive system hit` });
+                appliedMotivePilotingLevels.add(motiveHit.level);
             }
         }
         return { modifier: status.pilotingModifier, modifiers };
@@ -301,7 +298,7 @@ export class VehicleRules extends UnitTypeRulesBase {
         return this.stabilizerHitApplies(entry, this.systemsStatus());
     }
 
-    private applyMotiveDamage(base: number, motiveHits: { level: number; timestamp: number }[]): number {
+    private applyMotiveDamage(base: number, motiveHits: MotiveHitTimestamp[]): number {
         let current = base;
         for (const hit of motiveHits) {
             if (current <= 0) return 0;
@@ -341,6 +338,6 @@ export class VehicleRules extends UnitTypeRulesBase {
     }
 
     private critId(crit: CriticalSlot): string {
-        return crit.id || crit.name || '';
+        return critId(crit);
     }
 }

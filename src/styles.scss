@@ -1863,6 +1863,27 @@ hr.divider {
             fill: #d2f1ff !important;
         }
 
+        .motiveHitPips {
+            pointer-events: none;
+
+            .motiveHitPip {
+                fill: transparent;
+                stroke: transparent;
+
+                &.damaged {
+                    fill: var(--damage-color) !important;
+                }
+
+                &.willChange:not(.damaged) {
+                    fill: orange !important;
+                }
+
+                &.damaged.pendingRemoval {
+                    fill: #03a9f4 !important;
+                }
+            }
+        }
+
         .rotorHitsControl {
             &.rotorHitsPendingPositive rect {
                 stroke: orange !important;

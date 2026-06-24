@@ -64,6 +64,7 @@ import { getMotiveModeLabel } from '../../models/motiveModes.model';
 import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { inventoryTargetCategory, inventoryTargetNumberText, parseInventoryTargetNumberCell, readInventoryTargetDisplay, readInventoryTargetText } from '../../utils/inventory-target-number.util';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
+import { committedCriticalHitCount, isRepeatableMotiveHitId, MOTIVE_HIT_PIP_COUNT, pendingCriticalHitTimestamps } from '../../models/rules/vehicle-motive-hit.util';
 
 type SheetInventoryRangeKey = InventoryRangeKey | 'extreme';
 
@@ -661,6 +662,10 @@ export class SvgInteractionService {
                 if (this.state.clickTarget !== svgEl) return;
                 const id = this.critLocId(svgEl);
                 if (!id) return;
+                if (isRepeatableMotiveHitId(id)) {
+                    this.showMotiveHitPicker(evt, svgEl, id);
+                    return;
+                }
                 if (this.applySensorHitInteraction(id)) return;
                 let critLoc = this.unit()?.getCritLoc(id);
                 if (!critLoc) return;
@@ -742,6 +747,123 @@ export class SvgInteractionService {
     }
 
     private rotorHitDeltaChoices(startValue: number, endValue: number): PickerChoice[] {
+        const allowedValues = [0, 1, 2, 3, 4, 5, 10, 15, 20, -1, -2, -3, -4, -5, -10, -15, -20];
+        const values = allowedValues
+            .filter(value => value >= startValue && value <= endValue)
+            .map(value => ({ label: value.toString(), value }));
+
+        if (!values.some(value => value.value === startValue)) {
+            values.push({ label: startValue.toString(), value: startValue });
+        }
+        if (!values.some(value => value.value === endValue)) {
+            values.push({ label: endValue.toString(), value: endValue });
+        }
+        return values.sort((a, b) => a.value - b.value);
+    }
+
+    private showMotiveHitPicker(event: Event, motiveEl: SVGElement, id: string): void {
+        const unit = this.unit();
+        if (!unit) return;
+
+        const critLoc = unit.getCritLoc(id) ?? { id, name: id, el: motiveEl };
+        const currentHits = Math.max(0, committedCriticalHitCount(critLoc) + (critLoc.pendingHits ?? 0));
+        const startValue = -currentHits;
+        const endValue = MOTIVE_HIT_PIP_COUNT;
+        const selectedValue = endValue >= 1 ? 1 : 0;
+        const applyMotiveHitDelta = (delta: number) => {
+            this.removePicker();
+            this.applyMotiveHitDelta(unit, id, delta, motiveEl);
+        };
+
+        const position = event instanceof PointerEvent ? { x: event.clientX, y: event.clientY } : undefined;
+        const pickerStylePref = this.getUserPickerPreference();
+        if (pickerStylePref === 'radial' || pickerStylePref === 'default') {
+            this.showNumericPicker({
+                event,
+                el: motiveEl,
+                position,
+                title: 'Motive Hits',
+                min: startValue,
+                max: endValue,
+                selected: selectedValue,
+                onPick: (result) => applyMotiveHitDelta(result.value),
+                onCancel: () => this.removePicker()
+            });
+        } else {
+            this.showChoicePicker({
+                event,
+                el: motiveEl,
+                position,
+                title: 'Motive Hits',
+                values: this.motiveHitDeltaChoices(startValue, endValue),
+                selected: selectedValue,
+                suggestedStyle: 'linear',
+                targetType: 'crit',
+                onPick: (val) => applyMotiveHitDelta(val.value as number),
+                onCancel: () => this.removePicker()
+            });
+        }
+    }
+
+    private applyMotiveHitDelta(unit: CBTForceUnit, id: string, delta: number, motiveEl?: SVGElement | null): void {
+        if (delta === 0) return;
+
+        const critLoc = unit.getCritLoc(id) ?? { id, name: id };
+        const committedHits = committedCriticalHitCount(critLoc);
+        const currentHits = Math.max(0, committedHits + (critLoc.pendingHits ?? 0));
+        const totalHits = Math.max(0, currentHits + delta);
+        const pendingHits = totalHits - committedHits;
+        critLoc.id = id;
+        critLoc.name = critLoc.name ?? id;
+        critLoc.el = motiveEl ?? critLoc.el;
+
+        if (this.consolidateImmediately) {
+            critLoc.hits = totalHits;
+            critLoc.hitTimestamps = this.updatedImmediateMotiveHitTimestamps(critLoc, totalHits, delta);
+            critLoc.pendingHits = undefined;
+            critLoc.pendingHitTimestamps = undefined;
+        } else {
+            critLoc.pendingHits = pendingHits === 0 ? undefined : pendingHits;
+            critLoc.pendingHitTimestamps = pendingHits > 0
+                ? this.updatedPendingMotiveHitTimestamps(critLoc, pendingHits)
+                : undefined;
+        }
+        critLoc.destroying = undefined;
+        critLoc.destroyed = undefined;
+        unit.setCritLoc(critLoc);
+    }
+
+    private updatedImmediateMotiveHitTimestamps(critLoc: CriticalSlot, totalHits: number, delta: number): number[] | undefined {
+        const committed = this.currentMotiveHitTimestamps(critLoc);
+        const timestamps = delta > 0
+            ? [...committed, ...this.newTimestamps(delta)]
+            : committed.slice(0, totalHits);
+        return timestamps.length > 0 ? timestamps.slice(0, totalHits) : undefined;
+    }
+
+    private currentMotiveHitTimestamps(critLoc: CriticalSlot): number[] {
+        const committed = (critLoc.hitTimestamps ?? [])
+            .filter(timestamp => Number.isFinite(timestamp))
+            .sort((a, b) => a - b);
+        const pendingHits = critLoc.pendingHits ?? 0;
+        if (pendingHits > 0) return [...committed, ...pendingCriticalHitTimestamps(critLoc).slice(0, pendingHits)].sort((a, b) => a - b);
+        if (pendingHits < 0) return committed.slice(0, Math.max(0, committed.length + pendingHits));
+        return committed;
+    }
+
+    private updatedPendingMotiveHitTimestamps(critLoc: CriticalSlot, pendingHits: number): number[] | undefined {
+        const current = pendingCriticalHitTimestamps(critLoc).slice(0, pendingHits);
+        const missing = pendingHits - current.length;
+        const timestamps = missing > 0 ? [...current, ...this.newTimestamps(missing)] : current;
+        return timestamps.length > 0 ? timestamps : undefined;
+    }
+
+    private newTimestamps(count: number): number[] {
+        const timestamp = Date.now();
+        return Array.from({ length: count }, (_value, index) => timestamp + index);
+    }
+
+    private motiveHitDeltaChoices(startValue: number, endValue: number): PickerChoice[] {
         const allowedValues = [0, 1, 2, 3, 4, 5, 10, 15, 20, -1, -2, -3, -4, -5, -10, -15, -20];
         const values = allowedValues
             .filter(value => value >= startValue && value <= endValue)

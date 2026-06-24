@@ -101,6 +101,7 @@ export class RsPolyfillUtil {
         if (unit.type !== 'Mek') {
             this.addCriticalLocs(svg);
         }
+        this.addMotiveHitPips(svg);
         this.addVtolRotorHitsCounter(unit, svg);
         this.addHeatLevels(svg);
         this.addApplyHeatButton(svg);
@@ -185,6 +186,42 @@ export class RsPolyfillUtil {
                 }
             }
         }
+    }
+
+    private static addMotiveHitPips(svg: SVGSVGElement): void {
+        ['motive_system_hit_2', 'motive_system_hit_3'].forEach(id => {
+            const motiveEl = svg.getElementById(id) as SVGGraphicsElement | null;
+            if (!motiveEl || svg.getElementById(`${id}_pips`)) return;
+
+            let bbox: DOMRect;
+            try {
+                bbox = motiveEl.getBBox();
+            } catch {
+                return;
+            }
+
+            const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            group.setAttribute('id', `${id}_pips`);
+            group.setAttribute('class', 'motiveHitPips screen-only');
+            group.setAttribute('critId', id);
+
+            const cellWidth = bbox.width / 3;
+            const cellHeight = bbox.height / 3;
+            const radius = Math.min(cellWidth, cellHeight) * 0.4;
+            const yOffset = bbox.height + 1;
+            for (let index = 0; index < 9; index++) {
+                const column = index % 3;
+                const row = Math.floor(index / 3);
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('class', 'motiveHitPip hidden');
+                circle.setAttribute('cx', (bbox.x + cellWidth * (column + 0.5)).toString());
+                circle.setAttribute('cy', (bbox.y + yOffset + cellHeight * (row + 0.5)).toString());
+                circle.setAttribute('r', radius.toString());
+                group.appendChild(circle);
+            }
+
+            motiveEl.parentElement?.appendChild(group);
+        });
     }
 
     private static addVtolRotorHitsCounter(unit: Unit, svg: SVGSVGElement): void {

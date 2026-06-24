@@ -443,6 +443,53 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(rotorGroup.classList.contains('rotorHitsPendingNegative')).toBeTrue();
     });
 
+    it('renders repeatable motive hit pips for committed and pending hits', () => {
+        const forceUnit = createForceUnit();
+        const svg = createVehicleSvg();
+        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        const motiveHit = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        motiveHit.setAttribute('id', 'motive_system_hit_2');
+        motiveHit.classList.add('critLoc');
+        const pipsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        pipsGroup.setAttribute('id', 'motive_system_hit_2_pips');
+        for (let index = 0; index < 9; index++) {
+            const pip = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            pip.classList.add('motiveHitPip', 'hidden');
+            pipsGroup.appendChild(pip);
+        }
+        group.append(motiveHit, pipsGroup);
+        svg.appendChild(group);
+        initialize(forceUnit, svg);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgVehicleService(forceUnit, unitInitializer));
+
+        svgService.refreshCritLocs([{ id: 'motive_system_hit_2', hits: 3, pendingHits: 2, hitTimestamps: [10, 20, 30], el: motiveHit }]);
+
+        const pips = Array.from(pipsGroup.querySelectorAll<SVGCircleElement>('.motiveHitPip'));
+        expect(pips.filter(pip => pip.classList.contains('damaged')).length).toBe(3);
+        expect(pips.filter(pip => pip.classList.contains('willChange')).length).toBe(2);
+        expect(pips.filter(pip => pip.classList.contains('hidden')).length).toBe(4);
+        expect(motiveHit.classList.contains('damaged')).toBeTrue();
+        expect(motiveHit.classList.contains('willChange')).toBeFalse();
+
+        svgService.refreshCritLocs([{ id: 'motive_system_hit_2', hits: 3, pendingHits: -2, hitTimestamps: [10, 20, 30], el: motiveHit }]);
+
+        expect(pips.filter(pip => pip.classList.contains('damaged')).length).toBe(3);
+        expect(pips.filter(pip => pip.classList.contains('pendingRemoval')).length).toBe(2);
+        expect(pips.filter(pip => pip.classList.contains('hidden')).length).toBe(6);
+        expect(motiveHit.classList.contains('damaged')).toBeTrue();
+        expect(motiveHit.classList.contains('willChange')).toBeFalse();
+
+        svgService.refreshCritLocs([{ id: 'motive_system_hit_2', hits: 0, pendingHits: 1, el: motiveHit }]);
+
+        expect(motiveHit.classList.contains('damaged')).toBeFalse();
+        expect(motiveHit.classList.contains('willChange')).toBeTrue();
+
+        svgService.refreshCritLocs([{ id: 'motive_system_hit_2', hits: 1, pendingHits: -1, hitTimestamps: [10], el: motiveHit }]);
+
+        expect(motiveHit.classList.contains('damaged')).toBeTrue();
+        expect(motiveHit.classList.contains('willChange')).toBeTrue();
+    });
+
     it('renders a no-aim warning on SVG target overlays when aimed shots are blocked', () => {
         const forceUnit = createForceUnit(createVspUnit(equipment));
         initialize(forceUnit, createVspSvg());

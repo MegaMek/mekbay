@@ -305,6 +305,50 @@ describe('SvgInteractionService', () => {
         }));
     });
 
+    it('opens a delta picker for repeatable motive hits and stores pending timestamps', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const motiveHit = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        motiveHit.setAttribute('id', 'motive_system_hit_2');
+        motiveHit.classList.add('critLoc');
+        svg.appendChild(motiveHit);
+
+        const motiveCrit = { id: 'motive_system_hit_2', hits: 2, hitTimestamps: [10, 20] };
+        const unit = {
+            id: 'unit-tank',
+            getUnit: () => ({ type: 'Tank' }),
+            getInventory: () => [],
+            getCritLoc: (id: string) => id === 'motive_system_hit_2' ? motiveCrit : null,
+            setCritLoc: jasmine.createSpy('setCritLoc').and.callFake((crit) => {
+                Object.assign(motiveCrit, crit);
+            }),
+            getCritSlots: () => [motiveCrit],
+        };
+        spyOn(Date, 'now').and.returnValue(1000);
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(motiveHit, 69);
+
+        expect(pickerFactory.createNumericPicker).toHaveBeenCalledWith(jasmine.objectContaining({
+            min: -2,
+            max: 9,
+            selected: 1,
+            title: 'Motive Hits',
+        }));
+
+        pickerFactory.createNumericPicker.calls.mostRecent().args[0].onPick({ value: 3 });
+
+        expect(unit.setCritLoc).toHaveBeenCalledWith(jasmine.objectContaining({
+            id: 'motive_system_hit_2',
+            hits: 2,
+            hitTimestamps: [10, 20],
+            pendingHits: 3,
+            pendingHitTimestamps: [1000, 1001, 1002],
+            destroying: undefined,
+            destroyed: undefined,
+        }));
+    });
+
     it('adds one pending rotor hit for positive RO armor damage and removes one for repair', () => {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         const roLocation = document.createElementNS('http://www.w3.org/2000/svg', 'rect');

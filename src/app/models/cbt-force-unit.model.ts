@@ -765,6 +765,15 @@ export class CBTForceUnit extends ForceUnit {
             if (crit.hits) {
                 crit.hits = 0;
             }
+            if (crit.pendingHits) {
+                crit.pendingHits = undefined;
+            }
+            if (crit.hitTimestamps) {
+                crit.hitTimestamps = undefined;
+            }
+            if (crit.pendingHitTimestamps) {
+                crit.pendingHitTimestamps = undefined;
+            }
             if (crit.consumed) {
                 crit.consumed = 0;
             }

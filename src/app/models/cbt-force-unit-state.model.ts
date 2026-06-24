@@ -66,7 +66,9 @@ export class CBTForceUnitState extends ForceUnitState {
     }
 
     hasUnconsolidatedCrits = computed(() => {
-        return this.crits().some(crit => !!crit.destroying !== !!crit.destroyed || (crit.pendingHits ?? 0) !== 0);
+        return this.crits().some(crit => !!crit.destroying !== !!crit.destroyed
+            || (crit.pendingHits ?? 0) !== 0
+            || (crit.pendingHitTimestamps?.length ?? 0) > 0);
     });
 
     hasUnconsolidatedLocations = computed(() => {
@@ -108,8 +110,10 @@ export class CBTForceUnitState extends ForceUnitState {
         let updated = false;
         crits.forEach(crit => {
             if ((crit.pendingHits ?? 0) !== 0) {
+                this.consolidateCritHitTimestamps(crit);
                 crit.hits = Math.max(0, (crit.hits ?? 0) + (crit.pendingHits ?? 0));
                 crit.pendingHits = undefined;
+                crit.pendingHitTimestamps = undefined;
                 updated = true;
             }
             if (!!crit.destroying !== !!crit.destroyed) {
@@ -213,11 +217,15 @@ export class CBTForceUnitState extends ForceUnitState {
                     // Update from incoming state
                     if (existingCrit.hits !== incomingCrit.hits ||
                         existingCrit.pendingHits !== incomingCrit.pendingHits ||
+                        !this.numberArraysEqual(existingCrit.hitTimestamps, incomingCrit.hitTimestamps) ||
+                        !this.numberArraysEqual(existingCrit.pendingHitTimestamps, incomingCrit.pendingHitTimestamps) ||
                         existingCrit.destroying !== incomingCrit.destroying ||
                         existingCrit.destroyed !== incomingCrit.destroyed ||
                         existingCrit.consumed !== incomingCrit.consumed) {
                         existingCrit.hits = incomingCrit.hits;
                         existingCrit.pendingHits = incomingCrit.pendingHits;
+                        existingCrit.hitTimestamps = incomingCrit.hitTimestamps;
+                        existingCrit.pendingHitTimestamps = incomingCrit.pendingHitTimestamps;
                         existingCrit.destroying = incomingCrit.destroying;
                         existingCrit.name = incomingCrit.name;
                         existingCrit.originalName = incomingCrit.originalName;
@@ -227,11 +235,15 @@ export class CBTForceUnitState extends ForceUnitState {
                     }
                 } else {
                     // Not in incoming data: reset to pristine if it had any state
-                    if ((existingCrit.hits ?? 0) > 0 || (existingCrit.pendingHits ?? 0) !== 0 || existingCrit.destroying !== undefined ||
+                    if ((existingCrit.hits ?? 0) > 0 || (existingCrit.pendingHits ?? 0) !== 0 ||
+                        (existingCrit.hitTimestamps?.length ?? 0) > 0 || (existingCrit.pendingHitTimestamps?.length ?? 0) > 0 ||
+                        existingCrit.destroying !== undefined ||
                         existingCrit.destroyed !== undefined || (existingCrit.consumed ?? 0) > 0 ||
                         existingCrit.originalName !== undefined) {
                         existingCrit.hits = 0;
                         existingCrit.pendingHits = undefined;
+                        existingCrit.hitTimestamps = undefined;
+                        existingCrit.pendingHitTimestamps = undefined;
                         existingCrit.destroying = undefined;
                         existingCrit.destroyed = undefined;
                         existingCrit.consumed = undefined;
@@ -350,6 +362,8 @@ export class CBTForceUnitState extends ForceUnitState {
             .filter(crit =>
                 (crit.hits ?? 0) > 0 ||
                 (crit.pendingHits ?? 0) !== 0 ||
+                (crit.hitTimestamps?.length ?? 0) > 0 ||
+                (crit.pendingHitTimestamps?.length ?? 0) > 0 ||
                 (crit.consumed ?? 0) > 0 ||
                 (crit.originalName !== undefined && crit.originalName !== crit.name) ||
                 crit.destroying ||
@@ -362,6 +376,38 @@ export class CBTForceUnitState extends ForceUnitState {
         return crit.loc !== undefined && crit.slot !== undefined
             ? `slot:${crit.loc}-${crit.slot}`
             : `loc:${crit.id || crit.name || ''}`;
+    }
+
+    private consolidateCritHitTimestamps(crit: CriticalSlot): void {
+        if (!crit.hitTimestamps && !crit.pendingHitTimestamps) return;
+
+        const committedCount = Math.max(0, crit.hits ?? 0);
+        const committed = this.normalizedTimestamps(crit.hitTimestamps, committedCount, crit.destroyed);
+        const pendingHits = crit.pendingHits ?? 0;
+        if (pendingHits > 0) {
+            const pending = this.normalizedTimestamps(crit.pendingHitTimestamps, pendingHits, Date.now());
+            crit.hitTimestamps = [...committed, ...pending].sort((a, b) => a - b);
+        } else if (pendingHits < 0) {
+            crit.hitTimestamps = committed.slice(0, Math.max(0, committed.length + pendingHits));
+        }
+    }
+
+    private normalizedTimestamps(timestamps: number[] | undefined, count: number, fallback: number | undefined): number[] {
+        const normalized = (timestamps ?? [])
+            .filter(timestamp => Number.isFinite(timestamp))
+            .sort((a, b) => a - b)
+            .slice(0, Math.max(0, count));
+        const missing = Math.max(0, count - normalized.length);
+        const start = normalized[normalized.length - 1] ?? fallback ?? 0;
+        return missing === 0
+            ? normalized
+            : [...normalized, ...Array.from({ length: missing }, (_value, index) => start + index + 1)];
+    }
+
+    private numberArraysEqual(left: number[] | undefined, right: number[] | undefined): boolean {
+        const leftValues = left ?? [];
+        const rightValues = right ?? [];
+        return leftValues.length === rightValues.length && leftValues.every((value, index) => value === rightValues[index]);
     }
 
     /**

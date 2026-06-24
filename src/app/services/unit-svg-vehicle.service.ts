@@ -35,6 +35,7 @@ import type { CriticalSlot, MountedEquipment } from "../models/force-serializati
 import { VehicleRules } from "../models/rules/vehicle-rules";
 import { resolveHitModifier } from "../models/rules/hit-modifier.util";
 import type { InventoryControlRuntimeRangeKey } from "../models/inventory-control-runtime-state.model";
+import { committedCriticalHitCount, isRepeatableMotiveHitId, MOTIVE_HIT_PIP_COUNT } from "../models/rules/vehicle-motive-hit.util";
 import { UnitSvgService } from "./unit-svg.service";
 
 type VehicleEntryState = { isDamaged: boolean; isDisabled: boolean; hitMod: number };
@@ -73,6 +74,14 @@ export class UnitSvgVehicleService extends UnitSvgService {
 
         critLocs.forEach(critLoc => {
             if (!critLoc.el) return;
+            if (isRepeatableMotiveHitId(critLoc.id || critLoc.name || '')) {
+                this.updateMotiveHitPips(critLoc);
+                const committedHits = committedCriticalHitCount(critLoc);
+                const currentHits = Math.max(0, committedHits + (critLoc.pendingHits ?? 0));
+                critLoc.el.classList.toggle('damaged', committedHits > 0);
+                critLoc.el.classList.toggle('willChange', (committedHits > 0) !== (currentHits > 0));
+                return;
+            }
             if (critLoc.id === VTOL_ROTOR_CRIT_ID || critLoc.name === VTOL_ROTOR_CRIT_ID) {
                 const committedHits = Math.max(0, critLoc.hits ?? 0);
                 const pendingHits = critLoc.pendingHits ?? 0;
@@ -88,6 +97,29 @@ export class UnitSvgVehicleService extends UnitSvgService {
             critLoc.el.classList.toggle('damaged', !!critLoc.destroyed);
             critLoc.el.classList.toggle('willChange', !!critLoc.destroying != !!critLoc.destroyed);
         });
+    }
+
+    private updateMotiveHitPips(critLoc: CriticalSlot): void {
+        const committedHits = committedCriticalHitCount(critLoc);
+        const pendingHits = critLoc.pendingHits ?? 0;
+        const pendingPositiveHits = Math.max(0, pendingHits);
+        const pendingNegativeHits = Math.max(0, -pendingHits);
+        const group = critLoc.el?.parentElement?.querySelector<SVGGElement>(`#${critLoc.id}_pips`);
+        if (!group) return;
+
+        const pips = Array.from(group.querySelectorAll<SVGCircleElement>('.motiveHitPip'));
+        pips.forEach((pip, index) => {
+            const committedIndex = index < committedHits;
+            const pendingAddIndex = index >= committedHits && index < committedHits + pendingPositiveHits;
+            const pendingRemoveIndex = index >= Math.max(0, committedHits - pendingNegativeHits) && index < committedHits;
+
+            pip.classList.toggle('damaged', committedIndex);
+            pip.classList.toggle('willChange', pendingAddIndex || pendingRemoveIndex);
+            pip.classList.toggle('pendingRemoval', pendingRemoveIndex);
+            pip.classList.toggle('hidden', !committedIndex && !pendingAddIndex);
+        });
+
+        group.classList.toggle('hasVisiblePips', pips.some(pip => !pip.classList.contains('hidden')));
     }
 
     private renderRotorHitsCounter(counter: Element, committedHits: number, pendingHits: number): void {
