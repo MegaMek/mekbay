@@ -8,6 +8,7 @@ import type { CBTSerializedUnit } from './force-serialization';
 import { DataService } from '../services/data.service';
 import { UnitInitializerService } from '../services/unit-initializer.service';
 import { UnitSvgService } from '../services/unit-svg.service';
+import { UnitSvgVehicleService } from '../services/unit-svg-vehicle.service';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import type { Unit } from './units.model';
 
@@ -16,7 +17,7 @@ function createEquipment(): EquipmentMap {
         id: 'CLUltraAC20',
         name: 'Ultra AC/20',
         type: 'weapon',
-        weapon: { ammoType: 'AC_ULTRA', rackSize: 20 }
+        weapon: { ammoType: 'AC_ULTRA', rackSize: 20, ranges: [4, 8, 12, 16] }
     });
     const ultraAc20Ammo = new AmmoEquipment({
         id: 'Clan Ultra AC/20 Ammo',
@@ -69,7 +70,7 @@ function createVehicleSvg(): SVGSVGElement {
     const parser = new DOMParser();
     return parser.parseFromString(`
         <svg xmlns="http://www.w3.org/2000/svg">
-            <g class="inventoryEntry" id="CLUltraAC20@FR#0" baseHitMod="0">
+            <g class="inventoryEntry" id="CLUltraAC20@FR#0" hitMod="0">
                 <g class="name"><text>Ultra AC/20</text></g>
                 <text class="location">FR</text>
                 <text class="range_short">4</text>
@@ -124,6 +125,16 @@ function createVspSvg(): SVGSVGElement {
 class ExposedUnitSvgService extends UnitSvgService {
     refreshInventory(): void {
         this.updateInventory();
+    }
+}
+
+class ExposedUnitSvgVehicleService extends UnitSvgVehicleService {
+    refreshInventory(): void {
+        this.updateInventory();
+    }
+
+    refreshCritLocs(critLocs = this.unit.getCritSlots()): void {
+        this.updateCritLocDisplay(critLocs);
     }
 }
 
@@ -375,6 +386,61 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         svgService.refreshInventory();
         expect(damageText.textContent).toBe('9/7/5 [Variable]');
         expect(hitModText.textContent).toBe('-4');
+    });
+
+    it('renders wildcard vehicle stabilizer hit modifiers until movement mode is selected', () => {
+        const forceUnit = createForceUnit();
+        initialize(forceUnit);
+        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
+        const hitModRect = weaponEntry.el!.querySelector(':scope > .hitMod-rect') as SVGRectElement;
+        const hitModText = weaponEntry.el!.querySelector(':scope > .hitMod-text') as SVGTextElement;
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgVehicleService(forceUnit, unitInitializer));
+
+        forceUnit.setCritLoc({ id: 'stabilizer_hit_front', destroyed: 10, destroying: 10 });
+        svgService.refreshInventory();
+        expect(hitModText.textContent).toBe('*');
+        expect(hitModRect.getAttribute('display')).toBe('block');
+        expect(weaponEntry.el!.classList.contains('weakenedHitMod')).toBeTrue();
+
+        forceUnit.turnState().moveMode.set('run');
+        svgService.refreshInventory();
+        expect(hitModText.textContent).toBe('+2');
+    });
+
+    it('renders VTOL rotor committed and pending hit counts separately', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({
+            ...createVehicleUnit(equipment),
+            type: 'VTOL',
+        }));
+        const svg = createVehicleSvg();
+        const rotorGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        rotorGroup.setAttribute('id', 'rotor_hits_group');
+        rotorGroup.setAttribute('class', 'screen-only critLoc counterGroup rotorHitsControl');
+        rotorGroup.setAttribute('critId', 'rotor');
+        rotorGroup.setAttribute('type', 'rotor');
+        const counter = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        counter.setAttribute('id', 'rotor_hits_counter');
+        rotorGroup.appendChild(counter);
+        svg.appendChild(rotorGroup);
+        initialize(forceUnit, svg);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgVehicleService(forceUnit, unitInitializer));
+
+        forceUnit.setCritLoc({ id: 'rotor', hits: 2, pendingHits: 1, el: rotorGroup });
+        svgService.refreshCritLocs();
+
+        expect(counter.textContent).toBe('2+1');
+        expect(counter.querySelector('.rotorHitsCommitted')?.textContent).toBe('2');
+        expect(counter.querySelector('.rotorHitsPending.positive')?.textContent).toBe('+1');
+        expect(rotorGroup.classList.contains('rotorHitsDamaged')).toBeTrue();
+        expect(rotorGroup.classList.contains('rotorHitsPendingPositive')).toBeTrue();
+
+        forceUnit.setCritLoc({ id: 'rotor', hits: 2, pendingHits: -1, el: rotorGroup });
+        svgService.refreshCritLocs();
+
+        expect(counter.textContent).toBe('2-1');
+        expect(counter.querySelector('.rotorHitsPending.negative')?.textContent).toBe('-1');
+        expect(rotorGroup.classList.contains('rotorHitsPendingPositive')).toBeFalse();
+        expect(rotorGroup.classList.contains('rotorHitsPendingNegative')).toBeTrue();
     });
 
     it('renders a no-aim warning on SVG target overlays when aimed shots are blocked', () => {

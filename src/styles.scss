@@ -1742,7 +1742,7 @@ hr.divider {
         text-decoration: line-through;
     }
 
-    .critLoc {
+    .critLoc:not(.counterGroup) {
         &.damaged {
             fill: var(--damage-color) !important;
         }
@@ -1848,7 +1848,7 @@ hr.divider {
             stroke: transparent !important;
         }
 
-        .critLoc.willChange:not(.damaged) {
+        .critLoc:not(.counterGroup).willChange:not(.damaged) {
             fill: orange !important;
             stroke: #FF0 !important;
             stroke-width: 1.5px;
@@ -1858,9 +1858,35 @@ hr.divider {
             vector-effect: non-scaling-stroke;
         }
 
-        .critLoc.damaged.willChange {
+        .critLoc:not(.counterGroup).damaged.willChange {
             stroke: #03a9f4 !important;
             fill: #d2f1ff !important;
+        }
+
+        .rotorHitsControl {
+            &.rotorHitsPendingPositive rect {
+                stroke: orange !important;
+                stroke-width: 1.5px;
+            }
+
+            &.rotorHitsPendingNegative rect {
+                stroke: #03a9f4 !important;
+                stroke-width: 1.5px;
+            }
+
+            #rotor_hits_counter {
+                .rotorHitsCommitted {
+                    fill: var(--damage-color) !important;
+                }
+
+                .rotorHitsPending.positive {
+                    fill: orange !important;
+                }
+
+                .rotorHitsPending.negative {
+                    fill: #03a9f4 !important;
+                }
+            }
         }
 
         .pip.disabled {

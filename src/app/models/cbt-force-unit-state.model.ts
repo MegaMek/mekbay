@@ -66,7 +66,7 @@ export class CBTForceUnitState extends ForceUnitState {
     }
 
     hasUnconsolidatedCrits = computed(() => {
-        return this.crits().some(crit => !!crit.destroying !== !!crit.destroyed);
+        return this.crits().some(crit => !!crit.destroying !== !!crit.destroyed || (crit.pendingHits ?? 0) !== 0);
     });
 
     hasUnconsolidatedLocations = computed(() => {
@@ -107,6 +107,11 @@ export class CBTForceUnitState extends ForceUnitState {
         const crits = this.crits();
         let updated = false;
         crits.forEach(crit => {
+            if ((crit.pendingHits ?? 0) !== 0) {
+                crit.hits = Math.max(0, (crit.hits ?? 0) + (crit.pendingHits ?? 0));
+                crit.pendingHits = undefined;
+                updated = true;
+            }
             if (!!crit.destroying !== !!crit.destroyed) {
                 crit.destroyed = crit.destroying;
                 updated = true;
@@ -193,23 +198,26 @@ export class CBTForceUnitState extends ForceUnitState {
         }
 
         // In-place update for critical slots to preserve references.
-        // Incoming crits are sparse: only slots with state (hits, consumed, destroying, destroyed, name override).
+        // Incoming crits are sparse: only slots with state (hits, pendingHits, consumed, destroying, destroyed, name override).
         // Slots not in the incoming data are reset to pristine.
         if (data.crits) {
             const currentCrits = this.crits();
-            const incomingCritMap = new Map(data.crits.map(c => [`${c.loc}-${c.slot}`, c]));
+            const incomingCritMap = new Map(data.crits.map(c => [this.critStateKey(c), c]));
             let critsChanged = false;
 
             for (const existingCrit of currentCrits) {
-                const key = `${existingCrit.loc}-${existingCrit.slot}`;
+                const key = this.critStateKey(existingCrit);
                 const incomingCrit = incomingCritMap.get(key);
 
                 if (incomingCrit) {
                     // Update from incoming state
                     if (existingCrit.hits !== incomingCrit.hits ||
+                        existingCrit.pendingHits !== incomingCrit.pendingHits ||
+                        existingCrit.destroying !== incomingCrit.destroying ||
                         existingCrit.destroyed !== incomingCrit.destroyed ||
                         existingCrit.consumed !== incomingCrit.consumed) {
                         existingCrit.hits = incomingCrit.hits;
+                        existingCrit.pendingHits = incomingCrit.pendingHits;
                         existingCrit.destroying = incomingCrit.destroying;
                         existingCrit.name = incomingCrit.name;
                         existingCrit.originalName = incomingCrit.originalName;
@@ -219,10 +227,11 @@ export class CBTForceUnitState extends ForceUnitState {
                     }
                 } else {
                     // Not in incoming data: reset to pristine if it had any state
-                    if ((existingCrit.hits ?? 0) > 0 || existingCrit.destroying !== undefined ||
+                    if ((existingCrit.hits ?? 0) > 0 || (existingCrit.pendingHits ?? 0) !== 0 || existingCrit.destroying !== undefined ||
                         existingCrit.destroyed !== undefined || (existingCrit.consumed ?? 0) > 0 ||
                         existingCrit.originalName !== undefined) {
                         existingCrit.hits = 0;
+                        existingCrit.pendingHits = undefined;
                         existingCrit.destroying = undefined;
                         existingCrit.destroyed = undefined;
                         existingCrit.consumed = undefined;
@@ -340,12 +349,19 @@ export class CBTForceUnitState extends ForceUnitState {
         return this.crits()
             .filter(crit =>
                 (crit.hits ?? 0) > 0 ||
+                (crit.pendingHits ?? 0) !== 0 ||
                 (crit.consumed ?? 0) > 0 ||
                 (crit.originalName !== undefined && crit.originalName !== crit.name) ||
                 crit.destroying ||
                 crit.destroyed
             )
             .map(({ el, eq, ...rest }) => rest);
+    }
+
+    private critStateKey(crit: CriticalSlot): string {
+        return crit.loc !== undefined && crit.slot !== undefined
+            ? `slot:${crit.loc}-${crit.slot}`
+            : `loc:${crit.id || crit.name || ''}`;
     }
 
     /**

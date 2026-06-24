@@ -275,6 +275,7 @@ export interface CriticalSlot {
     loc?: string; // Location of the critical slot (HD, LT, RT, ...)
     slot?: number; // Slot number of the critical slot
     hits?: number; // How many hits did this location receive. If is an armored location, this is the number of hits it has taken
+    pendingHits?: number; // Pending hit delta for count-based criticals, such as VTOL rotor hits
     totalAmmo?: number; // If is an ammo slot: how much total ammo is in this slot.
     consumed?: number; // If is an ammo slot: how much ammo have been consumed. If is a F_MODULAR_ARMOR, is the armor points used
     destroying?: number; // If this location is in the process of being destroyed. Contains the timestamp of when the destruction started
@@ -338,6 +339,7 @@ export const CRIT_SLOT_SCHEMA = Sanitizer.schema<CriticalSlot>()
     .string('loc')
     .number('slot')
     .number('hits')
+    .number('pendingHits')
     .number('totalAmmo')
     .number('consumed')
     .number('destroying')

@@ -262,6 +262,96 @@ describe('SvgInteractionService', () => {
         expect(activeSensorHitLevels(unit)).toEqual([1]);
     });
 
+    it('adds pending VTOL rotor hits with the rotor counter picker delta', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const rotorGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        rotorGroup.setAttribute('id', 'rotor_hits_group');
+        rotorGroup.setAttribute('class', 'critLoc counterGroup rotorHitsControl');
+        rotorGroup.setAttribute('critId', 'rotor');
+        rotorGroup.setAttribute('type', 'rotor');
+        svg.appendChild(rotorGroup);
+
+        const rotorCrit = { id: 'rotor', hits: 2, pendingHits: 1 };
+        const unit = {
+            id: 'unit-vtol',
+            getUnit: () => ({ type: 'VTOL' }),
+            getInventory: () => [],
+            getCritLoc: (id: string) => id === 'rotor' ? rotorCrit : null,
+            setCritLoc: jasmine.createSpy('setCritLoc').and.callFake((crit) => {
+                Object.assign(rotorCrit, crit);
+            }),
+            getCritSlots: () => [rotorCrit],
+        };
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(rotorGroup, 65);
+
+        expect(pickerFactory.createNumericPicker).toHaveBeenCalledWith(jasmine.objectContaining({
+            min: -3,
+            max: 17,
+            selected: 0,
+            title: 'Rotor Hits',
+        }));
+
+        pickerFactory.createNumericPicker.calls.mostRecent().args[0].onPick({ value: 5 });
+
+        expect(unit.setCritLoc).toHaveBeenCalledWith(jasmine.objectContaining({
+            id: 'rotor',
+            hits: 2,
+            pendingHits: 6,
+            destroying: undefined,
+            destroyed: undefined,
+        }));
+    });
+
+    it('adds one pending rotor hit for positive RO armor damage and removes one for repair', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const roLocation = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        roLocation.classList.add('unitLocation');
+        roLocation.setAttribute('loc', 'RO');
+        svg.appendChild(roLocation);
+
+        let armorHits = 0;
+        const rotorCrit = { id: 'rotor', hits: 2, pendingHits: 0 };
+        const unit = {
+            id: 'unit-vtol',
+            getUnit: () => ({ type: 'VTOL' }),
+            getInventory: () => [],
+            getArmorPoints: () => 10,
+            getArmorHits: () => armorHits,
+            addArmorHits: jasmine.createSpy('addArmorHits').and.callFake((_loc: string, hits: number) => {
+                armorHits += hits;
+            }),
+            getCritSlotsAsMatrix: () => ({}),
+            getCritLoc: (id: string) => id === 'rotor' ? rotorCrit : null,
+            setCritLoc: jasmine.createSpy('setCritLoc').and.callFake((crit) => {
+                Object.assign(rotorCrit, crit);
+            }),
+        };
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(roLocation, 66);
+        pickerFactory.createNumericPicker.calls.mostRecent().args[0].onPick({ value: 5 });
+
+        expect(unit.addArmorHits).toHaveBeenCalledWith('RO', 5, false, false);
+        expect(unit.setCritLoc).toHaveBeenCalledWith(jasmine.objectContaining({ id: 'rotor', hits: 2, pendingHits: 1 }));
+
+        tap(roLocation, 67);
+        pickerFactory.createNumericPicker.calls.mostRecent().args[0].onPick({ value: -3 });
+
+        expect(unit.addArmorHits).toHaveBeenCalledWith('RO', -3, false, false);
+        expect(unit.setCritLoc).toHaveBeenCalledWith(jasmine.objectContaining({ id: 'rotor', hits: 2, pendingHits: undefined }));
+
+        rotorCrit.hits = 20;
+        rotorCrit.pendingHits = 0;
+        tap(roLocation, 68);
+        pickerFactory.createNumericPicker.calls.mostRecent().args[0].onPick({ value: 1 });
+
+        expect(unit.setCritLoc).toHaveBeenCalledWith(jasmine.objectContaining({ id: 'rotor', hits: 20, pendingHits: undefined }));
+    });
+
     it('assigns the single target when a sheet range button is clicked with one target', () => {
         const { svg, entry, unit } = createInventoryInteractionUnit();
         unit.createInventoryControlTarget();

@@ -73,6 +73,8 @@ const INVENTORY_RANGE_BUTTON_CLASSES: ReadonlyArray<readonly [string, SheetInven
     ['lngButton', 'long'],
     ['extButton', 'extreme']
 ];
+const VTOL_ROTOR_CRIT_ID = 'rotor';
+const VTOL_ROTOR_HITS_MAX = 20;
 const SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY = 'svg-inventory-target-choice';
 
 /*
@@ -213,6 +215,7 @@ export class SvgInteractionService {
         this.setupPipInteractions(svg, signal);
         this.setupSoldierPipInteractions(svg, signal);
         this.setupArmorInteraction(svg, signal);
+        this.setupVtolRotorHitsInteraction(svg, signal);
         this.setupCritSlotInteractions(svg, signal);
         this.setupHeatInteractions(svg, signal);
         this.setupCritLocInteractions(svg, signal);
@@ -607,6 +610,9 @@ export class SvgInteractionService {
                             this.unit()?.addArmorHits(loc, valueToApply, rear, this.consolidateImmediately);
                         }
                     }
+                    if (loc === 'RO' && value !== 0) {
+                        this.applyVtolRotorHitDelta(unit, value > 0 ? 1 : -1, svg.getElementById('rotor_hits_group') as SVGElement | null);
+                    }
                     showArmorToast(value);
                 };
 
@@ -650,9 +656,10 @@ export class SvgInteractionService {
     private setupCritLocInteractions(svg: SVGSVGElement, signal: AbortSignal) {
         svg.querySelectorAll('.critLoc').forEach(el => {
             const svgEl = el as SVGElement;
+            if (this.critLocId(svgEl) === VTOL_ROTOR_CRIT_ID) return;
             this.addSvgTapHandler(svgEl, (evt: Event, primaryAction: boolean) => {
                 if (this.state.clickTarget !== svgEl) return;
-                const id = svgEl.getAttribute('id');
+                const id = this.critLocId(svgEl);
                 if (!id) return;
                 if (this.applySensorHitInteraction(id)) return;
                 let critLoc = this.unit()?.getCritLoc(id);
@@ -661,6 +668,96 @@ export class SvgInteractionService {
                 this.unit()?.setCritLoc(critLoc);
             }, signal);
         });
+    }
+
+    private setupVtolRotorHitsInteraction(svg: SVGSVGElement, signal: AbortSignal) {
+        const unit = this.unit();
+        if (!unit || unit.getUnit().type !== 'VTOL') return;
+
+        const rotorEl = svg.getElementById('rotor_hits_group') as SVGElement | null;
+        if (!rotorEl) return;
+
+        this.addSvgTapHandler(rotorEl, (event: PointerEvent) => {
+            if (this.state.clickTarget !== rotorEl) return;
+
+            const rotorCrit = unit.getCritLoc(VTOL_ROTOR_CRIT_ID);
+            const currentHits = Math.max(0, (rotorCrit?.hits ?? 0) + (rotorCrit?.pendingHits ?? 0));
+            const startValue = -currentHits;
+            const endValue = VTOL_ROTOR_HITS_MAX - currentHits;
+            const applyRotorHitDelta = (delta: number) => {
+                this.removePicker();
+                this.applyVtolRotorHitDelta(unit, delta, rotorEl);
+            };
+
+            const position = { x: event.clientX, y: event.clientY };
+            const pickerStylePref = this.getUserPickerPreference();
+            if (pickerStylePref === 'radial' || pickerStylePref === 'default') {
+                this.showNumericPicker({
+                    event,
+                    el: rotorEl,
+                    position,
+                    title: 'Rotor Hits',
+                    min: startValue,
+                    max: endValue,
+                    selected: 0,
+                    onPick: (result) => applyRotorHitDelta(result.value),
+                    onCancel: () => this.removePicker()
+                });
+            } else {
+                this.showChoicePicker({
+                    event,
+                    el: rotorEl,
+                    position,
+                    title: 'Rotor Hits',
+                    values: this.rotorHitDeltaChoices(startValue, endValue),
+                    selected: 0,
+                    suggestedStyle: 'linear',
+                    targetType: 'armor',
+                    onPick: (val) => applyRotorHitDelta(val.value as number),
+                    onCancel: () => this.removePicker()
+                });
+            }
+        }, signal);
+    }
+
+    private applyVtolRotorHitDelta(unit: CBTForceUnit, delta: number, rotorEl?: SVGElement | null): void {
+        if (delta === 0 || unit.getUnit().type !== 'VTOL') return;
+
+        const critLoc = unit.getCritLoc(VTOL_ROTOR_CRIT_ID) ?? { id: VTOL_ROTOR_CRIT_ID, name: VTOL_ROTOR_CRIT_ID };
+        const committedHits = Math.max(0, critLoc.hits ?? 0);
+        const pendingHits = critLoc.pendingHits ?? 0;
+        const totalHits = Math.max(0, Math.min(VTOL_ROTOR_HITS_MAX, committedHits + pendingHits + delta));
+        critLoc.id = VTOL_ROTOR_CRIT_ID;
+        critLoc.el = rotorEl ?? critLoc.el;
+        if (this.consolidateImmediately) {
+            critLoc.hits = totalHits;
+            critLoc.pendingHits = undefined;
+        } else {
+            const nextPendingHits = totalHits - committedHits;
+            critLoc.pendingHits = nextPendingHits === 0 ? undefined : nextPendingHits;
+        }
+        critLoc.destroying = undefined;
+        critLoc.destroyed = undefined;
+        unit.setCritLoc(critLoc);
+    }
+
+    private rotorHitDeltaChoices(startValue: number, endValue: number): PickerChoice[] {
+        const allowedValues = [0, 1, 2, 3, 4, 5, 10, 15, 20, -1, -2, -3, -4, -5, -10, -15, -20];
+        const values = allowedValues
+            .filter(value => value >= startValue && value <= endValue)
+            .map(value => ({ label: value.toString(), value }));
+
+        if (!values.some(value => value.value === startValue)) {
+            values.push({ label: startValue.toString(), value: startValue });
+        }
+        if (!values.some(value => value.value === endValue)) {
+            values.push({ label: endValue.toString(), value: endValue });
+        }
+        return values.sort((a, b) => a.value - b.value);
+    }
+
+    private critLocId(el: SVGElement): string | null {
+        return el.getAttribute('critId') || el.getAttribute('id');
     }
 
     private applySensorHitInteraction(id: string): boolean {

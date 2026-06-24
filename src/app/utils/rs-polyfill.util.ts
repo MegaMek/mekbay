@@ -203,7 +203,7 @@ export class RsPolyfillUtil {
 
         const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         group.setAttribute('id', 'rotor_hits_group');
-        group.setAttribute('class', 'screen-only critLoc rotorHitsControl');
+        group.setAttribute('class', 'screen-only critLoc counterGroup rotorHitsControl');
         group.setAttribute('critId', 'rotor');
         group.setAttribute('type', 'rotor');
         group.setAttribute('transform', `translate(0 -40)`);
