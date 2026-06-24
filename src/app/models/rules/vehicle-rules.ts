@@ -185,8 +185,8 @@ export class VehicleRules extends UnitTypeRulesBase {
         const runValueCoeff = status.hasWorkingSupercharger ? 2 : 1.5;
         let maxRun = walk === 0 ? 0 : Math.round(walk * runValueCoeff);
         if (status.flightStabilizerHit) {
-            run = walk;
-            maxRun = walk;
+            run = 0;
+            maxRun = 0;
         }
 
         return {
