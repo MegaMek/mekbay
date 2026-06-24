@@ -654,12 +654,51 @@ export class SvgInteractionService {
                 if (this.state.clickTarget !== svgEl) return;
                 const id = svgEl.getAttribute('id');
                 if (!id) return;
+                if (this.applySensorHitInteraction(id)) return;
                 let critLoc = this.unit()?.getCritLoc(id);
                 if (!critLoc) return;
                 critLoc.destroying = !!critLoc.destroying ? undefined : Date.now();
                 this.unit()?.setCritLoc(critLoc);
             }, signal);
         });
+    }
+
+    private applySensorHitInteraction(id: string): boolean {
+        const unit = this.unit();
+        const targetLevel = this.sensorHitLevel(id);
+        if (!unit || targetLevel === null) return false;
+
+        const sensorCrits = unit.getCritSlots()
+            .map(crit => ({ crit, level: this.sensorHitLevel(crit.id || crit.name || '') }))
+            .filter((entry): entry is { crit: CriticalSlot; level: number } => entry.level !== null)
+            .sort((a, b) => a.level - b.level);
+        if (!sensorCrits.some(entry => entry.level === targetLevel)) return false;
+
+        const targetCrit = sensorCrits.find(entry => entry.level === targetLevel)?.crit;
+        const targetActive = targetCrit?.destroying !== undefined;
+        const highestActiveLevel = sensorCrits.reduce((highest, entry) => (
+            entry.crit.destroying !== undefined ? Math.max(highest, entry.level) : highest
+        ), 0);
+        const timestamp = Date.now();
+
+        sensorCrits.forEach(({ crit, level }) => {
+            let active: boolean;
+            if (highestActiveLevel > targetLevel) {
+                active = level <= targetLevel;
+            } else if (level === targetLevel && targetActive) {
+                active = false;
+            } else {
+                active = level <= targetLevel;
+            }
+            crit.destroying = active ? (crit.destroying ?? timestamp) : undefined;
+        });
+        unit.setCritSlots([...unit.getCritSlots()]);
+        return true;
+    }
+
+    private sensorHitLevel(id: string): number | null {
+        const match = id.match(/^sensor_hit_(\d+)$/);
+        return match ? parseInt(match[1], 10) : null;
     }
 
     private setupCritSlotInteractions(svg: SVGSVGElement, signal: AbortSignal) {

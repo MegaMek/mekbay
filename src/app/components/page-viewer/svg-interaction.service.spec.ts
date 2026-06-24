@@ -243,6 +243,25 @@ describe('SvgInteractionService', () => {
         expect(pageViewerState.inventoryDialogOpen()).toBeFalse();
     });
 
+    it('updates sensor hit tiers from critical hit state', () => {
+        const { svg, unit, sensorHit3, sensorHit4, sensorHit1 } = createSensorHitInteractionUnit();
+        sensorHit3.classList.add('damaged');
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(sensorHit3, 61);
+        expect(activeSensorHitLevels(unit)).toEqual([1, 2, 3]);
+
+        tap(sensorHit3, 62);
+        expect(activeSensorHitLevels(unit)).toEqual([1, 2]);
+
+        tap(sensorHit4, 63);
+        expect(activeSensorHitLevels(unit)).toEqual([1, 2, 3, 4]);
+
+        tap(sensorHit1, 64);
+        expect(activeSensorHitLevels(unit)).toEqual([1]);
+    });
+
     it('assigns the single target when a sheet range button is clicked with one target', () => {
         const { svg, entry, unit } = createInventoryInteractionUnit();
         unit.createInventoryControlTarget();
@@ -516,6 +535,48 @@ function createHeatElement(heat: number, centerY: number): SVGElement {
         toJSON: () => ({})
     } as DOMRect);
     return element;
+}
+
+function tap(el: SVGElement, pointerId: number): void {
+    el.dispatchEvent(createPointerEvent('pointerdown', { pointerId, pointerType: 'mouse', button: 0, buttons: 1 }));
+    el.dispatchEvent(createPointerEvent('pointerup', { pointerId, pointerType: 'mouse', button: 0 }));
+}
+
+function createSensorHitInteractionUnit(): { svg: SVGSVGElement; unit: any; sensorHit1: SVGElement; sensorHit3: SVGElement; sensorHit4: SVGElement } {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const crits = [1, 2, 3, 4].map(level => ({ id: `sensor_hit_${level}` }));
+    const sensorHitEls = crits.map(crit => {
+        const el = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        el.classList.add('critLoc');
+        el.setAttribute('id', crit.id);
+        svg.appendChild(el);
+        return el;
+    });
+    const unit = {
+        id: 'unit-a',
+        getUnit: () => ({ type: 'Vehicle' }),
+        getInventory: () => [],
+        getCritSlots: () => crits,
+        getCritLoc: (id: string) => crits.find(crit => crit.id === id) ?? null,
+        setCritLoc: jasmine.createSpy('setCritLoc'),
+        setCritSlots: jasmine.createSpy('setCritSlots').and.callFake((updatedCrits: typeof crits) => {
+            crits.splice(0, crits.length, ...updatedCrits);
+        }),
+    };
+
+    return {
+        svg,
+        unit,
+        sensorHit1: sensorHitEls[0],
+        sensorHit3: sensorHitEls[2],
+        sensorHit4: sensorHitEls[3]
+    };
+}
+
+function activeSensorHitLevels(unit: any): number[] {
+    return unit.getCritSlots()
+        .filter((crit: { destroying?: number }) => crit.destroying !== undefined)
+        .map((crit: { id: string }) => parseInt(crit.id.replace('sensor_hit_', ''), 10));
 }
 
 function createInventoryInteractionUnit(html = `
