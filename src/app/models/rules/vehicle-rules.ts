@@ -57,6 +57,7 @@ interface VehicleSystemsStatus {
     copilotHit: boolean;
     driverOrPilotHit: boolean;
     engineHit: boolean;
+    hasWorkingSupercharger: boolean;
     sensorHits: number;
     rotorHits: number;
     flightStabilizerHit: boolean;
@@ -89,9 +90,11 @@ export class VehicleRules extends UnitTypeRulesBase {
 
     readonly systemsStatus = computed<VehicleSystemsStatus>(() => {
         const crits = this.unit.getCritSlots();
+        const inventory = this.unit.getInventory();
         const unitType = this.unit.getUnit().type;
         const committed = crits.filter(crit => !!crit.destroyed);
         const hasCrit = (id: string) => committed.some(crit => this.critId(crit) === id);
+        const hasWorkingSupercharger = inventory.some(entry => this.isSuperchargerEntry(entry) && !this.isEntryDestroyed(entry));
         const rotorHits = unitType === 'VTOL'
             ? Math.max(0, this.rotorCommittedCritHits(crits.find(crit => this.critId(crit) === 'rotor')))
             : 0;
@@ -138,6 +141,7 @@ export class VehicleRules extends UnitTypeRulesBase {
             copilotHit: hasCrit('copilot_hit'),
             driverOrPilotHit: hasCrit('driver_hit') || hasCrit('pilot_hit'),
             engineHit: committed.some(crit => /^engine_hit_\d+$/.test(this.critId(crit))),
+            hasWorkingSupercharger,
             sensorHits,
             rotorHits,
             flightStabilizerHit: hasCrit('flight_stabilizer_hit'),
@@ -171,19 +175,24 @@ export class VehicleRules extends UnitTypeRulesBase {
 
     readonly movementState = computed<VehicleMovementState>(() => {
         const unit = this.unit.getUnit();
-        const maxWalk = Math.max(unit.walk, unit.walk2);
-        const maxRun = Math.max(unit.run, unit.run2);
+        const baseWalk = Math.max(0, unit.walk);
         const status = this.systemsStatus();
-        const walkAfterMotiveDamage = status.engineHit ? 0 : this.applyMotiveDamage(maxWalk, status.motiveHits);
+        const walkAfterMotiveDamage = status.engineHit ? 0 : this.applyMotiveDamage(baseWalk, status.motiveHits);
         const walk = unit.type === 'VTOL'
             ? Math.max(0, walkAfterMotiveDamage - status.rotorHits)
             : walkAfterMotiveDamage;
-        const run = status.engineHit ? 0 : this.applyMotiveDamage(maxRun, status.motiveHits);
+        let run = walk === 0 ? 0 : Math.round(walk * 1.5);
+        const runValueCoeff = status.hasWorkingSupercharger ? 2 : 1.5;
+        let maxRun = walk === 0 ? 0 : Math.round(walk * runValueCoeff);
+        if (status.flightStabilizerHit) {
+            run = walk;
+            maxRun = walk;
+        }
 
         return {
-            moveImpaired: walk !== maxWalk || run !== maxRun,
+            moveImpaired: walk !== baseWalk || run !== Math.round(baseWalk * 1.5),
             walk,
-            maxWalk,
+            maxWalk: walk,
             run,
             maxRun,
         };
@@ -192,7 +201,7 @@ export class VehicleRules extends UnitTypeRulesBase {
     override getMaxDistanceForMoveMode(moveMode: MotiveModes): number | null {
         const movement = this.movementState();
         if (moveMode === 'walk') return movement.walk;
-        if (moveMode === 'run') return movement.run;
+        if (moveMode === 'run') return movement.maxRun;
         return null;
     }
 
@@ -331,6 +340,15 @@ export class VehicleRules extends UnitTypeRulesBase {
         return !!entry.physical
             || !!entry.equipment?.flags.has('F_CLUB')
             || !!entry.equipment?.flags.has('F_HAND_WEAPON');
+    }
+
+    private isSuperchargerEntry(entry: MountedEquipment): boolean {
+        const flags = entry.equipment?.flags;
+        return !!flags?.has('F_MASC');
+    }
+
+    private isEntryDestroyed(entry: MountedEquipment): boolean {
+        return !!entry.destroyed || !!entry.critSlots?.some(slot => slot.destroyed);
     }
 
     private rotorCommittedCritHits(crit: CriticalSlot | undefined): number {

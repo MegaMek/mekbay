@@ -1,7 +1,7 @@
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { CriticalSlot, MountedEquipment } from '../force-serialization';
 import type { MotiveModes } from '../motiveModes.model';
-import { WeaponEquipment } from '../equipment.model';
+import { Equipment, WeaponEquipment } from '../equipment.model';
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { VehicleRules } from './vehicle-rules';
 
@@ -19,11 +19,22 @@ function weapon(id: string, flags: string[] = []): WeaponEquipment {
     });
 }
 
+function equipment(id: string, flags: string[] = []): Equipment {
+    return new Equipment({
+        id,
+        name: id,
+        type: 'misc',
+        flags,
+    });
+}
+
 function entry(options: {
     id?: string;
-    equipment?: WeaponEquipment;
+    equipment?: Equipment;
     locations?: string[];
     physical?: boolean;
+    destroyed?: boolean;
+    critSlots?: CriticalSlot[];
 } = {}): MountedEquipment {
     return {
         id: options.id ?? options.equipment?.id ?? 'entry',
@@ -32,6 +43,8 @@ function entry(options: {
         locations: new Set(options.locations ?? []),
         states: new Map<string, string>(),
         physical: options.physical,
+        destroyed: options.destroyed,
+        critSlots: options.critSlots,
     } as unknown as MountedEquipment;
 }
 
@@ -94,9 +107,94 @@ describe('VehicleRules', () => {
 
         expect(rules.movementState()).toEqual(jasmine.objectContaining({
             walk: 3,
-            maxWalk: 8,
+            maxWalk: 3,
             run: 5,
+            maxRun: 5,
+            moveImpaired: true,
+        }));
+    });
+
+    it('derives vehicle run MP from current walk MP', () => {
+        const rules = createRulesHarness({
+            walk: 8,
+            run: 99,
+            run2: 120,
+        });
+
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({
+            walk: 8,
+            maxWalk: 8,
+            run: 12,
             maxRun: 12,
+            moveImpaired: false,
+        }));
+        expect(rules.getMaxDistanceForMoveMode('run')).toBe(12);
+    });
+
+    it('uses working Supercharger inventory to calculate max run MP', () => {
+        const superchargerEntry = entry({ equipment: equipment('Supercharger', ['F_MASC', 'S_SUPERCHARGER']) });
+        const rules = createRulesHarness({
+            inventory: [superchargerEntry],
+            walk: 8,
+        });
+
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({
+            walk: 8,
+            run: 12,
+            maxRun: 16,
+            moveImpaired: false,
+        }));
+        expect(rules.getMaxDistanceForMoveMode('run')).toBe(16);
+    });
+
+    it('ignores destroyed vehicle boost equipment when calculating max run MP', () => {
+        const destroyedSupercharger = entry({
+            equipment: equipment('Supercharger', ['F_MASC', 'S_SUPERCHARGER']),
+            critSlots: [crit('Supercharger', 10)],
+        });
+        const destroyedJetBooster = entry({
+            equipment: equipment('ISVTOLJetBooster', ['F_MASC', 'S_JET_BOOSTER']),
+            destroyed: true,
+        });
+        const rules = createRulesHarness({
+            inventory: [destroyedSupercharger, destroyedJetBooster],
+            walk: 8,
+        });
+
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({
+            run: 12,
+            maxRun: 12,
+            moveImpaired: false,
+        }));
+    });
+
+    it('treats VTOL jet boosters as Supercharger-equivalent movement equipment', () => {
+        const jetBooster = entry({ equipment: equipment('ISVTOLJetBooster', ['F_MASC', 'S_JET_BOOSTER']) });
+        const rules = createRulesHarness({
+            inventory: [jetBooster],
+            type: 'VTOL',
+            walk: 8,
+        });
+
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({
+            run: 12,
+            maxRun: 16,
+            moveImpaired: false,
+        }));
+    });
+
+    it('sets run MP equal to walk MP after a flight stabilizer hit', () => {
+        const superchargerEntry = entry({ equipment: equipment('Supercharger', ['F_MASC', 'S_SUPERCHARGER']) });
+        const rules = createRulesHarness({
+            crits: [crit('flight_stabilizer_hit', 10)],
+            inventory: [superchargerEntry],
+            walk: 8,
+        });
+
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({
+            walk: 8,
+            run: 8,
+            maxRun: 8,
             moveImpaired: true,
         }));
     });
@@ -125,9 +223,9 @@ describe('VehicleRules', () => {
 
         expect(rules.movementState()).toEqual(jasmine.objectContaining({
             walk: 3,
-            maxWalk: 8,
+            maxWalk: 3,
             run: 5,
-            maxRun: 12,
+            maxRun: 5,
             moveImpaired: true,
         }));
         expect(rules.pilotingModifier()).toBe(5);
@@ -147,9 +245,9 @@ describe('VehicleRules', () => {
 
         expect(rules.movementState()).toEqual(jasmine.objectContaining({
             walk: 5,
-            maxWalk: 8,
-            run: 12,
-            maxRun: 12,
+            maxWalk: 5,
+            run: 8,
+            maxRun: 8,
             moveImpaired: true,
         }));
     });
