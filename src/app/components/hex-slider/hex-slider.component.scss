@@ -46,6 +46,12 @@
     background: rgba(70, 70, 70, 0.72);
     border: 1px solid rgba(255, 255, 255, 0.06);
     box-sizing: border-box;
+    overflow: hidden;
+}
+
+.blocked-track {
+    block-size: 100%;
+    background: #800;
 }
 
 .tick {

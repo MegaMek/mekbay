@@ -47,6 +47,9 @@ import { OverlayManagerService } from '../../../services/overlay-manager.service
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
 import { canChangeAirborneGround, type MotiveModeOption, type MotiveModes } from '../../../models/motiveModes.model';
 import { HexSliderComponent } from '../../hex-slider/hex-slider.component';
+import { TooltipDirective } from '../../../directives/tooltip.directive';
+import type { TooltipLine } from '../../tooltip/tooltip.component';
+import type { UnitModifierBreakdownEntry } from '../../../models/rules/unit-type-rules';
 
 /*
  * Author: Drake
@@ -58,7 +61,7 @@ import { HexSliderComponent } from '../../hex-slider/hex-slider.component';
 
 @Component({
     selector: 'page-turn-summary-panel',
-    imports: [CommonModule, HexSliderComponent],
+    imports: [CommonModule, HexSliderComponent, TooltipDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './page-turn-summary.component.html',
     styleUrl: './page-turn-summary.component.scss'
@@ -141,6 +144,12 @@ export class PageTurnSummaryPanelComponent {
         return value >= 0 ? `+${value}` : `${value}`;
     });
 
+    defenseTargetModifierTooltip = computed<TooltipLine[] | null>(() => {
+        const u = this.unit();
+        if (!u) return null;
+        return this.buildModifierTooltip('Defense Target Modifier', u.turnState().getDefenseModifierBreakdown());
+    });
+
     getTotalTargetModifierAsAttacker = computed<number>(() => {
         const u = this.unit();
         let value = 0;
@@ -148,6 +157,12 @@ export class PageTurnSummaryPanelComponent {
             value = u.turnState().getTotalTargetModifierAsAttacker();
         }
         return value;
+    });
+
+    attackModifierTooltip = computed<TooltipLine[] | null>(() => {
+        const u = this.unit();
+        if (!u) return null;
+        return this.buildModifierTooltip('Attack Modifier', u.turnState().getAttackModifierBreakdown());
     });
 
     spotting = computed(() => {
@@ -263,7 +278,7 @@ export class PageTurnSummaryPanelComponent {
             turnState.moveDistance.set(null);
         } else {
             turnState.moveMode.set(mode);
-            turnState.moveDistance.set(mode === 'stationary' ? null : 0);
+            turnState.moveDistance.set(mode === 'stationary' ? null : turnState.minDistanceCurrentMoveMode());
         }
         turnState.applyMovePSR.set(true);
     }
@@ -282,9 +297,10 @@ export class PageTurnSummaryPanelComponent {
         turnState.airborne();
         turnState.moveMode();
         const moveDistance = this.moveDistance();
+        const minDistance = turnState.minDistanceCurrentMoveMode();
         const maxDistance = turnState.maxDistanceCurrentMoveMode();
         if (moveDistance === null) return false;
-        return moveDistance > maxDistance;
+        return moveDistance < minDistance || moveDistance > maxDistance;
     });
 
     moveDistance = computed(() => {
@@ -303,9 +319,18 @@ export class PageTurnSummaryPanelComponent {
         return u.turnState().maxDistanceCurrentMoveMode();
     });
 
+    moveMin = computed(() => {
+        const u = this.unit();
+        if (!u) return 0;
+        const mode = u.turnState().moveMode();
+        if (!mode) return 0;
+        return Math.min(u.turnState().minDistanceCurrentMoveMode(), this.moveMax());
+    });
+
     moveDistanceTicks = computed(() => {
-        const max = Math.max(0, this.moveMax() + 1);
-        return Array.from({ length: max }, (_value, index) => index);
+        const max = this.moveMax();
+        const length = Math.max(0, max + 1);
+        return Array.from({ length }, (_value, index) => index);
     });
 
     hasMoveDistance = computed(() => {
@@ -317,7 +342,25 @@ export class PageTurnSummaryPanelComponent {
     setMoveDistance(value: number) {
         const u = this.unit();
         if (!u) return;
-        u.turnState().moveDistance.set(value);
+        const min = this.moveMin();
+        const max = this.moveMax();
+        u.turnState().moveDistance.set(Math.max(min, Math.min(max, value)));
+    }
+
+    private buildModifierTooltip(title: string, entries: UnitModifierBreakdownEntry[]): TooltipLine[] {
+        const total = entries.reduce((sum, entry) => sum + entry.modifier, 0);
+        return [
+            { value: title, isHeader: true },
+            ...(entries.length > 0
+                ? entries.map(entry => ({ label: entry.label, value: this.formatModifier(entry.modifier) }))
+                : [{ label: 'No active modifiers', value: '+0' }]),
+            { isBreak: true },
+            { label: 'Total', value: this.formatModifier(total) },
+        ];
+    }
+
+    private formatModifier(value: number): string {
+        return value >= 0 ? `+${value}` : `${value}`;
     }
 }
 

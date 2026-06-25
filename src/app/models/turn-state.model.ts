@@ -4,15 +4,7 @@ import { canChangeAirborneGround, getMotiveModeMaxDistance, type MotiveModes } f
 import type { CriticalSlot } from "./force-serialization";
 import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "./common.model";
 import type { CBTForceUnitState } from "./cbt-force-unit-state.model";
-import type { PSRCheck, UnitHeatSource } from "./rules/unit-type-rules";
-import {
-    getTargetMovementDistanceModifier,
-    getTargetMoveTypeModifier,
-    getTargetStanceModifier,
-    getTargetUnitTypeModifier,
-    TN_AIRBORNE_MOVE_TYPE_MODIFIER,
-    TN_SKIDDING_MODIFIER,
-} from "./target-number-calculator.model";
+import type { PSRCheck, UnitHeatSource, UnitModifierBreakdownEntry } from "./rules/unit-type-rules";
 
 export type { PSRCheck } from "./rules/unit-type-rules";
 
@@ -123,29 +115,21 @@ export class TurnState {
     });
 
     getTotalTargetModifierAsAttacker = computed<number>(() => {
-        let modifier = this.unitState.unit.gunneryModifier();
-        modifier += this.getAttackMovementModifier();
-        modifier += this.getSpottingModifier();
-        return modifier;
+        return this.getAttackModifierBreakdown()
+            .reduce((total, entry) => total + entry.modifier, 0);
+    });
+
+    getAttackModifierBreakdown = computed<UnitModifierBreakdownEntry[]>(() => {
+        return this.unitState.unit.rules.getAttackModifierBreakdown(this);
     });
 
     getTotalTargetModifierAsDefender = computed<number>(() => {
-        let mod = 0;
-        if (this.unitState.prone()) { mod += getTargetStanceModifier('prone', 1); }
-        if (this.unitState.immobile()) { mod += getTargetStanceModifier('immobile', 1); }
-        if (this.unitState.skidding()) { mod += TN_SKIDDING_MODIFIER; }
-        const moveMode = this.moveMode();
-        if (moveMode !== 'stationary' && moveMode !== null) {
-            if (moveMode === 'jump') { mod += TN_AIRBORNE_MOVE_TYPE_MODIFIER; }
-            const moveDistance = this.moveDistance() || 0;
-            mod += getTargetMovementDistanceModifier(moveDistance);
-        }
-        const baseUnit = this.unitState.unit.getUnit();
-        if (baseUnit.subtype === 'Battle Armor') {
-            mod += getTargetUnitTypeModifier('battle-armor');
-        }
-        mod += getTargetMoveTypeModifier(baseUnit.moveType);
-        return mod;
+        return this.getDefenseModifierBreakdown()
+            .reduce((total, entry) => total + entry.modifier, 0);
+    });
+
+    getDefenseModifierBreakdown = computed<UnitModifierBreakdownEntry[]>(() => {
+        return this.unitState.unit.rules.getDefenseModifierBreakdown(this);
     });
 
     PSRRollsCount = computed<number>(() => {
@@ -211,6 +195,15 @@ export class TurnState {
         }
         const unit = this.unitState.unit.getUnit();
         return getMotiveModeMaxDistance(moveMode, unit, airborne ?? false);
+    });
+
+    minDistanceCurrentMoveMode = computed<number>(() => {
+        const moveMode = this.moveMode();
+        if (moveMode === 'stationary' || !moveMode) {
+            return 0;
+        }
+        const rulesMinDistance = this.unitState.unit.rules.getMinDistanceForMoveMode(moveMode);
+        return Math.max(0, rulesMinDistance ?? 0);
     });
 
 }

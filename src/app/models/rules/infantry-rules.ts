@@ -32,6 +32,7 @@
  */
 
 import type { CBTForceUnit } from '../cbt-force-unit.model';
+import type { MotiveModes } from '../motiveModes.model';
 import { getTargetUnitTypeModifier } from '../target-number-calculator.model';
 import type { TurnState } from '../turn-state.model';
 import { UnitTypeRulesBase, type UnitModifierBreakdownEntry } from './unit-type-rules';
@@ -100,6 +101,12 @@ export class InfantryRules extends UnitTypeRulesBase {
         const baseUnit = this.unit.getUnit();
         if (baseUnit.subtype !== 'Battle Armor') return [];
         return [{ label: 'Battle Armor', modifier: getTargetUnitTypeModifier('battle-armor') }];
+    }
+
+    override getMinDistanceForMoveMode(moveMode: MotiveModes): number | null {
+        const baseUnit = this.unit.getUnit();
+        if (baseUnit.subtype === 'Battle Armor' && moveMode === 'jump') return 1;
+        return null;
     }
 
 }

@@ -34,7 +34,6 @@
 import { ChangeDetectionStrategy, Component, afterNextRender, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import type { MoveType } from '../../models/units.model';
 import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { HexSliderComponent } from '../hex-slider/hex-slider.component';
 import { MultilineDropdownComponent, type MultilineDropdownOption } from '../multiline-dropdown/multiline-dropdown.component';
@@ -43,7 +42,6 @@ import {
     getIndirectFireModifier,
     getTargetMovementBracketModifier,
     getTargetUnitTypeModifier,
-    TN_TARGET_MOVE_TYPE_OPTIONS,
     TN_TARGET_MOVEMENT_BRACKETS,
     TN_TARGET_UNIT_TYPE_OPTIONS,
     ADJACENT_RANGE,
@@ -689,7 +687,6 @@ export class TnCalculatorDialogComponent {
 
     readonly target = this.data.target;
     readonly unitTypeOptions = TN_TARGET_UNIT_TYPE_OPTIONS;
-    readonly moveTypeOptions = TN_TARGET_MOVE_TYPE_OPTIONS;
     readonly unitTypeDropdownOptions = computed<MultilineDropdownOption[]>(() => this.unitTypeOptions.map(option => ({
         value: option.value,
         label: option.label,
@@ -701,7 +698,7 @@ export class TnCalculatorDialogComponent {
     readonly rangeTicks = Array.from({ length: this.RANGE_MAX - this.RANGE_MIN + 1 }, (_value, index) => index + this.RANGE_MIN);
 
     readonly unitType = signal<TnTargetUnitType>(this.initialUnitType);
-    readonly targetMoveType = signal<MoveType | null>(this.normalizeTargetMoveType(this.initialCalculator?.targetMoveType));
+    readonly isAirborne = signal<boolean>(this.initialCalculator?.isAirborne ?? false);
     readonly targetMovementBracketIndex = signal<number>(this.indexFromStoredMovementBracket());
     readonly skidding = signal<boolean>(this.initialCalculator?.skidding ?? false);
     readonly stance = signal<TnTargetStance>(this.initialCalculator?.stance ?? 'normal');
@@ -725,13 +722,12 @@ export class TnCalculatorDialogComponent {
     readonly targetMovementBracketLabel = computed(() => this.targetMovementBracket().label);
     readonly targetMovementModifier = computed(() => getTargetMovementBracketModifier(this.targetMovementBracket().id));
     readonly targetMovementModifierLabel = computed(() => this.formatModifier(this.targetMovementModifier()));
-    readonly isAirborne = computed(() => this.targetMoveType() === 'Jump' || this.targetMoveType() === 'VTOL' || this.targetMoveType() === 'WiGE');
     readonly rangeLabel = computed(() => `${this.range()}`);
     readonly indirectFireModifier = computed(() => getIndirectFireModifier(this.indirectFire(), this.spotterMoveMode(), this.spotterDeclaredAttacks()));
     readonly totalModifier = computed(() => calculateTargetTnModifier({
         unitType: this.unitType(),
         range: this.range(),
-        targetMoveType: this.targetMoveType(),
+        isAirborne: this.isAirborne(),
         targetMovementBracket: this.stance() === 'normal' ? this.targetMovementBracket().id : null,
         skidding: this.skidding(),
         stance: this.stance(),
@@ -779,18 +775,13 @@ export class TnCalculatorDialogComponent {
         afterNextRender(() => this.renderReady.set(true));
 
         if (this.stance() !== 'normal') {
-            this.clearJumpMoveType();
+            this.clearAirborne();
             this.skidding.set(false);
         }
     }
 
     selectUnitType(value: string): void {
         this.unitType.set(value as TnTargetUnitType);
-    }
-
-    private normalizeTargetMoveType(value: MoveType | '' | null | undefined): MoveType | null {
-        if (value === 'Jump') return 'Jump';
-        return value === 'VTOL' || value === 'WiGE' ? value : null;
     }
 
     private normalizeInterveningWoods(value: TnInterveningWoods | 'heavy1' | null | undefined): TnInterveningWoods {
@@ -803,7 +794,7 @@ export class TnCalculatorDialogComponent {
     }
 
     toggleAirborne(): void {
-        this.targetMoveType.set(this.isAirborne() ? null : 'Jump');
+        this.isAirborne.set(!this.isAirborne());
         this.clearStanceForMovement();
     }
 
@@ -816,7 +807,7 @@ export class TnCalculatorDialogComponent {
         const next = this.stance() === stance ? 'normal' : stance;
         this.stance.set(next);
         if (next !== 'normal') {
-            this.clearJumpMoveType();
+            this.clearAirborne();
             this.skidding.set(false);
         }
         if (next === 'prone') {
@@ -884,7 +875,7 @@ export class TnCalculatorDialogComponent {
 
     apply(): void {
         const state: TnTargetNumberCalculatorState = {
-            targetMoveType: this.targetMoveType(),
+            isAirborne: this.isAirborne(),
             targetMovementBracket: this.stance() === 'normal' ? this.targetMovementBracket().id : null,
             skidding: this.skidding(),
             stance: this.stance(),
@@ -927,9 +918,9 @@ export class TnCalculatorDialogComponent {
         }
     }
 
-    private clearJumpMoveType(): void {
-        if (this.targetMoveType() === 'Jump') {
-            this.targetMoveType.set(null);
+    private clearAirborne(): void {
+        if (this.isAirborne()) {
+            this.isAirborne.set(false);
         }
     }
 

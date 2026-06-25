@@ -32,7 +32,6 @@
  */
 
 import type { MotiveModes } from './motiveModes.model';
-import type { MoveType } from './units.model';
 
 export const TN_SKIDDING_MODIFIER = 2;
 export const TN_BATTLE_ARMOR_MODIFIER = 1;
@@ -91,13 +90,6 @@ export const TN_TARGET_MOVEMENT_BRACKETS: readonly TnTargetMovementBracket[] = [
     { id: '25+', label: '25+', min: 25, max: null, modifier: 6 },
 ] as const;
 
-export const TN_TARGET_MOVE_TYPE_OPTIONS: readonly { value: MoveType | ''; label: string }[] = [
-    { value: '', label: 'Any' },
-    { value: 'Jump', label: 'Jump' },
-    { value: 'VTOL', label: 'VTOL' },
-    { value: 'WiGE', label: 'WiGE' },
-] as const;
-
 export type TnTargetStance = 'normal' | 'prone' | 'immobile';
 export type TnInterveningWoods = 'none' | 'light1' | 'light2';
 export type TnTargetHexCover = 'none' | 'light' | 'heavy';
@@ -105,7 +97,7 @@ export type TnAttackDirection = 'front' | 'left' | 'rear' | 'right';
 export type TnSpotterMoveMode = 'stationary' | 'walk' | 'run' | 'jump';
 
 export interface TnTargetNumberCalculatorState {
-    targetMoveType?: MoveType | null;
+    isAirborne?: boolean;
     targetMovementBracket?: TnTargetMovementBracketId | null;
     skidding?: boolean;
     stance?: TnTargetStance;
@@ -142,8 +134,8 @@ export function getTargetUnitTypeModifier(unitType: TnTargetUnitType | null | un
     return unitType === 'battle-armor' ? TN_BATTLE_ARMOR_MODIFIER : 0;
 }
 
-export function getTargetMoveTypeModifier(moveType: MoveType | null | undefined): number {
-    return moveType === 'Jump' || moveType === 'VTOL' || moveType === 'WiGE' ? TN_AIRBORNE_MOVE_TYPE_MODIFIER : 0;
+export function getTargetAirborneModifier(isAirborne: boolean | null | undefined): number {
+    return isAirborne ? TN_AIRBORNE_MOVE_TYPE_MODIFIER : 0;
 }
 
 export function getTargetStanceModifier(stance: TnTargetStance | null | undefined, range: number): number {
@@ -182,7 +174,7 @@ export function calculateTargetTnModifier(input: TnTargetNumberCalculationInput)
 
     total += getTargetUnitTypeModifier(input.unitType);
     if (stance === 'normal') {
-        total += getTargetMoveTypeModifier(input.targetMoveType);
+        total += getTargetAirborneModifier(input.isAirborne);
         total += getTargetMovementBracketModifier(input.targetMovementBracket);
         total += input.skidding ? TN_SKIDDING_MODIFIER : 0;
     }

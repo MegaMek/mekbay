@@ -44,6 +44,7 @@
                     class="move-slider"
                     [min]="0"
                     [max]="moveMax()"
+                    [blockedMin]="moveMin()"
                     [step]="1"
                     [value]="moveDistance()"
                     [ticks]="moveDistanceTicks()"
@@ -76,14 +77,14 @@
         }
         <div class="row">
             @let modifierAtk = getTotalTargetModifierAsAttacker();
-            <span>Attack Modifier:</span><span class="modifier important">{{ modifierAtk >= 0 ? '+' : '' }}{{ modifierAtk }}</span>
+            <span>Attack Modifier:</span><span class="modifier important" [tooltip]="attackModifierTooltip()">{{ modifierAtk >= 0 ? '+' : '' }}{{ modifierAtk }}</span>
         </div>
     </div>
     <div class="group">
         <div class="sectionTitle">As Defender</div>
         <div class="summary-entry">
             <div class="row">
-                <span>Target Movement Modifier:</span><span class="modifier important">{{ getTotalTargetModifierAsDefender() }}</span>
+                <span>Defense Target Modifier:</span><span class="modifier important" [tooltip]="defenseTargetModifierTooltip()">{{ getTotalTargetModifierAsDefender() }}</span>
             </div>
         </div>
         <div class="summary-entry">

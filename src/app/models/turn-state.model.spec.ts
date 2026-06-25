@@ -1,7 +1,9 @@
 import { computed, signal } from '@angular/core';
 import type { CBTForceUnitState } from './cbt-force-unit-state.model';
 import type { CriticalSlot, HeatProfile } from './force-serialization';
+import { InfantryRules } from './rules/infantry-rules';
 import { MekRules } from './rules/mek-rules';
+import type { UnitTypeRules } from './rules/unit-type-rules';
 import type { Unit } from './units.model';
 import { TurnState } from './turn-state.model';
 
@@ -10,12 +12,17 @@ interface TurnStateHarnessOptions {
     committedDestroyedLegs?: string[];
     currentDestroyedLegs?: string[];
     internalLocations?: string[];
+    unit?: Partial<Unit>;
+    prone?: boolean;
+    immobile?: boolean;
+    skidding?: boolean;
+    rulesType?: 'mek' | 'infantry';
 }
 
 interface TurnStateHarness {
     turnState: TurnState;
     critSlots: ReturnType<typeof signal<CriticalSlot[]>>;
-    rules: MekRules;
+    rules: UnitTypeRules;
 }
 
 function createCritSlot(
@@ -46,7 +53,7 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         getCritSlots: () => critSlots(),
         isInternalLocCommittedDestroyed: (loc: string) => committedDestroyedLegs.has(loc),
         isInternalLocDestroyed: (loc: string) => currentDestroyedLegs.has(loc) || committedDestroyedLegs.has(loc),
-        getUnit: () => ({ type: 'Mek' } as Unit),
+        getUnit: () => ({ type: 'Mek', ...options.unit } as Unit),
         turnState: () => turnState,
     };
 
@@ -56,13 +63,15 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         hasUnconsolidatedCrits: computed(() => false),
         hasUnconsolidatedLocations: computed(() => false),
         hasUnconsolidatedInventory: computed(() => false),
-        prone: () => false,
-        immobile: () => false,
-        skidding: () => false,
+        prone: () => options.prone ?? false,
+        immobile: () => options.immobile ?? false,
+        skidding: () => options.skidding ?? false,
     } as unknown as CBTForceUnitState;
 
     turnState = new TurnState(unitState);
-    const rules = new MekRules(unit as any);
+    const rules = options.rulesType === 'infantry'
+        ? new InfantryRules(unit as any)
+        : new MekRules(unit as any);
     (unit as any).rules = rules;
 
     return {
@@ -117,6 +126,66 @@ describe('TurnState', () => {
 
             expect(getReasons(turnState)).toContain('Leg actuator hit');
             expect(getReasons(turnState)).not.toContain('Jumping with damaged leg actuator');
+        });
+    });
+
+    describe('modifier breakdowns', () => {
+        it('keeps the attacker modifier total in sync with the rules breakdown', () => {
+            const { turnState } = createTurnStateHarness();
+            turnState.moveMode.set('jump');
+            turnState.spotting.set(true);
+
+            expect(turnState.getAttackModifierBreakdown()).toEqual([
+                { label: 'Attacker movement', modifier: 3 },
+                { label: 'Spotting', modifier: 1 },
+            ]);
+            expect(turnState.getTotalTargetModifierAsAttacker()).toBe(4);
+        });
+
+        it('keeps the defender modifier total in sync with the rules breakdown', () => {
+            const { turnState } = createTurnStateHarness({
+                prone: true,
+                skidding: true,
+                rulesType: 'infantry',
+                unit: { type: 'Infantry', subtype: 'Battle Armor', moveType: 'VTOL' },
+            });
+            turnState.moveMode.set('jump');
+            turnState.moveDistance.set(7);
+
+            expect(turnState.getDefenseModifierBreakdown()).toEqual([
+                { label: 'Prone', modifier: -2 },
+                { label: 'Skidding', modifier: 2 },
+                { label: 'Airborne', modifier: 1 },
+                { label: 'Moved 7-9 hexes', modifier: 3 },
+                { label: 'Battle Armor', modifier: 1 },
+            ]);
+            expect(turnState.getTotalTargetModifierAsDefender()).toBe(5);
+        });
+
+        it('counts an explicitly airborne defender even before movement is selected', () => {
+            const { turnState } = createTurnStateHarness();
+
+            turnState.airborne.set(true);
+
+            expect(turnState.getDefenseModifierBreakdown()).toEqual([
+                { label: 'Airborne', modifier: 1 },
+            ]);
+            expect(turnState.getTotalTargetModifierAsDefender()).toBe(1);
+        });
+    });
+
+    describe('movement distance limits', () => {
+        it('uses unit rules for minimum movement distance', () => {
+            const { turnState } = createTurnStateHarness({
+                rulesType: 'infantry',
+                unit: { type: 'Infantry', subtype: 'Battle Armor' },
+            });
+
+            turnState.moveMode.set('jump');
+            expect(turnState.minDistanceCurrentMoveMode()).toBe(1);
+
+            turnState.moveMode.set('walk');
+            expect(turnState.minDistanceCurrentMoveMode()).toBe(0);
         });
     });
 });

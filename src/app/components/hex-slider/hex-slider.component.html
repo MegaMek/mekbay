@@ -4,14 +4,18 @@
     role="slider"
     tabindex="0"
     [attr.aria-label]="ariaLabel()"
-    [attr.aria-valuemin]="minValue()"
+    [attr.aria-valuemin]="effectiveMinValue()"
     [attr.aria-valuemax]="maxValue()"
     [attr.aria-valuenow]="clampedValue()"
     [attr.aria-valuetext]="valueLabel()"
     (keydown)="onKeyDown($event)"
     (pointerdown)="startDrag($event)">
     <div class="slider-scale" #sliderScale>
-        <div class="track" aria-hidden="true"></div>
+        <div class="track" aria-hidden="true">
+            @if (blockedMinPercent() > 0) {
+                <div class="blocked-track" [style.width.%]="blockedMinPercent()"></div>
+            }
+        </div>
         @for (tick of displayTicks(); track tick) {
             <span class="tick" [style.left.%]="percentForValue(tick)" aria-hidden="true">
                 <span class="tick-label" [class.dot-label]="isCondensedDotTick(tick)">{{ tickLabel(tick) }}</span>
