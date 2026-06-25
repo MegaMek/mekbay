@@ -35,10 +35,11 @@ import type { Equipment } from './equipment.model';
 import { Sanitizer } from '../utils/sanitizer.util';
 import type { ForceUnit } from './force-unit.model';
 import type { GameSystem } from './common.model';
-import type { CBTForceUnit } from './cbt-force-unit.model';
 import type { ASCustomPilotAbility } from './pilot-abilities.model';
 import type { C3NetworkType } from './c3-network.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './crew-member.model';
+export { MountedEquipment } from './mounted-equipment.model';
+export type { MountedEquipmentInit } from './mounted-equipment.model';
 
 export const FORCE_NOTE_MAX_LENGTH = 2000;
 export const FORCE_TAG_MAX_LENGTH = 48;
@@ -675,27 +676,6 @@ export const AS_SERIALIZED_FORCE_SCHEMA = Sanitizer.schema<ASSerializedForce>()
     .build();
 
     
-export interface MountedEquipment {
-    owner: CBTForceUnit;
-    id: string;
-    name: string;
-    locations?: Set<string>;
-    equipment?: Equipment;
-    baseHitMod?: string;
-    hitModVariation?: null | number; // Temporary variable to calculate delta hit modifier
-    physical?: boolean;
-    linkedWith?: null | MountedEquipment[];
-    parent?: null | MountedEquipment;
-    destroyed?: boolean;
-    critSlots?: CriticalSlot[];
-    states: Map<string, string>;
-    el?: SVGElement;
-    // Used for entries that doesn't have critical slots
-    ammo?: string;
-    totalAmmo?: number;
-    consumed?: number;
-}
-
 export interface ViewportTransform {
     scale: number;
     translateX: number;

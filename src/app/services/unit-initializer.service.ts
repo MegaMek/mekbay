@@ -32,7 +32,7 @@
  */
 
 import { inject, Injectable, Injector } from '@angular/core';
-import type { CriticalSlot, MountedEquipment } from '../models/force-serialization';
+import { MountedEquipment, type CriticalSlot } from '../models/force-serialization';
 import { DataService } from './data.service';
 import { AmmoEquipment, type Equipment } from '../models/equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
@@ -346,7 +346,7 @@ export class UnitInitializerService {
             let inventoryEntry: MountedEquipment;
             const existingEntry = currentInventory.find(item => item.id === id);
             if (existingEntry) {
-                inventoryEntry = { ...existingEntry };
+                inventoryEntry = existingEntry.clone();
                 // full refresh (but is it really needed?)
                 inventoryEntry.name = iPhysAtk || name;
                 inventoryEntry.locations = locations;
@@ -358,7 +358,7 @@ export class UnitInitializerService {
                 inventoryEntry.critSlots = critSlots;
                 inventoryEntry.el = entryEl;
             } else {
-                inventoryEntry = {
+                inventoryEntry = new MountedEquipment({
                     owner: unit,
                     id: id,
                     name: iPhysAtk || name,
@@ -372,7 +372,7 @@ export class UnitInitializerService {
                     critSlots: critSlots,
                     el: entryEl,
                     states: new Map<string, string>(),
-                };
+                });
             }
             const subElements = entryEl.querySelectorAll('.inventoryEntry') as NodeListOf<SVGElement>;
             if (subElements.length > 0) {
@@ -407,8 +407,7 @@ export class UnitInitializerService {
                 const originalTotalAmmo = baseBinAmmo + (binIndex < extraBinAmmo ? 1 : 0);
                 const existingEntry = currentInventory.find(item => item.id === id);
 
-                inventoryEntries.push({
-                    ...(existingEntry ?? {}),
+                inventoryEntries.push(new MountedEquipment({
                     owner: unit,
                     id,
                     name: component.id,
@@ -418,10 +417,12 @@ export class UnitInitializerService {
                     linkedWith: null,
                     parent: null,
                     destroyed: existingEntry?.destroyed ?? false,
+                    destroying: existingEntry?.destroying,
+                    ammo: existingEntry?.ammo,
                     totalAmmo: existingEntry?.totalAmmo ?? originalTotalAmmo,
                     consumed: existingEntry?.consumed ?? 0,
                     states: existingEntry?.states ?? new Map<string, string>(),
-                });
+                }));
             }
         });
         return inventoryEntries;

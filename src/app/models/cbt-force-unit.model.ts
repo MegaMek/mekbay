@@ -35,7 +35,7 @@ import { computed, createEnvironmentInjector, EnvironmentInjector, type Injector
 import type { DataService } from '../services/data.service';
 import type { Unit } from "./units.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
-import { type CriticalSlot, type HeatProfile, type LocationData, type MountedEquipment, type ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, type CBTSerializedState, type CBTSerializedUnit, type SerializedCrewMember } from './force-serialization';
+import { MountedEquipment, type CriticalSlot, type HeatProfile, type LocationData, type ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, type CBTSerializedState, type CBTSerializedUnit, type SerializedCrewMember } from './force-serialization';
 import { ForceUnit } from './force-unit.model';
 import type { CBTForce } from './cbt-force.model';
 import { UnitSvgService } from '../services/unit-svg.service';
@@ -302,7 +302,7 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     setInventory(inventory: MountedEquipment[], initialization: boolean = false) {
-        this.state.inventory.set(inventory);
+        this.state.inventory.set(inventory.map(entry => MountedEquipment.from(entry)));
         this.inventoryControl.markInventoryViewChanged();
         if (!initialization) {
             this.setModified();
@@ -352,10 +352,6 @@ export class CBTForceUnit extends ForceUnit {
         return this.inventoryControlRuntime.getEntryAmmoOption(entryId);
     }
 
-    getInventoryControlEntryPendingDestroyed(entryId: string): boolean | undefined {
-        return this.inventoryControlRuntime.getEntryPendingDestroyed(entryId);
-    }
-
     setInventoryControlEntrySelected(entry: MountedEquipment, selected: boolean): void {
         this.inventoryControlRuntime.setEntrySelected(entry, selected);
     }
@@ -370,14 +366,6 @@ export class CBTForceUnit extends ForceUnit {
 
     setInventoryControlEntryAmmoOption(entryId: string, optionId: string): void {
         this.inventoryControlRuntime.setEntryAmmoOption(entryId, optionId);
-    }
-
-    setInventoryControlEntryPendingDestroyed(entry: MountedEquipment, destroyed: boolean | undefined, markModified = true): void {
-        const previous = this.inventoryControlRuntime.getEntryPendingDestroyed(entry.id);
-        this.inventoryControlRuntime.setEntryPendingDestroyed(entry, destroyed);
-        if (markModified && previous !== this.inventoryControlRuntime.getEntryPendingDestroyed(entry.id)) {
-            this.setModified();
-        }
     }
 
     setInventoryControlEntryTarget(entry: MountedEquipment, targetId: InventoryControlRuntimeTargetId | null): void {
@@ -932,7 +920,7 @@ export class CBTForceUnit extends ForceUnit {
         this.state.modified.set(typeof state.modified === 'boolean' ? state.modified : false);
         this.state.destroyed.set(typeof state.destroyed === 'boolean' ? state.destroyed : false);
         this.state.shutdown.set(typeof state.shutdown === 'boolean' ? state.shutdown : false);
-        this.inventoryControlRuntime.clearPendingDestroyed();
+        this.state.inventory.update(inventory => inventory.map(item => item.clone({ destroying: undefined })));
         
         if (state.inventory) {
             const inventoryData = Sanitizer.sanitizeArray(state.inventory, INVENTORY_SCHEMA);

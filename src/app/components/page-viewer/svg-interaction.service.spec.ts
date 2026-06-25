@@ -9,9 +9,9 @@ import { LayoutService } from '../../services/layout.service';
 import { OptionsService } from '../../services/options.service';
 import { PickerFactoryService } from '../../services/picker-factory.service';
 import { ToastService } from '../../services/toast.service';
-import { AmmoEquipment, WeaponEquipment } from '../../models/equipment.model';
+import { WeaponEquipment } from '../../models/equipment.model';
 import { EquipmentDialogComponent } from '../equipment-dialog/equipment-dialog.component';
-import type { MountedEquipment } from '../../models/force-serialization';
+import { MountedEquipment } from '../../models/force-serialization';
 import { InventoryControlRuntimeState, type InventoryControlRuntimeRangeKey } from '../../models/inventory-control-runtime-state.model';
 import { INVENTORY_CONTROL_MODE_STATE } from '../../utils/inventory-control.util';
 import { SvgInteractionService } from './svg-interaction.service';
@@ -825,7 +825,7 @@ function createInventoryInteractionUnit(html = `
         type: 'weapon',
         weapon: { ammoType: 'NA', ranges: [3, 6, 9, 12] }
     });
-    const entry = {
+    const entry = new MountedEquipment({
         owner: undefined as any,
         id: 'laser',
         name: 'laser',
@@ -834,7 +834,7 @@ function createInventoryInteractionUnit(html = `
         el: entryEl,
         destroyed: false,
         linkedWith: null,
-    } as MountedEquipment;
+    });
     const unit = {
         id: 'unit-a',
         getInventory: () => [entry],

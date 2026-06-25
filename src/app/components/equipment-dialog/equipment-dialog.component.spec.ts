@@ -4,25 +4,12 @@ import { Subject } from 'rxjs';
 
 import { WeaponEquipment } from '../../models/equipment.model';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
-import type { MountedEquipment } from '../../models/force-serialization';
+import { MountedEquipment } from '../../models/force-serialization';
 import { CBTInventoryControlRuntime } from '../../models/cbt-inventory-control-runtime.model';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { EquipmentDialogComponent } from './equipment-dialog.component';
 import type { EquipmentDialogContext, EquipmentDialogData } from './equipment-dialog.model';
-
-class FakeOutput<T> {
-    private readonly subscribers: Array<(value: T) => void> = [];
-
-    subscribe(callback: (value: T) => void): { unsubscribe: () => void } {
-        this.subscribers.push(callback);
-        return { unsubscribe: () => undefined };
-    }
-
-    emit(value: T): void {
-        this.subscribers.forEach(callback => callback(value));
-    }
-}
 
 function addRuntimeSelection(unit: CBTForceUnit): CBTForceUnit {
     const runtime = new CBTInventoryControlRuntime(unit);
@@ -36,12 +23,10 @@ function addRuntimeSelection(unit: CBTForceUnit): CBTForceUnit {
         isInventoryControlEntrySelected: (entryId: string) => runtime.isEntrySelected(entryId),
         getInventoryControlEntryRange: (entryId: string) => runtime.getEntryRange(entryId),
         getInventoryControlEntryAmmoOption: (entryId: string) => runtime.getEntryAmmoOption(entryId),
-        getInventoryControlEntryPendingDestroyed: (entryId: string) => runtime.getEntryPendingDestroyed(entryId),
         setInventoryControlEntrySelected: (entry: MountedEquipment, selected: boolean) => runtime.setEntrySelected(entry, selected),
         setInventoryControlEntryRange: (entry: MountedEquipment, range: 'short' | 'medium' | 'long' | null) => runtime.setEntryRange(entry, range),
         toggleInventoryControlEntryRange: (entry: MountedEquipment, range: 'short' | 'medium' | 'long', forceSelected = false) => runtime.toggleEntryRange(entry, range, forceSelected),
         setInventoryControlEntryAmmoOption: (entryId: string, optionId: string) => runtime.setEntryAmmoOption(entryId, optionId),
-        setInventoryControlEntryPendingDestroyed: (entry: MountedEquipment, destroyed: boolean | undefined) => runtime.setEntryPendingDestroyed(entry, destroyed),
         setInventoryControlEntryTarget: (entry: MountedEquipment, targetId: string | null) => runtime.setEntryTarget(entry, targetId),
         createInventoryControlTarget: () => runtime.createTarget(),
         updateInventoryControlTarget: (targetId: string, patch: any) => runtime.updateTarget(targetId, patch),
@@ -64,7 +49,7 @@ function weaponEntry(id: string): MountedEquipment {
         type: 'weapon',
         weapon: { ammoType: 'NA', ranges: [3, 6, 9, 12] }
     });
-    return {
+    return new MountedEquipment({
         id,
         name: id,
         equipment,
@@ -74,7 +59,7 @@ function weaponEntry(id: string): MountedEquipment {
         linkedWith: null,
         el,
         owner: undefined as any
-    } as MountedEquipment;
+    });
 }
 
 function createUnit(id: string, entries: MountedEquipment[] = []): CBTForceUnit {

@@ -929,7 +929,9 @@ export class WeaponsEquipmentPanelComponent {
 
     markDestroyed(row: InventoryControlRow): void {
         if (!this.canMarkDestroyed(row)) return;
-        this.unit().setInventoryControlEntryPendingDestroyed(row.entry, true);
+        if (row.entry.setPendingDestroyed(true)) {
+            row.entry.owner.setInventoryEntry(row.entry);
+        }
         this.context().toastService.showToast(`Critical Hit on ${row.display.name}`, 'error');
     }
 
@@ -938,19 +940,19 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     rowEffectivelyDestroyed(row: InventoryControlRow): boolean {
-        return this.unit().getInventoryControlEntryPendingDestroyed(row.id) ?? row.destroyed;
+        return row.entry.effectiveDestroyed();
     }
 
     rowDestroying(row: InventoryControlRow): boolean {
-        return !row.destroyed && this.unit().getInventoryControlEntryPendingDestroyed(row.id) === true;
+        return row.entry.isDestroying();
     }
 
     rowRepairing(row: InventoryControlRow): boolean {
-        return row.destroyed && this.unit().getInventoryControlEntryPendingDestroyed(row.id) === false;
+        return row.entry.isRepairing();
     }
 
     rowCommittedDestroyed(row: InventoryControlRow): boolean {
-        return row.destroyed && !this.rowRepairing(row);
+        return row.entry.committedDestroyed() && !row.entry.isRepairing();
     }
 
     private isVirtualTrooperRow(row: InventoryControlRow): boolean {
@@ -959,7 +961,9 @@ export class WeaponsEquipmentPanelComponent {
 
     repair(row: InventoryControlRow): void {
         if (!this.canRepair(row)) return;
-        this.unit().setInventoryControlEntryPendingDestroyed(row.entry, false);
+        if (row.entry.setPendingDestroyed(false)) {
+            row.entry.owner.setInventoryEntry(row.entry);
+        }
         this.context().toastService.showToast(`Repaired ${row.display.name}`, 'success');
     }
 

@@ -4,7 +4,7 @@ import { AmmoEquipment, WeaponEquipment, MiscEquipment, type EquipmentMap } from
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { INVENTORY_CONTROL_TARGET_COLORS, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { CBTInventoryControlRuntime } from '../../models/cbt-inventory-control-runtime.model';
-import type { CriticalSlot, HeatProfile, MountedEquipment } from '../../models/force-serialization';
+import { MountedEquipment, type CriticalSlot, type HeatProfile } from '../../models/force-serialization';
 import { InventoryModeHandler } from '../../equipment-handlers/inventory-mode.handler';
 import { BAPHandler } from '../../equipment-handlers/bap.handler';
 import type { EquipmentInteractionHandler, HandlerChoice } from '../../services/equipment-interaction-registry.service';
@@ -25,12 +25,10 @@ function addRuntimeSelection(unit: CBTForceUnit): CBTForceUnit {
         isInventoryControlEntrySelected: (entryId: string) => runtime.isEntrySelected(entryId),
         getInventoryControlEntryRange: (entryId: string) => runtime.getEntryRange(entryId),
         getInventoryControlEntryAmmoOption: (entryId: string) => runtime.getEntryAmmoOption(entryId),
-        getInventoryControlEntryPendingDestroyed: (entryId: string) => runtime.getEntryPendingDestroyed(entryId),
         setInventoryControlEntrySelected: (entry: MountedEquipment, selected: boolean) => runtime.setEntrySelected(entry, selected),
         setInventoryControlEntryRange: (entry: MountedEquipment, range: 'short' | 'medium' | 'long' | null) => runtime.setEntryRange(entry, range),
         toggleInventoryControlEntryRange: (entry: MountedEquipment, range: 'short' | 'medium' | 'long', forceSelected = false) => runtime.toggleEntryRange(entry, range, forceSelected),
         setInventoryControlEntryAmmoOption: (entryId: string, optionId: string) => runtime.setEntryAmmoOption(entryId, optionId),
-        setInventoryControlEntryPendingDestroyed: (entry: MountedEquipment, destroyed: boolean | undefined) => runtime.setEntryPendingDestroyed(entry, destroyed),
         setInventoryControlEntryTarget: (entry: MountedEquipment, targetId: InventoryControlRuntimeTargetId | null) => runtime.setEntryTarget(entry, targetId),
         createInventoryControlTarget: () => runtime.createTarget(),
         updateInventoryControlTarget: (targetId: InventoryControlRuntimeTargetId, patch: Partial<Omit<InventoryControlRuntimeTarget, 'id' | 'letter'>>) => runtime.updateTarget(targetId, patch),
@@ -97,7 +95,7 @@ function entry(params: {
         getUnit: () => ({ comp: [] }),
         rules: {}
     } as unknown as CBTForceUnit;
-    return {
+    return new MountedEquipment({
         owner,
         id: params.id,
         name: params.id,
@@ -112,7 +110,7 @@ function entry(params: {
         consumed: params.consumed,
         locations: params.locations,
         critSlots: params.critSlots
-    } as MountedEquipment;
+    });
 }
 
 interface CreateComponentOptions {
@@ -203,6 +201,15 @@ function createComponent(
         rules
     } as unknown as CBTForceUnit;
     addRuntimeSelection(unit);
+    (unit.setInventoryEntry as jasmine.Spy).and.callFake((entry: MountedEquipment) => {
+        const index = entries.findIndex(item => item.id === entry.id);
+        if (index === -1) {
+            entries.push(entry);
+        } else {
+            entries[index] = entry;
+        }
+        unit.inventoryControl.markInventoryViewChanged();
+    });
     entries.forEach(item => item.owner = unit);
     context = {
             toastService,
@@ -365,15 +372,16 @@ describe('WeaponsEquipmentPanelComponent', () => {
         fixture.detectChanges();
 
         expect(laser.destroyed).toBeFalse();
-        expect(unit.setInventoryEntry).not.toHaveBeenCalled();
-        expect(unit.getInventoryControlEntryPendingDestroyed(row.id)).toBeTrue();
+        expect(unit.setInventoryEntry).toHaveBeenCalledOnceWith(laser);
+        expect(laser.destroying).toBeTrue();
         expect(component.rowDestroying(row)).toBeTrue();
         expect(component.rowEffectivelyDestroyed(row)).toBeTrue();
         expect((fixture.nativeElement.querySelector('.weapon-equipment-row') as HTMLElement).classList.contains('destroying-entry')).toBeTrue();
 
         component.repair(row);
 
-        expect(unit.getInventoryControlEntryPendingDestroyed(row.id)).toBeUndefined();
+        expect(laser.destroying).toBeUndefined();
+        expect(unit.setInventoryEntry).toHaveBeenCalledTimes(2);
         expect(component.rowEffectivelyDestroyed(row)).toBeFalse();
     });
 
@@ -389,8 +397,8 @@ describe('WeaponsEquipmentPanelComponent', () => {
         fixture.detectChanges();
 
         expect(broken.destroyed).toBeTrue();
-        expect(unit.setInventoryEntry).not.toHaveBeenCalled();
-        expect(unit.getInventoryControlEntryPendingDestroyed(row.id)).toBeFalse();
+        expect(unit.setInventoryEntry).toHaveBeenCalledOnceWith(broken);
+        expect(broken.destroying).toBeFalse();
         expect(component.rowRepairing(row)).toBeTrue();
         expect(component.rowEffectivelyDestroyed(row)).toBeFalse();
         expect((fixture.nativeElement.querySelector('.weapon-equipment-row') as HTMLElement).classList.contains('repairing-entry')).toBeTrue();

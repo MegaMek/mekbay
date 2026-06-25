@@ -1,6 +1,39 @@
+/*
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
+ *
+ * This file is part of MekBay.
+ *
+ * MekBay is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MekBay is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
+ */
+
 import { AmmoEquipment, WeaponEquipment, type EquipmentMap } from '../models/equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
-import type { CriticalSlot, MountedEquipment } from '../models/force-serialization';
+import { MountedEquipment, type CriticalSlot } from '../models/force-serialization';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../models/inventory-control-runtime-state.model';
 import { computeLinkedModifiers, isMountedDestroyed, resolveHitModifier } from '../models/rules/hit-modifier.util';
 import { resolveWeaponRangeDamageText, WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, type WeaponRangeKey } from '../models/rules/weapon-range-rules.util';
@@ -116,13 +149,14 @@ export function setInventoryControlSortOrder(rows: InventoryControlRow[]): void 
     if (rows.length === 0) return;
     const sortKey = inventoryControlSortKey(rows[0].category);
     rows.forEach((row, index) => {
-        row.entry.states.set(sortKey, index.toString());
-        row.entry.owner.setInventoryEntry(row.entry);
+        if (row.entry.setState(sortKey, index.toString())) {
+            row.entry.owner.setInventoryEntry(row.entry);
+        }
     });
 }
 
 export function setInventoryControlMode(entry: MountedEquipment, mode: string): void {
-    entry.states.set(INVENTORY_CONTROL_MODE_STATE, mode);
+    entry.setState(INVENTORY_CONTROL_MODE_STATE, mode);
     syncSvgMode(entry, mode);
     entry.owner.setInventoryEntry(entry);
 }
@@ -415,7 +449,7 @@ function createInventoryControlRowEntry(entry: MountedEquipment, options: Invent
     if (!options.rowId) return entry;
     const states = new Map(entry.states);
     states.set(INVENTORY_CONTROL_VIRTUAL_TROOPER_ROW_STATE, '1');
-    return { ...entry, id: options.rowId, states };
+    return MountedEquipment.from(entry).clone({ id: options.rowId, states });
 }
 
 function buildInventoryControlRows(

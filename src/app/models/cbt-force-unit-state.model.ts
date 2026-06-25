@@ -32,7 +32,7 @@
  */
 
 import { signal, computed } from '@angular/core';
-import { type LocationData, type HeatProfile, type SerializedInventory, type CriticalSlot, type MountedEquipment, type SerializedState, type CBTSerializedState, C3_POSITION_SCHEMA } from './force-serialization';
+import { MountedEquipment, type LocationData, type HeatProfile, type SerializedInventory, type CriticalSlot, type SerializedState, type CBTSerializedState, C3_POSITION_SCHEMA } from './force-serialization';
 import { CrewMember } from './crew-member.model';
 import { ForceUnitState } from './force-unit-state.model';
 import { TurnState } from './turn-state.model';
@@ -77,8 +77,7 @@ export class CBTForceUnitState extends ForceUnitState {
     });
 
     hasUnconsolidatedInventory = computed(() => {
-        return Array.from(this.unit.inventoryControl.entryStates().values())
-            .some(entryState => entryState.pendingDestroyed !== undefined);
+        return this.inventory().some(item => item.hasPendingDestroyedChange());
     });
 
     consolidateLocations() {
@@ -135,18 +134,11 @@ export class CBTForceUnitState extends ForceUnitState {
 
     consolidateInventory() {
         if (!this.hasUnconsolidatedInventory()) return;
-        const pendingDestroyedEntries = this.unit.inventoryControl.pendingDestroyedEntries();
         const inventory = this.inventory();
         let updated = false;
         inventory.forEach(item => {
-            const pendingDestroyed = pendingDestroyedEntries.get(item.id);
-            if (pendingDestroyed === undefined) return;
-            if (!!item.destroyed !== pendingDestroyed) {
-                item.destroyed = pendingDestroyed;
-                updated = true;
-            }
+            updated = item.commitPendingDestroyed() || updated;
         });
-        this.unit.inventoryControl.clearPendingDestroyed();
         if (updated) {
             this.inventory.set([...inventory]);
             this.unit.evaluateDestroyed();
@@ -303,6 +295,10 @@ export class CBTForceUnitState extends ForceUnitState {
                         item.destroyed = incoming.destroyed;
                         inventoryChanged = true;
                     }
+                    if (item.destroying !== incoming.destroying) {
+                        item.destroying = incoming.destroying;
+                        inventoryChanged = true;
+                    }
                     if (item.consumed !== incoming.consumed) {
                         item.consumed = incoming.consumed;
                         inventoryChanged = true;
@@ -321,10 +317,11 @@ export class CBTForceUnitState extends ForceUnitState {
                     }
                 } else {
                     // Not in incoming: reset to pristine if it had state
-                    if (item.destroyed || (item.consumed ?? 0) > 0 ||
+                    if (item.destroyed || item.destroying !== undefined || (item.consumed ?? 0) > 0 ||
                         (item.ammo !== undefined && item.ammo !== item.name) ||
                         (item.states && item.states.size > 0 && Array.from(item.states.values()).some(v => v !== ''))) {
                         item.destroyed = undefined;
+                        item.destroying = undefined;
                         item.consumed = undefined;
                         item.ammo = undefined;
                         item.totalAmmo = undefined;
@@ -446,15 +443,14 @@ export class CBTForceUnitState extends ForceUnitState {
         const inventory = this.inventory();
         const serializedData: SerializedInventory[] = [];
         for (const item of inventory) {
-            const pendingDestroyed = this.unit.getInventoryControlEntryPendingDestroyed(item.id);
             const hasStates = item.states !== undefined && item.states.size > 0 
                 && Array.from(item.states.values()).some(v => v !== '');
             const hasCustomAmmo = item.ammo !== undefined && item.ammo !== item.name;
-            if (item.destroyed || pendingDestroyed !== undefined || (item.consumed ?? 0) > 0 || hasCustomAmmo || hasStates) {
+            if (item.destroyed || item.destroying !== undefined || (item.consumed ?? 0) > 0 || hasCustomAmmo || hasStates) {
                 serializedData.push({
                     id: item.id,
                     ...(item.destroyed && { destroyed: item.destroyed }),
-                    ...(pendingDestroyed !== undefined && { destroying: pendingDestroyed }),
+                    ...(item.destroying !== undefined && { destroying: item.destroying }),
                     ...((item.consumed ?? 0) > 0 && { consumed: item.consumed }),
                     ...(hasCustomAmmo && { ammo: item.ammo }),
                     ...(((item.consumed ?? 0) > 0 || hasCustomAmmo) && item.totalAmmo !== undefined && { totalAmmo: item.totalAmmo }),
@@ -473,20 +469,18 @@ export class CBTForceUnitState extends ForceUnitState {
         const existingInventory = this.inventory();
         serializedInventory.forEach(entry => {
             const existingItem = existingInventory.find(item => item.id === entry.id);
-            // Ensure newItem is always initialized to avoid "used before assigned" errors.
-            // If we have an existing item, clone it; otherwise create a minimal placeholder and cast to MountedEquipment.
             let newItem: MountedEquipment;
             if (existingItem) {
-                newItem = { ...existingItem } as MountedEquipment;
+                newItem = existingItem.clone();
             } else {
                 // id comes in the format of name@loc#slot, we grab the name
                 const name = entry.id.split('@')[0];
-                newItem = {
+                newItem = new MountedEquipment({
                     owner: this.unit,
                     id: entry.id,
                     name: name,
                     states: new Map<string, string>(),
-                }
+                });
             }
             if (entry.destroyed !== undefined) {
                 newItem.destroyed = entry.destroyed;
@@ -504,7 +498,7 @@ export class CBTForceUnitState extends ForceUnitState {
                 newItem.consumed = entry.consumed;
             }
             if (entry.destroying !== undefined) {
-                this.unit.setInventoryControlEntryPendingDestroyed(newItem, entry.destroying, false);
+                newItem.destroying = entry.destroying;
             }
             if (allEquipment && newItem.name && !newItem.equipment) {
                 if (allEquipment) {
