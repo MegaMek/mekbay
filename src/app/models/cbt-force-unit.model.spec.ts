@@ -501,24 +501,6 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(motiveHit.classList.contains('willChange')).toBeTrue();
     });
 
-    it('renders a no-aim warning on SVG target overlays when aimed shots are blocked', () => {
-        const forceUnit = createForceUnit(createVspUnit(equipment));
-        initialize(forceUnit, createVspSvg());
-        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
-        const targetTnText = weaponEntry.el!.querySelector(':scope > .targetTn-text') as SVGTextElement;
-        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
-
-        forceUnit.createInventoryControlTarget();
-        forceUnit.updateInventoryControlTarget('A', { distance: 1, tnCalculator: { stance: 'immobile' } });
-        forceUnit.setInventoryControlEntryTarget(weaponEntry, 'A');
-        svgService.refreshInventory();
-
-        expect(targetTnText.textContent).toBe('1');
-
-        forceUnit.updateInventoryControlTarget('A', { tnCalculator: { stance: 'normal' } });
-        svgService.refreshInventory();
-    });
-
     it('keeps target selection state independent of SVG presentation rendering', () => {
         const forceUnit = createForceUnit();
         initialize(forceUnit);

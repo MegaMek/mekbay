@@ -6,7 +6,8 @@ import { INVENTORY_CONTROL_TARGET_COLORS, type InventoryControlRuntimeTarget, ty
 import { CBTInventoryControlRuntime } from '../../models/cbt-inventory-control-runtime.model';
 import type { CriticalSlot, HeatProfile, MountedEquipment } from '../../models/force-serialization';
 import { InventoryModeHandler } from '../../equipment-handlers/inventory-mode.handler';
-import type { HandlerChoice } from '../../services/equipment-interaction-registry.service';
+import { BAPHandler } from '../../equipment-handlers/bap.handler';
+import type { EquipmentInteractionHandler, HandlerChoice } from '../../services/equipment-interaction-registry.service';
 import { INVENTORY_CONTROL_MODE_STATE, inventoryControlSortKey, getInventoryControlGroups } from '../../utils/inventory-control.util';
 import { WeaponsEquipmentPanelComponent } from './weapons-equipment-panel.component';
 import type { EquipmentDialogContext } from './equipment-dialog.model';
@@ -122,6 +123,7 @@ interface CreateComponentOptions {
     pilotingSkill?: number;
     moveMode?: MotiveModes | null;
     attackMovementCanAffectTargetNumbers?: boolean;
+    handlers?: EquipmentInteractionHandler[];
 }
 
 function createComponent(
@@ -133,6 +135,7 @@ function createComponent(
 ) {
     let context: EquipmentDialogContext;
     const modeHandler = new InventoryModeHandler();
+    const handlers = [modeHandler, ...(options.handlers ?? [])];
     const toasts: Array<{ id: string; message: string; type: 'info' | 'success' | 'error'; data?: Record<string, unknown> }> = [];
     const toastService = {
         showToast: jasmine.createSpy('showToast').and.callFake((message: string, type: 'info' | 'success' | 'error', id?: string, data?: Record<string, unknown>) => {
@@ -204,8 +207,13 @@ function createComponent(
             dialogsService,
             dataService: { getEquipments: () => equipmentMap },
             registry: {
-                getChoices: (entry: MountedEquipment) => modeHandler.applicableTo(entry) ? modeHandler.getChoices(entry, context) : [],
-                handleSelection: (entry: MountedEquipment, choice: HandlerChoice) => modeHandler.handleSelection(entry, choice, context)
+                getChoices: (entry: MountedEquipment) => handlers.flatMap(handler => {
+                    const flagsMatch = handler.flags.length === 0
+                        || (!!entry.equipment?.flags && handler.flags.every(flag => entry.equipment!.flags.has(flag)));
+                    if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) return [];
+                    return handler.getChoices(entry, context)?.map(choice => ({ ...choice, _handler: handler })) ?? [];
+                }),
+                handleSelection: (entry: MountedEquipment, choice: HandlerChoice) => choice._handler?.handleSelection(entry, choice, context) ?? false
             }
         } as unknown as EquipmentDialogContext;
 
@@ -247,6 +255,25 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const groups = getInventoryControlGroups(unit);
 
         expect(groups.find(group => group.id === 'ranged')?.rows.map(row => row.id)).toEqual(['broken', 'laser']);
+    });
+
+    it('toggles BAP state and updates the next toggle label', async () => {
+        const probe = entry({ id: 'probe', equipment: misc('Bloodhound Active Probe', ['F_BAP']), el: svgEntry('<g><g class="name"><text>Probe</text></g></g>') });
+        const { component, toastService } = createComponent([probe], {}, [], undefined, { handlers: [new BAPHandler()] });
+
+        let row = component.groups().find(group => group.id === 'equipment')!.rows[0];
+        let choice = component.handlerChoices(row)[0];
+        expect(choice.label).toBe('Active Probe is OFF');
+        expect(choice.value).toBe('enabled');
+
+        await component.handleChoice(row, choice);
+        row = component.groups().find(group => group.id === 'equipment')!.rows[0];
+        choice = component.handlerChoices(row)[0];
+
+        expect(probe.states?.get('state')).toBe('enabled');
+        expect(choice.label).toBe('Active Probe is ON');
+        expect(choice.value).toBe('disabled');
+        expect(toastService.showToast).toHaveBeenCalledWith('Bloodhound Active Probe Active Probe is ON', 'info');
     });
 
     it('splits Battle Armor trooper weapons and locks ammo to the same trooper', () => {
