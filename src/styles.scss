@@ -1642,6 +1642,10 @@ hr.divider {
         display: none;
     }
 
+    text.disabled-text {
+        fill: #aaa;
+    }
+
     .disabledInventory .damaged-strike {
         display: block;
         stroke: var(--disabled-color);
@@ -2323,6 +2327,10 @@ hr.divider {
         [fill="#bbb" i],
         [style*="fill:#bbb" i] {
             fill: #444 !important;
+        }
+
+        text.disabled-text {
+            fill: #666;
         }
 
         .damaged {

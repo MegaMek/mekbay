@@ -85,6 +85,7 @@ export function getMotiveModeMaxDistance(mode: MotiveModes, unit: Unit, airborne
 }
 
 function canStationary(unit: Unit, airborne: boolean = false): boolean {
+    if (airborne && unit.subtype === 'Land-Air BattleMek') return false;
     return true;
 }
 

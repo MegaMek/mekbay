@@ -111,7 +111,10 @@ export class UnitSvgInfantryService extends UnitSvgService {
             } else {
                 soldierEl.classList.remove('fresh');
             }
+            const damageEl = svg.getElementById(`damage_${i}`);
+            damageEl?.classList.toggle('disabled-text', idx <= committed);
             soldierEl.classList.toggle('pending', shouldPending);
+
         }
     }
 

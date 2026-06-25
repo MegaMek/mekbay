@@ -674,7 +674,8 @@ export class MekRules extends UnitTypeRulesBase {
 
     override getAttackMovementModifier(moveMode: MotiveModes | null | undefined, airborne: boolean = false): number {
         const baseUnit = this.unit.getUnit();
-        if (baseUnit.subtype === 'Land-Air BattleMek' && airborne) {
+        // LAM have different movement modifiers when airborne
+        if (baseUnit.subtype === 'Land-Air BattleMek' && airborne) { 
             if (moveMode === 'walk') return 3;
             if (moveMode === 'run') return 4;
         }
