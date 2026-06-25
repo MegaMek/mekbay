@@ -260,13 +260,11 @@ export class PageTurnSummaryPanelComponent {
         const current = turnState.moveMode();
         if (current === mode) {
             turnState.moveMode.set(null);
+            turnState.moveDistance.set(null);
         } else {
             turnState.moveMode.set(mode);
-            if (mode === 'stationary') {
-                turnState.moveDistance.set(null);
-            }
+            turnState.moveDistance.set(mode === 'stationary' ? null : 0);
         }
-        turnState.moveDistance.set(null);
         turnState.applyMovePSR.set(true);
     }
 
