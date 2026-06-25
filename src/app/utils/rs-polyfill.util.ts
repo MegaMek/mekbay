@@ -1232,13 +1232,7 @@ export class RsPolyfillUtil {
             const rectId = `${moveEl.id}-turnState-move-rect`;
             if (svg.getElementById(rectId)) continue; // avoid duplicates
 
-            // Try to get bounding box for vertical positioning/height
-            let bbox: DOMRect | null = null;
-            try {
-                bbox = (moveEl as SVGGraphicsElement).getBBox();
-            } catch {
-                bbox = null;
-            }
+            const bbox = this.getElementBBoxInParentCoordinates(svg, moveEl);
             if (!bbox) continue;
 
             const rectWidth = 10;
@@ -1298,17 +1292,76 @@ export class RsPolyfillUtil {
         if (!xAttr || !yAttr) return;
 
         const tightSpaceForText = unit.subtype === 'Land-Air BattleMek';
+        const warningPosition = this.transformElementPointToParentCoordinates(
+            svg,
+            moveEl,
+            parseFloat(xAttr) + (tightSpaceForText ? 4 : 8),
+            parseFloat(yAttr)
+        );
+        if (!warningPosition) return;
 
         const warningText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         warningText.setAttribute('id', warningId);
-        warningText.setAttribute('x', (parseFloat(xAttr) + (tightSpaceForText ? 4 : 8)).toString());
-        warningText.setAttribute('y', yAttr);
+        warningText.setAttribute('x', warningPosition.x.toString());
+        warningText.setAttribute('y', warningPosition.y.toString());
         warningText.setAttribute('text-anchor', 'start');
         warningText.setAttribute('class', 'movePsrWarning movementType screen-only');
         warningText.setAttribute('display', 'none');
         warningText.textContent = tightSpaceForText ? '!!!' : 'PSR!';
 
         moveEl.parentElement?.appendChild(warningText);
+    }
+
+    private static getElementBBoxInParentCoordinates(svg: SVGSVGElement, el: SVGElement): DOMRect | null {
+        let bbox: DOMRect;
+        try {
+            bbox = (el as SVGGraphicsElement).getBBox();
+        } catch {
+            return null;
+        }
+
+        const parent = el.parentElement as SVGGraphicsElement | null;
+        const elementCTM = (el as SVGGraphicsElement).getCTM?.() ?? null;
+        const parentCTM = parent?.getCTM?.() ?? svg.getCTM() ?? null;
+        if (!elementCTM || !parentCTM) return bbox;
+
+        const pt = svg.createSVGPoint();
+        const invParent = parentCTM.inverse();
+        const corners = [
+            { x: bbox.x, y: bbox.y },
+            { x: bbox.x + bbox.width, y: bbox.y },
+            { x: bbox.x, y: bbox.y + bbox.height },
+            { x: bbox.x + bbox.width, y: bbox.y + bbox.height },
+        ];
+        let minX = Number.POSITIVE_INFINITY;
+        let minY = Number.POSITIVE_INFINITY;
+        let maxX = Number.NEGATIVE_INFINITY;
+        let maxY = Number.NEGATIVE_INFINITY;
+
+        for (const corner of corners) {
+            pt.x = corner.x;
+            pt.y = corner.y;
+            const transformed = pt.matrixTransform(elementCTM).matrixTransform(invParent);
+            minX = Math.min(minX, transformed.x);
+            minY = Math.min(minY, transformed.y);
+            maxX = Math.max(maxX, transformed.x);
+            maxY = Math.max(maxY, transformed.y);
+        }
+
+        if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) return null;
+        return new DOMRect(minX, minY, maxX - minX, maxY - minY);
+    }
+
+    private static transformElementPointToParentCoordinates(svg: SVGSVGElement, el: SVGElement, x: number, y: number): DOMPoint | null {
+        const parent = el.parentElement as SVGGraphicsElement | null;
+        const elementCTM = (el as SVGGraphicsElement).getCTM?.() ?? null;
+        const parentCTM = parent?.getCTM?.() ?? svg.getCTM() ?? null;
+        if (!elementCTM || !parentCTM) return new DOMPoint(x, y);
+
+        const pt = svg.createSVGPoint();
+        pt.x = x;
+        pt.y = y;
+        return pt.matrixTransform(elementCTM).matrixTransform(parentCTM.inverse());
     }
 
     private static addCritSlotClasses(svg: SVGSVGElement): void {
