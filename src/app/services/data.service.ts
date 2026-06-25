@@ -82,6 +82,7 @@ import { UnitsCatalogService } from './catalogs/units-catalog.service';
 import { UnitsFluffCatalogService } from './catalogs/units-fluff-catalog.service';
 import { EquipmentCatalogService } from './catalogs/equipment-catalog.service';
 import { ForceNameWordsCatalogService } from './catalogs/force-name-words-catalog.service';
+import { CatalogDownloadTrackerService } from './catalogs/catalog-base.service';
 import { MULFACTION_EXTINCT, MULFACTION_NONE } from '../models/mulfactions.model';
 import { naturalCompare } from '../utils/sort.util';
 import { getUnitVariantGroupKey } from '../utils/unit-variant.util';
@@ -180,6 +181,7 @@ export class DataService {
     private sarnaPageTitlesCatalog = inject(SarnaPageTitlesCatalogService);
     private sourcebooksCatalog = inject(SourcebooksCatalogService);
     private forceNameWordsCatalog = inject(ForceNameWordsCatalogService);
+    private catalogDownloadTracker = inject(CatalogDownloadTrackerService);
     private readonly megaMekAvailabilityCatalogState = createCatalogInitializationState();
     private readonly megaMekFactionsCatalogState = createCatalogInitializationState();
     private readonly megaMekRulesetsCatalogState = createCatalogInitializationState();
@@ -189,7 +191,7 @@ export class DataService {
     private readonly forceNameWordsCatalogState = createCatalogInitializationState();
 
     isDataReady = signal(false);
-    isDownloading = signal(false);
+    public readonly isDownloading = this.catalogDownloadTracker.isDownloading;
     public isCloudForceLoading = signal(false);
 
     /** Emits when a cloud save is rejected (not_owner) and the force needs adoption. */
@@ -560,18 +562,14 @@ export class DataService {
     }
 
     private async checkForUpdate(): Promise<void> {
-        try {
-            await Promise.all([
-                this.unitsCatalog.initialize(),
-                this.equipmentCatalog.initialize(),
-                this.erasCatalog.initialize(),
-                this.factionsCatalog.initialize(),
-            ]);
-            this.postprocessData();
-            this.bumpSearchCorpusVersion();
-        } finally {
-            this.isDownloading.set(false);
-        }
+        await Promise.all([
+            this.unitsCatalog.initialize(),
+            this.equipmentCatalog.initialize(),
+            this.erasCatalog.initialize(),
+            this.factionsCatalog.initialize(),
+        ]);
+        this.postprocessData();
+        this.bumpSearchCorpusVersion();
     }
 
     private describeError(error: unknown): string {
@@ -727,8 +725,6 @@ export class DataService {
                 this.applyPublicTagsToUnits();
             }
             this.isDataReady.set(hasData);
-        } finally {
-            this.isDownloading.set(false);
         }
     }
 

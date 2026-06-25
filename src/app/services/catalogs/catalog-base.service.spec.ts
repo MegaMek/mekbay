@@ -4,7 +4,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 
 import { LoggerService } from '../logger.service';
-import { CatalogBaseService } from './catalog-base.service';
+import { CatalogBaseService, CatalogDownloadTrackerService } from './catalog-base.service';
 
 interface TestCatalogData {
     items?: number[];
@@ -81,6 +81,7 @@ describe('CatalogBaseService', () => {
         warn: jasmine.Spy;
         error: jasmine.Spy;
     };
+    let downloadTracker: CatalogDownloadTrackerService;
 
     beforeEach(() => {
         TestBed.resetTestingModule();
@@ -102,6 +103,7 @@ describe('CatalogBaseService', () => {
         });
 
         service = TestBed.inject(TestCatalogService);
+        downloadTracker = TestBed.inject(CatalogDownloadTrackerService);
         httpMock = TestBed.inject(HttpTestingController);
     });
 
@@ -135,6 +137,53 @@ describe('CatalogBaseService', () => {
             { etag: 'etag-1', items: [1, 2, 3, 4, 5, 6] },
         ]);
         expect(logger.warn).toHaveBeenCalledWith(jasmine.stringMatching(/Ignoring invalid cache test_catalog dataset/));
+    });
+
+    it('reports downloading only while a catalog fetch is active', async () => {
+        expect(downloadTracker.isDownloading()).toBeFalse();
+
+        const initializePromise = service.initialize();
+        await settleMicrotasks();
+
+        const headRequest = httpMock.expectOne('/test-catalog.json');
+        headRequest.flush('', {
+            headers: new HttpHeaders({ ETag: 'etag-1' }),
+        });
+        await settleMicrotasks();
+
+        const getRequest = httpMock.expectOne('/test-catalog.json');
+        expect(downloadTracker.isDownloading()).toBeTrue();
+
+        getRequest.flush({ items: [1, 2, 3, 4, 5, 6] }, {
+            headers: new HttpHeaders({ ETag: 'etag-1' }),
+        });
+
+        await initializePromise;
+
+        expect(downloadTracker.isDownloading()).toBeFalse();
+    });
+
+    it('keeps reporting downloading until all tracked catalog fetches finish', async () => {
+        let finishFirstDownload!: () => void;
+        let finishSecondDownload!: () => void;
+        const firstDownload = downloadTracker.trackDownload(() => new Promise<void>((resolve) => {
+            finishFirstDownload = resolve;
+        }));
+        const secondDownload = downloadTracker.trackDownload(() => new Promise<void>((resolve) => {
+            finishSecondDownload = resolve;
+        }));
+
+        expect(downloadTracker.isDownloading()).toBeTrue();
+
+        finishFirstDownload();
+        await settleMicrotasks();
+
+        expect(downloadTracker.isDownloading()).toBeTrue();
+
+        finishSecondDownload();
+        await Promise.all([firstDownload, secondDownload]);
+
+        expect(downloadTracker.isDownloading()).toBeFalse();
     });
 
     it('preserves the previous dataset when the remote update is empty', async () => {
