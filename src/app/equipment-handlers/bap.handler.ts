@@ -38,6 +38,6 @@ export class BAPHandler extends ToggleHandler {
     override readonly flags = ['F_BAP'];
     override readonly priority = 10;
     
-    protected override readonly enabledLabel = 'Active Probe On';
-    protected override readonly disabledLabel = 'Active Probe Off';
+    protected override readonly enabledLabel = 'Active Probe is ON';
+    protected override readonly disabledLabel = 'Active Probe is OFF';
 }

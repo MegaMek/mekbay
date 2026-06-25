@@ -914,7 +914,7 @@ export class WeaponsEquipmentPanelComponent {
 
     private getHandlerChoices(row: InventoryControlRow): HandlerChoice[] {
         if (this.isVirtualTrooperRow(row)) return [];
-        if (row.destroyed) return [];
+        if (this.rowEffectivelyDestroyed(row)) return [];
         return this.context().registry.getChoices(row.entry, this.context());
     }
 
@@ -924,18 +924,33 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     canMarkDestroyed(row: InventoryControlRow): boolean {
-        return !this.isVirtualTrooperRow(row) && !this.readOnly() && this.unit().hasDirectInventory() && !row.destroyed;
+        return !this.isVirtualTrooperRow(row) && !this.readOnly() && this.unit().hasDirectInventory() && !this.rowEffectivelyDestroyed(row);
     }
 
     markDestroyed(row: InventoryControlRow): void {
         if (!this.canMarkDestroyed(row)) return;
-        row.entry.destroyed = true;
-        row.entry.owner.setInventoryEntry(row.entry);
+        this.unit().setInventoryControlEntryPendingDestroyed(row.entry, true);
         this.context().toastService.showToast(`Critical Hit on ${row.display.name}`, 'error');
     }
 
     canRepair(row: InventoryControlRow): boolean {
-        return !this.isVirtualTrooperRow(row) && !this.readOnly() && this.unit().hasDirectInventory() && row.destroyed;
+        return !this.isVirtualTrooperRow(row) && !this.readOnly() && this.unit().hasDirectInventory() && this.rowEffectivelyDestroyed(row);
+    }
+
+    rowEffectivelyDestroyed(row: InventoryControlRow): boolean {
+        return this.unit().getInventoryControlEntryPendingDestroyed(row.id) ?? row.destroyed;
+    }
+
+    rowDestroying(row: InventoryControlRow): boolean {
+        return !row.destroyed && this.unit().getInventoryControlEntryPendingDestroyed(row.id) === true;
+    }
+
+    rowRepairing(row: InventoryControlRow): boolean {
+        return row.destroyed && this.unit().getInventoryControlEntryPendingDestroyed(row.id) === false;
+    }
+
+    rowCommittedDestroyed(row: InventoryControlRow): boolean {
+        return row.destroyed && !this.rowRepairing(row);
     }
 
     private isVirtualTrooperRow(row: InventoryControlRow): boolean {
@@ -944,8 +959,7 @@ export class WeaponsEquipmentPanelComponent {
 
     repair(row: InventoryControlRow): void {
         if (!this.canRepair(row)) return;
-        row.entry.destroyed = false;
-        row.entry.owner.setInventoryEntry(row.entry);
+        this.unit().setInventoryControlEntryPendingDestroyed(row.entry, false);
         this.context().toastService.showToast(`Repaired ${row.display.name}`, 'success');
     }
 

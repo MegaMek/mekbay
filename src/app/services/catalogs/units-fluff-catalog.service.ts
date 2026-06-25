@@ -46,6 +46,7 @@ import type {
 import { DbService } from '../db.service';
 import { LoggerService } from '../logger.service';
 import { generateUUID } from '../ws.service';
+import { CatalogDownloadTrackerService } from './catalog-base.service';
 
 const MINIMUM_FLUFF_ENTRY_COUNT = 100;
 const MINIMUM_RELATIVE_FLUFF_SIZE = 0.75;
@@ -57,6 +58,7 @@ export class UnitsFluffCatalogService {
     private readonly http = inject(HttpClient);
     private readonly dbService = inject(DbService);
     private readonly logger = inject(LoggerService);
+    private readonly downloadTracker = inject(CatalogDownloadTrackerService);
 
     private initialized = false;
     private initializePromise: Promise<void> | null = null;
@@ -154,23 +156,25 @@ export class UnitsFluffCatalogService {
     }
 
     private async fetchRemoteData(remoteEtag = ''): Promise<UnitFluffCatalog> {
-        this.logger.info('Downloading units_fluff...');
+        return await this.downloadTracker.trackDownload(async () => {
+            this.logger.info('Downloading units_fluff...');
 
-        const response = await firstValueFrom(this.http.get<UnitFluffCatalog>(this.remoteUrl, {
-            observe: 'response',
-            reportProgress: false,
-        }));
+            const response = await firstValueFrom(this.http.get<UnitFluffCatalog>(this.remoteUrl, {
+                observe: 'response',
+                reportProgress: false,
+            }));
 
-        const body = response.body;
-        if (!body) {
-            throw new Error('No body received for units_fluff');
-        }
+            const body = response.body;
+            if (!body) {
+                throw new Error('No body received for units_fluff');
+            }
 
-        return {
-            ...body,
-            etag: response.headers.get('ETag') || remoteEtag || generateUUID(),
-            fluff: body.fluff ?? {},
-        };
+            return {
+                ...body,
+                etag: response.headers.get('ETag') || remoteEtag || generateUUID(),
+                fluff: body.fluff ?? {},
+            };
+        });
     }
 
     private async getRemoteEtag(): Promise<string> {

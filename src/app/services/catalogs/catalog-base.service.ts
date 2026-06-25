@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { inject } from '@angular/core';
+import { computed, Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
@@ -40,9 +40,25 @@ import { generateUUID } from '../ws.service';
 
 type CatalogDataSource = 'cache' | 'remote';
 
+@Injectable({ providedIn: 'root' })
+export class CatalogDownloadTrackerService {
+    private readonly activeDownloadCount = signal(0);
+    public readonly isDownloading = computed(() => this.activeDownloadCount() > 0);
+
+    public async trackDownload<T>(download: () => Promise<T>): Promise<T> {
+        this.activeDownloadCount.update((count) => count + 1);
+        try {
+            return await download();
+        } finally {
+            this.activeDownloadCount.update((count) => Math.max(0, count - 1));
+        }
+    }
+}
+
 export abstract class CatalogBaseService<THydrateInput, TStored extends THydrateInput, TRemoteBody = TStored> {
     protected readonly http = inject(HttpClient);
     protected readonly logger = inject(LoggerService);
+    private readonly downloadTracker = inject(CatalogDownloadTrackerService);
     protected etag = '';
 
     public async initialize(): Promise<void> {
@@ -125,43 +141,45 @@ export abstract class CatalogBaseService<THydrateInput, TStored extends THydrate
     }
 
     protected async fetchRemote(previousData?: THydrateInput): Promise<void> {
-        this.logger.info(`Downloading ${this.catalogKey}...`);
+        await this.downloadTracker.trackDownload(async () => {
+            this.logger.info(`Downloading ${this.catalogKey}...`);
 
-        const response = await firstValueFrom(this.http.get<TRemoteBody>(this.remoteUrl, {
-            observe: 'response',
-            reportProgress: false,
-        }));
+            const response = await firstValueFrom(this.http.get<TRemoteBody>(this.remoteUrl, {
+                observe: 'response',
+                reportProgress: false,
+            }));
 
-        const body = response.body;
-        if (!body) {
-            throw new Error(`No body received for ${this.catalogKey}`);
-        }
-
-        const etag = response.headers.get('ETag') || generateUUID();
-        const wrappedData = this.normalizeFetchedData(body, etag);
-
-        try {
-            this.validateData(wrappedData, 'remote', previousData);
-            this.hydrate(wrappedData);
-            this.ensureHydratedData('remote');
-        } catch (error) {
-            if (previousData) {
-                try {
-                    this.hydrate(previousData);
-                    this.ensureHydratedData('cache');
-                    this.logger.warn(`Preserved cached ${this.catalogKey} after rejecting the remote update.`);
-                } catch (restoreError) {
-                    this.logger.error(`Failed to restore cached ${this.catalogKey}: ${this.describeError(restoreError)}`);
-                }
+            const body = response.body;
+            if (!body) {
+                throw new Error(`No body received for ${this.catalogKey}`);
             }
 
-            const message = `Rejected ${this.catalogKey} update: ${this.describeError(error)}`;
-            this.logger.error(message);
-            throw new Error(message);
-        }
+            const etag = response.headers.get('ETag') || generateUUID();
+            const wrappedData = this.normalizeFetchedData(body, etag);
 
-        await this.saveToCache(wrappedData);
-        this.logger.info(`${this.catalogKey} updated. (ETag: ${etag})`);
+            try {
+                this.validateData(wrappedData, 'remote', previousData);
+                this.hydrate(wrappedData);
+                this.ensureHydratedData('remote');
+            } catch (error) {
+                if (previousData) {
+                    try {
+                        this.hydrate(previousData);
+                        this.ensureHydratedData('cache');
+                        this.logger.warn(`Preserved cached ${this.catalogKey} after rejecting the remote update.`);
+                    } catch (restoreError) {
+                        this.logger.error(`Failed to restore cached ${this.catalogKey}: ${this.describeError(restoreError)}`);
+                    }
+                }
+
+                const message = `Rejected ${this.catalogKey} update: ${this.describeError(error)}`;
+                this.logger.error(message);
+                throw new Error(message);
+            }
+
+            await this.saveToCache(wrappedData);
+            this.logger.info(`${this.catalogKey} updated. (ETag: ${etag})`);
+        });
     }
 
     private tryHydrateData(data: THydrateInput, source: CatalogDataSource): boolean {

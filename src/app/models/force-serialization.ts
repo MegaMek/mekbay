@@ -263,6 +263,7 @@ export interface CBTSerializedState extends SerializedState {
 export interface SerializedInventory {
     id: string;
     destroyed?: boolean;
+    destroying?: boolean;
     states?: { name: string; value: string }[];
     consumed?: number;
     ammo?: string;
@@ -387,6 +388,7 @@ export const INVENTORY_SCHEMA = Sanitizer.schema<SerializedInventory>()
         return undefined;
     })
     .boolean('destroyed')
+    .boolean('destroying')
     .build();
 
 /**

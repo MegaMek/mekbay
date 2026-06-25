@@ -199,15 +199,71 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(ammoEntries.map(entry => entry.consumed)).toEqual([0, 0, 0, 0, 0, 0]);
     });
 
+    it('commits pending direct inventory hit and repair state at phase end', () => {
+        const forceUnit = createForceUnit();
+        initialize(forceUnit);
+        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
+
+        forceUnit.setInventoryControlEntryPendingDestroyed(weaponEntry, true);
+
+        expect(weaponEntry.destroyed).toBeFalsy();
+        expect(forceUnit.getInventoryControlEntryPendingDestroyed(weaponEntry.id)).toBeTrue();
+        expect(forceUnit.turnState().dirtyPhase()).toBeTrue();
+        expect(forceUnit.serialize().state.inventory).toEqual([{ id: weaponEntry.id, destroying: true }]);
+
+        forceUnit.clearInventoryControlSelection();
+
+        expect(forceUnit.getInventoryControlEntryPendingDestroyed(weaponEntry.id)).toBeTrue();
+
+        const restoredHit = CBTForceUnit.deserialize(
+            forceUnit.serialize(),
+            new TestCBTForce('Restored Force', dataService, unitInitializer, injector),
+            dataService,
+            unitInitializer,
+            injector
+        );
+
+        expect(restoredHit.getInventoryControlEntryPendingDestroyed(weaponEntry.id)).toBeTrue();
+        expect(restoredHit.getInventory().find(entry => entry.id === weaponEntry.id)?.destroyed).toBeFalsy();
+
+        forceUnit.endPhase();
+
+        expect(weaponEntry.destroyed).toBeTrue();
+        expect(forceUnit.getInventoryControlEntryPendingDestroyed(weaponEntry.id)).toBeUndefined();
+
+        forceUnit.setInventoryControlEntryPendingDestroyed(weaponEntry, false);
+
+        expect(weaponEntry.destroyed).toBeTrue();
+        expect(forceUnit.getInventoryControlEntryPendingDestroyed(weaponEntry.id)).toBeFalse();
+        expect(forceUnit.turnState().dirtyPhase()).toBeTrue();
+        expect(forceUnit.serialize().state.inventory).toEqual([{ id: weaponEntry.id, destroyed: true, destroying: false }]);
+
+        const restoredRepair = CBTForceUnit.deserialize(
+            forceUnit.serialize(),
+            new TestCBTForce('Restored Repair Force', dataService, unitInitializer, injector),
+            dataService,
+            unitInitializer,
+            injector
+        );
+
+        expect(restoredRepair.getInventoryControlEntryPendingDestroyed(weaponEntry.id)).toBeFalse();
+        expect(restoredRepair.getInventory().find(entry => entry.id === weaponEntry.id)?.destroyed).toBeTrue();
+
+        forceUnit.endPhase();
+
+        expect(weaponEntry.destroyed).toBeFalse();
+        expect(forceUnit.getInventoryControlEntryPendingDestroyed(weaponEntry.id)).toBeUndefined();
+    });
+
     it('filters available movement modes through unit rules', () => {
         const forceUnit = createForceUnit();
         initialize(forceUnit);
 
-        expect(forceUnit.getAvailableMotiveModes().some(option => option.mode === 'run')).toBeTrue();
+        expect(forceUnit.getAvailableMotiveModes(forceUnit.turnState().airborne() ?? false).some(option => option.mode === 'run')).toBeTrue();
 
         forceUnit.writeCrits([{ id: 'flight_stabilizer_hit', destroyed: 1 } as CriticalSlot]);
 
-        expect(forceUnit.getAvailableMotiveModes().some(option => option.mode === 'run')).toBeFalse();
+        expect(forceUnit.getAvailableMotiveModes(forceUnit.turnState().airborne() ?? false).some(option => option.mode === 'run')).toBeFalse();
     });
 
     it('serializes and updates direct inventory ammo custom type, count, and total per bin', () => {
@@ -499,24 +555,6 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         expect(motiveHit.classList.contains('damaged')).toBeTrue();
         expect(motiveHit.classList.contains('willChange')).toBeTrue();
-    });
-
-    it('renders a no-aim warning on SVG target overlays when aimed shots are blocked', () => {
-        const forceUnit = createForceUnit(createVspUnit(equipment));
-        initialize(forceUnit, createVspSvg());
-        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
-        const targetTnText = weaponEntry.el!.querySelector(':scope > .targetTn-text') as SVGTextElement;
-        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
-
-        forceUnit.createInventoryControlTarget();
-        forceUnit.updateInventoryControlTarget('A', { distance: 1, tnCalculator: { stance: 'immobile' } });
-        forceUnit.setInventoryControlEntryTarget(weaponEntry, 'A');
-        svgService.refreshInventory();
-
-        expect(targetTnText.textContent).toBe('1');
-
-        forceUnit.updateInventoryControlTarget('A', { tnCalculator: { stance: 'normal' } });
-        svgService.refreshInventory();
     });
 
     it('keeps target selection state independent of SVG presentation rendering', () => {

@@ -76,6 +76,11 @@ export class CBTForceUnitState extends ForceUnitState {
         return Object.values(locations).some(loc => (loc.pendingArmor ?? 0) !== 0 || (loc.pendingInternal ?? 0) !== 0);
     });
 
+    hasUnconsolidatedInventory = computed(() => {
+        return Array.from(this.unit.inventoryControl.entryStates().values())
+            .some(entryState => entryState.pendingDestroyed !== undefined);
+    });
+
     consolidateLocations() {
         if (!this.hasUnconsolidatedLocations()) return;
         const locations = this.locations();
@@ -128,6 +133,27 @@ export class CBTForceUnitState extends ForceUnitState {
         }
     }
 
+    consolidateInventory() {
+        if (!this.hasUnconsolidatedInventory()) return;
+        const pendingDestroyedEntries = this.unit.inventoryControl.pendingDestroyedEntries();
+        const inventory = this.inventory();
+        let updated = false;
+        inventory.forEach(item => {
+            const pendingDestroyed = pendingDestroyedEntries.get(item.id);
+            if (pendingDestroyed === undefined) return;
+            if (!!item.destroyed !== pendingDestroyed) {
+                item.destroyed = pendingDestroyed;
+                updated = true;
+            }
+        });
+        this.unit.inventoryControl.clearPendingDestroyed();
+        if (updated) {
+            this.inventory.set([...inventory]);
+            this.unit.evaluateDestroyed();
+            this.unit.setModified();
+        }
+    }
+
     consolidateHeat() {
         const heat = this.heat();
         if (heat.next !== undefined) {
@@ -142,6 +168,7 @@ export class CBTForceUnitState extends ForceUnitState {
     endPhase() {
         this.consolidateLocations();
         this.consolidateCrits();
+        this.consolidateInventory();
         const turnState = this.turnState();
         turnState.resetPSRChecks();
     }
@@ -419,13 +446,15 @@ export class CBTForceUnitState extends ForceUnitState {
         const inventory = this.inventory();
         const serializedData: SerializedInventory[] = [];
         for (const item of inventory) {
+            const pendingDestroyed = this.unit.getInventoryControlEntryPendingDestroyed(item.id);
             const hasStates = item.states !== undefined && item.states.size > 0 
                 && Array.from(item.states.values()).some(v => v !== '');
             const hasCustomAmmo = item.ammo !== undefined && item.ammo !== item.name;
-            if (item.destroyed || (item.consumed ?? 0) > 0 || hasCustomAmmo || hasStates) {
+            if (item.destroyed || pendingDestroyed !== undefined || (item.consumed ?? 0) > 0 || hasCustomAmmo || hasStates) {
                 serializedData.push({
                     id: item.id,
                     ...(item.destroyed && { destroyed: item.destroyed }),
+                    ...(pendingDestroyed !== undefined && { destroying: pendingDestroyed }),
                     ...((item.consumed ?? 0) > 0 && { consumed: item.consumed }),
                     ...(hasCustomAmmo && { ammo: item.ammo }),
                     ...(((item.consumed ?? 0) > 0 || hasCustomAmmo) && item.totalAmmo !== undefined && { totalAmmo: item.totalAmmo }),
@@ -473,6 +502,9 @@ export class CBTForceUnitState extends ForceUnitState {
             }
             if (entry.consumed !== undefined) {
                 newItem.consumed = entry.consumed;
+            }
+            if (entry.destroying !== undefined) {
+                this.unit.setInventoryControlEntryPendingDestroyed(newItem, entry.destroying, false);
             }
             if (allEquipment && newItem.name && !newItem.equipment) {
                 if (allEquipment) {

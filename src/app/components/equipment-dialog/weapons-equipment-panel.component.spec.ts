@@ -6,7 +6,8 @@ import { INVENTORY_CONTROL_TARGET_COLORS, type InventoryControlRuntimeTarget, ty
 import { CBTInventoryControlRuntime } from '../../models/cbt-inventory-control-runtime.model';
 import type { CriticalSlot, HeatProfile, MountedEquipment } from '../../models/force-serialization';
 import { InventoryModeHandler } from '../../equipment-handlers/inventory-mode.handler';
-import type { HandlerChoice } from '../../services/equipment-interaction-registry.service';
+import { BAPHandler } from '../../equipment-handlers/bap.handler';
+import type { EquipmentInteractionHandler, HandlerChoice } from '../../services/equipment-interaction-registry.service';
 import { INVENTORY_CONTROL_MODE_STATE, inventoryControlSortKey, getInventoryControlGroups } from '../../utils/inventory-control.util';
 import { WeaponsEquipmentPanelComponent } from './weapons-equipment-panel.component';
 import type { EquipmentDialogContext } from './equipment-dialog.model';
@@ -24,10 +25,12 @@ function addRuntimeSelection(unit: CBTForceUnit): CBTForceUnit {
         isInventoryControlEntrySelected: (entryId: string) => runtime.isEntrySelected(entryId),
         getInventoryControlEntryRange: (entryId: string) => runtime.getEntryRange(entryId),
         getInventoryControlEntryAmmoOption: (entryId: string) => runtime.getEntryAmmoOption(entryId),
+        getInventoryControlEntryPendingDestroyed: (entryId: string) => runtime.getEntryPendingDestroyed(entryId),
         setInventoryControlEntrySelected: (entry: MountedEquipment, selected: boolean) => runtime.setEntrySelected(entry, selected),
         setInventoryControlEntryRange: (entry: MountedEquipment, range: 'short' | 'medium' | 'long' | null) => runtime.setEntryRange(entry, range),
         toggleInventoryControlEntryRange: (entry: MountedEquipment, range: 'short' | 'medium' | 'long', forceSelected = false) => runtime.toggleEntryRange(entry, range, forceSelected),
         setInventoryControlEntryAmmoOption: (entryId: string, optionId: string) => runtime.setEntryAmmoOption(entryId, optionId),
+        setInventoryControlEntryPendingDestroyed: (entry: MountedEquipment, destroyed: boolean | undefined) => runtime.setEntryPendingDestroyed(entry, destroyed),
         setInventoryControlEntryTarget: (entry: MountedEquipment, targetId: InventoryControlRuntimeTargetId | null) => runtime.setEntryTarget(entry, targetId),
         createInventoryControlTarget: () => runtime.createTarget(),
         updateInventoryControlTarget: (targetId: InventoryControlRuntimeTargetId, patch: Partial<Omit<InventoryControlRuntimeTarget, 'id' | 'letter'>>) => runtime.updateTarget(targetId, patch),
@@ -122,6 +125,7 @@ interface CreateComponentOptions {
     pilotingSkill?: number;
     moveMode?: MotiveModes | null;
     attackMovementCanAffectTargetNumbers?: boolean;
+    handlers?: EquipmentInteractionHandler[];
 }
 
 function createComponent(
@@ -133,6 +137,7 @@ function createComponent(
 ) {
     let context: EquipmentDialogContext;
     const modeHandler = new InventoryModeHandler();
+    const handlers = [modeHandler, ...(options.handlers ?? [])];
     const toasts: Array<{ id: string; message: string; type: 'info' | 'success' | 'error'; data?: Record<string, unknown> }> = [];
     const toastService = {
         showToast: jasmine.createSpy('showToast').and.callFake((message: string, type: 'info' | 'success' | 'error', id?: string, data?: Record<string, unknown>) => {
@@ -204,8 +209,13 @@ function createComponent(
             dialogsService,
             dataService: { getEquipments: () => equipmentMap },
             registry: {
-                getChoices: (entry: MountedEquipment) => modeHandler.applicableTo(entry) ? modeHandler.getChoices(entry, context) : [],
-                handleSelection: (entry: MountedEquipment, choice: HandlerChoice) => modeHandler.handleSelection(entry, choice, context)
+                getChoices: (entry: MountedEquipment) => handlers.flatMap(handler => {
+                    const flagsMatch = handler.flags.length === 0
+                        || (!!entry.equipment?.flags && handler.flags.every(flag => entry.equipment!.flags.has(flag)));
+                    if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) return [];
+                    return handler.getChoices(entry, context)?.map(choice => ({ ...choice, _handler: handler })) ?? [];
+                }),
+                handleSelection: (entry: MountedEquipment, choice: HandlerChoice) => choice._handler?.handleSelection(entry, choice, context) ?? false
             }
         } as unknown as EquipmentDialogContext;
 
@@ -247,6 +257,25 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const groups = getInventoryControlGroups(unit);
 
         expect(groups.find(group => group.id === 'ranged')?.rows.map(row => row.id)).toEqual(['broken', 'laser']);
+    });
+
+    it('toggles BAP state and updates the next toggle label', async () => {
+        const probe = entry({ id: 'probe', equipment: misc('Bloodhound Active Probe', ['F_BAP']), el: svgEntry('<g><g class="name"><text>Probe</text></g></g>') });
+        const { component, toastService } = createComponent([probe], {}, [], undefined, { handlers: [new BAPHandler()] });
+
+        let row = component.groups().find(group => group.id === 'equipment')!.rows[0];
+        let choice = component.handlerChoices(row)[0];
+        expect(choice.label).toBe('Active Probe is OFF');
+        expect(choice.value).toBe('enabled');
+
+        await component.handleChoice(row, choice);
+        row = component.groups().find(group => group.id === 'equipment')!.rows[0];
+        choice = component.handlerChoices(row)[0];
+
+        expect(probe.states?.get('state')).toBe('enabled');
+        expect(choice.label).toBe('Active Probe is ON');
+        expect(choice.value).toBe('disabled');
+        expect(toastService.showToast).toHaveBeenCalledWith('Bloodhound Active Probe Active Probe is ON', 'info');
     });
 
     it('splits Battle Armor trooper weapons and locks ammo to the same trooper', () => {
@@ -324,18 +353,47 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(uac.el!.classList.contains('disabledInventory')).toBeTrue();
     });
 
-    it('repairs destroyed direct inventory entries', () => {
+    it('marks direct inventory hits pending before commit', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
+        const { component, fixture, unit } = createComponent([laser]);
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(component.canMarkDestroyed(row)).toBeTrue();
+        expect(component.canRepair(row)).toBeFalse();
+
+        component.markDestroyed(row);
+        fixture.detectChanges();
+
+        expect(laser.destroyed).toBeFalse();
+        expect(unit.setInventoryEntry).not.toHaveBeenCalled();
+        expect(unit.getInventoryControlEntryPendingDestroyed(row.id)).toBeTrue();
+        expect(component.rowDestroying(row)).toBeTrue();
+        expect(component.rowEffectivelyDestroyed(row)).toBeTrue();
+        expect((fixture.nativeElement.querySelector('.weapon-equipment-row') as HTMLElement).classList.contains('destroying-entry')).toBeTrue();
+
+        component.repair(row);
+
+        expect(unit.getInventoryControlEntryPendingDestroyed(row.id)).toBeUndefined();
+        expect(component.rowEffectivelyDestroyed(row)).toBeFalse();
+    });
+
+    it('repairs destroyed direct inventory entries pending before commit', () => {
         const broken = entry({ id: 'broken', equipment: weapon('broken'), destroyed: true, el: svgEntry('<g><g class="name"><text>Broken</text></g></g>') });
-        const { component, unit } = createComponent([broken]);
+        const { component, fixture, unit } = createComponent([broken]);
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
         expect(component.canMarkDestroyed(row)).toBeFalse();
         expect(component.canRepair(row)).toBeTrue();
 
         component.repair(row);
+        fixture.detectChanges();
 
-        expect(broken.destroyed).toBeFalse();
-        expect(unit.setInventoryEntry).toHaveBeenCalledWith(broken);
+        expect(broken.destroyed).toBeTrue();
+        expect(unit.setInventoryEntry).not.toHaveBeenCalled();
+        expect(unit.getInventoryControlEntryPendingDestroyed(row.id)).toBeFalse();
+        expect(component.rowRepairing(row)).toBeTrue();
+        expect(component.rowEffectivelyDestroyed(row)).toBeFalse();
+        expect((fixture.nativeElement.querySelector('.weapon-equipment-row') as HTMLElement).classList.contains('repairing-entry')).toBeTrue();
     });
 
     it('uses real alternative modes and treats label-only modes as modifiers', () => {

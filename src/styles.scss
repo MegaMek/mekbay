@@ -1074,6 +1074,16 @@ hr {
     text-align: center;
     box-sizing: border-box;
     container-type: inline-size;
+
+    @media (max-width: 500px) {
+        &.mobile-fullscreen {
+            width: 100dvw;
+            height: 100dvh;
+            max-width: none;
+            max-height: none;
+            padding: 8px;
+        }
+    }
 }
 
 h2 {
@@ -1540,6 +1550,24 @@ hr.divider {
 
 .add-tag-btn svg {
     width: 100%;
+}
+
+.destroying-entry {
+    background-image: repeating-linear-gradient(
+        140deg,
+        rgba(205, 100, 0, 0.7333333333) 0px,
+        rgba(205, 100, 0, 0.7333333333) 12px,
+        rgba(205, 80, 0, 0.6666666667) 12px,
+        rgba(205, 80, 0, 0.6666666667) 24px);
+}
+
+.repairing-entry {
+    background-image: repeating-linear-gradient(
+        140deg,
+        rgba(3, 169, 244, 0.7333333333) 0px,
+        rgba(3, 169, 244, 0.7333333333) 12px,
+        rgba(0, 122, 204, 0.6666666667) 12px,
+        rgba(0, 122, 204, 0.6666666667) 24px);
 }
 
 .destroyed-entry {
