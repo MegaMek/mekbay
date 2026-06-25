@@ -55,10 +55,20 @@ export class SvgViewerLiteComponent {
     private pointerGesture: PointerGesture | null = null;
     private pendingSliderZoomPercent: number | null = null;
     private sliderZoomFrameId: number | null = null;
+    private sheetLoadGeneration = 0;
 
     // Reactive effect: load sheet when unit changes
     constructor() {
-        effect(() => {
+        effect((onCleanup) => {
+            const loadGeneration = ++this.sheetLoadGeneration;
+            const abortController = new AbortController();
+            onCleanup(() => {
+                abortController.abort();
+                if (this.sheetLoadGeneration === loadGeneration) {
+                    this.sheetLoadGeneration += 1;
+                }
+            });
+
             const u = this.unit();
             this.svgs.set([]);
             this.svgsAttached.set(false);
@@ -71,15 +81,21 @@ export class SvgViewerLiteComponent {
                 try {
                     const svgs: SVGSVGElement[] = [];
                     for (const sheetName of u.sheets) {
-                        const svg = await this.sheetService.getSheet(sheetName);
+                        const svg = await this.sheetService.getSheet(sheetName, abortController.signal);
+                        if (!this.isCurrentSheetLoad(loadGeneration)) return;
+
                         const cloned = svg.cloneNode(true) as SVGSVGElement;
                         cloned.removeAttribute('id');
                         svgs.push(cloned);
                     }
-                    this.svgs.set([...this.svgs(), ...svgs]);
+                    if (!this.isCurrentSheetLoad(loadGeneration)) return;
+
+                    this.svgs.set(svgs);
                     this.cleanContainer();
-                    this.attachSvgs();
+                    this.attachSvgs(loadGeneration);
                 } catch (err) {
+                    if (!this.isCurrentSheetLoad(loadGeneration)) return;
+
                     this.logger.error('svg-viewer-lite: failed to load sheet: ' + JSON.stringify(err));
                     this.svgs.set([]);
                 }
@@ -216,7 +232,9 @@ export class SvgViewerLiteComponent {
         this.svgsAttached.set(false);
     }
 
-    private attachSvgs() {
+    private attachSvgs(loadGeneration: number) {
+        if (!this.isCurrentSheetLoad(loadGeneration)) return;
+
         const svgs = this.svgs();
         if (!svgs || svgs.length === 0) return;
         const content = this.contentRef().nativeElement;
@@ -229,10 +247,16 @@ export class SvgViewerLiteComponent {
             content.appendChild(s);
         }        
         requestAnimationFrame(() => {
+            if (!this.isCurrentSheetLoad(loadGeneration)) return;
+
             this.applyScale();
             this.clampScroll();
             this.svgsAttached.set(true);
         });
+    }
+
+    private isCurrentSheetLoad(loadGeneration: number): boolean {
+        return loadGeneration === this.sheetLoadGeneration;
     }
 
     private readonly onWheel = (event: WheelEvent): void => {

@@ -17,6 +17,16 @@ function makeSvg(width = 100, height = 200): SVGSVGElement {
     return svg;
 }
 
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (reason?: unknown) => void } {
+    let resolve!: (value: T) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+    });
+    return { promise, resolve, reject };
+}
+
 type LayoutState = {
     clientWidth: number;
     clientHeight: number;
@@ -181,11 +191,50 @@ describe('SvgViewerLiteComponent', () => {
     it('loads cloned sheets into the content surface at fit-width scale', async () => {
         const { container, content, svg } = await createViewer();
 
-        expect(sheetService.getSheet).toHaveBeenCalledOnceWith('atlas.svg');
+        expect(sheetService.getSheet).toHaveBeenCalledOnceWith('atlas.svg', jasmine.any(AbortSignal));
         expect(svg.id).toBe('');
         expect(svg.style.width).toBe('100%');
         expect(content.style.width).toBe('100%');
         expect(container.classList).toContain('zoomable');
+    });
+
+    it('ignores stale sheet loads when the unit changes before a previous request resolves', async () => {
+        const atlasLoad = deferred<SVGSVGElement>();
+        const marauderLoad = deferred<SVGSVGElement>();
+        sheetService.getSheet.and.callFake((sheetName) => {
+            if (sheetName === 'atlas.svg') return atlasLoad.promise;
+            if (sheetName === 'marauder.svg') return marauderLoad.promise;
+            return Promise.reject(new Error(`Unexpected sheet ${sheetName}`));
+        });
+
+        const fixture = TestBed.createComponent(SvgViewerLiteComponent);
+        fixture.componentRef.setInput('unit', createEmptyUnit({ sheets: ['atlas.svg'] }));
+        fixture.componentRef.setInput('zoomable', true);
+        fixture.detectChanges();
+        await settle();
+        const atlasSignal = sheetService.getSheet.calls.argsFor(0)[1] as AbortSignal;
+        expect(atlasSignal.aborted).toBeFalse();
+
+        fixture.componentRef.setInput('unit', createEmptyUnit({ sheets: ['marauder.svg'] }));
+        fixture.detectChanges();
+        await settle();
+        expect(atlasSignal.aborted).toBeTrue();
+
+        const marauderSvg = makeSvg();
+        marauderSvg.setAttribute('data-sheet', 'marauder.svg');
+        marauderLoad.resolve(marauderSvg);
+        await settle();
+        fixture.detectChanges();
+
+        const atlasSvg = makeSvg();
+        atlasSvg.setAttribute('data-sheet', 'atlas.svg');
+        atlasLoad.resolve(atlasSvg);
+        await settle();
+        fixture.detectChanges();
+
+        const svgs = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<SVGSVGElement>('svg'));
+        expect(svgs.length).toBe(1);
+        expect(svgs[0].getAttribute('data-sheet')).toBe('marauder.svg');
     });
 
     it('does not consume wheel events when zoomable is false', async () => {
