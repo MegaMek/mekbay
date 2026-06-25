@@ -43,6 +43,7 @@ export interface InventoryControlRuntimeEntryState {
     range?: InventoryControlRuntimeRangeKey;
     ammoOption?: string;
     targetId?: InventoryControlRuntimeTargetId;
+    pendingDestroyed?: boolean;
 }
 
 export function getInventoryControlTargetLetter(index: number): string {
@@ -104,6 +105,10 @@ export class InventoryControlRuntimeState {
         return this.entryStatesState().get(entryId)?.ammoOption;
     }
 
+    getEntryPendingDestroyed(entryId: string): boolean | undefined {
+        return this.entryStatesState().get(entryId)?.pendingDestroyed;
+    }
+
     setEntrySelected(entry: MountedEquipment, selected: boolean): void {
         this.updateEntryState(entry.id, entryState => {
             entryState.selected = selected;
@@ -135,6 +140,19 @@ export class InventoryControlRuntimeState {
     setEntryAmmoOption(entryId: string, optionId: string): void {
         this.updateEntryState(entryId, entryState => {
             entryState.ammoOption = optionId;
+        });
+    }
+
+    setEntryPendingDestroyed(entry: MountedEquipment, destroyed: boolean | undefined): void {
+        this.updateEntryState(entry.id, entryState => {
+            entryState.selected = false;
+            delete entryState.range;
+            delete entryState.targetId;
+            if (destroyed === undefined || destroyed === !!entry.destroyed) {
+                delete entryState.pendingDestroyed;
+            } else {
+                entryState.pendingDestroyed = destroyed;
+            }
         });
     }
 
@@ -229,7 +247,27 @@ export class InventoryControlRuntimeState {
     }
 
     clearSelection(): void {
-        this.entryStatesState.set(new Map());
+        this.updateEntryStates(entryStates => {
+            for (const entryState of entryStates.values()) {
+                entryState.selected = false;
+                delete entryState.range;
+                delete entryState.targetId;
+            }
+        });
+    }
+
+    pendingDestroyedEntries(): Map<string, boolean> {
+        return new Map(Array.from(this.entryStatesState())
+            .filter(([, entryState]) => entryState.pendingDestroyed !== undefined)
+            .map(([entryId, entryState]) => [entryId, entryState.pendingDestroyed!]));
+    }
+
+    clearPendingDestroyed(): void {
+        this.updateEntryStates(entryStates => {
+            for (const entryState of entryStates.values()) {
+                delete entryState.pendingDestroyed;
+            }
+        });
     }
 
     reconcile(): void {
@@ -299,7 +337,7 @@ export class InventoryControlRuntimeState {
         if (entryState.targetId) {
             delete entryState.range;
         }
-        if (!entryState.selected && entryState.ammoOption === undefined) return null;
+        if (!entryState.selected && entryState.ammoOption === undefined && entryState.pendingDestroyed === undefined) return null;
         return { ...entryState };
     }
 

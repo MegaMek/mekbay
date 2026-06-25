@@ -199,6 +199,62 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(ammoEntries.map(entry => entry.consumed)).toEqual([0, 0, 0, 0, 0, 0]);
     });
 
+    it('commits pending direct inventory hit and repair state at phase end', () => {
+        const forceUnit = createForceUnit();
+        initialize(forceUnit);
+        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
+
+        forceUnit.setInventoryControlEntryPendingDestroyed(weaponEntry, true);
+
+        expect(weaponEntry.destroyed).toBeFalsy();
+        expect(forceUnit.getInventoryControlEntryPendingDestroyed(weaponEntry.id)).toBeTrue();
+        expect(forceUnit.turnState().dirtyPhase()).toBeTrue();
+        expect(forceUnit.serialize().state.inventory).toEqual([{ id: weaponEntry.id, destroying: true }]);
+
+        forceUnit.clearInventoryControlSelection();
+
+        expect(forceUnit.getInventoryControlEntryPendingDestroyed(weaponEntry.id)).toBeTrue();
+
+        const restoredHit = CBTForceUnit.deserialize(
+            forceUnit.serialize(),
+            new TestCBTForce('Restored Force', dataService, unitInitializer, injector),
+            dataService,
+            unitInitializer,
+            injector
+        );
+
+        expect(restoredHit.getInventoryControlEntryPendingDestroyed(weaponEntry.id)).toBeTrue();
+        expect(restoredHit.getInventory().find(entry => entry.id === weaponEntry.id)?.destroyed).toBeFalsy();
+
+        forceUnit.endPhase();
+
+        expect(weaponEntry.destroyed).toBeTrue();
+        expect(forceUnit.getInventoryControlEntryPendingDestroyed(weaponEntry.id)).toBeUndefined();
+
+        forceUnit.setInventoryControlEntryPendingDestroyed(weaponEntry, false);
+
+        expect(weaponEntry.destroyed).toBeTrue();
+        expect(forceUnit.getInventoryControlEntryPendingDestroyed(weaponEntry.id)).toBeFalse();
+        expect(forceUnit.turnState().dirtyPhase()).toBeTrue();
+        expect(forceUnit.serialize().state.inventory).toEqual([{ id: weaponEntry.id, destroyed: true, destroying: false }]);
+
+        const restoredRepair = CBTForceUnit.deserialize(
+            forceUnit.serialize(),
+            new TestCBTForce('Restored Repair Force', dataService, unitInitializer, injector),
+            dataService,
+            unitInitializer,
+            injector
+        );
+
+        expect(restoredRepair.getInventoryControlEntryPendingDestroyed(weaponEntry.id)).toBeFalse();
+        expect(restoredRepair.getInventory().find(entry => entry.id === weaponEntry.id)?.destroyed).toBeTrue();
+
+        forceUnit.endPhase();
+
+        expect(weaponEntry.destroyed).toBeFalse();
+        expect(forceUnit.getInventoryControlEntryPendingDestroyed(weaponEntry.id)).toBeUndefined();
+    });
+
     it('filters available movement modes through unit rules', () => {
         const forceUnit = createForceUnit();
         initialize(forceUnit);

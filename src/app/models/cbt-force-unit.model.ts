@@ -352,6 +352,10 @@ export class CBTForceUnit extends ForceUnit {
         return this.inventoryControlRuntime.getEntryAmmoOption(entryId);
     }
 
+    getInventoryControlEntryPendingDestroyed(entryId: string): boolean | undefined {
+        return this.inventoryControlRuntime.getEntryPendingDestroyed(entryId);
+    }
+
     setInventoryControlEntrySelected(entry: MountedEquipment, selected: boolean): void {
         this.inventoryControlRuntime.setEntrySelected(entry, selected);
     }
@@ -366,6 +370,14 @@ export class CBTForceUnit extends ForceUnit {
 
     setInventoryControlEntryAmmoOption(entryId: string, optionId: string): void {
         this.inventoryControlRuntime.setEntryAmmoOption(entryId, optionId);
+    }
+
+    setInventoryControlEntryPendingDestroyed(entry: MountedEquipment, destroyed: boolean | undefined, markModified = true): void {
+        const previous = this.inventoryControlRuntime.getEntryPendingDestroyed(entry.id);
+        this.inventoryControlRuntime.setEntryPendingDestroyed(entry, destroyed);
+        if (markModified && previous !== this.inventoryControlRuntime.getEntryPendingDestroyed(entry.id)) {
+            this.setModified();
+        }
     }
 
     setInventoryControlEntryTarget(entry: MountedEquipment, targetId: InventoryControlRuntimeTargetId | null): void {
@@ -920,6 +932,7 @@ export class CBTForceUnit extends ForceUnit {
         this.state.modified.set(typeof state.modified === 'boolean' ? state.modified : false);
         this.state.destroyed.set(typeof state.destroyed === 'boolean' ? state.destroyed : false);
         this.state.shutdown.set(typeof state.shutdown === 'boolean' ? state.shutdown : false);
+        this.inventoryControlRuntime.clearPendingDestroyed();
         
         if (state.inventory) {
             const inventoryData = Sanitizer.sanitizeArray(state.inventory, INVENTORY_SCHEMA);

@@ -50,6 +50,7 @@ export class TurnState {
         const dmgReceived = this.dmgReceived();
         const unconsolidatedCrits = this.unitState.hasUnconsolidatedCrits();
         const unconsolidatedLocations = this.unitState.hasUnconsolidatedLocations();
+        const unconsolidatedInventory = this.unitState.hasUnconsolidatedInventory();
         return airborne !== null
             || moveMode !== null
             || moveDistance !== null
@@ -58,6 +59,7 @@ export class TurnState {
             || Object.keys(psrChecks).length > 0
             || unconsolidatedCrits
             || unconsolidatedLocations
+                || unconsolidatedInventory
             || heat.next !== undefined;
     });
 
@@ -66,10 +68,12 @@ export class TurnState {
         const dmgReceived = this.dmgReceived();
         const unconsolidatedCrits = this.unitState.hasUnconsolidatedCrits();
         const unconsolidatedLocations = this.unitState.hasUnconsolidatedLocations();
+        const unconsolidatedInventory = this.unitState.hasUnconsolidatedInventory();
         return dmgReceived != 0
             || Object.keys(psrChecks).length > 0
             || unconsolidatedCrits
-            || unconsolidatedLocations;
+            || unconsolidatedLocations
+            || unconsolidatedInventory;
     });
 
     autoFall = computed<boolean>(() => {

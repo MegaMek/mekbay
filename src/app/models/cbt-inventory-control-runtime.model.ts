@@ -22,6 +22,11 @@ export class CBTInventoryControlRuntime extends InventoryControlRuntimeState {
         this.markInventoryViewChanged();
     }
 
+    override setEntryPendingDestroyed(entry: MountedEquipment, destroyed: boolean | undefined): void {
+        super.setEntryPendingDestroyed(entry, destroyed);
+        this.markInventoryViewChanged();
+    }
+
     override setEntryTarget(entry: MountedEquipment, targetId: InventoryControlRuntimeTargetId | null): void {
         super.setEntryTarget(entry, targetId);
         this.markInventoryViewChanged();
@@ -51,6 +56,11 @@ export class CBTInventoryControlRuntime extends InventoryControlRuntimeState {
 
     override clearSelection(): void {
         super.clearSelection();
+        this.markInventoryViewChanged();
+    }
+
+    override clearPendingDestroyed(): void {
+        super.clearPendingDestroyed();
         this.markInventoryViewChanged();
     }
 }

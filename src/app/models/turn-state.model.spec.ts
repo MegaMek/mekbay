@@ -51,6 +51,7 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         heat,
         hasUnconsolidatedCrits: computed(() => false),
         hasUnconsolidatedLocations: computed(() => false),
+        hasUnconsolidatedInventory: computed(() => false),
         prone: () => false,
         immobile: () => false,
         skidding: () => false,
