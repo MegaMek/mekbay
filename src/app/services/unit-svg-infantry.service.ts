@@ -33,6 +33,7 @@
 
 import { UnitSvgService } from "./unit-svg.service";
 import type { InfantryRules } from "../models/rules/infantry-rules";
+import { getInfantryFieldGunComponent, getInfantryFieldGunFunctionalCount, getInventoryControlModeAmmoSummary } from "../utils/inventory-control.util";
 
 /*
  * Author: Drake
@@ -120,6 +121,7 @@ export class UnitSvgInfantryService extends UnitSvgService {
         // Delegate state computation to the rules layer (handles pending damage too)
         this.infantryRules.evaluateInventoryDestruction();
         super.updateInventory();
+        this.updateFieldGunDisplay();
         this.unit.getInventory().forEach(entry => {
             if (!entry.el?.getAttribute('SSW')) return;
             if (entry.destroyed) {
@@ -131,5 +133,38 @@ export class UnitSvgInfantryService extends UnitSvgService {
                 entry.el.classList.add('interactive');
             }
         });
+    }
+
+    private updateFieldGunDisplay(): void {
+        const svg = this.unit.svg();
+        if (!svg) return;
+
+        const fieldGunComponent = this.unit.getUnit().comp.find(component => component.l === 'FGUN' && component.cw !== undefined);
+        if (!fieldGunComponent) return;
+
+        const qty = svg.getElementById('field_gun_qty');
+        if (qty) {
+            const functionalCount = getInfantryFieldGunFunctionalCount(this.unit, fieldGunComponent);
+            qty.textContent = functionalCount.toString();
+            this.setFieldGunSummaryDamageColor(qty, functionalCount < Math.max(0, fieldGunComponent.q ?? 0));
+        }
+
+        const fieldGunEntry = this.unit.getInventory().find(entry => getInfantryFieldGunComponent(entry) === fieldGunComponent);
+        const ammo = svg.getElementById('field_gun_ammo');
+        if (fieldGunEntry && ammo) {
+            const ammoSummary = getInventoryControlModeAmmoSummary(fieldGunEntry, this.unit.getAvailableEquipment());
+            const remainingAmmo = ammoSummary.tracksAmmo ? ammoSummary.remaining : 0;
+            ammo.textContent = remainingAmmo.toString();
+            this.setFieldGunSummaryDamageColor(ammo, ammoSummary.tracksAmmo && remainingAmmo < ammoSummary.total);
+        }
+    }
+
+    private setFieldGunSummaryDamageColor(element: Element, damaged: boolean): void {
+        const svgElement = element as SVGElement;
+        if (damaged) {
+            svgElement.style.setProperty('fill', 'var(--damage-color)');
+        } else {
+            svgElement.style.removeProperty('fill');
+        }
     }
 }

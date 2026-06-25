@@ -34,7 +34,7 @@
 import { inject, Injectable, Injector } from '@angular/core';
 import { MountedEquipment, type CriticalSlot } from '../models/force-serialization';
 import { DataService } from './data.service';
-import { AmmoEquipment, type Equipment } from '../models/equipment.model';
+import { AmmoEquipment, WeaponEquipment, type Equipment } from '../models/equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 
 /*
@@ -428,6 +428,40 @@ export class UnitInitializerService {
         return inventoryEntries;
     }
 
+    private getInfantryFieldGunInventoryEntries(unit: CBTForceUnit, currentInventory: MountedEquipment[]): MountedEquipment[] {
+        if (unit.getUnit().type !== 'Infantry' || unit.getUnit().subtype === 'Battle Armor') return [];
+
+        const inventoryEntries: MountedEquipment[] = [];
+        const equipmentList = this.getDataService().getEquipments();
+        unit.getUnit().comp.forEach((component, index) => {
+            if (component.l !== 'FGUN') return;
+            const equipment = component.eq ?? equipmentList[component.id];
+            if (!(equipment instanceof WeaponEquipment)) return;
+
+            const gunCount = Math.max(1, component.q || 1);
+            const locations = new Set([component.l]);
+            for (let gunIndex = 0; gunIndex < gunCount; gunIndex++) {
+                const id = `${component.id}@${component.l}#${index}.${gunIndex}`;
+                const existingEntry = currentInventory.find(item => item.id === id);
+
+                inventoryEntries.push(new MountedEquipment({
+                    owner: unit,
+                    id,
+                    name: component.id,
+                    locations,
+                    equipment,
+                    physical: false,
+                    linkedWith: null,
+                    parent: null,
+                    destroyed: existingEntry?.destroyed ?? false,
+                    destroying: existingEntry?.destroying,
+                    states: existingEntry?.states ?? new Map<string, string>(),
+                }));
+            }
+        });
+        return inventoryEntries;
+    }
+
     private initInventory(unit: CBTForceUnit, svg: SVGSVGElement): void {
         const inventoryEntryEls = svg.querySelectorAll(`.inventoryEntry:not(.inventoryEntry .inventoryEntry)`) as NodeListOf<SVGElement>;
         if (inventoryEntryEls.length === 0 && svg.querySelector('.critSlot')) return;
@@ -442,6 +476,7 @@ export class UnitInitializerService {
             }
         }
         if (!svg.querySelector('.critSlot')) {
+            inventoryData.push(...this.getInfantryFieldGunInventoryEntries(unit, unit.getInventory()));
             inventoryData.push(...this.getDirectAmmoInventoryEntries(unit, unit.getInventory()));
         }
         unit.setInventory(inventoryData, true);

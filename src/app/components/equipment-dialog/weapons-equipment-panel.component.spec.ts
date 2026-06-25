@@ -40,7 +40,7 @@ function addRuntimeSelection(unit: CBTForceUnit): CBTForceUnit {
     return unit;
 }
 
-function weapon(id: string, ammoType: 'NA' | 'ATM' | 'MML' | 'AC_ULTRA' | 'NARC' = 'NA', rackSize = 0, ranges: number[] = [1, 2, 3, 4]): WeaponEquipment {
+function weapon(id: string, ammoType: 'NA' | 'AC' | 'ATM' | 'MML' | 'AC_ULTRA' | 'NARC' = 'NA', rackSize = 0, ranges: number[] = [1, 2, 3, 4]): WeaponEquipment {
     return new WeaponEquipment({
         id,
         name: id,
@@ -49,7 +49,7 @@ function weapon(id: string, ammoType: 'NA' | 'ATM' | 'MML' | 'AC_ULTRA' | 'NARC'
     });
 }
 
-function ammo(id: string, ammoType: 'ATM' | 'MML' | 'NARC', rackSize: number, munitionType: string[] = [], flags: string[] = []): AmmoEquipment {
+function ammo(id: string, ammoType: 'AC' | 'ATM' | 'MML' | 'NARC', rackSize: number, munitionType: string[] = [], flags: string[] = []): AmmoEquipment {
     return new AmmoEquipment({
         id,
         name: id,
@@ -238,6 +238,43 @@ function createComponent(
 }
 
 describe('WeaponsEquipmentPanelComponent', () => {
+    it('creates non-Battle Armor infantry field gun rows from component inventory', () => {
+        const fieldGun = weapon('Autocannon/2', 'AC', 2, [8, 16, 24, 32]);
+        const fieldGunAmmo = ammo('IS Ammo AC/2', 'AC', 2);
+        const components = [
+            { id: 'Autocannon/2', q: 3, n: 'AC/2', t: 'B', p: 1, l: 'FGUN', r: '8/16/24', m: '4', d: '2', md: '2.0', c: '1', cw: 6, os: 0 },
+            { id: 'IS Ammo AC/2', q: 3, q2: 135, n: 'AC/2 Ammo', t: 'X', p: 1, l: 'FGUN', c: '1', os: 0 }
+        ];
+        const entries = [
+            entry({ id: 'Autocannon/2@FGUN#0.0', equipment: fieldGun, locations: new Set(['FGUN']) }),
+            entry({ id: 'Autocannon/2@FGUN#0.1', equipment: fieldGun, locations: new Set(['FGUN']) }),
+            entry({ id: 'Autocannon/2@FGUN#0.2', equipment: fieldGun, locations: new Set(['FGUN']) }),
+            entry({ id: 'IS Ammo AC/2@FGUN#1.0', equipment: fieldGunAmmo, locations: new Set(['FGUN']), totalAmmo: 135, consumed: 10 })
+        ];
+        const unit = addRuntimeSelection({
+            getInventory: () => entries,
+            getCritSlots: () => [],
+            getUnit: () => ({ type: 'Infantry', subtype: 'Mechanized Conventional Infantry', internal: 20, squads: 4, squadSize: 5, comp: components }),
+            getCommittedInternalHits: () => 7,
+            locations: { armor: new Map(), internal: new Map([['TROOP', { loc: 'TROOP', points: 20 }]]) },
+            rules: {}
+        } as unknown as CBTForceUnit);
+        entries.forEach(item => item.owner = unit);
+
+        const rangedRows = getInventoryControlGroups(unit).find(group => group.id === 'ranged')!.rows;
+
+        expect(rangedRows.length).toBe(3);
+        expect(rangedRows.map(row => row.display.name)).toEqual(['AC/2 (1/3)', 'AC/2 (2/3)', 'AC/2 (3/3)']);
+        expect(rangedRows.map(row => row.disabled)).toEqual([false, false, true]);
+        expect(rangedRows[0].display.location).toBe('FGUN');
+        expect(rangedRows[0].display.damage).toBe('2');
+        expect(rangedRows[0].display.min).toBe('4');
+        expect(rangedRows[0].display.short).toBe('8');
+        expect(rangedRows[0].display.medium).toBe('16');
+        expect(rangedRows[0].display.long).toBe('24');
+        expect(rangedRows[0].ammo.remaining).toBe(125);
+    });
+
     it('groups ranged, physical, equipment, and destroyed entries', () => {
         const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
         const punch = entry({ id: 'punch', physical: true, el: svgEntry('<g><g class="name"><text>Punch</text></g></g>') });
