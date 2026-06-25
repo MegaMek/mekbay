@@ -1,3 +1,36 @@
+/*
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
+ *
+ * This file is part of MekBay.
+ *
+ * MekBay is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MekBay is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
+ */
+
 import { computed, signal } from '@angular/core';
 import type { MountedEquipment } from './force-serialization';
 import type { TnTargetNumberCalculatorState, TnTargetUnitType } from './target-number-calculator.model';
@@ -43,7 +76,6 @@ export interface InventoryControlRuntimeEntryState {
     range?: InventoryControlRuntimeRangeKey;
     ammoOption?: string;
     targetId?: InventoryControlRuntimeTargetId;
-    pendingDestroyed?: boolean;
 }
 
 export function getInventoryControlTargetLetter(index: number): string {
@@ -105,10 +137,6 @@ export class InventoryControlRuntimeState {
         return this.entryStatesState().get(entryId)?.ammoOption;
     }
 
-    getEntryPendingDestroyed(entryId: string): boolean | undefined {
-        return this.entryStatesState().get(entryId)?.pendingDestroyed;
-    }
-
     setEntrySelected(entry: MountedEquipment, selected: boolean): void {
         this.updateEntryState(entry.id, entryState => {
             entryState.selected = selected;
@@ -140,19 +168,6 @@ export class InventoryControlRuntimeState {
     setEntryAmmoOption(entryId: string, optionId: string): void {
         this.updateEntryState(entryId, entryState => {
             entryState.ammoOption = optionId;
-        });
-    }
-
-    setEntryPendingDestroyed(entry: MountedEquipment, destroyed: boolean | undefined): void {
-        this.updateEntryState(entry.id, entryState => {
-            entryState.selected = false;
-            delete entryState.range;
-            delete entryState.targetId;
-            if (destroyed === undefined || destroyed === !!entry.destroyed) {
-                delete entryState.pendingDestroyed;
-            } else {
-                entryState.pendingDestroyed = destroyed;
-            }
         });
     }
 
@@ -256,20 +271,6 @@ export class InventoryControlRuntimeState {
         });
     }
 
-    pendingDestroyedEntries(): Map<string, boolean> {
-        return new Map(Array.from(this.entryStatesState())
-            .filter(([, entryState]) => entryState.pendingDestroyed !== undefined)
-            .map(([entryId, entryState]) => [entryId, entryState.pendingDestroyed!]));
-    }
-
-    clearPendingDestroyed(): void {
-        this.updateEntryStates(entryStates => {
-            for (const entryState of entryStates.values()) {
-                delete entryState.pendingDestroyed;
-            }
-        });
-    }
-
     reconcile(): void {
         const validEntryIds = new Set(this.getInventory().map(entry => entry.id));
         const validTargetIds = new Set(this.targetsMap().keys());
@@ -337,7 +338,7 @@ export class InventoryControlRuntimeState {
         if (entryState.targetId) {
             delete entryState.range;
         }
-        if (!entryState.selected && entryState.ammoOption === undefined && entryState.pendingDestroyed === undefined) return null;
+        if (!entryState.selected && entryState.ammoOption === undefined) return null;
         return { ...entryState };
     }
 

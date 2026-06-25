@@ -204,16 +204,17 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         initialize(forceUnit);
         const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
 
-        forceUnit.setInventoryControlEntryPendingDestroyed(weaponEntry, true);
+        weaponEntry.setPendingDestroyed(true);
+        forceUnit.setInventoryEntry(weaponEntry);
 
         expect(weaponEntry.destroyed).toBeFalsy();
-        expect(forceUnit.getInventoryControlEntryPendingDestroyed(weaponEntry.id)).toBeTrue();
+        expect(weaponEntry.destroying).toBeTrue();
         expect(forceUnit.turnState().dirtyPhase()).toBeTrue();
         expect(forceUnit.serialize().state.inventory).toEqual([{ id: weaponEntry.id, destroying: true }]);
 
         forceUnit.clearInventoryControlSelection();
 
-        expect(forceUnit.getInventoryControlEntryPendingDestroyed(weaponEntry.id)).toBeTrue();
+        expect(weaponEntry.destroying).toBeTrue();
 
         const restoredHit = CBTForceUnit.deserialize(
             forceUnit.serialize(),
@@ -223,18 +224,19 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             injector
         );
 
-        expect(restoredHit.getInventoryControlEntryPendingDestroyed(weaponEntry.id)).toBeTrue();
+        expect(restoredHit.getInventory().find(entry => entry.id === weaponEntry.id)?.destroying).toBeTrue();
         expect(restoredHit.getInventory().find(entry => entry.id === weaponEntry.id)?.destroyed).toBeFalsy();
 
         forceUnit.endPhase();
 
         expect(weaponEntry.destroyed).toBeTrue();
-        expect(forceUnit.getInventoryControlEntryPendingDestroyed(weaponEntry.id)).toBeUndefined();
+        expect(weaponEntry.destroying).toBeUndefined();
 
-        forceUnit.setInventoryControlEntryPendingDestroyed(weaponEntry, false);
+        weaponEntry.setPendingDestroyed(false);
+        forceUnit.setInventoryEntry(weaponEntry);
 
         expect(weaponEntry.destroyed).toBeTrue();
-        expect(forceUnit.getInventoryControlEntryPendingDestroyed(weaponEntry.id)).toBeFalse();
+        expect(weaponEntry.destroying).toBeFalse();
         expect(forceUnit.turnState().dirtyPhase()).toBeTrue();
         expect(forceUnit.serialize().state.inventory).toEqual([{ id: weaponEntry.id, destroyed: true, destroying: false }]);
 
@@ -246,13 +248,13 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             injector
         );
 
-        expect(restoredRepair.getInventoryControlEntryPendingDestroyed(weaponEntry.id)).toBeFalse();
+        expect(restoredRepair.getInventory().find(entry => entry.id === weaponEntry.id)?.destroying).toBeFalse();
         expect(restoredRepair.getInventory().find(entry => entry.id === weaponEntry.id)?.destroyed).toBeTrue();
 
         forceUnit.endPhase();
 
         expect(weaponEntry.destroyed).toBeFalse();
-        expect(forceUnit.getInventoryControlEntryPendingDestroyed(weaponEntry.id)).toBeUndefined();
+        expect(weaponEntry.destroying).toBeUndefined();
     });
 
     it('filters available movement modes through unit rules', () => {

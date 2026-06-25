@@ -172,6 +172,7 @@ export interface UnitComponent {
     md?: string;     // max damage
     c?: string;      // slots/criticals
     os?: number;     // oneshot (0 = no, 1 = oneshot, 2 = double oneshot)
+    cw?: number;     // for field guns: CREW size required to operate the weapon
     bay?: UnitComponent[];
     eq?: Equipment; // linked equipment data
 }
