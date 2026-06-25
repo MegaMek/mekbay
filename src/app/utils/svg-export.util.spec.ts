@@ -20,8 +20,32 @@ describe('SvgExportUtil', () => {
         return svg;
     }
 
+    function addFluffImage(svg: SVGSVGElement, src = 'https://db.mekbay.com/images/fluff/Mek/Atlas.png'): void {
+        const referenceTable = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        referenceTable.classList.add('referenceTable');
+        referenceTable.style.display = 'none';
+        svg.appendChild(referenceTable);
+
+        const foreignObject = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+        foreignObject.setAttribute('id', 'fluff-image-fo');
+        foreignObject.style.display = 'block';
+
+        const image = document.createElementNS('http://www.w3.org/1999/xhtml', 'img') as HTMLImageElement;
+        image.setAttribute('id', 'fluff-image-injected');
+        image.setAttribute('src', src);
+        foreignObject.appendChild(image);
+        svg.appendChild(foreignObject);
+    }
+
     function mockFontFetch(): void {
         spyOn(window, 'fetch').and.callFake(() => Promise.resolve(new Response(new Uint8Array([1, 2, 3]), { status: 200 })));
+    }
+
+    function mockCanvasPng(): void {
+        spyOn(CanvasRenderingContext2D.prototype, 'drawImage').and.stub();
+        spyOn(HTMLCanvasElement.prototype, 'toBlob').and.callFake(function (this: HTMLCanvasElement, callback: BlobCallback) {
+            callback(pngBlob());
+        });
     }
 
     async function withFakeSvgImage<T>(run: () => Promise<T>): Promise<T> {
@@ -68,6 +92,54 @@ describe('SvgExportUtil', () => {
         expect(serializedSvg).toContain('font-family="Roboto"');
         expect(revokeObjectUrl).toHaveBeenCalledWith('blob:svg-1');
         expect(revokeObjectUrl).toHaveBeenCalledWith('blob:svg-2');
+    });
+
+    it('embeds foreignObject fluff images before rendering PNGs', async () => {
+        const svg = makeSvg();
+        addFluffImage(svg);
+        spyOn(window, 'fetch').and.callFake((input: RequestInfo | URL) => {
+            if (String(input).includes('/fluff/')) {
+                return Promise.resolve(new Response(new Uint8Array([4, 5, 6]), {
+                    status: 200,
+                    headers: { 'Content-Type': 'image/png' },
+                }));
+            }
+
+            return Promise.resolve(new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
+        });
+        const createObjectUrl = spyOn(URL, 'createObjectURL').and.returnValue('blob:svg');
+        spyOn(URL, 'revokeObjectURL').and.stub();
+        mockCanvasPng();
+
+        await withFakeSvgImage(() => SvgExportUtil.renderPngBlob([svg]));
+
+        const serializedSvg = await (createObjectUrl.calls.first().args[0] as Blob).text();
+        const exportedSvg = new DOMParser().parseFromString(serializedSvg, 'image/svg+xml');
+        expect(exportedSvg.getElementById('fluff-image-injected')?.getAttribute('src')).toBe('data:image/png;base64,BAUG');
+        expect(exportedSvg.getElementById('fluff-image-fo')?.getAttribute('style')).toContain('display: block');
+        expect(exportedSvg.querySelector('.referenceTable')?.getAttribute('style')).toContain('display: none');
+    });
+
+    it('falls back to reference tables when a foreignObject fluff image cannot be embedded', async () => {
+        const svg = makeSvg();
+        addFluffImage(svg);
+        spyOn(window, 'fetch').and.callFake((input: RequestInfo | URL) => {
+            if (String(input).includes('/fluff/')) {
+                return Promise.resolve(new Response('', { status: 404 }));
+            }
+
+            return Promise.resolve(new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
+        });
+        const createObjectUrl = spyOn(URL, 'createObjectURL').and.returnValue('blob:svg');
+        spyOn(URL, 'revokeObjectURL').and.stub();
+        mockCanvasPng();
+
+        await withFakeSvgImage(() => SvgExportUtil.renderPngBlob([svg]));
+
+        const serializedSvg = await (createObjectUrl.calls.first().args[0] as Blob).text();
+        const exportedSvg = new DOMParser().parseFromString(serializedSvg, 'image/svg+xml');
+        expect(exportedSvg.getElementById('fluff-image-fo')?.getAttribute('style')).toContain('display: none');
+        expect(exportedSvg.querySelector('.referenceTable')?.getAttribute('style')).toContain('display: block');
     });
 
     it('downloads rendered SVGs as a 3x PNG', async () => {
