@@ -171,7 +171,7 @@ export class SvgExportUtil {
 
         try {
             for (const entry of entries) {
-                const serialized = this.serializeSvgForExport(entry.svg, embeddedFontCss);
+                const serialized = await this.serializeSvgForExport(entry.svg, embeddedFontCss);
                 const svgBlob = new Blob([serialized], { type: 'image/svg+xml;charset=utf-8' });
                 entry.url = URL.createObjectURL(svgBlob);
             }
@@ -205,7 +205,7 @@ export class SvgExportUtil {
         }
     }
 
-    private static serializeSvgForExport(svg: SVGSVGElement, embeddedFontCss: string): string {
+    private static async serializeSvgForExport(svg: SVGSVGElement, embeddedFontCss: string): Promise<string> {
         const clone = svg.cloneNode(true) as SVGSVGElement;
         if (!clone.getAttribute('xmlns')) {
             clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
@@ -214,8 +214,90 @@ export class SvgExportUtil {
             clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
         }
 
+        await this.inlineExternalImages(clone);
         this.injectExportStyles(clone, embeddedFontCss);
         return new XMLSerializer().serializeToString(clone);
+    }
+
+    private static async inlineExternalImages(svg: SVGSVGElement): Promise<void> {
+        const svgImages = Array.from(svg.querySelectorAll('image')) as SVGImageElement[];
+        const htmlImages = Array.from(svg.querySelectorAll('img')) as HTMLImageElement[];
+
+        await Promise.all([
+            ...svgImages.map((image) => this.inlineSvgImage(image)),
+            ...htmlImages.map((image) => this.inlineHtmlImage(image)),
+        ]);
+    }
+
+    private static async inlineSvgImage(image: SVGImageElement): Promise<void> {
+        const href = this.getImageHref(image);
+        if (!href || href.startsWith('data:')) return;
+
+        const dataUrl = await this.fetchImageAsDataUrl(href);
+        if (dataUrl) {
+            this.setImageHref(image, dataUrl);
+            return;
+        }
+
+        this.fallbackFluffImageToReferenceTables(image);
+    }
+
+    private static async inlineHtmlImage(image: HTMLImageElement): Promise<void> {
+        const src = image.getAttribute('src') ?? image.src;
+        if (!src || src.startsWith('data:')) return;
+
+        const dataUrl = await this.fetchImageAsDataUrl(src);
+        if (dataUrl) {
+            image.setAttribute('src', dataUrl);
+            return;
+        }
+
+        this.fallbackFluffImageToReferenceTables(image);
+    }
+
+    private static getImageHref(image: SVGImageElement): string | null {
+        return image.getAttribute('href') ??
+            image.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
+    }
+
+    private static setImageHref(image: SVGImageElement, value: string): void {
+        image.setAttribute('href', value);
+        image.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', value);
+    }
+
+    private static async fetchImageAsDataUrl(href: string): Promise<string | null> {
+        let url: string;
+        try {
+            url = new URL(href, document.baseURI).toString();
+        } catch {
+            return null;
+        }
+
+        try {
+            const response = await fetch(url, { mode: 'cors', credentials: 'omit' });
+            if (!response.ok) return null;
+
+            return await this.blobToDataUrl(await response.blob());
+        } catch {
+            return null;
+        }
+    }
+
+    private static fallbackFluffImageToReferenceTables(image: Element): void {
+        if (image.id !== 'fluff-image-injected') {
+            return;
+        }
+
+        const svg = image.closest('svg') as SVGSVGElement | null;
+        if (!svg) {
+            return;
+        }
+
+        const injectedEl = svg.getElementById('fluff-image-fo') as SVGElement | null;
+        (injectedEl ?? image as SVGElement).style.setProperty('display', 'none');
+        svg.querySelectorAll<SVGGraphicsElement>('.referenceTable').forEach((referenceTable) => {
+            referenceTable.style.display = 'block';
+        });
     }
 
     private static injectExportStyles(svg: SVGSVGElement, embeddedFontCss: string): void {
