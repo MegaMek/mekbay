@@ -62,6 +62,7 @@
                         [cdkDropListDisabled]="!group.sortable || readOnly()"
                         (cdkDropListDropped)="drop($event, group)">
                         @for (row of group.rows; track row.id) {
+                            @let rowTarget = targetState(row);
                             <div class="weapon-equipment-row" cdkDrag cdkDragLockAxis="y" cdkDragBoundary=".weapon-equipment-section" cdkDragPreviewContainer="parent" [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0" [cdkDragDisabled]="!group.sortable || readOnly()" [class.destroying-entry]="rowDestroying(row)" [class.repairing-entry]="rowRepairing(row)" [class.destroyed-entry]="rowCommittedDestroyed(row)" [class.disabled-entry]="!rowEffectivelyDestroyed(row) && row.disabled" (pointerdown)="cacheDragPreviewCellWidths($event)" (cdkDragStarted)="onDragStarted($event)">
                                 <span class="grid-fill grid-fill-left" aria-hidden="true"></span>
                                 <span class="grouped-cells group-identity">
@@ -76,11 +77,11 @@
                                                 <button
                                                     class="target-selector"
                                                     type="button"
-                                                    [class.target-selected]="!!targetForRow(row)"
-                                                    [style.background]="targetSelectionColor(row)"
-                                                    [attr.aria-label]="targetForRow(row) ? 'Selected target ' + targetSelectionLabel(row) : 'No selected target'"
+                                                    [class.target-selected]="!!rowTarget.target"
+                                                    [style.background]="rowTarget.target?.color ?? null"
+                                                    [attr.aria-label]="rowTarget.target ? 'Selected target ' + rowTarget.target.letter : 'No selected target'"
                                                     (click)="onRowTargetSelectorClick($event, row)">
-                                                    {{ targetSelectionLabel(row) }}
+                                                    {{ rowTarget.target?.letter ?? '' }}
                                                 </button>
                                             } @else {
                                                 <input type="checkbox" class="bt-checkbox" [checked]="isSelected(row)" (change)="toggleSelected(row)">
@@ -88,8 +89,8 @@
                                         }
                                     </div>
                                     @if (hasTargets()) {
-                                        <span class="tn-cell" [class.out-of-range]="isOutOfLongRange(row)" [tooltip]="targetNumberTooltip(row)">
-                                            @if (targetNumberText(row); as tnText) {
+                                        <span class="tn-cell" [class.out-of-range]="rowTarget.rangeSelection?.outOfLongRange ?? false" [tooltip]="rowTarget.rangeSelection?.outOfLongRange ? outOfRangeTooltip : rowTarget.breakdown?.lines ?? null">
+                                            @if (rowTarget.targetNumberText; as tnText) {
                                                 <span class="tn-value">{{ tnText }}</span>
                                             }
                                         </span>
@@ -117,13 +118,13 @@
                                     </div>
                                 </span>
                                 <span class="grouped-cells group-stats">
-                                    <span class="centered-cell hit-cell meta-cell" data-label="Hit">{{ hitText(row) }}</span>
+                                    <span class="centered-cell hit-cell meta-cell" data-label="Hit">{{ rowTarget.hitText }}</span>
                                     <span class="centered-cell location-cell meta-cell" data-label="Loc">{{ row.display.location }}</span>
                                     <span class="centered-cell heat-cell meta-cell" data-label="Ht">{{ row.display.heat }}</span>
-                                    <span class="centered-cell damage-cell meta-cell" data-label="Dmg">{{ damageText(row) }}</span>
+                                    <span class="centered-cell damage-cell meta-cell" data-label="Dmg">{{ rowTarget.damageText }}</span>
                                 </span>
                                 <span class="grouped-cells group-ranges">
-                                    <span class="centered-cell min-cell meta-cell" data-label="Min">
+                                    <span class="centered-cell min-cell meta-cell" data-label="Min" [class.minimum-range-active]="!!rowTarget.targetNumberText && (rowTarget.rangeSelection?.minimumRangeModifier ?? 0) > 0">
                                         <span class="min-value">{{ row.display.min }}</span>
                                     </span>
                                     <span class="grouped-cells range-cells meta-cell" data-label="Range">
@@ -136,10 +137,10 @@
                                                     [class.range-short]="range === 'short'"
                                                     [class.range-medium]="range === 'medium'"
                                                     [class.range-long]="range === 'long'"
-                                                    [disabled]="!canSelectRange(row, range)"
-                                                    [class.selected-range]="isRangeSelected(row, range)"
-                                                    [class.out-of-range]="isOutOfLongRange(row)"
-                                                    [style.--range-selection-color]="targetRangeSelectionColor(row)"
+                                                    [disabled]="!canSelectRange(row, range, rowTarget)"
+                                                    [class.selected-range]="isRangeSelected(row, range, rowTarget)"
+                                                    [class.out-of-range]="rowTarget.rangeSelection?.outOfLongRange ?? false"
+                                                    [style.--range-selection-color]="rowTarget.rangeSelection?.outOfLongRange ? null : rowTarget.target?.color ?? null"
                                                     (click)="selectRange(row, range)">
                                                     {{ rangeValue(row, range) }}
                                                 </button>

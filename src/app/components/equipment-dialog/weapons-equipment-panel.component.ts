@@ -16,7 +16,7 @@ import { WeaponTargetChoiceMenuComponent } from '../equipment-dialog/weapon-targ
 import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import type { TooltipLine } from '../tooltip/tooltip.component';
-import { formatInventoryTargetSignedModifier, inventoryTargetNumberBreakdown, InventoryTargetNumberInput, inventoryTargetNumberText, inventoryTargetRangeSelection, parseInventoryTargetNumberCell, type InventoryTargetRangeKey } from '../../utils/inventory-target-number.util';
+import { formatInventoryTargetSignedModifier, inventoryTargetNumberState, inventoryTargetRangeSelection, parseInventoryTargetNumberCell, type InventoryTargetNumberInput, type InventoryTargetRangeKey, type InventoryTargetRangeSelection } from '../../utils/inventory-target-number.util';
 import { resolveHitModifier } from '../../models/rules/hit-modifier.util';
 import { resolveWeaponRangeDamageText } from '../../models/rules/weapon-range-rules.util';
 import { getMotiveModeLabel } from '../../models/motiveModes.model';
@@ -46,8 +46,6 @@ const HEAT_BAR_SCALE = 30;
 const WEAPON_TARGET_CHOICE_OVERLAY_KEY = 'weapon-equipment-target-choice';
 
 type HeatDissipationWithWings = HeatDissipationState & { totalDissipationWithWings?: number };
-type TargetRangeKey = InventoryTargetRangeKey;
-
 interface HeatAwareRules {
     heatDissipation: () => HeatDissipationWithWings | null;
 }
@@ -64,15 +62,18 @@ interface SelectedHeatProjection {
     retainedWidth: number;
 }
 
-interface TargetRangeSelection {
-    range: TargetRangeKey;
-    outOfLongRange: boolean;
-    outOfExtremeRange: boolean;
-}
-
 interface TargetNumberBreakdown {
     total: number;
     lines: TooltipLine[];
+}
+
+interface TargetRowState {
+    target: InventoryControlRuntimeTarget | null;
+    rangeSelection: InventoryTargetRangeSelection | null;
+    hitText: string;
+    damageText: string;
+    targetNumberText: string;
+    breakdown: TargetNumberBreakdown | null;
 }
 
 interface AmmoRowState {
@@ -113,6 +114,7 @@ export class WeaponsEquipmentPanelComponent {
     private readonly overlayManager = inject(OverlayManagerService);
     private readonly injector = inject(Injector);
     private readonly destroyRef = inject(DestroyRef);
+    readonly outOfRangeTooltip: TooltipLine[] = [{ value: 'OUT OF RANGE', isHeader: true }];
     readonly unitInput = input.required<CBTForceUnit>({ alias: 'unit' });
     readonly contextInput = input.required<EquipmentDialogContext>({ alias: 'context' });
     readonly readOnlyInput = input<boolean | undefined>(undefined, { alias: 'readOnly' });
@@ -169,24 +171,6 @@ export class WeaponsEquipmentPanelComponent {
         this.destroyRef.onDestroy(() => {
             this.overlayManager.closeManagedOverlay(WEAPON_TARGET_CHOICE_OVERLAY_KEY);
         });
-    }
-
-    targetForRow(row: InventoryControlRow): InventoryControlRuntimeTarget | null {
-        const targetId = this.unit().getInventoryControlEntryTargetId(row.id);
-        return targetId ? this.targets().find(target => target.id === targetId) ?? null : null;
-    }
-
-    targetSelectionLabel(row: InventoryControlRow): string {
-        return this.targetForRow(row)?.letter ?? '';
-    }
-
-    targetSelectionColor(row: InventoryControlRow): string | null {
-        return this.targetForRow(row)?.color ?? null;
-    }
-
-    targetRangeSelectionColor(row: InventoryControlRow): string | null {
-        if (this.isOutOfLongRange(row)) return null;
-        return this.targetSelectionColor(row);
     }
 
     onRowTargetSelectorClick(event: MouseEvent, row: InventoryControlRow): void {
@@ -347,8 +331,8 @@ export class WeaponsEquipmentPanelComponent {
         return this.selectedRows().length > 0;
     }
 
-    canSelectRange(row: InventoryControlRow, range: InventoryRangeKey): boolean {
-        if (this.targetForRow(row)) return false;
+    canSelectRange(row: InventoryControlRow, range: InventoryRangeKey, state = this.targetState(row)): boolean {
+        if (state.target) return false;
         const value = this.rangeValue(row, range);
         return this.isSelectable(row) && value !== '—';
     }
@@ -358,52 +342,22 @@ export class WeaponsEquipmentPanelComponent {
         this.unit().toggleInventoryControlEntryRange(row.entry, range);
     }
 
-    isRangeSelected(row: InventoryControlRow, range: InventoryRangeKey): boolean {
-        if (row.category === 'physical' && this.targetForRow(row)) return false;
-        const targetRange = this.targetRangeSelection(row);
+    isRangeSelected(row: InventoryControlRow, range: InventoryRangeKey, state = this.targetState(row)): boolean {
+        if (row.category === 'physical' && state.target) return false;
+        const targetRange = state.rangeSelection;
         if (targetRange) {
             return !targetRange.outOfLongRange && targetRange.range === range;
         }
         return this.unit().getInventoryControlEntryRange(row.id) === range;
     }
 
-    isOutOfLongRange(row: InventoryControlRow): boolean {
-        return this.targetRangeSelection(row)?.outOfLongRange ?? false;
-    }
+    private hitTextForRange(row: InventoryControlRow, range: InventoryTargetRangeKey | null, hasTarget: boolean): string {
+        if (!hasTarget) return row.display.hit;
 
-    isOutOfExtremeRange(row: InventoryControlRow): boolean {
-        return this.targetRangeSelection(row)?.outOfExtremeRange ?? false;
-    }
-
-    targetNumberText(row: InventoryControlRow): string {
-        return this.targetNumberTextForTarget(row, this.targetForRow(row));
-    }
-
-    hitText(row: InventoryControlRow): string {
-        return this.hitTextForTarget(row, this.targetForRow(row));
-    }
-
-    private hitTextForTarget(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null): string {
-        if (!target) return row.display.hit;
-
-        const range = this.targetRangeSelectionForTarget(row, target)?.range ?? null;
         const hitModifier = resolveHitModifier(row.entry, row.additionalHitModifier, range);
         if (hitModifier === null) return row.display.hit;
         if (hitModifier === 'Vs' || hitModifier === '*') return hitModifier;
         return formatInventoryTargetSignedModifier(hitModifier);
-    }
-
-    damageText(row: InventoryControlRow): string {
-        const range = this.targetRangeSelection(row)?.range ?? this.unit().getInventoryControlEntryRange(row.id) ?? null;
-        return resolveWeaponRangeDamageText(row.entry, range, row.display.damage) ?? row.display.damage;
-    }
-
-    targetNumberTooltip(row: InventoryControlRow): TooltipLine[] | null {
-        if (this.targetRangeSelection(row)?.outOfLongRange) {
-            return [{ value: 'OUT OF RANGE', isHeader: true }];
-        }
-        const lines = this.targetNumberBreakdown(row)?.lines ?? null;
-        return lines;
     }
 
     rangeValue(row: InventoryControlRow, range: InventoryRangeKey): string {
@@ -414,19 +368,6 @@ export class WeaponsEquipmentPanelComponent {
         return RANGE_LABELS[range];
     }
 
-    private targetRangeSelection(row: InventoryControlRow): TargetRangeSelection | null {
-        return this.targetRangeSelectionForTarget(row, this.targetForRow(row));
-    }
-
-    private targetRangeSelectionForTarget(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null): TargetRangeSelection | null {
-        return inventoryTargetRangeSelection({
-            entry: row.entry,
-            category: row.category,
-            display: row.display,
-            target
-        });
-    }
-
     private targetChoiceTargetNumberTexts(row: InventoryControlRow): Readonly<Record<InventoryControlRuntimeTargetId, string>> {
         return Object.fromEntries(this.targets()
             .map(target => [target.id, this.targetNumberTextForTarget(row, target)] as const)
@@ -434,26 +375,17 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     private targetNumberTextForTarget(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null): string {
-        return inventoryTargetNumberText(this.targetNumberInput(row, target));
+        return this.createTargetState(row, target).targetNumberText;
     }
 
-    private targetNumberBreakdown(row: InventoryControlRow): TargetNumberBreakdown | null {
-        return this.targetNumberBreakdownForTarget(row, this.targetForRow(row));
-    }
-
-    private targetNumberBreakdownForTarget(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null): TargetNumberBreakdown | null {    
-        const breakdown = inventoryTargetNumberBreakdown(this.targetNumberInput(row, target));
-        return breakdown === null ? null : { total: breakdown.total, lines: breakdown.lines };
-    }
-
-    private targetNumberInput(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null): InventoryTargetNumberInput {
+    private targetNumberInput(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null, hitText: string): InventoryTargetNumberInput {
         this.inventoryControl().inventoryViewVersion();
         const moveMode = this.unit().turnState().moveMode();
         const movementModifier = this.unit().turnState().getAttackMovementModifier();
         const missingMovementModifier = this.unit().turnState().missingAttackMovementModifier();
         const spotterModifier = this.unit().turnState().getSpottingModifier();
         const heatFireModifier = this.unit().svgService?.inventoryTargetHeatFireModifier(row.entry) ?? 0;
-        const hitModifier = parseInventoryTargetNumberCell(this.hitTextForTarget(row, target)) ?? 0;
+        const hitModifier = parseInventoryTargetNumberCell(hitText) ?? 0;
         return {
             entry: row.entry,
             category: row.category,
@@ -468,6 +400,38 @@ export class WeaponsEquipmentPanelComponent {
             hitModifier: hitModifier - heatFireModifier,
             heatFireModifier
         };
+    }
+
+    targetState(row: InventoryControlRow): TargetRowState {
+        const target = this.resolveTargetForRow(row);
+        return this.createTargetState(row, target);
+    }
+
+    private createTargetState(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null): TargetRowState {
+        const rangeSelection = inventoryTargetRangeSelection({
+            entry: row.entry,
+            category: row.category,
+            display: row.display,
+            target
+        });
+        const hitText = this.hitTextForRange(row, rangeSelection?.range ?? null, !!target);
+        const input = this.targetNumberInput(row, target, hitText);
+        const targetNumber = inventoryTargetNumberState(input, rangeSelection);
+        const breakdown = targetNumber.breakdown === null ? null : { total: targetNumber.breakdown.total, lines: targetNumber.breakdown.lines };
+        const damageRange = rangeSelection?.range ?? this.unit().getInventoryControlEntryRange(row.id) ?? null;
+        return {
+            target,
+            rangeSelection,
+            hitText,
+            damageText: resolveWeaponRangeDamageText(row.entry, damageRange, row.display.damage) ?? row.display.damage,
+            targetNumberText: targetNumber.text,
+            breakdown
+        };
+    }
+
+    private resolveTargetForRow(row: InventoryControlRow): InventoryControlRuntimeTarget | null {
+        const targetId = this.unit().getInventoryControlEntryTargetId(row.id);
+        return targetId ? this.targets().find(target => target.id === targetId) ?? null : null;
     }
 
     ammoState(row: InventoryControlRow): AmmoRowState {

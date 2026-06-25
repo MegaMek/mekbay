@@ -580,9 +580,10 @@ describe('WeaponsEquipmentPanelComponent', () => {
         fixture.detectChanges();
 
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
-        expect(component.damageText(row)).toBe('9 [Variable]');
-        expect(component.hitText(row)).toBe('-3');
-        expect(component.targetNumberText(row)).toBe('1');
+        const targetState = component.targetState(row);
+        expect(targetState.damageText).toBe('9 [Variable]');
+        expect(targetState.hitText).toBe('-3');
+        expect(targetState.targetNumberText).toBe('1');
     });
 
     it('tracks built-in one-shot weapon shots through consumed inventory state', async () => {
@@ -660,9 +661,10 @@ describe('WeaponsEquipmentPanelComponent', () => {
         unit.updateInventoryControlTarget('A', { distance: 10 });
         unit.setInventoryControlEntryTarget(laser, 'A');
 
-        expect(component.isOutOfLongRange(row)).toBeTrue();
+        const targetState = component.targetState(row);
+        expect(targetState.rangeSelection?.outOfLongRange).toBeTrue();
         expect(component.isRangeSelected(row, 'long')).toBeFalse();
-        expect(component.targetNumberText(row)).toBe('X');
+        expect(targetState.targetNumberText).toBe('X');
         expect(laser.el!.classList.contains('selected-range-extreme')).toBeFalse();
         expect(laser.el!.classList.contains('selected-range-long')).toBeFalse();
     });
@@ -771,10 +773,11 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         expect(component.canSelectRange(row, 'long')).toBeFalse();
         expect(component.isRangeSelected(row, 'long')).toBeTrue();
-        expect(component.isOutOfLongRange(row)).toBeFalse();
-        expect(component.isOutOfExtremeRange(row)).toBeFalse();
-        expect(component.targetNumberText(row)).toBe('12');
-        expect(component.targetNumberTooltip(row)).toEqual([
+        const targetState = component.targetState(row);
+        expect(targetState.rangeSelection?.outOfLongRange).toBeFalse();
+        expect(targetState.rangeSelection?.outOfExtremeRange).toBeFalse();
+        expect(targetState.targetNumberText).toBe('12');
+        expect(targetState.breakdown?.lines).toEqual([
             { label: 'Gunnery', value: '4' },
             { label: 'Movement (Run)', value: '+2' },
             { label: 'Target (A)', value: '+1' },
@@ -789,6 +792,31 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(selectedRangeCell.style.getPropertyValue('--range-selection-color')).toBe(INVENTORY_CONTROL_TARGET_COLORS[0]);
     });
 
+    it('highlights minimum range when assigned target distance is at or below Min', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_min">6</text><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>') });
+        const { component, fixture, unit } = createComponent([laser], {}, [], new Map(), { gunnerySkill: 4, moveMode: 'stationary' });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 6 });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+        unit.inventoryControl.markInventoryViewChanged();
+        fixture.detectChanges();
+
+        const targetState = component.targetState(row);
+        expect(targetState.targetNumberText).toBe('7');
+        expect(targetState.rangeSelection?.minimumRangeModifier).toBe(1);
+        expect((fixture.nativeElement.querySelector('.min-cell') as HTMLElement).classList.contains('minimum-range-active')).toBeTrue();
+        expect(targetState.breakdown?.lines).toContain({ label: 'Minimum Range', value: '+1' });
+
+        unit.updateInventoryControlTarget('A', { distance: 7 });
+        unit.inventoryControl.markInventoryViewChanged();
+        fixture.detectChanges();
+
+        const clearedTargetState = component.targetState(row);
+        expect(clearedTargetState.rangeSelection?.minimumRangeModifier).toBe(0);
+        expect((fixture.nativeElement.querySelector('.min-cell') as HTMLElement).classList.contains('minimum-range-active')).toBeFalse();
+    });
+
     it('shows movement placeholder for target numbers when movement is unassigned and affects TN', () => {
         const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>') });
         const { component, unit } = createComponent([laser], {}, [], new Map(), { gunnerySkill: 4 });
@@ -798,8 +826,9 @@ describe('WeaponsEquipmentPanelComponent', () => {
         unit.setInventoryControlEntryTarget(row.entry, 'A');
         unit.inventoryControl.markInventoryViewChanged();
 
-        expect(component.targetNumberText(row)).toBe('M?');
-        expect(component.targetNumberTooltip(row)).toEqual([{ value: 'Select movement to calculate TN', isHeader: true }]);
+        const targetState = component.targetState(row);
+        expect(targetState.targetNumberText).toBe('M?');
+        expect(targetState.breakdown?.lines).toEqual([{ value: 'Select movement to calculate TN', isHeader: true }]);
     });
 
     it('does not show movement placeholder for unassigned target rows', () => {
@@ -809,8 +838,9 @@ describe('WeaponsEquipmentPanelComponent', () => {
         unit.createInventoryControlTarget();
         unit.inventoryControl.markInventoryViewChanged();
 
-        expect(component.targetNumberText(row)).toBe('');
-        expect(component.targetNumberTooltip(row)).toBeNull();
+        const targetState = component.targetState(row);
+        expect(targetState.targetNumberText).toBe('');
+        expect(targetState.breakdown).toBeNull();
     });
 
     it('shows heat fire modifiers as a separate target number term', () => {
@@ -824,8 +854,9 @@ describe('WeaponsEquipmentPanelComponent', () => {
         unit.inventoryControl.markInventoryViewChanged();
         fixture.detectChanges();
 
-        expect(component.targetNumberText(row)).toBe('10');
-        expect(component.targetNumberTooltip(row)).toEqual([
+        const targetState = component.targetState(row);
+        expect(targetState.targetNumberText).toBe('10');
+        expect(targetState.breakdown?.lines).toEqual([
             { label: 'Gunnery', value: '4' },
             { label: 'Movement (Stationary)', value: '+0' },
             { label: 'Target (A)', value: '+1' },
@@ -847,10 +878,11 @@ describe('WeaponsEquipmentPanelComponent', () => {
         unit.inventoryControl.markInventoryViewChanged();
 
         expect(component.isRangeSelected(row, 'short')).toBeFalse();
-        expect(component.isOutOfLongRange(row)).toBeFalse();
-        expect(component.isOutOfExtremeRange(row)).toBeFalse();
-        expect(component.targetNumberText(row)).toBe('7');
-        expect(component.targetNumberTooltip(row)).toEqual([
+        const targetState = component.targetState(row);
+        expect(targetState.rangeSelection?.outOfLongRange).toBeFalse();
+        expect(targetState.rangeSelection?.outOfExtremeRange).toBeFalse();
+        expect(targetState.targetNumberText).toBe('7');
+        expect(targetState.breakdown?.lines).toEqual([
             { label: 'Piloting', value: '6' },
             { label: 'Movement (Stationary)', value: '+0' },
             { label: 'Target (A)', value: '+1' },
@@ -869,10 +901,12 @@ describe('WeaponsEquipmentPanelComponent', () => {
         unit.inventoryControl.markInventoryViewChanged();
         fixture.detectChanges();
 
-        expect(component.isOutOfLongRange(row)).toBeTrue();
-        expect(component.isOutOfExtremeRange(row)).toBeFalse();
-        expect(component.targetNumberText(row)).toBe('X');
-        expect(component.targetNumberTooltip(row)).toEqual([{ value: 'OUT OF RANGE', isHeader: true }]);
+        const targetState = component.targetState(row);
+        expect(targetState.rangeSelection?.outOfLongRange).toBeTrue();
+        expect(targetState.rangeSelection?.outOfExtremeRange).toBeFalse();
+        expect(targetState.targetNumberText).toBe('X');
+        expect(targetState.breakdown).toBeNull();
+        expect(component.outOfRangeTooltip).toEqual([{ value: 'OUT OF RANGE', isHeader: true }]);
         expect((fixture.nativeElement.querySelector('.tn-cell') as HTMLElement).classList.contains('out-of-range')).toBeTrue();
         const rangeCells = Array.from(fixture.nativeElement.querySelectorAll('.range-cell')) as HTMLElement[];
         expect(rangeCells.every(cell => cell.classList.contains('out-of-range'))).toBeTrue();

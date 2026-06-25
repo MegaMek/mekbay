@@ -295,6 +295,12 @@
     grid-column: 9;
 }
 
+.min-cell.minimum-range-active .min-value {
+    color: var(--damage-color);
+    font-weight: 800;
+    font-size: 1.4em;
+}
+
 .range-short {
     grid-column: 10;
 }

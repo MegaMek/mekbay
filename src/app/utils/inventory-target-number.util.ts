@@ -10,12 +10,19 @@ export interface InventoryTargetRangeSelection {
     range: InventoryTargetRangeKey;
     outOfLongRange: boolean;
     outOfExtremeRange: boolean;
+    minimumRangeModifier: number;
 }
 
 export interface InventoryTargetNumberBreakdown {
     total: number;
     lines: TooltipLine[];
     rangeSelection: InventoryTargetRangeSelection;
+}
+
+export interface InventoryTargetNumberState {
+    text: string;
+    breakdown: InventoryTargetNumberBreakdown | null;
+    rangeSelection: InventoryTargetRangeSelection | null;
 }
 
 export interface InventoryTargetNumberInput {
@@ -60,7 +67,9 @@ export function readInventoryTargetText(entry: MountedEquipment, className: stri
 export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberInput, 'entry' | 'category' | 'display' | 'target'>): InventoryTargetRangeSelection | null {
     const target = input.target;
     if (!target) return null;
-    if (isPhysicalInventoryTargetNumberEntry(input.entry, input.category)) return { range: 'short', outOfLongRange: false, outOfExtremeRange: false };
+    if (isPhysicalInventoryTargetNumberEntry(input.entry, input.category)) return { range: 'short', outOfLongRange: false, outOfExtremeRange: false, minimumRangeModifier: 0 };
+
+    const minimumRangeModifier = inventoryTargetMinimumRangeModifier(input.display.min, target.distance);
 
     const thresholds = (['short', 'medium', 'long'] as const)
         .map(range => ({ range, value: parseInventoryTargetNumberCell(input.display[range]) }))
@@ -69,7 +78,7 @@ export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberI
 
     for (const threshold of thresholds) {
         if (target.distance <= threshold.value) {
-            return { range: threshold.range, outOfLongRange: false, outOfExtremeRange: false };
+            return { range: threshold.range, outOfLongRange: false, outOfExtremeRange: false, minimumRangeModifier };
         }
     }
 
@@ -77,23 +86,32 @@ export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberI
     return {
         range: 'extreme',
         outOfLongRange: true,
-        outOfExtremeRange: extremeRange !== null && target.distance > extremeRange
+        outOfExtremeRange: extremeRange !== null && target.distance > extremeRange,
+        minimumRangeModifier
     };
 }
 
-export function inventoryTargetNumberText(input: InventoryTargetNumberInput): string {
-    const rangeSelection = inventoryTargetRangeSelection(input);
-    if (!rangeSelection) return '';
-    if (rangeSelection?.outOfLongRange) return 'X';
-    if (input.missingMovementModifier) return 'M?';
-    const breakdown = inventoryTargetNumberBreakdown(input);
-    return breakdown === null ? '' : breakdown.total.toString();
+export function inventoryTargetNumberState(
+    input: InventoryTargetNumberInput,
+    rangeSelection: InventoryTargetRangeSelection | null = inventoryTargetRangeSelection(input)
+): InventoryTargetNumberState {
+    if (!rangeSelection) return { text: '', breakdown: null, rangeSelection };
+    if (rangeSelection.outOfLongRange) return { text: 'X', breakdown: null, rangeSelection };
+    const breakdown = inventoryTargetNumberBreakdown(input, rangeSelection);
+    if (input.missingMovementModifier) return { text: 'M?', breakdown, rangeSelection };
+    return { text: breakdown === null ? '' : breakdown.total.toString(), breakdown, rangeSelection };
 }
 
-export function inventoryTargetNumberBreakdown(input: InventoryTargetNumberInput): InventoryTargetNumberBreakdown | null {
+export function inventoryTargetNumberText(input: InventoryTargetNumberInput): string {
+    return inventoryTargetNumberState(input).text;
+}
+
+export function inventoryTargetNumberBreakdown(
+    input: InventoryTargetNumberInput,
+    rangeSelection: InventoryTargetRangeSelection | null = inventoryTargetRangeSelection(input)
+): InventoryTargetNumberBreakdown | null {
     const target = input.target;
     if (!target) return null;
-    const rangeSelection = inventoryTargetRangeSelection(input);
     if (!rangeSelection) return null;
     if (input.missingMovementModifier) {
         return {
@@ -107,7 +125,7 @@ export function inventoryTargetNumberBreakdown(input: InventoryTargetNumberInput
     const skillLabel = physical ? 'Piloting' : 'Gunnery';
     const skill = physical ? input.pilotingSkill : input.gunnerySkill;
     const rangeModifier = inventoryTargetRangeModifier(rangeSelection.range);
-    const minimumRangeModifier = inventoryTargetMinimumRangeModifier(input.display.min, target.distance);
+    const minimumRangeModifier = rangeSelection.minimumRangeModifier;
     const heatFireModifier = physical ? 0 : input.heatFireModifier ?? 0;
     const terms: TooltipLine[] = [
         { label: skillLabel, value: skill.toString() }
