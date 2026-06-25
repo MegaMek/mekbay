@@ -20,6 +20,7 @@
                 @for (moveMode of moveModes(); track moveMode.mode) {
                 @let mode = moveMode.mode;
                 <button type="button" class="bt-button move-button" [class.selected]="currentMoveMode() === mode"
+                    [class.danger]="moveMode.psr"
                     aria-pressed="{{ currentMoveMode() === mode }}" (click)="selectMove(mode)">
                     @if (mode === 'stationary') {
                     <svg width="16px" height="16px" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"
@@ -95,16 +96,15 @@
     <div class="group">
         <div class="sectionTitle">Heat</div>
         <div class="summary-entry heat-modifiers">
-            <div class="row"><span>Movement:</span><span class="modifier heat">{{ (heatFromMovement() > 0 ? '+' : '') +  heatFromMovement() }}</span></div>
-            @if (heatGeneratedFromDamagedEngine() > 0) {
-                <div class="row"><span>Damaged Engine:</span><span class="modifier heat">+{{ heatGeneratedFromDamagedEngine() }}</span></div>
+            @for (source of heatSources(); track source.id) {
+                <div class="row"><span>{{ source.label }}:</span><span class="modifier heat">{{ (source.value > 0 ? '+' : '') + source.value }}</span></div>
             }
         </div>
     </div>
     }
     @if (psrModifiers().length > 0) {
     <div class="group">
-        <div class="sectionTitle">PSR Modifiers</div>
+        <div class="sectionTitle">{{ controlRollShortLabel() }} Modifiers</div>
         <div class="summary-entry psr-modifiers">
             @for (modifier of psrModifiers(); track $index) {
             <div class="row wrap">
@@ -117,12 +117,12 @@
     }
     <div class="summary-entry">
         @if (falling()) {
-            <button role="button" class="summary-entry bt-button danger" tabindex="0">
+            <button role="button" class="summary-entry bt-button danger full-danger" tabindex="0">
                 ⚠ FALLING! ⚠
             </button>
         } @else if (hasPSRChecks()) {
             <button role="button" class="summary-entry bt-button warning" (click)="openPsrWarning($event)" tabindex="0">
-                ⚠ PSR Checks! ({{ PSRChecksCount() }})
+                ⚠ {{ controlRollShortLabel() }} Checks! ({{ PSRChecksCount() }})
             </button>
         }
         @if (dirty()) {

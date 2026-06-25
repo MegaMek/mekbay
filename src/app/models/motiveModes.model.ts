@@ -40,6 +40,7 @@ export type MotiveModes = 'stationary' | 'walk' | 'run' | 'jump' | 'UMU' | 'VTOL
 export interface MotiveModeOption {
     mode: MotiveModes;
     label: string;
+    psr?: boolean;
 }
 
 export function canChangeAirborneGround(unit: Unit): boolean {

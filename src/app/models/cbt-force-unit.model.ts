@@ -279,7 +279,7 @@ export class CBTForceUnit extends ForceUnit {
         if (consolidateImmediately) {
             this.state.consolidateCrits(); // Consolidate immediately in case we have pending hits to apply
         }
-        this.turnState().evaluateCritSlotHit(slot);
+        this._rules.evaluateCritSlotHit(slot);
     }
 
     getCritLoc(id: string): CriticalSlot | null {
@@ -491,7 +491,7 @@ export class CBTForceUnit extends ForceUnit {
         }
         this.state.locations.set({ ...this.state.locations(), [loc]: locations[loc] });
         this.state.turnState().addDmgReceived(hits);
-        this.state.turnState().evaluateLegDestroyed(loc, hits);
+        this._rules.evaluateLegDestroyed(loc, hits);
         this.evaluateDestroyed();
         this.setModified();
     }
@@ -831,7 +831,11 @@ export class CBTForceUnit extends ForceUnit {
 
     public getAvailableMotiveModes(airborne: boolean): MotiveModeOption[] {
         return getMotiveModesOptionsByUnit(this.getUnit(), airborne)
-            .filter(option => this._rules.isMotiveModeAvailable(option.mode));
+            .filter(option => this._rules.isMotiveModeAvailable(option.mode))
+            .map(option => ({
+                ...option,
+                psr: this._rules.getCommittedDamageMovementModePSRCheck(option.mode) !== null,
+            }));
     }
 
     /** Delegates to unit-type rules. Non-Mek types return { modifier: 0, modifiers: [] }. */

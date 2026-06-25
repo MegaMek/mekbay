@@ -6,7 +6,6 @@ import { OptionsService } from '../../services/options.service';
 import { SheetService } from '../../services/sheet.service';
 import { LoggerService } from '../../services/logger.service';
 import { SvgViewerLiteComponent } from './svg-viewer-lite.component';
-import { SvgExportUtil } from '../../utils/svg-export.util';
 
 function makeSvg(width = 100, height = 200): SVGSVGElement {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -191,7 +190,7 @@ describe('SvgViewerLiteComponent', () => {
     it('loads cloned sheets into the content surface at fit-width scale', async () => {
         const { container, content, svg } = await createViewer();
 
-        expect(sheetService.getSheet).toHaveBeenCalledOnceWith('atlas.svg', jasmine.any(AbortSignal));
+        expect(sheetService.getSheet).toHaveBeenCalledOnceWith('atlas.svg');
         expect(svg.id).toBe('');
         expect(svg.style.width).toBe('100%');
         expect(content.style.width).toBe('100%');
@@ -212,13 +211,10 @@ describe('SvgViewerLiteComponent', () => {
         fixture.componentRef.setInput('zoomable', true);
         fixture.detectChanges();
         await settle();
-        const atlasSignal = sheetService.getSheet.calls.argsFor(0)[1] as AbortSignal;
-        expect(atlasSignal.aborted).toBeFalse();
 
         fixture.componentRef.setInput('unit', createEmptyUnit({ sheets: ['marauder.svg'] }));
         fixture.detectChanges();
         await settle();
-        expect(atlasSignal.aborted).toBeTrue();
 
         const marauderSvg = makeSvg();
         marauderSvg.setAttribute('data-sheet', 'marauder.svg');

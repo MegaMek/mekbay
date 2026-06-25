@@ -108,6 +108,18 @@ export class PageTurnSummaryPanelComponent {
         return unit.turnState().PSRRollsCount();
     });
 
+    controlRollShortLabel = computed(() => {
+        const unit = this.unit();
+        if (!unit) return 'PSR';
+        return unit.rules.controlRollShortLabel;
+    });
+
+    controlRollFullLabel = computed(() => {
+        const unit = this.unit();
+        if (!unit) return 'Piloting Skill Rolls';
+        return unit.rules.controlRollFullLabel;
+    });
+
     currentMoveMode = computed(() => {
         const u = this.unit();
         if (!u) return null;
@@ -150,16 +162,10 @@ export class PageTurnSummaryPanelComponent {
         return u.getUnit().heat >= 0;
     });
 
-    heatFromMovement = computed(() => {
+    heatSources = computed(() => {
         const u = this.unit();
-        if (!u) return 0;
-        return u.turnState().heatGeneratedFromMovement();
-    });
-
-    heatGeneratedFromDamagedEngine = computed(() => {
-        const u = this.unit();
-        if (!u) return 0;
-        return u.turnState().heatGeneratedFromDamagedEngine();
+        if (!u) return [];
+        return u.turnState().heatSources();
     });
 
     psrModifiers = computed(() => {
@@ -244,7 +250,7 @@ export class PageTurnSummaryPanelComponent {
     moveModes = computed<MotiveModeOption[]>(() => {
         const u = this.unit();
         if (!u) return [];
-        return u.getAvailableMotiveModes(this.unit()?.turnState().airborne() ?? false);
+        return u.getAvailableMotiveModes(u.turnState().airborne() ?? false);
     });
 
     selectMove(mode: MotiveModes) {
@@ -323,11 +329,11 @@ export class PageTurnSummaryPanelComponent {
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
     <div class="panel glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
-        <div class="header">Piloting Skill Rolls</div>
+        <div class="header">{{ controlRollFullLabel() }}</div>
         <div class="body">
             <div class="psr-list">
                 @for (check of psrChecks(); let i = $index; track i) {
-                    @if (check.fallCheck) {
+                    @if (check.fallCheck !== undefined) {
                         <div class="psr-item">
                             <div class="psr-marker">▸</div>
                             <div class="psr-reason">{{ check.reason }}</div>
@@ -441,9 +447,15 @@ export class PagePsrWarningPanelComponent {
         return unit.PSRModifiers().modifiers;
     });
 
+    controlRollFullLabel = computed(() => {
+        const unit = this.unit();
+        if (!unit) return 'Piloting Skill Rolls';
+        return unit.rules.controlRollFullLabel;
+    });
+
     psrChecks = computed(() => {
         const unit = this.unit();
         if (!unit) return [];
-        return unit.turnState().getPSRChecks().filter(c => !c.fallCheck !== undefined);
+        return unit.turnState().getPSRChecks().filter(c => c.fallCheck !== undefined);
     });
 }

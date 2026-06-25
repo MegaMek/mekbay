@@ -1,8 +1,23 @@
 import { SvgExportUtil } from './svg-export.util';
 
 describe('SvgExportUtil', () => {
+    type MockedNavigatorApi = 'canShare' | 'clipboard' | 'share';
+
     function pngBlob(): Blob {
         return new Blob(['png'], { type: 'image/png' });
+    }
+
+    function getNavigatorPropertyDescriptor(propertyName: MockedNavigatorApi): PropertyDescriptor | undefined {
+        return Object.getOwnPropertyDescriptor(Navigator.prototype, propertyName) ?? Object.getOwnPropertyDescriptor(navigator, propertyName);
+    }
+
+    function restoreNavigatorPropertyDescriptor(propertyName: MockedNavigatorApi, descriptor: PropertyDescriptor | undefined): void {
+        if (descriptor) {
+            Object.defineProperty(navigator, propertyName, descriptor);
+            return;
+        }
+
+        delete (navigator as unknown as Partial<Record<MockedNavigatorApi, unknown>>)[propertyName];
     }
 
     function makeSvg(width = 100, height = 200): SVGSVGElement {
@@ -32,6 +47,7 @@ describe('SvgExportUtil', () => {
 
         const image = document.createElementNS('http://www.w3.org/1999/xhtml', 'img') as HTMLImageElement;
         image.setAttribute('id', 'fluff-image-injected');
+
         image.setAttribute('src', src);
         foreignObject.appendChild(image);
         svg.appendChild(foreignObject);
@@ -189,8 +205,8 @@ describe('SvgExportUtil', () => {
 
     it('shares rendered SVGs as a 3x PNG file', async () => {
         mockFontFetch();
-        const originalCanShare = Object.getOwnPropertyDescriptor(Navigator.prototype, 'canShare') ?? Object.getOwnPropertyDescriptor(navigator, 'canShare');
-        const originalShare = Object.getOwnPropertyDescriptor(Navigator.prototype, 'share') ?? Object.getOwnPropertyDescriptor(navigator, 'share');
+        const originalCanShare = getNavigatorPropertyDescriptor('canShare');
+        const originalShare = getNavigatorPropertyDescriptor('share');
         const canShare = jasmine.createSpy('canShare').and.returnValue(true);
         const share = jasmine.createSpy('share').and.resolveTo();
         Object.defineProperty(navigator, 'canShare', { configurable: true, value: canShare });
@@ -213,19 +229,23 @@ describe('SvgExportUtil', () => {
             expect(share).toHaveBeenCalledWith({ files: [jasmine.any(File)], title: 'record-sheet' });
             expect(share.calls.mostRecent().args[0].files?.[0].name).toBe('record-sheet.png');
         } finally {
-            if (originalCanShare) Object.defineProperty(navigator, 'canShare', originalCanShare);
-            if (originalShare) Object.defineProperty(navigator, 'share', originalShare);
+            restoreNavigatorPropertyDescriptor('canShare', originalCanShare);
+            restoreNavigatorPropertyDescriptor('share', originalShare);
         }
     });
 
     it('copies rendered SVGs to the clipboard as a 5x PNG', async () => {
         mockFontFetch();
-        const originalClipboard = Object.getOwnPropertyDescriptor(Navigator.prototype, 'clipboard') ?? Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+        const originalCanShare = getNavigatorPropertyDescriptor('canShare');
+        const originalShare = getNavigatorPropertyDescriptor('share');
+        const originalClipboard = getNavigatorPropertyDescriptor('clipboard');
         const originalClipboardItem = window.ClipboardItem;
         const clipboardWrite = jasmine.createSpy('write').and.resolveTo();
         class FakeClipboardItem {
             constructor(public readonly items: Record<string, Blob>) { }
         }
+        Object.defineProperty(navigator, 'canShare', { configurable: true, value: undefined });
+        Object.defineProperty(navigator, 'share', { configurable: true, value: undefined });
         Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { write: clipboardWrite } });
         Object.defineProperty(window, 'ClipboardItem', { configurable: true, value: FakeClipboardItem });
         spyOn(CanvasRenderingContext2D.prototype, 'drawImage').and.stub();
@@ -246,15 +266,17 @@ describe('SvgExportUtil', () => {
             const clipboardItem = clipboardWrite.calls.mostRecent().args[0][0] as FakeClipboardItem;
             expect(clipboardItem.items['image/png']).toEqual(jasmine.any(Blob));
         } finally {
-            if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+            restoreNavigatorPropertyDescriptor('canShare', originalCanShare);
+            restoreNavigatorPropertyDescriptor('share', originalShare);
+            restoreNavigatorPropertyDescriptor('clipboard', originalClipboard);
             Object.defineProperty(window, 'ClipboardItem', { configurable: true, value: originalClipboardItem });
         }
     });
 
     it('copies PNG blobs directly through the async image clipboard API', async () => {
-        const originalCanShare = Object.getOwnPropertyDescriptor(Navigator.prototype, 'canShare') ?? Object.getOwnPropertyDescriptor(navigator, 'canShare');
-        const originalShare = Object.getOwnPropertyDescriptor(Navigator.prototype, 'share') ?? Object.getOwnPropertyDescriptor(navigator, 'share');
-        const originalClipboard = Object.getOwnPropertyDescriptor(Navigator.prototype, 'clipboard') ?? Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+        const originalCanShare = getNavigatorPropertyDescriptor('canShare');
+        const originalShare = getNavigatorPropertyDescriptor('share');
+        const originalClipboard = getNavigatorPropertyDescriptor('clipboard');
         const originalClipboardItem = window.ClipboardItem;
         const clipboardWrite = jasmine.createSpy('write').and.resolveTo();
         class FakeClipboardItem {
@@ -273,17 +295,17 @@ describe('SvgExportUtil', () => {
             expect(FakeClipboardItem.supports).not.toHaveBeenCalled();
             expect(clipboardWrite).toHaveBeenCalledWith([jasmine.any(FakeClipboardItem)]);
         } finally {
-            if (originalCanShare) Object.defineProperty(navigator, 'canShare', originalCanShare);
-            if (originalShare) Object.defineProperty(navigator, 'share', originalShare);
-            if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+            restoreNavigatorPropertyDescriptor('canShare', originalCanShare);
+            restoreNavigatorPropertyDescriptor('share', originalShare);
+            restoreNavigatorPropertyDescriptor('clipboard', originalClipboard);
             Object.defineProperty(window, 'ClipboardItem', { configurable: true, value: originalClipboardItem });
         }
     });
 
     it('shares PNG blobs before trying clipboard when file sharing works', async () => {
-        const originalCanShare = Object.getOwnPropertyDescriptor(Navigator.prototype, 'canShare') ?? Object.getOwnPropertyDescriptor(navigator, 'canShare');
-        const originalShare = Object.getOwnPropertyDescriptor(Navigator.prototype, 'share') ?? Object.getOwnPropertyDescriptor(navigator, 'share');
-        const originalClipboard = Object.getOwnPropertyDescriptor(Navigator.prototype, 'clipboard') ?? Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+        const originalCanShare = getNavigatorPropertyDescriptor('canShare');
+        const originalShare = getNavigatorPropertyDescriptor('share');
+        const originalClipboard = getNavigatorPropertyDescriptor('clipboard');
         const canShare = jasmine.createSpy('canShare').and.returnValue(true);
         const share = jasmine.createSpy('share').and.resolveTo();
         const clipboardWrite = jasmine.createSpy('write').and.resolveTo();
@@ -298,16 +320,16 @@ describe('SvgExportUtil', () => {
             expect(share).toHaveBeenCalledWith({ files: [jasmine.any(File)], title: 'record-sheet' });
             expect(clipboardWrite).not.toHaveBeenCalled();
         } finally {
-            if (originalCanShare) Object.defineProperty(navigator, 'canShare', originalCanShare);
-            if (originalShare) Object.defineProperty(navigator, 'share', originalShare);
-            if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+            restoreNavigatorPropertyDescriptor('canShare', originalCanShare);
+            restoreNavigatorPropertyDescriptor('share', originalShare);
+            restoreNavigatorPropertyDescriptor('clipboard', originalClipboard);
         }
     });
 
     it('falls back to execCommand when share and async clipboard are unavailable', async () => {
-        const originalCanShare = Object.getOwnPropertyDescriptor(Navigator.prototype, 'canShare') ?? Object.getOwnPropertyDescriptor(navigator, 'canShare');
-        const originalShare = Object.getOwnPropertyDescriptor(Navigator.prototype, 'share') ?? Object.getOwnPropertyDescriptor(navigator, 'share');
-        const originalClipboard = Object.getOwnPropertyDescriptor(Navigator.prototype, 'clipboard') ?? Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+        const originalCanShare = getNavigatorPropertyDescriptor('canShare');
+        const originalShare = getNavigatorPropertyDescriptor('share');
+        const originalClipboard = getNavigatorPropertyDescriptor('clipboard');
         const addItem = jasmine.createSpy('add');
         const setData = jasmine.createSpy('setData');
         Object.defineProperty(navigator, 'canShare', { configurable: true, value: undefined });
@@ -332,9 +354,9 @@ describe('SvgExportUtil', () => {
             expect(setData).toHaveBeenCalledWith('text/html', jasmine.stringMatching(/^<img alt="" src="data:image\/png;base64,/));
             expect(document.execCommand).toHaveBeenCalledOnceWith('copy');
         } finally {
-            if (originalCanShare) Object.defineProperty(navigator, 'canShare', originalCanShare);
-            if (originalShare) Object.defineProperty(navigator, 'share', originalShare);
-            if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+            restoreNavigatorPropertyDescriptor('canShare', originalCanShare);
+            restoreNavigatorPropertyDescriptor('share', originalShare);
+            restoreNavigatorPropertyDescriptor('clipboard', originalClipboard);
         }
     });
 });

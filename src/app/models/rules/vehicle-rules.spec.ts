@@ -284,6 +284,12 @@ describe('VehicleRules', () => {
             { modifier: 3, reason: 'Sensor hit 3' },
             { modifier: 1, reason: 'Flight stabilizer hit' },
         ]);
+        expect(rules.pilotingModifiers()).toEqual([
+            { modifier: 1, reason: 'Commander hit' },
+            { modifier: 2, reason: 'Driver/Pilot hit' },
+            { modifier: 3, reason: 'Flight stabilizer hit' },
+            { modifier: 2, reason: 'Motive system hit' },
+        ]);
     });
 
     it('disables energy equipment after an engine hit', () => {

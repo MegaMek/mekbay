@@ -277,9 +277,8 @@ export class UnitSvgMekService extends UnitSvgService {
         const movement = this.mekRules.movementState();
         if (!movement) return;
 
-        const turnState = this.unit.turnState();
-        const runWarning = movement.maxRun > 0 ? turnState.getCommittedDamageMovementModePSRCheck('run') : null;
-        const jumpWarning = movement.jump > 0 ? turnState.getCommittedDamageMovementModePSRCheck('jump') : null;
+        const runWarning = movement.maxRun > 0 ? this.unit.rules.getCommittedDamageMovementModePSRCheck('run') : null;
+        const jumpWarning = movement.jump > 0 ? this.unit.rules.getCommittedDamageMovementModePSRCheck('jump') : null;
         const jumpMoveElementId = svg.getElementById('mpJump') ? 'mpJump' : (svg.getElementById('mp_2') ? 'mp_2' : null);
 
         this.syncMovementModePsrWarning(svg, 'mpRun', runWarning?.reason ?? null);

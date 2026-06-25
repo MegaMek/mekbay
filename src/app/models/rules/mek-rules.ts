@@ -33,10 +33,10 @@
 
 import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
-import type { MountedEquipment } from '../force-serialization';
-import { UnitTypeRulesBase } from './unit-type-rules';
+import type { CriticalSlot, MountedEquipment } from '../force-serialization';
+import { UnitTypeRulesBase, type PSRCheck, type UnitHeatSource } from './unit-type-rules';
 import { LINKED_LOCATIONS, LEG_LOCATIONS, FOUR_LEGGED_LOCATIONS } from '../common.model';
-import type { PSRCheck } from '../turn-state.model';
+import type { TurnState } from '../turn-state.model';
 import { type HeatScaleEntry, HeatManagement, getHeatEffects } from './heat-management';
 import type { MotiveModes } from '../motiveModes.model';
 import { getDefaultAttackerMovementModifier } from '../target-number-calculator.model';
@@ -110,6 +110,289 @@ export class MekRules extends UnitTypeRulesBase {
         if (this.unit.destroyed !== destroyed) {
             this.unit.setDestroyed(destroyed);
         }
+    }
+
+    // ── PSR ──────────────────────────────────────────────────────────────────
+
+    override readonly autoFall = computed<boolean>(() => {
+        const psr = this.unit.turnState().getPSRCheckState();
+        return (psr.legsDestroyed?.size || 0) > 0
+            || psr.gyroDestroyed === true;
+    });
+
+    override getPSRChecks(turnState: TurnState): PSRCheck[] {
+        const checks: PSRCheck[] = [];
+        const psr = turnState.getPSRCheckState();
+
+        if (psr.gyroDestroyed) {
+            checks.push({
+                fallCheck: 100,
+                pilotCheck: 6,
+                reason: 'Gyro destroyed',
+                ignorePreExistingGyro: true,
+            });
+        } else if ((psr.legsDestroyed?.size || 0) > 0) {
+            psr.legsDestroyed?.forEach((loc => {
+                checks.push({
+                    fallCheck: 100,
+                    pilotCheck: 5,
+                    loc: loc,
+                    legFilter: loc,
+                    reason: 'Leg destroyed'
+                });
+            }));
+        } else {
+            if (psr.shutdown) {
+                checks.push({
+                    fallCheck: 3,
+                    pilotCheck: 3,
+                    reason: 'Shutdown'
+                });
+            }
+            if (turnState.dmgReceived() >= 20) {
+                checks.push({
+                    fallCheck: 1,
+                    pilotCheck: 1,
+                    reason: `Received ${turnState.dmgReceived()} damage`
+                });
+            }
+            psr.legActuators?.forEach((count, loc) => {
+                for (let i = 0; i < count; i++) {
+                    checks.push({
+                        fallCheck: 1,
+                        pilotCheck: 1,
+                        loc: loc,
+                        reason: 'Leg actuator hit',
+                    });
+                }
+            });
+            if (psr.hipsHit) {
+                psr.hipsHit.forEach((loc) => {
+                    checks.push({
+                        fallCheck: 2,
+                        pilotCheck: 2,
+                        loc: loc,
+                        legFilter: loc,
+                        reason: 'Hip hit'
+                    });
+                });
+            }
+            const gyroHits = (psr.gyroHit || 0);
+            if (gyroHits > 0) {
+                const critSlots = this.unit.getCritSlots();
+                const hasHeavyDutyGyro = critSlots.some(slot => slot.name && slot.name.includes('Heavy Duty') && slot.name.includes('Gyro'));
+                const previouslyDestroyedGyroCount = critSlots.filter(slot => {
+                    if (!slot.name || !slot.destroyed) return false;
+                    if (!slot.name.includes('Gyro')) return false;
+                    return true;
+                }).length;
+                if (hasHeavyDutyGyro && (previouslyDestroyedGyroCount + gyroHits) === 1) {
+                    checks.push({
+                        pilotCheck: 1,
+                        reason: 'Gyro hit',
+                    });
+                } else {
+                    checks.push({
+                        fallCheck: 3,
+                        pilotCheck: 3,
+                        reason: 'Gyro hit',
+                        ignorePreExistingGyro: true,
+                    });
+                }
+            }
+            const movementCheck = turnState.applyMovePSR()
+                ? this.getCommittedDamageMovementModePSRCheck(turnState.moveMode())
+                : null;
+            if (movementCheck) {
+                checks.push(movementCheck);
+            }
+        }
+        return checks;
+    }
+
+    override getCommittedDamageMovementModePSRCheck(moveMode: MotiveModes | null): PSRCheck | null {
+        if (moveMode !== 'run' && moveMode !== 'jump') return null;
+
+        const critSlots = this.unit.getCritSlots();
+        const hasDamagedGyro = critSlots.some(slot => {
+            if (!slot.name || !slot.destroyed) return false;
+            return slot.name.includes('Gyro');
+        });
+
+        let hasDamagedLeg = false;
+        this.unit.locations?.internal?.forEach((_value, loc) => {
+            if (hasDamagedLeg) return;
+            if (!LEG_LOCATIONS.has(loc)) return;
+            if (this.unit.isInternalLocCommittedDestroyed(loc)) {
+                hasDamagedLeg = true;
+            }
+        });
+
+        const hasDamagedLegActuators = critSlots.some(slot => {
+            if (!slot.name || !slot.loc || !slot.destroyed) return false;
+            if (!LEG_LOCATIONS.has(slot.loc)) return false;
+            return slot.name.includes('Leg') || slot.name.includes('Foot') || slot.name.includes('Hip');
+        });
+
+        if (moveMode === 'jump') {
+            if (hasDamagedGyro) {
+                return {
+                    fallCheck: 0,
+                    pilotCheck: 0,
+                    reason: 'Jumping with damaged gyro'
+                };
+            }
+            if (hasDamagedLeg) {
+                return {
+                    fallCheck: 0,
+                    pilotCheck: 0,
+                    reason: 'Jumping with damaged leg'
+                };
+            }
+            if (hasDamagedLegActuators) {
+                return {
+                    fallCheck: 0,
+                    pilotCheck: 0,
+                    reason: 'Jumping with damaged leg actuator'
+                };
+            }
+            return null;
+        }
+
+        if (hasDamagedGyro) {
+            return {
+                fallCheck: 0,
+                pilotCheck: 0,
+                reason: 'Running with damaged gyro'
+            };
+        }
+        if (!hasDamagedLegActuators) return null;
+
+        const hasDamagedHip = critSlots.some(slot => {
+            if (!slot.name || !slot.loc || !slot.destroyed) return false;
+            if (!LEG_LOCATIONS.has(slot.loc)) return false;
+            return slot.name.includes('Hip');
+        });
+        if (!hasDamagedHip) return null;
+
+        return {
+            fallCheck: 0,
+            pilotCheck: 0,
+            reason: 'Running with damaged hip'
+        };
+    }
+
+    override evaluateLegDestroyed(location: string, hits: number): void {
+        if (!LEG_LOCATIONS.has(location)) return;
+        const turnState = this.unit.turnState();
+        const destroyed = this.unit.isInternalLocDestroyed(location);
+        let isPsrRelevant = false;
+        const psr = turnState.getPSRCheckState();
+        if (destroyed) {
+            if (!psr.legsDestroyed) {
+                psr.legsDestroyed = new Set<string>();
+            }
+            if (hits > 0) {
+                psr.legsDestroyed.add(location);
+                isPsrRelevant = true;
+            }
+        } else {
+            if (psr.legsDestroyed && psr.legsDestroyed.has(location) && hits < 0) {
+                psr.legsDestroyed.delete(location);
+                isPsrRelevant = true;
+            }
+        }
+        if (isPsrRelevant) {
+            turnState.setPSRCheckState(psr);
+        }
+    }
+
+    override evaluateCritSlotHit(crit: CriticalSlot): void {
+        if (!crit.loc) return;
+        let isPsrRelevant = false;
+        const delta = (crit.destroying) ? 1 : -1;
+        const turnState = this.unit.turnState();
+        const psr = turnState.getPSRCheckState();
+        if (LEG_LOCATIONS.has(crit.loc)) {
+            if (crit.name?.includes('Foot') || crit.name?.includes('Leg')) {
+                if (!psr.legActuators) {
+                    psr.legActuators = new Map<string, number>();
+                }
+                psr.legActuators.set(crit.loc, Math.max(0, (psr.legActuators.get(crit.loc) || 0) + delta));
+                isPsrRelevant = true;
+            } else if (crit.name?.includes('Hip')) {
+                if (!psr.hipsHit) {
+                    psr.hipsHit = new Set<string>();
+                }
+                if (delta > 0) {
+                    psr.hipsHit.add(crit.loc);
+                } else {
+                    psr.hipsHit.delete(crit.loc);
+                }
+                isPsrRelevant = true;
+            }
+        } else if (crit.name?.includes('Gyro')) {
+            psr.gyroHit = Math.max(0, (psr.gyroHit || 0) + delta);
+            isPsrRelevant = true;
+            const critSlots = this.unit.getCritSlots();
+            const hasHeavyDutyGyro = critSlots.some(slot => slot.name && slot.name.includes('Heavy Duty') && slot.name.includes('Gyro'));
+            const gyroHits = critSlots.filter(slot => {
+                if (!slot.name) return false;
+                if (!slot.destroyed && !slot.destroying) return false;
+                if (!slot.name.includes('Gyro')) return false;
+                return true;
+            }).length;
+            if (((hasHeavyDutyGyro && gyroHits > 2) || (!hasHeavyDutyGyro && gyroHits > 1))) {
+                psr.gyroDestroyed = true;
+            } else {
+                psr.gyroDestroyed = false;
+            }
+        }
+        if (isPsrRelevant) {
+            turnState.setPSRCheckState(psr);
+        }
+    }
+
+    override heatSources(turnState: TurnState): UnitHeatSource[] {
+        const sources: UnitHeatSource[] = [
+            {
+                id: 'movement',
+                label: 'Movement',
+                value: this.computeMovementHeat(turnState),
+            }
+        ];
+        const damagedEngineHeat = this.computeDamagedEngineHeat();
+        if (damagedEngineHeat > 0) {
+            sources.push({
+                id: 'damaged-engine',
+                label: 'Damaged Engine',
+                value: damagedEngineHeat,
+            });
+        }
+        return sources;
+    }
+
+    private computeMovementHeat(turnState: TurnState): number {
+        let heat = 0;
+        const moveMode = turnState.moveMode();
+        const critSlots = this.unit.getCritSlots();
+        if (moveMode === 'walk') {
+            heat += 1;
+        } else if (moveMode === 'run') {
+            heat += 2;
+        } else if (moveMode === 'jump') {
+            const distance = turnState.moveDistance() || 0;
+            const hasImprovedJumpJet = critSlots.some(slot => slot.name && slot.name.includes('Improved Jump Jet') && slot.destroyed);
+            heat += Math.max(3, hasImprovedJumpJet ? Math.ceil(distance / 2) : distance);
+        }
+        return heat;
+    }
+
+    private computeDamagedEngineHeat(): number {
+        if (this.unit.shutdown) return 0;
+        const critSlots = this.unit.getCritSlots();
+        const engineHits = critSlots.filter(slot => slot.name && slot.name.includes('Engine') && (slot.destroyed || slot.destroying)).length;
+        return Math.min(10, engineHits * 5);
     }
 
     // ── Systems Status ───────────────────────────────────────────────────────

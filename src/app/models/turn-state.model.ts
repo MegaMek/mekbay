@@ -4,6 +4,7 @@ import { canChangeAirborneGround, getMotiveModeMaxDistance, type MotiveModes } f
 import type { CriticalSlot } from "./force-serialization";
 import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "./common.model";
 import type { CBTForceUnitState } from "./cbt-force-unit-state.model";
+import type { PSRCheck, UnitHeatSource } from "./rules/unit-type-rules";
 import {
     getTargetMovementDistanceModifier,
     getTargetMoveTypeModifier,
@@ -13,16 +14,9 @@ import {
     TN_SKIDDING_MODIFIER,
 } from "./target-number-calculator.model";
 
-export interface PSRCheck {
-    fallCheck?: number;
-    pilotCheck?: number;
-    reason: string;
-    loc?: string;
-    legFilter?: string;
-    ignorePreExistingGyro?: boolean;
-}
+export type { PSRCheck } from "./rules/unit-type-rules";
 
-interface PSRChecks {
+export interface PSRChecks {
     legActuators?: Map<string, number>;
     hipsHit?: Set<string>;
     gyroHit?: number;
@@ -46,7 +40,6 @@ export class TurnState {
         const airborne = this.airborne();
         const moveMode = this.moveMode();
         const moveDistance = this.moveDistance();
-        const psrChecks = this.psrChecks();
         const dmgReceived = this.dmgReceived();
         const unconsolidatedCrits = this.unitState.hasUnconsolidatedCrits();
         const unconsolidatedLocations = this.unitState.hasUnconsolidatedLocations();
@@ -56,7 +49,7 @@ export class TurnState {
             || moveDistance !== null
             || dmgReceived != 0
             || this.spotting()
-            || Object.keys(psrChecks).length > 0
+            || this.hasPendingPSRChecks()
             || unconsolidatedCrits
             || unconsolidatedLocations
                 || unconsolidatedInventory
@@ -64,192 +57,24 @@ export class TurnState {
     });
 
     dirtyPhase = computed<boolean>(() => {
-        const psrChecks = this.psrChecks();
         const dmgReceived = this.dmgReceived();
         const unconsolidatedCrits = this.unitState.hasUnconsolidatedCrits();
         const unconsolidatedLocations = this.unitState.hasUnconsolidatedLocations();
         const unconsolidatedInventory = this.unitState.hasUnconsolidatedInventory();
         return dmgReceived != 0
-            || Object.keys(psrChecks).length > 0
+            || this.hasPendingPSRChecks()
             || unconsolidatedCrits
             || unconsolidatedLocations
             || unconsolidatedInventory;
     });
 
     autoFall = computed<boolean>(() => {
-        return (this.psrChecks().legsDestroyed?.size || 0) > 0
-            || this.psrChecks().gyroDestroyed === true;
+        return this.unitState.unit.rules.autoFall();
     });
 
     getPSRChecks = computed<PSRCheck[]>(() => {
-        const checks: PSRCheck[] = [];
-        const psr = this.psrChecks();
-        const unit = this.unitState.unit;
-
-        if (psr.gyroDestroyed) {
-            checks.push({
-                fallCheck: 100,
-                pilotCheck: 6,
-                reason: 'Gyro destroyed',
-                ignorePreExistingGyro: true,
-            });
-        } else if ((psr.legsDestroyed?.size || 0) > 0) {
-            psr.legsDestroyed?.forEach((loc => {
-                checks.push({
-                    fallCheck: 100,
-                    pilotCheck: 5,
-                    loc: loc,
-                    legFilter: loc,
-                    reason: 'Leg destroyed'
-                });
-            }));
-        } else {
-            if (this.psrChecks().shutdown) {
-                checks.push({
-                    fallCheck: 3,
-                    pilotCheck: 3,
-                    reason: 'Shutdown'
-                });
-            }
-            if (this.dmgReceived() >= 20) {
-                checks.push({
-                    fallCheck: 1,
-                    pilotCheck: 1,
-                    reason: `Received ${this.dmgReceived()} damage`
-                });
-            }
-            // We place the actuators FIRST so that the hips of this turn will not filter them out
-            psr.legActuators?.forEach((count, loc) => {
-                for (let i = 0; i < count; i++) {
-                    checks.push({
-                        fallCheck: 1,
-                        pilotCheck: 1,
-                        loc: loc,
-                        reason: 'Leg actuator hit',
-                    });
-                }
-            });
-            if (psr.hipsHit) {
-                psr.hipsHit.forEach((loc) => {
-                    checks.push({
-                        fallCheck: 2,
-                        pilotCheck: 2,
-                        loc: loc,
-                        legFilter: loc,
-                        reason: 'Hip hit'
-                    });
-                });
-            }
-            const gyroHits = (psr.gyroHit || 0);
-            if (gyroHits > 0) {
-                const critSlots = unit.getCritSlots();
-                const hasHeavyDutyGyro = critSlots.some(slot => slot.name && slot.name.includes('Heavy Duty') && slot.name.includes('Gyro'));
-                const previouslyDestroyedGyroCount = unit.getCritSlots().filter(slot => {
-                    if (!slot.name || !slot.destroyed) return false;
-                    if (!slot.name.includes('Gyro')) return false;
-                    return true;
-                }).length;
-                if (hasHeavyDutyGyro && (previouslyDestroyedGyroCount + gyroHits) === 1) {
-                    checks.push({
-                        pilotCheck: 1,
-                        reason: 'Gyro hit', // This will not trigger a PSR, no fallCheck value
-                    });
-                } else {
-                    checks.push({
-                        fallCheck: 3,
-                        pilotCheck: 3,
-                        reason: 'Gyro hit',
-                        ignorePreExistingGyro: true,
-                    });
-                    
-                }
-            }
-            const movementCheck = this.applyMovePSR()
-                ? this.getCommittedDamageMovementModePSRCheck(this.moveMode())
-                : null;
-            if (movementCheck) {
-                checks.push(movementCheck);
-            }
-        }
-        return checks;
+        return this.unitState.unit.rules.getPSRChecks(this);
     });
-
-    getCommittedDamageMovementModePSRCheck(moveMode: MotiveModes | null): PSRCheck | null {
-        if (moveMode !== 'run' && moveMode !== 'jump') return null;
-
-        const unit = this.unitState.unit;
-        const critSlots = unit.getCritSlots();
-        const hasDamagedGyro = critSlots.some(slot => {
-            if (!slot.name || !slot.destroyed) return false;
-            return slot.name.includes('Gyro');
-        });
-
-        let hasDamagedLeg = false;
-        unit.locations?.internal?.forEach((_value, loc) => {
-            if (hasDamagedLeg) return;
-            if (!LEG_LOCATIONS.has(loc)) return;
-            if (unit.isInternalLocCommittedDestroyed(loc)) {
-                hasDamagedLeg = true;
-            }
-        });
-
-        const hasDamagedLegActuators = critSlots.some(slot => {
-            if (!slot.name || !slot.loc || !slot.destroyed) return false;
-            if (!LEG_LOCATIONS.has(slot.loc)) return false;
-            return slot.name.includes('Leg') || slot.name.includes('Foot') || slot.name.includes('Hip');
-        });
-
-        if (moveMode === 'jump') {
-            if (hasDamagedGyro) {
-                return {
-                    fallCheck: 0,
-                    pilotCheck: 0,
-                    reason: 'Jumping with damaged gyro'
-                };
-            }
-            if (hasDamagedLeg) {
-                return {
-                    fallCheck: 0,
-                    pilotCheck: 0,
-                    reason: 'Jumping with damaged leg'
-                };
-            }
-            if (hasDamagedLegActuators) {
-                return {
-                    fallCheck: 0,
-                    pilotCheck: 0,
-                    reason: 'Jumping with damaged leg actuator'
-                };
-            }
-            return null;
-        }
-
-        if (hasDamagedGyro) {
-            return {
-                fallCheck: 0,
-                pilotCheck: 0,
-                reason: 'Running with damaged gyro'
-            };
-        }
-        if (!hasDamagedLegActuators) return null;
-
-        const hasDamagedHip = critSlots.some(slot => {
-            if (!slot.name || !slot.loc || !slot.destroyed) return false;
-            if (!LEG_LOCATIONS.has(slot.loc)) return false;
-            return slot.name.includes('Hip');
-        });
-        if (!hasDamagedHip) return null;
-
-        return {
-            fallCheck: 0,
-            pilotCheck: 0,
-            reason: 'Running with damaged hip'
-        };
-    }
-
-    movementModeRequiresPSR(moveMode: MotiveModes | null): boolean {
-        return this.getCommittedDamageMovementModePSRCheck(moveMode) !== null;
-    }
 
     canRun = computed<boolean>(() => {
         const unit = this.unitState.unit;
@@ -324,7 +149,7 @@ export class TurnState {
     });
 
     PSRRollsCount = computed<number>(() => {
-        return this.getPSRChecks().filter((entry) => entry.fallCheck !== undefined).length;
+        return this.unitState.unit.rules.getPSRChecks(this).filter((entry) => entry.fallCheck !== undefined).length;
     });
 
     currentPhase = computed<'I' | 'M' | 'W' | 'P' | 'H'>(() => {
@@ -335,27 +160,8 @@ export class TurnState {
         }
     });
 
-    heatGeneratedFromMovement = computed(() => {
-        let heat = 0;
-        const moveMode = this.moveMode();
-        const critSlots = this.unitState.unit.getCritSlots();
-        if (moveMode === 'walk') {
-            heat += 1;
-        } else if (moveMode === 'run') {
-            heat += 2;
-        } else if (moveMode === 'jump') {
-            const distance = this.moveDistance() || 0;
-            const hasImprovedJumpJet = critSlots.some(slot => slot.name && slot.name.includes('Improved Jump Jet') && slot.destroyed);
-            heat += Math.max(3, hasImprovedJumpJet ? Math.ceil(distance / 2) : distance);
-        }
-        return heat;
-    });
-
-    heatGeneratedFromDamagedEngine = computed(() => {
-        if (this.unitState.unit.shutdown) return 0;
-        const critSlots = this.unitState.unit.getCritSlots();
-        const engineHits = critSlots.filter(slot => slot.name && slot.name.includes('Engine') && (slot.destroyed || slot.destroying)).length;
-        return Math.min(10, engineHits * 5);
+    heatSources = computed<UnitHeatSource[]>(() => {
+        return this.unitState.unit.rules.heatSources(this);
     });
 
     constructor(unitState: CBTForceUnitState) {
@@ -364,84 +170,28 @@ export class TurnState {
 
     resetPSRChecks() {
         this.applyMovePSR.set(false);
+        this.clearPSRCheckState();
+    }
+
+    getPSRCheckState(): PSRChecks {
+        return this.psrChecks();
+    }
+
+    hasPendingPSRChecks = computed<boolean>(() => {
+        return Object.keys(this.getPSRCheckState()).length > 0;
+    });
+
+    setPSRCheckState(psrChecks: PSRChecks) {
+        this.psrChecks.set({ ...psrChecks });
+    }
+
+    clearPSRCheckState() {
         this.psrChecks.set({});
         this.dmgReceived.set(0);
     }
 
     addDmgReceived(amount: number) {
         this.dmgReceived.set(this.dmgReceived() + amount);
-    }
-
-    evaluateLegDestroyed(location: string, hits: number) {
-        if (!LEG_LOCATIONS.has(location)) return;
-        const unit = this.unitState.unit;
-        if (!unit) return;
-        const destroyed = unit.isInternalLocDestroyed(location);
-        let isPsrRelevant = false;
-        const psr = this.psrChecks();
-        if (destroyed) {
-            if (!psr.legsDestroyed) {
-                psr.legsDestroyed = new Set<string>();
-            }
-            if (hits > 0) {
-                psr.legsDestroyed.add(location);
-                isPsrRelevant = true;
-            }
-        } else {
-            if (psr.legsDestroyed && psr.legsDestroyed.has(location) && hits < 0) {
-                psr.legsDestroyed.delete(location);
-                isPsrRelevant = true;
-            }
-        }
-        if (isPsrRelevant) {
-            this.psrChecks.set({ ...psr });
-        }
-    }
-
-    evaluateCritSlotHit(crit: CriticalSlot) {
-        if (!crit.loc) return;
-        let isPsrRelevant = false;
-        const delta = (crit.destroying) ? 1 : -1;
-        const psr = this.psrChecks();
-        if (LEG_LOCATIONS.has(crit.loc)) { // Leg location, check for leg/foot/hip hits
-            if (crit.name?.includes('Foot') || crit.name?.includes('Leg')) {
-                if (!psr.legActuators) {
-                    psr.legActuators = new Map<string, number>();
-                }
-                psr.legActuators.set(crit.loc, Math.max(0, (psr.legActuators.get(crit.loc) || 0) + delta));
-                isPsrRelevant = true;
-            } else if (crit.name?.includes('Hip')) {
-                if (!psr.hipsHit) {
-                    psr.hipsHit = new Set<string>();
-                }
-                if (delta > 0) {
-                    psr.hipsHit.add(crit.loc);
-                } else {
-                    psr.hipsHit.delete(crit.loc);
-                }
-                isPsrRelevant = true;
-            }
-        } else if (crit.name?.includes('Gyro')) {
-            psr.gyroHit = Math.max(0, (psr.gyroHit || 0) + delta);
-            isPsrRelevant = true;
-            // This is an Hit. Check if gyros are destroyed
-            const critSlots = this.unitState.unit.getCritSlots();
-            const hasHeavyDutyGyro = critSlots.some(slot => slot.name && slot.name.includes('Heavy Duty') && slot.name.includes('Gyro'));
-            const gyroHits = critSlots.filter(slot => {
-                if (!slot.name) return false;
-                if (!slot.destroyed && !slot.destroying) return false;
-                if (!slot.name.includes('Gyro')) return false;
-                return true;
-            }).length;
-            if (((hasHeavyDutyGyro && gyroHits > 2) || (!hasHeavyDutyGyro && gyroHits > 1))) { // It's destroyed this turn
-                psr.gyroDestroyed = true;
-            } else {
-                psr.gyroDestroyed = false;
-            }
-        }
-        if (isPsrRelevant) {
-            this.psrChecks.set({ ...psr });
-        }
     }
 
     maxDistanceCurrentMoveMode = computed<number>(() => {

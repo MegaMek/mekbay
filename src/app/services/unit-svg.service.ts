@@ -923,7 +923,7 @@ export class UnitSvgService {
         const turnState = unit.turnState();
         const damagedEngineHeatText = svg.getElementById('damagedEngineHeatText') as SVGTextElement | null;
         if (damagedEngineHeatText) {
-            const damagedEngineHeat = turnState.heatGeneratedFromDamagedEngine();
+            const damagedEngineHeat = turnState.heatSources().find(source => source.id === 'damaged-engine')?.value ?? 0;
             if (damagedEngineHeat > 0) {
                 damagedEngineHeatText.textContent = `Engine: +${damagedEngineHeat} HT`;
                 damagedEngineHeatText.removeAttribute('display');

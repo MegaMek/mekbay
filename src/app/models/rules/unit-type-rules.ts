@@ -31,13 +31,29 @@
  * affiliated with Microsoft.
  */
 
-import { signal, type Signal } from '@angular/core';
+import { computed, signal, type Signal } from '@angular/core';
+import type { CriticalSlot } from '../force-serialization';
 import type { MotiveModes } from '../motiveModes.model';
-import type { PSRCheck } from '../turn-state.model';
+import type { TurnState } from '../turn-state.model';
+
+export interface PSRCheck {
+    fallCheck?: number;
+    pilotCheck?: number;
+    reason: string;
+    loc?: string;
+    legFilter?: string;
+    ignorePreExistingGyro?: boolean;
+}
 
 export interface UnitSkillModifier {
     modifier: number;
     reason: string;
+}
+
+export interface UnitHeatSource {
+    id: string;
+    label: string;
+    value: number;
 }
 
 /**
@@ -50,20 +66,47 @@ export interface UnitTypeRules {
     /** Evaluate whether the unit should be marked destroyed based on current state. Idempotent. */
     evaluateDestroyed(): void;
 
+    /** Short label for required control rolls (PSR, DSR, etc.). */
+    readonly controlRollShortLabel: string;
+
+    /** Full label for required control rolls. */
+    readonly controlRollFullLabel: string;
+
     /** Piloting Skill Roll modifiers. Non-Mek types return { modifier: 0, modifiers: [] }. */
     readonly PSRModifiers: Signal<{ modifier: number; modifiers: PSRCheck[] }>;
 
     /** PSR target roll number (piloting skill + modifiers). Non-Mek types return 0. */
     readonly PSRTargetRoll: Signal<number>;
 
-    /** Gunnery skill modifiers from unit-type-specific rules. */
-    readonly gunneryModifier: Signal<number>;
-
-    /** Piloting skill modifiers from unit-type-specific rules. */
-    readonly pilotingModifier: Signal<number>;
-
     /** Gunnery modifier breakdown for UI display. */
     readonly gunneryModifiers: Signal<UnitSkillModifier[]>;
+
+    /** Gunnery skill modifier total from unit-type-specific rules. */
+    readonly gunneryModifier: Signal<number>;
+
+    /** Piloting modifier breakdown from unit-type-specific rules. */
+    readonly pilotingModifiers: Signal<UnitSkillModifier[]>;
+
+    /** Piloting skill modifier total from unit-type-specific rules. */
+    readonly pilotingModifier: Signal<number>;
+
+    /** Whether current phase damage causes automatic falling or equivalent unit-type failure. */
+    readonly autoFall: Signal<boolean>;
+
+    /** Required control-roll checks for the current phase. */
+    getPSRChecks(turnState: TurnState): PSRCheck[];
+
+    /** Movement-mode warning roll caused by committed damage. */
+    getCommittedDamageMovementModePSRCheck(moveMode: MotiveModes | null): PSRCheck | null;
+
+    /** Evaluate whether internal damage creates unit-type-specific control-roll checks. */
+    evaluateLegDestroyed(location: string, hits: number): void;
+
+    /** Evaluate whether critical damage creates unit-type-specific control-roll checks. */
+    evaluateCritSlotHit(crit: CriticalSlot): void;
+
+    /** Heat sources produced by current phase choices and damage state. */
+    heatSources(turnState: TurnState): UnitHeatSource[];
 
     /** Unit-type-specific movement distance override. Return null to use base unit data. */
     getMaxDistanceForMoveMode(moveMode: MotiveModes): number | null;
@@ -76,13 +119,43 @@ export interface UnitTypeRules {
 }
 
 export abstract class UnitTypeRulesBase implements UnitTypeRules {
+    readonly controlRollShortLabel: string;
+    readonly controlRollFullLabel: string;
     readonly PSRModifiers: Signal<{ modifier: number; modifiers: PSRCheck[] }> = signal({ modifier: 0, modifiers: [] });
     readonly PSRTargetRoll: Signal<number> = signal(0);
-    readonly gunneryModifier: Signal<number> = signal(0);
-    readonly pilotingModifier: Signal<number> = signal(0);
     readonly gunneryModifiers: Signal<UnitSkillModifier[]> = signal([]);
+    readonly gunneryModifier: Signal<number> = computed(() => this.gunneryModifiers().reduce((total, modifier) => total + modifier.modifier, 0));
+    readonly pilotingModifiers: Signal<UnitSkillModifier[]> = signal([]);
+    readonly pilotingModifier: Signal<number> = computed(() => this.pilotingModifiers().reduce((total, modifier) => total + modifier.modifier, 0));
+    readonly autoFall: Signal<boolean> = signal(false);
 
     abstract evaluateDestroyed(): void;
+
+    constructor(
+        controlRollShortLabel: string = 'PSR',
+        controlRollFullLabel: string = 'Piloting Skill Rolls'
+    ) {
+        this.controlRollShortLabel = controlRollShortLabel;
+        this.controlRollFullLabel = controlRollFullLabel;
+    }
+
+    getPSRChecks(_turnState: TurnState): PSRCheck[] {
+        return [];
+    }
+
+    getCommittedDamageMovementModePSRCheck(_moveMode: MotiveModes | null): PSRCheck | null {
+        return null;
+    }
+
+    evaluateLegDestroyed(_location: string, _hits: number): void {
+    }
+
+    evaluateCritSlotHit(_crit: CriticalSlot): void {
+    }
+
+    heatSources(_turnState: TurnState): UnitHeatSource[] {
+        return [];
+    }
 
     getMaxDistanceForMoveMode(_moveMode: MotiveModes): number | null {
         return null;

@@ -677,8 +677,8 @@ hr {
         color: #000;
     }
 
-    &.danger {
-        color: #a00;
+    &.danger:not(.selected) {
+        color: #d00;
         background-image:
             linear-gradient(#a00, #a00), linear-gradient(#a00, #a00),
             linear-gradient(#a00, #a00), linear-gradient(#a00, #a00),

@@ -63,8 +63,6 @@ interface VehicleSystemsStatus {
     flightStabilizerHit: boolean;
     motiveHits: MotiveHitTimestamp[];
     stabilizerLocations: Set<string>;
-    gunneryModifier: number;
-    pilotingModifier: number;
 }
 
 const STABILIZER_HIT_LOCATIONS: Record<string, readonly string[]> = {
@@ -85,7 +83,7 @@ const STABILIZER_HIT_LOCATIONS: Record<string, readonly string[]> = {
 export class VehicleRules extends UnitTypeRulesBase {
 
     constructor(private unit: CBTForceUnit) {
-        super();
+        super('DSR', 'Driving Skill Rolls');
     }
 
     readonly systemsStatus = computed<VehicleSystemsStatus>(() => {
@@ -111,31 +109,6 @@ export class VehicleRules extends UnitTypeRulesBase {
             }
         }
 
-        let gunneryModifier = 0;
-        let pilotingModifier = 0;
-        if (hasCrit('commander_hit')) {
-            gunneryModifier += 1;
-            pilotingModifier += 1;
-        }
-        if (hasCrit('copilot_hit')) {
-            gunneryModifier += 1;
-        }
-        if (hasCrit('driver_hit') || hasCrit('pilot_hit')) {
-            pilotingModifier += 2;
-        }
-        gunneryModifier += sensorHits;
-        if (hasCrit('flight_stabilizer_hit')) {
-            gunneryModifier += 1;
-            pilotingModifier += 3;
-        }
-        const appliedMotivePilotingLevels = new Set<number>();
-        for (const motiveHit of motiveHits) {
-            if (motiveHit.level >= 1 && motiveHit.level <= 3 && !appliedMotivePilotingLevels.has(motiveHit.level)) {
-                pilotingModifier += motiveHit.level;
-                appliedMotivePilotingLevels.add(motiveHit.level);
-            }
-        }
-
         return {
             commanderHit: hasCrit('commander_hit'),
             copilotHit: hasCrit('copilot_hit'),
@@ -147,13 +120,8 @@ export class VehicleRules extends UnitTypeRulesBase {
             flightStabilizerHit: hasCrit('flight_stabilizer_hit'),
             motiveHits,
             stabilizerLocations,
-            gunneryModifier,
-            pilotingModifier,
         };
     });
-
-    override readonly gunneryModifier = computed<number>(() => this.systemsStatus().gunneryModifier);
-    override readonly pilotingModifier = computed<number>(() => this.systemsStatus().pilotingModifier);
 
     override readonly gunneryModifiers = computed<UnitSkillModifier[]>(() => {
         const status = this.systemsStatus();
@@ -169,6 +137,28 @@ export class VehicleRules extends UnitTypeRulesBase {
         }
         if (status.flightStabilizerHit) {
             modifiers.push({ modifier: 1, reason: 'Flight stabilizer hit' });
+        }
+        return modifiers;
+    });
+
+    override readonly pilotingModifiers = computed<UnitSkillModifier[]>(() => {
+        const status = this.systemsStatus();
+        const modifiers: UnitSkillModifier[] = [];
+        if (status.commanderHit) {
+            modifiers.push({ modifier: 1, reason: 'Commander hit' });
+        }
+        if (status.driverOrPilotHit) {
+            modifiers.push({ modifier: 2, reason: 'Driver/Pilot hit' });
+        }
+        if (status.flightStabilizerHit) {
+            modifiers.push({ modifier: 3, reason: 'Flight stabilizer hit' });
+        }
+        const appliedMotivePilotingLevels = new Set<number>();
+        for (const motiveHit of status.motiveHits) {
+            if (motiveHit.level >= 1 && motiveHit.level <= 3 && !appliedMotivePilotingLevels.has(motiveHit.level)) {
+                modifiers.push({ modifier: motiveHit.level, reason: 'Motive system hit' });
+                appliedMotivePilotingLevels.add(motiveHit.level);
+            }
         }
         return modifiers;
     });
@@ -279,7 +269,7 @@ export class VehicleRules extends UnitTypeRulesBase {
                 appliedMotivePilotingLevels.add(motiveHit.level);
             }
         }
-        return { modifier: status.pilotingModifier + preExisting, modifiers };
+        return { modifier: this.pilotingModifier() + preExisting, modifiers };
     });
 
     override readonly PSRTargetRoll = computed<number>(() => this.unit.pilotingSkill() + this.PSRModifiers().modifier);
