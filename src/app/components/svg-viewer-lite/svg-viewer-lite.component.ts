@@ -61,9 +61,7 @@ export class SvgViewerLiteComponent {
     constructor() {
         effect((onCleanup) => {
             const loadGeneration = ++this.sheetLoadGeneration;
-            const abortController = new AbortController();
             onCleanup(() => {
-                abortController.abort();
                 if (this.sheetLoadGeneration === loadGeneration) {
                     this.sheetLoadGeneration += 1;
                 }
@@ -81,7 +79,7 @@ export class SvgViewerLiteComponent {
                 try {
                     const svgs: SVGSVGElement[] = [];
                     for (const sheetName of u.sheets) {
-                        const svg = await this.sheetService.getSheet(sheetName, abortController.signal);
+                        const svg = await this.sheetService.getSheet(sheetName);
                         if (!this.isCurrentSheetLoad(loadGeneration)) return;
 
                         const cloned = svg.cloneNode(true) as SVGSVGElement;
