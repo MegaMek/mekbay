@@ -129,7 +129,7 @@ export interface UnitTypeRules {
     isMotiveModeAvailable(moveMode: MotiveModes): boolean;
 
     /** Unit-type-specific attack movement modifier. */
-    getAttackMovementModifier(moveMode: MotiveModes | null | undefined): number;
+    getAttackMovementModifier(moveMode: MotiveModes | null | undefined, airborne?: boolean): number;
 
     /** Attack modifier breakdown for turn summary UI. */
     getAttackModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[];
@@ -189,7 +189,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         return true;
     }
 
-    getAttackMovementModifier(_moveMode: MotiveModes | null | undefined): number {
+    getAttackMovementModifier(_moveMode: MotiveModes | null | undefined, _airborne: boolean = false): number {
         return 0;
     }
 
@@ -197,7 +197,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         const entries = this.gunneryModifiers()
             .filter(modifier => modifier.modifier !== 0)
             .map(modifier => ({ label: modifier.reason, modifier: modifier.modifier }));
-        const movementModifier = this.getAttackMovementModifier(turnState.moveMode());
+        const movementModifier = this.getAttackMovementModifier(turnState.moveMode(), turnState.airborne() ?? false);
         if (movementModifier !== 0) {
             entries.push({ label: 'Attacker movement', modifier: movementModifier });
         }

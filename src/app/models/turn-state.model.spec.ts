@@ -142,6 +142,22 @@ describe('TurnState', () => {
             expect(turnState.getTotalTargetModifierAsAttacker()).toBe(4);
         });
 
+        it('uses LAM airborne attack movement modifiers', () => {
+            const { turnState } = createTurnStateHarness({
+                unit: { subtype: 'Land-Air BattleMek' },
+            });
+
+            turnState.airborne.set(false);
+            turnState.moveMode.set('walk');
+            expect(turnState.getAttackMovementModifier()).toBe(1);
+
+            turnState.airborne.set(true);
+            expect(turnState.getAttackMovementModifier()).toBe(3);
+
+            turnState.moveMode.set('run');
+            expect(turnState.getAttackMovementModifier()).toBe(4);
+        });
+
         it('keeps the defender modifier total in sync with the rules breakdown', () => {
             const { turnState } = createTurnStateHarness({
                 prone: true,
@@ -155,7 +171,7 @@ describe('TurnState', () => {
             expect(turnState.getDefenseModifierBreakdown()).toEqual([
                 { label: 'Prone', modifier: -2 },
                 { label: 'Skidding', modifier: 2 },
-                { label: 'Airborne', modifier: 1 },
+                { label: 'Jumped', modifier: 1 },
                 { label: 'Moved 7-9 hexes', modifier: 3 },
                 { label: 'Battle Armor', modifier: 1 },
             ]);

@@ -94,7 +94,7 @@ export class TurnState {
     });
 
     getAttackMovementModifier = computed<number>(() => {
-        return this.unitState.unit.rules.getAttackMovementModifier(this.moveMode());
+        return this.unitState.unit.rules.getAttackMovementModifier(this.moveMode(), this.airborne() ?? false);
     });
 
     attackMovementModifierCanApply = computed<boolean>(() => {
@@ -102,12 +102,12 @@ export class TurnState {
         const canChangeAirborne = canChangeAirborneGround(unit.getUnit());
         if (!canChangeAirborne) {
             return unit.getAvailableMotiveModes(false)
-                .some(option => unit.rules.getAttackMovementModifier(option.mode) !== 0);
+                .some(option => unit.rules.getAttackMovementModifier(option.mode, false) !== 0);
         }
         return unit.getAvailableMotiveModes(false)
-            .some(option => unit.rules.getAttackMovementModifier(option.mode) !== 0) ||
+            .some(option => unit.rules.getAttackMovementModifier(option.mode, false) !== 0) ||
             unit.getAvailableMotiveModes(true)
-            .some(option => unit.rules.getAttackMovementModifier(option.mode) !== 0);
+            .some(option => unit.rules.getAttackMovementModifier(option.mode, true) !== 0);
     });
 
     missingAttackMovementModifier = computed<boolean>(() => {

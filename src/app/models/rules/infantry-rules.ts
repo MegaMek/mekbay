@@ -104,8 +104,7 @@ export class InfantryRules extends UnitTypeRulesBase {
     }
 
     override getMinDistanceForMoveMode(moveMode: MotiveModes): number | null {
-        const baseUnit = this.unit.getUnit();
-        if (baseUnit.subtype === 'Battle Armor' && moveMode === 'jump') return 1;
+        if (moveMode === 'jump') return 1;
         return null;
     }
 

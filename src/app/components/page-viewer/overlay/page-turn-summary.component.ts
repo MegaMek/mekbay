@@ -130,7 +130,8 @@ export class PageTurnSummaryPanelComponent {
     });
 
     moveModeModifierLabel(mode: MotiveModes): string | null {
-        const modifier = this.unit()?.rules.getAttackMovementModifier(mode) ?? 0;
+        const unit = this.unit();
+        const modifier = unit?.rules.getAttackMovementModifier(mode, unit.turnState().airborne() ?? false) ?? 0;
         if (modifier === 0) return null;
         return modifier > 0 ? `+${modifier}` : `${modifier}`;
     }

@@ -967,7 +967,7 @@ export class UnitSvgService {
                 : moveEl === mpRunEl ? 'run'
                     : moveEl === mpJumpEl || moveEl === mpAltMode ? 'jump'
                         : null;
-            return candidateMode !== null && unit.rules.getAttackMovementModifier(candidateMode) !== 0;
+            return candidateMode !== null && unit.rules.getAttackMovementModifier(candidateMode, unit.turnState().airborne() ?? false) !== 0;
         });
 
         if (moveMode !== 'stationary') {
