@@ -841,8 +841,8 @@ export class CBTForceUnit extends ForceUnit {
         this._rules.evaluateDestroyed();
     }
 
-    public getAvailableMotiveModes(): MotiveModeOption[] {
-        return getMotiveModesOptionsByUnit(this.getUnit(), this.turnState().airborne() ?? false)
+    public getAvailableMotiveModes(airborne: boolean): MotiveModeOption[] {
+        return getMotiveModesOptionsByUnit(this.getUnit(), airborne)
             .filter(option => this._rules.isMotiveModeAvailable(option.mode));
     }
 

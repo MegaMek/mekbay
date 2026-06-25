@@ -259,11 +259,11 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const forceUnit = createForceUnit();
         initialize(forceUnit);
 
-        expect(forceUnit.getAvailableMotiveModes().some(option => option.mode === 'run')).toBeTrue();
+        expect(forceUnit.getAvailableMotiveModes(forceUnit.turnState().airborne() ?? false).some(option => option.mode === 'run')).toBeTrue();
 
         forceUnit.writeCrits([{ id: 'flight_stabilizer_hit', destroyed: 1 } as CriticalSlot]);
 
-        expect(forceUnit.getAvailableMotiveModes().some(option => option.mode === 'run')).toBeFalse();
+        expect(forceUnit.getAvailableMotiveModes(forceUnit.turnState().airborne() ?? false).some(option => option.mode === 'run')).toBeFalse();
     });
 
     it('serializes and updates direct inventory ammo custom type, count, and total per bin', () => {

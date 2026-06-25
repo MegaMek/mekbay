@@ -244,7 +244,7 @@ export class PageTurnSummaryPanelComponent {
     moveModes = computed<MotiveModeOption[]>(() => {
         const u = this.unit();
         if (!u) return [];
-        return u.getAvailableMotiveModes();
+        return u.getAvailableMotiveModes(this.unit()?.turnState().airborne() ?? false);
     });
 
     selectMove(mode: MotiveModes) {

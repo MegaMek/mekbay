@@ -1,6 +1,6 @@
 import { computed, signal } from "@angular/core";
 import type { ForceUnitState } from "./force-unit-state.model";
-import { getMotiveModeMaxDistance, type MotiveModes } from "./motiveModes.model";
+import { canChangeAirborneGround, getMotiveModeMaxDistance, type MotiveModes } from "./motiveModes.model";
 import type { CriticalSlot } from "./force-serialization";
 import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "./common.model";
 import type { CBTForceUnitState } from "./cbt-force-unit-state.model";
@@ -282,7 +282,14 @@ export class TurnState {
 
     attackMovementModifierCanApply = computed<boolean>(() => {
         const unit = this.unitState.unit;
-        return unit.getAvailableMotiveModes()
+        const canChangeAirborne = canChangeAirborneGround(unit.getUnit());
+        if (!canChangeAirborne) {
+            return unit.getAvailableMotiveModes(false)
+                .some(option => unit.rules.getAttackMovementModifier(option.mode) !== 0);
+        }
+        return unit.getAvailableMotiveModes(false)
+            .some(option => unit.rules.getAttackMovementModifier(option.mode) !== 0) ||
+            unit.getAvailableMotiveModes(true)
             .some(option => unit.rules.getAttackMovementModifier(option.mode) !== 0);
     });
 
