@@ -1074,6 +1074,16 @@ hr {
     text-align: center;
     box-sizing: border-box;
     container-type: inline-size;
+
+    @media (max-width: 500px) {
+        &.mobile-fullscreen {
+            width: 100dvw;
+            height: 100dvh;
+            max-width: none;
+            max-height: none;
+            padding: 8px;
+        }
+    }
 }
 
 h2 {

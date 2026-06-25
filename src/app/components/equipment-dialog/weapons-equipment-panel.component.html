@@ -196,7 +196,7 @@
                                                         <span class="control-label">{{ choice.label }}</span>
                                                     }
                                                     @case ('toggle') {
-                                                        <button class="bt-button tiny square-small" type="button" [class.active-control]="choice.active" [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.label }}</button>
+                                                        <button class="bt-button tiny" type="button" [class.active-control]="choice.active" [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.label }}</button>
                                                     }
                                                     @default {
                                                         <button class="bt-button tiny" type="button" [class.active-control]="choice.active" [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.shortLabel || choice.label }}</button>
