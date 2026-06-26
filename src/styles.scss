@@ -1942,6 +1942,52 @@ hr.divider {
             }
         }
 
+        .unitStateButton {
+            cursor: pointer;
+
+            text {
+                pointer-events: none;
+            }
+
+            &.active rect {
+                fill: var(--unit-state-active-color, #666) !important;
+            }
+
+            &.active text {
+                fill: #fff !important;
+            }
+        }
+
+        .unitStateBanner {
+            pointer-events: none;
+            opacity: 0;
+
+            .unitStateBannerRect {
+                transform-box: fill-box;
+                transform-origin: left center;
+                transform: scaleX(0);
+                fill-opacity: 0.9;
+                transition: transform 90ms ease-out;
+            }
+
+            .unitStateBannerText {
+                opacity: 0;
+                transition: opacity 60ms ease-out 40ms;
+            }
+
+            &.visible {
+                opacity: 1;
+
+                .unitStateBannerRect {
+                    transform: scaleX(1);
+                }
+
+                .unitStateBannerText {
+                    opacity: 1;
+                }
+            }
+        }
+
         .pip.disabled {
             stroke: var(--disabled-color) !important;
             fill: #666 !important;
