@@ -388,12 +388,11 @@ export class MekRules extends UnitTypeRulesBase {
             return hasXXLEngine ? 6 : 2;
         } else if (moveMode === 'jump') {
             const distance = turnState.moveDistance() || 0;
-            const improvedJumpJetDistance = Math.min(distance, this.countWorkingImprovedJumpJets());
-            const standardJumpJetDistance = distance - improvedJumpJetDistance;
+            const hasImprovedJumpJets = this.hasImprovedJumpJets();
             if (hasXXLEngine) {
-                return Math.max(3, improvedJumpJetDistance + (standardJumpJetDistance * 2));
+                return Math.max(3, hasImprovedJumpJets ? distance : distance * 2);
             }
-            return Math.max(3, Math.ceil(improvedJumpJetDistance / 2) + standardJumpJetDistance);
+            return Math.max(3, Math.ceil(distance / 2) + distance);
         }
         return 0;
     }
@@ -408,16 +407,12 @@ export class MekRules extends UnitTypeRulesBase {
             && superCooledMyomerSlots.some(slot => !slot.destroyed);
     }
 
-    private countWorkingImprovedJumpJets(): number {
-        return this.unit.getCritSlots().filter(slot => this.isImprovedJumpJetSlot(slot) && !slot.destroyed).length;
+    private hasImprovedJumpJets(): boolean {
+        return this.unit.getCritSlots().some(slot => (slot.eq?.hasFlag('F_JUMP_JET') && slot.eq?.hasFlag('S_IMPROVED')));
     }
 
     private isSuperCooledMyomerSlot(slot: CriticalSlot): boolean {
         return slot.eq?.hasFlag('F_SCM') === true;
-    }
-
-    private isImprovedJumpJetSlot(slot: CriticalSlot): boolean {
-        return (slot.eq?.hasFlag('F_JUMP_JET') === true && slot.eq?.hasFlag('S_IMPROVED') === true);
     }
 
     private computeDamagedEngineHeat(): number {
