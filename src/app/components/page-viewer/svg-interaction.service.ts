@@ -65,6 +65,7 @@ import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } f
 import { inventoryTargetCategory, inventoryTargetNumberText, parseInventoryTargetNumberCell, readInventoryTargetDisplay, readInventoryTargetText } from '../../utils/inventory-target-number.util';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
 import { committedCriticalHitCount, isRepeatableMotiveHitId, motiveHitLevelFromId, MOTIVE_HIT_PIP_COUNT, pendingCriticalHitTimestamps } from '../../models/rules/vehicle-motive-hit.util';
+import { UnitStateDropdownComponent, type UnitStateDropdownChoice } from './unit-state-dropdown.component';
 
 type SheetInventoryRangeKey = InventoryRangeKey | 'extreme';
 type HeatMarkerData = { el: SVGElement | null, heat: number; baselineHeat: number };
@@ -91,6 +92,7 @@ const INVENTORY_RANGE_BUTTON_CLASSES: ReadonlyArray<readonly [string, SheetInven
 const VTOL_ROTOR_CRIT_ID = 'rotor';
 const VTOL_ROTOR_HITS_MAX = 20;
 const SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY = 'svg-inventory-target-choice';
+const SVG_UNIT_STATE_DROPDOWN_OVERLAY_KEY = 'svg-unit-state-dropdown';
 const REPEATABLE_MOTIVE_HIT_LABELS = new Map<number, string>([
     [2, 'Medium'],
     [3, 'Heavy']
@@ -242,6 +244,7 @@ export class SvgInteractionService {
         this.setupCrewHitInteractions(svg, signal);
         this.setupSkillInteractions(svg, signal);
         this.setupCrewNameInteractions(svg, signal);
+        this.setupUnitStateInteractions(svg, signal);
         this.setupInventoryInteractions(svg, signal);
         this.setupAmmoProfileInteractions(svg, signal);
     }
@@ -1292,6 +1295,68 @@ export class SvgInteractionService {
         }, { passive: false, signal });
     }
 
+    private setupUnitStateInteractions(svg: SVGSVGElement, signal: AbortSignal) {
+        svg.querySelectorAll<SVGElement>('.unitStateButton').forEach(el => {
+            const state = el.getAttribute('state');
+            if (state !== 'prone' && state !== 'shutdown' && state !== 'menu') return;
+            this.addSvgTapHandler(el, (event: PointerEvent) => {
+                const unit = this.unit();
+                const clickTarget = this.state.clickTarget;
+                if (!unit || !clickTarget || (clickTarget !== el && !el.contains(clickTarget))) return;
+                if (state === 'prone') {
+                    unit.setProne(!unit.prone);
+                } else if (state === 'shutdown') {
+                    unit.setShutdown(!unit.shutdown);
+                } else {
+                    this.showUnitStateDropdown(el, unit);
+                }
+            }, signal);
+        });
+    }
+
+    private showUnitStateDropdown(el: SVGElement, unit: CBTForceUnit): void {
+        if (this.overlayManager.has(SVG_UNIT_STATE_DROPDOWN_OVERLAY_KEY)) {
+            this.overlayManager.closeManagedOverlay(SVG_UNIT_STATE_DROPDOWN_OVERLAY_KEY);
+            return;
+        }
+
+        this.removePicker();
+        const portal = new ComponentPortal(UnitStateDropdownComponent, null, this.injector);
+        const { componentRef } = this.overlayManager.createManagedOverlay(SVG_UNIT_STATE_DROPDOWN_OVERLAY_KEY, el as unknown as HTMLElement, portal, {
+            hasBackdrop: false,
+            panelClass: 'unit-state-dropdown-overlay-panel',
+            closeOnOutsideClick: true,
+            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            positions: [
+                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 }
+            ]
+        });
+        const updateChoices = () => {
+            componentRef.setInput('choices', this.unitStateDropdownChoices(el, unit));
+            componentRef.changeDetectorRef.detectChanges();
+        };
+        updateChoices();
+
+        outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(state => {
+            unit.setUnitState(state, !unit.getUnitState(state));
+            updateChoices();
+        });
+    }
+
+    private unitStateDropdownChoices(el: SVGElement, unit: CBTForceUnit): UnitStateDropdownChoice[] {
+        return [
+            { key: 'swarmed', label: 'SWARMED', color: this.unitStateColor(el, 'swarmed', '#f57c00'), active: unit.swarmed },
+            { key: 'tagged', label: 'TAGGED', color: this.unitStateColor(el, 'tagged', '#1976d2'), active: unit.tagged },
+        ];
+    }
+
+    private unitStateColor(el: SVGElement, state: string, fallback: string): string {
+        return el.ownerSVGElement?.querySelector<SVGElement>(`.unitStateBanner[state="${state}"]`)?.getAttribute('state-color') ?? fallback;
+    }
+
     private openEquipmentDialog(unit: CBTForceUnit, initialTab: EquipmentDialogTab): void {
         this.removePicker();
         this.overlayManager.closeAllManagedOverlays();
@@ -1735,6 +1800,8 @@ export class SvgInteractionService {
         selected: PickerValue | null;
         style?: ChoicePickerStyle;
         suggestedStyle?: ChoicePickerStyle;
+        horizontal?: boolean;
+        align?: 'topleft' | 'left' | 'center' | 'top';
         targetType?: PickerTargetType;
         onPick: (val: PickerChoice) => void;
         onCancel: () => void;
@@ -1773,6 +1840,8 @@ export class SvgInteractionService {
                 y: opts.position?.y ?? (rect.top + rect.height / 2) 
             };
         }
+        horizontal = opts.horizontal ?? horizontal;
+        align = opts.align ?? align;
 
         this.pickerRef = this.pickerFactory.createChoicePicker({
             values: opts.values,
@@ -1885,6 +1954,7 @@ export class SvgInteractionService {
         this.state.clickTarget = null;
         this.state.heatMarkerData.set(null);
         this.overlayManager.closeManagedOverlay(SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY);
+        this.overlayManager.closeManagedOverlay(SVG_UNIT_STATE_DROPDOWN_OVERLAY_KEY);
         this.unit.set(null);
     }
 }
