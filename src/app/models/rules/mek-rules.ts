@@ -373,19 +373,50 @@ export class MekRules extends UnitTypeRulesBase {
     }
 
     private computeMovementHeat(turnState: TurnState): number {
-        let heat = 0;
         const moveMode = turnState.moveMode();
-        const critSlots = this.unit.getCritSlots();
-        if (moveMode === 'walk') {
-            heat += 1;
+        const hasXXLEngine = this.hasXXLEngine();
+        const superCooledMyomerActive = this.hasActiveSuperCooledMyomer();
+        if (moveMode === 'stationary') {
+            if (superCooledMyomerActive) return 0;
+            return hasXXLEngine ? 2 : 0;
+        } else if (moveMode === 'walk') {
+            if (superCooledMyomerActive) return 0;
+            return hasXXLEngine ? 4 : 1;
         } else if (moveMode === 'run') {
-            heat += 2;
+            if (superCooledMyomerActive) return 0;
+            return hasXXLEngine ? 6 : 2;
         } else if (moveMode === 'jump') {
             const distance = turnState.moveDistance() || 0;
-            const hasImprovedJumpJet = critSlots.some(slot => slot.name && slot.name.includes('Improved Jump Jet') && slot.destroyed);
-            heat += Math.max(3, hasImprovedJumpJet ? Math.ceil(distance / 2) : distance);
+            const improvedJumpJetDistance = Math.min(distance, this.countWorkingImprovedJumpJets());
+            const standardJumpJetDistance = distance - improvedJumpJetDistance;
+            if (hasXXLEngine) {
+                return Math.max(3, improvedJumpJetDistance + (standardJumpJetDistance * 2));
+            }
+            return Math.max(3, Math.ceil(improvedJumpJetDistance / 2) + standardJumpJetDistance);
         }
-        return heat;
+        return 0;
+    }
+
+    private hasXXLEngine(): boolean {
+        return this.unit.getUnit().engine?.startsWith('XXL ') ?? false;
+    }
+
+    private hasActiveSuperCooledMyomer(): boolean {
+        const superCooledMyomerSlots = this.unit.getCritSlots().filter(slot => this.isSuperCooledMyomerSlot(slot));
+        return superCooledMyomerSlots.length > 0
+            && superCooledMyomerSlots.some(slot => !slot.destroyed);
+    }
+
+    private countWorkingImprovedJumpJets(): number {
+        return this.unit.getCritSlots().filter(slot => this.isImprovedJumpJetSlot(slot) && !slot.destroyed).length;
+    }
+
+    private isSuperCooledMyomerSlot(slot: CriticalSlot): boolean {
+        return slot.eq?.hasFlag('F_SCM') === true;
+    }
+
+    private isImprovedJumpJetSlot(slot: CriticalSlot): boolean {
+        return (slot.eq?.hasFlag('F_JUMP_JET') === true && slot.eq?.hasFlag('S_IMPROVED') === true);
     }
 
     private computeDamagedEngineHeat(): number {
@@ -731,7 +762,7 @@ export class MekRules extends UnitTypeRulesBase {
 
         // SuperCooledMyomer destroyed reduces dissipation
         const destroyedSuperCooledMyomer = critSlots.filter(
-            slot => slot.name?.includes('SuperCooledMyomer') && slot.destroyed
+            slot => this.isSuperCooledMyomerSlot(slot) && slot.destroyed
         ).length;
 
         let totalDissipation = base.totalDissipation;

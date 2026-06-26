@@ -6,6 +6,7 @@ import { MekRules } from './rules/mek-rules';
 import type { UnitTypeRules } from './rules/unit-type-rules';
 import type { Unit } from './units.model';
 import { TurnState } from './turn-state.model';
+import { Equipment } from './equipment.model';
 
 interface TurnStateHarnessOptions {
     critSlots?: CriticalSlot[];
@@ -30,13 +31,30 @@ function createCritSlot(
     loc: string,
     overrides: Partial<CriticalSlot> = {}
 ): CriticalSlot {
+    const flags = getCritSlotEquipmentFlags(name);
     return {
         id: `${name}@${loc}#0`,
         name,
         loc,
         slot: 0,
+        ...(flags.length > 0 ? { eq: createEquipment(name, flags) } : {}),
         ...overrides,
     };
+}
+
+function createEquipment(name: string, flags: string[]): Equipment {
+    return new Equipment({
+        id: name,
+        name,
+        type: 'misc',
+        flags,
+    });
+}
+
+function getCritSlotEquipmentFlags(name: string): string[] {
+    if (name === 'Improved Jump Jet') return ['F_JUMP_JET', 'S_IMPROVED'];
+    if (name === 'RISC Super-Cooled Myomer') return ['F_SCM'];
+    return [];
 }
 
 function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStateHarness {
@@ -83,6 +101,10 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
 
 function getReasons(turnState: TurnState): string[] {
     return turnState.getPSRChecks().map(check => check.reason);
+}
+
+function getMovementHeat(turnState: TurnState): number {
+    return turnState.heatSources().find(source => source.id === 'movement')?.value ?? 0;
 }
 
 describe('TurnState', () => {
@@ -202,6 +224,142 @@ describe('TurnState', () => {
 
             turnState.moveMode.set('walk');
             expect(turnState.minDistanceCurrentMoveMode()).toBe(0);
+        });
+    });
+
+    describe('movement heat', () => {
+        it('uses standard mek movement heat by default', () => {
+            const { turnState } = createTurnStateHarness();
+
+            turnState.moveMode.set('stationary');
+            expect(getMovementHeat(turnState)).toBe(0);
+
+            turnState.moveMode.set('walk');
+            expect(getMovementHeat(turnState)).toBe(1);
+
+            turnState.moveMode.set('run');
+            expect(getMovementHeat(turnState)).toBe(2);
+
+            turnState.moveMode.set('jump');
+            turnState.moveDistance.set(5);
+            expect(getMovementHeat(turnState)).toBe(5);
+        });
+
+        it('uses reduced jump heat for working improved jump jets', () => {
+            const { turnState } = createTurnStateHarness({
+                critSlots: [
+                    createCritSlot('Improved Jump Jet', 'LT'),
+                    createCritSlot('Improved Jump Jet', 'LT'),
+                    createCritSlot('Improved Jump Jet', 'LT'),
+                    createCritSlot('Improved Jump Jet', 'RT'),
+                    createCritSlot('Improved Jump Jet', 'RT'),
+                    createCritSlot('Improved Jump Jet', 'RT'),
+                ],
+            });
+
+            turnState.moveMode.set('jump');
+            turnState.moveDistance.set(6);
+
+            expect(getMovementHeat(turnState)).toBe(3);
+        });
+
+        it('uses XXL engine movement heat without active Super-Cooled Myomer', () => {
+            const { turnState } = createTurnStateHarness({
+                unit: { engine: 'XXL (Clan)' },
+            });
+
+            turnState.moveMode.set('stationary');
+            expect(getMovementHeat(turnState)).toBe(2);
+
+            turnState.moveMode.set('walk');
+            expect(getMovementHeat(turnState)).toBe(4);
+
+            turnState.moveMode.set('run');
+            expect(getMovementHeat(turnState)).toBe(6);
+
+            turnState.moveMode.set('jump');
+            turnState.moveDistance.set(5);
+            expect(getMovementHeat(turnState)).toBe(10);
+        });
+
+        it('keeps the XXL jump minimum at 3 heat', () => {
+            const { turnState } = createTurnStateHarness({
+                unit: { engine: 'XXL (IS)' },
+            });
+
+            turnState.moveMode.set('jump');
+            turnState.moveDistance.set(1);
+
+            expect(getMovementHeat(turnState)).toBe(3);
+        });
+
+        it('makes improved jump jets generate normal jump heat on XXL engines', () => {
+            const { turnState } = createTurnStateHarness({
+                unit: { engine: 'XXL (IS)' },
+                critSlots: [
+                    createCritSlot('Improved Jump Jet', 'LT'),
+                    createCritSlot('Improved Jump Jet', 'LT'),
+                    createCritSlot('Improved Jump Jet', 'RT'),
+                    createCritSlot('Improved Jump Jet', 'RT'),
+                    createCritSlot('Improved Jump Jet', 'CT'),
+                ],
+            });
+
+            turnState.moveMode.set('jump');
+            turnState.moveDistance.set(5);
+
+            expect(getMovementHeat(turnState)).toBe(5);
+        });
+
+        it('doubles only standard jump jet heat on XXL engines with mixed jump jets', () => {
+            const { turnState } = createTurnStateHarness({
+                unit: { engine: 'XXL (Clan)' },
+                critSlots: [
+                    createCritSlot('Improved Jump Jet', 'LT'),
+                    createCritSlot('Improved Jump Jet', 'RT'),
+                ],
+            });
+
+            turnState.moveMode.set('jump');
+            turnState.moveDistance.set(5);
+
+            expect(getMovementHeat(turnState)).toBe(8);
+        });
+
+        it('suppresses non-jump movement heat while any Super-Cooled Myomer crit is working', () => {
+            const { turnState } = createTurnStateHarness({
+                unit: { engine: 'XXL (Clan)' },
+                critSlots: [
+                    createCritSlot('RISC Super-Cooled Myomer', 'LT', { destroyed: 1 }),
+                    createCritSlot('RISC Super-Cooled Myomer', 'RT'),
+                ],
+            });
+
+            turnState.moveMode.set('stationary');
+            expect(getMovementHeat(turnState)).toBe(0);
+
+            turnState.moveMode.set('walk');
+            expect(getMovementHeat(turnState)).toBe(0);
+
+            turnState.moveMode.set('run');
+            expect(getMovementHeat(turnState)).toBe(0);
+
+            turnState.moveMode.set('jump');
+            turnState.moveDistance.set(5);
+            expect(getMovementHeat(turnState)).toBe(10);
+        });
+
+        it('restores XXL movement heat when all Super-Cooled Myomer crits are destroyed', () => {
+            const { turnState } = createTurnStateHarness({
+                unit: { engine: 'XXL (Clan)' },
+                critSlots: [
+                    createCritSlot('RISC Super-Cooled Myomer', 'LT', { destroyed: 1 }),
+                    createCritSlot('RISC Super-Cooled Myomer', 'RT', { destroyed: 1 }),
+                ],
+            });
+
+            turnState.moveMode.set('walk');
+            expect(getMovementHeat(turnState)).toBe(4);
         });
     });
 });
