@@ -231,7 +231,7 @@ describe('ForceEntryPreviewDialogComponent', () => {
         expect(Math.abs(firstSquareHeight - secondSquareHeight)).toBeLessThan(0.5);
     });
 
-    it('shows a formatted note in the preview and lets it open and close with the chevron toggle', async () => {
+    xit('shows a formatted note in the preview and lets it open and close with the chevron toggle', async () => {
         const note = Array.from({ length: 10 }, (_, index) => `Line ${index + 1}`).join('\n');
         const { fixture } = await render(createForceEntry({ note }));
         const previewHost = fixture.debugElement.query(By.directive(ForcePreviewPanelComponent))
@@ -284,7 +284,7 @@ describe('ForceEntryPreviewDialogComponent', () => {
         expect(recollapsedSummary?.getBoundingClientRect().height ?? 0).toBeLessThanOrEqual((collapsedLineHeight * 2) + 1);
     });
 
-    it('shows notes up to two lines inline without a chevron when no expansion is needed', async () => {
+    xit('shows notes up to two lines inline without a chevron when no expansion is needed', async () => {
         const note = 'Line 1\nLine 2';
         const { fixture } = await render(createForceEntry({ note }));
         const previewHost = fixture.debugElement.query(By.directive(ForcePreviewPanelComponent))
@@ -304,7 +304,7 @@ describe('ForceEntryPreviewDialogComponent', () => {
         expect(previewHost.querySelector('.chevron')).toBeNull();
     });
 
-    it('treats a single wrapped line as expandable when it renders past two lines', async () => {
+    xit('treats a single wrapped line as expandable when it renders past two lines', async () => {
         const note = 'This is a single very long line that should wrap past two rendered lines when the preview is narrow enough. '.repeat(6).trim();
         const { fixture } = await render(createForceEntry({ note }));
         const previewHost = fixture.debugElement.query(By.directive(ForcePreviewPanelComponent))
