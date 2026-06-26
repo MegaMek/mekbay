@@ -43,8 +43,8 @@ import { UnitTypeRulesBase } from './unit-type-rules';
  */
 export class ProtoMekRules extends UnitTypeRulesBase {
 
-    constructor(private unit: CBTForceUnit) {
-        super();
+    constructor(unit: CBTForceUnit) {
+        super(unit);
     }
 
     evaluateDestroyed(): void {

@@ -167,6 +167,7 @@ export class CBTForceUnitState extends ForceUnitState {
 
     endTurn() {
         this.consolidateHeat();
+        this.turnState().resetTurnHeatSources();
         this.endPhase();
     }
 

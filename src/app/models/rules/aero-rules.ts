@@ -50,8 +50,8 @@ export class AeroRules extends UnitTypeRulesBase {
 
     private readonly heatMgmt: HeatManagement;
 
-    constructor(private unit: CBTForceUnit) {
-        super();
+    constructor(unit: CBTForceUnit) {
+        super(unit);
         this.heatMgmt = new HeatManagement(unit);
     }
 

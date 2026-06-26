@@ -67,6 +67,20 @@ import { PageViewerStateService } from './internal/page-viewer-state.service';
 import { committedCriticalHitCount, isRepeatableMotiveHitId, motiveHitLevelFromId, MOTIVE_HIT_PIP_COUNT, pendingCriticalHitTimestamps } from '../../models/rules/vehicle-motive-hit.util';
 
 type SheetInventoryRangeKey = InventoryRangeKey | 'extreme';
+type HeatMarkerData = { el: SVGElement | null, heat: number; baselineHeat: number };
+
+interface HeatCell {
+    el: SVGElement;
+    value: number;
+}
+
+interface ActiveHeatDrag {
+    pointerId: number;
+    selectedCell: HeatCell;
+    baselineHeat: number;
+    startElement: SVGElement;
+    cleanup: () => void;
+}
 
 const INVENTORY_RANGE_BUTTON_CLASSES: ReadonlyArray<readonly [string, SheetInventoryRangeKey]> = [
     ['shrButton', 'short'],
@@ -89,7 +103,7 @@ export interface InteractionState {
     clickTarget: SVGElement | null;
     isHeatDragging: boolean;
     diffHeatMarkerVisible: WritableSignal<boolean>;
-    heatMarkerData: WritableSignal<{ el: SVGElement | null, heat: number; baselineHeat: number } | null>;
+    heatMarkerData: WritableSignal<HeatMarkerData | null>;
     isPickerOpen: WritableSignal<boolean>;
 }
 
@@ -119,13 +133,14 @@ export class SvgInteractionService {
         clickTarget: null,
         isHeatDragging: false,
         diffHeatMarkerVisible: signal(false),
-        heatMarkerData: signal<{ el: SVGElement | null, heat: number; baselineHeat: number } | null>(null),
+        heatMarkerData: signal<HeatMarkerData | null>(null),
         isPickerOpen: signal(false)
     };
 
     private pickerRef: ChoicePickerInstance | NumericPickerInstance | null = null;
     private heatMarkerEffectRef: EffectRef | null = null;
     private interactionAbortController: AbortController | null = null;
+    private activeHeatDrag: ActiveHeatDrag | null = null;
 
     private currentHighlightedElement: SVGElement | null = null;
 
@@ -1304,115 +1319,19 @@ export class SvgInteractionService {
         const unit = this.unit();
         if (!unit) return;
 
-        let heatScale: SVGElement | null = svg.getElementById('heatScale') as SVGGElement | null;
+        const heatScale = svg.getElementById('heatScale') as SVGGElement | null;
         if (!heatScale) return;
 
-        let dragState: {
-            pointerId: number;
-            startElement: SVGElement;
-            baselineHeat: number;
-        } | null = null;
-
-        const findClosestHeat = (clientY: number): SVGElement | null => {
-            let closestHeat: SVGElement | null = null;
-            let minDist = Infinity;
-            svg.querySelectorAll('#heatScale .heat').forEach(heatEl => {
-                const rect = (heatEl as SVGElement).getBoundingClientRect();
-                const centerY = rect.top + rect.height / 2;
-                const dist = Math.abs(centerY - clientY);
-                if (dist < minDist) {
-                    minDist = dist;
-                    closestHeat = heatEl as SVGElement;
-                }
-            });
-            return closestHeat;
-        };
-
-        const updateHeatMarker = (clientY: number) => {
-            const closestHeat = findClosestHeat(clientY);
-            if (closestHeat && dragState) {
-                const heatValue = Number(closestHeat.getAttribute('heat'));
-                const currentMarker = this.state.heatMarkerData();
-                if (currentMarker?.el === closestHeat && currentMarker.heat === heatValue) {
-                    return;
-                }
-
-                this.state.clickTarget = closestHeat;
-                this.state.heatMarkerData.set({
-                    el: closestHeat,
-                    heat: heatValue,
-                    baselineHeat: dragState.baselineHeat
-                });
-            }
-        };
-        const cancelHeatDrag = () => {
-            if (!dragState) return;
-            svg.removeEventListener('pointerdown', onPointerDown);
-            svg.removeEventListener('pointermove', onPointerMove);
-            svg.removeEventListener('pointerup', onPointerUp);
-            svg.removeEventListener('pointercancel', onPointerCancel);
-            this.state.isHeatDragging = false;
-            this.state.heatMarkerData.set(null);
-            dragState = null;
-        };
-
-        const onPointerMove = (evt: PointerEvent) => {
-            if (!dragState || !this.state.isHeatDragging) return;
-            if (evt.pointerId !== dragState.pointerId) {
-                cancelHeatDrag();
-                return;
-            }
-            evt.preventDefault();
-            evt.stopPropagation();
-            this.zoomPanService.isPanning = false;
-            updateHeatMarker(evt.clientY);
-        };
-
-        const onPointerUp = (evt: PointerEvent) => {
-            if (!dragState || evt.pointerId !== dragState.pointerId) return;
-            const heatValue = Number(this.state.clickTarget?.getAttribute('heat') || 0);
-            unit.setHeat(heatValue, this.consolidateImmediately);
-            cancelHeatDrag();
-        };
-
-        const onPointerCancel = (evt: PointerEvent) => {
-            if (!dragState || evt.pointerId !== dragState.pointerId) return;
-            cancelHeatDrag();
-        };
-
-        const onPointerDown = (evt: PointerEvent) => {
-            if (!dragState || evt.pointerId !== dragState.pointerId) {
-                cancelHeatDrag();
-                return;
-            }
-        };
-
-        svg.querySelectorAll<SVGElement>('#heatScale .heat').forEach(el => {
+        this.heatCells(svg).forEach(cell => {
+            const el = cell.el;
             el.classList.add('interactive');
             el.addEventListener('pointerdown', (evt: PointerEvent) => {
                 evt.preventDefault();
-                if (dragState) return;
-                const currentHeat = unit.getHeat();
-                this.zoomPanService.pointerMoved = false;
-                dragState = {
-                    pointerId: evt.pointerId,
-                    startElement: el,
-                    baselineHeat: currentHeat.next ?? currentHeat.current
-                };
-                this.state.isHeatDragging = true;
-                this.zoomPanService.isPanning = false;
-                this.state.clickTarget = el as SVGElement;
-                updateHeatMarker(evt.clientY);
-                svg.addEventListener('pointerdown', onPointerDown, { passive: false, signal: signal });
-                svg.addEventListener('pointermove', onPointerMove, { passive: false, signal });
-                svg.addEventListener('pointerup', onPointerUp, { passive: false, signal });
-                svg.addEventListener('pointercancel', onPointerCancel, { passive: false, signal });
+                const dragStarted = this.beginHeatDrag(evt, svg, cell, signal);
+                if (!dragStarted) return;
                 // Dispatch a custom event for page selection to work
                 // Since we preventDefault on pointerdown, the click event won't fire naturally
                 el.dispatchEvent(new CustomEvent('svg-interaction-click', { bubbles: true }));
-                try {
-                    this.state.clickTarget.setPointerCapture(evt.pointerId);
-                } catch (e) { /* Ignore */ }
             }, { passive: false, signal });
         });
 
@@ -1514,6 +1433,106 @@ export class SvgInteractionService {
         }
     }
 
+    private beginHeatDrag(evt: PointerEvent, svg: SVGSVGElement, cell: HeatCell, signal: AbortSignal): boolean {
+        const unit = this.unit();
+        if (!unit || this.activeHeatDrag) return false;
+
+        const onPointerMove = (moveEvent: PointerEvent) => {
+            const drag = this.activeHeatDrag;
+            if (!drag || moveEvent.pointerId !== drag.pointerId) return;
+            moveEvent.preventDefault();
+            moveEvent.stopPropagation();
+            this.zoomPanService.isPanning = false;
+            this.updateActiveHeatDrag(moveEvent.clientY, svg);
+        };
+
+        const onPointerUp = (upEvent: PointerEvent) => {
+            const drag = this.activeHeatDrag;
+            if (!drag || upEvent.pointerId !== drag.pointerId) return;
+            upEvent.preventDefault();
+            unit.setHeat(drag.selectedCell.value, this.consolidateImmediately);
+            this.endHeatDrag();
+        };
+
+        const onPointerCancel = (cancelEvent: PointerEvent) => {
+            const drag = this.activeHeatDrag;
+            if (!drag || cancelEvent.pointerId !== drag.pointerId) return;
+            this.endHeatDrag();
+        };
+
+        const onPointerDown = (downEvent: PointerEvent) => {
+            const drag = this.activeHeatDrag;
+            if (!drag || downEvent.pointerId === drag.pointerId) return;
+            this.endHeatDrag();
+        };
+
+        const removeDragListeners = () => {
+            svg.removeEventListener('pointerdown', onPointerDown);
+            svg.removeEventListener('pointermove', onPointerMove);
+            svg.removeEventListener('pointerup', onPointerUp);
+            svg.removeEventListener('pointercancel', onPointerCancel);
+        };
+
+        const currentHeat = unit.getHeat();
+        this.zoomPanService.pointerMoved = false;
+        this.zoomPanService.isPanning = false;
+        this.state.isHeatDragging = true;
+        this.activeHeatDrag = {
+            pointerId: evt.pointerId,
+            selectedCell: cell,
+            baselineHeat: this.displayedHeatValue(currentHeat),
+            startElement: cell.el,
+            cleanup: removeDragListeners
+        };
+        this.setHeatMarker(cell);
+
+        svg.addEventListener('pointerdown', onPointerDown, { passive: false, signal });
+        svg.addEventListener('pointermove', onPointerMove, { passive: false, signal });
+        svg.addEventListener('pointerup', onPointerUp, { passive: false, signal });
+        svg.addEventListener('pointercancel', onPointerCancel, { passive: false, signal });
+        signal.addEventListener('abort', () => this.endHeatDrag(), { once: true });
+
+        try {
+            cell.el.setPointerCapture(evt.pointerId);
+        } catch { /* Ignore unsupported pointer capture */ }
+        return true;
+    }
+
+    private updateActiveHeatDrag(clientY: number, svg: SVGSVGElement): void {
+        const drag = this.activeHeatDrag;
+        if (!drag) return;
+        const cell = this.closestHeatCell(svg, clientY);
+        if (!cell || drag.selectedCell.el === cell.el) return;
+        drag.selectedCell = cell;
+        this.setHeatMarker(cell);
+    }
+
+    private setHeatMarker(cell: HeatCell): void {
+        const drag = this.activeHeatDrag;
+        if (!drag) return;
+        this.state.clickTarget = cell.el;
+        this.state.heatMarkerData.set({
+            el: cell.el,
+            heat: cell.value,
+            baselineHeat: drag.baselineHeat
+        });
+    }
+
+    private endHeatDrag(): void {
+        const drag = this.activeHeatDrag;
+        if (!drag) return;
+        drag.cleanup();
+        try {
+            if (drag.startElement.hasPointerCapture(drag.pointerId)) {
+                drag.startElement.releasePointerCapture(drag.pointerId);
+            }
+        } catch { /* Ignore unsupported pointer capture */ }
+        this.activeHeatDrag = null;
+        this.state.isHeatDragging = false;
+        this.state.heatMarkerData.set(null);
+        this.state.clickTarget = null;
+    }
+
     private setupCrewHitInteractions(svg: SVGSVGElement, signal: AbortSignal) {
         svg.querySelectorAll('.crewHit').forEach(el => {
             const svgEl = el as SVGElement;
@@ -1597,45 +1616,71 @@ export class SvgInteractionService {
         });
     }
 
-    /**
-     * This is a light version of updateHeatDisplay from SvgService, is used for realtime show of the heatscale while drag operations.
-     * @param heatValue The current heat value.
-     * @returns 
-     */
+    private heatCells(svg: SVGSVGElement): HeatCell[] {
+        return Array.from(svg.querySelectorAll<SVGElement>('#heatScale rect.heat[heat]'))
+            .map(el => ({ el, value: Number(el.getAttribute('heat')) }))
+            .filter((cell): cell is HeatCell => Number.isFinite(cell.value));
+    }
+
+    private closestHeatCell(svg: SVGSVGElement, clientY: number): HeatCell | null {
+        let closestCell: HeatCell | null = null;
+        let minDistance = Infinity;
+        for (const cell of this.heatCells(svg)) {
+            const rect = cell.el.getBoundingClientRect();
+            const centerY = rect.top + rect.height / 2;
+            const distance = Math.abs(centerY - clientY);
+            if (distance < minDistance) {
+                minDistance = distance;
+                closestCell = cell;
+            }
+        }
+        return closestCell;
+    }
+
+    private displayedHeatValue(heat: { current: number; next?: number | null }): number {
+        const heatValue = heat.next ?? heat.current;
+        return Number.isFinite(heatValue) ? heatValue : 0;
+    }
+
     private updateHeatHighlight(heatValue: number) {
         const unit = this.unit();
         if (!unit) return;
         const svg = unit.svg();
         if (!svg) return;
 
-        let highestHeatVal = -Infinity;
+        if (!Number.isFinite(heatValue)) {
+            heatValue = this.displayedHeatValue(unit.getHeat());
+        }
 
-        // Update heat scale rectangles
-        svg.querySelectorAll('#heatScale .heat').forEach(heatRect => {
-            const heatVal = Number((heatRect as SVGElement).getAttribute('heat'));
+        const highestHotHeat = this.updateHeatTrackHighlight(svg, heatValue);
+        this.updateHeatEffectHighlight(svg, heatValue);
+        this.updateHeatOverflowHighlight(svg, heatValue, highestHotHeat);
+    }
 
-            if (heatVal <= heatValue) {
-                heatRect.classList.add('hot');
-                if (heatVal > highestHeatVal) {
-                    highestHeatVal = heatVal;
-                }
-            } else {
-                heatRect.classList.remove('hot');
+    private updateHeatTrackHighlight(svg: SVGSVGElement, heatValue: number): number {
+        let highestHotHeat = -Infinity;
+        for (const cell of this.heatCells(svg)) {
+            const isHot = cell.value <= heatValue;
+            cell.el.classList.toggle('hot', isHot);
+            if (isHot && cell.value > highestHotHeat) {
+                highestHotHeat = cell.value;
             }
-        });
+        }
+        return highestHotHeat;
+    }
 
-        // Update heat effects highlight
-        svg.querySelectorAll('.heatEffect').forEach(effectEl => {
-            const effectVal = Number((effectEl as SVGElement).getAttribute('heat'));
+    private updateHeatEffectHighlight(svg: SVGSVGElement, heatValue: number): void {
+        svg.querySelectorAll<SVGElement>('.heatEffect').forEach(effectEl => {
+            const effectVal = Number(effectEl.getAttribute('heat'));
+            const isHot = Number.isFinite(effectVal) && effectVal <= heatValue;
             effectEl.classList.remove('surpassed');
-
-            if (effectVal <= heatValue) {
-                effectEl.classList.add('hot');
-            } else {
-                effectEl.classList.remove('hot');
-            }
+            effectEl.classList.toggle('hot', isHot);
         });
-        svg.querySelectorAll('.heatEffect.hot').forEach(effectEl => {
+        this.updateSurpassedHeatEffects(svg);
+    }
+
+    private updateSurpassedHeatEffects(svg: SVGSVGElement): void {
+        svg.querySelectorAll<SVGElement>('.heatEffect.hot').forEach(effectEl => {
             const attrs = [
                 { name: 'h-shut', value: effectEl.getAttribute('h-shut') },
                 { name: 'h-random', value: effectEl.getAttribute('h-random') },
@@ -1645,30 +1690,32 @@ export class SvgInteractionService {
             ];
             let surpassed = false;
             for (const attr of attrs) {
-                if (surpassed) break; // If already surpassed, no need to check further
+                if (surpassed) break;
                 if (attr.value === null) continue;
                 const currentVal = Number(attr.value);
-                // Search for another .heatEffect.hot element with same attribute, not null, and lower value
-                svg.querySelectorAll('.heatEffect.hot:not(.surpassed)').forEach(otherEl => {
-                    if (otherEl === effectEl) return; // same element, skip
+                if (!Number.isFinite(currentVal)) continue;
+                svg.querySelectorAll<SVGElement>('.heatEffect.hot:not(.surpassed)').forEach(otherEl => {
+                    if (otherEl === effectEl) return;
                     const otherVal = otherEl.getAttribute(attr.name);
-                    if (otherVal === null) return; // skip if no value
+                    if (otherVal === null) return;
+                    const otherNumber = Number(otherVal);
+                    if (!Number.isFinite(otherNumber)) return;
                     if (attr.inverse) {
-                        if (Number(otherVal) < currentVal) {
+                        if (otherNumber < currentVal) {
                             effectEl.classList.add('surpassed');
                             surpassed = true;
                         }
-                    } else
-                        if (Number(otherVal) > currentVal) {
-                            effectEl.classList.add('surpassed');
-                            surpassed = true;
-                        }
+                    } else if (otherNumber > currentVal) {
+                        effectEl.classList.add('surpassed');
+                        surpassed = true;
+                    }
                 });
             }
         });
+    }
 
-        // Handle overflow frame
-        if (highestHeatVal >= heatValue) {
+    private updateHeatOverflowHighlight(svg: SVGSVGElement, heatValue: number, highestHotHeat: number): void {
+        if (highestHotHeat >= heatValue) {
             svg.querySelector('#heatScale .overflowFrame')?.classList.remove('hot');
         }
     }
@@ -1821,6 +1868,7 @@ export class SvgInteractionService {
     }
 
     cleanup() {
+        this.endHeatDrag();
         if (this.heatMarkerEffectRef) {
             this.heatMarkerEffectRef.destroy();
             this.heatMarkerEffectRef = null;

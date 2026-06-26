@@ -53,6 +53,7 @@ interface HeatAwareRules {
 interface SelectedHeatProjection {
     current: number;
     base: number;
+    sources: number;
     selection: number;
     pending: number;
     dissipation: number;
@@ -150,13 +151,16 @@ export class WeaponsEquipmentPanelComponent {
         if (!dissipationState) return null;
         const heat = this.unit().getHeat();
         const base = heat.next ?? heat.current;
+        const sources = this.unit().turnState().heatSources()
+            .reduce((total, source) => total + Math.max(0, source.value), 0);
         const selection = this.selectedHeatTotal();
         const dissipation = this.heatDissipationValue(dissipationState);
-        const pending = base + selection;
+        const pending = base + sources + selection;
         const final = Math.max(0, pending - dissipation);
         return {
             current: base,
             base,
+            sources,
             selection,
             pending,
             dissipation,
@@ -572,7 +576,7 @@ export class WeaponsEquipmentPanelComponent {
         }
 
         if (heatProjection) {
-            this.unit().setHeat(heatProjection.pending);
+            this.unit().turnState().addFiredHeat(heatProjection.selection);
         }
         this.inventoryControl().markInventoryViewChanged();
         await this.context().dialogsService.showNoticeHtml(
@@ -617,7 +621,7 @@ export class WeaponsEquipmentPanelComponent {
             ? `Ammo consumed:<ul>${ammoSummary.map(item => `<li>${item.count} ammo from ${this.escapeHtml(item.label)}</li>`).join('')}</ul>`
             : '<p>No ammo consumed.</p>';
         if (!heatProjection) return ammoHtml;
-        return `${ammoHtml}<p>Heat raised: +${heatProjection.selection}<br></p>`;
+        return `${ammoHtml}<p>Heat Projection: +${heatProjection.selection}<br></p>`;
     }
 
     private escapeHtml(value: string): string {

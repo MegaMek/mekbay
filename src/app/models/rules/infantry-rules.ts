@@ -44,8 +44,8 @@ import { UnitTypeRulesBase, type UnitModifierBreakdownEntry } from './unit-type-
  */
 export class InfantryRules extends UnitTypeRulesBase {
 
-    constructor(private unit: CBTForceUnit) {
-        super();
+    constructor(unit: CBTForceUnit) {
+        super(unit);
     }
 
     evaluateDestroyed(): void {

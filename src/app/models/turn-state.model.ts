@@ -23,6 +23,7 @@ export class TurnState {
     moveMode = signal<MotiveModes | null>(null);
     moveDistance = signal<number | null>(null);
     dmgReceived = signal<number>(0);
+    firedHeat = signal<number>(0);
     private psrChecks = signal<PSRChecks>({});
     applyMovePSR = signal<boolean>(true);
     spotting = signal<boolean>(false);
@@ -176,6 +177,15 @@ export class TurnState {
 
     addDmgReceived(amount: number) {
         this.dmgReceived.set(this.dmgReceived() + amount);
+    }
+
+    addFiredHeat(amount: number) {
+        if (!Number.isFinite(amount) || amount <= 0) return;
+        this.firedHeat.set(this.firedHeat() + amount);
+    }
+
+    resetTurnHeatSources() {
+        this.firedHeat.set(0);
     }
 
     maxDistanceCurrentMoveMode = computed<number>(() => {

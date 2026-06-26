@@ -82,8 +82,8 @@ const STABILIZER_HIT_LOCATIONS: Record<string, readonly string[]> = {
  */
 export class VehicleRules extends UnitTypeRulesBase {
 
-    constructor(private unit: CBTForceUnit) {
-        super('DSR', 'Driving Skill Rolls');
+    constructor(unit: CBTForceUnit) {
+        super(unit, 'DSR', 'Driving Skill Rolls');
     }
 
     readonly systemsStatus = computed<VehicleSystemsStatus>(() => {

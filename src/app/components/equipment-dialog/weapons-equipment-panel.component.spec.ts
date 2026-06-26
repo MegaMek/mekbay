@@ -119,6 +119,7 @@ interface CreateComponentOptions {
     tracksHeat?: boolean;
     heatDissipation?: number;
     heatNext?: number;
+    heatSources?: number;
     gunnerySkill?: number;
     pilotingSkill?: number;
     moveMode?: MotiveModes | null;
@@ -176,6 +177,15 @@ function createComponent(
             })
         })
     };
+    const turnState = {
+        moveMode: () => options.moveMode ?? null,
+        airborne: () => false,
+        getAttackMovementModifier: () => rules.getAttackMovementModifier(options.moveMode ?? null),
+        missingAttackMovementModifier: () => (options.moveMode ?? null) === null && (options.attackMovementCanAffectTargetNumbers ?? true),
+        getSpottingModifier: () => 0,
+        heatSources: () => options.heatSources ? [{ id: 'test-source', label: 'Test Source', value: options.heatSources }] : [],
+        addFiredHeat: jasmine.createSpy('addFiredHeat')
+    };
     const unit = {
         getInventory: () => entries,
         getCritSlots: () => critSlots,
@@ -184,13 +194,7 @@ function createComponent(
         setHeat: jasmine.createSpy('setHeat').and.callFake((value: number) => heat.next = value),
         gunnerySkill: () => options.gunnerySkill ?? 4,
         pilotingSkill: () => options.pilotingSkill ?? 5,
-        turnState: () => ({
-            moveMode: () => options.moveMode ?? null,
-            airborne: () => false,
-            getAttackMovementModifier: () => rules.getAttackMovementModifier(options.moveMode ?? null),
-            missingAttackMovementModifier: () => (options.moveMode ?? null) === null && (options.attackMovementCanAffectTargetNumbers ?? true),
-            getSpottingModifier: () => 0,
-        }),
+        turnState: () => turnState,
         svgService: {
             inventoryTargetHeatFireModifier: () => 0
         },
@@ -234,7 +238,7 @@ function createComponent(
     fixture.componentRef.setInput('context', context);
     fixture.componentRef.setInput('readOnly', options.readOnly);
     fixture.detectChanges();
-    return { fixture, component: fixture.componentInstance, unit, dialogsService, toastService, heat };
+    return { fixture, component: fixture.componentInstance, unit, dialogsService, toastService, heat, turnState };
 }
 
 describe('WeaponsEquipmentPanelComponent', () => {
@@ -995,7 +999,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         });
         const ammoBin = entry({ id: 'std-ammo', equipment: standardAmmo, totalAmmo: 5, consumed: 1, locations: new Set(['CT']) });
         const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
-        const { component, fixture, unit, heat } = createComponent([first, second, ammoBin], equipmentMap, [], new Map(), { heatDissipation: 3 });
+        const { component, fixture, unit, heat, turnState } = createComponent([first, second, ammoBin], equipmentMap, [], new Map(), { heatDissipation: 3 });
         const rows = component.groups().find(group => group.id === 'ranged')!.rows;
 
         component.toggleSelected(rows[0]);
@@ -1005,6 +1009,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(component.selectedHeatTotal()).toBe(7);
         expect(component.selectedHeatProjection()).toEqual(jasmine.objectContaining({
             current: 2,
+            sources: 0,
             selection: 7,
             dissipation: 3,
             final: 6,
@@ -1016,8 +1021,9 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         expect(ammoBin.consumed).toBe(3);
         expect(unit.setInventoryEntry).toHaveBeenCalledWith(ammoBin);
-        expect(unit.setHeat).toHaveBeenCalledWith(9);
-        expect(heat.next).toBe(9);
+        expect(unit.setHeat).not.toHaveBeenCalled();
+        expect(turnState.addFiredHeat).toHaveBeenCalledWith(7);
+        expect(heat.next).toBeUndefined();
     });
 
     it('hides heat information and consumes only ammo for units that do not track heat', async () => {
@@ -1029,7 +1035,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         });
         const ammoBin = entry({ id: 'std-ammo', equipment: standardAmmo, totalAmmo: 5, consumed: 1, locations: new Set(['CT']) });
         const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
-        const { component, fixture, unit } = createComponent([atm, ammoBin], equipmentMap, [], new Map(), { tracksHeat: false });
+        const { component, fixture, unit, turnState } = createComponent([atm, ammoBin], equipmentMap, [], new Map(), { tracksHeat: false });
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
         component.toggleSelected(row);
@@ -1041,6 +1047,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         expect(ammoBin.consumed).toBe(2);
         expect(unit.setHeat).not.toHaveBeenCalled();
+        expect(turnState.addFiredHeat).not.toHaveBeenCalled();
     });
 
     it('adjusts selected ammo from row stepper controls', () => {
@@ -1278,6 +1285,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         expect(component.selectedHeatProjection()).toEqual(jasmine.objectContaining({
             current: 8,
+            sources: 0,
             selection: 4,
             dissipation: 3,
             final: 9,
@@ -1286,8 +1294,34 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         await component.consumeSelectedHeatAndAmmo();
 
-        expect(unit.setHeat).toHaveBeenCalledWith(12);
-        expect(heat.next).toBe(12);
+        expect(unit.setHeat).not.toHaveBeenCalled();
+        expect(heat.next).toBe(8);
+    });
+
+    it('includes current turn heat sources in selected heat projection', () => {
+        const standardAmmo = ammo('ATM 6 Standard', 'ATM', 6, ['M_STANDARD']);
+        const atm = entry({
+            id: 'atm',
+            equipment: weapon('ATM 6', 'ATM', 6),
+            el: svgEntry('<g><g class="name"><text>ATM 6</text></g><text class="heat">4</text><text class="range_short">5</text></g>')
+        });
+        const ammoBin = entry({ id: 'std-ammo', equipment: standardAmmo, totalAmmo: 5, consumed: 1, locations: new Set(['CT']) });
+        const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
+        const { component, fixture } = createComponent([atm, ammoBin], equipmentMap, [], new Map(), { heatDissipation: 3, heatSources: 5 });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        component.toggleSelected(row);
+        fixture.detectChanges();
+
+        expect(component.selectedHeatProjection()).toEqual(jasmine.objectContaining({
+            current: 2,
+            sources: 5,
+            selection: 4,
+            dissipation: 3,
+            pending: 11,
+            final: 8,
+            pendingWidth: 36.666666666666664
+        }));
     });
 
     it('fills projected heat bar when final heat reaches the heat scale cap', () => {

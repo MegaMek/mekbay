@@ -28,6 +28,7 @@ type SvgInteractionServicePrivate = {
     setupInteractions(svg: SVGSVGElement): void;
     setupReadOnlyInteractions(svg: SVGSVGElement): void;
     getHeatDiffMarkerData(): { el: SVGElement | null; heat: number; baselineHeat: number; containerRect: DOMRect } | null;
+    updateHeatHighlight(heatValue: number): void;
 };
 
 describe('SvgInteractionService', () => {
@@ -715,6 +716,24 @@ describe('SvgInteractionService', () => {
             heat: 12,
             baselineHeat: 10
         }));
+    });
+
+    it('falls back to current heat when live heat highlighting receives an invalid value', () => {
+        const { svg, heat5, heat10, heat12 } = createHeatScaleSvg();
+        const unit = {
+            id: 'unit-a',
+            svg: () => svg,
+            getHeat: () => ({ current: 10, next: undefined }),
+            getUnit: () => ({ type: 'Mek' }),
+            getInventory: () => []
+        };
+
+        service.updateUnit(unit);
+        service.updateHeatHighlight(Number.NaN);
+
+        expect(heat5.classList).toContain('hot');
+        expect(heat10.classList).toContain('hot');
+        expect(heat12.classList).not.toContain('hot');
     });
 
 });

@@ -1,6 +1,7 @@
 import { computed, signal } from '@angular/core';
 import type { CBTForceUnitState } from './cbt-force-unit-state.model';
 import type { CriticalSlot, HeatProfile } from './force-serialization';
+import { AeroRules } from './rules/aero-rules';
 import { InfantryRules } from './rules/infantry-rules';
 import { MekRules } from './rules/mek-rules';
 import type { UnitTypeRules } from './rules/unit-type-rules';
@@ -17,7 +18,7 @@ interface TurnStateHarnessOptions {
     prone?: boolean;
     immobile?: boolean;
     skidding?: boolean;
-    rulesType?: 'mek' | 'infantry';
+    rulesType?: 'mek' | 'infantry' | 'aero';
 }
 
 interface TurnStateHarness {
@@ -89,7 +90,9 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
     turnState = new TurnState(unitState);
     const rules = options.rulesType === 'infantry'
         ? new InfantryRules(unit as any)
-        : new MekRules(unit as any);
+        : options.rulesType === 'aero'
+            ? new AeroRules(unit as any)
+            : new MekRules(unit as any);
     (unit as any).rules = rules;
 
     return {
@@ -105,6 +108,10 @@ function getReasons(turnState: TurnState): string[] {
 
 function getMovementHeat(turnState: TurnState): number {
     return turnState.heatSources().find(source => source.id === 'movement')?.value ?? 0;
+}
+
+function getFiredHeat(turnState: TurnState): number {
+    return turnState.heatSources().find(source => source.id === 'fired')?.value ?? 0;
 }
 
 describe('TurnState', () => {
@@ -360,6 +367,34 @@ describe('TurnState', () => {
 
             turnState.moveMode.set('walk');
             expect(getMovementHeat(turnState)).toBe(4);
+        });
+
+        it('tracks fired heat as a resettable turn heat source', () => {
+            const { turnState } = createTurnStateHarness();
+
+            expect(getFiredHeat(turnState)).toBe(0);
+
+            turnState.addFiredHeat(7);
+            turnState.addFiredHeat(3);
+
+            expect(getFiredHeat(turnState)).toBe(10);
+
+            turnState.resetTurnHeatSources();
+
+            expect(getFiredHeat(turnState)).toBe(0);
+        });
+
+        it('includes fired heat for aero rules that do not add movement heat sources', () => {
+            const { turnState } = createTurnStateHarness({
+                rulesType: 'aero',
+                unit: { type: 'Aero', subtype: 'Aerospace Fighter' },
+            });
+
+            turnState.addFiredHeat(6);
+
+            expect(turnState.heatSources()).toEqual([
+                { id: 'fired', label: 'Fired', value: 6 },
+            ]);
         });
     });
 });

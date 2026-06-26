@@ -41,6 +41,7 @@ import {
     TN_AIRBORNE_MOVE_TYPE_MODIFIER,
     TN_SKIDDING_MODIFIER,
 } from '../target-number-calculator.model';
+import { CBTForceUnit } from '../cbt-force-unit.model';
 
 export interface PSRCheck {
     fallCheck?: number;
@@ -152,6 +153,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     abstract evaluateDestroyed(): void;
 
     constructor(
+        protected unit: CBTForceUnit,
         controlRollShortLabel: string = 'PSR',
         controlRollFullLabel: string = 'Piloting Skill Rolls'
     ) {
@@ -173,8 +175,12 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     evaluateCritSlotHit(_crit: CriticalSlot): void {
     }
 
-    heatSources(_turnState: TurnState): UnitHeatSource[] {
-        return [];
+    heatSources(turnState: TurnState): UnitHeatSource[] {
+        if (this.unit.getUnit().heat < 0) return []; // Does not track heat
+        const firedHeat = turnState.firedHeat();
+        return firedHeat > 0
+            ? [{ id: 'fired', label: 'Fired', value: firedHeat }]
+            : [];
     }
 
     getMaxDistanceForMoveMode(_moveMode: MotiveModes): number | null {

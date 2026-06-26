@@ -51,8 +51,8 @@ export class MekRules extends UnitTypeRulesBase {
 
     private readonly heatMgmt: HeatManagement;
 
-    constructor(private unit: CBTForceUnit) {
-        super();
+    constructor(unit: CBTForceUnit) {
+        super(unit);
         this.heatMgmt = new HeatManagement(unit);
     }
 
@@ -369,6 +369,7 @@ export class MekRules extends UnitTypeRulesBase {
                 value: damagedEngineHeat,
             });
         }
+        sources.push(...super.heatSources(turnState));
         return sources;
     }
 

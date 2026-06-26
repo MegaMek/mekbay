@@ -76,9 +76,12 @@
                 @if (weaponsPanel.hasSelectedRows()) {
                     <div class="selected-weapons-panel">
                         @if (weaponsPanel.selectedHeatProjection(); as heat) {
-                            <div class="selected-heat-meter" [attr.aria-label]="'Heat projection: current ' + heat.current + ', selection +' + heat.selection + ', dissipation -' + heat.dissipation + ', projected ' + heat.final">
+                            <div class="selected-heat-meter" [attr.aria-label]="'Heat projection: current ' + heat.current + ', sources +' + heat.sources + ', selection +' + heat.selection + ', dissipation -' + heat.dissipation + ', projected ' + heat.final">
                                 <span class="heat-balance-equation">
                                     <strong>{{ heat.current }}</strong>
+                                    @if (heat.sources > 0) {
+                                        <span class="sources">+{{ heat.sources }}</span>
+                                    }
                                     <span class="selection">+{{ heat.selection }}</span>
                                     <span class="dissipation">-{{ heat.dissipation }}</span>
                                     <span class="projected" [class.hot]="heat.final > 0">={{ heat.final }}</span>

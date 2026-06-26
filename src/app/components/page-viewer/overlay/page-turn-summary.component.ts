@@ -163,7 +163,7 @@ export class PageTurnSummaryPanelComponent {
     attackModifierTooltip = computed<TooltipLine[] | null>(() => {
         const u = this.unit();
         if (!u) return null;
-        return this.buildModifierTooltip('Attack Modifier', u.turnState().getAttackModifierBreakdown());
+        return this.buildModifierTooltip('Attack Target Modifier', u.turnState().getAttackModifierBreakdown());
     });
 
     spotting = computed(() => {

@@ -42,7 +42,8 @@ import { LoggerService } from './logger.service';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { resolveHitModifier, computeLinkedModifiers } from '../models/rules/hit-modifier.util';
 import { resolveWeaponRangeDamageText, WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE } from '../models/rules/weapon-range-rules.util';
-import { formatGunneryDisplay, formatPilotingDisplay } from '../models/rules/unit-type-rules';
+import { formatGunneryDisplay, formatPilotingDisplay, type UnitHeatSource } from '../models/rules/unit-type-rules';
+import type { HeatDissipationState } from '../models/rules/heat-management';
 import { AmmoEquipment } from '../models/equipment.model';
 import { formatAmmoName } from '../utils/ammo-interaction.util';
 import { getMotiveModeLabel } from '../models/motiveModes.model';
@@ -50,6 +51,7 @@ import { inventoryTargetCategory, inventoryTargetNumberText, readInventoryTarget
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 
 const INVENTORY_CONTROL_SELECTION_COLOR_PROPERTY = '--inventory-control-selection-color';
+const HEAT_PROJECTION_ORIGINAL_OVERFLOW_STROKE = 'data-heat-projection-original-stroke';
 
 const INVENTORY_CONTROL_RANGE_CLASS_NAMES: Record<InventoryControlRuntimeRangeKey, string> = {
     short: 'selected-range-short',
@@ -57,6 +59,11 @@ const INVENTORY_CONTROL_RANGE_CLASS_NAMES: Record<InventoryControlRuntimeRangeKe
     long: 'selected-range-long',
     extreme: 'selected-range-extreme'
 };
+
+type HeatDissipationWithWings = HeatDissipationState & { totalDissipationWithWings?: number };
+interface HeatAwareRules {
+    heatDissipation: () => HeatDissipationWithWings | null;
+}
 
 /*
  * Author: Drake
@@ -389,6 +396,8 @@ export class UnitSvgService {
             heatDataPanel.classList.toggle('cold', heat.next !== undefined && heat.current > heat.next);
         }
 
+        const heatValue = heat.next ?? heat.current;
+
         let highestHeatVal = -Infinity;
 
         // Update heat scale rectangles
@@ -397,7 +406,7 @@ export class UnitSvgService {
             if (heatVal > highestHeatVal) {
                 highestHeatVal = heatVal;
             }
-            if (heatVal <= heat.current) {
+            if (heatVal <= heatValue) {
                 heatRect.classList.add('hot');
             } else {
                 heatRect.classList.remove('hot');
@@ -409,7 +418,7 @@ export class UnitSvgService {
             const effectVal = Number((effectEl as SVGElement).getAttribute('heat'));
             effectEl.classList.remove('surpassed');
 
-            if (effectVal <= heat.current) {
+            if (effectVal <= heatValue) {
                 effectEl.classList.add('hot');
             } else {
                 effectEl.classList.remove('hot');
@@ -448,7 +457,6 @@ export class UnitSvgService {
         });
 
         // Handle overflow frame
-        const heatValue = heat.next ?? heat.current;
         if (highestHeatVal < heatValue) {
             svg.querySelector('#heatScale .overflowFrame')?.classList.add('hot');
 
@@ -548,9 +556,12 @@ export class UnitSvgService {
         } else {
             svg.querySelector('#faded-arrow')?.remove();
         }
+        if (!this.unit.readOnly()) {
+            this.updateHeatProjectionPreview(heat);
+        }
     }
 
-    private getHeatElementFromValue(value: number): SVGElement | null {
+    protected getHeatElementFromValue(value: number): SVGElement | null {
         const svg = this.unit.svg();
         if (!svg) return null;
         if (value > 30) {
@@ -921,19 +932,7 @@ export class UnitSvgService {
         if (!svg) return;
         const unit = this.unit;
         const turnState = unit.turnState();
-        const damagedEngineHeatText = svg.getElementById('damagedEngineHeatText') as SVGTextElement | null;
-        if (damagedEngineHeatText) {
-            const damagedEngineHeat = turnState.heatSources().find(source => source.id === 'damaged-engine')?.value ?? 0;
-            if (damagedEngineHeat > 0) {
-                damagedEngineHeatText.textContent = `Engine: +${damagedEngineHeat} HT`;
-                damagedEngineHeatText.removeAttribute('display');
-                damagedEngineHeatText.style.display = 'block';
-            } else {
-                damagedEngineHeatText.textContent = '';
-                damagedEngineHeatText.setAttribute('display', 'none');
-                damagedEngineHeatText.style.display = 'none';
-            }
-        }
+        this.renderHeatSourcesSummary(svg, turnState.heatSources());
         // Update move mode display
         const moveMode = turnState.moveMode();
         const moveModifier = turnState.getAttackMovementModifier();
@@ -1000,5 +999,190 @@ export class UnitSvgService {
 
     private formatSignedModifier(modifier: number): string {
         return modifier >= 0 ? `+${modifier}` : modifier.toString();
+    }
+
+    private renderHeatSourcesSummary(svg: SVGSVGElement, sources: UnitHeatSource[]): void {
+        const heatSourcesText = svg.getElementById('damagedEngineHeatText') as SVGTextElement | null;
+        if (!heatSourcesText) return;
+
+        const positiveSources = sources.filter(source => source.value > 0);
+        if (positiveSources.length === 0) {
+            heatSourcesText.textContent = '';
+            heatSourcesText.setAttribute('display', 'none');
+            heatSourcesText.style.display = 'none';
+            return;
+        }
+
+        const x = heatSourcesText.getAttribute('x') ?? '0';
+        const y = Number(heatSourcesText.getAttribute('y') ?? '0');
+        const lineHeight = 9;
+        heatSourcesText.textContent = '';
+        heatSourcesText.removeAttribute('display');
+        heatSourcesText.style.display = 'block';
+
+        positiveSources.forEach((source, index) => {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+            line.setAttribute('x', x);
+            line.setAttribute('y', (y - ((positiveSources.length - 1 - index) * lineHeight)).toString());
+            line.textContent = `${this.heatSourceSummaryLabel(source)}: ${this.formatSignedModifier(source.value)}`;
+            heatSourcesText.appendChild(line);
+        });
+    }
+
+    private heatSourceSummaryLabel(source: UnitHeatSource): string {
+        if (source.id === 'damaged-engine') return 'Engine';
+        return source.label;
+    }
+
+    private updateHeatProjectionPreview(heat: HeatProfile): void {
+        const svg = this.unit.svg();
+        const heatScale = svg?.getElementById('heatScale') as SVGGElement | null;
+        if (!svg || !heatScale) return;
+
+        const dissipation = this.heatDissipationState();
+        if (!dissipation) {
+            this.clearHeatProjectionPreview(heatScale);
+            return;
+        }
+
+        const heatGain = this.unit.turnState().heatSources()
+            .reduce((total, source) => total + Math.max(0, source.value), 0);
+        const heatDissipation = Math.max(0, dissipation.totalDissipationWithWings ?? dissipation.totalDissipation);
+        const netHeat = heatGain - heatDissipation;
+        const projectedHeat = Math.max(0, heat.current + netHeat);
+
+        this.updateHeatProjectionOverflow(heatScale, projectedHeat, heat.current);
+
+        const startValue = Math.max(0, heat.current);
+        const targetValue = Math.max(0, Math.min(30, projectedHeat));
+        if (netHeat === 0 || (startValue > 30 && projectedHeat > 30)) {
+            heatScale.querySelector('#heat-projection-bar')?.remove();
+            return;
+        }
+
+        const startEl = this.getHeatElementFromValue(startValue);
+        const targetEl = this.getHeatElementFromValue(targetValue);
+        const startCenter = startEl ? this.heatMarkerCenter(startEl) : null;
+        const targetCenter = targetEl
+            ? projectedHeat > 30 ? this.heatMarkerTopCenter(targetEl) : this.heatMarkerCenter(targetEl)
+            : null;
+        const heatZeroEl = svg.querySelector('#heatScale .heat[heat="0"]') as SVGElement | null;
+        if (!startCenter || !targetCenter || !heatZeroEl) {
+            heatScale.querySelector('#heat-projection-bar')?.remove();
+            return;
+        }
+
+        const height = Math.abs(targetCenter.y - startCenter.y);
+        if (height <= 0.1) {
+            heatScale.querySelector('#heat-projection-bar')?.remove();
+            return;
+        }
+
+        let bar = heatScale.querySelector('#heat-projection-bar') as SVGRectElement | null;
+        if (!bar) {
+            bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            bar.setAttribute('id', 'heat-projection-bar');
+            bar.setAttribute('class', 'screen-only heatProjectionBar');
+            bar.setAttribute('pointer-events', 'none');
+            heatScale.appendChild(bar);
+        }
+        const x = Number(heatZeroEl.getAttribute('x') ?? 0) - 3.8;
+        bar.setAttribute('x', x.toString());
+        bar.setAttribute('y', Math.min(startCenter.y, targetCenter.y).toString());
+        bar.setAttribute('width', '3');
+        bar.setAttribute('height', height.toString());
+        bar.setAttribute('fill', netHeat > 0 ? '#d12020' : '#2070d1');
+    }
+
+    private heatDissipationState(): HeatDissipationWithWings | null {
+        const rules = this.unit.rules as Partial<HeatAwareRules>;
+        return typeof rules.heatDissipation === 'function' ? rules.heatDissipation() : null;
+    }
+
+    private updateHeatProjectionOverflow(heatScale: SVGGElement, projectedHeat: number, currentHeat: number): void {
+        const overflowFrame = heatScale.querySelector('.overflowFrame') as SVGElement | null;
+        const overflowButton = heatScale.querySelector('.overflowButton') as SVGElement | null;
+        if (!overflowFrame || !overflowButton) return;
+
+        let overflowText = heatScale.querySelector('#heat-projection-overflow-text') as SVGTextElement | null;
+        if (projectedHeat <= 30) {
+            this.restoreHeatProjectionOverflowStroke(overflowFrame);
+            overflowText?.remove();
+            return;
+        }
+
+        if (!overflowFrame.hasAttribute(HEAT_PROJECTION_ORIGINAL_OVERFLOW_STROKE)) {
+            overflowFrame.setAttribute(HEAT_PROJECTION_ORIGINAL_OVERFLOW_STROKE, overflowFrame.getAttribute('stroke') ?? '');
+        }
+        const overflowColor = projectedHeat < currentHeat ? '#2070d1' : '#d12020';
+        overflowFrame.setAttribute('stroke', overflowColor);
+        const center = this.heatMarkerCenter(overflowButton);
+        if (!center) return;
+
+        if (!overflowText) {
+            overflowText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            overflowText.setAttribute('id', 'heat-projection-overflow-text');
+            overflowText.setAttribute('class', 'screen-only heatProjectionOverflowText');
+            overflowText.setAttribute('text-anchor', 'end');
+            overflowText.setAttribute('dominant-baseline', 'middle');
+            overflowText.setAttribute('font-size', '8');
+            overflowText.setAttribute('font-weight', 'bold');
+            overflowText.setAttribute('fill', overflowColor);
+            overflowText.setAttribute('pointer-events', 'none');
+            heatScale.appendChild(overflowText);
+        }
+        overflowText.setAttribute('fill', overflowColor);
+        overflowText.setAttribute('x', (center.x - 12).toString());
+        overflowText.setAttribute('y', (center.y + 4.5).toString());
+        overflowText.textContent = Math.round(projectedHeat).toString();
+    }
+
+    private clearHeatProjectionPreview(heatScale: SVGGElement): void {
+        heatScale.querySelector('#heat-projection-bar')?.remove();
+        heatScale.querySelector('#heat-projection-overflow-text')?.remove();
+        const overflowFrame = heatScale.querySelector('.overflowFrame') as SVGElement | null;
+        if (overflowFrame) this.restoreHeatProjectionOverflowStroke(overflowFrame);
+    }
+
+    private restoreHeatProjectionOverflowStroke(overflowFrame: SVGElement): void {
+        if (!overflowFrame.hasAttribute(HEAT_PROJECTION_ORIGINAL_OVERFLOW_STROKE)) return;
+        const originalStroke = overflowFrame.getAttribute(HEAT_PROJECTION_ORIGINAL_OVERFLOW_STROKE);
+        if (originalStroke) {
+            overflowFrame.setAttribute('stroke', originalStroke);
+        } else {
+            overflowFrame.removeAttribute('stroke');
+        }
+        overflowFrame.removeAttribute(HEAT_PROJECTION_ORIGINAL_OVERFLOW_STROKE);
+    }
+
+    private heatMarkerCenter(el: SVGElement): { x: number; y: number } | null {
+        const x = Number(el.getAttribute('x'));
+        const y = Number(el.getAttribute('y'));
+        const width = Number(el.getAttribute('width'));
+        const height = Number(el.getAttribute('height'));
+        if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(width) && Number.isFinite(height)) {
+            return { x: x + width / 2, y: y + height / 2 };
+        }
+        try {
+            const bbox = (el as SVGGraphicsElement).getBBox();
+            return { x: bbox.x + bbox.width / 2, y: bbox.y + bbox.height / 2 };
+        } catch {
+            return null;
+        }
+    }
+
+    private heatMarkerTopCenter(el: SVGElement): { x: number; y: number } | null {
+        const x = Number(el.getAttribute('x'));
+        const y = Number(el.getAttribute('y'));
+        const width = Number(el.getAttribute('width'));
+        if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(width)) {
+            return { x: x + width / 2, y: y - 1 };
+        }
+        try {
+            const bbox = (el as SVGGraphicsElement).getBBox();
+            return { x: bbox.x + bbox.width / 2, y: bbox.y - 1 };
+        } catch {
+            return null;
+        }
     }
 }
