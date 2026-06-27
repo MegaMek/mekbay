@@ -16,7 +16,6 @@ interface TurnStateHarnessOptions {
     internalLocations?: string[];
     unit?: Partial<Unit>;
     prone?: boolean;
-    immobile?: boolean;
     skidding?: boolean;
     rulesType?: 'mek' | 'infantry' | 'aero';
 }
@@ -54,6 +53,7 @@ function createEquipment(name: string, flags: string[]): Equipment {
 
 function getCritSlotEquipmentFlags(name: string): string[] {
     if (name === 'Improved Jump Jet') return ['F_JUMP_JET', 'S_IMPROVED'];
+    if (name === 'Prototype Improved Jump Jet') return ['F_JUMP_JET', 'S_IMPROVED', 'S_PROTOTYPE'];
     if (name === 'RISC Super-Cooled Myomer') return ['F_SCM'];
     return [];
 }
@@ -68,7 +68,10 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
 
     const unit = {
         locations: { internal: internalLocations },
+        isLoaded: () => true,
         shutdown: false,
+        getCondition: () => false,
+        getCrewMembers: () => [{ getState: () => 'healthy' }],
         getCritSlots: () => critSlots(),
         isInternalLocCommittedDestroyed: (loc: string) => committedDestroyedLegs.has(loc),
         isInternalLocDestroyed: (loc: string) => currentDestroyedLegs.has(loc) || committedDestroyedLegs.has(loc),
@@ -82,8 +85,11 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         hasUnconsolidatedCrits: computed(() => false),
         hasUnconsolidatedLocations: computed(() => false),
         hasUnconsolidatedInventory: computed(() => false),
-        prone: () => options.prone ?? false,
-        immobile: () => options.immobile ?? false,
+        hasCondition: (state: string) => {
+            if (state === 'prone') return options.prone ?? false;
+            if (state === 'skidding') return options.skidding ?? false;
+            return false;
+        },
         skidding: () => options.skidding ?? false,
     } as unknown as CBTForceUnitState;
 
@@ -111,7 +117,7 @@ function getMovementHeat(turnState: TurnState): number {
 }
 
 function getFiredHeat(turnState: TurnState): number {
-    return turnState.heatSources().find(source => source.id === 'fired')?.value ?? 0;
+    return turnState.heatSources().find(source => source.id === 'weapons')?.value ?? 0;
 }
 
 describe('TurnState', () => {
@@ -289,7 +295,7 @@ describe('TurnState', () => {
             expect(getMovementHeat(turnState)).toBe(10);
         });
 
-        it('keeps the XXL jump minimum at 3 heat', () => {
+        it('keeps the XXL jump minimum at 6 heat', () => {
             const { turnState } = createTurnStateHarness({
                 unit: { engine: 'XXL (IS)' },
             });
@@ -297,7 +303,7 @@ describe('TurnState', () => {
             turnState.moveMode.set('jump');
             turnState.moveDistance.set(1);
 
-            expect(getMovementHeat(turnState)).toBe(3);
+            expect(getMovementHeat(turnState)).toBe(6);
         });
 
         it('makes improved jump jets generate normal jump heat on XXL engines', () => {
@@ -313,24 +319,51 @@ describe('TurnState', () => {
             });
 
             turnState.moveMode.set('jump');
+            turnState.moveDistance.set(1);
+            expect(getMovementHeat(turnState)).toBe(3);
+
             turnState.moveDistance.set(5);
 
             expect(getMovementHeat(turnState)).toBe(5);
         });
 
-        it('doubles only standard jump jet heat on XXL engines with mixed jump jets', () => {
+        it('doubles prototype improved jump jet heat', () => {
             const { turnState } = createTurnStateHarness({
-                unit: { engine: 'XXL (Clan)' },
                 critSlots: [
-                    createCritSlot('Improved Jump Jet', 'LT'),
-                    createCritSlot('Improved Jump Jet', 'RT'),
+                    createCritSlot('Prototype Improved Jump Jet', 'LT'),
+                    createCritSlot('Prototype Improved Jump Jet', 'LT'),
+                    createCritSlot('Prototype Improved Jump Jet', 'RT'),
+                    createCritSlot('Prototype Improved Jump Jet', 'RT'),
+                    createCritSlot('Prototype Improved Jump Jet', 'CT'),
                 ],
             });
 
             turnState.moveMode.set('jump');
-            turnState.moveDistance.set(5);
+            turnState.moveDistance.set(1);
+            expect(getMovementHeat(turnState)).toBe(6);
 
-            expect(getMovementHeat(turnState)).toBe(8);
+            turnState.moveDistance.set(5);
+            expect(getMovementHeat(turnState)).toBe(10);
+        });
+
+        it('quadruples prototype improved jump jet heat on XXL engines', () => {
+            const { turnState } = createTurnStateHarness({
+                unit: { engine: 'XXL (IS)' },
+                critSlots: [
+                    createCritSlot('Prototype Improved Jump Jet', 'LT'),
+                    createCritSlot('Prototype Improved Jump Jet', 'LT'),
+                    createCritSlot('Prototype Improved Jump Jet', 'RT'),
+                    createCritSlot('Prototype Improved Jump Jet', 'RT'),
+                    createCritSlot('Prototype Improved Jump Jet', 'CT'),
+                ],
+            });
+
+            turnState.moveMode.set('jump');
+            turnState.moveDistance.set(1);
+            expect(getMovementHeat(turnState)).toBe(12);
+
+            turnState.moveDistance.set(5);
+            expect(getMovementHeat(turnState)).toBe(20);
         });
 
         it('suppresses non-jump movement heat while any Super-Cooled Myomer crit is working', () => {
@@ -393,7 +426,7 @@ describe('TurnState', () => {
             turnState.addFiredHeat(6);
 
             expect(turnState.heatSources()).toEqual([
-                { id: 'fired', label: 'Fired', value: 6 },
+                { id: 'weapons', label: 'Weapons', value: 6 },
             ]);
         });
     });

@@ -92,7 +92,7 @@ const INVENTORY_RANGE_BUTTON_CLASSES: ReadonlyArray<readonly [string, SheetInven
 const VTOL_ROTOR_CRIT_ID = 'rotor';
 const VTOL_ROTOR_HITS_MAX = 20;
 const SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY = 'svg-inventory-target-choice';
-const SVG_UNIT_STATE_DROPDOWN_OVERLAY_KEY = 'svg-unit-state-dropdown';
+const SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY = 'svg-conditions-dropdown';
 const REPEATABLE_MOTIVE_HIT_LABELS = new Map<number, string>([
     [2, 'Medium'],
     [3, 'Heavy']
@@ -244,7 +244,7 @@ export class SvgInteractionService {
         this.setupCrewHitInteractions(svg, signal);
         this.setupSkillInteractions(svg, signal);
         this.setupCrewNameInteractions(svg, signal);
-        this.setupUnitStateInteractions(svg, signal);
+        this.setupConditionsInteractions(svg, signal);
         this.setupInventoryInteractions(svg, signal);
         this.setupAmmoProfileInteractions(svg, signal);
     }
@@ -1295,34 +1295,38 @@ export class SvgInteractionService {
         }, { passive: false, signal });
     }
 
-    private setupUnitStateInteractions(svg: SVGSVGElement, signal: AbortSignal) {
-        svg.querySelectorAll<SVGElement>('.unitStateButton').forEach(el => {
-            const state = el.getAttribute('state');
-            if (state !== 'prone' && state !== 'shutdown' && state !== 'menu') return;
+    private setupConditionsInteractions(svg: SVGSVGElement, signal: AbortSignal) {
+        const unit = this.unit();
+        if (!unit) return;
+        const buttonConditions = new Set(unit.rules.conditionControls
+            .filter(condition => condition.placement === 'button')
+            .map(condition => condition.key));
+        const hasMenuConditions = unit.rules.conditionControls.some(condition => condition.placement === 'menu');
+        svg.querySelectorAll<SVGElement>('.unitConditionButton').forEach(el => {
+            const condition = el.getAttribute('condition');
+            if (!condition || (condition !== 'menu' && !buttonConditions.has(condition)) || (condition === 'menu' && !hasMenuConditions)) return;
             this.addSvgTapHandler(el, (event: PointerEvent) => {
                 const unit = this.unit();
                 const clickTarget = this.state.clickTarget;
                 if (!unit || !clickTarget || (clickTarget !== el && !el.contains(clickTarget))) return;
-                if (state === 'prone') {
-                    unit.setProne(!unit.prone);
-                } else if (state === 'shutdown') {
-                    unit.setShutdown(!unit.shutdown);
+                if (condition === 'menu') {
+                    this.showConditionsDropdown(el, unit);
                 } else {
-                    this.showUnitStateDropdown(el, unit);
+                    unit.setCondition(condition, !unit.getCondition(condition));
                 }
             }, signal);
         });
     }
 
-    private showUnitStateDropdown(el: SVGElement, unit: CBTForceUnit): void {
-        if (this.overlayManager.has(SVG_UNIT_STATE_DROPDOWN_OVERLAY_KEY)) {
-            this.overlayManager.closeManagedOverlay(SVG_UNIT_STATE_DROPDOWN_OVERLAY_KEY);
+    private showConditionsDropdown(el: SVGElement, unit: CBTForceUnit): void {
+        if (this.overlayManager.has(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY)) {
+            this.overlayManager.closeManagedOverlay(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY);
             return;
         }
 
         this.removePicker();
         const portal = new ComponentPortal(UnitStateDropdownComponent, null, this.injector);
-        const { componentRef } = this.overlayManager.createManagedOverlay(SVG_UNIT_STATE_DROPDOWN_OVERLAY_KEY, el as unknown as HTMLElement, portal, {
+        const { componentRef } = this.overlayManager.createManagedOverlay(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY, el as unknown as HTMLElement, portal, {
             hasBackdrop: false,
             panelClass: 'unit-state-dropdown-overlay-panel',
             closeOnOutsideClick: true,
@@ -1341,20 +1345,24 @@ export class SvgInteractionService {
         updateChoices();
 
         outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(state => {
-            unit.setUnitState(state, !unit.getUnitState(state));
+            unit.setCondition(state, !unit.getCondition(state));
             updateChoices();
         });
     }
 
     private unitStateDropdownChoices(el: SVGElement, unit: CBTForceUnit): UnitStateDropdownChoice[] {
-        return [
-            { key: 'swarmed', label: 'SWARMED', color: this.unitStateColor(el, 'swarmed', '#f57c00'), active: unit.swarmed },
-            { key: 'tagged', label: 'TAGGED', color: this.unitStateColor(el, 'tagged', '#1976d2'), active: unit.tagged },
-        ];
+        return unit.rules.conditionControls
+            .filter(state => state.placement === 'menu')
+            .map(state => ({
+                key: state.key,
+                label: state.label,
+                color: this.unitStateColor(el, state.key, state.color),
+                active: unit.getCondition(state.key),
+            }));
     }
 
     private unitStateColor(el: SVGElement, state: string, fallback: string): string {
-        return el.ownerSVGElement?.querySelector<SVGElement>(`.unitStateBanner[state="${state}"]`)?.getAttribute('state-color') ?? fallback;
+        return el.ownerSVGElement?.querySelector<SVGElement>(`.unitConditionBanner[state="${state}"]`)?.getAttribute('state-color') ?? fallback;
     }
 
     private openEquipmentDialog(unit: CBTForceUnit, initialTab: EquipmentDialogTab): void {
@@ -1954,7 +1962,7 @@ export class SvgInteractionService {
         this.state.clickTarget = null;
         this.state.heatMarkerData.set(null);
         this.overlayManager.closeManagedOverlay(SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY);
-        this.overlayManager.closeManagedOverlay(SVG_UNIT_STATE_DROPDOWN_OVERLAY_KEY);
+        this.overlayManager.closeManagedOverlay(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY);
         this.unit.set(null);
     }
 }

@@ -1942,7 +1942,7 @@ hr.divider {
             }
         }
 
-        .unitStateButton {
+        .unitConditionButton {
             cursor: pointer;
 
             text {
@@ -1950,7 +1950,7 @@ hr.divider {
             }
 
             &.active rect {
-                fill: var(--unit-state-active-color, #666) !important;
+                fill: var(--unit-condition-active-color, #666) !important;
             }
 
             &.active text {
@@ -1958,11 +1958,11 @@ hr.divider {
             }
         }
 
-        .unitStateBanner {
+        .unitConditionBanner {
             pointer-events: none;
             opacity: 0;
 
-            .unitStateBannerRect {
+            .unitConditionBannerRect {
                 transform-box: fill-box;
                 transform-origin: left center;
                 transform: scaleX(0);
@@ -1970,20 +1970,11 @@ hr.divider {
                 transition: transform 90ms ease-out;
             }
 
-            .unitStateBannerText {
-                opacity: 0;
-                transition: opacity 60ms ease-out 40ms;
-            }
-
             &.visible {
                 opacity: 1;
 
-                .unitStateBannerRect {
+                .unitConditionBannerRect {
                     transform: scaleX(1);
-                }
-
-                .unitStateBannerText {
-                    opacity: 1;
                 }
             }
         }

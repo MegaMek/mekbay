@@ -1,7 +1,5 @@
 import { computed, signal } from "@angular/core";
-import type { ForceUnitState } from "./force-unit-state.model";
 import { canChangeAirborneGround, getMotiveModeMaxDistance, type MotiveModes } from "./motiveModes.model";
-import type { CriticalSlot } from "./force-serialization";
 import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "./common.model";
 import type { CBTForceUnitState } from "./cbt-force-unit-state.model";
 import type { PSRCheck, UnitHeatSource, UnitModifierBreakdownEntry } from "./rules/unit-type-rules";

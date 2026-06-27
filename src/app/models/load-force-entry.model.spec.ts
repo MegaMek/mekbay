@@ -80,7 +80,6 @@ describe('createLoadForceEntryFromSerializedForce', () => {
             state: {
                 destroyed: false,
                 modified: false,
-                shutdown: false,
                 crew: [
                     { id: 0, name: 'Pilot 1', gunnerySkill: 4, pilotingSkill: 5, hits: 0, state: 0 },
                     { id: 1, name: 'Pilot 2', gunnerySkill: 3, pilotingSkill: 4, hits: 0, state: 0 },

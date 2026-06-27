@@ -429,7 +429,7 @@ export class ASForceUnit extends ForceUnit {
 
     repairAll(): void {
         this.state.destroyed.set(false);
-        this.state.shutdown.set(false);
+        this.state.setConditions([]);
         this.state.armor.set(0);
         this.state.internal.set(0);
         this.state.heat.set(0);
@@ -559,7 +559,7 @@ export class ASForceUnit extends ForceUnit {
         const stateObj: ASSerializedState = {
             modified: this.state.modified(),
             destroyed: this.state.destroyed(),
-            shutdown: this.state.shutdown(),
+            conditions: this.state.conditionsForSerialization(),
             c3Position: this.state.c3Position() ?? undefined,
             heat: [this.state.heat(), this.state.pendingHeat()],
             armor: [this.state.armor(), this.state.pendingArmor()],
@@ -595,7 +595,7 @@ export class ASForceUnit extends ForceUnit {
         // State is already sanitized by AS_SERIALIZED_STATE_SCHEMA via AS_SERIALIZED_UNIT_SCHEMA
         this.state.modified.set(state.modified);
         this.state.destroyed.set(state.destroyed);
-        this.state.shutdown.set(state.shutdown);
+        this.state.setConditions(state.conditions ?? []);
         
         // Heat/armor/internal are already validated as [number, number] tuples
         this.state.heat.set(state.heat[0]);

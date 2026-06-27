@@ -185,12 +185,18 @@ export class UnitSvgMekService extends UnitSvgService {
         if (!svg) return;
         const movement = this.mekRules.movementState();
         const physical = this.mekRules.physicalCombat();
+        const systemsStatus = this.mekRules.systemsStatus();
         if (!movement || !physical) return;
 
         // Partial wing heat bonus display
-        if (movement.partialWingHeatBonus !== null) {
+        if (systemsStatus.hasPartialWings) {
             const el = svg.getElementById('partialWingBonus');
-            if (el) el.textContent = `(Partial Wing +${movement.partialWingHeatBonus})`;
+            if (el) {
+                el.textContent = `(Partial Wing +${systemsStatus.partialWingsHeatBonus})`;
+                if (systemsStatus.destroyedPartialWingsCount > 0) {
+                    el.classList.add('damaged');
+                }
+            }
         }
 
         // Movement point display

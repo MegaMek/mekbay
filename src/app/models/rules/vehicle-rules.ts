@@ -33,8 +33,8 @@
 
 import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
-import type { UnitSkillModifier } from './unit-type-rules';
-import { UnitTypeRulesBase } from './unit-type-rules';
+import type { UnitConditionControl, UnitSkillModifier } from './unit-type-rules';
+import { UnitTypeRulesBase, VEHICLE_UNIT_CONDITION_CONTROLS } from './unit-type-rules';
 import type { PSRCheck } from '../turn-state.model';
 import type { CriticalSlot, MountedEquipment } from '../force-serialization';
 import { WeaponEquipment } from '../equipment.model';
@@ -81,6 +81,12 @@ const STABILIZER_HIT_LOCATIONS: Record<string, readonly string[]> = {
  * Vehicle / Naval / VTOL / default game rules.
  */
 export class VehicleRules extends UnitTypeRulesBase {
+
+    override readonly conditionControls: readonly UnitConditionControl[] = VEHICLE_UNIT_CONDITION_CONTROLS;
+
+    override readonly immobile = computed<boolean>(() => {
+        return false; // TODO: Add logic for immobile based on vehicle type and damage
+    });
 
     constructor(unit: CBTForceUnit) {
         super(unit, 'DSR', 'Driving Skill Rolls');

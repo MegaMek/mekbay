@@ -33,7 +33,7 @@
 
 import { computed, signal, type Signal } from '@angular/core';
 import type { CriticalSlot } from '../force-serialization';
-import type { MotiveModes } from '../motiveModes.model';
+import { type MotiveModes } from '../motiveModes.model';
 import type { TurnState } from '../turn-state.model';
 import {
     getTargetMovementBracketForDistance,
@@ -67,6 +67,50 @@ export interface UnitModifierBreakdownEntry {
     label: string;
     modifier: number;
 }
+
+export type UnitConditionControlPlacement = 'button' | 'menu';
+
+export interface UnitConditionDefinition {
+    key: string;
+    label: string;
+    color: string;
+    placement?: UnitConditionControlPlacement;
+}
+
+export type UnitConditionControl = UnitConditionDefinition & { placement: UnitConditionControlPlacement };
+
+export const UNIT_CONDITION_DEFINITIONS: readonly UnitConditionDefinition[] = [
+    { key: 'shutdown', label: 'SHUTDOWN', color: '#d32f2f', placement: 'button' },
+    { key: 'abandoned', label: 'ABANDONED', color: '#000000' },
+    { key: 'immobile', label: 'IMMOBILE', color: '#ff8800' },
+    { key: 'prone', label: 'PRONE', color: '#666', placement: 'button' },
+    { key: 'swarmed', label: 'SWARMED', color: '#54ffc3', placement: 'menu' },
+    { key: 'tagged', label: 'TAGGED', color: '#3385d7', placement: 'menu' },
+    { key: 'skidding', label: 'SKIDDING', color: '#ebdb00', placement: 'menu' },
+    { key: 'jammed', label: 'JAMMED', color: '#ff6be6', placement: 'menu' },
+];
+
+const UNIT_CONDITION_BY_KEY = new Map<string, UnitConditionDefinition>(UNIT_CONDITION_DEFINITIONS.map(condition => [condition.key, condition]));
+const UNIT_CONDITION_SORT_INDEX = new Map<string, number>(UNIT_CONDITION_DEFINITIONS.map((condition, index) => [condition.key, index]));
+
+function unitConditionControls(keys: readonly string[]): readonly UnitConditionControl[] {
+    return keys.map(key => {
+        const condition = UNIT_CONDITION_BY_KEY.get(key);
+        if (!condition?.placement) throw new Error(`Unknown controllable unit condition: ${key}`);
+        return condition as UnitConditionControl;
+    });
+}
+
+export function getUnitConditionDefinition(key: string): UnitConditionDefinition | undefined {
+    return UNIT_CONDITION_BY_KEY.get(key);
+}
+
+export function unitConditionSortIndex(key: string): number {
+    return UNIT_CONDITION_SORT_INDEX.get(key) ?? UNIT_CONDITION_DEFINITIONS.length;
+}
+
+export const MEK_UNIT_CONDITION_CONTROLS: readonly UnitConditionControl[] = unitConditionControls(['shutdown', 'prone', 'swarmed', 'tagged', 'skidding', 'jammed']);
+export const VEHICLE_UNIT_CONDITION_CONTROLS: readonly UnitConditionControl[] = unitConditionControls(['swarmed', 'tagged', 'skidding', 'jammed']);
 
 /**
  * Author: Drake
@@ -104,6 +148,18 @@ export interface UnitTypeRules {
 
     /** Whether current phase damage causes automatic falling or equivalent unit-type failure. */
     readonly autoFall: Signal<boolean>;
+
+    /** Manual condition controls available for this unit type. */
+    readonly conditionControls: readonly UnitConditionControl[];
+
+    /** Whether a condition key is derived from rules instead of persisted unit state. */
+    isComputedCondition(condition: string): boolean;
+
+    /** Get a rule-derived condition value. Returns false for non-computed condition keys. */
+    hasComputedCondition(condition: string): boolean;
+
+    /** Rule-derived condition keys exposed through ForceUnit.getCondition/getConditions. */
+    computedConditions(): readonly string[];
 
     /** Required control-roll checks for the current phase. */
     getPSRChecks(turnState: TurnState): PSRCheck[];
@@ -149,6 +205,9 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     readonly pilotingModifiers: Signal<UnitSkillModifier[]> = signal([]);
     readonly pilotingModifier: Signal<number> = computed(() => this.pilotingModifiers().reduce((total, modifier) => total + modifier.modifier, 0));
     readonly autoFall: Signal<boolean> = signal(false);
+    readonly conditionControls: readonly UnitConditionControl[] = [];
+    protected readonly abandoned: Signal<boolean> = signal(false);
+    protected readonly immobile: Signal<boolean> = signal(false);
 
     abstract evaluateDestroyed(): void;
 
@@ -159,6 +218,20 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     ) {
         this.controlRollShortLabel = controlRollShortLabel;
         this.controlRollFullLabel = controlRollFullLabel;
+    }
+
+    isComputedCondition(condition: string): boolean {
+        return condition === 'abandoned' || condition === 'immobile';
+    }
+
+    hasComputedCondition(condition: string): boolean {
+        if (condition === 'abandoned') return this.abandoned();
+        if (condition === 'immobile') return this.immobile();
+        return false;
+    }
+
+    computedConditions(): readonly string[] {
+        return ['abandoned', 'immobile'];
     }
 
     getPSRChecks(_turnState: TurnState): PSRCheck[] {
@@ -179,7 +252,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         if (this.unit.getUnit().heat < 0) return []; // Does not track heat
         const firedHeat = turnState.firedHeat();
         return firedHeat > 0
-            ? [{ id: 'fired', label: 'Fired', value: firedHeat }]
+            ? [{ id: 'weapons', label: 'Weapons', value: firedHeat }]
             : [];
     }
 
@@ -216,13 +289,13 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
 
     getDefenseModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[] {
         const entries: UnitModifierBreakdownEntry[] = [];
-        if (turnState.unitState.prone()) {
+        if (turnState.unitState.hasCondition('prone')) {
             entries.push({ label: 'Prone', modifier: getTargetStanceModifier('prone', 1) });
         }
-        if (turnState.unitState.immobile()) {
+        if (turnState.unitState.hasCondition('immobile')) {
             entries.push({ label: 'Immobile', modifier: getTargetStanceModifier('immobile', 1) });
         }
-        if (turnState.unitState.skidding()) {
+        if (turnState.unitState.hasCondition('skidding')) {
             entries.push({ label: 'Skidding', modifier: TN_SKIDDING_MODIFIER });
         }
         const moveMode = turnState.moveMode();
@@ -245,6 +318,11 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
 
     protected getTargetUnitTypeModifierBreakdown(_turnState: TurnState): UnitModifierBreakdownEntry[] {
         return [];
+    }
+
+    protected hasFunctionalCrew(): boolean {
+        const crew = this.unit.getCrewMembers();
+        return crew.length > 0 && crew.some(crewMember => crewMember.getState() === 'healthy');
     }
 }
 

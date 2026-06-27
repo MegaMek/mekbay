@@ -37,6 +37,7 @@ import type { Unit } from "./units.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
 import { MountedEquipment, type CriticalSlot, type HeatProfile, type LocationData, type ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, type CBTSerializedState, type CBTSerializedUnit, type SerializedCrewMember } from './force-serialization';
 import { ForceUnit } from './force-unit.model';
+import type { ConditionData } from './force-unit-state.model';
 import type { CBTForce } from './cbt-force.model';
 import { UnitSvgService } from '../services/unit-svg.service';
 import { CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './crew-member.model';
@@ -59,6 +60,7 @@ import { ProtoMekRules } from './rules/protomek-rules';
 import { VehicleRules } from './rules/vehicle-rules';
 import { type InventoryControlRuntimeEntryState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeSnapshot, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from './inventory-control-runtime-state.model';
 import { CBTInventoryControlRuntime } from './cbt-inventory-control-runtime.model';
+import { LINKED_LOCATIONS } from './common.model';
 
 /*
  * Author: Drake
@@ -111,6 +113,22 @@ export class CBTForceUnit extends ForceUnit {
 
     /** Unit-type-specific game rules (destruction, PSR, systems status for Meks). */
     get rules(): UnitTypeRules { return this._rules; }
+
+    override isComputedCondition(condition: string): boolean {
+        return this._rules?.isComputedCondition(condition) ?? false;
+    }
+
+    override hasComputedCondition(condition: string): boolean {
+        return this._rules?.hasComputedCondition(condition) ?? false;
+    }
+
+    override getConditions(): ReadonlyMap<string, ConditionData | undefined> {
+        const conditions = new Map(this.conditions);
+        for (const condition of this._rules.computedConditions()) {
+            if (this.getCondition(condition)) conditions.set(condition, undefined);
+        }
+        return conditions;
+    }
 
     /** 
      * Direct write to crits signal, bypassing evaluateDestroyed/setModified. For rules evaluators. 
@@ -534,13 +552,25 @@ export class CBTForceUnit extends ForceUnit {
         const locKey = rear ? `${loc}-rear` : loc;
         if (!this.locations?.armor.has(locKey)) return false;
         const hits = this.getCommittedArmorHits(loc, rear);
-        return hits >= this.getArmorPoints(loc, rear);
+        if (hits >= this.getArmorPoints(loc, rear)) return true;
+
+        return Object.entries(LINKED_LOCATIONS).some(([sourceLoc, linkedLocations]) => {
+            if (!linkedLocations.includes(loc)) return false;
+            if (!this.locations?.internal.has(sourceLoc)) return false;
+            return this.isInternalLocCommittedDestroyed(sourceLoc);
+        });
     }
 
     isInternalLocCommittedDestroyed(loc: string): boolean {
         if (!this.locations?.internal.has(loc)) return false;
         const hits = this.getCommittedInternalHits(loc);
-        return hits >= this.getInternalPoints(loc);
+        if (hits >= this.getInternalPoints(loc)) return true;
+
+        return Object.entries(LINKED_LOCATIONS).some(([sourceLoc, linkedLocations]) => {
+            if (!linkedLocations.includes(loc)) return false;
+            if (!this.locations?.internal.has(sourceLoc)) return false;
+            return this.isInternalLocCommittedDestroyed(sourceLoc);
+        });
     }
 
     getCrewMembers = computed<CrewMember[]>(() => {
@@ -786,7 +816,7 @@ export class CBTForceUnit extends ForceUnit {
         this.state.heat.set({ current: 0, previous: 0 });
         // Clear destroyed state
         this.state.destroyed.set(false);
-        this.state.shutdown.set(false);
+        this.state.setConditions([]);
         // Clear inventory destroyed items
         const inventory = this.state.inventory().map(item => {
             if (item.destroyed) {
@@ -902,7 +932,7 @@ export class CBTForceUnit extends ForceUnit {
             locations: this.state.locationsForSerialization(),
             modified: this.state.modified(),
             destroyed: this.state.destroyed(),
-            shutdown: this.state.shutdown(),
+            conditions: this.state.conditionsForSerialization(),
             c3Position: this.state.c3Position() ?? undefined,
             inventory: this.state.inventoryForSerialization()
         };
@@ -923,7 +953,7 @@ export class CBTForceUnit extends ForceUnit {
         this.state.heat.set(Sanitizer.sanitize(state.heat, HEAT_SCHEMA));
         this.state.modified.set(typeof state.modified === 'boolean' ? state.modified : false);
         this.state.destroyed.set(typeof state.destroyed === 'boolean' ? state.destroyed : false);
-        this.state.shutdown.set(typeof state.shutdown === 'boolean' ? state.shutdown : false);
+        this.state.setConditions(state.conditions ?? []);
         this.state.inventory.update(inventory => inventory.map(item => item.clone({ destroying: undefined })));
         
         if (state.inventory) {

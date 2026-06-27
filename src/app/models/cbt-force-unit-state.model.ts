@@ -165,16 +165,32 @@ export class CBTForceUnitState extends ForceUnitState {
         turnState.resetPSRChecks();
     }
 
+    private cleanupEndTurnConditions() {
+        let cleanupDone = false;
+        if (this.hasCondition('tagged')) {
+            this.setCondition('tagged', false);
+            cleanupDone = true;
+        }
+        if (this.hasCondition('skidding')) {
+            this.setCondition('skidding', false);
+            cleanupDone = true;
+        }
+        if (cleanupDone) {
+            this.unit.setModified();
+        }
+    }
+
     endTurn() {
         this.consolidateHeat();
         this.turnState().resetTurnHeatSources();
+        this.cleanupEndTurnConditions();
         this.endPhase();
     }
 
     override update(data: CBTSerializedState) {
         this.modified.set(data.modified);
         this.destroyed.set(data.destroyed);
-        this.shutdown.set(data.shutdown);
+        this.setConditions(data.conditions ?? []);
         this.heat.set(data.heat);
         if (data.c3Position) {
             this.c3Position.set(Sanitizer.sanitize(data.c3Position, C3_POSITION_SCHEMA));

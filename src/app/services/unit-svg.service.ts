@@ -42,7 +42,7 @@ import { LoggerService } from './logger.service';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { resolveHitModifier, computeLinkedModifiers } from '../models/rules/hit-modifier.util';
 import { resolveWeaponRangeDamageText, WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE } from '../models/rules/weapon-range-rules.util';
-import { formatGunneryDisplay, formatPilotingDisplay, type UnitHeatSource } from '../models/rules/unit-type-rules';
+import { formatGunneryDisplay, formatPilotingDisplay, UNIT_CONDITION_DEFINITIONS, unitConditionSortIndex, type UnitHeatSource } from '../models/rules/unit-type-rules';
 import type { HeatDissipationState } from '../models/rules/heat-management';
 import { AmmoEquipment } from '../models/equipment.model';
 import { formatAmmoName } from '../utils/ammo-interaction.util';
@@ -93,6 +93,13 @@ export class UnitSvgService {
             this.updateAllDisplays();
             this.version(); // Track version to force a repaint
         });
+        // Unit state effect
+        effect(() => {
+            const svg = this.unit.svg();
+            if (!svg) return;
+            this.updateConditionsDisplay();
+            this.version(); // Track version to force a repaint
+        });
         // Destroy effect
         effect(() => {
             const destroyed = this.unit.destroyed;
@@ -134,7 +141,7 @@ export class UnitSvgService {
                 hiddenContainer.appendChild(svg);
                 await this._waitForSvgLayout(svg);
 
-                RsPolyfillUtil.addMissingClasses(this.unit.getUnit(), svg);
+                RsPolyfillUtil.addMissingClasses(this.unit, svg);
                 this.unitInitializer.initializeUnitIfNeeded(this.unit, svg);
 
                 this.unit.svg.set(svg);
@@ -236,6 +243,61 @@ export class UnitSvgService {
         this.updateAmmoProfile();
         this.updateInventory();
         this.updateTurnState();
+        this.updateConditionsDisplay();
+    }
+
+    protected updateConditionsDisplay() {
+        const svg = this.unit.svg();
+        if (!svg) return;
+
+        const conditionControls = this.unit.rules.conditionControls;
+        const conditions = this.unit.getConditions();
+        const activeConditions = UNIT_CONDITION_DEFINITIONS
+            .map(condition => ({ key: condition.key, active: conditions.has(condition.key) }))
+            .sort((left, right) => unitConditionSortIndex(left.key) - unitConditionSortIndex(right.key));
+        const menuActive = conditionControls.some(condition => condition.placement === 'menu' && conditions.has(condition.key));
+        const menuButton = svg.querySelector<SVGElement>('.unitConditionButton[condition="menu"]');
+        menuButton?.classList.toggle('active', menuActive);
+        const menuButtonColor = menuButton?.getAttribute('active-color') ?? '#444';
+        menuButton?.querySelector<SVGElement>('rect')?.setAttribute('fill', menuActive ? menuButtonColor : '#fff');
+        menuButton?.querySelector<SVGElement>('text')?.setAttribute('fill', menuActive ? '#fff' : '#000');
+
+        let bannerOffset = 0;
+        for (const condition of activeConditions) {
+            const button = svg.querySelector<SVGElement>(`.unitConditionButton[condition="${condition.key}"]`);
+            button?.classList.toggle('active', condition.active);
+            const buttonColor = button?.getAttribute('active-color') ?? '#666';
+            button?.querySelector<SVGElement>('rect')?.setAttribute('fill', condition.active ? buttonColor : '#fff');
+            button?.querySelector<SVGElement>('text')?.setAttribute('fill', condition.active ? '#fff' : '#000');
+
+            const banner = svg.querySelector<SVGElement>(`.unitConditionBanner[condition="${condition.key}"]`);
+            if (!banner) continue;
+            const bannerRect = banner.querySelector<SVGElement>('.unitConditionBannerRect');
+            const bannerText = banner.querySelector<SVGElement>('.unitConditionBannerText');
+            banner.classList.toggle('visible', condition.active);
+            if (condition.active) {
+                banner.removeAttribute('display');
+            } else {
+                banner.setAttribute('display', 'none');
+            }
+            banner.setAttribute('opacity', condition.active ? '1' : '0');
+            bannerRect?.setAttribute('fill', banner.getAttribute('condition-color') ?? '#666');
+            if (bannerRect) {
+                bannerRect.style.transformBox = 'fill-box';
+                bannerRect.style.transformOrigin = 'left center';
+                bannerRect.style.transition = 'transform 90ms ease-out';
+                bannerRect.style.transform = condition.active ? 'scaleX(1)' : 'scaleX(0)';
+            }
+            if (bannerText) {
+                bannerText.style.transition = 'opacity 60ms ease-out 40ms';
+                bannerText.style.opacity = condition.active ? '1' : '0';
+            }
+            if (condition.active) {
+                const bannerHeight = Number(bannerRect?.getAttribute('height') ?? 15);
+                banner.setAttribute('transform', `translate(0 ${bannerOffset})`);
+                bannerOffset += bannerHeight;
+            }
+        }
     }
 
     protected updateDestroyedOverlayDisplay(destroyed?: boolean) {

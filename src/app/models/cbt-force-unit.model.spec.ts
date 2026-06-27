@@ -49,6 +49,16 @@ function createEquipment(): EquipmentMap {
     };
 }
 
+function createMekUnit(): Unit {
+    return createEmptyUnit({
+        name: 'BMTest_MEK-1',
+        chassis: 'Test Mek',
+        model: 'MEK-1',
+        type: 'Mek',
+        subtype: 'BattleMek',
+    });
+}
+
 function createVehicleUnit(equipment: EquipmentMap): Unit {
     return createEmptyUnit({
         name: 'CVSMTankDestroyer_SM1',
@@ -168,7 +178,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         injector = TestBed.inject(Injector);
     });
 
-    function createForceUnit(unit: Unit = createVehicleUnit(equipment)): CBTForceUnit {
+    function createForceUnit(unit: Unit = createMekUnit()): CBTForceUnit {
         dataService.getUnitByName.and.callFake((name: string) => name === unit.name ? unit : undefined);
         const force = new TestCBTForce('Test Force', dataService, unitInitializer, injector);
         return new CBTForceUnit(unit, force, dataService, unitInitializer, injector);
@@ -181,7 +191,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     }
 
     it('splits direct inventory ammo into one entry per bin using q and q2', () => {
-        const forceUnit = createForceUnit();
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
 
         initialize(forceUnit);
 
@@ -200,7 +210,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     });
 
     it('commits pending direct inventory hit and repair state at phase end', () => {
-        const forceUnit = createForceUnit();
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
         initialize(forceUnit);
         const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
 
@@ -258,7 +268,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     });
 
     it('filters available movement modes through unit rules', () => {
-        const forceUnit = createForceUnit();
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
         initialize(forceUnit);
 
         expect(forceUnit.getAvailableMotiveModes(forceUnit.turnState().airborne() ?? false).some(option => option.mode === 'run')).toBeTrue();
@@ -268,8 +278,58 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.getAvailableMotiveModes(forceUnit.turnState().airborne() ?? false).some(option => option.mode === 'run')).toBeFalse();
     });
 
-    it('serializes and updates direct inventory ammo custom type, count, and total per bin', () => {
+    it('serializes and restores manual unit conditions', () => {
         const forceUnit = createForceUnit();
+
+        forceUnit.setCondition('shutdown', true);
+        forceUnit.setCondition('prone', true);
+        forceUnit.setCondition('swarmed', true);
+        forceUnit.setCondition('tagged', true);
+        forceUnit.setCondition('skidding', true);
+
+        const serialized = forceUnit.serialize();
+        const serializedConditions = serialized.state as unknown as Record<string, unknown>;
+
+        expect(serializedConditions['shutdown']).toBeUndefined();
+        expect(serializedConditions['prone']).toBeUndefined();
+        expect(serializedConditions['swarmed']).toBeUndefined();
+        expect(serializedConditions['tagged']).toBeUndefined();
+        expect(serializedConditions['skidding']).toBeUndefined();
+        expect(serialized.state.conditions).toEqual(['prone', 'shutdown', 'skidding', 'swarmed', 'tagged']);
+
+        const restored = CBTForceUnit.deserialize(
+            serialized,
+            new TestCBTForce('Restored Conditions Force', dataService, unitInitializer, injector),
+            dataService,
+            unitInitializer,
+            injector
+        );
+
+        expect(restored.getCondition('shutdown')).toBeTrue();
+        expect(restored.getCondition('prone')).toBeTrue();
+        expect(restored.getCondition('swarmed')).toBeTrue();
+        expect(restored.getCondition('tagged')).toBeTrue();
+        expect(restored.getCondition('skidding')).toBeTrue();
+
+        restored.endTurn();
+
+        expect(restored.getCondition('tagged')).toBeFalse();
+        expect(restored.getCondition('skidding')).toBeFalse();
+    });
+
+    it('exposes computed conditions through getCondition without serializing them', () => {
+        const forceUnit = createForceUnit();
+
+        forceUnit.getCrewMember(0).setState('dead');
+
+        expect(forceUnit.getCondition('abandoned')).toBeTrue();
+        expect(forceUnit.getConditions().has('abandoned')).toBeTrue();
+        expect(forceUnit.conditions.has('abandoned')).toBeFalse();
+        expect(forceUnit.serialize().state.conditions).toBeUndefined();
+    });
+
+    it('serializes and updates direct inventory ammo custom type, count, and total per bin', () => {
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
         initialize(forceUnit);
 
         const ammoEntries = forceUnit.getInventory().filter(entry => entry.equipment instanceof AmmoEquipment);
@@ -324,7 +384,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     });
 
     it('repairAll restores direct inventory ammo bins to original ammo and split quantities', () => {
-        const forceUnit = createForceUnit();
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
         initialize(forceUnit);
         const ammoEntries = forceUnit.getInventory().filter(entry => entry.equipment instanceof AmmoEquipment);
         ammoEntries[0].ammo = 'Clan Ultra AC/20 Precision Ammo';
@@ -344,7 +404,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     });
 
     it('keeps inventory control targets transient and upgrades existing selections to the first target', () => {
-        const forceUnit = createForceUnit();
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
         initialize(forceUnit);
         const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
 
@@ -362,7 +422,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     });
 
     it('reuses deleted target letters and caps targets at twelve', () => {
-        const forceUnit = createForceUnit();
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
         initialize(forceUnit);
 
         expect(forceUnit.createInventoryControlTarget()?.id).toBe('A');
@@ -381,7 +441,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     });
 
     it('deselects entries assigned to deleted targets and clears all target selections on reset', () => {
-        const forceUnit = createForceUnit();
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
         initialize(forceUnit);
         const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
 
@@ -404,7 +464,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     });
 
     it('does not mutate hit modifier or render target TN text during runtime target selection sync', () => {
-        const forceUnit = createForceUnit();
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
         initialize(forceUnit);
         const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
         const hitModText = weaponEntry.el!.querySelector(':scope > .hitMod-text') as SVGTextElement;
@@ -458,7 +518,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     });
 
     it('renders wildcard vehicle stabilizer hit modifiers until movement mode is selected', () => {
-        const forceUnit = createForceUnit();
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
         initialize(forceUnit);
         const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
         const hitModRect = weaponEntry.el!.querySelector(':scope > .hitMod-rect') as SVGRectElement;
@@ -513,7 +573,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     });
 
     it('renders repeatable motive hit pips for committed and pending hits', () => {
-        const forceUnit = createForceUnit();
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
         const svg = createVehicleSvg();
         const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         const motiveHit = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -560,7 +620,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     });
 
     it('keeps target selection state independent of SVG presentation rendering', () => {
-        const forceUnit = createForceUnit();
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
         initialize(forceUnit);
         const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
         const targetTnText = weaponEntry.el!.querySelector(':scope > .targetTn-text') as SVGTextElement;
@@ -579,7 +639,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     });
 
     it('preserves valid target assignments across updates and prunes stale entry assignments', () => {
-        const forceUnit = createForceUnit();
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
         initialize(forceUnit);
         const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
         forceUnit.createInventoryControlTarget();

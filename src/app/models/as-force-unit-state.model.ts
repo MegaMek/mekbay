@@ -432,7 +432,7 @@ export class ASForceUnitState extends ForceUnitState {
         
         this.modified.set(sanitized.modified);
         this.destroyed.set(sanitized.destroyed);
-        this.shutdown.set(sanitized.shutdown);
+        this.setConditions(sanitized.conditions ?? []);
         
         // Heat/armor/internal are already validated as [number, number] tuples
         this.heat.set(sanitized.heat[0]);

@@ -31,6 +31,16 @@ type SvgInteractionServicePrivate = {
     updateHeatHighlight(heatValue: number): void;
 };
 
+const NO_CONDITION_RULES = { conditionControls: [] };
+
+function createSvgInteractionUnit<T extends object>(overrides: T): T & { getInventory: () => MountedEquipment[]; rules: typeof NO_CONDITION_RULES } {
+    return {
+        getInventory: () => [],
+        rules: NO_CONDITION_RULES,
+        ...overrides,
+    } as T & { getInventory: () => MountedEquipment[]; rules: typeof NO_CONDITION_RULES };
+}
+
 describe('SvgInteractionService', () => {
     let service: SvgInteractionServicePrivate;
     let zoomPanService: ZoomPanServiceInterface;
@@ -275,7 +285,7 @@ describe('SvgInteractionService', () => {
         svg.appendChild(rotorGroup);
 
         const rotorCrit = { id: 'rotor', hits: 2, pendingHits: 1 };
-        const unit = {
+        const unit = createSvgInteractionUnit({
             id: 'unit-vtol',
             getUnit: () => ({ type: 'VTOL' }),
             getInventory: () => [],
@@ -284,7 +294,7 @@ describe('SvgInteractionService', () => {
                 Object.assign(rotorCrit, crit);
             }),
             getCritSlots: () => [rotorCrit],
-        };
+        });
         service.updateUnit(unit);
         service.setupInteractions(svg);
 
@@ -330,14 +340,14 @@ describe('SvgInteractionService', () => {
         svg.appendChild(rotorGroup);
 
         const rotorCrit = { id: 'rotor', hits: 2, pendingHits: 1 };
-        const unit = {
+        const unit = createSvgInteractionUnit({
             id: 'unit-vtol',
             getUnit: () => ({ type: 'VTOL' }),
             getInventory: () => [],
             getCritLoc: (id: string) => id === 'rotor' ? rotorCrit : null,
             setCritLoc: jasmine.createSpy('setCritLoc'),
             getCritSlots: () => [rotorCrit],
-        };
+        });
         service.updateUnit(unit);
         service.setupInteractions(svg);
 
@@ -361,7 +371,7 @@ describe('SvgInteractionService', () => {
         svg.appendChild(motiveHit);
 
         const motiveCrit = { id: 'motive_system_hit_2', hits: 2, hitTimestamps: [10, 20] };
-        const unit = {
+        const unit = createSvgInteractionUnit({
             id: 'unit-tank',
             getUnit: () => ({ type: 'Tank' }),
             getInventory: () => [],
@@ -370,7 +380,7 @@ describe('SvgInteractionService', () => {
                 Object.assign(motiveCrit, crit);
             }),
             getCritSlots: () => [motiveCrit],
-        };
+        });
         spyOn(Date, 'now').and.returnValue(1000);
         service.updateUnit(unit);
         service.setupInteractions(svg);
@@ -417,14 +427,14 @@ describe('SvgInteractionService', () => {
         svg.appendChild(motiveHit);
 
         const motiveCrit = { id: 'motive_system_hit_3', hits: 2, hitTimestamps: [10, 20] };
-        const unit = {
+        const unit = createSvgInteractionUnit({
             id: 'unit-tank',
             getUnit: () => ({ type: 'Tank' }),
             getInventory: () => [],
             getCritLoc: (id: string) => id === 'motive_system_hit_3' ? motiveCrit : null,
             setCritLoc: jasmine.createSpy('setCritLoc'),
             getCritSlots: () => [motiveCrit],
-        };
+        });
         service.updateUnit(unit);
         service.setupInteractions(svg);
 
@@ -449,7 +459,7 @@ describe('SvgInteractionService', () => {
 
         let armorHits = 0;
         const rotorCrit = { id: 'rotor', hits: 2, pendingHits: 0 };
-        const unit = {
+        const unit = createSvgInteractionUnit({
             id: 'unit-vtol',
             getUnit: () => ({ type: 'VTOL' }),
             getInventory: () => [],
@@ -463,7 +473,7 @@ describe('SvgInteractionService', () => {
             setCritLoc: jasmine.createSpy('setCritLoc').and.callFake((crit) => {
                 Object.assign(rotorCrit, crit);
             }),
-        };
+        });
         service.updateUnit(unit);
         service.setupInteractions(svg);
 
@@ -669,7 +679,7 @@ describe('SvgInteractionService', () => {
     it('reports heat drag marker deltas from the pending heat at drag start', () => {
         const { svg, heat5, heat10, heat12 } = createHeatScaleSvg();
         const heatState: { current: number; next: number | null } = { current: 5, next: null };
-        const unit = {
+        const unit = createSvgInteractionUnit({
             id: 'unit-a',
             svg: () => svg,
             getHeat: () => heatState,
@@ -677,8 +687,8 @@ describe('SvgInteractionService', () => {
                 heatState.next = heat;
             }),
             getUnit: () => ({ type: 'Mek' }),
-            getInventory: () => []
-        };
+            getInventory: () => [],
+        });
 
         service.updateUnit(unit);
         service.setupInteractions(svg);
@@ -795,7 +805,7 @@ function createSensorHitInteractionUnit(): { svg: SVGSVGElement; unit: any; sens
         svg.appendChild(el);
         return el;
     });
-    const unit = {
+    const unit = createSvgInteractionUnit({
         id: 'unit-a',
         getUnit: () => ({ type: 'Vehicle' }),
         getInventory: () => [],
@@ -805,7 +815,7 @@ function createSensorHitInteractionUnit(): { svg: SVGSVGElement; unit: any; sens
         setCritSlots: jasmine.createSpy('setCritSlots').and.callFake((updatedCrits: typeof crits) => {
             crits.splice(0, crits.length, ...updatedCrits);
         }),
-    };
+    });
 
     return {
         svg,
@@ -854,7 +864,7 @@ function createInventoryInteractionUnit(html = `
         destroyed: false,
         linkedWith: null,
     });
-    const unit = {
+    const unit = createSvgInteractionUnit({
         id: 'unit-a',
         getInventory: () => [entry],
         getCritSlots: () => [],
@@ -873,8 +883,7 @@ function createInventoryInteractionUnit(html = `
             getSpottingModifier: () => 0,
         }),
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
-        rules: {}
-    };
+    });
     const runtime = new InventoryControlRuntimeState(() => unit.getInventory());
     Object.assign(unit, {
         getInventoryControlTargets: () => runtime.getTargets(),

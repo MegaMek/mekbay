@@ -163,10 +163,16 @@ export interface ASSerializedUnit extends SerializedUnit {
 export interface CBTSerializedUnit extends SerializedUnit {
     state: CBTSerializedState;
 }
+export interface SerializedConditionValue {
+    key: string;
+    value: number;
+}
+export type SerializedCondition = string | SerializedConditionValue;
+
 export interface SerializedState {
     modified: boolean;
     destroyed: boolean;
-    shutdown: boolean;
+    conditions?: SerializedCondition[];
     /** Position in the C3 network visual editor */
     c3Position?: { x: number; y: number };
 }
@@ -366,6 +372,47 @@ function sanitizeTimestampArray(value: unknown): number[] | undefined {
     return timestamps.length > 0 ? timestamps : undefined;
 }
 
+function sanitizeConditionName(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    const condition = value.trim().slice(0, 48);
+    return condition.length > 0 ? condition : null;
+}
+
+function sanitizeConditions(value: unknown): SerializedCondition[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const states = new Map<string, { value: number } | undefined>();
+
+    for (const entry of value) {
+        if (typeof entry === 'string') {
+            const condition = sanitizeConditionName(entry);
+            if (condition) states.set(condition, undefined);
+            continue;
+        }
+
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+            continue;
+        }
+
+        const record = entry as Record<string, unknown>;
+        const condition = sanitizeConditionName(record['state']);
+        const countedValue = record['value'];
+        if (!condition || typeof countedValue !== 'number' || !Number.isFinite(countedValue) || countedValue === 0) {
+            continue;
+        }
+
+        states.set(condition, { value: countedValue });
+    }
+
+    const serializedConditions = Array.from(states.entries())
+        .map(([condition, data]) => {
+            const countedValue = data?.value;
+            return typeof countedValue === 'number' && Number.isFinite(countedValue) && countedValue !== 0
+                ? { key: condition, value: countedValue }
+                : condition;
+        });
+    return serializedConditions.length > 0 ? serializedConditions : undefined;
+}
+
 export const INVENTORY_SCHEMA = Sanitizer.schema<SerializedInventory>()
     .string('id')
     .number('totalAmmo')
@@ -412,7 +459,7 @@ export const CREW_MEMBER_SCHEMA = Sanitizer.schema<SerializedCrewMember>()
 export const CBT_SERIALIZED_STATE_SCHEMA = Sanitizer.schema<CBTSerializedState>()
     .boolean('modified', { default: false })
     .boolean('destroyed', { default: false })
-    .boolean('shutdown', { default: false })
+    .custom('conditions', sanitizeConditions)
     .custom('c3Position', (value: unknown) => {
         if (!value || typeof value !== 'object') return undefined;
         return Sanitizer.sanitize(value, C3_POSITION_SCHEMA);
@@ -529,7 +576,7 @@ export const AS_CUSTOM_PILOT_ABILITY_SCHEMA = Sanitizer.schema<ASCustomPilotAbil
 export const AS_SERIALIZED_STATE_SCHEMA = Sanitizer.schema<ASSerializedState>()
     .boolean('modified', { default: false })
     .boolean('destroyed', { default: false })
-    .boolean('shutdown', { default: false })
+    .custom('conditions', sanitizeConditions)
     .custom('c3Position', (value: unknown) => {
         if (!value || typeof value !== 'object') return undefined;
         return Sanitizer.sanitize(value, C3_POSITION_SCHEMA);

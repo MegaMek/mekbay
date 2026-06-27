@@ -1,4 +1,5 @@
 import type { CBTForceUnit } from '../cbt-force-unit.model';
+import type { CrewMemberState } from '../crew-member.model';
 import type { CriticalSlot, MountedEquipment } from '../force-serialization';
 import type { MotiveModes } from '../motiveModes.model';
 import { Equipment, WeaponEquipment } from '../equipment.model';
@@ -57,6 +58,8 @@ function createRulesHarness(options: {
     walk2?: number;
     run?: number;
     run2?: number;
+    crewStates?: CrewMemberState[];
+    shutdown?: boolean;
 } = {}): VehicleRules {
     const baseUnit = createEmptyUnit({
         type: options.type ?? 'Tank',
@@ -66,11 +69,14 @@ function createRulesHarness(options: {
         run: options.run ?? 12,
         run2: options.run2 ?? options.run ?? 12,
     });
+    const crewStates = options.crewStates ?? ['healthy'];
     let rules: VehicleRules;
     const unit = {
         getCritSlots: () => options.crits ?? [],
         getInventory: () => options.inventory ?? [],
         getUnit: () => baseUnit,
+        getCondition: (state: string) => state === 'shutdown' && (options.shutdown ?? false),
+        getCrewMembers: () => crewStates.map(state => ({ getState: () => state })),
         pilotingSkill: () => 5,
         turnState: () => ({
             moveMode: () => options.moveMode ?? null,

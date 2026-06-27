@@ -56,7 +56,6 @@ function createSerializedUnit(id: string): SerializedUnit {
         state: {
             modified: false,
             destroyed: false,
-            shutdown: false,
         },
     };
 }

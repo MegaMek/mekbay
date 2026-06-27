@@ -34,7 +34,7 @@
 import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { CriticalSlot, MountedEquipment } from '../force-serialization';
-import { UnitTypeRulesBase, type PSRCheck, type UnitHeatSource } from './unit-type-rules';
+import { MEK_UNIT_CONDITION_CONTROLS, UnitTypeRulesBase, type PSRCheck, type UnitHeatSource } from './unit-type-rules';
 import { LINKED_LOCATIONS, LEG_LOCATIONS, FOUR_LEGGED_LOCATIONS } from '../common.model';
 import type { TurnState } from '../turn-state.model';
 import { type HeatScaleEntry, HeatManagement, getHeatEffects } from './heat-management';
@@ -49,11 +49,46 @@ type ArmLocation = 'LA' | 'RA';
  */
 export class MekRules extends UnitTypeRulesBase {
 
+    override readonly conditionControls = MEK_UNIT_CONDITION_CONTROLS;
+
+    protected override readonly abandoned = computed<boolean>(() => {
+        const crew = this.unit.getCrewMembers();
+        return crew.length > 0 && crew.every(crewMember => {
+            const state = crewMember.getState();
+            return state === 'dead' || state === 'ejected';
+        });
+    });
+    protected override readonly immobile = computed<boolean>(() => {
+        if (!this.unit.isLoaded()) return false;
+        if (this.unit.getCondition('shutdown')) return true;
+        if (this.allLimbsDestroyedOrMissing()) return true;
+        if (this.hasFunctionalCrew()) return false;
+        return true;
+    });
+
     private readonly heatMgmt: HeatManagement;
 
     constructor(unit: CBTForceUnit) {
         super(unit);
         this.heatMgmt = new HeatManagement(unit);
+    }
+
+    private allLimbsDestroyedOrMissing(): boolean {
+        const internalLocations = this.unit.locations?.internal;
+        if (!internalLocations) return false;
+
+        const limbLocations = this.mekLimbsLocations(internalLocations);
+        return limbLocations.every(loc => !internalLocations.has(loc) || this.unit.isInternalLocCommittedDestroyed(loc));
+    }
+
+    private mekLimbsLocations(internalLocations: Map<string, unknown>): readonly string[] {
+        if (Array.from(FOUR_LEGGED_LOCATIONS).some(loc => internalLocations.has(loc))) {
+            return ['RLL', 'FLL', 'RRL', 'FRL'];
+        }
+        if (internalLocations.has('CL')) {
+            return ['LL', 'RL', 'CL', 'LA', 'RA'];
+        }
+        return ['LL', 'RL', 'LA', 'RA'];
     }
 
     // ── Destruction ──────────────────────────────────────────────────────────
@@ -388,13 +423,34 @@ export class MekRules extends UnitTypeRulesBase {
             return hasXXLEngine ? 6 : 2;
         } else if (moveMode === 'jump') {
             const distance = turnState.moveDistance() || 0;
-            const hasImprovedJumpJets = this.hasImprovedJumpJets();
-            if (hasXXLEngine) {
-                return Math.max(3, hasImprovedJumpJets ? distance : distance * 2);
-            }
-            return Math.max(3, Math.ceil(distance / 2) + distance);
+            return this.computeJumpHeat(distance, hasXXLEngine);
         }
         return 0;
+    }
+
+    private computeJumpHeat(distance: number, hasXXLEngine: boolean): number {
+        const jumpJetType = this.getWorkingJumpJetType();
+        const engineMultiplier = hasXXLEngine ? 2 : 1;
+        if (jumpJetType === 'improved') {
+            return Math.max(3, Math.ceil((distance * engineMultiplier) / 2));
+        }
+        const prototypeMultiplier = jumpJetType === 'prototypeImproved' ? 2 : 1;
+        const multiplier = engineMultiplier * prototypeMultiplier;
+        const heat = distance * multiplier;
+        const minimum = 3 * multiplier;
+        return Math.max(minimum, heat);
+    }
+
+    private getWorkingJumpJetType(): 'standard' | 'improved' | 'prototypeImproved' {
+        for (const slot of this.unit.getCritSlots()) {
+            const equipment = slot.eq;
+            if (slot.destroyed || !equipment?.hasFlag('F_JUMP_JET')) continue;
+            if (equipment.hasFlag('S_PROTOTYPE')) {
+                return 'prototypeImproved';
+            }
+            if (equipment.hasFlag('S_IMPROVED')) return 'improved';
+        }
+        return 'standard';
     }
 
     private hasXXLEngine(): boolean {
@@ -405,10 +461,6 @@ export class MekRules extends UnitTypeRulesBase {
         const superCooledMyomerSlots = this.unit.getCritSlots().filter(slot => this.isSuperCooledMyomerSlot(slot));
         return superCooledMyomerSlots.length > 0
             && superCooledMyomerSlots.some(slot => !slot.destroyed);
-    }
-
-    private hasImprovedJumpJets(): boolean {
-        return this.unit.getCritSlots().some(slot => (slot.eq?.hasFlag('F_JUMP_JET') && slot.eq?.hasFlag('S_IMPROVED')));
     }
 
     private isSuperCooledMyomerSlot(slot: CriticalSlot): boolean {
@@ -435,9 +487,10 @@ export class MekRules extends UnitTypeRulesBase {
         const destroyedJumpJetsCount = critSlots.filter(slot => slot.name && (slot.name.includes('Jump Jet') || slot.name.includes('JumpJet')) && slot.destroyed).length;
         const UMUCount = critSlots.filter(slot => slot.name && (slot.name.includes('UMU'))).length;
         const destroyedUMUCount = critSlots.filter(slot => slot.name && (slot.name.includes('UMU')) && slot.destroyed).length;
-        const hasPartialWings = critSlots.some(slot => slot.name && slot.name.includes('PartialWing'));
-        const destroyedPartialWings = hasPartialWings ? critSlots.filter(slot => slot.name && slot.name.includes('PartialWing') && slot.destroyed).length : 0;
-        const hasTripleStrengthMyomer = critSlots.some(slot => slot.name && slot.name.includes('Triple Strength Myomer'));
+        const hasPartialWings = critSlots.some(slot => slot.eq?.hasFlag('F_PARTIAL_WING'));
+        const destroyedPartialWingsCount = hasPartialWings ? critSlots.filter(slot => slot.eq?.hasFlag('F_PARTIAL_WING') && slot.destroyed).length : 0;
+        const partialWingsHeatBonus = hasPartialWings ? Math.max(0, 3 - destroyedPartialWingsCount) : 0;
+        const hasTripleStrengthMyomer = critSlots.some(slot => slot.eq?.hasFlag('F_TSM') && !slot.eq?.hasFlag('F_PROTOTYPE'));
         const cockpitLoc = critSlots.find(slot => slot.name && slot.name.includes("Cockpit"))?.loc ?? 'HD';
         const destroyedSensorsCountInHD = critSlots.filter(slot => slot.loc === 'HD' && slot.name && slot.name.includes('Sensor') && slot.destroyed).length;
         const destroyedSensorsCount = critSlots.filter(slot => slot.name && slot.name.includes('Sensor') && slot.destroyed).length;
@@ -521,7 +574,8 @@ export class MekRules extends UnitTypeRulesBase {
             UMUCount,
             destroyedUMUCount,
             hasPartialWings,
-            destroyedPartialWings,
+            destroyedPartialWingsCount,
+            partialWingsHeatBonus,
             internalLocations,
             hasTripleStrengthMyomer,
             tripleStrengthMyomerMoveBonusActive: (this.unit.getHeat().current >= 9 && hasTripleStrengthMyomer),
@@ -769,7 +823,7 @@ export class MekRules extends UnitTypeRulesBase {
 
         // Partial wing heat bonus
         const partialWingBonus = this.systemsStatus().hasPartialWings
-            ? Math.max(0, 3 - this.systemsStatus().destroyedPartialWings)
+            ? Math.max(0, 3 - this.systemsStatus().destroyedPartialWingsCount)
             : 0;
 
         return {
@@ -784,10 +838,8 @@ export class MekRules extends UnitTypeRulesBase {
 
     // ── Movement State ───────────────────────────────────────────────────────
 
-    /**
-     * Derived movement profile: walk/run/jump/UMU MP after damage & heat.
-     */
-    readonly movementState = computed(() => {
+    // Derive movement profile from the unit conditions, before any heat effect or other modifiers are applied.
+    private computeBaseMovementProfile() {
         if (!this.unit.isLoaded()) return null;
         const unit = this.unit.getUnit();
         if (!unit) return null;
@@ -843,24 +895,60 @@ export class MekRules extends UnitTypeRulesBase {
         if (systemsStatus.destroyedLegActuatorsCount != 0 || systemsStatus.destroyedFeetCount != 0) {
             moveImpaired = true;
         }
+        
+        // Jump MP
+        if (systemsStatus.destroyedJumpJetsCount === systemsStatus.jumpJetsCount) {
+            jumpValue = 0;
+        } else {
+            jumpValue = Math.max(0, jumpValue - systemsStatus.destroyedJumpJetsCount);
+            if (systemsStatus.hasPartialWings) {
+                const maxWingBonus = unit.tons <= 55 ? 2 : 1;
+                jumpValue -= Math.min(systemsStatus.destroyedPartialWingsCount, maxWingBonus);
+            }
+        }
+
+        if (systemsStatus.destroyedUMUCount === systemsStatus.UMUCount) {
+            UMUValue = 0;
+        } else {
+            UMUValue = Math.max(0, UMUValue - systemsStatus.destroyedUMUCount);
+        }
+
+        return {
+            walk: walkValue,
+            runDisabled,
+            jump: jumpValue,
+            UMU: UMUValue,
+            moveImpaired,
+            jumpImpaired: (jumpValue < unit.jump),
+            UMUImpaired: (UMUValue < unit.umu),
+        };
+    }
+
+    // Returns the movement capabilities of the unit after applying heat, damage and other modifiers.
+    private computeMovementState() {
+        const unit = this.unit.getUnit();
+        if (!unit) return null;
+        const baseMovement = this.computeBaseMovementProfile();
+        if (!baseMovement) return null;
+        const systemsStatus = this.systemsStatus();
+        let walkValue = baseMovement?.walk ?? 0;
 
         // Heat effects
         const heat = this.unit.getHeat().current;
         const heatMoveModifier = MekRules.getHeatEffects(heat).moveModifier;
 
         walkValue += heatMoveModifier;
-        if (heatMoveModifier != 0) {
-            moveImpaired = true;
-        }
         walkValue = Math.max(0, walkValue);
         let maxWalkValue = walkValue;
-        if (systemsStatus.tripleStrengthMyomerMoveBonusActive) {
-            walkValue += 2;
-            maxWalkValue += 2;
-        } else if (systemsStatus.hasTripleStrengthMyomer) {
-            maxWalkValue += 1 - heatMoveModifier; // Simulate heat at 9+
+        if (systemsStatus.destroyedLegsCount === 0) {
+            if (systemsStatus.tripleStrengthMyomerMoveBonusActive) {
+                walkValue += 2;
+                maxWalkValue += 2;
+            } else if (systemsStatus.hasTripleStrengthMyomer) {
+                maxWalkValue += 1 - heatMoveModifier; // Simulate heat at 9+
+            }
+            walkValue = Math.max(0, walkValue);
         }
-        walkValue = Math.max(0, walkValue);
 
         // Run MP
         const hasWorkingMASC = systemsStatus.hasMASC && !systemsStatus.destroyedMASC;
@@ -868,7 +956,7 @@ export class MekRules extends UnitTypeRulesBase {
         const armorModifierOnRun = (unit.armorType === 'Hardened') ? -1 : 0;
         let runValue: number;
         let maxRunValue: number;
-        if (walkValue === 0 || runDisabled) {
+        if (walkValue === 0 || baseMovement.runDisabled) {
             runValue = 0;
             maxRunValue = 0;
         } else {
@@ -885,37 +973,21 @@ export class MekRules extends UnitTypeRulesBase {
             }
         }
 
-        // Jump MP
-        let partialWingHeatBonus: number | null = null;
-        if (systemsStatus.destroyedJumpJetsCount === systemsStatus.jumpJetsCount) {
-            jumpValue = 0;
-        } else {
-            jumpValue = Math.max(0, jumpValue - systemsStatus.destroyedJumpJetsCount);
-            if (systemsStatus.hasPartialWings) {
-                const maxWingBonus = unit.tons <= 55 ? 2 : 1;
-                jumpValue -= Math.min(systemsStatus.destroyedPartialWings, maxWingBonus);
-                partialWingHeatBonus = Math.max(0, 3 - systemsStatus.destroyedPartialWings);
-            }
-        }
-
-        if (systemsStatus.destroyedUMUCount === systemsStatus.UMUCount) {
-            UMUValue = 0;
-        } else {
-            UMUValue = Math.max(0, UMUValue - systemsStatus.destroyedUMUCount);
-        }
-
         return {
-            moveImpaired,
+            moveImpaired: baseMovement.moveImpaired || (walkValue < unit.walk),
             walk: walkValue,
             maxWalk: maxWalkValue,
             run: runValue,
             maxRun: maxRunValue,
-            jumpImpaired: (jumpValue < unit.jump),
-            jump: jumpValue,
-            UMUImpaired: (UMUValue < unit.umu),
-            UMU: UMUValue,
-            partialWingHeatBonus,
+            jumpImpaired: baseMovement.jumpImpaired,
+            jump: baseMovement.jump,
+            UMUImpaired: baseMovement.UMUImpaired,
+            UMU: baseMovement.UMU
         };
+    };
+
+    readonly movementState = computed(() => {
+        return this.computeMovementState();
     });
 
     // ── Physical Combat State ────────────────────────────────────────────────

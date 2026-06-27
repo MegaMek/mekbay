@@ -79,6 +79,7 @@ function createUnit(id: string, entries: MountedEquipment[] = []): CBTForceUnit 
             getAttackMovementModifier: () => 0,
             missingAttackMovementModifier: () => false,
             getSpottingModifier: () => 0,
+            heatSources: () => [],
             dirty: () => false,
             autoFall: () => false,
             PSRRollsCount: () => 0,

@@ -38,6 +38,7 @@ export const DEFAULT_GUNNERY_SKILL = 4;
 export const DEFAULT_PILOTING_SKILL = 5;
 
 export type SkillType = 'gunnery' | 'piloting';
+export type CrewMemberState = 'healthy' | 'ejected' | 'unconscious' | 'dead';
 
 export class CrewMember {
     private unit: CBTForceUnit;
@@ -48,7 +49,7 @@ export class CrewMember {
     private asfGunnerySkill?: number; // Optional ASF gunnery skill for ASF
     private asfPilotingSkill?: number; // Optional ASF piloting skill for ASF units
     private hits: number;
-    private state: 'healthy' | 'unconscious' | 'dead' = 'healthy';
+    private state: CrewMemberState = 'healthy';
 
     constructor(id: number, unit: CBTForceUnit) {
         this.unit = unit;
@@ -79,11 +80,11 @@ export class CrewMember {
         this.unit.setModified();
     }
 
-    getState(): 'healthy' | 'unconscious' | 'dead' {
+    getState(): CrewMemberState {
         return this.state;
     }
 
-    setState(state: 'healthy' | 'unconscious' | 'dead') {
+    setState(state: CrewMemberState) {
         if (this.state === state) return;
         this.state = state;
         this.unit.setCrewMember(this.id, this);
@@ -155,7 +156,7 @@ export class CrewMember {
             asfGunnerySkill: this.getSkill('gunnery', true),
             asfPilotingSkill: this.getSkill('piloting', true),
             hits: this.getHits(),
-            state: this.getState() === 'unconscious' ? 1 : this.getState() === 'dead' ? 2 : 0
+            state: this.getState() === 'unconscious' ? 1 : this.getState() === 'dead' ? 2 : this.getState() === 'ejected' ? 3 : 0
         };
     }
 
@@ -171,7 +172,7 @@ export class CrewMember {
         if (data.asfPilotingSkill !== undefined)
             crew.setSkill('piloting', data.asfPilotingSkill, true);
         crew.setHits(data.hits);
-        crew.setState(data.state === 1 ? 'unconscious' : data.state === 2 ? 'dead' : 'healthy');
+        crew.setState(data.state === 1 ? 'unconscious' : data.state === 2 ? 'dead' : data.state === 3 ? 'ejected' : 'healthy');
         return crew;
     }
 
@@ -183,7 +184,7 @@ export class CrewMember {
         if (data.asfPilotingSkill !== this.asfPilotingSkill) this.asfPilotingSkill = data.asfPilotingSkill;
         if (data.hits !== this.hits) this.hits = data.hits;
 
-        const newState = data.state === 1 ? 'unconscious' : data.state === 2 ? 'dead' : 'healthy';
+        const newState = data.state === 1 ? 'unconscious' : data.state === 2 ? 'dead' : data.state === 3 ? 'ejected' : 'healthy';
         if (newState !== this.state) this.state = newState;
     }
 }

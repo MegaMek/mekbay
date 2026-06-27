@@ -32,6 +32,8 @@
  */
 
 import { heatLevels, REMOTE_HOST } from "../models/common.model";
+import type { CBTForceUnit } from "../models/cbt-force-unit.model";
+import { getUnitConditionDefinition } from "../models/rules/unit-type-rules";
 import type { Unit, UnitType } from "../models/units.model";
 
 interface InventoryRangeButtonColumn {
@@ -52,6 +54,13 @@ interface InventoryRangeButtonSpec {
  */
 export class RsPolyfillUtil {
 
+    private static readonly UNIT_STATE_BANNER_WIDTH = 220;
+    private static readonly UNIT_STATE_BANNER_HEIGHT = 24;
+    private static readonly UNIT_STATE_BANNER_FONT_SIZE = 24;
+    private static readonly IMPORTANT_UNIT_STATE_BANNER_WIDTH = 300;
+    private static readonly IMPORTANT_UNIT_STATE_BANNER_HEIGHT = 32;
+    private static readonly IMPORTANT_UNIT_STATE_BANNER_FONT_SIZE = 32;
+    
     private static readonly CRITICAL_LOCATION_IDS = [
         "commander_hit",
         "driver_hit",
@@ -97,11 +106,12 @@ export class RsPolyfillUtil {
      * TODO: Remove this when the record sheet SVGs are updated to include these classes.
      * @param callback The function to call when the browser is idle.
      */
-    public static addMissingClasses(unit: Unit, svg: SVGSVGElement): void {
+    public static addMissingClasses(forceUnit: CBTForceUnit, svg: SVGSVGElement): void {
+        const unit = forceUnit.getUnit();
         if (unit.type !== 'Mek') {
             this.addCriticalLocs(svg);
         }
-        this.addUnitStateButtons(unit, svg);
+        this.addConditionsButtons(forceUnit, svg);
         this.addMotiveHitPips(svg);
         this.addVtolRotorHitsCounter(unit, svg);
         this.addHeatLevels(svg);
@@ -173,30 +183,34 @@ export class RsPolyfillUtil {
         });
     }
 
-    private static addUnitStateButtons(unit: Unit, svg: SVGSVGElement): void {
+    private static addConditionsButtons(unit: CBTForceUnit, svg: SVGSVGElement): void {
         if (svg.getElementById('state_wrapper')) return;
+        const conditionControls = unit.rules.conditionControls;
+        if (conditionControls.length === 0) return;
         const unitDataPanelEl = svg.getElementById('unitDataPanel') as SVGGraphicsElement | null;
         if (!unitDataPanelEl) return;
         const frameEl = (unitDataPanelEl.querySelector('.frame')
             ?? unitDataPanelEl.querySelectorAll('path')[1]
             ?? unitDataPanelEl) as SVGGraphicsElement;
         const coords = frameEl.getBBox();
-        const states = [
-            { key: 'prone', label: 'PRONE', color: '#666' },
-            { key: 'shutdown', label: 'SHUTDOWN', color: '#d32f2f' },
-            { key: 'swarmed', label: 'SWARMED', color: '#f57c00' },
-            { key: 'tagged', label: 'TAGGED', color: '#1976d2' },
-            { key: 'immobile', label: 'IMMOBILE', color: '#444' },
+        const immobileCondition = getUnitConditionDefinition('immobile') ?? { key: 'immobile', label: 'IMMOBILE', color: '#444' };
+        const abandonedCondition = getUnitConditionDefinition('abandoned') ?? { key: 'abandoned', label: 'ABANDONED', color: '#7a1f1f' };
+        const conditions = [
+            ...conditionControls,
+            abandonedCondition,
+            immobileCondition,
         ];
         const buttons = [
-            { key: 'prone', label: 'PRONE', color: '#666', width: 30 },
-            { key: 'shutdown', label: 'SHUTDOWN', color: '#d32f2f', width: 44 },
-            { key: 'menu', label: '...', color: '#666', width: 14 },
+            ...conditionControls
+                .filter(condition => condition.placement === 'button')
+                .map(condition => ({ ...condition, width: this.conditionButtonWidth(condition.label) })),
+            ...(conditionControls.some(condition => condition.placement === 'menu') ? [{ key: 'menu', label: '...', color: '#666', width: 14 }] : []),
         ];
         const buttonHeight = 12;
         const buttonGap = 2;
         const totalButtonWidth = buttons.reduce((total, button) => total + button.width, 0) + buttonGap * (buttons.length - 1);
-        const buttonY = coords.y - 0.5;
+        // This is needed to fix the misaligned buttons on Vehicles
+        const buttonY = coords.y - (unit.getUnit().type === 'Mek' ? 0.5 : -2);
         let buttonX = coords.x + coords.width - totalButtonWidth - 16;
         const buttonWrapper = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         buttonWrapper.setAttribute('id', `state_wrapper`);
@@ -205,14 +219,14 @@ export class RsPolyfillUtil {
         bannerWrapper.setAttribute('id', `state_banner_wrapper`);
         bannerWrapper.setAttribute('class', 'screen-only unitStateBannerWrapper');
 
-        buttons.forEach((state) => {
-            const width = state.width;
+        buttons.forEach((condition) => {
+            const width = condition.width;
             const buttonGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-            buttonGroup.setAttribute('id', `unit_state_button_${state.key}`);
-            buttonGroup.setAttribute('class', 'unitStateButton');
-            buttonGroup.setAttribute('state', state.key);
-            buttonGroup.setAttribute('active-color', state.color);
-            buttonGroup.style.setProperty('--unit-state-active-color', state.color);
+            buttonGroup.setAttribute('id', `unit_state_button_${condition.key}`);
+            buttonGroup.setAttribute('class', 'unitConditionButton');
+            buttonGroup.setAttribute('condition', condition.key);
+            buttonGroup.setAttribute('active-color', condition.color);
+            buttonGroup.style.setProperty('--unit-condition-active-color', condition.color);
 
             const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
             rect.setAttribute('x', buttonX.toString());
@@ -221,7 +235,7 @@ export class RsPolyfillUtil {
             rect.setAttribute('height', buttonHeight.toString());
             rect.setAttribute('fill', '#fff');
             rect.setAttribute('stroke', '#000');
-            rect.setAttribute('stroke-width', '0.8');
+            rect.setAttribute('stroke-width', '1.2');
 
             const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
             text.setAttribute('x', (buttonX + width / 2).toString());
@@ -232,7 +246,7 @@ export class RsPolyfillUtil {
             text.setAttribute('font-size', '6.5');
             text.setAttribute('font-weight', 'bold');
             text.setAttribute('fill', '#000');
-            text.textContent = state.label;
+            text.textContent = condition.label;
 
             buttonGroup.appendChild(rect);
             buttonGroup.appendChild(text);
@@ -243,37 +257,44 @@ export class RsPolyfillUtil {
         const svgBox = svg.viewBox.baseVal && svg.viewBox.baseVal.width > 0
             ? svg.viewBox.baseVal
             : { x: 0, y: 0, width: svg.width.baseVal.value, height: svg.height.baseVal.value };
-        const bannerWidth = 300;
-        const bannerHeight = 30;
         const bannerX = svgBox.x;
         const bannerY = svgBox.y + 7;
-        states.forEach(state => {
+        conditions.forEach(condition => {
+            const bannerWidth = condition.key === 'shutdown'
+                ? this.IMPORTANT_UNIT_STATE_BANNER_WIDTH
+                : this.UNIT_STATE_BANNER_WIDTH;
+            const bannerHeight = condition.key === 'shutdown'
+            ? this.IMPORTANT_UNIT_STATE_BANNER_HEIGHT
+            : this.UNIT_STATE_BANNER_HEIGHT;
+            const bannerFontSize = condition.key === 'shutdown'
+            ? this.IMPORTANT_UNIT_STATE_BANNER_FONT_SIZE
+            : this.UNIT_STATE_BANNER_FONT_SIZE;
             const bannerGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-            bannerGroup.setAttribute('id', `unit_state_banner_${state.key}`);
-            bannerGroup.setAttribute('class', 'unitStateBanner');
-            bannerGroup.setAttribute('state', state.key);
-            bannerGroup.setAttribute('state-color', state.color);
+            bannerGroup.setAttribute('id', `unit_state_banner_${condition.key}`);
+            bannerGroup.setAttribute('class', 'unitConditionBanner');
+            bannerGroup.setAttribute('condition', condition.key);
+            bannerGroup.setAttribute('condition-color', condition.color);
             bannerGroup.setAttribute('transform', 'translate(0 0)');
 
             const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-            rect.setAttribute('class', 'unitStateBannerRect');
+            rect.setAttribute('class', 'unitConditionBannerRect');
             rect.setAttribute('x', bannerX.toString());
             rect.setAttribute('y', bannerY.toString());
             rect.setAttribute('width', bannerWidth.toString());
             rect.setAttribute('height', bannerHeight.toString());
-            rect.setAttribute('fill', state.color);
+            rect.setAttribute('fill', condition.color);
 
             const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            text.setAttribute('class', 'unitStateBannerText');
+            text.setAttribute('class', 'unitConditionBannerText');
             text.setAttribute('x', (bannerX + 6).toString());
-            text.setAttribute('y', (bannerY + bannerHeight / 2 + 0.5).toString());
+            text.setAttribute('y', (bannerY + bannerHeight / 2 + 2).toString());
             text.setAttribute('text-anchor', 'start');
             text.setAttribute('dominant-baseline', 'middle');
             text.setAttribute('font-family', 'Roboto, sans-serif');
-            text.setAttribute('font-size', '28');
+            text.setAttribute('font-size', bannerFontSize.toString());
             text.setAttribute('font-weight', 'bold');
             text.setAttribute('fill', '#fff');
-            text.textContent = state.label;
+            text.textContent = condition.label;
 
             bannerGroup.appendChild(rect);
             bannerGroup.appendChild(text);
@@ -282,6 +303,10 @@ export class RsPolyfillUtil {
 
         unitDataPanelEl.appendChild(buttonWrapper);
         svg.appendChild(bannerWrapper);
+    }
+
+    private static conditionButtonWidth(label: string): number {
+        return Math.max(30, label.length * 5.5);
     }
 
     private static addCritLocClassToElement(svg: SVGSVGElement, elementId: string, type: string, hit: number): void {
