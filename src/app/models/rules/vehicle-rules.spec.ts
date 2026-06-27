@@ -206,6 +206,38 @@ describe('VehicleRules', () => {
         expect(rules.isMotiveModeAvailable('run')).toBeFalse();
     });
 
+    it('marks vehicles abandoned and immobile when the crew is killed', () => {
+        const rules = createRulesHarness({ crewStates: ['killed'], walk: 8 });
+
+        expect(rules.hasComputedCondition('abandoned')).toBeTrue();
+        expect(rules.hasComputedCondition('immobile')).toBeTrue();
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({
+            walk: 0,
+            maxWalk: 0,
+            run: 0,
+            maxRun: 0,
+            moveImpaired: true,
+        }));
+        expect(rules.isMotiveModeAvailable('walk')).toBeFalse();
+        expect(rules.isMotiveModeAvailable('run')).toBeFalse();
+    });
+
+    it('disables run movement while the vehicle crew is stunned', () => {
+        const rules = createRulesHarness({ crewStates: ['stunned'], walk: 8 });
+
+        expect(rules.hasComputedCondition('abandoned')).toBeFalse();
+        expect(rules.hasComputedCondition('immobile')).toBeFalse();
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({
+            walk: 8,
+            maxWalk: 8,
+            run: 0,
+            maxRun: 0,
+            moveImpaired: true,
+        }));
+        expect(rules.isMotiveModeAvailable('walk')).toBeTrue();
+        expect(rules.isMotiveModeAvailable('run')).toBeFalse();
+    });
+
     it('uses motive timestamp order for different final MP values', () => {
         const rules = createRulesHarness({
             crits: [
@@ -216,6 +248,16 @@ describe('VehicleRules', () => {
         });
 
         expect(rules.movementState().walk).toBe(4);
+    });
+
+    it('marks vehicles immobile after a disabling motive system hit', () => {
+        const rules = createRulesHarness({
+            crits: [crit('motive_system_hit_4', 10)],
+            walk: 8,
+        });
+
+        expect(rules.hasComputedCondition('immobile')).toBeTrue();
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 0, run: 0, moveImpaired: true }));
     });
 
     it('applies repeatable motive damage chronologically but counts each piloting level once', () => {

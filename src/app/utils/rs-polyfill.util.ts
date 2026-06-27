@@ -33,7 +33,7 @@
 
 import { heatLevels, REMOTE_HOST } from "../models/common.model";
 import type { CBTForceUnit } from "../models/cbt-force-unit.model";
-import { getUnitConditionDefinition } from "../models/rules/unit-type-rules";
+import { getUnitConditionDefinition, UNIT_CONDITION_DEFINITIONS } from "../models/rules/unit-type-rules";
 import type { Unit, UnitType } from "../models/units.model";
 
 interface InventoryRangeButtonColumn {
@@ -60,6 +60,12 @@ export class RsPolyfillUtil {
     private static readonly IMPORTANT_UNIT_STATE_BANNER_WIDTH = 300;
     private static readonly IMPORTANT_UNIT_STATE_BANNER_HEIGHT = 32;
     private static readonly IMPORTANT_UNIT_STATE_BANNER_FONT_SIZE = 32;
+    private static readonly CREW_STATE_BUTTON_WIDTH = 10;
+    private static readonly CREW_STATE_BUTTON_HEIGHT = 10;
+    private static readonly CREW_STATE_BUTTON_GAP = 2;
+    private static readonly CREW_STATE_BANNER_WIDTH = 72;
+    private static readonly CREW_STATE_BANNER_HEIGHT = 10;
+    private static readonly CREW_STATE_BANNER_FONT_SIZE = 8;
     
     private static readonly CRITICAL_LOCATION_IDS = [
         "commander_hit",
@@ -117,8 +123,8 @@ export class RsPolyfillUtil {
         this.addHeatLevels(svg);
         this.addApplyHeatButton(svg);
         this.addCrewSkillsButtons(svg, unit.type);
-        this.addCrewNamesButtons(svg);
         this.addCrewDamageClasses(unit, svg);
+        this.addCrewNamesButtons(svg, forceUnit);
         this.addInventoryLines(svg);
         this.adjustArmorPips(unit, svg);
         this.addPipHitAreas(svg);
@@ -184,15 +190,11 @@ export class RsPolyfillUtil {
     }
 
     private static addConditionsButtons(unit: CBTForceUnit, svg: SVGSVGElement): void {
-        if (svg.getElementById('state_wrapper')) return;
+        const hasButtonWrapper = !!svg.getElementById('unit_condition_wrapper');
+        const hasBannerWrapper = !!svg.getElementById('condition_banner_wrapper');
+        if (hasButtonWrapper && hasBannerWrapper) return;
         const conditionControls = unit.rules.conditionControls;
         if (conditionControls.length === 0) return;
-        const unitDataPanelEl = svg.getElementById('unitDataPanel') as SVGGraphicsElement | null;
-        if (!unitDataPanelEl) return;
-        const frameEl = (unitDataPanelEl.querySelector('.frame')
-            ?? unitDataPanelEl.querySelectorAll('path')[1]
-            ?? unitDataPanelEl) as SVGGraphicsElement;
-        const coords = frameEl.getBBox();
         const immobileCondition = getUnitConditionDefinition('immobile') ?? { key: 'immobile', label: 'IMMOBILE', color: '#444' };
         const abandonedCondition = getUnitConditionDefinition('abandoned') ?? { key: 'abandoned', label: 'ABANDONED', color: '#7a1f1f' };
         const conditions = [
@@ -200,59 +202,74 @@ export class RsPolyfillUtil {
             abandonedCondition,
             immobileCondition,
         ];
-        const buttons = [
-            ...conditionControls
-                .filter(condition => condition.placement === 'button')
-                .map(condition => ({ ...condition, width: this.conditionButtonWidth(condition.label) })),
-            ...(conditionControls.some(condition => condition.placement === 'menu') ? [{ key: 'menu', label: '...', color: '#666', width: 14 }] : []),
-        ];
-        const buttonHeight = 12;
-        const buttonGap = 2;
-        const totalButtonWidth = buttons.reduce((total, button) => total + button.width, 0) + buttonGap * (buttons.length - 1);
-        // This is needed to fix the misaligned buttons on Vehicles
-        const buttonY = coords.y - (unit.getUnit().type === 'Mek' ? 0.5 : -2);
-        let buttonX = coords.x + coords.width - totalButtonWidth - 16;
-        const buttonWrapper = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        buttonWrapper.setAttribute('id', `state_wrapper`);
-        buttonWrapper.setAttribute('class', 'screen-only unitStateWrapper');
+
+        if (!hasButtonWrapper) {
+            const unitDataPanelEl = svg.getElementById('unitDataPanel') as SVGGraphicsElement | null;
+            if (unitDataPanelEl) {
+                const frameEl = (unitDataPanelEl.querySelector('.frame')
+                    ?? unitDataPanelEl.querySelectorAll('path')[1]
+                    ?? unitDataPanelEl) as SVGGraphicsElement;
+                const coords = frameEl.getBBox();
+                const buttons = [
+                    ...conditionControls
+                        .filter(condition => condition.placement === 'button')
+                        .map(condition => ({ ...condition, width: this.conditionButtonWidth(condition.label) })),
+                    ...(conditionControls.some(condition => condition.placement === 'menu') ? [{ key: 'menu', label: '...', color: '#666', width: 14 }] : []),
+                ];
+                const buttonHeight = 12;
+                const buttonGap = 2;
+                const totalButtonWidth = buttons.reduce((total, button) => total + button.width, 0) + buttonGap * (buttons.length - 1);
+                // This is needed to fix the misaligned buttons on Vehicles
+                const buttonY = coords.y - (unit.getUnit().type === 'Mek' ? 0.5 : -2);
+                let buttonX = coords.x + coords.width - totalButtonWidth - 16;
+                const buttonWrapper = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                buttonWrapper.setAttribute('id', `unit_condition_wrapper`);
+                buttonWrapper.setAttribute('class', 'screen-only unitConditionWrapper');
+
+                buttons.forEach((condition) => {
+                    const width = condition.width;
+                    const buttonGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                    buttonGroup.setAttribute('id', `unit_condition_button_${condition.key}`);
+                    buttonGroup.setAttribute('class', 'unitConditionButton');
+                    buttonGroup.setAttribute('condition', condition.key);
+                    buttonGroup.setAttribute('active-color', condition.color);
+                    buttonGroup.style.setProperty('--unit-condition-active-color', condition.color);
+
+                    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                    rect.setAttribute('x', buttonX.toString());
+                    rect.setAttribute('y', buttonY.toString());
+                    rect.setAttribute('width', width.toString());
+                    rect.setAttribute('height', buttonHeight.toString());
+                    rect.setAttribute('fill', '#fff');
+                    rect.setAttribute('stroke', '#000');
+                    rect.setAttribute('stroke-width', '1.2');
+
+                    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    text.setAttribute('x', (buttonX + width / 2).toString());
+                    text.setAttribute('y', (buttonY + buttonHeight / 2 + 0.5).toString());
+                    text.setAttribute('text-anchor', 'middle');
+                    text.setAttribute('dominant-baseline', 'middle');
+                    text.setAttribute('font-family', 'Roboto, sans-serif');
+                    text.setAttribute('font-size', '6.5');
+                    text.setAttribute('font-weight', 'bold');
+                    text.setAttribute('fill', '#000');
+                    text.textContent = condition.label;
+
+                    buttonGroup.appendChild(rect);
+                    buttonGroup.appendChild(text);
+                    buttonWrapper.appendChild(buttonGroup);
+                    buttonX += width + buttonGap;
+                });
+
+                unitDataPanelEl.appendChild(buttonWrapper);
+            }
+        }
+
+        if (hasBannerWrapper) return;
+
         const bannerWrapper = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        bannerWrapper.setAttribute('id', `state_banner_wrapper`);
-        bannerWrapper.setAttribute('class', 'screen-only unitStateBannerWrapper');
-
-        buttons.forEach((condition) => {
-            const width = condition.width;
-            const buttonGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-            buttonGroup.setAttribute('id', `unit_state_button_${condition.key}`);
-            buttonGroup.setAttribute('class', 'unitConditionButton');
-            buttonGroup.setAttribute('condition', condition.key);
-            buttonGroup.setAttribute('active-color', condition.color);
-            buttonGroup.style.setProperty('--unit-condition-active-color', condition.color);
-
-            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-            rect.setAttribute('x', buttonX.toString());
-            rect.setAttribute('y', buttonY.toString());
-            rect.setAttribute('width', width.toString());
-            rect.setAttribute('height', buttonHeight.toString());
-            rect.setAttribute('fill', '#fff');
-            rect.setAttribute('stroke', '#000');
-            rect.setAttribute('stroke-width', '1.2');
-
-            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            text.setAttribute('x', (buttonX + width / 2).toString());
-            text.setAttribute('y', (buttonY + buttonHeight / 2 + 0.5).toString());
-            text.setAttribute('text-anchor', 'middle');
-            text.setAttribute('dominant-baseline', 'middle');
-            text.setAttribute('font-family', 'Roboto, sans-serif');
-            text.setAttribute('font-size', '6.5');
-            text.setAttribute('font-weight', 'bold');
-            text.setAttribute('fill', '#000');
-            text.textContent = condition.label;
-
-            buttonGroup.appendChild(rect);
-            buttonGroup.appendChild(text);
-            buttonWrapper.appendChild(buttonGroup);
-            buttonX += width + buttonGap;
-        });
+        bannerWrapper.setAttribute('id', `condition_banner_wrapper`);
+        bannerWrapper.setAttribute('class', 'screen-only unitConditionBannerWrapper');
 
         const svgBox = svg.viewBox.baseVal && svg.viewBox.baseVal.width > 0
             ? svg.viewBox.baseVal
@@ -260,15 +277,16 @@ export class RsPolyfillUtil {
         const bannerX = svgBox.x;
         const bannerY = svgBox.y + 7;
         conditions.forEach(condition => {
-            const bannerWidth = condition.key === 'shutdown'
+            const definition = UNIT_CONDITION_DEFINITIONS.find(def => def.key === condition.key);
+            const bannerWidth = definition?.important
                 ? this.IMPORTANT_UNIT_STATE_BANNER_WIDTH
                 : this.UNIT_STATE_BANNER_WIDTH;
-            const bannerHeight = condition.key === 'shutdown'
-            ? this.IMPORTANT_UNIT_STATE_BANNER_HEIGHT
-            : this.UNIT_STATE_BANNER_HEIGHT;
-            const bannerFontSize = condition.key === 'shutdown'
-            ? this.IMPORTANT_UNIT_STATE_BANNER_FONT_SIZE
-            : this.UNIT_STATE_BANNER_FONT_SIZE;
+            const bannerHeight = definition?.important
+                ? this.IMPORTANT_UNIT_STATE_BANNER_HEIGHT
+                : this.UNIT_STATE_BANNER_HEIGHT;
+            const bannerFontSize = definition?.important
+                ? this.IMPORTANT_UNIT_STATE_BANNER_FONT_SIZE
+                : this.UNIT_STATE_BANNER_FONT_SIZE;
             const bannerGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
             bannerGroup.setAttribute('id', `unit_state_banner_${condition.key}`);
             bannerGroup.setAttribute('class', 'unitConditionBanner');
@@ -301,7 +319,6 @@ export class RsPolyfillUtil {
             bannerWrapper.appendChild(bannerGroup);
         });
 
-        unitDataPanelEl.appendChild(buttonWrapper);
         svg.appendChild(bannerWrapper);
     }
 
@@ -488,8 +505,20 @@ export class RsPolyfillUtil {
         });
     }
 
-    private static addCrewNamesButtons(svg: SVGSVGElement): void {
+    private static addCrewNamesButtons(svg: SVGSVGElement, forceUnit: CBTForceUnit): void {
         if (svg.querySelector('.crewNameButton')) return; // Avoid duplicates
+        const unitType = forceUnit.getUnit().type;
+        const crewSize = forceUnit.getUnit().crewSize;
+        // Ugly offset due to the sheets SVG messed up
+        let offsetX = 0;
+        if (unitType === 'Mek' && crewSize > 1) {
+            offsetX = 5;
+        } else if (unitType === 'Mek') {
+            offsetX = 0;
+        } else {
+            offsetX = 2;
+        }
+        const addStateControls = forceUnit.rules.crewStateControls.length > 0;
         const nameTargets = [
             { blankPath: 'blankCrewName0', textElement: 'pilotName0', crewId: 0 },
             { blankPath: 'blankCrewName1', textElement: 'pilotName1', crewId: 1 },
@@ -497,6 +526,7 @@ export class RsPolyfillUtil {
             { blankPath: 'blankCrewName3', textElement: 'pilotName3', crewId: 3 },
             { blankPath: 'blankFluffName', textElement: 'fluffName', crewId: 0 }
         ];
+        let firstNameX = 0;
         nameTargets.forEach((target, index) => {
             const blankNamePath = svg.querySelector(`#${target.blankPath}`);
             const nameText = svg.querySelector(`#${target.textElement}`);
@@ -504,8 +534,11 @@ export class RsPolyfillUtil {
             const blankPathVisibility = (blankNamePath as SVGElement).getAttribute('visibility');
             const pilotTextVisibility = (nameText as SVGElement).getAttribute('visibility');
             if (blankPathVisibility === 'hidden' && pilotTextVisibility === 'hidden') return;
-            const height = 20;
-            const nameX: number = parseFloat((nameText as SVGTextElement).getAttribute('x') || '0') - 22;
+            const height = 12;
+            if (firstNameX === 0) {
+                firstNameX = parseFloat((nameText as SVGTextElement).getAttribute('x') || '0');
+            }
+            const nameX = firstNameX - 22;
             const nameY: number = parseFloat((nameText as SVGTextElement).getAttribute('y') || '0') + 1;
             const pathBBox = (blankNamePath as SVGPathElement).getBBox();
             let width = pathBBox.width;
@@ -514,26 +547,99 @@ export class RsPolyfillUtil {
             } else {
                 width += 22; // Add padding
             }
+            const stateButtonWidth = addStateControls ? this.CREW_STATE_BUTTON_WIDTH : 0;
+            const stateButtonGap = addStateControls ? this.CREW_STATE_BUTTON_GAP : 0;
+            const nameButtonWidth = addStateControls ? Math.max(30, width - stateButtonWidth - stateButtonGap) : width;
             const clickArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
             clickArea.classList.add('crewNameButton');
             clickArea.setAttribute('id', `crewNameButton${target.crewId}`);
             clickArea.setAttribute('x', nameX.toString());
             clickArea.setAttribute('y', (nameY - height).toString());
-            clickArea.setAttribute('width', width.toString());
+            clickArea.setAttribute('width', nameButtonWidth.toString());
             clickArea.setAttribute('height', height.toString());
             clickArea.setAttribute('fill', 'transparent');
             clickArea.setAttribute('crewId', target.crewId.toString());
             clickArea.setAttribute('textElement', target.textElement);
             clickArea.setAttribute('blankElement', target.blankPath);
             blankNamePath.parentNode?.insertBefore(clickArea, blankNamePath.nextSibling);
+            if (addStateControls) {
+                const buttonX = nameX + nameButtonWidth + stateButtonGap + offsetX;
+                const buttonY = nameY + 2 - height + (height - this.CREW_STATE_BUTTON_HEIGHT) / 2;
+                this.addCrewStateMenuButton(blankNamePath.parentNode, target.crewId, target.textElement, buttonX, buttonY);
+            }
         });
+    }
+
+    private static addCrewStateMenuButton(parent: ParentNode | null, crewId: number, controlId: string, buttonX: number, buttonY: number): void {
+        if (!parent) return;
+
+        const buttonGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        buttonGroup.setAttribute('id', `crew_state_button_${crewId}_${controlId}`);
+        buttonGroup.setAttribute('class', 'crewStateButton unitConditionButton screen-only');
+        buttonGroup.setAttribute('crewId', crewId.toString());
+        buttonGroup.setAttribute('active-color', '#666');
+        buttonGroup.style.setProperty('--unit-condition-active-color', '#666');
+
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', buttonX.toString());
+        rect.setAttribute('y', buttonY.toString());
+        rect.setAttribute('width', this.CREW_STATE_BUTTON_WIDTH.toString());
+        rect.setAttribute('height', this.CREW_STATE_BUTTON_HEIGHT.toString());
+        rect.setAttribute('fill', '#fff');
+        rect.setAttribute('stroke', '#000');
+        rect.setAttribute('stroke-width', '1.2');
+
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', (buttonX + this.CREW_STATE_BUTTON_WIDTH / 2).toString());
+        text.setAttribute('y', (buttonY + this.CREW_STATE_BUTTON_HEIGHT / 2 + 0.5).toString());
+        text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('dominant-baseline', 'middle');
+        text.setAttribute('font-family', 'Roboto, sans-serif');
+        text.setAttribute('font-size', '6.5');
+        text.setAttribute('font-weight', 'bold');
+        text.setAttribute('fill', '#000');
+        text.textContent = '...';
+
+        const bannerX = buttonX - this.CREW_STATE_BANNER_WIDTH;
+        const bannerY = buttonY;
+        const bannerGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        bannerGroup.setAttribute('id', `crew_state_banner_${crewId}_${controlId}`);
+        bannerGroup.setAttribute('class', 'crewStateBanner unitConditionBanner screen-only');
+        bannerGroup.setAttribute('crewId', crewId.toString());
+        bannerGroup.setAttribute('display', 'none');
+
+        const bannerRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        bannerRect.setAttribute('class', 'unitConditionBannerRect');
+        bannerRect.setAttribute('x', bannerX.toString());
+        bannerRect.setAttribute('y', bannerY.toString());
+        bannerRect.setAttribute('width', this.CREW_STATE_BANNER_WIDTH.toString());
+        bannerRect.setAttribute('height', this.CREW_STATE_BANNER_HEIGHT.toString());
+        bannerRect.setAttribute('fill', '#666');
+
+        const bannerText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        bannerText.setAttribute('class', 'unitConditionBannerText');
+        bannerText.setAttribute('x', (bannerX + this.CREW_STATE_BANNER_WIDTH - 3).toString());
+        bannerText.setAttribute('y', (bannerY + this.CREW_STATE_BANNER_HEIGHT / 2 + 1).toString());
+        bannerText.setAttribute('text-anchor', 'end');
+        bannerText.setAttribute('dominant-baseline', 'middle');
+        bannerText.setAttribute('font-family', 'Roboto, sans-serif');
+        bannerText.setAttribute('font-size', this.CREW_STATE_BANNER_FONT_SIZE.toString());
+        bannerText.setAttribute('font-weight', 'bold');
+        bannerText.setAttribute('fill', '#fff');
+
+        buttonGroup.appendChild(rect);
+        buttonGroup.appendChild(text);
+        bannerGroup.appendChild(bannerRect);
+        bannerGroup.appendChild(bannerText);
+        parent.appendChild(bannerGroup);
+        parent.appendChild(buttonGroup);
     }
 
     /**
      * Adds crew damage hit boxes to the svg.
      * Creates transparent rectangles above crew damage text elements.
      */
-    private static addCrewDamageClasses(unit: Unit, svg: SVGSVGElement): void {
+    private static addCrewDamageClasses(unit: Unit, svg: SVGSVGElement): boolean {
         // First number: crew index (0-4)
         for (let crewId = 0; crewId <= 4; crewId++) {
             // Second number: hit index (1-10)
@@ -546,155 +652,8 @@ export class RsPolyfillUtil {
                     tracksDamage = true;
                 }
             }
-            if (tracksDamage) {
-                const crewDamageContainer = svg.getElementById(`crewDamage${crewId}`) as SVGGraphicsElement;
-                if (crewDamageContainer) {
-                    this.addUnconsciousCheckbox(svg, crewDamageContainer, crewId);
-                    // const frameElement = crewDamageContainer.closest('.frame') as SVGGraphicsElement | null;
-                    // if (frameElement) {
-                    //     this.addUnconsciousIndicator(svg, frameElement, crewId);
-                    // }
-                }
-            }
         }
-    }
-
-    private static addUnconsciousIndicator(svg: SVGSVGElement, frameElement: SVGGraphicsElement, crewId: number): void {
-        // Check if indicator already exists to avoid duplicates
-        const existingIndicator = svg.getElementById(`unconscious_indicator_${crewId}`);
-        if (existingIndicator) return;
-
-        // Get frame bounding box
-        const bbox = frameElement.getBBox();
-
-        // Position at top-right corner
-        const rectHeight = 12;
-        const rectWidth = bbox.width;
-        const rectX = bbox.x + bbox.width - rectWidth;
-        const rectY = - rectHeight;
-        const fontSize = 12;
-
-        // Create group for indicator
-        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        group.setAttribute('id', `unconscious_indicator_${crewId}`);
-        group.setAttribute('class', 'unconscious-indicator screen-only');
-        group.setAttribute('crewId', crewId.toString());
-        // group.setAttribute('display', 'none'); // Hidden by default
-
-        const clipPathId = `unconscious_clip_${crewId}`;
-        const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
-        clipPath.setAttribute('id', clipPathId);
-
-        const clipRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        clipRect.setAttribute('id', `unconscious_clip_rect_${crewId}`);
-        clipRect.setAttribute('x', (rectX + rectWidth).toString());
-        clipRect.setAttribute('x', (0).toString());
-        clipRect.setAttribute('y', rectY.toString());
-        clipRect.setAttribute('width', (rectX + rectWidth).toString());
-        clipRect.setAttribute('height', rectHeight.toString());
-        clipRect.style.transition = 'width 0.4s ease-out, x 0.4s ease-out';
-
-        clipPath.appendChild(clipRect);
-        let defs = svg.querySelector('defs');
-        if (!defs) {
-            defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-            svg.insertBefore(defs, svg.firstChild);
-        }
-        defs.appendChild(clipPath);
-
-        // Create rectangle background
-        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect.setAttribute('x', rectX.toString());
-        rect.setAttribute('y', rectY.toString());
-        rect.setAttribute('width', rectWidth.toString());
-        rect.setAttribute('height', rectHeight.toString());
-        rect.setAttribute('fill', '#ff0000EE');
-        rect.setAttribute('fill', '#ff7300ee');
-        rect.setAttribute('clip-path', `url(#${clipPathId})`);
-
-        // Create text
-        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        text.setAttribute('x', (rectX + rectWidth - 2).toString());
-        text.setAttribute('y', (rectY + rectHeight / 2 + 1).toString());
-        text.setAttribute('text-anchor', 'end');
-        text.setAttribute('dominant-baseline', 'middle');
-        text.setAttribute('font-family', 'Arial, sans-serif');
-        text.setAttribute('font-size', fontSize.toString());
-        text.setAttribute('font-weight', 'bold');
-        text.setAttribute('fill', '#fff');
-        text.setAttribute('clip-path', `url(#${clipPathId})`);
-        text.textContent = 'UNCONSCIOUS';
-
-        // Assemble the group
-        group.appendChild(rect);
-        group.appendChild(text);
-
-        frameElement.appendChild(group);
-    }
-
-    private static addUnconsciousCheckbox(svg: SVGSVGElement, container: SVGGraphicsElement, crewId: number): void {
-        // Check if checkbox already exists to avoid duplicates
-        const existingCheckbox = svg.getElementById(`crew_status_checkbox_${crewId}`);
-        if (existingCheckbox) return;
-
-        // Find the "Consciousness #" text element within the container
-        const textElements = Array.from(container.querySelectorAll('text'));
-        const consciousnessTextEl = textElements.find(el => el.textContent?.trim().startsWith('Consciousness #'));
-        if (!consciousnessTextEl) return;
-
-        consciousnessTextEl.classList.add('checkbox-label');
-
-        // Get text element's bounding box for positioning
-        const textBBox = (consciousnessTextEl as SVGGraphicsElement).getBBox();
-
-        // Checkbox dimensions
-        const checkboxSize = 5;
-        const margin = 2; // Space between checkbox and text
-
-        // Position checkbox to the left of the text
-        const checkboxX = textBBox.x - checkboxSize - margin;
-        const checkboxY = textBBox.y + (textBBox.height - checkboxSize) / 2; // Vertically center with text
-
-        // Create group for checkbox and label
-        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        group.setAttribute('id', `crew_status_checkbox_${crewId}`);
-        group.setAttribute('class', 'crew-status-checkbox screen-only');
-        group.setAttribute('crewId', crewId.toString());
-        group.setAttribute('state', 'unconscious');
-
-        // Create checkbox rectangle (border)
-        const checkboxRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        checkboxRect.setAttribute('x', checkboxX.toString());
-        checkboxRect.setAttribute('y', checkboxY.toString());
-        checkboxRect.setAttribute('width', checkboxSize.toString());
-        checkboxRect.setAttribute('height', checkboxSize.toString());
-        checkboxRect.setAttribute('fill', 'transparent');
-        checkboxRect.setAttribute('stroke', '#000');
-        checkboxRect.setAttribute('stroke-width', '1');
-        checkboxRect.setAttribute('class', 'checkbox-rect');
-
-        // Create clickable area covering both checkbox and text
-        const clickAreaX = checkboxX;
-        const clickAreaY = Math.min(checkboxY, textBBox.y);
-        const clickAreaWidth = textBBox.x + textBBox.width - clickAreaX;
-        const clickAreaHeight = Math.max(checkboxSize, textBBox.height);
-
-        const clickArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        clickArea.setAttribute('x', clickAreaX.toString());
-        clickArea.setAttribute('y', clickAreaY.toString());
-        clickArea.setAttribute('width', clickAreaWidth.toString());
-        clickArea.setAttribute('height', clickAreaHeight.toString());
-        clickArea.setAttribute('fill', 'transparent');
-        clickArea.setAttribute('crewId', crewId.toString());
-        clickArea.setAttribute('class', 'crew-status-area');
-        clickArea.setAttribute('cursor', 'pointer');
-
-        // Assemble the group
-        group.appendChild(checkboxRect);
-        group.appendChild(clickArea);
-
-        // Insert the group into the same parent as the text element
-        consciousnessTextEl.parentNode?.appendChild(group);
+        return true;
     }
 
     private static addCrewHitRect(svg: SVGSVGElement, textElement: Element, crewId: number, hit: number): void {

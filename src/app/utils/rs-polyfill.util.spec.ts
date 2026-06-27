@@ -1,6 +1,26 @@
 import { RsPolyfillUtil } from './rs-polyfill.util';
 
 describe('RsPolyfillUtil', () => {
+    it('adds unit condition banners when the sheet has no unit data panel', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('viewBox', '0 0 612 792');
+        const forceUnit = {
+            rules: {
+                conditionControls: [
+                    { key: 'swarmed', label: 'SWARMED', color: '#b35c00', placement: 'menu' },
+                ],
+            },
+            getUnit: () => ({ type: 'ProtoMek' }),
+        };
+
+        (RsPolyfillUtil as unknown as { addConditionsButtons: (unit: unknown, svg: SVGSVGElement) => void }).addConditionsButtons(forceUnit, svg);
+
+        expect(svg.getElementById('unit_condition_wrapper')).toBeNull();
+        expect(svg.getElementById('condition_banner_wrapper')).not.toBeNull();
+        expect(svg.querySelector('.unitConditionBanner[condition="abandoned"]')).not.toBeNull();
+        expect(svg.querySelector('.unitConditionBanner[condition="immobile"]')).not.toBeNull();
+    });
+
     it('adds hidden 3x3 motive hit pip overlays below repeatable motive hit controls', () => {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         const motiveHit2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');

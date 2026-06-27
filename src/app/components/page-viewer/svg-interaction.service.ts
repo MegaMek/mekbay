@@ -1,3 +1,4 @@
+import type { CrewStateControlKey } from '../../models/rules/unit-type-rules';
 /*
  * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
  *
@@ -37,8 +38,7 @@ import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DialogsService } from '../../services/dialogs.service';
 import { firstValueFrom } from 'rxjs';
-import type { ForceUnit } from '../../models/force-unit.model';
-import type { SkillType } from '../../models/crew-member.model';
+import type { CrewMemberState, SkillType } from '../../models/crew-member.model';
 import type { CriticalSlot, MountedEquipment } from '../../models/force-serialization';
 import { OptionsService } from '../../services/options.service';
 import { InputDialogComponent, type InputDialogData } from '../input-dialog/input-dialog.component';
@@ -93,6 +93,7 @@ const VTOL_ROTOR_CRIT_ID = 'rotor';
 const VTOL_ROTOR_HITS_MAX = 20;
 const SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY = 'svg-inventory-target-choice';
 const SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY = 'svg-conditions-dropdown';
+const SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY = 'svg-crew-state-dropdown';
 const REPEATABLE_MOTIVE_HIT_LABELS = new Map<number, string>([
     [2, 'Medium'],
     [3, 'Heavy']
@@ -244,6 +245,7 @@ export class SvgInteractionService {
         this.setupCrewHitInteractions(svg, signal);
         this.setupSkillInteractions(svg, signal);
         this.setupCrewNameInteractions(svg, signal);
+        this.setupCrewStateInteractions(svg, signal);
         this.setupConditionsInteractions(svg, signal);
         this.setupInventoryInteractions(svg, signal);
         this.setupAmmoProfileInteractions(svg, signal);
@@ -419,26 +421,6 @@ export class SvgInteractionService {
                 (el as SVGElement).style.pointerEvents = 'none';
             });
         }
-        svg.querySelectorAll<SVGElement>('.crew-status-checkbox').forEach(el => {
-            el.classList.add('interactive');
-            this.addSvgTapHandler(el, (evt: Event, primaryAction: boolean) => {
-                // Handle the tap event for crew status checkboxes
-                if (this.state.clickTarget !== el) return;
-                const crewId = el.getAttribute('crewId') as number | null;
-                const state = el.getAttribute('state');
-                if (crewId === null || !state) return;
-                const unit = this.unit();
-                if (!unit) return;
-                const crewMember = unit.getCrewMember(crewId);
-                if (!crewMember) return;
-                if (state === 'dead') {
-                    crewMember.toggleDead();
-                } else if (state === 'unconscious') {
-                    crewMember.toggleUnconscious();
-                }
-            }, signal);
-        });
-
     }
 
     private setupSoldierPipInteractions(svg: SVGSVGElement, signal: AbortSignal) {
@@ -1325,6 +1307,7 @@ export class SvgInteractionService {
         }
 
         this.removePicker();
+        this.overlayManager.closeManagedOverlay(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY);
         const portal = new ComponentPortal(UnitStateDropdownComponent, null, this.injector);
         const { componentRef } = this.overlayManager.createManagedOverlay(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY, el as unknown as HTMLElement, portal, {
             hasBackdrop: false,
@@ -1346,7 +1329,11 @@ export class SvgInteractionService {
 
         outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(state => {
             unit.setCondition(state, !unit.getCondition(state));
-            updateChoices();
+            if (componentRef.instance.closeOnSelect()) {
+                this.overlayManager.closeManagedOverlay(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY);
+            } else {
+                updateChoices();
+            }
         });
     }
 
@@ -1689,6 +1676,67 @@ export class SvgInteractionService {
         });
     }
 
+    private setupCrewStateInteractions(svg: SVGSVGElement, signal: AbortSignal) {
+        svg.querySelectorAll<SVGElement>('.crewStateButton').forEach(el => {
+            this.addSvgTapHandler(el, (event: PointerEvent) => {
+                const unit = this.unit();
+                const clickTarget = this.state.clickTarget;
+                if (!unit || !clickTarget || (clickTarget !== el && !el.contains(clickTarget))) return;
+                this.showCrewStateDropdown(el, unit);
+            }, signal);
+        });
+    }
+
+    private showCrewStateDropdown(el: SVGElement, unit: CBTForceUnit): void {
+        if (this.overlayManager.has(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY)) {
+            this.overlayManager.closeManagedOverlay(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY);
+            return;
+        }
+
+        this.removePicker();
+        this.overlayManager.closeManagedOverlay(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY);
+        const crewId = Number(el.getAttribute('crewId') || 0);
+        const portal = new ComponentPortal(UnitStateDropdownComponent, null, this.injector);
+        const { componentRef } = this.overlayManager.createManagedOverlay(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY, el as unknown as HTMLElement, portal, {
+            hasBackdrop: false,
+            panelClass: 'unit-state-dropdown-overlay-panel',
+            closeOnOutsideClick: true,
+            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            positions: [
+                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 }
+            ]
+        });
+        const updateChoices = () => {
+            componentRef.setInput('choices', this.crewStateDropdownChoices(unit, crewId));
+            componentRef.changeDetectorRef.detectChanges();
+        };
+        updateChoices();
+
+        outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(state => {
+            const crewMember = unit.getCrewMember(crewId);
+            const selectedState = state as CrewStateControlKey;
+            crewMember.setState(crewMember.getState() === selectedState ? 'healthy' : selectedState);
+            if (componentRef.instance.closeOnSelect()) {
+                this.overlayManager.closeManagedOverlay(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY);
+            } else {
+                updateChoices();
+            }
+        });
+    }
+
+    private crewStateDropdownChoices(unit: CBTForceUnit, crewId: number): UnitStateDropdownChoice[] {
+        const currentState = unit.getCrewMember(crewId).getState();
+        return unit.rules.crewStateControls.map(state => ({
+            key: state.key,
+            label: state.label,
+            color: state.color,
+            active: currentState === state.key,
+        }));
+    }
+
     private heatCells(svg: SVGSVGElement): HeatCell[] {
         return Array.from(svg.querySelectorAll<SVGElement>('#heatScale rect.heat[heat]'))
             .map(el => ({ el, value: Number(el.getAttribute('heat')) }))
@@ -1963,6 +2011,7 @@ export class SvgInteractionService {
         this.state.heatMarkerData.set(null);
         this.overlayManager.closeManagedOverlay(SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY);
         this.overlayManager.closeManagedOverlay(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY);
+        this.overlayManager.closeManagedOverlay(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY);
         this.unit.set(null);
     }
 }

@@ -35,6 +35,7 @@ import { computed, signal, type Signal } from '@angular/core';
 import type { CriticalSlot } from '../force-serialization';
 import { type MotiveModes } from '../motiveModes.model';
 import type { TurnState } from '../turn-state.model';
+import type { CrewMemberState } from '../crew-member.model';
 import {
     getTargetMovementBracketForDistance,
     getTargetStanceModifier,
@@ -75,13 +76,24 @@ export interface UnitConditionDefinition {
     label: string;
     color: string;
     placement?: UnitConditionControlPlacement;
+    important?: boolean;
 }
 
 export type UnitConditionControl = UnitConditionDefinition & { placement: UnitConditionControlPlacement };
 
+export interface CrewStateDefinition {
+    key: CrewMemberState;
+    label: string;
+    bannerLabel: string;
+    color: string;
+}
+
+export type CrewStateControlKey = Exclude<CrewMemberState, 'healthy' | 'dead'>;
+export type CrewStateControlDefinition = CrewStateDefinition & { key: CrewStateControlKey };
+
 export const UNIT_CONDITION_DEFINITIONS: readonly UnitConditionDefinition[] = [
-    { key: 'shutdown', label: 'SHUTDOWN', color: '#d32f2f', placement: 'button' },
-    { key: 'abandoned', label: 'ABANDONED', color: '#000000' },
+    { key: 'shutdown', important: true, label: 'SHUTDOWN', color: '#d32f2f', placement: 'button' },
+    { key: 'abandoned', important: true, label: 'ABANDONED', color: '#000000' },
     { key: 'immobile', label: 'IMMOBILE', color: '#ff8800' },
     { key: 'prone', label: 'PRONE', color: '#666', placement: 'button' },
     { key: 'swarmed', label: 'SWARMED', color: '#54ffc3', placement: 'menu' },
@@ -93,7 +105,7 @@ export const UNIT_CONDITION_DEFINITIONS: readonly UnitConditionDefinition[] = [
 const UNIT_CONDITION_BY_KEY = new Map<string, UnitConditionDefinition>(UNIT_CONDITION_DEFINITIONS.map(condition => [condition.key, condition]));
 const UNIT_CONDITION_SORT_INDEX = new Map<string, number>(UNIT_CONDITION_DEFINITIONS.map((condition, index) => [condition.key, index]));
 
-function unitConditionControls(keys: readonly string[]): readonly UnitConditionControl[] {
+export function unitConditionControls(keys: readonly string[]): readonly UnitConditionControl[] {
     return keys.map(key => {
         const condition = UNIT_CONDITION_BY_KEY.get(key);
         if (!condition?.placement) throw new Error(`Unknown controllable unit condition: ${key}`);
@@ -109,8 +121,23 @@ export function unitConditionSortIndex(key: string): number {
     return UNIT_CONDITION_SORT_INDEX.get(key) ?? UNIT_CONDITION_DEFINITIONS.length;
 }
 
-export const MEK_UNIT_CONDITION_CONTROLS: readonly UnitConditionControl[] = unitConditionControls(['shutdown', 'prone', 'swarmed', 'tagged', 'skidding', 'jammed']);
-export const VEHICLE_UNIT_CONDITION_CONTROLS: readonly UnitConditionControl[] = unitConditionControls(['swarmed', 'tagged', 'skidding', 'jammed']);
+const CREW_STATE_DEFINITIONS: readonly CrewStateDefinition[] = [
+    { key: 'unconscious', label: 'Unconscious', bannerLabel: 'UNCONSCIOUS', color: '#ff9a1f' },
+    { key: 'ejected', label: 'Eject', bannerLabel: 'EJECTED', color: '#2f8f46' },
+    { key: 'dead', label: 'Dead', bannerLabel: 'DEAD', color: '#c62828' },
+    { key: 'killed', label: 'Crew Killed', bannerLabel: 'CREW KILLED', color: '#c62828' },
+    { key: 'stunned', label: 'Stunned', bannerLabel: 'STUNNED', color: '#ff5ce6' },
+];
+
+const CREW_STATE_BY_KEY = new Map<CrewMemberState, CrewStateDefinition>(CREW_STATE_DEFINITIONS.map(state => [state.key, state]));
+
+export function crewStateDefinitions(keys: readonly CrewMemberState[]): readonly CrewStateDefinition[] {
+    return keys.map(key => {
+        const state = CREW_STATE_BY_KEY.get(key);
+        if (!state) throw new Error(`Unknown crew state: ${key}`);
+        return state;
+    });
+}
 
 /**
  * Author: Drake
@@ -151,6 +178,12 @@ export interface UnitTypeRules {
 
     /** Manual condition controls available for this unit type. */
     readonly conditionControls: readonly UnitConditionControl[];
+
+    /** Manual crew-state controls available for this unit type. */
+    readonly crewStateControls: readonly CrewStateControlDefinition[];
+
+    /** Display definition for a crew state supported by this unit type. */
+    crewStateDefinition(state: CrewMemberState): CrewStateDefinition | undefined;
 
     /** Whether a condition key is derived from rules instead of persisted unit state. */
     isComputedCondition(condition: string): boolean;
@@ -206,6 +239,8 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     readonly pilotingModifier: Signal<number> = computed(() => this.pilotingModifiers().reduce((total, modifier) => total + modifier.modifier, 0));
     readonly autoFall: Signal<boolean> = signal(false);
     readonly conditionControls: readonly UnitConditionControl[] = [];
+    readonly crewStateControls: readonly CrewStateControlDefinition[] = [];
+    protected readonly crewStateDisplayDefinitions: readonly CrewStateDefinition[] = [];
     protected readonly abandoned: Signal<boolean> = signal(false);
     protected readonly immobile: Signal<boolean> = signal(false);
 
@@ -232,6 +267,10 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
 
     computedConditions(): readonly string[] {
         return ['abandoned', 'immobile'];
+    }
+
+    crewStateDefinition(state: CrewMemberState): CrewStateDefinition | undefined {
+        return this.crewStateDisplayDefinitions.find(definition => definition.key === state);
     }
 
     getPSRChecks(_turnState: TurnState): PSRCheck[] {

@@ -34,7 +34,7 @@
 import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { CriticalSlot, MountedEquipment } from '../force-serialization';
-import { MEK_UNIT_CONDITION_CONTROLS, UnitTypeRulesBase, type PSRCheck, type UnitHeatSource } from './unit-type-rules';
+import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type PSRCheck, type UnitHeatSource } from './unit-type-rules';
 import { LINKED_LOCATIONS, LEG_LOCATIONS, FOUR_LEGGED_LOCATIONS } from '../common.model';
 import type { TurnState } from '../turn-state.model';
 import { type HeatScaleEntry, HeatManagement, getHeatEffects } from './heat-management';
@@ -43,6 +43,10 @@ import { getDefaultAttackerMovementModifier } from '../target-number-calculator.
 
 type ArmLocation = 'LA' | 'RA';
 
+export const MEK_UNIT_CONDITION_CONTROLS: readonly UnitConditionControl[] = unitConditionControls(['shutdown', 'prone', 'swarmed', 'tagged', 'skidding', 'jammed']);
+export const MEK_CREW_STATE_CONTROLS: readonly CrewStateControlDefinition[] = crewStateDefinitions(['unconscious', 'ejected']) as readonly CrewStateControlDefinition[];
+export const MEK_CREW_STATE_DISPLAYS: readonly CrewStateDefinition[] = crewStateDefinitions(['unconscious', 'ejected', 'dead']);
+
 /**
  * Mek-specific game rules: destruction evaluation, systems status,
  * Piloting Skill Roll modifiers, and PSR target roll.
@@ -50,6 +54,8 @@ type ArmLocation = 'LA' | 'RA';
 export class MekRules extends UnitTypeRulesBase {
 
     override readonly conditionControls = MEK_UNIT_CONDITION_CONTROLS;
+    override readonly crewStateControls = MEK_CREW_STATE_CONTROLS;
+    protected override readonly crewStateDisplayDefinitions = MEK_CREW_STATE_DISPLAYS;
 
     protected override readonly abandoned = computed<boolean>(() => {
         const crew = this.unit.getCrewMembers();

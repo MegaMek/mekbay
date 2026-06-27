@@ -1979,6 +1979,10 @@ hr.divider {
             }
         }
 
+        .crewStateBanner .unitConditionBannerRect {
+            transform-origin: right center;
+        }
+
         .pip.disabled {
             stroke: var(--disabled-color) !important;
             fill: #666 !important;

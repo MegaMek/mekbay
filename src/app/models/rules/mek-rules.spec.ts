@@ -2,7 +2,7 @@ import { Injector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { CBTForce } from '../cbt-force.model';
 import { CBTForceUnit } from '../cbt-force-unit.model';
-import type { CrewMemberState } from '../crew-member.model';
+import { DEAD_CREW_HIT_THRESHOLD, type CrewMemberState } from '../crew-member.model';
 import type { LocationData } from '../force-serialization';
 import type { Unit } from '../units.model';
 import { DataService } from '../../services/data.service';
@@ -20,7 +20,8 @@ let unitInitializer: UnitInitializerService;
 let injector: Injector;
 
 function createRulesHarness(options: {
-    crewStates?: CrewMemberState[];
+    crewStates?: Exclude<CrewMemberState, 'dead'>[];
+    crewHits?: number[];
     committedDestroyedLocations?: string[];
     internalLocations?: string[];
     shutdown?: boolean;
@@ -40,7 +41,8 @@ function createCommittedLocationState(committedDestroyedLocations: string[] = []
 }
 
 function createForceUnitHarness(options: {
-    crewStates?: CrewMemberState[];
+    crewStates?: Exclude<CrewMemberState, 'dead'>[];
+    crewHits?: number[];
     committedDestroyedLocations?: string[];
     internalLocations?: string[];
     shutdown?: boolean;
@@ -50,10 +52,11 @@ function createForceUnitHarness(options: {
     umu?: number;
 } = {}): CBTForceUnit {
     const crewStates = options.crewStates ?? ['healthy'];
+    const crewHits = options.crewHits ?? [];
     const baseUnit = createEmptyUnit({
         type: 'Mek',
         subtype: 'BattleMek',
-        crewSize: crewStates.length,
+        crewSize: Math.max(crewStates.length, crewHits.length),
         walk: options.walk ?? 5,
         run: options.run ?? 8,
         jump: options.jump ?? 4,
@@ -71,6 +74,7 @@ function createForceUnitHarness(options: {
 
     forceUnit.setLocations(createCommittedLocationState(options.committedDestroyedLocations), true);
     crewStates.forEach((state, index) => forceUnit.getCrewMember(index).setState(state));
+    crewHits.forEach((hits, index) => forceUnit.getCrewMember(index).setHits(hits));
     if (options.shutdown) {
         forceUnit.setCondition('shutdown', true);
     }
@@ -101,13 +105,13 @@ describe('MekRules', () => {
     });
 
     it('marks Meks abandoned when every crew member is dead or ejected', () => {
-        const rules = createRulesHarness({ crewStates: ['dead', 'ejected'] });
+        const rules = createRulesHarness({ crewStates: ['healthy', 'ejected'], crewHits: [DEAD_CREW_HIT_THRESHOLD] });
 
         expect(rules.hasComputedCondition('abandoned')).toBeTrue();
     });
 
     it('does not mark Meks abandoned while any crew member is alive in the unit', () => {
-        const rules = createRulesHarness({ crewStates: ['dead', 'unconscious'] });
+        const rules = createRulesHarness({ crewStates: ['healthy', 'unconscious'], crewHits: [DEAD_CREW_HIT_THRESHOLD] });
 
         expect(rules.hasComputedCondition('abandoned')).toBeFalse();
     });

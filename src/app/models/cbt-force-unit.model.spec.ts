@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment, WeaponEquipment, type EquipmentMap } from './equipment.model';
 import { CBTForce } from './cbt-force.model';
 import { CBTForceUnit } from './cbt-force-unit.model';
+import { DEAD_CREW_HIT_THRESHOLD } from './crew-member.model';
 import { INVENTORY_CONTROL_TARGET_MAX_COUNT } from './inventory-control-runtime-state.model';
 import type { CBTSerializedUnit, CriticalSlot } from './force-serialization';
 import { DataService } from '../services/data.service';
@@ -56,6 +57,16 @@ function createMekUnit(): Unit {
         model: 'MEK-1',
         type: 'Mek',
         subtype: 'BattleMek',
+    });
+}
+
+function createProtoMekUnit(): Unit {
+    return createEmptyUnit({
+        name: 'PMTest_PROTO-1',
+        chassis: 'Test ProtoMek',
+        model: 'PROTO-1',
+        type: 'ProtoMek',
+        subtype: 'ProtoMek',
     });
 }
 
@@ -320,12 +331,45 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     it('exposes computed conditions through getCondition without serializing them', () => {
         const forceUnit = createForceUnit();
 
-        forceUnit.getCrewMember(0).setState('dead');
+        forceUnit.getCrewMember(0).setHits(DEAD_CREW_HIT_THRESHOLD);
 
         expect(forceUnit.getCondition('abandoned')).toBeTrue();
         expect(forceUnit.getConditions().has('abandoned')).toBeTrue();
         expect(forceUnit.conditions.has('abandoned')).toBeFalse();
         expect(forceUnit.serialize().state.conditions).toBeUndefined();
+    });
+
+    it('derives crew death from hits while preserving the underlying crew state', () => {
+        const forceUnit = createForceUnit();
+        const crewMember = forceUnit.getCrewMember(0);
+
+        crewMember.setState('unconscious');
+        crewMember.setHits(DEAD_CREW_HIT_THRESHOLD);
+
+        expect(crewMember.getState()).toBe('dead');
+        expect(crewMember.serialize().state).toBe(1);
+
+        crewMember.setHits(DEAD_CREW_HIT_THRESHOLD - 1);
+
+        expect(crewMember.getState()).toBe('unconscious');
+    });
+
+    it('derives ProtoMek crew death from hits', () => {
+        const forceUnit = createForceUnit(createProtoMekUnit());
+        const crewMember = forceUnit.getCrewMember(0);
+
+        crewMember.setHits(DEAD_CREW_HIT_THRESHOLD);
+
+        expect(crewMember.getState()).toBe('dead');
+    });
+
+    it('does not derive vehicle crew death from hits', () => {
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
+        const crewMember = forceUnit.getCrewMember(0);
+
+        crewMember.setHits(DEAD_CREW_HIT_THRESHOLD);
+
+        expect(crewMember.getState()).toBe('healthy');
     });
 
     it('serializes and updates direct inventory ammo custom type, count, and total per bin', () => {

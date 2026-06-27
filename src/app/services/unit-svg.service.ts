@@ -32,7 +32,7 @@
  */
 
 import { Injectable, effect, signal, inject, DestroyRef } from '@angular/core';
-import { type CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, type SkillType } from '../models/crew-member.model';
+import { type CrewMember, type CrewMemberState, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, type SkillType } from '../models/crew-member.model';
 import type { CriticalSlot, HeatProfile, MountedEquipment } from '../models/force-serialization';
 import { SheetService } from './sheet.service';
 import { UnitInitializerService } from './unit-initializer.service';
@@ -255,10 +255,13 @@ export class UnitSvgService {
         const activeConditions = UNIT_CONDITION_DEFINITIONS
             .map(condition => ({ key: condition.key, active: conditions.has(condition.key) }))
             .sort((left, right) => unitConditionSortIndex(left.key) - unitConditionSortIndex(right.key));
-        const menuActive = conditionControls.some(condition => condition.placement === 'menu' && conditions.has(condition.key));
+        const activeMenuConditions = conditionControls.filter(condition => condition.placement === 'menu' && conditions.has(condition.key));
+        const menuActive = activeMenuConditions.length > 0;
         const menuButton = svg.querySelector<SVGElement>('.unitConditionButton[condition="menu"]');
+        const menuButtonColor = activeMenuConditions.length === 1 ? activeMenuConditions[0].color : '#666';
+        menuButton?.setAttribute('active-color', menuButtonColor);
+        menuButton?.style.setProperty('--unit-condition-active-color', menuButtonColor);
         menuButton?.classList.toggle('active', menuActive);
-        const menuButtonColor = menuButton?.getAttribute('active-color') ?? '#444';
         menuButton?.querySelector<SVGElement>('rect')?.setAttribute('fill', menuActive ? menuButtonColor : '#fff');
         menuButton?.querySelector<SVGElement>('text')?.setAttribute('fill', menuActive ? '#fff' : '#000');
 
@@ -285,11 +288,9 @@ export class UnitSvgService {
             if (bannerRect) {
                 bannerRect.style.transformBox = 'fill-box';
                 bannerRect.style.transformOrigin = 'left center';
-                bannerRect.style.transition = 'transform 90ms ease-out';
                 bannerRect.style.transform = condition.active ? 'scaleX(1)' : 'scaleX(0)';
             }
             if (bannerText) {
-                bannerText.style.transition = 'opacity 60ms ease-out 40ms';
                 bannerText.style.opacity = condition.active ? '1' : '0';
             }
             if (condition.active) {
@@ -429,8 +430,51 @@ export class UnitSvgService {
             if (deadGroup) {
                 deadGroup.classList.toggle('wounded', state === 'dead');
             }
+            this.updateCrewStateControls(svg, crewId, state);
 
         });
+    }
+
+    private updateCrewStateControls(svg: SVGSVGElement, crewId: number, state: CrewMemberState): void {
+        const stateDisplay = this.crewStateDisplay(state);
+        const active = stateDisplay !== null;
+        const color = stateDisplay?.color ?? '#666';
+
+        svg.querySelectorAll<SVGElement>(`.crewStateButton[crewId="${crewId}"]`).forEach(button => {
+            button.classList.toggle('active', active);
+            button.setAttribute('active-color', color);
+            button.style.setProperty('--unit-condition-active-color', color);
+            button.querySelector<SVGElement>('rect')?.setAttribute('fill', active ? color : '#fff');
+            button.querySelector<SVGElement>('text')?.setAttribute('fill', active ? '#fff' : '#000');
+        });
+
+        svg.querySelectorAll<SVGElement>(`.crewStateBanner[crewId="${crewId}"]`).forEach(banner => {
+            const bannerRect = banner.querySelector<SVGElement>('.unitConditionBannerRect');
+            const bannerText = banner.querySelector<SVGElement>('.unitConditionBannerText');
+            banner.classList.toggle('visible', active);
+            banner.setAttribute('opacity', active ? '1' : '0');
+            if (active && stateDisplay) {
+                banner.removeAttribute('display');
+                bannerRect?.setAttribute('fill', stateDisplay.color);
+                if (bannerText) bannerText.textContent = stateDisplay.label;
+            } else {
+                banner.setAttribute('display', 'none');
+                if (bannerText) bannerText.textContent = '';
+            }
+            if (bannerRect) {
+                bannerRect.style.transformBox = 'fill-box';
+                bannerRect.style.transformOrigin = 'right center';
+                bannerRect.style.transform = active ? 'scaleX(1)' : 'scaleX(0)';
+            }
+            if (bannerText) {
+                bannerText.style.opacity = active ? '1' : '0';
+            }
+        });
+    }
+
+    private crewStateDisplay(state: CrewMemberState): { label: string; color: string } | null {
+        const definition = this.unit.rules.crewStateDefinition(state);
+        return definition ? { label: definition.bannerLabel, color: definition.color } : null;
     }
 
     protected updateCritLocDisplay(critLocs: CriticalSlot[]) {

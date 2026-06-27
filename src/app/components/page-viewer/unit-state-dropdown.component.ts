@@ -81,5 +81,6 @@ export interface UnitStateDropdownChoice {
 })
 export class UnitStateDropdownComponent {
     readonly choices = input<UnitStateDropdownChoice[]>([]);
+    readonly closeOnSelect = input(true);
     readonly selected = output<string>();
 }
