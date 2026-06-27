@@ -201,7 +201,7 @@ export class UnitInitializerService {
         const criticalSlots: CriticalSlot[] = unit.getCritSlots().filter(crit => !crit.loc || crit.slot === undefined);
         const critSlotMatrix = unit.getCritSlotsAsMatrix();
         const equipmentList = this.getDataService().getEquipments();
-        let newSlotsFound = false;
+        let slotsChanged = false;
 
         critSlotsEl.forEach(critSlotEl => {
             const id = critSlotEl.getAttribute('uid');
@@ -220,13 +220,14 @@ export class UnitInitializerService {
                     console.warn(`Critical slot ID mismatch for loc ${loc} slot ${slot}: expected ${critSlot.id}, found ${id}`);
                 }
                 critSlot.id = id;
-                if (critSlot.name) {
-                    critSlot.eq = equipmentList[critSlot.name];
-                }
+                const equipmentName = critSlot.name || name;
+                critSlot.name = equipmentName;
+                critSlot.eq = equipmentName ? equipmentList[equipmentName] : undefined;
                 if (armored) {
                     critSlot.armored = true; // in case it was added later
                 }
                 criticalSlots.push(critSlot);
+                slotsChanged = true;
                 return;
             }
             const critSlot: CriticalSlot = {
@@ -246,10 +247,10 @@ export class UnitInitializerService {
                 critSlot.armored = true;
             }
             criticalSlots.push(critSlot);
-            newSlotsFound = true;
+            slotsChanged = true;
         });
 
-        if (newSlotsFound) {
+        if (slotsChanged) {
             unit.setCritSlots(criticalSlots, true);
         }
     }
