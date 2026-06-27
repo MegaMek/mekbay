@@ -1981,6 +1981,7 @@ hr.divider {
 
         .crewStateBanner .unitConditionBannerRect {
             transform-origin: right center;
+            transition: none;
         }
 
         .pip.disabled {

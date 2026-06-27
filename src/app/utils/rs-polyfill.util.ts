@@ -54,16 +54,16 @@ interface InventoryRangeButtonSpec {
  */
 export class RsPolyfillUtil {
 
-    private static readonly UNIT_STATE_BANNER_WIDTH = 220;
-    private static readonly UNIT_STATE_BANNER_HEIGHT = 24;
-    private static readonly UNIT_STATE_BANNER_FONT_SIZE = 24;
-    private static readonly IMPORTANT_UNIT_STATE_BANNER_WIDTH = 300;
-    private static readonly IMPORTANT_UNIT_STATE_BANNER_HEIGHT = 32;
-    private static readonly IMPORTANT_UNIT_STATE_BANNER_FONT_SIZE = 32;
+    private static readonly UNIT_CONDITION_BANNER_WIDTH = 220;
+    private static readonly UNIT_CONDITION_BANNER_HEIGHT = 24;
+    private static readonly UNIT_CONDITION_BANNER_FONT_SIZE = 24;
+    private static readonly IMPORTANT_UNIT_CONDITION_BANNER_WIDTH = 300;
+    private static readonly IMPORTANT_UNIT_CONDITION_BANNER_HEIGHT = 32;
+    private static readonly IMPORTANT_UNIT_CONDITION_BANNER_FONT_SIZE = 32;
     private static readonly CREW_STATE_BUTTON_WIDTH = 10;
     private static readonly CREW_STATE_BUTTON_HEIGHT = 10;
     private static readonly CREW_STATE_BUTTON_GAP = 2;
-    private static readonly CREW_STATE_BANNER_WIDTH = 72;
+    private static readonly CREW_STATE_BANNER_WIDTH = 64;
     private static readonly CREW_STATE_BANNER_HEIGHT = 10;
     private static readonly CREW_STATE_BANNER_FONT_SIZE = 8;
     
@@ -279,16 +279,16 @@ export class RsPolyfillUtil {
         conditions.forEach(condition => {
             const definition = UNIT_CONDITION_DEFINITIONS.find(def => def.key === condition.key);
             const bannerWidth = definition?.important
-                ? this.IMPORTANT_UNIT_STATE_BANNER_WIDTH
-                : this.UNIT_STATE_BANNER_WIDTH;
+                ? this.IMPORTANT_UNIT_CONDITION_BANNER_WIDTH
+                : this.UNIT_CONDITION_BANNER_WIDTH;
             const bannerHeight = definition?.important
-                ? this.IMPORTANT_UNIT_STATE_BANNER_HEIGHT
-                : this.UNIT_STATE_BANNER_HEIGHT;
+                ? this.IMPORTANT_UNIT_CONDITION_BANNER_HEIGHT
+                : this.UNIT_CONDITION_BANNER_HEIGHT;
             const bannerFontSize = definition?.important
-                ? this.IMPORTANT_UNIT_STATE_BANNER_FONT_SIZE
-                : this.UNIT_STATE_BANNER_FONT_SIZE;
+                ? this.IMPORTANT_UNIT_CONDITION_BANNER_FONT_SIZE
+                : this.UNIT_CONDITION_BANNER_FONT_SIZE;
             const bannerGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-            bannerGroup.setAttribute('id', `unit_state_banner_${condition.key}`);
+            bannerGroup.setAttribute('id', `UNIT_CONDITION_BANNER_${condition.key}`);
             bannerGroup.setAttribute('class', 'unitConditionBanner');
             bannerGroup.setAttribute('condition', condition.key);
             bannerGroup.setAttribute('condition-color', condition.color);
