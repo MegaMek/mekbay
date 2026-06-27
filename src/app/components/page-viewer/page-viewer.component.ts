@@ -587,6 +587,7 @@ export class PageViewerComponent implements AfterViewInit {
                 '.crewNameButton',
                 '.crewSkillButton',
                 '.unitConditionButton',
+                '.locConditionButton',
                 '.soldierPip',
                 '#heatScale',
                 '#heatDataPanel',

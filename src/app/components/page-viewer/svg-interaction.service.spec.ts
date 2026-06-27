@@ -31,7 +31,7 @@ type SvgInteractionServicePrivate = {
     updateHeatHighlight(heatValue: number): void;
 };
 
-const NO_CONDITION_RULES = { conditionControls: [] };
+const NO_CONDITION_RULES = { conditionControls: [], crewStateControls: [], locationConditionControls: [] };
 
 function createSvgInteractionUnit<T extends object>(overrides: T): T & { getInventory: () => MountedEquipment[]; rules: typeof NO_CONDITION_RULES } {
     return {

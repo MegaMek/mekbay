@@ -94,6 +94,7 @@ const VTOL_ROTOR_HITS_MAX = 20;
 const SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY = 'svg-inventory-target-choice';
 const SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY = 'svg-conditions-dropdown';
 const SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY = 'svg-crew-state-dropdown';
+const SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY = 'svg-location-conditions-dropdown';
 const REPEATABLE_MOTIVE_HIT_LABELS = new Map<number, string>([
     [2, 'Medium'],
     [3, 'Heavy']
@@ -247,6 +248,7 @@ export class SvgInteractionService {
         this.setupCrewNameInteractions(svg, signal);
         this.setupCrewStateInteractions(svg, signal);
         this.setupConditionsInteractions(svg, signal);
+        this.setupLocationConditionInteractions(svg, signal);
         this.setupInventoryInteractions(svg, signal);
         this.setupAmmoProfileInteractions(svg, signal);
     }
@@ -1284,7 +1286,7 @@ export class SvgInteractionService {
             .filter(condition => condition.placement === 'button')
             .map(condition => condition.key));
         const hasMenuConditions = unit.rules.conditionControls.some(condition => condition.placement === 'menu');
-        svg.querySelectorAll<SVGElement>('.unitConditionButton').forEach(el => {
+        svg.querySelectorAll<SVGElement>('.unitConditionButton, .locConditionButton').forEach(el => {
             const condition = el.getAttribute('condition');
             if (!condition || (condition !== 'menu' && !buttonConditions.has(condition)) || (condition === 'menu' && !hasMenuConditions)) return;
             this.addSvgTapHandler(el, (event: PointerEvent) => {
@@ -1307,7 +1309,7 @@ export class SvgInteractionService {
         }
 
         this.removePicker();
-        this.overlayManager.closeManagedOverlay(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY);
+    this.overlayManager.closeAllManagedOverlays();
         const portal = new ComponentPortal(UnitStateDropdownComponent, null, this.injector);
         const { componentRef } = this.overlayManager.createManagedOverlay(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY, el as unknown as HTMLElement, portal, {
             hasBackdrop: false,
@@ -1350,6 +1352,88 @@ export class SvgInteractionService {
 
     private unitStateColor(el: SVGElement, state: string, fallback: string): string {
         return el.ownerSVGElement?.querySelector<SVGElement>(`.unitConditionBanner[state="${state}"]`)?.getAttribute('state-color') ?? fallback;
+    }
+
+    private setupLocationConditionInteractions(svg: SVGSVGElement, signal: AbortSignal) {
+        const unit = this.unit();
+        if (!unit || unit.rules.locationConditionControls.length === 0) return;
+
+        svg.querySelectorAll<SVGElement>('.locationConditionButton, .locationConditionText').forEach(el => {
+            const loc = el.getAttribute('loc');
+            if (!loc) return;
+            this.addSvgTapHandler(el, () => {
+                const unit = this.unit();
+                const clickTarget = this.state.clickTarget;
+                if (!unit || !clickTarget || (clickTarget !== el && !el.contains(clickTarget))) return;
+                this.showLocationConditionsDropdown(el, unit, loc);
+            }, signal);
+        });
+    }
+
+    private showLocationConditionsDropdown(el: SVGElement, unit: CBTForceUnit, loc: string): void {
+        if (this.overlayManager.has(SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY)) {
+            this.overlayManager.closeManagedOverlay(SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY);
+            return;
+        }
+
+        this.removePicker();
+    this.overlayManager.closeAllManagedOverlays();
+        const portal = new ComponentPortal(UnitStateDropdownComponent, null, this.injector);
+        const { componentRef } = this.overlayManager.createManagedOverlay(SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY, el as unknown as HTMLElement, portal, {
+            hasBackdrop: false,
+            panelClass: 'unit-state-dropdown-overlay-panel',
+            closeOnOutsideClick: true,
+            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            positions: [
+                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 }
+            ]
+        });
+        componentRef.setInput('closeOnSelect', false);
+        const updateChoices = () => {
+            componentRef.setInput('choices', this.locationConditionDropdownChoices(unit, loc));
+            componentRef.changeDetectorRef.detectChanges();
+        };
+        updateChoices();
+
+        outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(state => {
+            const control = unit.rules.locationConditionControls.find(candidate => candidate.key === state);
+            if (control?.counted) {
+                const value = unit.getLocationConditionValue(loc, state) ?? 0;
+                unit.setLocationConditionValue(loc, state, value > 0 ? undefined : 1);
+            } else {
+                unit.setLocationCondition(loc, state, !unit.getLocationCondition(loc, state));
+            }
+            updateChoices();
+        });
+
+        outputToObservable(componentRef.instance.incremented).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(state => {
+            const value = unit.getLocationConditionValue(loc, state) ?? 0;
+            unit.setLocationConditionValue(loc, state, value + 1);
+            updateChoices();
+        });
+
+        outputToObservable(componentRef.instance.decremented).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(state => {
+            const value = unit.getLocationConditionValue(loc, state) ?? 0;
+            unit.setLocationConditionValue(loc, state, value - 1);
+            updateChoices();
+        });
+    }
+
+    private locationConditionDropdownChoices(unit: CBTForceUnit, loc: string): UnitStateDropdownChoice[] {
+        return unit.rules.locationConditionControls.map(state => {
+            const value = unit.getLocationConditionValue(loc, state.key) ?? 0;
+            return {
+                key: state.key,
+                label: state.label,
+                color: state.color,
+                active: state.counted ? value > 0 : unit.getLocationCondition(loc, state.key),
+                counted: state.counted,
+                value: state.counted ? value : undefined,
+            };
+        });
     }
 
     private openEquipmentDialog(unit: CBTForceUnit, initialTab: EquipmentDialogTab): void {
@@ -1694,7 +1778,7 @@ export class SvgInteractionService {
         }
 
         this.removePicker();
-        this.overlayManager.closeManagedOverlay(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY);
+        this.overlayManager.closeAllManagedOverlays();
         const crewId = Number(el.getAttribute('crewId') || 0);
         const portal = new ComponentPortal(UnitStateDropdownComponent, null, this.injector);
         const { componentRef } = this.overlayManager.createManagedOverlay(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY, el as unknown as HTMLElement, portal, {
@@ -2009,9 +2093,7 @@ export class SvgInteractionService {
         this.currentHighlightedElement = null;
         this.state.clickTarget = null;
         this.state.heatMarkerData.set(null);
-        this.overlayManager.closeManagedOverlay(SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY);
-        this.overlayManager.closeManagedOverlay(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY);
-        this.overlayManager.closeManagedOverlay(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY);
+        this.overlayManager.closeAllManagedOverlays();
         this.unit.set(null);
     }
 }

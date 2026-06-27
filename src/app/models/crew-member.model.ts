@@ -37,6 +37,7 @@ import type { SerializedCrewMember } from './force-serialization';
 export const DEFAULT_GUNNERY_SKILL = 4;
 export const DEFAULT_PILOTING_SKILL = 5;
 export const DEAD_CREW_HIT_THRESHOLD = 6;
+export const CRIPPLED_CREW_HIT_THRESHOLD = 4;
 
 export type SkillType = 'gunnery' | 'piloting';
 export type CrewMemberState = 'healthy' | 'ejected' | 'unconscious' | 'dead' | 'killed' | 'stunned';
@@ -72,6 +73,16 @@ export class CrewMember {
         this.state = newState;
         this.unit.setCrewMember(this.id, this);
         this.unit.setModified();
+    }
+
+    isDead(): boolean {
+        return (this.hits >= DEAD_CREW_HIT_THRESHOLD);
+    }
+
+    isCrippled(): boolean {
+        if (this.isDead()) return false; // is already dead...
+        if (this.state === 'ejected') return false; // the pilot is already gone!
+        return (this.hits >= CRIPPLED_CREW_HIT_THRESHOLD);
     }
 
     getState(): CrewMemberState {
