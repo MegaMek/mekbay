@@ -288,7 +288,7 @@ export class RsPolyfillUtil {
                 ? this.IMPORTANT_UNIT_CONDITION_BANNER_FONT_SIZE
                 : this.UNIT_CONDITION_BANNER_FONT_SIZE;
             const bannerGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-            bannerGroup.setAttribute('id', `UNIT_CONDITION_BANNER_${condition.key}`);
+            bannerGroup.setAttribute('id', `unit_condition_banner_${condition.key}`);
             bannerGroup.setAttribute('class', 'unitConditionBanner');
             bannerGroup.setAttribute('condition', condition.key);
             bannerGroup.setAttribute('condition-color', condition.color);
