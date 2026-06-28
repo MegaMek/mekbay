@@ -70,6 +70,11 @@ export class ProtoMekRules extends UnitTypeRulesBase {
         if (this.hasFunctionalCrew()) return false;
         return true;
     });
+
+    protected override readonly crippled = computed<boolean>(() => {
+        if (!this.unit.isLoaded()) return false;
+        return this.allCrewCrippled();
+    });
     
     private allLimbsDestroyedOrMissing(): boolean {
         const internalLocations = this.unit.locations?.internal;
