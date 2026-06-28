@@ -340,12 +340,19 @@ export class PageTurnSummaryPanelComponent {
         return u.turnState().moveDistance() !== null;
     });
 
-    setMoveDistance(value: number) {
+    setMoveDistance(value: number, markModified = true) {
         const u = this.unit();
         if (!u) return;
         const min = this.moveMin();
         const max = this.moveMax();
-        u.turnState().moveDistance.set(Math.max(min, Math.min(max, value)));
+        u.turnState().setMoveDistance(Math.max(min, Math.min(max, value)), { markModified });
+    }
+
+    commitMoveDistance(value: number) {
+        const u = this.unit();
+        if (!u) return;
+        this.setMoveDistance(value, false);
+        u.turnState().markModified();
     }
 
     private buildModifierTooltip(title: string, entries: UnitModifierBreakdownEntry[]): TooltipLine[] {
