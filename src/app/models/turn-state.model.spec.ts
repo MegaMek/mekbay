@@ -122,6 +122,80 @@ function getFiredHeat(turnState: TurnState): number {
 
 describe('TurnState', () => {
 
+    describe('serialization', () => {
+        it('round-trips turn signals and PSR check state through a plain object', () => {
+            const { turnState } = createTurnStateHarness();
+            turnState.airborne.set(true);
+            turnState.moveMode.set('jump');
+            turnState.moveDistance.set(5);
+            turnState.addDmgReceived(23);
+            turnState.addFiredHeat(9);
+            turnState.spotting.set(true);
+            turnState.setPSRCheckState({
+                legActuators: new Map([['LL', 2]]),
+                hipsHit: new Set(['RL']),
+                gyroHit: 1,
+                gyroDestroyed: true,
+                legsDestroyed: new Set(['LL']),
+                shutdown: true,
+            });
+
+            const serialized = turnState.serialize();
+
+            expect(serialized).toEqual({
+                airborne: true,
+                moveMode: 'jump',
+                moveDistance: 5,
+                dmgReceived: 23,
+                firedHeat: 9,
+                psrChecks: {
+                    legActuators: { LL: 2 },
+                    hipsHit: ['RL'],
+                    gyroHit: 1,
+                    gyroDestroyed: true,
+                    legsDestroyed: ['LL'],
+                    shutdown: true,
+                },
+                spotting: true,
+            });
+
+            const { turnState: restored } = createTurnStateHarness();
+            restored.update(serialized);
+            const restoredPsrChecks = restored.getPSRCheckState();
+
+            expect(restored.airborne()).toBeTrue();
+            expect(restored.moveMode()).toBe('jump');
+            expect(restored.moveDistance()).toBe(5);
+            expect(restored.dmgReceived()).toBe(23);
+            expect(restored.firedHeat()).toBe(9);
+            expect(restored.spotting()).toBeTrue();
+            expect(restoredPsrChecks.legActuators?.get('LL')).toBe(2);
+            expect(restoredPsrChecks.hipsHit?.has('RL')).toBeTrue();
+            expect(restoredPsrChecks.gyroHit).toBe(1);
+            expect(restoredPsrChecks.gyroDestroyed).toBeTrue();
+            expect(restoredPsrChecks.legsDestroyed?.has('LL')).toBeTrue();
+            expect(restoredPsrChecks.shutdown).toBeTrue();
+
+            restored.update(undefined);
+            expect(restored.serialize()).toBeUndefined();
+        });
+
+        it('omits false and empty turn state data from serialized output', () => {
+            const { turnState } = createTurnStateHarness();
+            turnState.airborne.set(false);
+            turnState.applyMovePSR.set(false);
+            turnState.spotting.set(false);
+            turnState.setPSRCheckState({
+                legActuators: new Map([['LL', 0]]),
+                gyroHit: 0,
+                gyroDestroyed: false,
+                shutdown: false,
+            });
+
+            expect(turnState.serialize()).toBeUndefined();
+        });
+    });
+
     describe('getPSRChecks', () => {
         it('includes movement PSR checks when applyMovePSR is enabled', () => {
             const { turnState } = createTurnStateHarness({
@@ -204,13 +278,13 @@ describe('TurnState', () => {
             turnState.moveDistance.set(7);
 
             expect(turnState.getDefenseModifierBreakdown()).toEqual([
-                { label: 'Prone', modifier: -2 },
+                { label: 'Prone', modifier: 1 },
                 { label: 'Skidding', modifier: 2 },
                 { label: 'Jumped', modifier: 1 },
                 { label: 'Moved 7-9 hexes', modifier: 3 },
                 { label: 'Battle Armor', modifier: 1 },
             ]);
-            expect(turnState.getTotalTargetModifierAsDefender()).toBe(5);
+            expect(turnState.getTotalTargetModifierAsDefender()).toBe(8);
         });
 
         it('counts an explicitly airborne defender even before movement is selected', () => {

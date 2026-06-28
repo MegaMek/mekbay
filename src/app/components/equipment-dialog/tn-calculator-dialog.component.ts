@@ -228,7 +228,7 @@ export interface TnCalculatorDialogResult {
             </div>
         </div>
         <div class="tn-actions">
-            <div class="total-box">Target TN Modifier: <span class="modifier">{{ signedTotal() }}</span></div>
+            <div class="total-box">TN Modifier: <span class="modifier">{{ signedTotal() }}</span></div>
             <button class="bt-button primary" type="button" (click)="apply()">APPLY</button>
             <button class="bt-button" type="button" (click)="close()">CANCEL</button>
         </div>
@@ -591,17 +591,17 @@ export interface TnCalculatorDialogResult {
         .tn-actions {
             display: flex;
             align-items: center;
+            justify-content: flex-end;
             gap: 6px;
             border-top: 1px solid var(--border-color);
             padding: 8px;
 
             .bt-button {
-                width: 100px;
+                width: 170px;
             }
         }
 
         .total-box {
-            margin-right: auto;
             font-weight: 500;
             color: var(--text-color-secondary);
             display: inline-flex;
@@ -612,6 +612,7 @@ export interface TnCalculatorDialogResult {
                 color: var(--text-color);
                 font-size: 1.1em;
                 min-height: 28px;
+                border-color: #aaa;
             }
         }
 
@@ -656,7 +657,8 @@ export interface TnCalculatorDialogResult {
             }
 
             .total-box {
-                width: 100%;
+                font-size: 0.9em;
+                width: 220px;
             }
         }
 

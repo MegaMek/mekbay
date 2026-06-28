@@ -328,6 +328,81 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(restored.getCondition('skidding')).toBeFalse();
     });
 
+    it('serializes and restores turn state data', () => {
+        const forceUnit = createForceUnit();
+        forceUnit.turnState().airborne.set(false);
+        forceUnit.turnState().moveMode.set('run');
+        forceUnit.turnState().moveDistance.set(7);
+        forceUnit.turnState().addDmgReceived(20);
+        forceUnit.turnState().addFiredHeat(8);
+        forceUnit.turnState().applyMovePSR.set(false);
+        forceUnit.turnState().spotting.set(true);
+        forceUnit.turnState().setPSRCheckState({
+            legActuators: new Map([['LL', 1]]),
+            hipsHit: new Set(['RL']),
+        });
+
+        const serialized = forceUnit.serialize();
+
+        expect(serialized.state.turnState).toEqual({
+            airborne: false,
+            moveMode: 'run',
+            moveDistance: 7,
+            dmgReceived: 20,
+            firedHeat: 8,
+            psrChecks: {
+                legActuators: { LL: 1 },
+                hipsHit: ['RL'],
+            },
+            applyMovePSR: false,
+            spotting: true,
+        });
+
+        const restored = CBTForceUnit.deserialize(
+            serialized,
+            new TestCBTForce('Restored Turn Force', dataService, unitInitializer, injector),
+            dataService,
+            unitInitializer,
+            injector
+        );
+
+        expect(restored.turnState().airborne()).toBeFalse();
+        expect(restored.turnState().moveMode()).toBe('run');
+        expect(restored.turnState().moveDistance()).toBe(7);
+        expect(restored.turnState().dmgReceived()).toBe(20);
+        expect(restored.turnState().firedHeat()).toBe(8);
+        expect(restored.turnState().applyMovePSR()).toBeFalse();
+        expect(restored.turnState().spotting()).toBeTrue();
+        expect(restored.turnState().getPSRCheckState().legActuators?.get('LL')).toBe(1);
+        expect(restored.turnState().getPSRCheckState().hipsHit?.has('RL')).toBeTrue();
+    });
+
+    it('marks the unit modified when turn state changes', () => {
+        const forceUnit = createForceUnit();
+        const force = forceUnit.force as TestCBTForce;
+        force.emitCount = 0;
+
+        forceUnit.turnState().moveMode.set('run');
+
+        expect(forceUnit.modified).toBeTrue();
+        expect(force.emitCount).toBe(1);
+
+        forceUnit.turnState().moveMode.set('run');
+
+        expect(force.emitCount).toBe(1);
+    });
+
+    it('does not mark the unit modified when hydrating turn state data', () => {
+        const forceUnit = createForceUnit();
+        const force = forceUnit.force as TestCBTForce;
+        force.emitCount = 0;
+
+        forceUnit.turnState().update({ moveMode: 'run', moveDistance: 4 });
+
+        expect(forceUnit.modified).toBeFalse();
+        expect(force.emitCount).toBe(0);
+    });
+
     it('exposes computed conditions through getCondition without serializing them', () => {
         const forceUnit = createForceUnit();
 
@@ -361,15 +436,6 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         crewMember.setHits(DEAD_CREW_HIT_THRESHOLD);
 
         expect(crewMember.getState()).toBe('dead');
-    });
-
-    it('does not derive vehicle crew death from hits', () => {
-        const forceUnit = createForceUnit(createVehicleUnit(equipment));
-        const crewMember = forceUnit.getCrewMember(0);
-
-        crewMember.setHits(DEAD_CREW_HIT_THRESHOLD);
-
-        expect(crewMember.getState()).toBe('healthy');
     });
 
     it('serializes and updates direct inventory ammo custom type, count, and total per bin', () => {

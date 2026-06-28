@@ -37,6 +37,7 @@ import type { ForceUnit } from './force-unit.model';
 import type { GameSystem } from './common.model';
 import type { ASCustomPilotAbility } from './pilot-abilities.model';
 import type { C3NetworkType } from './c3-network.model';
+import type { MotiveModes } from './motiveModes.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './crew-member.model';
 export { MountedEquipment } from './mounted-equipment.model';
 export type { MountedEquipmentInit } from './mounted-equipment.model';
@@ -90,6 +91,7 @@ export interface LocationData {
     internal?: number;
     pendingArmor?: number;
     pendingInternal?: number;
+    conditions?: SerializedCondition[];
 }
 
 export interface HeatProfile {
@@ -97,6 +99,26 @@ export interface HeatProfile {
     next?: number;
     previous: number;
     heatsinksOff?: number;
+}
+
+export interface SerializedPSRChecks {
+    legActuators?: Record<string, number>;
+    hipsHit?: string[];
+    gyroHit?: number;
+    gyroDestroyed?: boolean;
+    legsDestroyed?: string[];
+    shutdown?: boolean;
+}
+
+export interface SerializedTurnState {
+    airborne?: boolean;
+    moveMode?: MotiveModes;
+    moveDistance?: number;
+    dmgReceived?: number;
+    firedHeat?: number;
+    psrChecks?: SerializedPSRChecks;
+    applyMovePSR?: boolean;
+    spotting?: boolean;
 }
 
 export interface SerializedForce {
@@ -266,6 +288,7 @@ export interface CBTSerializedState extends SerializedState {
     locations: Record<string, LocationData>;
     heat: HeatProfile;
     inventory?: SerializedInventory[];
+    turnState?: SerializedTurnState;
 }
 export interface SerializedInventory {
     id: string;
@@ -336,11 +359,38 @@ export const HEAT_SCHEMA = Sanitizer.schema<HeatProfile>()
     .number('heatsinksOff', { min: 0 })
     .build();
 
+const MOTIVE_MODE_VALUES: readonly MotiveModes[] = ['stationary', 'walk', 'run', 'jump', 'UMU', 'VTOL'];
+
+export const PSR_CHECKS_SCHEMA = Sanitizer.schema<SerializedPSRChecks>()
+    .custom('legActuators', sanitizeNumberRecord)
+    .custom('hipsHit', sanitizeStringArray)
+    .number('gyroHit', { min: 0 })
+    .boolean('gyroDestroyed')
+    .custom('legsDestroyed', sanitizeStringArray)
+    .boolean('shutdown')
+    .build();
+
+export const TURN_STATE_SCHEMA = Sanitizer.schema<SerializedTurnState>()
+    .custom('airborne', (value: unknown) => typeof value === 'boolean' ? value : undefined)
+    .custom('moveMode', (value: unknown) => MOTIVE_MODE_VALUES.includes(value as MotiveModes) ? value as MotiveModes : undefined)
+    .number('moveDistance', { min: 0 })
+    .number('dmgReceived', { min: 0 })
+    .number('firedHeat', { min: 0 })
+    .custom('psrChecks', (value: unknown) => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+        const psrChecks = Sanitizer.sanitize(value, PSR_CHECKS_SCHEMA);
+        return Object.keys(psrChecks).length > 0 ? psrChecks : undefined;
+    })
+    .custom('applyMovePSR', (value: unknown) => typeof value === 'boolean' ? value : undefined)
+    .custom('spotting', (value: unknown) => typeof value === 'boolean' ? value : undefined)
+    .build();
+
 export const LOCATION_SCHEMA = Sanitizer.schema<LocationData>()
     .number('armor')
     .number('internal')
     .number('pendingArmor')
     .number('pendingInternal')
+    .custom('conditions', sanitizeConditions)
     .build();
 
 export const CRIT_SLOT_SCHEMA = Sanitizer.schema<CriticalSlot>()
@@ -372,6 +422,28 @@ function sanitizeTimestampArray(value: unknown): number[] | undefined {
     return timestamps.length > 0 ? timestamps : undefined;
 }
 
+function sanitizeStringArray(value: unknown): string[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const values = value
+        .filter((entry): entry is string => typeof entry === 'string')
+        .map(entry => entry.trim())
+        .filter(entry => entry.length > 0);
+    return values.length > 0 ? [...new Set(values)] : undefined;
+}
+
+function sanitizeNumberRecord(value: unknown): Record<string, number> | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const result: Record<string, number> = {};
+    for (const [key, rawEntry] of Object.entries(value as Record<string, unknown>)) {
+        const entry = typeof rawEntry === 'number' ? rawEntry : Number(rawEntry);
+        if (key.trim().length === 0 || !Number.isFinite(entry) || entry === 0) {
+            continue;
+        }
+        result[key] = entry;
+    }
+    return Object.keys(result).length > 0 ? result : undefined;
+}
+
 function sanitizeConditionName(value: unknown): string | null {
     if (typeof value !== 'string') return null;
     const condition = value.trim().slice(0, 48);
@@ -394,7 +466,7 @@ function sanitizeConditions(value: unknown): SerializedCondition[] | undefined {
         }
 
         const record = entry as Record<string, unknown>;
-        const condition = sanitizeConditionName(record['state']);
+        const condition = sanitizeConditionName(record['key'] ?? record['state']);
         const countedValue = record['value'];
         if (!condition || typeof countedValue !== 'number' || !Number.isFinite(countedValue) || countedValue === 0) {
             continue;
@@ -483,6 +555,11 @@ export const CBT_SERIALIZED_STATE_SCHEMA = Sanitizer.schema<CBTSerializedState>(
     .custom('inventory', (value: unknown) => {
         if (!Array.isArray(value)) return undefined;
         return Sanitizer.sanitizeArray(value, INVENTORY_SCHEMA);
+    })
+    .custom('turnState', (value: unknown) => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+        const turnState = Sanitizer.sanitize(value, TURN_STATE_SCHEMA);
+        return Object.keys(turnState).length > 0 ? turnState : undefined;
     })
     .build();
 

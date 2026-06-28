@@ -32,7 +32,7 @@
  */
 
 import { signal, computed } from '@angular/core';
-import { MountedEquipment, type LocationData, type HeatProfile, type SerializedInventory, type CriticalSlot, type SerializedState, type CBTSerializedState, C3_POSITION_SCHEMA } from './force-serialization';
+import { MountedEquipment, type LocationData, type HeatProfile, type SerializedInventory, type CriticalSlot, type SerializedState, type CBTSerializedState, C3_POSITION_SCHEMA, type SerializedCondition } from './force-serialization';
 import { CrewMember } from './crew-member.model';
 import { ForceUnitState } from './force-unit-state.model';
 import { TurnState } from './turn-state.model';
@@ -88,6 +88,7 @@ export class CBTForceUnitState extends ForceUnitState {
             updated[key] = {
                 armor: (loc.armor ?? 0) + (loc.pendingArmor ?? 0),
                 internal: (loc.internal ?? 0) + (loc.pendingInternal ?? 0),
+                conditions: loc.conditions,
             };
         }
         this.locations.set(updated);
@@ -103,6 +104,7 @@ export class CBTForceUnitState extends ForceUnitState {
             updated[key] = {
                 armor: loc.armor,
                 internal: loc.internal,
+                conditions: loc.conditions,
             };
         }
         this.locations.set(updated);
@@ -192,6 +194,7 @@ export class CBTForceUnitState extends ForceUnitState {
         this.destroyed.set(data.destroyed);
         this.setConditions(data.conditions ?? []);
         this.heat.set(data.heat);
+        this.turnState().update(data.turnState);
         if (data.c3Position) {
             this.c3Position.set(Sanitizer.sanitize(data.c3Position, C3_POSITION_SCHEMA));
         }
@@ -212,7 +215,8 @@ export class CBTForceUnitState extends ForceUnitState {
                     || currentLoc.armor !== incomingLoc.armor
                     || currentLoc.internal !== incomingLoc.internal
                     || currentLoc.pendingArmor !== incomingLoc.pendingArmor
-                    || currentLoc.pendingInternal !== incomingLoc.pendingInternal) {
+                    || currentLoc.pendingInternal !== incomingLoc.pendingInternal
+                    || !this.locationConditionsEqual(currentLoc.conditions, incomingLoc.conditions)) {
                     locationsChanged = true;
                     break;
                 }
@@ -224,7 +228,8 @@ export class CBTForceUnitState extends ForceUnitState {
                     if (!incomingKeys.has(key)) {
                         const loc = currentLocations[key];
                         if ((loc.armor ?? 0) !== 0 || (loc.internal ?? 0) !== 0 ||
-                            (loc.pendingArmor ?? 0) !== 0 || (loc.pendingInternal ?? 0) !== 0) {
+                            (loc.pendingArmor ?? 0) !== 0 || (loc.pendingInternal ?? 0) !== 0 ||
+                            (loc.conditions?.length ?? 0) > 0) {
                             locationsChanged = true;
                             break;
                         }
@@ -391,7 +396,8 @@ export class CBTForceUnitState extends ForceUnitState {
         const result: Record<string, LocationData> = {};
         for (const [key, loc] of Object.entries(locations)) {
             if ((loc.armor ?? 0) !== 0 || (loc.internal ?? 0) !== 0 ||
-                (loc.pendingArmor ?? 0) !== 0 || (loc.pendingInternal ?? 0) !== 0) {
+                (loc.pendingArmor ?? 0) !== 0 || (loc.pendingInternal ?? 0) !== 0 ||
+                (loc.conditions?.length ?? 0) > 0) {
                 result[key] = loc;
             }
         }
@@ -449,6 +455,13 @@ export class CBTForceUnitState extends ForceUnitState {
         const leftValues = left ?? [];
         const rightValues = right ?? [];
         return leftValues.length === rightValues.length && leftValues.every((value, index) => value === rightValues[index]);
+    }
+
+    private locationConditionsEqual(left: SerializedCondition[] | undefined, right: SerializedCondition[] | undefined): boolean {
+        const leftValues = left ?? [];
+        const rightValues = right ?? [];
+        return leftValues.length === rightValues.length
+            && leftValues.every((value, index) => JSON.stringify(value) === JSON.stringify(rightValues[index]));
     }
 
     /**
