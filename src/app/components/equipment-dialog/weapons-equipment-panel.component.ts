@@ -19,7 +19,6 @@ import type { TooltipLine } from '../tooltip/tooltip.component';
 import { formatInventoryTargetSignedModifier, inventoryTargetNumberState, inventoryTargetRangeSelection, parseInventoryTargetNumberCell, type InventoryTargetNumberInput, type InventoryTargetRangeKey, type InventoryTargetRangeSelection } from '../../utils/inventory-target-number.util';
 import { resolveHitModifier } from '../../models/rules/hit-modifier.util';
 import { resolveWeaponRangeDamageText } from '../../models/rules/weapon-range-rules.util';
-import { getMotiveModeLabel } from '../../models/motiveModes.model';
 import type { EquipmentDialogContext } from './equipment-dialog.model';
 import {
     formatInventoryControlModeName,
@@ -384,10 +383,7 @@ export class WeaponsEquipmentPanelComponent {
 
     private targetNumberInput(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null, hitText: string): InventoryTargetNumberInput {
         this.inventoryControl().inventoryViewVersion();
-        const moveMode = this.unit().turnState().moveMode();
-        const movementModifier = this.unit().turnState().getAttackMovementModifier();
         const missingMovementModifier = this.unit().turnState().missingAttackMovementModifier();
-        const spotterModifier = this.unit().turnState().getSpottingModifier();
         const heatFireModifier = this.unit().svgService?.inventoryTargetHeatFireModifier(row.entry) ?? 0;
         const hitModifier = parseInventoryTargetNumberCell(hitText) ?? 0;
         return {
@@ -397,10 +393,8 @@ export class WeaponsEquipmentPanelComponent {
             target,
             gunnerySkill: this.unit().gunnerySkill(),
             pilotingSkill: this.unit().pilotingSkill(),
-            movementLabel: moveMode ? getMotiveModeLabel(moveMode, this.unit().getUnit(), this.unit().turnState().airborne() ?? false) : 'None',
-            movementModifier: movementModifier,
             missingMovementModifier,
-            spottingModifier: spotterModifier,
+            attackModifierBreakdown: this.unit().turnState().getAttackModifierBreakdown(),
             hitModifier: hitModifier - heatFireModifier,
             heatFireModifier
         };

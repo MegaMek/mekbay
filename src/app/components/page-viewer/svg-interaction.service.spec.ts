@@ -879,6 +879,7 @@ function createInventoryInteractionUnit(html = `
             moveMode: () => null,
             airborne: () => false,
             getAttackMovementModifier: () => 0,
+            getAttackModifierBreakdown: () => [],
             missingAttackMovementModifier: () => false,
             getSpottingModifier: () => 0,
         }),

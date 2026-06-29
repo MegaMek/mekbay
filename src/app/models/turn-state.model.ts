@@ -3,7 +3,7 @@ import { canChangeAirborneGround, getMotiveModeMaxDistance, type MotiveModes } f
 import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "./common.model";
 import type { CBTForceUnitState } from "./cbt-force-unit-state.model";
 import type { SerializedPSRChecks, SerializedTurnState } from "./force-serialization";
-import type { PSRCheck, UnitHeatSource, UnitModifierBreakdownEntry } from "./rules/unit-type-rules";
+import { calculateModifierTotal, type PSRCheck, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitModifierTotal } from "./rules/unit-type-rules";
 
 export type { PSRCheck } from "./rules/unit-type-rules";
 
@@ -124,9 +124,8 @@ export class TurnState {
         return this.unitState.unit.rules.getAttackModifierBreakdown(this);
     });
 
-    getTotalTargetModifierAsDefender = computed<number>(() => {
-        return this.getDefenseModifierBreakdown()
-            .reduce((total, entry) => total + entry.modifier, 0);
+    getTotalTargetModifierAsDefender = computed<UnitModifierTotal>(() => {
+        return calculateModifierTotal(this.getDefenseModifierBreakdown());
     });
 
     getDefenseModifierBreakdown = computed<UnitModifierBreakdownEntry[]>(() => {

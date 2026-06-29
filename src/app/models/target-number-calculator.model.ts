@@ -43,6 +43,9 @@ export const TN_PRONE_ADJACENT = -2;
 export const TN_PRONE = 1;
 export const TN_IMMOBILE = -4;
 
+export const TN_PRONE_ATTACKER = 2;
+export const TN_SKIDDING_ATTACKER = 1;
+
 export const ADJACENT_RANGE = 1;
 
 export type TnTargetUnitType =

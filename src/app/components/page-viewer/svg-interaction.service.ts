@@ -38,7 +38,7 @@ import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DialogsService } from '../../services/dialogs.service';
 import { firstValueFrom } from 'rxjs';
-import type { CrewMemberState, SkillType } from '../../models/crew-member.model';
+import type { SkillType } from '../../models/crew-member.model';
 import type { CriticalSlot, MountedEquipment } from '../../models/force-serialization';
 import { OptionsService } from '../../services/options.service';
 import { InputDialogComponent, type InputDialogData } from '../input-dialog/input-dialog.component';
@@ -48,7 +48,7 @@ import { ToastService } from '../../services/toast.service';
 import { LayoutService } from '../../services/layout.service';
 import { SetAmmoDialogComponent, type SetAmmoDialogData } from '../set-ammo-dialog/set-ammo.dialog.component';
 import { DataService } from '../../services/data.service';
-import { AmmoEquipment, WeaponEquipment } from '../../models/equipment.model';
+import { AmmoEquipment } from '../../models/equipment.model';
 import { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
 import type { HandlerChoice } from '../../services/equipment-interaction-registry.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -60,7 +60,6 @@ import { EquipmentDialogComponent } from '../equipment-dialog/equipment-dialog.c
 import type { EquipmentDialogContext, EquipmentDialogData, EquipmentDialogTab } from '../equipment-dialog/equipment-dialog.model';
 import { WeaponTargetChoiceMenuComponent } from '../../components/equipment-dialog/weapon-target-choice-menu.component';
 import { getInventoryControlModes, getSelectedInventoryControlMode, selectInventoryControlEntry, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
-import { getMotiveModeLabel } from '../../models/motiveModes.model';
 import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { inventoryTargetCategory, inventoryTargetNumberText, parseInventoryTargetNumberCell, readInventoryTargetDisplay, readInventoryTargetText } from '../../utils/inventory-target-number.util';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
@@ -1244,10 +1243,7 @@ export class SvgInteractionService {
         const svgText = unit.svgService?.inventoryTargetNumberText(entry, target);
         if (svgText) return svgText;
 
-        const moveMode = unit.turnState().moveMode();
-        const movementModifier = unit.turnState().getAttackMovementModifier();
         const missingMovementModifier = unit.turnState().missingAttackMovementModifier();
-        const spotterModifier = unit.turnState().getSpottingModifier();
         const heatFireModifier = unit.svgService?.inventoryTargetHeatFireModifier(entry) ?? 0;
         const hitModifier = parseInventoryTargetNumberCell(readInventoryTargetText(entry, 'hit')) ?? 0;
         return inventoryTargetNumberText({
@@ -1257,10 +1253,8 @@ export class SvgInteractionService {
             target,
             gunnerySkill: unit.effectiveGunnerySkill(),
             pilotingSkill: unit.effectivePilotingSkill(),
-            movementLabel: moveMode ? getMotiveModeLabel(moveMode, unit.getUnit(), unit.turnState().airborne() ?? false) : 'None',
-            movementModifier: movementModifier,
             missingMovementModifier,
-            spottingModifier: spotterModifier,
+            attackModifierBreakdown: unit.turnState().getAttackModifierBreakdown(),
             hitModifier: hitModifier - heatFireModifier,
             heatFireModifier
         });

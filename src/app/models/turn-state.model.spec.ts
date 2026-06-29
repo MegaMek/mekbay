@@ -245,7 +245,7 @@ describe('TurnState', () => {
             turnState.spotting.set(true);
 
             expect(turnState.getAttackModifierBreakdown()).toEqual([
-                { label: 'Attacker movement', modifier: 3 },
+                { label: 'Jump', modifier: 3 },
                 { label: 'Spotting', modifier: 1 },
             ]);
             expect(turnState.getTotalTargetModifierAsAttacker()).toBe(4);
@@ -278,13 +278,13 @@ describe('TurnState', () => {
             turnState.moveDistance.set(7);
 
             expect(turnState.getDefenseModifierBreakdown()).toEqual([
-                { label: 'Prone', modifier: 1 },
+                { label: 'Prone', modifier: 1, alternateModifier: -2, alternateModifierLabel: 'adjacent' },
                 { label: 'Skidding', modifier: 2 },
                 { label: 'Jumped', modifier: 1 },
                 { label: 'Moved 7-9 hexes', modifier: 3 },
                 { label: 'Battle Armor', modifier: 1 },
             ]);
-            expect(turnState.getTotalTargetModifierAsDefender()).toBe(8);
+            expect(turnState.getTotalTargetModifierAsDefender()).toEqual({ modifier: 8, alternateModifier: 5 });
         });
 
         it('counts an explicitly airborne defender even before movement is selected', () => {
@@ -295,7 +295,23 @@ describe('TurnState', () => {
             expect(turnState.getDefenseModifierBreakdown()).toEqual([
                 { label: 'Airborne', modifier: 1 },
             ]);
-            expect(turnState.getTotalTargetModifierAsDefender()).toBe(1);
+            expect(turnState.getTotalTargetModifierAsDefender()).toEqual({ modifier: 1 });
+        });
+
+        it('tracks alternate defender modifier totals for adjacent prone targets', () => {
+            const { turnState } = createTurnStateHarness({
+                prone: true,
+                skidding: true,
+            });
+            turnState.moveMode.set('walk');
+            turnState.moveDistance.set(3);
+
+            expect(turnState.getDefenseModifierBreakdown()).toEqual([
+                { label: 'Prone', modifier: 1, alternateModifier: -2, alternateModifierLabel: 'adjacent' },
+                { label: 'Skidding', modifier: 2 },
+                { label: 'Moved 3-4 hexes', modifier: 1 },
+            ]);
+            expect(turnState.getTotalTargetModifierAsDefender()).toEqual({ modifier: 4, alternateModifier: 1 });
         });
     });
 

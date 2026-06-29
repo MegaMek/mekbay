@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment, WeaponEquipment, MiscEquipment, type EquipmentMap } from '../../models/equipment.model';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { INVENTORY_CONTROL_TARGET_COLORS, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
+import type { UnitModifierBreakdownEntry } from '../../models/rules/unit-type-rules';
 import { CBTInventoryControlRuntime } from '../../models/cbt-inventory-control-runtime.model';
 import { MountedEquipment, type CriticalSlot, type HeatProfile } from '../../models/force-serialization';
 import { InventoryModeHandler } from '../../equipment-handlers/inventory-mode.handler';
@@ -11,7 +12,7 @@ import type { EquipmentInteractionHandler, HandlerChoice } from '../../services/
 import { INVENTORY_CONTROL_MODE_STATE, inventoryControlSortKey, getInventoryControlGroups } from '../../utils/inventory-control.util';
 import { WeaponsEquipmentPanelComponent } from './weapons-equipment-panel.component';
 import type { EquipmentDialogContext } from './equipment-dialog.model';
-import type { MotiveModes } from '../../models/motiveModes.model';
+import { getMotiveModeLabel, type MotiveModes } from '../../models/motiveModes.model';
 
 function addRuntimeSelection(unit: CBTForceUnit): CBTForceUnit {
     const runtime = new CBTInventoryControlRuntime(unit);
@@ -123,6 +124,7 @@ interface CreateComponentOptions {
     gunnerySkill?: number;
     pilotingSkill?: number;
     moveMode?: MotiveModes | null;
+    attackModifierBreakdown?: UnitModifierBreakdownEntry[];
     attackMovementCanAffectTargetNumbers?: boolean;
     handlers?: EquipmentInteractionHandler[];
 }
@@ -181,6 +183,9 @@ function createComponent(
         moveMode: () => options.moveMode ?? null,
         airborne: () => false,
         getAttackMovementModifier: () => rules.getAttackMovementModifier(options.moveMode ?? null),
+        getAttackModifierBreakdown: () => options.attackModifierBreakdown ?? (rules.getAttackMovementModifier(options.moveMode ?? null) !== 0
+            ? [{ label: getMotiveModeLabel(options.moveMode!, unit.getUnit(), false), modifier: rules.getAttackMovementModifier(options.moveMode ?? null) }]
+            : []),
         missingAttackMovementModifier: () => (options.moveMode ?? null) === null && (options.attackMovementCanAffectTargetNumbers ?? true),
         getSpottingModifier: () => 0,
         heatSources: () => options.heatSources ? [{ id: 'test-source', label: 'Test Source', value: options.heatSources }] : [],
@@ -783,7 +788,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(targetState.targetNumberText).toBe('12');
         expect(targetState.breakdown?.lines).toEqual([
             { label: 'Gunnery', value: '4' },
-            { label: 'Movement (Run)', value: '+2' },
+            { label: 'Run', value: '+2' },
             { label: 'Target (A)', value: '+1' },
             { label: 'Range (Long)', value: '+4' },
             { label: 'Hit Modifier', value: '+1' },
@@ -862,7 +867,6 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(targetState.targetNumberText).toBe('10');
         expect(targetState.breakdown?.lines).toEqual([
             { label: 'Gunnery', value: '4' },
-            { label: 'Movement (Stationary)', value: '+0' },
             { label: 'Target (A)', value: '+1' },
             { label: 'Range (Medium)', value: '+2' },
             { label: 'Hit Modifier', value: '+1' },
@@ -888,7 +892,6 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(targetState.targetNumberText).toBe('7');
         expect(targetState.breakdown?.lines).toEqual([
             { label: 'Piloting', value: '6' },
-            { label: 'Movement (Stationary)', value: '+0' },
             { label: 'Target (A)', value: '+1' },
             { isBreak: true },
             { label: 'Total', value: '7', isHeader: true },
