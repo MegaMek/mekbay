@@ -489,7 +489,7 @@ export const RANGE_FILTERS: readonly RangeFilterConfig[] = Object.freeze([
     { key: 'run', semanticKey: 'run', label: 'Run MP', curve: 0.9, game: GameSystem.CLASSIC },
     { key: 'jump', semanticKey: 'jump', label: 'Jump MP', curve: 0.9, game: GameSystem.CLASSIC },
     { key: 'umu', semanticKey: 'umu', label: 'UMU MP', curve: 0.9, game: GameSystem.CLASSIC },
-    { key: 'year', semanticKey: 'year', label: 'Year', curve: 1 },
+    { key: 'year', semanticKey: 'year', label: 'Intro Year', curve: 1 },
     { key: 'cost', semanticKey: 'cost', label: 'Cost', curve: 0, game: GameSystem.CLASSIC },
     { key: 'as.SZ', semanticKey: 'sz', label: 'Size', curve: 1, game: GameSystem.ALPHA_STRIKE },
     { key: 'as.TMM', semanticKey: 'tmm', label: 'TMM', curve: 1, game: GameSystem.ALPHA_STRIKE },
