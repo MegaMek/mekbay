@@ -1531,7 +1531,7 @@ export class DataService {
         return forces;
     }
 
-    SAVE_FORCE_CLOUD_DEBOUNCE_MS = 1000;
+    SAVE_FORCE_CLOUD_DEBOUNCE_MS = 2000;
     // Debounce map to prevent multiple simultaneous saves for the same force
     private saveForceCloudDebounce = new Map<string, {
         timeout: ReturnType<typeof setTimeout>,

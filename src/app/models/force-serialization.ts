@@ -115,7 +115,7 @@ export interface SerializedTurnState {
     moveMode?: MotiveModes;
     moveDistance?: number;
     dmgReceived?: number;
-    firedHeat?: number;
+    weaponsHeat?: number;
     psrChecks?: SerializedPSRChecks;
     applyMovePSR?: boolean;
     spotting?: boolean;
@@ -375,7 +375,7 @@ export const TURN_STATE_SCHEMA = Sanitizer.schema<SerializedTurnState>()
     .custom('moveMode', (value: unknown) => MOTIVE_MODE_VALUES.includes(value as MotiveModes) ? value as MotiveModes : undefined)
     .number('moveDistance', { min: 0 })
     .number('dmgReceived', { min: 0 })
-    .number('firedHeat', { min: 0 })
+    .number('weaponsHeat', { min: 0 })
     .custom('psrChecks', (value: unknown) => {
         if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
         const psrChecks = Sanitizer.sanitize(value, PSR_CHECKS_SCHEMA);

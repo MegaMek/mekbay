@@ -147,7 +147,7 @@ describe('TurnState', () => {
                 moveMode: 'jump',
                 moveDistance: 5,
                 dmgReceived: 23,
-                firedHeat: 9,
+                weaponsHeat: 9,
                 psrChecks: {
                     legActuators: { LL: 2 },
                     hipsHit: ['RL'],
@@ -167,7 +167,7 @@ describe('TurnState', () => {
             expect(restored.moveMode()).toBe('jump');
             expect(restored.moveDistance()).toBe(5);
             expect(restored.dmgReceived()).toBe(23);
-            expect(restored.firedHeat()).toBe(9);
+            expect(restored.weaponsHeat()).toBe(9);
             expect(restored.spotting()).toBeTrue();
             expect(restoredPsrChecks.legActuators?.get('LL')).toBe(2);
             expect(restoredPsrChecks.hipsHit?.has('RL')).toBeTrue();

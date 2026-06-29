@@ -23,7 +23,7 @@ export class TurnState {
     moveMode = this.modifiedSignal<MotiveModes | null>(null);
     moveDistance = this.modifiedSignal<number | null>(null);
     dmgReceived = this.modifiedSignal<number>(0);
-    firedHeat = this.modifiedSignal<number>(0);
+    weaponsHeat = this.modifiedSignal<number>(0);
     private psrChecks = this.modifiedSignal<PSRChecks>({});
     applyMovePSR = this.modifiedSignal<boolean>(true);
     spotting = this.modifiedSignal<boolean>(false);
@@ -208,7 +208,7 @@ export class TurnState {
         if (moveMode !== null) turnState.moveMode = moveMode;
         if (moveDistance !== null) turnState.moveDistance = moveDistance;
         if (this.dmgReceived() > 0) turnState.dmgReceived = this.dmgReceived();
-        if (this.firedHeat() > 0) turnState.firedHeat = this.firedHeat();
+        if (this.weaponsHeat() > 0) turnState.weaponsHeat = this.weaponsHeat();
         if (psrChecks) turnState.psrChecks = psrChecks;
         if (this.spotting()) turnState.spotting = true;
 
@@ -221,7 +221,7 @@ export class TurnState {
             this.moveMode.set(data?.moveMode ?? null);
             this.moveDistance.set(data?.moveDistance ?? null);
             this.dmgReceived.set(data?.dmgReceived ?? 0);
-            this.firedHeat.set(data?.firedHeat ?? 0);
+            this.weaponsHeat.set(data?.weaponsHeat ?? 0);
             this.psrChecks.set(this.deserializePSRChecks(data?.psrChecks));
             this.applyMovePSR.set(data?.applyMovePSR ?? true);
             this.spotting.set(data?.spotting ?? false);
@@ -286,11 +286,11 @@ export class TurnState {
 
     addFiredHeat(amount: number) {
         if (!Number.isFinite(amount) || amount <= 0) return;
-        this.firedHeat.update((value)=> { return value + amount });
+        this.weaponsHeat.update((value)=> { return value + amount });
     }
 
     resetTurnHeatSources() {
-        this.firedHeat.set(0);
+        this.weaponsHeat.set(0);
     }
 
     maxDistanceCurrentMoveMode = computed<number>(() => {
