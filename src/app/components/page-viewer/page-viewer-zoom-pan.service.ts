@@ -348,11 +348,12 @@ export class PageViewerZoomPanService {
         }
 
         this.visiblePageCount.set(optimalPages);
-        this.minScale.set(Math.max(MIN_SCALE_ABSOLUTE, optimalScale));
+        const minScaleValue = Math.max(MIN_SCALE_ABSOLUTE, optimalScale);
+        this.minScale.set(minScaleValue);
 
         // Ensure current scale isn't below minimum
-        if (this.scale() < this.minScale()) {
-            this.scale.set(this.minScale());
+        if (this.scale() < minScaleValue) {
+            this.scale.set(minScaleValue);
             this.centerContent();
         }
     }
@@ -394,10 +395,10 @@ export class PageViewerZoomPanService {
         };
 
         this.calculateMinScaleAndVisiblePages();
-
+        const minScaleValue = this.minScale();
         // Adjust scale if below minimum
-        if (this.scale() < this.minScale()) {
-            this.scale.set(this.minScale());
+        if (this.scale() < minScaleValue) {
+            this.scale.set(minScaleValue);
         }
 
         this.clampPan();

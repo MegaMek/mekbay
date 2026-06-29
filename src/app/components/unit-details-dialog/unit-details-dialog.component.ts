@@ -349,7 +349,7 @@ export class UnitDetailsDialogComponent {
             // Emulate RIGHT swipe: current goes right, prev comes from left
             // this.navigateToUnit(this.unitIndex() - 1, 'right');
             this.floatingOverlayService.hide();
-            this.unitIndex.set(this.unitIndex() - 1);
+            this.unitIndex.update(v => v - 1);
         }
     }
 
@@ -358,7 +358,7 @@ export class UnitDetailsDialogComponent {
             // Emulate LEFT swipe: current goes left, next comes from right
             // this.navigateToUnit(this.unitIndex() + 1, 'left');
             this.floatingOverlayService.hide();
-            this.unitIndex.set(this.unitIndex() + 1);
+            this.unitIndex.update(v => v + 1);
         }
     }
 

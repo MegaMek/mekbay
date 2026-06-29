@@ -297,7 +297,7 @@ export class DataService {
         const searchIndexChanged = options?.searchIndexChanged ?? true;
         this.unitRuntimeService.applyTagDataToUnits(this.getUnits(), tagData, { rebuildTagSearchIndex: searchIndexChanged });
         if (searchIndexChanged) {
-            this.tagsVersion.set(this.tagsVersion() + 1);
+            this.tagsVersion.update(v => v + 1);
         }
     }
 
@@ -307,7 +307,7 @@ export class DataService {
      */
     private applyPublicTagsToUnits(): void {
         this.unitRuntimeService.applyPublicTagsToUnits(this.getUnits());
-        this.tagsVersion.set(this.tagsVersion() + 1);
+        this.tagsVersion.update(v => v + 1);
     }
 
     public notifyStoreUpdated(action: BroadcastPayload['action'], store?: string, meta?: any) {
@@ -339,7 +339,7 @@ export class DataService {
      */
     private async loadUnitTags(units: Unit[]): Promise<void> {
         await this.unitRuntimeService.loadUnitTags(units);
-        this.tagsVersion.set(this.tagsVersion() + 1);
+        this.tagsVersion.update(v => v + 1);
     }
 
     public getUnits(): Unit[] {

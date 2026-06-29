@@ -281,12 +281,12 @@ export class TurnState {
     }
 
     addDmgReceived(amount: number) {
-        this.dmgReceived.set(this.dmgReceived() + amount);
+        this.dmgReceived.update((value)=> { return value + amount });
     }
 
     addFiredHeat(amount: number) {
         if (!Number.isFinite(amount) || amount <= 0) return;
-        this.firedHeat.set(this.firedHeat() + amount);
+        this.firedHeat.update((value)=> { return value + amount });
     }
 
     resetTurnHeatSources() {

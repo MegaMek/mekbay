@@ -325,7 +325,7 @@ export class SidebarComponent {
 
     public onSwipeCancel() {
         this.layout.isMenuDragging.set(false);
-        this.layout.menuOpenRatio.set(this.layout.menuOpenRatio() >= 0.5 ? 1 : 0);
+        this.layout.menuOpenRatio.update(v => v >= 0.5 ? 1 : 0);
     }
 
     // backdrop click to close overlay
