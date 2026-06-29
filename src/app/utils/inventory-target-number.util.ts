@@ -1,5 +1,5 @@
 import type { MountedEquipment } from '../models/force-serialization';
-import { WeaponEquipment } from '../models/equipment.model';
+import { WeaponEquipment, type AmmoEquipment } from '../models/equipment.model';
 import type { InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 import type { UnitModifierBreakdownEntry } from '../models/rules/unit-type-rules';
 import type { InventoryControlDisplayData, InventoryControlGroupId, InventoryRangeKey } from './inventory-control.util';
@@ -30,6 +30,7 @@ export interface InventoryTargetNumberInput {
     entry: MountedEquipment;
     category: InventoryControlGroupId;
     display: Pick<InventoryControlDisplayData, InventoryRangeKey | 'min'>;
+    selectedAmmo?: AmmoEquipment | null;
     target: InventoryControlRuntimeTarget | null;
     gunnerySkill: number;
     pilotingSkill: number;
@@ -125,6 +126,7 @@ export function inventoryTargetNumberBreakdown(
     const skill = physical ? input.pilotingSkill : input.gunnerySkill;
     const rangeModifier = inventoryTargetRangeModifier(rangeSelection.range);
     const minimumRangeModifier = rangeSelection.minimumRangeModifier;
+    const ammoToHitModifier = physical ? 0 : (input.selectedAmmo?.stats.toHitModifier ?? 0);
     const heatFireModifier = physical ? 0 : input.heatFireModifier ?? 0;
     const terms: TooltipLine[] = [
         { label: skillLabel, value: skill.toString() }
@@ -148,12 +150,15 @@ export function inventoryTargetNumberBreakdown(
     if (input.hitModifier !== 0) {
         terms.push({ label: 'Hit Modifier', value: formatInventoryTargetSignedModifier(input.hitModifier) });
     }
+    if (ammoToHitModifier !== 0 && input.selectedAmmo) {
+        terms.push({ label: `Ammo (${input.selectedAmmo.shortName})`, value: formatInventoryTargetSignedModifier(ammoToHitModifier) });
+    }
     if (heatFireModifier !== 0) {
         terms.push({ label: 'Heat - Fire Modifier', value: formatInventoryTargetSignedModifier(heatFireModifier) });
     }
 
     const attackModifier = input.attackModifierBreakdown.reduce((total, entry) => total + entry.modifier, 0);
-    const total = skill + attackModifier + target.tnModifier + rangeModifier + minimumRangeModifier + input.hitModifier + heatFireModifier;
+    const total = skill + attackModifier + target.tnModifier + rangeModifier + minimumRangeModifier + input.hitModifier + ammoToHitModifier + heatFireModifier;
     terms.push({ isBreak: true });
     terms.push({ label: 'Total', value: total.toString(), isHeader: true });
 

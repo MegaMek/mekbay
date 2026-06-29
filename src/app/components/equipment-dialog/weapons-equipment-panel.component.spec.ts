@@ -50,13 +50,14 @@ function weapon(id: string, ammoType: 'NA' | 'AC' | 'ATM' | 'MML' | 'AC_ULTRA' |
     });
 }
 
-function ammo(id: string, ammoType: 'AC' | 'ATM' | 'MML' | 'NARC', rackSize: number, munitionType: string[] = [], flags: string[] = []): AmmoEquipment {
+function ammo(id: string, ammoType: 'AC' | 'ATM' | 'MML' | 'NARC', rackSize: number, munitionType: string[] = [], flags: string[] = [], toHitModifier = 0): AmmoEquipment {
     return new AmmoEquipment({
         id,
         name: id,
         shortName: id,
         type: 'ammo',
         flags,
+        stats: { toHitModifier },
         ammo: { type: ammoType, rackSize, shots: 10, munitionType }
     });
 }
@@ -799,6 +800,31 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const selectedRangeCell = fixture.nativeElement.querySelector('.range-long') as HTMLElement;
         expect(selectedRangeCell.classList.contains('selected-range')).toBeTrue();
         expect(selectedRangeCell.style.getPropertyValue('--range-selection-color')).toBe(INVENTORY_CONTROL_TARGET_COLORS[0]);
+    });
+
+    it('applies selected ammo to-hit modifiers to target number math', () => {
+        const lbxClusterAmmo = ammo('LB 10-X Cluster', 'AC', 10, ['M_CLUSTER'], [], -1);
+        const lbx = entry({ id: 'lbx', equipment: weapon('LB 10-X AC', 'AC', 10, [5, 10, 15, 20]), el: svgEntry('<g><g class="name"><text>LB 10-X AC</text></g><text class="range_short">5</text><text class="range_medium">10</text><text class="range_long">15</text></g>') });
+        const ammoBin = entry({ id: 'cluster-ammo', equipment: lbxClusterAmmo, totalAmmo: 10, consumed: 0, locations: new Set(['CT']) });
+        const { component, fixture, unit } = createComponent([lbx, ammoBin], { [lbxClusterAmmo.internalName]: lbxClusterAmmo }, [], new Map(), { gunnerySkill: 4, moveMode: 'stationary' });
+        let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        component.selectAmmoOption(row, row.ammo.options[0].id);
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 8 });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+        unit.inventoryControl.markInventoryViewChanged();
+        fixture.detectChanges();
+
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        const targetState = component.targetState(row);
+        expect(targetState.targetNumberText).toBe('5');
+        expect(targetState.breakdown?.lines).toEqual([
+            { label: 'Gunnery', value: '4' },
+            { label: 'Range (Medium)', value: '+2' },
+            { label: 'Ammo (LB 10-X Cluster)', value: '-1' },
+            { isBreak: true },
+            { label: 'Total', value: '5', isHeader: true },
+        ]);
     });
 
     it('highlights minimum range when assigned target distance is at or below Min', () => {

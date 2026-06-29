@@ -85,6 +85,7 @@ export interface InventoryControlAmmoSummary {
 export interface InventoryControlAmmoOption {
     id: string;
     label: string;
+    ammo?: AmmoEquipment;
     remaining: number;
     total: number;
     destroyed: boolean;
@@ -260,6 +261,7 @@ function getInventoryControlAmmoSummary(
         options: groupedAmmo.map(source => ({
             id: source.id,
             label: formatAmmoOptionLabel(source, locationSensitiveAmmoNames.has(source.ammo.shortName)),
+            ammo: source.ammo,
             remaining: source.destroyed ? 0 : Math.max(0, source.total - source.consumed),
             total: source.total,
             destroyed: source.destroyed,

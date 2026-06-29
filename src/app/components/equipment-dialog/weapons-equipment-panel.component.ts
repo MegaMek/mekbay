@@ -386,10 +386,12 @@ export class WeaponsEquipmentPanelComponent {
         const missingMovementModifier = this.unit().turnState().missingAttackMovementModifier();
         const heatFireModifier = this.unit().svgService?.inventoryTargetHeatFireModifier(row.entry) ?? 0;
         const hitModifier = parseInventoryTargetNumberCell(hitText) ?? 0;
+        const selectedAmmo = this.resolvedSelectedAmmoOption(row)?.ammo ?? null;
         return {
             entry: row.entry,
             category: row.category,
             display: row.display,
+            selectedAmmo,
             target,
             gunnerySkill: this.unit().gunnerySkill(),
             pilotingSkill: this.unit().pilotingSkill(),
