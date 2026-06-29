@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FactionId, getFactionImg, type Faction } from '../../models/factions.model';
 import type { FactionDisplayInfo } from '../../utils/force-namer.util';
@@ -45,6 +45,14 @@ import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-vis
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div class="dropdown-shell glass has-shadow framed-borders">
+            <div class="header">
+                <input
+                    class="bt-input"
+                    type="text"
+                    placeholder="Search factions..."
+                    [value]="searchText()"
+                    (input)="onSearch($any($event.target).value)" />
+            </div>
             <div class="dropdown-panel" data-scroll-container>
                 <!-- None option -->
                 <div class="dropdown-option none-option"
@@ -64,7 +72,7 @@ import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-vis
                     <div class="section-label">Matching Factions</div>
                 }
 
-                @for (item of factions(); track item.faction.id) {
+                @for (item of filteredFactions(); track item.faction.id) {
                     @if (item.isMatching) {
                     <div class="dropdown-option matching"
                          [class.active]="selectedFactionId() === item.faction.id"
@@ -104,7 +112,7 @@ import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-vis
                     <div class="section-label">Other Factions</div>
                 }
 
-                @for (item of factions(); track item.faction.id) {
+                @for (item of filteredFactions(); track item.faction.id) {
                     @if (!item.isMatching) {
                     <div class="dropdown-option"
                          [class.active]="selectedFactionId() === item.faction.id"
@@ -191,6 +199,16 @@ import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-vis
             flex-direction: column;
             height: 100%;
             min-height: 0;
+        }
+
+        .header {
+            flex: 0 0 auto;
+            padding: 4px 6px;
+            border-bottom: 1px solid var(--border-color);
+
+            .bt-input {
+                width: 100%;
+            }
         }
 
         .dropdown-panel {
@@ -430,14 +448,33 @@ export class FactionDropdownPanelComponent {
 
     selected = output<Faction | null>();
 
+    searchText = signal<string>('');
+
+    filteredFactions = computed<FactionDisplayInfo[]>(() => {
+        const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
+
+        const filtered = tokens.length === 0
+            ? [...this.factions()]
+            : this.factions().filter(option => {
+                const hay = option._searchText || '';
+                return tokens.every(t => hay.indexOf(t) !== -1);
+            });
+
+        return filtered;
+    });
+
     getFactionImg = getFactionImg;
+    
+    onSearch(text: string) {
+        this.searchText.set(text);
+    }
 
     hasMatchingFactions(): boolean {
-        return this.factions().some(f => f.isMatching);
+        return this.filteredFactions().some(f => f.isMatching);
     }
 
     hasNonMatchingFactions(): boolean {
-        return this.factions().some(f => !f.isMatching);
+        return this.filteredFactions().some(f => !f.isMatching);
     }
 
     onSelect(faction: Faction): void {

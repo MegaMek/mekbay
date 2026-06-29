@@ -68,9 +68,6 @@ export interface AdvancementTimelineCell {
     },
     template: `
         <div class="advancement-timeline-panel">
-            @if (title()) {
-                <div class="advancement-timeline-title">{{ title() }}</div>
-            }
             <div class="advancement-timeline-rows" [attr.aria-label]="ariaLabel()">
                 <div class="advancement-timeline-row header">
                     <div class="advancement-timeline-row-label" aria-hidden="true"></div>
@@ -116,7 +113,7 @@ export interface AdvancementTimelineCell {
             --timeline-track-gap: 8px;
             --timeline-marker-size: 12px;
             --timeline-row-height: 22px;
-            --timeline-value-offset: 6px;
+            --timeline-value-offset: 4px;
             --timeline-header-font-size: clamp(0.58em, 1.2vw, 0.72em);
             --timeline-value-font-size: clamp(0.72em, 1.7vw, 1em);
             --timeline-label-font-size: 0.74em;
@@ -125,10 +122,10 @@ export interface AdvancementTimelineCell {
             --timeline-rows-gap: 8px;
             --timeline-rows-padding: 8px;
             --timeline-background: rgba(0, 0, 0, 0.2);
-            --timeline-extinction-color: #f99;
+            --timeline-extinction-color: #f00;
             --timeline-extinction-border: #d00;
             --timeline-extinction-background: #300;
-            --timeline-extinction-line: #700;
+            --timeline-extinction-line: #7003;
         }
 
         :host.compact {
@@ -151,15 +148,6 @@ export interface AdvancementTimelineCell {
             display: grid;
             gap: var(--timeline-panel-gap);
             min-width: 0;
-        }
-
-        .advancement-timeline-title {
-            color: var(--text-color-secondary);
-            font-size: var(--timeline-title-font-size);
-            font-weight: 700;
-            letter-spacing: 0.04em;
-            line-height: 1.1;
-            text-transform: uppercase;
         }
 
         .advancement-timeline-rows {
@@ -202,7 +190,7 @@ export interface AdvancementTimelineCell {
             min-width: 0;
             min-height: var(--timeline-row-height);
         }
-
+        /*
         .advancement-timeline-track::before {
             content: '';
             position: absolute;
@@ -212,7 +200,7 @@ export interface AdvancementTimelineCell {
             height: 3px;
             background: var(--bt-yellow-background-transparent);
             transform: translateY(-50%);
-        }
+        }*/
 
         .advancement-timeline-track.header {
             min-height: auto;
@@ -288,6 +276,18 @@ export interface AdvancementTimelineCell {
             background-color: var(--timeline-extinction-background);
         }
 
+        .advancement-timeline-cell::after {
+            content: '';
+            position: absolute;
+            left: calc(var(--timeline-marker-size) / 2);
+            right: calc(-1 * (var(--timeline-track-gap) + (var(--timeline-marker-size) / 2)));
+            top: 50%;
+            height: 3px;
+            background: #EAAE3F60;
+            transform: translateY(-50%);
+            z-index: 1;
+        }
+
         .advancement-timeline-cell.has-extinction-line::after {
             content: '';
             position: absolute;
@@ -300,7 +300,7 @@ export interface AdvancementTimelineCell {
             z-index: 1;
         }
 
-        .advancement-timeline-cell.has-extinction-line:last-child::after {
+        .advancement-timeline-cell:last-child::after {
             right: calc(var(--timeline-marker-size) / 2);
         }
 
@@ -327,7 +327,6 @@ export interface AdvancementTimelineCell {
 export class AdvancementTimelineComponent {
     readonly timelines = input.required<readonly AdvancementTimeline[]>();
     readonly slots = input.required<readonly AdvancementTimelineSlot[]>();
-    readonly title = input('');
     readonly ariaLabel = input('Advancement history');
     readonly density = input<'compact' | 'regular'>('regular');
 
