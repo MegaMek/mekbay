@@ -489,6 +489,12 @@ export class OverlayManagerService {
             ? (content.querySelector('[data-scroll-container]') as HTMLElement ?? content)
             : pane;
 
+        if (content) {
+            content.style.maxHeight = '';
+            content.style.height = '';
+        }
+        scrollContainer.style.maxHeight = '';
+
         const maxPanelH = viewportH - 2 * MARGIN;
         const chromeHeight = content && content !== scrollContainer
             ? Math.max(0, content.offsetHeight - scrollContainer.offsetHeight)
@@ -499,6 +505,9 @@ export class OverlayManagerService {
         const visibleScrollH = Math.min(naturalScrollH, maxScrollH);
         const effectiveH = Math.min(naturalH, maxPanelH);
         const overflows = naturalH > maxPanelH;
+        const paneRect = pane.getBoundingClientRect();
+        const scrollContainerRect = scrollContainer.getBoundingClientRect();
+        const scrollContainerTopInPanel = scrollContainerRect.top - paneRect.top;
 
         // Find the active element inside the overlay
         const active = pane.querySelector(selector) as HTMLElement | null;
@@ -508,8 +517,7 @@ export class OverlayManagerService {
         let activeCenterInContent = 0;
         if (active) {
             const activeRect = active.getBoundingClientRect();
-            const containerRect = scrollContainer.getBoundingClientRect();
-            activeCenterInContent = activeRect.top - containerRect.top
+            activeCenterInContent = activeRect.top - scrollContainerRect.top
                 + scrollContainer.scrollTop + activeRect.height / 2;
         }
 
@@ -517,12 +525,12 @@ export class OverlayManagerService {
 
         if (!overflows) {
             // Content fits: position so the active item aligns with the trigger
-            top = triggerCenterY - activeCenterInContent;
+            top = triggerCenterY - scrollContainerTopInPanel - activeCenterInContent;
         } else {
             // Content overflows: panel will be viewport-sized.
             // Place it so the trigger center is vertically centred in the panel,
             // then use scrollTop to bring the active item to that position.
-            top = triggerCenterY - visibleScrollH / 2;
+            top = triggerCenterY - scrollContainerTopInPanel - visibleScrollH / 2;
         }
 
         // Clamp to viewport
@@ -562,8 +570,8 @@ export class OverlayManagerService {
             scrollContainer.offsetHeight;
             // Scroll so the active item sits at the vertical position
             // within the panel that lines up with the trigger's centre.
-            const targetOffsetInPanel = triggerCenterY - top;
-            const desiredScrollTop = activeCenterInContent - targetOffsetInPanel;
+            const targetOffsetInScrollContainer = triggerCenterY - top - scrollContainerTopInPanel;
+            const desiredScrollTop = activeCenterInContent - targetOffsetInScrollContainer;
             scrollContainer.scrollTop = Math.max(0, desiredScrollTop);
         }
     }
