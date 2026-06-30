@@ -330,12 +330,11 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
     it('serializes and restores turn state data', () => {
         const forceUnit = createForceUnit();
-        forceUnit.turnState().airborne.set(false);
+        forceUnit.turnState().airborne.set(true);
         forceUnit.turnState().moveMode.set('run');
         forceUnit.turnState().moveDistance.set(7);
         forceUnit.turnState().addDmgReceived(20);
         forceUnit.turnState().addFiredHeat(8);
-        forceUnit.turnState().applyMovePSR.set(false);
         forceUnit.turnState().spotting.set(true);
         forceUnit.turnState().setPSRCheckState({
             legActuators: new Map([['LL', 1]]),
@@ -345,16 +344,15 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const serialized = forceUnit.serialize();
 
         expect(serialized.state.turnState).toEqual({
-            airborne: false,
+            airborne: true,
             moveMode: 'run',
             moveDistance: 7,
             dmgReceived: 20,
-            firedHeat: 8,
+            weaponsHeat: 8,
             psrChecks: {
                 legActuators: { LL: 1 },
                 hipsHit: ['RL'],
             },
-            applyMovePSR: false,
             spotting: true,
         });
 
@@ -366,12 +364,11 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             injector
         );
 
-        expect(restored.turnState().airborne()).toBeFalse();
+        expect(restored.turnState().airborne()).toBeTrue();
         expect(restored.turnState().moveMode()).toBe('run');
         expect(restored.turnState().moveDistance()).toBe(7);
         expect(restored.turnState().dmgReceived()).toBe(20);
-        expect(restored.turnState().firedHeat()).toBe(8);
-        expect(restored.turnState().applyMovePSR()).toBeFalse();
+        expect(restored.turnState().weaponsHeat()).toBe(8);
         expect(restored.turnState().spotting()).toBeTrue();
         expect(restored.turnState().getPSRCheckState().legActuators?.get('LL')).toBe(1);
         expect(restored.turnState().getPSRCheckState().hipsHit?.has('RL')).toBeTrue();

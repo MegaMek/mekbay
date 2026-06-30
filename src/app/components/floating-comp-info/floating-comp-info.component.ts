@@ -38,6 +38,7 @@ import { DataService } from '../../services/data.service';
 import type { Unit } from '../../models/units.model';
 import { AmmoEquipment, type Equipment, WeaponEquipment } from '../../models/equipment.model';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
+import { parseAdvancementYear } from '../../utils/tech-advancement-date.util';
 
 /*
  * Author: Drake
@@ -164,20 +165,10 @@ export class FloatingCompInfoComponent {
         if (!unit) return [];
         const eq = this.equipment();
         if (!eq) return [];
-        const parseYear = (val: any): number | null => {
-            if (typeof val === 'string') {
-                if (val === 'ES') return 1950;
-                if (val === 'PS') return 2100;
-                const digits = val.replace(/\D/g, '');
-                return digits ? parseInt(digits, 10) : null;
-            }
-            if (typeof val === 'number') return val;
-            return null;
-        };
 
         // Helper to pick earliest date from two options
         const earliest = (a?: string, b?: string): string | undefined => {
-            const aY = parseYear(a), bY = parseYear(b);
+            const aY = parseAdvancementYear(a), bY = parseAdvancementYear(b);
             if (aY === null) return b;
             if (bY === null) return a;
             return aY <= bY ? a : b;
@@ -185,7 +176,7 @@ export class FloatingCompInfoComponent {
 
         // Helper to pick latest date from two options
         const latest = (a?: string, b?: string): string | undefined => {
-            const aY = parseYear(a), bY = parseYear(b);
+            const aY = parseAdvancementYear(a), bY = parseAdvancementYear(b);
             if (aY === null) return b;
             if (bY === null) return a;
             return aY >= bY ? a : b;
@@ -209,7 +200,7 @@ export class FloatingCompInfoComponent {
                     extinct = latest(is?.extinct, clan?.extinct);
                     reintroduced = earliest(is?.reintroduced, clan?.reintroduced);
                     // If extinction is at or beyond reintroduction, there's no real gap
-                    const extY = parseYear(extinct), reintY = parseYear(reintroduced);
+                    const extY = parseAdvancementYear(extinct), reintY = parseAdvancementYear(reintroduced);
                     if (extY !== null && reintY !== null && extY >= reintY) {
                         extinct = undefined;
                         reintroduced = undefined;
@@ -240,8 +231,8 @@ export class FloatingCompInfoComponent {
         ].filter((item): item is { label: string, value: string } => 
             item.value !== undefined && item.value !== null && item.value !== '' && item.value !== '-')
         .sort((a, b) => {
-            const aYear = parseYear(a.value);
-            const bYear = parseYear(b.value);
+            const aYear = parseAdvancementYear(a.value);
+            const bYear = parseAdvancementYear(b.value);
             if (aYear === null) return 1;
             if (bYear === null) return -1;
             return aYear - bYear;

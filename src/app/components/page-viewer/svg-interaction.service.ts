@@ -999,9 +999,9 @@ export class SvgInteractionService {
                             if (critSlot.originalName && critSlot.originalName !== critSlot.name) {
                                 originalAmmo = equipmentList[critSlot.originalName] as AmmoEquipment;
                             }
+                            const unitBlueprint = unit.getUnit();
                             if (ammoItem instanceof AmmoEquipment) {
                                 const baseOrder: Record<string, number> = { 'All': 0, 'IS': 1, 'Clan': 2 };
-                                const unitBlueprint = unit.getUnit();
                                 const compatibleAmmo = Object.values(equipmentList)
                                     .filter((e): e is AmmoEquipment => (e instanceof AmmoEquipment) && (originalAmmo.compatibleAmmo(e, unitBlueprint)))
                                     .sort((a, b) => {
@@ -1022,7 +1022,9 @@ export class SvgInteractionService {
                                     originalTotalAmmo: originalTotalAmmo,
                                     ammoOptions: ammoOptions,
                                     quantity: totalAmmo - amountUsed,
-                                    maxQuantity: totalAmmo
+                                    maxQuantity: totalAmmo,
+                                    unitType: unitBlueprint.type,
+                                    era: unit.force.era()
                                 } as SetAmmoDialogData
                             });
                             const newAmmoValue = await firstValueFrom(ref.closed);
