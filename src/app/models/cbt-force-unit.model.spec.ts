@@ -618,6 +618,14 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(damageText.textContent).toBe('5 [Variable]');
         expect(hitModText.textContent).toBe('-1');
 
+        spyOn(forceUnit, 'hasLinkedC3Network').and.returnValue(true);
+        forceUnit.createInventoryControlTarget();
+        forceUnit.updateInventoryControlTarget('A', { distance: 8, c3Distance: 1, useC3: true });
+        forceUnit.setInventoryControlEntryTarget(weaponEntry, 'A');
+        svgService.refreshInventory();
+        expect(damageText.textContent).toBe('5 [Variable]');
+        expect(hitModText.textContent).toBe('-1');
+
         forceUnit.setInventoryControlEntryRange(weaponEntry, null);
         svgService.refreshInventory();
         expect(damageText.textContent).toBe('9/7/5 [Variable]');

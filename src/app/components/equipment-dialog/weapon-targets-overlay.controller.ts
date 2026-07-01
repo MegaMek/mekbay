@@ -109,6 +109,7 @@ export class WeaponTargetsOverlayController {
         this.targetsCompRef.setInput('targets', options.unit.getInventoryControlTargets());
         this.targetsCompRef.setInput('readOnly', options.readOnly ? options.readOnly() : options.unit.readOnly());
         this.targetsCompRef.setInput('unassignedMovement', options.unit.turnState().missingAttackMovementModifier());
+        this.targetsCompRef.setInput('showC3Distance', this.showC3Distance(options.unit));
         this.targetsCompRef.changeDetectorRef.detectChanges();
         this.deps.overlayManager.repositionAll();
     }
@@ -133,7 +134,7 @@ export class WeaponTargetsOverlayController {
         };
         const portal = new ComponentPortal(TnCalculatorDialogComponent, null, Injector.create({
             providers: [
-                { provide: DIALOG_DATA, useValue: { target } satisfies TnCalculatorDialogData },
+                { provide: DIALOG_DATA, useValue: { target, showC3Distance: this.showC3Distance(options.unit) } satisfies TnCalculatorDialogData },
                 { provide: DialogRef, useValue: { close: closeWithResult } },
             ],
             parent: this.deps.injector,
@@ -170,5 +171,9 @@ export class WeaponTargetsOverlayController {
 
     private tnCalculatorFullscreen(): boolean {
         return typeof window !== 'undefined' && window.matchMedia(TN_CALCULATOR_FULLSCREEN_QUERY).matches;
+    }
+
+    private showC3Distance(unit: CBTForceUnit): boolean {
+        return unit.hasLinkedC3Network?.() ?? false;
     }
 }

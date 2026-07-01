@@ -12,6 +12,8 @@ export interface InventoryTargetRangeSelection {
     outOfLongRange: boolean;
     outOfExtremeRange: boolean;
     minimumRangeModifier: number;
+    distance: number;
+    c3Distance: number | null;
 }
 
 export interface InventoryTargetNumberBreakdown {
@@ -67,7 +69,9 @@ export function readInventoryTargetText(entry: MountedEquipment, className: stri
 export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberInput, 'entry' | 'category' | 'display' | 'target'>): InventoryTargetRangeSelection | null {
     const target = input.target;
     if (!target) return null;
-    if (isPhysicalInventoryTargetNumberEntry(input.entry, input.category)) return { range: 'short', outOfLongRange: false, outOfExtremeRange: false, minimumRangeModifier: 0 };
+    const c3Distance = target.useC3 === true ? target.c3Distance ?? null : null;
+    const rangeDistance = c3Distance === null ? target.distance : Math.min(target.distance, c3Distance);
+    if (isPhysicalInventoryTargetNumberEntry(input.entry, input.category)) return { range: 'short', outOfLongRange: false, outOfExtremeRange: false, minimumRangeModifier: 0, distance: target.distance, c3Distance };
 
     const minimumRangeModifier = inventoryTargetMinimumRangeModifier(input.display.min, target.distance);
 
@@ -75,19 +79,24 @@ export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberI
         .map(range => ({ range, value: parseInventoryTargetNumberCell(input.display[range]) }))
         .filter((item): item is { range: InventoryRangeKey; value: number } => item.value !== null);
     if (thresholds.length === 0) return null;
+    const longRange = thresholds.find(threshold => threshold.range === 'long')?.value ?? null;
+    const outOfLongRange = longRange !== null && target.distance > longRange;
+    const extremeRange = inventoryTargetExtremeRange(input.entry);
+    const actualOutOfExtremeRange = outOfLongRange && extremeRange !== null && target.distance > extremeRange;
 
     for (const threshold of thresholds) {
-        if (target.distance <= threshold.value) {
-            return { range: threshold.range, outOfLongRange: false, outOfExtremeRange: false, minimumRangeModifier };
+        if (rangeDistance <= threshold.value) {
+            return { range: threshold.range, outOfLongRange, outOfExtremeRange: actualOutOfExtremeRange, minimumRangeModifier, distance: target.distance, c3Distance };
         }
     }
 
-    const extremeRange = inventoryTargetExtremeRange(input.entry);
     return {
         range: 'extreme',
         outOfLongRange: true,
-        outOfExtremeRange: extremeRange !== null && target.distance > extremeRange,
-        minimumRangeModifier
+        outOfExtremeRange: extremeRange !== null && rangeDistance > extremeRange,
+        minimumRangeModifier,
+        distance: target.distance,
+        c3Distance
     };
 }
 
@@ -143,6 +152,9 @@ export function inventoryTargetNumberBreakdown(
 
     if (!physical) {
         terms.push({ label: `Range (${inventoryTargetRangeDisplayName(rangeSelection.range)})`, value: formatInventoryTargetSignedModifier(rangeModifier) });
+        if (rangeSelection.c3Distance !== null) {
+            terms.push({ label: 'C³ Distance', value: `${rangeSelection.c3Distance} (actual ${rangeSelection.distance})` });
+        }
     }
     if (minimumRangeModifier !== 0) {
         terms.push({ label: 'Minimum Range', value: formatInventoryTargetSignedModifier(minimumRangeModifier) });

@@ -56,6 +56,7 @@ import {
 
 export interface TnCalculatorDialogData {
     target: InventoryControlRuntimeTarget;
+    showC3Distance?: boolean;
 }
 
 export interface TnCalculatorDialogResult {
@@ -143,8 +144,8 @@ export interface TnCalculatorDialogResult {
                         </div>
                     </section>
 
-                    <section class="tn-section range-section">
-                        <div class="section-title">Range</div>
+                    <section class="tn-section distance-section">
+                        <div class="section-title">Distance</div>
                         <div class="row">
                             <hex-slider
                                 class="tn-slider"
@@ -154,10 +155,31 @@ export interface TnCalculatorDialogResult {
                                 [value]="range()"
                                 [ticks]="rangeTicks"
                                 [label]="rangeLabel()"
-                                [ariaLabel]="'Range'"
+                                [ariaLabel]="'Distance'"
                                 [valueAssigned]="true"
                                 (valueChange)="setRangeValue($event)"></hex-slider>
                         </div>
+                        @if (showC3Distance()) {
+                            <div class="section-title secondary c3-distance-title">                                
+                                <label class="use-c3-toggle" [class.disabled-field]="c3BlockedByIndirectFire()">
+                                    <input type="checkbox" class="bt-checkbox" [checked]="useC3()" [disabled]="c3BlockedByIndirectFire()" (change)="setUseC3($event)">
+                                    <span>C³ Distance</span>
+                                </label>
+                            </div>
+                            <div class="row" [class.c3-distance-disabled]="!c3Enabled()">
+                                <hex-slider
+                                    class="tn-slider"
+                                    [min]="RANGE_MIN"
+                                    [max]="RANGE_MAX"
+                                    [step]="1"
+                                    [value]="c3Distance()"
+                                    [ticks]="rangeTicks"
+                                    [label]="c3DistanceLabel()"
+                                    [ariaLabel]="'C³ Range'"
+                                    [valueAssigned]="c3Enabled()"
+                                    (valueChange)="setC3DistanceValue($event)"></hex-slider>
+                            </div>
+                        }
                     </section>
                 </div>
 
@@ -395,6 +417,26 @@ export interface TnCalculatorDialogResult {
             flex: 1 1 auto;
             min-width: 0;
             margin-top: -8px;
+        }
+
+        .c3-distance-title {
+            padding-bottom: 0;
+        }
+
+        .use-c3-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+
+        .disabled-field,
+        .c3-distance-disabled {
+            opacity: 0.45;
+        }
+
+        .c3-distance-disabled hex-slider {
+            pointer-events: none;
         }
 
         .modifier {
@@ -648,7 +690,7 @@ export interface TnCalculatorDialogResult {
                 order: 4;
             }
 
-            .range-section {
+            .distance-section {
                 order: 5;
             }
 
@@ -688,6 +730,7 @@ export class TnCalculatorDialogComponent {
     private readonly initialUnitType = this.data.target.unitType ?? 'mek-biped';
 
     readonly target = this.data.target;
+    readonly showC3Distance = signal<boolean>(this.data.showC3Distance ?? false);
     readonly unitTypeOptions = TN_TARGET_UNIT_TYPE_OPTIONS;
     readonly unitTypeDropdownOptions = computed<MultilineDropdownOption[]>(() => this.unitTypeOptions.map(option => ({
         value: option.value,
@@ -707,6 +750,8 @@ export class TnCalculatorDialogComponent {
     readonly interveningWoods = signal<TnInterveningWoods>(this.normalizeInterveningWoods(this.initialCalculator?.interveningWoods as TnInterveningWoods | 'heavy1' | null | undefined));
     readonly targetHexCover = signal<TnTargetHexCover>(this.initialCalculator?.targetHexCover ?? 'none');
     readonly range = signal<number>(Math.max(0, this.data.target.distance ?? 1));
+    readonly c3Distance = signal<number>(Math.max(0, this.data.target.c3Distance ?? this.data.target.distance ?? 1));
+    readonly useC3 = signal<boolean>((this.data.target.useC3 ?? false) && !(this.initialCalculator?.indirectFire ?? false));
     readonly partialCover = signal<boolean>((this.initialCalculator?.partialCover ?? false) && this.range() > ADJACENT_RANGE);
     readonly attackDirection = signal<TnAttackDirection>(this.initialCalculator?.attackDirection ?? 'front');
     readonly indirectFire = signal<boolean>(this.initialCalculator?.indirectFire ?? false);
@@ -725,6 +770,9 @@ export class TnCalculatorDialogComponent {
     readonly targetMovementModifier = computed(() => getTargetMovementBracketModifier(this.targetMovementBracket().id));
     readonly targetMovementModifierLabel = computed(() => this.formatModifier(this.targetMovementModifier()));
     readonly rangeLabel = computed(() => `${this.range()}`);
+    readonly c3BlockedByIndirectFire = computed(() => this.indirectFire());
+    readonly c3Enabled = computed(() => this.showC3Distance() && this.useC3() && !this.c3BlockedByIndirectFire());
+    readonly c3DistanceLabel = computed(() => this.c3Enabled() ? `${this.c3Distance()}` : '');
     readonly indirectFireModifier = computed(() => getIndirectFireModifier(this.indirectFire(), this.spotterMoveMode(), this.spotterDeclaredAttacks()));
     readonly totalModifier = computed(() => calculateTargetTnModifier({
         unitType: this.unitType(),
@@ -840,6 +888,9 @@ export class TnCalculatorDialogComponent {
     toggleIndirectFire(): void {
         const next = !this.indirectFire();
         this.indirectFire.set(next);
+        if (next) {
+            this.useC3.set(false);
+        }
         if (!next) {
             this.spotterMoveMode.set('stationary');
             this.spotterDeclaredAttacks.set(false);
@@ -875,6 +926,11 @@ export class TnCalculatorDialogComponent {
         this.setRangeValue(Number(el.value || 0));
     }
 
+    setUseC3(event: Event): void {
+        const checked = (event.target as HTMLInputElement).checked;
+        this.useC3.set(checked && !this.c3BlockedByIndirectFire());
+    }
+
     apply(): void {
         const state: TnTargetNumberCalculatorState = {
             isAirborne: this.isAirborne(),
@@ -896,6 +952,7 @@ export class TnCalculatorDialogComponent {
             patch: {
                 unitType: this.unitType(),
                 distance: this.range(),
+                ...(this.showC3Distance() && { c3Distance: this.c3Distance(), useC3: this.c3Enabled() }),
                 tnModifier: this.totalModifier(),
                 tnCalculator: state,
             }
@@ -912,6 +969,11 @@ export class TnCalculatorDialogComponent {
         if (next <= ADJACENT_RANGE) {
             this.partialCover.set(false);
         }
+    }
+
+    setC3DistanceValue(value: number): void {
+        if (!this.c3Enabled()) return;
+        this.c3Distance.set(this.alignToStep(value, this.RANGE_MIN, this.RANGE_MAX));
     }
 
     private clearStanceForMovement(): void {

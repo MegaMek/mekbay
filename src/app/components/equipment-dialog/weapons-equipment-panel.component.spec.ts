@@ -127,6 +127,7 @@ interface CreateComponentOptions {
     moveMode?: MotiveModes | null;
     attackModifierBreakdown?: UnitModifierBreakdownEntry[];
     attackMovementCanAffectTargetNumbers?: boolean;
+    hasLinkedC3Network?: boolean;
     handlers?: EquipmentInteractionHandler[];
 }
 
@@ -204,6 +205,7 @@ function createComponent(
         svgService: {
             inventoryTargetHeatFireModifier: () => 0
         },
+        hasLinkedC3Network: () => options.hasLinkedC3Network ?? false,
         readOnly: () => options.readOnly ?? false,
         hasDirectInventory: () => options.hasDirectInventory ?? true,
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
@@ -596,6 +598,33 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(targetState.targetNumberText).toBe('1');
     });
 
+    it('uses actual target distance for variable damage arrays and pulse hit modifiers when C3 range is shorter', () => {
+        const vspLaser = entry({
+            id: 'vsp',
+            baseHitMod: '-4',
+            equipment: new WeaponEquipment({
+                id: 'ISMediumVSPLaser',
+                name: 'Medium VSP Laser',
+                type: 'weapon',
+                flags: ['F_DIRECT_FIRE','F_PULSE','F_VSP'],
+                weapon: { ammoType: 'NA', heat: 7, damage: [9, 7, 5], ranges: [2, 5, 9, 13] }
+            }),
+            el: svgEntry('<g><g class="name"><text>Medium VSP Laser</text></g><g class="damage"><text>9/7/5 [Variable]</text></g><text class="range_short">2</text><text class="range_medium">5</text><text class="range_long">9</text></g>')
+        });
+        const { component, unit } = createComponent([vspLaser], {}, [], new Map(), { moveMode: 'stationary', hasLinkedC3Network: true });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 8, c3Distance: 1, useC3: true });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+        unit.inventoryControl.markInventoryViewChanged();
+
+        const targetState = component.targetState(row);
+        expect(targetState.rangeSelection?.range).toBe('short');
+        expect(targetState.damageText).toBe('5 [Variable]');
+        expect(targetState.hitText).toBe('-1');
+        expect(targetState.targetNumberText).toBe('3');
+    });
+
     it('tracks built-in one-shot weapon shots through consumed inventory state', async () => {
         const rocket = entry({
             id: 'rocket',
@@ -800,6 +829,97 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const selectedRangeCell = fixture.nativeElement.querySelector('.range-long') as HTMLElement;
         expect(selectedRangeCell.classList.contains('selected-range')).toBeTrue();
         expect(selectedRangeCell.style.getPropertyValue('--range-selection-color')).toBe(INVENTORY_CONTROL_TARGET_COLORS[0]);
+    });
+
+    it('uses C3 distance for weapon range bracket while minimum range uses actual distance', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [7, 14, 27, 36]), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_min">6</text><text class="range_short">7</text><text class="range_medium">14</text><text class="range_long">27</text></g>') });
+        const { component, fixture, unit } = createComponent([laser], {}, [], new Map(), { gunnerySkill: 4, moveMode: 'run', hasLinkedC3Network: true });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 20, c3Distance: 2, useC3: true });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+        unit.inventoryControl.markInventoryViewChanged();
+        fixture.detectChanges();
+
+        const targetState = component.targetState(row);
+        expect(targetState.rangeSelection?.range).toBe('short');
+        expect(targetState.rangeSelection?.distance).toBe(20);
+        expect(targetState.rangeSelection?.c3Distance).toBe(2);
+        expect(targetState.rangeSelection?.minimumRangeModifier).toBe(0);
+        expect(targetState.targetNumberText).toBe('6');
+        expect(targetState.breakdown?.lines).toEqual([
+            { label: 'Gunnery', value: '4' },
+            { label: 'Run', value: '+2' },
+            { label: 'Range (Short)', value: '+0' },
+            { label: 'C³ Distance', value: '2 (actual 20)' },
+            { isBreak: true },
+            { label: 'Total', value: '6', isHeader: true },
+        ]);
+        expect((fixture.nativeElement.querySelector('.range-short') as HTMLElement).classList.contains('selected-range')).toBeTrue();
+        expect((fixture.nativeElement.querySelector('.min-cell') as HTMLElement).classList.contains('minimum-range-active')).toBeFalse();
+    });
+
+    it('uses distance C3 target data', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [7, 14, 27, 36]), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_min">6</text><text class="range_short">7</text><text class="range_medium">14</text><text class="range_long">27</text></g>') });
+        const { component, unit } = createComponent([laser], {}, [], new Map(), { gunnerySkill: 4, moveMode: 'run', hasLinkedC3Network: true });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 20, c3Distance: 2, useC3: true });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+        unit.inventoryControl.markInventoryViewChanged();
+
+        const targetState = component.targetState(row);
+        expect(targetState.rangeSelection?.range).toBe('short');
+        expect(targetState.rangeSelection?.c3Distance).toBe(2);
+        expect(targetState.targetNumberText).toBe('6');
+    });
+
+    it('shows out of range when actual distance exceeds weapon long range despite C3 distance', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [2, 4, 6, 8]), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_short">2</text><text class="range_medium">4</text><text class="range_long">6</text></g>') });
+        const { component, unit } = createComponent([laser], {}, [], new Map(), { gunnerySkill: 4, moveMode: 'run', hasLinkedC3Network: true });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 20, c3Distance: 3, useC3: true });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+        unit.inventoryControl.markInventoryViewChanged();
+
+        const targetState = component.targetState(row);
+        expect(targetState.rangeSelection?.range).toBe('medium');
+        expect(targetState.rangeSelection?.outOfLongRange).toBeTrue();
+        expect(targetState.targetNumberText).toBe('X');
+        expect(targetState.breakdown).toBeNull();
+    });
+
+    it('ignores stored C3 distance when the unit is not linked to a C3 network', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [7, 14, 27, 36]), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_min">6</text><text class="range_short">7</text><text class="range_medium">14</text><text class="range_long">27</text></g>') });
+        const { component, unit } = createComponent([laser], {}, [], new Map(), { gunnerySkill: 4, moveMode: 'run' });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 20, c3Distance: 2, useC3: true });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+        unit.inventoryControl.markInventoryViewChanged();
+
+        const targetState = component.targetState(row);
+        expect(targetState.rangeSelection?.range).toBe('long');
+        expect(targetState.rangeSelection?.c3Distance).toBeNull();
+        expect(targetState.targetNumberText).toBe('10');
+    });
+
+    it('uses actual distance when it is shorter than C3 distance', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [7, 14, 27, 36]), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_min">6</text><text class="range_short">7</text><text class="range_medium">14</text><text class="range_long">27</text></g>') });
+        const { component, unit } = createComponent([laser], {}, [], new Map(), { gunnerySkill: 4, moveMode: 'run', hasLinkedC3Network: true });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 5, c3Distance: 20, useC3: true });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+        unit.inventoryControl.markInventoryViewChanged();
+
+        const targetState = component.targetState(row);
+        expect(targetState.rangeSelection?.range).toBe('short');
+        expect(targetState.rangeSelection?.distance).toBe(5);
+        expect(targetState.rangeSelection?.c3Distance).toBe(20);
+        expect(targetState.rangeSelection?.minimumRangeModifier).toBe(2);
+        expect(targetState.targetNumberText).toBe('8');
     });
 
     it('applies selected ammo to-hit modifiers to target number math', () => {

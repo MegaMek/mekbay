@@ -1252,7 +1252,7 @@ export class SvgInteractionService {
             entry,
             category: inventoryTargetCategory(entry),
             display: readInventoryTargetDisplay(entry),
-            target,
+            target: this.inventoryTargetForTargetNumber(unit, target),
             gunnerySkill: unit.effectiveGunnerySkill(),
             pilotingSkill: unit.effectivePilotingSkill(),
             missingMovementModifier,
@@ -1260,6 +1260,11 @@ export class SvgInteractionService {
             hitModifier: hitModifier - heatFireModifier,
             heatFireModifier
         });
+    }
+
+    private inventoryTargetForTargetNumber(unit: CBTForceUnit, target: InventoryControlRuntimeTarget): InventoryControlRuntimeTarget {
+        if (unit.hasLinkedC3Network?.() === true || target.c3Distance === undefined) return target;
+        return { ...target, c3Distance: undefined };
     }
 
     private setupAmmoProfileInteractions(svg: SVGSVGElement, signal: AbortSignal) {

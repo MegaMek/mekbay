@@ -408,22 +408,29 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     private createTargetState(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null): TargetRowState {
+        const calculationTarget = this.targetForTargetNumber(target);
         const rangeSelection = inventoryTargetRangeSelection({
             entry: row.entry,
             category: row.category,
             display: row.display,
-            target
+            target: calculationTarget
         });
-        const hitText = this.hitTextForRange(row, rangeSelection?.range ?? null, !!target);
-        const input = this.targetNumberInput(row, target, hitText);
+        const weaponRuleRangeSelection = inventoryTargetRangeSelection({
+            entry: row.entry,
+            category: row.category,
+            display: row.display,
+            target: this.targetForWeaponRange(target)
+        });
+        const weaponRuleRange = weaponRuleRangeSelection?.range ?? this.unit().getInventoryControlEntryRange(row.id) ?? null;
+        const hitText = this.hitTextForRange(row, weaponRuleRange, !!target);
+        const input = this.targetNumberInput(row, calculationTarget, hitText);
         const targetNumber = inventoryTargetNumberState(input, rangeSelection);
         const breakdown = targetNumber.breakdown === null ? null : { total: targetNumber.breakdown.total, lines: targetNumber.breakdown.lines };
-        const damageRange = rangeSelection?.range ?? this.unit().getInventoryControlEntryRange(row.id) ?? null;
         return {
             target,
             rangeSelection,
             hitText,
-            damageText: resolveWeaponRangeDamageText(row.entry, damageRange, row.display.damage) ?? row.display.damage,
+            damageText: resolveWeaponRangeDamageText(row.entry, weaponRuleRange, row.display.damage) ?? row.display.damage,
             targetNumberText: targetNumber.text,
             breakdown
         };
@@ -432,6 +439,17 @@ export class WeaponsEquipmentPanelComponent {
     private resolveTargetForRow(row: InventoryControlRow): InventoryControlRuntimeTarget | null {
         const targetId = this.unit().getInventoryControlEntryTargetId(row.id);
         return targetId ? this.targets().find(target => target.id === targetId) ?? null : null;
+    }
+
+    private targetForTargetNumber(target: InventoryControlRuntimeTarget | null): InventoryControlRuntimeTarget | null {
+        if (!target || this.unit().hasLinkedC3Network?.() === true) return target;
+        if (target.c3Distance === undefined) return target;
+        return { ...target, c3Distance: undefined };
+    }
+
+    private targetForWeaponRange(target: InventoryControlRuntimeTarget | null): InventoryControlRuntimeTarget | null {
+        if (!target || target.c3Distance === undefined) return target;
+        return { ...target, c3Distance: undefined };
     }
 
     ammoState(row: InventoryControlRow): AmmoRowState {

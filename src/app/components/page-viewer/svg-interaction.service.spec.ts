@@ -534,6 +534,59 @@ describe('SvgInteractionService', () => {
         expect(unit.getInventoryControlEntryTargetId(entry.id)).toBe('B');
     });
 
+    it('uses C3 distance for sheet target picker target numbers', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit(`
+            <g class="inventoryEntry">
+                <rect class="mainButton inventoryEntryButton"></rect>
+                <rect class="shrButton inventoryEntryButton"></rect>
+                <g class="name"><text>Laser</text></g>
+                <text class="range_min">6</text>
+                <text class="range_short">7</text>
+                <text class="range_medium">14</text>
+                <text class="range_long">27</text>
+            </g>
+        `);
+        unit.hasLinkedC3Network = () => true;
+        unit.createInventoryControlTarget();
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 20, c3Distance: 2, useC3: true });
+        unit.updateInventoryControlTarget('B', { distance: 20 });
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        (entry.el!.querySelector('.shrButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        const choices = Array.from(document.body.querySelectorAll('.weapon-target-choice-menu .target-choice:not(.empty-choice)')) as HTMLButtonElement[];
+        expect(choices.map(choice => choice.querySelector('.target-choice-token')?.textContent?.trim())).toEqual(['A', 'B']);
+        expect(choices.map(choice => choice.querySelector('.target-choice-tn')?.textContent?.trim())).toEqual(['4', '8']);
+    });
+
+    it('shows sheet target picker C3 shots as out of range beyond actual long range', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit(`
+            <g class="inventoryEntry">
+                <rect class="mainButton inventoryEntryButton"></rect>
+                <rect class="shrButton inventoryEntryButton"></rect>
+                <g class="name"><text>Laser</text></g>
+                <text class="range_short">2</text>
+                <text class="range_medium">4</text>
+                <text class="range_long">6</text>
+            </g>
+        `);
+        unit.hasLinkedC3Network = () => true;
+        unit.createInventoryControlTarget();
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 20, c3Distance: 3, useC3: true });
+        unit.updateInventoryControlTarget('B', { distance: 5 });
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        (entry.el!.querySelector('.shrButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        const choices = Array.from(document.body.querySelectorAll('.weapon-target-choice-menu .target-choice:not(.empty-choice)')) as HTMLButtonElement[];
+        expect(choices.map(choice => choice.querySelector('.target-choice-token')?.textContent?.trim())).toEqual(['A', 'B']);
+        expect(choices.map(choice => choice.querySelector('.target-choice-tn')?.textContent?.trim())).toEqual(['X', '8']);
+    });
+
     it('shows target picker target numbers for physical entries without range thresholds', () => {
         const { svg, entry, unit } = createInventoryInteractionUnit(`
             <g class="inventoryEntry">
