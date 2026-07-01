@@ -909,7 +909,7 @@ export class TnCalculatorDialogComponent {
     setRangeValue(value: number): void {
         const next = this.alignToStep(value, this.RANGE_MIN, this.RANGE_MAX);
         this.range.set(next);
-        if (next <= 0) {
+        if (next <= ADJACENT_RANGE) {
             this.partialCover.set(false);
         }
     }
