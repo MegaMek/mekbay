@@ -173,7 +173,7 @@ export interface WeaponTargetCalculatorRequest {
             justify-content: space-between;
             flex-wrap: nowrap;
             gap: 10px;
-            padding: 4px 8px 4px 12px;
+            padding: 4px 8px 4px 8px;
             border-bottom: 1px solid var(--border-color);
             margin-left: 4px;
             margin-right: 4px;
