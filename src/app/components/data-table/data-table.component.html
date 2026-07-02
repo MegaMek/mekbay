@@ -33,7 +33,8 @@
             longPress
             (shortPress)="onRowClick(row, i, $event)"
             (longPress)="onRowLongPress(row, i, $event)"
-            (pointerenter)="onRowPointerEnter(row, i, $event)">
+            (pointerenter)="onRowPointerEnter(row, i, $event)"
+            (pointermove)="onRowPointerMove(row, i, $event)">
             @if (isFullRowRow(row, i) && fullRowTemplate(); as rowTemplate) {
             <div class="mb-data-table-full-row"
                 [style.width]="tableWidth()"

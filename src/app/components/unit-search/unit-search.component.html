@@ -263,7 +263,8 @@
                         longPress
                         [class.selected]="isUnitSelected(unit)"
                         [class.active]="activeIndex() === getCardUnitIndex(rowIndex, columnIndex)"
-                        (pointerenter)="onResultPointerEnter(getCardUnitIndex(rowIndex, columnIndex))"
+                        (pointerenter)="onResultPointerHover(getCardUnitIndex(rowIndex, columnIndex), $event)"
+                        (pointermove)="onResultPointerHover(getCardUnitIndex(rowIndex, columnIndex), $event)"
                         (shortPress)="onUnitCardClick(unit, $event)"
                         (longPress)="multiSelectUnit(unit)">
                         <alpha-strike-card
@@ -289,7 +290,8 @@
                 (sort)="onUnitTableSort($event)"
                 (rowClick)="onUnitTableRowClick($event)"
                 (rowLongPress)="onUnitTableRowLongPress($event)"
-                (rowPointerEnter)="onUnitTableRowPointerEnter($event)">
+                (rowPointerEnter)="onUnitTableRowPointerEnter($event)"
+                (rowPointerMove)="onUnitTableRowPointerMove($event)">
             </mb-data-table>
 
             <ng-template #tableIconCell let-unit>
@@ -357,7 +359,8 @@
                     [class.selected]="isUnitSelected(unit)"
                     [class.active]="activeIndex() === i"
                     [class.panel-selected]="showInlinePanel() && inlinePanelUnit()?.name === unit.name"
-                    (pointerenter)="onResultPointerEnter(i)">
+                    (pointerenter)="onResultPointerHover(i, $event)"
+                    (pointermove)="onResultPointerHover(i, $event)">
 
                     @if (this.expandedView()) {
                         <!-- Expanded View Cards -->

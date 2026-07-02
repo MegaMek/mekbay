@@ -496,12 +496,12 @@ describe('UnitSearchComponent card virtualization', () => {
         fixture.detectChanges();
 
         dispatchWindowKey('ArrowDown');
-        component.onResultPointerEnter(2);
+        component.onResultPointerHover(2, { clientX: 10, clientY: 10 });
+        component.onResultPointerHover(2, { clientX: 10, clientY: 10 });
 
         expect(component.activeIndex()).toBe(0);
 
-        (component as any).resultPointerHoverSuppressedUntil = 0;
-        component.onResultPointerEnter(2);
+        component.onResultPointerHover(2, { clientX: 13, clientY: 10 });
 
         expect(component.activeIndex()).toBe(2);
     });

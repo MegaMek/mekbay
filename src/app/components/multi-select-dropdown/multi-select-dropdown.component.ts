@@ -37,6 +37,7 @@ import { CdkConnectedOverlay, Overlay, OverlayModule, type ConnectedOverlayPosit
 import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
 import { LayoutService } from '../../services/layout.service';
 import { highlightMatches, matchesSearch, parseSearchQuery } from '../../utils/search.util';
+import { scrollElementIntoView } from '../../utils/dropdown-interaction.utils';
 
 /*
  * Author: Drake
@@ -96,6 +97,7 @@ interface OpenDropdownOptions {
     styleUrls: ['./multi-select-dropdown.component.css']
 })
 export class MultiSelectDropdownComponent {
+    private static nextId = 0;
     private static readonly BELOW_OVERLAY_POSITIONS: ConnectedPosition[] = [
         { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top' },
         { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top' },
@@ -116,6 +118,7 @@ export class MultiSelectDropdownComponent {
     private overlayRefreshFrameId: number | null = null;
     private overlayRefreshNeedsMetrics = false;
     private lastOverlayPositionKey: string | null = null;
+    readonly optionsListId = `multiSelectDropdown-${MultiSelectDropdownComponent.nextId++}-options`;
     private preferredOverlayPlacement = signal<'above' | 'below'>('below');
     displayAreaEl = viewChild<ElementRef<HTMLDivElement>>('displayArea');
     filterInput = viewChild<ElementRef<HTMLInputElement>>('filterInput');
@@ -142,6 +145,16 @@ export class MultiSelectDropdownComponent {
     showUnavailableToggle = computed(() => this.multistate() && this.options().some(o => o.available === false));
     isOpen = signal(false);
     filterText = signal('');
+    private readonly hoveredOptionName = signal<string | null>(null);
+    private readonly keyboardFocusedOptionName = signal<string | null>(null);
+    readonly keyboardFocusedIndex = computed(() => {
+        const optionName = this.keyboardFocusedOptionName();
+        return optionName ? this.indexOfFilteredOption(optionName) : -1;
+    });
+    readonly keyboardFocusedOptionId = computed(() => {
+        const index = this.keyboardFocusedIndex();
+        return index >= 0 && index < this.filteredOptions().length ? this.optionId(index) : null;
+    });
     private static readonly OVERLAY_GAP = 4;
     private static readonly DEFAULT_PANEL_HEIGHT_FALLBACK = 248;
     private static readonly FILTER_CONTAINER_HEIGHT_FALLBACK = 41;
@@ -335,6 +348,27 @@ export class MultiSelectDropdownComponent {
                 }
 
                 this.optionsViewport()?.checkViewportSize();
+            }, { injector: this.injector });
+        });
+
+        effect(() => {
+            if (!this.isOpen()) {
+                return;
+            }
+
+            const optionName = this.keyboardFocusedOptionName();
+            if (!optionName || this.indexOfFilteredOption(optionName) < 0) {
+                return;
+            }
+
+            afterNextRender(() => {
+                if (this.destroyed || !this.isOpen() || this.keyboardFocusedOptionName() !== optionName) {
+                    return;
+                }
+
+                if (this.indexOfFilteredOption(optionName) >= 0) {
+                    this.scrollToOption(optionName);
+                }
             }, { injector: this.injector });
         });
     }
@@ -542,6 +576,8 @@ export class MultiSelectDropdownComponent {
     private closeDropdown() {
         this.isOpen.set(false);
         this.filterText.set('');
+        this.hoveredOptionName.set(null);
+        this.keyboardFocusedOptionName.set(null);
         this.resetOverlayState();
     }
 
@@ -555,11 +591,15 @@ export class MultiSelectDropdownComponent {
     private scrollToOption(optionName: string) {
         const options = this.filteredOptions();
         const optionIndex = options.findIndex(option => option.name === optionName);
+        if (optionIndex < 0) {
+            return;
+        }
 
         if (this.useVirtualScroll()) {
             const viewport = this.optionsViewport();
-            if (viewport && optionIndex >= 0) {
-                viewport.scrollToIndex(optionIndex, 'smooth');
+            if (viewport) {
+                viewport.checkViewportSize();
+                this.scrollVirtualOptionIntoView(viewport, optionIndex);
             }
             return;
         }
@@ -572,14 +612,29 @@ export class MultiSelectDropdownComponent {
         const items = Array.from(container.querySelectorAll<HTMLElement>('.option-item'));
         for (const item of items) {
             if (item.getAttribute('data-option-name') === optionName) {
-                try {
-                    item.scrollIntoView({ block: 'center', behavior: 'smooth' });
-                } catch {
-                    item.scrollIntoView();
-                }
+                scrollElementIntoView(container, item);
                 break;
             }
         }
+    }
+
+    private scrollVirtualOptionIntoView(viewport: CdkVirtualScrollViewport, optionIndex: number): void {
+        const visibleTop = viewport.measureScrollOffset('top');
+        const viewportHeight = viewport.getViewportSize();
+        const visibleBottom = visibleTop + viewportHeight;
+        const optionTop = optionIndex * this.optionItemSize;
+        const optionBottom = optionTop + this.optionItemSize;
+        const maxScrollTop = Math.max(0, this.filteredOptions().length * this.optionItemSize - viewportHeight);
+
+        if (optionTop < visibleTop) {
+            viewport.scrollToOffset(Math.max(0, optionTop), 'auto');
+        } else if (optionBottom > visibleBottom) {
+            viewport.scrollToOffset(Math.min(maxScrollTop, optionBottom - viewportHeight), 'auto');
+        }
+    }
+
+    optionId(index: number): string {
+        return `${this.optionsListId}-${index}`;
     }
 
     private openDropdown({ focusInput, scrollToOptionName }: OpenDropdownOptions) {
@@ -589,6 +644,7 @@ export class MultiSelectDropdownComponent {
         document.dispatchEvent(new CustomEvent('multi-select-dropdown-open', { detail: this }));
         this.isOpen.set(true);
         this.filterText.set('');
+        this.keyboardFocusedOptionName.set(null);
 
         afterNextRender(() => {
             if (this.destroyed || !this.isOpen()) {
@@ -665,6 +721,119 @@ export class MultiSelectDropdownComponent {
         this.openDropdown({ focusInput: shouldFocusFilter });
     }
 
+    onTriggerKeydown(event: KeyboardEvent): void {
+        if (this.semanticOnly()) return;
+        if (event.target !== this.displayAreaEl()?.nativeElement) return;
+
+        switch (event.key) {
+            case 'ArrowDown':
+                event.preventDefault();
+                if (!this.isOpen()) {
+                    this.openDropdown({ focusInput: false });
+                    this.setKeyboardFocusedIndex(0);
+                    return;
+                }
+                this.moveKeyboardFocus(1);
+                break;
+            case 'ArrowUp':
+                event.preventDefault();
+                if (!this.isOpen()) {
+                    this.openDropdown({ focusInput: false });
+                    this.setKeyboardFocusedIndex(this.filteredOptions().length - 1);
+                    return;
+                }
+                this.moveKeyboardFocus(-1);
+                break;
+            case 'Enter':
+            case ' ':
+                event.preventDefault();
+                if (this.isOpen()) {
+                    this.toggleKeyboardFocusedOption();
+                } else {
+                    this.openDropdown({ focusInput: false });
+                }
+                break;
+            case 'Escape':
+                if (this.isOpen()) {
+                    event.preventDefault();
+                    this.closeDropdown();
+                }
+                break;
+        }
+    }
+
+    onDropdownKeydown(event: KeyboardEvent): void {
+        if (event.target instanceof HTMLInputElement) return;
+        this.handleOpenDropdownKeydown(event);
+    }
+
+    onOptionsListFocus(): void {
+        if (this.keyboardFocusedIndex() < 0) {
+            this.setKeyboardFocusedIndex(0);
+        }
+    }
+
+    onFilterKeydown(event: KeyboardEvent): void {
+        switch (event.key) {
+            case 'ArrowDown':
+                event.preventDefault();
+                event.stopPropagation();
+                this.moveKeyboardFocus(1);
+                break;
+            case 'ArrowUp':
+                event.preventDefault();
+                event.stopPropagation();
+                this.moveKeyboardFocus(-1);
+                break;
+            case 'Enter':
+                event.preventDefault();
+                event.stopPropagation();
+                this.toggleKeyboardFocusedOption();
+                break;
+            case 'Escape':
+                event.preventDefault();
+                event.stopPropagation();
+                this.closeDropdown();
+                break;
+        }
+    }
+
+    private handleOpenDropdownKeydown(event: KeyboardEvent): void {
+        switch (event.key) {
+            case 'ArrowDown':
+                event.preventDefault();
+                event.stopPropagation();
+                this.moveKeyboardFocus(1);
+                break;
+            case 'ArrowUp':
+                event.preventDefault();
+                event.stopPropagation();
+                this.moveKeyboardFocus(-1);
+                break;
+            case 'Home':
+                event.preventDefault();
+                event.stopPropagation();
+                this.setKeyboardFocusedIndex(0);
+                break;
+            case 'End':
+                event.preventDefault();
+                event.stopPropagation();
+                this.setKeyboardFocusedIndex(this.filteredOptions().length - 1);
+                break;
+            case 'Enter':
+            case ' ':
+                event.preventDefault();
+                event.stopPropagation();
+                this.toggleKeyboardFocusedOption();
+                break;
+            case 'Escape':
+                event.preventDefault();
+                event.stopPropagation();
+                this.closeDropdown();
+                break;
+        }
+    }
+
     openAndScrollTo(optionName: string, event: MouseEvent) {
         event.stopPropagation();
         this.openDropdown({ focusInput: true, scrollToOptionName: optionName });
@@ -694,10 +863,72 @@ export class MultiSelectDropdownComponent {
     onFilterInput(event: Event) {
         const inputElement = event.target as HTMLInputElement;
         this.filterText.set(inputElement.value);
+        this.hoveredOptionName.set(null);
+        this.keyboardFocusedOptionName.set(null);
     }
 
-    onOptionToggle(optionName: string, event?: MouseEvent) {
-        const restoreState = this.captureScrollRestoreState(optionName);
+    onOptionPointerHover(optionName: string): void {
+        this.hoveredOptionName.set(optionName);
+    }
+
+    onOptionPointerLeave(optionName: string): void {
+        if (this.hoveredOptionName() === optionName) {
+            this.hoveredOptionName.set(null);
+        }
+    }
+
+    private indexOfFilteredOption(optionName: string): number {
+        return this.filteredOptions().findIndex(option => option.name === optionName);
+    }
+
+    private moveKeyboardFocus(delta: number): void {
+        const options = this.filteredOptions();
+        if (options.length === 0) {
+            this.keyboardFocusedOptionName.set(null);
+            return;
+        }
+
+        const currentIndex = this.keyboardFocusedIndex();
+        const hoveredIndex = this.hoveredOptionName() ? this.indexOfFilteredOption(this.hoveredOptionName()!) : -1;
+        const baseIndex = currentIndex >= 0 ? currentIndex : hoveredIndex;
+        const nextIndex = currentIndex < 0
+            ? (baseIndex >= 0 ? Math.max(0, Math.min(options.length - 1, baseIndex + delta)) : (delta > 0 ? 0 : options.length - 1))
+            : Math.max(0, Math.min(options.length - 1, currentIndex + delta));
+        this.setKeyboardFocusedIndex(nextIndex);
+    }
+
+    private setKeyboardFocusedIndex(index: number): void {
+        const options = this.filteredOptions();
+        if (options.length === 0) {
+            this.keyboardFocusedOptionName.set(null);
+            return;
+        }
+
+        const clampedIndex = Math.max(0, Math.min(options.length - 1, index));
+        this.keyboardFocusedOptionName.set(options[clampedIndex].name);
+        this.scrollKeyboardFocusedOptionIntoView();
+    }
+
+    private scrollKeyboardFocusedOptionIntoView(): void {
+        const focusedOption = this.filteredOptions()[this.keyboardFocusedIndex()];
+        if (focusedOption) {
+            this.scrollToOption(focusedOption.name);
+        }
+    }
+
+    private toggleKeyboardFocusedOption(): void {
+        const focusedOption = this.filteredOptions()[this.keyboardFocusedIndex()];
+        if (!focusedOption) return;
+
+        if (this.multiselect()) {
+            this.onOptionToggle(focusedOption.name, undefined, false);
+        } else {
+            this.onSingleSelect(focusedOption.name);
+        }
+    }
+
+    onOptionToggle(optionName: string, event?: MouseEvent, restoreScroll = true) {
+        const restoreState = restoreScroll ? this.captureScrollRestoreState(optionName) : null;
 
         if (this.multistate()) {
             const option = this.options().find((entry) => entry.name === optionName);
@@ -718,7 +949,9 @@ export class MultiSelectDropdownComponent {
                     this.selectionChange.emit({
                         [optionName]: { name: optionName, state: nextState, count: 1 },
                     });
-                    this.restoreScrollPosition(restoreState);
+                    if (restoreScroll) {
+                        this.restoreScrollPosition(restoreState);
+                    }
                     return;
                 }
 
@@ -744,7 +977,9 @@ export class MultiSelectDropdownComponent {
             this.selectionChange.emit(newSelection);
         }
         
-        this.restoreScrollPosition(restoreState);
+        if (restoreScroll) {
+            this.restoreScrollPosition(restoreState);
+        }
     }
 
     private getSelectableStateCycle(option?: DropdownOption): readonly SelectableMultiState[] {

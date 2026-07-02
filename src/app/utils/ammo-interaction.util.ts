@@ -101,7 +101,7 @@ function resolveOriginalAmmo(criticalSlot: CriticalSlot, equipmentMap: Equipment
     return criticalSlot.eq instanceof AmmoEquipment ? criticalSlot.eq : null;
 }
 
-function createCriticalSlotAmmoControlEntry(unit: CBTForceUnit, criticalSlot: CriticalSlot, equipmentMap: EquipmentMap): AmmoControlEntry | null {
+export function getAmmoControlEntryForCriticalSlot(unit: CBTForceUnit, criticalSlot: CriticalSlot, equipmentMap: EquipmentMap): AmmoControlEntry | null {
     if (!(criticalSlot.eq instanceof AmmoEquipment)) return null;
     const originalAmmo = resolveOriginalAmmo(criticalSlot, equipmentMap);
     if (!originalAmmo) return null;
@@ -218,7 +218,7 @@ export function getAmmoControlEntriesForWeapon(equipment: MountedEquipment, cont
 
     const critEntries = equipment.owner.getCritSlots()
         .filter(criticalSlot => criticalSlot.eq instanceof AmmoEquipment && ammoMatchesWeapon(equipment.equipment as WeaponEquipment, criticalSlot.eq))
-        .map(criticalSlot => createCriticalSlotAmmoControlEntry(equipment.owner, criticalSlot, equipmentMap))
+        .map(criticalSlot => getAmmoControlEntryForCriticalSlot(equipment.owner, criticalSlot, equipmentMap))
         .filter((entry): entry is AmmoControlEntry => !!entry);
     const inventoryEntries = equipment.owner.getInventory()
         .filter(entry => entry.equipment instanceof AmmoEquipment && ammoMatchesWeapon(equipment.equipment as WeaponEquipment, getInventoryCurrentAmmo(entry, equipmentMap) ?? entry.equipment))
@@ -240,7 +240,7 @@ export function getAmmoControlEntriesForUnitWeapons(unit: CBTForceUnit, equipmen
 
     const critEntries = unit.getCritSlots()
         .filter(criticalSlot => criticalSlot.eq instanceof AmmoEquipment && weaponAmmoKeys.has(getAmmoCompatibilityKey(criticalSlot.eq)))
-        .map(criticalSlot => createCriticalSlotAmmoControlEntry(unit, criticalSlot, equipmentMap))
+        .map(criticalSlot => getAmmoControlEntryForCriticalSlot(unit, criticalSlot, equipmentMap))
         .filter((entry): entry is AmmoControlEntry => !!entry);
     const inventoryEntries = unit.getInventory()
         .filter(entry => {

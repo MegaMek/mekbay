@@ -33,6 +33,7 @@
 
 import { TechBaseAvailability } from './tech.model';
 import type { Unit } from './units.model';
+import { AmmoValidityUtil } from '../utils/ammo-validity.util';
 
 /*
  * Author: Drake
@@ -557,40 +558,8 @@ export class AmmoEquipment extends Equipment {
         return this.munitionType.has(type);
     }
 
-    equalsAmmoTypeOnly(other: AmmoEquipment): boolean {
-        if (!(other instanceof AmmoEquipment)) return false;
-
-        if (this.ammoType === 'MML') {
-            if (this.hasFlag('F_MML_LRM') !== other.hasFlag('F_MML_LRM')) return false;
-        } else if (this.ammoType === 'AR10') {
-            const ar10Flags = ['F_AR10_BARRACUDA', 'F_AR10_WHITE_SHARK', 'F_AR10_KILLER_WHALE', 'F_NUCLEAR'];
-            if (ar10Flags.some(f => this.hasFlag(f) !== other.hasFlag(f))) return false;
-        }
-
-        return this.ammoType === other.ammoType;
-    }
-
     compatibleAmmo(other: AmmoEquipment, unit?: Unit): boolean {
-        if (this.ammoType !== other.ammoType) return false;
-        // Tech base compatibility
-        if (this.techBase !== other.techBase) {
-            if (!unit) {
-                if (this.techBase !== 'All' && other.techBase !== 'All') return false;
-            } else if (unit.techBase !== 'Mixed') {
-                if (unit.techBase === 'Clan' && this.techBase === 'IS') return false;
-                if (unit.techBase === 'Inner Sphere' && this.techBase === 'Clan') return false;
-            }
-        }
-
-        // Flag incompatibilities
-        if (this.hasFlag('M_CASELESS') !== other.hasFlag('M_CASELESS')) return false;
-        if (this.hasFlag('F_BATTLEARMOR') !== other.hasFlag('F_BATTLEARMOR')) return false;
-
-        if (this.ammoType === 'AR10') return true;
-        if (this.rackSize !== other.rackSize) return false;
-        if (this.ammoType === 'MML' || this.ammoType === 'AC_LBX') return true;
-
-        return this.equalsAmmoTypeOnly(other);
+        return AmmoValidityUtil.isAmmoCompatible(this, other, unit);
     }
 }
 
