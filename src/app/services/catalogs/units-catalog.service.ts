@@ -182,7 +182,7 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
         }
 
         const remoteEtag = await this.getRemoteEtagFor(url);
-        if (cached && (!remoteEtag || cached.etag === remoteEtag)) {
+        if (cached && remoteEtag && cached.etag === remoteEtag) {
             return cached;
         }
 

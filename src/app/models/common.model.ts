@@ -48,10 +48,16 @@ export function getUnitServerHost(unit: { serverHost?: string } | null | undefin
  */
 export function normalizeUnitServerUrl(url: string): string {
     const trimmed = (url ?? '').trim().replace(/\/+$/, '');
-    if (!/^https?:\/\/.+/i.test(trimmed)) {
+    try {
+        const parsed = new URL(trimmed);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return '';
+        }
+        // Preserve pathname (to allow hosting under a sub-path), but drop query/hash and trailing slashes.
+        return `${parsed.origin}${parsed.pathname}`.replace(/\/+$/, '');
+    } catch {
         return '';
     }
-    return trimmed;
 }
 
 export enum GameSystem {
