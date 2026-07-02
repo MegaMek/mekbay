@@ -158,7 +158,7 @@ export interface WeaponTargetCalculatorRequest {
             display: flex;
             flex-direction: column;
             overflow: auto;
-            gap: 2px;
+            gap: 4px;
         }
 
         .weapon-targets-empty {
