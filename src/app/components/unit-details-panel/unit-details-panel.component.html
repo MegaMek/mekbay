@@ -24,7 +24,12 @@
                     </div>
                 </div>
                 <div class="header-row">
-                    <div class="header-chassis allow-select">{{ currentUnit.chassis }}</div>
+                    <div class="header-chassis-group">
+                        <div class="header-chassis allow-select">{{ currentUnit.chassis }}</div>
+                        @if (currentUnit.serverHost) {
+                            <span class="custom-unit-badge" title="Custom unit from an additional unit server">Custom</span>
+                        }
+                    </div>
                     <unit-tags class="header-tags" [unit]="currentUnit" [mode]="'full'" (tagClick)="onTagClick($event)"></unit-tags>
                 </div>
             </div>

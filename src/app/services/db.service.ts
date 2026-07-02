@@ -66,6 +66,7 @@ const DB_VERSION = 13;
 const DB_STORE = 'store';
 const UNITS_KEY = 'units';
 const UNITS_FLUFF_METADATA_KEY = 'unitsFluff';
+const CUSTOM_UNITS_KEY_PREFIX = 'units:server:';
 const EQUIPMENT_KEY = 'equipment';
 const FACTIONS_KEY = 'factions';
 const MEGAMEK_FACTIONS_KEY = 'megamekFactions';
@@ -517,6 +518,18 @@ export class DbService {
 
     public async saveUnits(unitsData: Units): Promise<void> {
         return await this.saveDataFromGeneralStore(unitsData, UNITS_KEY);
+    }
+
+    private static customUnitsKey(serverUrl: string): string {
+        return `${CUSTOM_UNITS_KEY_PREFIX}${serverUrl}`;
+    }
+
+    public async getCustomServerUnits(serverUrl: string): Promise<Units | null> {
+        return await this.getDataFromGeneralStore<Units>(DbService.customUnitsKey(serverUrl));
+    }
+
+    public async saveCustomServerUnits(serverUrl: string, unitsData: Units): Promise<void> {
+        return await this.saveDataFromGeneralStore(unitsData, DbService.customUnitsKey(serverUrl));
     }
 
     public async getUnitFluffCatalogMetadata(): Promise<UnitFluffCatalogMetadata | null> {
@@ -1285,6 +1298,18 @@ export class DbService {
             for (const key of CATALOG_GENERAL_STORE_KEYS) {
                 store.delete(key);
             }
+
+            // Remove any cached additional-unit-server datasets (keys are dynamic per server URL).
+            const cursorRequest = store.openKeyCursor();
+            cursorRequest.onsuccess = () => {
+                const cursor = cursorRequest.result;
+                if (!cursor) return;
+                if (typeof cursor.key === 'string' && cursor.key.startsWith(CUSTOM_UNITS_KEY_PREFIX)) {
+                    store.delete(cursor.key);
+                }
+                cursor.continue();
+            };
+
             transaction.objectStore(UNIT_FLUFF_STORE).clear();
 
             transaction.oncomplete = () => resolve();

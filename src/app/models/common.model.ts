@@ -33,6 +33,27 @@
 
 export const REMOTE_HOST = 'https://db.mekbay.com';
 
+/**
+ * Resolves the base host a given unit's assets (record-sheet SVGs and fluff art)
+ * should be loaded from. Units imported from a user-supplied additional unit server
+ * carry a `serverHost`; everything else defaults to the canonical {@link REMOTE_HOST}.
+ */
+export function getUnitServerHost(unit: { serverHost?: string } | null | undefined): string {
+    return unit?.serverHost || REMOTE_HOST;
+}
+
+/**
+ * Normalizes a user-supplied unit server base URL: trims whitespace and removes any
+ * trailing slashes. Returns an empty string when the input is not a valid http(s) URL.
+ */
+export function normalizeUnitServerUrl(url: string): string {
+    const trimmed = (url ?? '').trim().replace(/\/+$/, '');
+    if (!/^https?:\/\/.+/i.test(trimmed)) {
+        return '';
+    }
+    return trimmed;
+}
+
 export enum GameSystem {
     CLASSIC = 'cbt',
     ALPHA_STRIKE = 'as'

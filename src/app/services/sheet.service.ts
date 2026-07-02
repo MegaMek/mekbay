@@ -63,35 +63,45 @@ export class SheetService {
      * Multiple parallel calls for the same sheet are deduplicated — only one
      * network request is made and the resulting SVG is cloned for each caller.
      */
-    public async getSheet(sheetFileName: string): Promise<SVGSVGElement> {
+    public async getSheet(sheetFileName: string, serverHost: string = REMOTE_HOST): Promise<SVGSVGElement> {
+        const cacheKey = this.sheetCacheKey(sheetFileName, serverHost);
         // Fast path: fresh cache hit — no network, no deduplication needed.
-        const meta = await this.dbService.getSheetMeta(sheetFileName);
+        const meta = await this.dbService.getSheetMeta(cacheKey);
         const now = Date.now();
         const isFresh = meta && (now - meta.timestamp) < SHEET_CACHE_MAX_AGE_MS;
 
         if (isFresh) {
-            const sheet = await this.dbService.getSheet(sheetFileName);
+            const sheet = await this.dbService.getSheet(cacheKey);
             if (sheet) {
-                this.logger.info(`Sheet ${sheetFileName} loaded from cache (fresh).`);
+                this.logger.info(`Sheet ${cacheKey} loaded from cache (fresh).`);
                 return sheet;
             }
         }
 
         // Slow path: needs network check. Deduplicate parallel calls for the same sheet.
-        const existing = this.inFlight.get(sheetFileName);
+        const existing = this.inFlight.get(cacheKey);
         if (existing) {
-            this.logger.info(`Sheet ${sheetFileName} already in-flight, waiting for existing request.`);
+            this.logger.info(`Sheet ${cacheKey} already in-flight, waiting for existing request.`);
             const original = await existing;
             return original.cloneNode(true) as SVGSVGElement;
         }
 
-        const promise = this.getSheetFromNetwork(sheetFileName, meta);
-        this.inFlight.set(sheetFileName, promise);
+        const promise = this.getSheetFromNetwork(sheetFileName, serverHost, cacheKey, meta);
+        this.inFlight.set(cacheKey, promise);
         try {
             return await promise;
         } finally {
-            this.inFlight.delete(sheetFileName);
+            this.inFlight.delete(cacheKey);
         }
+    }
+
+    /**
+     * Builds the cache key for a sheet. Sheets from the primary host keep their bare file
+     * name (preserving existing caches); sheets from additional unit servers are namespaced
+     * by host so identically-named files from different servers never collide.
+     */
+    private sheetCacheKey(sheetFileName: string, serverHost: string): string {
+        return serverHost === REMOTE_HOST ? sheetFileName : `${serverHost}::${sheetFileName}`;
     }
 
     /**
@@ -100,26 +110,28 @@ export class SheetService {
      */
     private async getSheetFromNetwork(
         sheetFileName: string,
+        serverHost: string,
+        cacheKey: string,
         meta: { etag: string; timestamp: number } | null,
     ): Promise<SVGSVGElement> {
         // Cache is stale or missing - check remote ETag
-        const remoteEtag = await this.getRemoteETag(`${REMOTE_HOST}/sheets/${sheetFileName}`);
+        const remoteEtag = await this.getRemoteETag(`${serverHost}/sheets/${sheetFileName}`);
 
         // If offline or same ETag, use cached version and refresh timestamp
         if (meta && (!remoteEtag || meta.etag === remoteEtag)) {
-            const sheet = await this.dbService.getSheet(sheetFileName);
+            const sheet = await this.dbService.getSheet(cacheKey);
             if (sheet) {
                 if (remoteEtag) {
                     // ETag matched, refresh timestamp so we don't check again for SHEET_CACHE_MAX_AGE_MS
-                    this.dbService.touchSheet(sheetFileName);
+                    this.dbService.touchSheet(cacheKey);
                 }
-                this.logger.info(`Sheet ${sheetFileName} loaded from cache (validated).`);
+                this.logger.info(`Sheet ${cacheKey} loaded from cache (validated).`);
                 return sheet;
             }
         }
 
         // Fetch fresh copy from remote
-        return this.fetchAndCacheSheet(sheetFileName);
+        return this.fetchAndCacheSheet(sheetFileName, serverHost, cacheKey);
     }
 
     private async getRemoteETag(url: string): Promise<string> {
@@ -138,9 +150,9 @@ export class SheetService {
         }
     }
 
-    private async fetchAndCacheSheet(sheetFileName: string): Promise<SVGSVGElement> {
-        this.logger.info(`Fetching sheet: ${sheetFileName}`);
-        const src = `${REMOTE_HOST}/sheets/${sheetFileName}`;
+    private async fetchAndCacheSheet(sheetFileName: string, serverHost: string, cacheKey: string): Promise<SVGSVGElement> {
+        this.logger.info(`Fetching sheet: ${cacheKey}`);
+        const src = `${serverHost}/sheets/${sheetFileName}`;
 
         try {
             const response = await firstValueFrom(
@@ -169,11 +181,11 @@ export class SheetService {
             }
 
             RsPolyfillUtil.fixSvg(svgElement);
-            await this.dbService.saveSheet(sheetFileName, svgElement, etag);
-            this.logger.info(`Sheet ${sheetFileName} fetched and cached.`);
+            await this.dbService.saveSheet(cacheKey, svgElement, etag);
+            this.logger.info(`Sheet ${cacheKey} fetched and cached.`);
             return svgElement;
         } catch (err) {
-            this.logger.error(`Failed to download sheet ${sheetFileName}: ` + err);
+            this.logger.error(`Failed to download sheet ${cacheKey}: ` + err);
             throw err;
         }
     }

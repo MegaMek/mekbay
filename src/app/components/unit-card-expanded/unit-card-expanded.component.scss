@@ -71,6 +71,11 @@
         font-weight: normal;
         margin-left: 4px;
     }
+
+    .custom-unit-badge {
+        margin-left: 8px;
+        vertical-align: middle;
+    }
 }
 
 .expanded-alias {
@@ -320,6 +325,25 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+    }
+
+    .chassis {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+
+        > span:first-child {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
+        }
+
+        .custom-unit-badge {
+            flex: 0 0 auto;
+        }
     }
 
     .pilot-info {
