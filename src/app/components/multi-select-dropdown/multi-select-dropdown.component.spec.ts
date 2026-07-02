@@ -451,6 +451,46 @@ describe('MultiSelectDropdownComponent', () => {
         expect(optionItems[0].classList.contains('keyboard-focused')).toBeTrue();
     });
 
+    it('does not reset scroll focus when an option checkbox receives pointer focus', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        const component = fixture.componentInstance;
+        fixture.componentRef.setInput('options', createOptions(10));
+        component.isOpen.set(true);
+        fixture.detectChanges();
+
+        const scrollToOption = spyOn<any>(component, 'scrollToOption').and.callThrough();
+        const optionItems = Array.from(overlayContainerElement.querySelectorAll('.option-item')) as HTMLElement[];
+        const checkbox = optionItems[4].querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+
+        expect(checkbox).not.toBeNull();
+
+        checkbox!.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+        fixture.detectChanges();
+
+        expect(component.keyboardFocusedIndex()).toBe(-1);
+        expect(scrollToOption).not.toHaveBeenCalled();
+    });
+
+    it('keeps a pill-targeted option focused when the option list receives focus', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        const component = fixture.componentInstance;
+        fixture.componentRef.setInput('options', createOptions(100));
+        fixture.detectChanges();
+
+        const clickEvent = new MouseEvent('click', { bubbles: true });
+        const scrollToOption = spyOn<any>(component, 'scrollToOption').and.callThrough();
+
+        component.openAndScrollTo('Option 90', clickEvent);
+        fixture.detectChanges();
+
+        const optionsList = overlayContainerElement.querySelector('.options-list') as HTMLElement;
+        optionsList.dispatchEvent(new FocusEvent('focus'));
+        fixture.detectChanges();
+
+        expect(component.keyboardFocusedIndex()).toBe(89);
+        expect(scrollToOption).not.toHaveBeenCalledWith('Option 1');
+    });
+
     it('styles keyboard-focused options like hovered options', () => {
         const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
         fixture.componentRef.setInput('options', createOptions(3));
@@ -467,7 +507,7 @@ describe('MultiSelectDropdownComponent', () => {
         expect(getComputedStyle(optionItems[0]).backgroundColor).toBe(getComputedStyle(expectedBackground).backgroundColor);
     });
 
-    it('uses instant nearest-edge scrolling when a pill targets a virtualized option below view', () => {
+    it('centers a pill-targeted virtualized option below view', () => {
         const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
         const component = fixture.componentInstance;
         const scrollToOffset = jasmine.createSpy('scrollToOffset');
@@ -481,9 +521,9 @@ describe('MultiSelectDropdownComponent', () => {
         component.isOpen.set(true);
         fixture.detectChanges();
 
-        component['scrollVirtualOptionIntoView'](viewport, 89);
+        component['scrollVirtualOptionIntoView'](viewport, 89, 'center');
 
-        expect(scrollToOffset).toHaveBeenCalledOnceWith(component.optionItemSize * 87, 'auto');
+        expect(scrollToOffset).toHaveBeenCalledOnceWith(component.optionItemSize * 88, 'auto');
     });
 
     it('uses instant nearest-edge scrolling when a pill targets a plain-list option below view', () => {
@@ -532,6 +572,54 @@ describe('MultiSelectDropdownComponent', () => {
         fixture.componentInstance['scrollToOption']('Option 5');
 
         expect(scrollTop).toBe(132);
+    });
+
+    it('centers a pill-targeted plain-list option below view', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        fixture.componentRef.setInput('options', createOptions(10));
+        fixture.componentInstance.isOpen.set(true);
+        fixture.detectChanges();
+
+        const container = overlayContainerElement.querySelector('.options-list') as HTMLElement;
+        const optionItems = Array.from(overlayContainerElement.querySelectorAll('.option-item')) as HTMLElement[];
+        let scrollTop = 0;
+        Object.defineProperty(container, 'scrollTop', {
+            configurable: true,
+            get: () => scrollTop,
+            set: (value: number) => scrollTop = value,
+        });
+        spyOnProperty(container, 'clientHeight', 'get').and.returnValue(88);
+        spyOnProperty(container, 'scrollHeight', 'get').and.returnValue(440);
+        spyOn(container, 'getBoundingClientRect').and.returnValue({
+            top: 100,
+            bottom: 188,
+            height: 88,
+            left: 0,
+            right: 240,
+            width: 240,
+            x: 0,
+            y: 100,
+            toJSON: () => null,
+        } as DOMRect);
+        optionItems.forEach((item, index) => {
+            spyOnProperty(item, 'offsetTop', 'get').and.returnValue(24 + (index * 44));
+            spyOnProperty(item, 'offsetHeight', 'get').and.returnValue(44);
+            spyOn(item, 'getBoundingClientRect').and.returnValue({
+                top: 100 + (index * 44),
+                bottom: 100 + ((index + 1) * 44),
+                height: 44,
+                left: 0,
+                right: 240,
+                width: 240,
+                x: 0,
+                y: 100 + (index * 44),
+                toJSON: () => null,
+            } as DOMRect);
+        });
+
+        fixture.componentInstance['scrollToOption']('Option 5', 'center');
+
+        expect(scrollTop).toBe(154);
     });
 
     xit('preserves scroll position when toggling an item in the virtualized list', async () => {

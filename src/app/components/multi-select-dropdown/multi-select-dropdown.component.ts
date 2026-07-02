@@ -88,6 +88,8 @@ interface OpenDropdownOptions {
     scrollToOptionName?: string;
 }
 
+type OptionScrollAlignment = 'nearest' | 'center';
+
 @Component({
     selector: 'multi-select-dropdown',
     standalone: true,
@@ -588,7 +590,7 @@ export class MultiSelectDropdownComponent {
         }
     }
 
-    private scrollToOption(optionName: string) {
+    private scrollToOption(optionName: string, alignment: OptionScrollAlignment = 'nearest') {
         const options = this.filteredOptions();
         const optionIndex = options.findIndex(option => option.name === optionName);
         if (optionIndex < 0) {
@@ -599,7 +601,7 @@ export class MultiSelectDropdownComponent {
             const viewport = this.optionsViewport();
             if (viewport) {
                 viewport.checkViewportSize();
-                this.scrollVirtualOptionIntoView(viewport, optionIndex);
+                this.scrollVirtualOptionIntoView(viewport, optionIndex, alignment);
             }
             return;
         }
@@ -612,13 +614,17 @@ export class MultiSelectDropdownComponent {
         const items = Array.from(container.querySelectorAll<HTMLElement>('.option-item'));
         for (const item of items) {
             if (item.getAttribute('data-option-name') === optionName) {
-                scrollElementIntoView(container, item);
+                if (alignment === 'center') {
+                    this.scrollDomOptionToCenter(container, item);
+                } else {
+                    scrollElementIntoView(container, item);
+                }
                 break;
             }
         }
     }
 
-    private scrollVirtualOptionIntoView(viewport: CdkVirtualScrollViewport, optionIndex: number): void {
+    private scrollVirtualOptionIntoView(viewport: CdkVirtualScrollViewport, optionIndex: number, alignment: OptionScrollAlignment = 'nearest'): void {
         const visibleTop = viewport.measureScrollOffset('top');
         const viewportHeight = viewport.getViewportSize();
         const visibleBottom = visibleTop + viewportHeight;
@@ -626,11 +632,27 @@ export class MultiSelectDropdownComponent {
         const optionBottom = optionTop + this.optionItemSize;
         const maxScrollTop = Math.max(0, this.filteredOptions().length * this.optionItemSize - viewportHeight);
 
+        if (alignment === 'center') {
+            const centeredOffset = optionTop - ((viewportHeight - this.optionItemSize) / 2);
+            viewport.scrollToOffset(Math.max(0, Math.min(maxScrollTop, centeredOffset)), 'auto');
+            return;
+        }
+
         if (optionTop < visibleTop) {
             viewport.scrollToOffset(Math.max(0, optionTop), 'auto');
         } else if (optionBottom > visibleBottom) {
             viewport.scrollToOffset(Math.min(maxScrollTop, optionBottom - viewportHeight), 'auto');
         }
+    }
+
+    private scrollDomOptionToCenter(container: HTMLElement, item: HTMLElement): void {
+        const containerRect = container.getBoundingClientRect();
+        const itemRect = item.getBoundingClientRect();
+        const itemOffsetTop = itemRect.top - containerRect.top + container.scrollTop;
+        const itemHeight = itemRect.height || item.offsetHeight;
+        const centeredScrollTop = itemOffsetTop - ((container.clientHeight - itemHeight) / 2);
+        const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+        container.scrollTop = Math.max(0, Math.min(maxScrollTop, centeredScrollTop));
     }
 
     optionId(index: number): string {
@@ -644,7 +666,9 @@ export class MultiSelectDropdownComponent {
         document.dispatchEvent(new CustomEvent('multi-select-dropdown-open', { detail: this }));
         this.isOpen.set(true);
         this.filterText.set('');
-        this.keyboardFocusedOptionName.set(null);
+        this.keyboardFocusedOptionName.set(
+            scrollToOptionName && this.indexOfFilteredOption(scrollToOptionName) >= 0 ? scrollToOptionName : null
+        );
 
         afterNextRender(() => {
             if (this.destroyed || !this.isOpen()) {
@@ -652,7 +676,7 @@ export class MultiSelectDropdownComponent {
             }
 
             if (scrollToOptionName) {
-                this.scrollToOption(scrollToOptionName);
+                this.scrollToOption(scrollToOptionName, 'center');
             }
             if (focusInput) {
                 this.focusFilterInput();
@@ -767,7 +791,11 @@ export class MultiSelectDropdownComponent {
         this.handleOpenDropdownKeydown(event);
     }
 
-    onOptionsListFocus(): void {
+    onOptionsListFocus(event: FocusEvent): void {
+        if (event.target !== event.currentTarget) {
+            return;
+        }
+
         if (this.keyboardFocusedIndex() < 0) {
             this.setKeyboardFocusedIndex(0);
         }

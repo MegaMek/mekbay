@@ -142,7 +142,7 @@
                 [id]="optionsListId"
                 tabindex="0"
                 [attr.aria-activedescendant]="keyboardFocusedOptionId()"
-                (focus)="onOptionsListFocus()"
+                (focus)="onOptionsListFocus($event)"
                 [itemSize]="optionItemSize"
                 [style.height.px]="viewportHeight()">
                 <label class="option-item"
@@ -209,7 +209,7 @@
                 [id]="optionsListId"
                 tabindex="0"
                 [attr.aria-activedescendant]="keyboardFocusedOptionId()"
-                (focus)="onOptionsListFocus()"
+                (focus)="onOptionsListFocus($event)"
                 [style.maxHeight.px]="maxHeightOptions()">
                 @for (option of filteredOptions(); let i = $index; track option.name) {
                         <label class="option-item"
