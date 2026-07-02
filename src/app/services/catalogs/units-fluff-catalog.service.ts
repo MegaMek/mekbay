@@ -65,18 +65,87 @@ export class UnitsFluffCatalogService {
     private etag = '';
     private inMemoryFluff: Map<string, UnitFluffCatalogEntry> | null = null;
 
+    /** Lazily-loaded fluff maps for additional unit servers, keyed by server base URL. */
+    private readonly customServerFluff = new Map<string, Map<string, UnitFluffCatalogEntry>>();
+    private readonly customServerLoads = new Map<string, Promise<Map<string, UnitFluffCatalogEntry>>>();
+
     private get remoteUrl(): string {
         return `${REMOTE_HOST}/units-fluff.json`;
     }
 
-    public async getUnitFluff(unit: Pick<Unit, 'name' | 'fluff'>): Promise<UnitFluffCatalogEntry | undefined> {
+    public async getUnitFluff(unit: Pick<Unit, 'name' | 'fluff' | 'serverHost'>): Promise<UnitFluffCatalogEntry | undefined> {
         try {
-            await this.ensureInitialized();
-            const catalogEntry = await this.getStoredUnitFluff(unit.name);
+            const catalogEntry = unit.serverHost
+                ? await this.getCustomServerUnitFluff(unit.serverHost, unit.name)
+                : await this.getPrimaryUnitFluff(unit.name);
             return this.buildDisplayFluff(unit.fluff, catalogEntry);
         } catch (error) {
             this.logger.warn(`Failed to load unit fluff for ${unit.name}: ${this.describeError(error)}`);
             return this.getUnitImageFallback(unit.fluff);
+        }
+    }
+
+    private async getPrimaryUnitFluff(name: string): Promise<UnitFluffCatalogEntry | undefined> {
+        await this.ensureInitialized();
+        return this.getStoredUnitFluff(name);
+    }
+
+    private async getCustomServerUnitFluff(serverHost: string, name: string): Promise<UnitFluffCatalogEntry | undefined> {
+        const fluffMap = await this.ensureCustomServerFluff(serverHost);
+        return fluffMap.get(name);
+    }
+
+    private ensureCustomServerFluff(serverHost: string): Promise<Map<string, UnitFluffCatalogEntry>> {
+        const loaded = this.customServerFluff.get(serverHost);
+        if (loaded) {
+            return Promise.resolve(loaded);
+        }
+
+        const inFlight = this.customServerLoads.get(serverHost);
+        if (inFlight) {
+            return inFlight;
+        }
+
+        const load = this.loadCustomServerFluff(serverHost)
+            .then((fluffMap) => {
+                this.customServerFluff.set(serverHost, fluffMap);
+                return fluffMap;
+            })
+            .finally(() => {
+                this.customServerLoads.delete(serverHost);
+            });
+
+        this.customServerLoads.set(serverHost, load);
+        return load;
+    }
+
+    private async loadCustomServerFluff(serverHost: string): Promise<Map<string, UnitFluffCatalogEntry>> {
+        const url = `${serverHost}/units-fluff.json`;
+        const cached = await this.dbService.getCustomServerFluff(serverHost);
+        const cachedEtag = cached?.etag || '';
+
+        if (!navigator.onLine) {
+            return this.toFluffMap(cached ?? { version: '', etag: '', fluff: {} });
+        }
+
+        const remoteEtag = await this.getRemoteEtag(url);
+        if (cached && (!remoteEtag || cachedEtag === remoteEtag)) {
+            this.logger.info(`Custom fluff for ${serverHost} loaded from cache.`);
+            return this.toFluffMap(cached);
+        }
+
+        try {
+            const data = await this.fetchRemoteData(remoteEtag, url);
+            try {
+                await this.dbService.saveCustomServerFluff(serverHost, data);
+            } catch (error) {
+                this.logger.warn(`Failed to cache custom fluff for ${serverHost}: ${this.describeError(error)}`);
+            }
+            this.logger.info(`Custom fluff for ${serverHost} updated. (ETag: ${data.etag})`);
+            return this.toFluffMap(data);
+        } catch (error) {
+            this.logger.warn(`Failed to load custom fluff from ${serverHost}: ${this.describeError(error)}`);
+            return this.toFluffMap(cached ?? { version: '', etag: '', fluff: {} });
         }
     }
 
@@ -155,11 +224,11 @@ export class UnitsFluffCatalogService {
         this.logger.info(`units_fluff updated. (ETag: ${this.etag})`);
     }
 
-    private async fetchRemoteData(remoteEtag = ''): Promise<UnitFluffCatalog> {
+    private async fetchRemoteData(remoteEtag = '', url: string = this.remoteUrl): Promise<UnitFluffCatalog> {
         return await this.downloadTracker.trackDownload(async () => {
-            this.logger.info('Downloading units_fluff...');
+            this.logger.info(`Downloading units_fluff from ${url}...`);
 
-            const response = await firstValueFrom(this.http.get<UnitFluffCatalog>(this.remoteUrl, {
+            const response = await firstValueFrom(this.http.get<UnitFluffCatalog>(url, {
                 observe: 'response',
                 reportProgress: false,
             }));
@@ -177,15 +246,15 @@ export class UnitsFluffCatalogService {
         });
     }
 
-    private async getRemoteEtag(): Promise<string> {
+    private async getRemoteEtag(url: string = this.remoteUrl): Promise<string> {
         try {
-            const response = await firstValueFrom(this.http.head(this.remoteUrl, {
+            const response = await firstValueFrom(this.http.head(url, {
                 observe: 'response',
                 responseType: 'text',
             }));
             return response.headers.get('ETag') || '';
         } catch (error: any) {
-            this.logger.warn(`Failed to fetch ETag for ${this.remoteUrl}: ${error?.message ?? error}`);
+            this.logger.warn(`Failed to fetch ETag for ${url}: ${error?.message ?? error}`);
             return '';
         }
     }

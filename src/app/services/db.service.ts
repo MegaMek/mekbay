@@ -67,6 +67,7 @@ const DB_STORE = 'store';
 const UNITS_KEY = 'units';
 const UNITS_FLUFF_METADATA_KEY = 'unitsFluff';
 const CUSTOM_UNITS_KEY_PREFIX = 'units:server:';
+const CUSTOM_UNITS_FLUFF_KEY_PREFIX = 'units-fluff:server:';
 const EQUIPMENT_KEY = 'equipment';
 const FACTIONS_KEY = 'factions';
 const MEGAMEK_FACTIONS_KEY = 'megamekFactions';
@@ -530,6 +531,18 @@ export class DbService {
 
     public async saveCustomServerUnits(serverUrl: string, unitsData: Units): Promise<void> {
         return await this.saveDataFromGeneralStore(unitsData, DbService.customUnitsKey(serverUrl));
+    }
+
+    private static customFluffKey(serverUrl: string): string {
+        return `${CUSTOM_UNITS_FLUFF_KEY_PREFIX}${serverUrl}`;
+    }
+
+    public async getCustomServerFluff(serverUrl: string): Promise<UnitFluffCatalog | null> {
+        return await this.getDataFromGeneralStore<UnitFluffCatalog>(DbService.customFluffKey(serverUrl));
+    }
+
+    public async saveCustomServerFluff(serverUrl: string, fluffData: UnitFluffCatalog): Promise<void> {
+        return await this.saveDataFromGeneralStore(fluffData, DbService.customFluffKey(serverUrl));
     }
 
     public async getUnitFluffCatalogMetadata(): Promise<UnitFluffCatalogMetadata | null> {
@@ -1304,7 +1317,8 @@ export class DbService {
             cursorRequest.onsuccess = () => {
                 const cursor = cursorRequest.result;
                 if (!cursor) return;
-                if (typeof cursor.key === 'string' && cursor.key.startsWith(CUSTOM_UNITS_KEY_PREFIX)) {
+                if (typeof cursor.key === 'string'
+                    && (cursor.key.startsWith(CUSTOM_UNITS_KEY_PREFIX) || cursor.key.startsWith(CUSTOM_UNITS_FLUFF_KEY_PREFIX))) {
                     store.delete(cursor.key);
                 }
                 cursor.continue();
