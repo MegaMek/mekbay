@@ -94,6 +94,18 @@
     margin-right: 8px;
 }
 
+.header-chassis-group {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+
+    .header-chassis {
+        margin-right: 0;
+    }
+}
+
 .header-details {
     display: flex;
     flex-direction: row;

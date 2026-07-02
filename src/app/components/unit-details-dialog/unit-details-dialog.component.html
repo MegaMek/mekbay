@@ -10,7 +10,12 @@
                     <div class="header-model allow-select">{{ headerUnit().model }}</div>
                 </div>
                 <div class="header-row">
-                    <div class="header-chassis allow-select">{{ headerUnit().chassis }}</div>
+                    <div class="header-chassis-group">
+                        <div class="header-chassis allow-select">{{ headerUnit().chassis }}</div>
+                        @if (headerUnit().serverHost) {
+                            <span class="custom-unit-badge" title="Custom unit from an additional unit server">Custom</span>
+                        }
+                    </div>
                     <div class="header-details">
                         @if (headerUnit().role && headerUnit().role != 'None') {
                         <div class="role"><strong>{{ headerUnit().role }}</strong></div>

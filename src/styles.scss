@@ -283,6 +283,21 @@ hr {
     cursor: pointer;
 }
 
+.custom-unit-badge {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    background: var(--accent-color);
+    color: #1a1508;
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    line-height: 1.35;
+    white-space: nowrap;
+}
+
 .framed-borders {
     background-repeat: no-repeat;
     background-origin: border-box;

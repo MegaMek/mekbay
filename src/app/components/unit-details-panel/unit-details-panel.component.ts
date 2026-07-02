@@ -41,7 +41,7 @@ import { ToastService } from '../../services/toast.service';
 import { TaggingService } from '../../services/tagging.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
-import { REMOTE_HOST } from '../../models/common.model';
+import { getUnitServerHost } from '../../models/common.model';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { BasePanelComponent } from '../base-panel/base-panel.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
@@ -142,7 +142,7 @@ export class UnitDetailsPanelComponent {
         const u = this.unit();
         if (!u?.fluff?.img) return null;
         if (u.fluff.img.endsWith('hud.png')) return null;
-        return `${REMOTE_HOST}/images/fluff/${u.fluff.img}`;
+        return `${getUnitServerHost(u)}/images/fluff/${u.fluff.img}`;
     });
 
     /** CSS background style for fluff */

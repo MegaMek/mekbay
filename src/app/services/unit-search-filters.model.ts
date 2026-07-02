@@ -66,7 +66,7 @@ export type MegaMekRaritySortKey =
 export type DropdownOptionSource = 'indexed' | 'external' | 'context';
 export type DropdownAvailabilitySource = 'indexed' | 'context';
 export type DropdownPropertyShape = 'scalar' | 'array' | 'component';
-export type BooleanFilterSource = 'boolean' | 'nonEmptyArray';
+export type BooleanFilterSource = 'boolean' | 'nonEmptyArray' | 'truthy';
 export type TriStateBooleanFilterValue = null | 'or' | 'not';
 
 export enum AdvFilterType {
@@ -281,6 +281,10 @@ export function getBooleanFilterUnitValue(
         return Array.isArray(rawValue) && rawValue.length > 0;
     }
 
+    if (conf.booleanSource === 'truthy') {
+        return typeof rawValue === 'string' ? rawValue.trim().length > 0 : Boolean(rawValue);
+    }
+
     return rawValue === true;
 }
 
@@ -468,6 +472,12 @@ export const BOOLEAN_FILTERS: readonly BooleanFilterConfig[] = Object.freeze([
         semanticKey: 'published',
         label: 'Published Record Sheet',
         booleanSource: 'nonEmptyArray',
+    },
+    {
+        key: 'serverHost',
+        semanticKey: 'custom',
+        label: 'Custom Unit',
+        booleanSource: 'truthy',
     },
 ]);
 

@@ -80,7 +80,7 @@ export class CBTPrintUtil {
                 svg = unit.svg();
             }
             if (!svg) {
-                svg = await sheetService.getSheet(unit.getUnit().sheets[0]);
+                svg = await sheetService.getSheet(unit.getUnit().sheets[0], unit.getUnit().serverHost);
             }
 
             await this.nextAnimationFrames(2);

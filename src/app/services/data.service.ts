@@ -350,7 +350,7 @@ export class DataService {
         return this.unitRuntimeService.getUnitByName(name);
     }
 
-    public getUnitFluff(unit: Pick<Unit, 'name' | 'fluff'>): Promise<UnitFluffCatalogEntry | undefined> {
+    public getUnitFluff(unit: Pick<Unit, 'name' | 'fluff' | 'serverHost'>): Promise<UnitFluffCatalogEntry | undefined> {
         return this.unitsFluffCatalog.getUnitFluff(unit);
     }
 
