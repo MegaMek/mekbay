@@ -35,7 +35,7 @@ import { ChangeDetectionStrategy, Component, computed, type ComponentRef, Elemen
 import { ComponentPortal } from '@angular/cdk/portal';
 import type { AmmoEquipment } from '../../models/equipment.model';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
-import { DropdownPointerActivationGuard, scrollActiveOptionIntoView } from '../../utils/dropdown-interaction.utils';
+import { DropdownPointerActivationGuard, nextDropdownTarget, nextDropdownTargetInCurrentLane, scrollActiveOptionIntoView } from '../../utils/dropdown-interaction.utils';
 import { AdvancementTimelineComponent, getEquipmentAdvancementTimeline, type EquipmentAdvancementTimeline } from './advancement-timeline.component';
 
 interface AmmoDropdownOption {
@@ -46,8 +46,16 @@ interface AmmoDropdownOption {
     unavailable: boolean;
 }
 
+type AmmoDropdownActiveTarget = 'entry' | 'details';
+
+interface AmmoDropdownActiveOption {
+    internalName: string;
+    target: AmmoDropdownActiveTarget;
+}
+
 interface AmmoDropdownPointerHoverEvent {
     internalName: string;
+    target: AmmoDropdownActiveTarget;
     clientX: number;
     clientY: number;
 }
@@ -57,9 +65,6 @@ interface AmmoDropdownPointerHoverEvent {
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [AdvancementTimelineComponent],
-    host: {
-        '[style.font-size]': 'fontSize() || null'
-    },
     template: `
         <div
             class="dropdown-shell glass has-shadow framed-borders"
@@ -75,46 +80,59 @@ interface AmmoDropdownPointerHoverEvent {
                     placeholder="Search ammo..."
                     [value]="searchText()"
                     (input)="onSearch($any($event.target).value)" />
+                <button
+                    class="expand-btn master-expand-btn"
+                    type="button"
+                    [disabled]="filteredExpandableOptions().length === 0"
+                    [class.expanded]="allFilteredOptionsExpanded()"
+                    [title]="allFilteredOptionsExpanded() ? 'Hide all details' : 'Show all details'"
+                    (click)="toggleAllExpanded($event)">
+                    <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
+                        <path d="M3 1l5 4-5 4z"/>
+                    </svg>
+                </button>
             </div>
             <div class="dropdown-panel" data-scroll-container>
             @for (option of filteredOptions(); let optionIndex = $index; track option.ammo.internalName) {
-                <button
-                    class="set-ammo-dropdown-option"
-                    type="button"
+                <div
+                    class="ammo-dropdown-option"
                     role="option"
+                    tabindex="-1"
                     [id]="optionId(optionIndex)"
-                    [class.active]="option.ammo.internalName === activeValue()"
+                    [class.active]="option.ammo.internalName === value()"
+                    [class.keyboard-active]="option.ammo.internalName === activeValue()"
                     [class.unavailable]="option.unavailable"
                     [attr.aria-selected]="option.ammo.internalName === value()"
                     (click)="selectOption(option)"
-                    (pointerenter)="onOptionPointerHover(option, $event)"
-                    (pointermove)="onOptionPointerHover(option, $event)"
+                    (pointerenter)="onOptionPointerHover(option, 'entry', $event)"
+                    (pointermove)="onOptionPointerHover(option, 'entry', $event)"
                 >
-                    <span class="set-ammo-dropdown-option-name">{{ option.label }}</span>
-                    <span class="set-ammo-dropdown-details" [class.visible]="expanded()">
+                    <span class="ammo-dropdown-option-header">
+                        <span class="ammo-dropdown-option-name">{{ option.label }}</span>
                         @if (option.advancement.timelines.length > 0) {
-                            <advancement-timeline [slots]="option.advancement.slots" [timelines]="option.advancement.timelines" />
+                            <button
+                                class="expand-btn"
+                                type="button"
+                                [id]="optionTargetId(optionIndex, 'details')"
+                                [class.active]="isActiveTarget(option, 'details')"
+                                [class.expanded]="isOptionExpanded(option)"
+                                title="Show details"
+                                (pointerenter)="onOptionPointerHover(option, 'details', $event)"
+                                (pointermove)="onOptionPointerHover(option, 'details', $event)"
+                                (click)="toggleOptionExpanded(option, $event)">
+                                <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
+                                    <path d="M3 1l5 4-5 4z"/>
+                                </svg>
+                            </button>
                         }
-                        <!-- @for (group of option.detailGroups; track group.group) {
-                            @if (group.group === 'History') {
-                                <advancement-timeline density="compact" [slots]="group.timelineSlots" [timelines]="group.timelines" />
-                            } @else {
-                                <span class="set-ammo-dropdown-spec-grid">
-                                    @for (detail of group.items; track detail.label) {
-                                        <span class="set-ammo-dropdown-spec">
-                                            <span class="set-ammo-dropdown-spec-label">{{ detail.label }}</span>
-                                            <span class="set-ammo-dropdown-spec-value">{{ detail.value }}</span>
-                                        </span>
-                                    }
-                                </span>
-                            }
-                        } -->
                     </span>
-                </button>
+                    @if (option.advancement.timelines.length > 0 && isOptionExpanded(option)) {
+                        <span class="set-ammo-dropdown-details">
+                            <advancement-timeline [slots]="option.advancement.slots" [timelines]="option.advancement.timelines" />
+                        </span>
+                    }
+                </div>
             }
-            </div>
-            <div class="footer">
-                <button class="bt-button" (click)="toggleExpanded()">{{ expanded() ? "HIDE DETAILS" : "SHOW DETAILS" }}</button>
             </div>
         </div>
     `,
@@ -141,6 +159,10 @@ interface AmmoDropdownPointerHoverEvent {
         }
 
         .header {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 6px;
             flex: 0 0 auto;
             padding: 4px 6px;
             border-bottom: 1px solid var(--border-color);
@@ -150,17 +172,7 @@ interface AmmoDropdownPointerHoverEvent {
             }
         }
 
-        .footer {
-            flex: 0 0 auto;
-            padding: 4px 6px;
-            border-top: 1px solid var(--border-color);
-
-            .bt-button {
-                width: 100%;
-            }
-        }
-
-        .set-ammo-dropdown-option {
+        .ammo-dropdown-option {
             display: flex;
             flex-direction: column;
             align-items: stretch;
@@ -174,17 +186,22 @@ interface AmmoDropdownPointerHoverEvent {
             color: var(--text-color);
             text-align: left;
             cursor: pointer;
+            box-sizing: border-box;
         }
 
-        .set-ammo-dropdown-option:last-child {
+        .ammo-dropdown-option:last-child {
             border-bottom: 0;
         }
 
-        .set-ammo-dropdown-option:hover {
+        .ammo-dropdown-option:hover {
             background: rgba(255, 255, 255, 0.1);
         }
 
-        .set-ammo-dropdown-option.active {
+        .ammo-dropdown-option.keyboard-active:not(.active) {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .ammo-dropdown-option.active {
             background: var(--bt-yellow-background-transparent);
             border-left: 3px solid var(--bt-yellow);
 
@@ -193,15 +210,15 @@ interface AmmoDropdownPointerHoverEvent {
             }
         }
 
-        .set-ammo-dropdown-option.unavailable {
+        .ammo-dropdown-option.unavailable {
             border-left-color: rgba(221, 0, 0, 0.7);
         }
 
-        .set-ammo-dropdown-option.unavailable:hover {
+        .ammo-dropdown-option.unavailable:hover {
             background: rgba(221, 0, 0, 0.08);
         }
 
-        .set-ammo-dropdown-option.active.unavailable {
+        .ammo-dropdown-option.active.unavailable {
             background: rgba(221, 0, 0, 0.14);
             border-left-color: #dd0000;
 
@@ -210,12 +227,20 @@ interface AmmoDropdownPointerHoverEvent {
             }
         }
 
-        .set-ammo-dropdown-option.unavailable .set-ammo-dropdown-option-name {
+        .ammo-dropdown-option.unavailable .ammo-dropdown-option-name {
             color: #ff7373;
         }
 
-        .set-ammo-dropdown-option-name {
+        .ammo-dropdown-option-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .ammo-dropdown-option-name {
             display: block;
+            flex: 1 1 auto;
             min-width: 0;
             white-space: normal;
             overflow-wrap: normal;
@@ -225,45 +250,48 @@ interface AmmoDropdownPointerHoverEvent {
         }
 
         .set-ammo-dropdown-details {
-            display: none;
+            display: grid;
             gap: 8px;
-
-            &.visible {
-                display: grid;
-            }
         }
 
-        .set-ammo-dropdown-spec-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
-            gap: 6px;
+        .expand-btn {
+            flex-shrink: 0;
+            background: none;
+            border: none;
+            color: var(--text-color-tertiary);
+            cursor: pointer;
+            padding: 8px 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.15s;
         }
 
-        .set-ammo-dropdown-spec {
-            display: grid;
-            gap: 2px;
-            min-width: 0;
-            padding: 5px 7px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            background: rgba(0, 0, 0, 0.18);
-        }
-
-        .set-ammo-dropdown-spec-label {
-            color: var(--text-color-secondary);
-            font-size: 0.72em;
-            font-weight: 700;
-            line-height: 1.1;
-            text-transform: uppercase;
-        }
-
-        .set-ammo-dropdown-spec-value {
-            min-width: 0;
+        .expand-btn:hover:not(:disabled) {
             color: var(--text-color);
-            font-size: 0.84em;
-            line-height: 1.2;
-            overflow-wrap: anywhere;
         }
 
+        .expand-btn.active {
+            color: var(--text-color);
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .expand-btn:disabled {
+            cursor: default;
+            opacity: 0.35;
+        }
+
+        .expand-btn svg {
+            transition: transform 0.2s;
+        }
+
+        .expand-btn.expanded svg {
+            transform: rotate(90deg);
+        }
+
+        .master-expand-btn {
+            padding: 7px 8px;
+        }
     `]
 })
 class SetAmmoDropdownPanelComponent {
@@ -274,12 +302,12 @@ class SetAmmoDropdownPanelComponent {
     readonly label = input('Select ammo');
     readonly optionsId = input('');
     readonly activeValue = input('');
-    readonly fontSize = input('');
+    readonly activeTarget = input<AmmoDropdownActiveTarget>('entry');
 
     readonly selected = output<string>();
     readonly pointerHovered = output<AmmoDropdownPointerHoverEvent>();
 
-    readonly expanded = signal<boolean>(false);
+    readonly expandedOptionNames = signal<ReadonlySet<string>>(new Set<string>());
     readonly searchText = signal<string>('');
 
     filteredOptions = computed<AmmoDropdownOption[]>(() => {
@@ -295,34 +323,120 @@ class SetAmmoDropdownPanelComponent {
         return filtered;
     });
 
+    readonly filteredExpandableOptions = computed<AmmoDropdownOption[]>(() => {
+        return this.filteredOptions().filter(option => option.advancement.timelines.length > 0);
+    });
+
+    readonly allFilteredOptionsExpanded = computed(() => {
+        const expandableOptions = this.filteredExpandableOptions();
+        if (expandableOptions.length === 0) return false;
+
+        const expandedOptionNames = this.expandedOptionNames();
+        return expandableOptions.every(option => expandedOptionNames.has(option.ammo.internalName));
+    });
+
     readonly activeOptionId = computed(() => {
-        const activeIndex = this.filteredOptions().findIndex(option => option.ammo.internalName === this.activeValue());
-        return activeIndex >= 0 ? this.optionId(activeIndex) : '';
+        const activeIndex = this.visibleOptionTargets().findIndex(option => this.matchesActiveTarget(option));
+        return activeIndex >= 0 ? this.optionTargetIdForActiveIndex(activeIndex) : '';
+    });
+
+    readonly visibleOptionTargets = computed<AmmoDropdownActiveOption[]>(() => {
+        return this.filteredOptions().flatMap(option => this.optionTargets(option));
     });
 
     optionId(index: number): string {
         return `${this.optionsId()}-${index}`;
     }
 
+    optionTargetId(index: number, target: AmmoDropdownActiveTarget): string {
+        return target === 'entry' ? this.optionId(index) : `${this.optionId(index)}-${target}`;
+    }
+
     selectOption(option: AmmoDropdownOption): void {
         this.selected.emit(option.ammo.internalName);
     }
 
-    onOptionPointerHover(option: AmmoDropdownOption, event: PointerEvent): void {
+    onOptionPointerHover(option: AmmoDropdownOption, target: AmmoDropdownActiveTarget, event: PointerEvent): void {
+        if (target === 'details') {
+            event.stopPropagation();
+        }
         this.pointerHovered.emit({
             internalName: option.ammo.internalName,
+            target,
             clientX: event.clientX,
             clientY: event.clientY,
         });
     }
 
-    toggleExpanded() {
-        this.expanded.update(v => !v);
-        this.overlayManager.repositionAll();
+    isActiveTarget(option: AmmoDropdownOption, target: AmmoDropdownActiveTarget): boolean {
+        return option.ammo.internalName === this.activeValue() && this.activeTarget() === target;
+    }
+
+    isOptionExpanded(option: AmmoDropdownOption): boolean {
+        return this.expandedOptionNames().has(option.ammo.internalName);
+    }
+
+    toggleOptionExpanded(option: AmmoDropdownOption, event: MouseEvent): void {
+        event.stopPropagation();
+        this.toggleExpandedName(option.ammo.internalName);
+    }
+
+    toggleExpandedName(internalName: string): void {
+        this.expandedOptionNames.update(current => {
+            const next = new Set(current);
+            if (next.has(internalName)) {
+                next.delete(internalName);
+            } else {
+                next.add(internalName);
+            }
+            return next;
+        });
+    }
+
+    toggleAllExpanded(event: MouseEvent): void {
+        event.stopPropagation();
+        const expandableOptions = this.filteredExpandableOptions();
+        if (expandableOptions.length === 0) return;
+
+        const shouldCollapse = this.allFilteredOptionsExpanded();
+        this.expandedOptionNames.update(current => {
+            const next = new Set(current);
+            for (const option of expandableOptions) {
+                if (shouldCollapse) {
+                    next.delete(option.ammo.internalName);
+                } else {
+                    next.add(option.ammo.internalName);
+                }
+            }
+            return next;
+        });
     }
     
     onSearch(text: string) {
         this.searchText.set(text);
+    }
+
+    private optionTargets(option: AmmoDropdownOption): AmmoDropdownActiveOption[] {
+        return option.advancement.timelines.length > 0
+            ? [
+                { internalName: option.ammo.internalName, target: 'entry' },
+                { internalName: option.ammo.internalName, target: 'details' },
+            ]
+            : [{ internalName: option.ammo.internalName, target: 'entry' }];
+    }
+
+    private matchesActiveTarget(option: AmmoDropdownActiveOption): boolean {
+        return option.internalName === this.activeValue() && option.target === this.activeTarget();
+    }
+
+    private optionTargetIdForActiveIndex(activeIndex: number): string {
+        const precedingDetailsTargets = this.visibleOptionTargets()
+            .slice(0, activeIndex + 1)
+            .filter(option => option.target === 'details')
+            .length;
+        const rowIndex = activeIndex - precedingDetailsTargets;
+        const activeTarget = this.visibleOptionTargets()[activeIndex]?.target ?? 'entry';
+        return this.optionTargetId(rowIndex, activeTarget);
     }
 }
 
@@ -451,7 +565,7 @@ export class SetAmmoDropdownComponent implements OnDestroy {
 
     readonly open = signal(false);
     readonly activeIndex = signal(0);
-    readonly mixedTechBase = computed(() => this.options().some(ammo => ammo.techBase === 'Clan') && this.options().some(ammo => ammo.techBase === 'IS'));
+    readonly activeTarget = signal<AmmoDropdownActiveTarget>('entry');
     readonly optionItems = computed<AmmoDropdownOption[]>(() => this.options().map(ammo => {
         const displayName = getAmmoDisplayText(ammo, this.options(), this.currentAmmo(), this.originalAmmo());
         const searchText = displayName.toLocaleLowerCase();
@@ -480,6 +594,7 @@ export class SetAmmoDropdownComponent implements OnDestroy {
         if (this.open()) return;
         this.pointerActivationGuard.suppress();
         this.activeIndex.set(this.selectedIndex());
+        this.activeTarget.set('entry');
         this.open.set(true);
         this.attachOverlay();
     }
@@ -489,12 +604,12 @@ export class SetAmmoDropdownComponent implements OnDestroy {
             case 'ArrowDown':
                 event.preventDefault();
                 this.openDropdown();
-                this.moveActiveOption(1);
+                this.moveActiveOptionInCurrentLane(1);
                 break;
             case 'ArrowUp':
                 event.preventDefault();
                 this.openDropdown();
-                this.moveActiveOption(-1);
+                this.moveActiveOptionInCurrentLane(-1);
                 break;
             case 'Home':
                 event.preventDefault();
@@ -504,7 +619,12 @@ export class SetAmmoDropdownComponent implements OnDestroy {
             case 'End':
                 event.preventDefault();
                 this.openDropdown();
-                this.activateKeyboardOption(this.optionItems().length - 1);
+                this.activateKeyboardOption(this.visibleOptionTargets().length - 1);
+                break;
+            case 'Tab':
+                if (!this.open()) break;
+                event.preventDefault();
+                this.moveActiveOptionSequentially(event.shiftKey ? -1 : 1);
                 break;
             case 'Enter':
             case ' ':
@@ -526,9 +646,10 @@ export class SetAmmoDropdownComponent implements OnDestroy {
         if (this.pointerActivationGuard.shouldIgnore(event)) return;
 
         const index = this.optionItems().findIndex(option => option.ammo.internalName === event.internalName);
-        if (index < 0 || index === this.activeIndex()) return;
+        if (index < 0 || (index === this.activeIndex() && event.target === this.activeTarget())) return;
 
         this.activeIndex.set(index);
+        this.activeTarget.set(event.target);
         this.syncPanelInputs(false);
     }
 
@@ -562,7 +683,7 @@ export class SetAmmoDropdownComponent implements OnDestroy {
                 closeOnOutsideClick: true,
                 panelClass: 'set-ammo-dropdown-overlay',
                 matchTriggerWidth: true,
-                anchorActiveSelector: '.set-ammo-dropdown-option.active'
+                anchorActiveSelector: '.ammo-dropdown-option.active'
             }
         );
 
@@ -585,20 +706,15 @@ export class SetAmmoDropdownComponent implements OnDestroy {
         panelRef.setInput('label', this.label());
         panelRef.setInput('optionsId', this.optionsId());
         panelRef.setInput('activeValue', this.activeValue());
-        panelRef.setInput('fontSize', this.triggerFontSize());
+        panelRef.setInput('activeTarget', this.activeTarget());
         panelRef.changeDetectorRef.detectChanges();
         if (scrollActiveIntoView) {
             this.scrollActiveOptionIntoView(panelRef.location.nativeElement as HTMLElement);
         }
     }
 
-    private triggerFontSize(): string {
-        const trigger = this.triggerEl();
-        return trigger ? getComputedStyle(trigger.nativeElement).fontSize : '';
-    }
-
     private scrollActiveOptionIntoView(panelHost: HTMLElement): void {
-        scrollActiveOptionIntoView(panelHost, '[data-scroll-container]', '.set-ammo-dropdown-option.active');
+        scrollActiveOptionIntoView(panelHost, '[data-scroll-container]', '.ammo-dropdown-option.keyboard-active');
     }
 
     private selectedIndex(): number {
@@ -606,26 +722,85 @@ export class SetAmmoDropdownComponent implements OnDestroy {
         return Math.max(0, selectedIndex);
     }
 
-    private moveActiveOption(delta: number): void {
-        const options = this.optionItems();
-        if (options.length === 0) return;
-        this.activateKeyboardOption((this.activeIndex() + delta + options.length) % options.length);
+    private moveActiveOptionInCurrentLane(delta: number): void {
+        const targets = this.visibleOptionTargets();
+        const activeTarget = nextDropdownTargetInCurrentLane(
+            targets,
+            this.activeTarget(),
+            target => this.matchesActiveTarget(target),
+            delta,
+        );
+        if (!activeTarget) return;
+
+        this.activateKeyboardTarget(activeTarget);
+    }
+
+    private moveActiveOptionSequentially(delta: number): void {
+        const activeTarget = nextDropdownTarget(
+            this.visibleOptionTargets(),
+            target => this.matchesActiveTarget(target),
+            delta,
+        );
+        if (!activeTarget) return;
+
+        this.activateKeyboardTarget(activeTarget);
     }
 
     private activateKeyboardOption(index: number): void {
-        const options = this.optionItems();
-        if (options.length === 0) return;
+        const targets = this.visibleOptionTargets();
+        if (targets.length === 0) return;
 
         this.pointerActivationGuard.suppress();
-        this.activeIndex.set(Math.max(0, Math.min(index, options.length - 1)));
+        const activeTarget = targets[Math.max(0, Math.min(index, targets.length - 1))];
+        this.activateKeyboardTarget(activeTarget);
+    }
+
+    private activateKeyboardTarget(activeTarget: AmmoDropdownActiveOption): void {
+        const optionIndex = this.optionItems().findIndex(option => option.ammo.internalName === activeTarget.internalName);
+        if (optionIndex < 0) return;
+
+        this.pointerActivationGuard.suppress();
+        this.activeIndex.set(optionIndex);
+        this.activeTarget.set(activeTarget.target);
         this.syncPanelInputs();
     }
 
     private selectActiveOption(): void {
         const activeOption = this.optionItems()[this.activeIndex()];
-        if (activeOption) {
-            this.selectValue(activeOption.ammo.internalName);
+        if (!activeOption) return;
+
+        if (this.activeTarget() === 'details') {
+            this.toggleActiveOptionDetails(activeOption.ammo.internalName);
+            return;
         }
+
+        this.selectValue(activeOption.ammo.internalName);
+    }
+
+    private visibleOptionTargets(): AmmoDropdownActiveOption[] {
+        return this.panelRef?.instance.visibleOptionTargets() ?? this.allOptionTargets();
+    }
+
+    private allOptionTargets(): AmmoDropdownActiveOption[] {
+        return this.optionItems().flatMap(option => option.advancement.timelines.length > 0
+            ? [
+                { internalName: option.ammo.internalName, target: 'entry' as const },
+                { internalName: option.ammo.internalName, target: 'details' as const },
+            ]
+            : [{ internalName: option.ammo.internalName, target: 'entry' as const }]);
+    }
+
+    private matchesActiveTarget(target: AmmoDropdownActiveOption): boolean {
+        return target.internalName === this.activeValue() && target.target === this.activeTarget();
+    }
+
+    private toggleActiveOptionDetails(internalName: string): void {
+        const panelRef = this.panelRef;
+        if (!panelRef) return;
+
+        panelRef.instance.toggleExpandedName(internalName);
+        panelRef.changeDetectorRef.detectChanges();
+        this.syncPanelInputs(false);
     }
 }
 

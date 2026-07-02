@@ -3,6 +3,10 @@ export interface DropdownPointerHoverEvent {
     clientY: number;
 }
 
+export interface DropdownKeyboardTarget<TTarget extends string = string> {
+    target: TTarget;
+}
+
 interface PointerPosition {
     x: number;
     y: number;
@@ -40,6 +44,28 @@ export class DropdownPointerActivationGuard {
         this.pointerHoverSuppressionOrigin = null;
         return false;
     }
+}
+
+export function nextDropdownTargetInCurrentLane<TTarget extends DropdownKeyboardTarget>(
+    targets: readonly TTarget[],
+    currentTarget: string,
+    matchesCurrent: (target: TTarget) => boolean,
+    delta: number,
+): TTarget | null {
+    const laneTargets = targets.filter(target => target.target === currentTarget);
+    const nextLaneTarget = nextDropdownTarget(laneTargets, matchesCurrent, delta);
+    return nextLaneTarget ?? nextDropdownTarget(targets, matchesCurrent, delta);
+}
+
+export function nextDropdownTarget<TTarget>(
+    targets: readonly TTarget[],
+    matchesCurrent: (target: TTarget) => boolean,
+    delta: number,
+): TTarget | null {
+    if (targets.length === 0) return null;
+
+    const currentIndex = Math.max(0, targets.findIndex(matchesCurrent));
+    return targets[(currentIndex + delta + targets.length) % targets.length];
 }
 
 export function scrollActiveOptionIntoView(panelHost: HTMLElement, scrollContainerSelector: string, activeOptionSelector: string): void {

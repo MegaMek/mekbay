@@ -59,7 +59,7 @@ describe('MultilineDropdownComponent', () => {
         fixture.detectChanges();
 
         expect(scrollTop).toBe(20);
-        expect(optionButtons[2].classList.contains('active')).toBeTrue();
+        expect(optionButtons[2].classList.contains('keyboard-active')).toBeTrue();
     });
 
     it('ignores stale pointer hover caused by keyboard scrolling until the pointer moves', () => {
@@ -106,13 +106,13 @@ describe('MultilineDropdownComponent', () => {
         fixture.detectChanges();
 
         expect(scrollTop).toBe(20);
-        expect(optionButtons[2].classList.contains('active')).toBeTrue();
+        expect(optionButtons[2].classList.contains('keyboard-active')).toBeTrue();
 
         optionButtons[0].dispatchEvent(new PointerEvent('pointermove', { clientX: 28, clientY: 20, bubbles: true }));
         fixture.detectChanges();
 
         expect(scrollTop).toBe(20);
-        expect(optionButtons[0].classList.contains('active')).toBeTrue();
+        expect(optionButtons[0].classList.contains('keyboard-active')).toBeTrue();
     });
 
     it('moves the active option with arrow keys without changing the selected value', () => {
@@ -129,8 +129,8 @@ describe('MultilineDropdownComponent', () => {
         fixture.detectChanges();
 
         const optionButtons = overlayContainerElement.querySelectorAll('.multiline-dropdown-option') as NodeListOf<HTMLButtonElement>;
-        expect(optionButtons[0].classList.contains('active')).toBeFalse();
-        expect(optionButtons[1].classList.contains('active')).toBeTrue();
+        expect(optionButtons[0].classList.contains('active')).toBeTrue();
+        expect(optionButtons[1].classList.contains('keyboard-active')).toBeTrue();
         expect(fixture.componentInstance.value()).toBe('standard');
     });
 

@@ -86,7 +86,7 @@ describe('SetAmmoDialogComponent', () => {
         trigger.click();
         fixture.detectChanges();
 
-        const optionLabels = overlayContainerElement.querySelectorAll('.set-ammo-dropdown-option-name') as NodeListOf<HTMLElement>;
+        const optionLabels = overlayContainerElement.querySelectorAll('.ammo-dropdown-option-name') as NodeListOf<HTMLElement>;
         const longOptionLabel = Array.from(optionLabels)
             .find(element => element.textContent?.includes('Extremely Long Prototype Specialty Ammunition'));
 
@@ -111,23 +111,23 @@ describe('SetAmmoDialogComponent', () => {
             element.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX, clientY }));
             fixture.detectChanges();
         };
-        const optionButtons = () => Array.from(overlayContainerElement.querySelectorAll('.set-ammo-dropdown-option')) as HTMLButtonElement[];
+        const optionButtons = () => Array.from(overlayContainerElement.querySelectorAll('.ammo-dropdown-option')) as HTMLButtonElement[];
 
         trigger.click();
         fixture.detectChanges();
 
         dispatchPointer(optionButtons()[2], 'pointerenter', 10, 10);
         dispatchPointer(optionButtons()[2], 'pointermove', 20, 10);
-        expect(optionButtons()[2].classList).toContain('active');
+        expect(optionButtons()[2].classList).toContain('keyboard-active');
 
         trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
         fixture.detectChanges();
-        expect(optionButtons()[0].classList).toContain('active');
+        expect(optionButtons()[0].classList).toContain('keyboard-active');
 
         dispatchPointer(optionButtons()[2], 'pointerenter', 20, 10);
-        expect(optionButtons()[0].classList).toContain('active');
+        expect(optionButtons()[0].classList).toContain('keyboard-active');
 
         dispatchPointer(optionButtons()[2], 'pointermove', 30, 10);
-        expect(optionButtons()[2].classList).toContain('active');
+        expect(optionButtons()[2].classList).toContain('keyboard-active');
     });
 });

@@ -557,7 +557,7 @@ export class OverlayManagerService {
             // content.style.overflow = 'hidden';
         }
         scrollContainer.style.maxHeight = `${maxScrollH}px`;
-        scrollContainer.style.overflowY = 'auto';
+        scrollContainer.style.overflowY = overflows ? 'auto' : 'hidden';
 
         // Scroll to centre the active item inside the panel
         // only on the FIRST successful positioning so subsequent user scrolling

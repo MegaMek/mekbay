@@ -76,7 +76,8 @@ interface MultilineDropdownPointerHoverEvent {
                     type="button"
                     role="option"
                     [id]="optionId(optionIndex)"
-                    [class.active]="optionIndex === activeIndex()"
+                    [class.active]="option.value === value()"
+                    [class.keyboard-active]="optionIndex === activeIndex()"
                     [disabled]="option.disabled"
                     [class.destroyed]="option.destroyed"
                     [attr.aria-selected]="option.value === value()"
@@ -128,6 +129,10 @@ interface MultilineDropdownPointerHoverEvent {
         }
 
         .multiline-dropdown-option:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .multiline-dropdown-option.keyboard-active:not(.active):not(:disabled) {
             background: rgba(255, 255, 255, 0.1);
         }
 
@@ -398,6 +403,11 @@ export class MultilineDropdownComponent implements OnDestroy {
                 this.openDropdown();
                 this.activateKeyboardOption(this.lastEnabledIndex());
                 break;
+            case 'Tab':
+                if (!this.open()) break;
+                event.preventDefault();
+                this.moveActiveOption(event.shiftKey ? -1 : 1);
+                break;
             case 'Enter':
             case ' ':
                 event.preventDefault();
@@ -494,7 +504,7 @@ export class MultilineDropdownComponent implements OnDestroy {
     }
 
     private scrollActiveOptionIntoView(panelHost: HTMLElement) {
-        scrollActiveOptionIntoView(panelHost, '[data-scroll-container]', '.multiline-dropdown-option.active');
+        scrollActiveOptionIntoView(panelHost, '[data-scroll-container]', '.multiline-dropdown-option.keyboard-active');
     }
 
     private selectedIndex(): number {

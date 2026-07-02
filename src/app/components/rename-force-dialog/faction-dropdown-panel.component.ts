@@ -37,6 +37,12 @@ import { FactionId, getFactionImg, type Faction } from '../../models/factions.mo
 import type { FactionDisplayInfo } from '../../utils/force-namer.util';
 import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-visuals.util';
 
+export interface FactionDropdownPointerHoverEvent {
+    factionId: FactionId | null;
+    clientX: number;
+    clientY: number;
+}
+
 /*
  * Author: Drake
  */
@@ -44,7 +50,13 @@ import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-vis
     selector: 'faction-dropdown-panel',
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <div class="dropdown-shell glass has-shadow framed-borders">
+        <div
+            class="dropdown-shell glass has-shadow framed-borders"
+            [id]="optionsId()"
+            role="listbox"
+            [attr.aria-label]="label()"
+            [attr.aria-activedescendant]="activeOptionId()"
+        >
             <div class="header">
                 <input
                     class="bt-input"
@@ -56,7 +68,13 @@ import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-vis
             <div class="dropdown-panel" data-scroll-container>
                 <!-- None option -->
                 <div class="dropdown-option none-option"
+                     role="option"
+                     [id]="optionId(0)"
                      [class.active]="!selectedFactionId()"
+                     [class.keyboard-active]="activeFactionId() === null"
+                     [attr.aria-selected]="!selectedFactionId()"
+                     (pointerenter)="onOptionPointerHover(null, $event)"
+                     (pointermove)="onOptionPointerHover(null, $event)"
                      (click)="onSelectNone()">
                     <img src="/images/factions/none.png" class="faction-icon" alt="No Faction" />
                     <div class="none-option-details">
@@ -72,10 +90,15 @@ import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-vis
                     <div class="section-label">Matching Factions</div>
                 }
 
-                @for (item of filteredFactions(); track item.faction.id) {
-                    @if (item.isMatching) {
+                @for (item of matchingFactions(); let optionIndex = $index; track item.faction.id) {
                     <div class="dropdown-option matching"
+                         role="option"
+                         [id]="optionId(matchingOptionIndex(optionIndex))"
                          [class.active]="selectedFactionId() === item.faction.id"
+                         [class.keyboard-active]="activeFactionId() === item.faction.id"
+                         [attr.aria-selected]="selectedFactionId() === item.faction.id"
+                         (pointerenter)="onOptionPointerHover(item.faction.id, $event)"
+                         (pointermove)="onOptionPointerHover(item.faction.id, $event)"
                          (click)="onSelect(item.faction)">
                         @if (item.faction && getFactionImg(item.faction); as factionImage) {
                             <img [src]="factionImage" class="faction-icon" [alt]="item.faction.name" />
@@ -104,7 +127,6 @@ import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-vis
                             </div>
                         </div>
                     </div>
-                    }
                 }
 
                 @if (hasMatchingFactions() && hasNonMatchingFactions()) {
@@ -112,10 +134,15 @@ import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-vis
                     <div class="section-label">Other Factions</div>
                 }
 
-                @for (item of filteredFactions(); track item.faction.id) {
-                    @if (!item.isMatching) {
+                @for (item of nonMatchingFactions(); let optionIndex = $index; track item.faction.id) {
                     <div class="dropdown-option"
+                         role="option"
+                         [id]="optionId(nonMatchingOptionIndex(optionIndex))"
                          [class.active]="selectedFactionId() === item.faction.id"
+                         [class.keyboard-active]="activeFactionId() === item.faction.id"
+                         [attr.aria-selected]="selectedFactionId() === item.faction.id"
+                         (pointerenter)="onOptionPointerHover(item.faction.id, $event)"
+                         (pointermove)="onOptionPointerHover(item.faction.id, $event)"
                          (click)="onSelect(item.faction)">
                         @if (item.faction && getFactionImg(item.faction); as factionImage) {
                             <img [src]="factionImage" class="faction-icon" [alt]="item.faction.name" />
@@ -144,7 +171,6 @@ import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-vis
                             </div>
                         </div>
                     </div>
-                    }
                 }
             </div>
 
@@ -242,6 +268,10 @@ import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-vis
         }
 
         .dropdown-option:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .dropdown-option.keyboard-active:not(.active) {
             background: rgba(255, 255, 255, 0.1);
         }
 
@@ -445,8 +475,12 @@ export class FactionDropdownPanelComponent {
 
     factions = input.required<FactionDisplayInfo[]>();
     selectedFactionId = input<FactionId | null>(null);
+    activeFactionId = input<FactionId | null>(null);
+    label = input('Select faction');
+    optionsId = input('');
 
     selected = output<Faction | null>();
+    pointerHovered = output<FactionDropdownPointerHoverEvent>();
 
     searchText = signal<string>('');
 
@@ -463,18 +497,45 @@ export class FactionDropdownPanelComponent {
         return filtered;
     });
 
+    matchingFactions = computed<FactionDisplayInfo[]>(() => this.filteredFactions().filter(f => f.isMatching));
+
+    nonMatchingFactions = computed<FactionDisplayInfo[]>(() => this.filteredFactions().filter(f => !f.isMatching));
+
+    visibleFactionIds = computed<(FactionId | null)[]>(() => [
+        null,
+        ...this.matchingFactions().map(item => item.faction.id),
+        ...this.nonMatchingFactions().map(item => item.faction.id),
+    ]);
+
+    readonly activeOptionId = computed(() => {
+        const activeIndex = this.visibleFactionIds().indexOf(this.activeFactionId());
+        return activeIndex >= 0 ? this.optionId(activeIndex) : '';
+    });
+
     getFactionImg = getFactionImg;
+
+    optionId(index: number): string {
+        return `${this.optionsId()}-${index}`;
+    }
+
+    matchingOptionIndex(index: number): number {
+        return 1 + index;
+    }
+
+    nonMatchingOptionIndex(index: number): number {
+        return 1 + this.matchingFactions().length + index;
+    }
     
     onSearch(text: string) {
         this.searchText.set(text);
     }
 
     hasMatchingFactions(): boolean {
-        return this.filteredFactions().some(f => f.isMatching);
+        return this.matchingFactions().length > 0;
     }
 
     hasNonMatchingFactions(): boolean {
-        return this.filteredFactions().some(f => !f.isMatching);
+        return this.nonMatchingFactions().length > 0;
     }
 
     onSelect(faction: Faction): void {
@@ -483,6 +544,14 @@ export class FactionDropdownPanelComponent {
 
     onSelectNone(): void {
         this.selected.emit(null);
+    }
+
+    onOptionPointerHover(factionId: FactionId | null, event: PointerEvent): void {
+        this.pointerHovered.emit({
+            factionId,
+            clientX: event.clientX,
+            clientY: event.clientY,
+        });
     }
 
     getEraTitle = buildFactionEraTitle;
