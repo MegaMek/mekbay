@@ -190,7 +190,7 @@ describe('SvgViewerLiteComponent', () => {
     it('loads cloned sheets into the content surface at fit-width scale', async () => {
         const { container, content, svg } = await createViewer();
 
-        expect(sheetService.getSheet).toHaveBeenCalledOnceWith('atlas.svg');
+        expect(sheetService.getSheet).toHaveBeenCalledOnceWith('atlas.svg', undefined);
         expect(svg.id).toBe('');
         expect(svg.style.width).toBe('100%');
         expect(content.style.width).toBe('100%');
