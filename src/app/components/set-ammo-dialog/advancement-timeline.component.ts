@@ -235,7 +235,7 @@ export interface EquipmentAdvancementTimeline {
             display: none;
         }
 
-        @container (max-width: 560px) {
+        @container (max-width: 580px) {
             :host.regular .advancement-timeline-header-cell .label-long {
                 display: none;
             }
