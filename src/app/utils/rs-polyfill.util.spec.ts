@@ -1,6 +1,28 @@
 import { RsPolyfillUtil } from './rs-polyfill.util';
 
 describe('RsPolyfillUtil', () => {
+    it('adds location NARC banners outside critical location groups', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const parent = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        const critGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        critGroup.setAttribute('class', 'critGroup');
+        critGroup.setAttribute('loc', 'LA');
+        critGroup.setAttribute('transform', 'translate(4 6)');
+        (label as unknown as { getBBox: () => DOMRect }).getBBox = () => ({ x: 20, y: 30, width: 12, height: 8 } as DOMRect);
+        critGroup.appendChild(label);
+        parent.appendChild(critGroup);
+        svg.appendChild(parent);
+
+        (RsPolyfillUtil as unknown as { addCriticalSectionsButtons: (unit: { type: string }, svg: SVGSVGElement) => void }).addCriticalSectionsButtons({ type: 'Mek' }, svg);
+
+        const narcBanner = svg.querySelector('.locationNarcBanner') as SVGGElement;
+        expect(narcBanner).not.toBeNull();
+        expect(critGroup.querySelector('.locationNarcBanner')).toBeNull();
+        expect(narcBanner.parentNode).toBe(parent);
+        expect(narcBanner.getAttribute('transform')).toBe('translate(4 6)');
+    });
+
     it('adds unit condition banners when the sheet has no unit data panel', () => {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('viewBox', '0 0 612 792');
@@ -19,6 +41,7 @@ describe('RsPolyfillUtil', () => {
         expect(svg.getElementById('condition_banner_wrapper')).not.toBeNull();
         expect(svg.querySelector('.unitConditionBanner[condition="abandoned"]')).not.toBeNull();
         expect(svg.querySelector('.unitConditionBanner[condition="immobile"]')).not.toBeNull();
+        expect(svg.querySelector('.unitConditionBanner[condition="crippled"]')).not.toBeNull();
     });
 
     it('adds hidden 3x3 motive hit pip overlays below repeatable motive hit controls', () => {
