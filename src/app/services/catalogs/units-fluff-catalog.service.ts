@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
@@ -314,6 +314,12 @@ export class UnitsFluffCatalogService {
     }
 
     private describeError(error: unknown): string {
+        if (error instanceof HttpErrorResponse) {
+            if (error.status === 0) {
+                return `network/CORS error (status 0). Ensure the server is reachable and sends an 'Access-Control-Allow-Origin' header for units-fluff.json.`;
+            }
+            return `HTTP ${error.status} ${error.statusText}`.trim();
+        }
         if (error instanceof Error) {
             return `${error.name}: ${error.message}`;
         }

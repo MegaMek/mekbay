@@ -32,6 +32,7 @@
  */
 
 import { Injectable, inject } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { REMOTE_HOST, normalizeUnitServerUrl } from '../../models/common.model';
 import type { Unit, Units } from '../../models/units.model';
@@ -220,6 +221,12 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
     }
 
     private describeServerError(error: unknown): string {
+        if (error instanceof HttpErrorResponse) {
+            if (error.status === 0) {
+                return `network/CORS error (status 0). Ensure the server is reachable and sends an 'Access-Control-Allow-Origin' header for units.json.`;
+            }
+            return `HTTP ${error.status} ${error.statusText}`.trim();
+        }
         if (error instanceof Error) {
             return `${error.name}: ${error.message}`;
         }
