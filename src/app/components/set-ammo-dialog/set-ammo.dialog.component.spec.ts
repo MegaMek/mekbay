@@ -2,8 +2,19 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment } from '../../models/equipment.model';
+import type { Era } from '../../models/eras.model';
 import { DialogsService } from '../../services/dialogs.service';
 import { SetAmmoDialogComponent, type SetAmmoDialogData } from './set-ammo.dialog.component';
+
+function createEra(from: number | undefined, to: number | undefined): Era {
+    return {
+        id: 1,
+        name: 'Test Era',
+        years: { from, to },
+        factions: [],
+        units: [],
+    };
+}
 
 function createAmmo(id: string, kgPerShot = 100): AmmoEquipment {
     return new AmmoEquipment({
@@ -129,5 +140,30 @@ describe('SetAmmoDialogComponent', () => {
 
         dispatchPointer(optionButtons()[2], 'pointermove', 30, 10);
         expect(optionButtons()[2].classList).toContain('keyboard-active');
+    });
+
+    it('shows selection issue reasons in the dialog and expanded dropdown details', () => {
+        const futureAmmo = createAmmo('Clan Ultra AC/20 Future Ammo');
+        const fixture = configureDialog({
+            currentAmmo: futureAmmo,
+            originalAmmo: futureAmmo,
+            originalTotalAmmo: 5,
+            ammoOptions: [futureAmmo],
+            quantity: 3,
+            maxQuantity: 5,
+            era: createEra(2500, 2600),
+        });
+        const trigger: HTMLButtonElement = fixture.nativeElement.querySelector('#inputName');
+
+        expect(fixture.nativeElement.querySelector('.ammo-selection-issue')?.textContent?.trim()).toBe('Not yet existing in this era');
+
+        trigger.click();
+        fixture.detectChanges();
+        const expandButton = overlayContainerElement.querySelector('.ammo-dropdown-option .expand-btn') as HTMLButtonElement;
+
+        expandButton.click();
+        fixture.detectChanges();
+
+        expect(overlayContainerElement.querySelector('.ammo-selection-issue')?.textContent?.trim()).toBe('Not yet existing in this era');
     });
 });

@@ -35,6 +35,7 @@ import { ChangeDetectionStrategy, Component, computed, type ComponentRef, Elemen
 import { ComponentPortal } from '@angular/cdk/portal';
 import type { AmmoEquipment } from '../../models/equipment.model';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
+import type { AmmoSelectionStatus } from '../../utils/ammo-validity.util';
 import { DropdownPointerActivationGuard, nextDropdownTarget, nextDropdownTargetInCurrentLane, scrollActiveOptionIntoView } from '../../utils/dropdown-interaction.utils';
 import { AdvancementTimelineComponent, getEquipmentAdvancementTimeline, type EquipmentAdvancementTimeline } from './advancement-timeline.component';
 
@@ -43,7 +44,8 @@ interface AmmoDropdownOption {
     label: string;
     _searchText: string;
     advancement: EquipmentAdvancementTimeline;
-    unavailable: boolean;
+    selectionStatus: AmmoSelectionStatus;
+    selectionIssueText: string;
 }
 
 type AmmoDropdownActiveTarget = 'entry' | 'details';
@@ -101,7 +103,8 @@ interface AmmoDropdownPointerHoverEvent {
                     [id]="optionId(optionIndex)"
                     [class.active]="option.ammo.internalName === value()"
                     [class.keyboard-active]="option.ammo.internalName === activeValue()"
-                    [class.unavailable]="option.unavailable"
+                    [class.selection-issue]="option.selectionIssueText"
+                    [attr.title]="option.selectionIssueText || null"
                     [attr.aria-selected]="option.ammo.internalName === value()"
                     (click)="selectOption(option)"
                     (pointerenter)="onOptionPointerHover(option, 'entry', $event)"
@@ -109,7 +112,7 @@ interface AmmoDropdownPointerHoverEvent {
                 >
                     <span class="ammo-dropdown-option-header">
                         <span class="ammo-dropdown-option-name">{{ option.label }}</span>
-                        @if (option.advancement.timelines.length > 0) {
+                        @if (optionHasDetails(option)) {
                             <button
                                 class="expand-btn"
                                 type="button"
@@ -126,9 +129,18 @@ interface AmmoDropdownPointerHoverEvent {
                             </button>
                         }
                     </span>
-                    @if (option.advancement.timelines.length > 0 && isOptionExpanded(option)) {
-                        <span class="set-ammo-dropdown-details">
-                            <advancement-timeline [slots]="option.advancement.slots" [timelines]="option.advancement.timelines" />
+                    @if (optionHasDetails(option) && isOptionExpanded(option)) {
+                        <span class="ammo-dropdown-details">
+                            @if (option.selectionStatus.issues.length > 0) {
+                                <span class="ammo-selection-issues">
+                                    @for (issue of option.selectionStatus.issues; track issue.reason) {
+                                        <span class="ammo-selection-issue">{{ issue.message }}</span>
+                                    }
+                                </span>
+                            }
+                            @if (option.advancement.timelines.length > 0) {
+                                <advancement-timeline [slots]="option.advancement.slots" [timelines]="option.advancement.timelines" />
+                            }
                         </span>
                     }
                 </div>
@@ -210,15 +222,15 @@ interface AmmoDropdownPointerHoverEvent {
             }
         }
 
-        .ammo-dropdown-option.unavailable {
+        .ammo-dropdown-option.selection-issue {
             border-left-color: rgba(221, 0, 0, 0.7);
         }
 
-        .ammo-dropdown-option.unavailable:hover {
+        .ammo-dropdown-option.selection-issue:hover {
             background: rgba(221, 0, 0, 0.08);
         }
 
-        .ammo-dropdown-option.active.unavailable {
+        .ammo-dropdown-option.active.selection-issue {
             background: rgba(221, 0, 0, 0.14);
             border-left-color: #dd0000;
 
@@ -227,7 +239,7 @@ interface AmmoDropdownPointerHoverEvent {
             }
         }
 
-        .ammo-dropdown-option.unavailable .ammo-dropdown-option-name {
+        .ammo-dropdown-option.selection-issue .ammo-dropdown-option-name {
             color: #ff7373;
         }
 
@@ -249,9 +261,21 @@ interface AmmoDropdownPointerHoverEvent {
             line-height: 1.2;
         }
 
-        .set-ammo-dropdown-details {
+        .ammo-dropdown-details {
             display: grid;
             gap: 8px;
+        }
+
+        .ammo-selection-issues {
+            display: grid;
+            gap: 4px;
+        }
+
+        .ammo-selection-issue {
+            display: block;
+            color: red;
+            font-size: 0.86em;
+            padding-left: 4px;
         }
 
         .expand-btn {
@@ -324,7 +348,7 @@ class SetAmmoDropdownPanelComponent {
     });
 
     readonly filteredExpandableOptions = computed<AmmoDropdownOption[]>(() => {
-        return this.filteredOptions().filter(option => option.advancement.timelines.length > 0);
+        return this.filteredOptions().filter(option => this.optionHasDetails(option));
     });
 
     readonly allFilteredOptionsExpanded = computed(() => {
@@ -376,6 +400,10 @@ class SetAmmoDropdownPanelComponent {
         return this.expandedOptionNames().has(option.ammo.internalName);
     }
 
+    optionHasDetails(option: AmmoDropdownOption): boolean {
+        return option.advancement.timelines.length > 0 || option.selectionStatus.issues.length > 0;
+    }
+
     toggleOptionExpanded(option: AmmoDropdownOption, event: MouseEvent): void {
         event.stopPropagation();
         this.toggleExpandedName(option.ammo.internalName);
@@ -417,7 +445,7 @@ class SetAmmoDropdownPanelComponent {
     }
 
     private optionTargets(option: AmmoDropdownOption): AmmoDropdownActiveOption[] {
-        return option.advancement.timelines.length > 0
+        return this.optionHasDetails(option)
             ? [
                 { internalName: option.ammo.internalName, target: 'entry' },
                 { internalName: option.ammo.internalName, target: 'details' },
@@ -455,7 +483,8 @@ class SetAmmoDropdownPanelComponent {
                 [attr.aria-controls]="optionsId()"
                 [attr.aria-expanded]="open()"
                 [attr.aria-label]="label()"
-                [class.unavailable]="selectedOption()?.unavailable"
+                [class.selection-issue]="selectedOption()?.selectionIssueText"
+                [attr.title]="selectedOption()?.selectionIssueText || null"
                 [disabled]="options().length === 0"
                 (click)="toggle()"
                 (keydown)="onTriggerKeydown($event)"
@@ -500,7 +529,7 @@ class SetAmmoDropdownPanelComponent {
             border-bottom: 1px solid #666;
         }
 
-        .set-ammo-dropdown-trigger.unavailable {
+        .set-ammo-dropdown-trigger.selection-issue {
             color: #ff7373;
             border-bottom-color: #dd0000;
         }
@@ -559,7 +588,7 @@ export class SetAmmoDropdownComponent implements OnDestroy {
     readonly controlId = input(this.instanceId);
     readonly currentAmmo = input.required<AmmoEquipment>();
     readonly originalAmmo = input.required<AmmoEquipment>();
-    readonly unavailableAmmo = input<Record<string, boolean>>({});
+    readonly ammoSelectionStatus = input<Record<string, AmmoSelectionStatus>>({});
 
     readonly valueChange = output<string>();
 
@@ -569,12 +598,14 @@ export class SetAmmoDropdownComponent implements OnDestroy {
     readonly optionItems = computed<AmmoDropdownOption[]>(() => this.options().map(ammo => {
         const displayName = getAmmoDisplayText(ammo, this.options(), this.currentAmmo(), this.originalAmmo());
         const searchText = displayName.toLocaleLowerCase();
+        const selectionStatus = this.ammoSelectionStatus()[ammo.internalName] ?? { issues: [] };
         return {
             ammo,
             label: displayName,
             _searchText: `${searchText} ${searchText.replace(/[^a-zA-Z0-9]/g, "")}`,
             advancement: getEquipmentAdvancementTimeline(ammo),
-            unavailable: this.unavailableAmmo()[ammo.internalName] ?? false,
+            selectionStatus,
+            selectionIssueText: selectionStatus.issues.map(issue => issue.message).join('\n'),
         }
     }));
     readonly optionsId = computed(() => `${this.controlId()}-options`);

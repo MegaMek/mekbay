@@ -7,8 +7,30 @@ import { getEffectiveAdvancementYear } from './tech-advancement-date.util';
 export interface AmmoValidityContext {
     unitType?: UnitType;
     era?: Era | null;
-    allowAeroArtilleryAlternateMunitions?: boolean;
+    inventory?: readonly MountedEquipment[];
+    allowAeroArtilleryAlternateMunitions?: boolean; // unofficial rules, this comes from MegaMek's AmmoType canAeroUse()
 }
+
+export type AmmoSelectionIssueReason = 'not-yet-existing-in-era'
+    | 'extinct-in-era'
+    | 'missing-artemis-iv-component'
+    | 'missing-artemis-v-component';
+
+export interface AmmoSelectionIssue {
+    reason: AmmoSelectionIssueReason;
+    message: string;
+}
+
+export interface AmmoSelectionStatus {
+    issues: AmmoSelectionIssue[];
+}
+
+const AMMO_SELECTION_ISSUE_MESSAGES: Record<AmmoSelectionIssueReason, string> = {
+    'not-yet-existing-in-era': 'Not yet existing in this era',
+    'extinct-in-era': 'Extinct in this era',
+    'missing-artemis-iv-component': 'Missing Artemis IV component',
+    'missing-artemis-v-component': 'Missing Artemis V component',
+};
 
 export class AmmoValidityUtil {
     static isAmmoValid(ammo: AmmoEquipment, context: AmmoValidityContext = {}): boolean {
@@ -16,13 +38,12 @@ export class AmmoValidityUtil {
             || this.canAeroUse(ammo, !!context.allowAeroArtilleryAlternateMunitions);
     }
 
-    static isAmmoCompatible(originalAmmo: AmmoEquipment, candidateAmmo: AmmoEquipment, unit?: Unit, inventory: readonly MountedEquipment[] = []): boolean {
+    static isAmmoCompatible(originalAmmo: AmmoEquipment, candidateAmmo: AmmoEquipment, unit?: Unit, _inventory: readonly MountedEquipment[] = []): boolean {
         if (!this.isAmmoValid(candidateAmmo, { unitType: unit?.type })) return false;
         if (originalAmmo.ammoType !== candidateAmmo.ammoType) return false;
         if (!this.hasCompatibleTechBase(originalAmmo, candidateAmmo, unit)) return false;
         if (originalAmmo.hasFlag('M_CASELESS') !== candidateAmmo.hasFlag('M_CASELESS')) return false;
         if (originalAmmo.hasFlag('F_BATTLEARMOR') !== candidateAmmo.hasFlag('F_BATTLEARMOR')) return false;
-        if (!this.hasRequiredMunitionSupport(candidateAmmo, inventory)) return false;
 
         if (originalAmmo.ammoType === 'AR10') return true;
         if (originalAmmo.rackSize !== candidateAmmo.rackSize) return false;
@@ -31,12 +52,16 @@ export class AmmoValidityUtil {
         return originalAmmo.ammoType === candidateAmmo.ammoType;
     }
 
-    static isAmmoUnavailable(ammo: AmmoEquipment, context: AmmoValidityContext = {}): boolean {
-        return !!context.era && this.isUnavailableForEra(ammo, context.era);
+    static getAmmoSelectionStatus(ammoOptions: readonly AmmoEquipment[], context: AmmoValidityContext = {}): Record<string, AmmoSelectionStatus> {
+        return Object.fromEntries(ammoOptions.map(ammo => [ammo.internalName, { issues: this.getAmmoSelectionIssues(ammo, context) }]));
     }
 
-    static getUnavailableAmmo(ammoOptions: readonly AmmoEquipment[], context: AmmoValidityContext = {}): Record<string, boolean> {
-        return Object.fromEntries(ammoOptions.map(ammo => [ammo.internalName, this.isAmmoUnavailable(ammo, context)]));
+    static getAmmoSelectionIssues(ammo: AmmoEquipment, context: AmmoValidityContext = {}): AmmoSelectionIssue[] {
+        const reasons = [
+            ...this.getEraSelectionIssueReasons(ammo, context.era ?? null),
+            ...this.getArtemisSelectionIssueReasons(ammo, context.inventory ?? []),
+        ];
+        return reasons.map(reason => ({ reason, message: AMMO_SELECTION_ISSUE_MESSAGES[reason] }));
     }
 
     private static hasCompatibleTechBase(originalAmmo: AmmoEquipment, candidateAmmo: AmmoEquipment, unit?: Unit): boolean {
@@ -48,11 +73,22 @@ export class AmmoValidityUtil {
         return true;
     }
 
-    private static hasRequiredMunitionSupport(ammo: AmmoEquipment, inventory: readonly MountedEquipment[]): boolean {
-        if (ammo.hasMunitionType('M_ARTEMIS_CAPABLE') || ammo.hasMunitionType('M_ARTEMIS_V_CAPABLE')) {
-            return inventory.some(entry => this.isArtemisSupportedWeaponEntry(entry, ammo, inventory, ['F_ARTEMIS', 'F_ARTEMIS_PROTO', 'F_ARTEMIS_V']));
+    private static getArtemisSelectionIssueReasons(ammo: AmmoEquipment, inventory: readonly MountedEquipment[]): AmmoSelectionIssueReason[] {
+        const reasons: AmmoSelectionIssueReason[] = [];
+
+        if (ammo.hasMunitionType('M_ARTEMIS_CAPABLE') && !this.hasArtemisMunitionSupport(ammo, inventory, ['F_ARTEMIS', 'F_ARTEMIS_PROTO'])) {
+            reasons.push('missing-artemis-iv-component');
         }
-        return true;
+
+        if (ammo.hasMunitionType('M_ARTEMIS_V_CAPABLE') && !this.hasArtemisMunitionSupport(ammo, inventory, ['F_ARTEMIS_V'])) {
+            reasons.push('missing-artemis-v-component');
+        }
+
+        return reasons;
+    }
+
+    private static hasArtemisMunitionSupport(ammo: AmmoEquipment, inventory: readonly MountedEquipment[], artemisFlags: readonly string[]): boolean {
+        return inventory.some(entry => this.isArtemisSupportedWeaponEntry(entry, ammo, inventory, artemisFlags));
     }
 
     private static isArtemisSupportedWeaponEntry(entry: MountedEquipment, ammo: AmmoEquipment, inventory: readonly MountedEquipment[], artemisFlags: readonly string[]): boolean {
@@ -148,13 +184,18 @@ export class AmmoValidityUtil {
         return munitionTypes.some(munitionType => ammo.hasMunitionType(munitionType));
     }
 
-    private static isUnavailableForEra(ammo: AmmoEquipment, era: Era): boolean {
+    private static getEraSelectionIssueReasons(ammo: AmmoEquipment, era: Era | null): AmmoSelectionIssueReason[] {
+        if (!era) return [];
+
         const timelines = [ammo.tech.advancement?.is, ammo.tech.advancement?.clan]
             .filter((dates): dates is TechAdvancementDates => !!dates);
-        return timelines.length > 0 && timelines.every(dates => this.isTimelineUnavailableForEra(dates, era));
+        const timelineReasons = timelines.map(dates => this.getTimelineSelectionIssueReason(dates, era));
+        if (timelineReasons.length === 0 || timelineReasons.some(reason => reason === null)) return [];
+
+        return Array.from(new Set(timelineReasons.filter((reason): reason is AmmoSelectionIssueReason => reason !== null)));
     }
 
-    private static isTimelineUnavailableForEra(dates: TechAdvancementDates, era: Era): boolean {
+    private static getTimelineSelectionIssueReason(dates: TechAdvancementDates, era: Era): AmmoSelectionIssueReason | null {
         const eraStartYear = era.years.from ?? Number.NEGATIVE_INFINITY;
         const eraEndYear = era.years.to ?? Number.POSITIVE_INFINITY;
         const nonExtinctionYears = [dates.prototype, dates.production, dates.common, dates.reintroduced]
@@ -162,15 +203,15 @@ export class AmmoValidityUtil {
             .filter((year): year is number => year !== null);
 
         if (nonExtinctionYears.length > 0 && eraEndYear < Math.min(...nonExtinctionYears)) {
-            return true;
+            return 'not-yet-existing-in-era';
         }
 
         const extinctYear = getEffectiveAdvancementYear(dates.extinct, 'extinct');
-        if (extinctYear === null || eraStartYear < extinctYear) return false;
+        if (extinctYear === null || eraStartYear < extinctYear) return null;
 
         const nextAfterExtinction = nonExtinctionYears
             .filter(year => year > extinctYear)
             .sort((a, b) => a - b)[0];
-        return nextAfterExtinction === undefined || eraEndYear < nextAfterExtinction;
+        return nextAfterExtinction === undefined || eraEndYear < nextAfterExtinction ? 'extinct-in-era' : null;
     }
 }

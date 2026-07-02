@@ -486,7 +486,8 @@ export async function setAmmoEntry(entry: AmmoControlEntry, context: HandlerCont
             quantity: previousRemaining,
             maxQuantity: entry.totalAmmo,
             unitType: unitBlueprint.type,
-            era: entry.owner.force.era()
+            era: entry.owner.force.era(),
+            inventory,
         } as SetAmmoDialogData
     });
 
@@ -552,7 +553,8 @@ export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerCont
             quantity: previousRemaining,
             maxQuantity: group.totalAmmo,
             unitType: unitBlueprint.type,
-            era: firstEntry.owner.force.era()
+            era: firstEntry.owner.force.era(),
+            inventory,
         } as SetAmmoDialogData
     });
 

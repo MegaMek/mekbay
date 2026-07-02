@@ -65,28 +65,32 @@ function mount(id: string, equipment: MountedEquipment['equipment'], locations: 
     } as MountedEquipment;
 }
 
+function issueReasons(ammo: AmmoEquipment, context: Parameters<typeof AmmoValidityUtil.getAmmoSelectionIssues>[1] = {}) {
+    return AmmoValidityUtil.getAmmoSelectionIssues(ammo, context).map(issue => issue.reason);
+}
+
 describe('AmmoValidityUtil', () => {
-    it('marks ammo unavailable when its advancement is after the selected era', () => {
+    it('marks ammo with a selection issue when its advancement is after the selected era', () => {
         const ammo = createAmmo('Future Ammo', { clan: { prototype: '3057', production: '~3079', common: '3088' } });
 
-        expect(AmmoValidityUtil.isAmmoUnavailable(ammo, { era: createEra(3025, 3056) })).toBeTrue();
-        expect(AmmoValidityUtil.isAmmoUnavailable(ammo, { era: createEra(3025, 3057) })).toBeFalse();
+        expect(issueReasons(ammo, { era: createEra(3025, 3056) })).toEqual(['not-yet-existing-in-era']);
+        expect(issueReasons(ammo, { era: createEra(3025, 3057) })).toEqual([]);
     });
 
     it('uses approximate advancement years as five years earlier for non-extinction dates', () => {
         const ammo = createAmmo('Approximate Future Ammo', { clan: { production: '~3079' } });
 
-        expect(AmmoValidityUtil.isAmmoUnavailable(ammo, { era: createEra(3025, 3073) })).toBeTrue();
-        expect(AmmoValidityUtil.isAmmoUnavailable(ammo, { era: createEra(3025, 3074) })).toBeFalse();
+        expect(issueReasons(ammo, { era: createEra(3025, 3073) })).toEqual(['not-yet-existing-in-era']);
+        expect(issueReasons(ammo, { era: createEra(3025, 3074) })).toEqual([]);
     });
 
-    it('marks ammo unavailable while every advancement branch is extinct for the selected era', () => {
+    it('marks ammo with a selection issue while every advancement branch is extinct for the selected era', () => {
         const ammo = createAmmo('Extinct Ammo', {
             is: { prototype: '~2375', production: '2377', common: '3058', extinct: '2790', reintroduced: '3054' },
         });
 
-        expect(AmmoValidityUtil.isAmmoUnavailable(ammo, { era: createEra(3025, 3049) })).toBeTrue();
-        expect(AmmoValidityUtil.isAmmoUnavailable(ammo, { era: createEra(3025, 3054) })).toBeFalse();
+        expect(issueReasons(ammo, { era: createEra(3025, 3049) })).toEqual(['extinct-in-era']);
+        expect(issueReasons(ammo, { era: createEra(3025, 3054) })).toEqual([]);
     });
 
     it('uses approximate extinction years as five years later', () => {
@@ -94,18 +98,18 @@ describe('AmmoValidityUtil', () => {
             is: { production: '2377', extinct: '~2790', reintroduced: '~3054' },
         });
 
-        expect(AmmoValidityUtil.isAmmoUnavailable(ammo, { era: createEra(2794, 3048) })).toBeFalse();
-        expect(AmmoValidityUtil.isAmmoUnavailable(ammo, { era: createEra(2795, 3048) })).toBeTrue();
-        expect(AmmoValidityUtil.isAmmoUnavailable(ammo, { era: createEra(2795, 3049) })).toBeFalse();
+        expect(issueReasons(ammo, { era: createEra(2794, 3048) })).toEqual([]);
+        expect(issueReasons(ammo, { era: createEra(2795, 3048) })).toEqual(['extinct-in-era']);
+        expect(issueReasons(ammo, { era: createEra(2795, 3049) })).toEqual([]);
     });
 
-    it('does not mark mixed advancement ammo unavailable when one branch is valid for the selected era', () => {
+    it('does not mark mixed advancement ammo with a selection issue when one branch is valid for the selected era', () => {
         const ammo = createAmmo('Mixed Availability Ammo', {
             is: { prototype: '1950', production: '1950', common: '2100' },
             clan: { prototype: '2375', production: '2377', extinct: '2790' },
         });
 
-        expect(AmmoValidityUtil.isAmmoUnavailable(ammo, { era: createEra(3025, 3049) })).toBeFalse();
+        expect(issueReasons(ammo, { era: createEra(3025, 3049) })).toEqual([]);
     });
 
     it('treats unit-invalid ammo as incompatible', () => {
@@ -120,7 +124,7 @@ describe('AmmoValidityUtil', () => {
         expect(AmmoValidityUtil.isAmmoCompatible(ammo, ammo, { type: 'Aero', techBase: 'Inner Sphere' } as any)).toBeFalse();
     });
 
-    it('requires Artemis-capable ammo to have a compatible Artemis-enhanced weapon', () => {
+    it('does not hard-filter Artemis-capable ammo without a compatible Artemis-enhanced weapon', () => {
         const standardAmmo = createSrmAmmo('IS Ammo SRM-4');
         const artemisAmmo = createSrmAmmo('IS Ammo SRM-4 Artemis-capable', ['M_ARTEMIS_CAPABLE']);
         const weaponEntry = mount('ISSRM4@RT#0', createSrmWeapon(), ['RT']);
@@ -129,24 +133,32 @@ describe('AmmoValidityUtil', () => {
         const wrongLocationArtemisEntry = mount('ISArtemisIV@LT#1', createArtemis(), ['LT']);
         const unit = { type: 'Mek', techBase: 'Inner Sphere' } as any;
 
-        expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisAmmo, unit, [weaponEntry])).toBeFalse();
-        expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisAmmo, unit, [nonArtemisWeaponEntry, artemisEntry])).toBeFalse();
-        expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisAmmo, unit, [weaponEntry, wrongLocationArtemisEntry])).toBeFalse();
+        expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisAmmo, unit, [weaponEntry])).toBeTrue();
+        expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisAmmo, unit, [nonArtemisWeaponEntry, artemisEntry])).toBeTrue();
+        expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisAmmo, unit, [weaponEntry, wrongLocationArtemisEntry])).toBeTrue();
         expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisAmmo, unit, [weaponEntry, artemisEntry])).toBeTrue();
     });
 
-    it('Artemis V-capable can be used with Artemis IV weapons', () => {
+    it('adds Artemis selection issues only when the matching Artemis component is missing', () => {
         const standardAmmo = createSrmAmmo('IS Ammo SRM-4');
         const artemisAmmo = createSrmAmmo('IS Ammo SRM-4 Artemis-capable', ['M_ARTEMIS_CAPABLE']);
         const artemisVAmmo = createSrmAmmo('IS Ammo SRM-4 Artemis V-capable', ['M_ARTEMIS_V_CAPABLE']);
         const weaponEntry = mount('ISSRM4@RT#0', createSrmWeapon(), ['RT']);
         const artemisEntry = mount('ISArtemisIV@RT#1', createArtemis(), ['RT']);
+        const artemisProtoEntry = mount('ISArtemisProto@RT#2', createArtemis(['F_ARTEMIS_PROTO']), ['RT']);
         const artemisVEntry = mount('ISArtemisV@RT#1', createArtemis(['F_ARTEMIS_V']), ['RT']);
         const unit = { type: 'Mek', techBase: 'Inner Sphere' } as any;
 
         expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisVAmmo, unit, [weaponEntry, artemisEntry])).toBeTrue();
         expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisVAmmo, unit, [weaponEntry, artemisVEntry])).toBeTrue();
         expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisAmmo, unit, [weaponEntry, artemisVEntry])).toBeTrue();
-        expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisAmmo, unit, [weaponEntry])).toBeFalse();
+        expect(AmmoValidityUtil.isAmmoCompatible(standardAmmo, artemisAmmo, unit, [weaponEntry])).toBeTrue();
+
+        expect(issueReasons(artemisAmmo, { inventory: [weaponEntry] })).toEqual(['missing-artemis-iv-component']);
+        expect(issueReasons(artemisAmmo, { inventory: [weaponEntry, artemisEntry] })).toEqual([]);
+        expect(issueReasons(artemisAmmo, { inventory: [weaponEntry, artemisProtoEntry] })).toEqual([]);
+        expect(issueReasons(artemisAmmo, { inventory: [weaponEntry, artemisVEntry] })).toEqual(['missing-artemis-iv-component']);
+        expect(issueReasons(artemisVAmmo, { inventory: [weaponEntry, artemisEntry] })).toEqual(['missing-artemis-v-component']);
+        expect(issueReasons(artemisVAmmo, { inventory: [weaponEntry, artemisVEntry] })).toEqual([]);
     });
 });

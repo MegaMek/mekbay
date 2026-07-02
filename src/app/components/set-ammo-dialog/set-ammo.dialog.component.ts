@@ -35,6 +35,7 @@ import { ChangeDetectionStrategy, Component, computed, type ElementRef, inject, 
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import type { AmmoEquipment } from '../../models/equipment.model';
 import type { Era } from '../../models/eras.model';
+import type { MountedEquipment } from '../../models/force-serialization';
 import type { UnitType } from '../../models/units.model';
 import { DialogsService } from '../../services/dialogs.service';
 import { AmmoValidityUtil } from '../../utils/ammo-validity.util';
@@ -53,6 +54,7 @@ export interface SetAmmoDialogData {
     maxQuantity: number;
     unitType?: UnitType;
     era?: Era | null;
+    inventory?: readonly MountedEquipment[];
 }
 
 @Component({
@@ -74,7 +76,7 @@ export interface SetAmmoDialogData {
                         controlId="inputName"
                         label="Ammo Type"
                         [options]="ammoOptions()"
-                        [unavailableAmmo]="unavailableAmmo()"
+                        [ammoSelectionStatus]="ammoSelectionStatus()"
                         [value]="selectedAmmoName()"
                         [currentAmmo]="data.currentAmmo"
                         [originalAmmo]="data.originalAmmo"
@@ -104,6 +106,14 @@ export interface SetAmmoDialogData {
                 </div>
             </div>
             <div class="ammo-info-section">
+                @let issues = selectedAmmoSelectionIssues();
+                @if (issues.length > 0) {
+                    <div class="ammo-selection-issues">
+                        @for (issue of issues; track issue.reason) {
+                            <span class="ammo-selection-issue">{{ issue.message }}</span>
+                        }
+                    </div>
+                }
                 @let timeline = advancement();
                 @if (timeline.timelines.length > 0) {
                     <advancement-timeline [slots]="timeline.slots" [timelines]="timeline.timelines" />
@@ -188,6 +198,17 @@ export interface SetAmmoDialogData {
             color: var(--text-color-secondary);
         }
 
+        .ammo-selection-issues {
+            display: grid;
+            gap: 4px;
+        }
+
+        .ammo-selection-issue {
+            display: block;
+            color: re;
+            font-size: 0.92em;
+        }
+
         .ammo-info-spec-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
@@ -232,10 +253,11 @@ export class SetAmmoDialogComponent {
     
     selectedAmmoName = signal(this.data.currentAmmo.internalName);
     ammoOptions = computed(() => this.data.ammoOptions);
-    unavailableAmmo = computed(() => AmmoValidityUtil.getUnavailableAmmo(this.ammoOptions(), this.data));
+    ammoSelectionStatus = computed(() => AmmoValidityUtil.getAmmoSelectionStatus(this.ammoOptions(), this.data));
     selectedAmmo = computed(() => this.ammoOptions().find(
         ammo => ammo.internalName === this.selectedAmmoName()
     ) ?? this.data.currentAmmo);
+    selectedAmmoSelectionIssues = computed(() => this.ammoSelectionStatus()[this.selectedAmmo().internalName]?.issues ?? []);
     advancement = computed<EquipmentAdvancementTimeline>(() => getEquipmentAdvancementTimeline(this.selectedAmmo()));
     
     public currentMaxQuantity = computed(() => {
