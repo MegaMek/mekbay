@@ -354,15 +354,13 @@ export interface WeaponTargetCalculatorRequest {
         }
 
         .target-delete {
-            min-width: var(--target-control-height);
-            min-height: var(--target-control-height);
             color: #999;
             border: 0;
-            padding: 2px 0 2px 0;
+            padding: 0;
             background: transparent;
             cursor: pointer;
             transition: color 0.2s;
-            margin-top: 18px;
+            margin-top: 21px;
 
             &:hover {
                 color: var(--damage-color);
@@ -408,7 +406,7 @@ export interface WeaponTargetCalculatorRequest {
             }
 
             .target-delete {
-                margin-top: 6px;
+                margin-top: 8px;
             }
         }
     `]
