@@ -31,12 +31,19 @@
  * affiliated with Microsoft.
  */
 
-import type { HeatProfile } from '../models/force-serialization';
 import { getFactionAffinity } from '../models/factions.model';
-import type { SheetService } from '../services/sheet.service';
-import type { CBTForceUnit } from '../models/cbt-force-unit.model';
+import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { PrintAllOptions } from '../models/print-options.model';
 import type { Unit, UnitComponent } from '../models/units.model';
+import type { DataService } from '../services/data.service';
+import type { UnitInitializerService } from '../services/unit-initializer.service';
+import type { Injector } from '@angular/core';
+
+export interface CBTPrintServices {
+    dataService: DataService;
+    unitInitializer: UnitInitializerService;
+    injector: Injector;
+}
 
 /*
  * Author: Drake
@@ -44,7 +51,7 @@ import type { Unit, UnitComponent } from '../models/units.model';
 export class CBTPrintUtil {
 
     public static async multipagePrint(
-        sheetService: SheetService,
+        printServices: CBTPrintServices,
         forceUnits: CBTForceUnit[],
         printOptions: PrintAllOptions,
         triggerPrint: boolean = true
@@ -53,35 +60,14 @@ export class CBTPrintUtil {
             console.warn('No units to export.');
             return;
         }
-
-        const clean = printOptions.clean;
-
-        // Store original heat values and set to 0 for printing
-        const originalHeats = new Map<CBTForceUnit, HeatProfile>();
-        if (!clean) {
-            for (const unit of forceUnits) {
-                unit.disabledSaving = true;
-                const unitHeat = unit.getHeat();
-                originalHeats.set(unit, unitHeat);
-                if (unitHeat.heatsinksOff !== undefined) {
-                    unit.setHeatsinksOff(0);
-                }
-                unit.setHeatData({ current: 0, previous: 0, next: undefined });
-            }
-        }
-
         // Gather all SVGs as strings
         const svgStrings: string[] = [];
         for (const unit of forceUnits) {
-            let svg;
-            if (!clean) {
-                // dirty sheet if we want to print unit damage and pilot
-                await unit.load(); // ensure is loaded
-                svg = unit.svg();
-            }
-            if (!svg) {
-                svg = await sheetService.getSheet(unit.getUnit().sheets[0]);
-            }
+            const printUnit = await this.createPrintUnit(unit, printServices, printOptions.clean);
+            const svg = printUnit.svg()?.cloneNode(true) as SVGSVGElement | null;
+
+            printUnit.destroy();
+            if (!svg) continue;
 
             await this.nextAnimationFrames(2);
 
@@ -150,7 +136,45 @@ export class CBTPrintUtil {
                 svgStrings.push(svgString);
             }
         }
-        await this.generateMultipagePrintContainer(svgStrings, forceUnits, originalHeats, printOptions, triggerPrint);
+        await this.generateMultipagePrintContainer(svgStrings, forceUnits, printOptions, triggerPrint);
+    }
+
+    private static async createPrintUnit(
+        unit: CBTForceUnit,
+        printServices: CBTPrintServices,
+        clean: boolean
+    ): Promise<CBTForceUnit> {
+        const serializedUnit = unit.serialize();
+        const printUnit = CBTForceUnit.deserialize(
+            serializedUnit,
+            unit.force,
+            printServices.dataService,
+            printServices.unitInitializer,
+            printServices.injector
+        );
+        printUnit.disabledSaving = true;
+
+        await printUnit.load();
+        printUnit.update(serializedUnit);
+
+        if (clean) {
+            printUnit.repairAll();
+        } else {
+            const heat = printUnit.getHeat();
+            if (heat.heatsinksOff !== undefined) {
+                printUnit.setHeatsinksOff(0);
+            }
+            printUnit.setHeatData({ current: 0, previous: 0, next: undefined });
+        }
+
+        printUnit.clearInventoryControlTargets();
+        printUnit.clearInventoryControlSelection();
+        printUnit.turnState().update(undefined);
+        printUnit.syncInventoryControlSelectionSvg();
+        printUnit.svgService?.forceRepaint();
+        await this.nextAnimationFrames(2);
+
+        return printUnit;
     }
 
     /**
@@ -205,7 +229,6 @@ export class CBTPrintUtil {
      */
     private static async generateMultipagePrintContainer(svgStrings: string[],
         forceUnits: CBTForceUnit[],
-        originalHeats: Map<CBTForceUnit, HeatProfile>,
         printOptions: PrintAllOptions,
         triggerPrint: boolean = true): Promise<void> {
         const pages = svgStrings.map(svg => `<div class="svg-container">${svg}</div>`);
@@ -243,19 +266,6 @@ export class CBTPrintUtil {
         const removeOverlay = (evt: Event) => {
             overlay.remove();
             document.body.classList.remove('multipage-container-active');
-
-            if (originalHeats.size > 0) {
-                for (const unit of forceUnits) {
-                    const heat = originalHeats.get(unit);
-                    if (heat) {
-                        unit.setHeatData(heat);
-                        if (heat.heatsinksOff !== undefined) {
-                            unit.setHeatsinksOff(heat.heatsinksOff);
-                        }
-                        unit.disabledSaving = false;
-                    }
-                }
-            }
 
             window.removeEventListener('click', removeOverlay, { capture: true });
             window.removeEventListener('keydown', removeOverlay, { capture: true });
