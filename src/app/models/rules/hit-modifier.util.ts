@@ -32,7 +32,7 @@
  */
 
 import type { MountedEquipment } from '../force-serialization';
-import { WeaponEquipment } from '../equipment.model';
+import { WeaponEquipment, type AmmoEquipment } from '../equipment.model';
 import { resolveWeaponRangeHitModifier, type WeaponRangeKey } from './weapon-range-rules.util';
 
 /**
@@ -55,16 +55,33 @@ export function isMountedDestroyed(entry: MountedEquipment): boolean {
     return !!entry.destroyed;
 }
 
-export function computeLinkedModifiers(entry: MountedEquipment): number {
+export function computeLinkedModifiers(entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null): number {
     let mod = 0;
     if (entry.linkedWith) {
         for (const linked of entry.linkedWith) {
-            if (linked.equipment?.flags.has('F_ARTEMIS_V') && isMountedDestroyed(linked)) {
+             // TODO: once we move to direct calculation, we should inverse the ifs and give a -1 instead!
+            if (isMountedDestroyed(linked) && hasLinkedEquipmentToHitBonus(linked)) {
+                mod += 1;
+            } else if (hasArtemisVToHitBonus(linked) && selectedAmmo !== undefined && !selectedAmmo?.hasMunitionType('M_ARTEMIS_V_CAPABLE')) {
                 mod += 1;
             }
         }
     }
     return mod;
+}
+
+function hasLinkedEquipmentToHitBonus(entry: MountedEquipment): boolean {
+    return hasArtemisVToHitBonus(entry) || hasApolloToHitBonus(entry);
+}
+
+function hasArtemisVToHitBonus(entry: MountedEquipment): boolean {
+    return !!entry.equipment?.flags.has('F_WEAPON_ENHANCEMENT')
+        && entry.equipment.flags.has('F_ARTEMIS_V');
+}
+
+function hasApolloToHitBonus(entry: MountedEquipment): boolean {
+    return !!entry.equipment?.flags.has('F_WEAPON_ENHANCEMENT')
+        && entry.equipment.flags.has('F_APOLLO');
 }
 
 /**
@@ -73,16 +90,17 @@ export function computeLinkedModifiers(entry: MountedEquipment): number {
  * (no equipment, weapon enhancement, no-range weapon, invalid baseHitMod).
  *
  * @param entry             - the mounted equipment entry
- * @param additionalModifiers - pre-computed modifiers to add (global fire mod, linked mods, etc.)
+ * @param additionalModifiers - non-linked modifiers to add (global fire mod, damage mods, etc.)
  */
-export function resolveHitModifier(entry: MountedEquipment, additionalModifiers: number, range?: WeaponRangeKey | null): number | 'Vs' | '*' | null {
+export function resolveHitModifier(entry: MountedEquipment, additionalModifiers: number, range?: WeaponRangeKey | null, selectedAmmo?: AmmoEquipment | null): number | 'Vs' | '*' | null {
+    const linkedModifiers = computeLinkedModifiers(entry, selectedAmmo);
     if (entry.baseHitMod === 'Vs') {
         return entry.baseHitMod;
     }
     if (entry.baseHitMod === '*') {
         const rangeHitModValue = resolveWeaponRangeHitModifier(entry, range);
         if (rangeHitModValue !== null) {
-            return rangeHitModValue + additionalModifiers;
+            return rangeHitModValue + additionalModifiers + linkedModifiers;
         }
         return entry.baseHitMod;
     }
@@ -108,5 +126,5 @@ export function resolveHitModifier(entry: MountedEquipment, additionalModifiers:
     if (isNaN(baseHitModValue)) {
         return null;
     }
-    return baseHitModValue + additionalModifiers;
+    return baseHitModValue + additionalModifiers + linkedModifiers;
 }

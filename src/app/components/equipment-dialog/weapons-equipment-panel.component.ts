@@ -119,7 +119,7 @@ export class WeaponsEquipmentPanelComponent {
     readonly contextInput = input.required<EquipmentDialogContext>({ alias: 'context' });
     readonly readOnlyInput = input<boolean | undefined>(undefined, { alias: 'readOnly' });
     private pendingDragPreviewSizing: DragPreviewSizing | null = null;
-    private readonly manuallySelectedDepletedAmmo = new Map<string, string>();
+    private readonly implicitlySelectedAmmo = new Map<string, string>();
     readonly rangeKeys: InventoryRangeKey[] = ['short', 'medium', 'long'];
     readonly unit = computed(() => this.unitInput());
     readonly context = computed(() => this.contextInput());
@@ -357,7 +357,7 @@ export class WeaponsEquipmentPanelComponent {
     private hitTextForRange(row: InventoryControlRow, range: InventoryTargetRangeKey | null, hasTarget: boolean): string {
         if (!hasTarget) return row.display.hit;
 
-        const hitModifier = resolveHitModifier(row.entry, row.additionalHitModifier, range);
+        const hitModifier = resolveHitModifier(row.entry, row.additionalHitModifier, range, this.resolvedSelectedAmmoOption(row)?.ammo ?? null);
         if (hitModifier === null) return row.display.hit;
         if (hitModifier === 'Vs' || hitModifier === '*') return hitModifier;
         return formatInventoryTargetSignedModifier(hitModifier);
@@ -476,20 +476,29 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     private resolvedSelectedAmmoOption(row: InventoryControlRow, hasUsableAmmo = this.hasUsableAmmoOption(row)): InventoryControlAmmoOption | undefined {
-        const selectedOptionId = this.unit().getInventoryControlEntryAmmoOption(row.id);
+        const persistedSelectedOptionId = this.unit().getInventoryControlEntryAmmoOption(row.id) || undefined;
+        const selectedOptionId = persistedSelectedOptionId ?? this.implicitlySelectedAmmo.get(row.id);
         const selectedOption = selectedOptionId
             ? row.ammo.options.find((option: InventoryControlAmmoOption) => option.id === selectedOptionId)
             : undefined;
-        if (selectedOption && this.isManuallySelectedDepletedAmmo(row, selectedOption)) {
-            return selectedOption;
-        }
         if (selectedOption && (!hasUsableAmmo || this.isUsableAmmoOption(selectedOption))) {
             return selectedOption;
         }
         if (selectedOption) {
-            return this.preferredUsableAmmoOption(row, selectedOption) ?? selectedOption;
+            const sameAmmoOption = this.nextUsableSameAmmoOption(row, selectedOption);
+            if (sameAmmoOption) {
+                if (!persistedSelectedOptionId) {
+                    this.implicitlySelectedAmmo.set(row.id, sameAmmoOption.id);
+                }
+                return sameAmmoOption;
+            }
+            return selectedOption;
         }
-        return this.preferredAmmoOption(row);
+        const initialOption = this.initialAmmoOption(row);
+        if (initialOption) {
+            this.implicitlySelectedAmmo.set(row.id, initialOption.id);
+        }
+        return initialOption;
     }
 
     private ammoStateText(row: InventoryControlRow, hasAmmo: boolean, selectedOption: InventoryControlAmmoOption | undefined): string {
@@ -509,12 +518,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     selectAmmoOption(row: InventoryControlRow, value: string): void {
-        const option = row.ammo.options.find((ammoOption: InventoryControlAmmoOption) => ammoOption.id === value);
-        if (option && !option.destroyed && option.remaining <= 0) {
-            this.manuallySelectedDepletedAmmo.set(row.id, option.id);
-        } else {
-            this.manuallySelectedDepletedAmmo.delete(row.id);
-        }
+        this.implicitlySelectedAmmo.delete(row.id);
         this.unit().setInventoryControlEntryAmmoOption(row.id, value);
     }
 
@@ -678,15 +682,6 @@ export class WeaponsEquipmentPanelComponent {
         return !option.destroyed && option.remaining > 0;
     }
 
-    private isManuallySelectedDepletedAmmo(row: InventoryControlRow, option: InventoryControlAmmoOption): boolean {
-        if (this.manuallySelectedDepletedAmmo.get(row.id) !== option.id) return false;
-        if (this.isUsableAmmoOption(option)) {
-            this.manuallySelectedDepletedAmmo.delete(row.id);
-            return false;
-        }
-        return !option.destroyed;
-    }
-
     private sameAmmoType(left: InventoryControlAmmoOption, right: InventoryControlAmmoOption): boolean {
         return this.ammoTypeKey(left) === this.ammoTypeKey(right);
     }
@@ -709,17 +704,17 @@ export class WeaponsEquipmentPanelComponent {
         return Math.min(100, Math.max(0, (value / scale) * 100));
     }
 
-    private preferredAmmoOption(row: InventoryControlRow): InventoryControlAmmoOption | undefined {
-        return this.preferredUsableAmmoOption(row)
+    private initialAmmoOption(row: InventoryControlRow): InventoryControlAmmoOption | undefined {
+        return row.ammo.options.find((option: InventoryControlAmmoOption) => this.isUsableAmmoOption(option))
             ?? row.ammo.options.find((option: InventoryControlAmmoOption) => !option.destroyed)
             ?? row.ammo.options[0];
     }
 
-    private preferredUsableAmmoOption(row: InventoryControlRow, sameTypeAs?: InventoryControlAmmoOption): InventoryControlAmmoOption | undefined {
+    private nextUsableSameAmmoOption(row: InventoryControlRow, depletedOption: InventoryControlAmmoOption): InventoryControlAmmoOption | undefined {
         return row.ammo.options
             .filter((option: InventoryControlAmmoOption) => this.isUsableAmmoOption(option)
-                && (!sameTypeAs || this.sameAmmoType(option, sameTypeAs)))
-            .reduce<InventoryControlAmmoOption | undefined>((best, option) => !best || option.remaining > best.remaining ? option : best, undefined);
+                && option.id !== depletedOption.id
+                && this.sameAmmoType(option, depletedOption))[0];
     }
 
     private heatValue(row: InventoryControlRow): number {

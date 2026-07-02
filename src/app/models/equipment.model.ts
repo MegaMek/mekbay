@@ -32,6 +32,7 @@
  */
 
 import { TechBaseAvailability } from './tech.model';
+import type { MountedEquipment } from './mounted-equipment.model';
 import type { Unit } from './units.model';
 import { AmmoValidityUtil } from '../utils/ammo-validity.util';
 
@@ -558,8 +559,8 @@ export class AmmoEquipment extends Equipment {
         return this.munitionType.has(type);
     }
 
-    compatibleAmmo(other: AmmoEquipment, unit?: Unit): boolean {
-        return AmmoValidityUtil.isAmmoCompatible(this, other, unit);
+    compatibleAmmo(other: AmmoEquipment, unit?: Unit, inventory: readonly MountedEquipment[] = []): boolean {
+        return AmmoValidityUtil.isAmmoCompatible(this, other, unit, inventory);
     }
 }
 

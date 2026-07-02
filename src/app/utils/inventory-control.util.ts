@@ -36,7 +36,7 @@ import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { MountedEquipment, type CriticalSlot } from '../models/force-serialization';
 import type { UnitComponent } from '../models/units.model';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../models/inventory-control-runtime-state.model';
-import { computeLinkedModifiers, isMountedDestroyed, resolveHitModifier } from '../models/rules/hit-modifier.util';
+import { isMountedDestroyed, resolveHitModifier } from '../models/rules/hit-modifier.util';
 import { resolveWeaponRangeDamageText, WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, type WeaponRangeKey } from '../models/rules/weapon-range-rules.util';
 import { formatBattleArmorTrooperLocation, getBattleArmorTrooperNumber, isBattleArmorTrooperLocationDestroyed } from './ammo-interaction.util';
 
@@ -270,6 +270,41 @@ function getInventoryControlAmmoSummary(
     };
 }
 
+export function resolveInventoryControlSelectedAmmoOption(options: readonly InventoryControlAmmoOption[], selectedOptionId?: string): InventoryControlAmmoOption | undefined {
+    const selectedOption = selectedOptionId
+        ? options.find(option => option.id === selectedOptionId)
+        : undefined;
+    if (selectedOption && (!hasUsableInventoryControlAmmoOption(options) || isUsableInventoryControlAmmoOption(selectedOption))) {
+        return selectedOption;
+    }
+    if (selectedOption) {
+        return preferredInventoryControlAmmoOption(options, selectedOption) ?? selectedOption;
+    }
+    return preferredInventoryControlAmmoOption(options);
+}
+
+function hasUsableInventoryControlAmmoOption(options: readonly InventoryControlAmmoOption[]): boolean {
+    return options.some(option => isUsableInventoryControlAmmoOption(option));
+}
+
+function isUsableInventoryControlAmmoOption(option: InventoryControlAmmoOption): boolean {
+    return !option.destroyed && option.remaining > 0;
+}
+
+function preferredInventoryControlAmmoOption(options: readonly InventoryControlAmmoOption[], sameTypeAs?: InventoryControlAmmoOption): InventoryControlAmmoOption | undefined {
+    return options
+        .filter(option => isUsableInventoryControlAmmoOption(option)
+            && (!sameTypeAs || inventoryControlAmmoTypeKey(option) === inventoryControlAmmoTypeKey(sameTypeAs)))
+        .reduce<InventoryControlAmmoOption | undefined>((best, option) => !best || option.remaining > best.remaining ? option : best, undefined)
+        ?? options.find(option => !option.destroyed)
+        ?? options[0];
+}
+
+function inventoryControlAmmoTypeKey(option: InventoryControlAmmoOption): string {
+    const separator = option.id.indexOf(':');
+    return separator === -1 ? option.id : option.id.slice(0, separator);
+}
+
 export function getBuiltInOneShotCapacity(entry: MountedEquipment): number {
     if (!(entry.equipment instanceof WeaponEquipment)) return 0;
     if (entry.equipment.flags.has('F_DOUBLE_ONE_SHOT')) return 2;
@@ -416,8 +451,14 @@ function buildInventoryControlRow(
     const destroyed = options.destroyed ?? isMountedDestroyed(entry);
     const disabled = isInventoryControlEntryDisabled(entry, state) || isInfantryFieldGunEntryDisabled(entry);
     const category = getEntryCategory(entry);
-    const additionalHitModifier = state?.hitMod ?? computeLinkedModifiers(entry);
-    const hitModifier = resolveHitModifier(entry, additionalHitModifier);
+    const { modes, modifiers } = readInventoryControlModesAndModifiers(entry);
+    const selectedMode = getSelectedMode(entry, modes);
+    syncSvgMode(entry, selectedMode, disabled);
+    const rowEntry = createInventoryControlRowEntry(entry, options);
+    const ammo = getInventoryControlAmmoSummary(rowEntry, ammoSources, selectedMode, options.locationLock);
+    const selectedAmmo = resolveInventoryControlSelectedAmmoOption(ammo.options, rowEntry.owner.getInventoryControlEntryAmmoOption?.(rowEntry.id))?.ammo ?? null;
+    const additionalHitModifier = state?.hitMod ?? 0;
+    const hitModifier = resolveHitModifier(rowEntry, additionalHitModifier, undefined, selectedAmmo);
     const hit = formatHitModifier(hitModifier);
     const base = fieldGunComponent
         ? readInfantryFieldGunDisplayData(entry, fieldGunComponent, hit)
@@ -425,14 +466,9 @@ function buildInventoryControlRow(
     if (options.locationLock) {
         base.location = formatBattleArmorTrooperLocation(options.locationLock);
     }
-    const { modes, modifiers } = readInventoryControlModesAndModifiers(entry);
-    const selectedMode = getSelectedMode(entry, modes);
-    syncSvgMode(entry, selectedMode, disabled);
-    const rowEntry = createInventoryControlRowEntry(entry, options);
     const selectedModeData = selectedMode ? modes.find(mode => mode.mode === selectedMode)?.data : null;
     const display = selectedModeData ? mergeModeData(base, selectedModeData) : base;
     const selectedRange = entry.owner.getInventoryControlEntryRange?.(rowEntry.id) ?? null;
-    const ammo = getInventoryControlAmmoSummary(entry, ammoSources, selectedMode, options.locationLock);
 
     return {
         id: rowEntry.id,
@@ -444,7 +480,7 @@ function buildInventoryControlRow(
         disabled,
         originalIndex,
         base,
-        display: applySelectedRangeDisplay(rowEntry, display, selectedRange, additionalHitModifier),
+        display: applySelectedRangeDisplay(rowEntry, display, selectedRange, additionalHitModifier, selectedAmmo),
         modes,
         modifiers,
         selectedMode,
@@ -763,10 +799,11 @@ function applySelectedRangeDisplay(
     entry: MountedEquipment,
     display: InventoryControlDisplayData,
     selectedRange: WeaponRangeKey | null,
-    additionalHitModifier: number
+    additionalHitModifier: number,
+    selectedAmmo?: AmmoEquipment | null
 ): InventoryControlDisplayData {
     const damage = resolveWeaponRangeDamageText(entry, selectedRange, display.damage);
-    const hit = formatHitModifier(resolveHitModifier(entry, additionalHitModifier, selectedRange));
+    const hit = formatHitModifier(resolveHitModifier(entry, additionalHitModifier, selectedRange, selectedAmmo));
     if (damage === null && hit === display.hit) return display;
     return {
         ...display,

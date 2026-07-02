@@ -523,8 +523,9 @@
     padding: 0;
     cursor: pointer;
     font: inherit;
-    font-weight: 800;
+    font-weight: 600;
     line-height: 1;
+    color: var(--text-color);
 }
 
 .ammo-stepper-button:disabled {
@@ -564,11 +565,14 @@
 
 .mode-choice,
 .control-select,
+.control-button,
 .ammo-choice {
     min-height: 24px;
     align-items: center;
     display: flex;
     font-size: 0.8rem;
+    font-weight: normal;
+    color: var(--text-color);
 }
 
 @container (max-width: 760px) {

@@ -46,7 +46,6 @@ import type { ZoomPanServiceInterface } from './zoom-pan.interface';
 import { type ChoicePickerInstance, isChoicePickerInstance, type NumericPickerInstance, type NumericPickerResult, type PickerChoice, type PickerPosition, type PickerTargetType, type PickerValue } from '../picker/picker.interface';
 import { ToastService } from '../../services/toast.service';
 import { LayoutService } from '../../services/layout.service';
-import { SetAmmoDialogComponent, type SetAmmoDialogData } from '../set-ammo-dialog/set-ammo.dialog.component';
 import { DataService } from '../../services/data.service';
 import { AmmoEquipment } from '../../models/equipment.model';
 import { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
@@ -65,6 +64,7 @@ import { inventoryTargetCategory, inventoryTargetNumberText, parseInventoryTarge
 import { PageViewerStateService } from './internal/page-viewer-state.service';
 import { committedCriticalHitCount, isRepeatableMotiveHitId, motiveHitLevelFromId, MOTIVE_HIT_PIP_COUNT, pendingCriticalHitTimestamps } from '../../models/rules/vehicle-motive-hit.util';
 import { UnitStateDropdownComponent, type UnitStateDropdownChoice } from './unit-state-dropdown.component';
+import { getAmmoControlEntryForCriticalSlot, setAmmoEntry } from '../../utils/ammo-interaction.util';
 
 type SheetInventoryRangeKey = InventoryRangeKey | 'extreme';
 type HeatMarkerData = { el: SVGElement | null, heat: number; baselineHeat: number };
@@ -991,63 +991,15 @@ export class SvgInteractionService {
                             unit.setCritSlot(critSlot);
                             this.toastService.showToast(`Emptied ${labelText}`, 'info');
                         } else if (choice.value == 'Set Ammo') {
-                            const amountUsed = critSlot.consumed ?? 0;
-                            const ammoOptions: AmmoEquipment[] = [];
-                            if (!critSlot.name || !critSlot.eq) return;
-                            const ammoItem = critSlot.eq;
-                            let originalAmmo = ammoItem as AmmoEquipment;
-                            if (critSlot.originalName && critSlot.originalName !== critSlot.name) {
-                                originalAmmo = equipmentList[critSlot.originalName] as AmmoEquipment;
-                            }
-                            const unitBlueprint = unit.getUnit();
-                            if (ammoItem instanceof AmmoEquipment) {
-                                const baseOrder: Record<string, number> = { 'All': 0, 'IS': 1, 'Clan': 2 };
-                                const compatibleAmmo = Object.values(equipmentList)
-                                    .filter((e): e is AmmoEquipment => (e instanceof AmmoEquipment) && (originalAmmo.compatibleAmmo(e, unitBlueprint)))
-                                    .sort((a, b) => {
-                                        const ao = baseOrder[(a.techBase || '')] ?? 3;
-                                        const bo = baseOrder[(b.techBase || '')] ?? 3;
-                                        if (ao !== bo) return ao - bo;
-                                        if (!a.baseAmmo && b.baseAmmo) {
-                                            return -1;
-                                        }
-                                        return a.name.localeCompare(b.name);
-                                    });
-                                ammoOptions.push(...compatibleAmmo);
-                            }
-                            const ref = this.dialogsService.createDialog<{ name: string; quantity: number, totalAmmo: number } | null>(SetAmmoDialogComponent, {
-                                data: {
-                                    currentAmmo: ammoItem,
-                                    originalAmmo: originalAmmo,
-                                    originalTotalAmmo: originalTotalAmmo,
-                                    ammoOptions: ammoOptions,
-                                    quantity: totalAmmo - amountUsed,
-                                    maxQuantity: totalAmmo,
-                                    unitType: unitBlueprint.type,
-                                    era: unit.force.era()
-                                } as SetAmmoDialogData
-                            });
-                            const newAmmoValue = await firstValueFrom(ref.closed);
-                            if (!newAmmoValue) return;
-                            if (newAmmoValue.name && newAmmoValue.name != critSlot.name && equipmentList[newAmmoValue.name]) {
-                                if (!critSlot.originalName) {
-                                    critSlot.originalName = critSlot.name;
-                                } else
-                                    if (newAmmoValue.name == critSlot.originalName) {
-                                        delete critSlot.originalName;
-                                    }
-                                critSlot.name = newAmmoValue.name;
-                                totalAmmo = newAmmoValue.totalAmmo;
-                                critSlot.totalAmmo = totalAmmo;
-                                critSlot.eq = equipmentList[newAmmoValue.name];
-                                labelText = critSlot.eq.shortName;
-                            }
-                            const newQuantity = Math.max(0, Math.min(totalAmmo, newAmmoValue.quantity));
-                            critSlot.consumed = totalAmmo - newQuantity;
-                            unit.setCritSlot(critSlot);
-                            const deltaChange = amountUsed - critSlot.consumed;
-                            if (deltaChange !== 0) {
-                                showAmmoToast(critSlot, deltaChange);
+                            const entry = getAmmoControlEntryForCriticalSlot(unit, critSlot, equipmentList);
+                            if (!entry) return;
+                            if (await setAmmoEntry(entry, {
+                                toastService: this.toastService,
+                                dialogsService: this.dialogsService,
+                                dataService: this.dataService
+                            })) {
+                                totalAmmo = entry.totalAmmo;
+                                labelText = entry.currentAmmo.shortName;
                             }
                         } else if (choice.value == 'Hit') {
                             unit.applyHitToCritSlot(critSlot, 1, this.consolidateImmediately);

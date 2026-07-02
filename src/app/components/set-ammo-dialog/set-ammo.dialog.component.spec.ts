@@ -10,6 +10,13 @@ function createAmmo(id: string, kgPerShot = 100): AmmoEquipment {
         id,
         name: id,
         type: 'ammo',
+        rulesRefs: '207, TM',
+        tech: {
+            base: 'Clan',
+            rating: 'E',
+            availability: { sl: 'X', sw: 'D', clan: 'C', da: 'B' },
+            advancement: { clan: { prototype: '~2824', production: '~2826', common: '2828' } },
+        },
         ammo: { type: 'AC_ULTRA', rackSize: 20, shots: 5, kgPerShot }
     });
 }
@@ -79,11 +86,48 @@ describe('SetAmmoDialogComponent', () => {
         trigger.click();
         fixture.detectChanges();
 
-        const optionLabels = overlayContainerElement.querySelectorAll('.multiline-dropdown-option-label') as NodeListOf<HTMLElement>;
+        const optionLabels = overlayContainerElement.querySelectorAll('.set-ammo-dropdown-option-name') as NodeListOf<HTMLElement>;
         const longOptionLabel = Array.from(optionLabels)
             .find(element => element.textContent?.includes('Extremely Long Prototype Specialty Ammunition'));
 
         expect(longOptionLabel).toBeTruthy();
         expect(getComputedStyle(longOptionLabel as HTMLElement).whiteSpace).toBe('normal');
+    });
+
+    it('ignores stale pointer hover after keyboard navigation scrolls the dropdown', () => {
+        const firstAmmo = createAmmo('Clan Ultra AC/20 Ammo');
+        const secondAmmo = createAmmo('Clan Ultra AC/20 Precision Ammo');
+        const thirdAmmo = createAmmo('Clan Ultra AC/20 Cluster Ammo');
+        const fixture = configureDialog({
+            currentAmmo: firstAmmo,
+            originalAmmo: firstAmmo,
+            originalTotalAmmo: 5,
+            ammoOptions: [firstAmmo, secondAmmo, thirdAmmo],
+            quantity: 3,
+            maxQuantity: 5,
+        });
+        const trigger: HTMLButtonElement = fixture.nativeElement.querySelector('#inputName');
+        const dispatchPointer = (element: Element, type: string, clientX: number, clientY: number) => {
+            element.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX, clientY }));
+            fixture.detectChanges();
+        };
+        const optionButtons = () => Array.from(overlayContainerElement.querySelectorAll('.set-ammo-dropdown-option')) as HTMLButtonElement[];
+
+        trigger.click();
+        fixture.detectChanges();
+
+        dispatchPointer(optionButtons()[2], 'pointerenter', 10, 10);
+        dispatchPointer(optionButtons()[2], 'pointermove', 20, 10);
+        expect(optionButtons()[2].classList).toContain('active');
+
+        trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+        fixture.detectChanges();
+        expect(optionButtons()[0].classList).toContain('active');
+
+        dispatchPointer(optionButtons()[2], 'pointerenter', 20, 10);
+        expect(optionButtons()[0].classList).toContain('active');
+
+        dispatchPointer(optionButtons()[2], 'pointermove', 30, 10);
+        expect(optionButtons()[2].classList).toContain('active');
     });
 });

@@ -31,13 +31,15 @@
  * affiliated with Microsoft.
  */
 
-
 import { ChangeDetectionStrategy, Component, computed, type ElementRef, inject, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import type { AmmoEquipment } from '../../models/equipment.model';
+import type { Era } from '../../models/eras.model';
+import type { UnitType } from '../../models/units.model';
 import { DialogsService } from '../../services/dialogs.service';
-import { MultilineDropdownComponent } from '../multiline-dropdown/multiline-dropdown.component';
-import type { MultilineDropdownOption } from '../multiline-dropdown/multiline-dropdown.component';
+import { AmmoValidityUtil } from '../../utils/ammo-validity.util';
+import { SetAmmoDropdownComponent } from './set-ammo-dropdown.component';
+import { AdvancementTimelineComponent, getEquipmentAdvancementTimeline, type EquipmentAdvancementTimeline } from './advancement-timeline.component';
 
 /*
  * Author: Drake
@@ -49,13 +51,15 @@ export interface SetAmmoDialogData {
     ammoOptions: AmmoEquipment[];
     quantity: number;
     maxQuantity: number;
+    unitType?: UnitType;
+    era?: Era | null;
 }
 
 @Component({
     selector: 'set-ammo-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [MultilineDropdownComponent],
+    imports: [SetAmmoDropdownComponent, AdvancementTimelineComponent],
     host: {
         class: 'fullscreen-dialog-host glass'
     },
@@ -65,12 +69,15 @@ export interface SetAmmoDialogData {
             <div class="form-row">
                 <div class="form-fields">
                     <label class="field-label">Ammo Type</label>
-                    <multiline-dropdown
+                    <set-ammo-dropdown
                         class="ammo-select"
                         controlId="inputName"
                         label="Ammo Type"
-                        [options]="ammoDropdownOptions()"
+                        [options]="ammoOptions()"
+                        [unavailableAmmo]="unavailableAmmo()"
                         [value]="selectedAmmoName()"
+                        [currentAmmo]="data.currentAmmo"
+                        [originalAmmo]="data.originalAmmo"
                         (valueChange)="setSelectedAmmo($event)"
                     />
                 </div>
@@ -95,6 +102,25 @@ export interface SetAmmoDialogData {
                     <span class="max-quantity">/{{ currentMaxQuantity() }}</span>
                     </div>
                 </div>
+            </div>
+            <div class="ammo-info-section">
+                @let timeline = advancement();
+                @if (timeline.timelines.length > 0) {
+                    <advancement-timeline [slots]="timeline.slots" [timelines]="timeline.timelines" />
+                }
+                <!-- @for (group of selectedAmmoInfo(); track group.group) {
+                    @if (group.group === 'History') {
+                    } @else {
+                        <div class="ammo-info-spec-grid">
+                            @for (item of group.items; track item.label) {
+                                <div class="ammo-info-spec">
+                                    <span class="ammo-info-spec-label">{{ item.label }}</span>
+                                    <span class="ammo-info-spec-value">{{ item.value }}</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                } -->
             </div>
         </div>
         <div class="wide-dialog-actions">
@@ -155,6 +181,45 @@ export interface SetAmmoDialogData {
             height: 32px;
             min-width: 32px;
         }
+
+        .ammo-info-section {
+            display: grid;
+            gap: 8px;
+            color: var(--text-color-secondary);
+        }
+
+        .ammo-info-spec-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 8px;
+        }
+
+        .ammo-info-spec {
+            display: grid;
+            gap: 3px;
+            min-width: 0;
+            padding: 9px 10px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(0, 0, 0, 0.22);
+        }
+
+        .ammo-info-spec-label {
+            color: var(--text-color-secondary);
+            font-size: 0.72em;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            line-height: 1.1;
+            text-transform: uppercase;
+        }
+
+        .ammo-info-spec-value {
+            min-width: 0;
+            color: var(--text-color);
+            font-size: 1.02em;
+            line-height: 1.2;
+            overflow-wrap: anywhere;
+        }
+
     `]
 })
 
@@ -166,39 +231,19 @@ export class SetAmmoDialogComponent {
     public totalKgAvailable: number;
     
     selectedAmmoName = signal(this.data.currentAmmo.internalName);
-    mixedTechBase = computed(() => {
-        return this.data.ammoOptions.some(ammo => ammo.techBase === 'Clan') &&
-            this.data.ammoOptions.some(ammo => ammo.techBase === 'IS');
-    });
-    ammoDropdownOptions = computed<MultilineDropdownOption[]>(() => this.data.ammoOptions.map(ammo => ({
-        value: ammo.internalName,
-        label: this.getAmmoDisplayText(ammo),
-    })));
+    ammoOptions = computed(() => this.data.ammoOptions);
+    unavailableAmmo = computed(() => AmmoValidityUtil.getUnavailableAmmo(this.ammoOptions(), this.data));
+    selectedAmmo = computed(() => this.ammoOptions().find(
+        ammo => ammo.internalName === this.selectedAmmoName()
+    ) ?? this.data.currentAmmo);
+    advancement = computed<EquipmentAdvancementTimeline>(() => getEquipmentAdvancementTimeline(this.selectedAmmo()));
     
     public currentMaxQuantity = computed(() => {
-        const selectedAmmo = this.data.ammoOptions.find(
-            ammo => ammo.internalName === this.selectedAmmoName()
-        );
-        if (selectedAmmo) {
-            return Math.floor(this.totalKgAvailable / selectedAmmo.kgPerShot);
-        }
-        return this.data.maxQuantity;
+        return Math.floor(this.totalKgAvailable / this.selectedAmmo().kgPerShot);
     });
 
     constructor() {
         this.totalKgAvailable = this.data.originalAmmo.kgPerShot * this.data.originalTotalAmmo;
-    }
-
-    getAmmoDisplayText(ammo: AmmoEquipment): string {
-        const techPrefix = this.mixedTechBase() && ammo.techBase !== 'All'
-            ? `[${ammo.techBase === 'IS' ? 'IS' : ammo.techBase === 'Clan' ? 'CL' : '*'}] `
-            : '';
-        const originalMarker = this.data.ammoOptions.length > 1
-            && ammo.internalName === this.data.originalAmmo.internalName
-            && this.data.originalAmmo.internalName != this.data.currentAmmo.internalName
-            ? ' \u2605'
-            : '';
-        return `${techPrefix}${ammo.name}${originalMarker}`;
     }
 
     setSelectedAmmo(internalName: string) {
@@ -233,7 +278,7 @@ export class SetAmmoDialogComponent {
 
     submit() {
         const selectedInternalName = this.selectedAmmoName();
-        let selectedAmmo = this.data.ammoOptions.find(
+        let selectedAmmo = this.ammoOptions().find(
             ammo => ammo.internalName === selectedInternalName
         );
         let quantity = this.inputQuantityRef().nativeElement.value;

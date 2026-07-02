@@ -1022,6 +1022,40 @@ describe('WeaponsEquipmentPanelComponent', () => {
         ]);
     });
 
+    it('only keeps the Artemis V linked hit modifier when Artemis V-capable ammo is selected', () => {
+        const standardAmmo = ammo('Narc Standard', 'NARC', 4);
+        const artemisVAmmo = ammo('Narc Artemis V', 'NARC', 4, ['M_ARTEMIS_V_CAPABLE']);
+        const artemisV = entry({
+            id: 'ArtemisV@RT#1',
+            equipment: misc('ArtemisV', ['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']),
+        });
+        const launcher = entry({
+            id: 'launcher',
+            baseHitMod: '-1',
+            equipment: weapon('Narc Launcher', 'NARC', 4),
+            linkedWith: [artemisV],
+            el: svgEntry('<g><g class="name"><text>Narc Launcher</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>')
+        });
+        const standardBin = entry({ id: 'standard-ammo', equipment: standardAmmo, totalAmmo: 10, consumed: 0, locations: new Set(['RT']) });
+        const artemisVBin = entry({ id: 'artemis-v-ammo', equipment: artemisVAmmo, totalAmmo: 10, consumed: 0, locations: new Set(['RT']) });
+        const equipmentMap: EquipmentMap = {
+            [standardAmmo.internalName]: standardAmmo,
+            [artemisVAmmo.internalName]: artemisVAmmo,
+        };
+        const { component, fixture, unit } = createComponent([launcher, artemisV, standardBin, artemisVBin], equipmentMap);
+        let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(row.display.hit).toBe('+0');
+
+        const artemisVOption = row.ammo.options.find(option => option.ammo === artemisVAmmo)!;
+        component.selectAmmoOption(row, artemisVOption.id);
+        unit.inventoryControl.markInventoryViewChanged();
+        fixture.detectChanges();
+
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(row.display.hit).toBe('-1');
+    });
+
     it('uses piloting skill for physical target numbers', () => {
         const punch = entry({ id: 'punch', physical: true, el: svgEntry('<g><g class="name"><text>Punch</text></g></g>') });
         const { component, unit } = createComponent([punch], {}, [], new Map(), { pilotingSkill: 6, moveMode: 'stationary' });
@@ -1247,6 +1281,50 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(component.ammoState(row).canDecrease).toBeFalse();
     });
 
+    it('keeps the implicit ammo bin selected during stepper adjustments and does not switch to a different ammo type when depleted', () => {
+        const standardAmmo = ammo('LRM 15 Ammo', 'MML', 15);
+        const artemisAmmo = ammo('LRM 15 Artemis V Ammo', 'MML', 15, ['M_ARTEMIS_V']);
+        const lrm = entry({
+            id: 'lrm',
+            equipment: weapon('LRM 15', 'MML', 15),
+            el: svgEntry('<g><g class="name"><text>LRM 15</text></g><text class="heat">5</text><text class="range_short">7</text></g>')
+        });
+        const standardBin = entry({ id: 'standard-ammo', equipment: standardAmmo, totalAmmo: 6, consumed: 0, locations: new Set(['LT']) });
+        const artemisBin = entry({ id: 'artemis-ammo', equipment: artemisAmmo, totalAmmo: 6, consumed: 0, locations: new Set(['RT']) });
+        const equipmentMap: EquipmentMap = {
+            [standardAmmo.internalName]: standardAmmo,
+            [artemisAmmo.internalName]: artemisAmmo,
+        };
+        const { component } = createComponent([lrm, standardBin, artemisBin], equipmentMap, [], new Map(), { tracksHeat: false });
+        let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(component.ammoState(row).selectedOptionId).toBe(row.ammo.options[0].id);
+
+        component.adjustAmmo(row, 1);
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(standardBin.consumed).toBe(1);
+        expect(artemisBin.consumed).toBe(0);
+        expect(component.ammoState(row).selectedOptionId).toBe(row.ammo.options[0].id);
+        expect(component.ammoState(row).text).toBe('LRM 15 Ammo (5/6)');
+
+        component.adjustAmmo(row, 1);
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(standardBin.consumed).toBe(2);
+        expect(artemisBin.consumed).toBe(0);
+        expect(component.ammoState(row).selectedOptionId).toBe(row.ammo.options[0].id);
+        expect(component.ammoState(row).text).toBe('LRM 15 Ammo (4/6)');
+
+        for (let i = 0; i < 4; i++) {
+            row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+            component.adjustAmmo(row, 1);
+        }
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(standardBin.consumed).toBe(6);
+        expect(artemisBin.consumed).toBe(0);
+        expect(component.ammoState(row).selectedOptionId).toBe(row.ammo.options[0].id);
+        expect(component.ammoState(row).text).toBe('LRM 15 Ammo (0/6)');
+    });
+
     it('switches to another compatible ammo bin after the selected bin is depleted', async () => {
         const standardAmmo = ammo('ATM 6 Standard', 'ATM', 6, ['M_STANDARD']);
         const atm = entry({
@@ -1277,107 +1355,6 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         expect(leftBin.consumed).toBe(1);
         expect(rightBin.consumed).toBe(1);
-    });
-
-    it('keeps restored depleted ammo selection scoped to the manually changed weapon', async () => {
-        const standardAmmo = ammo('SRM 6 Smoke', 'MML', 6);
-        const srm1 = entry({
-            id: 'srm-1',
-            equipment: weapon('SRM 6', 'MML', 6),
-            el: svgEntry('<g><g class="name"><text>SRM 6</text></g><text class="heat">4</text><text class="range_short">3</text></g>')
-        });
-        const srm2 = entry({
-            id: 'srm-2',
-            equipment: weapon('SRM 6', 'MML', 6),
-            el: svgEntry('<g><g class="name"><text>SRM 6</text></g><text class="heat">4</text><text class="range_short">3</text></g>')
-        });
-        const leftBin = entry({ id: 'left-ammo', equipment: standardAmmo, totalAmmo: 5, consumed: 0, locations: new Set(['LT']) });
-        const rightBin = entry({ id: 'right-ammo', equipment: standardAmmo, totalAmmo: 1, consumed: 0, locations: new Set(['RT']) });
-        const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
-        const { component } = createComponent([srm1, srm2, leftBin, rightBin], equipmentMap, [], new Map(), { tracksHeat: false });
-        let rows = component.groups().find(group => group.id === 'ranged')!.rows;
-        let weapon1 = rows[0];
-        let weapon2 = rows[1];
-
-        component.selectAmmoOption(weapon1, weapon1.ammo.options[0].id);
-        component.selectAmmoOption(weapon2, weapon2.ammo.options[1].id);
-        component.toggleSelected(weapon1);
-        component.toggleSelected(weapon2);
-
-        await component.consumeSelectedHeatAndAmmo();
-
-        expect(leftBin.consumed).toBe(1);
-        expect(rightBin.consumed).toBe(1);
-        rows = component.groups().find(group => group.id === 'ranged')!.rows;
-        weapon1 = rows[0];
-        weapon2 = rows[1];
-        expect(component.ammoState(weapon1).selectedOptionId).toBe(weapon1.ammo.options[0].id);
-        expect(component.ammoState(weapon2).selectedOptionId).toBe(weapon2.ammo.options[0].id);
-
-        component.selectAmmoOption(weapon2, weapon2.ammo.options[1].id);
-        rows = component.groups().find(group => group.id === 'ranged')!.rows;
-        weapon1 = rows[0];
-        weapon2 = rows[1];
-        expect(component.ammoState(weapon2).selectedOptionId).toBe(weapon2.ammo.options[1].id);
-        expect(component.ammoState(weapon2).text).toBe('[RT] SRM 6 Smoke (0/1)');
-
-        component.adjustAmmo(weapon2, -1);
-        rows = component.groups().find(group => group.id === 'ranged')!.rows;
-        weapon1 = rows[0];
-        weapon2 = rows[1];
-        expect(leftBin.consumed).toBe(1);
-        expect(rightBin.consumed).toBe(0);
-        expect(component.ammoState(weapon1).selectedOptionId).toBe(weapon1.ammo.options[0].id);
-        expect(component.ammoState(weapon1).text).toBe('[LT] SRM 6 Smoke (4/5)');
-        expect(component.ammoState(weapon2).selectedOptionId).toBe(weapon2.ammo.options[1].id);
-        expect(component.ammoState(weapon2).text).toBe('[RT] SRM 6 Smoke (1/1)');
-
-        await component.consumeSelectedHeatAndAmmo();
-
-        expect(leftBin.consumed).toBe(2);
-        expect(rightBin.consumed).toBe(1);
-        rows = component.groups().find(group => group.id === 'ranged')!.rows;
-        weapon1 = rows[0];
-        weapon2 = rows[1];
-        expect(component.ammoState(weapon1).selectedOptionId).toBe(weapon1.ammo.options[0].id);
-        expect(component.ammoState(weapon1).text).toBe('[LT] SRM 6 Smoke (3/5)');
-        expect(component.ammoState(weapon2).selectedOptionId).toBe(weapon2.ammo.options[0].id);
-        expect(component.ammoState(weapon2).text).toBe('[LT] SRM 6 Smoke (3/5)');
-    });
-
-    it('does not move later weapons to a manually restored low-ammo bin', () => {
-        const standardAmmo = ammo('SRM 6 Smoke', 'MML', 6);
-        const weapons = Array.from({ length: 5 }, (_value, index) => entry({
-            id: `srm-${index + 1}`,
-            equipment: weapon('SRM 6', 'MML', 6),
-            el: svgEntry('<g><g class="name"><text>SRM 6</text></g><text class="heat">4</text><text class="range_short">3</text></g>')
-        }));
-        const lowBin = entry({ id: 'right-ammo', equipment: standardAmmo, totalAmmo: 10, consumed: 10, locations: new Set(['RT']) });
-        const mainBin = entry({ id: 'left-ammo', equipment: standardAmmo, totalAmmo: 30, consumed: 20, locations: new Set(['LT']) });
-        const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
-        const { component } = createComponent([...weapons, lowBin, mainBin], equipmentMap, [], new Map(), { tracksHeat: false });
-        let rows = component.groups().find(group => group.id === 'ranged')!.rows;
-        let weapon2 = rows[1];
-
-        expect(rows.map(row => component.ammoState(row).selectedOptionId)).toEqual(rows.map(row => row.ammo.options[1].id));
-
-        component.selectAmmoOption(weapon2, weapon2.ammo.options[0].id);
-        rows = component.groups().find(group => group.id === 'ranged')!.rows;
-        weapon2 = rows[1];
-        expect(component.ammoState(weapon2).selectedOptionId).toBe(weapon2.ammo.options[0].id);
-        expect(component.ammoState(weapon2).text).toBe('[RT] SRM 6 Smoke (0/10)');
-
-        component.adjustAmmo(weapon2, -1);
-
-        rows = component.groups().find(group => group.id === 'ranged')!.rows;
-        weapon2 = rows[1];
-        expect(lowBin.consumed).toBe(9);
-        expect(component.ammoState(weapon2).selectedOptionId).toBe(weapon2.ammo.options[0].id);
-        expect(component.ammoState(weapon2).text).toBe('[RT] SRM 6 Smoke (1/10)');
-        expect(rows.filter(row => row.id !== weapon2.id).map(row => component.ammoState(row).selectedOptionId))
-            .toEqual(rows.filter(row => row.id !== weapon2.id).map(row => row.ammo.options[1].id));
-        expect(rows.filter(row => row.id !== weapon2.id).map(row => component.ammoState(row).text))
-            .toEqual(rows.filter(row => row.id !== weapon2.id).map(() => '[LT] SRM 6 Smoke (10/30)'));
     });
 
     it('does not switch to a different ammo type after the selected bin is depleted', async () => {

@@ -472,8 +472,9 @@ export async function setAmmoEntry(entry: AmmoControlEntry, context: HandlerCont
 
     const equipmentMap = context.dataService.getEquipments();
     const unitBlueprint = entry.owner.getUnit();
+    const inventory = entry.owner.getInventory();
     const compatibleAmmo = sortCompatibleAmmo(Object.values(equipmentMap)
-        .filter((equipment): equipment is AmmoEquipment => (equipment instanceof AmmoEquipment) && entry.originalAmmo.compatibleAmmo(equipment, unitBlueprint)));
+        .filter((equipment): equipment is AmmoEquipment => (equipment instanceof AmmoEquipment) && entry.originalAmmo.compatibleAmmo(equipment, unitBlueprint, inventory)));
 
     const previousRemaining = getAmmoEntryRemaining(entry);
     const ref = context.dialogsService.createDialog<{ name: string; quantity: number, totalAmmo: number } | null>(SetAmmoDialogComponent, {
@@ -536,10 +537,11 @@ export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerCont
     const firstEntry = group.entries[0];
     const equipmentMap = context.dataService.getEquipments();
     const unitBlueprint = firstEntry.owner.getUnit();
+    const inventory = firstEntry.owner.getInventory();
     const originalTotalAmmo = group.entries.reduce((total, entry) => total + entry.originalTotalAmmo, 0);
     const previousRemaining = getAmmoGroupRemaining(group);
     const compatibleAmmo = sortCompatibleAmmo(Object.values(equipmentMap)
-        .filter((equipment): equipment is AmmoEquipment => (equipment instanceof AmmoEquipment) && firstEntry.originalAmmo.compatibleAmmo(equipment, unitBlueprint)));
+        .filter((equipment): equipment is AmmoEquipment => (equipment instanceof AmmoEquipment) && firstEntry.originalAmmo.compatibleAmmo(equipment, unitBlueprint, inventory)));
 
     const ref = context.dialogsService.createDialog<{ name: string; quantity: number, totalAmmo: number } | null>(SetAmmoDialogComponent, {
         data: {
