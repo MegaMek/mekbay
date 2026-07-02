@@ -60,6 +60,7 @@ type ManagedEntry = {
     resizeObserver?: ResizeObserver;
     mutationObserver?: MutationObserver;
     contentResizeObserver?: ResizeObserver;
+    contentMutationObserver?: MutationObserver;
     pointerDownListener?: (ev: PointerEvent) => void;
     pointerUpListener?: (ev: PointerEvent) => void;
     pointerStart?: { id: number | null; x: number; y: number } | null;
@@ -205,6 +206,14 @@ export class OverlayManagerService {
             cro.observe(overlayRef.overlayElement);
             entry.contentResizeObserver = cro;
         } catch { /* ResizeObserver may not be available in some test envs */ }
+
+        if (opts?.anchorActiveSelector) {
+            try {
+                const cmo = new MutationObserver(() => this.schedulePositionUpdate());
+                cmo.observe(overlayRef.overlayElement, { childList: true, subtree: true, characterData: true });
+                entry.contentMutationObserver = cmo;
+            } catch { /* MutationObserver may not be available in some test envs */ }
+        }
 
         // Subscribe to detachments to clean up managed entry when overlay is closed externally
         // (e.g., by scroll strategy close)
@@ -620,6 +629,7 @@ export class OverlayManagerService {
         // disconnect observers
         try { entry.resizeObserver?.disconnect(); } catch { /* ignore */ }
         try { entry.contentResizeObserver?.disconnect(); } catch { /* ignore */ }
+        try { entry.contentMutationObserver?.disconnect(); } catch { /* ignore */ }
         try { entry.mutationObserver?.disconnect(); } catch { /* ignore */ }
         entry.triggerElement = undefined;
         this.managed.delete(key);

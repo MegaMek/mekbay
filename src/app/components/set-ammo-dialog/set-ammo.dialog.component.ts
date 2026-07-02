@@ -39,7 +39,7 @@ import type { MountedEquipment } from '../../models/force-serialization';
 import type { UnitType } from '../../models/units.model';
 import { DialogsService } from '../../services/dialogs.service';
 import { AmmoValidityUtil } from '../../utils/ammo-validity.util';
-import { SetAmmoDropdownComponent } from './set-ammo-dropdown.component';
+import { getAmmoInfoItems, SetAmmoDropdownComponent } from './set-ammo-dropdown.component';
 import { AdvancementTimelineComponent, getEquipmentAdvancementTimeline, type EquipmentAdvancementTimeline } from './advancement-timeline.component';
 
 /*
@@ -82,6 +82,14 @@ export interface SetAmmoDialogData {
                         [originalAmmo]="data.originalAmmo"
                         (valueChange)="setSelectedAmmo($event)"
                     />
+                    @let issues = selectedAmmoSelectionIssues();
+                    @if (issues.length > 0) {
+                        <div class="ammo-selection-issues">
+                            @for (issue of issues; track issue.reason) {
+                                <span class="ammo-selection-issue">{{ issue.message }}</span>
+                            }
+                        </div>
+                    }
                 </div>
                 <div class="form-fields ammo-quantity">
                     <label class="field-label">Quantity</label>
@@ -106,14 +114,11 @@ export interface SetAmmoDialogData {
                 </div>
             </div>
             <div class="ammo-info-section">
-                @let issues = selectedAmmoSelectionIssues();
-                @if (issues.length > 0) {
-                    <div class="ammo-selection-issues">
-                        @for (issue of issues; track issue.reason) {
-                            <span class="ammo-selection-issue">{{ issue.message }}</span>
-                        }
-                    </div>
-                }
+                <div class="ammo-info-items">
+                    @for (item of selectedAmmoInfoItems(); track item.label) {
+                        <span class="ammo-info-item"><span class="ammo-info-label">{{ item.label }}: </span><strong>{{ item.value }}</strong></span>
+                    }
+                </div>
                 @let timeline = advancement();
                 @if (timeline.timelines.length > 0) {
                     <advancement-timeline [slots]="timeline.slots" [timelines]="timeline.timelines" />
@@ -196,17 +201,44 @@ export interface SetAmmoDialogData {
             display: grid;
             gap: 8px;
             color: var(--text-color-secondary);
+            text-align: left;
+        }
+
+        .ammo-info-items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px 12px;
+            align-items: baseline;
+            padding-left: 4px;
+        }
+
+        .ammo-info-item {
+            display: inline-flex;
+            gap: 2px;
+            align-items: baseline;
+            min-width: 0;
+            color: var(--text-color);
+            font-size: 0.92em;
+            line-height: 1.25;
+        }
+
+        .ammo-info-label {
+            color: var(--text-color-secondary);
+            white-space: nowrap;
         }
 
         .ammo-selection-issues {
             display: grid;
-            gap: 4px;
+            gap: 2px;
+            margin-top: 0px;
+            padding-left: 4px;
         }
 
         .ammo-selection-issue {
             display: block;
-            color: re;
-            font-size: 0.92em;
+            color: red;
+            font-size: 0.84em;
+            line-height: 1.15;
         }
 
         .ammo-info-spec-grid {
@@ -257,6 +289,7 @@ export class SetAmmoDialogComponent {
     selectedAmmo = computed(() => this.ammoOptions().find(
         ammo => ammo.internalName === this.selectedAmmoName()
     ) ?? this.data.currentAmmo);
+    selectedAmmoInfoItems = computed(() => getAmmoInfoItems(this.selectedAmmo()));
     selectedAmmoSelectionIssues = computed(() => this.ammoSelectionStatus()[this.selectedAmmo().internalName]?.issues ?? []);
     advancement = computed<EquipmentAdvancementTimeline>(() => getEquipmentAdvancementTimeline(this.selectedAmmo()));
     

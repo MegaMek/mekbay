@@ -39,10 +39,16 @@ import type { AmmoSelectionStatus } from '../../utils/ammo-validity.util';
 import { DropdownPointerActivationGuard, nextDropdownTarget, nextDropdownTargetInCurrentLane, scrollActiveOptionIntoView } from '../../utils/dropdown-interaction.utils';
 import { AdvancementTimelineComponent, getEquipmentAdvancementTimeline, type EquipmentAdvancementTimeline } from './advancement-timeline.component';
 
+export interface AmmoInfoItem {
+    label: string;
+    value: string | number;
+}
+
 interface AmmoDropdownOption {
     ammo: AmmoEquipment;
     label: string;
     _searchText: string;
+    infoItems: readonly AmmoInfoItem[];
     advancement: EquipmentAdvancementTimeline;
     selectionStatus: AmmoSelectionStatus;
     selectionIssueText: string;
@@ -112,7 +118,7 @@ interface AmmoDropdownPointerHoverEvent {
                 >
                     <span class="ammo-dropdown-option-header">
                         <span class="ammo-dropdown-option-name">{{ option.label }}</span>
-                        @if (optionHasDetails(option)) {
+                        @if (ammoOptionHasDetails(option)) {
                             <button
                                 class="expand-btn"
                                 type="button"
@@ -129,7 +135,7 @@ interface AmmoDropdownPointerHoverEvent {
                             </button>
                         }
                     </span>
-                    @if (optionHasDetails(option) && isOptionExpanded(option)) {
+                    @if (ammoOptionHasDetails(option) && isOptionExpanded(option)) {
                         <span class="ammo-dropdown-details">
                             @if (option.selectionStatus.issues.length > 0) {
                                 <span class="ammo-selection-issues">
@@ -138,6 +144,11 @@ interface AmmoDropdownPointerHoverEvent {
                                     }
                                 </span>
                             }
+                            <span class="ammo-info-items">
+                                @for (item of option.infoItems; track item.label) {
+                                    <span class="ammo-info-item"><span class="ammo-info-label">{{ item.label }}: </span><strong>{{ item.value }}</strong></span>
+                                }
+                            </span>
                             @if (option.advancement.timelines.length > 0) {
                                 <advancement-timeline [slots]="option.advancement.slots" [timelines]="option.advancement.timelines" />
                             }
@@ -264,6 +275,30 @@ interface AmmoDropdownPointerHoverEvent {
         .ammo-dropdown-details {
             display: grid;
             gap: 8px;
+            text-align: left;
+        }
+
+        .ammo-info-items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px 12px;
+            align-items: baseline;
+            text-align: left;
+            padding-left: 4px;
+        }
+
+        .ammo-info-item {
+            display: inline-flex;
+            gap: 2px;
+            align-items: baseline;
+            min-width: 0;
+            font-size: 0.88em;
+            line-height: 1.25;
+        }
+
+        .ammo-info-label {
+            color: var(--text-color-secondary);
+            white-space: nowrap;
         }
 
         .ammo-selection-issues {
@@ -348,7 +383,7 @@ class SetAmmoDropdownPanelComponent {
     });
 
     readonly filteredExpandableOptions = computed<AmmoDropdownOption[]>(() => {
-        return this.filteredOptions().filter(option => this.optionHasDetails(option));
+        return this.filteredOptions().filter(option => ammoOptionHasDetails(option));
     });
 
     readonly allFilteredOptionsExpanded = computed(() => {
@@ -400,8 +435,8 @@ class SetAmmoDropdownPanelComponent {
         return this.expandedOptionNames().has(option.ammo.internalName);
     }
 
-    optionHasDetails(option: AmmoDropdownOption): boolean {
-        return option.advancement.timelines.length > 0 || option.selectionStatus.issues.length > 0;
+    ammoOptionHasDetails(option: AmmoDropdownOption): boolean {
+        return ammoOptionHasDetails(option);
     }
 
     toggleOptionExpanded(option: AmmoDropdownOption, event: MouseEvent): void {
@@ -445,7 +480,7 @@ class SetAmmoDropdownPanelComponent {
     }
 
     private optionTargets(option: AmmoDropdownOption): AmmoDropdownActiveOption[] {
-        return this.optionHasDetails(option)
+        return ammoOptionHasDetails(option)
             ? [
                 { internalName: option.ammo.internalName, target: 'entry' },
                 { internalName: option.ammo.internalName, target: 'details' },
@@ -603,6 +638,7 @@ export class SetAmmoDropdownComponent implements OnDestroy {
             ammo,
             label: displayName,
             _searchText: `${searchText} ${searchText.replace(/[^a-zA-Z0-9]/g, "")}`,
+            infoItems: getAmmoInfoItems(ammo),
             advancement: getEquipmentAdvancementTimeline(ammo),
             selectionStatus,
             selectionIssueText: selectionStatus.issues.map(issue => issue.message).join('\n'),
@@ -813,7 +849,7 @@ export class SetAmmoDropdownComponent implements OnDestroy {
     }
 
     private allOptionTargets(): AmmoDropdownActiveOption[] {
-        return this.optionItems().flatMap(option => option.advancement.timelines.length > 0
+        return this.optionItems().flatMap(option => ammoOptionHasDetails(option)
             ? [
                 { internalName: option.ammo.internalName, target: 'entry' as const },
                 { internalName: option.ammo.internalName, target: 'details' as const },
@@ -846,4 +882,32 @@ export function getAmmoDisplayText(ammo: AmmoEquipment, options: readonly AmmoEq
         ? ' \u2605'
         : '';
     return `${techPrefix}${ammo.name}${originalMarker}`;
+}
+
+function ammoOptionHasDetails(option: AmmoDropdownOption): boolean {
+    return option.infoItems.length > 0 || option.selectionStatus.issues.length > 0 || option.advancement.timelines.length > 0;
+}
+
+export function getAmmoInfoItems(ammo: AmmoEquipment): AmmoInfoItem[] {
+    const items: AmmoInfoItem[] = [
+        { label: 'Damage', value: getAmmoDamageDisplay(ammo) },
+    ];
+
+    if (ammo.category === 'Missile') {
+        items.push({ label: 'Rack', value: ammo.rackSize });
+    }
+
+    items.push(
+        { label: 'Ammo/Ton', value: ammo.shots },
+        { label: 'Tech', value: `${ammo.techBase} | ${ammo.rating}/${ammo.availability}` },
+        { label: 'Rules', value: ammo.level },
+    );
+
+    return items;
+}
+
+function getAmmoDamageDisplay(ammo: AmmoEquipment): string | number {
+    if (ammo.category === 'Missile') return `${ammo.damagePerShot}/Msl`;
+    if (ammo.rackSize) return ammo.damagePerShot * ammo.rackSize;
+    return ammo.damagePerShot;
 }

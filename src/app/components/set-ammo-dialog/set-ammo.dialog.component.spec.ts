@@ -5,6 +5,7 @@ import { AmmoEquipment } from '../../models/equipment.model';
 import type { Era } from '../../models/eras.model';
 import { DialogsService } from '../../services/dialogs.service';
 import { SetAmmoDialogComponent, type SetAmmoDialogData } from './set-ammo.dialog.component';
+import { getAmmoInfoItems } from './set-ammo-dropdown.component';
 
 function createEra(from: number | undefined, to: number | undefined): Era {
     return {
@@ -16,7 +17,7 @@ function createEra(from: number | undefined, to: number | undefined): Era {
     };
 }
 
-function createAmmo(id: string, kgPerShot = 100): AmmoEquipment {
+function createAmmo(id: string, kgPerShot = 100, ammo: Partial<ConstructorParameters<typeof AmmoEquipment>[0]['ammo']> = {}): AmmoEquipment {
     return new AmmoEquipment({
         id,
         name: id,
@@ -28,8 +29,18 @@ function createAmmo(id: string, kgPerShot = 100): AmmoEquipment {
             availability: { sl: 'X', sw: 'D', clan: 'C', da: 'B' },
             advancement: { clan: { prototype: '~2824', production: '~2826', common: '2828' } },
         },
-        ammo: { type: 'AC_ULTRA', rackSize: 20, shots: 5, kgPerShot }
+        ammo: { type: 'AC_ULTRA', rackSize: 20, shots: 5, kgPerShot, ...ammo }
     });
+}
+
+async function flushQueuedAnimationFrames(callbacks: FrameRequestCallback[]): Promise<void> {
+    await Promise.resolve();
+    await Promise.resolve();
+    let remaining = callbacks.length;
+    while (remaining > 0) {
+        callbacks.shift()?.(performance.now());
+        remaining--;
+    }
 }
 
 describe('SetAmmoDialogComponent', () => {
@@ -155,7 +166,8 @@ describe('SetAmmoDialogComponent', () => {
         });
         const trigger: HTMLButtonElement = fixture.nativeElement.querySelector('#inputName');
 
-        expect(fixture.nativeElement.querySelector('.ammo-selection-issue')?.textContent?.trim()).toBe('Not yet existing in this era');
+        expect(fixture.nativeElement.querySelector('.form-fields .ammo-selection-issue')?.textContent?.trim()).toBe('Not yet existing in this era');
+        expect(fixture.nativeElement.querySelector('.ammo-info-section .ammo-selection-issue')).toBeNull();
 
         trigger.click();
         fixture.detectChanges();
@@ -165,5 +177,87 @@ describe('SetAmmoDialogComponent', () => {
         fixture.detectChanges();
 
         expect(overlayContainerElement.querySelector('.ammo-selection-issue')?.textContent?.trim()).toBe('Not yet existing in this era');
+    });
+
+    it('shows compact ammo details in the dialog and expanded dropdown details', () => {
+        const missileAmmo = createAmmo('Clan Streak SRM 5 Ammo', 50, { type: 'SRM_STREAK', rackSize: 5, damagePerShot: 2, shots: 100 });
+        const fixture = configureDialog({
+            currentAmmo: missileAmmo,
+            originalAmmo: missileAmmo,
+            originalTotalAmmo: 5,
+            ammoOptions: [missileAmmo],
+            quantity: 3,
+            maxQuantity: 5,
+        });
+        const trigger: HTMLButtonElement = fixture.nativeElement.querySelector('#inputName');
+        const dialogInfoText = (fixture.nativeElement.querySelector('.ammo-info-items') as HTMLElement).textContent ?? '';
+
+        expect(dialogInfoText).toContain('Damage: 2/Msl');
+        expect(dialogInfoText).toContain('Rack: 5');
+        expect(dialogInfoText).toContain('Ammo/Ton: 100');
+        expect(dialogInfoText).toContain('Tech: Clan | E/X-D-C-B');
+        expect(dialogInfoText).toContain('Rules: Standard');
+
+        trigger.click();
+        fixture.detectChanges();
+        const expandButton = overlayContainerElement.querySelector('.ammo-dropdown-option .expand-btn') as HTMLButtonElement;
+
+        expandButton.click();
+        fixture.detectChanges();
+        const dropdownInfoText = overlayContainerElement.querySelector('.ammo-info-items')?.textContent ?? '';
+
+        expect(dropdownInfoText).toContain('Damage: 2/Msl');
+        expect(dropdownInfoText).toContain('Rack: 5');
+        expect(dropdownInfoText).toContain('Ammo/Ton: 100');
+        expect(dropdownInfoText).toContain('Tech: Clan | E/X-D-C-B');
+        expect(dropdownInfoText).toContain('Rules: Standard');
+    });
+
+    it('expands an initially fitting ammo dropdown and restores scrolling when details overflow', async () => {
+        const frameCallbacks: FrameRequestCallback[] = [];
+        spyOn(window, 'requestAnimationFrame').and.callFake((callback: FrameRequestCallback) => {
+            frameCallbacks.push(callback);
+            return frameCallbacks.length;
+        });
+        spyOnProperty(window, 'innerHeight', 'get').and.returnValue(220);
+        const firstAmmo = createAmmo('Clan Ultra AC/20 Ammo');
+        const secondAmmo = createAmmo('Clan Ultra AC/20 Precision Ammo');
+        const thirdAmmo = createAmmo('Clan Ultra AC/20 Cluster Ammo');
+        const fixture = configureDialog({
+            currentAmmo: firstAmmo,
+            originalAmmo: firstAmmo,
+            originalTotalAmmo: 5,
+            ammoOptions: [firstAmmo, secondAmmo, thirdAmmo],
+            quantity: 3,
+            maxQuantity: 5,
+        });
+        const trigger: HTMLButtonElement = fixture.nativeElement.querySelector('#inputName');
+
+        trigger.click();
+        fixture.detectChanges();
+    await flushQueuedAnimationFrames(frameCallbacks);
+
+        const pane = overlayContainerElement.querySelector('.set-ammo-dropdown-overlay') as HTMLElement;
+        const contentHost = pane.firstElementChild as HTMLElement;
+        const scrollContainer = overlayContainerElement.querySelector('[data-scroll-container]') as HTMLElement;
+        const initialHeight = Number.parseFloat(contentHost.style.height);
+
+        expect(initialHeight).toBeGreaterThan(0);
+        expect(scrollContainer.style.overflowY).toBe('hidden');
+
+        const expandAllButton = overlayContainerElement.querySelector('.master-expand-btn') as HTMLButtonElement;
+        expandAllButton.click();
+        fixture.detectChanges();
+        await flushQueuedAnimationFrames(frameCallbacks);
+
+        expect(Number.parseFloat(contentHost.style.height)).toBeGreaterThan(initialHeight);
+        expect(scrollContainer.style.overflowY).toBe('auto');
+        expect(scrollContainer.scrollHeight).toBeGreaterThan(scrollContainer.clientHeight);
+    });
+
+    it('shows total rack damage for non-missile ammo with a rack size', () => {
+        const ammo = createAmmo('Clan Ultra AC/20 Ammo', 100, { rackSize: 20, damagePerShot: 2 });
+
+        expect(getAmmoInfoItems(ammo).find(item => item.label === 'Damage')?.value).toBe(40);
     });
 });
