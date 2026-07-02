@@ -32,6 +32,8 @@
  */
 
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import type { Equipment, TechAdvancementDates } from '../../models/equipment.model';
+import { parseAdvancementYear } from '../../utils/tech-advancement-date.util';
 
 export interface AdvancementTimelineItem {
     label: string;
@@ -56,6 +58,11 @@ export interface AdvancementTimeline {
 export interface AdvancementTimelineCell {
     key: string;
     items: AdvancementTimelineItem[];
+}
+
+export interface EquipmentAdvancementTimeline {
+    timelines: AdvancementTimeline[];
+    slots: AdvancementTimelineSlot[];
 }
 
 @Component({
@@ -358,4 +365,91 @@ export class AdvancementTimelineComponent {
         }
         return isExtinct;
     }
+}
+
+export function getEquipmentAdvancementTimeline(equipment: Equipment): EquipmentAdvancementTimeline {
+    const rawTimelines = getEquipmentRawAdvancementItems(equipment);
+    const slotKeys = Array.from(new Set(rawTimelines.flatMap(timeline => timeline.items.map(item => getTimelineSlotKey(item.value)))))
+        .sort(compareTimelineSlotKeys);
+    const slots = slotKeys.map(key => ({
+        key,
+        labels: Array.from(new Set(rawTimelines.flatMap(timeline => timeline.items)
+            .filter(item => getTimelineSlotKey(item.value) === key)
+            .map(item => item.label)))
+            .map(label => ({ long: label, short: getShortTimelineLabel(label) })),
+    }));
+    const timelines = rawTimelines.map(timeline => ({
+        label: timeline.label,
+        cells: slotKeys.map(key => ({
+            key,
+            items: timeline.items.filter(item => getTimelineSlotKey(item.value) === key),
+        })),
+    }));
+    return { timelines, slots };
+}
+
+function getEquipmentRawAdvancementItems(equipment: Equipment): Array<{ label: string; items: AdvancementTimelineItem[] }> {
+    if (equipment.techBase === 'All') {
+        return [
+            { label: 'IS', items: getEquipmentAdvancementDateItems(equipment.tech.advancement?.is) },
+            { label: 'Clan', items: getEquipmentAdvancementDateItems(equipment.tech.advancement?.clan) },
+        ].filter(timeline => timeline.items.length > 0);
+    }
+
+    const label = equipment.techBase === 'Clan' ? 'Clan' : 'IS';
+    const items = getEquipmentAdvancementDateItems(equipment.techBase === 'Clan'
+        ? equipment.tech.advancement?.clan
+        : equipment.tech.advancement?.is);
+    return items.length > 0 ? [{ label, items }] : [];
+}
+
+function getEquipmentAdvancementDateItems(dates: TechAdvancementDates | undefined): AdvancementTimelineItem[] {
+    if (!dates) return [];
+    return [
+        ['Prototype', dates.prototype],
+        ['Production', dates.production],
+        ['Common', dates.common],
+        ['Extinction', dates.extinct],
+        ['Reintroduction', dates.reintroduced],
+    ]
+        .filter((entry): entry is [string, string] => entry[1] !== undefined && entry[1] !== null && entry[1] !== '' && entry[1] !== '-')
+        .map(([label, value]) => ({ label, value }))
+        .sort((a, b) => compareTimelineValues(a.value, b.value));
+}
+
+function getShortTimelineLabel(label: string): string {
+    switch (label) {
+        case 'Prototype': return 'Proto';
+        case 'Production': return 'Prod.';
+        case 'Reintroduction': return 'Reintro';
+        case 'Extinction': return 'Extinct';
+        default: return label;
+    }
+}
+
+function getTimelineSlotKey(value: string | number): string {
+    const year = parseTimelineYear(value);
+    return year === null ? `text:${value}` : `year:${year}`;
+}
+
+function compareTimelineSlotKeys(a: string, b: string): number {
+    const aYear = parseTimelineYear(a);
+    const bYear = parseTimelineYear(b);
+    if (aYear === null && bYear === null) return a.localeCompare(b);
+    if (aYear === null) return 1;
+    if (bYear === null) return -1;
+    return aYear - bYear;
+}
+
+function compareTimelineValues(a: string | number, b: string | number): number {
+    const aYear = parseTimelineYear(a);
+    const bYear = parseTimelineYear(b);
+    if (aYear === null && bYear === null) return String(a).localeCompare(String(b));
+    if (aYear === null) return 1;
+    if (bYear === null) return -1;
+    return aYear - bYear;
+}
+
+function parseTimelineYear(value: string | number): number | null {
+    return parseAdvancementYear(value);
 }
