@@ -44,7 +44,7 @@ export interface WeaponTargetCalculatorRequest {
                         </div>
                     }
                     @for (target of targets(); track target.id) {
-                        <div class="weapon-target-row">
+                        <div class="weapon-target-row" [style.--target-row-color]="target.color">
                             <div class="target-wrapper">
                                 <div class="target-main-row">
                                     <div class="target-identity-row">
@@ -158,6 +158,7 @@ export interface WeaponTargetCalculatorRequest {
             display: flex;
             flex-direction: column;
             overflow: auto;
+            gap: 2px;
         }
 
         .weapon-targets-empty {
@@ -172,14 +173,20 @@ export interface WeaponTargetCalculatorRequest {
             justify-content: space-between;
             flex-wrap: nowrap;
             gap: 10px;
-            padding: 4px 12px;
+            padding: 4px 8px 4px 12px;
             border-bottom: 1px solid var(--border-color);
-            width: 100%;
+            margin-left: 4px;
+            margin-right: 4px;
             box-sizing: border-box;
+            --target-row-color: transparent;
+            background-color: color-mix(in srgb, 
+            color-mix(in srgb, var(--target-row-color) 25%, black) 50%, 
+            transparent
+            );
+            border: 2px solid var(--target-row-color);
 
             &:last-child {
-                border-bottom: 0;
-                padding-bottom: 12px;
+                margin-bottom: 4px;
             }
         }
 
@@ -200,7 +207,6 @@ export interface WeaponTargetCalculatorRequest {
             align-items: end;
             min-width: 0;
         }
-
         .target-identity-row,
         .target-identity-spacer {
             display: flex;
