@@ -4,6 +4,7 @@
     align-items: flex-start;
     background: transparent;
     border: 0;
+    pointer-events: none;
 }
 
 .linear-picker-title {
@@ -20,6 +21,7 @@
     font-size: 0.8em;
     line-height: 1.1;
     font-weight: bold;
+    pointer-events: auto;
 }
 
 .linear-picker-values {
@@ -29,6 +31,7 @@
     background: #000;
     border: 2px solid #fff;
     border-top: 0;
+    pointer-events: auto;
 }
 
 .value-cell {
