@@ -38,7 +38,7 @@ import type { ToastService } from './toast.service';
 import type { DialogsService } from './dialogs.service';
 import type { DataService } from './data.service';
 import type { AmmoEquipment } from '../models/equipment.model';
-import type { InventoryControlDisplayData, InventoryControlDisplayEffectOptions, InventoryControlMode } from '../utils/inventory-control.util';
+import type { InventoryControlDisplayData, InventoryControlDisplayEffectOptions, InventoryControlRules } from '../utils/inventory-control.util';
 import type { TurnState } from '../models/turn-state.model';
 import type { UnitHeatSource } from '../models/rules/unit-type-rules';
 
@@ -82,11 +82,6 @@ export abstract class EquipmentInteractionHandler {
      * Priority for this handler (higher = checked first)
      */
     readonly priority: number = 0;
-
-    /**
-     * Fallback/helper handlers this handler replaces for the same equipment.
-     */
-    readonly suppressesHandlers: readonly string[] = [];
     
     /**
      * Generates picker choices for this equipment type
@@ -119,11 +114,6 @@ export abstract class EquipmentInteractionHandler {
         options: InventoryControlDisplayEffectOptions,
         context: HandlerContext
     ): InventoryControlDisplayData;
-
-    /**
-     * Hook called while building inventory-control modes for an equipment row.
-     */
-    getInventoryControlModes?(equipment: MountedEquipment, context: HandlerContext): InventoryControlMode[];
 
     /**
      * Hook called while filtering ammo options for a selected inventory-control mode.
@@ -197,14 +187,11 @@ class EquipmentInteractionRegistry {
                     || (!!equipment.equipment?.flags && handler.flags.every(flag => equipment.equipment!.flags.has(flag)));
                 return flagsMatch && (!handler.applicableTo || handler.applicableTo(equipment));
             });
-
-        const suppressedHandlerIds = new Set(applicableHandlers.flatMap(handler => handler.suppressesHandlers));
-        const activeHandlers = applicableHandlers.filter(handler => !suppressedHandlerIds.has(handler.id));
             
         // Sort by priority (descending)
-        activeHandlers.sort((a, b) => b.priority - a.priority);
+        applicableHandlers.sort((a, b) => b.priority - a.priority);
         
-        return activeHandlers;
+        return applicableHandlers;
     }
     
     /**
@@ -263,11 +250,6 @@ class EquipmentInteractionRegistry {
         return nextDisplay;
     }
 
-    getInventoryControlModes(equipment: MountedEquipment, context: HandlerContext): InventoryControlMode[] {
-        return this.getHandlers(equipment)
-            .flatMap(handler => handler.getInventoryControlModes?.(equipment, context) ?? []);
-    }
-
     matchesInventoryAmmo(equipment: MountedEquipment, ammo: AmmoEquipment, mode: string | null, context: HandlerContext): boolean | null {
         for (const handler of this.getHandlers(equipment)) {
             const result = handler.matchesInventoryAmmo?.(equipment, ammo, mode, context);
@@ -282,6 +264,14 @@ class EquipmentInteractionRegistry {
                 .reduce((sum, handler) => sum + (handler.getLinkedEquipmentHitModifier?.(linked, equipment, selectedAmmo) ?? 0), 0);
             return total + modifier;
         }, 0) ?? 0;
+    }
+
+    inventoryControlRules(context: HandlerContext): InventoryControlRules {
+        return {
+            applyDisplayEffects: (equipment, display, options) => this.applyInventoryControlDisplayEffects(equipment, display, options, context),
+            matchesAmmo: (equipment, ammo, mode) => this.matchesInventoryAmmo(equipment, ammo, mode, context),
+            resolveLinkedHitModifier: (equipment, selectedAmmo) => this.getLinkedEquipmentHitModifier(equipment, selectedAmmo)
+        };
     }
 
     getInventoryHeatSources(inventory: readonly MountedEquipment[], turnState: TurnState): UnitHeatSource[] {

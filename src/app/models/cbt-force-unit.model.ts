@@ -64,7 +64,7 @@ import { CBTInventoryControlRuntime } from './cbt-inventory-control-runtime.mode
 import { LINKED_LOCATIONS } from '../models/rules/mek-rules';
 import { EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
 import type { UnitHeatSource } from './rules/unit-type-rules';
-import type { InventoryControlDisplayData, InventoryControlDisplayEffectOptions } from '../utils/inventory-control.util';
+import type { InventoryControlDisplayData, InventoryControlDisplayEffectOptions, InventoryControlRules } from '../utils/inventory-control.util';
 import { ToastService } from '../services/toast.service';
 import { DialogsService } from '../services/dialogs.service';
 
@@ -129,18 +129,22 @@ export class CBTForceUnit extends ForceUnit {
             .getLinkedEquipmentHitModifier(entry, selectedAmmo);
     }
 
+    getInventoryControlRules(): InventoryControlRules {
+        return this.injector.get(EquipmentInteractionRegistryService)
+            .getRegistry()
+            .inventoryControlRules({
+                toastService: this.injector.get(ToastService),
+                dialogsService: this.injector.get(DialogsService),
+                dataService: this.injector.get(DataService)
+            });
+    }
+
     applyInventoryControlDisplayEffects(
         entry: MountedEquipment,
         display: InventoryControlDisplayData,
         options: InventoryControlDisplayEffectOptions
     ): InventoryControlDisplayData {
-        return this.injector.get(EquipmentInteractionRegistryService)
-            .getRegistry()
-            .applyInventoryControlDisplayEffects(entry, display, options, {
-                toastService: this.injector.get(ToastService),
-                dialogsService: this.injector.get(DialogsService),
-                dataService: this.injector.get(DataService)
-            });
+        return this.getInventoryControlRules().applyDisplayEffects?.(entry, display, options) ?? display;
     }
 
     override isComputedCondition(condition: string): boolean {

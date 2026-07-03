@@ -155,7 +155,7 @@ export class UnitSvgInfantryService extends UnitSvgService {
         const fieldGunEntry = this.unit.getInventory().find(entry => this.infantryRules.getFieldGunComponent(entry) === fieldGunComponent);
         const ammo = svg.getElementById('field_gun_ammo');
         if (fieldGunEntry && ammo) {
-            const ammoSummary = getInventoryControlModeAmmoSummary(fieldGunEntry, this.unit.getAvailableEquipment());
+            const ammoSummary = getInventoryControlModeAmmoSummary(fieldGunEntry, this.unit.getAvailableEquipment(), this.unit.getInventoryControlRules());
             const remainingAmmo = ammoSummary.tracksAmmo ? ammoSummary.remaining : 0;
             ammo.textContent = remainingAmmo.toString();
             this.setFieldGunSummaryDamageColor(ammo, ammoSummary.tracksAmmo && remainingAmmo < ammoSummary.total);

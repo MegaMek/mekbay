@@ -53,10 +53,8 @@ export class WeaponAmmoHandler extends EquipmentInteractionHandler {
                             getChoices: () => [],
                             handleSelection: () => false,
                             afterInventoryControlFire: () => undefined,
-                            applyInventoryControlDisplayEffects: (_entry, display) => display,
-                            getInventoryControlModes: () => [],
-                            matchesInventoryAmmo: () => null,
-                            getLinkedEquipmentHitModifier: () => 0
+                            getLinkedEquipmentHitModifier: () => 0,
+                            inventoryControlRules: () => ({})
                         }
                     },
                     initialTab: 'ammo'

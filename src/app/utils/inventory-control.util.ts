@@ -138,7 +138,6 @@ export interface InventoryControlDisplayEffectOptions {
     selectedRange: WeaponRangeKey | null;
     additionalHitModifier: number;
     selectedAmmo?: AmmoEquipment | null;
-    resolveLinkedHitModifier?: LinkedEquipmentHitModifierResolver;
 }
 
 export type InventoryControlDisplayEffectApplier = (
@@ -147,9 +146,8 @@ export type InventoryControlDisplayEffectApplier = (
     options: InventoryControlDisplayEffectOptions
 ) => InventoryControlDisplayData;
 
-export interface InventoryControlRulesHooks {
+export interface InventoryControlRules {
     applyDisplayEffects?: InventoryControlDisplayEffectApplier;
-    getModes?: (entry: MountedEquipment) => InventoryControlMode[];
     matchesAmmo?: (entry: MountedEquipment, ammo: AmmoEquipment, mode: string | null) => boolean | null;
     resolveLinkedHitModifier?: LinkedEquipmentHitModifierResolver;
 }
@@ -185,12 +183,12 @@ export function setInventoryControlMode(entry: MountedEquipment, mode: string): 
 export function getInventoryControlGroups(
     unit: CBTForceUnit,
     equipmentMap: EquipmentMap = {},
-    hooks: InventoryControlRulesHooks = {}
+    rules: InventoryControlRules = {}
 ): InventoryControlGroup[] {
     const entryStates = getEntryStates(unit);
     const ammoSources = getAmmoSources(unit, equipmentMap);
     const rows = unit.getInventory()
-        .flatMap((entry, index) => buildInventoryControlRows(entry, index, entryStates, ammoSources, hooks))
+        .flatMap((entry, index) => buildInventoryControlRows(entry, index, entryStates, ammoSources, rules))
         .filter((row): row is InventoryControlRow => row !== null);
 
     const groups: InventoryControlGroup[] = [
@@ -245,9 +243,10 @@ export function getSelectedInventoryControlMode(entry: MountedEquipment): string
 export function getInventoryControlModeAmmoSummary(
     entry: MountedEquipment,
     equipmentMap: EquipmentMap,
+    rules: InventoryControlRules = {},
     mode: string | null = getSelectedInventoryControlMode(entry)
 ): InventoryControlAmmoSummary {
-    return getInventoryControlAmmoSummary(entry, getAmmoSources(entry.owner, equipmentMap), mode);
+    return getInventoryControlAmmoSummary(entry, getAmmoSources(entry.owner, equipmentMap), mode, rules.matchesAmmo);
 }
 
 function getInventoryControlAmmoSummary(
@@ -454,11 +453,11 @@ function buildInventoryControlRow(
     originalIndex: number,
     entryStates: Map<MountedEquipment, MountedEquipmentRuleState>,
     ammoSources: AmmoSource[],
-    hooks: InventoryControlRulesHooks,
+    rules: InventoryControlRules,
     options: InventoryControlRowOptions = {}
 ): InventoryControlRow | null {
-    const rules = entry.owner.rules;
-    const fieldGunComponent = rules instanceof InfantryRules ? rules.getFieldGunComponent(entry) : null;
+    const unitRules = entry.owner.rules;
+    const fieldGunComponent = unitRules instanceof InfantryRules ? unitRules.getFieldGunComponent(entry) : null;
     if (!entry.el?.classList.contains('inventoryEntry') && !fieldGunComponent) return null;
     if (isLinkedWeaponEnhancement(entry)) return null;
 
@@ -466,14 +465,14 @@ function buildInventoryControlRow(
     const destroyed = options.destroyed ?? state.isDamaged;
     const disabled = state.isDisabled;
     const category = getEntryCategory(entry);
-    const { modes, modifiers } = readInventoryControlModesAndModifiers(entry, hooks);
+    const { modes, modifiers } = readInventoryControlModesAndModifiers(entry);
     const selectedMode = getSelectedMode(entry, modes);
     syncSvgMode(entry, selectedMode, disabled);
     const rowEntry = createInventoryControlRowEntry(entry, options);
-    const ammo = getInventoryControlAmmoSummary(rowEntry, ammoSources, selectedMode, hooks.matchesAmmo, options.locationLock);
+    const ammo = getInventoryControlAmmoSummary(rowEntry, ammoSources, selectedMode, rules.matchesAmmo, options.locationLock);
     const selectedAmmo = resolveInventoryControlSelectedAmmoOption(ammo.options, rowEntry.owner.getInventoryControlEntryAmmoOption?.(rowEntry.id))?.ammo ?? null;
     const additionalHitModifier = state?.hitMod ?? 0;
-    const hitModifier = resolveHitModifier(rowEntry, additionalHitModifier, undefined, selectedAmmo, hooks.resolveLinkedHitModifier);
+    const hitModifier = resolveHitModifier(rowEntry, additionalHitModifier, undefined, selectedAmmo, rules.resolveLinkedHitModifier);
     const hit = formatHitModifier(hitModifier);
     const base = fieldGunComponent
         ? readInfantryFieldGunDisplayData(entry, fieldGunComponent, hit)
@@ -487,9 +486,8 @@ function buildInventoryControlRow(
     const adjustedDisplay = applyInventoryControlDisplayEffects(rowEntry, display, {
         selectedRange,
         additionalHitModifier,
-        selectedAmmo,
-        resolveLinkedHitModifier: hooks.resolveLinkedHitModifier
-    }, hooks.applyDisplayEffects);
+        selectedAmmo
+    }, rules);
 
     return {
         id: rowEntry.id,
@@ -521,14 +519,14 @@ function buildInventoryControlRows(
     originalIndex: number,
     entryStates: Map<MountedEquipment, MountedEquipmentRuleState>,
     ammoSources: AmmoSource[],
-    hooks: InventoryControlRulesHooks
+    rules: InventoryControlRules
 ): Array<InventoryControlRow | null> {
     const trooperLocations = getBattleArmorWeaponTrooperLocations(entry);
     if (trooperLocations.length === 0) {
-        return [buildInventoryControlRow(entry, originalIndex, entryStates, ammoSources, hooks)];
+        return [buildInventoryControlRow(entry, originalIndex, entryStates, ammoSources, rules)];
     }
 
-    return trooperLocations.map((location, locationIndex) => buildInventoryControlRow(entry, originalIndex + (locationIndex / 100), entryStates, ammoSources, hooks, {
+    return trooperLocations.map((location, locationIndex) => buildInventoryControlRow(entry, originalIndex + (locationIndex / 100), entryStates, ammoSources, rules, {
         rowId: `${entry.id}:${location}`,
         locationLock: location,
         destroyed: entry.owner.isEquipmentUnavailable(entry, location)
@@ -590,9 +588,9 @@ function readEntryDisplayData(el: SVGElement, hit: string): InventoryControlDisp
     };
 }
 
-function readInventoryControlModesAndModifiers(entry: MountedEquipment, hooks: InventoryControlRulesHooks): { modes: InventoryControlMode[]; modifiers: InventoryControlModifier[] } {
+function readInventoryControlModesAndModifiers(entry: MountedEquipment): { modes: InventoryControlMode[]; modifiers: InventoryControlModifier[] } {
     const { modes, modifiers } = readAlternativeModes(entry);
-    return { modes: [...modes, ...(hooks.getModes?.(entry) ?? [])], modifiers: [...modifiers, ...readLinkedWeaponEnhancementModifiers(entry)] };
+    return { modes, modifiers: [...modifiers, ...readLinkedWeaponEnhancementModifiers(entry)] };
 }
 
 function readAlternativeModes(entry: MountedEquipment): { modes: InventoryControlMode[]; modifiers: InventoryControlModifier[] } {
@@ -761,7 +759,7 @@ function applyInventoryControlDisplayEffects(
     entry: MountedEquipment,
     display: InventoryControlDisplayData,
     options: InventoryControlDisplayEffectOptions,
-    applyDisplayEffects?: InventoryControlDisplayEffectApplier
+    rules: InventoryControlRules
 ): InventoryControlDisplayData {
     let nextDisplay = applySelectedRangeDisplay(
         entry,
@@ -769,9 +767,9 @@ function applyInventoryControlDisplayEffects(
         options.selectedRange,
         options.additionalHitModifier,
         options.selectedAmmo,
-        options.resolveLinkedHitModifier
+        rules.resolveLinkedHitModifier
     );
-    nextDisplay = applyDisplayEffects?.(entry, nextDisplay, options) ?? nextDisplay;
+    nextDisplay = rules.applyDisplayEffects?.(entry, nextDisplay, options) ?? nextDisplay;
     return nextDisplay;
 }
 

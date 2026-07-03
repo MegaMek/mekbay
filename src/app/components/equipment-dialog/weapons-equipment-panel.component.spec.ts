@@ -315,33 +315,30 @@ function createComponent(
                         await handler.afterInventoryControlFire?.(entry, context);
                     }
                 },
-                applyInventoryControlDisplayEffects: (entry: MountedEquipment, display: InventoryControlDisplayData, options: InventoryControlDisplayEffectOptions) => {
-                    let nextDisplay = display;
-                    for (const handler of handlers) {
-                        const flagsMatch = handler.flags.length === 0
-                            || (!!entry.equipment?.flags && handler.flags.every(flag => entry.equipment!.flags.has(flag)));
-                        if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) continue;
-                        nextDisplay = handler.applyInventoryControlDisplayEffects?.(entry, nextDisplay, options, context) ?? nextDisplay;
-                    }
-                    return nextDisplay;
-                },
-                getInventoryControlModes: (entry: MountedEquipment) => handlers.flatMap(handler => {
-                    const flagsMatch = handler.flags.length === 0
-                        || (!!entry.equipment?.flags && handler.flags.every(flag => entry.equipment!.flags.has(flag)));
-                    if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) return [];
-                    return handler.getInventoryControlModes?.(entry, context) ?? [];
-                }),
-                matchesInventoryAmmo: (entry: MountedEquipment, ammo: AmmoEquipment, mode: string | null) => {
-                    for (const handler of handlers) {
-                        const flagsMatch = handler.flags.length === 0
-                            || (!!entry.equipment?.flags && handler.flags.every(flag => entry.equipment!.flags.has(flag)));
-                        if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) continue;
-                        const result = handler.matchesInventoryAmmo?.(entry, ammo, mode, context);
-                        if (result !== undefined && result !== null) return result;
-                    }
-                    return null;
-                },
-                getLinkedEquipmentHitModifier: (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => unit.getLinkedEquipmentHitModifier(entry, selectedAmmo)
+                getLinkedEquipmentHitModifier: (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => unit.getLinkedEquipmentHitModifier(entry, selectedAmmo),
+                inventoryControlRules: () => ({
+                    applyDisplayEffects: (entry: MountedEquipment, display: InventoryControlDisplayData, options: InventoryControlDisplayEffectOptions) => {
+                        let nextDisplay = display;
+                        for (const handler of handlers) {
+                            const flagsMatch = handler.flags.length === 0
+                                || (!!entry.equipment?.flags && handler.flags.every(flag => entry.equipment!.flags.has(flag)));
+                            if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) continue;
+                            nextDisplay = handler.applyInventoryControlDisplayEffects?.(entry, nextDisplay, options, context) ?? nextDisplay;
+                        }
+                        return nextDisplay;
+                    },
+                    matchesAmmo: (entry: MountedEquipment, ammo: AmmoEquipment, mode: string | null) => {
+                        for (const handler of handlers) {
+                            const flagsMatch = handler.flags.length === 0
+                                || (!!entry.equipment?.flags && handler.flags.every(flag => entry.equipment!.flags.has(flag)));
+                            if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) continue;
+                            const result = handler.matchesInventoryAmmo?.(entry, ammo, mode, context);
+                            if (result !== undefined && result !== null) return result;
+                        }
+                        return null;
+                    },
+                    resolveLinkedHitModifier: (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => unit.getLinkedEquipmentHitModifier(entry, selectedAmmo)
+                })
             }
         } as unknown as EquipmentDialogContext;
 

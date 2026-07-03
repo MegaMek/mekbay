@@ -986,7 +986,7 @@ export class UnitSvgService {
     }
 
     protected inventoryTargetSelectedAmmo(entry: MountedEquipment): AmmoEquipment | null {
-        const summary = getInventoryControlModeAmmoSummary(entry, this.unit.getAvailableEquipment());
+        const summary = getInventoryControlModeAmmoSummary(entry, this.unit.getAvailableEquipment(), this.unit.getInventoryControlRules());
         const resolvedOption = resolveInventoryControlSelectedAmmoOption(summary.options, this.unit.getInventoryControlEntryAmmoOption(entry.id));
         return resolvedOption?.ammo ?? null;
     }
@@ -1063,8 +1063,7 @@ export class UnitSvgService {
         }, {
             selectedRange,
             additionalHitModifier: 0,
-            selectedAmmo: this.inventoryTargetSelectedAmmo(entry),
-            resolveLinkedHitModifier: (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo)
+            selectedAmmo: this.inventoryTargetSelectedAmmo(entry)
         });
 
         if (display.heat === originalHeat) {

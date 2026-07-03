@@ -8,7 +8,6 @@ import { MountedEquipment } from '../../models/force-serialization';
 import { CBTInventoryControlRuntime } from '../../models/cbt-inventory-control-runtime.model';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
-import type { InventoryControlDisplayData } from '../../utils/inventory-control.util';
 import { EquipmentDialogComponent } from './equipment-dialog.component';
 import type { EquipmentDialogContext, EquipmentDialogData } from './equipment-dialog.model';
 
@@ -142,10 +141,8 @@ function createContext(): EquipmentDialogContext {
             getChoices: () => [],
             handleSelection: () => false,
             afterInventoryControlFire: () => undefined,
-            applyInventoryControlDisplayEffects: (_entry: MountedEquipment, display: InventoryControlDisplayData) => display,
-            getInventoryControlModes: () => [],
-            matchesInventoryAmmo: () => null,
-            getLinkedEquipmentHitModifier: () => 0
+            getLinkedEquipmentHitModifier: () => 0,
+            inventoryControlRules: () => ({})
         }
     } as unknown as EquipmentDialogContext;
 }

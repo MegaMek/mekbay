@@ -137,12 +137,7 @@ export class WeaponsEquipmentPanelComponent {
         return getInventoryControlGroups(
             this.unit(),
             this.context().dataService.getEquipments(),
-            {
-                applyDisplayEffects: (entry, display, options) => this.context().registry.applyInventoryControlDisplayEffects(entry, display, options, this.context()),
-                getModes: entry => this.context().registry.getInventoryControlModes(entry, this.context()),
-                matchesAmmo: (entry, ammo, mode) => this.context().registry.matchesInventoryAmmo(entry, ammo, mode, this.context()),
-                resolveLinkedHitModifier: (entry, selectedAmmo) => this.context().registry.getLinkedEquipmentHitModifier(entry, selectedAmmo)
-            }
+            this.context().registry.inventoryControlRules(this.context())
         );
     });
     readonly targets = computed(() => {
