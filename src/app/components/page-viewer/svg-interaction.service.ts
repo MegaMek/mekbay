@@ -1964,6 +1964,8 @@ export class SvgInteractionService {
     }): ChoicePickerInstance {
         if (this.pickerRef) this.removePicker();
 
+        this.zoomPanService.cancelGesture();
+
         opts.el.classList.add('picker-active');
         this.currentHighlightedElement = opts.el;
         this.state.isPickerOpen.set(true);
@@ -2035,6 +2037,8 @@ export class SvgInteractionService {
         onCancel: () => void;
     }): NumericPickerInstance {
         if (this.pickerRef) this.removePicker();
+
+        this.zoomPanService.cancelGesture();
 
         opts.el.classList.add('picker-active');
         this.currentHighlightedElement = opts.el;

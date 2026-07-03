@@ -42,6 +42,8 @@ export interface ZoomPanServiceInterface {
     pointerMoved: boolean;
     /** Whether a pan gesture is currently active */
     isPanning: boolean;
+    /** Cancel any in-progress pan, swipe, or pinch gesture */
+    cancelGesture(): void;
 }
 
 /**
