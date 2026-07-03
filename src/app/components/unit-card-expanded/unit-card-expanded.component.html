@@ -20,7 +20,7 @@
             <div class="expanded-chassis">
                 <span [innerHTML]="highlight(u.chassis)"></span>
                 @if (alias(); as pilotName) { <span class="inline-alias">({{ pilotName }})</span> }
-                @if (u.serverHost) { <span class="custom-unit-badge" title="Custom unit from an additional unit server">Custom</span> }
+                @if (u.serverHost) { <span class="custom-unit-badge" title="Custom unit from {{ u.serverHost }}">Custom</span> }
             </div>
         </div>
         <div class="expanded-subtitle">
@@ -159,7 +159,7 @@
             <div class="expanded-chassis">
                 <span [innerHTML]="highlight(u.chassis)"></span>
                 @if (alias(); as pilotName) { <span class="inline-alias">({{ pilotName }})</span> }
-                @if (u.serverHost) { <span class="custom-unit-badge" title="Custom unit from an additional unit server">Custom</span> }
+                @if (u.serverHost) { <span class="custom-unit-badge" title="Custom unit from {{ u.serverHost }}">Custom</span> }
             </div>
         </div>
         <div class="expanded-subtitle">
@@ -340,7 +340,7 @@
         <div class="primary-info">
             <div class="chassis">
                 <span [innerHTML]="highlight(u.chassis)"></span>
-                @if (u.serverHost) { <span class="custom-unit-badge" title="Custom unit from an additional unit server">Custom</span> }
+                @if (u.serverHost) { <span class="custom-unit-badge" title="Custom unit from {{ u.serverHost }}">Custom</span> }
             </div>
             @if (alias(); as pilotName) { <span class="alias">({{ pilotName }})</span>  }
         </div>

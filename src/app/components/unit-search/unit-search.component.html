@@ -301,7 +301,10 @@
             <ng-template #tableNameCell let-unit>
                 <div class="as-td as-td-name">
                     <span class="as-td-model" [innerHTML]="highlight(unit.model)"></span>
-                    <span class="as-td-chassis" [innerHTML]="highlight(unit.chassis)"></span>
+                    <span class="as-td-chassis">
+                        <span class="as-td-chassis-name" [innerHTML]="highlight(unit.chassis)"></span>
+                        @if (unit.serverHost) { <span class="custom-unit-badge" title="Custom unit from {{ unit.serverHost }}">Custom</span> }
+                    </span>
                 </div>
             </ng-template>
 

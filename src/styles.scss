@@ -294,12 +294,12 @@ hr {
     align-items: center;
     flex: 0 0 auto;
     background: var(--accent-color);
-    color: #1a1508;
-    font-size: 0.65rem;
+    color: var(--background-color);
+    font-size: 0.5em;
     font-weight: 800;
-    letter-spacing: 0.6px;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
-    padding: 1px 6px;
+    padding: 0.125em 0.4em;
     line-height: 1.35;
     white-space: nowrap;
 }

@@ -982,10 +982,23 @@
 }
 
 .as-td-chassis {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-weight: bold;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.as-td-chassis-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.as-td-chassis .custom-unit-badge {
+    flex: 0 0 auto;
 }
 
 .as-td-model {
