@@ -41,12 +41,19 @@ function createEquipment(): EquipmentMap {
         flags: ['F_DIRECT_FIRE','F_PULSE','F_VSP'],
         weapon: { ammoType: 'NA', heat: 7, damage: [9, 7, 5], ranges: [2, 5, 9, 13] }
     });
+    const mml9 = new WeaponEquipment({
+        id: 'ISMML9',
+        name: 'MML 9',
+        type: 'weapon',
+        weapon: { ammoType: 'MML', rackSize: 9, heat: 5, damage: 'cluster', ranges: [0, 0, 0, 0] }
+    });
 
     return {
         [ultraAc20.internalName]: ultraAc20,
         [ultraAc20Ammo.internalName]: ultraAc20Ammo,
         [ultraAc20PrecisionAmmo.internalName]: ultraAc20PrecisionAmmo,
         [mediumVspLaser.internalName]: mediumVspLaser,
+        [mml9.internalName]: mml9,
     };
 }
 
@@ -136,6 +143,58 @@ function createVspSvg(): SVGSVGElement {
                 <text class="range_long">9</text>
                 <rect class="hitMod-rect" display="block"></rect>
                 <text class="hitMod-text" display="block">-4</text>
+                <rect class="targetTn-rect" display="none"></rect>
+                <text class="targetTn-text" display="none"></text>
+            </g>
+        </svg>
+    `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+}
+
+function createMmlUnit(equipment: EquipmentMap): Unit {
+    return createEmptyUnit({
+        name: 'MML Test Unit',
+        chassis: 'MML Test',
+        model: 'T1',
+        type: 'Tank',
+        subtype: 'Hovercraft',
+        heat: -1,
+        dissipation: -1,
+        comp: [
+            { id: 'ISMML9', q: 1, q2: 0, n: 'MML 9', t: 'M', p: 1, l: 'LT', r: '', m: '0', d: '[M,C,S]', md: '0.0', c: '1', os: 0, eq: equipment['ISMML9'] },
+        ],
+        sheets: ['vehicle/mml-test.svg'],
+    });
+}
+
+function createMmlSvg(): SVGSVGElement {
+    const parser = new DOMParser();
+    return parser.parseFromString(`
+        <svg xmlns="http://www.w3.org/2000/svg">
+            <g class="inventoryEntry" id="ISMML9@LT#0" hitMod="0">
+                <rect class="shrButton inventoryEntryButton"></rect>
+                <rect class="medButton inventoryEntryButton"></rect>
+                <rect class="lngButton inventoryEntryButton"></rect>
+                <g class="name"><text>MML 9</text></g>
+                <g class="damage"><text>[M,C,S]</text></g>
+                <text class="location">LT</text>
+                <text class="range_min"></text>
+                <text class="range_short"></text>
+                <text class="range_medium"></text>
+                <text class="range_long"></text>
+                <g class="alternativeMode selected" mode="SRM">
+                    <rect class="shrButton inventoryEntryButton"></rect>
+                    <rect class="medButton inventoryEntryButton"></rect>
+                    <rect class="lngButton inventoryEntryButton"></rect>
+                    <rect class="alternativeModeButton inventoryEntryButton"></rect>
+                    <g class="name"><text>SRM</text></g>
+                    <g class="damage"><text>2/Msl</text></g>
+                    <text class="range_min">—</text>
+                    <text class="range_short">3</text>
+                    <text class="range_medium">6</text>
+                    <text class="range_long">9</text>
+                </g>
+                <rect class="hitMod-rect" display="none"></rect>
+                <text class="hitMod-text" display="none"></text>
                 <rect class="targetTn-rect" display="none"></rect>
                 <text class="targetTn-text" display="none"></text>
             </g>
@@ -630,6 +689,24 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         svgService.refreshInventory();
         expect(damageText.textContent).toBe('9/7/5 [Variable]');
         expect(hitModText.textContent).toBe('-4');
+    });
+
+    it('renders target range classes from the selected SVG alternative mode', () => {
+        const forceUnit = createForceUnit(createMmlUnit(equipment));
+        initialize(forceUnit, createMmlSvg());
+        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        forceUnit.createInventoryControlTarget();
+        forceUnit.updateInventoryControlTarget('A', { distance: 7 });
+        forceUnit.setInventoryControlEntryTarget(weaponEntry, 'A');
+        svgService.refreshInventory();
+
+        expect(weaponEntry.el!.classList.contains('selected-alternative-mode')).toBeTrue();
+        expect(weaponEntry.el!.classList.contains('selected-range-short')).toBeFalse();
+        expect(weaponEntry.el!.classList.contains('selected-range-medium')).toBeFalse();
+        expect(weaponEntry.el!.classList.contains('selected-range-long')).toBeTrue();
+        expect(weaponEntry.el!.classList.contains('selected-range-extreme')).toBeFalse();
     });
 
     it('renders wildcard vehicle stabilizer hit modifiers until movement mode is selected', () => {
