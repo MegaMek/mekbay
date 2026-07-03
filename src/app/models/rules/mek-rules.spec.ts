@@ -187,6 +187,22 @@ describe('MekRules', () => {
         expect(rules.PSRModifiers().modifiers.map(modifier => modifier.reason)).not.toContain('Mounts small or torso cockpit');
     });
 
+    it('does not offer ejection for torso-mounted cockpits', () => {
+        const headCockpitRules = createRulesHarness({
+            critSlots: [{ id: 'cockpit-head', name: 'Cockpit', loc: 'HD', slot: 0 }],
+        });
+        const centerTorsoCockpitRules = createRulesHarness({
+            critSlots: [{ id: 'cockpit-torso', name: 'Cockpit', loc: 'CT', slot: 0 }],
+        });
+        const sideTorsoCockpitRules = createRulesHarness({
+            critSlots: [{ id: 'cockpit-side-torso', name: 'Cockpit', loc: 'LT', slot: 0 }],
+        });
+
+        expect(headCockpitRules.crewStateControls.map(control => control.key)).toEqual(['unconscious', 'ejected']);
+        expect(centerTorsoCockpitRules.crewStateControls.map(control => control.key)).toEqual(['unconscious']);
+        expect(sideTorsoCockpitRules.crewStateControls.map(control => control.key)).toEqual(['unconscious']);
+    });
+
     it('treats drone operating system Meks as crewless for crew-derived conditions', () => {
         const forceUnit = createForceUnitHarness({ crewStates: ['ejected'], crewHits: [4] });
         forceUnit.setInventory([droneOperatingSystemEntry(forceUnit)]);

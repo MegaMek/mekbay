@@ -76,6 +76,13 @@ export class MekRules extends UnitTypeRulesBase {
     override readonly locationConditionControls = MEK_LOCATION_CONDITION_CONTROLS;
     protected override readonly crewStateDisplayDefinitions = MEK_CREW_STATE_DISPLAYS;
 
+    override get crewStateControls(): readonly CrewStateControlDefinition[] {
+        const controls = super.crewStateControls;
+        return this.hasTorsoMountedCockpit()
+            ? controls.filter(control => control.key !== 'ejected')
+            : controls;
+    }
+
     protected override readonly abandoned = computed<boolean>(() => {
         const crew = this.unit.getCrewMembers();
         return crew.length > 0 && crew.every(crewMember => {
@@ -177,7 +184,7 @@ export class MekRules extends UnitTypeRulesBase {
 
     /**
     * Mek destruction: propagate crit destruction from structurally destroyed locations,
-    * then check engine/cockpit.
+    * then check engine.
      */
     evaluateDestroyed(): void {
         // Build set of destroyed internal locations, including linked
@@ -547,6 +554,10 @@ export class MekRules extends UnitTypeRulesBase {
         return Math.min(10, engineHits * 5);
     }
 
+    private hasTorsoMountedCockpit(): boolean {
+        return this.unit.getCritSlots().some(slot => !!slot.loc && TORSO_LOCATIONS.has(slot.loc) && this.isNamedCrit(slot, 'Cockpit'));
+    }
+
     // ── Systems Status ───────────────────────────────────────────────────────
 
     /** Mek systems status computed from crit slots and locations */
@@ -760,7 +771,7 @@ export class MekRules extends UnitTypeRulesBase {
         const hasSmallOrTorsoCockpit = critSlots.some(slot => slot.loc
             && ((this.isNamedCrit(slot, 'Cockpit') && this.isNamedCrit(slot, 'Small'))
                 || (this.isNamedCrit(slot, 'Command') && this.isNamedCrit(slot, 'Small'))))
-            || critSlots.some(slot => slot.loc && slot.loc === 'CT' && this.isNamedCrit(slot, 'Cockpit'));
+            || this.hasTorsoMountedCockpit();
         if (hasSmallOrTorsoCockpit && !this.hasDroneOperatingSystem()) {
             preExisting += 1; // Small or Torso cockpit gives +1 modifier
             modifiers.push({

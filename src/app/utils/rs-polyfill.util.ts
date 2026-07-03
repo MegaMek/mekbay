@@ -142,6 +142,10 @@ export class RsPolyfillUtil {
         this.addCriticalSectionsButtons(unit, svg)
     }
 
+    public static syncConditionButtons(forceUnit: CBTForceUnit, svg: SVGSVGElement): void {
+        this.addConditionsButtons(forceUnit, svg);
+    }
+
     public static fixSvg(svg: SVGSVGElement): void {
         this.addViewBox(svg);
         this.fixFontSize(svg);
@@ -198,11 +202,20 @@ export class RsPolyfillUtil {
     }
 
     private static addConditionsButtons(unit: CBTForceUnit, svg: SVGSVGElement): void {
-        const hasButtonWrapper = !!svg.getElementById('unit_condition_wrapper');
+        const buttonWrapper = svg.getElementById('unit_condition_wrapper') as SVGElement | null;
         const hasBannerWrapper = !!svg.getElementById('condition_banner_wrapper');
-        if (hasButtonWrapper && hasBannerWrapper) return;
         const conditionControls = unit.rules.conditionControls;
         if (conditionControls.length === 0) return;
+
+        const buttons = this.conditionButtons(conditionControls);
+        if (buttonWrapper) {
+            this.syncConditionButtonWrapper(buttonWrapper, buttons);
+        } else {
+            this.createConditionButtonWrapper(buttons, unit, svg);
+        }
+
+        if (hasBannerWrapper) return;
+
         const immobileCondition = getUnitConditionDefinition('immobile') ?? { key: 'immobile', label: 'IMMOBILE', color: '#444' };
         const abandonedCondition = getUnitConditionDefinition('abandoned') ?? { key: 'abandoned', label: 'ABANDONED', color: '#7a1f1f' };
         const crippledCondition = getUnitConditionDefinition('crippled') ?? { key: 'crippled', label: 'CRIPPLED', color: '#b70000' };
@@ -214,71 +227,6 @@ export class RsPolyfillUtil {
             crippledCondition,
             disconnectedCondition,
         ].map(condition => [condition.key, condition])).values());
-
-        if (!hasButtonWrapper) {
-            const unitDataPanelEl = svg.getElementById('unitDataPanel') as SVGGraphicsElement | null;
-            if (unitDataPanelEl) {
-                const frameEl = (unitDataPanelEl.querySelector('.frame')
-                    ?? unitDataPanelEl.querySelectorAll('path')[1]
-                    ?? unitDataPanelEl) as SVGGraphicsElement;
-                const coords = frameEl.getBBox();
-                const buttons = [
-                    ...conditionControls
-                        .filter(condition => condition.placement === 'button')
-                        .map(condition => ({ ...condition, width: this.conditionButtonWidth(condition.label) })),
-                    ...(conditionControls.some(condition => condition.placement === 'menu') ? [{ key: 'menu', label: '...', color: '#666', width: 14 }] : []),
-                ];
-                const buttonHeight = 12;
-                const buttonGap = 2;
-                const totalButtonWidth = buttons.reduce((total, button) => total + button.width, 0) + buttonGap * (buttons.length - 1);
-                // This is needed to fix the misaligned buttons on Vehicles
-                const buttonY = coords.y - (unit.getUnit().type === 'Mek' ? 0.5 : -2);
-                let buttonX = coords.x + coords.width - totalButtonWidth - 16;
-                const buttonWrapper = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-                buttonWrapper.setAttribute('id', `unit_condition_wrapper`);
-                buttonWrapper.setAttribute('class', 'screen-only unitConditionWrapper');
-
-                buttons.forEach((condition) => {
-                    const width = condition.width;
-                    const buttonGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-                    buttonGroup.setAttribute('id', `unit_condition_button_${condition.key}`);
-                    buttonGroup.setAttribute('class', 'unitConditionButton');
-                    buttonGroup.setAttribute('condition', condition.key);
-                    buttonGroup.setAttribute('active-color', condition.color);
-                    buttonGroup.style.setProperty('--unit-condition-active-color', condition.color);
-
-                    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-                    rect.setAttribute('x', buttonX.toString());
-                    rect.setAttribute('y', buttonY.toString());
-                    rect.setAttribute('width', width.toString());
-                    rect.setAttribute('height', buttonHeight.toString());
-                    rect.setAttribute('fill', '#fff');
-                    rect.setAttribute('stroke', '#000');
-                    rect.setAttribute('stroke-width', '1.2');
-
-                    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                    text.setAttribute('x', (buttonX + width / 2).toString());
-                    text.setAttribute('y', (buttonY + buttonHeight / 2 + 0.5).toString());
-                    text.setAttribute('class', 'conditionText no-autocolor');
-                    text.setAttribute('text-anchor', 'middle');
-                    text.setAttribute('dominant-baseline', 'middle');
-                    text.setAttribute('font-family', 'Roboto, sans-serif');
-                    text.setAttribute('font-size', '6.5');
-                    text.setAttribute('font-weight', 'bold');
-                    text.setAttribute('fill', '#000');
-                    text.textContent = condition.label;
-
-                    buttonGroup.appendChild(rect);
-                    buttonGroup.appendChild(text);
-                    buttonWrapper.appendChild(buttonGroup);
-                    buttonX += width + buttonGap;
-                });
-
-                unitDataPanelEl.appendChild(buttonWrapper);
-            }
-        }
-
-        if (hasBannerWrapper) return;
 
         const bannerWrapper = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         bannerWrapper.setAttribute('id', `condition_banner_wrapper`);
@@ -299,9 +247,9 @@ export class RsPolyfillUtil {
             const bannerHeight = definition?.important
                 ? this.IMPORTANT_UNIT_CONDITION_BANNER_HEIGHT
                 : this.UNIT_CONDITION_BANNER_HEIGHT;
-            const bannerFontSize = definition?.important
+            const bannerFontSize = (definition?.important
                 ? this.IMPORTANT_UNIT_CONDITION_BANNER_FONT_SIZE
-                : this.UNIT_CONDITION_BANNER_FONT_SIZE;
+                : this.UNIT_CONDITION_BANNER_FONT_SIZE) * (definition?.bannerFontScaling || 1);
             const maskId = `unit_condition_banner_fade_${fadeMaskSequence}_${condition.key}`;
             this.addUnitConditionBannerFadeMask(defs, maskId, bannerX, bannerY, bannerWidth, bannerHeight);
             const bannerGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -330,7 +278,7 @@ export class RsPolyfillUtil {
             text.setAttribute('font-size', bannerFontSize.toString());
             text.setAttribute('font-weight', 'bold');
             text.setAttribute('fill', '#fff');
-            text.textContent = condition.label;
+            text.textContent = condition.bannerLabel ?? condition.label;
 
             bannerGroup.appendChild(rect);
             bannerGroup.appendChild(text);
@@ -338,6 +286,171 @@ export class RsPolyfillUtil {
         });
 
         svg.appendChild(bannerWrapper);
+    }
+
+    private static conditionButtons(conditionControls: readonly { key: string; label: string; color: string; placement?: string }[]): { key: string; label: string; color: string; width: number }[] {
+        return [
+            ...conditionControls
+                .filter(condition => condition.placement === 'button')
+                .map(condition => ({ ...condition, width: this.conditionButtonWidth(condition.label) })),
+            ...(conditionControls.some(condition => condition.placement === 'menu') ? [{ key: 'menu', label: '...', color: '#666', width: 14 }] : []),
+        ];
+    }
+
+    private static createConditionButtonWrapper(buttons: readonly { key: string; label: string; color: string; width: number }[], unit: CBTForceUnit, svg: SVGSVGElement): void {
+        const unitDataPanelEl = svg.getElementById('unitDataPanel') as SVGGraphicsElement | null;
+        if (!unitDataPanelEl) return;
+
+        const frameEl = (unitDataPanelEl.querySelector('.frame')
+            ?? unitDataPanelEl.querySelectorAll('path')[1]
+            ?? unitDataPanelEl) as SVGGraphicsElement;
+        const coords = frameEl.getBBox();
+        const buttonHeight = 12;
+        const buttonGap = 2;
+        const totalButtonWidth = buttons.reduce((total, button) => total + button.width, 0) + buttonGap * (buttons.length - 1);
+        // This is needed to fix the misaligned buttons on Vehicles
+        const buttonY = coords.y - (unit.getUnit().type === 'Mek' ? 0.5 : -2);
+        let buttonX = coords.x + coords.width - totalButtonWidth - 16;
+        const buttonWrapper = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        buttonWrapper.setAttribute('id', `unit_condition_wrapper`);
+        buttonWrapper.setAttribute('class', 'screen-only unitConditionWrapper');
+
+        buttons.forEach(condition => {
+            this.appendConditionButton(buttonWrapper, condition, buttonX, buttonY, buttonHeight);
+            buttonX += condition.width + buttonGap;
+        });
+
+        unitDataPanelEl.appendChild(buttonWrapper);
+    }
+
+    private static syncConditionButtonWrapper(buttonWrapper: SVGElement, buttons: readonly { key: string; label: string; color: string; width: number }[]): void {
+        const existingButtons = Array.from(buttonWrapper.querySelectorAll<SVGElement>('.unitConditionButton[condition]'));
+        const buttonByCondition = new Map(existingButtons
+            .map(button => [button.getAttribute('condition'), button] as const)
+            .filter((entry): entry is [string, SVGElement] => !!entry[0]));
+
+        const buttonGap = 2;
+        const fallbackHeight = 12;
+        const rects = existingButtons
+            .map(button => button.querySelector<SVGElement>('rect'))
+            .filter(rect => !!rect);
+        const anchorRect = buttonByCondition.get('menu')?.querySelector<SVGElement>('rect') ?? rects.reduce<SVGElement | null>((rightmost, rect) => {
+            if (!rightmost) return rect;
+            const rectRight = Number(rect.getAttribute('x') ?? 0) + Number(rect.getAttribute('width') ?? 0);
+            const rightmostRight = Number(rightmost.getAttribute('x') ?? 0) + Number(rightmost.getAttribute('width') ?? 0);
+            return rectRight > rightmostRight ? rect : rightmost;
+        }, null);
+        if (!anchorRect) return;
+
+        const buttonY = Number(anchorRect.getAttribute('y') ?? 0);
+        const buttonHeight = Number(anchorRect.getAttribute('height') ?? fallbackHeight);
+        const layoutButtons = buttons.map(button => {
+            const rect = buttonByCondition.get(button.key)?.querySelector<SVGElement>('rect');
+            return {
+                ...button,
+                width: Number(rect?.getAttribute('width') ?? button.width),
+            };
+        });
+        const rightEdge = Number(anchorRect.getAttribute('x') ?? 0) + Number(anchorRect.getAttribute('width') ?? 0);
+        const totalButtonWidth = layoutButtons.reduce((total, button) => total + button.width, 0) + buttonGap * (layoutButtons.length - 1);
+        let buttonX = rightEdge - totalButtonWidth;
+
+        layoutButtons.forEach(condition => {
+            const existingButton = buttonByCondition.get(condition.key);
+            const button = existingButton ?? this.createConditionButton(condition);
+            this.positionConditionButton(button, condition, buttonX, buttonY, buttonHeight);
+            if (!existingButton) {
+                buttonWrapper.appendChild(button);
+            }
+            buttonX += condition.width + buttonGap;
+        });
+    }
+
+    private static createConditionButton(condition: { key: string; label: string; color: string; width: number }): SVGElement {
+        const buttonGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        buttonGroup.setAttribute('id', `unit_condition_button_${condition.key}`);
+        buttonGroup.setAttribute('class', 'unitConditionButton');
+        buttonGroup.setAttribute('condition', condition.key);
+
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('fill', '#fff');
+        rect.setAttribute('stroke', '#000');
+        rect.setAttribute('stroke-width', '1.2');
+
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('class', 'conditionText no-autocolor');
+        text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('dominant-baseline', 'middle');
+        text.setAttribute('font-family', 'Roboto, sans-serif');
+        text.setAttribute('font-size', '6.5');
+        text.setAttribute('font-weight', 'bold');
+        text.setAttribute('fill', '#000');
+
+        buttonGroup.appendChild(rect);
+        buttonGroup.appendChild(text);
+        return buttonGroup;
+    }
+
+    private static positionConditionButton(buttonGroup: SVGElement, condition: { key: string; label: string; color: string; width: number }, buttonX: number, buttonY: number, buttonHeight: number): void {
+        buttonGroup.setAttribute('active-color', condition.color);
+        buttonGroup.style.setProperty('--unit-condition-active-color', condition.color);
+
+        const rect = buttonGroup.querySelector<SVGElement>('rect') ?? document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        if (!rect.parentNode) buttonGroup.appendChild(rect);
+        rect.setAttribute('x', buttonX.toString());
+        rect.setAttribute('y', buttonY.toString());
+        rect.setAttribute('width', condition.width.toString());
+        rect.setAttribute('height', buttonHeight.toString());
+        rect.setAttribute('fill', rect.getAttribute('fill') ?? '#fff');
+        rect.setAttribute('stroke', rect.getAttribute('stroke') ?? '#000');
+        rect.setAttribute('stroke-width', rect.getAttribute('stroke-width') ?? '1.2');
+
+        const text = buttonGroup.querySelector<SVGElement>('text') ?? document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        if (!text.parentNode) buttonGroup.appendChild(text);
+        text.setAttribute('x', (buttonX + condition.width / 2).toString());
+        text.setAttribute('y', (buttonY + buttonHeight / 2 + 0.5).toString());
+        text.setAttribute('class', text.getAttribute('class') ?? 'conditionText no-autocolor');
+        text.setAttribute('text-anchor', text.getAttribute('text-anchor') ?? 'middle');
+        text.setAttribute('dominant-baseline', text.getAttribute('dominant-baseline') ?? 'middle');
+        text.setAttribute('font-family', text.getAttribute('font-family') ?? 'Roboto, sans-serif');
+        text.setAttribute('font-size', text.getAttribute('font-size') ?? '6.5');
+        text.setAttribute('font-weight', text.getAttribute('font-weight') ?? 'bold');
+        text.setAttribute('fill', text.getAttribute('fill') ?? '#000');
+        text.textContent = condition.label;
+    }
+
+    private static appendConditionButton(buttonWrapper: SVGElement, condition: { key: string; label: string; color: string; width: number }, buttonX: number, buttonY: number, buttonHeight: number): void {
+        const buttonGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        buttonGroup.setAttribute('id', `unit_condition_button_${condition.key}`);
+        buttonGroup.setAttribute('class', 'unitConditionButton');
+        buttonGroup.setAttribute('condition', condition.key);
+        buttonGroup.setAttribute('active-color', condition.color);
+        buttonGroup.style.setProperty('--unit-condition-active-color', condition.color);
+
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', buttonX.toString());
+        rect.setAttribute('y', buttonY.toString());
+        rect.setAttribute('width', condition.width.toString());
+        rect.setAttribute('height', buttonHeight.toString());
+        rect.setAttribute('fill', '#fff');
+        rect.setAttribute('stroke', '#000');
+        rect.setAttribute('stroke-width', '1.2');
+
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', (buttonX + condition.width / 2).toString());
+        text.setAttribute('y', (buttonY + buttonHeight / 2 + 0.5).toString());
+        text.setAttribute('class', 'conditionText no-autocolor');
+        text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('dominant-baseline', 'middle');
+        text.setAttribute('font-family', 'Roboto, sans-serif');
+        text.setAttribute('font-size', '6.5');
+        text.setAttribute('font-weight', 'bold');
+        text.setAttribute('fill', '#000');
+        text.textContent = condition.label;
+
+        buttonGroup.appendChild(rect);
+        buttonGroup.appendChild(text);
+        buttonWrapper.appendChild(buttonGroup);
     }
 
     private static svgDefs(svg: SVGSVGElement): SVGDefsElement {

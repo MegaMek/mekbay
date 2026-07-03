@@ -150,7 +150,7 @@ export class UnitBlockComponent {
                 const condition = getUnitConditionDefinition(key);
                 return {
                     key,
-                    label: condition?.label ?? key.toUpperCase(),
+                    label: condition?.bannerLabel ?? condition?.label ?? key.toUpperCase(),
                     color: condition?.color ?? '#666',
                 };
             })

@@ -140,6 +140,7 @@ export class UnitSvgService {
 
                 RsPolyfillUtil.addMissingClasses(this.unit, svg);
                 this.unitInitializer.initializeUnitIfNeeded(this.unit, svg);
+                RsPolyfillUtil.syncConditionButtons(this.unit, svg);
 
                 this.unit.svg.set(svg);
                 this.updateArmorDisplay(true);

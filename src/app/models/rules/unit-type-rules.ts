@@ -116,6 +116,8 @@ export type UnitConditionControlPlacement = 'button' | 'menu';
 export interface UnitConditionDefinition {
     key: string;
     label: string;
+    bannerLabel?: string;
+    bannerFontScaling?: number;
     color: string;
     placement?: UnitConditionControlPlacement;
     important?: boolean;
@@ -136,7 +138,7 @@ export type CrewStateControlDefinition = CrewStateDefinition & { key: CrewStateC
 export const UNIT_CONDITION_DEFINITIONS: readonly UnitConditionDefinition[] = [
     { key: 'shutdown', important: true, label: 'SHUTDOWN', color: '#840000', placement: 'button' },
     { key: 'abandoned', important: true, label: 'ABANDONED', color: '#222' },
-    { key: 'disconnected', label: 'DISCONNECTED', color: '#455a64', placement: 'menu' },
+    { key: 'disconnected', important: true, label: 'UNLINK', bannerLabel: "DISCONNECTED", bannerFontScaling: 0.8, color: '#455a64', placement: 'button' },
     { key: 'immobile', label: 'IMMOBILE', color: '#ff8800' },
     { key: 'prone', label: 'PRONE', color: '#666', placement: 'button' },
     { key: 'crippled', label: 'CRIPPLED', color: '#b70000' },

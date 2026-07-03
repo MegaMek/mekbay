@@ -62,6 +62,69 @@ describe('RsPolyfillUtil', () => {
         expect(svg.querySelectorAll('.unitConditionBanner[condition="disconnected"]').length).toBe(1);
     });
 
+    it('adds missing condition buttons to existing right-aligned unit condition wrappers', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = `
+            <g id="unit_condition_wrapper" class="unitConditionWrapper">
+                <g id="unit_condition_button_shutdown" class="unitConditionButton" condition="shutdown"><rect x="10" y="20" width="45" height="12"></rect><text></text></g>
+                <g id="unit_condition_button_prone" class="unitConditionButton" condition="prone"><rect x="57" y="20" width="30" height="12"></rect><text></text></g>
+                <g id="unit_condition_button_menu" class="unitConditionButton" condition="menu"><rect x="89" y="20" width="14" height="12"></rect><text></text></g>
+            </g>
+            <g id="condition_banner_wrapper" class="unitConditionBannerWrapper"></g>
+        `;
+        const forceUnit = {
+            rules: {
+                conditionControls: [
+                    { key: 'shutdown', label: 'SHUTDOWN', color: '#840000', placement: 'button' },
+                    { key: 'prone', label: 'PRONE', color: '#666', placement: 'button' },
+                    { key: 'disconnected', label: 'DISCONNECTED', color: '#455a64', placement: 'button' },
+                    { key: 'jammed', label: 'JAMMED', color: '#ff6be6', placement: 'menu' },
+                ],
+            },
+            getUnit: () => ({ type: 'Mek' }),
+        };
+
+        (RsPolyfillUtil as unknown as { addConditionsButtons: (unit: unknown, svg: SVGSVGElement) => void }).addConditionsButtons(forceUnit, svg);
+
+        const disconnectedButton = svg.querySelector('.unitConditionButton[condition="disconnected"]') as SVGElement;
+        expect(disconnectedButton).not.toBeNull();
+        expect(disconnectedButton.getAttribute('active-color')).toBe('#455a64');
+        expect(disconnectedButton.querySelector('text')?.textContent).toBe('DISCONNECTED');
+        expect(disconnectedButton.querySelector('rect')?.getAttribute('x')).toBe('21');
+        expect(disconnectedButton.querySelector('rect')?.getAttribute('y')).toBe('20');
+
+        const menuRect = svg.querySelector('.unitConditionButton[condition="menu"] rect') as SVGRectElement;
+        expect(menuRect.getAttribute('x')).toBe('89');
+        expect(menuRect.getAttribute('y')).toBe('20');
+    });
+
+    it('syncs drone-only condition buttons after unit inventory initialization', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = `
+            <g id="unit_condition_wrapper" class="unitConditionWrapper">
+                <g id="unit_condition_button_shutdown" class="unitConditionButton" condition="shutdown"><rect x="10" y="20" width="45" height="12"></rect><text></text></g>
+                <g id="unit_condition_button_prone" class="unitConditionButton" condition="prone"><rect x="57" y="20" width="30" height="12"></rect><text></text></g>
+            </g>
+            <g id="condition_banner_wrapper" class="unitConditionBannerWrapper"></g>
+        `;
+        const conditionControls = [
+            { key: 'shutdown', label: 'SHUTDOWN', color: '#840000', placement: 'button' },
+            { key: 'prone', label: 'PRONE', color: '#666', placement: 'button' },
+        ];
+        const forceUnit = {
+            rules: { conditionControls },
+            getUnit: () => ({ type: 'Mek' }),
+        };
+
+        RsPolyfillUtil.syncConditionButtons(forceUnit as never, svg);
+        expect(svg.querySelector('.unitConditionButton[condition="disconnected"]')).toBeNull();
+
+        conditionControls.push({ key: 'disconnected', label: 'DISCONNECTED', color: '#455a64', placement: 'button' });
+        RsPolyfillUtil.syncConditionButtons(forceUnit as never, svg);
+
+        expect(svg.querySelector('.unitConditionButton[condition="disconnected"]')).not.toBeNull();
+    });
+
     it('adds hidden 3x3 motive hit pip overlays below repeatable motive hit controls', () => {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         const motiveHit2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
