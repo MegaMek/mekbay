@@ -266,7 +266,7 @@ export class UnitSvgMekService extends UnitSvgService {
 
     protected override resolveInventoryControlHitModifier(entry: MountedEquipment, range?: WeaponRangeKey | null): number | 'Vs' | '*' | null {
         const state = this.currentEntryStates?.get(entry) ?? this.mekRules.computeEntryState(entry);
-        return resolveHitModifier(entry, state.hitMod, range);
+        return resolveHitModifier(entry, state.hitMod, range, this.inventoryTargetSelectedAmmo(entry));
     }
 
     override inventoryTargetHeatFireModifier(entry: MountedEquipment): number {
