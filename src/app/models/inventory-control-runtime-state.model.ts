@@ -62,6 +62,8 @@ export interface InventoryControlRuntimeTarget {
     color: string;
     unitType?: TnTargetUnitType;
     distance: number;
+    c3Distance?: number;
+    useC3?: boolean;
     tnModifier: number;
     tnCalculator?: TnTargetNumberCalculatorState;
 }
@@ -228,6 +230,8 @@ export class InventoryControlRuntimeState {
             ...(patch.color !== undefined && { color: patch.color }),
             ...(patch.unitType !== undefined && { unitType: patch.unitType }),
             ...(patch.distance !== undefined && { distance: Math.max(0, Number.isFinite(patch.distance) ? patch.distance : target.distance) }),
+            ...(patch.c3Distance !== undefined && { c3Distance: Math.max(0, Number.isFinite(patch.c3Distance) ? patch.c3Distance : target.c3Distance ?? target.distance) }),
+            ...(patch.useC3 !== undefined && { useC3: patch.useC3 === true }),
             ...(patch.tnModifier !== undefined && { tnModifier: Number.isFinite(patch.tnModifier) ? patch.tnModifier : target.tnModifier }),
             ...(patch.tnCalculator !== undefined && { tnCalculator: { ...patch.tnCalculator } })
         };

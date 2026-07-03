@@ -19,7 +19,6 @@ import type { TooltipLine } from '../tooltip/tooltip.component';
 import { formatInventoryTargetSignedModifier, inventoryTargetNumberState, inventoryTargetRangeSelection, parseInventoryTargetNumberCell, type InventoryTargetNumberInput, type InventoryTargetRangeKey, type InventoryTargetRangeSelection } from '../../utils/inventory-target-number.util';
 import { resolveHitModifier } from '../../models/rules/hit-modifier.util';
 import { resolveWeaponRangeDamageText } from '../../models/rules/weapon-range-rules.util';
-import { getMotiveModeLabel } from '../../models/motiveModes.model';
 import type { EquipmentDialogContext } from './equipment-dialog.model';
 import {
     formatInventoryControlModeName,
@@ -46,9 +45,6 @@ const HEAT_BAR_SCALE = 30;
 const WEAPON_TARGET_CHOICE_OVERLAY_KEY = 'weapon-equipment-target-choice';
 
 type HeatDissipationWithWings = HeatDissipationState & { totalDissipationWithWings?: number };
-interface HeatAwareRules {
-    heatDissipation: () => HeatDissipationWithWings | null;
-}
 
 interface SelectedHeatProjection {
     current: number;
@@ -89,6 +85,17 @@ interface AmmoRowState {
     canIncrease: boolean;
 }
 
+interface AmmoConsumptionRequest {
+    row: InventoryControlRow;
+    option: InventoryControlAmmoOption;
+    count: number;
+}
+
+interface AmmoConsumptionSummaryItem {
+    label: string;
+    count: number;
+}
+
 interface DragPreviewCellSizing {
     path: number[];
     width: number;
@@ -120,14 +127,18 @@ export class WeaponsEquipmentPanelComponent {
     readonly contextInput = input.required<EquipmentDialogContext>({ alias: 'context' });
     readonly readOnlyInput = input<boolean | undefined>(undefined, { alias: 'readOnly' });
     private pendingDragPreviewSizing: DragPreviewSizing | null = null;
-    private readonly manuallySelectedDepletedAmmo = new Map<string, string>();
+    private readonly implicitlySelectedAmmo = new Map<string, string>();
     readonly rangeKeys: InventoryRangeKey[] = ['short', 'medium', 'long'];
     readonly unit = computed(() => this.unitInput());
     readonly context = computed(() => this.contextInput());
     readonly inventoryControl = computed(() => this.unit().inventoryControl);
     readonly groups = computed(() => {
         this.inventoryControl().inventoryViewVersion();
-        return getInventoryControlGroups(this.unit(), this.context().dataService.getEquipments());
+        return getInventoryControlGroups(
+            this.unit(),
+            this.context().dataService.getEquipments(),
+            this.context().registry.inventoryControlRules(this.context())
+        );
     });
     readonly targets = computed(() => {
         this.inventoryControl().targetsMap();
@@ -358,7 +369,14 @@ export class WeaponsEquipmentPanelComponent {
     private hitTextForRange(row: InventoryControlRow, range: InventoryTargetRangeKey | null, hasTarget: boolean): string {
         if (!hasTarget) return row.display.hit;
 
-        const hitModifier = resolveHitModifier(row.entry, row.additionalHitModifier, range);
+        const selectedAmmo = this.resolvedSelectedAmmoOption(row)?.ammo ?? null;
+        const hitModifier = resolveHitModifier(
+            row.entry,
+            row.additionalHitModifier,
+            range,
+            selectedAmmo,
+            (entry, ammo) => this.context().registry.getLinkedEquipmentHitModifier(entry, ammo)
+        );
         if (hitModifier === null) return row.display.hit;
         if (hitModifier === 'Vs' || hitModifier === '*') return hitModifier;
         return formatInventoryTargetSignedModifier(hitModifier);
@@ -384,23 +402,20 @@ export class WeaponsEquipmentPanelComponent {
 
     private targetNumberInput(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null, hitText: string): InventoryTargetNumberInput {
         this.inventoryControl().inventoryViewVersion();
-        const moveMode = this.unit().turnState().moveMode();
-        const movementModifier = this.unit().turnState().getAttackMovementModifier();
         const missingMovementModifier = this.unit().turnState().missingAttackMovementModifier();
-        const spotterModifier = this.unit().turnState().getSpottingModifier();
         const heatFireModifier = this.unit().svgService?.inventoryTargetHeatFireModifier(row.entry) ?? 0;
         const hitModifier = parseInventoryTargetNumberCell(hitText) ?? 0;
+        const selectedAmmo = this.resolvedSelectedAmmoOption(row)?.ammo ?? null;
         return {
             entry: row.entry,
             category: row.category,
             display: row.display,
+            selectedAmmo,
             target,
             gunnerySkill: this.unit().gunnerySkill(),
             pilotingSkill: this.unit().pilotingSkill(),
-            movementLabel: moveMode ? getMotiveModeLabel(moveMode, this.unit().getUnit(), this.unit().turnState().airborne() ?? false) : 'None',
-            movementModifier: movementModifier,
             missingMovementModifier,
-            spottingModifier: spotterModifier,
+            attackModifierBreakdown: this.unit().turnState().getAttackModifierBreakdown(),
             hitModifier: hitModifier - heatFireModifier,
             heatFireModifier
         };
@@ -412,22 +427,29 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     private createTargetState(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null): TargetRowState {
+        const calculationTarget = this.targetForTargetNumber(target);
         const rangeSelection = inventoryTargetRangeSelection({
             entry: row.entry,
             category: row.category,
             display: row.display,
-            target
+            target: calculationTarget
         });
-        const hitText = this.hitTextForRange(row, rangeSelection?.range ?? null, !!target);
-        const input = this.targetNumberInput(row, target, hitText);
+        const weaponRuleRangeSelection = inventoryTargetRangeSelection({
+            entry: row.entry,
+            category: row.category,
+            display: row.display,
+            target: this.targetForWeaponRange(target)
+        });
+        const weaponRuleRange = weaponRuleRangeSelection?.range ?? this.unit().getInventoryControlEntryRange(row.id) ?? null;
+        const hitText = this.hitTextForRange(row, weaponRuleRange, !!target);
+        const input = this.targetNumberInput(row, calculationTarget, hitText);
         const targetNumber = inventoryTargetNumberState(input, rangeSelection);
         const breakdown = targetNumber.breakdown === null ? null : { total: targetNumber.breakdown.total, lines: targetNumber.breakdown.lines };
-        const damageRange = rangeSelection?.range ?? this.unit().getInventoryControlEntryRange(row.id) ?? null;
         return {
             target,
             rangeSelection,
             hitText,
-            damageText: resolveWeaponRangeDamageText(row.entry, damageRange, row.display.damage) ?? row.display.damage,
+            damageText: resolveWeaponRangeDamageText(row.entry, weaponRuleRange, row.display.damage) ?? row.display.damage,
             targetNumberText: targetNumber.text,
             breakdown
         };
@@ -436,6 +458,17 @@ export class WeaponsEquipmentPanelComponent {
     private resolveTargetForRow(row: InventoryControlRow): InventoryControlRuntimeTarget | null {
         const targetId = this.unit().getInventoryControlEntryTargetId(row.id);
         return targetId ? this.targets().find(target => target.id === targetId) ?? null : null;
+    }
+
+    private targetForTargetNumber(target: InventoryControlRuntimeTarget | null): InventoryControlRuntimeTarget | null {
+        if (!target || this.unit().hasLinkedC3Network?.() === true) return target;
+        if (target.c3Distance === undefined) return target;
+        return { ...target, c3Distance: undefined };
+    }
+
+    private targetForWeaponRange(target: InventoryControlRuntimeTarget | null): InventoryControlRuntimeTarget | null {
+        if (!target || target.c3Distance === undefined) return target;
+        return { ...target, c3Distance: undefined };
     }
 
     ammoState(row: InventoryControlRow): AmmoRowState {
@@ -462,20 +495,29 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     private resolvedSelectedAmmoOption(row: InventoryControlRow, hasUsableAmmo = this.hasUsableAmmoOption(row)): InventoryControlAmmoOption | undefined {
-        const selectedOptionId = this.unit().getInventoryControlEntryAmmoOption(row.id);
+        const persistedSelectedOptionId = this.unit().getInventoryControlEntryAmmoOption(row.id) || undefined;
+        const selectedOptionId = persistedSelectedOptionId ?? this.implicitlySelectedAmmo.get(row.id);
         const selectedOption = selectedOptionId
             ? row.ammo.options.find((option: InventoryControlAmmoOption) => option.id === selectedOptionId)
             : undefined;
-        if (selectedOption && this.isManuallySelectedDepletedAmmo(row, selectedOption)) {
-            return selectedOption;
-        }
         if (selectedOption && (!hasUsableAmmo || this.isUsableAmmoOption(selectedOption))) {
             return selectedOption;
         }
         if (selectedOption) {
-            return this.preferredUsableAmmoOption(row, selectedOption) ?? selectedOption;
+            const sameAmmoOption = this.nextUsableSameAmmoOption(row, selectedOption);
+            if (sameAmmoOption) {
+                if (!persistedSelectedOptionId) {
+                    this.implicitlySelectedAmmo.set(row.id, sameAmmoOption.id);
+                }
+                return sameAmmoOption;
+            }
+            return selectedOption;
         }
-        return this.preferredAmmoOption(row);
+        const initialOption = this.initialAmmoOption(row);
+        if (initialOption) {
+            this.implicitlySelectedAmmo.set(row.id, initialOption.id);
+        }
+        return initialOption;
     }
 
     private ammoStateText(row: InventoryControlRow, hasAmmo: boolean, selectedOption: InventoryControlAmmoOption | undefined): string {
@@ -495,12 +537,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     selectAmmoOption(row: InventoryControlRow, value: string): void {
-        const option = row.ammo.options.find((ammoOption: InventoryControlAmmoOption) => ammoOption.id === value);
-        if (option && !option.destroyed && option.remaining <= 0) {
-            this.manuallySelectedDepletedAmmo.set(row.id, option.id);
-        } else {
-            this.manuallySelectedDepletedAmmo.delete(row.id);
-        }
+        this.implicitlySelectedAmmo.delete(row.id);
         this.unit().setInventoryControlEntryAmmoOption(row.id, value);
     }
 
@@ -539,7 +576,7 @@ export class WeaponsEquipmentPanelComponent {
         const selectedRows = this.selectedRows();
         if (selectedRows.length === 0) return;
 
-        const requests = new Map<string, { row: InventoryControlRow; option: InventoryControlAmmoOption; count: number }>();
+        const requests = new Map<string, AmmoConsumptionRequest>();
         for (const row of selectedRows) {
             if (!row.tracksAmmo) continue;
             const option = this.selectedAmmo(row);
@@ -567,8 +604,6 @@ export class WeaponsEquipmentPanelComponent {
             }
         }
 
-        const ammoSummary = Array.from(requests.values())
-            .map(request => ({ label: request.option.label, count: request.count }));
         const heatProjection = this.selectedHeatProjection();
 
         for (const request of requests.values()) {
@@ -578,7 +613,10 @@ export class WeaponsEquipmentPanelComponent {
         if (heatProjection) {
             this.unit().turnState().addFiredHeat(heatProjection.selection);
         }
+        await this.runSelectedFireHooks(selectedRows);
         this.inventoryControl().markInventoryViewChanged();
+        const ammoSummary = Array.from(requests.values())
+            .map(request => this.consumedAmmoSummaryItem(request));
         await this.context().dialogsService.showNoticeHtml(
             this.consumptionSummaryHtml(ammoSummary, heatProjection),
             'Weapons Fired'
@@ -616,7 +654,24 @@ export class WeaponsEquipmentPanelComponent {
         }
     }
 
-    private consumptionSummaryHtml(ammoSummary: { label: string; count: number }[], heatProjection: SelectedHeatProjection | null): string {
+    private async runSelectedFireHooks(selectedRows: InventoryControlRow[]): Promise<void> {
+        for (const row of selectedRows) {
+            await this.context().registry.afterInventoryControlFire(row.entry, this.context());
+        }
+    }
+
+    private consumedAmmoSummaryItem(request: AmmoConsumptionRequest): AmmoConsumptionSummaryItem {
+        const currentRow = this.groups()
+            .flatMap(group => group.rows)
+            .find(row => row.id === request.row.id);
+        const currentOption = currentRow?.ammo.options.find(option => option.id === request.option.id);
+        return {
+            label: currentOption?.label ?? request.option.label,
+            count: request.count
+        };
+    }
+
+    private consumptionSummaryHtml(ammoSummary: AmmoConsumptionSummaryItem[], heatProjection: SelectedHeatProjection | null): string {
         const ammoHtml = ammoSummary.length > 0
             ? `Ammo consumed:<ul>${ammoSummary.map(item => `<li>${item.count} ammo from ${this.escapeHtml(item.label)}</li>`).join('')}</ul>`
             : '<p>No ammo consumed.</p>';
@@ -664,15 +719,6 @@ export class WeaponsEquipmentPanelComponent {
         return !option.destroyed && option.remaining > 0;
     }
 
-    private isManuallySelectedDepletedAmmo(row: InventoryControlRow, option: InventoryControlAmmoOption): boolean {
-        if (this.manuallySelectedDepletedAmmo.get(row.id) !== option.id) return false;
-        if (this.isUsableAmmoOption(option)) {
-            this.manuallySelectedDepletedAmmo.delete(row.id);
-            return false;
-        }
-        return !option.destroyed;
-    }
-
     private sameAmmoType(left: InventoryControlAmmoOption, right: InventoryControlAmmoOption): boolean {
         return this.ammoTypeKey(left) === this.ammoTypeKey(right);
     }
@@ -683,8 +729,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     private heatDissipationState(): HeatDissipationWithWings | null {
-        const rules = this.unit().rules as Partial<HeatAwareRules>;
-        return typeof rules.heatDissipation === 'function' ? rules.heatDissipation() : null;
+        return this.unit().rules.heatDissipation() as HeatDissipationWithWings | null;
     }
 
     private heatDissipationValue(state: HeatDissipationWithWings): number {
@@ -695,17 +740,17 @@ export class WeaponsEquipmentPanelComponent {
         return Math.min(100, Math.max(0, (value / scale) * 100));
     }
 
-    private preferredAmmoOption(row: InventoryControlRow): InventoryControlAmmoOption | undefined {
-        return this.preferredUsableAmmoOption(row)
+    private initialAmmoOption(row: InventoryControlRow): InventoryControlAmmoOption | undefined {
+        return row.ammo.options.find((option: InventoryControlAmmoOption) => this.isUsableAmmoOption(option))
             ?? row.ammo.options.find((option: InventoryControlAmmoOption) => !option.destroyed)
             ?? row.ammo.options[0];
     }
 
-    private preferredUsableAmmoOption(row: InventoryControlRow, sameTypeAs?: InventoryControlAmmoOption): InventoryControlAmmoOption | undefined {
+    private nextUsableSameAmmoOption(row: InventoryControlRow, depletedOption: InventoryControlAmmoOption): InventoryControlAmmoOption | undefined {
         return row.ammo.options
             .filter((option: InventoryControlAmmoOption) => this.isUsableAmmoOption(option)
-                && (!sameTypeAs || this.sameAmmoType(option, sameTypeAs)))
-            .reduce<InventoryControlAmmoOption | undefined>((best, option) => !best || option.remaining > best.remaining ? option : best, undefined);
+                && option.id !== depletedOption.id
+                && this.sameAmmoType(option, depletedOption))[0];
     }
 
     private heatValue(row: InventoryControlRow): number {
@@ -908,7 +953,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     rowEffectivelyDestroyed(row: InventoryControlRow): boolean {
-        return row.entry.effectiveDestroyed();
+        return row.entry.resolvedDestroyed(row.destroyed);
     }
 
     rowDestroying(row: InventoryControlRow): boolean {
@@ -920,7 +965,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     rowCommittedDestroyed(row: InventoryControlRow): boolean {
-        return row.entry.committedDestroyed() && !row.entry.isRepairing();
+        return row.entry.resolvedCommittedDestroyed(row.destroyed);
     }
 
     private isVirtualTrooperRow(row: InventoryControlRow): boolean {

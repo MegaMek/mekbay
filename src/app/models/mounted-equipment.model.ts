@@ -31,9 +31,12 @@
  * affiliated with Microsoft.
  */
 
+import { computed, signal, type Signal } from '@angular/core';
+
 import type { CBTForceUnit } from './cbt-force-unit.model';
 import type { Equipment } from './equipment.model';
 import type { CriticalSlot } from './force-serialization';
+import type { MountedEquipmentRuleState } from './rules/unit-type-rules';
 
 export interface MountedEquipmentInit {
     owner: CBTForceUnit;
@@ -57,6 +60,9 @@ export interface MountedEquipmentInit {
 }
 
 export class MountedEquipment {
+    private readonly destroyedState = signal<boolean | undefined>(undefined);
+    private readonly destroyingState = signal<boolean | undefined>(undefined);
+
     owner: CBTForceUnit;
     id: string;
     name: string;
@@ -67,14 +73,13 @@ export class MountedEquipment {
     physical?: boolean;
     linkedWith?: null | MountedEquipment[];
     parent?: null | MountedEquipment;
-    destroyed?: boolean;
-    destroying?: boolean;
     critSlots?: CriticalSlot[];
     states: Map<string, string>;
     el?: SVGElement;
     ammo?: string;
     totalAmmo?: number;
     consumed?: number;
+    readonly ruleState: Signal<MountedEquipmentRuleState>;
 
     setState(name: string, value: string): boolean {
         if (this.states.get(name) === value) return false;
@@ -101,14 +106,15 @@ export class MountedEquipment {
         this.physical = data.physical;
         this.linkedWith = data.linkedWith;
         this.parent = data.parent;
-        this.destroyed = data.destroyed;
-        this.destroying = data.destroying;
+        this.destroyedState.set(data.destroyed);
+        this.destroyingState.set(data.destroying);
         this.critSlots = data.critSlots;
         this.states = data.states ?? new Map<string, string>();
         this.el = data.el;
         this.ammo = data.ammo;
         this.totalAmmo = data.totalAmmo;
         this.consumed = data.consumed;
+        this.ruleState = computed(() => this.owner.rules.computeEntryState(this));
     }
 
     static from(entry: MountedEquipment | MountedEquipmentInit): MountedEquipment {
@@ -118,42 +124,81 @@ export class MountedEquipment {
     clone(overrides: Partial<MountedEquipmentInit> = {}): MountedEquipment {
         return new MountedEquipment({
             ...this,
+            destroyed: this.committedDestroyedState(),
+            destroying: this.pendingDestroyed(),
             states: new Map(this.states),
             ...overrides,
         });
     }
 
+    isDestroyed(): boolean {
+        return this.ruleState().isDamaged;
+    }
+
+    isDisabled(): boolean {
+        return this.ruleState().isDisabled;
+    }
+
+    isUnavailable(): boolean {
+        const state = this.ruleState();
+        return state.isDamaged || state.isDisabled;
+    }
+
+    resolvedDestroyed(ruleDamaged: boolean = this.isDestroyed()): boolean {
+        if (this.isRepairing()) return false;
+        return this.isDestroying() || ruleDamaged;
+    }
+
+    resolvedCommittedDestroyed(ruleDamaged: boolean = this.isDestroyed()): boolean {
+        return !this.isRepairing() && ruleDamaged;
+    }
+
+    committedDestroyedState(): boolean | undefined {
+        return this.destroyedState();
+    }
+
+    pendingDestroyed(): boolean | undefined {
+        return this.destroyingState();
+    }
+
     committedDestroyed(): boolean {
-        return !!this.destroyed;
+        return !!this.committedDestroyedState();
     }
 
     effectiveDestroyed(): boolean {
-        return this.destroying ?? this.committedDestroyed();
+        return this.pendingDestroyed() ?? this.committedDestroyed();
     }
 
     hasPendingDestroyedChange(): boolean {
-        return this.destroying !== undefined;
+        return this.pendingDestroyed() !== undefined;
     }
 
     isDestroying(): boolean {
-        return !this.committedDestroyed() && this.destroying === true;
+        return !this.committedDestroyed() && this.pendingDestroyed() === true;
     }
 
     isRepairing(): boolean {
-        return this.committedDestroyed() && this.destroying === false;
+        return this.committedDestroyed() && this.pendingDestroyed() === false;
     }
 
     setPendingDestroyed(destroyed: boolean | undefined): boolean {
         const next = destroyed === undefined || destroyed === this.committedDestroyed() ? undefined : destroyed;
-        if (this.destroying === next) return false;
-        this.destroying = next;
+        if (this.pendingDestroyed() === next) return false;
+        this.destroyingState.set(next);
+        return true;
+    }
+
+    setCommittedDestroyed(destroyed: boolean | undefined): boolean {
+        if (this.committedDestroyedState() === destroyed) return false;
+        this.destroyedState.set(destroyed);
         return true;
     }
 
     commitPendingDestroyed(): boolean {
-        if (this.destroying === undefined) return false;
-        this.destroyed = this.destroying;
-        this.destroying = undefined;
+        const pendingDestroyed = this.pendingDestroyed();
+        if (pendingDestroyed === undefined) return false;
+        this.destroyedState.set(pendingDestroyed);
+        this.destroyingState.set(undefined);
         return true;
     }
 }

@@ -60,6 +60,7 @@ type ManagedEntry = {
     resizeObserver?: ResizeObserver;
     mutationObserver?: MutationObserver;
     contentResizeObserver?: ResizeObserver;
+    contentMutationObserver?: MutationObserver;
     pointerDownListener?: (ev: PointerEvent) => void;
     pointerUpListener?: (ev: PointerEvent) => void;
     pointerStart?: { id: number | null; x: number; y: number } | null;
@@ -205,6 +206,14 @@ export class OverlayManagerService {
             cro.observe(overlayRef.overlayElement);
             entry.contentResizeObserver = cro;
         } catch { /* ResizeObserver may not be available in some test envs */ }
+
+        if (opts?.anchorActiveSelector) {
+            try {
+                const cmo = new MutationObserver(() => this.schedulePositionUpdate());
+                cmo.observe(overlayRef.overlayElement, { childList: true, subtree: true, characterData: true });
+                entry.contentMutationObserver = cmo;
+            } catch { /* MutationObserver may not be available in some test envs */ }
+        }
 
         // Subscribe to detachments to clean up managed entry when overlay is closed externally
         // (e.g., by scroll strategy close)
@@ -489,6 +498,12 @@ export class OverlayManagerService {
             ? (content.querySelector('[data-scroll-container]') as HTMLElement ?? content)
             : pane;
 
+        if (content) {
+            content.style.maxHeight = '';
+            content.style.height = '';
+        }
+        scrollContainer.style.maxHeight = '';
+
         const maxPanelH = viewportH - 2 * MARGIN;
         const chromeHeight = content && content !== scrollContainer
             ? Math.max(0, content.offsetHeight - scrollContainer.offsetHeight)
@@ -499,6 +514,9 @@ export class OverlayManagerService {
         const visibleScrollH = Math.min(naturalScrollH, maxScrollH);
         const effectiveH = Math.min(naturalH, maxPanelH);
         const overflows = naturalH > maxPanelH;
+        const paneRect = pane.getBoundingClientRect();
+        const scrollContainerRect = scrollContainer.getBoundingClientRect();
+        const scrollContainerTopInPanel = scrollContainerRect.top - paneRect.top;
 
         // Find the active element inside the overlay
         const active = pane.querySelector(selector) as HTMLElement | null;
@@ -508,8 +526,7 @@ export class OverlayManagerService {
         let activeCenterInContent = 0;
         if (active) {
             const activeRect = active.getBoundingClientRect();
-            const containerRect = scrollContainer.getBoundingClientRect();
-            activeCenterInContent = activeRect.top - containerRect.top
+            activeCenterInContent = activeRect.top - scrollContainerRect.top
                 + scrollContainer.scrollTop + activeRect.height / 2;
         }
 
@@ -517,12 +534,12 @@ export class OverlayManagerService {
 
         if (!overflows) {
             // Content fits: position so the active item aligns with the trigger
-            top = triggerCenterY - activeCenterInContent;
+            top = triggerCenterY - scrollContainerTopInPanel - activeCenterInContent;
         } else {
             // Content overflows: panel will be viewport-sized.
             // Place it so the trigger center is vertically centred in the panel,
             // then use scrollTop to bring the active item to that position.
-            top = triggerCenterY - visibleScrollH / 2;
+            top = triggerCenterY - scrollContainerTopInPanel - visibleScrollH / 2;
         }
 
         // Clamp to viewport
@@ -549,7 +566,7 @@ export class OverlayManagerService {
             // content.style.overflow = 'hidden';
         }
         scrollContainer.style.maxHeight = `${maxScrollH}px`;
-        scrollContainer.style.overflowY = 'auto';
+        scrollContainer.style.overflowY = overflows ? 'auto' : 'hidden';
 
         // Scroll to centre the active item inside the panel
         // only on the FIRST successful positioning so subsequent user scrolling
@@ -562,8 +579,8 @@ export class OverlayManagerService {
             scrollContainer.offsetHeight;
             // Scroll so the active item sits at the vertical position
             // within the panel that lines up with the trigger's centre.
-            const targetOffsetInPanel = triggerCenterY - top;
-            const desiredScrollTop = activeCenterInContent - targetOffsetInPanel;
+            const targetOffsetInScrollContainer = triggerCenterY - top - scrollContainerTopInPanel;
+            const desiredScrollTop = activeCenterInContent - targetOffsetInScrollContainer;
             scrollContainer.scrollTop = Math.max(0, desiredScrollTop);
         }
     }
@@ -612,6 +629,7 @@ export class OverlayManagerService {
         // disconnect observers
         try { entry.resizeObserver?.disconnect(); } catch { /* ignore */ }
         try { entry.contentResizeObserver?.disconnect(); } catch { /* ignore */ }
+        try { entry.contentMutationObserver?.disconnect(); } catch { /* ignore */ }
         try { entry.mutationObserver?.disconnect(); } catch { /* ignore */ }
         entry.triggerElement = undefined;
         this.managed.delete(key);

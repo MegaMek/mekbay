@@ -48,7 +48,7 @@ export abstract class CycleModeHandler extends EquipmentInteractionHandler {
         const nextMode = this.getNextMode(equipment);
         
         // Return single choice representing the next mode
-        return [{...nextMode, disabled: equipment.destroyed }];
+        return [{...nextMode, disabled: equipment.isUnavailable() }];
     }
     
     handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerContext): boolean {

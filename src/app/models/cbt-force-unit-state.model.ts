@@ -32,7 +32,7 @@
  */
 
 import { signal, computed } from '@angular/core';
-import { MountedEquipment, type LocationData, type HeatProfile, type SerializedInventory, type CriticalSlot, type SerializedState, type CBTSerializedState, C3_POSITION_SCHEMA } from './force-serialization';
+import { MountedEquipment, type LocationData, type HeatProfile, type SerializedInventory, type CriticalSlot, type SerializedState, type CBTSerializedState, C3_POSITION_SCHEMA, type SerializedCondition, committedConditionData, conditionsForSerialization, conditionsMapFromSerialization } from './force-serialization';
 import { CrewMember } from './crew-member.model';
 import { ForceUnitState } from './force-unit-state.model';
 import { TurnState } from './turn-state.model';
@@ -73,7 +73,9 @@ export class CBTForceUnitState extends ForceUnitState {
 
     hasUnconsolidatedLocations = computed(() => {
         const locations = this.locations();
-        return Object.values(locations).some(loc => (loc.pendingArmor ?? 0) !== 0 || (loc.pendingInternal ?? 0) !== 0);
+        return Object.values(locations).some(loc => (loc.pendingArmor ?? 0) !== 0
+            || (loc.pendingInternal ?? 0) !== 0
+            || this.hasPendingLocationConditions(loc.conditions));
     });
 
     hasUnconsolidatedInventory = computed(() => {
@@ -88,9 +90,11 @@ export class CBTForceUnitState extends ForceUnitState {
             updated[key] = {
                 armor: (loc.armor ?? 0) + (loc.pendingArmor ?? 0),
                 internal: (loc.internal ?? 0) + (loc.pendingInternal ?? 0),
+                conditions: this.consolidateLocationConditions(loc.conditions),
             };
         }
         this.locations.set(updated);
+        this.unit.clearNarcFromCommittedPhysicallyDestroyedLocations();
         this.unit.evaluateDestroyed();
         this.unit.setModified();
     }
@@ -103,6 +107,7 @@ export class CBTForceUnitState extends ForceUnitState {
             updated[key] = {
                 armor: loc.armor,
                 internal: loc.internal,
+                conditions: this.discardPendingLocationConditions(loc.conditions),
             };
         }
         this.locations.set(updated);
@@ -165,17 +170,34 @@ export class CBTForceUnitState extends ForceUnitState {
         turnState.resetPSRChecks();
     }
 
+    private cleanupEndTurnConditions() {
+        let cleanupDone = false;
+        if (this.hasCondition('tagged')) {
+            this.setCondition('tagged', false);
+            cleanupDone = true;
+        }
+        if (this.hasCondition('skidding')) {
+            this.setCondition('skidding', false);
+            cleanupDone = true;
+        }
+        if (cleanupDone) {
+            this.unit.setModified();
+        }
+    }
+
     endTurn() {
         this.consolidateHeat();
         this.turnState().resetTurnHeatSources();
+        this.cleanupEndTurnConditions();
         this.endPhase();
     }
 
     override update(data: CBTSerializedState) {
         this.modified.set(data.modified);
         this.destroyed.set(data.destroyed);
-        this.shutdown.set(data.shutdown);
+        this.setConditions(data.conditions ?? []);
         this.heat.set(data.heat);
+        this.turnState().update(data.turnState);
         if (data.c3Position) {
             this.c3Position.set(Sanitizer.sanitize(data.c3Position, C3_POSITION_SCHEMA));
         }
@@ -196,7 +218,8 @@ export class CBTForceUnitState extends ForceUnitState {
                     || currentLoc.armor !== incomingLoc.armor
                     || currentLoc.internal !== incomingLoc.internal
                     || currentLoc.pendingArmor !== incomingLoc.pendingArmor
-                    || currentLoc.pendingInternal !== incomingLoc.pendingInternal) {
+                    || currentLoc.pendingInternal !== incomingLoc.pendingInternal
+                    || !this.locationConditionsEqual(currentLoc.conditions, incomingLoc.conditions)) {
                     locationsChanged = true;
                     break;
                 }
@@ -208,7 +231,8 @@ export class CBTForceUnitState extends ForceUnitState {
                     if (!incomingKeys.has(key)) {
                         const loc = currentLocations[key];
                         if ((loc.armor ?? 0) !== 0 || (loc.internal ?? 0) !== 0 ||
-                            (loc.pendingArmor ?? 0) !== 0 || (loc.pendingInternal ?? 0) !== 0) {
+                            (loc.pendingArmor ?? 0) !== 0 || (loc.pendingInternal ?? 0) !== 0 ||
+                            (loc.conditions?.length ?? 0) > 0) {
                             locationsChanged = true;
                             break;
                         }
@@ -292,12 +316,10 @@ export class CBTForceUnitState extends ForceUnitState {
                 const incoming = incomingMap.get(item.id);
                 if (incoming) {
                     // Apply incoming state
-                    if (item.destroyed !== incoming.destroyed) {
-                        item.destroyed = incoming.destroyed;
+                    if (item.setCommittedDestroyed(incoming.destroyed)) {
                         inventoryChanged = true;
                     }
-                    if (item.destroying !== incoming.destroying) {
-                        item.destroying = incoming.destroying;
+                    if (item.setPendingDestroyed(incoming.destroying)) {
                         inventoryChanged = true;
                     }
                     if (item.consumed !== incoming.consumed) {
@@ -318,11 +340,11 @@ export class CBTForceUnitState extends ForceUnitState {
                     }
                 } else {
                     // Not in incoming: reset to pristine if it had state
-                    if (item.destroyed || item.destroying !== undefined || (item.consumed ?? 0) > 0 ||
+                    if (item.committedDestroyed() || item.hasPendingDestroyedChange() || (item.consumed ?? 0) > 0 ||
                         (item.ammo !== undefined && item.ammo !== item.name) ||
                         (item.states && item.states.size > 0 && Array.from(item.states.values()).some(v => v !== ''))) {
-                        item.destroyed = undefined;
-                        item.destroying = undefined;
+                        item.setCommittedDestroyed(undefined);
+                        item.setPendingDestroyed(undefined);
                         item.consumed = undefined;
                         item.ammo = undefined;
                         item.totalAmmo = undefined;
@@ -375,7 +397,8 @@ export class CBTForceUnitState extends ForceUnitState {
         const result: Record<string, LocationData> = {};
         for (const [key, loc] of Object.entries(locations)) {
             if ((loc.armor ?? 0) !== 0 || (loc.internal ?? 0) !== 0 ||
-                (loc.pendingArmor ?? 0) !== 0 || (loc.pendingInternal ?? 0) !== 0) {
+                (loc.pendingArmor ?? 0) !== 0 || (loc.pendingInternal ?? 0) !== 0 ||
+                (loc.conditions?.length ?? 0) > 0) {
                 result[key] = loc;
             }
         }
@@ -435,6 +458,39 @@ export class CBTForceUnitState extends ForceUnitState {
         return leftValues.length === rightValues.length && leftValues.every((value, index) => value === rightValues[index]);
     }
 
+    private locationConditionsEqual(left: SerializedCondition[] | undefined, right: SerializedCondition[] | undefined): boolean {
+        const leftValues = left ?? [];
+        const rightValues = right ?? [];
+        return leftValues.length === rightValues.length
+            && leftValues.every((value, index) => JSON.stringify(value) === JSON.stringify(rightValues[index]));
+    }
+
+    private hasPendingLocationConditions(conditions: SerializedCondition[] | undefined): boolean {
+        return Array.from(conditionsMapFromSerialization(conditions).values()).some(data => data?.pending === true);
+    }
+
+    private consolidateLocationConditions(conditions: SerializedCondition[] | undefined): SerializedCondition[] | undefined {
+        return this.normalizePendingLocationConditions(conditions, true);
+    }
+
+    private discardPendingLocationConditions(conditions: SerializedCondition[] | undefined): SerializedCondition[] | undefined {
+        return this.normalizePendingLocationConditions(conditions, false);
+    }
+
+    private normalizePendingLocationConditions(conditions: SerializedCondition[] | undefined, commit: boolean): SerializedCondition[] | undefined {
+        const result = conditionsMapFromSerialization(conditions);
+        for (const [key, data] of result) {
+            if (data?.pending !== true) continue;
+            if (commit) {
+                result.set(key, committedConditionData(data));
+            } else {
+                result.delete(key);
+            }
+        }
+        const serialized = conditionsForSerialization(result);
+        return serialized.length > 0 ? serialized : undefined;
+    }
+
     /**
      * Returns only inventory items with meaningful state for serialization.
      * Items with no destroyed, consumed, or states are omitted since they
@@ -447,11 +503,13 @@ export class CBTForceUnitState extends ForceUnitState {
             const hasStates = item.states !== undefined && item.states.size > 0 
                 && Array.from(item.states.values()).some(v => v !== '');
             const hasCustomAmmo = item.ammo !== undefined && item.ammo !== item.name;
-            if (item.destroyed || item.destroying !== undefined || (item.consumed ?? 0) > 0 || hasCustomAmmo || hasStates) {
+            const committedDestroyed = item.committedDestroyedState();
+            const pendingDestroyed = item.pendingDestroyed();
+            if (committedDestroyed || pendingDestroyed !== undefined || (item.consumed ?? 0) > 0 || hasCustomAmmo || hasStates) {
                 serializedData.push({
                     id: item.id,
-                    ...(item.destroyed && { destroyed: item.destroyed }),
-                    ...(item.destroying !== undefined && { destroying: item.destroying }),
+                    ...(committedDestroyed && { destroyed: committedDestroyed }),
+                    ...(pendingDestroyed !== undefined && { destroying: pendingDestroyed }),
                     ...((item.consumed ?? 0) > 0 && { consumed: item.consumed }),
                     ...(hasCustomAmmo && { ammo: item.ammo }),
                     ...(((item.consumed ?? 0) > 0 || hasCustomAmmo) && item.totalAmmo !== undefined && { totalAmmo: item.totalAmmo }),
@@ -483,9 +541,7 @@ export class CBTForceUnitState extends ForceUnitState {
                     states: new Map<string, string>(),
                 });
             }
-            if (entry.destroyed !== undefined) {
-                newItem.destroyed = entry.destroyed;
-            }
+            newItem.setCommittedDestroyed(entry.destroyed);
             if (entry.states !== undefined) {
                 newItem.states = new Map(entry.states.map(s => [s.name, s.value]));
             }
@@ -498,9 +554,7 @@ export class CBTForceUnitState extends ForceUnitState {
             if (entry.consumed !== undefined) {
                 newItem.consumed = entry.consumed;
             }
-            if (entry.destroying !== undefined) {
-                newItem.destroying = entry.destroying;
-            }
+            newItem.setPendingDestroyed(entry.destroying);
             if (allEquipment && newItem.name && !newItem.equipment) {
                 if (allEquipment) {
                     const equipment = allEquipment[newItem.name];

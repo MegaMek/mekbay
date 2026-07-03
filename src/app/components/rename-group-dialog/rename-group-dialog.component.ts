@@ -32,20 +32,21 @@
  */
 
 
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, type ElementRef, inject, Injector, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, type ComponentRef, DestroyRef, type ElementRef, inject, Injector, type OnDestroy, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { takeUntilDestroyed, outputToObservable } from '@angular/core/rxjs-interop';
 import { OptionsService } from '../../services/options.service';
 import type { UnitGroup } from '../../models/force.model';
 import { formatSummaryMovement } from '../../models/pilot-abilities.model';
-import { formationInheritsParentEffects, type FormationTypeDefinition, isNoFormation } from '../../utils/formation-type.model';
+import { formationInheritsParentEffects, type FormationTypeDefinition, isNoFormation, NO_FORMATION, NO_FORMATION_ID } from '../../utils/formation-type.model';
 import { FormationInfoComponent } from '../formation-info/formation-info.component';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
-import { FormationDropdownPanelComponent, type FormationDisplayItem } from './formation-dropdown-panel.component';
+import { AUTOMATIC_FORMATION_KEY, FormationDropdownPanelComponent, type FormationDisplayItem, type FormationDropdownActiveOption, type FormationDropdownActiveTarget, type FormationDropdownPointerHoverEvent } from './formation-dropdown-panel.component';
 import { FormationNamerUtil } from '../../utils/formation-namer.util';
 import { getFormationDefinition, getFormationDefinitions } from '../../utils/formation-blueprints';
 import { FormationRequirementEngine } from '../../utils/formation-requirement-engine.util';
+import { DropdownPointerActivationGuard, nextDropdownTarget, nextDropdownTargetInCurrentLane, scrollActiveOptionIntoView } from '../../utils/dropdown-interaction.utils';
 
 /*
  * Author: Drake
@@ -105,7 +106,15 @@ export interface RenameGroupDialogResult {
         <div class="form-fields">
           <label class="field-label">Formation</label>
           <div #formationTriggerWrapper class="input-wrapper">
-            <button class="formation-selector bt-select" [class.danger]="!isSelectedFormationValid()" (click)="toggleFormationDropdown()">
+            <button
+              class="formation-selector bt-select"
+              [class.danger]="!isSelectedFormationValid()"
+              aria-haspopup="listbox"
+              [attr.aria-controls]="formationOptionsId"
+              [attr.aria-expanded]="formationDropdownOpen()"
+              (click)="toggleFormationDropdown()"
+              (keydown)="onFormationTriggerKeydown($event)"
+            >
               @if (selectedFormation(); as formation) {
                 @if (isNoFormation(formation)) {
                   <span class="placeholder">No Formation</span>
@@ -334,7 +343,7 @@ export interface RenameGroupDialogResult {
     `]
 })
 
-export class RenameGroupDialogComponent {
+export class RenameGroupDialogComponent implements OnDestroy {
   inputRef = viewChild.required<ElementRef<HTMLDivElement>>('inputRef');
   formationTriggerWrapper = viewChild.required<ElementRef<HTMLDivElement>>('formationTriggerWrapper');
 
@@ -344,12 +353,25 @@ export class RenameGroupDialogComponent {
   private overlayManager = inject(OverlayManagerService);
   private injector = inject(Injector);
   private destroyRef = inject(DestroyRef);
+  private readonly formationPointerActivationGuard = new DropdownPointerActivationGuard();
+  private formationPanelRef: ComponentRef<FormationDropdownPanelComponent> | null = null;
+  private formationClosedSubscription: { unsubscribe(): void } | null = null;
+  readonly formationOptionsId = 'renameGroupFormation-options';
 
   /** Tracks whether the name input has text */
   nameHasText = signal<boolean>(!!this.data.group.name());
 
   /** Currently selected formation */
   selectedFormation = signal<FormationTypeDefinition | null>(this.data.group.formation());
+
+  /** Whether the formation dropdown overlay is open. */
+  formationDropdownOpen = signal(false);
+
+  /** Keyboard/pointer active formation option key while the dropdown is open. */
+  activeFormationKey = signal(AUTOMATIC_FORMATION_KEY);
+
+  /** Keyboard/pointer active formation target while the dropdown is open. */
+  activeFormationTarget = signal<FormationDropdownActiveTarget>('entry');
 
   /** All formation definitions with validity flag. */
   formationDisplayList: FormationDisplayItem[] = (() => {
@@ -485,14 +507,29 @@ export class RenameGroupDialogComponent {
   }
 
   toggleFormationDropdown(): void {
-    this.overlayManager.closeManagedOverlay('formation-dropdown');
+    if (this.formationDropdownOpen()) {
+      this.closeFormationDropdown();
+      return;
+    }
+    this.openFormationDropdown();
+  }
+
+  openFormationDropdown(): void {
+    if (this.formationDropdownOpen()) return;
+    this.formationPointerActivationGuard.suppress();
+    this.activeFormationKey.set(this.selectedFormationKey());
+    this.activeFormationTarget.set('entry');
+    this.formationDropdownOpen.set(true);
 
     const triggerWrapper = this.formationTriggerWrapper();
-    if (!triggerWrapper) return;
+    if (!triggerWrapper) {
+      this.formationDropdownOpen.set(false);
+      return;
+    }
 
     const portal = new ComponentPortal(FormationDropdownPanelComponent, null, this.injector);
 
-    const { componentRef } = this.overlayManager.createManagedOverlay(
+    const { componentRef, closed } = this.overlayManager.createManagedOverlay(
       'formation-dropdown',
       triggerWrapper,
       portal,
@@ -504,16 +541,215 @@ export class RenameGroupDialogComponent {
       }
     );
 
-    componentRef.setInput('formations', this.formationDisplayList);
-    componentRef.setInput('selectedFormationId', this.selectedFormation()?.id ?? null);
-    componentRef.setInput('gameSystem', this.data.group.force.gameSystem);
+    this.formationPanelRef = componentRef;
+    this.syncFormationPanelInputs();
 
     outputToObservable(componentRef.instance.selected)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((formation: FormationTypeDefinition | null) => {
         this.selectedFormation.set(formation);
-        this.overlayManager.closeManagedOverlay('formation-dropdown');
+        this.closeFormationDropdown();
       });
+
+    outputToObservable(componentRef.instance.pointerHovered)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(event => this.activatePointerFormationOption(event));
+
+    this.formationClosedSubscription = closed.subscribe(() => {
+      this.formationDropdownOpen.set(false);
+      this.formationPanelRef = null;
+      this.formationClosedSubscription = null;
+    });
+  }
+
+  onFormationTriggerKeydown(event: KeyboardEvent): void {
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        this.openFormationDropdown();
+        this.moveActiveFormationOptionInCurrentLane(1);
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        this.openFormationDropdown();
+        this.moveActiveFormationOptionInCurrentLane(-1);
+        break;
+      case 'Home':
+        event.preventDefault();
+        this.openFormationDropdown();
+        this.activateKeyboardFormationOption(0);
+        break;
+      case 'End':
+        event.preventDefault();
+        this.openFormationDropdown();
+        this.activateKeyboardFormationOption(this.visibleFormationOptionTargets().length - 1);
+        break;
+      case 'Tab':
+        if (!this.formationDropdownOpen()) break;
+        event.preventDefault();
+        this.moveActiveFormationOptionSequentially(event.shiftKey ? -1 : 1);
+        break;
+      case 'Enter':
+      case ' ':
+        event.preventDefault();
+        if (this.formationDropdownOpen()) {
+          this.selectActiveFormationOption();
+        } else {
+          this.openFormationDropdown();
+        }
+        break;
+      case 'Escape':
+        event.preventDefault();
+        this.closeFormationDropdown();
+        break;
+    }
+  }
+
+  activatePointerFormationOption(event: FormationDropdownPointerHoverEvent): void {
+    if (this.formationPointerActivationGuard.shouldIgnore(event)) return;
+    if (event.selectionKey === this.activeFormationKey() && event.target === this.activeFormationTarget()) return;
+
+    this.activeFormationKey.set(event.selectionKey);
+    this.activeFormationTarget.set(event.target);
+    this.syncFormationPanelInputs(false);
+  }
+
+  ngOnDestroy(): void {
+    this.closeFormationDropdown();
+  }
+
+  private closeFormationDropdown(): void {
+    this.formationDropdownOpen.set(false);
+    this.formationClosedSubscription?.unsubscribe();
+    this.formationClosedSubscription = null;
+    this.formationPanelRef = null;
+    this.overlayManager.closeManagedOverlay('formation-dropdown');
+  }
+
+  private syncFormationPanelInputs(scrollActiveIntoView = true): void {
+    const panelRef = this.formationPanelRef;
+    if (!panelRef) return;
+
+    panelRef.setInput('formations', this.formationDisplayList);
+    panelRef.setInput('selectedFormationId', this.selectedFormation()?.id ?? null);
+    panelRef.setInput('gameSystem', this.data.group.force.gameSystem);
+    panelRef.setInput('label', 'Select formation');
+    panelRef.setInput('optionsId', this.formationOptionsId);
+    panelRef.setInput('activeKey', this.activeFormationKey());
+    panelRef.setInput('activeTarget', this.activeFormationTarget());
+    panelRef.changeDetectorRef.detectChanges();
+
+    if (scrollActiveIntoView) {
+      scrollActiveOptionIntoView(
+        panelRef.location.nativeElement as HTMLElement,
+        '[data-scroll-container]',
+        '.dropdown-option.keyboard-active, .formation-option-wrapper.keyboard-active'
+      );
+    }
+  }
+
+  private moveActiveFormationOptionInCurrentLane(delta: number): void {
+    const targets = this.visibleFormationOptionTargets();
+    const activeTarget = nextDropdownTargetInCurrentLane(
+      targets,
+      this.activeFormationTarget(),
+      target => this.matchesActiveFormationTarget(target),
+      delta,
+    );
+    if (!activeTarget) return;
+
+    this.activateKeyboardFormationTarget(activeTarget);
+  }
+
+  private moveActiveFormationOptionSequentially(delta: number): void {
+    const activeTarget = nextDropdownTarget(
+      this.visibleFormationOptionTargets(),
+      target => this.matchesActiveFormationTarget(target),
+      delta,
+    );
+    if (!activeTarget) return;
+
+    this.activateKeyboardFormationTarget(activeTarget);
+  }
+
+  private activateKeyboardFormationOption(index: number): void {
+    const targets = this.visibleFormationOptionTargets();
+    if (targets.length === 0) return;
+
+    this.formationPointerActivationGuard.suppress();
+    const activeTarget = targets[Math.max(0, Math.min(index, targets.length - 1))];
+    this.activateKeyboardFormationTarget(activeTarget);
+  }
+
+  private activateKeyboardFormationTarget(activeTarget: FormationDropdownActiveOption): void {
+    this.formationPointerActivationGuard.suppress();
+    this.activeFormationKey.set(activeTarget.selectionKey);
+    this.activeFormationTarget.set(activeTarget.target);
+    this.syncFormationPanelInputs();
+  }
+
+  private selectActiveFormationOption(): void {
+    if (this.activeFormationTarget() === 'details') {
+      this.toggleActiveFormationDetails();
+      return;
+    }
+
+    this.selectedFormation.set(this.formationForKey(this.activeFormationKey()));
+    this.closeFormationDropdown();
+  }
+
+  private selectedFormationKey(): string {
+    const selectedFormation = this.selectedFormation();
+    if (!selectedFormation) return AUTOMATIC_FORMATION_KEY;
+    return isNoFormation(selectedFormation) ? NO_FORMATION_ID : selectedFormation.id;
+  }
+
+  private visibleFormationOptionTargets(): FormationDropdownActiveOption[] {
+    return this.formationPanelRef?.instance.visibleOptionTargets() ?? this.allFormationOptionTargets();
+  }
+
+  private allFormationOptionTargets(): FormationDropdownActiveOption[] {
+    const valid = this.sortFormationDisplayItems(this.formationDisplayList.filter(item => item.isValid));
+    const invalid = this.sortFormationDisplayItems(this.formationDisplayList.filter(item => !item.isValid));
+    return [
+      { selectionKey: AUTOMATIC_FORMATION_KEY, target: 'entry' },
+      { selectionKey: NO_FORMATION_ID, target: 'entry' },
+      ...valid.flatMap(item => this.formationOptionTargets(item.definition.id)),
+      ...invalid.flatMap(item => this.formationOptionTargets(item.definition.id)),
+    ];
+  }
+
+  private formationOptionTargets(selectionKey: string): FormationDropdownActiveOption[] {
+    return [
+      { selectionKey, target: 'entry' },
+      { selectionKey, target: 'details' },
+    ];
+  }
+
+  private matchesActiveFormationTarget(target: FormationDropdownActiveOption): boolean {
+    return target.selectionKey === this.activeFormationKey() && target.target === this.activeFormationTarget();
+  }
+
+  private toggleActiveFormationDetails(): void {
+    const selectionKey = this.activeFormationKey();
+    if (selectionKey === AUTOMATIC_FORMATION_KEY || selectionKey === NO_FORMATION_ID) return;
+
+    const panelRef = this.formationPanelRef;
+    if (!panelRef) return;
+
+    panelRef.instance.toggleExpandedId(selectionKey);
+    panelRef.changeDetectorRef.detectChanges();
+    this.syncFormationPanelInputs(false);
+  }
+
+  private sortFormationDisplayItems(items: FormationDisplayItem[]): FormationDisplayItem[] {
+    return [...items].sort((left, right) => left.displayName.localeCompare(right.displayName));
+  }
+
+  private formationForKey(selectionKey: string): FormationTypeDefinition | null {
+    if (selectionKey === AUTOMATIC_FORMATION_KEY) return null;
+    if (selectionKey === NO_FORMATION_ID) return NO_FORMATION;
+    return this.formationDisplayList.find(item => item.definition.id === selectionKey)?.definition ?? null;
   }
 
   close(value: RenameGroupDialogResult | null = null): void {

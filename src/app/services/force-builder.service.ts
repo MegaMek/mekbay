@@ -49,7 +49,6 @@ import { DialogsService, type DialogRef } from './dialogs.service';
 import { generateUUID, WsService } from './ws.service';
 import { ToastService } from './toast.service';
 import { LoggerService } from './logger.service';
-import { SheetService } from './sheet.service';
 import { OptionsService } from './options.service';
 import { LoadForceEntry, type LoadForceUnit } from '../models/load-force-entry.model';
 import { ForceLoadDialogComponent, type ForceLoadDialogResult } from '../components/force-load-dialog/force-load-dialog.component';
@@ -1579,8 +1578,11 @@ export class ForceBuilderService {
 
         // Lazy-inject UI services to avoid circular dependencies
         if (currentForce instanceof CBTForce) {
-            const sheetService = this.injector.get(SheetService);
-            await CBTPrintUtil.multipagePrint(sheetService, currentForce.units(), printOptions);
+            await CBTPrintUtil.multipagePrint({
+                dataService: this.dataService,
+                unitInitializer: this.unitInitializer,
+                injector: this.injector,
+            }, currentForce.units(), printOptions);
         } else if (currentForce instanceof ASForce) {
             const appRef = this.injector.get(ApplicationRef);
             await ASPrintUtil.multipagePrint(appRef, this.injector, optionsService, currentForce.groups(), printOptions, true, currentForce);

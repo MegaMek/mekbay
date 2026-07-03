@@ -1,7 +1,6 @@
 <div class="summary glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
     <div class="header">TURN TRACKER</div>
     <div class="group">
-        <div class="sectionTitle">Movement</div>
         <div class="summary-entry">
             @if (canSwitchAirborneMode()) {
             <div class="row grid">
@@ -52,44 +51,30 @@
                     [ariaLabel]="'Move distance'"
                     [valueAssigned]="hasMoveDistance()"
                     [danger]="overDistance()"
-                    (valueChange)="setMoveDistance($event)"></hex-slider>
+                    (valueChange)="setMoveDistance($event, false)"
+                    (valueCommit)="commitMoveDistance($event)"></hex-slider>
             </div>
             }
-            }
-        </div>
-    </div>
-    <div class="sectionTitle">As Attacker</div>
-    <div class="summary-entry">
-        <div class="row grid">
+            }<div class="row grid">
             <button type="button" class="bt-button move-button" [class.selected]="spotting()" [attr.aria-pressed]="spotting()" (click)="toggleSpotting()">
                 <span>Spotting</span><span class="modifier-badge">+1</span>
             </button>
         </div>
-        @if (gunneryModifiers().length > 0) {
-            <div class="gunnery-modifiers">
-                @for (modifier of gunneryModifiers(); track $index) {
-                <div class="row wrap">
-                    <span>{{ modifier.reason }}</span>
-                    <span class="modifier danger">{{ modifier.modifier >= 0 ? '+' : '' }}{{ modifier.modifier }}</span>
-                </div>
-                }
-            </div>
-        }
-        <div class="row">
-            @let modifierAtk = getTotalTargetModifierAsAttacker();
-            <span>Attack Target Modifier:</span><span class="modifier important" [tooltip]="attackModifierTooltip()">{{ modifierAtk >= 0 ? '+' : '' }}{{ modifierAtk }}</span>
         </div>
+        
     </div>
     <div class="group">
-        <div class="sectionTitle">As Defender</div>
+
+        <div class="sectionTitle">Combat</div>
         <div class="summary-entry">
-            <div class="row">
-                <span>Defense Target Modifier:</span><span class="modifier important" [tooltip]="defenseTargetModifierTooltip()">{{ getTotalTargetModifierAsDefender() }}</span>
+            <div class="row has-tooltip" [tooltip]="attackModifierTooltip()">
+                @let modifierAtk = getTotalTargetModifierAsAttacker();
+                <span class="caption">Attack Target Modifier:</span><span class="modifier important totalAttack">{{ modifierAtk >= 0 ? '+' : '' }}{{ modifierAtk }}</span>
             </div>
         </div>
         <div class="summary-entry">
-            <div class="row">
-                <span>Damage received:</span><span class="modifier warning">{{ damageReceived() }}</span>
+            <div class="row has-tooltip" [tooltip]="defenseTargetModifierTooltip()">
+                <span class="caption">Defense Target Modifier:</span><span class="modifier important totalDefense">{{ getTotalTargetModifierAsDefender() }}</span>
             </div>
         </div>
     </div>
@@ -103,6 +88,14 @@
         </div>
     </div>
     }
+    <div class="group">
+        <div class="sectionTitle">Other</div>
+        <div class="summary-entry">
+            <div class="row">
+                <span>Damage received:</span><span class="modifier warning">{{ damageReceived() }}</span>
+            </div>
+        </div>
+    </div>
     @if (psrModifiers().length > 0) {
     <div class="group">
         <div class="sectionTitle">{{ controlRollShortLabel() }} Modifiers</div>

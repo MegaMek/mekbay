@@ -62,14 +62,6 @@ export function formatBattleArmorTrooperLocation(locationLabel: string): string 
     return trooperNumber === null ? locationLabel : `T${trooperNumber}`;
 }
 
-export function isBattleArmorTrooperLocationDestroyed(unit: CBTForceUnit, locationLabel: string): boolean {
-    if (unit.getUnit().subtype !== 'Battle Armor') return false;
-    const trooperNumber = getBattleArmorTrooperNumber(locationLabel);
-    if (trooperNumber === null) return false;
-
-    return unit.isArmorLocCommittedDestroyed(`T${trooperNumber}`, false);
-}
-
 function formatAmmoBinName(index: number): string {
     return `#${index} Bin`;
 }
@@ -101,7 +93,7 @@ function resolveOriginalAmmo(criticalSlot: CriticalSlot, equipmentMap: Equipment
     return criticalSlot.eq instanceof AmmoEquipment ? criticalSlot.eq : null;
 }
 
-function createCriticalSlotAmmoControlEntry(unit: CBTForceUnit, criticalSlot: CriticalSlot, equipmentMap: EquipmentMap): AmmoControlEntry | null {
+export function getAmmoControlEntryForCriticalSlot(unit: CBTForceUnit, criticalSlot: CriticalSlot, equipmentMap: EquipmentMap): AmmoControlEntry | null {
     if (!(criticalSlot.eq instanceof AmmoEquipment)) return null;
     const originalAmmo = resolveOriginalAmmo(criticalSlot, equipmentMap);
     if (!originalAmmo) return null;
@@ -121,7 +113,7 @@ function createCriticalSlotAmmoControlEntry(unit: CBTForceUnit, criticalSlot: Cr
         originalTotalAmmo: getOriginalTotalAmmo(unit, criticalSlot),
         totalAmmo,
         consumed: criticalSlot.consumed ?? 0,
-        destroyed: !!criticalSlot.destroyed
+        destroyed: unit.isEquipmentUnavailable(criticalSlot)
     };
 }
 
@@ -162,7 +154,7 @@ function createInventoryAmmoControlEntry(unit: CBTForceUnit, inventoryEntry: Mou
     const originalTotalAmmo = getInventoryOriginalTotalAmmo(inventoryEntry);
     const totalAmmo = inventoryEntry.totalAmmo ?? originalTotalAmmo;
     const locationLabel = Array.from(inventoryEntry.locations ?? []).join('/') || 'Ammo';
-    const destroyed = !!inventoryEntry.destroyed || isBattleArmorTrooperLocationDestroyed(unit, locationLabel);
+    const destroyed = unit.isEquipmentUnavailable(inventoryEntry);
     return {
         id: `inventory:${inventoryEntry.id}`,
         owner: unit,
@@ -218,7 +210,7 @@ export function getAmmoControlEntriesForWeapon(equipment: MountedEquipment, cont
 
     const critEntries = equipment.owner.getCritSlots()
         .filter(criticalSlot => criticalSlot.eq instanceof AmmoEquipment && ammoMatchesWeapon(equipment.equipment as WeaponEquipment, criticalSlot.eq))
-        .map(criticalSlot => createCriticalSlotAmmoControlEntry(equipment.owner, criticalSlot, equipmentMap))
+        .map(criticalSlot => getAmmoControlEntryForCriticalSlot(equipment.owner, criticalSlot, equipmentMap))
         .filter((entry): entry is AmmoControlEntry => !!entry);
     const inventoryEntries = equipment.owner.getInventory()
         .filter(entry => entry.equipment instanceof AmmoEquipment && ammoMatchesWeapon(equipment.equipment as WeaponEquipment, getInventoryCurrentAmmo(entry, equipmentMap) ?? entry.equipment))
@@ -240,7 +232,7 @@ export function getAmmoControlEntriesForUnitWeapons(unit: CBTForceUnit, equipmen
 
     const critEntries = unit.getCritSlots()
         .filter(criticalSlot => criticalSlot.eq instanceof AmmoEquipment && weaponAmmoKeys.has(getAmmoCompatibilityKey(criticalSlot.eq)))
-        .map(criticalSlot => createCriticalSlotAmmoControlEntry(unit, criticalSlot, equipmentMap))
+        .map(criticalSlot => getAmmoControlEntryForCriticalSlot(unit, criticalSlot, equipmentMap))
         .filter((entry): entry is AmmoControlEntry => !!entry);
     const inventoryEntries = unit.getInventory()
         .filter(entry => {
@@ -365,7 +357,7 @@ function syncEntryFromSource(entry: AmmoControlEntry, equipmentMap: EquipmentMap
         entry.originalTotalAmmo = getInventoryOriginalTotalAmmo(source);
         entry.totalAmmo = source.totalAmmo ?? entry.originalTotalAmmo;
         entry.consumed = source.consumed ?? 0;
-        entry.destroyed = !!source.destroyed || isBattleArmorTrooperLocationDestroyed(entry.owner, entry.locationLabel);
+        entry.destroyed = entry.owner.isEquipmentUnavailable(source);
         return;
     }
 
@@ -378,7 +370,7 @@ function syncEntryFromSource(entry: AmmoControlEntry, equipmentMap: EquipmentMap
     entry.originalTotalAmmo = getOriginalTotalAmmo(entry.owner, entry.source as CriticalSlot);
     entry.totalAmmo = getCriticalSlotTotalAmmo(entry.owner, entry.source as CriticalSlot);
     entry.consumed = (entry.source as CriticalSlot).consumed ?? 0;
-    entry.destroyed = !!(entry.source as CriticalSlot).destroyed;
+    entry.destroyed = entry.owner.isEquipmentUnavailable(entry.source as CriticalSlot);
 }
 
 function showAmmoToast(entry: AmmoControlEntry, deltaRemaining: number, context: HandlerContext): void {
@@ -472,8 +464,9 @@ export async function setAmmoEntry(entry: AmmoControlEntry, context: HandlerCont
 
     const equipmentMap = context.dataService.getEquipments();
     const unitBlueprint = entry.owner.getUnit();
+    const inventory = entry.owner.getInventory();
     const compatibleAmmo = sortCompatibleAmmo(Object.values(equipmentMap)
-        .filter((equipment): equipment is AmmoEquipment => (equipment instanceof AmmoEquipment) && entry.originalAmmo.compatibleAmmo(equipment, unitBlueprint)));
+        .filter((equipment): equipment is AmmoEquipment => (equipment instanceof AmmoEquipment) && entry.originalAmmo.compatibleAmmo(equipment, unitBlueprint, inventory)));
 
     const previousRemaining = getAmmoEntryRemaining(entry);
     const ref = context.dialogsService.createDialog<{ name: string; quantity: number, totalAmmo: number } | null>(SetAmmoDialogComponent, {
@@ -483,7 +476,10 @@ export async function setAmmoEntry(entry: AmmoControlEntry, context: HandlerCont
             originalTotalAmmo: entry.originalTotalAmmo,
             ammoOptions: compatibleAmmo,
             quantity: previousRemaining,
-            maxQuantity: entry.totalAmmo
+            maxQuantity: entry.totalAmmo,
+            unitType: unitBlueprint.type,
+            era: entry.owner.force.era(),
+            inventory,
         } as SetAmmoDialogData
     });
 
@@ -534,10 +530,11 @@ export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerCont
     const firstEntry = group.entries[0];
     const equipmentMap = context.dataService.getEquipments();
     const unitBlueprint = firstEntry.owner.getUnit();
+    const inventory = firstEntry.owner.getInventory();
     const originalTotalAmmo = group.entries.reduce((total, entry) => total + entry.originalTotalAmmo, 0);
     const previousRemaining = getAmmoGroupRemaining(group);
     const compatibleAmmo = sortCompatibleAmmo(Object.values(equipmentMap)
-        .filter((equipment): equipment is AmmoEquipment => (equipment instanceof AmmoEquipment) && firstEntry.originalAmmo.compatibleAmmo(equipment, unitBlueprint)));
+        .filter((equipment): equipment is AmmoEquipment => (equipment instanceof AmmoEquipment) && firstEntry.originalAmmo.compatibleAmmo(equipment, unitBlueprint, inventory)));
 
     const ref = context.dialogsService.createDialog<{ name: string; quantity: number, totalAmmo: number } | null>(SetAmmoDialogComponent, {
         data: {
@@ -546,7 +543,10 @@ export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerCont
             originalTotalAmmo,
             ammoOptions: compatibleAmmo,
             quantity: previousRemaining,
-            maxQuantity: group.totalAmmo
+            maxQuantity: group.totalAmmo,
+            unitType: unitBlueprint.type,
+            era: firstEntry.owner.force.era(),
+            inventory,
         } as SetAmmoDialogData
     });
 

@@ -77,8 +77,10 @@ function createUnit(id: string, entries: MountedEquipment[] = []): CBTForceUnit 
             moveMode: () => null,
             airborne: () => false,
             getAttackMovementModifier: () => 0,
+            getAttackModifierBreakdown: () => [],
             missingAttackMovementModifier: () => false,
             getSpottingModifier: () => 0,
+            heatSources: () => [],
             dirty: () => false,
             autoFall: () => false,
             PSRRollsCount: () => 0,
@@ -89,6 +91,8 @@ function createUnit(id: string, entries: MountedEquipment[] = []): CBTForceUnit 
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
         setCritSlot: jasmine.createSpy('setCritSlot'),
         rules: {
+            computeAllEntryStates: () => new Map<MountedEquipment, { isDamaged: boolean; isDisabled: boolean; hitMod: number }>(),
+            computeEntryState: (entry: MountedEquipment) => ({ isDamaged: entry.committedDestroyed(), isDisabled: false, hitMod: 0 }),
             heatDissipation: () => ({
                 totalPips: 10,
                 healthyPips: 10,
@@ -133,7 +137,13 @@ function createContext(): EquipmentDialogContext {
         toastService: { showToast: jasmine.createSpy('showToast') },
         dialogsService: { showNoticeHtml: jasmine.createSpy('showNoticeHtml').and.resolveTo(), showError: jasmine.createSpy('showError').and.resolveTo() },
         dataService: { getEquipments: () => ({}) },
-        registry: { getChoices: () => [], handleSelection: () => false }
+        registry: {
+            getChoices: () => [],
+            handleSelection: () => false,
+            afterInventoryControlFire: () => undefined,
+            getLinkedEquipmentHitModifier: () => 0,
+            inventoryControlRules: () => ({})
+        }
     } as unknown as EquipmentDialogContext;
 }
 

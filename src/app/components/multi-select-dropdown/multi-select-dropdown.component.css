@@ -159,7 +159,8 @@
     color: var(--bt-yellow);
 }
 
-.option-item:hover {
+.option-item:hover,
+.option-item.keyboard-focused {
     background-color: var(--background-color-light);
 }
 

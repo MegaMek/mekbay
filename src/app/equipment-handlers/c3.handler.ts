@@ -47,7 +47,7 @@ export class C3Handler extends EquipmentInteractionHandler {
             {
                 label: 'Configure',
                 value: 'c3-network-configuration',
-                disabled: equipment.destroyed,
+                disabled: equipment.isUnavailable(),
                 displayType: 'button'
             }
         ];

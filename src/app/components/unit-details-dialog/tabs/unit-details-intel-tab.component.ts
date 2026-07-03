@@ -34,7 +34,7 @@
 import { Component, ChangeDetectionStrategy, input, computed, effect, inject, Injector, signal, type OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { Unit, UnitFluffCatalogEntry, UnitImageFluff } from '../../../models/units.model';
-import { REMOTE_HOST } from '../../../models/common.model';
+import { getUnitServerHost } from '../../../models/common.model';
 import { DataService } from '../../../services/data.service';
 import { LoadingSpinnerComponent } from '../../loading-spinner/loading-spinner.component';
 
@@ -95,7 +95,7 @@ export class UnitDetailsIntelTabComponent implements OnInit {
 
         if (fluff?.img) {
             if (fluff.img.endsWith('hud.png')) return; // Ignore HUD images
-            return `${REMOTE_HOST}/images/fluff/${fluff.img}`;
+            return `${getUnitServerHost(this.unit())}/images/fluff/${fluff.img}`;
         }
         return null;
     });

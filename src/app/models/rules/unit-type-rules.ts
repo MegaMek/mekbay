@@ -32,16 +32,22 @@
  */
 
 import { computed, signal, type Signal } from '@angular/core';
-import type { CriticalSlot } from '../force-serialization';
-import type { MotiveModes } from '../motiveModes.model';
+import type { CriticalSlot, MountedEquipment } from '../force-serialization';
+import { getMotiveModeLabel, type MotiveModes } from '../motiveModes.model';
 import type { TurnState } from '../turn-state.model';
+import type { CrewMemberState } from '../crew-member.model';
 import {
     getTargetMovementBracketForDistance,
-    getTargetStanceModifier,
     TN_AIRBORNE_MOVE_TYPE_MODIFIER,
+    TN_IMMOBILE,
+    TN_PRONE,
+    TN_PRONE_ADJACENT,
+    TN_PRONE_ATTACKER,
+    TN_SKIDDING_ATTACKER,
     TN_SKIDDING_MODIFIER,
 } from '../target-number-calculator.model';
-import { CBTForceUnit } from '../cbt-force-unit.model';
+import type { CBTForceUnit } from '../cbt-force-unit.model';
+import type { HeatDissipationState } from './heat-management';
 
 export interface PSRCheck {
     fallCheck?: number;
@@ -63,9 +69,120 @@ export interface UnitHeatSource {
     value: number;
 }
 
+export interface MountedEquipmentRuleState {
+    isDamaged: boolean;
+    isDisabled: boolean;
+    hitMod: number;
+}
+
+export interface LocationConditionControl {
+    key: string;
+    label: string;
+    color: string;
+    counted?: boolean;
+}
+
 export interface UnitModifierBreakdownEntry {
     label: string;
     modifier: number;
+    alternateModifier?: number;
+    alternateModifierLabel?: string;
+}
+
+export interface UnitModifierTotal {
+    modifier: number;
+    alternateModifier?: number;
+    alternateModifierLabel?: string;
+}
+
+export function calculateModifierTotal(entries: readonly UnitModifierBreakdownEntry[]): UnitModifierTotal {
+    let min = 0;
+    let max = 0;
+
+    for (const entry of entries) {
+        const entryMin = Math.min(entry.modifier, entry.alternateModifier ?? entry.modifier);
+        const entryMax = Math.max(entry.modifier, entry.alternateModifier ?? entry.modifier);
+        min += entryMin;
+        max += entryMax;
+    }
+
+    return min === max
+        ? { modifier: max }
+        : { modifier: max, alternateModifier: min };
+}
+
+export type UnitConditionControlPlacement = 'button' | 'menu';
+
+export interface UnitConditionDefinition {
+    key: string;
+    label: string;
+    bannerLabel?: string;
+    bannerFontScaling?: number;
+    color: string;
+    placement?: UnitConditionControlPlacement;
+    important?: boolean;
+}
+
+export type UnitConditionControl = UnitConditionDefinition & { placement: UnitConditionControlPlacement };
+
+export interface CrewStateDefinition {
+    key: CrewMemberState;
+    label: string;
+    bannerLabel: string;
+    color: string;
+}
+
+export type CrewStateControlKey = Exclude<CrewMemberState, 'healthy' | 'dead'>;
+export type CrewStateControlDefinition = CrewStateDefinition & { key: CrewStateControlKey };
+
+export const UNIT_CONDITION_DEFINITIONS: readonly UnitConditionDefinition[] = [
+    { key: 'shutdown', important: true, label: 'SHUTDOWN', color: '#840000', placement: 'button' },
+    { key: 'abandoned', important: true, label: 'ABANDONED', color: '#222' },
+    { key: 'disconnected', important: true, label: 'UNLINK', bannerLabel: "DISCONNECTED", bannerFontScaling: 0.8, color: '#455a64', placement: 'button' },
+    { key: 'immobile', label: 'IMMOBILE', color: '#ff8800' },
+    { key: 'prone', label: 'PRONE', color: '#666', placement: 'button' },
+    { key: 'crippled', label: 'CRIPPLED', color: '#b70000' },
+    { key: 'swarmed', label: 'SWARMED', color: '#56ddae', placement: 'menu' },
+    { key: 'tagged', label: 'TAGGED', color: '#3385d7', placement: 'menu' },
+    { key: 'skidding', label: 'SKIDDING', color: '#dccd00', placement: 'menu' },
+    { key: 'jammed', label: 'JAMMED', color: '#ff6be6', placement: 'menu' },
+];
+
+const UNIT_CONDITION_BY_KEY = new Map<string, UnitConditionDefinition>(UNIT_CONDITION_DEFINITIONS.map(condition => [condition.key, condition]));
+const UNIT_CONDITION_SORT_INDEX = new Map<string, number>(UNIT_CONDITION_DEFINITIONS.map((condition, index) => [condition.key, index]));
+
+export function unitConditionControls(keys: readonly string[]): readonly UnitConditionControl[] {
+    return keys.map(key => {
+        const condition = UNIT_CONDITION_BY_KEY.get(key);
+        if (!condition?.placement) throw new Error(`Unknown controllable unit condition: ${key}`);
+        return condition as UnitConditionControl;
+    });
+}
+
+export function getUnitConditionDefinition(key: string): UnitConditionDefinition | undefined {
+    return UNIT_CONDITION_BY_KEY.get(key);
+}
+
+export function unitConditionSortIndex(key: string): number {
+    return UNIT_CONDITION_SORT_INDEX.get(key) ?? UNIT_CONDITION_DEFINITIONS.length;
+}
+
+const CREW_STATE_DEFINITIONS: readonly CrewStateDefinition[] = [
+    { key: 'unconscious', label: 'Unconscious', bannerLabel: 'UNCONSCIOUS', color: '#ff9a1f' },
+    { key: 'ejected', label: 'Eject', bannerLabel: 'EJECTED', color: '#2f8f46' },
+    { key: 'dead', label: 'Dead', bannerLabel: 'DEAD', color: '#c62828' },
+    { key: 'killed', label: 'Crew Killed', bannerLabel: 'CREW KILLED', color: '#c62828' },
+    { key: 'stunned', label: 'Stunned', bannerLabel: 'STUNNED', color: '#ff5ce6' },
+];
+
+const CREW_STATE_BY_KEY = new Map<CrewMemberState, CrewStateDefinition>(CREW_STATE_DEFINITIONS.map(state => [state.key, state]));
+
+export function crewStateDefinitions(keys: readonly CrewMemberState[]): readonly CrewStateDefinition[] {
+    return keys.map(key => {
+        const state = CREW_STATE_BY_KEY.get(key);
+        if (!state) throw new Error(`Unknown crew state: ${key}`);
+        return state;
+    });
 }
 
 /**
@@ -104,6 +221,42 @@ export interface UnitTypeRules {
 
     /** Whether current phase damage causes automatic falling or equivalent unit-type failure. */
     readonly autoFall: Signal<boolean>;
+
+    /** Heat dissipation state for heat-tracking units. Non-heat units return null. */
+    readonly heatDissipation: Signal<HeatDissipationState | null>;
+
+    /** Manual condition controls available for this unit type. */
+    readonly conditionControls: readonly UnitConditionControl[];
+
+    /** Manual crew-state controls available for this unit type. */
+    readonly crewStateControls: readonly CrewStateControlDefinition[];
+
+    /** Manual location-state controls available for this unit type. */
+    readonly locationConditionControls: readonly LocationConditionControl[];
+
+    /** Display definition for a crew state supported by this unit type. */
+    crewStateDefinition(state: CrewMemberState): CrewStateDefinition | undefined;
+
+    /** Whether this unit currently has crew for gameplay/UI purposes. */
+    hasCrew(): boolean;
+
+    /** Whether this unit is controlled by a remote drone operating system. */
+    isRemoteDrone(): boolean;
+
+    /** Whether a condition key is derived from rules instead of persisted unit state. */
+    isComputedCondition(condition: string): boolean;
+
+    /** Get a rule-derived condition value. Returns false for non-computed condition keys. */
+    hasComputedCondition(condition: string): boolean;
+
+    /** Rule-derived condition keys exposed through ForceUnit.getCondition/getConditions. */
+    computedConditions(): readonly string[];
+
+    /** Compute rule-derived availability and hit modifiers for all inventory entries. */
+    computeAllEntryStates(): Map<MountedEquipment, MountedEquipmentRuleState>;
+
+    /** Compute rule-derived availability and hit modifiers for a single inventory entry. */
+    computeEntryState(entry: MountedEquipment): MountedEquipmentRuleState;
 
     /** Required control-roll checks for the current phase. */
     getPSRChecks(turnState: TurnState): PSRCheck[];
@@ -144,11 +297,29 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     readonly controlRollFullLabel: string;
     readonly PSRModifiers: Signal<{ modifier: number; modifiers: PSRCheck[] }> = signal({ modifier: 0, modifiers: [] });
     readonly PSRTargetRoll: Signal<number> = signal(0);
-    readonly gunneryModifiers: Signal<UnitSkillModifier[]> = signal([]);
+    readonly gunneryModifiers: Signal<UnitSkillModifier[]> = computed(() => this.droneOperatingSystemSkillModifiers());
     readonly gunneryModifier: Signal<number> = computed(() => this.gunneryModifiers().reduce((total, modifier) => total + modifier.modifier, 0));
-    readonly pilotingModifiers: Signal<UnitSkillModifier[]> = signal([]);
+    readonly pilotingModifiers: Signal<UnitSkillModifier[]> = computed(() => this.droneOperatingSystemSkillModifiers());
     readonly pilotingModifier: Signal<number> = computed(() => this.pilotingModifiers().reduce((total, modifier) => total + modifier.modifier, 0));
     readonly autoFall: Signal<boolean> = signal(false);
+    readonly heatDissipation: Signal<HeatDissipationState | null> = signal(null);
+    protected readonly baseConditionControls: readonly UnitConditionControl[] = [];
+    protected readonly baseCrewStateControls: readonly CrewStateControlDefinition[] = [];
+    readonly locationConditionControls: readonly LocationConditionControl[] = [];
+    protected readonly crewStateDisplayDefinitions: readonly CrewStateDefinition[] = [];
+    protected readonly abandoned: Signal<boolean> = signal(false);
+    protected readonly immobile: Signal<boolean> = signal(false);
+    protected readonly crippled: Signal<boolean> = signal(false);
+
+    get conditionControls(): readonly UnitConditionControl[] {
+        if (!this.hasDroneOperatingSystem()) return this.baseConditionControls;
+        if (this.baseConditionControls.some(control => control.key === 'disconnected')) return this.baseConditionControls;
+        return [...this.baseConditionControls, unitConditionControls(['disconnected'])[0]];
+    }
+
+    get crewStateControls(): readonly CrewStateControlDefinition[] {
+        return this.hasDroneOperatingSystem() ? [] : this.baseCrewStateControls;
+    }
 
     abstract evaluateDestroyed(): void;
 
@@ -159,6 +330,93 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     ) {
         this.controlRollShortLabel = controlRollShortLabel;
         this.controlRollFullLabel = controlRollFullLabel;
+    }
+
+    isComputedCondition(condition: string): boolean {
+        return condition === 'abandoned' || condition === 'immobile' || condition === 'crippled';
+    }
+
+    hasComputedCondition(condition: string): boolean {
+        if (condition === 'abandoned' && this.hasDroneOperatingSystem()) return false;
+        if (condition === 'disconnected') return this.isDroneOperatingSystemUnavailable();
+        if (condition === 'abandoned') return this.abandoned();
+        if (condition === 'immobile') return this.immobile() || (this.hasDroneOperatingSystem() && this.unit.getCondition('disconnected'));
+        if (condition === 'crippled') return this.crippled();
+        return false;
+    }
+
+    computedConditions(): readonly string[] {
+        return ['abandoned', 'immobile', 'crippled', 'disconnected'];
+    }
+
+    computeAllEntryStates(): Map<MountedEquipment, MountedEquipmentRuleState> {
+        const result = new Map<MountedEquipment, MountedEquipmentRuleState>();
+        for (const entry of this.unit.getInventory()) {
+            result.set(entry, this.computeEntryState(entry));
+        }
+        return result;
+    }
+
+    computeEntryState(entry: MountedEquipment): MountedEquipmentRuleState {
+        return {
+            isDamaged: entry.committedDestroyed() || this.entryCriticalSlots(entry).some(slot => !!slot.destroyed),
+            isDisabled: this.isEntryStateDisabled(entry),
+            hitMod: 0
+        };
+    }
+
+    protected isEntryStateDisabled(entry: MountedEquipment): boolean {
+        return entry.states.get('state') === 'jammed';
+    }
+
+    protected entryCriticalSlots(entry: MountedEquipment): CriticalSlot[] {
+        return entry.critSlots?.map(slot => this.currentCriticalSlot(slot)) ?? [];
+    }
+
+    protected currentCriticalSlot(slot: CriticalSlot): CriticalSlot {
+        return this.unit.getCritSlots().find(candidate => {
+            if (slot.loc && slot.slot !== undefined) return candidate.loc === slot.loc && candidate.slot === slot.slot;
+            return !!slot.id && candidate.id === slot.id;
+        }) ?? slot;
+    }
+
+    crewStateDefinition(state: CrewMemberState): CrewStateDefinition | undefined {
+        if (this.hasDroneOperatingSystem()) return undefined;
+        return this.crewStateDisplayDefinitions.find(definition => definition.key === state);
+    }
+
+    hasCrew(): boolean {
+        return !this.hasDroneOperatingSystem() && this.unit.getCrewMembers().length > 0;
+    }
+
+    isRemoteDrone(): boolean {
+        return this.hasDroneOperatingSystem();
+    }
+
+    protected supportsDroneOperatingSystem(): boolean {
+        return false;
+    }
+
+    protected hasDroneOperatingSystem(): boolean {
+        return this.droneOperatingSystem() !== undefined;
+    }
+
+    private droneOperatingSystem(): MountedEquipment | CriticalSlot | undefined {
+        if (!this.supportsDroneOperatingSystem()) return undefined;
+        const inventory = this.unit.getInventory();
+        const entry = inventory.find(candidate => candidate.equipment?.hasFlag('F_DRONE_OPERATING_SYSTEM'));
+        return entry;
+    }
+
+    protected isDroneOperatingSystemUnavailable(): boolean {
+        const droneOperatingSystem = this.droneOperatingSystem();
+        return droneOperatingSystem !== undefined && this.unit.isEquipmentUnavailable(droneOperatingSystem);
+    }
+
+    protected droneOperatingSystemSkillModifiers(): UnitSkillModifier[] {
+        return this.hasDroneOperatingSystem()
+            ? [{ modifier: 1, reason: 'Drone operating system' }]
+            : [];
     }
 
     getPSRChecks(_turnState: TurnState): PSRCheck[] {
@@ -177,10 +435,13 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
 
     heatSources(turnState: TurnState): UnitHeatSource[] {
         if (this.unit.getUnit().heat < 0) return []; // Does not track heat
-        const firedHeat = turnState.firedHeat();
-        return firedHeat > 0
-            ? [{ id: 'fired', label: 'Fired', value: firedHeat }]
-            : [];
+        const sources: UnitHeatSource[] = [];
+        const weaponsHeat = turnState.weaponsHeat();
+        if (weaponsHeat > 0) {
+            sources.push({ id: 'weapons', label: 'Weapons', value: weaponsHeat });
+        }
+        sources.push(...(this.unit.getEquipmentHeatSources?.(turnState) ?? []));
+        return sources;
     }
 
     getMaxDistanceForMoveMode(_moveMode: MotiveModes): number | null {
@@ -203,9 +464,20 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         const entries = this.gunneryModifiers()
             .filter(modifier => modifier.modifier !== 0)
             .map(modifier => ({ label: modifier.reason, modifier: modifier.modifier }));
+        const moveMode = turnState.moveMode();
         const movementModifier = this.getAttackMovementModifier(turnState.moveMode(), turnState.airborne() ?? false);
-        if (movementModifier !== 0) {
-            entries.push({ label: 'Attacker movement', modifier: movementModifier });
+        if (movementModifier !== 0 && moveMode !== null) {
+            entries.push({ label: getMotiveModeLabel(moveMode, this.unit.getUnit(), turnState.airborne() ?? false), modifier: movementModifier });
+        }
+        if (turnState.unitState.hasCondition('prone')
+        && !this.unit.getUnit().subtype.startsWith('Quad')) { // does not apply to four-legged Meks
+            entries.push({
+                label: 'Prone',
+                modifier: TN_PRONE_ATTACKER,
+            });
+        }
+        if (turnState.unitState.hasCondition('skidding')) {
+            entries.push({ label: 'Skidding', modifier: TN_SKIDDING_ATTACKER });
         }
         const spottingModifier = turnState.spotting() ? 1 : 0;
         if (spottingModifier !== 0) {
@@ -216,13 +488,18 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
 
     getDefenseModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[] {
         const entries: UnitModifierBreakdownEntry[] = [];
-        if (turnState.unitState.prone()) {
-            entries.push({ label: 'Prone', modifier: getTargetStanceModifier('prone', 1) });
+        if (turnState.unitState.hasCondition('prone')) {
+            entries.push({
+                label: 'Prone',
+                modifier: Math.max(TN_PRONE, TN_PRONE_ADJACENT),
+                alternateModifier: Math.min(TN_PRONE, TN_PRONE_ADJACENT),
+                alternateModifierLabel: 'adjacent',
+            });
         }
-        if (turnState.unitState.immobile()) {
-            entries.push({ label: 'Immobile', modifier: getTargetStanceModifier('immobile', 1) });
+        if (turnState.unitState.hasCondition('immobile')) {
+            entries.push({ label: 'Immobile', modifier: TN_IMMOBILE });
         }
-        if (turnState.unitState.skidding()) {
+        if (turnState.unitState.hasCondition('skidding')) {
             entries.push({ label: 'Skidding', modifier: TN_SKIDDING_MODIFIER });
         }
         const moveMode = turnState.moveMode();
@@ -245,6 +522,23 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
 
     protected getTargetUnitTypeModifierBreakdown(_turnState: TurnState): UnitModifierBreakdownEntry[] {
         return [];
+    }
+
+    protected hasFunctionalCrew(): boolean {
+        if (this.hasDroneOperatingSystem()) return false;
+        const crew = this.unit.getCrewMembers();
+        return crew.length > 0 && crew.some(crewMember => crewMember.getState() === 'healthy');
+    }
+
+    protected allCrewUnconscious(): boolean {
+        const crew = this.unit.getCrewMembers();
+        return crew.length > 0 && crew.every(crewMember => crewMember.getState() === 'unconscious');
+    }
+
+    protected allCrewCrippled(): boolean {
+        if (this.hasDroneOperatingSystem()) return false;
+        const crew = this.unit.getCrewMembers();
+        return crew.length > 0 && crew.every(crewMember => crewMember.isCrippled());
     }
 }
 

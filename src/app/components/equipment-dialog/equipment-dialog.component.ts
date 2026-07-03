@@ -107,11 +107,11 @@ export class EquipmentDialogComponent {
     }
 
     turnSummaryDirty(): boolean {
-        return this.callTurnState('dirty', false);
+        return this.unit().turnState().dirty();
     }
 
     turnSummaryFalling(): boolean {
-        return this.callTurnState('autoFall', false);
+        return this.unit().turnState().autoFall();
     }
 
     turnSummaryHasPsrChecks(): boolean {
@@ -119,11 +119,11 @@ export class EquipmentDialogComponent {
     }
 
     turnSummaryPsrCount(): number {
-        return this.callTurnState('PSRRollsCount', 0);
+        return this.unit().turnState().PSRRollsCount();
     }
 
     turnSummaryPhase(): string {
-        return this.callTurnState('currentPhase', '');
+        return this.unit().turnState().currentPhase();
     }
 
     openTurnSummary(event: MouseEvent): void {
@@ -375,12 +375,6 @@ export class EquipmentDialogComponent {
 
     private ammoEntries(unit: CBTForceUnit) {
         return getAmmoControlEntriesForUnitWeapons(unit, this.data.context.dataService.getEquipments());
-    }
-
-    private callTurnState<T>(methodName: string, fallback: T): T {
-        const turnState = this.unit().turnState() as unknown as Record<string, unknown>;
-        const method = turnState[methodName];
-        return typeof method === 'function' ? method.call(turnState) as T : fallback;
     }
 
     private closeUnitOverlays(unitId: string): void {

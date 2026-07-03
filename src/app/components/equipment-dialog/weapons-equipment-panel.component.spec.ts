@@ -3,15 +3,69 @@ import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment, WeaponEquipment, MiscEquipment, type EquipmentMap } from '../../models/equipment.model';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { INVENTORY_CONTROL_TARGET_COLORS, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
+import type { UnitModifierBreakdownEntry } from '../../models/rules/unit-type-rules';
 import { CBTInventoryControlRuntime } from '../../models/cbt-inventory-control-runtime.model';
 import { MountedEquipment, type CriticalSlot, type HeatProfile } from '../../models/force-serialization';
 import { InventoryModeHandler } from '../../equipment-handlers/inventory-mode.handler';
 import { BAPHandler } from '../../equipment-handlers/bap.handler';
+import { PpcCapacitorHandler } from '../../equipment-handlers/ppc-capacitor.handler';
+import { MmlHandler } from '../../equipment-handlers/mml.handler';
+import { AtmHandler } from '../../equipment-handlers/atm.handler';
+import { ArtemisVHandler } from '../../equipment-handlers/artemis-v.handler';
+import { ApolloHandler } from '../../equipment-handlers/apollo.handler';
+import { LaserInsulatorHandler } from '../../equipment-handlers/laser-insulator.handler';
+import { RISC_LASER_PULSE_MODE, RiscLaserPulseModuleHandler } from '../../equipment-handlers/risc-laser-pulse-module.handler';
 import type { EquipmentInteractionHandler, HandlerChoice } from '../../services/equipment-interaction-registry.service';
-import { INVENTORY_CONTROL_MODE_STATE, inventoryControlSortKey, getInventoryControlGroups } from '../../utils/inventory-control.util';
+import { INVENTORY_CONTROL_MODE_STATE, inventoryControlSortKey, getInventoryControlGroups, type InventoryControlDisplayData, type InventoryControlDisplayEffectOptions } from '../../utils/inventory-control.util';
+import { PPC_CAPACITOR_STATE_KEY } from '../../utils/ppc-capacitor.util';
 import { WeaponsEquipmentPanelComponent } from './weapons-equipment-panel.component';
 import type { EquipmentDialogContext } from './equipment-dialog.model';
-import type { MotiveModes } from '../../models/motiveModes.model';
+import { getMotiveModeLabel, type MotiveModes } from '../../models/motiveModes.model';
+
+type EntryState = { isDamaged: boolean; isDisabled: boolean; hitMod: number };
+
+function testEntryRuleState(entry: MountedEquipment): EntryState {
+    return {
+        isDamaged: entry.committedDestroyed(),
+        isDisabled: entry.states.get('state') === 'jammed' || testInfantryFieldGunEntryDisabled(entry),
+        hitMod: 0
+    };
+}
+
+function testInfantryFieldGunEntryDisabled(entry: MountedEquipment): boolean {
+    const componentRef = testInventoryComponentRef(entry);
+    const unit = entry.owner;
+    const baseUnit = unit?.getUnit?.();
+    if (!baseUnit || baseUnit.type !== 'Infantry' || baseUnit.subtype === 'Battle Armor') return false;
+    if (!(entry.equipment instanceof WeaponEquipment)) return false;
+    if (componentRef === null) return false;
+    const component = componentRef === null ? undefined : baseUnit.comp?.[componentRef.componentIndex];
+    if (!component || component.l !== 'FGUN' || component.t === 'X' || componentRef.binIndex === null) return false;
+    const totalTroops = unit.locations?.internal.get('TROOP')?.points
+        ?? baseUnit.internal
+        ?? ((baseUnit.squads ?? 0) * (baseUnit.squadSize ?? 0));
+    const committedDamage = unit.getCommittedInternalHits?.('TROOP') ?? 0;
+    const functionalTroops = Math.max(0, totalTroops - committedDamage);
+    const functionalGuns = Math.min(Math.max(0, component.q ?? 0), Math.floor(functionalTroops / Math.max(1, component.cw ?? 1)));
+    return componentRef.binIndex >= functionalGuns;
+}
+
+function testInventoryComponentRef(entry: MountedEquipment): { componentIndex: number; binIndex: number | null } | null {
+    const indexText = entry.id.split('#').pop();
+    if (!indexText) return null;
+    const [componentIndexText, binIndexText] = indexText.split('.');
+    const componentIndex = Number(componentIndexText);
+    const binIndex = binIndexText === undefined ? null : Number(binIndexText);
+    if (!Number.isInteger(componentIndex)) return null;
+    if (binIndex !== null && !Number.isInteger(binIndex)) return null;
+    return { componentIndex, binIndex };
+}
+
+const EMPTY_ENTRY_STATE_RULES = {
+    computeAllEntryStates: () => new Map<MountedEquipment, EntryState>(),
+    computeEntryState: testEntryRuleState,
+    heatDissipation: () => null
+};
 
 function addRuntimeSelection(unit: CBTForceUnit): CBTForceUnit {
     const runtime = new CBTInventoryControlRuntime(unit);
@@ -49,19 +103,25 @@ function weapon(id: string, ammoType: 'NA' | 'AC' | 'ATM' | 'MML' | 'AC_ULTRA' |
     });
 }
 
-function ammo(id: string, ammoType: 'AC' | 'ATM' | 'MML' | 'NARC', rackSize: number, munitionType: string[] = [], flags: string[] = []): AmmoEquipment {
+function ammo(id: string, ammoType: 'AC' | 'ATM' | 'MML' | 'NARC', rackSize: number, munitionType: string[] = [], flags: string[] = [], toHitModifier = 0): AmmoEquipment {
     return new AmmoEquipment({
         id,
         name: id,
         shortName: id,
         type: 'ammo',
         flags,
+        stats: { toHitModifier },
         ammo: { type: ammoType, rackSize, shots: 10, munitionType }
     });
 }
 
 function misc(id: string, flags: string[] = []): MiscEquipment {
     return new MiscEquipment({ id, name: id, type: 'misc', flags });
+}
+
+function testEquipmentUnavailable(source: MountedEquipment | CriticalSlot): boolean {
+    if (source instanceof MountedEquipment) return source.committedDestroyed() || !!source.critSlots?.some(slot => !!slot.destroyed);
+    return !!source.destroyed;
 }
 
 function svgEntry(html: string): SVGElement {
@@ -93,7 +153,8 @@ function entry(params: {
         getInventory: () => [],
         getCritSlots: () => [],
         getUnit: () => ({ comp: [] }),
-        rules: {}
+        isEquipmentUnavailable: testEquipmentUnavailable,
+        rules: EMPTY_ENTRY_STATE_RULES
     } as unknown as CBTForceUnit;
     return new MountedEquipment({
         owner,
@@ -123,7 +184,9 @@ interface CreateComponentOptions {
     gunnerySkill?: number;
     pilotingSkill?: number;
     moveMode?: MotiveModes | null;
+    attackModifierBreakdown?: UnitModifierBreakdownEntry[];
     attackMovementCanAffectTargetNumbers?: boolean;
+    hasLinkedC3Network?: boolean;
     handlers?: EquipmentInteractionHandler[];
 }
 
@@ -135,8 +198,16 @@ function createComponent(
     options: CreateComponentOptions = {}
 ) {
     let context: EquipmentDialogContext;
-    const modeHandler = new InventoryModeHandler();
-    const handlers = [modeHandler, ...(options.handlers ?? [])];
+    const handlers = [
+        new InventoryModeHandler(),
+        new MmlHandler(),
+        new AtmHandler(),
+        new ArtemisVHandler(),
+        new ApolloHandler(),
+        new LaserInsulatorHandler(),
+        new RiscLaserPulseModuleHandler(),
+        ...(options.handlers ?? [])
+    ];
     const toasts: Array<{ id: string; message: string; type: 'info' | 'success' | 'error'; data?: Record<string, unknown> }> = [];
     const toastService = {
         showToast: jasmine.createSpy('showToast').and.callFake((message: string, type: 'info' | 'success' | 'error', id?: string, data?: Record<string, unknown>) => {
@@ -159,6 +230,14 @@ function createComponent(
     const heat: HeatProfile = { current: 2, previous: 1, next: options.heatNext };
     const rules = {
         computeAllEntryStates: () => entryStates,
+        computeEntryState: (entry: MountedEquipment) => entryStates.get(entry) ?? testEntryRuleState(entry),
+        heatDissipation: () => options.tracksHeat === false ? null : {
+            totalPips: 10,
+            healthyPips: 10,
+            damagedCount: 0,
+            heatsinksOff: 0,
+            totalDissipation: options.heatDissipation ?? 0
+        },
         getAttackMovementModifier: (moveMode: MotiveModes | null | undefined) => {
             switch (moveMode) {
                 case 'walk': return 1;
@@ -166,21 +245,15 @@ function createComponent(
                 case 'jump': return 3;
                 default: return 0;
             }
-        },
-        ...(options.tracksHeat === false ? {} : {
-            heatDissipation: () => ({
-                totalPips: 10,
-                healthyPips: 10,
-                damagedCount: 0,
-                heatsinksOff: 0,
-                totalDissipation: options.heatDissipation ?? 0
-            })
-        })
+        }
     };
     const turnState = {
         moveMode: () => options.moveMode ?? null,
         airborne: () => false,
         getAttackMovementModifier: () => rules.getAttackMovementModifier(options.moveMode ?? null),
+        getAttackModifierBreakdown: () => options.attackModifierBreakdown ?? (rules.getAttackMovementModifier(options.moveMode ?? null) !== 0
+            ? [{ label: getMotiveModeLabel(options.moveMode!, unit.getUnit(), false), modifier: rules.getAttackMovementModifier(options.moveMode ?? null) }]
+            : []),
         missingAttackMovementModifier: () => (options.moveMode ?? null) === null && (options.attackMovementCanAffectTargetNumbers ?? true),
         getSpottingModifier: () => 0,
         heatSources: () => options.heatSources ? [{ id: 'test-source', label: 'Test Source', value: options.heatSources }] : [],
@@ -198,10 +271,19 @@ function createComponent(
         svgService: {
             inventoryTargetHeatFireModifier: () => 0
         },
+        hasLinkedC3Network: () => options.hasLinkedC3Network ?? false,
         readOnly: () => options.readOnly ?? false,
         hasDirectInventory: () => options.hasDirectInventory ?? true,
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
         setCritSlot: jasmine.createSpy('setCritSlot'),
+        isEquipmentUnavailable: (source: MountedEquipment | CriticalSlot) => testEquipmentUnavailable(source),
+        getLinkedEquipmentHitModifier: (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => entry.linkedWith?.reduce((total, linked) => {
+            const modifier = handlers
+                .filter(handler => handler.flags.length === 0 || (!!linked.equipment?.flags && handler.flags.every(flag => linked.equipment!.flags.has(flag))))
+                .filter(handler => !handler.applicableTo || handler.applicableTo(linked))
+                .reduce((sum, handler) => sum + (handler.getLinkedEquipmentHitModifier?.(linked, entry, selectedAmmo) ?? 0), 0);
+            return total + modifier;
+        }, 0) ?? 0,
         rules
     } as unknown as CBTForceUnit;
     addRuntimeSelection(unit);
@@ -226,7 +308,55 @@ function createComponent(
                     if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) return [];
                     return handler.getChoices(entry, context)?.map(choice => ({ ...choice, _handler: handler })) ?? [];
                 }),
-                handleSelection: (entry: MountedEquipment, choice: HandlerChoice) => choice._handler?.handleSelection(entry, choice, context) ?? false
+                handleSelection: (entry: MountedEquipment, choice: HandlerChoice) => choice._handler?.handleSelection(entry, choice, context) ?? false,
+                afterInventoryControlFire: async (entry: MountedEquipment) => {
+                    for (const handler of handlers) {
+                        const flagsMatch = handler.flags.length === 0
+                            || (!!entry.equipment?.flags && handler.flags.every(flag => entry.equipment!.flags.has(flag)));
+                        if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) continue;
+                        await handler.afterInventoryControlFire?.(entry, context);
+                    }
+                },
+                getLinkedEquipmentHitModifier: (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => unit.getLinkedEquipmentHitModifier(entry, selectedAmmo),
+                canPerformAimedShot: (entry: MountedEquipment) => handlers.every(handler => {
+                    const flagsMatch = handler.flags.length === 0
+                        || (!!entry.equipment?.flags && handler.flags.every(flag => entry.equipment!.flags.has(flag)));
+                    if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) return true;
+                    return handler.canPerformAimedShot?.(entry, context) !== false;
+                }),
+                inventoryControlRules: () => ({
+                    applyDisplayEffects: (entry: MountedEquipment, display: InventoryControlDisplayData, options: InventoryControlDisplayEffectOptions) => {
+                        let nextDisplay = display;
+                        for (const handler of handlers) {
+                            const flagsMatch = handler.flags.length === 0
+                                || (!!entry.equipment?.flags && handler.flags.every(flag => entry.equipment!.flags.has(flag)));
+                            if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) continue;
+                            nextDisplay = handler.applyInventoryControlDisplayEffects?.(entry, nextDisplay, options, context) ?? nextDisplay;
+                        }
+                        return nextDisplay;
+                    },
+                    matchesAmmo: (entry: MountedEquipment, ammo: AmmoEquipment, mode: string | null) => {
+                        for (const handler of handlers) {
+                            const flagsMatch = handler.flags.length === 0
+                                || (!!entry.equipment?.flags && handler.flags.every(flag => entry.equipment!.flags.has(flag)));
+                            if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) continue;
+                            const result = handler.matchesInventoryAmmo?.(entry, ammo, mode, context);
+                            if (result !== undefined && result !== null) return result;
+                        }
+                        return null;
+                    },
+                    resolveLinkedHitModifier: (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => unit.getLinkedEquipmentHitModifier(entry, selectedAmmo),
+                    resolveBaseHitModifier: (entry: MountedEquipment) => {
+                        for (const handler of handlers) {
+                            const flagsMatch = handler.flags.length === 0
+                                || (!!entry.equipment?.flags && handler.flags.every(flag => entry.equipment!.flags.has(flag)));
+                            if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) continue;
+                            const result = handler.getInventoryControlBaseHitModifier?.(entry, context);
+                            if (result !== undefined && result !== null) return result;
+                        }
+                        return null;
+                    }
+                })
             }
         } as unknown as EquipmentDialogContext;
 
@@ -242,50 +372,13 @@ function createComponent(
 }
 
 describe('WeaponsEquipmentPanelComponent', () => {
-    it('creates non-Battle Armor infantry field gun rows from component inventory', () => {
-        const fieldGun = weapon('Autocannon/2', 'AC', 2, [8, 16, 24, 32]);
-        const fieldGunAmmo = ammo('IS Ammo AC/2', 'AC', 2);
-        const components = [
-            { id: 'Autocannon/2', q: 3, n: 'AC/2', t: 'B', p: 1, l: 'FGUN', r: '8/16/24', m: '4', d: '2', md: '2.0', c: '1', cw: 6, os: 0 },
-            { id: 'IS Ammo AC/2', q: 3, q2: 135, n: 'AC/2 Ammo', t: 'X', p: 1, l: 'FGUN', c: '1', os: 0 }
-        ];
-        const entries = [
-            entry({ id: 'Autocannon/2@FGUN#0.0', equipment: fieldGun, locations: new Set(['FGUN']) }),
-            entry({ id: 'Autocannon/2@FGUN#0.1', equipment: fieldGun, locations: new Set(['FGUN']) }),
-            entry({ id: 'Autocannon/2@FGUN#0.2', equipment: fieldGun, locations: new Set(['FGUN']) }),
-            entry({ id: 'IS Ammo AC/2@FGUN#1.0', equipment: fieldGunAmmo, locations: new Set(['FGUN']), totalAmmo: 135, consumed: 10 })
-        ];
-        const unit = addRuntimeSelection({
-            getInventory: () => entries,
-            getCritSlots: () => [],
-            getUnit: () => ({ type: 'Infantry', subtype: 'Mechanized Conventional Infantry', internal: 20, squads: 4, squadSize: 5, comp: components }),
-            getCommittedInternalHits: () => 7,
-            locations: { armor: new Map(), internal: new Map([['TROOP', { loc: 'TROOP', points: 20 }]]) },
-            rules: {}
-        } as unknown as CBTForceUnit);
-        entries.forEach(item => item.owner = unit);
-
-        const rangedRows = getInventoryControlGroups(unit).find(group => group.id === 'ranged')!.rows;
-
-        expect(rangedRows.length).toBe(3);
-        expect(rangedRows.map(row => row.display.name)).toEqual(['AC/2 (1/3)', 'AC/2 (2/3)', 'AC/2 (3/3)']);
-        expect(rangedRows.map(row => row.disabled)).toEqual([false, false, true]);
-        expect(rangedRows[0].display.location).toBe('FGUN');
-        expect(rangedRows[0].display.damage).toBe('2');
-        expect(rangedRows[0].display.min).toBe('4');
-        expect(rangedRows[0].display.short).toBe('8');
-        expect(rangedRows[0].display.medium).toBe('16');
-        expect(rangedRows[0].display.long).toBe('24');
-        expect(rangedRows[0].ammo.remaining).toBe(125);
-    });
-
     it('groups ranged, physical, equipment, and destroyed entries', () => {
         const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
         const punch = entry({ id: 'punch', physical: true, el: svgEntry('<g><g class="name"><text>Punch</text></g></g>') });
         const hatchet = entry({ id: 'hatchet', equipment: misc('Hatchet', ['F_CLUB']), el: svgEntry('<g><g class="name"><text>Hatchet</text></g></g>') });
         const ecm = entry({ id: 'ecm', equipment: misc('ECM'), el: svgEntry('<g><g class="name"><text>ECM</text></g></g>') });
         const broken = entry({ id: 'broken', equipment: weapon('broken'), destroyed: true, el: svgEntry('<g><g class="name"><text>Broken</text></g></g>') });
-        const unit = { getInventory: () => [laser, punch, hatchet, ecm, broken], getCritSlots: () => [], getUnit: () => ({ subtype: '', comp: [] }), rules: {} } as unknown as CBTForceUnit;
+        const unit = { getInventory: () => [laser, punch, hatchet, ecm, broken], getCritSlots: () => [], getUnit: () => ({ subtype: '', comp: [] }), isEquipmentUnavailable: testEquipmentUnavailable, rules: EMPTY_ENTRY_STATE_RULES } as unknown as CBTForceUnit;
         [laser, punch, hatchet, ecm, broken].forEach(item => item.owner = unit);
 
         const groups = getInventoryControlGroups(unit);
@@ -296,15 +389,50 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(groups.find(group => group.id === 'ranged')?.rows.find(row => row.id === 'broken')?.destroyed).toBeTrue();
     });
 
+    it('excludes ammo in functionally destroyed locations from weapon ammo summaries', () => {
+        const ac2 = weapon('AC/2', 'AC', 2);
+        const ac2Ammo = ammo('AC/2 Ammo', 'AC', 2);
+        const weaponEntry = entry({ id: 'ac2', equipment: ac2, el: svgEntry('<g><g class="name"><text>AC/2</text></g></g>') });
+        const ammoBin = entry({ id: 'ac2-ammo', equipment: ac2Ammo, totalAmmo: 10, consumed: 0, locations: new Set(['RT']) });
+        const unit = {
+            getInventory: () => [weaponEntry, ammoBin],
+            getCritSlots: () => [],
+            getUnit: () => ({ subtype: '', comp: [] }),
+            isEquipmentUnavailable: (source: MountedEquipment | CriticalSlot) => source === ammoBin,
+            rules: EMPTY_ENTRY_STATE_RULES
+        } as unknown as CBTForceUnit;
+        [weaponEntry, ammoBin].forEach(item => item.owner = unit);
+
+        const row = getInventoryControlGroups(unit, { [ac2Ammo.internalName]: ac2Ammo }).find(group => group.id === 'ranged')!.rows[0];
+
+        expect(row.ammo.remaining).toBe(0);
+        expect(row.ammo.total).toBe(0);
+        expect(row.ammo.options).toEqual([jasmine.objectContaining({ remaining: 0, total: 10, destroyed: true, disabled: true })]);
+    });
+
     it('keeps inactive direct inventory rows in original order', () => {
         const broken = entry({ id: 'broken', equipment: weapon('broken'), destroyed: true, el: svgEntry('<g><g class="name"><text>Broken</text></g></g>') });
         const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
-        const unit = { getInventory: () => [broken, laser], getCritSlots: () => [], getUnit: () => ({ subtype: '', comp: [] }), rules: {} } as unknown as CBTForceUnit;
+        const unit = { getInventory: () => [broken, laser], getCritSlots: () => [], getUnit: () => ({ subtype: '', comp: [] }), isEquipmentUnavailable: testEquipmentUnavailable, rules: EMPTY_ENTRY_STATE_RULES } as unknown as CBTForceUnit;
         [broken, laser].forEach(item => item.owner = unit);
 
         const groups = getInventoryControlGroups(unit);
 
         expect(groups.find(group => group.id === 'ranged')?.rows.map(row => row.id)).toEqual(['broken', 'laser']);
+    });
+
+    it('shows rule-damaged inventory rows as destroyed', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser'), destroyed: false, el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
+        const entryStates = new Map<MountedEquipment, EntryState>([
+            [laser, { isDamaged: true, isDisabled: false, hitMod: 0 }]
+        ]);
+        const { component } = createComponent([laser], {}, [], entryStates);
+
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(laser.committedDestroyed()).toBeFalse();
+        expect(row.destroyed).toBeTrue();
+        expect(component.rowEffectivelyDestroyed(row)).toBeTrue();
     });
 
     it('toggles BAP state and updates the next toggle label', async () => {
@@ -355,7 +483,13 @@ describe('WeaponsEquipmentPanelComponent', () => {
                 comp: trooperLabels.map(location => ({ id: narc.internalName, q: 1, q2: 0, l: location }))
             }),
             locations: { internal: new Map([['TROOP', { loc: 'TROOP', points: 4 }]]), armor: new Map() },
-            rules: {}
+            isEquipmentUnavailable: (source: MountedEquipment | CriticalSlot, loc?: string) => {
+                const locationUnavailable = (value: string | undefined) => value === 'Trooper 1' || value === 'T1';
+                if (!(source instanceof MountedEquipment)) return !!source.destroyed || locationUnavailable(source.loc);
+                if (source.committedDestroyed()) return true;
+                return loc ? locationUnavailable(loc) : Array.from(source.locations ?? []).some(locationUnavailable);
+            },
+            rules: EMPTY_ENTRY_STATE_RULES
         } as unknown as CBTForceUnit;
         [narcEntry, ...ammoEntries].forEach(item => item.owner = unit);
 
@@ -392,7 +526,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
             states: new Map([['state', 'jammed']]),
             el: svgEntry('<g><g class="name"><text>Ultra AC/2</text></g></g>')
         });
-        const unit = { getInventory: () => [uac], getCritSlots: () => [], getUnit: () => ({ subtype: '', comp: [] }), rules: {} } as unknown as CBTForceUnit;
+        const unit = { getInventory: () => [uac], getCritSlots: () => [], getUnit: () => ({ subtype: '', comp: [] }), isEquipmentUnavailable: testEquipmentUnavailable, rules: EMPTY_ENTRY_STATE_RULES } as unknown as CBTForceUnit;
         uac.owner = unit;
 
         const row = getInventoryControlGroups(unit).find(group => group.id === 'ranged')!.rows[0];
@@ -412,16 +546,16 @@ describe('WeaponsEquipmentPanelComponent', () => {
         component.markDestroyed(row);
         fixture.detectChanges();
 
-        expect(laser.destroyed).toBeFalse();
+        expect(laser.committedDestroyed()).toBeFalse();
         expect(unit.setInventoryEntry).toHaveBeenCalledOnceWith(laser);
-        expect(laser.destroying).toBeTrue();
+        expect(laser.pendingDestroyed()).toBeTrue();
         expect(component.rowDestroying(row)).toBeTrue();
         expect(component.rowEffectivelyDestroyed(row)).toBeTrue();
         expect((fixture.nativeElement.querySelector('.weapon-equipment-row') as HTMLElement).classList.contains('destroying-entry')).toBeTrue();
 
         component.repair(row);
 
-        expect(laser.destroying).toBeUndefined();
+        expect(laser.pendingDestroyed()).toBeUndefined();
         expect(unit.setInventoryEntry).toHaveBeenCalledTimes(2);
         expect(component.rowEffectivelyDestroyed(row)).toBeFalse();
     });
@@ -437,9 +571,9 @@ describe('WeaponsEquipmentPanelComponent', () => {
         component.repair(row);
         fixture.detectChanges();
 
-        expect(broken.destroyed).toBeTrue();
+        expect(broken.committedDestroyed()).toBeTrue();
         expect(unit.setInventoryEntry).toHaveBeenCalledOnceWith(broken);
-        expect(broken.destroying).toBeFalse();
+        expect(broken.pendingDestroyed()).toBeFalse();
         expect(component.rowRepairing(row)).toBeTrue();
         expect(component.rowEffectivelyDestroyed(row)).toBeFalse();
         expect((fixture.nativeElement.querySelector('.weapon-equipment-row') as HTMLElement).classList.contains('repairing-entry')).toBeTrue();
@@ -493,6 +627,140 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         expect(rows.map(row => row.id)).toEqual(['LRM 20@RT#0']);
         expect(rows[0].modifiers).toEqual([{ name: 'w/Artemis IV', destroyed: true }]);
+    });
+
+    it('charges linked PPC capacitors from the PPC row and discharges them when fired', async () => {
+        const ppcEquipment = weapon('Light PPC');
+        ppcEquipment.flags.add('F_PPC');
+        const capacitor = entry({
+            id: 'PPC Capacitor@RA#5',
+            equipment: misc('PPC Capacitor', ['F_WEAPON_ENHANCEMENT', 'F_PPC_CAPACITOR']),
+            el: svgEntry('<g class="linked"><g class="name"><text>w/Capacitor</text></g></g>')
+        });
+        const ppc = entry({
+            id: 'Light PPC@RA#3',
+            equipment: ppcEquipment,
+            linkedWith: [capacitor],
+            el: svgEntry('<g><g class="name"><text>Light PPC</text></g><text class="heat">5</text><g class="damage"><text>5 [DE]</text></g><text class="range_medium">12</text></g>')
+        });
+        capacitor.parent = ppc;
+        const { component, turnState } = createComponent([ppc, capacitor], {}, [], new Map(), {
+            handlers: [new PpcCapacitorHandler()]
+        });
+        let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(row.display.heat).toBe('5');
+        expect(row.display.damage).toBe('5 [DE]');
+        expect(component.handlerChoices(row).map(choice => choice.shortLabel)).toEqual(['Charge']);
+
+        await component.handleChoice(row, component.handlerChoices(row)[0]);
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(capacitor.states.get(PPC_CAPACITOR_STATE_KEY)).toBe('charged');
+        expect(row.display.heat).toBe('10');
+        expect(row.display.damage).toBe('10 [DE]');
+        expect(component.handlerChoices(row)[0]).toEqual(jasmine.objectContaining({ shortLabel: 'Charged', active: true }));
+
+        component.toggleSelected(row);
+        expect(component.selectedHeatTotal()).toBe(10);
+
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(turnState.addFiredHeat).toHaveBeenCalledWith(10);
+        expect(capacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(row.display.heat).toBe('5');
+        expect(row.display.damage).toBe('5 [DE]');
+    });
+
+    it('ignores unavailable linked PPC capacitors', () => {
+        const ppcEquipment = weapon('Light PPC');
+        ppcEquipment.flags.add('F_PPC');
+        const capacitor = entry({
+            id: 'PPC Capacitor@RA#5',
+            equipment: misc('PPC Capacitor', ['F_WEAPON_ENHANCEMENT', 'F_PPC_CAPACITOR']),
+            destroyed: true,
+            states: new Map([[PPC_CAPACITOR_STATE_KEY, 'charged']]),
+            el: svgEntry('<g class="linked"><g class="name"><text>w/Capacitor</text></g></g>')
+        });
+        const ppc = entry({
+            id: 'Light PPC@RA#3',
+            equipment: ppcEquipment,
+            linkedWith: [capacitor],
+            el: svgEntry('<g><g class="name"><text>Light PPC</text></g><text class="heat">5</text><g class="damage"><text>5 [DE]</text></g></g>')
+        });
+        capacitor.parent = ppc;
+        const { component } = createComponent([ppc, capacitor], {}, [], new Map(), {
+            handlers: [new PpcCapacitorHandler()]
+        });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(row.display.heat).toBe('5');
+        expect(row.display.damage).toBe('5 [DE]');
+        expect(component.handlerChoices(row)).toEqual([]);
+    });
+
+    it('marks heat as damaged when Laser Insulator heat is restored', () => {
+        const laserEquipment = weapon('Medium Laser');
+        laserEquipment.flags.add('F_ENERGY');
+        laserEquipment.flags.add('F_LASER');
+        const insulator = entry({
+            id: 'Laser Insulator@RA#5',
+            equipment: misc('Laser Insulator', ['F_WEAPON_ENHANCEMENT', 'F_LASER_INSULATOR']),
+            destroyed: true,
+            el: svgEntry('<g class="linked"><g class="name"><text>Laser Insulator</text></g></g>')
+        });
+        const laser = entry({
+            id: 'Medium Laser@RA#3',
+            equipment: laserEquipment,
+            linkedWith: [insulator],
+            el: svgEntry('<g><g class="name"><text>Medium Laser</text></g><text class="heat">3*</text><g class="damage"><text>5</text></g></g>')
+        });
+        insulator.parent = laser;
+        const { component, fixture } = createComponent([laser, insulator]);
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(row.base.heat).toBe('3*');
+        expect(row.display.heat).toBe('4');
+        expect((fixture.nativeElement.querySelector('.heat-cell') as HTMLElement).classList.contains('damaged')).toBeTrue();
+    });
+
+    it('applies RISC laser pulse module mode heat and hit from the linked laser row', async () => {
+        const laserEquipment = weapon('Medium Laser');
+        laserEquipment.flags.add('F_ENERGY');
+        laserEquipment.flags.add('F_LASER');
+        const module = entry({
+            id: 'RISC Laser Pulse Module@RA#5',
+            equipment: misc('RISC Laser Pulse Module', ['F_WEAPON_ENHANCEMENT', 'F_RISC_LASER_PULSE_MODULE']),
+            el: svgEntry('<g class="linked"><g class="name"><text>RISC Laser Pulse Module</text></g></g>')
+        });
+        const laser = entry({
+            id: 'Medium Laser@RA#3',
+            equipment: laserEquipment,
+            linkedWith: [module],
+            el: svgEntry('<g><g class="name"><text>Medium Laser</text></g><text class="heat">3</text><g class="damage"><text>5</text></g><text class="range_medium">6</text></g>')
+        });
+        module.parent = laser;
+        const { component, unit } = createComponent([laser, module]);
+        let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(component.modeChoice(row)?.value).toBe('Standard');
+        expect(row.display.heat).toBe('3');
+        expect(row.display.hit).toBe('+0');
+
+        await component.selectHandlerDropdown(row, component.modeChoice(row)!, RISC_LASER_PULSE_MODE);
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(laser.states.get(INVENTORY_CONTROL_MODE_STATE)).toBe(RISC_LASER_PULSE_MODE);
+        expect(row.display.heat).toBe('5');
+        expect(row.display.hit).toBe('-2');
+
+        laser.setCommittedDestroyed(true);
+
+        const rows = component.groups().flatMap(group => group.rows);
+        row = rows.find(candidate => candidate.entry === laser)!;
+        expect(component.modeChoice(row)).toBeUndefined();
+        expect(unit.isEquipmentUnavailable(module)).toBeFalse();
     });
 
     it('persists mode and sort order but keeps selection transient', async () => {
@@ -588,6 +856,33 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(targetState.damageText).toBe('9 [Variable]');
         expect(targetState.hitText).toBe('-3');
         expect(targetState.targetNumberText).toBe('1');
+    });
+
+    it('uses actual target distance for variable damage arrays and pulse hit modifiers when C3 range is shorter', () => {
+        const vspLaser = entry({
+            id: 'vsp',
+            baseHitMod: '-4',
+            equipment: new WeaponEquipment({
+                id: 'ISMediumVSPLaser',
+                name: 'Medium VSP Laser',
+                type: 'weapon',
+                flags: ['F_DIRECT_FIRE','F_PULSE','F_VSP'],
+                weapon: { ammoType: 'NA', heat: 7, damage: [9, 7, 5], ranges: [2, 5, 9, 13] }
+            }),
+            el: svgEntry('<g><g class="name"><text>Medium VSP Laser</text></g><g class="damage"><text>9/7/5 [Variable]</text></g><text class="range_short">2</text><text class="range_medium">5</text><text class="range_long">9</text></g>')
+        });
+        const { component, unit } = createComponent([vspLaser], {}, [], new Map(), { moveMode: 'stationary', hasLinkedC3Network: true });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 8, c3Distance: 1, useC3: true });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+        unit.inventoryControl.markInventoryViewChanged();
+
+        const targetState = component.targetState(row);
+        expect(targetState.rangeSelection?.range).toBe('short');
+        expect(targetState.damageText).toBe('5 [Variable]');
+        expect(targetState.hitText).toBe('-1');
+        expect(targetState.targetNumberText).toBe('3');
     });
 
     it('tracks built-in one-shot weapon shots through consumed inventory state', async () => {
@@ -783,7 +1078,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(targetState.targetNumberText).toBe('12');
         expect(targetState.breakdown?.lines).toEqual([
             { label: 'Gunnery', value: '4' },
-            { label: 'Movement (Run)', value: '+2' },
+            { label: 'Run', value: '+2' },
             { label: 'Target (A)', value: '+1' },
             { label: 'Range (Long)', value: '+4' },
             { label: 'Hit Modifier', value: '+1' },
@@ -794,6 +1089,122 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const selectedRangeCell = fixture.nativeElement.querySelector('.range-long') as HTMLElement;
         expect(selectedRangeCell.classList.contains('selected-range')).toBeTrue();
         expect(selectedRangeCell.style.getPropertyValue('--range-selection-color')).toBe(INVENTORY_CONTROL_TARGET_COLORS[0]);
+    });
+
+    it('uses C3 distance for weapon range bracket while minimum range uses actual distance', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [7, 14, 27, 36]), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_min">6</text><text class="range_short">7</text><text class="range_medium">14</text><text class="range_long">27</text></g>') });
+        const { component, fixture, unit } = createComponent([laser], {}, [], new Map(), { gunnerySkill: 4, moveMode: 'run', hasLinkedC3Network: true });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 20, c3Distance: 2, useC3: true });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+        unit.inventoryControl.markInventoryViewChanged();
+        fixture.detectChanges();
+
+        const targetState = component.targetState(row);
+        expect(targetState.rangeSelection?.range).toBe('short');
+        expect(targetState.rangeSelection?.distance).toBe(20);
+        expect(targetState.rangeSelection?.c3Distance).toBe(2);
+        expect(targetState.rangeSelection?.minimumRangeModifier).toBe(0);
+        expect(targetState.targetNumberText).toBe('6');
+        expect(targetState.breakdown?.lines).toEqual([
+            { label: 'Gunnery', value: '4' },
+            { label: 'Run', value: '+2' },
+            { label: 'Range (Short)', value: '+0' },
+            { label: 'C³ Distance', value: '2 (actual 20)' },
+            { isBreak: true },
+            { label: 'Total', value: '6', isHeader: true },
+        ]);
+        expect((fixture.nativeElement.querySelector('.range-short') as HTMLElement).classList.contains('selected-range')).toBeTrue();
+        expect((fixture.nativeElement.querySelector('.min-cell') as HTMLElement).classList.contains('minimum-range-active')).toBeFalse();
+    });
+
+    it('uses distance C3 target data', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [7, 14, 27, 36]), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_min">6</text><text class="range_short">7</text><text class="range_medium">14</text><text class="range_long">27</text></g>') });
+        const { component, unit } = createComponent([laser], {}, [], new Map(), { gunnerySkill: 4, moveMode: 'run', hasLinkedC3Network: true });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 20, c3Distance: 2, useC3: true });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+        unit.inventoryControl.markInventoryViewChanged();
+
+        const targetState = component.targetState(row);
+        expect(targetState.rangeSelection?.range).toBe('short');
+        expect(targetState.rangeSelection?.c3Distance).toBe(2);
+        expect(targetState.targetNumberText).toBe('6');
+    });
+
+    it('shows out of range when actual distance exceeds weapon long range despite C3 distance', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [2, 4, 6, 8]), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_short">2</text><text class="range_medium">4</text><text class="range_long">6</text></g>') });
+        const { component, unit } = createComponent([laser], {}, [], new Map(), { gunnerySkill: 4, moveMode: 'run', hasLinkedC3Network: true });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 20, c3Distance: 3, useC3: true });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+        unit.inventoryControl.markInventoryViewChanged();
+
+        const targetState = component.targetState(row);
+        expect(targetState.rangeSelection?.range).toBe('medium');
+        expect(targetState.rangeSelection?.outOfLongRange).toBeTrue();
+        expect(targetState.targetNumberText).toBe('X');
+        expect(targetState.breakdown).toBeNull();
+    });
+
+    it('ignores stored C3 distance when the unit is not linked to a C3 network', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [7, 14, 27, 36]), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_min">6</text><text class="range_short">7</text><text class="range_medium">14</text><text class="range_long">27</text></g>') });
+        const { component, unit } = createComponent([laser], {}, [], new Map(), { gunnerySkill: 4, moveMode: 'run' });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 20, c3Distance: 2, useC3: true });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+        unit.inventoryControl.markInventoryViewChanged();
+
+        const targetState = component.targetState(row);
+        expect(targetState.rangeSelection?.range).toBe('long');
+        expect(targetState.rangeSelection?.c3Distance).toBeNull();
+        expect(targetState.targetNumberText).toBe('10');
+    });
+
+    it('uses actual distance when it is shorter than C3 distance', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [7, 14, 27, 36]), el: svgEntry('<g><g class="name"><text>Laser</text></g><text class="range_min">6</text><text class="range_short">7</text><text class="range_medium">14</text><text class="range_long">27</text></g>') });
+        const { component, unit } = createComponent([laser], {}, [], new Map(), { gunnerySkill: 4, moveMode: 'run', hasLinkedC3Network: true });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 5, c3Distance: 20, useC3: true });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+        unit.inventoryControl.markInventoryViewChanged();
+
+        const targetState = component.targetState(row);
+        expect(targetState.rangeSelection?.range).toBe('short');
+        expect(targetState.rangeSelection?.distance).toBe(5);
+        expect(targetState.rangeSelection?.c3Distance).toBe(20);
+        expect(targetState.rangeSelection?.minimumRangeModifier).toBe(2);
+        expect(targetState.targetNumberText).toBe('8');
+    });
+
+    it('applies selected ammo to-hit modifiers to target number math', () => {
+        const lbxClusterAmmo = ammo('LB 10-X Cluster', 'AC', 10, ['M_CLUSTER'], [], -1);
+        const lbx = entry({ id: 'lbx', equipment: weapon('LB 10-X AC', 'AC', 10, [5, 10, 15, 20]), el: svgEntry('<g><g class="name"><text>LB 10-X AC</text></g><text class="range_short">5</text><text class="range_medium">10</text><text class="range_long">15</text></g>') });
+        const ammoBin = entry({ id: 'cluster-ammo', equipment: lbxClusterAmmo, totalAmmo: 10, consumed: 0, locations: new Set(['CT']) });
+        const { component, fixture, unit } = createComponent([lbx, ammoBin], { [lbxClusterAmmo.internalName]: lbxClusterAmmo }, [], new Map(), { gunnerySkill: 4, moveMode: 'stationary' });
+        let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        component.selectAmmoOption(row, row.ammo.options[0].id);
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 8 });
+        unit.setInventoryControlEntryTarget(row.entry, 'A');
+        unit.inventoryControl.markInventoryViewChanged();
+        fixture.detectChanges();
+
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        const targetState = component.targetState(row);
+        expect(targetState.targetNumberText).toBe('5');
+        expect(targetState.breakdown?.lines).toEqual([
+            { label: 'Gunnery', value: '4' },
+            { label: 'Range (Medium)', value: '+2' },
+            { label: 'Ammo (LB 10-X Cluster)', value: '-1' },
+            { isBreak: true },
+            { label: 'Total', value: '5', isHeader: true },
+        ]);
     });
 
     it('highlights minimum range when assigned target distance is at or below Min', () => {
@@ -862,7 +1273,6 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(targetState.targetNumberText).toBe('10');
         expect(targetState.breakdown?.lines).toEqual([
             { label: 'Gunnery', value: '4' },
-            { label: 'Movement (Stationary)', value: '+0' },
             { label: 'Target (A)', value: '+1' },
             { label: 'Range (Medium)', value: '+2' },
             { label: 'Hit Modifier', value: '+1' },
@@ -870,6 +1280,40 @@ describe('WeaponsEquipmentPanelComponent', () => {
             { isBreak: true },
             { label: 'Total', value: '10', isHeader: true },
         ]);
+    });
+
+    it('only keeps the Artemis V linked hit modifier when Artemis V-capable ammo is selected', () => {
+        const standardAmmo = ammo('Narc Standard', 'NARC', 4);
+        const artemisVAmmo = ammo('Narc Artemis V', 'NARC', 4, ['M_ARTEMIS_V_CAPABLE']);
+        const artemisV = entry({
+            id: 'ArtemisV@RT#1',
+            equipment: misc('ArtemisV', ['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']),
+        });
+        const launcher = entry({
+            id: 'launcher',
+            baseHitMod: '-1',
+            equipment: weapon('Narc Launcher', 'NARC', 4),
+            linkedWith: [artemisV],
+            el: svgEntry('<g><g class="name"><text>Narc Launcher</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>')
+        });
+        const standardBin = entry({ id: 'standard-ammo', equipment: standardAmmo, totalAmmo: 10, consumed: 0, locations: new Set(['RT']) });
+        const artemisVBin = entry({ id: 'artemis-v-ammo', equipment: artemisVAmmo, totalAmmo: 10, consumed: 0, locations: new Set(['RT']) });
+        const equipmentMap: EquipmentMap = {
+            [standardAmmo.internalName]: standardAmmo,
+            [artemisVAmmo.internalName]: artemisVAmmo,
+        };
+        const { component, fixture, unit } = createComponent([launcher, artemisV, standardBin, artemisVBin], equipmentMap);
+        let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(row.display.hit).toBe('+0');
+
+        const artemisVOption = row.ammo.options.find(option => option.ammo === artemisVAmmo)!;
+        component.selectAmmoOption(row, artemisVOption.id);
+        unit.inventoryControl.markInventoryViewChanged();
+        fixture.detectChanges();
+
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(row.display.hit).toBe('-1');
     });
 
     it('uses piloting skill for physical target numbers', () => {
@@ -888,7 +1332,6 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(targetState.targetNumberText).toBe('7');
         expect(targetState.breakdown?.lines).toEqual([
             { label: 'Piloting', value: '6' },
-            { label: 'Movement (Stationary)', value: '+0' },
             { label: 'Target (A)', value: '+1' },
             { isBreak: true },
             { label: 'Total', value: '7', isHeader: true },
@@ -1026,6 +1469,28 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(heat.next).toBeUndefined();
     });
 
+    it('shows post-consumption ammo counts in the fired summary', async () => {
+        const standardAmmo = ammo('ATM 6 Standard', 'ATM', 6, ['M_STANDARD']);
+        const atm = entry({
+            id: 'atm',
+            equipment: weapon('ATM 6', 'ATM', 6),
+            el: svgEntry('<g><g class="name"><text>ATM 6</text></g><text class="heat">4</text><text class="range_short">5</text></g>')
+        });
+        const ammoBin = entry({ id: 'std-ammo', equipment: standardAmmo, totalAmmo: 15, consumed: 5, locations: new Set(['CT']) });
+        const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
+        const { component, dialogsService } = createComponent([atm, ammoBin], equipmentMap, [], new Map(), { tracksHeat: false });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        component.toggleSelected(row);
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(ammoBin.consumed).toBe(6);
+        expect(dialogsService.showNoticeHtml).toHaveBeenCalledWith(
+            'Ammo consumed:<ul><li>1 ammo from ATM 6 Standard (9/15)</li></ul>',
+            'Weapons Fired'
+        );
+    });
+
     it('hides heat information and consumes only ammo for units that do not track heat', async () => {
         const standardAmmo = ammo('ATM 6 Standard', 'ATM', 6, ['M_STANDARD']);
         const atm = entry({
@@ -1098,6 +1563,50 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(component.ammoState(row).canDecrease).toBeFalse();
     });
 
+    it('keeps the implicit ammo bin selected during stepper adjustments and does not switch to a different ammo type when depleted', () => {
+        const standardAmmo = ammo('LRM 15 Ammo', 'MML', 15);
+        const artemisAmmo = ammo('LRM 15 Artemis V Ammo', 'MML', 15, ['M_ARTEMIS_V']);
+        const lrm = entry({
+            id: 'lrm',
+            equipment: weapon('LRM 15', 'MML', 15),
+            el: svgEntry('<g><g class="name"><text>LRM 15</text></g><text class="heat">5</text><text class="range_short">7</text></g>')
+        });
+        const standardBin = entry({ id: 'standard-ammo', equipment: standardAmmo, totalAmmo: 6, consumed: 0, locations: new Set(['LT']) });
+        const artemisBin = entry({ id: 'artemis-ammo', equipment: artemisAmmo, totalAmmo: 6, consumed: 0, locations: new Set(['RT']) });
+        const equipmentMap: EquipmentMap = {
+            [standardAmmo.internalName]: standardAmmo,
+            [artemisAmmo.internalName]: artemisAmmo,
+        };
+        const { component } = createComponent([lrm, standardBin, artemisBin], equipmentMap, [], new Map(), { tracksHeat: false });
+        let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(component.ammoState(row).selectedOptionId).toBe(row.ammo.options[0].id);
+
+        component.adjustAmmo(row, 1);
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(standardBin.consumed).toBe(1);
+        expect(artemisBin.consumed).toBe(0);
+        expect(component.ammoState(row).selectedOptionId).toBe(row.ammo.options[0].id);
+        expect(component.ammoState(row).text).toBe('LRM 15 Ammo (5/6)');
+
+        component.adjustAmmo(row, 1);
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(standardBin.consumed).toBe(2);
+        expect(artemisBin.consumed).toBe(0);
+        expect(component.ammoState(row).selectedOptionId).toBe(row.ammo.options[0].id);
+        expect(component.ammoState(row).text).toBe('LRM 15 Ammo (4/6)');
+
+        for (let i = 0; i < 4; i++) {
+            row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+            component.adjustAmmo(row, 1);
+        }
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(standardBin.consumed).toBe(6);
+        expect(artemisBin.consumed).toBe(0);
+        expect(component.ammoState(row).selectedOptionId).toBe(row.ammo.options[0].id);
+        expect(component.ammoState(row).text).toBe('LRM 15 Ammo (0/6)');
+    });
+
     it('switches to another compatible ammo bin after the selected bin is depleted', async () => {
         const standardAmmo = ammo('ATM 6 Standard', 'ATM', 6, ['M_STANDARD']);
         const atm = entry({
@@ -1128,107 +1637,6 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         expect(leftBin.consumed).toBe(1);
         expect(rightBin.consumed).toBe(1);
-    });
-
-    it('keeps restored depleted ammo selection scoped to the manually changed weapon', async () => {
-        const standardAmmo = ammo('SRM 6 Smoke', 'MML', 6);
-        const srm1 = entry({
-            id: 'srm-1',
-            equipment: weapon('SRM 6', 'MML', 6),
-            el: svgEntry('<g><g class="name"><text>SRM 6</text></g><text class="heat">4</text><text class="range_short">3</text></g>')
-        });
-        const srm2 = entry({
-            id: 'srm-2',
-            equipment: weapon('SRM 6', 'MML', 6),
-            el: svgEntry('<g><g class="name"><text>SRM 6</text></g><text class="heat">4</text><text class="range_short">3</text></g>')
-        });
-        const leftBin = entry({ id: 'left-ammo', equipment: standardAmmo, totalAmmo: 5, consumed: 0, locations: new Set(['LT']) });
-        const rightBin = entry({ id: 'right-ammo', equipment: standardAmmo, totalAmmo: 1, consumed: 0, locations: new Set(['RT']) });
-        const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
-        const { component } = createComponent([srm1, srm2, leftBin, rightBin], equipmentMap, [], new Map(), { tracksHeat: false });
-        let rows = component.groups().find(group => group.id === 'ranged')!.rows;
-        let weapon1 = rows[0];
-        let weapon2 = rows[1];
-
-        component.selectAmmoOption(weapon1, weapon1.ammo.options[0].id);
-        component.selectAmmoOption(weapon2, weapon2.ammo.options[1].id);
-        component.toggleSelected(weapon1);
-        component.toggleSelected(weapon2);
-
-        await component.consumeSelectedHeatAndAmmo();
-
-        expect(leftBin.consumed).toBe(1);
-        expect(rightBin.consumed).toBe(1);
-        rows = component.groups().find(group => group.id === 'ranged')!.rows;
-        weapon1 = rows[0];
-        weapon2 = rows[1];
-        expect(component.ammoState(weapon1).selectedOptionId).toBe(weapon1.ammo.options[0].id);
-        expect(component.ammoState(weapon2).selectedOptionId).toBe(weapon2.ammo.options[0].id);
-
-        component.selectAmmoOption(weapon2, weapon2.ammo.options[1].id);
-        rows = component.groups().find(group => group.id === 'ranged')!.rows;
-        weapon1 = rows[0];
-        weapon2 = rows[1];
-        expect(component.ammoState(weapon2).selectedOptionId).toBe(weapon2.ammo.options[1].id);
-        expect(component.ammoState(weapon2).text).toBe('[RT] SRM 6 Smoke (0/1)');
-
-        component.adjustAmmo(weapon2, -1);
-        rows = component.groups().find(group => group.id === 'ranged')!.rows;
-        weapon1 = rows[0];
-        weapon2 = rows[1];
-        expect(leftBin.consumed).toBe(1);
-        expect(rightBin.consumed).toBe(0);
-        expect(component.ammoState(weapon1).selectedOptionId).toBe(weapon1.ammo.options[0].id);
-        expect(component.ammoState(weapon1).text).toBe('[LT] SRM 6 Smoke (4/5)');
-        expect(component.ammoState(weapon2).selectedOptionId).toBe(weapon2.ammo.options[1].id);
-        expect(component.ammoState(weapon2).text).toBe('[RT] SRM 6 Smoke (1/1)');
-
-        await component.consumeSelectedHeatAndAmmo();
-
-        expect(leftBin.consumed).toBe(2);
-        expect(rightBin.consumed).toBe(1);
-        rows = component.groups().find(group => group.id === 'ranged')!.rows;
-        weapon1 = rows[0];
-        weapon2 = rows[1];
-        expect(component.ammoState(weapon1).selectedOptionId).toBe(weapon1.ammo.options[0].id);
-        expect(component.ammoState(weapon1).text).toBe('[LT] SRM 6 Smoke (3/5)');
-        expect(component.ammoState(weapon2).selectedOptionId).toBe(weapon2.ammo.options[0].id);
-        expect(component.ammoState(weapon2).text).toBe('[LT] SRM 6 Smoke (3/5)');
-    });
-
-    it('does not move later weapons to a manually restored low-ammo bin', () => {
-        const standardAmmo = ammo('SRM 6 Smoke', 'MML', 6);
-        const weapons = Array.from({ length: 5 }, (_value, index) => entry({
-            id: `srm-${index + 1}`,
-            equipment: weapon('SRM 6', 'MML', 6),
-            el: svgEntry('<g><g class="name"><text>SRM 6</text></g><text class="heat">4</text><text class="range_short">3</text></g>')
-        }));
-        const lowBin = entry({ id: 'right-ammo', equipment: standardAmmo, totalAmmo: 10, consumed: 10, locations: new Set(['RT']) });
-        const mainBin = entry({ id: 'left-ammo', equipment: standardAmmo, totalAmmo: 30, consumed: 20, locations: new Set(['LT']) });
-        const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
-        const { component } = createComponent([...weapons, lowBin, mainBin], equipmentMap, [], new Map(), { tracksHeat: false });
-        let rows = component.groups().find(group => group.id === 'ranged')!.rows;
-        let weapon2 = rows[1];
-
-        expect(rows.map(row => component.ammoState(row).selectedOptionId)).toEqual(rows.map(row => row.ammo.options[1].id));
-
-        component.selectAmmoOption(weapon2, weapon2.ammo.options[0].id);
-        rows = component.groups().find(group => group.id === 'ranged')!.rows;
-        weapon2 = rows[1];
-        expect(component.ammoState(weapon2).selectedOptionId).toBe(weapon2.ammo.options[0].id);
-        expect(component.ammoState(weapon2).text).toBe('[RT] SRM 6 Smoke (0/10)');
-
-        component.adjustAmmo(weapon2, -1);
-
-        rows = component.groups().find(group => group.id === 'ranged')!.rows;
-        weapon2 = rows[1];
-        expect(lowBin.consumed).toBe(9);
-        expect(component.ammoState(weapon2).selectedOptionId).toBe(weapon2.ammo.options[0].id);
-        expect(component.ammoState(weapon2).text).toBe('[RT] SRM 6 Smoke (1/10)');
-        expect(rows.filter(row => row.id !== weapon2.id).map(row => component.ammoState(row).selectedOptionId))
-            .toEqual(rows.filter(row => row.id !== weapon2.id).map(row => row.ammo.options[1].id));
-        expect(rows.filter(row => row.id !== weapon2.id).map(row => component.ammoState(row).text))
-            .toEqual(rows.filter(row => row.id !== weapon2.id).map(() => '[LT] SRM 6 Smoke (10/30)'));
     });
 
     it('does not switch to a different ammo type after the selected bin is depleted', async () => {

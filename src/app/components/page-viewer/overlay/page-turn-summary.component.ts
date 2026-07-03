@@ -49,7 +49,7 @@ import { canChangeAirborneGround, type MotiveModeOption, type MotiveModes } from
 import { HexSliderComponent } from '../../hex-slider/hex-slider.component';
 import { TooltipDirective } from '../../../directives/tooltip.directive';
 import type { TooltipLine } from '../../tooltip/tooltip.component';
-import type { UnitModifierBreakdownEntry } from '../../../models/rules/unit-type-rules';
+import { calculateModifierTotal, type UnitModifierBreakdownEntry, type UnitModifierTotal } from '../../../models/rules/unit-type-rules';
 
 /*
  * Author: Drake
@@ -138,11 +138,9 @@ export class PageTurnSummaryPanelComponent {
 
     getTotalTargetModifierAsDefender = computed(() => {
         const u = this.unit();
-        let value = 0;
-        if (u) {
-            value = u.turnState().getTotalTargetModifierAsDefender();
-        }
-        return value >= 0 ? `+${value}` : `${value}`;
+        return this.formatModifierTotal(u
+            ? u.turnState().getTotalTargetModifierAsDefender()
+            : { modifier: 0 });
     });
 
     defenseTargetModifierTooltip = computed<TooltipLine[] | null>(() => {
@@ -340,24 +338,39 @@ export class PageTurnSummaryPanelComponent {
         return u.turnState().moveDistance() !== null;
     });
 
-    setMoveDistance(value: number) {
+    setMoveDistance(value: number, markModified = true) {
         const u = this.unit();
         if (!u) return;
         const min = this.moveMin();
         const max = this.moveMax();
-        u.turnState().moveDistance.set(Math.max(min, Math.min(max, value)));
+        u.turnState().setMoveDistance(Math.max(min, Math.min(max, value)), { markModified });
+    }
+
+    commitMoveDistance(value: number) {
+        const u = this.unit();
+        if (!u) return;
+        this.setMoveDistance(value, false);
+        u.turnState().markModified();
     }
 
     private buildModifierTooltip(title: string, entries: UnitModifierBreakdownEntry[]): TooltipLine[] {
-        const total = entries.reduce((sum, entry) => sum + entry.modifier, 0);
+        const total = calculateModifierTotal(entries);
         return [
             { value: title, isHeader: true },
             ...(entries.length > 0
-                ? entries.map(entry => ({ label: entry.label, value: this.formatModifier(entry.modifier) }))
+                ? entries.map(entry => ({ label: entry.label, value: this.formatModifierTotal(entry) }))
                 : [{ label: 'No active modifiers', value: '+0' }]),
             { isBreak: true },
-            { label: 'Total', value: this.formatModifier(total) },
+            { label: 'Total', value: this.formatModifierTotal(total) },
         ];
+    }
+
+    private formatModifierTotal(total: UnitModifierTotal): string {
+        const value = this.formatModifier(total.modifier);
+        const alternateModifierLabel = total.alternateModifierLabel ? ` ${total.alternateModifierLabel}` : '';
+        return total.alternateModifier !== undefined && total.alternateModifier !== total.modifier
+            ? `${value} (${this.formatModifier(total.alternateModifier)}${alternateModifierLabel})`
+            : value;
     }
 
     private formatModifier(value: number): string {

@@ -39,6 +39,12 @@ export const TN_AIRBORNE_MOVE_TYPE_MODIFIER = 1;
 export const TN_PARTIAL_COVER_MODIFIER = 1;
 export const TN_SECONDARY_TARGET_MODIFIER = 1;
 export const TN_SECONDARY_TARGET_SIDE_BACK_MODIFIER = 2;
+export const TN_PRONE_ADJACENT = -2;
+export const TN_PRONE = 1;
+export const TN_IMMOBILE = -4;
+
+export const TN_PRONE_ATTACKER = 2;
+export const TN_SKIDDING_ATTACKER = 1;
 
 export const ADJACENT_RANGE = 1;
 
@@ -139,8 +145,8 @@ export function getTargetAirborneModifier(isAirborne: boolean | null | undefined
 }
 
 export function getTargetStanceModifier(stance: TnTargetStance | null | undefined, range: number): number {
-    if (stance === 'prone') return range <= ADJACENT_RANGE ? -2 : 1;
-    if (stance === 'immobile') return -4;
+    if (stance === 'prone') return range <= ADJACENT_RANGE ? TN_PRONE_ADJACENT : TN_PRONE;
+    if (stance === 'immobile') return TN_IMMOBILE;
     return 0;
 }
 

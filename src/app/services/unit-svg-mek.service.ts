@@ -116,10 +116,7 @@ export class UnitSvgMekService extends UnitSvgService {
                     }
 
                     const key = getCriticalSlotAmmoProfileKey(criticalSlot) ?? (text.startsWith("Ammo ") ? text.substring(5) : text);
-                    ammoProfile.set(
-                        key,
-                        (ammoProfile.get(key) ?? 0) + (criticalSlot.destroyed ? 0 : remainingAmmo)
-                    );
+                    ammoProfile.set(key, (ammoProfile.get(key) ?? 0) + (this.unit.isEquipmentUnavailable(criticalSlot) ? 0 : remainingAmmo));
                 }
             }
 
@@ -185,12 +182,18 @@ export class UnitSvgMekService extends UnitSvgService {
         if (!svg) return;
         const movement = this.mekRules.movementState();
         const physical = this.mekRules.physicalCombat();
+        const systemsStatus = this.mekRules.systemsStatus();
         if (!movement || !physical) return;
 
         // Partial wing heat bonus display
-        if (movement.partialWingHeatBonus !== null) {
+        if (systemsStatus.hasPartialWings) {
             const el = svg.getElementById('partialWingBonus');
-            if (el) el.textContent = `(Partial Wing +${movement.partialWingHeatBonus})`;
+            if (el) {
+                el.textContent = `(Partial Wing +${systemsStatus.partialWingsHeatBonus})`;
+                if (systemsStatus.destroyedPartialWingsCount > 0) {
+                    el.classList.add('damaged');
+                }
+            }
         }
 
         // Movement point display
@@ -260,7 +263,14 @@ export class UnitSvgMekService extends UnitSvgService {
 
     protected override resolveInventoryControlHitModifier(entry: MountedEquipment, range?: WeaponRangeKey | null): number | 'Vs' | '*' | null {
         const state = this.currentEntryStates?.get(entry) ?? this.mekRules.computeEntryState(entry);
-        return resolveHitModifier(entry, state.hitMod, range);
+        return resolveHitModifier(
+            entry,
+            state.hitMod,
+            range,
+            this.inventoryTargetSelectedAmmo(entry),
+            (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo),
+            candidate => this.unit.getInventoryControlBaseHitModifier(candidate)
+        );
     }
 
     override inventoryTargetHeatFireModifier(entry: MountedEquipment): number {

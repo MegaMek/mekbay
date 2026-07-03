@@ -23,6 +23,9 @@ function createCritEntry(params: {
     destroyed?: boolean;
     owner: Pick<CBTForceUnit, 'id' | 'readOnly' | 'getUnit'>;
 }): AmmoControlEntry {
+    const owner = params.owner as CBTForceUnit;
+    const isEquipmentUnavailable: CBTForceUnit['isEquipmentUnavailable'] = (source: CriticalSlot) => !!source.destroyed;
+    owner.isEquipmentUnavailable ??= isEquipmentUnavailable;
     const source = {
         id: `${params.ammo.internalName}@${params.loc}#${params.slot}`,
         name: params.ammo.internalName,
@@ -36,7 +39,7 @@ function createCritEntry(params: {
 
     return {
         id: `crit:${params.loc}:${params.slot}:${params.ammo.internalName}`,
-        owner: params.owner as CBTForceUnit,
+        owner,
         source,
         sourceType: 'crit',
         locationLabel: params.loc,

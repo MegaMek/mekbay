@@ -223,7 +223,13 @@
             cursor: pointer;
             transition: background-color 0.2s;
             position: relative;
-            
+
+            &:hover {
+                text-decoration: underline;
+                text-underline-offset: 0.15em;
+                text-decoration-thickness: 1px;
+            }
+
             &::after {
                 content: '';
                 position: absolute;
@@ -253,6 +259,11 @@
 
         &.tag {
             background-color: rgba(191, 119, 18, 0.55);
+        }
+
+        &.condition {
+            background-color: color-mix(in srgb, var(--condition-color) 100%, transparent 50%);
+            color: white;
         }
         
         &.ecm {

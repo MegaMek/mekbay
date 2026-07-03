@@ -32,23 +32,24 @@
  */
 
 import { Injectable, effect, signal, inject, DestroyRef } from '@angular/core';
-import { type CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, type SkillType } from '../models/crew-member.model';
+import { type CrewMember, type CrewMemberState, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, type SkillType } from '../models/crew-member.model';
 import type { CriticalSlot, HeatProfile, MountedEquipment } from '../models/force-serialization';
 import { SheetService } from './sheet.service';
 import { UnitInitializerService } from './unit-initializer.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
-import { LINKED_LOCATIONS } from "../models/common.model";
+import { LINKED_LOCATIONS } from "../models/rules/mek-rules";
 import { LoggerService } from './logger.service';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
-import { resolveHitModifier, computeLinkedModifiers } from '../models/rules/hit-modifier.util';
+import { resolveHitModifier } from '../models/rules/hit-modifier.util';
 import { resolveWeaponRangeDamageText, WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE } from '../models/rules/weapon-range-rules.util';
-import { formatGunneryDisplay, formatPilotingDisplay, type UnitHeatSource } from '../models/rules/unit-type-rules';
+import { formatGunneryDisplay, formatPilotingDisplay, UNIT_CONDITION_DEFINITIONS, unitConditionSortIndex, type UnitHeatSource } from '../models/rules/unit-type-rules';
 import type { HeatDissipationState } from '../models/rules/heat-management';
 import { AmmoEquipment } from '../models/equipment.model';
 import { formatAmmoName } from '../utils/ammo-interaction.util';
-import { getMotiveModeLabel } from '../models/motiveModes.model';
-import { inventoryTargetCategory, inventoryTargetNumberText, readInventoryTargetDisplay } from '../utils/inventory-target-number.util';
+import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection, readInventoryTargetDisplay } from '../utils/inventory-target-number.util';
+import { getInventoryControlModeAmmoSummary, INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE, resolveInventoryControlSelectedAmmoOption, type InventoryControlAmmoOption } from '../utils/inventory-control.util';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
+import { isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, selectedRiscLaserMode } from '../equipment-handlers/risc-laser-pulse-module.handler';
 
 const INVENTORY_CONTROL_SELECTION_COLOR_PROPERTY = '--inventory-control-selection-color';
 const HEAT_PROJECTION_ORIGINAL_OVERFLOW_STROKE = 'data-heat-projection-original-stroke';
@@ -61,9 +62,6 @@ const INVENTORY_CONTROL_RANGE_CLASS_NAMES: Record<InventoryControlRuntimeRangeKe
 };
 
 type HeatDissipationWithWings = HeatDissipationState & { totalDissipationWithWings?: number };
-interface HeatAwareRules {
-    heatDissipation: () => HeatDissipationWithWings | null;
-}
 
 /*
  * Author: Drake
@@ -93,6 +91,13 @@ export class UnitSvgService {
             this.updateAllDisplays();
             this.version(); // Track version to force a repaint
         });
+        // Unit state effect
+        effect(() => {
+            const svg = this.unit.svg();
+            if (!svg) return;
+            this.updateConditionsDisplay();
+            this.version(); // Track version to force a repaint
+        });
         // Destroy effect
         effect(() => {
             const destroyed = this.unit.destroyed;
@@ -106,7 +111,7 @@ export class UnitSvgService {
 
 
     public forceRepaint() {
-        this.version.set(this.version()+1); // Increment version to trigger repaint
+        this.version.update(v => v + 1); // Increment version to trigger repaint
     }
 
     public async loadAndInitialize(): Promise<void> {
@@ -116,7 +121,7 @@ export class UnitSvgService {
         }
 
         try {
-            const svg = await this.sheetService.getSheet(this.unit.getUnit().sheets[0]);
+            const svg = await this.sheetService.getSheet(this.unit.getUnit().sheets[0], this.unit.getUnit().serverHost);
 
             // Do basic setup that doesn't require the DOM
             this.initializeSvg(svg);
@@ -134,8 +139,9 @@ export class UnitSvgService {
                 hiddenContainer.appendChild(svg);
                 await this._waitForSvgLayout(svg);
 
-                RsPolyfillUtil.addMissingClasses(this.unit.getUnit(), svg);
+                RsPolyfillUtil.addMissingClasses(this.unit, svg);
                 this.unitInitializer.initializeUnitIfNeeded(this.unit, svg);
+                RsPolyfillUtil.syncConditionButtons(this.unit, svg);
 
                 this.unit.svg.set(svg);
                 this.updateArmorDisplay(true);
@@ -236,6 +242,83 @@ export class UnitSvgService {
         this.updateAmmoProfile();
         this.updateInventory();
         this.updateTurnState();
+        this.updateConditionsDisplay();
+    }
+
+    protected updateConditionsDisplay() {
+        const svg = this.unit.svg();
+        if (!svg) return;
+
+        const conditionControls = this.unit.rules.conditionControls;
+        const conditions = this.unit.getConditions();
+        const activeConditions = UNIT_CONDITION_DEFINITIONS
+            .map(condition => ({ key: condition.key, active: conditions.has(condition.key) }))
+            .sort((left, right) => unitConditionSortIndex(left.key) - unitConditionSortIndex(right.key));
+        this.updateUnitConditionControlVisibility(svg, conditionControls);
+        const activeMenuConditions = conditionControls.filter(condition => condition.placement === 'menu' && conditions.has(condition.key));
+        const menuActive = activeMenuConditions.length > 0;
+        const menuButton = svg.querySelector<SVGElement>('.unitConditionButton[condition="menu"]');
+        const menuButtonColor = activeMenuConditions.length === 1 ? activeMenuConditions[0].color : '#666';
+        menuButton?.setAttribute('active-color', menuButtonColor);
+        menuButton?.style.setProperty('--unit-condition-active-color', menuButtonColor);
+        menuButton?.classList.toggle('active', menuActive);
+        menuButton?.querySelector<SVGElement>('rect')?.setAttribute('fill', menuActive ? menuButtonColor : '#fff');
+        menuButton?.querySelector<SVGElement>('text')?.setAttribute('fill', menuActive ? '#fff' : '#000');
+
+        let bannerOffset = 0;
+        for (const condition of activeConditions) {
+            const button = svg.querySelector<SVGElement>(`.unitConditionButton[condition="${condition.key}"]`);
+            button?.classList.toggle('active', condition.active);
+            const buttonColor = button?.getAttribute('active-color') ?? '#666';
+            button?.querySelector<SVGElement>('rect')?.setAttribute('fill', condition.active ? buttonColor : '#fff');
+            button?.querySelector<SVGElement>('text')?.setAttribute('fill', condition.active ? '#fff' : '#000');
+
+            const banner = svg.querySelector<SVGElement>(`.unitConditionBanner[condition="${condition.key}"]`);
+            if (!banner) continue;
+            const bannerRect = banner.querySelector<SVGElement>('.unitConditionBannerRect');
+            const bannerText = banner.querySelector<SVGElement>('.unitConditionBannerText');
+            banner.classList.toggle('visible', condition.active);
+            if (condition.active) {
+                banner.removeAttribute('display');
+            } else {
+                banner.setAttribute('display', 'none');
+            }
+            banner.setAttribute('opacity', condition.active ? '1' : '0');
+            bannerRect?.setAttribute('fill', banner.getAttribute('condition-color') ?? '#666');
+            if (bannerRect) {
+                bannerRect.style.transformBox = 'fill-box';
+                bannerRect.style.transformOrigin = 'left center';
+                bannerRect.style.transform = condition.active ? 'scaleX(1)' : 'scaleX(0)';
+            }
+            if (bannerText) {
+                bannerText.style.opacity = condition.active ? '1' : '0';
+            }
+            if (condition.active) {
+                const bannerHeight = Number(bannerRect?.getAttribute('height') ?? 15);
+                banner.setAttribute('transform', `translate(0 ${bannerOffset})`);
+                bannerOffset += bannerHeight;
+            }
+        }
+    }
+
+    private updateUnitConditionControlVisibility(svg: SVGSVGElement, conditionControls: readonly { key: string; placement?: string }[]): void {
+        const buttonConditions = new Set(conditionControls
+            .filter(condition => condition.placement === 'button')
+            .map(condition => condition.key));
+        const hasMenuConditions = conditionControls.some(condition => condition.placement === 'menu');
+
+        svg.querySelectorAll<SVGElement>('.unitConditionButton[condition]').forEach(button => {
+            const condition = button.getAttribute('condition');
+            const visible = condition === 'menu'
+                ? hasMenuConditions
+                : !!condition && buttonConditions.has(condition);
+            button.style.display = visible ? '' : 'none';
+        });
+
+        svg.querySelectorAll<SVGElement>('#unit_condition_wrapper, .unitConditionWrapper').forEach(wrapper => {
+            const buttons = Array.from(wrapper.querySelectorAll<SVGElement>('.unitConditionButton[condition]'));
+            wrapper.style.display = buttons.length > 0 && buttons.every(button => button.style.display === 'none') ? 'none' : '';
+        });
     }
 
     protected updateDestroyedOverlayDisplay(destroyed?: boolean) {
@@ -287,6 +370,7 @@ export class UnitSvgService {
         const svg = this.unit.svg();
         if (!svg) return;
         const PSRMod = this.unit.PSRModifiers();
+        const pilotingDisplayModifier = PSRMod?.modifier || this.unit.pilotingModifier();
         const attackerModifier = this.unit.turnState().getTotalTargetModifierAsAttacker();
 
         // Check if all crew members have default values (no name and default skills)
@@ -295,6 +379,8 @@ export class UnitSvgService {
             member.getSkill('gunnery') === DEFAULT_GUNNERY_SKILL && // Default gunnery skill
             member.getSkill('piloting') === DEFAULT_PILOTING_SKILL // Default piloting skill
         );
+
+        this.updateCrewDamageDisplay(svg, crew);
 
         // Apply or remove screen-only class on skillValue elements
         svg.querySelectorAll('.skillValue').forEach(el => {
@@ -344,7 +430,7 @@ export class UnitSvgService {
                 if (svgElement) {
                     const skillValue = member.getSkill(skill.name, skill.asf);
                     if (skill.name === 'piloting') {
-                        svgElement.textContent = formatPilotingDisplay(skillValue, PSRMod?.modifier ?? 0);
+                        svgElement.textContent = formatPilotingDisplay(skillValue, pilotingDisplayModifier);
                     } else {
                         svgElement.textContent = formatGunneryDisplay(skillValue, attackerModifier);
                     }
@@ -367,8 +453,112 @@ export class UnitSvgService {
             if (deadGroup) {
                 deadGroup.classList.toggle('wounded', state === 'dead');
             }
+            this.updateCrewStateControls(svg, crewId, state);
 
         });
+    }
+
+    private updateCrewDamageDisplay(svg: SVGSVGElement, crew: CrewMember[]): void {
+        const hasCrew = this.unit.rules.hasCrew();
+        const remoteDrone = this.unit.rules.isRemoteDrone();
+        const visibleCrewIds = new Set(hasCrew ? crew.map(member => member.getId()) : []);
+        let showRemoteDroneLabel = false;
+        let hasCrewDamage0 = false;
+        let labelContainer: Element | null = svg;
+        let labelX = '70';
+        let labelY = this.unit.getUnit().type === 'Aero' ? '60' : '40';
+        svg.querySelectorAll<SVGElement>('g[id^="crewDamage"]').forEach(group => {
+            const crewId = Number(group.id.replace('crewDamage', ''));
+            const visible = visibleCrewIds.has(crewId);
+            if (crewId === 0) {
+                hasCrewDamage0 = true;
+                labelContainer = group.parentNode instanceof Element ? group.parentNode : svg;
+            }
+            showRemoteDroneLabel ||= remoteDrone && crewId === 0 && !visible;
+            group.style.display = visible ? '' : 'none';
+            if (visible) {
+                group.removeAttribute('display');
+            } else {
+                group.setAttribute('display', 'none');
+            }
+        });
+        if (remoteDrone && !hasCrewDamage0) {
+            const blankCrewName = svg.getElementById('blankCrewName0');
+            labelContainer = blankCrewName?.parentNode instanceof Element ? blankCrewName.parentNode : null;
+            showRemoteDroneLabel = labelContainer !== null;
+            labelX = '72';
+            labelY = '51';
+        }
+        this.updateRemoteDroneCrewDamageLabel(svg, labelContainer, showRemoteDroneLabel, labelX, labelY);
+    }
+
+    private updateRemoteDroneCrewDamageLabel(svg: SVGSVGElement, container: Element | null, visible: boolean, x: string, y: string): void {
+        let label = svg.getElementById('remoteDroneCrewDamage0Label') as SVGTextElement | null;
+        if (!visible || !container) {
+            label?.remove();
+            return;
+        }
+        if (!label) {
+            label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        }
+        container.appendChild(label);
+        label.setAttribute('id', 'remoteDroneCrewDamage0Label');
+        label.setAttribute('class', 'remoteDroneCrewDamageLabel screen-only');
+        label.setAttribute('text-anchor', 'middle');
+        label.setAttribute('dominant-baseline', 'middle');
+        label.setAttribute('font-family', 'Roboto, sans-serif');
+        label.setAttribute('font-size', '9');
+        label.setAttribute('font-weight', 'bold');
+        label.setAttribute('fill', '#000');
+        label.setAttribute('x', x);
+        label.setAttribute('y', y);
+        label.textContent = 'REMOTE DRONE';
+        label.style.display = '';
+        label.removeAttribute('display');
+    }
+
+    private updateCrewStateControls(svg: SVGSVGElement, crewId: number, state: CrewMemberState): void {
+        const stateDisplay = this.crewStateDisplay(state);
+        const active = stateDisplay !== null;
+        const color = stateDisplay?.color ?? '#666';
+        const visible = this.unit.rules.crewStateControls.length > 0;
+
+        svg.querySelectorAll<SVGElement>(`.crewStateButton[crewId="${crewId}"]`).forEach(button => {
+            button.style.display = visible ? '' : 'none';
+            button.classList.toggle('active', active);
+            button.setAttribute('active-color', color);
+            button.style.setProperty('--unit-condition-active-color', color);
+            button.querySelector<SVGElement>('rect')?.setAttribute('fill', active ? color : '#fff');
+            button.querySelector<SVGElement>('text')?.setAttribute('fill', active ? '#fff' : '#000');
+        });
+
+        svg.querySelectorAll<SVGElement>(`.crewStateBanner[crewId="${crewId}"]`).forEach(banner => {
+            const bannerRect = banner.querySelector<SVGElement>('.unitConditionBannerRect');
+            const bannerText = banner.querySelector<SVGElement>('.unitConditionBannerText');
+            banner.classList.toggle('visible', active);
+            banner.setAttribute('opacity', active ? '1' : '0');
+            if (active && stateDisplay) {
+                banner.removeAttribute('display');
+                bannerRect?.setAttribute('fill', stateDisplay.color);
+                if (bannerText) bannerText.textContent = stateDisplay.label;
+            } else {
+                banner.setAttribute('display', 'none');
+                if (bannerText) bannerText.textContent = '';
+            }
+            if (bannerRect) {
+                bannerRect.style.transformBox = 'fill-box';
+                bannerRect.style.transformOrigin = 'right center';
+                bannerRect.style.transform = active ? 'scaleX(1)' : 'scaleX(0)';
+            }
+            if (bannerText) {
+                bannerText.style.opacity = active ? '1' : '0';
+            }
+        });
+    }
+
+    private crewStateDisplay(state: CrewMemberState): { label: string; color: string } | null {
+        const definition = this.unit.rules.crewStateDefinition(state);
+        return definition ? { label: definition.bannerLabel, color: definition.color } : null;
     }
 
     protected updateCritLocDisplay(critLocs: CriticalSlot[]) {
@@ -612,6 +802,8 @@ export class UnitSvgService {
             }
             const s = locInfo[locKey];
             this.updatePip(pip, ++s.idx, s.committed, s.total, initial);
+            pip.classList.toggle('flooded', this.unit.getLocationCondition(loc, 'flooded'));
+            pip.classList.toggle('detached', this.unit.getLocationCondition(loc, 'blown-off'));
         });
 
         // Structure (internal) pips
@@ -627,6 +819,8 @@ export class UnitSvgService {
             }
             const s = intInfo[loc];
             this.updatePip(pip, ++s.idx, s.committed, s.total, initial);
+            pip.classList.toggle('flooded', this.unit.getLocationCondition(loc, 'flooded'));
+            pip.classList.toggle('detached', this.unit.getLocationCondition(loc, 'blown-off'));
         });
 
         this.unit.locations?.armor.forEach(entry => {
@@ -637,7 +831,7 @@ export class UnitSvgService {
                 el = svg.querySelector(`.unitLocation.armor:not([rear])[loc="${entry.loc}"]`);
             }
             if (!el) return;
-            if (this.unit.isArmorLocDestroyed(entry.loc, entry.rear)) {
+            if (this.unit.getArmorHits(entry.loc, entry.rear) >= this.unit.getArmorPoints(entry.loc, entry.rear)) {
                 el.classList.add('damaged');
             } else {
                 el.classList.remove('damaged');
@@ -648,34 +842,64 @@ export class UnitSvgService {
             const el = svg.querySelector(`.unitLocation.structure[loc="${entry.loc}"]`);
             if (!el) return;
             const armorEls = svg.querySelectorAll(`.unitLocation.armor[loc="${entry.loc}"]`);
-            const destroyed = this.unit.isInternalLocDestroyed(entry.loc);
+            const flooded = this.unit.getLocationCondition(entry.loc, 'flooded');
+            const blownOff = this.unit.getLocationCondition(entry.loc, 'blown-off');
+            const physicallyDetached = blownOff || this.isLinkedLocationCommittedPhysicallyDetached(entry.loc);
+            const functionallyDetached = physicallyDetached || this.isLinkedLocationCommittedFunctionallyDetached(entry.loc);
+            const disabledLocation = !physicallyDetached && functionallyDetached;
+            const narcCount = this.unit.getLocationConditionValue(entry.loc, 'narc') ?? 0;
+            const structurallyDestroyed = this.unit.isInternalLocStructurallyDestroyed(entry.loc);
+            const inheritedDisabledLocation = disabledLocation && !flooded && !structurallyDestroyed;
             const critGroup = svg.querySelector(`.critGroup[loc="${entry.loc}"]`);
-            if (destroyed) {
+            const locEls = svg.querySelectorAll(`.unitLocation[loc="${entry.loc}"], .pip[loc="${entry.loc}"], .critSlot[loc="${entry.loc}"]`);
+            locEls.forEach(locEl => {
+                locEl.classList.toggle('flooded', flooded);
+                locEl.classList.toggle('detached', physicallyDetached);
+                locEl.classList.toggle('disabledLocation', inheritedDisabledLocation);
+            });
+            critGroup?.classList.toggle('flooded', flooded);
+            critGroup?.classList.toggle('detached', physicallyDetached);
+            critGroup?.classList.toggle('disabledLocation', inheritedDisabledLocation);
+            critGroup?.classList.toggle('locationDestroyed', structurallyDestroyed);
+            this.updateLocationConditionButton(svg, entry.loc, narcCount);
+            if (structurallyDestroyed) {
                 el.classList.add('damaged');
-                critGroup?.classList.add('locationDestroyed');
                 armorEls.forEach(armorEl => {
                     armorEl.classList.add('damaged');
                 });
             } else {
                 el.classList.remove('damaged');
-                critGroup?.classList.remove('locationDestroyed');
                 // Not needed to remove from armor, as it's handled before during the armor loop
             }
-            if (LINKED_LOCATIONS[entry.loc]) {
-                LINKED_LOCATIONS[entry.loc].forEach(linkedLoc => {
-                    const linkedEls = svg.querySelectorAll(`[loc="${linkedLoc}"]`);
-                    if (linkedEls) {
-                        linkedEls.forEach(linkedEl => {
-                            if (destroyed) {
-                                linkedEl.classList.add('detached');
-                            } else {
-                                linkedEl.classList.remove('detached');
-                            }
-                        });
-                    }
-                });
-            }
         });
+    }
+
+    private isLinkedLocationCommittedPhysicallyDetached(loc: string): boolean {
+        return this.isLinkedLocationCommittedDestroyed(loc, sourceLoc => this.unit.isInternalLocCommittedPhysicallyDestroyed(sourceLoc));
+    }
+
+    private isLinkedLocationCommittedFunctionallyDetached(loc: string): boolean {
+        return this.isLinkedLocationCommittedDestroyed(loc, sourceLoc => this.unit.isInternalLocCommittedDestroyed(sourceLoc));
+    }
+
+    private isLinkedLocationCommittedDestroyed(loc: string, destroyed: (sourceLoc: string) => boolean): boolean {
+        return Object.entries(LINKED_LOCATIONS).some(([sourceLoc, linkedLocations]) => {
+            if (!linkedLocations.includes(loc)) return false;
+            return destroyed(sourceLoc);
+        });
+    }
+
+    private updateLocationConditionButton(svg: SVGSVGElement, loc: string, narcCount: number): void {
+
+        const narcBanner = svg.querySelector<SVGElement>(`.locationNarcBanner[loc="${loc}"]`);
+        if (!narcBanner) return;
+        const narcText = narcBanner.querySelector('text');
+        if (narcText) narcText.textContent = `NARC: ${narcCount}`;
+        if (narcCount > 0) {
+            narcBanner.removeAttribute('display');
+        } else {
+            narcBanner.setAttribute('display', 'none');
+        }
     }
 
     protected updateHeatSinkPips() {
@@ -713,7 +937,7 @@ export class UnitSvgService {
             const totalAmmo = entry.totalAmmo ?? this.getInventoryOriginalTotalAmmo(entry);
             const remainingAmmo = totalAmmo - (entry.consumed ?? 0);
             const key = `(${formatAmmoName(currentAmmo)})`;
-            ammoProfile.set(key, (ammoProfile.get(key) ?? 0) + (entry.destroyed ? 0 : remainingAmmo));
+            ammoProfile.set(key, (ammoProfile.get(key) ?? 0) + (this.unit.isEquipmentUnavailable(entry) ? 0 : remainingAmmo));
         });
 
         const ammoList = Array.from(ammoProfile.entries())
@@ -723,7 +947,14 @@ export class UnitSvgService {
     }
 
     protected resolveInventoryControlHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {
-        return resolveHitModifier(entry, computeLinkedModifiers(entry), range);
+        return resolveHitModifier(
+            entry,
+            0,
+            range,
+            this.inventoryTargetSelectedAmmo(entry),
+            (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo),
+            candidate => this.unit.getInventoryControlBaseHitModifier(candidate)
+        );
     }
 
     /** Override to inject entry-specific effective hit modifiers. */
@@ -737,32 +968,36 @@ export class UnitSvgService {
     }
 
     inventoryTargetNumberText(entry: MountedEquipment, target: InventoryControlRuntimeTarget): string | null {
-        const moveMode = this.unit.turnState().moveMode();
-        const movementModifier = this.unit.turnState().getAttackMovementModifier();
         const missingMovementModifier = this.unit.turnState().missingAttackMovementModifier();
-        const spotterModifier = this.unit.turnState().getSpottingModifier();
-        const range = this.inventoryControlRangeForTargetDistance(entry, target.distance);
+        const display = readInventoryTargetDisplay(entry);
+        const hitModifierRange = this.inventoryControlRangeForTarget(entry, target, false);
         const text = inventoryTargetNumberText({
             entry,
             category: inventoryTargetCategory(entry),
-            display: readInventoryTargetDisplay(entry),
-            target,
+            display,
+            selectedAmmo: this.inventoryTargetSelectedAmmo(entry),
+            target: this.inventoryControlTargetForRangeSelection(target, true),
             gunnerySkill: this.unit.effectiveGunnerySkill(),
             pilotingSkill: this.unit.effectivePilotingSkill(),
-            movementLabel: moveMode ? getMotiveModeLabel(moveMode, this.unit.getUnit(), this.unit.turnState().airborne() ?? false) : 'None',
-            movementModifier: movementModifier,
             missingMovementModifier,
-            spottingModifier: spotterModifier,
-            hitModifier: this.getInventoryTargetHitModifier(entry, range),
+            attackModifierBreakdown: this.unit.turnState().getAttackModifierBreakdown(),
+            hitModifier: this.getInventoryTargetHitModifier(entry, hitModifierRange),
             heatFireModifier: this.inventoryTargetHeatFireModifier(entry)
         });
         return text || null;
+    }
+
+    protected inventoryTargetSelectedAmmo(entry: MountedEquipment): AmmoEquipment | null {
+        const summary = getInventoryControlModeAmmoSummary(entry, this.unit.getAvailableEquipment(), this.unit.getInventoryControlRules());
+        const resolvedOption = resolveInventoryControlSelectedAmmoOption(summary.options, this.unit.getInventoryControlEntryAmmoOption(entry.id));
+        return resolvedOption?.ammo ?? null;
     }
 
     protected renderInventoryControlSelection(): void {
         this.unit.inventoryControl.inventoryViewVersion();
         const entryStates = this.unit.inventoryControl.entryStates();
         const targets = this.unit.inventoryControl.targetsMap();
+        const highlightedLinkedElements = new Set<SVGElement>();
         for (const entry of this.unit.getInventory()) {
             if (!entry.el) continue;
             const entryState = entryStates.get(entry.id);
@@ -771,18 +1006,39 @@ export class UnitSvgService {
             const target = targetId ? targets.get(targetId) : undefined;
             const targetNumberText = selected && target ? this.inventoryTargetNumberText(entry, target) : null;
             const selectedRange = selected ? this.inventoryControlSelectedRange(entry, entryState, target) : null;
+            const weaponRuleRange = selected ? this.inventoryControlWeaponRuleRange(entry, entryState, target) : null;
             const hasSelectedMode = !!entry.el.querySelector(':scope > .alternativeMode.selected');
 
             this.renderInventoryControlSelectionColor(entry, target);
-            this.renderInventoryControlRangeDamageEntry(entry, selectedRange);
-            if (!entry.destroyed) {
-                this.renderHitModEntry(entry, this.resolveInventoryControlHitModifier(entry, selectedRange));
+            this.renderInventoryControlHeatEntry(entry, weaponRuleRange);
+            this.renderInventoryControlRangeDamageEntry(entry, weaponRuleRange);
+            if (!entry.isDestroyed()) {
+                this.renderHitModEntry(entry, this.resolveInventoryControlHitModifier(entry, weaponRuleRange));
             }
             entry.el.classList.toggle('selected', selected);
             entry.el.classList.toggle('selected-alternative-mode', selected && hasSelectedMode);
             this.renderInventoryControlTargetNumberEntry(entry, targetNumberText);
             for (const [range, className] of Object.entries(INVENTORY_CONTROL_RANGE_CLASS_NAMES) as [InventoryControlRuntimeRangeKey, string][]) {
                 entry.el.classList.toggle(className, selectedRange === range);
+            }
+            this.collectLinkedInventoryControlSelection(entry, selected, highlightedLinkedElements);
+        }
+        for (const entry of this.unit.getInventory()) {
+            if (entry.el && entry.parent) {
+                entry.el.classList.toggle('selected', highlightedLinkedElements.has(entry.el));
+            }
+        }
+        for (const el of highlightedLinkedElements) {
+            el.classList.add('selected');
+        }
+    }
+
+    private collectLinkedInventoryControlSelection(entry: MountedEquipment, selected: boolean, highlightedLinkedElements: Set<SVGElement>): void {
+        if (!selected || selectedRiscLaserMode(entry) !== RISC_LASER_PULSE_MODE) return;
+        const linkedWith = entry.linkedWith ?? [];
+        for (const linked of linkedWith) {
+            if (linked.el && isRiscLaserPulseModule(linked)) {
+                highlightedLinkedElements.add(linked.el);
             }
         }
     }
@@ -811,6 +1067,42 @@ export class UnitSvgService {
         el.classList.toggle('selected-target-out-of-range', targetNumberText === 'X');
     }
 
+    private renderInventoryControlHeatEntry(entry: MountedEquipment, selectedRange: InventoryControlRuntimeRangeKey | null): void {
+        const text = inventoryControlDirectText(entry.el, '.heat');
+        if (!text) return;
+
+        const originalHeat = text.getAttribute(INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE) ?? text.textContent ?? '';
+        const display = this.unit.applyInventoryControlDisplayEffects(entry, {
+            name: '',
+            location: '',
+            heat: originalHeat,
+            damage: '',
+            hit: '',
+            min: '',
+            short: '',
+            medium: '',
+            long: ''
+        }, {
+            selectedRange,
+            additionalHitModifier: 0,
+            selectedAmmo: this.inventoryTargetSelectedAmmo(entry)
+        });
+
+        if (display.heat === originalHeat) {
+            text.textContent = originalHeat;
+            text.removeAttribute(INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE);
+            text.classList.remove('damaged');
+            return;
+        }
+
+        if (!text.hasAttribute(INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE)) {
+            text.setAttribute(INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE, originalHeat);
+        }
+        text.textContent = display.heat;
+        text.classList.add('damaged');
+    }
+
+    // TODO: need to implement the aimed shot
     private renderInventoryControlAimedShotWarning(entry: MountedEquipment, warningText: string | null): void {
         const el = entry.el;
         if (!el) return;
@@ -857,19 +1149,32 @@ export class UnitSvgService {
         entryState: InventoryControlRuntimeEntryState | undefined,
         target: InventoryControlRuntimeTarget | undefined
     ): InventoryControlRuntimeRangeKey | null {
-        if (target) return this.inventoryControlRangeForTargetDistance(entry, target.distance);
+        if (target) return this.inventoryControlRangeForTarget(entry, target, true);
         return entryState?.range ?? null;
     }
 
-    private inventoryControlRangeForTargetDistance(entry: MountedEquipment, distance: number): InventoryControlRuntimeRangeKey | null {
-        const ranges = (entry.equipment as { ranges?: unknown } | undefined)?.ranges;
-        if (!Array.isArray(ranges)) return null;
-        const [shortRange, mediumRange, longRange, extremeRange] = ranges.map(value => Number(value));
-        if (Number.isFinite(shortRange) && distance <= shortRange) return 'short';
-        if (Number.isFinite(mediumRange) && distance <= mediumRange) return 'medium';
-        if (Number.isFinite(longRange) && distance <= longRange) return 'long';
-        if (Number.isFinite(extremeRange) && extremeRange > 0) return 'extreme';
-        return null;
+    private inventoryControlWeaponRuleRange(
+        entry: MountedEquipment,
+        entryState: InventoryControlRuntimeEntryState | undefined,
+        target: InventoryControlRuntimeTarget | undefined
+    ): InventoryControlRuntimeRangeKey | null {
+        if (target) return this.inventoryControlRangeForTarget(entry, target, false);
+        return entryState?.range ?? null;
+    }
+
+    private inventoryControlRangeForTarget(entry: MountedEquipment, target: InventoryControlRuntimeTarget, useC3Distance: boolean): InventoryControlRuntimeRangeKey | null {
+        return inventoryTargetRangeSelection({
+            entry,
+            category: inventoryTargetCategory(entry),
+            display: readInventoryTargetDisplay(entry),
+            target: this.inventoryControlTargetForRangeSelection(target, useC3Distance)
+        })?.range ?? null;
+    }
+
+    private inventoryControlTargetForRangeSelection(target: InventoryControlRuntimeTarget, useC3Distance: boolean): InventoryControlRuntimeTarget {
+        if (useC3Distance && this.unit.hasLinkedC3Network?.() === true) return target;
+        if (target.c3Distance === undefined) return target;
+        return { ...target, c3Distance: undefined };
     }
 
     /** Render hit modifier badge for a single inventory entry. Pure presentation. */
@@ -879,7 +1184,7 @@ export class UnitSvgService {
         const hitModText = entry.el.querySelector(`:scope > .hitMod-text`);
         if (!hitModRect || !hitModText) return;
 
-        if (hitModifier === null || entry.destroyed) {
+        if (hitModifier === null || entry.isDestroyed()) {
             hitModRect.setAttribute('display', 'none');
             hitModText.setAttribute('display', 'none');
             entry.el.classList.remove('weakenedHitMod');
@@ -911,18 +1216,19 @@ export class UnitSvgService {
         this.unit.getInventory().forEach(entry => {
             if (!entry.el) return;
             // Inventory state
-            if (entry.destroyed) {
+            if (entry.isDestroyed()) {
                 entry.el.classList.add('damagedInventory');
                 entry.el.classList.remove('selected');
             } else {
                 entry.el.classList.remove('damagedInventory');
             }
             // Hit modifier badge
-            if (entry.destroyed) {
+            if (entry.isDestroyed()) {
                 this.renderHitModEntry(entry, null);
             } else {
                 this.renderHitModEntry(entry, this.resolveInventoryControlHitModifier(entry));
             }
+            this.renderInventoryControlHeatEntry(entry, null);
         });
         this.renderInventoryControlSelection();
     }
@@ -1056,7 +1362,7 @@ export class UnitSvgService {
         const startValue = Math.max(0, heat.current);
         const targetValue = Math.max(0, Math.min(30, projectedHeat));
         if (netHeat === 0 || (startValue > 30 && projectedHeat > 30)) {
-            heatScale.querySelector('#heat-projection-bar')?.remove();
+            this.clearHeatProjectionBar(heatScale);
             return;
         }
 
@@ -1068,13 +1374,13 @@ export class UnitSvgService {
             : null;
         const heatZeroEl = svg.querySelector('#heatScale .heat[heat="0"]') as SVGElement | null;
         if (!startCenter || !targetCenter || !heatZeroEl) {
-            heatScale.querySelector('#heat-projection-bar')?.remove();
+            this.clearHeatProjectionBar(heatScale);
             return;
         }
 
         const height = Math.abs(targetCenter.y - startCenter.y);
         if (height <= 0.1) {
-            heatScale.querySelector('#heat-projection-bar')?.remove();
+            this.clearHeatProjectionBar(heatScale);
             return;
         }
 
@@ -1087,16 +1393,48 @@ export class UnitSvgService {
             heatScale.appendChild(bar);
         }
         const x = Number(heatZeroEl.getAttribute('x') ?? 0) - 3.8;
+        const projectionColor = netHeat > 0 ? '#d12020' : '#2070d1';
+        const barTop = Math.min(startCenter.y, targetCenter.y) - 2;
         bar.setAttribute('x', x.toString());
-        bar.setAttribute('y', Math.min(startCenter.y, targetCenter.y).toString());
+        bar.setAttribute('y', barTop.toString());
         bar.setAttribute('width', '3');
-        bar.setAttribute('height', height.toString());
-        bar.setAttribute('fill', netHeat > 0 ? '#d12020' : '#2070d1');
+        bar.setAttribute('height', (height + 4).toString());
+        bar.setAttribute('fill', projectionColor);
+        const arrowTipX = Number(heatZeroEl.getAttribute('x') ?? 0) + 4;
+        const arrowBaseX = arrowTipX - 5;
+
+        let originArrow = heatScale.querySelector('#heat-projection-origin-arrow') as SVGRectElement | null;
+        if (!originArrow) {
+            originArrow = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            originArrow.setAttribute('id', 'heat-projection-origin-arrow');
+            originArrow.setAttribute('class', 'screen-only heatProjectionOriginArrow');
+            originArrow.setAttribute('pointer-events', 'none');
+            heatScale.appendChild(originArrow);
+        }
+        originArrow.setAttribute('x', (arrowBaseX - 1.5).toString());
+        originArrow.setAttribute('y', (startCenter.y - 2).toString());
+        originArrow.setAttribute('width', '4');
+        originArrow.setAttribute('height', '4');
+        originArrow.setAttribute('fill', projectionColor);
+
+        let targetArrow = heatScale.querySelector('#heat-projection-target-arrow') as SVGPolygonElement | null;
+        if (!targetArrow) {
+            targetArrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+            targetArrow.setAttribute('id', 'heat-projection-target-arrow');
+            targetArrow.setAttribute('class', 'screen-only heatProjectionTargetArrow');
+            targetArrow.setAttribute('pointer-events', 'none');
+            heatScale.appendChild(targetArrow);
+        }
+        targetArrow.setAttribute('fill', projectionColor);
+        if (projectedHeat <= 30) {
+            targetArrow.setAttribute('points', `${arrowTipX},${targetCenter.y} ${arrowBaseX},${targetCenter.y - 2} ${arrowBaseX},${targetCenter.y + 2}`);
+        } else {
+            targetArrow.setAttribute('points', `${arrowTipX},${barTop} ${arrowTipX - 2},${barTop + 5} ${arrowTipX + 2},${barTop + 5}`);
+        }
     }
 
     private heatDissipationState(): HeatDissipationWithWings | null {
-        const rules = this.unit.rules as Partial<HeatAwareRules>;
-        return typeof rules.heatDissipation === 'function' ? rules.heatDissipation() : null;
+        return this.unit.rules.heatDissipation() as HeatDissipationWithWings | null;
     }
 
     private updateHeatProjectionOverflow(heatScale: SVGGElement, projectedHeat: number, currentHeat: number): void {
@@ -1138,10 +1476,16 @@ export class UnitSvgService {
     }
 
     private clearHeatProjectionPreview(heatScale: SVGGElement): void {
-        heatScale.querySelector('#heat-projection-bar')?.remove();
+        this.clearHeatProjectionBar(heatScale);
         heatScale.querySelector('#heat-projection-overflow-text')?.remove();
         const overflowFrame = heatScale.querySelector('.overflowFrame') as SVGElement | null;
         if (overflowFrame) this.restoreHeatProjectionOverflowStroke(overflowFrame);
+    }
+
+    private clearHeatProjectionBar(heatScale: SVGGElement): void {
+        heatScale.querySelector('#heat-projection-bar')?.remove();
+        heatScale.querySelector('#heat-projection-origin-arrow')?.remove();
+        heatScale.querySelector('#heat-projection-target-arrow')?.remove();
     }
 
     private restoreHeatProjectionOverflowStroke(overflowFrame: SVGElement): void {
@@ -1185,4 +1529,12 @@ export class UnitSvgService {
             return null;
         }
     }
+}
+
+function inventoryControlDirectText(el: SVGElement | undefined, selector: string): SVGElement | null {
+    const direct = el?.querySelector<SVGElement>(`:scope > ${selector}`) ?? null;
+    if (!direct) return null;
+    return direct.tagName.toLocaleLowerCase() === 'text'
+        ? direct
+        : direct.querySelector<SVGElement>(':scope > text');
 }

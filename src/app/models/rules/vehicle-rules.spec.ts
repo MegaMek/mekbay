@@ -1,5 +1,6 @@
 import type { CBTForceUnit } from '../cbt-force-unit.model';
-import type { CriticalSlot, MountedEquipment } from '../force-serialization';
+import type { CrewMemberState } from '../crew-member.model';
+import { MountedEquipment, type CriticalSlot } from '../force-serialization';
 import type { MotiveModes } from '../motiveModes.model';
 import { Equipment, WeaponEquipment } from '../equipment.model';
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
@@ -36,7 +37,8 @@ function entry(options: {
     destroyed?: boolean;
     critSlots?: CriticalSlot[];
 } = {}): MountedEquipment {
-    return {
+    return new MountedEquipment({
+        owner: undefined as unknown as CBTForceUnit,
         id: options.id ?? options.equipment?.id ?? 'entry',
         name: options.id ?? options.equipment?.name ?? 'entry',
         equipment: options.equipment,
@@ -45,7 +47,7 @@ function entry(options: {
         physical: options.physical,
         destroyed: options.destroyed,
         critSlots: options.critSlots,
-    } as unknown as MountedEquipment;
+    });
 }
 
 function createRulesHarness(options: {
@@ -57,6 +59,8 @@ function createRulesHarness(options: {
     walk2?: number;
     run?: number;
     run2?: number;
+    crewStates?: CrewMemberState[];
+    shutdown?: boolean;
 } = {}): VehicleRules {
     const baseUnit = createEmptyUnit({
         type: options.type ?? 'Tank',
@@ -66,11 +70,19 @@ function createRulesHarness(options: {
         run: options.run ?? 12,
         run2: options.run2 ?? options.run ?? 12,
     });
+    const crewStates = options.crewStates ?? ['healthy'];
     let rules: VehicleRules;
     const unit = {
         getCritSlots: () => options.crits ?? [],
         getInventory: () => options.inventory ?? [],
         getUnit: () => baseUnit,
+        getCondition: (state: string) => {
+            if (state === 'shutdown') return options.shutdown ?? false;
+            if (state === 'disconnected') return rules.hasComputedCondition('disconnected');
+            return false;
+        },
+        getCrewMembers: () => crewStates.map(state => ({ getState: () => state })),
+        isEquipmentUnavailable: (source: MountedEquipment | CriticalSlot) => source instanceof MountedEquipment ? source.committedDestroyed() : !!source.destroyed,
         pilotingSkill: () => 5,
         turnState: () => ({
             moveMode: () => options.moveMode ?? null,
@@ -81,6 +93,7 @@ function createRulesHarness(options: {
         setDestroyed: jasmine.createSpy('setDestroyed'),
     } as unknown as CBTForceUnit;
 
+    options.inventory?.forEach(entry => entry.owner = unit);
     rules = new VehicleRules(unit);
     return rules;
 }
@@ -200,6 +213,38 @@ describe('VehicleRules', () => {
         expect(rules.isMotiveModeAvailable('run')).toBeFalse();
     });
 
+    it('marks vehicles abandoned and immobile when the crew is killed', () => {
+        const rules = createRulesHarness({ crewStates: ['killed'], walk: 8 });
+
+        expect(rules.hasComputedCondition('abandoned')).toBeTrue();
+        expect(rules.hasComputedCondition('immobile')).toBeTrue();
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({
+            walk: 0,
+            maxWalk: 0,
+            run: 0,
+            maxRun: 0,
+            moveImpaired: true,
+        }));
+        expect(rules.isMotiveModeAvailable('walk')).toBeFalse();
+        expect(rules.isMotiveModeAvailable('run')).toBeFalse();
+    });
+
+    it('disables run movement while the vehicle crew is stunned', () => {
+        const rules = createRulesHarness({ crewStates: ['stunned'], walk: 8 });
+
+        expect(rules.hasComputedCondition('abandoned')).toBeFalse();
+        expect(rules.hasComputedCondition('immobile')).toBeFalse();
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({
+            walk: 8,
+            maxWalk: 8,
+            run: 0,
+            maxRun: 0,
+            moveImpaired: true,
+        }));
+        expect(rules.isMotiveModeAvailable('walk')).toBeTrue();
+        expect(rules.isMotiveModeAvailable('run')).toBeFalse();
+    });
+
     it('uses motive timestamp order for different final MP values', () => {
         const rules = createRulesHarness({
             crits: [
@@ -210,6 +255,16 @@ describe('VehicleRules', () => {
         });
 
         expect(rules.movementState().walk).toBe(4);
+    });
+
+    it('marks vehicles immobile after a disabling motive system hit', () => {
+        const rules = createRulesHarness({
+            crits: [crit('motive_system_hit_4', 10)],
+            walk: 8,
+        });
+
+        expect(rules.hasComputedCondition('immobile')).toBeTrue();
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 0, run: 0, moveImpaired: true }));
     });
 
     it('applies repeatable motive damage chronologically but counts each piloting level once', () => {
@@ -290,6 +345,51 @@ describe('VehicleRules', () => {
             { modifier: 3, reason: 'Flight stabilizer hit' },
             { modifier: 2, reason: 'Motive system hit' },
         ]);
+    });
+
+    it('applies drone operating system controls and skill modifiers to vehicles', () => {
+        const rules = createRulesHarness({
+            inventory: [entry({ equipment: equipment('ISDroneOperatingSystem', ['F_DRONE_OPERATING_SYSTEM']) })],
+        });
+
+        expect(rules.conditionControls.map(control => control.key)).toContain('disconnected');
+        expect(rules.crewStateControls).toEqual([]);
+        expect(rules.crewStateDefinition('killed')).toBeUndefined();
+        expect(rules.gunneryModifiers()).toEqual([{ modifier: 1, reason: 'Drone operating system' }]);
+        expect(rules.pilotingModifiers()).toEqual([{ modifier: 1, reason: 'Drone operating system' }]);
+        expect(rules.gunneryModifier()).toBe(1);
+        expect(rules.pilotingModifier()).toBe(1);
+        expect(rules.PSRModifiers().modifier).toBe(1);
+        expect(rules.PSRModifiers().modifiers.map(modifier => modifier.reason)).toContain('Drone operating system');
+    });
+
+    it('disconnects drone vehicles after a commander hit and ignores crew-seat hits', () => {
+        const rules = createRulesHarness({
+            crits: [
+                crit('commander_hit', 10),
+                crit('copilot_hit', 15),
+                crit('driver_hit', 20),
+                crit('pilot_hit', 25),
+            ],
+            inventory: [entry({ equipment: equipment('ISDroneOperatingSystem', ['F_DRONE_OPERATING_SYSTEM']) })],
+        });
+
+        expect(rules.hasComputedCondition('disconnected')).toBeTrue();
+        expect(rules.hasComputedCondition('immobile')).toBeTrue();
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 0, run: 0, moveImpaired: true }));
+        expect(rules.gunneryModifiers()).toEqual([{ modifier: 1, reason: 'Drone operating system' }]);
+        expect(rules.pilotingModifiers()).toEqual([{ modifier: 1, reason: 'Drone operating system' }]);
+        expect(rules.PSRModifiers().modifier).toBe(1);
+    });
+
+    it('disconnects and immobilizes vehicles when the drone operating system is destroyed', () => {
+        const rules = createRulesHarness({
+            inventory: [entry({ equipment: equipment('ISDroneOperatingSystem', ['F_DRONE_OPERATING_SYSTEM']), destroyed: true })],
+        });
+
+        expect(rules.hasComputedCondition('disconnected')).toBeTrue();
+        expect(rules.hasComputedCondition('immobile')).toBeTrue();
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 0, run: 0, moveImpaired: true }));
     });
 
     it('disables energy equipment after an engine hit', () => {

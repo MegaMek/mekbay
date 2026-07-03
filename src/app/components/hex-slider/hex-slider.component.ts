@@ -58,6 +58,8 @@ export class HexSliderComponent {
     private readonly sliderScale = viewChild<ElementRef<HTMLDivElement>>('sliderScale');
     private activePointerId: number | null = null;
     private activeDragTarget: Element | null = null;
+    private dragStartValue: number | null = null;
+    private lastDragValue: number | null = null;
 
     readonly min = input<number>(0);
     readonly max = input<number>(100);
@@ -74,6 +76,7 @@ export class HexSliderComponent {
     readonly modifierLabel = input<string | null>(null);
 
     readonly valueChange = output<number>();
+    readonly valueCommit = output<number>();
 
     readonly minValue = computed(() => this.normalizeNumber(this.min(), 0));
     readonly maxValue = computed(() => Math.max(this.minValue(), this.normalizeNumber(this.max(), this.minValue())));
@@ -133,6 +136,8 @@ export class HexSliderComponent {
         this.stopDrag();
         this.activePointerId = event.pointerId;
         this.activeDragTarget = event.target instanceof Element ? event.target : null;
+        this.dragStartValue = this.clampedValue();
+        this.lastDragValue = null;
         this.touchDragging.set(event.pointerType === 'touch');
         try {
             this.activeDragTarget?.setPointerCapture(this.activePointerId);
@@ -155,7 +160,10 @@ export class HexSliderComponent {
         if (next === null) return;
 
         event.preventDefault();
-        this.emitValue(this.alignToStep(next));
+        const value = this.alignToStep(next);
+        if (this.emitValue(value)) {
+            this.valueCommit.emit(value);
+        }
     }
 
     private onPointerMove = (event: PointerEvent): void => {
@@ -173,11 +181,17 @@ export class HexSliderComponent {
         const rect = scale.getBoundingClientRect();
         const percent = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0;
         const value = this.minValue() + Math.max(0, Math.min(1, percent)) * (this.maxValue() - this.minValue());
-        this.emitValue(this.alignToStep(value));
+        const nextValue = this.alignToStep(value);
+        if (this.emitValue(nextValue)) {
+            this.lastDragValue = nextValue;
+        }
     }
 
     private stopDrag(event?: PointerEvent): void {
         if (event && this.activePointerId !== null && event.pointerId !== this.activePointerId) return;
+
+        const dragStartValue = this.dragStartValue;
+        const dragEndValue = this.lastDragValue;
 
         if (this.activePointerId !== null) {
             try {
@@ -186,15 +200,22 @@ export class HexSliderComponent {
         }
         this.activePointerId = null;
         this.activeDragTarget = null;
+        this.dragStartValue = null;
+        this.lastDragValue = null;
         this.touchDragging.set(false);
         window.removeEventListener('pointermove', this.onPointerMove);
         window.removeEventListener('pointerup', this.onPointerEnd);
         window.removeEventListener('pointercancel', this.onPointerEnd);
+
+        if (dragEndValue !== null && dragEndValue !== dragStartValue) {
+            this.valueCommit.emit(dragEndValue);
+        }
     }
 
-    private emitValue(value: number): void {
-        if (value === this.clampedValue()) return;
+    private emitValue(value: number): boolean {
+        if (value === this.clampedValue()) return false;
         this.valueChange.emit(value);
+        return true;
     }
 
     private alignToStep(value: number): number {

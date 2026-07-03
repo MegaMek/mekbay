@@ -1,4 +1,5 @@
 import { CBTPrintUtil } from './cbtprint.util';
+import { INVENTORY_CONTROL_MODE_STATE } from './inventory-control.util';
 
 describe('CBTPrintUtil', () => {
     it('keeps the injected HTML fluff image visible when it loads successfully', async () => {
@@ -59,6 +60,32 @@ describe('CBTPrintUtil', () => {
         expect(image.style.display).toBe('none');
         expect(getReferenceTable(svg).style.display).toBe('block');
     });
+
+    it('resets persisted inventory modes to sheet defaults before printing', () => {
+        const entryEl = createInventoryEntryWithModes();
+        const entry = {
+            id: 'weapon',
+            states: new Map([[INVENTORY_CONTROL_MODE_STATE, 'Pulse']]),
+            el: entryEl,
+            owner: {},
+            deleteState(name: string): boolean {
+                if (!this.states.has(name)) return false;
+                this.states = new Map(this.states);
+                this.states.delete(name);
+                return true;
+            }
+        };
+        const printUnit = {
+            getInventory: () => [entry],
+            setInventoryEntry: jasmine.createSpy('setInventoryEntry')
+        };
+
+        resetInventoryControlModes(printUnit);
+
+        expect(entry.states.has(INVENTORY_CONTROL_MODE_STATE)).toBeFalse();
+        expect(printUnit.setInventoryEntry).toHaveBeenCalledWith(entry);
+        expect(entryEl.querySelector(':scope > .alternativeMode.selected')?.getAttribute('mode')).toBe('Standard');
+    });
 });
 
 function createSheetSvg(): SVGSVGElement {
@@ -78,4 +105,22 @@ function waitForSvgImagesToLoad(root: ParentNode): Promise<void> {
     return (CBTPrintUtil as unknown as {
         waitForSvgImagesToLoad(root: ParentNode): Promise<void>;
     }).waitForSvgImagesToLoad(root);
+}
+
+function createInventoryEntryWithModes(): SVGElement {
+    const parser = new DOMParser();
+    return parser.parseFromString(`
+        <svg xmlns="http://www.w3.org/2000/svg">
+            <g class="inventoryEntry">
+                <g class="alternativeMode" mode="Standard"><g class="name"><text>Standard</text></g><g class="damage"><text>5</text></g></g>
+                <g class="alternativeMode selected" mode="Pulse"><g class="name"><text>Pulse</text></g><g class="damage"><text>5</text></g></g>
+            </g>
+        </svg>
+    `, 'image/svg+xml').querySelector('.inventoryEntry') as SVGElement;
+}
+
+function resetInventoryControlModes(printUnit: unknown): void {
+    return (CBTPrintUtil as unknown as {
+        resetInventoryControlModes(printUnit: unknown): void;
+    }).resetInventoryControlModes(printUnit);
 }

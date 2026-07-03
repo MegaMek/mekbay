@@ -32,7 +32,7 @@
  */
 
 import type { MountedEquipment } from '../force-serialization';
-import { WeaponEquipment } from '../equipment.model';
+import { WeaponEquipment, type AmmoEquipment } from '../equipment.model';
 import { resolveWeaponRangeHitModifier, type WeaponRangeKey } from './weapon-range-rules.util';
 
 /**
@@ -43,29 +43,9 @@ import { resolveWeaponRangeHitModifier, type WeaponRangeKey } from './weapon-ran
 /**
  * Compute per-entry linked-equipment modifiers
  */
-/**
- * Check whether a mounted-equipment entry is destroyed.
- * When critSlots exist they are the authoritative (signal-derived) source;
- * the mutable `destroyed` flag is only used as fallback for entries without crits.
- */
-export function isMountedDestroyed(entry: MountedEquipment): boolean {
-    if (entry.critSlots?.length) {
-        return entry.critSlots.some(s => s.destroyed);
-    }
-    return !!entry.destroyed;
-}
 
-export function computeLinkedModifiers(entry: MountedEquipment): number {
-    let mod = 0;
-    if (entry.linkedWith) {
-        for (const linked of entry.linkedWith) {
-            if (linked.equipment?.flags.has('F_ARTEMIS_V') && isMountedDestroyed(linked)) {
-                mod += 1;
-            }
-        }
-    }
-    return mod;
-}
+export type LinkedEquipmentHitModifierResolver = (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => number;
+export type EntryBaseHitModifierResolver = (entry: MountedEquipment) => number | null;
 
 /**
  * Resolve the final hit modifier for an inventory entry.
@@ -73,16 +53,25 @@ export function computeLinkedModifiers(entry: MountedEquipment): number {
  * (no equipment, weapon enhancement, no-range weapon, invalid baseHitMod).
  *
  * @param entry             - the mounted equipment entry
- * @param additionalModifiers - pre-computed modifiers to add (global fire mod, linked mods, etc.)
+ * @param additionalModifiers - non-linked modifiers to add (global fire mod, damage mods, etc.)
  */
-export function resolveHitModifier(entry: MountedEquipment, additionalModifiers: number, range?: WeaponRangeKey | null): number | 'Vs' | '*' | null {
+export function resolveHitModifier(
+    entry: MountedEquipment,
+    additionalModifiers: number,
+    range?: WeaponRangeKey | null,
+    selectedAmmo?: AmmoEquipment | null,
+    resolveLinkedModifiers?: LinkedEquipmentHitModifierResolver,
+    resolveBaseModifier?: EntryBaseHitModifierResolver
+): number | 'Vs' | '*' | null {
+    const linkedModifiers = resolveLinkedModifiers?.(entry, selectedAmmo) ?? 0;
+    const baseModifier = resolveBaseModifier?.(entry) ?? null;
     if (entry.baseHitMod === 'Vs') {
         return entry.baseHitMod;
     }
     if (entry.baseHitMod === '*') {
         const rangeHitModValue = resolveWeaponRangeHitModifier(entry, range);
         if (rangeHitModValue !== null) {
-            return rangeHitModValue + additionalModifiers;
+            return rangeHitModValue + additionalModifiers + linkedModifiers;
         }
         return entry.baseHitMod;
     }
@@ -90,10 +79,8 @@ export function resolveHitModifier(entry: MountedEquipment, additionalModifiers:
         return null;
     }
     if (entry.equipment) {
-        if (entry.equipment.flags.has('F_WEAPON_ENHANCEMENT')) {
-            if (!entry.equipment.flags.has('F_RISC_LASER_PULSE_MODULE')) {
-                return null;
-            }
+        if (entry.equipment.flags.has('F_WEAPON_ENHANCEMENT') && baseModifier === null) {
+            return null;
         }
         if (entry.equipment instanceof WeaponEquipment) {
             if (entry.equipment.hasNoRange() && !entry.equipment.flags.has('F_CLUB') && !entry.equipment.flags.has('F_HAND_WEAPON') && !(entry.equipment.weapon.ammoType==='MML')) {
@@ -104,9 +91,9 @@ export function resolveHitModifier(entry: MountedEquipment, additionalModifiers:
         }
     }
     const rangeHitModValue = resolveWeaponRangeHitModifier(entry, range);
-    const baseHitModValue = rangeHitModValue ?? parseInt(entry.baseHitMod || '0');
+    const baseHitModValue = rangeHitModValue ?? baseModifier ?? parseInt(entry.baseHitMod || '0');
     if (isNaN(baseHitModValue)) {
         return null;
     }
-    return baseHitModValue + additionalModifiers;
+    return baseHitModValue + additionalModifiers + linkedModifiers;
 }

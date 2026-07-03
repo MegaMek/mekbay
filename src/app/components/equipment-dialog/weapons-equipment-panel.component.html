@@ -120,7 +120,7 @@
                                 <span class="grouped-cells group-stats">
                                     <span class="centered-cell hit-cell meta-cell" data-label="Hit">{{ rowTarget.hitText }}</span>
                                     <span class="centered-cell location-cell meta-cell" data-label="Loc">{{ row.display.location }}</span>
-                                    <span class="centered-cell heat-cell meta-cell" data-label="Ht">{{ row.display.heat }}</span>
+                                    <span class="centered-cell heat-cell meta-cell" data-label="Ht" [class.damaged]="row.display.heat !== row.base.heat">{{ row.display.heat }}</span>
                                     <span class="centered-cell damage-cell meta-cell" data-label="Dmg">{{ rowTarget.damageText }}</span>
                                 </span>
                                 <span class="grouped-cells group-ranges">
@@ -194,13 +194,13 @@
                                                         />
                                                     }
                                                     @case ('label') {
-                                                        <span class="control-label">{{ choice.label }}</span>
+                                                        <span class="control-label control-button">{{ choice.label }}</span>
                                                     }
                                                     @case ('toggle') {
-                                                        <button class="bt-button tiny" type="button" [class.active]="choice.active" [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.label }}</button>
+                                                        <button class="bt-button tiny control-button" type="button" [class.active]="choice.active" [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.label }}</button>
                                                     }
                                                     @default {
-                                                        <button class="bt-button tiny" type="button" [class.active]="choice.active" [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.shortLabel || choice.label }}</button>
+                                                        <button class="bt-button tiny control-button" type="button" [class.active]="choice.active" [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.shortLabel || choice.label }}</button>
                                                     }
                                                 }
                                             }

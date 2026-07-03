@@ -33,7 +33,7 @@
 
 import { UnitSvgService } from "./unit-svg.service";
 import type { InfantryRules } from "../models/rules/infantry-rules";
-import { getInfantryFieldGunComponent, getInfantryFieldGunFunctionalCount, getInventoryControlModeAmmoSummary } from "../utils/inventory-control.util";
+import { getInventoryControlModeAmmoSummary } from "../utils/inventory-control.util";
 
 /*
  * Author: Drake
@@ -127,7 +127,7 @@ export class UnitSvgInfantryService extends UnitSvgService {
         this.updateFieldGunDisplay();
         this.unit.getInventory().forEach(entry => {
             if (!entry.el?.getAttribute('SSW')) return;
-            if (entry.destroyed) {
+            if (entry.isDestroyed()) {
                 entry.el.classList.add('damagedInventory');
                 entry.el.classList.remove('interactive');
                 entry.el.classList.remove('selected');
@@ -147,15 +147,15 @@ export class UnitSvgInfantryService extends UnitSvgService {
 
         const qty = svg.getElementById('field_gun_qty');
         if (qty) {
-            const functionalCount = getInfantryFieldGunFunctionalCount(this.unit, fieldGunComponent);
+            const functionalCount = this.infantryRules.getFieldGunFunctionalCount(fieldGunComponent);
             qty.textContent = functionalCount.toString();
             this.setFieldGunSummaryDamageColor(qty, functionalCount < Math.max(0, fieldGunComponent.q ?? 0));
         }
 
-        const fieldGunEntry = this.unit.getInventory().find(entry => getInfantryFieldGunComponent(entry) === fieldGunComponent);
+        const fieldGunEntry = this.unit.getInventory().find(entry => this.infantryRules.getFieldGunComponent(entry) === fieldGunComponent);
         const ammo = svg.getElementById('field_gun_ammo');
         if (fieldGunEntry && ammo) {
-            const ammoSummary = getInventoryControlModeAmmoSummary(fieldGunEntry, this.unit.getAvailableEquipment());
+            const ammoSummary = getInventoryControlModeAmmoSummary(fieldGunEntry, this.unit.getAvailableEquipment(), this.unit.getInventoryControlRules());
             const remainingAmmo = ammoSummary.tracksAmmo ? ammoSummary.remaining : 0;
             ammo.textContent = remainingAmmo.toString();
             this.setFieldGunSummaryDamageColor(ammo, ammoSummary.tracksAmmo && remainingAmmo < ammoSummary.total);

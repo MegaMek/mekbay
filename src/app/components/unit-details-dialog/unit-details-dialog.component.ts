@@ -48,7 +48,7 @@ import { LongPressDirective } from '../../directives/long-press.directive';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
-import { REMOTE_HOST, GameSystem } from '../../models/common.model';
+import { GameSystem, getUnitServerHost } from '../../models/common.model';
 import { UnitDetailsGeneralTabComponent } from './tabs/unit-details-general-tab.component';
 import { UnitDetailsIntelTabComponent } from './tabs/unit-details-intel-tab.component';
 import { UnitDetailsFactionTabComponent } from './tabs/unit-details-factions-tab.component';
@@ -237,7 +237,7 @@ export class UnitDetailsDialogComponent {
         const unit = this.headerUnit();
         if (!unit?.fluff?.img) return null;
         if (unit.fluff.img.endsWith('hud.png')) return null; // Ignore HUD images
-        return `${REMOTE_HOST}/images/fluff/${unit.fluff.img}`;
+        return `${getUnitServerHost(unit)}/images/fluff/${unit.fluff.img}`;
     });
 
     get unit(): Unit {
@@ -349,7 +349,7 @@ export class UnitDetailsDialogComponent {
             // Emulate RIGHT swipe: current goes right, prev comes from left
             // this.navigateToUnit(this.unitIndex() - 1, 'right');
             this.floatingOverlayService.hide();
-            this.unitIndex.set(this.unitIndex() - 1);
+            this.unitIndex.update(v => v - 1);
         }
     }
 
@@ -358,7 +358,7 @@ export class UnitDetailsDialogComponent {
             // Emulate LEFT swipe: current goes left, next comes from right
             // this.navigateToUnit(this.unitIndex() + 1, 'left');
             this.floatingOverlayService.hide();
-            this.unitIndex.set(this.unitIndex() + 1);
+            this.unitIndex.update(v => v + 1);
         }
     }
 

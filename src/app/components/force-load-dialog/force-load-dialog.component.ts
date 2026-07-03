@@ -1712,7 +1712,7 @@ export class ForceLoadDialogComponent {
         );
         if (confirmed) {
             await this.dataService.deleteOperation(op.operationId);
-            this.operations.set(this.operations().filter(o => o !== op));
+            this.operations.update(ops => ops.filter(o => o !== op));
             this.selectedOperation.set(null);
         }
     }
@@ -1820,7 +1820,7 @@ export class ForceLoadDialogComponent {
             if (force.instanceId) {
                 await this.dataService.deleteForce(force.instanceId);
             }
-            this.forces.set(this.forces().filter(f => f !== force));
+            this.forces.update(forces => forces.filter(f => f !== force));
             this.ensureHangarTagFilterIsValid();
             this.selectedForce.set(null);
         }
@@ -1910,7 +1910,7 @@ export class ForceLoadDialogComponent {
         );
         if (confirmed) {
             await this.dataService.deleteOrganization(org.organizationId);
-            this.organizations.set(this.organizations().filter(o => o !== org));
+            this.organizations.update(orgs => orgs.filter(o => o !== org));
             this.selectedOrganization.set(null);
         }
     }

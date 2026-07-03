@@ -1786,7 +1786,7 @@ export class ForceOrgDialogComponent {
             pf.groupId = null;
             if (group) this.recalcGroupBounds(group);
         }
-        this.placedForces.set(this.placedForces().filter(f => f !== pf));
+        this.placedForces.update(forces => forces.filter(f => f !== pf));
         // Clean up empty groups
         this.cleanupEmptyGroups();
     }
@@ -1826,7 +1826,7 @@ export class ForceOrgDialogComponent {
                 g.parentGroupId = group.parentGroupId;
             }
         }
-        this.groups.set(this.groups().filter(g => g.id !== group.id));
+        this.groups.update(groups => groups.filter(g => g.id !== group.id));
         this.placedForces.set([...this.placedForces()]);
         // Resize parent if exists
         if (group.parentGroupId) {

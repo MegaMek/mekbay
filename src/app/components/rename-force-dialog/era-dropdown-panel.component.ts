@@ -32,7 +32,7 @@
  */
 
 import { DecimalPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import type { Era } from '../../models/eras.model';
 
 export interface EraDisplayInfo {
@@ -40,14 +40,33 @@ export interface EraDisplayInfo {
     matchPercentage: number;
 }
 
+export interface EraDropdownPointerHoverEvent {
+    eraId: number | null;
+    clientX: number;
+    clientY: number;
+}
+
 @Component({
     selector: 'era-dropdown-panel',
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <div class="dropdown-panel glass has-shadow framed-borders" data-scroll-container>
+        <div
+            class="dropdown-panel glass has-shadow framed-borders"
+            data-scroll-container
+            [id]="optionsId()"
+            role="listbox"
+            [attr.aria-label]="label()"
+            [attr.aria-activedescendant]="activeOptionId()"
+        >
             <!-- Any option -->
             <div class="dropdown-option none-option"
+                 role="option"
+                 [id]="optionId(0)"
                  [class.active]="!selectedEraId()"
+                 [class.keyboard-active]="activeEraId() === null"
+                 [attr.aria-selected]="!selectedEraId()"
+                 (pointerenter)="onOptionPointerHover(null, $event)"
+                 (pointermove)="onOptionPointerHover(null, $event)"
                  (click)="onSelectNone()">
                 <img src="/images/factions/none.png" class="era-icon" alt="No Era" />
                 <div class="none-option-details">
@@ -59,10 +78,16 @@ export interface EraDisplayInfo {
             </div>
             <hr class="divider"/>
 
-            @for (item of eras(); track item.era.id) {
+            @for (item of eras(); let optionIndex = $index; track item.era.id) {
                 <div class="dropdown-option"
+                     role="option"
+                     [id]="optionId(optionIndex + 1)"
                      [class.active]="selectedEraId() === item.era.id"
+                     [class.keyboard-active]="activeEraId() === item.era.id"
                      [class.unavailable]="item.matchPercentage < 1"
+                     [attr.aria-selected]="selectedEraId() === item.era.id"
+                     (pointerenter)="onOptionPointerHover(item.era.id, $event)"
+                     (pointermove)="onOptionPointerHover(item.era.id, $event)"
                      (click)="onSelect(item.era)">
                     @if (item.era.icon) {
                         <img [src]="item.era.icon" class="era-icon" [alt]="item.era.name" />
@@ -106,6 +131,10 @@ export interface EraDisplayInfo {
         }
 
         .dropdown-option:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .dropdown-option.keyboard-active:not(.active) {
             background: rgba(255, 255, 255, 0.1);
         }
 
@@ -205,8 +234,23 @@ export interface EraDisplayInfo {
 export class EraDropdownPanelComponent {
     eras = input.required<EraDisplayInfo[]>();
     selectedEraId = input<number | null>(null);
+    activeEraId = input<number | null>(null);
+    label = input('Select era');
+    optionsId = input('');
 
     selected = output<Era | null>();
+    pointerHovered = output<EraDropdownPointerHoverEvent>();
+
+    visibleEraIds = computed<(number | null)[]>(() => [null, ...this.eras().map(item => item.era.id)]);
+
+    readonly activeOptionId = computed(() => {
+        const activeIndex = this.visibleEraIds().indexOf(this.activeEraId());
+        return activeIndex >= 0 ? this.optionId(activeIndex) : '';
+    });
+
+    optionId(index: number): string {
+        return `${this.optionsId()}-${index}`;
+    }
 
     onSelect(era: Era): void {
         this.selected.emit(era);
@@ -214,5 +258,13 @@ export class EraDropdownPanelComponent {
 
     onSelectNone(): void {
         this.selected.emit(null);
+    }
+
+    onOptionPointerHover(eraId: number | null, event: PointerEvent): void {
+        this.pointerHovered.emit({
+            eraId,
+            clientX: event.clientX,
+            clientY: event.clientY,
+        });
     }
 }

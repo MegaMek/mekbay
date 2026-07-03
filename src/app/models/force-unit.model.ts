@@ -39,6 +39,7 @@ import { generateUUID } from '../services/ws.service';
 import type { SerializedUnit } from './force-serialization';
 import type { Force, UnitGroup } from './force.model';
 import type { ForceUnitState } from './force-unit-state.model';
+import type { ConditionData } from './force-unit-state.model';
 import type { CrewMember } from './crew-member.model';
 
 /*
@@ -119,11 +120,32 @@ export abstract class ForceUnit {
     }
 
     get shutdown(): boolean {
-        return this.state.shutdown();
+        return this.state.hasCondition('shutdown');
     }
 
-    setShutdown(shutdown: boolean) {
-        this.state.shutdown.set(shutdown);
+    get conditions(): ReadonlyMap<string, ConditionData | undefined> {
+        return this.state.conditions();
+    }
+
+    getConditions(): ReadonlyMap<string, ConditionData | undefined> {
+        return this.state.conditions();
+    }
+
+    getCondition(condition: string): boolean {
+        return this.state.hasCondition(condition);
+    }
+
+    isComputedCondition(_condition: string): boolean {
+        return false;
+    }
+
+    hasComputedCondition(_condition: string): boolean {
+        return false;
+    }
+
+    setCondition(condition: string, active: boolean) {
+        if (!this.state.setCondition(condition, active)) return;
+        this.setModified();
     }
 
     /** Get/set the C3 visual editor position for this unit */

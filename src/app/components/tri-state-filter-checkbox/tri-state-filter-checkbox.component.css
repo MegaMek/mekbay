@@ -32,45 +32,63 @@
     cursor: default;
 }
 
-.custom-checkbox {
-    position: relative;
-    display: inline-block;
-    width: 16px;
-    height: 16px;
-    background-color: transparent;
-    border: 1px solid silver;
-    border-radius: 2px;
+.tri-state-bt-checkbox {
     flex-shrink: 0;
-    transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
-    text-align: center;
-    font-size: 1em;
-    line-height: 16px;
-}
-
-.custom-checkbox.checked {
-    color: #fff;
-}
-
-.checkbox-or {
-    background-color: var(--bt-yellow);
-    border-color: var(--bt-yellow);
-}
-
-.checkbox-not {
-    background-color: #c00;
-    border-color: #c00;
-}
-
-.checkbox-mark {
-    position: absolute;
-    left: 2px;
-    top: 0;
-    width: 12px;
-    height: 16px;
-    font-size: 1em;
-    line-height: 16px;
-    text-align: center;
     pointer-events: none;
+}
+
+.tri-state-checkbox:hover:not(:disabled) .tri-state-bt-checkbox {
+    background-color: var(--background-highlight);
+    background-image:
+        linear-gradient(transparent, transparent),
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white),
+        linear-gradient(white, white);
+    background-size: 12px 12px, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
+}
+
+.tri-state-checkbox:hover:not(:disabled) .tri-state-bt-checkbox:checked:not(.checkbox-not) {
+    background-image:
+        linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+        linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+        linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+        linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+        linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+        linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+        linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+        linear-gradient(var(--bt-yellow), var(--bt-yellow)),
+        linear-gradient(var(--bt-yellow), var(--bt-yellow));
+}
+
+.tri-state-bt-checkbox.checkbox-not {
+    background-image:
+        linear-gradient(#c00, #c00),
+        linear-gradient(#c00, #c00),
+        linear-gradient(#c00, #c00),
+        linear-gradient(#c00, #c00),
+        linear-gradient(#c00, #c00),
+        linear-gradient(#c00, #c00),
+        linear-gradient(#c00, #c00),
+        linear-gradient(#c00, #c00),
+        linear-gradient(#c00, #c00);
+}
+
+.tri-state-checkbox:hover:not(:disabled) .tri-state-bt-checkbox.checkbox-not {
+    background-image:
+        linear-gradient(#c00, #c00),
+        linear-gradient(#c00, #c00),
+        linear-gradient(#c00, #c00),
+        linear-gradient(#c00, #c00),
+        linear-gradient(#c00, #c00),
+        linear-gradient(#c00, #c00),
+        linear-gradient(#c00, #c00),
+        linear-gradient(#c00, #c00),
+        linear-gradient(#c00, #c00);
 }
 
 .filter-label {

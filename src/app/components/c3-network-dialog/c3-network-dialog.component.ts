@@ -1426,7 +1426,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     protected removeNetwork(network: SerializedC3NetworkGroup) {
         if (this.data.readOnly) return;
-        this.networks.set(this.networks().filter(n => n.id !== network.id));
+        this.networks.update(networks => networks.filter(n => n.id !== network.id));
         this.hasModifications.set(true);
     }
 

@@ -33,16 +33,14 @@
 
 import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
-import type { UnitSkillModifier } from './unit-type-rules';
-import { UnitTypeRulesBase } from './unit-type-rules';
+import type { CrewStateControlDefinition, CrewStateDefinition, UnitConditionControl, MountedEquipmentRuleState, UnitSkillModifier } from './unit-type-rules';
+import { crewStateDefinitions, unitConditionControls, UnitTypeRulesBase } from './unit-type-rules';
 import type { PSRCheck } from '../turn-state.model';
 import type { CriticalSlot, MountedEquipment } from '../force-serialization';
 import { WeaponEquipment } from '../equipment.model';
 import { getDefaultAttackerMovementModifier } from '../target-number-calculator.model';
 import type { MotiveModes } from '../motiveModes.model';
 import { critId, timestampedMotiveHits, type MotiveHitTimestamp } from './vehicle-motive-hit.util';
-
-type VehicleEntryState = { isDamaged: boolean; isDisabled: boolean; hitMod: number };
 
 interface VehicleMovementState {
     moveImpaired: boolean;
@@ -53,6 +51,8 @@ interface VehicleMovementState {
 }
 
 interface VehicleSystemsStatus {
+    crewKilled: boolean;
+    crewStunned: boolean;
     commanderHit: boolean;
     copilotHit: boolean;
     driverOrPilotHit: boolean;
@@ -80,7 +80,27 @@ const STABILIZER_HIT_LOCATIONS: Record<string, readonly string[]> = {
  * 
  * Vehicle / Naval / VTOL / default game rules.
  */
+ 
+export const VEHICLE_UNIT_CONDITION_CONTROLS: readonly UnitConditionControl[] = unitConditionControls(['swarmed', 'tagged', 'skidding', 'jammed']);
+export const VEHICLE_CREW_STATE_CONTROLS: readonly CrewStateControlDefinition[] = crewStateDefinitions(['killed', 'stunned']) as readonly CrewStateControlDefinition[];
+export const VEHICLE_CREW_STATE_DISPLAYS: readonly CrewStateDefinition[] = crewStateDefinitions(['killed', 'stunned']);
+
 export class VehicleRules extends UnitTypeRulesBase {
+
+    protected override supportsDroneOperatingSystem(): boolean {
+        return true;
+    }
+
+    protected override readonly baseConditionControls: readonly UnitConditionControl[] = VEHICLE_UNIT_CONDITION_CONTROLS;
+    protected override readonly baseCrewStateControls = VEHICLE_CREW_STATE_CONTROLS;
+    protected override readonly crewStateDisplayDefinitions = VEHICLE_CREW_STATE_DISPLAYS;
+
+    protected override readonly abandoned = computed<boolean>(() => this.systemsStatus().crewKilled);
+
+    override readonly immobile = computed<boolean>(() => {
+        const status = this.systemsStatus();
+        return status.crewKilled || status.motiveHits.some(motiveHit => motiveHit.level === 4);
+    });
 
     constructor(unit: CBTForceUnit) {
         super(unit, 'DSR', 'Driving Skill Rolls');
@@ -90,8 +110,12 @@ export class VehicleRules extends UnitTypeRulesBase {
         const crits = this.unit.getCritSlots();
         const inventory = this.unit.getInventory();
         const unitType = this.unit.getUnit().type;
+        const crewStates = this.unit.getCrewMembers().map(crewMember => crewMember.getState());
+        const crewKilled = crewStates.some(state => state === 'killed');
+        const crewStunned = crewStates.some(state => state === 'stunned');
         const committed = crits.filter(crit => !!crit.destroyed);
         const hasCrit = (id: string) => committed.some(crit => this.critId(crit) === id);
+        const hasDroneOperatingSystem = this.hasDroneOperatingSystem();
         const hasWorkingSupercharger = inventory.some(entry => this.isSuperchargerEntry(entry) && !this.isEntryDestroyed(entry));
         const rotorHits = unitType === 'VTOL'
             ? Math.max(0, this.rotorCommittedCritHits(crits.find(crit => this.critId(crit) === 'rotor')))
@@ -110,9 +134,11 @@ export class VehicleRules extends UnitTypeRulesBase {
         }
 
         return {
-            commanderHit: hasCrit('commander_hit'),
-            copilotHit: hasCrit('copilot_hit'),
-            driverOrPilotHit: hasCrit('driver_hit') || hasCrit('pilot_hit'),
+            crewKilled,
+            crewStunned,
+            commanderHit: !hasDroneOperatingSystem && hasCrit('commander_hit'),
+            copilotHit: !hasDroneOperatingSystem && hasCrit('copilot_hit'),
+            driverOrPilotHit: !hasDroneOperatingSystem && (hasCrit('driver_hit') || hasCrit('pilot_hit')),
             engineHit: committed.some(crit => /^engine_hit_\d+$/.test(this.critId(crit))),
             hasWorkingSupercharger,
             sensorHits,
@@ -123,9 +149,14 @@ export class VehicleRules extends UnitTypeRulesBase {
         };
     });
 
+    override hasComputedCondition(condition: string): boolean {
+        if (condition === 'disconnected' && this.hasDroneOperatingSystem() && this.hasCommittedCrit('commander_hit')) return true;
+        return super.hasComputedCondition(condition);
+    }
+
     override readonly gunneryModifiers = computed<UnitSkillModifier[]>(() => {
         const status = this.systemsStatus();
-        const modifiers: UnitSkillModifier[] = [];
+        const modifiers: UnitSkillModifier[] = [...this.droneOperatingSystemSkillModifiers()];
         if (status.commanderHit) {
             modifiers.push({ modifier: 1, reason: 'Commander hit' });
         }
@@ -143,7 +174,7 @@ export class VehicleRules extends UnitTypeRulesBase {
 
     override readonly pilotingModifiers = computed<UnitSkillModifier[]>(() => {
         const status = this.systemsStatus();
-        const modifiers: UnitSkillModifier[] = [];
+        const modifiers: UnitSkillModifier[] = [...this.droneOperatingSystemSkillModifiers()];
         if (status.commanderHit) {
             modifiers.push({ modifier: 1, reason: 'Commander hit' });
         }
@@ -167,6 +198,15 @@ export class VehicleRules extends UnitTypeRulesBase {
         const unit = this.unit.getUnit();
         const baseWalk = Math.max(0, unit.walk);
         const status = this.systemsStatus();
+        if (this.immobile() || this.unit.getCondition('disconnected')) {
+            return {
+                moveImpaired: true,
+                walk: 0,
+                maxWalk: 0,
+                run: 0,
+                maxRun: 0,
+            };
+        }
         const walkAfterMotiveDamage = status.engineHit ? 0 : this.applyMotiveDamage(baseWalk, status.motiveHits);
         const walk = unit.type === 'VTOL'
             ? Math.max(0, walkAfterMotiveDamage - status.rotorHits)
@@ -174,7 +214,7 @@ export class VehicleRules extends UnitTypeRulesBase {
         let run = walk === 0 ? 0 : Math.round(walk * 1.5);
         const runValueCoeff = status.hasWorkingSupercharger ? 2 : 1.5;
         let maxRun = walk === 0 ? 0 : Math.round(walk * runValueCoeff);
-        if (status.flightStabilizerHit) {
+        if (status.flightStabilizerHit || status.crewStunned) {
             run = 0;
             maxRun = 0;
         }
@@ -196,7 +236,9 @@ export class VehicleRules extends UnitTypeRulesBase {
     }
 
     override isMotiveModeAvailable(moveMode: MotiveModes): boolean {
-        if (moveMode === 'run' && this.systemsStatus().flightStabilizerHit) return false;
+        const status = this.systemsStatus();
+        if (status.crewKilled) return false;
+        if (moveMode === 'run' && (status.flightStabilizerHit || status.crewStunned)) return false;
         return true;
     }
 
@@ -250,6 +292,9 @@ export class VehicleRules extends UnitTypeRulesBase {
                 reason: 'Mounts Hardened Armor'
             });
         }
+        if (this.hasDroneOperatingSystem()) {
+            modifiers.push({ pilotCheck: 1, reason: 'Drone operating system' });
+        }
         if (status.commanderHit) {
             modifiers.push({ pilotCheck: 1, reason: 'Commander hit' });
         }
@@ -274,18 +319,18 @@ export class VehicleRules extends UnitTypeRulesBase {
 
     override readonly PSRTargetRoll = computed<number>(() => this.unit.pilotingSkill() + this.PSRModifiers().modifier);
 
-    computeAllEntryStates(): Map<MountedEquipment, VehicleEntryState> {
-        const result = new Map<MountedEquipment, VehicleEntryState>();
+    override computeAllEntryStates(): Map<MountedEquipment, MountedEquipmentRuleState> {
+        const result = new Map<MountedEquipment, MountedEquipmentRuleState>();
         for (const entry of this.unit.getInventory()) {
             result.set(entry, this.computeEntryState(entry));
         }
         return result;
     }
 
-    computeEntryState(entry: MountedEquipment): VehicleEntryState {
+    override computeEntryState(entry: MountedEquipment): MountedEquipmentRuleState {
         const status = this.systemsStatus();
-        const isDamaged = !!(entry.critSlots?.some(slot => slot.destroyed) || entry.destroyed);
-        let isDisabled = false;
+        const isDamaged = this.entryCriticalSlots(entry).some(slot => slot.destroyed) || entry.committedDestroyed();
+        let isDisabled = this.isEntryStateDisabled(entry);
         let hitMod = 0;
         const isPhysical = this.isPhysicalEntry(entry);
 
@@ -298,11 +343,6 @@ export class VehicleRules extends UnitTypeRulesBase {
             }
             hitMod += this.stabilizerHitModifier(entry, status);
         }
-
-        if (entry.states?.get('state') === 'jammed') {
-            isDisabled = true;
-        }
-
         return { isDamaged, isDisabled, hitMod };
     }
 
@@ -352,11 +392,15 @@ export class VehicleRules extends UnitTypeRulesBase {
     }
 
     private isEntryDestroyed(entry: MountedEquipment): boolean {
-        return !!entry.destroyed || !!entry.critSlots?.some(slot => slot.destroyed);
+        return entry.committedDestroyed() || this.entryCriticalSlots(entry).some(slot => slot.destroyed);
     }
 
     private rotorCommittedCritHits(crit: CriticalSlot | undefined): number {
         return (crit?.hits ?? 0);
+    }
+
+    private hasCommittedCrit(id: string): boolean {
+        return this.unit.getCritSlots().some(crit => !!crit.destroyed && this.critId(crit) === id);
     }
 
     private critId(crit: CriticalSlot): string {

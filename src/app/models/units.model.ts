@@ -286,6 +286,7 @@ export interface Unit {
     sheets: string[];
     as: AlphaStrikeUnitStats;
     unitFile?: string;
+    serverHost?: string; // Base URL of the additional unit server this unit was loaded from; undefined means the primary db.mekbay.com host.
     _searchKey: string; // Pre-compiled lowercase search key: "chassis model"
     _displayType: string;
     _maxRange: number; // Max range of any weapon on this unit

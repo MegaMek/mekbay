@@ -85,9 +85,10 @@ import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card
 import { formatMovement } from '../../utils/as-common.util';
 import type { UnitType } from '../../models/units.model';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
-import { DataTableComponent, type DataTableCellContext, type DataTableColumn, type DataTableRowClickEvent, type DataTableRowLongPressEvent, type DataTableRowPointerEnterEvent, type DataTableSortEvent } from '../data-table/data-table.component';
+import { DataTableComponent, type DataTableCellContext, type DataTableColumn, type DataTableRowClickEvent, type DataTableRowLongPressEvent, type DataTableRowPointerEnterEvent, type DataTableRowPointerMoveEvent, type DataTableSortEvent } from '../data-table/data-table.component';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { getUnitVariantGroupIdentity, getUnitVariantGroupKey, type UnitVariantGroupIdentity, unitMatchesVariantGroup } from '../../utils/unit-variant.util';
+import { DropdownPointerActivationGuard, type DropdownPointerHoverEvent } from '../../utils/dropdown-interaction.utils';
 
 /** Grouped chassis entry for compact view */
 export interface ChassisGroup extends UnitVariantGroupIdentity {
@@ -219,13 +220,12 @@ export class UnitSearchComponent {
 
     private searchDebounceTimer: any;
     private heightTrackingDebounceTimer: any;
+    private readonly resultPointerActivationGuard = new DropdownPointerActivationGuard();
     private readonly SEARCH_DEBOUNCE_MS = 300;
-    private resultPointerHoverSuppressedUntil = 0;
     private pendingSearchText: string | null = null;
 
     private static readonly CHORD_ACTIVATE_KEY = 'f';
     private static readonly CHORD_TIMEOUT_MS = 1500;
-    private static readonly RESULT_POINTER_HOVER_SUPPRESSION_MS = 160;
     private static readonly FILTER_CHORD_BINDINGS: { key: string; filterKey: string }[] = [
         // Alpha Strike
         { key: 'p', filterKey: 'as.PV' },
@@ -1830,7 +1830,7 @@ export class UnitSearchComponent {
     private navigateSearchResults(direction: 'next' | 'previous', items = this.displayedUnits()): boolean {
         if (items.length === 0) return false;
 
-        this.suppressResultPointerHover();
+        this.resultPointerActivationGuard.suppress();
         const currentActiveIndex = this.activeIndex();
         if (direction === 'next') {
             const nextIndex = currentActiveIndex !== null ? Math.min(currentActiveIndex + 1, items.length - 1) : 0;
@@ -1852,22 +1852,14 @@ export class UnitSearchComponent {
         return true;
     }
 
-    onResultPointerEnter(index: number): void {
-        if (this.shouldIgnoreResultPointerHover()) return;
+    onResultPointerHover(index: number, event: DropdownPointerHoverEvent): void {
+        if (this.resultPointerActivationGuard.shouldIgnore(event)) return;
 
         this.activeIndex.set(index);
     }
 
-    private suppressResultPointerHover(): void {
-        this.resultPointerHoverSuppressedUntil = Date.now() + UnitSearchComponent.RESULT_POINTER_HOVER_SUPPRESSION_MS;
-    }
-
-    private shouldIgnoreResultPointerHover(): boolean {
-        return Date.now() < this.resultPointerHoverSuppressedUntil;
-    }
-
     private selectResultIndex(index: number, items = this.displayedUnits(), behavior: ScrollBehavior = 'smooth'): void {
-        this.suppressResultPointerHover();
+        this.resultPointerActivationGuard.suppress();
         this.setActiveResultIndex(index, items);
         this.scrollToMakeVisible(index, behavior);
     }
@@ -2079,7 +2071,11 @@ export class UnitSearchComponent {
     }
 
     onUnitTableRowPointerEnter(event: DataTableRowPointerEnterEvent<Unit>): void {
-        this.onResultPointerEnter(event.index);
+        this.onResultPointerHover(event.index, event.event);
+    }
+
+    onUnitTableRowPointerMove(event: DataTableRowPointerMoveEvent<Unit>): void {
+        this.onResultPointerHover(event.index, event.event);
     }
 
     isSortActive(...keysOrGroups: string[]): boolean {

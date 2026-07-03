@@ -90,6 +90,12 @@ export interface DataTableRowPointerEnterEvent<T> {
     event: PointerEvent;
 }
 
+export interface DataTableRowPointerMoveEvent<T> {
+    row: T;
+    index: number;
+    event: PointerEvent;
+}
+
 @Component({
     selector: 'mb-data-table',
     imports: [CommonModule, NgTemplateOutlet, ScrollingModule, LongPressDirective],
@@ -113,6 +119,7 @@ export class DataTableComponent<T> {
     readonly rowClick = output<DataTableRowClickEvent<T>>();
     readonly rowLongPress = output<DataTableRowLongPressEvent<T>>();
     readonly rowPointerEnter = output<DataTableRowPointerEnterEvent<T>>();
+    readonly rowPointerMove = output<DataTableRowPointerMoveEvent<T>>();
 
     private readonly viewport = viewChild(CdkVirtualScrollViewport);
     readonly scrollLeft = signal(0);
@@ -167,6 +174,14 @@ export class DataTableComponent<T> {
         }
 
         this.rowPointerEnter.emit({ row, index, event });
+    }
+
+    onRowPointerMove(row: T, index: number, event: PointerEvent) {
+        if (this.isFullRowRow(row, index)) {
+            return;
+        }
+
+        this.rowPointerMove.emit({ row, index, event });
     }
 
     getViewport(): CdkVirtualScrollViewport | undefined {

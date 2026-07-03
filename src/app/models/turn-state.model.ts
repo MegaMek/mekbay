@@ -1,10 +1,9 @@
-import { computed, signal } from "@angular/core";
-import type { ForceUnitState } from "./force-unit-state.model";
+import { computed, signal, type WritableSignal } from "@angular/core";
 import { canChangeAirborneGround, getMotiveModeMaxDistance, type MotiveModes } from "./motiveModes.model";
-import type { CriticalSlot } from "./force-serialization";
-import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "./common.model";
+import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "../models/rules/mek-rules";
 import type { CBTForceUnitState } from "./cbt-force-unit-state.model";
-import type { PSRCheck, UnitHeatSource, UnitModifierBreakdownEntry } from "./rules/unit-type-rules";
+import type { SerializedPSRChecks, SerializedTurnState } from "./force-serialization";
+import { calculateModifierTotal, type PSRCheck, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitModifierTotal } from "./rules/unit-type-rules";
 
 export type { PSRCheck } from "./rules/unit-type-rules";
 
@@ -19,14 +18,15 @@ export interface PSRChecks {
 
 export class TurnState {
     unitState: CBTForceUnitState;
-    airborne = signal<boolean | null>(null);
-    moveMode = signal<MotiveModes | null>(null);
-    moveDistance = signal<number | null>(null);
-    dmgReceived = signal<number>(0);
-    firedHeat = signal<number>(0);
-    private psrChecks = signal<PSRChecks>({});
-    applyMovePSR = signal<boolean>(true);
-    spotting = signal<boolean>(false);
+    private suppressModified = false;
+    airborne = this.modifiedSignal<boolean | null>(null);
+    moveMode = this.modifiedSignal<MotiveModes | null>(null);
+    moveDistance = this.modifiedSignal<number | null>(null);
+    dmgReceived = this.modifiedSignal<number>(0);
+    weaponsHeat = this.modifiedSignal<number>(0);
+    private psrChecks = this.modifiedSignal<PSRChecks>({});
+    applyMovePSR = this.modifiedSignal<boolean>(true);
+    spotting = this.modifiedSignal<boolean>(false);
 
     dirty = computed<boolean>(() => {
         const heat = this.unitState.heat();
@@ -124,9 +124,8 @@ export class TurnState {
         return this.unitState.unit.rules.getAttackModifierBreakdown(this);
     });
 
-    getTotalTargetModifierAsDefender = computed<number>(() => {
-        return this.getDefenseModifierBreakdown()
-            .reduce((total, entry) => total + entry.modifier, 0);
+    getTotalTargetModifierAsDefender = computed<UnitModifierTotal>(() => {
+        return calculateModifierTotal(this.getDefenseModifierBreakdown());
     });
 
     getDefenseModifierBreakdown = computed<UnitModifierBreakdownEntry[]>(() => {
@@ -153,6 +152,111 @@ export class TurnState {
         this.unitState = unitState;
     }
 
+    private modifiedSignal<T>(initialValue: T): WritableSignal<T> {
+        const state = signal<T>(initialValue);
+        const originalSet = state.set.bind(state);
+        const originalUpdate = state.update.bind(state);
+        state.set = (newValue: T) => {
+            const previousValue = state();
+            originalSet(newValue);
+            this.markModifiedIfChanged(previousValue, newValue);
+        };
+        state.update = (updateFn: (value: T) => T) => {
+            const previousValue = state();
+            originalUpdate(updateFn);
+            this.markModifiedIfChanged(previousValue, state());
+        };
+        return state;
+    }
+
+    private markModifiedIfChanged<T>(previousValue: T, nextValue: T): void {
+        if (this.suppressModified || Object.is(previousValue, nextValue)) return;
+        this.unitState.unit.setModified?.();
+    }
+
+    private withSuppressedModified(action: () => void): void {
+        this.suppressModified = true;
+        try {
+            action();
+        } finally {
+            this.suppressModified = false;
+        }
+    }
+
+    markModified(): void {
+        if (this.suppressModified) return;
+        this.unitState.unit.setModified?.();
+    }
+
+    setMoveDistance(value: number | null, options: { markModified?: boolean } = {}) {
+        if (options.markModified === false) {
+            this.withSuppressedModified(() => this.moveDistance.set(value));
+            return;
+        }
+        this.moveDistance.set(value);
+    }
+
+    serialize(): SerializedTurnState | undefined {
+        const turnState: SerializedTurnState = {};
+        const airborne = this.airborne();
+        const moveMode = this.moveMode();
+        const moveDistance = this.moveDistance();
+        const psrChecks = this.serializePSRChecks();
+
+        if (airborne === true) turnState.airborne = true;
+        if (moveMode !== null) turnState.moveMode = moveMode;
+        if (moveDistance !== null) turnState.moveDistance = moveDistance;
+        if (this.dmgReceived() > 0) turnState.dmgReceived = this.dmgReceived();
+        if (this.weaponsHeat() > 0) turnState.weaponsHeat = this.weaponsHeat();
+        if (psrChecks) turnState.psrChecks = psrChecks;
+        if (this.spotting()) turnState.spotting = true;
+
+        return Object.keys(turnState).length > 0 ? turnState : undefined;
+    }
+
+    update(data: SerializedTurnState | undefined) {
+        this.withSuppressedModified(() => {
+            this.airborne.set(data?.airborne ?? null);
+            this.moveMode.set(data?.moveMode ?? null);
+            this.moveDistance.set(data?.moveDistance ?? null);
+            this.dmgReceived.set(data?.dmgReceived ?? 0);
+            this.weaponsHeat.set(data?.weaponsHeat ?? 0);
+            this.psrChecks.set(this.deserializePSRChecks(data?.psrChecks));
+            this.applyMovePSR.set(data?.applyMovePSR ?? true);
+            this.spotting.set(data?.spotting ?? false);
+        });
+    }
+
+    private serializePSRChecks(): SerializedPSRChecks | undefined {
+        const psrChecks = this.getPSRCheckState();
+        const serialized: SerializedPSRChecks = {};
+
+        if ((psrChecks.legActuators?.size ?? 0) > 0) {
+            const legActuators = Object.fromEntries(
+                Array.from(psrChecks.legActuators!.entries()).filter(([, count]) => count > 0)
+            );
+            if (Object.keys(legActuators).length > 0) serialized.legActuators = legActuators;
+        }
+        if ((psrChecks.hipsHit?.size ?? 0) > 0) serialized.hipsHit = Array.from(psrChecks.hipsHit!);
+        if ((psrChecks.gyroHit ?? 0) > 0) serialized.gyroHit = psrChecks.gyroHit;
+        if (psrChecks.gyroDestroyed) serialized.gyroDestroyed = true;
+        if ((psrChecks.legsDestroyed?.size ?? 0) > 0) serialized.legsDestroyed = Array.from(psrChecks.legsDestroyed!);
+        if (psrChecks.shutdown) serialized.shutdown = true;
+
+        return Object.keys(serialized).length > 0 ? serialized : undefined;
+    }
+
+    private deserializePSRChecks(data: SerializedPSRChecks | undefined): PSRChecks {
+        return {
+            ...(data?.legActuators && { legActuators: new Map(Object.entries(data.legActuators)) }),
+            ...(data?.hipsHit && { hipsHit: new Set(data.hipsHit) }),
+            ...(data?.gyroHit !== undefined && { gyroHit: data.gyroHit }),
+            ...(data?.gyroDestroyed !== undefined && { gyroDestroyed: data.gyroDestroyed }),
+            ...(data?.legsDestroyed && { legsDestroyed: new Set(data.legsDestroyed) }),
+            ...(data?.shutdown !== undefined && { shutdown: data.shutdown }),
+        };
+    }
+
     resetPSRChecks() {
         this.applyMovePSR.set(false);
         this.clearPSRCheckState();
@@ -176,16 +280,16 @@ export class TurnState {
     }
 
     addDmgReceived(amount: number) {
-        this.dmgReceived.set(this.dmgReceived() + amount);
+        this.dmgReceived.update((value)=> { return value + amount });
     }
 
     addFiredHeat(amount: number) {
         if (!Number.isFinite(amount) || amount <= 0) return;
-        this.firedHeat.set(this.firedHeat() + amount);
+        this.weaponsHeat.update((value)=> { return value + amount });
     }
 
     resetTurnHeatSources() {
-        this.firedHeat.set(0);
+        this.weaponsHeat.set(0);
     }
 
     maxDistanceCurrentMoveMode = computed<number>(() => {

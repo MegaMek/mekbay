@@ -30,7 +30,7 @@ export class InventoryModeHandler extends EquipmentInteractionHandler {
                 value: currentMode,
                 displayType: 'dropdown',
                 choices,
-                disabled: !!equipment.destroyed,
+                disabled: equipment.isUnavailable(),
                 keepOpen: true
             }
         ];

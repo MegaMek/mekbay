@@ -101,7 +101,7 @@ export class ToastService {
 
     dismiss(id: string) {
         this.clearTimeout(id);
-        this.toastsSignal.set(this.toastsSignal().filter(t => t.id !== id));
+        this.toastsSignal.update(toasts => toasts.filter(t => t.id !== id));
     }
 
     private clearTimeout(id: string) {

@@ -55,6 +55,7 @@ const DEFAULT_OPTIONS: Options = {
     printRosterSummary: false,
     printMargin: 'browserDefined',
     performanceMode: false,
+    unitServers: [],
     
     // Classic
     sheetsColor: 'normal',
@@ -151,6 +152,7 @@ export class OptionsService {
         printRosterSummary: DEFAULT_OPTIONS.printRosterSummary,
         printMargin: DEFAULT_OPTIONS.printMargin,
         performanceMode: DEFAULT_OPTIONS.performanceMode,
+        unitServers: DEFAULT_OPTIONS.unitServers,
         forceGenLastBVMin: DEFAULT_OPTIONS.forceGenLastBVMin,
         forceGenLastBVMax: DEFAULT_OPTIONS.forceGenLastBVMax,
         forceGenLastPVMin: DEFAULT_OPTIONS.forceGenLastPVMin,
@@ -207,6 +209,7 @@ export class OptionsService {
             printRosterSummary: saved?.printRosterSummary ?? DEFAULT_OPTIONS.printRosterSummary,
             printMargin: saved?.printMargin ?? DEFAULT_OPTIONS.printMargin,
             performanceMode: saved?.performanceMode ?? DEFAULT_OPTIONS.performanceMode,
+            unitServers: saved?.unitServers ?? DEFAULT_OPTIONS.unitServers,
             forceGenLastBVMin: saved?.forceGenLastBVMin ?? DEFAULT_OPTIONS.forceGenLastBVMin,
             forceGenLastBVMax: saved?.forceGenLastBVMax ?? DEFAULT_OPTIONS.forceGenLastBVMax,
             forceGenLastPVMin: saved?.forceGenLastPVMin ?? DEFAULT_OPTIONS.forceGenLastPVMin,

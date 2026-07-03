@@ -1,3 +1,4 @@
+import type { CrewStateControlKey } from '../../models/rules/unit-type-rules';
 /*
  * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
  *
@@ -37,7 +38,6 @@ import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DialogsService } from '../../services/dialogs.service';
 import { firstValueFrom } from 'rxjs';
-import type { ForceUnit } from '../../models/force-unit.model';
 import type { SkillType } from '../../models/crew-member.model';
 import type { CriticalSlot, MountedEquipment } from '../../models/force-serialization';
 import { OptionsService } from '../../services/options.service';
@@ -46,9 +46,8 @@ import type { ZoomPanServiceInterface } from './zoom-pan.interface';
 import { type ChoicePickerInstance, isChoicePickerInstance, type NumericPickerInstance, type NumericPickerResult, type PickerChoice, type PickerPosition, type PickerTargetType, type PickerValue } from '../picker/picker.interface';
 import { ToastService } from '../../services/toast.service';
 import { LayoutService } from '../../services/layout.service';
-import { SetAmmoDialogComponent, type SetAmmoDialogData } from '../set-ammo-dialog/set-ammo.dialog.component';
 import { DataService } from '../../services/data.service';
-import { AmmoEquipment, WeaponEquipment } from '../../models/equipment.model';
+import { AmmoEquipment } from '../../models/equipment.model';
 import { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
 import type { HandlerChoice } from '../../services/equipment-interaction-registry.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -59,12 +58,15 @@ import { canAntiMech } from '../../utils/infantry.util';
 import { EquipmentDialogComponent } from '../equipment-dialog/equipment-dialog.component';
 import type { EquipmentDialogContext, EquipmentDialogData, EquipmentDialogTab } from '../equipment-dialog/equipment-dialog.model';
 import { WeaponTargetChoiceMenuComponent } from '../../components/equipment-dialog/weapon-target-choice-menu.component';
-import { getInventoryControlModes, getSelectedInventoryControlMode, selectInventoryControlEntry, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
-import { getMotiveModeLabel } from '../../models/motiveModes.model';
+import { getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_MODE_STATE, selectInventoryControlEntry, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
 import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { inventoryTargetCategory, inventoryTargetNumberText, parseInventoryTargetNumberCell, readInventoryTargetDisplay, readInventoryTargetText } from '../../utils/inventory-target-number.util';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
 import { committedCriticalHitCount, isRepeatableMotiveHitId, motiveHitLevelFromId, MOTIVE_HIT_PIP_COUNT, pendingCriticalHitTimestamps } from '../../models/rules/vehicle-motive-hit.util';
+import { UnitStateDropdownComponent, type UnitStateDropdownChoice } from './unit-state-dropdown.component';
+import { getAmmoControlEntryForCriticalSlot, setAmmoEntry } from '../../utils/ammo-interaction.util';
+import { TORSO_LOCATIONS } from '../../models/rules/mek-rules';
+import { isLaserWithRiscModule, isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, RISC_LASER_STANDARD_MODE, selectedRiscLaserMode } from '../../equipment-handlers/risc-laser-pulse-module.handler';
 
 type SheetInventoryRangeKey = InventoryRangeKey | 'extreme';
 type HeatMarkerData = { el: SVGElement | null, heat: number; baselineHeat: number };
@@ -91,6 +93,9 @@ const INVENTORY_RANGE_BUTTON_CLASSES: ReadonlyArray<readonly [string, SheetInven
 const VTOL_ROTOR_CRIT_ID = 'rotor';
 const VTOL_ROTOR_HITS_MAX = 20;
 const SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY = 'svg-inventory-target-choice';
+const SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY = 'svg-conditions-dropdown';
+const SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY = 'svg-crew-state-dropdown';
+const SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY = 'svg-location-conditions-dropdown';
 const REPEATABLE_MOTIVE_HIT_LABELS = new Map<number, string>([
     [2, 'Medium'],
     [3, 'Heavy']
@@ -242,6 +247,9 @@ export class SvgInteractionService {
         this.setupCrewHitInteractions(svg, signal);
         this.setupSkillInteractions(svg, signal);
         this.setupCrewNameInteractions(svg, signal);
+        this.setupCrewStateInteractions(svg, signal);
+        this.setupConditionsInteractions(svg, signal);
+        this.setupLocationConditionInteractions(svg, signal);
         this.setupInventoryInteractions(svg, signal);
         this.setupAmmoProfileInteractions(svg, signal);
     }
@@ -416,26 +424,6 @@ export class SvgInteractionService {
                 (el as SVGElement).style.pointerEvents = 'none';
             });
         }
-        svg.querySelectorAll<SVGElement>('.crew-status-checkbox').forEach(el => {
-            el.classList.add('interactive');
-            this.addSvgTapHandler(el, (evt: Event, primaryAction: boolean) => {
-                // Handle the tap event for crew status checkboxes
-                if (this.state.clickTarget !== el) return;
-                const crewId = el.getAttribute('crewId') as number | null;
-                const state = el.getAttribute('state');
-                if (crewId === null || !state) return;
-                const unit = this.unit();
-                if (!unit) return;
-                const crewMember = unit.getCrewMember(crewId);
-                if (!crewMember) return;
-                if (state === 'dead') {
-                    crewMember.toggleDead();
-                } else if (state === 'unconscious') {
-                    crewMember.toggleUnconscious();
-                }
-            }, signal);
-        });
-
     }
 
     private setupSoldierPipInteractions(svg: SVGSVGElement, signal: AbortSignal) {
@@ -917,6 +905,12 @@ export class SvgInteractionService {
             const loc = svgEl.getAttribute('loc');
             const slot = parseInt(svgEl.getAttribute('slot') as string);
             const originalTotalAmmo = parseInt(svgEl.getAttribute('totalAmmo') || '0');
+            const equipmentRegistry = this.equipmentRegistryService.getRegistry();
+            const handlerContext = {
+                toastService: this.toastService,
+                dialogsService: this.dialogsService,
+                dataService: this.dataService
+            };
             let labelText = svgEl.textContent || '';
             if (svgEl.classList.contains('ammoSlot')) {
                 // for ammo, we remove the number at the end, example "Ammo (SRM 2) 5" should become "Ammo (SRM 2)"
@@ -943,10 +937,8 @@ export class SvgInteractionService {
                 this.toastService.showToast(`${amountText} ${amount >= 0 ? 'to' : 'from'} ${labelText} (${remaining}/${totalAmmo})`, 'info', ammoToastId);
             };
 
-            const registry = this.equipmentRegistryService.getRegistry();
-
             const createAndShowPicker = (event: Event) => {
-                if (unit.isInternalLocDestroyed(loc)) {
+                if (unit.isInternalLocPhysicallyDestroyed(loc)) {
                     return;
                 }
                 const calculateValues = () => {
@@ -959,7 +951,11 @@ export class SvgInteractionService {
                     if ((critSlot.hits ?? 0) > 0) {
                         values.push({ label: 'Repair', value: 'Repair' });
                     }
-                    if (!critSlot.destroyed && critSlot.eq instanceof AmmoEquipment) {
+                    const inventoryEntry = this.inventoryEntryForCritSlot(unit, critSlot);
+                    if (inventoryEntry) {
+                        values.push(...equipmentRegistry.getChoices(inventoryEntry, handlerContext));
+                    }
+                    if (!unit.isEquipmentUnavailable(critSlot) && critSlot.eq instanceof AmmoEquipment) {
                         values.unshift({ label: '+1', value: '+1', keepOpen: true, disabled: ((critSlot.consumed ?? 0) == 0) });
                         values.unshift({ label: '-1', value: '-1', keepOpen: true, disabled: ((critSlot.consumed ?? 0) >= totalAmmo) });
                         values.push({ label: 'Set Ammo', value: 'Set Ammo' });
@@ -984,7 +980,11 @@ export class SvgInteractionService {
                         if (!choice) return;
                         const critSlot = unit.getCritSlot(loc, slot);
                         if (!critSlot) return;
-                        if (choice.value == '+1') {
+                        const inventoryEntry = this.inventoryEntryForCritSlot(unit, critSlot);
+                        if (inventoryEntry && choice._handler) {
+                            await equipmentRegistry.handleSelection(inventoryEntry, choice, handlerContext);
+                        } else if (choice.value == '+1') {
+                            if (unit.isEquipmentUnavailable(critSlot)) return;
                             if (critSlot.consumed === undefined) {
                                 return;
                             }
@@ -993,6 +993,7 @@ export class SvgInteractionService {
                             unit.setCritSlot(critSlot);
                             showAmmoToast(critSlot, 1);
                         } else if (choice.value == '-1') {
+                            if (unit.isEquipmentUnavailable(critSlot)) return;
                             if (critSlot.consumed === undefined) {
                                 critSlot.consumed = 0;
                             }
@@ -1005,61 +1006,16 @@ export class SvgInteractionService {
                             unit.setCritSlot(critSlot);
                             this.toastService.showToast(`Emptied ${labelText}`, 'info');
                         } else if (choice.value == 'Set Ammo') {
-                            const amountUsed = critSlot.consumed ?? 0;
-                            const ammoOptions: AmmoEquipment[] = [];
-                            if (!critSlot.name || !critSlot.eq) return;
-                            const ammoItem = critSlot.eq;
-                            let originalAmmo = ammoItem as AmmoEquipment;
-                            if (critSlot.originalName && critSlot.originalName !== critSlot.name) {
-                                originalAmmo = equipmentList[critSlot.originalName] as AmmoEquipment;
-                            }
-                            if (ammoItem instanceof AmmoEquipment) {
-                                const baseOrder: Record<string, number> = { 'All': 0, 'IS': 1, 'Clan': 2 };
-                                const unitBlueprint = unit.getUnit();
-                                const compatibleAmmo = Object.values(equipmentList)
-                                    .filter((e): e is AmmoEquipment => (e instanceof AmmoEquipment) && (originalAmmo.compatibleAmmo(e, unitBlueprint)))
-                                    .sort((a, b) => {
-                                        const ao = baseOrder[(a.techBase || '')] ?? 3;
-                                        const bo = baseOrder[(b.techBase || '')] ?? 3;
-                                        if (ao !== bo) return ao - bo;
-                                        if (!a.baseAmmo && b.baseAmmo) {
-                                            return -1;
-                                        }
-                                        return a.name.localeCompare(b.name);
-                                    });
-                                ammoOptions.push(...compatibleAmmo);
-                            }
-                            const ref = this.dialogsService.createDialog<{ name: string; quantity: number, totalAmmo: number } | null>(SetAmmoDialogComponent, {
-                                data: {
-                                    currentAmmo: ammoItem,
-                                    originalAmmo: originalAmmo,
-                                    originalTotalAmmo: originalTotalAmmo,
-                                    ammoOptions: ammoOptions,
-                                    quantity: totalAmmo - amountUsed,
-                                    maxQuantity: totalAmmo
-                                } as SetAmmoDialogData
-                            });
-                            const newAmmoValue = await firstValueFrom(ref.closed);
-                            if (!newAmmoValue) return;
-                            if (newAmmoValue.name && newAmmoValue.name != critSlot.name && equipmentList[newAmmoValue.name]) {
-                                if (!critSlot.originalName) {
-                                    critSlot.originalName = critSlot.name;
-                                } else
-                                    if (newAmmoValue.name == critSlot.originalName) {
-                                        delete critSlot.originalName;
-                                    }
-                                critSlot.name = newAmmoValue.name;
-                                totalAmmo = newAmmoValue.totalAmmo;
-                                critSlot.totalAmmo = totalAmmo;
-                                critSlot.eq = equipmentList[newAmmoValue.name];
-                                labelText = critSlot.eq.shortName;
-                            }
-                            const newQuantity = Math.max(0, Math.min(totalAmmo, newAmmoValue.quantity));
-                            critSlot.consumed = totalAmmo - newQuantity;
-                            unit.setCritSlot(critSlot);
-                            const deltaChange = amountUsed - critSlot.consumed;
-                            if (deltaChange !== 0) {
-                                showAmmoToast(critSlot, deltaChange);
+                            if (unit.isEquipmentUnavailable(critSlot)) return;
+                            const entry = getAmmoControlEntryForCriticalSlot(unit, critSlot, equipmentList);
+                            if (!entry) return;
+                            if (await setAmmoEntry(entry, {
+                                toastService: this.toastService,
+                                dialogsService: this.dialogsService,
+                                dataService: this.dataService
+                            })) {
+                                totalAmmo = entry.totalAmmo;
+                                labelText = entry.currentAmmo.shortName;
                             }
                         } else if (choice.value == 'Hit') {
                             unit.applyHitToCritSlot(critSlot, 1, this.consolidateImmediately);
@@ -1106,6 +1062,17 @@ export class SvgInteractionService {
         });
     }
 
+    private inventoryEntryForCritSlot(unit: CBTForceUnit, critSlot: CriticalSlot): MountedEquipment | null {
+        return unit.getInventory().find(entry => entry.critSlots?.some(entryCritSlot => this.sameCritSlot(entryCritSlot, critSlot))) ?? null;
+    }
+
+    private sameCritSlot(left: CriticalSlot, right: CriticalSlot): boolean {
+        if (left.loc && right.loc && left.slot !== undefined && right.slot !== undefined) {
+            return left.loc === right.loc && left.slot === right.slot;
+        }
+        return !!left.id && !!right.id && left.id === right.id;
+    }
+
     private setupInventoryInteractions(svg: SVGSVGElement, signal: AbortSignal) {
         this.unit()?.getInventory().forEach(entry => {
             const el = entry.el;
@@ -1117,7 +1084,7 @@ export class SvgInteractionService {
                 if (!unit) return;
 
                 const clickedMode = this.validInventoryModeForButton(entry, button);
-                const selectedMode = getSelectedInventoryControlMode(entry);
+                const selectedMode = this.selectedInventoryControlMode(entry);
                 const forceSelected = !!clickedMode && clickedMode !== selectedMode;
                 if (clickedMode) {
                     setInventoryControlMode(entry, clickedMode);
@@ -1141,7 +1108,7 @@ export class SvgInteractionService {
                 if (!unit || !range) return;
 
                 const clickedMode = this.validInventoryModeForButton(entry, button);
-                const selectedMode = getSelectedInventoryControlMode(entry);
+                const selectedMode = this.selectedInventoryControlMode(entry);
                 const forceSelected = !!clickedMode && clickedMode !== selectedMode;
 
                 if (clickedMode) {
@@ -1160,6 +1127,20 @@ export class SvgInteractionService {
             };
 
             el.classList.add('interactive');
+            if (isRiscLaserPulseModule(entry)) {
+                const toggleRiscMode = (evt: Event) => {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    this.toggleRiscLaserPulseMode(entry);
+                };
+                [...this.inventoryDialogButtons(el), ...this.inventoryRangeButtons(el)].forEach(button => {
+                    button.classList.add('interactive');
+                    button.style.cursor = 'pointer';
+                    button.addEventListener('click', toggleRiscMode, { passive: false, signal });
+                });
+                el.addEventListener('click', toggleRiscMode, { passive: false, signal });
+                return;
+            }
             this.inventoryDialogButtons(el).forEach(button => {
                 button.classList.add('interactive');
                 button.style.cursor = 'pointer';
@@ -1212,6 +1193,31 @@ export class SvgInteractionService {
         return getInventoryControlModes(entry).some(candidate => candidate.mode === mode) ? mode : null;
     }
 
+    private selectedInventoryControlMode(entry: MountedEquipment): string | null {
+        return entry.states.get(INVENTORY_CONTROL_MODE_STATE) ?? getSelectedInventoryControlMode(entry);
+    }
+
+    private toggleRiscLaserPulseMode(module: MountedEquipment): void {
+        const unit = this.unit();
+        const parent = module.parent;
+        if (!unit || !parent || !isLaserWithRiscModule(parent)) return;
+        const mode = selectedRiscLaserMode(parent) === RISC_LASER_PULSE_MODE
+            ? RISC_LASER_STANDARD_MODE
+            : RISC_LASER_PULSE_MODE;
+        setInventoryControlMode(parent, mode);
+        unit.setInventoryControlEntrySelected(parent, true);
+        this.removePicker();
+    }
+
+    private equipmentDialogContext(): EquipmentDialogContext {
+        return {
+            toastService: this.toastService,
+            dialogsService: this.dialogsService,
+            dataService: this.dataService,
+            registry: this.equipmentRegistryService.getRegistry()
+        };
+    }
+
     private showInventoryTargetPicker(
         entry: MountedEquipment,
         button: SVGElement,
@@ -1257,26 +1263,26 @@ export class SvgInteractionService {
         const svgText = unit.svgService?.inventoryTargetNumberText(entry, target);
         if (svgText) return svgText;
 
-        const moveMode = unit.turnState().moveMode();
-        const movementModifier = unit.turnState().getAttackMovementModifier();
         const missingMovementModifier = unit.turnState().missingAttackMovementModifier();
-        const spotterModifier = unit.turnState().getSpottingModifier();
         const heatFireModifier = unit.svgService?.inventoryTargetHeatFireModifier(entry) ?? 0;
         const hitModifier = parseInventoryTargetNumberCell(readInventoryTargetText(entry, 'hit')) ?? 0;
         return inventoryTargetNumberText({
             entry,
             category: inventoryTargetCategory(entry),
             display: readInventoryTargetDisplay(entry),
-            target,
+            target: this.inventoryTargetForTargetNumber(unit, target),
             gunnerySkill: unit.effectiveGunnerySkill(),
             pilotingSkill: unit.effectivePilotingSkill(),
-            movementLabel: moveMode ? getMotiveModeLabel(moveMode, unit.getUnit(), unit.turnState().airborne() ?? false) : 'None',
-            movementModifier: movementModifier,
             missingMovementModifier,
-            spottingModifier: spotterModifier,
+            attackModifierBreakdown: unit.turnState().getAttackModifierBreakdown(),
             hitModifier: hitModifier - heatFireModifier,
             heatFireModifier
         });
+    }
+
+    private inventoryTargetForTargetNumber(unit: CBTForceUnit, target: InventoryControlRuntimeTarget): InventoryControlRuntimeTarget {
+        if (unit.hasLinkedC3Network?.() === true || target.c3Distance === undefined) return target;
+        return { ...target, c3Distance: undefined };
     }
 
     private setupAmmoProfileInteractions(svg: SVGSVGElement, signal: AbortSignal) {
@@ -1292,16 +1298,170 @@ export class SvgInteractionService {
         }, { passive: false, signal });
     }
 
+    private setupConditionsInteractions(svg: SVGSVGElement, signal: AbortSignal) {
+        const unit = this.unit();
+        if (!unit) return;
+        const buttonConditions = new Set(unit.rules.conditionControls
+            .filter(condition => condition.placement === 'button')
+            .map(condition => condition.key));
+        const hasMenuConditions = unit.rules.conditionControls.some(condition => condition.placement === 'menu');
+        svg.querySelectorAll<SVGElement>('.unitConditionButton, .locConditionButton').forEach(el => {
+            const condition = el.getAttribute('condition');
+            if (!condition || (condition !== 'menu' && !buttonConditions.has(condition)) || (condition === 'menu' && !hasMenuConditions)) return;
+            this.addSvgTapHandler(el, (event: PointerEvent) => {
+                const unit = this.unit();
+                const clickTarget = this.state.clickTarget;
+                if (!unit || !clickTarget || (clickTarget !== el && !el.contains(clickTarget))) return;
+                if (condition === 'menu') {
+                    this.showConditionsDropdown(el, unit);
+                } else {
+                    unit.setCondition(condition, !unit.getCondition(condition));
+                }
+            }, signal);
+        });
+    }
+
+    private showConditionsDropdown(el: SVGElement, unit: CBTForceUnit): void {
+        if (this.overlayManager.has(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY)) {
+            this.overlayManager.closeManagedOverlay(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY);
+            return;
+        }
+
+        this.removePicker();
+    this.overlayManager.closeAllManagedOverlays();
+        const portal = new ComponentPortal(UnitStateDropdownComponent, null, this.injector);
+        const { componentRef } = this.overlayManager.createManagedOverlay(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY, el as unknown as HTMLElement, portal, {
+            hasBackdrop: false,
+            panelClass: 'unit-state-dropdown-overlay-panel',
+            closeOnOutsideClick: true,
+            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            positions: [
+                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 }
+            ]
+        });
+        const updateChoices = () => {
+            componentRef.setInput('choices', this.unitStateDropdownChoices(el, unit));
+            componentRef.changeDetectorRef.detectChanges();
+        };
+        updateChoices();
+
+        outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(state => {
+            unit.setCondition(state, !unit.getCondition(state));
+            if (componentRef.instance.closeOnSelect()) {
+                this.overlayManager.closeManagedOverlay(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY);
+            } else {
+                updateChoices();
+            }
+        });
+    }
+
+    private unitStateDropdownChoices(el: SVGElement, unit: CBTForceUnit): UnitStateDropdownChoice[] {
+        return unit.rules.conditionControls
+            .filter(state => state.placement === 'menu')
+            .map(state => ({
+                key: state.key,
+                label: state.label,
+                color: this.unitStateColor(el, state.key, state.color),
+                active: unit.getCondition(state.key),
+            }));
+    }
+
+    private unitStateColor(el: SVGElement, state: string, fallback: string): string {
+        return el.ownerSVGElement?.querySelector<SVGElement>(`.unitConditionBanner[state="${state}"]`)?.getAttribute('state-color') ?? fallback;
+    }
+
+    private setupLocationConditionInteractions(svg: SVGSVGElement, signal: AbortSignal) {
+        const unit = this.unit();
+        if (!unit || unit.rules.locationConditionControls.length === 0) return;
+
+        svg.querySelectorAll<SVGElement>('.locationConditionButton, .locationConditionText').forEach(el => {
+            const loc = el.getAttribute('loc');
+            if (!loc) return;
+            this.addSvgTapHandler(el, () => {
+                const unit = this.unit();
+                const clickTarget = this.state.clickTarget;
+                if (!unit || !clickTarget || (clickTarget !== el && !el.contains(clickTarget))) return;
+                this.showLocationConditionsDropdown(el, unit, loc);
+            }, signal);
+        });
+    }
+
+    private showLocationConditionsDropdown(el: SVGElement, unit: CBTForceUnit, loc: string): void {
+        if (this.overlayManager.has(SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY)) {
+            this.overlayManager.closeManagedOverlay(SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY);
+            return;
+        }
+
+        this.removePicker();
+    this.overlayManager.closeAllManagedOverlays();
+        const portal = new ComponentPortal(UnitStateDropdownComponent, null, this.injector);
+        const { componentRef } = this.overlayManager.createManagedOverlay(SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY, el as unknown as HTMLElement, portal, {
+            hasBackdrop: false,
+            panelClass: 'unit-state-dropdown-overlay-panel',
+            closeOnOutsideClick: true,
+            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            positions: [
+                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 }
+            ]
+        });
+        componentRef.setInput('closeOnSelect', false);
+        const updateChoices = () => {
+            componentRef.setInput('choices', this.locationConditionDropdownChoices(unit, loc));
+            componentRef.changeDetectorRef.detectChanges();
+        };
+        updateChoices();
+
+        outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(state => {
+            const control = unit.rules.locationConditionControls.find(candidate => candidate.key === state);
+            if (control?.counted) {
+                const value = unit.getLocationConditionValue(loc, state) ?? 0;
+                unit.setLocationConditionValue(loc, state, value > 0 ? undefined : 1);
+            } else {
+                unit.setLocationCondition(loc, state, !unit.getLocationCondition(loc, state));
+            }
+            updateChoices();
+        });
+
+        outputToObservable(componentRef.instance.incremented).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(state => {
+            const value = unit.getLocationConditionValue(loc, state) ?? 0;
+            unit.setLocationConditionValue(loc, state, value + 1);
+            updateChoices();
+        });
+
+        outputToObservable(componentRef.instance.decremented).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(state => {
+            const value = unit.getLocationConditionValue(loc, state) ?? 0;
+            unit.setLocationConditionValue(loc, state, value - 1);
+            updateChoices();
+        });
+    }
+
+    private locationConditionDropdownChoices(unit: CBTForceUnit, loc: string): UnitStateDropdownChoice[] {
+        return unit.rules.locationConditionControls
+            .filter(state => state.key !== 'blown-off' || !TORSO_LOCATIONS.has(loc))
+            .map(state => {
+            const value = unit.getLocationConditionValue(loc, state.key) ?? 0;
+            return {
+                key: state.key,
+                label: state.label,
+                color: state.color,
+                active: state.counted ? value > 0 : unit.getLocationCondition(loc, state.key),
+                counted: state.counted,
+                value: state.counted ? value : undefined,
+            };
+        });
+    }
+
     private openEquipmentDialog(unit: CBTForceUnit, initialTab: EquipmentDialogTab): void {
         this.removePicker();
         this.overlayManager.closeAllManagedOverlays();
         const unitList = this.pageViewerState.forceUnits().length > 0 ? this.pageViewerState.forceUnits() : [unit];
-        const context: EquipmentDialogContext = {
-            toastService: this.toastService,
-            dialogsService: this.dialogsService,
-            dataService: this.dataService,
-            registry: this.equipmentRegistryService.getRegistry()
-        };
+        const context = this.equipmentDialogContext();
         this.pageViewerState.beginInventoryDialog();
         const ref = this.dialogsService.createDialog<void>(EquipmentDialogComponent, {
             data: {
@@ -1616,6 +1776,67 @@ export class SvgInteractionService {
         });
     }
 
+    private setupCrewStateInteractions(svg: SVGSVGElement, signal: AbortSignal) {
+        svg.querySelectorAll<SVGElement>('.crewStateButton').forEach(el => {
+            this.addSvgTapHandler(el, (event: PointerEvent) => {
+                const unit = this.unit();
+                const clickTarget = this.state.clickTarget;
+                if (!unit || !clickTarget || (clickTarget !== el && !el.contains(clickTarget))) return;
+                this.showCrewStateDropdown(el, unit);
+            }, signal);
+        });
+    }
+
+    private showCrewStateDropdown(el: SVGElement, unit: CBTForceUnit): void {
+        if (this.overlayManager.has(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY)) {
+            this.overlayManager.closeManagedOverlay(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY);
+            return;
+        }
+
+        this.removePicker();
+        this.overlayManager.closeAllManagedOverlays();
+        const crewId = Number(el.getAttribute('crewId') || 0);
+        const portal = new ComponentPortal(UnitStateDropdownComponent, null, this.injector);
+        const { componentRef } = this.overlayManager.createManagedOverlay(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY, el as unknown as HTMLElement, portal, {
+            hasBackdrop: false,
+            panelClass: 'unit-state-dropdown-overlay-panel',
+            closeOnOutsideClick: true,
+            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            positions: [
+                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 }
+            ]
+        });
+        const updateChoices = () => {
+            componentRef.setInput('choices', this.crewStateDropdownChoices(unit, crewId));
+            componentRef.changeDetectorRef.detectChanges();
+        };
+        updateChoices();
+
+        outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(state => {
+            const crewMember = unit.getCrewMember(crewId);
+            const selectedState = state as CrewStateControlKey;
+            crewMember.setState(crewMember.getState() === selectedState ? 'healthy' : selectedState);
+            if (componentRef.instance.closeOnSelect()) {
+                this.overlayManager.closeManagedOverlay(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY);
+            } else {
+                updateChoices();
+            }
+        });
+    }
+
+    private crewStateDropdownChoices(unit: CBTForceUnit, crewId: number): UnitStateDropdownChoice[] {
+        const currentState = unit.getCrewMember(crewId).getState();
+        return unit.rules.crewStateControls.map(state => ({
+            key: state.key,
+            label: state.label,
+            color: state.color,
+            active: currentState === state.key,
+        }));
+    }
+
     private heatCells(svg: SVGSVGElement): HeatCell[] {
         return Array.from(svg.querySelectorAll<SVGElement>('#heatScale rect.heat[heat]'))
             .map(el => ({ el, value: Number(el.getAttribute('heat')) }))
@@ -1735,6 +1956,8 @@ export class SvgInteractionService {
         selected: PickerValue | null;
         style?: ChoicePickerStyle;
         suggestedStyle?: ChoicePickerStyle;
+        horizontal?: boolean;
+        align?: 'topleft' | 'left' | 'center' | 'top';
         targetType?: PickerTargetType;
         onPick: (val: PickerChoice) => void;
         onCancel: () => void;
@@ -1773,6 +1996,8 @@ export class SvgInteractionService {
                 y: opts.position?.y ?? (rect.top + rect.height / 2) 
             };
         }
+        horizontal = opts.horizontal ?? horizontal;
+        align = opts.align ?? align;
 
         this.pickerRef = this.pickerFactory.createChoicePicker({
             values: opts.values,
@@ -1884,7 +2109,7 @@ export class SvgInteractionService {
         this.currentHighlightedElement = null;
         this.state.clickTarget = null;
         this.state.heatMarkerData.set(null);
-        this.overlayManager.closeManagedOverlay(SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY);
+        this.overlayManager.closeAllManagedOverlays();
         this.unit.set(null);
     }
 }

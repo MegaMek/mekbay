@@ -50,7 +50,7 @@ export abstract class ToggleHandler extends EquipmentInteractionHandler {
             {
                 label: currentState === 'enabled' ? this.enabledLabel : this.disabledLabel,
                 value: nextState,
-                disabled: equipment.destroyed,
+                disabled: equipment.isUnavailable(),
                 active: currentState === 'enabled',
                 displayType: 'toggle',
             },

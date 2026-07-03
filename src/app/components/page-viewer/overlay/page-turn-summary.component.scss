@@ -50,10 +50,11 @@
     &.important {
         font-size: 1.1em;
         min-height: 28px;
+        border-color: #aaa;
     }
 
     &.heat {
-        border-color: #f00;
+        border-color: #a00;
     }
 
     &.warning {
@@ -68,9 +69,15 @@
         border-color: #f00;
     }
 
+    &.heat,
     .psr-modifiers & {
         min-height: auto;
         padding: 1px 4px;
+    }
+
+    &.totalDefense {
+        border-color: var(--primary-focus-color-highlight);
+        background-color: #227;
     }
 }
 
@@ -111,6 +118,7 @@
         justify-content: space-between;
         align-items: center;
         gap: 4px;
+
         &.wrap {
             flex-wrap: wrap;
             
@@ -118,6 +126,7 @@
                 flex: 1 1 auto;
             };
         }
+
         &.grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
@@ -130,6 +139,15 @@
                 box-sizing: border-box;
             };
         }
+
+        &.has-tooltip {
+            cursor: help;
+
+            .caption {
+                text-decoration: underline dotted #999;
+            }
+        }
+
     }
 
     .bt-button {
@@ -192,8 +210,7 @@
         gap: 0px;
     }
     
-    &.psr-modifiers,
-    &.gunnery-modifiers {
+    &.psr-modifiers {
         gap: 0px;
         text-wrap: auto;
 

@@ -213,6 +213,12 @@ hr {
     backdrop-filter: blur(5px);
 }
 
+.gradient-frame {
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(0, 0, 0, 0.16));
+}
+
 .modal-btn {
     padding: 8px 36px;
     font-size: 1.1em;
@@ -281,6 +287,21 @@ hr {
     padding: 1px 4px;
     line-height: 1.2;
     cursor: pointer;
+}
+
+.custom-unit-badge {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    background: var(--accent-color);
+    color: var(--background-color);
+    font-size: 0.5em;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 0.125em 0.4em;
+    line-height: 1.35;
+    white-space: nowrap;
 }
 
 .framed-borders {
@@ -477,7 +498,7 @@ hr {
         linear-gradient(#666, #666),
         linear-gradient(#666, #666),
         linear-gradient(#666, #666);
-    background-size: 2px 2px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px;
+    background-size: 12px 12px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px;
     background-position: center, top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
 
     &:hover {
@@ -492,6 +513,7 @@ hr {
             linear-gradient(white, white),
             linear-gradient(white, white),
             linear-gradient(white, white);
+        background-size: 12px 12px, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
     }
 
     &:focus,
@@ -508,8 +530,7 @@ hr {
             linear-gradient(white, white),
             linear-gradient(white, white),
             linear-gradient(white, white);
-        background-size: 2px 2px, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
-        background-position: center, top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+            background-size: 12px 12px, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
     }
 
     &:checked {
@@ -525,8 +546,6 @@ hr {
             linear-gradient(var(--bt-yellow), var(--bt-yellow));
         background-repeat: no-repeat;
         background-origin: border-box;
-        background-size: 12px 12px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px;
-        background-position: center, top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
     }
 
     &:disabled,
@@ -1722,9 +1741,32 @@ hr.divider {
         fill: var(--damage-color) !important;
     }
 
-    .detached,
+    .flooded,
+    .flooded>path,
+    .flooded path {
+        fill: #66f;
+    }
+
+    .unitLocation.disabledLocation {
+        fill: silver !important;
+    }
+
+    .unitLocation.flooded {
+        fill: #66f !important;
+    }
+
+    .pip.flooded {
+        stroke: #00d;
+    }
+
+    .critGroup.flooded text {
+        fill: #00d !important;
+        pointer-events: none;
+    }
+
+    path.detached,
     .detached>path {
-        fill: gray !important;
+        fill: #888 !important;
         pointer-events: none;
     }
 
@@ -1733,13 +1775,47 @@ hr.divider {
     }
 
     .detached path {
-        fill: gray !important;
+        fill: #888 !important;
         pointer-events: none;
     }
 
-    .critGroup.detached text {
-        fill: silver !important;
+    .critGroup.detached text.locationConditionText {
+        fill: #888;
+    }
+
+    .critGroup.detached text:not(.locationConditionText) {
+        fill: #888 !important;
         pointer-events: none;
+    }
+
+
+
+    .critGroup.flooded .critSlot-bg-rect {
+        fill: #66f;
+    }
+
+    .critGroup.detached .critSlot text,
+    .critGroup.flooded .critSlot text,
+    .critGroup.disabledLocation .critSlot text {
+        text-decoration: line-through;
+    }
+
+    .critGroup.flooded,
+    .critGroup.detached,
+    .critGroup.disabledLocation,
+    .critGroup.flooded .locationConditionButton,
+    .critGroup.detached .locationConditionButton,
+    .critGroup.disabledLocation .locationConditionButton,
+    .critGroup.flooded .locationConditionText,
+    .critGroup.detached .locationConditionText,
+    .critGroup.disabledLocation .locationConditionText {
+        pointer-events: all;
+    }
+
+    .critGroup.flooded .locationConditionButton text,
+    .critGroup.detached .locationConditionButton text,
+    .critGroup.disabledLocation .locationConditionButton text {
+        fill: inherit !important;
     }
 
     .pip {
@@ -1807,14 +1883,22 @@ hr.divider {
             }
 
             &.willDamage .critSlot-bg-rect {
-                fill: #f669;
+                fill: #f669 !important;
 
                 &:hover {
-                    fill: #f999;
+                    fill: #f999 !important;
                 }
             }
 
 
+        }
+
+        .critGroup.flooded .critSlot-bg-rect:hover {
+            fill: #99f;
+        }
+
+        .critGroup.disabledLocation .critSlot-bg-rect:hover {
+            fill: #999;
         }
 
 
@@ -1940,6 +2024,57 @@ hr.divider {
                     fill: #03a9f4 !important;
                 }
             }
+        }
+
+        .unitConditionButton {
+            cursor: pointer;
+
+            text {
+                pointer-events: none;
+            }
+
+            &.active rect {
+                fill: var(--unit-condition-active-color, #666) !important;
+            }
+
+            &.active text {
+                fill: #fff !important;
+            }
+        }
+        
+        .locConditionButton {
+            cursor: pointer;
+
+            text {
+                pointer-events: none;
+            }
+
+        }
+
+        .unitConditionBanner {
+            pointer-events: none;
+            opacity: 0;
+
+            .unitConditionBannerRect {
+                transform-box: fill-box;
+                transform-origin: left center;
+                transform: scaleX(0);
+                fill-opacity: 0.9;
+                transition: transform 90ms ease-out;
+            }
+
+            &.visible {
+                opacity: 1;
+
+                .unitConditionBannerRect {
+                    transform: scaleX(1);
+                }
+            }
+        }
+
+        .crewStateBanner .unitConditionBannerRect {
+            transform-origin: right center;
+            transition: none;
         }
 
         .pip.disabled {
@@ -2248,56 +2383,62 @@ hr.divider {
         color: var(--svg-fg-color);
         fill: var(--svg-fg-color);
 
-        [fill="#000000" i],
-        [fill="#000" i],
-        [fill="black" i],
-        [style*="fill:#000000" i],
-        [style*="fill:black" i],
-        [style*="fill: #000000" i],
-        [style*="fill: black" i],
-        [style*="fill:#000" i],
-        [style*="fill: #000" i],
-        [style*="fill: rgb(0, 0, 0)" i] {
-            fill: var(--svg-fg-color) !important;
-        }
+        :where(:not(mask):not(mask *):not(.no-autocolor):not(.no-autocolor *)) {
+            &[fill="#000000" i],
+            &[fill="#000" i],
+            &[fill="black" i],
+            &[style*="fill:#000000" i],
+            &[style*="fill:black" i],
+            &[style*="fill: #000000" i],
+            &[style*="fill: black" i],
+            &[style*="fill:#000" i],
+            &[style*="fill: #000" i],
+            &[style*="fill:rgb(0" i],
+            &[style*="fill: rgb(0" i] {
+                fill: var(--svg-fg-color) !important;
+            }
 
-        [stroke="#000000" i],
-        [stroke="#000" i],
-        [stroke="black" i],
-        [style*="stroke:#000000" i],
-        [style*="stroke:black" i],
-        [style*="stroke: #000000" i],
-        [style*="stroke: black" i],
-        [style*="stroke:#000" i],
-        [style*="stroke: #000" i],
-        [style*="stroke: rgb(0, 0, 0)" i] {
-            stroke: var(--svg-fg-color) !important;
-        }
+            &[stroke="#000000" i],
+            &[stroke="#000" i],
+            &[stroke="black" i],
+            &[style*="stroke:#000000" i],
+            &[style*="stroke:black" i],
+            &[style*="stroke: #000000" i],
+            &[style*="stroke: black" i],
+            &[style*="stroke:#000" i],
+            &[style*="stroke: #000" i],
+            &[style*="stroke:rgb(0" i],
+            &[style*="stroke: rgb(0" i] {
+                stroke: var(--svg-fg-color) !important;
+            }
 
-        [fill="#FFFFFF" i],
-        [fill="#FFF" i],
-        [fill="white" i],
-        [style*="fill:#FFFFFF" i],
-        [style*="fill:white" i],
-        [style*="fill: #FFFFFF" i],
-        [style*="fill: white" i],
-        [style*="fill:#FFF" i],
-        [style*="fill: #FFF" i],
-        [style*="fill: rgb(255, 255, 255)" i] {
-            fill: var(--svg-fg-color-inv) !important;
-        }
+            &[fill="#FFFFFF" i],
+            &[fill="#FFF" i],
+            &[fill="white" i],
+            &[style*="fill:#FFFFFF" i],
+            &[style*="fill:white" i],
+            &[style*="fill: #FFFFFF" i],
+            &[style*="fill: white" i],
+            &[style*="fill:#FFF" i],
+            &[style*="fill: #FFF" i],
+            &[style*="fill:rgb(255" i],
+            &[style*="fill: rgb(255" i] {
+                fill: var(--svg-fg-color-inv) !important;
+            }
 
-        [stroke="#FFFFFF" i],
-        [stroke="#FFF" i],
-        [stroke="white" i],
-        [style*="stroke:#FFFFFF" i],
-        [style*="stroke:white" i],
-        [style*="stroke: #FFFFFF" i],
-        [style*="stroke: white" i],
-        [style*="stroke:#FFF" i],
-        [style*="stroke: #FFF" i],
-        [style*="stroke: rgb(255, 255, 255)" i] {
-            stroke: var(--svg-fg-color-inv) !important;
+            &[stroke="#FFFFFF" i],
+            &[stroke="#FFF" i],
+            &[stroke="white" i],
+            &[style*="stroke:#FFFFFF" i],
+            &[style*="stroke:white" i],
+            &[style*="stroke: #FFFFFF" i],
+            &[style*="stroke: white" i],
+            &[style*="stroke:#FFF" i],
+            &[style*="stroke: #FFF" i],
+            &[style*="stroke:rgb(255" i],
+            &[style*="stroke: rgb(255" i] {
+                stroke: var(--svg-fg-color-inv) !important;
+            }
         }
 
         [fill="#c7c8ca" i],
@@ -2374,11 +2515,41 @@ hr.divider {
             pointer-events: none;
         }
 
+        .disabledLocation,
+        .disabledLocation>path,
+        .disabledLocation path {
+            fill: gray !important;
+        }
+
         .critGroup.detached text {
-            fill: #3f3f3f !important;
+            fill: rgb(63, 63, 63) !important;
+        }
+
+        .critGroup.disabledLocation text {
+            fill: rgb(63, 63, 63) !important;
+        }
+
+        .critGroup.flooded .critSlot-bg-rect {
+            fill: #006;
+        }
+
+        .critGroup.flooded text {
+            fill: #99f !important;
+        }
+
+        .unitLocation.disabledLocation {
+            fill: gray !important;
+        }
+
+        .unitLocation.flooded {
+            fill: #006 !important;
         }
 
         .pip.detached {
+            stroke: gray;
+        }
+
+        .pip.disabledLocation {
             stroke: gray;
         }
 
@@ -2474,7 +2645,12 @@ hr.divider {
             }
         }
 
-        .hot {
+        rect.heat {
+            fill: #000;
+            stroke: #fff;      
+        }
+
+        rect.heat.hot {
             &.heat0 {
                 fill: #000000 !important;
             }
@@ -2597,6 +2773,21 @@ hr.divider {
 
             &.heat30 {
                 fill: #FF0000 !important;
+            }
+        }
+
+        .locationNarcBanner > rect {
+            stroke: #fff !important;
+            fill: #f00 !important;
+        }
+
+        .locationNarcBanner > text {
+            fill: #fff !important;
+        }
+
+        .unitConditionButton {
+            .conditionText {
+                fill: #fff !important;
             }
         }
     }

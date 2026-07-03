@@ -51,7 +51,11 @@ export class WeaponAmmoHandler extends EquipmentInteractionHandler {
                         ...context,
                         registry: {
                             getChoices: () => [],
-                            handleSelection: () => false
+                            handleSelection: () => false,
+                            afterInventoryControlFire: () => undefined,
+                            getLinkedEquipmentHitModifier: () => 0,
+                            canPerformAimedShot: () => true,
+                            inventoryControlRules: () => ({})
                         }
                     },
                     initialTab: 'ammo'

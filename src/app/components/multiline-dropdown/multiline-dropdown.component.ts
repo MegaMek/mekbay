@@ -34,6 +34,7 @@
 import { ChangeDetectionStrategy, Component, computed, type ComponentRef, ElementRef, inject, Injector, input, output, signal, type OnDestroy, viewChild } from '@angular/core';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
+import { DropdownPointerActivationGuard, scrollActiveOptionIntoView } from '../../utils/dropdown-interaction.utils';
 
 /*
  * Author: Drake
@@ -45,6 +46,12 @@ export interface MultilineDropdownOption {
     modifierLabel?: string | null;
     disabled?: boolean;
     destroyed?: boolean;
+}
+
+interface MultilineDropdownPointerHoverEvent {
+    index: number;
+    clientX: number;
+    clientY: number;
 }
 
 @Component({
@@ -69,12 +76,14 @@ export interface MultilineDropdownOption {
                     type="button"
                     role="option"
                     [id]="optionId(optionIndex)"
-                    [class.active]="optionIndex === activeIndex()"
+                    [class.active]="option.value === value()"
+                    [class.keyboard-active]="optionIndex === activeIndex()"
                     [disabled]="option.disabled"
                     [class.destroyed]="option.destroyed"
                     [attr.aria-selected]="option.value === value()"
                     (click)="selectOption(option)"
-                    (mouseenter)="hovered.emit(optionIndex)"
+                    (pointerenter)="onOptionPointerHover(optionIndex, $event)"
+                    (pointermove)="onOptionPointerHover(optionIndex, $event)"
                 >
                     <span class="multiline-dropdown-option-label">{{ option.label }}</span>
                     @if (option.modifierLabel; as modifierLabel) {
@@ -120,6 +129,10 @@ export interface MultilineDropdownOption {
         }
 
         .multiline-dropdown-option:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .multiline-dropdown-option.keyboard-active:not(.active):not(:disabled) {
             background: rgba(255, 255, 255, 0.1);
         }
 
@@ -177,7 +190,7 @@ class MultilineDropdownPanelComponent {
     readonly fontSize = input('');
 
     readonly selected = output<MultilineDropdownOption>();
-    readonly hovered = output<number>();
+    readonly pointerHovered = output<MultilineDropdownPointerHoverEvent>();
 
     optionId(index: number): string {
         return `${this.optionsId()}-${index}`;
@@ -186,6 +199,14 @@ class MultilineDropdownPanelComponent {
     selectOption(option: MultilineDropdownOption) {
         if (option.disabled) return;
         this.selected.emit(option);
+    }
+
+    onOptionPointerHover(index: number, event: PointerEvent): void {
+        this.pointerHovered.emit({
+            index,
+            clientX: event.clientX,
+            clientY: event.clientY,
+        });
     }
 }
 
@@ -316,6 +337,7 @@ export class MultilineDropdownComponent implements OnDestroy {
     private static nextId = 0;
     private readonly overlayManager = inject(OverlayManagerService);
     private readonly injector = inject(Injector);
+    private readonly pointerActivationGuard = new DropdownPointerActivationGuard();
     private readonly instanceId = `multilineDropdown-${MultilineDropdownComponent.nextId++}`;
     private readonly overlayKey = `${this.instanceId}-overlay`;
     private readonly triggerEl = viewChild<ElementRef<HTMLButtonElement>>('triggerEl');
@@ -353,6 +375,7 @@ export class MultilineDropdownComponent implements OnDestroy {
 
     openDropdown() {
         if (this.open()) return;
+        this.pointerActivationGuard.suppress();
         this.activeIndex.set(this.selectedIndex());
         this.open.set(true);
         this.attachOverlay();
@@ -373,14 +396,17 @@ export class MultilineDropdownComponent implements OnDestroy {
             case 'Home':
                 event.preventDefault();
                 this.openDropdown();
-                this.activeIndex.set(this.firstEnabledIndex());
-                this.syncPanelInputs();
+                this.activateKeyboardOption(this.firstEnabledIndex());
                 break;
             case 'End':
                 event.preventDefault();
                 this.openDropdown();
-                this.activeIndex.set(this.lastEnabledIndex());
-                this.syncPanelInputs();
+                this.activateKeyboardOption(this.lastEnabledIndex());
+                break;
+            case 'Tab':
+                if (!this.open()) break;
+                event.preventDefault();
+                this.moveActiveOption(event.shiftKey ? -1 : 1);
                 break;
             case 'Enter':
             case ' ':
@@ -398,10 +424,15 @@ export class MultilineDropdownComponent implements OnDestroy {
         }
     }
 
-    setActiveIndex(index: number) {
+    activatePointerOption(event: MultilineDropdownPointerHoverEvent) {
+        if (this.pointerActivationGuard.shouldIgnore(event)) return;
+
+        const index = event.index;
         if (this.options()[index]?.disabled) return;
+        if (index === this.activeIndex()) return;
+
         this.activeIndex.set(index);
-        this.syncPanelInputs();
+        this.syncPanelInputs(false);
     }
 
     selectOption(option: MultilineDropdownOption) {
@@ -443,7 +474,7 @@ export class MultilineDropdownComponent implements OnDestroy {
         this.panelRef = componentRef;
         this.syncPanelInputs();
         componentRef.instance.selected.subscribe(option => this.selectOption(option));
-        componentRef.instance.hovered.subscribe(index => this.setActiveIndex(index));
+        componentRef.instance.pointerHovered.subscribe(event => this.activatePointerOption(event));
         this.closedSubscription = closed.subscribe(() => {
             this.open.set(false);
             this.panelRef = null;
@@ -451,7 +482,7 @@ export class MultilineDropdownComponent implements OnDestroy {
         });
     }
 
-    private syncPanelInputs() {
+    private syncPanelInputs(scrollActiveIntoView = true) {
         const panelRef = this.panelRef;
         if (!panelRef) return;
         panelRef.setInput('options', this.options());
@@ -462,7 +493,9 @@ export class MultilineDropdownComponent implements OnDestroy {
         panelRef.setInput('activeIndex', this.activeIndex());
         panelRef.setInput('fontSize', this.triggerFontSize());
         panelRef.changeDetectorRef.detectChanges();
-        this.scrollActiveOptionIntoView(panelRef.location.nativeElement as HTMLElement);
+        if (scrollActiveIntoView) {
+            this.scrollActiveOptionIntoView(panelRef.location.nativeElement as HTMLElement);
+        }
     }
 
     private triggerFontSize(): string {
@@ -471,21 +504,7 @@ export class MultilineDropdownComponent implements OnDestroy {
     }
 
     private scrollActiveOptionIntoView(panelHost: HTMLElement) {
-        const scrollContainer = panelHost.querySelector('[data-scroll-container]') as HTMLElement | null;
-        const activeOption = panelHost.querySelector('.multiline-dropdown-option.active') as HTMLElement | null;
-        if (!scrollContainer || !activeOption) return;
-
-        const visibleTop = scrollContainer.scrollTop;
-        const visibleBottom = visibleTop + scrollContainer.clientHeight;
-        const optionTop = activeOption.offsetTop;
-        const optionBottom = optionTop + activeOption.offsetHeight;
-        const maxScrollTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
-
-        if (optionTop < visibleTop) {
-            scrollContainer.scrollTop = Math.max(0, optionTop);
-        } else if (optionBottom > visibleBottom) {
-            scrollContainer.scrollTop = Math.min(maxScrollTop, optionBottom - scrollContainer.clientHeight);
-        }
+        scrollActiveOptionIntoView(panelHost, '[data-scroll-container]', '.multiline-dropdown-option.keyboard-active');
     }
 
     private selectedIndex(): number {
@@ -501,11 +520,19 @@ export class MultilineDropdownComponent implements OnDestroy {
         for (let i = 0; i < options.length; i++) {
             nextIndex = (nextIndex + delta + options.length) % options.length;
             if (!options[nextIndex].disabled) {
-                this.activeIndex.set(nextIndex);
-                this.syncPanelInputs();
+                this.activateKeyboardOption(nextIndex);
                 return;
             }
         }
+    }
+
+    private activateKeyboardOption(index: number): void {
+        const options = this.options();
+        if (options.length === 0) return;
+
+        this.pointerActivationGuard.suppress();
+        this.activeIndex.set(Math.max(0, Math.min(index, options.length - 1)));
+        this.syncPanelInputs();
     }
 
     private selectActiveOption() {

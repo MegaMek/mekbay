@@ -48,6 +48,10 @@ import {
  */
 export class AeroRules extends UnitTypeRulesBase {
 
+    protected override supportsDroneOperatingSystem(): boolean {
+        return true;
+    }
+
     private readonly heatMgmt: HeatManagement;
 
     constructor(unit: CBTForceUnit) {
@@ -122,7 +126,7 @@ export class AeroRules extends UnitTypeRulesBase {
     /**
      * Aero heat dissipation: engine HS - turned-off.
      */
-    readonly heatDissipation = computed<HeatDissipationState | null>(() => {
+    override readonly heatDissipation = computed<HeatDissipationState | null>(() => {
         return this.heatMgmt.baseDissipation();
     });
 }

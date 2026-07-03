@@ -201,7 +201,7 @@ export class UnitInitializerService {
         const criticalSlots: CriticalSlot[] = unit.getCritSlots().filter(crit => !crit.loc || crit.slot === undefined);
         const critSlotMatrix = unit.getCritSlotsAsMatrix();
         const equipmentList = this.getDataService().getEquipments();
-        let newSlotsFound = false;
+        let slotsChanged = false;
 
         critSlotsEl.forEach(critSlotEl => {
             const id = critSlotEl.getAttribute('uid');
@@ -220,13 +220,14 @@ export class UnitInitializerService {
                     console.warn(`Critical slot ID mismatch for loc ${loc} slot ${slot}: expected ${critSlot.id}, found ${id}`);
                 }
                 critSlot.id = id;
-                if (critSlot.name) {
-                    critSlot.eq = equipmentList[critSlot.name];
-                }
+                const equipmentName = critSlot.name || name;
+                critSlot.name = equipmentName;
+                critSlot.eq = equipmentName ? equipmentList[equipmentName] : undefined;
                 if (armored) {
                     critSlot.armored = true; // in case it was added later
                 }
                 criticalSlots.push(critSlot);
+                slotsChanged = true;
                 return;
             }
             const critSlot: CriticalSlot = {
@@ -246,10 +247,10 @@ export class UnitInitializerService {
                 critSlot.armored = true;
             }
             criticalSlots.push(critSlot);
-            newSlotsFound = true;
+            slotsChanged = true;
         });
 
-        if (newSlotsFound) {
+        if (slotsChanged) {
             unit.setCritSlots(criticalSlots, true);
         }
     }
@@ -334,13 +335,11 @@ export class UnitInitializerService {
             }
             // We remove the buttons in inventory for weapon enhancements (except RISC LASER)
             if (eq && eq.flags.has('F_WEAPON_ENHANCEMENT')) {
-                if (!eq.flags.has('F_RISC_LASER_PULSE_MODULE')) {
-                    svg.querySelector(`.inventoryEntryButton[inventory-id="${id}"]`)?.remove();
-                    svg.querySelector(`.shrButton[inventory-id="${id}"]`)?.remove();
-                    svg.querySelector(`.medButton[inventory-id="${id}"]`)?.remove();
-                    svg.querySelector(`.lngButton[inventory-id="${id}"]`)?.remove();
-                    svg.querySelector(`.extButton[inventory-id="${id}"]`)?.remove();
-                }
+                svg.querySelector(`.inventoryEntryButton[inventory-id="${id}"]`)?.remove();
+                svg.querySelector(`.shrButton[inventory-id="${id}"]`)?.remove();
+                svg.querySelector(`.medButton[inventory-id="${id}"]`)?.remove();
+                svg.querySelector(`.lngButton[inventory-id="${id}"]`)?.remove();
+                svg.querySelector(`.extButton[inventory-id="${id}"]`)?.remove();
             }
             const baseHitModClean = (baseHitMod || '').replace('−', '-');
             let inventoryEntry: MountedEquipment;
@@ -416,8 +415,8 @@ export class UnitInitializerService {
                     physical: false,
                     linkedWith: null,
                     parent: null,
-                    destroyed: existingEntry?.destroyed ?? false,
-                    destroying: existingEntry?.destroying,
+                    destroyed: existingEntry?.committedDestroyedState() ?? false,
+                    destroying: existingEntry?.isDestroying(),
                     ammo: existingEntry?.ammo,
                     totalAmmo: existingEntry?.totalAmmo ?? originalTotalAmmo,
                     consumed: existingEntry?.consumed ?? 0,
@@ -453,8 +452,8 @@ export class UnitInitializerService {
                     physical: false,
                     linkedWith: null,
                     parent: null,
-                    destroyed: existingEntry?.destroyed ?? false,
-                    destroying: existingEntry?.destroying,
+                    destroyed: existingEntry?.committedDestroyedState() ?? false,
+                    destroying: existingEntry?.isDestroying(),
                     states: existingEntry?.states ?? new Map<string, string>(),
                 }));
             }
