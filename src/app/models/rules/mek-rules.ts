@@ -695,7 +695,7 @@ export class MekRules extends UnitTypeRulesBase {
             preExisting -= 2; // Four-legged unit with all legs intact gets -2 modifier
             modifiers.push({
                 pilotCheck: -2,
-                reason: "All legs intact"
+                reason: "All legs are intact"
             });
         }
         // Calculate current turn modifiers
