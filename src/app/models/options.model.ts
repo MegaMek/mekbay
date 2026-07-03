@@ -87,6 +87,11 @@ export interface Options {
     printMargin: 'none' | 'browserDefined';
     performanceMode: boolean;
 
+    // Additional user-supplied unit database servers (base URLs). db.mekbay.com is always
+    // the primary source; these servers may only contribute additional (new-named) units,
+    // their record-sheet SVGs, and their unit fluff art.
+    unitServers: string[];
+
     // Force Generator
     forceGenLastBVMin: number;
     forceGenLastBVMax: number;

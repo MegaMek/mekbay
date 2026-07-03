@@ -352,6 +352,27 @@
   flex-wrap: wrap;
 }
 
+.unit-servers-list {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+
+.unit-server-row .unit-server-url {
+  word-break: break-all;
+  font-family: monospace;
+  font-size: 0.8rem;
+}
+
+.unit-server-add-row .bt-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.unit-server-error p {
+  color: var(--text-color-danger, #e06c6c);
+}
+
 .account-summary-label {
   color: var(--text-color-secondary);
   font-size: 0.8rem;

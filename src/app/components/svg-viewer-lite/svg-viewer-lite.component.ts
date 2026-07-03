@@ -4,7 +4,7 @@ import type { Unit } from '../../models/units.model';
 import { SheetService } from '../../services/sheet.service';
 import { OptionsService } from '../../services/options.service';
 import { LoggerService } from '../../services/logger.service';
-import { REMOTE_HOST } from '../../models/common.model';
+import { getUnitServerHost } from '../../models/common.model';
 import { SvgExportUtil } from '../../utils/svg-export.util';
 
 type Point = { x: number; y: number };
@@ -79,7 +79,7 @@ export class SvgViewerLiteComponent {
                 try {
                     const svgs: SVGSVGElement[] = [];
                     for (const sheetName of u.sheets) {
-                        const svg = await this.sheetService.getSheet(sheetName);
+                        const svg = await this.sheetService.getSheet(sheetName, u.serverHost);
                         if (!this.isCurrentSheetLoad(loadGeneration)) return;
 
                         const cloned = svg.cloneNode(true) as SVGSVGElement;
@@ -102,7 +102,8 @@ export class SvgViewerLiteComponent {
         effect(() => {
             if (!this.svgsAttached()) return;
             const centerContent = this.optionsService.options().recordSheetCenterPanelContent;
-            const fluffImage = this.unit()?.fluff?.img;
+            const u = this.unit();
+            const fluffImage = u?.fluff?.img;
             if (!fluffImage) return; // no fluff image to inject
             if (fluffImage.endsWith('hud.png')) return;
             for (const svg of this.svgs()) {
@@ -110,7 +111,7 @@ export class SvgViewerLiteComponent {
                 if (svg.getElementById('fluffImage')) continue; // already present from the original sheet, we skip
                 if (centerContent === 'fluffImage') {
                     if (svg.getElementById('fluff-image-injected')) return; // already injected, we skip
-                    const fluffImageUrl = `${REMOTE_HOST}/images/fluff/${fluffImage}`;
+                    const fluffImageUrl = `${getUnitServerHost(u)}/images/fluff/${fluffImage}`;
                     this.injectFluffToSvg(svg, fluffImageUrl);
                 } else {
                     svg.getElementById('fluff-image-injected')?.remove();

@@ -123,7 +123,7 @@ export class UnitSvgService {
         }
 
         try {
-            const svg = await this.sheetService.getSheet(this.unit.getUnit().sheets[0]);
+            const svg = await this.sheetService.getSheet(this.unit.getUnit().sheets[0], this.unit.getUnit().serverHost);
 
             // Do basic setup that doesn't require the DOM
             this.initializeSvg(svg);
