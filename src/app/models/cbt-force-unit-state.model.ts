@@ -32,7 +32,7 @@
  */
 
 import { signal, computed } from '@angular/core';
-import { MountedEquipment, type LocationData, type HeatProfile, type SerializedInventory, type CriticalSlot, type SerializedState, type CBTSerializedState, C3_POSITION_SCHEMA, type SerializedCondition } from './force-serialization';
+import { MountedEquipment, type LocationData, type HeatProfile, type SerializedInventory, type CriticalSlot, type SerializedState, type CBTSerializedState, C3_POSITION_SCHEMA, type SerializedCondition, committedConditionData, conditionsForSerialization, conditionsMapFromSerialization } from './force-serialization';
 import { CrewMember } from './crew-member.model';
 import { ForceUnitState } from './force-unit-state.model';
 import { TurnState } from './turn-state.model';
@@ -73,7 +73,9 @@ export class CBTForceUnitState extends ForceUnitState {
 
     hasUnconsolidatedLocations = computed(() => {
         const locations = this.locations();
-        return Object.values(locations).some(loc => (loc.pendingArmor ?? 0) !== 0 || (loc.pendingInternal ?? 0) !== 0);
+        return Object.values(locations).some(loc => (loc.pendingArmor ?? 0) !== 0
+            || (loc.pendingInternal ?? 0) !== 0
+            || this.hasPendingLocationConditions(loc.conditions));
     });
 
     hasUnconsolidatedInventory = computed(() => {
@@ -88,10 +90,11 @@ export class CBTForceUnitState extends ForceUnitState {
             updated[key] = {
                 armor: (loc.armor ?? 0) + (loc.pendingArmor ?? 0),
                 internal: (loc.internal ?? 0) + (loc.pendingInternal ?? 0),
-                conditions: loc.conditions,
+                conditions: this.consolidateLocationConditions(loc.conditions),
             };
         }
         this.locations.set(updated);
+        this.unit.clearNarcFromCommittedPhysicallyDestroyedLocations();
         this.unit.evaluateDestroyed();
         this.unit.setModified();
     }
@@ -104,7 +107,7 @@ export class CBTForceUnitState extends ForceUnitState {
             updated[key] = {
                 armor: loc.armor,
                 internal: loc.internal,
-                conditions: loc.conditions,
+                conditions: this.discardPendingLocationConditions(loc.conditions),
             };
         }
         this.locations.set(updated);
@@ -462,6 +465,32 @@ export class CBTForceUnitState extends ForceUnitState {
         const rightValues = right ?? [];
         return leftValues.length === rightValues.length
             && leftValues.every((value, index) => JSON.stringify(value) === JSON.stringify(rightValues[index]));
+    }
+
+    private hasPendingLocationConditions(conditions: SerializedCondition[] | undefined): boolean {
+        return Array.from(conditionsMapFromSerialization(conditions).values()).some(data => data?.pending === true);
+    }
+
+    private consolidateLocationConditions(conditions: SerializedCondition[] | undefined): SerializedCondition[] | undefined {
+        return this.normalizePendingLocationConditions(conditions, true);
+    }
+
+    private discardPendingLocationConditions(conditions: SerializedCondition[] | undefined): SerializedCondition[] | undefined {
+        return this.normalizePendingLocationConditions(conditions, false);
+    }
+
+    private normalizePendingLocationConditions(conditions: SerializedCondition[] | undefined, commit: boolean): SerializedCondition[] | undefined {
+        const result = conditionsMapFromSerialization(conditions);
+        for (const [key, data] of result) {
+            if (data?.pending !== true) continue;
+            if (commit) {
+                result.set(key, committedConditionData(data));
+            } else {
+                result.delete(key);
+            }
+        }
+        const serialized = conditionsForSerialization(result);
+        return serialized.length > 0 ? serialized : undefined;
     }
 
     /**

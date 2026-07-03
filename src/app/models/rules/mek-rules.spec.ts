@@ -3,7 +3,8 @@ import { TestBed } from '@angular/core/testing';
 import { CBTForce } from '../cbt-force.model';
 import { CBTForceUnit } from '../cbt-force-unit.model';
 import { DEAD_CREW_HIT_THRESHOLD, type CrewMemberState } from '../crew-member.model';
-import type { LocationData } from '../force-serialization';
+import { MountedEquipment, type CriticalSlot, type LocationData } from '../force-serialization';
+import { AmmoEquipment, WeaponEquipment } from '../equipment.model';
 import type { Unit } from '../units.model';
 import { DataService } from '../../services/data.service';
 import { UnitInitializerService } from '../../services/unit-initializer.service';
@@ -22,8 +23,11 @@ let injector: Injector;
 function createRulesHarness(options: {
     crewStates?: Exclude<CrewMemberState, 'dead'>[];
     crewHits?: number[];
+    critSlots?: CriticalSlot[];
     committedDestroyedLocations?: string[];
+    locationState?: Record<string, LocationData>;
     internalLocations?: string[];
+    locationPoints?: number;
     shutdown?: boolean;
     walk?: number;
     run?: number;
@@ -43,8 +47,11 @@ function createCommittedLocationState(committedDestroyedLocations: string[] = []
 function createForceUnitHarness(options: {
     crewStates?: Exclude<CrewMemberState, 'dead'>[];
     crewHits?: number[];
+    critSlots?: CriticalSlot[];
     committedDestroyedLocations?: string[];
+    locationState?: Record<string, LocationData>;
     internalLocations?: string[];
+    locationPoints?: number;
     shutdown?: boolean;
     walk?: number;
     run?: number;
@@ -67,12 +74,16 @@ function createForceUnitHarness(options: {
     const force = new TestCBTForce('Test Force', dataService, unitInitializer, injector);
     const forceUnit = new CBTForceUnit(baseUnit, force, dataService, unitInitializer, injector);
     const internalLocations = options.internalLocations ?? ['LL', 'RL'];
+    const locationPoints = options.locationPoints ?? 1;
     forceUnit.locations = {
-        internal: new Map(internalLocations.map(loc => [loc, { loc, points: 1 }])),
-        armor: new Map(internalLocations.map(loc => [loc, { loc, rear: false, points: 1 }])),
+        internal: new Map(internalLocations.map(loc => [loc, { loc, points: locationPoints }])),
+        armor: new Map(internalLocations.map(loc => [loc, { loc, rear: false, points: locationPoints }])),
     };
 
-    forceUnit.setLocations(createCommittedLocationState(options.committedDestroyedLocations), true);
+    forceUnit.setLocations(options.locationState ?? createCommittedLocationState(options.committedDestroyedLocations), true);
+    if (options.critSlots) {
+        forceUnit.writeCrits(options.critSlots);
+    }
     crewStates.forEach((state, index) => forceUnit.getCrewMember(index).setState(state));
     crewHits.forEach((hits, index) => forceUnit.getCrewMember(index).setHits(hits));
     if (options.shutdown) {
@@ -81,6 +92,32 @@ function createForceUnitHarness(options: {
     forceUnit.isLoaded.set(true);
 
     return forceUnit;
+}
+
+function crit(name: string, destroyed = true): CriticalSlot {
+    return {
+        id: name.toLocaleLowerCase().replace(/\s+/g, '_'),
+        name,
+        destroyed: destroyed ? 1 : undefined,
+    };
+}
+
+function weapon(id: string, damage: string | number | number[], ranges: number[], ammoType: 'NA' | 'AC' = 'NA', rackSize = 0): WeaponEquipment {
+    return new WeaponEquipment({
+        id,
+        name: id,
+        type: 'weapon',
+        weapon: { damage, ranges, ammoType, rackSize },
+    });
+}
+
+function ammo(id: string, ammoType: 'AC', rackSize: number, shots: number): AmmoEquipment {
+    return new AmmoEquipment({
+        id,
+        name: id,
+        type: 'ammo',
+        ammo: { type: ammoType, rackSize, shots },
+    });
 }
 
 describe('MekRules', () => {
@@ -104,6 +141,26 @@ describe('MekRules', () => {
         expect(rules.hasComputedCondition('abandoned')).toBeFalse();
     });
 
+    it('sets Mek movement to zero when all crew are unconscious', () => {
+        const rules = createRulesHarness({ crewStates: ['unconscious'] });
+
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({
+            walk: 0,
+            maxWalk: 0,
+            run: 0,
+            maxRun: 0,
+            jump: 0,
+            UMU: 0,
+            moveImpaired: true,
+            jumpImpaired: true,
+            UMUImpaired: true,
+        }));
+        expect(rules.getMaxDistanceForMoveMode('walk')).toBe(0);
+        expect(rules.getMaxDistanceForMoveMode('run')).toBe(0);
+        expect(rules.getMaxDistanceForMoveMode('jump')).toBe(0);
+        expect(rules.getMaxDistanceForMoveMode('UMU')).toBe(0);
+    });
+
     it('marks Meks abandoned when every crew member is dead or ejected', () => {
         const rules = createRulesHarness({ crewStates: ['healthy', 'ejected'], crewHits: [DEAD_CREW_HIT_THRESHOLD] });
 
@@ -114,6 +171,44 @@ describe('MekRules', () => {
         const rules = createRulesHarness({ crewStates: ['healthy', 'unconscious'], crewHits: [DEAD_CREW_HIT_THRESHOLD] });
 
         expect(rules.hasComputedCondition('abandoned')).toBeFalse();
+    });
+
+    it('marks Meks crippled when the MechWarrior is crippled', () => {
+        const rules = createRulesHarness({ crewHits: [4] });
+
+        expect(rules.hasComputedCondition('crippled')).toBeTrue();
+    });
+
+    it('marks Meks crippled from sensor, gyro, and engine critical damage', () => {
+        expect(createRulesHarness({ critSlots: [crit('Sensor'), crit('Sensor')] }).hasComputedCondition('crippled')).toBeTrue();
+        expect(createRulesHarness({ critSlots: [crit('Gyro'), crit('Engine')] }).hasComputedCondition('crippled')).toBeTrue();
+        expect(createRulesHarness({ critSlots: [crit('Engine'), crit('Engine')] }).hasComputedCondition('crippled')).toBeTrue();
+        expect(createRulesHarness({ critSlots: [crit('Sensor'), crit('Sensor', false)] }).hasComputedCondition('crippled')).toBeFalse();
+    });
+
+    it('marks Meks crippled from side torso destruction and qualifying internal structure damage', () => {
+        expect(createRulesHarness({
+            internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'],
+            committedDestroyedLocations: ['LT'],
+        }).hasComputedCondition('crippled')).toBeTrue();
+
+        expect(createRulesHarness({
+            internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'],
+            locationPoints: 10,
+            locationState: { LA: { internal: 1 }, RA: { internal: 1 }, LL: { internal: 1 } },
+        }).hasComputedCondition('crippled')).toBeTrue();
+
+        expect(createRulesHarness({
+            internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'],
+            locationPoints: 10,
+            locationState: { CT: { internal: 1, armor: 10 }, RT: { internal: 1, armor: 10 } },
+        }).hasComputedCondition('crippled')).toBeTrue();
+
+        expect(createRulesHarness({
+            internalLocations: ['LT', 'RT', 'CT', 'LA', 'RA', 'LL', 'RL'],
+            locationPoints: 10,
+            locationState: { CT: { internal: 1, armor: 0 }, RT: { internal: 1, armor: 10 } },
+        }).hasComputedCondition('crippled')).toBeFalse();
     });
 
     it('marks shutdown Meks immobile', () => {
@@ -135,5 +230,190 @@ describe('MekRules', () => {
 
         expect(forceUnit.isInternalLocCommittedDestroyed('RA')).toBeTrue();
         expect(forceUnit.rules.hasComputedCondition('immobile')).toBeTrue();
+    });
+
+    it('treats adding flooded and blown-off Mek locations as pending until phase commit', () => {
+        const forceUnit = createForceUnitHarness({ internalLocations: ['LL', 'RL'] });
+
+        expect(forceUnit.isInternalLocCommittedDestroyed('LL')).toBeFalse();
+        expect(forceUnit.isArmorLocCommittedDestroyed('LL')).toBeFalse();
+
+        forceUnit.setLocationCondition('LL', 'flooded', true);
+
+        expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeTrue();
+        expect(forceUnit.isInternalLocDestroyed('LL')).toBeTrue();
+        expect(forceUnit.turnState().dirtyPhase()).toBeTrue();
+        expect(forceUnit.serialize().state.locations['LL'].conditions).toEqual([{ key: 'flooded', pending: true }]);
+        expect(forceUnit.isInternalLocCommittedDestroyed('LL')).toBeFalse();
+        expect(forceUnit.isArmorLocCommittedDestroyed('LL')).toBeFalse();
+
+        forceUnit.endPhase();
+
+        expect(forceUnit.isInternalLocCommittedDestroyed('LL')).toBeTrue();
+        expect(forceUnit.isArmorLocCommittedDestroyed('LL')).toBeTrue();
+        expect(forceUnit.serialize().state.locations['LL'].conditions).toEqual(['flooded']);
+
+        forceUnit.setLocationCondition('LL', 'flooded', false);
+
+        expect(forceUnit.getLocationCondition('LL', 'flooded')).toBeFalse();
+        expect(forceUnit.isInternalLocCommittedDestroyed('LL')).toBeFalse();
+        expect(forceUnit.serialize().state.locations['LL']).toBeUndefined();
+
+        forceUnit.setLocationCondition('RL', 'blown-off', true);
+
+        expect(forceUnit.isInternalLocCommittedDestroyed('LL')).toBeFalse();
+        expect(forceUnit.isInternalLocCommittedDestroyed('RL')).toBeFalse();
+
+        forceUnit.endPhase();
+
+        expect(forceUnit.isInternalLocCommittedDestroyed('RL')).toBeTrue();
+    });
+
+    it('does not disable inventory in pending destructive location conditions until phase commit', () => {
+        const forceUnit = createForceUnitHarness({ internalLocations: ['LL'] });
+        const rules = forceUnit.rules as MekRules;
+        const entry = new MountedEquipment({ owner: forceUnit, id: 'test-entry', name: 'Test Entry', locations: new Set(['LL']) });
+
+        forceUnit.setLocationCondition('LL', 'flooded', true);
+
+        expect(rules.computeEntryState(entry)).toEqual(jasmine.objectContaining({ isDamaged: false, isDisabled: false }));
+
+        forceUnit.endPhase();
+
+        expect(rules.computeEntryState(entry)).toEqual(jasmine.objectContaining({ isDamaged: false, isDisabled: true }));
+
+        forceUnit.setLocationCondition('LL', 'flooded', false);
+
+        expect(rules.computeEntryState(entry)).toEqual(jasmine.objectContaining({ isDamaged: false, isDisabled: false }));
+    });
+
+    it('disables blown-off location inventory without marking it damaged or destroyed', () => {
+        const forceUnit = createForceUnitHarness({ internalLocations: ['LL'] });
+        const rules = forceUnit.rules as MekRules;
+        const critSlot = { id: 'test-weapon', name: 'Test Weapon', loc: 'LL', slot: 0 } as CriticalSlot;
+        const entry = new MountedEquipment({ owner: forceUnit, id: 'test-entry', name: 'Test Entry', locations: new Set(['LL']), critSlots: [critSlot] });
+
+        forceUnit.writeCrits([critSlot]);
+        forceUnit.setInventory([entry]);
+        const storedEntry = forceUnit.getInventory().find(item => item.id === entry.id)!;
+        forceUnit.setLocationCondition('LL', 'blown-off', true);
+        forceUnit.endPhase();
+        rules.computeAllEntryStates();
+
+        expect(forceUnit.isInternalLocCommittedPhysicallyDestroyed('LL')).toBeTrue();
+        expect(forceUnit.getCritSlots().every(slot => !slot.destroying && !slot.destroyed)).toBeTrue();
+        expect(storedEntry.destroyed).toBeFalsy();
+        expect(rules.computeEntryState(storedEntry)).toEqual(jasmine.objectContaining({ isDamaged: false, isDisabled: true }));
+    });
+
+    it('marks inventory in structurally destroyed locations as damaged and destroyed', () => {
+        const forceUnit = createForceUnitHarness({ internalLocations: ['LL'] });
+        const rules = forceUnit.rules as MekRules;
+        const critSlot = { id: 'test-weapon', name: 'Test Weapon', loc: 'LL', slot: 0 } as CriticalSlot;
+        const entry = new MountedEquipment({ owner: forceUnit, id: 'test-entry', name: 'Test Entry', locations: new Set(['LL']), critSlots: [critSlot] });
+
+        forceUnit.writeCrits([critSlot]);
+        forceUnit.setInventory([entry]);
+        const storedEntry = forceUnit.getInventory().find(item => item.id === entry.id)!;
+        forceUnit.addInternalHits('LL', forceUnit.getInternalPoints('LL'));
+        forceUnit.endPhase();
+        rules.computeAllEntryStates();
+
+        expect(forceUnit.isInternalLocCommittedStructurallyDestroyed('LL')).toBeTrue();
+        expect(storedEntry.destroyed).toBeTruthy();
+        expect(rules.computeEntryState(storedEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
+    });
+
+    it('disables linked locations blown off by parent structural destruction without marking inventory damaged', () => {
+        const forceUnit = createForceUnitHarness({ internalLocations: ['RT', 'RA'] });
+        const rules = forceUnit.rules as MekRules;
+        const parentCrit = { id: 'parent-weapon', name: 'Parent Weapon', loc: 'RT', slot: 0 } as CriticalSlot;
+        const linkedCrit = { id: 'linked-weapon', name: 'Linked Weapon', loc: 'RA', slot: 0 } as CriticalSlot;
+        const parentEntry = new MountedEquipment({ owner: forceUnit, id: 'parent-entry', name: 'Parent Entry', locations: new Set(['RT']), critSlots: [parentCrit] });
+        const linkedEntry = new MountedEquipment({ owner: forceUnit, id: 'linked-entry', name: 'Linked Entry', locations: new Set(['RA']), critSlots: [linkedCrit] });
+
+        forceUnit.writeCrits([parentCrit, linkedCrit]);
+        forceUnit.setInventory([parentEntry, linkedEntry]);
+        const storedParentEntry = forceUnit.getInventory().find(item => item.id === parentEntry.id)!;
+        const storedLinkedEntry = forceUnit.getInventory().find(item => item.id === linkedEntry.id)!;
+        forceUnit.addInternalHits('RT', forceUnit.getInternalPoints('RT'));
+        forceUnit.endPhase();
+        rules.computeAllEntryStates();
+
+        expect(forceUnit.isInternalLocCommittedStructurallyDestroyed('RT')).toBeTrue();
+        expect(forceUnit.isInternalLocCommittedStructurallyDestroyed('RA')).toBeFalse();
+        expect(forceUnit.isInternalLocCommittedPhysicallyDestroyed('RA')).toBeTrue();
+        expect(storedParentEntry.destroyed).toBeTruthy();
+        expect(storedLinkedEntry.destroyed).toBeFalsy();
+        expect(rules.computeEntryState(storedParentEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
+        expect(rules.computeEntryState(storedLinkedEntry)).toEqual(jasmine.objectContaining({ isDamaged: false, isDisabled: true }));
+    });
+
+    it('disables linked-location inventory from flooded torsos without marking it damaged', () => {
+        const forceUnit = createForceUnitHarness({ internalLocations: ['LT', 'LA'] });
+        const rules = forceUnit.rules as MekRules;
+        const entry = new MountedEquipment({ owner: forceUnit, id: 'left-arm-entry', name: 'Left Arm Entry', locations: new Set(['LA']) });
+
+        forceUnit.setLocationCondition('LT', 'flooded', true);
+        forceUnit.endPhase();
+
+        expect(forceUnit.isInternalLocCommittedDestroyed('LA')).toBeTrue();
+        expect(forceUnit.isInternalLocCommittedPhysicallyDestroyed('LA')).toBeFalse();
+        expect(rules.computeEntryState(entry)).toEqual(jasmine.objectContaining({ isDamaged: false, isDisabled: true }));
+    });
+
+    it('counts flooded critical slots as functionally destroyed without committing crit destruction', () => {
+        const forceUnit = createForceUnitHarness({ internalLocations: ['LT'] });
+        forceUnit.writeCrits([
+            { id: 'engine-1', name: 'Engine', loc: 'LT', slot: 0 },
+            { id: 'engine-2', name: 'Engine', loc: 'LT', slot: 1 },
+            { id: 'engine-3', name: 'Engine', loc: 'LT', slot: 2 },
+        ] as CriticalSlot[]);
+
+        forceUnit.setLocationCondition('LT', 'flooded', true);
+        forceUnit.endPhase();
+
+        expect(forceUnit.destroyed).toBeTrue();
+        expect(forceUnit.getCritSlots().every(slot => !slot.destroying && !slot.destroyed)).toBeTrue();
+    });
+
+    it('stores counted NARC location state without destroying the location', () => {
+        const forceUnit = createForceUnitHarness({ internalLocations: ['LL'] });
+
+        forceUnit.setLocationConditionValue('LL', 'narc', 2);
+
+        expect(forceUnit.getLocationConditionValue('LL', 'narc')).toBe(2);
+        expect(forceUnit.isInternalLocCommittedDestroyed('LL')).toBeFalse();
+        expect(forceUnit.serialize().state.locations['LL'].conditions).toEqual([{ key: 'narc', value: 2 }]);
+    });
+
+    it('removes NARC from a location once physical internal destruction is committed', () => {
+        const forceUnit = createForceUnitHarness({ internalLocations: ['LL'] });
+
+        forceUnit.setLocationConditionValue('LL', 'narc', 2);
+        forceUnit.addInternalHits('LL', forceUnit.getInternalPoints('LL'));
+
+        expect(forceUnit.getLocationConditionValue('LL', 'narc')).toBe(2);
+
+        forceUnit.endPhase();
+
+        expect(forceUnit.isInternalLocCommittedPhysicallyDestroyed('LL')).toBeTrue();
+        expect(forceUnit.getLocationConditionValue('LL', 'narc')).toBeUndefined();
+        expect(forceUnit.serialize().state.locations['LL'].conditions).toBeUndefined();
+    });
+
+    it('removes NARC from a location once blown-off is committed', () => {
+        const forceUnit = createForceUnitHarness({ internalLocations: ['LL'] });
+
+        forceUnit.setLocationConditionValue('LL', 'narc', 2);
+        forceUnit.setLocationCondition('LL', 'blown-off', true);
+
+        expect(forceUnit.getLocationConditionValue('LL', 'narc')).toBe(2);
+
+        forceUnit.endPhase();
+
+        expect(forceUnit.isInternalLocCommittedPhysicallyDestroyed('LL')).toBeTrue();
+        expect(forceUnit.getLocationConditionValue('LL', 'narc')).toBeUndefined();
+        expect(forceUnit.serialize().state.locations['LL'].conditions).toEqual(['blown-off']);
     });
 });

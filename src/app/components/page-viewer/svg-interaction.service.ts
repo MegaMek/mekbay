@@ -65,6 +65,7 @@ import { PageViewerStateService } from './internal/page-viewer-state.service';
 import { committedCriticalHitCount, isRepeatableMotiveHitId, motiveHitLevelFromId, MOTIVE_HIT_PIP_COUNT, pendingCriticalHitTimestamps } from '../../models/rules/vehicle-motive-hit.util';
 import { UnitStateDropdownComponent, type UnitStateDropdownChoice } from './unit-state-dropdown.component';
 import { getAmmoControlEntryForCriticalSlot, setAmmoEntry } from '../../utils/ammo-interaction.util';
+import { TORSO_LOCATIONS } from '../../models/rules/mek-rules';
 
 type SheetInventoryRangeKey = InventoryRangeKey | 'extreme';
 type HeatMarkerData = { el: SVGElement | null, heat: number; baselineHeat: number };
@@ -929,10 +930,8 @@ export class SvgInteractionService {
                 this.toastService.showToast(`${amountText} ${amount >= 0 ? 'to' : 'from'} ${labelText} (${remaining}/${totalAmmo})`, 'info', ammoToastId);
             };
 
-            const registry = this.equipmentRegistryService.getRegistry();
-
             const createAndShowPicker = (event: Event) => {
-                if (unit.isInternalLocDestroyed(loc)) {
+                if (unit.isInternalLocPhysicallyDestroyed(loc)) {
                     return;
                 }
                 const calculateValues = () => {
@@ -945,7 +944,7 @@ export class SvgInteractionService {
                     if ((critSlot.hits ?? 0) > 0) {
                         values.push({ label: 'Repair', value: 'Repair' });
                     }
-                    if (!critSlot.destroyed && critSlot.eq instanceof AmmoEquipment) {
+                    if (!unit.isEquipmentUnavailable(critSlot) && critSlot.eq instanceof AmmoEquipment) {
                         values.unshift({ label: '+1', value: '+1', keepOpen: true, disabled: ((critSlot.consumed ?? 0) == 0) });
                         values.unshift({ label: '-1', value: '-1', keepOpen: true, disabled: ((critSlot.consumed ?? 0) >= totalAmmo) });
                         values.push({ label: 'Set Ammo', value: 'Set Ammo' });
@@ -971,6 +970,7 @@ export class SvgInteractionService {
                         const critSlot = unit.getCritSlot(loc, slot);
                         if (!critSlot) return;
                         if (choice.value == '+1') {
+                            if (unit.isEquipmentUnavailable(critSlot)) return;
                             if (critSlot.consumed === undefined) {
                                 return;
                             }
@@ -979,6 +979,7 @@ export class SvgInteractionService {
                             unit.setCritSlot(critSlot);
                             showAmmoToast(critSlot, 1);
                         } else if (choice.value == '-1') {
+                            if (unit.isEquipmentUnavailable(critSlot)) return;
                             if (critSlot.consumed === undefined) {
                                 critSlot.consumed = 0;
                             }
@@ -991,6 +992,7 @@ export class SvgInteractionService {
                             unit.setCritSlot(critSlot);
                             this.toastService.showToast(`Emptied ${labelText}`, 'info');
                         } else if (choice.value == 'Set Ammo') {
+                            if (unit.isEquipmentUnavailable(critSlot)) return;
                             const entry = getAmmoControlEntryForCriticalSlot(unit, critSlot, equipmentList);
                             if (!entry) return;
                             if (await setAmmoEntry(entry, {
@@ -1376,7 +1378,9 @@ export class SvgInteractionService {
     }
 
     private locationConditionDropdownChoices(unit: CBTForceUnit, loc: string): UnitStateDropdownChoice[] {
-        return unit.rules.locationConditionControls.map(state => {
+        return unit.rules.locationConditionControls
+            .filter(state => state.key !== 'blown-off' || !TORSO_LOCATIONS.has(loc))
+            .map(state => {
             const value = unit.getLocationConditionValue(loc, state.key) ?? 0;
             return {
                 key: state.key,

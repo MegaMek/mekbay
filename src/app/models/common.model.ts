@@ -124,12 +124,3 @@ export const uidTranslations: { [key: string]: string } = {
     'Landing Gear': 'landing_gear_hit_',
     'Cockpit': 'cockpit_hit_',
 };
-
-
-export const LINKED_LOCATIONS: { [key: string]: string[] } = {
-    'RT': ['RA', 'FRL'],
-    'LT': ['LA', 'FLL'],
-};
-
-export const LEG_LOCATIONS = new Set(['LL', 'RL', 'CL', 'FRL', 'FLL', 'RRL', 'RLL']);
-export const FOUR_LEGGED_LOCATIONS = new Set(['FRL', 'FLL', 'RRL', 'RLL']);

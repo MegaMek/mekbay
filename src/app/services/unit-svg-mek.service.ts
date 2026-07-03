@@ -116,10 +116,7 @@ export class UnitSvgMekService extends UnitSvgService {
                     }
 
                     const key = getCriticalSlotAmmoProfileKey(criticalSlot) ?? (text.startsWith("Ammo ") ? text.substring(5) : text);
-                    ammoProfile.set(
-                        key,
-                        (ammoProfile.get(key) ?? 0) + (criticalSlot.destroyed ? 0 : remainingAmmo)
-                    );
+                    ammoProfile.set(key, (ammoProfile.get(key) ?? 0) + (this.unit.isEquipmentUnavailable(criticalSlot) ? 0 : remainingAmmo));
                 }
             }
 

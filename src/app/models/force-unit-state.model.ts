@@ -1,11 +1,8 @@
 
 import { signal } from '@angular/core';
 import type { ForceUnit } from './force-unit.model';
-import type { SerializedState, SerializedCondition } from './force-serialization';
-
-export interface ConditionData {
-    value: number;
-}
+import { conditionFromSerialized, conditionsForSerialization, normalizeConditionData, normalizeConditionKey, type SerializedState, type SerializedCondition, type ConditionData } from './force-serialization';
+export type { ConditionData } from './force-serialization';
 
 /**
  * Base state class for ForceUnit instances.
@@ -69,16 +66,10 @@ export abstract class ForceUnitState {
     public setConditions(conditions: Iterable<SerializedCondition>): void {
         const nextConditions = new Map<string, ConditionData | undefined>();
         for (const entry of conditions) {
-            if (typeof entry === 'string') {
-                const condition = this.normalizeCondition(entry);
-                if (condition && !this.unit.isComputedCondition(condition)) nextConditions.set(condition, undefined);
-                continue;
-            }
-
-            const condition = this.normalizeCondition(entry.key);
-            if (condition && !this.unit.isComputedCondition(condition) && Number.isFinite(entry.value) && entry.value !== 0) {
-                nextConditions.set(condition, { value: entry.value });
-            }
+            const parsed = conditionFromSerialized(entry);
+            if (!parsed) continue;
+            const [condition, data] = parsed;
+            if (condition && !this.unit.isComputedCondition(condition)) nextConditions.set(condition, data);
         }
         this.conditions.set(nextConditions);
     }
@@ -86,17 +77,14 @@ export abstract class ForceUnitState {
     public conditionsForSerialization(): SerializedCondition[] | undefined {
         const conditions = this.conditions();
         if (conditions.size === 0) return undefined;
-        return Array.from(conditions.entries())
+        const serializable = new Map(Array.from(conditions.entries())
             .filter(([state]) => !this.unit.isComputedCondition(state))
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([state, data]) => {
-                const value = data?.value;
-                return typeof value === 'number' && Number.isFinite(value) && value !== 0 ? { key: state, value } : state;
-            });
+            .map(([state, data]) => [state, normalizeConditionData(data)]));
+        return conditionsForSerialization(serializable);
     }
 
     private normalizeCondition(condition: string): string {
-        return condition.trim();
+        return normalizeConditionKey(condition) ?? '';
     }
 
     abstract update(data: SerializedState): void;

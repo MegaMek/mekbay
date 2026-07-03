@@ -76,7 +76,7 @@ export class CrewMember {
     }
 
     isDead(): boolean {
-        return (this.hits >= DEAD_CREW_HIT_THRESHOLD);
+        return this.hits >= DEAD_CREW_HIT_THRESHOLD || this.unit.isCockpitDestroyed();
     }
 
     isCrippled(): boolean {
@@ -86,7 +86,7 @@ export class CrewMember {
     }
 
     getState(): CrewMemberState {
-        if (this.hits >= DEAD_CREW_HIT_THRESHOLD) return 'dead';
+        if (this.isDead()) return 'dead';
         return this.state;
     }
 

@@ -66,6 +66,10 @@ function misc(id: string, flags: string[] = []): MiscEquipment {
     return new MiscEquipment({ id, name: id, type: 'misc', flags });
 }
 
+function testEquipmentUnavailable(source: MountedEquipment | CriticalSlot): boolean {
+    return !!source.destroyed || (source instanceof MountedEquipment && !!source.critSlots?.some(slot => !!slot.destroyed));
+}
+
 function svgEntry(html: string): SVGElement {
     const wrapper = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     wrapper.innerHTML = html;
@@ -95,6 +99,7 @@ function entry(params: {
         getInventory: () => [],
         getCritSlots: () => [],
         getUnit: () => ({ comp: [] }),
+        isEquipmentUnavailable: testEquipmentUnavailable,
         rules: {}
     } as unknown as CBTForceUnit;
     return new MountedEquipment({
@@ -210,6 +215,7 @@ function createComponent(
         hasDirectInventory: () => options.hasDirectInventory ?? true,
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
         setCritSlot: jasmine.createSpy('setCritSlot'),
+        isEquipmentUnavailable: testEquipmentUnavailable,
         rules
     } as unknown as CBTForceUnit;
     addRuntimeSelection(unit);
@@ -269,6 +275,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
             getUnit: () => ({ type: 'Infantry', subtype: 'Mechanized Conventional Infantry', internal: 20, squads: 4, squadSize: 5, comp: components }),
             getCommittedInternalHits: () => 7,
             locations: { armor: new Map(), internal: new Map([['TROOP', { loc: 'TROOP', points: 20 }]]) },
+            isEquipmentUnavailable: testEquipmentUnavailable,
             rules: {}
         } as unknown as CBTForceUnit);
         entries.forEach(item => item.owner = unit);
@@ -293,7 +300,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const hatchet = entry({ id: 'hatchet', equipment: misc('Hatchet', ['F_CLUB']), el: svgEntry('<g><g class="name"><text>Hatchet</text></g></g>') });
         const ecm = entry({ id: 'ecm', equipment: misc('ECM'), el: svgEntry('<g><g class="name"><text>ECM</text></g></g>') });
         const broken = entry({ id: 'broken', equipment: weapon('broken'), destroyed: true, el: svgEntry('<g><g class="name"><text>Broken</text></g></g>') });
-        const unit = { getInventory: () => [laser, punch, hatchet, ecm, broken], getCritSlots: () => [], getUnit: () => ({ subtype: '', comp: [] }), rules: {} } as unknown as CBTForceUnit;
+        const unit = { getInventory: () => [laser, punch, hatchet, ecm, broken], getCritSlots: () => [], getUnit: () => ({ subtype: '', comp: [] }), isEquipmentUnavailable: testEquipmentUnavailable, rules: {} } as unknown as CBTForceUnit;
         [laser, punch, hatchet, ecm, broken].forEach(item => item.owner = unit);
 
         const groups = getInventoryControlGroups(unit);
@@ -304,10 +311,31 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(groups.find(group => group.id === 'ranged')?.rows.find(row => row.id === 'broken')?.destroyed).toBeTrue();
     });
 
+    it('excludes ammo in functionally destroyed locations from weapon ammo summaries', () => {
+        const ac2 = weapon('AC/2', 'AC', 2);
+        const ac2Ammo = ammo('AC/2 Ammo', 'AC', 2);
+        const weaponEntry = entry({ id: 'ac2', equipment: ac2, el: svgEntry('<g><g class="name"><text>AC/2</text></g></g>') });
+        const ammoBin = entry({ id: 'ac2-ammo', equipment: ac2Ammo, totalAmmo: 10, consumed: 0, locations: new Set(['RT']) });
+        const unit = {
+            getInventory: () => [weaponEntry, ammoBin],
+            getCritSlots: () => [],
+            getUnit: () => ({ subtype: '', comp: [] }),
+            isEquipmentUnavailable: (source: MountedEquipment | CriticalSlot) => source === ammoBin,
+            rules: {}
+        } as unknown as CBTForceUnit;
+        [weaponEntry, ammoBin].forEach(item => item.owner = unit);
+
+        const row = getInventoryControlGroups(unit, { [ac2Ammo.internalName]: ac2Ammo }).find(group => group.id === 'ranged')!.rows[0];
+
+        expect(row.ammo.remaining).toBe(0);
+        expect(row.ammo.total).toBe(0);
+        expect(row.ammo.options).toEqual([jasmine.objectContaining({ remaining: 0, total: 10, destroyed: true, disabled: true })]);
+    });
+
     it('keeps inactive direct inventory rows in original order', () => {
         const broken = entry({ id: 'broken', equipment: weapon('broken'), destroyed: true, el: svgEntry('<g><g class="name"><text>Broken</text></g></g>') });
         const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
-        const unit = { getInventory: () => [broken, laser], getCritSlots: () => [], getUnit: () => ({ subtype: '', comp: [] }), rules: {} } as unknown as CBTForceUnit;
+        const unit = { getInventory: () => [broken, laser], getCritSlots: () => [], getUnit: () => ({ subtype: '', comp: [] }), isEquipmentUnavailable: testEquipmentUnavailable, rules: {} } as unknown as CBTForceUnit;
         [broken, laser].forEach(item => item.owner = unit);
 
         const groups = getInventoryControlGroups(unit);
@@ -363,6 +391,12 @@ describe('WeaponsEquipmentPanelComponent', () => {
                 comp: trooperLabels.map(location => ({ id: narc.internalName, q: 1, q2: 0, l: location }))
             }),
             locations: { internal: new Map([['TROOP', { loc: 'TROOP', points: 4 }]]), armor: new Map() },
+            isEquipmentUnavailable: (source: MountedEquipment | CriticalSlot, loc?: string) => {
+                const locationUnavailable = (value: string | undefined) => value === 'Trooper 1' || value === 'T1';
+                if (!(source instanceof MountedEquipment)) return !!source.destroyed || locationUnavailable(source.loc);
+                if (source.destroyed) return true;
+                return loc ? locationUnavailable(loc) : Array.from(source.locations ?? []).some(locationUnavailable);
+            },
             rules: {}
         } as unknown as CBTForceUnit;
         [narcEntry, ...ammoEntries].forEach(item => item.owner = unit);
@@ -400,7 +434,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
             states: new Map([['state', 'jammed']]),
             el: svgEntry('<g><g class="name"><text>Ultra AC/2</text></g></g>')
         });
-        const unit = { getInventory: () => [uac], getCritSlots: () => [], getUnit: () => ({ subtype: '', comp: [] }), rules: {} } as unknown as CBTForceUnit;
+        const unit = { getInventory: () => [uac], getCritSlots: () => [], getUnit: () => ({ subtype: '', comp: [] }), isEquipmentUnavailable: testEquipmentUnavailable, rules: {} } as unknown as CBTForceUnit;
         uac.owner = unit;
 
         const row = getInventoryControlGroups(unit).find(group => group.id === 'ranged')!.rows[0];

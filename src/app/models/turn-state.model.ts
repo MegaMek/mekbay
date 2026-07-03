@@ -1,6 +1,6 @@
 import { computed, signal, type WritableSignal } from "@angular/core";
 import { canChangeAirborneGround, getMotiveModeMaxDistance, type MotiveModes } from "./motiveModes.model";
-import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "./common.model";
+import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "../models/rules/mek-rules";
 import type { CBTForceUnitState } from "./cbt-force-unit-state.model";
 import type { SerializedPSRChecks, SerializedTurnState } from "./force-serialization";
 import { calculateModifierTotal, type PSRCheck, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitModifierTotal } from "./rules/unit-type-rules";

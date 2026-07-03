@@ -29,6 +29,7 @@ type SvgInteractionServicePrivate = {
     setupReadOnlyInteractions(svg: SVGSVGElement): void;
     getHeatDiffMarkerData(): { el: SVGElement | null; heat: number; baselineHeat: number; containerRect: DOMRect } | null;
     updateHeatHighlight(heatValue: number): void;
+    locationConditionDropdownChoices(unit: any, loc: string): Array<{ key: string }>;
 };
 
 const NO_CONDITION_RULES = { conditionControls: [], crewStateControls: [], locationConditionControls: [] };
@@ -138,6 +139,23 @@ describe('SvgInteractionService', () => {
 
         expect(dialogsService.createDialog).not.toHaveBeenCalled();
         expect(unit.isInventoryControlEntrySelected(entry.id)).toBeFalse();
+    });
+
+    it('hides blown-off from torso location condition choices', () => {
+        const unit = createSvgInteractionUnit({
+            rules: {
+                ...NO_CONDITION_RULES,
+                locationConditionControls: [
+                    { key: 'flooded', label: 'Flooded', color: '#66f' },
+                    { key: 'blown-off', label: 'Blown Off', color: '#808080' },
+                ],
+            },
+            getLocationCondition: () => false,
+            getLocationConditionValue: () => undefined,
+        });
+
+        expect(service.locationConditionDropdownChoices(unit, 'LT').map(choice => choice.key)).toEqual(['flooded']);
+        expect(service.locationConditionDropdownChoices(unit, 'LA').map(choice => choice.key)).toEqual(['flooded', 'blown-off']);
     });
 
     it('selects inventory entries from alternative mode buttons', () => {

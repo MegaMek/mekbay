@@ -38,7 +38,7 @@ import type { UnitComponent } from '../models/units.model';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../models/inventory-control-runtime-state.model';
 import { isMountedDestroyed, resolveHitModifier } from '../models/rules/hit-modifier.util';
 import { resolveWeaponRangeDamageText, WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, type WeaponRangeKey } from '../models/rules/weapon-range-rules.util';
-import { formatBattleArmorTrooperLocation, getBattleArmorTrooperNumber, isBattleArmorTrooperLocationDestroyed } from './ammo-interaction.util';
+import { formatBattleArmorTrooperLocation, getBattleArmorTrooperNumber } from './ammo-interaction.util';
 
 export const INVENTORY_CONTROL_MODE_STATE = 'inventory_control_mode';
 export const INVENTORY_CONTROL_SORT_STATE = 'inventory_control_sort';
@@ -509,7 +509,7 @@ function buildInventoryControlRows(
     return trooperLocations.map((location, locationIndex) => buildInventoryControlRow(entry, originalIndex + (locationIndex / 100), entryStates, ammoSources, {
         rowId: `${entry.id}:${location}`,
         locationLock: location,
-        destroyed: isMountedDestroyed(entry) || isBattleArmorTrooperLocationDestroyed(entry.owner, location)
+        destroyed: entry.owner.isEquipmentUnavailable(entry, location)
     }));
 }
 
@@ -604,7 +604,7 @@ function readLinkedWeaponEnhancementModifiers(entry: MountedEquipment): Inventor
         ?.filter(isWeaponEnhancement)
         .map(linked => ({
             name: readLinkedModifierName(linked),
-            destroyed: isMountedDestroyed(linked)
+            destroyed: linked.owner.isEquipmentUnavailable(linked)
         })) ?? [];
 }
 
@@ -639,7 +639,7 @@ function isModifierDestroyed(entry: MountedEquipment, modifierName: string): boo
 
 function getAmmoSources(unit: CBTForceUnit, equipmentMap: EquipmentMap): AmmoSource[] {
     const critSources = unit.getCritSlots()
-        .map(createCriticalSlotAmmoSource)
+        .map(criticalSlot => createCriticalSlotAmmoSource(unit, criticalSlot))
         .filter((source): source is AmmoSource => !!source);
     const inventorySources = unit.getInventory()
         .map(entry => createInventoryAmmoSource(entry, equipmentMap))
@@ -648,7 +648,7 @@ function getAmmoSources(unit: CBTForceUnit, equipmentMap: EquipmentMap): AmmoSou
     return [...critSources, ...inventorySources];
 }
 
-function createCriticalSlotAmmoSource(criticalSlot: CriticalSlot): AmmoSource | null {
+function createCriticalSlotAmmoSource(unit: CBTForceUnit, criticalSlot: CriticalSlot): AmmoSource | null {
     if (!(criticalSlot.eq instanceof AmmoEquipment)) return null;
     const elementTotal = Number(criticalSlot.el?.getAttribute('totalAmmo') ?? 0);
     return {
@@ -657,7 +657,7 @@ function createCriticalSlotAmmoSource(criticalSlot: CriticalSlot): AmmoSource | 
         locationLabel: criticalSlot.loc ?? 'Ammo',
         total: criticalSlot.totalAmmo || elementTotal || 0,
         consumed: criticalSlot.consumed ?? 0,
-        destroyed: !!criticalSlot.destroyed
+        destroyed: unit.isEquipmentUnavailable(criticalSlot)
     };
 }
 
@@ -676,7 +676,7 @@ function createInventoryAmmoSource(entry: MountedEquipment, equipmentMap: Equipm
         locationLabel,
         total,
         consumed: entry.consumed ?? 0,
-        destroyed: !!entry.destroyed || isBattleArmorTrooperLocationDestroyed(entry.owner, locationLabel)
+        destroyed: entry.owner.isEquipmentUnavailable(entry)
     };
 }
 

@@ -202,9 +202,34 @@ function createMmlSvg(): SVGSVGElement {
     `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
 }
 
+function createMekDamageSvg(): SVGSVGElement {
+    const parser = new DOMParser();
+    return parser.parseFromString(`
+        <svg xmlns="http://www.w3.org/2000/svg">
+            <g class="unitLocation armor" loc="LT"></g>
+            <g class="unitLocation structure" loc="LT"></g>
+            <rect class="pip armor" loc="LT"></rect>
+            <rect class="pip structure" loc="LT"></rect>
+            <g class="critGroup" loc="LT"><rect class="critSlot-bg-rect"></rect></g>
+            <rect class="critSlot" loc="LT" uid="lt-slot" slot="0"></rect>
+
+            <g class="unitLocation armor" loc="LA"></g>
+            <g class="unitLocation structure" loc="LA"></g>
+            <rect class="pip armor" loc="LA"></rect>
+            <rect class="pip structure" loc="LA"></rect>
+            <g class="critGroup" loc="LA"><rect class="critSlot-bg-rect"></rect></g>
+            <rect class="critSlot" loc="LA" uid="la-slot" slot="0"></rect>
+        </svg>
+    `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+}
+
 class ExposedUnitSvgService extends UnitSvgService {
     refreshInventory(): void {
         this.updateInventory();
+    }
+
+    refreshArmor(): void {
+        this.updateArmorDisplay();
     }
 }
 
@@ -485,6 +510,15 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(crewMember.getState()).toBe('unconscious');
     });
 
+    it('derives crew death from destroyed cockpit', () => {
+        const forceUnit = createForceUnit();
+        const crewMember = forceUnit.getCrewMember(0);
+
+        forceUnit.writeCrits([{ id: 'cockpit', name: 'Cockpit', loc: 'HD', slot: 0, destroyed: 1 } as CriticalSlot]);
+
+        expect(crewMember.getState()).toBe('dead');
+    });
+
     it('derives ProtoMek crew death from hits', () => {
         const forceUnit = createForceUnit(createProtoMekUnit());
         const crewMember = forceUnit.getCrewMember(0);
@@ -689,6 +723,97 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         svgService.refreshInventory();
         expect(damageText.textContent).toBe('9/7/5 [Variable]');
         expect(hitModText.textContent).toBe('-4');
+    });
+
+    it('renders linked locations detached when their parent torso is committed destroyed', () => {
+        const forceUnit = createForceUnit();
+        const svg = createMekDamageSvg();
+        initialize(forceUnit, svg);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        forceUnit.setInternalHits('LT', forceUnit.getInternalPoints('LT'));
+        svgService.refreshArmor();
+
+        const linkedEls = svg.querySelectorAll('[loc="LA"]');
+        expect(forceUnit.isInternalLocCommittedDestroyed('LA')).toBeTrue();
+        expect(Array.from(linkedEls).every(el => el.classList.contains('detached'))).toBeTrue();
+    });
+
+    it('renders blown-off crit groups detached without locationDestroyed', () => {
+        const forceUnit = createForceUnit();
+        const svg = createMekDamageSvg();
+        initialize(forceUnit, svg);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        forceUnit.setLocationCondition('LA', 'blown-off', true);
+        svgService.refreshArmor();
+
+        const critGroup = svg.querySelector('.critGroup[loc="LA"]')!;
+        const structure = svg.querySelector('.unitLocation.structure[loc="LA"]')!;
+        const armor = svg.querySelector('.unitLocation.armor[loc="LA"]')!;
+        expect(critGroup.classList.contains('detached')).toBeTrue();
+        expect(critGroup.classList.contains('locationDestroyed')).toBeFalse();
+        expect(structure.classList.contains('damaged')).toBeFalse();
+        expect(armor.classList.contains('damaged')).toBeFalse();
+    });
+
+    it('renders linked locations disabled but not detached when their parent torso is flooded', () => {
+        const forceUnit = createForceUnit();
+        const svg = createMekDamageSvg();
+        initialize(forceUnit, svg);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        forceUnit.setLocationCondition('LT', 'flooded', true);
+        forceUnit.endPhase();
+        svgService.refreshArmor();
+
+        const linkedEls = Array.from(svg.querySelectorAll('[loc="LA"]'));
+        const linkedCritGroup = svg.querySelector('.critGroup[loc="LA"]')!;
+        const floodedCritGroup = svg.querySelector('.critGroup[loc="LT"]')!;
+        expect(forceUnit.isInternalLocCommittedDestroyed('LA')).toBeTrue();
+        expect(forceUnit.isInternalLocCommittedPhysicallyDestroyed('LA')).toBeFalse();
+        expect(linkedEls.every(el => el.classList.contains('disabledLocation'))).toBeTrue();
+        expect(linkedEls.some(el => el.classList.contains('detached'))).toBeFalse();
+        expect(linkedCritGroup.classList.contains('locationDestroyed')).toBeFalse();
+        expect(floodedCritGroup.classList.contains('locationDestroyed')).toBeFalse();
+    });
+
+    it('renders directly flooded linked locations as flooded instead of disabled', () => {
+        const forceUnit = createForceUnit();
+        const svg = createMekDamageSvg();
+        initialize(forceUnit, svg);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        forceUnit.setLocationCondition('LT', 'flooded', true);
+        forceUnit.setLocationCondition('LA', 'flooded', true);
+        forceUnit.endPhase();
+        svgService.refreshArmor();
+
+        const linkedEls = Array.from(svg.querySelectorAll('[loc="LA"]'));
+        const linkedCritGroup = svg.querySelector('.critGroup[loc="LA"]')!;
+        expect(linkedEls.every(el => el.classList.contains('flooded'))).toBeTrue();
+        expect(linkedEls.some(el => el.classList.contains('disabledLocation'))).toBeFalse();
+        expect(linkedCritGroup.classList.contains('flooded')).toBeTrue();
+        expect(linkedCritGroup.classList.contains('disabledLocation')).toBeFalse();
+    });
+
+    it('does not render directly physically destroyed linked locations as disabled', () => {
+        const forceUnit = createForceUnit();
+        const svg = createMekDamageSvg();
+        initialize(forceUnit, svg);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        forceUnit.setLocationCondition('LT', 'flooded', true);
+        forceUnit.endPhase();
+        forceUnit.setInternalHits('LA', forceUnit.getInternalPoints('LA'));
+        svgService.refreshArmor();
+
+        const linkedEls = Array.from(svg.querySelectorAll('[loc="LA"]'));
+        const linkedCritGroup = svg.querySelector('.critGroup[loc="LA"]')!;
+        expect(forceUnit.isInternalLocPhysicallyDestroyed('LA')).toBeTrue();
+        expect(linkedEls.some(el => el.classList.contains('disabledLocation'))).toBeFalse();
+        expect(linkedCritGroup.classList.contains('disabledLocation')).toBeFalse();
+        expect(linkedCritGroup.classList.contains('locationDestroyed')).toBeTrue();
     });
 
     it('renders target range classes from the selected SVG alternative mode', () => {

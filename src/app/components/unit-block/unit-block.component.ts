@@ -210,7 +210,7 @@ export class UnitBlockComponent {
             forceUnit.getCritSlots();
             const mountedECM = forceUnit.getInventory().find(eq => eq.equipment?.flags.has('F_ECM'));
             if (!mountedECM) return undefined;
-            if (mountedECM.destroyed) {
+            if (forceUnit.isEquipmentUnavailable(mountedECM)) {
                 return false;
             }
             return true;

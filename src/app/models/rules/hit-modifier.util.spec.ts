@@ -19,6 +19,11 @@ function ammo(munitionTypes: string[] = []): AmmoEquipment {
     } as AmmoEquipment;
 }
 
+function unavailable(entry: MountedEquipment): MountedEquipment {
+    entry.owner = { isEquipmentUnavailable: (candidate: MountedEquipment) => candidate === entry } as never;
+    return entry;
+}
+
 describe('hit modifier utilities', () => {
     it('does not offset intact Artemis V or Apollo linked equipment bonuses', () => {
         expect(computeLinkedModifiers(weapon([entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V'])]))).toBe(0);
@@ -28,6 +33,14 @@ describe('hit modifier utilities', () => {
     it('offsets Artemis V and Apollo linked equipment bonuses when their enhancement is destroyed', () => {
         expect(computeLinkedModifiers(weapon([entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V'], true)]))).toBe(1);
         expect(computeLinkedModifiers(weapon([entry(['F_WEAPON_ENHANCEMENT', 'F_APOLLO'], true)]))).toBe(1);
+    });
+
+    it('offsets Artemis V and Apollo linked equipment bonuses when their enhancement is disabled', () => {
+        const artemis = unavailable(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']));
+        const apollo = unavailable(entry(['F_WEAPON_ENHANCEMENT', 'F_APOLLO']));
+
+        expect(computeLinkedModifiers(weapon([artemis]))).toBe(1);
+        expect(computeLinkedModifiers(weapon([apollo]))).toBe(1);
     });
 
     it('offsets intact Artemis V linked equipment when selected ammo is not Artemis V-capable', () => {
@@ -64,5 +77,12 @@ describe('hit modifier utilities', () => {
 
         expect(resolveHitModifier(apolloWeapon, 0, null, ammo())).toBe(-1);
         expect(resolveHitModifier(destroyedApolloWeapon, 0, null, ammo())).toBe(0);
+    });
+
+    it('resolves disabled linked equipment bonuses as unavailable', () => {
+        const artemis = unavailable(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']));
+        const artemisVWeapon = weapon([artemis]);
+
+        expect(resolveHitModifier(artemisVWeapon, 0, null, ammo(['M_ARTEMIS_V_CAPABLE']))).toBe(0);
     });
 });

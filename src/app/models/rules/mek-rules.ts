@@ -34,8 +34,7 @@
 import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { CriticalSlot, MountedEquipment } from '../force-serialization';
-import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type PSRCheck, type UnitHeatSource } from './unit-type-rules';
-import { LINKED_LOCATIONS, LEG_LOCATIONS, FOUR_LEGGED_LOCATIONS } from '../common.model';
+import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type LocationConditionControl, type PSRCheck, type UnitHeatSource } from './unit-type-rules';
 import type { TurnState } from '../turn-state.model';
 import { type HeatScaleEntry, HeatManagement, getHeatEffects } from './heat-management';
 import type { MotiveModes } from '../motiveModes.model';
@@ -43,9 +42,24 @@ import { getDefaultAttackerMovementModifier } from '../target-number-calculator.
 
 type ArmLocation = 'LA' | 'RA';
 
+const SIDE_TORSO_LOCATIONS = new Set(['LT', 'RT']);
+export const TORSO_LOCATIONS = new Set(['CT', 'LT', 'RT']);
+const LIMB_LOCATIONS = new Set(['LA', 'RA', 'LL', 'RL', 'CL', 'RLL', 'FLL', 'RRL', 'FRL']);
+export const LINKED_LOCATIONS: { [key: string]: string[] } = {
+    'RT': ['RA', 'FRL'],
+    'LT': ['LA', 'FLL'],
+};
+export const LEG_LOCATIONS = new Set(['LL', 'RL', 'CL', 'FRL', 'FLL', 'RRL', 'RLL']);
+export const FOUR_LEGGED_LOCATIONS = new Set(['FRL', 'FLL', 'RRL', 'RLL']);
+
 export const MEK_UNIT_CONDITION_CONTROLS: readonly UnitConditionControl[] = unitConditionControls(['shutdown', 'prone', 'swarmed', 'tagged', 'skidding', 'jammed']);
 export const MEK_CREW_STATE_CONTROLS: readonly CrewStateControlDefinition[] = crewStateDefinitions(['unconscious', 'ejected']) as readonly CrewStateControlDefinition[];
 export const MEK_CREW_STATE_DISPLAYS: readonly CrewStateDefinition[] = crewStateDefinitions(['unconscious', 'ejected', 'dead']);
+export const MEK_LOCATION_CONDITION_CONTROLS: readonly LocationConditionControl[] = [
+    { key: 'flooded', label: 'Flooded', color: '#66f' },
+    { key: 'blown-off', label: 'Blown Off', color: '#808080' },
+    { key: 'narc', label: 'NARC', color: '#f00', counted: true },
+];
 
 /**
  * Mek-specific game rules: destruction evaluation, systems status,
@@ -55,6 +69,7 @@ export class MekRules extends UnitTypeRulesBase {
 
     override readonly conditionControls = MEK_UNIT_CONDITION_CONTROLS;
     override readonly crewStateControls = MEK_CREW_STATE_CONTROLS;
+    override readonly locationConditionControls = MEK_LOCATION_CONDITION_CONTROLS;
     protected override readonly crewStateDisplayDefinitions = MEK_CREW_STATE_DISPLAYS;
 
     protected override readonly abandoned = computed<boolean>(() => {
@@ -64,6 +79,7 @@ export class MekRules extends UnitTypeRulesBase {
             return state === 'dead' || state === 'ejected';
         });
     });
+
     protected override readonly immobile = computed<boolean>(() => {
         if (!this.unit.isLoaded()) return false;
         if (this.unit.getCondition('shutdown')) return true;
@@ -72,12 +88,23 @@ export class MekRules extends UnitTypeRulesBase {
         return true;
     });
 
+    protected override readonly crippled = computed<boolean>(() => {
+        if (!this.unit.isLoaded()) return false;
+        return this.allCrewCrippled()
+            || this.allSensorsDestroyedOrDestroying()
+            || this.gyroEngineCrippledOrCrippling()
+            || this.sideTorsoDestroyedOrDestroying()
+            || this.internalStructureCrippledOrCrippling()
+    });
+
     private readonly heatMgmt: HeatManagement;
 
     constructor(unit: CBTForceUnit) {
         super(unit);
         this.heatMgmt = new HeatManagement(unit);
     }
+
+    // ── Cripple Check Utilities ──────────────────────────────────────────────
 
     private allLimbsDestroyedOrMissing(): boolean {
         const internalLocations = this.unit.locations?.internal;
@@ -97,26 +124,62 @@ export class MekRules extends UnitTypeRulesBase {
         return ['LL', 'RL', 'LA', 'RA'];
     }
 
+    private allSensorsDestroyedOrDestroying(): boolean {
+        const sensorSlots = this.unit.getCritSlots().filter(slot => this.isNamedCrit(slot, 'Sensor'));
+        return sensorSlots.length > 0 && sensorSlots.every(slot => this.isDestroyedOrDestroyingCrit(slot));
+    }
+
+    private gyroEngineCrippledOrCrippling(): boolean {
+        const critSlots = this.unit.getCritSlots();
+        const gyroHits = critSlots.filter(slot => this.isNamedCrit(slot, 'Gyro') && this.isDestroyedOrDestroyingCrit(slot)).length;
+        const engineHits = critSlots.filter(slot => this.isNamedCrit(slot, 'Engine') && this.isDestroyedOrDestroyingCrit(slot)).length;
+        return engineHits >= 2 || (engineHits >= 1 && gyroHits >= 1);
+    }
+
+    private sideTorsoDestroyedOrDestroying(): boolean {
+        return Array.from(SIDE_TORSO_LOCATIONS).some(loc => this.unit.isInternalLocDestroyed(loc));
+    }
+
+    private internalStructureCrippledOrCrippling(): boolean {
+        let damagedLimbs = 0;
+        let damagedTorsos = 0;
+
+        this.unit.locations?.internal?.forEach((_value, loc) => {
+            if (this.unit.getInternalHits(loc) <= 0) return;
+            if (LIMB_LOCATIONS.has(loc)) {
+                damagedLimbs++;
+            } else if (TORSO_LOCATIONS.has(loc) && this.unit.isArmorLocDestroyed(loc)) {
+                damagedTorsos++;
+            }
+        });
+
+        return damagedLimbs >= 3 || damagedTorsos >= 2;
+    }
+
+    private isDestroyedOrDestroyingCrit(slot: CriticalSlot): boolean {
+        return !!slot.destroying || this.isCritUnavailable(slot);
+    }
+
+    private isCritUnavailable(slot: CriticalSlot): boolean {
+        return this.unit.isEquipmentUnavailable(slot);
+    }
+
+    private isCritStructurallyDestroyed(slot: CriticalSlot): boolean {
+        return !!slot.destroyed || this.locationPhysicallyDestroyed(slot.loc);
+    }
+
     // ── Destruction ──────────────────────────────────────────────────────────
 
     /**
-     * Mek destruction: propagate crit destruction from destroyed locations
-     * (including linked: RT→RA, LT→LA), then check engine/cockpit.
+    * Mek destruction: propagate crit destruction from structurally destroyed locations,
+    * then check engine/cockpit.
      */
     evaluateDestroyed(): void {
         // Build set of destroyed internal locations, including linked
         const locationsToDestroy = new Set<string>();
         this.unit.locations?.internal?.forEach((_value, loc) => {
-            if (this.unit.isInternalLocDestroyed(loc)) {
+            if (this.unit.isInternalLocStructurallyDestroyed(loc)) {
                 locationsToDestroy.add(loc);
-                const linked = LINKED_LOCATIONS[loc];
-                if (linked) {
-                    for (const linkedLoc of linked) {
-                        if (this.unit.locations?.internal?.has(linkedLoc)) {
-                            locationsToDestroy.add(linkedLoc);
-                        }
-                    }
-                }
             }
         });
 
@@ -143,9 +206,9 @@ export class MekRules extends UnitTypeRulesBase {
         // Check engine and cockpit destruction (committed state only)
         const svg = this.unit.svg();
         const engineHitThreshold = svg?.querySelectorAll('[id^="engine_hit_"]').length ?? 3;
-        const destroyedEngineSlots = crits.filter(slot => slot.name?.includes("Engine") && slot.destroyed).length;
+        const destroyedEngineSlots = crits.filter(slot => this.isNamedCrit(slot, "Engine") && this.isCritUnavailable(slot)).length;
         const engineBlown = destroyedEngineSlots >= engineHitThreshold;
-        const cockpitDestroyed = crits.some(slot => slot.name?.includes("Cockpit") && slot.destroyed);
+        const cockpitDestroyed = crits.some(slot => this.isNamedCrit(slot, "Cockpit") && this.isCritUnavailable(slot));
 
         const destroyed = engineBlown || cockpitDestroyed;
         if (this.unit.destroyed !== destroyed) {
@@ -221,10 +284,10 @@ export class MekRules extends UnitTypeRulesBase {
             const gyroHits = (psr.gyroHit || 0);
             if (gyroHits > 0) {
                 const critSlots = this.unit.getCritSlots();
-                const hasHeavyDutyGyro = critSlots.some(slot => slot.name && slot.name.includes('Heavy Duty') && slot.name.includes('Gyro'));
+                const hasHeavyDutyGyro = critSlots.some(slot => this.isNamedCrit(slot, 'Heavy Duty') && this.isNamedCrit(slot, 'Gyro'));
                 const previouslyDestroyedGyroCount = critSlots.filter(slot => {
-                    if (!slot.name || !slot.destroyed) return false;
-                    if (!slot.name.includes('Gyro')) return false;
+                    if (!this.isCritUnavailable(slot)) return false;
+                    if (!this.isNamedCrit(slot, 'Gyro')) return false;
                     return true;
                 }).length;
                 if (hasHeavyDutyGyro && (previouslyDestroyedGyroCount + gyroHits) === 1) {
@@ -256,8 +319,8 @@ export class MekRules extends UnitTypeRulesBase {
 
         const critSlots = this.unit.getCritSlots();
         const hasDamagedGyro = critSlots.some(slot => {
-            if (!slot.name || !slot.destroyed) return false;
-            return slot.name.includes('Gyro');
+            if (!this.isCritUnavailable(slot)) return false;
+            return this.isNamedCrit(slot, 'Gyro');
         });
 
         let hasDamagedLeg = false;
@@ -270,9 +333,9 @@ export class MekRules extends UnitTypeRulesBase {
         });
 
         const hasDamagedLegActuators = critSlots.some(slot => {
-            if (!slot.name || !slot.loc || !slot.destroyed) return false;
+            if (!slot.name || !slot.loc || !this.isCritUnavailable(slot)) return false;
             if (!LEG_LOCATIONS.has(slot.loc)) return false;
-            return slot.name.includes('Leg') || slot.name.includes('Foot') || slot.name.includes('Hip');
+            return this.isNamedCrit(slot, 'Leg') || this.isNamedCrit(slot, 'Foot') || this.isNamedCrit(slot, 'Hip');
         });
 
         if (moveMode === 'jump') {
@@ -310,9 +373,9 @@ export class MekRules extends UnitTypeRulesBase {
         if (!hasDamagedLegActuators) return null;
 
         const hasDamagedHip = critSlots.some(slot => {
-            if (!slot.name || !slot.loc || !slot.destroyed) return false;
+            if (!slot.name || !slot.loc || !this.isCritUnavailable(slot)) return false;
             if (!LEG_LOCATIONS.has(slot.loc)) return false;
-            return slot.name.includes('Hip');
+            return this.isNamedCrit(slot, 'Hip');
         });
         if (!hasDamagedHip) return null;
 
@@ -376,11 +439,10 @@ export class MekRules extends UnitTypeRulesBase {
             psr.gyroHit = Math.max(0, (psr.gyroHit || 0) + delta);
             isPsrRelevant = true;
             const critSlots = this.unit.getCritSlots();
-            const hasHeavyDutyGyro = critSlots.some(slot => slot.name && slot.name.includes('Heavy Duty') && slot.name.includes('Gyro'));
+            const hasHeavyDutyGyro = critSlots.some(slot => this.isNamedCrit(slot, 'Heavy Duty') && this.isNamedCrit(slot, 'Gyro'));
             const gyroHits = critSlots.filter(slot => {
-                if (!slot.name) return false;
-                if (!slot.destroyed && !slot.destroying) return false;
-                if (!slot.name.includes('Gyro')) return false;
+                if (!this.isDestroyedOrDestroyingCrit(slot)) return false;
+                if (!this.isNamedCrit(slot, 'Gyro')) return false;
                 return true;
             }).length;
             if (((hasHeavyDutyGyro && gyroHits > 2) || (!hasHeavyDutyGyro && gyroHits > 1))) {
@@ -450,7 +512,7 @@ export class MekRules extends UnitTypeRulesBase {
     private getWorkingJumpJetType(): 'standard' | 'improved' | 'prototypeImproved' {
         for (const slot of this.unit.getCritSlots()) {
             const equipment = slot.eq;
-            if (slot.destroyed || !equipment?.hasFlag('F_JUMP_JET')) continue;
+            if (this.isCritUnavailable(slot) || !equipment?.hasFlag('F_JUMP_JET')) continue;
             if (equipment.hasFlag('S_PROTOTYPE')) {
                 return 'prototypeImproved';
             }
@@ -466,7 +528,7 @@ export class MekRules extends UnitTypeRulesBase {
     private hasActiveSuperCooledMyomer(): boolean {
         const superCooledMyomerSlots = this.unit.getCritSlots().filter(slot => this.isSuperCooledMyomerSlot(slot));
         return superCooledMyomerSlots.length > 0
-            && superCooledMyomerSlots.some(slot => !slot.destroyed);
+            && superCooledMyomerSlots.some(slot => !this.isCritUnavailable(slot));
     }
 
     private isSuperCooledMyomerSlot(slot: CriticalSlot): boolean {
@@ -476,7 +538,7 @@ export class MekRules extends UnitTypeRulesBase {
     private computeDamagedEngineHeat(): number {
         if (this.unit.shutdown) return 0;
         const critSlots = this.unit.getCritSlots();
-        const engineHits = critSlots.filter(slot => slot.name && slot.name.includes('Engine') && (slot.destroyed || slot.destroying)).length;
+        const engineHits = critSlots.filter(slot => this.isNamedCrit(slot, 'Engine') && this.isDestroyedOrDestroyingCrit(slot)).length;
         return Math.min(10, engineHits * 5);
     }
 
@@ -485,22 +547,22 @@ export class MekRules extends UnitTypeRulesBase {
     /** Mek systems status computed from crit slots and locations */
     readonly systemsStatus = computed(() => {
         const critSlots = this.unit.getCritSlots();
-        const hasMASC = critSlots.some(slot => slot.name && slot.name.includes('MASC'));
-        const destroyedMASC = critSlots.some(slot => slot.name && slot.name.includes('MASC') && slot.destroyed);
-        const hasSupercharger = critSlots.some(slot => slot.name && slot.name.includes('Supercharger'));
-        const destroyedSupercharger = critSlots.some(slot => slot.name && slot.name.includes('Supercharger') && slot.destroyed);
-        const jumpJetsCount = critSlots.filter(slot => slot.name && (slot.name.includes('Jump Jet') || slot.name.includes('JumpJet'))).length;
-        const destroyedJumpJetsCount = critSlots.filter(slot => slot.name && (slot.name.includes('Jump Jet') || slot.name.includes('JumpJet')) && slot.destroyed).length;
-        const UMUCount = critSlots.filter(slot => slot.name && (slot.name.includes('UMU'))).length;
-        const destroyedUMUCount = critSlots.filter(slot => slot.name && (slot.name.includes('UMU')) && slot.destroyed).length;
+        const hasMASC = critSlots.some(slot => this.isNamedCrit(slot, 'MASC'));
+        const destroyedMASC = critSlots.some(slot => this.isNamedCrit(slot, 'MASC') && this.isCritUnavailable(slot));
+        const hasSupercharger = critSlots.some(slot => this.isNamedCrit(slot, 'Supercharger'));
+        const destroyedSupercharger = critSlots.some(slot => this.isNamedCrit(slot, 'Supercharger') && this.isCritUnavailable(slot));
+        const jumpJetsCount = critSlots.filter(slot => this.isNamedCrit(slot, 'Jump Jet') || this.isNamedCrit(slot, 'JumpJet')).length;
+        const destroyedJumpJetsCount = critSlots.filter(slot => (this.isNamedCrit(slot, 'Jump Jet') || this.isNamedCrit(slot, 'JumpJet')) && this.isCritUnavailable(slot)).length;
+        const UMUCount = critSlots.filter(slot => this.isNamedCrit(slot, 'UMU')).length;
+        const destroyedUMUCount = critSlots.filter(slot => this.isNamedCrit(slot, 'UMU') && this.isCritUnavailable(slot)).length;
         const hasPartialWings = critSlots.some(slot => slot.eq?.hasFlag('F_PARTIAL_WING'));
-        const destroyedPartialWingsCount = hasPartialWings ? critSlots.filter(slot => slot.eq?.hasFlag('F_PARTIAL_WING') && slot.destroyed).length : 0;
+        const destroyedPartialWingsCount = hasPartialWings ? critSlots.filter(slot => slot.eq?.hasFlag('F_PARTIAL_WING') && this.isCritUnavailable(slot)).length : 0;
         const partialWingsHeatBonus = hasPartialWings ? Math.max(0, 3 - destroyedPartialWingsCount) : 0;
         const hasTripleStrengthMyomer = critSlots.some(slot => slot.eq?.hasFlag('F_TSM') && !slot.eq?.hasFlag('F_PROTOTYPE'));
-        const cockpitLoc = critSlots.find(slot => slot.name && slot.name.includes("Cockpit"))?.loc ?? 'HD';
-        const destroyedSensorsCountInHD = critSlots.filter(slot => slot.loc === 'HD' && slot.name && slot.name.includes('Sensor') && slot.destroyed).length;
-        const destroyedSensorsCount = critSlots.filter(slot => slot.name && slot.name.includes('Sensor') && slot.destroyed).length;
-        const destroyedTargetingComputers = critSlots.filter(slot => slot.name && slot.name.includes('Targeting Computer') && slot.destroyed).length;
+        const cockpitLoc = critSlots.find(slot => this.isNamedCrit(slot, "Cockpit"))?.loc ?? 'HD';
+        const destroyedSensorsCountInHD = critSlots.filter(slot => slot.loc === 'HD' && this.isNamedCrit(slot, 'Sensor') && this.isCritUnavailable(slot)).length;
+        const destroyedSensorsCount = critSlots.filter(slot => this.isNamedCrit(slot, 'Sensor') && this.isCritUnavailable(slot)).length;
+        const destroyedTargetingComputers = critSlots.filter(slot => this.isNamedCrit(slot, 'Targeting Computer') && this.isCritUnavailable(slot)).length;
 
         const internalLocations = new Set<string>(this.unit.locations?.internal?.keys() || []);
 
@@ -512,14 +574,14 @@ export class MekRules extends UnitTypeRulesBase {
 
         const checkLeg = (loc: string) => {
             if (!destroyedLegAES) {
-                destroyedLegAES = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('AES') && slot.destroyed);
+                destroyedLegAES = critSlots.some(slot => slot.loc == loc && this.isNamedCrit(slot, 'AES') && this.isCritUnavailable(slot));
             }
             if (this.unit.isInternalLocCommittedDestroyed(loc)) {
                 destroyedLegsCount++;
             } else {
-                destroyedHipsCount += critSlots.filter(slot => slot.loc === loc && slot.name && slot.name.includes('Hip') && slot.destroyed).length;
-                destroyedLegActuatorsCount += critSlots.filter(slot => slot.loc === loc && slot.name && (slot.name.includes('Upper Leg') || slot.name.includes('Lower Leg')) && slot.destroyed).length;
-                destroyedFeetCount += critSlots.filter(slot => slot.loc === loc && slot.name && slot.name.includes('Foot') && slot.destroyed).length;
+                destroyedHipsCount += critSlots.filter(slot => slot.loc === loc && this.isNamedCrit(slot, 'Hip') && this.isCritUnavailable(slot)).length;
+                destroyedLegActuatorsCount += critSlots.filter(slot => slot.loc === loc && (this.isNamedCrit(slot, 'Upper Leg') || this.isNamedCrit(slot, 'Lower Leg')) && this.isCritUnavailable(slot)).length;
+                destroyedFeetCount += critSlots.filter(slot => slot.loc === loc && this.isNamedCrit(slot, 'Foot') && this.isCritUnavailable(slot)).length;
             }
         };
 
@@ -542,15 +604,15 @@ export class MekRules extends UnitTypeRulesBase {
 
         // Capabilities
         const getArmsModifiers = (loc: string) => {
-            const destroyedAES = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('AES') && slot.destroyed);
+            const destroyedAES = critSlots.some(slot => slot.loc == loc && this.isNamedCrit(slot, 'AES') && this.isCritUnavailable(slot));
             if (!this.unit.locations?.armor?.has(loc)) {
                 return null;
             }
 
-            const destroyedShoulder = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Shoulder') && slot.destroyed);
-            const destroyedHand = critSlots.some(slot => slot.loc == loc && slot.name && slot.name.includes('Hand') && slot.destroyed);
-            const destroyedUpperArmsCount = critSlots.filter(slot => slot.loc == loc && slot.name && slot.name.includes('Upper Arm') && slot.destroyed).length;
-            const destroyedLowerArmsCount = critSlots.filter(slot => slot.loc == loc && slot.name && slot.name.includes('Lower Arm') && slot.destroyed).length;
+            const destroyedShoulder = critSlots.some(slot => slot.loc == loc && this.isNamedCrit(slot, 'Shoulder') && this.isCritUnavailable(slot));
+            const destroyedHand = critSlots.some(slot => slot.loc == loc && this.isNamedCrit(slot, 'Hand') && this.isCritUnavailable(slot));
+            const destroyedUpperArmsCount = critSlots.filter(slot => slot.loc == loc && this.isNamedCrit(slot, 'Upper Arm') && this.isCritUnavailable(slot)).length;
+            const destroyedLowerArmsCount = critSlots.filter(slot => slot.loc == loc && this.isNamedCrit(slot, 'Lower Arm') && this.isCritUnavailable(slot)).length;
             const destroyedUpperArms = destroyedUpperArmsCount > 0;
             const destroyedLowerArms = destroyedLowerArmsCount > 0;
             destroyedArmActuatorsCount[loc as 'LA' | 'RA'] += destroyedUpperArmsCount + destroyedLowerArmsCount;
@@ -655,8 +717,8 @@ export class MekRules extends UnitTypeRulesBase {
 
         // Calculate pre-existing modifiers for hips and leg actuators destroyed the previous turns
         const critSlots = this.unit.getCritSlots();
-        const hasAESinLegs = critSlots.some(slot => slot.name && slot.loc && !slot.destroyed && LEG_LOCATIONS.has(slot.loc) && slot.name.includes('AES'));
-        const hasAESinLegsDestroyed = critSlots.some(slot => slot.name && slot.loc && slot.destroyed && LEG_LOCATIONS.has(slot.loc) && slot.name.includes('AES'));
+        const hasAESinLegs = critSlots.some(slot => slot.name && slot.loc && !this.isCritUnavailable(slot) && LEG_LOCATIONS.has(slot.loc) && this.isNamedCrit(slot, 'AES'));
+        const hasAESinLegsDestroyed = critSlots.some(slot => slot.name && slot.loc && this.isCritUnavailable(slot) && LEG_LOCATIONS.has(slot.loc) && this.isNamedCrit(slot, 'AES'));
         if (hasAESinLegs && !hasAESinLegsDestroyed) {
             preExisting -= 2; // AES in legs intact gives -2 modifier
             modifiers.push({
@@ -672,9 +734,9 @@ export class MekRules extends UnitTypeRulesBase {
                 reason: "Mounts Hardened Armor"
             });
         }
-        const modularArmorPanelsCount = critSlots.filter(slot => slot.name && slot.name.includes('Modular Armor')).length;
+        const modularArmorPanelsCount = critSlots.filter(slot => this.isNamedCrit(slot, 'Modular Armor')).length;
         if (modularArmorPanelsCount > 0) {
-            const destroyedModularArmorPanelsCount = critSlots.filter(slot => slot.name && slot.name.includes('Modular Armor') && (slot.destroyed || ((slot.consumed ?? 0) >= 10))).length;
+            const destroyedModularArmorPanelsCount = critSlots.filter(slot => this.isNamedCrit(slot, 'Modular Armor') && (slot.destroyed || ((slot.consumed ?? 0) >= 10))).length;
             if (destroyedModularArmorPanelsCount < modularArmorPanelsCount) {
                 preExisting += 1; // Modular armor gives +1 modifier (until destroyed or fully consumed)
                 modifiers.push({
@@ -683,10 +745,10 @@ export class MekRules extends UnitTypeRulesBase {
                 });
             }
         }
-        const hasSmallOrTorsoCockpit = critSlots.some(slot => slot.name && slot.loc
-            && ((slot.name.includes('Cockpit') && slot.name.includes('Small'))
-                || (slot.name.includes('Command') && slot.name.includes('Small'))))
-            || critSlots.some(slot => slot.name && slot.loc && slot.loc === 'CT' && slot.name.includes('Cockpit'));
+        const hasSmallOrTorsoCockpit = critSlots.some(slot => slot.loc
+            && ((this.isNamedCrit(slot, 'Cockpit') && this.isNamedCrit(slot, 'Small'))
+                || (this.isNamedCrit(slot, 'Command') && this.isNamedCrit(slot, 'Small'))))
+            || critSlots.some(slot => slot.loc && slot.loc === 'CT' && this.isNamedCrit(slot, 'Cockpit'));
         if (hasSmallOrTorsoCockpit) {
             preExisting += 1; // Small or Torso cockpit gives +1 modifier
             modifiers.push({
@@ -694,7 +756,7 @@ export class MekRules extends UnitTypeRulesBase {
                 reason: "Mounts small or torso cockpit"
             });
         }
-        const destroyedHips = critSlots.filter(slot => slot.name && slot.loc && slot.destroyed && LEG_LOCATIONS.has(slot.loc) && !ignoreLeg.has(slot.loc) && slot.name.includes('Hip'));
+        const destroyedHips = critSlots.filter(slot => slot.loc && this.isCritUnavailable(slot) && LEG_LOCATIONS.has(slot.loc) && !ignoreLeg.has(slot.loc) && this.isNamedCrit(slot, 'Hip'));
         for (const hip of destroyedHips) {
             if (!hip.loc) continue;
             preExisting += 2;
@@ -705,10 +767,10 @@ export class MekRules extends UnitTypeRulesBase {
             ignoreLeg.add(hip.loc); // Track destroyed hip locations, we ignore further modifiers on that leg
         }
         const relevantDestroyedLegActuatorsCount = critSlots.filter(slot => {
-            if (!slot.loc || !slot.name || !slot.destroyed) return false;
+            if (!slot.loc || !slot.name || !this.isCritUnavailable(slot)) return false;
             if (!LEG_LOCATIONS.has(slot.loc)) return false;
             if (ignoreLeg.has(slot.loc)) return false;
-            if (!slot.name.includes('Foot') && !slot.name.includes('Leg')) return false;
+            if (!this.isNamedCrit(slot, 'Foot') && !this.isNamedCrit(slot, 'Leg')) return false;
             return true;
         }).length;
         preExisting += relevantDestroyedLegActuatorsCount;
@@ -719,10 +781,10 @@ export class MekRules extends UnitTypeRulesBase {
             });
         }
         if (!ignorePreExistingGyro) {
-            const hasHeavyDutyGyro = critSlots.some(slot => slot.name && slot.name.includes('Heavy Duty') && slot.name.includes('Gyro'));
+            const hasHeavyDutyGyro = critSlots.some(slot => this.isNamedCrit(slot, 'Heavy Duty') && this.isNamedCrit(slot, 'Gyro'));
             const previouslyDestroyedGyroCount = critSlots.filter(slot => {
-                if (!slot.name || !slot.destroyed) return false;
-                if (!slot.name.includes('Gyro')) return false;
+                if (!this.isCritUnavailable(slot)) return false;
+                if (!this.isNamedCrit(slot, 'Gyro')) return false;
                 return true;
             }).length;
             if (hasHeavyDutyGyro && (previouslyDestroyedGyroCount === 1)) {
@@ -818,7 +880,7 @@ export class MekRules extends UnitTypeRulesBase {
 
         // SuperCooledMyomer destroyed reduces dissipation
         const destroyedSuperCooledMyomer = critSlots.filter(
-            slot => this.isSuperCooledMyomerSlot(slot) && slot.destroyed
+            slot => this.isSuperCooledMyomerSlot(slot) && this.isCritUnavailable(slot)
         ).length;
 
         let totalDissipation = base.totalDissipation;
@@ -936,6 +998,21 @@ export class MekRules extends UnitTypeRulesBase {
         if (!unit) return null;
         const baseMovement = this.computeBaseMovementProfile();
         if (!baseMovement) return null;
+
+        if (this.allCrewUnconscious()) {
+            return {
+                moveImpaired: true,
+                walk: 0,
+                maxWalk: 0,
+                run: 0,
+                maxRun: 0,
+                jumpImpaired: unit.jump > 0,
+                jump: 0,
+                UMUImpaired: unit.umu > 0,
+                UMU: 0,
+            };
+        }
+
         const systemsStatus = this.systemsStatus();
         let walkValue = baseMovement?.walk ?? 0;
 
@@ -1012,10 +1089,10 @@ export class MekRules extends UnitTypeRulesBase {
 
         // Spike bonus for charge attacks
         const critSlots = this.unit.getCritSlots();
-        const totalSpikes = critSlots.filter(slot => slot.name?.includes('Spikes')).length;
+        const totalSpikes = critSlots.filter(slot => this.isNamedCrit(slot, 'Spikes')).length;
         const spikeBonus = totalSpikes > 0 ? {
             total: totalSpikes,
-            working: critSlots.filter(slot => slot.name?.includes('Spikes') && !slot.destroyed).length,
+            working: critSlots.filter(slot => this.isNamedCrit(slot, 'Spikes') && !this.isCritUnavailable(slot)).length,
         } : null;
 
         return {
@@ -1103,7 +1180,7 @@ export class MekRules extends UnitTypeRulesBase {
         // Pass 1: sync destroyed flag from critSlots
         for (const entry of entries) {
             if (entry.critSlots?.length) {
-                entry.destroyed = entry.critSlots.some(s => s.destroyed);
+                entry.destroyed = entry.critSlots.some(s => this.isCritStructurallyDestroyed(s));
             }
         }
         // Pass 2: compute full state
@@ -1124,8 +1201,10 @@ export class MekRules extends UnitTypeRulesBase {
         const systemsStatus = this.systemsStatus();
         if (!physical || !fire) return { isDamaged: false, isDisabled: false, hitMod: 0 };
 
-        let isDamaged = !!(entry.critSlots?.some(slot => slot.destroyed));
-        let isDisabled = false;
+        const physicallyDestroyed = this.entryInPhysicallyDestroyedLocation(entry);
+        const functionallyDestroyed = this.entryInFunctionallyDestroyedLocation(entry);
+        let isDamaged = physicallyDestroyed || !!(entry.critSlots?.some(slot => slot.destroyed));
+        let isDisabled = functionallyDestroyed;
         let hitMod = 0;
 
         if (fire.globalMod !== 0) hitMod += fire.globalMod;
@@ -1176,18 +1255,31 @@ export class MekRules extends UnitTypeRulesBase {
                     hitMod += 1;
                 }
             }
-            if (entry.linkedWith) {
-                for (const linked of entry.linkedWith) {
-                    if (linked.equipment?.flags.has('F_ARTEMIS_V') && linked.destroyed) {
-                        hitMod += 1;
-                    }
-                }
-            }
         }
 
         if (entry.states.get('state') === 'jammed') isDisabled = true;
 
         return { isDamaged, isDisabled, hitMod };
+    }
+
+    private entryInPhysicallyDestroyedLocation(entry: MountedEquipment): boolean {
+        if (entry.critSlots?.some(slot => this.locationPhysicallyDestroyed(slot.loc))) return true;
+        return Array.from(entry.locations ?? []).some(loc => this.locationPhysicallyDestroyed(loc));
+    }
+
+    private entryInFunctionallyDestroyedLocation(entry: MountedEquipment): boolean {
+        if (entry.critSlots?.some(slot => this.locationFunctionallyDestroyed(slot.loc))) return true;
+        return Array.from(entry.locations ?? []).some(loc => this.locationFunctionallyDestroyed(loc));
+    }
+
+    private locationPhysicallyDestroyed(loc: string | undefined): boolean {
+        if (!loc) return false;
+        return this.unit.isInternalLocCommittedStructurallyDestroyed(loc);
+    }
+
+    private locationFunctionallyDestroyed(loc: string | undefined): boolean {
+        if (!loc) return false;
+        return this.unit.isInternalLocCommittedDestroyed(loc);
     }
 
     /**
@@ -1227,5 +1319,9 @@ export class MekRules extends UnitTypeRulesBase {
         }
 
         return { damage, maxDamage };
+    }
+
+    private isNamedCrit(slot: CriticalSlot, name: string): boolean {
+        return (slot.name && slot.name.includes(name)) ? true : false;
     }
 }

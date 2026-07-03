@@ -55,12 +55,16 @@ export function isMountedDestroyed(entry: MountedEquipment): boolean {
     return !!entry.destroyed;
 }
 
+function isMountedUnavailable(entry: MountedEquipment): boolean {
+    return entry.owner?.isEquipmentUnavailable?.(entry) ?? isMountedDestroyed(entry);
+}
+
 export function computeLinkedModifiers(entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null): number {
     let mod = 0;
     if (entry.linkedWith) {
         for (const linked of entry.linkedWith) {
              // TODO: once we move to direct calculation, we should inverse the ifs and give a -1 instead!
-            if (isMountedDestroyed(linked) && hasLinkedEquipmentToHitBonus(linked)) {
+            if (isMountedUnavailable(linked) && hasLinkedEquipmentToHitBonus(linked)) {
                 mod += 1;
             } else if (hasArtemisVToHitBonus(linked) && selectedAmmo !== undefined && !selectedAmmo?.hasMunitionType('M_ARTEMIS_V_CAPABLE')) {
                 mod += 1;

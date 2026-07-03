@@ -75,6 +75,7 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         getCritSlots: () => critSlots(),
         isInternalLocCommittedDestroyed: (loc: string) => committedDestroyedLegs.has(loc),
         isInternalLocDestroyed: (loc: string) => currentDestroyedLegs.has(loc) || committedDestroyedLegs.has(loc),
+        isEquipmentUnavailable: (slot: CriticalSlot) => !!slot.destroyed || (slot.loc ? committedDestroyedLegs.has(slot.loc) : false),
         getUnit: () => ({ type: 'Mek', ...options.unit } as Unit),
         turnState: () => turnState,
     };

@@ -33,16 +33,20 @@
 
 import { computed, signal, type Signal } from '@angular/core';
 import type { CriticalSlot } from '../force-serialization';
-import { type MotiveModes } from '../motiveModes.model';
+import { getMotiveModeLabel, type MotiveModes } from '../motiveModes.model';
 import type { TurnState } from '../turn-state.model';
 import type { CrewMemberState } from '../crew-member.model';
 import {
     getTargetMovementBracketForDistance,
-    getTargetStanceModifier,
     TN_AIRBORNE_MOVE_TYPE_MODIFIER,
+    TN_IMMOBILE,
+    TN_PRONE,
+    TN_PRONE_ADJACENT,
+    TN_PRONE_ATTACKER,
+    TN_SKIDDING_ATTACKER,
     TN_SKIDDING_MODIFIER,
 } from '../target-number-calculator.model';
-import { CBTForceUnit } from '../cbt-force-unit.model';
+import type { CBTForceUnit } from '../cbt-force-unit.model';
 
 export interface PSRCheck {
     fallCheck?: number;
@@ -64,9 +68,40 @@ export interface UnitHeatSource {
     value: number;
 }
 
+export interface LocationConditionControl {
+    key: string;
+    label: string;
+    color: string;
+    counted?: boolean;
+}
+
 export interface UnitModifierBreakdownEntry {
     label: string;
     modifier: number;
+    alternateModifier?: number;
+    alternateModifierLabel?: string;
+}
+
+export interface UnitModifierTotal {
+    modifier: number;
+    alternateModifier?: number;
+    alternateModifierLabel?: string;
+}
+
+export function calculateModifierTotal(entries: readonly UnitModifierBreakdownEntry[]): UnitModifierTotal {
+    let min = 0;
+    let max = 0;
+
+    for (const entry of entries) {
+        const entryMin = Math.min(entry.modifier, entry.alternateModifier ?? entry.modifier);
+        const entryMax = Math.max(entry.modifier, entry.alternateModifier ?? entry.modifier);
+        min += entryMin;
+        max += entryMax;
+    }
+
+    return min === max
+        ? { modifier: max }
+        : { modifier: max, alternateModifier: min };
 }
 
 export type UnitConditionControlPlacement = 'button' | 'menu';
@@ -92,13 +127,14 @@ export type CrewStateControlKey = Exclude<CrewMemberState, 'healthy' | 'dead'>;
 export type CrewStateControlDefinition = CrewStateDefinition & { key: CrewStateControlKey };
 
 export const UNIT_CONDITION_DEFINITIONS: readonly UnitConditionDefinition[] = [
-    { key: 'shutdown', important: true, label: 'SHUTDOWN', color: '#d32f2f', placement: 'button' },
-    { key: 'abandoned', important: true, label: 'ABANDONED', color: '#000000' },
+    { key: 'shutdown', important: true, label: 'SHUTDOWN', color: '#840000', placement: 'button' },
+    { key: 'abandoned', important: true, label: 'ABANDONED', color: '#222' },
     { key: 'immobile', label: 'IMMOBILE', color: '#ff8800' },
     { key: 'prone', label: 'PRONE', color: '#666', placement: 'button' },
-    { key: 'swarmed', label: 'SWARMED', color: '#54ffc3', placement: 'menu' },
+    { key: 'crippled', label: 'CRIPPLED', color: '#b70000' },
+    { key: 'swarmed', label: 'SWARMED', color: '#56ddae', placement: 'menu' },
     { key: 'tagged', label: 'TAGGED', color: '#3385d7', placement: 'menu' },
-    { key: 'skidding', label: 'SKIDDING', color: '#ebdb00', placement: 'menu' },
+    { key: 'skidding', label: 'SKIDDING', color: '#dccd00', placement: 'menu' },
     { key: 'jammed', label: 'JAMMED', color: '#ff6be6', placement: 'menu' },
 ];
 
@@ -182,6 +218,9 @@ export interface UnitTypeRules {
     /** Manual crew-state controls available for this unit type. */
     readonly crewStateControls: readonly CrewStateControlDefinition[];
 
+    /** Manual location-state controls available for this unit type. */
+    readonly locationConditionControls: readonly LocationConditionControl[];
+
     /** Display definition for a crew state supported by this unit type. */
     crewStateDefinition(state: CrewMemberState): CrewStateDefinition | undefined;
 
@@ -240,9 +279,11 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     readonly autoFall: Signal<boolean> = signal(false);
     readonly conditionControls: readonly UnitConditionControl[] = [];
     readonly crewStateControls: readonly CrewStateControlDefinition[] = [];
+    readonly locationConditionControls: readonly LocationConditionControl[] = [];
     protected readonly crewStateDisplayDefinitions: readonly CrewStateDefinition[] = [];
     protected readonly abandoned: Signal<boolean> = signal(false);
     protected readonly immobile: Signal<boolean> = signal(false);
+    protected readonly crippled: Signal<boolean> = signal(false);
 
     abstract evaluateDestroyed(): void;
 
@@ -256,17 +297,18 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     }
 
     isComputedCondition(condition: string): boolean {
-        return condition === 'abandoned' || condition === 'immobile';
+        return condition === 'abandoned' || condition === 'immobile' || condition === 'crippled';
     }
 
     hasComputedCondition(condition: string): boolean {
         if (condition === 'abandoned') return this.abandoned();
         if (condition === 'immobile') return this.immobile();
+        if (condition === 'crippled') return this.crippled();
         return false;
     }
 
     computedConditions(): readonly string[] {
-        return ['abandoned', 'immobile'];
+        return ['abandoned', 'immobile', 'crippled'];
     }
 
     crewStateDefinition(state: CrewMemberState): CrewStateDefinition | undefined {
@@ -289,9 +331,9 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
 
     heatSources(turnState: TurnState): UnitHeatSource[] {
         if (this.unit.getUnit().heat < 0) return []; // Does not track heat
-        const firedHeat = turnState.firedHeat();
-        return firedHeat > 0
-            ? [{ id: 'weapons', label: 'Weapons', value: firedHeat }]
+        const weaponsHeat = turnState.weaponsHeat();
+        return weaponsHeat > 0
+            ? [{ id: 'weapons', label: 'Weapons', value: weaponsHeat }]
             : [];
     }
 
@@ -315,9 +357,20 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         const entries = this.gunneryModifiers()
             .filter(modifier => modifier.modifier !== 0)
             .map(modifier => ({ label: modifier.reason, modifier: modifier.modifier }));
+        const moveMode = turnState.moveMode();
         const movementModifier = this.getAttackMovementModifier(turnState.moveMode(), turnState.airborne() ?? false);
-        if (movementModifier !== 0) {
-            entries.push({ label: 'Attacker movement', modifier: movementModifier });
+        if (movementModifier !== 0 && moveMode !== null) {
+            entries.push({ label: getMotiveModeLabel(moveMode, this.unit.getUnit(), turnState.airborne() ?? false), modifier: movementModifier });
+        }
+        if (turnState.unitState.hasCondition('prone')
+        && !this.unit.getUnit().subtype.startsWith('Quad')) { // does not apply to four-legged Meks
+            entries.push({
+                label: 'Prone',
+                modifier: TN_PRONE_ATTACKER,
+            });
+        }
+        if (turnState.unitState.hasCondition('skidding')) {
+            entries.push({ label: 'Skidding', modifier: TN_SKIDDING_ATTACKER });
         }
         const spottingModifier = turnState.spotting() ? 1 : 0;
         if (spottingModifier !== 0) {
@@ -329,10 +382,15 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     getDefenseModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[] {
         const entries: UnitModifierBreakdownEntry[] = [];
         if (turnState.unitState.hasCondition('prone')) {
-            entries.push({ label: 'Prone', modifier: getTargetStanceModifier('prone', 1) });
+            entries.push({
+                label: 'Prone',
+                modifier: Math.max(TN_PRONE, TN_PRONE_ADJACENT),
+                alternateModifier: Math.min(TN_PRONE, TN_PRONE_ADJACENT),
+                alternateModifierLabel: 'adjacent',
+            });
         }
         if (turnState.unitState.hasCondition('immobile')) {
-            entries.push({ label: 'Immobile', modifier: getTargetStanceModifier('immobile', 1) });
+            entries.push({ label: 'Immobile', modifier: TN_IMMOBILE });
         }
         if (turnState.unitState.hasCondition('skidding')) {
             entries.push({ label: 'Skidding', modifier: TN_SKIDDING_MODIFIER });
@@ -362,6 +420,16 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     protected hasFunctionalCrew(): boolean {
         const crew = this.unit.getCrewMembers();
         return crew.length > 0 && crew.some(crewMember => crewMember.getState() === 'healthy');
+    }
+
+    protected allCrewUnconscious(): boolean {
+        const crew = this.unit.getCrewMembers();
+        return crew.length > 0 && crew.every(crewMember => crewMember.getState() === 'unconscious');
+    }
+
+    protected allCrewCrippled(): boolean {
+        const crew = this.unit.getCrewMembers();
+        return crew.length > 0 && crew.every(crewMember => crewMember.isCrippled());
     }
 }
 

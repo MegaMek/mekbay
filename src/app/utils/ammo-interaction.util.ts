@@ -62,14 +62,6 @@ export function formatBattleArmorTrooperLocation(locationLabel: string): string 
     return trooperNumber === null ? locationLabel : `T${trooperNumber}`;
 }
 
-export function isBattleArmorTrooperLocationDestroyed(unit: CBTForceUnit, locationLabel: string): boolean {
-    if (unit.getUnit().subtype !== 'Battle Armor') return false;
-    const trooperNumber = getBattleArmorTrooperNumber(locationLabel);
-    if (trooperNumber === null) return false;
-
-    return unit.isArmorLocCommittedDestroyed(`T${trooperNumber}`, false);
-}
-
 function formatAmmoBinName(index: number): string {
     return `#${index} Bin`;
 }
@@ -121,7 +113,7 @@ export function getAmmoControlEntryForCriticalSlot(unit: CBTForceUnit, criticalS
         originalTotalAmmo: getOriginalTotalAmmo(unit, criticalSlot),
         totalAmmo,
         consumed: criticalSlot.consumed ?? 0,
-        destroyed: !!criticalSlot.destroyed
+        destroyed: unit.isEquipmentUnavailable(criticalSlot)
     };
 }
 
@@ -162,7 +154,7 @@ function createInventoryAmmoControlEntry(unit: CBTForceUnit, inventoryEntry: Mou
     const originalTotalAmmo = getInventoryOriginalTotalAmmo(inventoryEntry);
     const totalAmmo = inventoryEntry.totalAmmo ?? originalTotalAmmo;
     const locationLabel = Array.from(inventoryEntry.locations ?? []).join('/') || 'Ammo';
-    const destroyed = !!inventoryEntry.destroyed || isBattleArmorTrooperLocationDestroyed(unit, locationLabel);
+    const destroyed = unit.isEquipmentUnavailable(inventoryEntry);
     return {
         id: `inventory:${inventoryEntry.id}`,
         owner: unit,
@@ -365,7 +357,7 @@ function syncEntryFromSource(entry: AmmoControlEntry, equipmentMap: EquipmentMap
         entry.originalTotalAmmo = getInventoryOriginalTotalAmmo(source);
         entry.totalAmmo = source.totalAmmo ?? entry.originalTotalAmmo;
         entry.consumed = source.consumed ?? 0;
-        entry.destroyed = !!source.destroyed || isBattleArmorTrooperLocationDestroyed(entry.owner, entry.locationLabel);
+        entry.destroyed = entry.owner.isEquipmentUnavailable(source);
         return;
     }
 
@@ -378,7 +370,7 @@ function syncEntryFromSource(entry: AmmoControlEntry, equipmentMap: EquipmentMap
     entry.originalTotalAmmo = getOriginalTotalAmmo(entry.owner, entry.source as CriticalSlot);
     entry.totalAmmo = getCriticalSlotTotalAmmo(entry.owner, entry.source as CriticalSlot);
     entry.consumed = (entry.source as CriticalSlot).consumed ?? 0;
-    entry.destroyed = !!(entry.source as CriticalSlot).destroyed;
+    entry.destroyed = entry.owner.isEquipmentUnavailable(entry.source as CriticalSlot);
 }
 
 function showAmmoToast(entry: AmmoControlEntry, deltaRemaining: number, context: HandlerContext): void {

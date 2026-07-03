@@ -185,11 +185,83 @@ export interface ASSerializedUnit extends SerializedUnit {
 export interface CBTSerializedUnit extends SerializedUnit {
     state: CBTSerializedState;
 }
+export interface ConditionData {
+    value?: number;
+    pending?: boolean;
+}
+
 export interface SerializedConditionValue {
     key: string;
-    value: number;
+    value?: number;
+    pending?: boolean;
 }
 export type SerializedCondition = string | SerializedConditionValue;
+
+export function normalizeConditionKey(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    const condition = value.trim().slice(0, 48);
+    return condition.length > 0 ? condition : null;
+}
+
+export function normalizeConditionData(data: ConditionData | undefined): ConditionData | undefined {
+    const value = data?.value;
+    const normalized: ConditionData = {};
+    if (typeof value === 'number' && Number.isFinite(value) && value !== 0) normalized.value = value;
+    if (data?.pending === true) normalized.pending = true;
+    return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+export function conditionFromSerialized(entry: SerializedCondition): [string, ConditionData | undefined] | null {
+    if (typeof entry === 'string') {
+        const key = normalizeConditionKey(entry);
+        return key ? [key, undefined] : null;
+    }
+
+    if ((entry as unknown as Record<string, unknown>)['remove'] === true) return null;
+
+    const key = normalizeConditionKey(entry.key);
+    return key ? [key, normalizeConditionData(entry)] : null;
+}
+
+export function conditionToSerialized(key: string, data: ConditionData | undefined): SerializedCondition {
+    const normalized = normalizeConditionData(data);
+    return normalized ? { key, ...normalized } : key;
+}
+
+export function conditionsMapFromSerialization(conditions: Iterable<SerializedCondition> | undefined): Map<string, ConditionData | undefined> {
+    const result = new Map<string, ConditionData | undefined>();
+    for (const condition of conditions ?? []) {
+        const parsed = conditionFromSerialized(condition);
+        if (parsed) result.set(parsed[0], parsed[1]);
+    }
+    return result;
+}
+
+export function conditionsForSerialization(conditions: ReadonlyMap<string, ConditionData | undefined>): SerializedCondition[] {
+    return Array.from(conditions.entries())
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, data]) => conditionToSerialized(key, data));
+}
+
+export function conditionIsActive(_data: ConditionData | undefined): boolean {
+    return true;
+}
+
+export function conditionIsCommittedActive(data: ConditionData | undefined): boolean {
+    return data?.pending !== true;
+}
+
+export function conditionsHasActive(conditions: ReadonlyMap<string, ConditionData | undefined>, key: string): boolean {
+    return conditions.has(key);
+}
+
+export function conditionsHasCommittedActive(conditions: ReadonlyMap<string, ConditionData | undefined>, key: string): boolean {
+    return conditions.has(key) && conditionIsCommittedActive(conditions.get(key));
+}
+
+export function committedConditionData(data: ConditionData | undefined): ConditionData | undefined {
+    return normalizeConditionData({ value: data?.value });
+}
 
 export interface SerializedState {
     modified: boolean;
@@ -444,19 +516,13 @@ function sanitizeNumberRecord(value: unknown): Record<string, number> | undefine
     return Object.keys(result).length > 0 ? result : undefined;
 }
 
-function sanitizeConditionName(value: unknown): string | null {
-    if (typeof value !== 'string') return null;
-    const condition = value.trim().slice(0, 48);
-    return condition.length > 0 ? condition : null;
-}
-
 function sanitizeConditions(value: unknown): SerializedCondition[] | undefined {
     if (!Array.isArray(value)) return undefined;
-    const states = new Map<string, { value: number } | undefined>();
+    const states = new Map<string, ConditionData | undefined>();
 
     for (const entry of value) {
         if (typeof entry === 'string') {
-            const condition = sanitizeConditionName(entry);
+            const condition = normalizeConditionKey(entry);
             if (condition) states.set(condition, undefined);
             continue;
         }
@@ -466,22 +532,22 @@ function sanitizeConditions(value: unknown): SerializedCondition[] | undefined {
         }
 
         const record = entry as Record<string, unknown>;
-        const condition = sanitizeConditionName(record['key'] ?? record['state']);
+        const condition = normalizeConditionKey(record['key'] ?? record['state']);
         const countedValue = record['value'];
-        if (!condition || typeof countedValue !== 'number' || !Number.isFinite(countedValue) || countedValue === 0) {
+        if (!condition) {
+            continue;
+        }
+        if (record['remove'] === true) {
             continue;
         }
 
-        states.set(condition, { value: countedValue });
+        const data: ConditionData = {};
+        if (typeof countedValue === 'number' && Number.isFinite(countedValue) && countedValue !== 0) data.value = countedValue;
+        if (record['pending'] === true) data.pending = true;
+        states.set(condition, normalizeConditionData(data));
     }
 
-    const serializedConditions = Array.from(states.entries())
-        .map(([condition, data]) => {
-            const countedValue = data?.value;
-            return typeof countedValue === 'number' && Number.isFinite(countedValue) && countedValue !== 0
-                ? { key: condition, value: countedValue }
-                : condition;
-        });
+    const serializedConditions = conditionsForSerialization(states);
     return serializedConditions.length > 0 ? serializedConditions : undefined;
 }
 
