@@ -9,7 +9,7 @@ import { LayoutService } from '../../services/layout.service';
 import { OptionsService } from '../../services/options.service';
 import { PickerFactoryService } from '../../services/picker-factory.service';
 import { ToastService } from '../../services/toast.service';
-import { WeaponEquipment } from '../../models/equipment.model';
+import { MiscEquipment, WeaponEquipment } from '../../models/equipment.model';
 import { EquipmentDialogComponent } from '../equipment-dialog/equipment-dialog.component';
 import { MountedEquipment } from '../../models/force-serialization';
 import { InventoryControlRuntimeState, type InventoryControlRuntimeRangeKey } from '../../models/inventory-control-runtime-state.model';
@@ -58,6 +58,8 @@ describe('SvgInteractionService', () => {
     let pickerFactory: { createChoicePicker: jasmine.Spy; createNumericPicker: jasmine.Spy };
     let pageViewerState: PageViewerStateService;
     let options: { pickerStyle: 'default' | 'linear' | 'radial'; quickActions: string; sheetsColor: string; useAutomations: boolean };
+    let registryGetChoices: jasmine.Spy;
+    let registryHandleSelection: jasmine.Spy;
 
     beforeEach(() => {
         zoomPanService = {
@@ -83,6 +85,8 @@ describe('SvgInteractionService', () => {
             createChoicePicker: jasmine.createSpy('createChoicePicker').and.returnValue({ destroy: jasmine.createSpy('destroy') }),
             createNumericPicker: jasmine.createSpy('createNumericPicker')
         };
+        registryGetChoices = jasmine.createSpy('getChoices').and.returnValue([]);
+        registryHandleSelection = jasmine.createSpy('handleSelection').and.returnValue(false);
         options = {
             pickerStyle: 'default',
             quickActions: 'disabled',
@@ -99,8 +103,8 @@ describe('SvgInteractionService', () => {
                     provide: EquipmentInteractionRegistryService,
                     useValue: {
                         getRegistry: () => ({
-                            getChoices: () => [],
-                            handleSelection: () => false
+                            getChoices: registryGetChoices,
+                            handleSelection: registryHandleSelection
                         })
                     }
                 },
@@ -279,6 +283,54 @@ describe('SvgInteractionService', () => {
 
         dialogClosedCallbacks[0]();
         expect(pageViewerState.inventoryDialogOpen()).toBeFalse();
+    });
+
+    it('shows equipment handler choices for mounted equipment crit slots', async () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = '<g class="critSlot" loc="CT" slot="0" uid="CLActiveProbe@CT#0" hittable="1"><text>Active Probe</text></g>';
+        const critSlot = { id: 'CLActiveProbe@CT#0', name: 'CLActiveProbe', loc: 'CT', slot: 0 };
+        const equipment = new MiscEquipment({ id: 'CLActiveProbe', name: 'Active Probe', type: 'misc', flags: ['F_BAP'] });
+        const entry = new MountedEquipment({
+            owner: undefined as any,
+            id: 'CLActiveProbe@CT#0',
+            name: 'CLActiveProbe',
+            equipment,
+            critSlots: [critSlot]
+        });
+        const unit = createSvgInteractionUnit({
+            id: 'unit-a',
+            getUnit: () => ({ type: 'Mek' }),
+            getInventory: () => [entry],
+            getCritSlots: () => [critSlot],
+            getCritSlot: (loc: string, slot: number) => loc === 'CT' && slot === 0 ? critSlot : null,
+            isInternalLocPhysicallyDestroyed: () => false,
+            isEquipmentUnavailable: () => false,
+            applyHitToCritSlot: jasmine.createSpy('applyHitToCritSlot')
+        });
+        entry.owner = unit as any;
+        const handlerChoice = {
+            label: 'Active Probe is OFF',
+            value: 'enabled',
+            displayType: 'toggle' as const,
+            _handler: {} as any
+        };
+        registryGetChoices.and.returnValue([handlerChoice]);
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(svg.querySelector('.critSlot') as SVGElement, 31);
+
+        const pickerConfig = pickerFactory.createChoicePicker.calls.mostRecent().args[0];
+        expect(registryGetChoices).toHaveBeenCalledWith(entry, jasmine.objectContaining({
+            toastService: jasmine.any(Object),
+            dialogsService: jasmine.any(Object),
+            dataService: jasmine.any(Object)
+        }));
+        expect(pickerConfig.values.map((choice: { label: string }) => choice.label)).toContain('Active Probe is OFF');
+
+        await pickerConfig.onPick(handlerChoice);
+
+        expect(registryHandleSelection).toHaveBeenCalledWith(entry, handlerChoice, jasmine.any(Object));
     });
 
     it('updates sensor hit tiers from critical hit state', () => {

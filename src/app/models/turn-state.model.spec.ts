@@ -1,6 +1,6 @@
 import { computed, signal } from '@angular/core';
 import type { CBTForceUnitState } from './cbt-force-unit-state.model';
-import type { CriticalSlot, HeatProfile, MountedEquipment } from './force-serialization';
+import { MountedEquipment, type CriticalSlot, type HeatProfile } from './force-serialization';
 import { AeroRules } from './rules/aero-rules';
 import { InfantryRules } from './rules/infantry-rules';
 import { MekRules } from './rules/mek-rules';
@@ -8,6 +8,8 @@ import type { UnitTypeRules } from './rules/unit-type-rules';
 import type { Unit } from './units.model';
 import { TurnState } from './turn-state.model';
 import { Equipment } from './equipment.model';
+import { PpcCapacitorHandler } from '../equipment-handlers/ppc-capacitor.handler';
+import { PPC_CAPACITOR_STATE_KEY } from '../utils/ppc-capacitor.util';
 
 interface TurnStateHarnessOptions {
     critSlots?: CriticalSlot[];
@@ -23,6 +25,7 @@ interface TurnStateHarnessOptions {
 interface TurnStateHarness {
     turnState: TurnState;
     critSlots: ReturnType<typeof signal<CriticalSlot[]>>;
+    inventory: ReturnType<typeof signal<MountedEquipment[]>>;
     rules: UnitTypeRules;
 }
 
@@ -65,6 +68,7 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
     const committedDestroyedLegs = new Set(options.committedDestroyedLegs ?? []);
     const currentDestroyedLegs = new Set(options.currentDestroyedLegs ?? []);
     const internalLocations = new Map((options.internalLocations ?? ['LL', 'RL']).map(loc => [loc, 1]));
+    const heatSourceHandlers = [new PpcCapacitorHandler()];
     let turnState: TurnState;
 
     const unit = {
@@ -75,6 +79,8 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         getCrewMembers: () => [{ getState: () => 'healthy' }],
         getCritSlots: () => critSlots(),
         getInventory: () => inventory(),
+        getEquipmentHeatSources: () => inventory().flatMap(entry => heatSourceHandlers
+            .flatMap(handler => handler.getInventoryHeatSources?.(entry, turnState) ?? [])),
         isInternalLocCommittedDestroyed: (loc: string) => committedDestroyedLegs.has(loc),
         isInternalLocDestroyed: (loc: string) => currentDestroyedLegs.has(loc) || committedDestroyedLegs.has(loc),
         isEquipmentUnavailable: (slot: CriticalSlot) => !!slot.destroyed || (slot.loc ? committedDestroyedLegs.has(slot.loc) : false),
@@ -107,6 +113,7 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
     return {
         turnState,
         critSlots,
+        inventory,
         rules,
     };
 }
@@ -521,6 +528,34 @@ describe('TurnState', () => {
             expect(turnState.heatSources()).toEqual([
                 { id: 'weapons', label: 'Weapons', value: 6 },
             ]);
+        });
+
+        it('adds charged PPC capacitor heat while the linked PPC and capacitor are usable', () => {
+            const { turnState, inventory } = createTurnStateHarness({ rulesType: 'aero' });
+            const owner = turnState.unitState.unit;
+            const ppcEquipment = createEquipment('Light PPC', ['F_PPC']);
+            const capacitorEquipment = createEquipment('PPC Capacitor', ['F_WEAPON_ENHANCEMENT', 'F_PPC_CAPACITOR']);
+            const ppc = new MountedEquipment({ owner, id: 'Light PPC@RA#3', name: 'Light PPC', equipment: ppcEquipment });
+            const capacitor = new MountedEquipment({
+                owner,
+                id: 'PPC Capacitor@RA#5',
+                name: 'PPC Capacitor',
+                equipment: capacitorEquipment,
+                parent: ppc,
+                states: new Map([[PPC_CAPACITOR_STATE_KEY, 'charged']])
+            });
+            ppc.linkedWith = [capacitor];
+            inventory.set([ppc, capacitor]);
+
+            expect(turnState.heatSources()).toContain(jasmine.objectContaining({
+                id: 'ppc-capacitor:Light PPC@RA#3',
+                label: 'PPC Capacitor',
+                value: 5
+            }));
+
+            capacitor.setCommittedDestroyed(true);
+
+            expect(turnState.heatSources().some(source => source.id.startsWith('ppc-capacitor:'))).toBeFalse();
         });
     });
 });

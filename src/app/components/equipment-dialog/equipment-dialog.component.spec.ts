@@ -8,6 +8,7 @@ import { MountedEquipment } from '../../models/force-serialization';
 import { CBTInventoryControlRuntime } from '../../models/cbt-inventory-control-runtime.model';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
+import type { InventoryControlDisplayData } from '../../utils/inventory-control.util';
 import { EquipmentDialogComponent } from './equipment-dialog.component';
 import type { EquipmentDialogContext, EquipmentDialogData } from './equipment-dialog.model';
 
@@ -137,7 +138,12 @@ function createContext(): EquipmentDialogContext {
         toastService: { showToast: jasmine.createSpy('showToast') },
         dialogsService: { showNoticeHtml: jasmine.createSpy('showNoticeHtml').and.resolveTo(), showError: jasmine.createSpy('showError').and.resolveTo() },
         dataService: { getEquipments: () => ({}) },
-        registry: { getChoices: () => [], handleSelection: () => false }
+        registry: {
+            getChoices: () => [],
+            handleSelection: () => false,
+            afterInventoryControlFire: () => undefined,
+            applyInventoryControlDisplayEffects: (_entry: MountedEquipment, display: InventoryControlDisplayData) => display
+        }
     } as unknown as EquipmentDialogContext;
 }
 

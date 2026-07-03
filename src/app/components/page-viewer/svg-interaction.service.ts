@@ -904,6 +904,12 @@ export class SvgInteractionService {
             const loc = svgEl.getAttribute('loc');
             const slot = parseInt(svgEl.getAttribute('slot') as string);
             const originalTotalAmmo = parseInt(svgEl.getAttribute('totalAmmo') || '0');
+            const equipmentRegistry = this.equipmentRegistryService.getRegistry();
+            const handlerContext = {
+                toastService: this.toastService,
+                dialogsService: this.dialogsService,
+                dataService: this.dataService
+            };
             let labelText = svgEl.textContent || '';
             if (svgEl.classList.contains('ammoSlot')) {
                 // for ammo, we remove the number at the end, example "Ammo (SRM 2) 5" should become "Ammo (SRM 2)"
@@ -944,6 +950,10 @@ export class SvgInteractionService {
                     if ((critSlot.hits ?? 0) > 0) {
                         values.push({ label: 'Repair', value: 'Repair' });
                     }
+                    const inventoryEntry = this.inventoryEntryForCritSlot(unit, critSlot);
+                    if (inventoryEntry) {
+                        values.push(...equipmentRegistry.getChoices(inventoryEntry, handlerContext));
+                    }
                     if (!unit.isEquipmentUnavailable(critSlot) && critSlot.eq instanceof AmmoEquipment) {
                         values.unshift({ label: '+1', value: '+1', keepOpen: true, disabled: ((critSlot.consumed ?? 0) == 0) });
                         values.unshift({ label: '-1', value: '-1', keepOpen: true, disabled: ((critSlot.consumed ?? 0) >= totalAmmo) });
@@ -969,7 +979,10 @@ export class SvgInteractionService {
                         if (!choice) return;
                         const critSlot = unit.getCritSlot(loc, slot);
                         if (!critSlot) return;
-                        if (choice.value == '+1') {
+                        const inventoryEntry = this.inventoryEntryForCritSlot(unit, critSlot);
+                        if (inventoryEntry && choice._handler) {
+                            await equipmentRegistry.handleSelection(inventoryEntry, choice, handlerContext);
+                        } else if (choice.value == '+1') {
                             if (unit.isEquipmentUnavailable(critSlot)) return;
                             if (critSlot.consumed === undefined) {
                                 return;
@@ -1046,6 +1059,17 @@ export class SvgInteractionService {
                 createAndShowPicker(event);
             }, signal);
         });
+    }
+
+    private inventoryEntryForCritSlot(unit: CBTForceUnit, critSlot: CriticalSlot): MountedEquipment | null {
+        return unit.getInventory().find(entry => entry.critSlots?.some(entryCritSlot => this.sameCritSlot(entryCritSlot, critSlot))) ?? null;
+    }
+
+    private sameCritSlot(left: CriticalSlot, right: CriticalSlot): boolean {
+        if (left.loc && right.loc && left.slot !== undefined && right.slot !== undefined) {
+            return left.loc === right.loc && left.slot === right.slot;
+        }
+        return !!left.id && !!right.id && left.id === right.id;
     }
 
     private setupInventoryInteractions(svg: SVGSVGElement, signal: AbortSignal) {

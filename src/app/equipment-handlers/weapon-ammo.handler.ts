@@ -51,7 +51,9 @@ export class WeaponAmmoHandler extends EquipmentInteractionHandler {
                         ...context,
                         registry: {
                             getChoices: () => [],
-                            handleSelection: () => false
+                            handleSelection: () => false,
+                            afterInventoryControlFire: () => undefined,
+                            applyInventoryControlDisplayEffects: (_entry, display) => display
                         }
                     },
                     initialTab: 'ammo'

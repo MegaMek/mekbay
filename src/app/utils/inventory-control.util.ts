@@ -133,6 +133,18 @@ interface InventoryControlRowOptions {
     destroyed?: boolean;
 }
 
+export interface InventoryControlDisplayEffectOptions {
+    selectedRange: WeaponRangeKey | null;
+    additionalHitModifier: number;
+    selectedAmmo?: AmmoEquipment | null;
+}
+
+export type InventoryControlDisplayEffectApplier = (
+    entry: MountedEquipment,
+    display: InventoryControlDisplayData,
+    options: InventoryControlDisplayEffectOptions
+) => InventoryControlDisplayData;
+
 const GROUP_TITLES: Record<InventoryControlGroupId, string> = {
     ranged: 'Ranged Weapons',
     physical: 'Physical Weapons',
@@ -161,11 +173,15 @@ export function setInventoryControlMode(entry: MountedEquipment, mode: string): 
     entry.owner.setInventoryEntry(entry);
 }
 
-export function getInventoryControlGroups(unit: CBTForceUnit, equipmentMap: EquipmentMap = {}): InventoryControlGroup[] {
+export function getInventoryControlGroups(
+    unit: CBTForceUnit,
+    equipmentMap: EquipmentMap = {},
+    applyDisplayEffects?: InventoryControlDisplayEffectApplier
+): InventoryControlGroup[] {
     const entryStates = getEntryStates(unit);
     const ammoSources = getAmmoSources(unit, equipmentMap);
     const rows = unit.getInventory()
-        .flatMap((entry, index) => buildInventoryControlRows(entry, index, entryStates, ammoSources))
+        .flatMap((entry, index) => buildInventoryControlRows(entry, index, entryStates, ammoSources, applyDisplayEffects))
         .filter((row): row is InventoryControlRow => row !== null);
 
     const groups: InventoryControlGroup[] = [
@@ -428,6 +444,7 @@ function buildInventoryControlRow(
     originalIndex: number,
     entryStates: Map<MountedEquipment, MountedEquipmentRuleState>,
     ammoSources: AmmoSource[],
+    applyDisplayEffects?: InventoryControlDisplayEffectApplier,
     options: InventoryControlRowOptions = {}
 ): InventoryControlRow | null {
     const rules = entry.owner.rules;
@@ -457,6 +474,11 @@ function buildInventoryControlRow(
     const selectedModeData = selectedMode ? modes.find(mode => mode.mode === selectedMode)?.data : null;
     const display = selectedModeData ? mergeModeData(base, selectedModeData) : base;
     const selectedRange = entry.owner.getInventoryControlEntryRange?.(rowEntry.id) ?? null;
+    const adjustedDisplay = applyInventoryControlDisplayEffects(rowEntry, display, {
+        selectedRange,
+        additionalHitModifier,
+        selectedAmmo
+    }, applyDisplayEffects);
 
     return {
         id: rowEntry.id,
@@ -468,7 +490,7 @@ function buildInventoryControlRow(
         disabled,
         originalIndex,
         base,
-        display: applySelectedRangeDisplay(rowEntry, display, selectedRange, additionalHitModifier, selectedAmmo),
+        display: adjustedDisplay,
         modes,
         modifiers,
         selectedMode,
@@ -487,14 +509,15 @@ function buildInventoryControlRows(
     entry: MountedEquipment,
     originalIndex: number,
     entryStates: Map<MountedEquipment, MountedEquipmentRuleState>,
-    ammoSources: AmmoSource[]
+    ammoSources: AmmoSource[],
+    applyDisplayEffects?: InventoryControlDisplayEffectApplier
 ): Array<InventoryControlRow | null> {
     const trooperLocations = getBattleArmorWeaponTrooperLocations(entry);
     if (trooperLocations.length === 0) {
-        return [buildInventoryControlRow(entry, originalIndex, entryStates, ammoSources)];
+        return [buildInventoryControlRow(entry, originalIndex, entryStates, ammoSources, applyDisplayEffects)];
     }
 
-    return trooperLocations.map((location, locationIndex) => buildInventoryControlRow(entry, originalIndex + (locationIndex / 100), entryStates, ammoSources, {
+    return trooperLocations.map((location, locationIndex) => buildInventoryControlRow(entry, originalIndex + (locationIndex / 100), entryStates, ammoSources, applyDisplayEffects, {
         rowId: `${entry.id}:${location}`,
         locationLock: location,
         destroyed: entry.owner.isEquipmentUnavailable(entry, location)
@@ -741,6 +764,23 @@ export function formatInventoryControlModeName(modeName: string): string {
 
 function normalizeEquipmentName(value: string): string {
     return value.toLocaleLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function applyInventoryControlDisplayEffects(
+    entry: MountedEquipment,
+    display: InventoryControlDisplayData,
+    options: InventoryControlDisplayEffectOptions,
+    applyDisplayEffects?: InventoryControlDisplayEffectApplier
+): InventoryControlDisplayData {
+    let nextDisplay = applySelectedRangeDisplay(
+        entry,
+        display,
+        options.selectedRange,
+        options.additionalHitModifier,
+        options.selectedAmmo
+    );
+    nextDisplay = applyDisplayEffects?.(entry, nextDisplay, options) ?? nextDisplay;
+    return nextDisplay;
 }
 
 function applySelectedRangeDisplay(

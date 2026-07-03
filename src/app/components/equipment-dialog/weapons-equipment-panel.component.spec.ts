@@ -8,8 +8,10 @@ import { CBTInventoryControlRuntime } from '../../models/cbt-inventory-control-r
 import { MountedEquipment, type CriticalSlot, type HeatProfile } from '../../models/force-serialization';
 import { InventoryModeHandler } from '../../equipment-handlers/inventory-mode.handler';
 import { BAPHandler } from '../../equipment-handlers/bap.handler';
+import { PpcCapacitorHandler } from '../../equipment-handlers/ppc-capacitor.handler';
 import type { EquipmentInteractionHandler, HandlerChoice } from '../../services/equipment-interaction-registry.service';
-import { INVENTORY_CONTROL_MODE_STATE, inventoryControlSortKey, getInventoryControlGroups } from '../../utils/inventory-control.util';
+import { INVENTORY_CONTROL_MODE_STATE, inventoryControlSortKey, getInventoryControlGroups, type InventoryControlDisplayData, type InventoryControlDisplayEffectOptions } from '../../utils/inventory-control.util';
+import { PPC_CAPACITOR_STATE_KEY } from '../../utils/ppc-capacitor.util';
 import { WeaponsEquipmentPanelComponent } from './weapons-equipment-panel.component';
 import type { EquipmentDialogContext } from './equipment-dialog.model';
 import { getMotiveModeLabel, type MotiveModes } from '../../models/motiveModes.model';
@@ -285,7 +287,25 @@ function createComponent(
                     if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) return [];
                     return handler.getChoices(entry, context)?.map(choice => ({ ...choice, _handler: handler })) ?? [];
                 }),
-                handleSelection: (entry: MountedEquipment, choice: HandlerChoice) => choice._handler?.handleSelection(entry, choice, context) ?? false
+                handleSelection: (entry: MountedEquipment, choice: HandlerChoice) => choice._handler?.handleSelection(entry, choice, context) ?? false,
+                afterInventoryControlFire: async (entry: MountedEquipment) => {
+                    for (const handler of handlers) {
+                        const flagsMatch = handler.flags.length === 0
+                            || (!!entry.equipment?.flags && handler.flags.every(flag => entry.equipment!.flags.has(flag)));
+                        if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) continue;
+                        await handler.afterInventoryControlFire?.(entry, context);
+                    }
+                },
+                applyInventoryControlDisplayEffects: (entry: MountedEquipment, display: InventoryControlDisplayData, options: InventoryControlDisplayEffectOptions) => {
+                    let nextDisplay = display;
+                    for (const handler of handlers) {
+                        const flagsMatch = handler.flags.length === 0
+                            || (!!entry.equipment?.flags && handler.flags.every(flag => entry.equipment!.flags.has(flag)));
+                        if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) continue;
+                        nextDisplay = handler.applyInventoryControlDisplayEffects?.(entry, nextDisplay, options, context) ?? nextDisplay;
+                    }
+                    return nextDisplay;
+                }
             }
         } as unknown as EquipmentDialogContext;
 
@@ -556,6 +576,77 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         expect(rows.map(row => row.id)).toEqual(['LRM 20@RT#0']);
         expect(rows[0].modifiers).toEqual([{ name: 'w/Artemis IV', destroyed: true }]);
+    });
+
+    it('charges linked PPC capacitors from the PPC row and discharges them when fired', async () => {
+        const ppcEquipment = weapon('Light PPC');
+        ppcEquipment.flags.add('F_PPC');
+        const capacitor = entry({
+            id: 'PPC Capacitor@RA#5',
+            equipment: misc('PPC Capacitor', ['F_WEAPON_ENHANCEMENT', 'F_PPC_CAPACITOR']),
+            el: svgEntry('<g class="linked"><g class="name"><text>w/Capacitor</text></g></g>')
+        });
+        const ppc = entry({
+            id: 'Light PPC@RA#3',
+            equipment: ppcEquipment,
+            linkedWith: [capacitor],
+            el: svgEntry('<g><g class="name"><text>Light PPC</text></g><text class="heat">5</text><g class="damage"><text>5 [DE]</text></g><text class="range_medium">12</text></g>')
+        });
+        capacitor.parent = ppc;
+        const { component, turnState } = createComponent([ppc, capacitor], {}, [], new Map(), {
+            handlers: [new PpcCapacitorHandler()]
+        });
+        let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(row.display.heat).toBe('5');
+        expect(row.display.damage).toBe('5 [DE]');
+        expect(component.handlerChoices(row).map(choice => choice.shortLabel)).toEqual(['Charge']);
+
+        await component.handleChoice(row, component.handlerChoices(row)[0]);
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(capacitor.states.get(PPC_CAPACITOR_STATE_KEY)).toBe('charged');
+        expect(row.display.heat).toBe('10');
+        expect(row.display.damage).toBe('10 [DE]');
+        expect(component.handlerChoices(row)[0]).toEqual(jasmine.objectContaining({ shortLabel: 'Charged', active: true }));
+
+        component.toggleSelected(row);
+        expect(component.selectedHeatTotal()).toBe(10);
+
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(turnState.addFiredHeat).toHaveBeenCalledWith(10);
+        expect(capacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(row.display.heat).toBe('5');
+        expect(row.display.damage).toBe('5 [DE]');
+    });
+
+    it('ignores unavailable linked PPC capacitors', () => {
+        const ppcEquipment = weapon('Light PPC');
+        ppcEquipment.flags.add('F_PPC');
+        const capacitor = entry({
+            id: 'PPC Capacitor@RA#5',
+            equipment: misc('PPC Capacitor', ['F_WEAPON_ENHANCEMENT', 'F_PPC_CAPACITOR']),
+            destroyed: true,
+            states: new Map([[PPC_CAPACITOR_STATE_KEY, 'charged']]),
+            el: svgEntry('<g class="linked"><g class="name"><text>w/Capacitor</text></g></g>')
+        });
+        const ppc = entry({
+            id: 'Light PPC@RA#3',
+            equipment: ppcEquipment,
+            linkedWith: [capacitor],
+            el: svgEntry('<g><g class="name"><text>Light PPC</text></g><text class="heat">5</text><g class="damage"><text>5 [DE]</text></g></g>')
+        });
+        capacitor.parent = ppc;
+        const { component } = createComponent([ppc, capacitor], {}, [], new Map(), {
+            handlers: [new PpcCapacitorHandler()]
+        });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(row.display.heat).toBe('5');
+        expect(row.display.damage).toBe('5 [DE]');
+        expect(component.handlerChoices(row)).toEqual([]);
     });
 
     it('persists mode and sort order but keeps selection transient', async () => {

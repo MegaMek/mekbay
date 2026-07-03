@@ -134,7 +134,11 @@ export class WeaponsEquipmentPanelComponent {
     readonly inventoryControl = computed(() => this.unit().inventoryControl);
     readonly groups = computed(() => {
         this.inventoryControl().inventoryViewVersion();
-        return getInventoryControlGroups(this.unit(), this.context().dataService.getEquipments());
+        return getInventoryControlGroups(
+            this.unit(),
+            this.context().dataService.getEquipments(),
+            (entry, display, options) => this.context().registry.applyInventoryControlDisplayEffects(entry, display, options, this.context())
+        );
     });
     readonly targets = computed(() => {
         this.inventoryControl().targetsMap();
@@ -602,6 +606,7 @@ export class WeaponsEquipmentPanelComponent {
         if (heatProjection) {
             this.unit().turnState().addFiredHeat(heatProjection.selection);
         }
+        await this.runSelectedFireHooks(selectedRows);
         this.inventoryControl().markInventoryViewChanged();
         const ammoSummary = Array.from(requests.values())
             .map(request => this.consumedAmmoSummaryItem(request));
@@ -639,6 +644,12 @@ export class WeaponsEquipmentPanelComponent {
                 entry.owner.setCritSlot(entry.source as CriticalSlot);
             }
             remainingToConsume -= consumedFromEntry;
+        }
+    }
+
+    private async runSelectedFireHooks(selectedRows: InventoryControlRow[]): Promise<void> {
+        for (const row of selectedRows) {
+            await this.context().registry.afterInventoryControlFire(row.entry, this.context());
         }
     }
 

@@ -61,6 +61,8 @@ import { VehicleRules } from './rules/vehicle-rules';
 import { type InventoryControlRuntimeEntryState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeSnapshot, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from './inventory-control-runtime-state.model';
 import { CBTInventoryControlRuntime } from './cbt-inventory-control-runtime.model';
 import { LINKED_LOCATIONS } from '../models/rules/mek-rules';
+import { EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
+import type { UnitHeatSource } from './rules/unit-type-rules';
 
 export class CBTForceUnit extends ForceUnit {
     override get force(): CBTForce { return super.force as CBTForce; }
@@ -110,6 +112,12 @@ export class CBTForceUnit extends ForceUnit {
 
     /** Unit-type-specific game rules (destruction, PSR, systems status for Meks). */
     get rules(): UnitTypeRules { return this._rules; }
+
+    getEquipmentHeatSources(turnState: TurnState): UnitHeatSource[] {
+        return this.injector.get(EquipmentInteractionRegistryService)
+            .getRegistry()
+            .getInventoryHeatSources(this.getInventory(), turnState);
+    }
 
     override isComputedCondition(condition: string): boolean {
         return this._rules?.isComputedCondition(condition) ?? false;

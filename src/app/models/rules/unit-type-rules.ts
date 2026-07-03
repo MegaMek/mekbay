@@ -435,10 +435,13 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
 
     heatSources(turnState: TurnState): UnitHeatSource[] {
         if (this.unit.getUnit().heat < 0) return []; // Does not track heat
+        const sources: UnitHeatSource[] = [];
         const weaponsHeat = turnState.weaponsHeat();
-        return weaponsHeat > 0
-            ? [{ id: 'weapons', label: 'Weapons', value: weaponsHeat }]
-            : [];
+        if (weaponsHeat > 0) {
+            sources.push({ id: 'weapons', label: 'Weapons', value: weaponsHeat });
+        }
+        sources.push(...(this.unit.getEquipmentHeatSources?.(turnState) ?? []));
+        return sources;
     }
 
     getMaxDistanceForMoveMode(_moveMode: MotiveModes): number | null {

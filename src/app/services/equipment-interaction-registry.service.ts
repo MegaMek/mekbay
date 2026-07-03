@@ -37,6 +37,9 @@ import type { MountedEquipment } from '../models/force-serialization';
 import type { ToastService } from './toast.service';
 import type { DialogsService } from './dialogs.service';
 import type { DataService } from './data.service';
+import type { InventoryControlDisplayData, InventoryControlDisplayEffectOptions } from '../utils/inventory-control.util';
+import type { TurnState } from '../models/turn-state.model';
+import type { UnitHeatSource } from '../models/rules/unit-type-rules';
 
 /**
  * Context passed to handlers containing additional information
@@ -95,6 +98,26 @@ export abstract class EquipmentInteractionHandler {
      * @returns true if the picker should close, false to keep it open (can be async)
      */
     abstract handleSelection(equipment: MountedEquipment, value: PickerChoice, context: HandlerContext): boolean | Promise<boolean>;
+
+    /**
+     * Hook called after a mounted equipment entry is fired/consumed from the weapons panel.
+     */
+    afterInventoryControlFire?(equipment: MountedEquipment, context: HandlerContext): void | Promise<void>;
+
+    /**
+     * Hook called while building an inventory-control row display.
+     */
+    applyInventoryControlDisplayEffects?(
+        equipment: MountedEquipment,
+        display: InventoryControlDisplayData,
+        options: InventoryControlDisplayEffectOptions,
+        context: HandlerContext
+    ): InventoryControlDisplayData;
+
+    /**
+     * Hook called while collecting turn heat sources from inventory entries.
+     */
+    getInventoryHeatSources?(equipment: MountedEquipment, turnState: TurnState): UnitHeatSource[];
 }
 
 /**
@@ -179,6 +202,30 @@ class EquipmentInteractionRegistry {
         }
         
         return choice._handler.handleSelection(equipment, choice, context);
+    }
+
+    async afterInventoryControlFire(equipment: MountedEquipment, context: HandlerContext): Promise<void> {
+        for (const handler of this.getHandlers(equipment)) {
+            await handler.afterInventoryControlFire?.(equipment, context);
+        }
+    }
+
+    applyInventoryControlDisplayEffects(
+        equipment: MountedEquipment,
+        display: InventoryControlDisplayData,
+        options: InventoryControlDisplayEffectOptions,
+        context: HandlerContext
+    ): InventoryControlDisplayData {
+        let nextDisplay = display;
+        for (const handler of this.getHandlers(equipment)) {
+            nextDisplay = handler.applyInventoryControlDisplayEffects?.(equipment, nextDisplay, options, context) ?? nextDisplay;
+        }
+        return nextDisplay;
+    }
+
+    getInventoryHeatSources(inventory: readonly MountedEquipment[], turnState: TurnState): UnitHeatSource[] {
+        return inventory.flatMap(equipment => this.getHandlers(equipment)
+            .flatMap(handler => handler.getInventoryHeatSources?.(equipment, turnState) ?? []));
     }
 }
 
