@@ -1460,7 +1460,7 @@ export class RsPolyfillUtil {
         const warningPosition = this.transformElementPointToParentCoordinates(
             svg,
             moveEl,
-            parseFloat(xAttr) + (tightSpaceForText ? 4 : 8),
+            parseFloat(xAttr) + (tightSpaceForText ? 4 : 14),
             parseFloat(yAttr)
         );
         if (!warningPosition) return;
