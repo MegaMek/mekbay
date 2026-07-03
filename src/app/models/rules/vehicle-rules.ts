@@ -115,6 +115,7 @@ export class VehicleRules extends UnitTypeRulesBase {
         const crewStunned = crewStates.some(state => state === 'stunned');
         const committed = crits.filter(crit => !!crit.destroyed);
         const hasCrit = (id: string) => committed.some(crit => this.critId(crit) === id);
+        const hasDroneOperatingSystem = this.hasDroneOperatingSystem();
         const hasWorkingSupercharger = inventory.some(entry => this.isSuperchargerEntry(entry) && !this.isEntryDestroyed(entry));
         const rotorHits = unitType === 'VTOL'
             ? Math.max(0, this.rotorCommittedCritHits(crits.find(crit => this.critId(crit) === 'rotor')))
@@ -135,9 +136,9 @@ export class VehicleRules extends UnitTypeRulesBase {
         return {
             crewKilled,
             crewStunned,
-            commanderHit: hasCrit('commander_hit'),
-            copilotHit: hasCrit('copilot_hit'),
-            driverOrPilotHit: hasCrit('driver_hit') || hasCrit('pilot_hit'),
+            commanderHit: !hasDroneOperatingSystem && hasCrit('commander_hit'),
+            copilotHit: !hasDroneOperatingSystem && hasCrit('copilot_hit'),
+            driverOrPilotHit: !hasDroneOperatingSystem && (hasCrit('driver_hit') || hasCrit('pilot_hit')),
             engineHit: committed.some(crit => /^engine_hit_\d+$/.test(this.critId(crit))),
             hasWorkingSupercharger,
             sensorHits,
@@ -147,6 +148,11 @@ export class VehicleRules extends UnitTypeRulesBase {
             stabilizerLocations,
         };
     });
+
+    override hasComputedCondition(condition: string): boolean {
+        if (condition === 'disconnected' && this.hasDroneOperatingSystem() && this.hasCommittedCrit('commander_hit')) return true;
+        return super.hasComputedCondition(condition);
+    }
 
     override readonly gunneryModifiers = computed<UnitSkillModifier[]>(() => {
         const status = this.systemsStatus();
@@ -391,6 +397,10 @@ export class VehicleRules extends UnitTypeRulesBase {
 
     private rotorCommittedCritHits(crit: CriticalSlot | undefined): number {
         return (crit?.hits ?? 0);
+    }
+
+    private hasCommittedCrit(id: string): boolean {
+        return this.unit.getCritSlots().some(crit => !!crit.destroyed && this.critId(crit) === id);
     }
 
     private critId(crit: CriticalSlot): string {

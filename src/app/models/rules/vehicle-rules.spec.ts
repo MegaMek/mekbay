@@ -363,6 +363,25 @@ describe('VehicleRules', () => {
         expect(rules.PSRModifiers().modifiers.map(modifier => modifier.reason)).toContain('Drone operating system');
     });
 
+    it('disconnects drone vehicles after a commander hit and ignores crew-seat hits', () => {
+        const rules = createRulesHarness({
+            crits: [
+                crit('commander_hit', 10),
+                crit('copilot_hit', 15),
+                crit('driver_hit', 20),
+                crit('pilot_hit', 25),
+            ],
+            inventory: [entry({ equipment: equipment('ISDroneOperatingSystem', ['F_DRONE_OPERATING_SYSTEM']) })],
+        });
+
+        expect(rules.hasComputedCondition('disconnected')).toBeTrue();
+        expect(rules.hasComputedCondition('immobile')).toBeTrue();
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 0, run: 0, moveImpaired: true }));
+        expect(rules.gunneryModifiers()).toEqual([{ modifier: 1, reason: 'Drone operating system' }]);
+        expect(rules.pilotingModifiers()).toEqual([{ modifier: 1, reason: 'Drone operating system' }]);
+        expect(rules.PSRModifiers().modifier).toBe(1);
+    });
+
     it('disconnects and immobilizes vehicles when the drone operating system is destroyed', () => {
         const rules = createRulesHarness({
             inventory: [entry({ equipment: equipment('ISDroneOperatingSystem', ['F_DRONE_OPERATING_SYSTEM']), destroyed: true })],
