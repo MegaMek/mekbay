@@ -464,7 +464,7 @@ export class UnitSvgService {
         let hasCrewDamage0 = false;
         let labelContainer: Element | null = svg;
         let labelX = '70';
-        let labelY = '40';
+        let labelY = this.unit.getUnit().type === 'Aero' ? '60' : '40';
         svg.querySelectorAll<SVGElement>('g[id^="crewDamage"]').forEach(group => {
             const crewId = Number(group.id.replace('crewDamage', ''));
             const visible = visibleCrewIds.has(crewId);
