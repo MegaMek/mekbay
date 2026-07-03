@@ -82,7 +82,7 @@ export interface ForceAddModePickerData {
         </div>
         @if (data?.showInsert) {
             <p class="insert-hint">
-                <strong>Insert</strong> copies the groups and units into your current force@if (data?.currentForceName) { <span class="force-name"> "{{ data!.currentForceName }}"</span>},
+                <strong>Insert</strong> copies the groups and units into your current force@if (data.currentForceName) { <span class="force-name"> "{{ data.currentForceName }}"</span>},
                 converting units if the game system differs. The original force remains unchanged and you can edit the inserted units without affecting the original force.
             </p>
         }

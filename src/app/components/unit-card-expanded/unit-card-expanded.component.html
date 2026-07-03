@@ -375,8 +375,10 @@
                 }
                 <div class="info-slot" [class.sort-slot]="isSortActive('year')">
                     <span class="value">{{ u.year }}</span>
-                    @if (u._era?.img) {
-                    <img [src]="u._era?.img" class="icon era-icon" alt="Era" [title]="u._era?.name" />
+                    @if (u._era; as era) {
+                    @if (era.img) {
+                    <img [src]="era.img" class="icon era-icon" alt="Era" [title]="era.name" />
+                    }
                     }
                 </div>
                 @if (getSortSlotForCompact(u); as slot) {

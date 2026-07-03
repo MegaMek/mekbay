@@ -2393,7 +2393,8 @@ hr.divider {
             &[style*="fill: black" i],
             &[style*="fill:#000" i],
             &[style*="fill: #000" i],
-            &[style*="fill: rgb(0, 0, 0)" i] {
+            &[style*="fill:rgb(0" i],
+            &[style*="fill: rgb(0" i] {
                 fill: var(--svg-fg-color) !important;
             }
 
@@ -2406,7 +2407,8 @@ hr.divider {
             &[style*="stroke: black" i],
             &[style*="stroke:#000" i],
             &[style*="stroke: #000" i],
-            &[style*="stroke: rgb(0, 0, 0)" i] {
+            &[style*="stroke:rgb(0" i],
+            &[style*="stroke: rgb(0" i] {
                 stroke: var(--svg-fg-color) !important;
             }
 
@@ -2419,7 +2421,8 @@ hr.divider {
             &[style*="fill: white" i],
             &[style*="fill:#FFF" i],
             &[style*="fill: #FFF" i],
-            &[style*="fill: rgb(255, 255, 255)" i] {
+            &[style*="fill:rgb(255" i],
+            &[style*="fill: rgb(255" i] {
                 fill: var(--svg-fg-color-inv) !important;
             }
 
@@ -2432,7 +2435,8 @@ hr.divider {
             &[style*="stroke: white" i],
             &[style*="stroke:#FFF" i],
             &[style*="stroke: #FFF" i],
-            &[style*="stroke: rgb(255, 255, 255)" i] {
+            &[style*="stroke:rgb(255" i],
+            &[style*="stroke: rgb(255" i] {
                 stroke: var(--svg-fg-color-inv) !important;
             }
         }
