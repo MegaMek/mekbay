@@ -5,11 +5,7 @@ import type { InventoryControlDisplayData, InventoryControlDisplayEffectOptions 
 
 export class LaserInsulatorHandler extends EquipmentInteractionHandler {
     readonly id = 'laser-insulator-handler';
-    override readonly flags = ['F_ENERGY', 'F_LASER'];
-
-    override applicableTo(equipment: MountedEquipment): boolean {
-        return equipment.linkedWith?.some(linked => this.isLaserInsulator(linked)) ?? false;
-    }
+    override readonly flags = ['F_WEAPON_ENHANCEMENT', 'F_LASER_INSULATOR'];
 
     getChoices(_equipment: MountedEquipment, _context: HandlerContext): PickerChoice[] {
         return [];
@@ -19,21 +15,22 @@ export class LaserInsulatorHandler extends EquipmentInteractionHandler {
         return false;
     }
 
-    override applyInventoryControlDisplayEffects(
+    override applyLinkedInventoryControlDisplayEffects(
         equipment: MountedEquipment,
+        parent: MountedEquipment,
         display: InventoryControlDisplayData,
         _options: InventoryControlDisplayEffectOptions,
         _context: HandlerContext
     ): InventoryControlDisplayData {
-        if (!equipment.linkedWith?.some(linked => this.isLaserInsulator(linked) && linked.isUnavailable())) return display;
+        if (!this.isLaser(parent) || !equipment.isUnavailable()) return display;
         const heat = addNumericBonus(display.heat, 1);
         if (heat === null) return display;
         return { ...display, heat };
     }
 
-    private isLaserInsulator(equipment: MountedEquipment): boolean {
-        return equipment.equipment?.hasFlag('F_WEAPON_ENHANCEMENT') === true
-            && equipment.equipment.hasFlag('F_LASER_INSULATOR');
+    private isLaser(equipment: MountedEquipment): boolean {
+        return equipment.equipment?.hasFlag('F_ENERGY') === true
+            && equipment.equipment.hasFlag('F_LASER');
     }
 }
 

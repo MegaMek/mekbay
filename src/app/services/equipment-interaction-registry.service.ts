@@ -117,6 +117,17 @@ export abstract class EquipmentInteractionHandler {
     ): InventoryControlDisplayData;
 
     /**
+     * Hook called for linked equipment while building a parent entry's inventory-control row display.
+     */
+    applyLinkedInventoryControlDisplayEffects?(
+        equipment: MountedEquipment,
+        parent: MountedEquipment,
+        display: InventoryControlDisplayData,
+        options: InventoryControlDisplayEffectOptions,
+        context: HandlerContext
+    ): InventoryControlDisplayData;
+
+    /**
      * Hook called while filtering ammo options for a selected inventory-control mode.
      */
     matchesInventoryAmmo?(equipment: MountedEquipment, ammo: AmmoEquipment, mode: string | null, context: HandlerContext): boolean | null;
@@ -257,6 +268,11 @@ class EquipmentInteractionRegistry {
         let nextDisplay = display;
         for (const handler of this.getHandlers(equipment)) {
             nextDisplay = handler.applyInventoryControlDisplayEffects?.(equipment, nextDisplay, options, context) ?? nextDisplay;
+        }
+        for (const linked of equipment.linkedWith ?? []) {
+            for (const handler of this.getHandlers(linked)) {
+                nextDisplay = handler.applyLinkedInventoryControlDisplayEffects?.(linked, equipment, nextDisplay, options, context) ?? nextDisplay;
+            }
         }
         return nextDisplay;
     }

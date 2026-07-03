@@ -333,6 +333,14 @@ function createComponent(
                             if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) continue;
                             nextDisplay = handler.applyInventoryControlDisplayEffects?.(entry, nextDisplay, options, context) ?? nextDisplay;
                         }
+                        for (const linked of entry.linkedWith ?? []) {
+                            for (const handler of handlers) {
+                                const flagsMatch = handler.flags.length === 0
+                                    || (!!linked.equipment?.flags && handler.flags.every(flag => linked.equipment!.flags.has(flag)));
+                                if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(linked))) continue;
+                                nextDisplay = handler.applyLinkedInventoryControlDisplayEffects?.(linked, entry, nextDisplay, options, context) ?? nextDisplay;
+                            }
+                        }
                         return nextDisplay;
                     },
                     matchesAmmo: (entry: MountedEquipment, ammo: AmmoEquipment, mode: string | null) => {
