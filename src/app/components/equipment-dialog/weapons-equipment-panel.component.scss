@@ -288,6 +288,10 @@
     grid-column: 7;
 }
 
+.heat-cell.damaged {
+    color: var(--damage-color);
+}
+
 .damage-cell {
     grid-column: 8;
 }

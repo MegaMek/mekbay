@@ -32,7 +32,7 @@
  */
 
 import { computed, createEnvironmentInjector, EnvironmentInjector, type Injector, runInInjectionContext, signal, type Signal, untracked, type WritableSignal } from '@angular/core';
-import type { DataService } from '../services/data.service';
+import { DataService } from '../services/data.service';
 import type { Unit } from "./units.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
 import { MountedEquipment, type CriticalSlot, type HeatProfile, type LocationData, type ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, type CBTSerializedState, type CBTSerializedUnit, type SerializedCrewMember, committedConditionData, conditionsForSerialization, conditionsHasActive, conditionsHasCommittedActive, conditionsMapFromSerialization, normalizeConditionData, normalizeConditionKey } from './force-serialization';
@@ -48,6 +48,7 @@ import { UnitSvgInfantryService } from '../services/unit-svg-infantry.service';
 import { UnitSvgVehicleService } from '../services/unit-svg-vehicle.service';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { AmmoEquipment, WeaponEquipment } from './equipment.model';
+import type { AmmoEquipment as AmmoEquipmentType } from './equipment.model';
 import { C3NetworkUtil } from '../utils/c3-network.util';
 import { getMotiveModesOptionsByUnit, type MotiveModeOption } from './motiveModes.model';
 import type { TurnState } from './turn-state.model';
@@ -63,6 +64,9 @@ import { CBTInventoryControlRuntime } from './cbt-inventory-control-runtime.mode
 import { LINKED_LOCATIONS } from '../models/rules/mek-rules';
 import { EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
 import type { UnitHeatSource } from './rules/unit-type-rules';
+import type { InventoryControlDisplayData, InventoryControlDisplayEffectOptions } from '../utils/inventory-control.util';
+import { ToastService } from '../services/toast.service';
+import { DialogsService } from '../services/dialogs.service';
 
 export class CBTForceUnit extends ForceUnit {
     override get force(): CBTForce { return super.force as CBTForce; }
@@ -117,6 +121,26 @@ export class CBTForceUnit extends ForceUnit {
         return this.injector.get(EquipmentInteractionRegistryService)
             .getRegistry()
             .getInventoryHeatSources(this.getInventory(), turnState);
+    }
+
+    getLinkedEquipmentHitModifier(entry: MountedEquipment, selectedAmmo?: AmmoEquipmentType | null): number {
+        return this.injector.get(EquipmentInteractionRegistryService)
+            .getRegistry()
+            .getLinkedEquipmentHitModifier(entry, selectedAmmo);
+    }
+
+    applyInventoryControlDisplayEffects(
+        entry: MountedEquipment,
+        display: InventoryControlDisplayData,
+        options: InventoryControlDisplayEffectOptions
+    ): InventoryControlDisplayData {
+        return this.injector.get(EquipmentInteractionRegistryService)
+            .getRegistry()
+            .applyInventoryControlDisplayEffects(entry, display, options, {
+                toastService: this.injector.get(ToastService),
+                dialogsService: this.injector.get(DialogsService),
+                dataService: this.injector.get(DataService)
+            });
     }
 
     override isComputedCondition(condition: string): boolean {

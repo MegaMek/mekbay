@@ -137,7 +137,12 @@ export class WeaponsEquipmentPanelComponent {
         return getInventoryControlGroups(
             this.unit(),
             this.context().dataService.getEquipments(),
-            (entry, display, options) => this.context().registry.applyInventoryControlDisplayEffects(entry, display, options, this.context())
+            {
+                applyDisplayEffects: (entry, display, options) => this.context().registry.applyInventoryControlDisplayEffects(entry, display, options, this.context()),
+                getModes: entry => this.context().registry.getInventoryControlModes(entry, this.context()),
+                matchesAmmo: (entry, ammo, mode) => this.context().registry.matchesInventoryAmmo(entry, ammo, mode, this.context()),
+                resolveLinkedHitModifier: (entry, selectedAmmo) => this.context().registry.getLinkedEquipmentHitModifier(entry, selectedAmmo)
+            }
         );
     });
     readonly targets = computed(() => {
@@ -369,7 +374,14 @@ export class WeaponsEquipmentPanelComponent {
     private hitTextForRange(row: InventoryControlRow, range: InventoryTargetRangeKey | null, hasTarget: boolean): string {
         if (!hasTarget) return row.display.hit;
 
-        const hitModifier = resolveHitModifier(row.entry, row.additionalHitModifier, range, this.resolvedSelectedAmmoOption(row)?.ammo ?? null);
+        const selectedAmmo = this.resolvedSelectedAmmoOption(row)?.ammo ?? null;
+        const hitModifier = resolveHitModifier(
+            row.entry,
+            row.additionalHitModifier,
+            range,
+            selectedAmmo,
+            (entry, ammo) => this.context().registry.getLinkedEquipmentHitModifier(entry, ammo)
+        );
         if (hitModifier === null) return row.display.hit;
         if (hitModifier === 'Vs' || hitModifier === '*') return hitModifier;
         return formatInventoryTargetSignedModifier(hitModifier);

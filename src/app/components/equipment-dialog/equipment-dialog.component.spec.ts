@@ -142,7 +142,10 @@ function createContext(): EquipmentDialogContext {
             getChoices: () => [],
             handleSelection: () => false,
             afterInventoryControlFire: () => undefined,
-            applyInventoryControlDisplayEffects: (_entry: MountedEquipment, display: InventoryControlDisplayData) => display
+            applyInventoryControlDisplayEffects: (_entry: MountedEquipment, display: InventoryControlDisplayData) => display,
+            getInventoryControlModes: () => [],
+            matchesInventoryAmmo: () => null,
+            getLinkedEquipmentHitModifier: () => 0
         }
     } as unknown as EquipmentDialogContext;
 }

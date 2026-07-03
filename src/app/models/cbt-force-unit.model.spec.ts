@@ -1,6 +1,6 @@
 import { Injector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { AmmoEquipment, Equipment, WeaponEquipment, type EquipmentMap } from './equipment.model';
+import { AmmoEquipment, Equipment, MiscEquipment, WeaponEquipment, type EquipmentMap } from './equipment.model';
 import { CBTForce } from './cbt-force.model';
 import { CBTForceUnit } from './cbt-force-unit.model';
 import { DEAD_CREW_HIT_THRESHOLD } from './crew-member.model';
@@ -12,6 +12,11 @@ import { UnitSvgService } from '../services/unit-svg.service';
 import { UnitSvgVehicleService } from '../services/unit-svg-vehicle.service';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import type { Unit } from './units.model';
+import { EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
+import { LaserInsulatorHandler } from '../equipment-handlers/laser-insulator.handler';
+import { DialogsService } from '../services/dialogs.service';
+import { ToastService } from '../services/toast.service';
+import { getInventoryControlGroups } from '../utils/inventory-control.util';
 
 function createEquipment(): EquipmentMap {
     const ultraAc20 = new WeaponEquipment({
@@ -47,6 +52,19 @@ function createEquipment(): EquipmentMap {
         type: 'weapon',
         weapon: { ammoType: 'MML', rackSize: 9, heat: 5, damage: 'cluster', ranges: [0, 0, 0, 0] }
     });
+    const mediumLaser = new WeaponEquipment({
+        id: 'ISMediumLaser',
+        name: 'Medium Laser',
+        type: 'weapon',
+        flags: ['F_ENERGY', 'F_LASER'],
+        weapon: { ammoType: 'NA', heat: 3, damage: 5, ranges: [3, 6, 9, 12] }
+    });
+    const laserInsulator = new MiscEquipment({
+        id: 'ISLaserInsulator',
+        name: 'Laser Insulator',
+        type: 'misc',
+        flags: ['F_WEAPON_ENHANCEMENT', 'F_LASER_INSULATOR']
+    });
     const droneOperatingSystem = new Equipment({
         id: 'ISDroneOperatingSystem',
         name: 'Drone (Remote) Operating System',
@@ -60,6 +78,8 @@ function createEquipment(): EquipmentMap {
         [ultraAc20PrecisionAmmo.internalName]: ultraAc20PrecisionAmmo,
         [mediumVspLaser.internalName]: mediumVspLaser,
         [mml9.internalName]: mml9,
+        [mediumLaser.internalName]: mediumLaser,
+        [laserInsulator.internalName]: laserInsulator,
         [droneOperatingSystem.internalName]: droneOperatingSystem,
     };
 }
@@ -165,6 +185,44 @@ function createVspSvg(): SVGSVGElement {
                 <text class="hitMod-text" display="block">-4</text>
                 <rect class="targetTn-rect" display="none"></rect>
                 <text class="targetTn-text" display="none"></text>
+            </g>
+        </svg>
+    `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+}
+
+function createLaserInsulatorUnit(equipment: EquipmentMap): Unit {
+    return createEmptyUnit({
+        name: 'Laser Insulator Test Unit',
+        chassis: 'Laser Insulator Test',
+        model: 'T1',
+        type: 'Tank',
+        subtype: 'Hovercraft',
+        heat: -1,
+        dissipation: -1,
+        comp: [
+            { id: 'ISMediumLaser', q: 1, q2: 0, n: 'Medium Laser', t: 'E', p: 1, l: 'FR', r: '3/6/9', m: '0', d: '5', md: '5.0', c: '1', os: 0, eq: equipment['ISMediumLaser'] },
+            { id: 'ISLaserInsulator', q: 1, q2: 0, n: 'Laser Insulator', t: 'E', p: 0, l: 'FR', c: '1', os: 0, eq: equipment['ISLaserInsulator'] },
+        ],
+        sheets: ['vehicle/laser-insulator-test.svg'],
+    });
+}
+
+function createLaserInsulatorSvg(): SVGSVGElement {
+    const parser = new DOMParser();
+    return parser.parseFromString(`
+        <svg xmlns="http://www.w3.org/2000/svg">
+            <g class="inventoryEntry" id="ISMediumLaser@FR#0" hitMod="0">
+                <g class="name"><text>Medium Laser</text></g>
+                <text class="heat">3*</text>
+                <text class="location">FR</text>
+                <text class="range_short">3</text>
+                <text class="range_medium">6</text>
+                <text class="range_long">9</text>
+                <rect class="hitMod-rect" display="block"></rect>
+                <text class="hitMod-text" display="block">+0</text>
+                <g class="inventoryEntry" id="ISLaserInsulator@FR#0">
+                    <g class="name"><text>Laser Insulator</text></g>
+                </g>
             </g>
         </svg>
     `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
@@ -294,6 +352,8 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             providers: [
                 UnitInitializerService,
                 { provide: DataService, useValue: dataService },
+                { provide: DialogsService, useValue: jasmine.createSpyObj<DialogsService>('DialogsService', ['createDialog', 'showError']) },
+                { provide: ToastService, useValue: jasmine.createSpyObj<ToastService>('ToastService', ['showToast']) },
             ],
         });
 
@@ -751,6 +811,34 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         svgService.refreshInventory();
         expect(damageText.textContent).toBe('9/7/5 [Variable]');
         expect(hitModText.textContent).toBe('-4');
+    });
+
+    it('renders Laser Insulator heat restoration on the SVG inventory entry', () => {
+        TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(new LaserInsulatorHandler());
+        const forceUnit = createForceUnit(createLaserInsulatorUnit(equipment));
+        initialize(forceUnit, createLaserInsulatorSvg());
+        const laser = forceUnit.getInventory().find(entry => entry.id === 'ISMediumLaser@FR#0')!;
+        const insulator = laser.linkedWith![0];
+        const heatText = laser.el!.querySelector(':scope > .heat') as SVGTextElement;
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshInventory();
+        expect(heatText.textContent).toBe('3*');
+
+        insulator.setCommittedDestroyed(true);
+        svgService.refreshInventory();
+        expect(heatText.textContent).toBe('4');
+        expect(heatText.classList.contains('damaged')).toBeTrue();
+
+        const row = getInventoryControlGroups(forceUnit, equipment, {
+            applyDisplayEffects: (entry, display, options) => forceUnit.applyInventoryControlDisplayEffects(entry, display, options)
+        }).find(group => group.id === 'ranged')!.rows[0];
+        expect(row.display.heat).toBe('4');
+
+        insulator.setCommittedDestroyed(false);
+        svgService.refreshInventory();
+        expect(heatText.textContent).toBe('3*');
+        expect(heatText.classList.contains('damaged')).toBeFalse();
     });
 
     it('renders linked locations detached when their parent torso is committed destroyed', () => {

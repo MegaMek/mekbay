@@ -41,6 +41,11 @@ import { C3Handler } from './c3.handler';
 import { WeaponAmmoHandler } from './weapon-ammo.handler';
 import { InventoryModeHandler } from './inventory-mode.handler';
 import { PpcCapacitorHandler } from './ppc-capacitor.handler';
+import { MmlHandler } from './mml.handler';
+import { AtmHandler } from './atm.handler';
+import { ArtemisVHandler } from './artemis-v.handler';
+import { ApolloHandler } from './apollo.handler';
+import { LaserInsulatorHandler } from './laser-insulator.handler';
 
 /**
  * Register all equipment handlers.
@@ -55,6 +60,11 @@ export function registerAllHandlers(registryService: EquipmentInteractionRegistr
     registry.register(new StealthHandler());
     registry.register(new MASCHandler());
     registry.register(new InventoryModeHandler());
+    registry.register(new MmlHandler());
+    registry.register(new AtmHandler());
+    registry.register(new ArtemisVHandler());
+    registry.register(new ApolloHandler());
+    registry.register(new LaserInsulatorHandler());
     registry.register(new PpcCapacitorHandler());
     registry.register(new UACJammingHandler());
     registry.register(new C3Handler());

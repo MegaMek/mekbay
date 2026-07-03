@@ -184,7 +184,13 @@ export class UnitSvgVehicleService extends UnitSvgService {
         if (this.unit.turnState().moveMode() === null && this.vehicleRules.hasDamagedStabilizerAffectingEntry(entry)) {
             return '*';
         }
-        return resolveHitModifier(entry, state.hitMod, range, this.inventoryTargetSelectedAmmo(entry));
+        return resolveHitModifier(
+            entry,
+            state.hitMod,
+            range,
+            this.inventoryTargetSelectedAmmo(entry),
+            (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo)
+        );
     }
 
     protected override renderHitModEntry(entry: MountedEquipment, hitModifier: number | 'Vs' | '*' | null) {

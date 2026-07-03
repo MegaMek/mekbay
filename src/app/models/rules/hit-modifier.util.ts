@@ -44,34 +44,7 @@ import { resolveWeaponRangeHitModifier, type WeaponRangeKey } from './weapon-ran
  * Compute per-entry linked-equipment modifiers
  */
 
-export function computeLinkedModifiers(entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null): number {
-    let mod = 0;
-    if (entry.linkedWith) {
-        for (const linked of entry.linkedWith) {
-             // TODO: once we move to direct calculation, we should inverse the ifs and give a -1 instead!
-            if (linked.isUnavailable() && hasLinkedEquipmentToHitBonus(linked)) {
-                mod += 1;
-            } else if (hasArtemisVToHitBonus(linked) && selectedAmmo !== undefined && !selectedAmmo?.hasMunitionType('M_ARTEMIS_V_CAPABLE')) {
-                mod += 1;
-            }
-        }
-    }
-    return mod;
-}
-
-function hasLinkedEquipmentToHitBonus(entry: MountedEquipment): boolean {
-    return hasArtemisVToHitBonus(entry) || hasApolloToHitBonus(entry);
-}
-
-function hasArtemisVToHitBonus(entry: MountedEquipment): boolean {
-    return !!entry.equipment?.flags.has('F_WEAPON_ENHANCEMENT')
-        && entry.equipment.flags.has('F_ARTEMIS_V');
-}
-
-function hasApolloToHitBonus(entry: MountedEquipment): boolean {
-    return !!entry.equipment?.flags.has('F_WEAPON_ENHANCEMENT')
-        && entry.equipment.flags.has('F_APOLLO');
-}
+export type LinkedEquipmentHitModifierResolver = (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => number;
 
 /**
  * Resolve the final hit modifier for an inventory entry.
@@ -81,8 +54,14 @@ function hasApolloToHitBonus(entry: MountedEquipment): boolean {
  * @param entry             - the mounted equipment entry
  * @param additionalModifiers - non-linked modifiers to add (global fire mod, damage mods, etc.)
  */
-export function resolveHitModifier(entry: MountedEquipment, additionalModifiers: number, range?: WeaponRangeKey | null, selectedAmmo?: AmmoEquipment | null): number | 'Vs' | '*' | null {
-    const linkedModifiers = computeLinkedModifiers(entry, selectedAmmo);
+export function resolveHitModifier(
+    entry: MountedEquipment,
+    additionalModifiers: number,
+    range?: WeaponRangeKey | null,
+    selectedAmmo?: AmmoEquipment | null,
+    resolveLinkedModifiers?: LinkedEquipmentHitModifierResolver
+): number | 'Vs' | '*' | null {
+    const linkedModifiers = resolveLinkedModifiers?.(entry, selectedAmmo) ?? 0;
     if (entry.baseHitMod === 'Vs') {
         return entry.baseHitMod;
     }

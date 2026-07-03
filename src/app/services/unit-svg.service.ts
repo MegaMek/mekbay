@@ -47,7 +47,7 @@ import type { HeatDissipationState } from '../models/rules/heat-management';
 import { AmmoEquipment } from '../models/equipment.model';
 import { formatAmmoName } from '../utils/ammo-interaction.util';
 import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection, readInventoryTargetDisplay } from '../utils/inventory-target-number.util';
-import { getInventoryControlModeAmmoSummary, resolveInventoryControlSelectedAmmoOption, type InventoryControlAmmoOption } from '../utils/inventory-control.util';
+import { getInventoryControlModeAmmoSummary, INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE, resolveInventoryControlSelectedAmmoOption, type InventoryControlAmmoOption } from '../utils/inventory-control.util';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 
 const INVENTORY_CONTROL_SELECTION_COLOR_PROPERTY = '--inventory-control-selection-color';
@@ -946,7 +946,13 @@ export class UnitSvgService {
     }
 
     protected resolveInventoryControlHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {
-        return resolveHitModifier(entry, 0, range, this.inventoryTargetSelectedAmmo(entry));
+        return resolveHitModifier(
+            entry,
+            0,
+            range,
+            this.inventoryTargetSelectedAmmo(entry),
+            (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo)
+        );
     }
 
     /** Override to inject entry-specific effective hit modifiers. */
@@ -1001,6 +1007,7 @@ export class UnitSvgService {
             const hasSelectedMode = !!entry.el.querySelector(':scope > .alternativeMode.selected');
 
             this.renderInventoryControlSelectionColor(entry, target);
+            this.renderInventoryControlHeatEntry(entry, weaponRuleRange);
             this.renderInventoryControlRangeDamageEntry(entry, weaponRuleRange);
             if (!entry.isDestroyed()) {
                 this.renderHitModEntry(entry, this.resolveInventoryControlHitModifier(entry, weaponRuleRange));
@@ -1036,6 +1043,42 @@ export class UnitSvgService {
         text.setAttribute('display', visible ? 'block' : 'none');
         text.textContent = targetNumberText ?? '';
         el.classList.toggle('selected-target-out-of-range', targetNumberText === 'X');
+    }
+
+    private renderInventoryControlHeatEntry(entry: MountedEquipment, selectedRange: InventoryControlRuntimeRangeKey | null): void {
+        const text = inventoryControlDirectText(entry.el, '.heat');
+        if (!text) return;
+
+        const originalHeat = text.getAttribute(INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE) ?? text.textContent ?? '';
+        const display = this.unit.applyInventoryControlDisplayEffects(entry, {
+            name: '',
+            location: '',
+            heat: originalHeat,
+            damage: '',
+            hit: '',
+            min: '',
+            short: '',
+            medium: '',
+            long: ''
+        }, {
+            selectedRange,
+            additionalHitModifier: 0,
+            selectedAmmo: this.inventoryTargetSelectedAmmo(entry),
+            resolveLinkedHitModifier: (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo)
+        });
+
+        if (display.heat === originalHeat) {
+            text.textContent = originalHeat;
+            text.removeAttribute(INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE);
+            text.classList.remove('damaged');
+            return;
+        }
+
+        if (!text.hasAttribute(INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE)) {
+            text.setAttribute(INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE, originalHeat);
+        }
+        text.textContent = display.heat;
+        text.classList.add('damaged');
     }
 
     // TODO: need to implement the aimed shot
@@ -1164,6 +1207,7 @@ export class UnitSvgService {
             } else {
                 this.renderHitModEntry(entry, this.resolveInventoryControlHitModifier(entry));
             }
+            this.renderInventoryControlHeatEntry(entry, null);
         });
         this.renderInventoryControlSelection();
     }
@@ -1464,4 +1508,12 @@ export class UnitSvgService {
             return null;
         }
     }
+}
+
+function inventoryControlDirectText(el: SVGElement | undefined, selector: string): SVGElement | null {
+    const direct = el?.querySelector<SVGElement>(`:scope > ${selector}`) ?? null;
+    if (!direct) return null;
+    return direct.tagName.toLocaleLowerCase() === 'text'
+        ? direct
+        : direct.querySelector<SVGElement>(':scope > text');
 }

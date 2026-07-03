@@ -9,6 +9,11 @@ import { MountedEquipment, type CriticalSlot, type HeatProfile } from '../../mod
 import { InventoryModeHandler } from '../../equipment-handlers/inventory-mode.handler';
 import { BAPHandler } from '../../equipment-handlers/bap.handler';
 import { PpcCapacitorHandler } from '../../equipment-handlers/ppc-capacitor.handler';
+import { MmlHandler } from '../../equipment-handlers/mml.handler';
+import { AtmHandler } from '../../equipment-handlers/atm.handler';
+import { ArtemisVHandler } from '../../equipment-handlers/artemis-v.handler';
+import { ApolloHandler } from '../../equipment-handlers/apollo.handler';
+import { LaserInsulatorHandler } from '../../equipment-handlers/laser-insulator.handler';
 import type { EquipmentInteractionHandler, HandlerChoice } from '../../services/equipment-interaction-registry.service';
 import { INVENTORY_CONTROL_MODE_STATE, inventoryControlSortKey, getInventoryControlGroups, type InventoryControlDisplayData, type InventoryControlDisplayEffectOptions } from '../../utils/inventory-control.util';
 import { PPC_CAPACITOR_STATE_KEY } from '../../utils/ppc-capacitor.util';
@@ -192,8 +197,15 @@ function createComponent(
     options: CreateComponentOptions = {}
 ) {
     let context: EquipmentDialogContext;
-    const modeHandler = new InventoryModeHandler();
-    const handlers = [modeHandler, ...(options.handlers ?? [])];
+    const handlers = [
+        new InventoryModeHandler(),
+        new MmlHandler(),
+        new AtmHandler(),
+        new ArtemisVHandler(),
+        new ApolloHandler(),
+        new LaserInsulatorHandler(),
+        ...(options.handlers ?? [])
+    ];
     const toasts: Array<{ id: string; message: string; type: 'info' | 'success' | 'error'; data?: Record<string, unknown> }> = [];
     const toastService = {
         showToast: jasmine.createSpy('showToast').and.callFake((message: string, type: 'info' | 'success' | 'error', id?: string, data?: Record<string, unknown>) => {
@@ -263,6 +275,13 @@ function createComponent(
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
         setCritSlot: jasmine.createSpy('setCritSlot'),
         isEquipmentUnavailable: testEquipmentUnavailable,
+        getLinkedEquipmentHitModifier: (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => entry.linkedWith?.reduce((total, linked) => {
+            const modifier = handlers
+                .filter(handler => handler.flags.length === 0 || (!!linked.equipment?.flags && handler.flags.every(flag => linked.equipment!.flags.has(flag))))
+                .filter(handler => !handler.applicableTo || handler.applicableTo(linked))
+                .reduce((sum, handler) => sum + (handler.getLinkedEquipmentHitModifier?.(linked, entry, selectedAmmo) ?? 0), 0);
+            return total + modifier;
+        }, 0) ?? 0,
         rules
     } as unknown as CBTForceUnit;
     addRuntimeSelection(unit);
@@ -305,7 +324,24 @@ function createComponent(
                         nextDisplay = handler.applyInventoryControlDisplayEffects?.(entry, nextDisplay, options, context) ?? nextDisplay;
                     }
                     return nextDisplay;
-                }
+                },
+                getInventoryControlModes: (entry: MountedEquipment) => handlers.flatMap(handler => {
+                    const flagsMatch = handler.flags.length === 0
+                        || (!!entry.equipment?.flags && handler.flags.every(flag => entry.equipment!.flags.has(flag)));
+                    if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) return [];
+                    return handler.getInventoryControlModes?.(entry, context) ?? [];
+                }),
+                matchesInventoryAmmo: (entry: MountedEquipment, ammo: AmmoEquipment, mode: string | null) => {
+                    for (const handler of handlers) {
+                        const flagsMatch = handler.flags.length === 0
+                            || (!!entry.equipment?.flags && handler.flags.every(flag => entry.equipment!.flags.has(flag)));
+                        if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) continue;
+                        const result = handler.matchesInventoryAmmo?.(entry, ammo, mode, context);
+                        if (result !== undefined && result !== null) return result;
+                    }
+                    return null;
+                },
+                getLinkedEquipmentHitModifier: (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => unit.getLinkedEquipmentHitModifier(entry, selectedAmmo)
             }
         } as unknown as EquipmentDialogContext;
 
@@ -647,6 +683,31 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(row.display.heat).toBe('5');
         expect(row.display.damage).toBe('5 [DE]');
         expect(component.handlerChoices(row)).toEqual([]);
+    });
+
+    it('marks heat as damaged when Laser Insulator heat is restored', () => {
+        const laserEquipment = weapon('Medium Laser');
+        laserEquipment.flags.add('F_ENERGY');
+        laserEquipment.flags.add('F_LASER');
+        const insulator = entry({
+            id: 'Laser Insulator@RA#5',
+            equipment: misc('Laser Insulator', ['F_WEAPON_ENHANCEMENT', 'F_LASER_INSULATOR']),
+            destroyed: true,
+            el: svgEntry('<g class="linked"><g class="name"><text>Laser Insulator</text></g></g>')
+        });
+        const laser = entry({
+            id: 'Medium Laser@RA#3',
+            equipment: laserEquipment,
+            linkedWith: [insulator],
+            el: svgEntry('<g><g class="name"><text>Medium Laser</text></g><text class="heat">3*</text><g class="damage"><text>5</text></g></g>')
+        });
+        insulator.parent = laser;
+        const { component, fixture } = createComponent([laser, insulator]);
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(row.base.heat).toBe('3*');
+        expect(row.display.heat).toBe('4');
+        expect((fixture.nativeElement.querySelector('.heat-cell') as HTMLElement).classList.contains('damaged')).toBeTrue();
     });
 
     it('persists mode and sort order but keeps selection transient', async () => {
