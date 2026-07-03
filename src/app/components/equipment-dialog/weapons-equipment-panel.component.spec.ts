@@ -700,7 +700,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(component.handlerChoices(row)).toEqual([]);
     });
 
-    it('marks heat as damaged when Laser Insulator heat is restored', () => {
+    it('marks heat as damaged when Laser Insulator heat is destroyed', () => {
         const laserEquipment = weapon('Medium Laser');
         laserEquipment.flags.add('F_ENERGY');
         laserEquipment.flags.add('F_LASER');
