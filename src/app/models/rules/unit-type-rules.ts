@@ -116,8 +116,6 @@ export interface UnitConditionDefinition {
 
 export type UnitConditionControl = UnitConditionDefinition & { placement: UnitConditionControlPlacement };
 
-const DRONE_OPERATING_SYSTEM_FLAG = 'F_DRONE_OPERATING_SYSTEM';
-
 export interface CrewStateDefinition {
     key: CrewMemberState;
     label: string;
@@ -356,7 +354,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     private droneOperatingSystem(): MountedEquipment | CriticalSlot | undefined {
         if (!this.supportsDroneOperatingSystem()) return undefined;
         const inventory = this.unit.getInventory();
-        const entry = inventory.find(candidate => candidate.equipment?.hasFlag(DRONE_OPERATING_SYSTEM_FLAG));
+        const entry = inventory.find(candidate => candidate.equipment?.hasFlag('F_DRONE_OPERATING_SYSTEM'));
         return entry;
     }
 
