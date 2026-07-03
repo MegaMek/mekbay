@@ -33,7 +33,7 @@
 
 import type { MountedEquipment } from '../force-serialization';
 import { WeaponEquipment, type AmmoEquipment } from '../equipment.model';
-import { resolveWeaponRangeHitModifier, type WeaponRangeKey } from './weapon-range-rules.util';
+import type { InventoryControlRuntimeRangeKey } from '../inventory-control-runtime-state.model';
 
 /**
  * Pure game-rules utilities for hit modifier calculation.
@@ -45,7 +45,7 @@ import { resolveWeaponRangeHitModifier, type WeaponRangeKey } from './weapon-ran
  */
 
 export type LinkedEquipmentHitModifierResolver = (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => number;
-export type EntryBaseHitModifierResolver = (entry: MountedEquipment) => number | null;
+export type EntryBaseHitModifierResolver = (entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null) => number | null;
 
 /**
  * Resolve the final hit modifier for an inventory entry.
@@ -58,20 +58,19 @@ export type EntryBaseHitModifierResolver = (entry: MountedEquipment) => number |
 export function resolveHitModifier(
     entry: MountedEquipment,
     additionalModifiers: number,
-    range?: WeaponRangeKey | null,
+    range?: InventoryControlRuntimeRangeKey | null,
     selectedAmmo?: AmmoEquipment | null,
     resolveLinkedModifiers?: LinkedEquipmentHitModifierResolver,
     resolveBaseModifier?: EntryBaseHitModifierResolver
 ): number | 'Vs' | '*' | null {
     const linkedModifiers = resolveLinkedModifiers?.(entry, selectedAmmo) ?? 0;
-    const baseModifier = resolveBaseModifier?.(entry) ?? null;
+    const baseModifier = resolveBaseModifier?.(entry, range) ?? null;
     if (entry.baseHitMod === 'Vs') {
         return entry.baseHitMod;
     }
     if (entry.baseHitMod === '*') {
-        const rangeHitModValue = resolveWeaponRangeHitModifier(entry, range);
-        if (rangeHitModValue !== null) {
-            return rangeHitModValue + additionalModifiers + linkedModifiers;
+        if (baseModifier !== null) {
+            return baseModifier + additionalModifiers + linkedModifiers;
         }
         return entry.baseHitMod;
     }
@@ -90,8 +89,7 @@ export function resolveHitModifier(
             }
         }
     }
-    const rangeHitModValue = resolveWeaponRangeHitModifier(entry, range);
-    const baseHitModValue = rangeHitModValue ?? baseModifier ?? parseInt(entry.baseHitMod || '0');
+    const baseHitModValue = baseModifier ?? parseInt(entry.baseHitMod || '0');
     if (isNaN(baseHitModValue)) {
         return null;
     }

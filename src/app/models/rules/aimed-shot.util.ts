@@ -1,6 +1,5 @@
 import { AmmoEquipment, type AmmoType, WeaponEquipment } from '../equipment.model';
 import type { MountedEquipment } from '../force-serialization';
-import type { InventoryControlRuntimeTarget } from '../inventory-control-runtime-state.model';
 import type { TnTargetNumberCalculatorState } from '../target-number-calculator.model';
 
 export type AimingMode = 'none' | 'immobile' | 'targeting-computer';
@@ -49,6 +48,8 @@ const AIMED_SHOT_CLUSTER_AMMO_TYPES = new Set<AmmoType>([
 
 const T_BOLT_AMMO_TYPES = new Set<AmmoType>(['TBOLT_5', 'TBOLT_10', 'TBOLT_15', 'TBOLT_20']);
 const FLAK_AMMO_TYPES = new Set<AmmoType>(['AC', 'AC_ULTRA', 'AC_ULTRA_THB']);
+
+// TODO: this whole logic has to be moved inside the handlers. Handlers should decide if the shot is allowed with that weapon/ammo/mode
 
 export function canPerformAimedShot(entry: MountedEquipment, calculator: TnTargetNumberCalculatorState | null | undefined, context: AimedShotAmmoContext = {}): boolean {
     return aimedShotNotAllowedText(entry, calculator, context) === null;

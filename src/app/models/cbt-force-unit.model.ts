@@ -129,8 +129,8 @@ export class CBTForceUnit extends ForceUnit {
             .getLinkedEquipmentHitModifier(entry, selectedAmmo);
     }
 
-    getInventoryControlBaseHitModifier(entry: MountedEquipment): number | null {
-        return this.getInventoryControlRules().resolveBaseHitModifier?.(entry) ?? null;
+    getInventoryControlBaseHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | null {
+        return this.getInventoryControlRules().resolveBaseHitModifier?.(entry, range) ?? null;
     }
 
     getInventoryControlRules(): InventoryControlRules {

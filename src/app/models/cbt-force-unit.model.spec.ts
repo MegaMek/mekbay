@@ -40,11 +40,10 @@ function createEquipment(): EquipmentMap {
         type: 'ammo',
         ammo: { type: 'AC_ULTRA', rackSize: 20, shots: 4, kgPerShot: 250 }
     });
-    const mediumVspLaser = new WeaponEquipment({
-        id: 'ISMediumVSPLaser',
-        name: 'Medium VSP Laser',
+    const variableDamageLaser = new WeaponEquipment({
+        id: 'VariableDamageLaser',
+        name: 'Variable Damage Laser',
         type: 'weapon',
-        flags: ['F_DIRECT_FIRE','F_PULSE','F_VSP'],
         weapon: { ammoType: 'NA', heat: 7, damage: [9, 7, 5], ranges: [2, 5, 9, 13] }
     });
     const mml9 = new WeaponEquipment({
@@ -83,7 +82,7 @@ function createEquipment(): EquipmentMap {
         [ultraAc20.internalName]: ultraAc20,
         [ultraAc20Ammo.internalName]: ultraAc20Ammo,
         [ultraAc20PrecisionAmmo.internalName]: ultraAc20PrecisionAmmo,
-        [mediumVspLaser.internalName]: mediumVspLaser,
+        [variableDamageLaser.internalName]: variableDamageLaser,
         [mml9.internalName]: mml9,
         [mediumLaser.internalName]: mediumLaser,
         [laserInsulator.internalName]: laserInsulator,
@@ -162,28 +161,28 @@ function createVehicleSvg(): SVGSVGElement {
     `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
 }
 
-function createVspUnit(equipment: EquipmentMap): Unit {
+function createVariableDamageUnit(equipment: EquipmentMap): Unit {
     return createEmptyUnit({
-        name: 'VSP Test Unit',
-        chassis: 'VSP Test',
+        name: 'Variable Damage Test Unit',
+        chassis: 'Variable Damage Test',
         model: 'T1',
         type: 'Tank',
         subtype: 'Hovercraft',
         heat: -1,
         dissipation: -1,
         comp: [
-            { id: 'ISMediumVSPLaser', q: 1, q2: 0, n: 'Medium VSP Laser', t: 'E', p: 1, l: 'FR', r: '2/5/9', m: '-4', d: '9/7/5', md: '9.0', c: '1', os: 0, eq: equipment['ISMediumVSPLaser'] },
+            { id: 'VariableDamageLaser', q: 1, q2: 0, n: 'Variable Damage Laser', t: 'E', p: 1, l: 'FR', r: '2/5/9', m: '-4', d: '9/7/5', md: '9.0', c: '1', os: 0, eq: equipment['VariableDamageLaser'] },
         ],
-        sheets: ['vehicle/vsp-test.svg'],
+        sheets: ['vehicle/variable-damage-test.svg'],
     });
 }
 
-function createVspSvg(): SVGSVGElement {
+function createVariableDamageSvg(): SVGSVGElement {
     const parser = new DOMParser();
     return parser.parseFromString(`
         <svg xmlns="http://www.w3.org/2000/svg">
-            <g class="inventoryEntry" id="ISMediumVSPLaser@FR#0" hitMod="-4">
-                <g class="name"><text>Medium VSP Laser</text></g>
+            <g class="inventoryEntry" id="VariableDamageLaser@FR#0" hitMod="-4">
+                <g class="name"><text>Variable Damage Laser</text></g>
                 <g class="damage"><text>9/7/5 [Variable]</text></g>
                 <text class="location">FR</text>
                 <text class="range_short">2</text>
@@ -827,9 +826,9 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(targetTnText.textContent).toBe('');
     });
 
-    it('renders selected range damage and pulse hit modifiers on the SVG inventory entry', () => {
-        const forceUnit = createForceUnit(createVspUnit(equipment));
-        initialize(forceUnit, createVspSvg());
+    it('renders selected range damage on the SVG inventory entry', () => {
+        const forceUnit = createForceUnit(createVariableDamageUnit(equipment));
+        initialize(forceUnit, createVariableDamageSvg());
         const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
         const damageText = weaponEntry.el!.querySelector(':scope > .damage > text') as SVGTextElement;
         const hitModText = weaponEntry.el!.querySelector(':scope > .hitMod-text') as SVGTextElement;
@@ -838,17 +837,17 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.setInventoryControlEntryRange(weaponEntry, 'short');
         svgService.refreshInventory();
         expect(damageText.textContent).toBe('9 [Variable]');
-        expect(hitModText.textContent).toBe('-3');
+        expect(hitModText.textContent).toBe('-4');
 
         forceUnit.setInventoryControlEntryRange(weaponEntry, 'medium');
         svgService.refreshInventory();
         expect(damageText.textContent).toBe('7 [Variable]');
-        expect(hitModText.textContent).toBe('-2');
+        expect(hitModText.textContent).toBe('-4');
 
         forceUnit.setInventoryControlEntryRange(weaponEntry, 'long');
         svgService.refreshInventory();
         expect(damageText.textContent).toBe('5 [Variable]');
-        expect(hitModText.textContent).toBe('-1');
+        expect(hitModText.textContent).toBe('-4');
 
         spyOn(forceUnit, 'hasLinkedC3Network').and.returnValue(true);
         forceUnit.createInventoryControlTarget();
@@ -856,7 +855,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.setInventoryControlEntryTarget(weaponEntry, 'A');
         svgService.refreshInventory();
         expect(damageText.textContent).toBe('5 [Variable]');
-        expect(hitModText.textContent).toBe('-1');
+        expect(hitModText.textContent).toBe('-4');
 
         forceUnit.setInventoryControlEntryRange(weaponEntry, null);
         svgService.refreshInventory();

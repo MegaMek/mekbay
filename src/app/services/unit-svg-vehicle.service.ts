@@ -190,7 +190,7 @@ export class UnitSvgVehicleService extends UnitSvgService {
             range,
             this.inventoryTargetSelectedAmmo(entry),
             (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo),
-            candidate => this.unit.getInventoryControlBaseHitModifier(candidate)
+            (candidate, candidateRange?: InventoryControlRuntimeRangeKey | null) => this.unit.getInventoryControlBaseHitModifier(candidate, candidateRange)
         );
     }
 

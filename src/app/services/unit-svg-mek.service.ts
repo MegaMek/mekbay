@@ -37,7 +37,7 @@ import { UnitSvgService } from "./unit-svg.service";
 import { AmmoEquipment } from "../models/equipment.model";
 import { MekRules } from "../models/rules/mek-rules";
 import { resolveHitModifier } from "../models/rules/hit-modifier.util";
-import type { WeaponRangeKey } from "../models/rules/weapon-range-rules.util";
+import type { InventoryControlRuntimeRangeKey } from "../models/inventory-control-runtime-state.model";
 import { getCriticalSlotAmmoProfileKey } from "../utils/ammo-interaction.util";
 
 type MekEntryState = { isDamaged: boolean; isDisabled: boolean; hitMod: number };
@@ -261,7 +261,7 @@ export class UnitSvgMekService extends UnitSvgService {
         }
     }
 
-    protected override resolveInventoryControlHitModifier(entry: MountedEquipment, range?: WeaponRangeKey | null): number | 'Vs' | '*' | null {
+    protected override resolveInventoryControlHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {
         const state = this.currentEntryStates?.get(entry) ?? this.mekRules.computeEntryState(entry);
         return resolveHitModifier(
             entry,
@@ -269,7 +269,7 @@ export class UnitSvgMekService extends UnitSvgService {
             range,
             this.inventoryTargetSelectedAmmo(entry),
             (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo),
-            candidate => this.unit.getInventoryControlBaseHitModifier(candidate)
+            (candidate, candidateRange?: InventoryControlRuntimeRangeKey | null) => this.unit.getInventoryControlBaseHitModifier(candidate, candidateRange)
         );
     }
 
