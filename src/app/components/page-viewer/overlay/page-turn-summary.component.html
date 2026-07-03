@@ -67,16 +67,6 @@
 
         <div class="sectionTitle">Combat</div>
         <div class="summary-entry">
-            @if (gunneryModifiers().length > 0) {
-                <div class="gunnery-modifiers">
-                    @for (modifier of gunneryModifiers(); track $index) {
-                    <div class="row wrap">
-                        <span>{{ modifier.reason }}</span>
-                        <span class="modifier danger">{{ modifier.modifier >= 0 ? '+' : '' }}{{ modifier.modifier }}</span>
-                    </div>
-                    }
-                </div>
-            }
             <div class="row has-tooltip" [tooltip]="attackModifierTooltip()">
                 @let modifierAtk = getTotalTargetModifierAsAttacker();
                 <span class="caption">Attack Target Modifier:</span><span class="modifier important totalAttack">{{ modifierAtk >= 0 ? '+' : '' }}{{ modifierAtk }}</span>

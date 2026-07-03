@@ -48,6 +48,10 @@ import {
  */
 export class AeroRules extends UnitTypeRulesBase {
 
+    protected override supportsDroneOperatingSystem(): boolean {
+        return true;
+    }
+
     private readonly heatMgmt: HeatManagement;
 
     constructor(unit: CBTForceUnit) {

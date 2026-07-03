@@ -67,8 +67,12 @@ export const MEK_LOCATION_CONDITION_CONTROLS: readonly LocationConditionControl[
  */
 export class MekRules extends UnitTypeRulesBase {
 
-    override readonly conditionControls = MEK_UNIT_CONDITION_CONTROLS;
-    override readonly crewStateControls = MEK_CREW_STATE_CONTROLS;
+    protected override supportsDroneOperatingSystem(): boolean {
+        return true;
+    }
+
+    protected override readonly baseConditionControls = MEK_UNIT_CONDITION_CONTROLS;
+    protected override readonly baseCrewStateControls = MEK_CREW_STATE_CONTROLS;
     override readonly locationConditionControls = MEK_LOCATION_CONDITION_CONTROLS;
     protected override readonly crewStateDisplayDefinitions = MEK_CREW_STATE_DISPLAYS;
 
@@ -84,6 +88,7 @@ export class MekRules extends UnitTypeRulesBase {
         if (!this.unit.isLoaded()) return false;
         if (this.unit.getCondition('shutdown')) return true;
         if (this.allLimbsDestroyedOrMissing()) return true;
+        if (this.hasDroneOperatingSystem()) return false;
         if (this.hasFunctionalCrew()) return false;
         return true;
     });
@@ -690,7 +695,7 @@ export class MekRules extends UnitTypeRulesBase {
             preExisting -= 2; // Four-legged unit with all legs intact gets -2 modifier
             modifiers.push({
                 pilotCheck: -2,
-                reason: "Four-legged 'Mech with all legs intact"
+                reason: "All legs intact"
             });
         }
         // Calculate current turn modifiers
@@ -745,11 +750,18 @@ export class MekRules extends UnitTypeRulesBase {
                 });
             }
         }
+        if (this.hasDroneOperatingSystem()) {
+            preExisting += 1;
+            modifiers.push({
+                pilotCheck: 1,
+                reason: 'Drone operating system'
+            });
+        }
         const hasSmallOrTorsoCockpit = critSlots.some(slot => slot.loc
             && ((this.isNamedCrit(slot, 'Cockpit') && this.isNamedCrit(slot, 'Small'))
                 || (this.isNamedCrit(slot, 'Command') && this.isNamedCrit(slot, 'Small'))))
             || critSlots.some(slot => slot.loc && slot.loc === 'CT' && this.isNamedCrit(slot, 'Cockpit'));
-        if (hasSmallOrTorsoCockpit) {
+        if (hasSmallOrTorsoCockpit && !this.hasDroneOperatingSystem()) {
             preExisting += 1; // Small or Torso cockpit gives +1 modifier
             modifiers.push({
                 pilotCheck: +1,
@@ -999,7 +1011,7 @@ export class MekRules extends UnitTypeRulesBase {
         const baseMovement = this.computeBaseMovementProfile();
         if (!baseMovement) return null;
 
-        if (this.allCrewUnconscious()) {
+        if (this.unit.getCondition('disconnected') || this.allCrewUnconscious()) {
             return {
                 moveImpaired: true,
                 walk: 0,

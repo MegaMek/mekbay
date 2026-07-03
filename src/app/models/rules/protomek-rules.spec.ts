@@ -3,18 +3,20 @@ import { CRIPPLED_CREW_HIT_THRESHOLD, type CrewMemberState } from '../crew-membe
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { ProtoMekRules } from './protomek-rules';
 
-function createRulesHarness(crewStates: CrewMemberState[] = ['healthy'], crewHits: number[] = []): ProtoMekRules {
+function createRulesHarness(crewStates: CrewMemberState[] = ['healthy'], crewHits: number[] = [], inventory: unknown[] = []): ProtoMekRules {
     const baseUnit = createEmptyUnit({
         type: 'ProtoMek',
         subtype: 'ProtoMek',
     });
     const unit = {
         getCritSlots: () => [],
+        getInventory: () => inventory,
         getCrewMembers: () => crewStates.map((state, index) => ({
             getState: () => state,
             isCrippled: () => (crewHits[index] ?? 0) >= CRIPPLED_CREW_HIT_THRESHOLD,
         })),
         getUnit: () => baseUnit,
+        isEquipmentUnavailable: () => true,
         isLoaded: () => true,
         locations: { internal: new Map() },
         destroyed: false,

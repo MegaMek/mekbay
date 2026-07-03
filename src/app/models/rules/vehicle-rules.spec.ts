@@ -75,8 +75,13 @@ function createRulesHarness(options: {
         getCritSlots: () => options.crits ?? [],
         getInventory: () => options.inventory ?? [],
         getUnit: () => baseUnit,
-        getCondition: (state: string) => state === 'shutdown' && (options.shutdown ?? false),
+        getCondition: (state: string) => {
+            if (state === 'shutdown') return options.shutdown ?? false;
+            if (state === 'disconnected') return rules.hasComputedCondition('disconnected');
+            return false;
+        },
         getCrewMembers: () => crewStates.map(state => ({ getState: () => state })),
+        isEquipmentUnavailable: (source: MountedEquipment | CriticalSlot) => !!source.destroyed,
         pilotingSkill: () => 5,
         turnState: () => ({
             moveMode: () => options.moveMode ?? null,
@@ -338,6 +343,32 @@ describe('VehicleRules', () => {
             { modifier: 3, reason: 'Flight stabilizer hit' },
             { modifier: 2, reason: 'Motive system hit' },
         ]);
+    });
+
+    it('applies drone operating system controls and skill modifiers to vehicles', () => {
+        const rules = createRulesHarness({
+            inventory: [entry({ equipment: equipment('ISDroneOperatingSystem', ['F_DRONE_OPERATING_SYSTEM']) })],
+        });
+
+        expect(rules.conditionControls.map(control => control.key)).toContain('disconnected');
+        expect(rules.crewStateControls).toEqual([]);
+        expect(rules.crewStateDefinition('killed')).toBeUndefined();
+        expect(rules.gunneryModifiers()).toEqual([{ modifier: 1, reason: 'Drone operating system' }]);
+        expect(rules.pilotingModifiers()).toEqual([{ modifier: 1, reason: 'Drone operating system' }]);
+        expect(rules.gunneryModifier()).toBe(1);
+        expect(rules.pilotingModifier()).toBe(1);
+        expect(rules.PSRModifiers().modifier).toBe(1);
+        expect(rules.PSRModifiers().modifiers.map(modifier => modifier.reason)).toContain('Drone operating system');
+    });
+
+    it('disconnects and immobilizes vehicles when the drone operating system is destroyed', () => {
+        const rules = createRulesHarness({
+            inventory: [entry({ equipment: equipment('ISDroneOperatingSystem', ['F_DRONE_OPERATING_SYSTEM']), destroyed: true })],
+        });
+
+        expect(rules.hasComputedCondition('disconnected')).toBeTrue();
+        expect(rules.hasComputedCondition('immobile')).toBeTrue();
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 0, run: 0, moveImpaired: true }));
     });
 
     it('disables energy equipment after an engine hit', () => {

@@ -32,7 +32,7 @@
  */
 
 import { computed, signal, type Signal } from '@angular/core';
-import type { CriticalSlot } from '../force-serialization';
+import type { CriticalSlot, MountedEquipment } from '../force-serialization';
 import { getMotiveModeLabel, type MotiveModes } from '../motiveModes.model';
 import type { TurnState } from '../turn-state.model';
 import type { CrewMemberState } from '../crew-member.model';
@@ -116,6 +116,8 @@ export interface UnitConditionDefinition {
 
 export type UnitConditionControl = UnitConditionDefinition & { placement: UnitConditionControlPlacement };
 
+const DRONE_OPERATING_SYSTEM_FLAG = 'F_DRONE_OPERATING_SYSTEM';
+
 export interface CrewStateDefinition {
     key: CrewMemberState;
     label: string;
@@ -129,6 +131,7 @@ export type CrewStateControlDefinition = CrewStateDefinition & { key: CrewStateC
 export const UNIT_CONDITION_DEFINITIONS: readonly UnitConditionDefinition[] = [
     { key: 'shutdown', important: true, label: 'SHUTDOWN', color: '#840000', placement: 'button' },
     { key: 'abandoned', important: true, label: 'ABANDONED', color: '#222' },
+    { key: 'disconnected', label: 'DISCONNECTED', color: '#455a64', placement: 'menu' },
     { key: 'immobile', label: 'IMMOBILE', color: '#ff8800' },
     { key: 'prone', label: 'PRONE', color: '#666', placement: 'button' },
     { key: 'crippled', label: 'CRIPPLED', color: '#b70000' },
@@ -224,6 +227,12 @@ export interface UnitTypeRules {
     /** Display definition for a crew state supported by this unit type. */
     crewStateDefinition(state: CrewMemberState): CrewStateDefinition | undefined;
 
+    /** Whether this unit currently has crew for gameplay/UI purposes. */
+    hasCrew(): boolean;
+
+    /** Whether this unit is controlled by a remote drone operating system. */
+    isRemoteDrone(): boolean;
+
     /** Whether a condition key is derived from rules instead of persisted unit state. */
     isComputedCondition(condition: string): boolean;
 
@@ -272,18 +281,28 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     readonly controlRollFullLabel: string;
     readonly PSRModifiers: Signal<{ modifier: number; modifiers: PSRCheck[] }> = signal({ modifier: 0, modifiers: [] });
     readonly PSRTargetRoll: Signal<number> = signal(0);
-    readonly gunneryModifiers: Signal<UnitSkillModifier[]> = signal([]);
+    readonly gunneryModifiers: Signal<UnitSkillModifier[]> = computed(() => this.droneOperatingSystemSkillModifiers());
     readonly gunneryModifier: Signal<number> = computed(() => this.gunneryModifiers().reduce((total, modifier) => total + modifier.modifier, 0));
-    readonly pilotingModifiers: Signal<UnitSkillModifier[]> = signal([]);
+    readonly pilotingModifiers: Signal<UnitSkillModifier[]> = computed(() => this.droneOperatingSystemSkillModifiers());
     readonly pilotingModifier: Signal<number> = computed(() => this.pilotingModifiers().reduce((total, modifier) => total + modifier.modifier, 0));
     readonly autoFall: Signal<boolean> = signal(false);
-    readonly conditionControls: readonly UnitConditionControl[] = [];
-    readonly crewStateControls: readonly CrewStateControlDefinition[] = [];
+    protected readonly baseConditionControls: readonly UnitConditionControl[] = [];
+    protected readonly baseCrewStateControls: readonly CrewStateControlDefinition[] = [];
     readonly locationConditionControls: readonly LocationConditionControl[] = [];
     protected readonly crewStateDisplayDefinitions: readonly CrewStateDefinition[] = [];
     protected readonly abandoned: Signal<boolean> = signal(false);
     protected readonly immobile: Signal<boolean> = signal(false);
     protected readonly crippled: Signal<boolean> = signal(false);
+
+    get conditionControls(): readonly UnitConditionControl[] {
+        if (!this.hasDroneOperatingSystem()) return this.baseConditionControls;
+        if (this.baseConditionControls.some(control => control.key === 'disconnected')) return this.baseConditionControls;
+        return [...this.baseConditionControls, unitConditionControls(['disconnected'])[0]];
+    }
+
+    get crewStateControls(): readonly CrewStateControlDefinition[] {
+        return this.hasDroneOperatingSystem() ? [] : this.baseCrewStateControls;
+    }
 
     abstract evaluateDestroyed(): void;
 
@@ -301,18 +320,55 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     }
 
     hasComputedCondition(condition: string): boolean {
+        if (condition === 'abandoned' && this.hasDroneOperatingSystem()) return false;
+        if (condition === 'disconnected') return this.isDroneOperatingSystemUnavailable();
         if (condition === 'abandoned') return this.abandoned();
-        if (condition === 'immobile') return this.immobile();
+        if (condition === 'immobile') return this.immobile() || (this.hasDroneOperatingSystem() && this.unit.getCondition('disconnected'));
         if (condition === 'crippled') return this.crippled();
         return false;
     }
 
     computedConditions(): readonly string[] {
-        return ['abandoned', 'immobile', 'crippled'];
+        return ['abandoned', 'immobile', 'crippled', 'disconnected'];
     }
 
     crewStateDefinition(state: CrewMemberState): CrewStateDefinition | undefined {
+        if (this.hasDroneOperatingSystem()) return undefined;
         return this.crewStateDisplayDefinitions.find(definition => definition.key === state);
+    }
+
+    hasCrew(): boolean {
+        return !this.hasDroneOperatingSystem() && this.unit.getCrewMembers().length > 0;
+    }
+
+    isRemoteDrone(): boolean {
+        return this.hasDroneOperatingSystem();
+    }
+
+    protected supportsDroneOperatingSystem(): boolean {
+        return false;
+    }
+
+    protected hasDroneOperatingSystem(): boolean {
+        return this.droneOperatingSystem() !== undefined;
+    }
+
+    private droneOperatingSystem(): MountedEquipment | CriticalSlot | undefined {
+        if (!this.supportsDroneOperatingSystem()) return undefined;
+        const inventory = this.unit.getInventory();
+        const entry = inventory.find(candidate => candidate.equipment?.hasFlag(DRONE_OPERATING_SYSTEM_FLAG));
+        return entry;
+    }
+
+    protected isDroneOperatingSystemUnavailable(): boolean {
+        const droneOperatingSystem = this.droneOperatingSystem();
+        return droneOperatingSystem !== undefined && this.unit.isEquipmentUnavailable(droneOperatingSystem);
+    }
+
+    protected droneOperatingSystemSkillModifiers(): UnitSkillModifier[] {
+        return this.hasDroneOperatingSystem()
+            ? [{ modifier: 1, reason: 'Drone operating system' }]
+            : [];
     }
 
     getPSRChecks(_turnState: TurnState): PSRCheck[] {
@@ -418,6 +474,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     }
 
     protected hasFunctionalCrew(): boolean {
+        if (this.hasDroneOperatingSystem()) return false;
         const crew = this.unit.getCrewMembers();
         return crew.length > 0 && crew.some(crewMember => crewMember.getState() === 'healthy');
     }
@@ -428,6 +485,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     }
 
     protected allCrewCrippled(): boolean {
+        if (this.hasDroneOperatingSystem()) return false;
         const crew = this.unit.getCrewMembers();
         return crew.length > 0 && crew.every(crewMember => crewMember.isCrippled());
     }

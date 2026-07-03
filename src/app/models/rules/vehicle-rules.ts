@@ -89,8 +89,12 @@ export const VEHICLE_CREW_STATE_DISPLAYS: readonly CrewStateDefinition[] = crewS
 
 export class VehicleRules extends UnitTypeRulesBase {
 
-    override readonly conditionControls: readonly UnitConditionControl[] = VEHICLE_UNIT_CONDITION_CONTROLS;
-    override readonly crewStateControls = VEHICLE_CREW_STATE_CONTROLS;
+    protected override supportsDroneOperatingSystem(): boolean {
+        return true;
+    }
+
+    protected override readonly baseConditionControls: readonly UnitConditionControl[] = VEHICLE_UNIT_CONDITION_CONTROLS;
+    protected override readonly baseCrewStateControls = VEHICLE_CREW_STATE_CONTROLS;
     protected override readonly crewStateDisplayDefinitions = VEHICLE_CREW_STATE_DISPLAYS;
 
     protected override readonly abandoned = computed<boolean>(() => this.systemsStatus().crewKilled);
@@ -148,7 +152,7 @@ export class VehicleRules extends UnitTypeRulesBase {
 
     override readonly gunneryModifiers = computed<UnitSkillModifier[]>(() => {
         const status = this.systemsStatus();
-        const modifiers: UnitSkillModifier[] = [];
+        const modifiers: UnitSkillModifier[] = [...this.droneOperatingSystemSkillModifiers()];
         if (status.commanderHit) {
             modifiers.push({ modifier: 1, reason: 'Commander hit' });
         }
@@ -166,7 +170,7 @@ export class VehicleRules extends UnitTypeRulesBase {
 
     override readonly pilotingModifiers = computed<UnitSkillModifier[]>(() => {
         const status = this.systemsStatus();
-        const modifiers: UnitSkillModifier[] = [];
+        const modifiers: UnitSkillModifier[] = [...this.droneOperatingSystemSkillModifiers()];
         if (status.commanderHit) {
             modifiers.push({ modifier: 1, reason: 'Commander hit' });
         }
@@ -190,7 +194,7 @@ export class VehicleRules extends UnitTypeRulesBase {
         const unit = this.unit.getUnit();
         const baseWalk = Math.max(0, unit.walk);
         const status = this.systemsStatus();
-        if (this.immobile()) {
+        if (this.immobile() || this.unit.getCondition('disconnected')) {
             return {
                 moveImpaired: true,
                 walk: 0,
@@ -283,6 +287,9 @@ export class VehicleRules extends UnitTypeRulesBase {
                 pilotCheck: 1,
                 reason: 'Mounts Hardened Armor'
             });
+        }
+        if (this.hasDroneOperatingSystem()) {
+            modifiers.push({ pilotCheck: 1, reason: 'Drone operating system' });
         }
         if (status.commanderHit) {
             modifiers.push({ pilotCheck: 1, reason: 'Commander hit' });

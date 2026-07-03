@@ -1,6 +1,6 @@
 import { computed, signal } from '@angular/core';
 import type { CBTForceUnitState } from './cbt-force-unit-state.model';
-import type { CriticalSlot, HeatProfile } from './force-serialization';
+import type { CriticalSlot, HeatProfile, MountedEquipment } from './force-serialization';
 import { AeroRules } from './rules/aero-rules';
 import { InfantryRules } from './rules/infantry-rules';
 import { MekRules } from './rules/mek-rules';
@@ -60,6 +60,7 @@ function getCritSlotEquipmentFlags(name: string): string[] {
 
 function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStateHarness {
     const critSlots = signal<CriticalSlot[]>(options.critSlots ?? []);
+    const inventory = signal<MountedEquipment[]>([]);
     const heat = signal<HeatProfile>({ current: 0, previous: 0 });
     const committedDestroyedLegs = new Set(options.committedDestroyedLegs ?? []);
     const currentDestroyedLegs = new Set(options.currentDestroyedLegs ?? []);
@@ -73,6 +74,7 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         getCondition: () => false,
         getCrewMembers: () => [{ getState: () => 'healthy' }],
         getCritSlots: () => critSlots(),
+        getInventory: () => inventory(),
         isInternalLocCommittedDestroyed: (loc: string) => committedDestroyedLegs.has(loc),
         isInternalLocDestroyed: (loc: string) => currentDestroyedLegs.has(loc) || committedDestroyedLegs.has(loc),
         isEquipmentUnavailable: (slot: CriticalSlot) => !!slot.destroyed || (slot.loc ? committedDestroyedLegs.has(slot.loc) : false),

@@ -206,12 +206,14 @@ export class RsPolyfillUtil {
         const immobileCondition = getUnitConditionDefinition('immobile') ?? { key: 'immobile', label: 'IMMOBILE', color: '#444' };
         const abandonedCondition = getUnitConditionDefinition('abandoned') ?? { key: 'abandoned', label: 'ABANDONED', color: '#7a1f1f' };
         const crippledCondition = getUnitConditionDefinition('crippled') ?? { key: 'crippled', label: 'CRIPPLED', color: '#b70000' };
-        const conditions = [
+        const disconnectedCondition = getUnitConditionDefinition('disconnected') ?? { key: 'disconnected', label: 'DISCONNECTED', color: '#455a64' };
+        const conditions = Array.from(new Map([
             ...conditionControls,
             abandonedCondition,
             immobileCondition,
             crippledCondition,
-        ];
+            disconnectedCondition,
+        ].map(condition => [condition.key, condition])).values());
 
         if (!hasButtonWrapper) {
             const unitDataPanelEl = svg.getElementById('unitDataPanel') as SVGGraphicsElement | null;

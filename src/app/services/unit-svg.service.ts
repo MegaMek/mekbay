@@ -255,6 +255,7 @@ export class UnitSvgService {
         const activeConditions = UNIT_CONDITION_DEFINITIONS
             .map(condition => ({ key: condition.key, active: conditions.has(condition.key) }))
             .sort((left, right) => unitConditionSortIndex(left.key) - unitConditionSortIndex(right.key));
+        this.updateUnitConditionControlVisibility(svg, conditionControls);
         const activeMenuConditions = conditionControls.filter(condition => condition.placement === 'menu' && conditions.has(condition.key));
         const menuActive = activeMenuConditions.length > 0;
         const menuButton = svg.querySelector<SVGElement>('.unitConditionButton[condition="menu"]');
@@ -299,6 +300,26 @@ export class UnitSvgService {
                 bannerOffset += bannerHeight;
             }
         }
+    }
+
+    private updateUnitConditionControlVisibility(svg: SVGSVGElement, conditionControls: readonly { key: string; placement?: string }[]): void {
+        const buttonConditions = new Set(conditionControls
+            .filter(condition => condition.placement === 'button')
+            .map(condition => condition.key));
+        const hasMenuConditions = conditionControls.some(condition => condition.placement === 'menu');
+
+        svg.querySelectorAll<SVGElement>('.unitConditionButton[condition]').forEach(button => {
+            const condition = button.getAttribute('condition');
+            const visible = condition === 'menu'
+                ? hasMenuConditions
+                : !!condition && buttonConditions.has(condition);
+            button.style.display = visible ? '' : 'none';
+        });
+
+        svg.querySelectorAll<SVGElement>('#unit_condition_wrapper, .unitConditionWrapper').forEach(wrapper => {
+            const buttons = Array.from(wrapper.querySelectorAll<SVGElement>('.unitConditionButton[condition]'));
+            wrapper.style.display = buttons.length > 0 && buttons.every(button => button.style.display === 'none') ? 'none' : '';
+        });
     }
 
     protected updateDestroyedOverlayDisplay(destroyed?: boolean) {
@@ -350,6 +371,7 @@ export class UnitSvgService {
         const svg = this.unit.svg();
         if (!svg) return;
         const PSRMod = this.unit.PSRModifiers();
+        const pilotingDisplayModifier = PSRMod?.modifier || this.unit.pilotingModifier();
         const attackerModifier = this.unit.turnState().getTotalTargetModifierAsAttacker();
 
         // Check if all crew members have default values (no name and default skills)
@@ -358,6 +380,8 @@ export class UnitSvgService {
             member.getSkill('gunnery') === DEFAULT_GUNNERY_SKILL && // Default gunnery skill
             member.getSkill('piloting') === DEFAULT_PILOTING_SKILL // Default piloting skill
         );
+
+        this.updateCrewDamageDisplay(svg, crew);
 
         // Apply or remove screen-only class on skillValue elements
         svg.querySelectorAll('.skillValue').forEach(el => {
@@ -407,7 +431,7 @@ export class UnitSvgService {
                 if (svgElement) {
                     const skillValue = member.getSkill(skill.name, skill.asf);
                     if (skill.name === 'piloting') {
-                        svgElement.textContent = formatPilotingDisplay(skillValue, PSRMod?.modifier ?? 0);
+                        svgElement.textContent = formatPilotingDisplay(skillValue, pilotingDisplayModifier);
                     } else {
                         svgElement.textContent = formatGunneryDisplay(skillValue, attackerModifier);
                     }
@@ -435,12 +459,73 @@ export class UnitSvgService {
         });
     }
 
+    private updateCrewDamageDisplay(svg: SVGSVGElement, crew: CrewMember[]): void {
+        const hasCrew = this.unit.rules.hasCrew();
+        const remoteDrone = this.unit.rules.isRemoteDrone();
+        const visibleCrewIds = new Set(hasCrew ? crew.map(member => member.getId()) : []);
+        let showRemoteDroneLabel = false;
+        let hasCrewDamage0 = false;
+        let labelContainer: Element | null = svg;
+        let labelX = '70';
+        let labelY = '40';
+        svg.querySelectorAll<SVGElement>('g[id^="crewDamage"]').forEach(group => {
+            const crewId = Number(group.id.replace('crewDamage', ''));
+            const visible = visibleCrewIds.has(crewId);
+            if (crewId === 0) {
+                hasCrewDamage0 = true;
+                labelContainer = group.parentNode instanceof Element ? group.parentNode : svg;
+            }
+            showRemoteDroneLabel ||= remoteDrone && crewId === 0 && !visible;
+            group.style.display = visible ? '' : 'none';
+            if (visible) {
+                group.removeAttribute('display');
+            } else {
+                group.setAttribute('display', 'none');
+            }
+        });
+        if (remoteDrone && !hasCrewDamage0) {
+            const blankCrewName = svg.getElementById('blankCrewName0');
+            labelContainer = blankCrewName?.parentNode instanceof Element ? blankCrewName.parentNode : null;
+            showRemoteDroneLabel = labelContainer !== null;
+            labelX = '72';
+            labelY = '51';
+        }
+        this.updateRemoteDroneCrewDamageLabel(svg, labelContainer, showRemoteDroneLabel, labelX, labelY);
+    }
+
+    private updateRemoteDroneCrewDamageLabel(svg: SVGSVGElement, container: Element | null, visible: boolean, x: string, y: string): void {
+        let label = svg.getElementById('remoteDroneCrewDamage0Label') as SVGTextElement | null;
+        if (!visible || !container) {
+            label?.remove();
+            return;
+        }
+        if (!label) {
+            label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        }
+        container.appendChild(label);
+        label.setAttribute('id', 'remoteDroneCrewDamage0Label');
+        label.setAttribute('class', 'remoteDroneCrewDamageLabel screen-only');
+        label.setAttribute('text-anchor', 'middle');
+        label.setAttribute('dominant-baseline', 'middle');
+        label.setAttribute('font-family', 'Roboto, sans-serif');
+        label.setAttribute('font-size', '9');
+        label.setAttribute('font-weight', 'bold');
+        label.setAttribute('fill', '#000');
+        label.setAttribute('x', x);
+        label.setAttribute('y', y);
+        label.textContent = 'REMOTE DRONE';
+        label.style.display = '';
+        label.removeAttribute('display');
+    }
+
     private updateCrewStateControls(svg: SVGSVGElement, crewId: number, state: CrewMemberState): void {
         const stateDisplay = this.crewStateDisplay(state);
         const active = stateDisplay !== null;
         const color = stateDisplay?.color ?? '#666';
+        const visible = this.unit.rules.crewStateControls.length > 0;
 
         svg.querySelectorAll<SVGElement>(`.crewStateButton[crewId="${crewId}"]`).forEach(button => {
+            button.style.display = visible ? '' : 'none';
             button.classList.toggle('active', active);
             button.setAttribute('active-color', color);
             button.style.setProperty('--unit-condition-active-color', color);

@@ -48,8 +48,8 @@ export const PROTOMEK_CREW_STATE_DISPLAYS: readonly CrewStateDefinition[] = crew
 
 export class ProtoMekRules extends UnitTypeRulesBase {
 
-    override readonly conditionControls = PROTOMEK_UNIT_CONDITION_CONTROLS;
-    override readonly crewStateControls = PROTOMEK_CREW_STATE_CONTROLS;
+    protected override readonly baseConditionControls = PROTOMEK_UNIT_CONDITION_CONTROLS;
+    protected override readonly baseCrewStateControls = PROTOMEK_CREW_STATE_CONTROLS;
     protected override readonly crewStateDisplayDefinitions = PROTOMEK_CREW_STATE_DISPLAYS;
 
     constructor(unit: CBTForceUnit) {

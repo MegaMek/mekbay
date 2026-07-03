@@ -4,7 +4,7 @@ import { CBTForce } from '../cbt-force.model';
 import { CBTForceUnit } from '../cbt-force-unit.model';
 import { DEAD_CREW_HIT_THRESHOLD, type CrewMemberState } from '../crew-member.model';
 import { MountedEquipment, type CriticalSlot, type LocationData } from '../force-serialization';
-import { AmmoEquipment, WeaponEquipment } from '../equipment.model';
+import { AmmoEquipment, Equipment, WeaponEquipment } from '../equipment.model';
 import type { Unit } from '../units.model';
 import { DataService } from '../../services/data.service';
 import { UnitInitializerService } from '../../services/unit-initializer.service';
@@ -120,6 +120,26 @@ function ammo(id: string, ammoType: 'AC', rackSize: number, shots: number): Ammo
     });
 }
 
+function droneOperatingSystem(): Equipment {
+    return new Equipment({
+        id: 'ISDroneOperatingSystem',
+        name: 'Drone (Remote) Operating System',
+        type: 'misc',
+        flags: ['F_DRONE_OPERATING_SYSTEM'],
+    });
+}
+
+function droneOperatingSystemEntry(forceUnit: CBTForceUnit, destroyed = false): MountedEquipment {
+    return new MountedEquipment({
+        owner: forceUnit,
+        id: 'ISDroneOperatingSystem@HD#0',
+        name: 'Drone (Remote) Operating System',
+        equipment: droneOperatingSystem(),
+        locations: new Set(['HD']),
+        destroyed,
+    });
+}
+
 describe('MekRules', () => {
     beforeEach(() => {
         dataService = jasmine.createSpyObj<DataService>('DataService', ['getUnitByName']);
@@ -139,6 +159,62 @@ describe('MekRules', () => {
 
         expect(rules.hasComputedCondition('immobile')).toBeFalse();
         expect(rules.hasComputedCondition('abandoned')).toBeFalse();
+    });
+
+    it('applies drone operating system controls and skill modifiers', () => {
+        const forceUnit = createForceUnitHarness();
+        forceUnit.setInventory([droneOperatingSystemEntry(forceUnit)]);
+        const rules = forceUnit.rules as MekRules;
+
+        expect(rules.conditionControls.map(control => control.key)).toContain('disconnected');
+        expect(rules.crewStateControls).toEqual([]);
+        expect(rules.crewStateDefinition('dead')).toBeUndefined();
+        expect(rules.gunneryModifiers()).toEqual([{ modifier: 1, reason: 'Drone operating system' }]);
+        expect(rules.pilotingModifiers()).toEqual([{ modifier: 1, reason: 'Drone operating system' }]);
+        expect(rules.gunneryModifier()).toBe(1);
+        expect(rules.pilotingModifier()).toBe(1);
+    });
+
+    it('ignores small cockpit PSR modifiers for drone operating system Meks', () => {
+        const forceUnit = createForceUnitHarness({
+            critSlots: [{ id: 'small-cockpit', name: 'Small Cockpit', loc: 'HD', slot: 0 }],
+        });
+        forceUnit.setInventory([droneOperatingSystemEntry(forceUnit)]);
+        const rules = forceUnit.rules as MekRules;
+
+        expect(rules.PSRModifiers().modifier).toBe(1);
+        expect(rules.PSRModifiers().modifiers.map(modifier => modifier.reason)).toContain('Drone operating system');
+        expect(rules.PSRModifiers().modifiers.map(modifier => modifier.reason)).not.toContain('Mounts small or torso cockpit');
+    });
+
+    it('treats drone operating system Meks as crewless for crew-derived conditions', () => {
+        const forceUnit = createForceUnitHarness({ crewStates: ['ejected'], crewHits: [4] });
+        forceUnit.setInventory([droneOperatingSystemEntry(forceUnit)]);
+        const rules = forceUnit.rules as MekRules;
+
+        expect(rules.hasComputedCondition('abandoned')).toBeFalse();
+        expect(rules.hasComputedCondition('crippled')).toBeFalse();
+        expect(rules.hasComputedCondition('immobile')).toBeFalse();
+    });
+
+    it('disconnects and immobilizes drone operating system Meks manually or when the OS is destroyed', () => {
+        const forceUnit = createForceUnitHarness();
+        forceUnit.setInventory([droneOperatingSystemEntry(forceUnit)]);
+        const rules = forceUnit.rules as MekRules;
+
+        forceUnit.setCondition('disconnected', true);
+
+        expect(forceUnit.getCondition('disconnected')).toBeTrue();
+        expect(rules.hasComputedCondition('immobile')).toBeTrue();
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 0, run: 0, jump: 0, UMU: 0 }));
+
+        forceUnit.setCondition('disconnected', false);
+        forceUnit.setInventory([droneOperatingSystemEntry(forceUnit, true)]);
+
+        expect(rules.hasComputedCondition('disconnected')).toBeTrue();
+        expect(forceUnit.getCondition('disconnected')).toBeTrue();
+        expect(rules.hasComputedCondition('immobile')).toBeTrue();
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 0, run: 0, jump: 0, UMU: 0 }));
     });
 
     it('sets Mek movement to zero when all crew are unconscious', () => {

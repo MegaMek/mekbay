@@ -1,11 +1,11 @@
 import { Injector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { AmmoEquipment, WeaponEquipment, type EquipmentMap } from './equipment.model';
+import { AmmoEquipment, Equipment, WeaponEquipment, type EquipmentMap } from './equipment.model';
 import { CBTForce } from './cbt-force.model';
 import { CBTForceUnit } from './cbt-force-unit.model';
 import { DEAD_CREW_HIT_THRESHOLD } from './crew-member.model';
 import { INVENTORY_CONTROL_TARGET_MAX_COUNT } from './inventory-control-runtime-state.model';
-import type { CBTSerializedUnit, CriticalSlot } from './force-serialization';
+import { MountedEquipment, type CBTSerializedUnit, type CriticalSlot } from './force-serialization';
 import { DataService } from '../services/data.service';
 import { UnitInitializerService } from '../services/unit-initializer.service';
 import { UnitSvgService } from '../services/unit-svg.service';
@@ -47,6 +47,12 @@ function createEquipment(): EquipmentMap {
         type: 'weapon',
         weapon: { ammoType: 'MML', rackSize: 9, heat: 5, damage: 'cluster', ranges: [0, 0, 0, 0] }
     });
+    const droneOperatingSystem = new Equipment({
+        id: 'ISDroneOperatingSystem',
+        name: 'Drone (Remote) Operating System',
+        type: 'misc',
+        flags: ['F_DRONE_OPERATING_SYSTEM'],
+    });
 
     return {
         [ultraAc20.internalName]: ultraAc20,
@@ -54,6 +60,7 @@ function createEquipment(): EquipmentMap {
         [ultraAc20PrecisionAmmo.internalName]: ultraAc20PrecisionAmmo,
         [mediumVspLaser.internalName]: mediumVspLaser,
         [mml9.internalName]: mml9,
+        [droneOperatingSystem.internalName]: droneOperatingSystem,
     };
 }
 
@@ -74,6 +81,19 @@ function createProtoMekUnit(): Unit {
         model: 'PROTO-1',
         type: 'ProtoMek',
         subtype: 'ProtoMek',
+    });
+}
+
+function createDroneMekUnit(equipment: EquipmentMap): Unit {
+    return createEmptyUnit({
+        name: 'DroneMek_TEST-1',
+        chassis: 'Drone Mek',
+        model: 'TEST-1',
+        type: 'Mek',
+        subtype: 'BattleMek',
+        comp: [
+            { id: 'ISDroneOperatingSystem', q: 1, q2: 0, n: 'Drone (Remote) Operating System', t: 'E', p: 1, l: 'HD', c: '1', os: 0, eq: equipment['ISDroneOperatingSystem'] },
+        ],
     });
 }
 
@@ -224,6 +244,14 @@ function createMekDamageSvg(): SVGSVGElement {
 }
 
 class ExposedUnitSvgService extends UnitSvgService {
+    refreshConditions(): void {
+        this.updateConditionsDisplay();
+    }
+
+    refreshCrew(): void {
+        this.updateCrewDisplay(this.unit.getCrewMembers());
+    }
+
     refreshInventory(): void {
         this.updateInventory();
     }
@@ -795,6 +823,153 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(linkedEls.some(el => el.classList.contains('disabledLocation'))).toBeFalse();
         expect(linkedCritGroup.classList.contains('flooded')).toBeTrue();
         expect(linkedCritGroup.classList.contains('disabledLocation')).toBeFalse();
+    });
+
+    it('hides unit condition buttons at runtime when there are no matching controls', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({
+            name: 'AFTest_AERO-1',
+            chassis: 'Test Aero',
+            model: 'AERO-1',
+            type: 'Aero',
+            subtype: 'Aerospace Fighter',
+        }));
+        const svg = new DOMParser().parseFromString(`
+            <svg xmlns="http://www.w3.org/2000/svg">
+                <g id="unit_condition_wrapper" class="unitConditionWrapper">
+                    <g id="unit_condition_button_menu" class="unitConditionButton" condition="menu"><rect></rect><text></text></g>
+                    <g id="unit_condition_button_prone" class="unitConditionButton" condition="prone"><rect></rect><text></text></g>
+                </g>
+            </svg>
+        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+        forceUnit.svg.set(svg);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshConditions();
+
+        expect((svg.getElementById('unit_condition_wrapper') as SVGElement).style.display).toBe('none');
+        expect((svg.getElementById('unit_condition_button_menu') as SVGElement).style.display).toBe('none');
+        expect((svg.getElementById('unit_condition_button_prone') as SVGElement).style.display).toBe('none');
+    });
+
+    it('hides crew state buttons at runtime when there are no crew state controls', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({
+            name: 'AFTest_AERO-1',
+            chassis: 'Test Aero',
+            model: 'AERO-1',
+            type: 'Aero',
+            subtype: 'Aerospace Fighter',
+            crewSize: 1,
+        }));
+        const svg = new DOMParser().parseFromString(`
+            <svg xmlns="http://www.w3.org/2000/svg">
+                <g id="crew_state_button_0_pilotName0" class="crewStateButton unitConditionButton" crewId="0"><rect></rect><text></text></g>
+            </svg>
+        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+        forceUnit.svg.set(svg);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshCrew();
+
+        expect((svg.getElementById('crew_state_button_0_pilotName0') as SVGElement).style.display).toBe('none');
+    });
+
+    it('renders drone operating system piloting modifier for aero skill displays', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({
+            name: 'DroneAero_TEST-1',
+            chassis: 'Drone Aero',
+            model: 'TEST-1',
+            type: 'Aero',
+            subtype: 'Aerospace Fighter',
+            crewSize: 1,
+        }));
+        const svg = new DOMParser().parseFromString(`
+            <svg xmlns="http://www.w3.org/2000/svg">
+                <text id="asfGunnerySkill"></text>
+                <text id="asfPilotingSkill"></text>
+            </svg>
+        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+        initialize(forceUnit, svg);
+        forceUnit.setInventory([new MountedEquipment({
+            owner: forceUnit,
+            id: 'ISDroneOperatingSystem@NOS#0',
+            name: 'Drone (Remote) Operating System',
+            equipment: equipment['ISDroneOperatingSystem'],
+            locations: new Set(['NOS']),
+        })]);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshCrew();
+
+        expect(svg.getElementById('asfGunnerySkill')?.textContent).toBe('4+1');
+        expect(svg.getElementById('asfPilotingSkill')?.textContent).toBe('5+1');
+    });
+
+    it('replaces crew damage groups with remote drone text at runtime for drone operating system units', () => {
+        const forceUnit = createForceUnit(createDroneMekUnit(equipment));
+        const svg = new DOMParser().parseFromString(`
+            <svg xmlns="http://www.w3.org/2000/svg">
+                <g id="crewDamageContainer">
+                    <g id="crewDamage0">
+                        <g class="crewHit interactive" crewId="0" hit="1"></g>
+                    </g>
+                </g>
+            </svg>
+        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+        const crewDamage = svg.getElementById('crewDamage0') as SVGElement;
+        const crewDamageContainer = svg.getElementById('crewDamageContainer') as SVGGElement;
+        initialize(forceUnit, svg);
+        forceUnit.setInventory([new MountedEquipment({
+            owner: forceUnit,
+            id: 'ISDroneOperatingSystem@HD#0',
+            name: 'Drone (Remote) Operating System',
+            equipment: equipment['ISDroneOperatingSystem'],
+            locations: new Set(['HD']),
+        })]);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshCrew();
+
+        const remoteDroneLabel = svg.getElementById('remoteDroneCrewDamage0Label') as SVGTextElement;
+        expect(forceUnit.rules.hasCrew()).toBeFalse();
+        expect(crewDamage.getAttribute('display')).toBe('none');
+        expect(crewDamage.style.display).toBe('none');
+        expect(remoteDroneLabel.parentNode).toBe(crewDamageContainer);
+        expect(remoteDroneLabel.textContent).toBe('REMOTE DRONE');
+
+        svgService.refreshCrew();
+
+        expect((svg.getElementById('remoteDroneCrewDamage0Label') as SVGTextElement).getAttribute('display')).toBeNull();
+        expect((svg.getElementById('remoteDroneCrewDamage0Label') as SVGTextElement).style.display).toBe('');
+    });
+
+    it('uses the blank crew name container for remote drone text when crew damage is missing', () => {
+        const forceUnit = createForceUnit(createDroneMekUnit(equipment));
+        const svg = new DOMParser().parseFromString(`
+            <svg xmlns="http://www.w3.org/2000/svg">
+                <g id="pilotNameContainer">
+                    <text id="blankCrewName0"></text>
+                </g>
+            </svg>
+        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+        const blankCrewName = svg.getElementById('blankCrewName0') as SVGTextElement;
+        const container = svg.getElementById('pilotNameContainer') as SVGGElement;
+        initialize(forceUnit, svg);
+        forceUnit.setInventory([new MountedEquipment({
+            owner: forceUnit,
+            id: 'ISDroneOperatingSystem@HD#0',
+            name: 'Drone (Remote) Operating System',
+            equipment: equipment['ISDroneOperatingSystem'],
+            locations: new Set(['HD']),
+        })]);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshCrew();
+
+        const remoteDroneLabel = svg.getElementById('remoteDroneCrewDamage0Label') as SVGTextElement;
+        expect(blankCrewName.getAttribute('display')).toBeNull();
+        expect(blankCrewName.style.display).toBe('');
+        expect(remoteDroneLabel.parentNode).toBe(container);
+        expect(remoteDroneLabel.textContent).toBe('REMOTE DRONE');
     });
 
     it('does not render directly physically destroyed linked locations as disabled', () => {

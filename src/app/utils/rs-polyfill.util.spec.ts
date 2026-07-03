@@ -42,6 +42,24 @@ describe('RsPolyfillUtil', () => {
         expect(svg.querySelector('.unitConditionBanner[condition="abandoned"]')).not.toBeNull();
         expect(svg.querySelector('.unitConditionBanner[condition="immobile"]')).not.toBeNull();
         expect(svg.querySelector('.unitConditionBanner[condition="crippled"]')).not.toBeNull();
+        expect(svg.querySelector('.unitConditionBanner[condition="disconnected"]')).not.toBeNull();
+    });
+
+    it('adds only one disconnected banner when disconnected is also a unit condition control', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('viewBox', '0 0 612 792');
+        const forceUnit = {
+            rules: {
+                conditionControls: [
+                    { key: 'disconnected', label: 'DISCONNECTED', color: '#455a64', placement: 'menu' },
+                ],
+            },
+            getUnit: () => ({ type: 'Aero' }),
+        };
+
+        (RsPolyfillUtil as unknown as { addConditionsButtons: (unit: unknown, svg: SVGSVGElement) => void }).addConditionsButtons(forceUnit, svg);
+
+        expect(svg.querySelectorAll('.unitConditionBanner[condition="disconnected"]').length).toBe(1);
     });
 
     it('adds hidden 3x3 motive hit pip overlays below repeatable motive hit controls', () => {
