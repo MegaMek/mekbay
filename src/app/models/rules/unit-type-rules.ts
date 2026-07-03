@@ -47,6 +47,7 @@ import {
     TN_SKIDDING_MODIFIER,
 } from '../target-number-calculator.model';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
+import type { HeatDissipationState } from './heat-management';
 
 export interface PSRCheck {
     fallCheck?: number;
@@ -66,6 +67,12 @@ export interface UnitHeatSource {
     id: string;
     label: string;
     value: number;
+}
+
+export interface MountedEquipmentRuleState {
+    isDamaged: boolean;
+    isDisabled: boolean;
+    hitMod: number;
 }
 
 export interface LocationConditionControl {
@@ -213,6 +220,9 @@ export interface UnitTypeRules {
     /** Whether current phase damage causes automatic falling or equivalent unit-type failure. */
     readonly autoFall: Signal<boolean>;
 
+    /** Heat dissipation state for heat-tracking units. Non-heat units return null. */
+    readonly heatDissipation: Signal<HeatDissipationState | null>;
+
     /** Manual condition controls available for this unit type. */
     readonly conditionControls: readonly UnitConditionControl[];
 
@@ -239,6 +249,12 @@ export interface UnitTypeRules {
 
     /** Rule-derived condition keys exposed through ForceUnit.getCondition/getConditions. */
     computedConditions(): readonly string[];
+
+    /** Compute rule-derived availability and hit modifiers for all inventory entries. */
+    computeAllEntryStates(): Map<MountedEquipment, MountedEquipmentRuleState>;
+
+    /** Compute rule-derived availability and hit modifiers for a single inventory entry. */
+    computeEntryState(entry: MountedEquipment): MountedEquipmentRuleState;
 
     /** Required control-roll checks for the current phase. */
     getPSRChecks(turnState: TurnState): PSRCheck[];
@@ -284,6 +300,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     readonly pilotingModifiers: Signal<UnitSkillModifier[]> = computed(() => this.droneOperatingSystemSkillModifiers());
     readonly pilotingModifier: Signal<number> = computed(() => this.pilotingModifiers().reduce((total, modifier) => total + modifier.modifier, 0));
     readonly autoFall: Signal<boolean> = signal(false);
+    readonly heatDissipation: Signal<HeatDissipationState | null> = signal(null);
     protected readonly baseConditionControls: readonly UnitConditionControl[] = [];
     protected readonly baseCrewStateControls: readonly CrewStateControlDefinition[] = [];
     readonly locationConditionControls: readonly LocationConditionControl[] = [];
@@ -328,6 +345,37 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
 
     computedConditions(): readonly string[] {
         return ['abandoned', 'immobile', 'crippled', 'disconnected'];
+    }
+
+    computeAllEntryStates(): Map<MountedEquipment, MountedEquipmentRuleState> {
+        const result = new Map<MountedEquipment, MountedEquipmentRuleState>();
+        for (const entry of this.unit.getInventory()) {
+            result.set(entry, this.computeEntryState(entry));
+        }
+        return result;
+    }
+
+    computeEntryState(entry: MountedEquipment): MountedEquipmentRuleState {
+        return {
+            isDamaged: entry.committedDestroyed() || this.entryCriticalSlots(entry).some(slot => !!slot.destroyed),
+            isDisabled: this.isEntryStateDisabled(entry),
+            hitMod: 0
+        };
+    }
+
+    protected isEntryStateDisabled(entry: MountedEquipment): boolean {
+        return entry.states.get('state') === 'jammed';
+    }
+
+    protected entryCriticalSlots(entry: MountedEquipment): CriticalSlot[] {
+        return entry.critSlots?.map(slot => this.currentCriticalSlot(slot)) ?? [];
+    }
+
+    protected currentCriticalSlot(slot: CriticalSlot): CriticalSlot {
+        return this.unit.getCritSlots().find(candidate => {
+            if (slot.loc && slot.slot !== undefined) return candidate.loc === slot.loc && candidate.slot === slot.slot;
+            return !!slot.id && candidate.id === slot.id;
+        }) ?? slot;
     }
 
     crewStateDefinition(state: CrewMemberState): CrewStateDefinition | undefined {

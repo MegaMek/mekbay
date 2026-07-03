@@ -61,9 +61,6 @@ const INVENTORY_CONTROL_RANGE_CLASS_NAMES: Record<InventoryControlRuntimeRangeKe
 };
 
 type HeatDissipationWithWings = HeatDissipationState & { totalDissipationWithWings?: number };
-interface HeatAwareRules {
-    heatDissipation: () => HeatDissipationWithWings | null;
-}
 
 /*
  * Author: Drake
@@ -1004,7 +1001,7 @@ export class UnitSvgService {
 
             this.renderInventoryControlSelectionColor(entry, target);
             this.renderInventoryControlRangeDamageEntry(entry, weaponRuleRange);
-            if (!entry.destroyed) {
+            if (!entry.isDestroyed()) {
                 this.renderHitModEntry(entry, this.resolveInventoryControlHitModifier(entry, weaponRuleRange));
             }
             entry.el.classList.toggle('selected', selected);
@@ -1122,7 +1119,7 @@ export class UnitSvgService {
         const hitModText = entry.el.querySelector(`:scope > .hitMod-text`);
         if (!hitModRect || !hitModText) return;
 
-        if (hitModifier === null || entry.destroyed) {
+        if (hitModifier === null || entry.isDestroyed()) {
             hitModRect.setAttribute('display', 'none');
             hitModText.setAttribute('display', 'none');
             entry.el.classList.remove('weakenedHitMod');
@@ -1154,14 +1151,14 @@ export class UnitSvgService {
         this.unit.getInventory().forEach(entry => {
             if (!entry.el) return;
             // Inventory state
-            if (entry.destroyed) {
+            if (entry.isDestroyed()) {
                 entry.el.classList.add('damagedInventory');
                 entry.el.classList.remove('selected');
             } else {
                 entry.el.classList.remove('damagedInventory');
             }
             // Hit modifier badge
-            if (entry.destroyed) {
+            if (entry.isDestroyed()) {
                 this.renderHitModEntry(entry, null);
             } else {
                 this.renderHitModEntry(entry, this.resolveInventoryControlHitModifier(entry));
@@ -1371,8 +1368,7 @@ export class UnitSvgService {
     }
 
     private heatDissipationState(): HeatDissipationWithWings | null {
-        const rules = this.unit.rules as Partial<HeatAwareRules>;
-        return typeof rules.heatDissipation === 'function' ? rules.heatDissipation() : null;
+        return this.unit.rules.heatDissipation() as HeatDissipationWithWings | null;
     }
 
     private updateHeatProjectionOverflow(heatScale: SVGGElement, projectedHeat: number, currentHeat: number): void {

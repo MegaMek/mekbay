@@ -217,6 +217,63 @@ describe('MekRules', () => {
         expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 0, run: 0, jump: 0, UMU: 0 }));
     });
 
+    it('clears drone operating system disconnect after crit-backed OS repair commit', () => {
+        const forceUnit = createForceUnitHarness({ internalLocations: ['HD', 'LL', 'RL'] });
+        const droneCrit = { id: 'drone-os-crit', name: 'Drone Operating System', loc: 'HD', slot: 0 } as CriticalSlot;
+        const entry = new MountedEquipment({
+            owner: forceUnit,
+            id: 'ISDroneOperatingSystem@HD#0',
+            name: 'Drone (Remote) Operating System',
+            equipment: droneOperatingSystem(),
+            locations: new Set(['HD']),
+            critSlots: [droneCrit],
+        });
+
+        forceUnit.writeCrits([droneCrit]);
+        forceUnit.setInventory([entry]);
+        const storedEntry = forceUnit.getInventory().find(item => item.id === entry.id)!;
+        forceUnit.applyHitToCritSlot(droneCrit);
+        forceUnit.endPhase();
+
+        expect(storedEntry.committedDestroyed()).toBeFalse();
+        expect(forceUnit.getCritSlots()[0].destroyed).toBeTruthy();
+        expect((forceUnit.rules as MekRules).computeEntryState(storedEntry)).toEqual(jasmine.objectContaining({ isDamaged: true }));
+        expect(forceUnit.getCondition('disconnected')).toBeTrue();
+        expect(forceUnit.getCondition('immobile')).toBeTrue();
+
+        forceUnit.applyHitToCritSlot(droneCrit, -1);
+        forceUnit.endPhase();
+
+        expect(storedEntry.committedDestroyed()).toBeFalse();
+        expect(forceUnit.getCondition('disconnected')).toBeFalse();
+        expect(forceUnit.getCondition('immobile')).toBeFalse();
+    });
+
+    it('marks inventory damaged when any mapped critical slot is destroyed', () => {
+        const forceUnit = createForceUnitHarness({ internalLocations: ['RA'] });
+        const rules = forceUnit.rules as MekRules;
+        const firstCrit = { id: 'multi-slot-weapon', name: 'Multi Slot Weapon', loc: 'RA', slot: 0 } as CriticalSlot;
+        const secondCrit = { id: 'multi-slot-weapon', name: 'Multi Slot Weapon', loc: 'RA', slot: 1 } as CriticalSlot;
+        const entry = new MountedEquipment({
+            owner: forceUnit,
+            id: 'multi-slot-weapon',
+            name: 'Multi Slot Weapon',
+            locations: new Set(['RA']),
+            critSlots: [firstCrit, secondCrit],
+        });
+
+        forceUnit.writeCrits([firstCrit, secondCrit]);
+        forceUnit.setInventory([entry]);
+        const storedEntry = forceUnit.getInventory().find(item => item.id === entry.id)!;
+        forceUnit.applyHitToCritSlot(secondCrit);
+        forceUnit.endPhase();
+
+        expect(forceUnit.getCritSlots()[0].destroyed).toBeFalsy();
+        expect(forceUnit.getCritSlots()[1].destroyed).toBeTruthy();
+        expect(storedEntry.committedDestroyed()).toBeFalse();
+        expect(rules.computeEntryState(storedEntry)).toEqual(jasmine.objectContaining({ isDamaged: true }));
+    });
+
     it('sets Mek movement to zero when all crew are unconscious', () => {
         const rules = createRulesHarness({ crewStates: ['unconscious'] });
 
@@ -378,11 +435,11 @@ describe('MekRules', () => {
 
         expect(forceUnit.isInternalLocCommittedPhysicallyDestroyed('LL')).toBeTrue();
         expect(forceUnit.getCritSlots().every(slot => !slot.destroying && !slot.destroyed)).toBeTrue();
-        expect(storedEntry.destroyed).toBeFalsy();
+        expect(storedEntry.committedDestroyed()).toBeFalse();
         expect(rules.computeEntryState(storedEntry)).toEqual(jasmine.objectContaining({ isDamaged: false, isDisabled: true }));
     });
 
-    it('marks inventory in structurally destroyed locations as damaged and destroyed', () => {
+    it('marks inventory in structurally destroyed locations as damaged and disabled', () => {
         const forceUnit = createForceUnitHarness({ internalLocations: ['LL'] });
         const rules = forceUnit.rules as MekRules;
         const critSlot = { id: 'test-weapon', name: 'Test Weapon', loc: 'LL', slot: 0 } as CriticalSlot;
@@ -393,10 +450,11 @@ describe('MekRules', () => {
         const storedEntry = forceUnit.getInventory().find(item => item.id === entry.id)!;
         forceUnit.addInternalHits('LL', forceUnit.getInternalPoints('LL'));
         forceUnit.endPhase();
-        rules.computeAllEntryStates();
+        const entryStates = rules.computeAllEntryStates();
 
         expect(forceUnit.isInternalLocCommittedStructurallyDestroyed('LL')).toBeTrue();
-        expect(storedEntry.destroyed).toBeTruthy();
+        expect(storedEntry.committedDestroyed()).toBeFalse();
+        expect(entryStates.get(storedEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
         expect(rules.computeEntryState(storedEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
     });
 
@@ -414,13 +472,15 @@ describe('MekRules', () => {
         const storedLinkedEntry = forceUnit.getInventory().find(item => item.id === linkedEntry.id)!;
         forceUnit.addInternalHits('RT', forceUnit.getInternalPoints('RT'));
         forceUnit.endPhase();
-        rules.computeAllEntryStates();
+        const entryStates = rules.computeAllEntryStates();
 
         expect(forceUnit.isInternalLocCommittedStructurallyDestroyed('RT')).toBeTrue();
         expect(forceUnit.isInternalLocCommittedStructurallyDestroyed('RA')).toBeFalse();
         expect(forceUnit.isInternalLocCommittedPhysicallyDestroyed('RA')).toBeTrue();
-        expect(storedParentEntry.destroyed).toBeTruthy();
-        expect(storedLinkedEntry.destroyed).toBeFalsy();
+        expect(storedParentEntry.committedDestroyed()).toBeFalse();
+        expect(storedLinkedEntry.committedDestroyed()).toBeFalse();
+        expect(entryStates.get(storedParentEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
+        expect(entryStates.get(storedLinkedEntry)).toEqual(jasmine.objectContaining({ isDamaged: false, isDisabled: true }));
         expect(rules.computeEntryState(storedParentEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
         expect(rules.computeEntryState(storedLinkedEntry)).toEqual(jasmine.objectContaining({ isDamaged: false, isDisabled: true }));
     });

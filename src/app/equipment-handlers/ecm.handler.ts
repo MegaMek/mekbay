@@ -83,7 +83,7 @@ export class ECMHandler extends EquipmentInteractionHandler {
                 value: currentState,
                 displayType: 'dropdown',
                 choices: modes,
-                disabled: equipment.destroyed,
+                disabled: equipment.isUnavailable(),
                 keepOpen: true
             }
         ];

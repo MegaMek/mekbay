@@ -1,6 +1,6 @@
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { CrewMemberState } from '../crew-member.model';
-import type { CriticalSlot, MountedEquipment } from '../force-serialization';
+import { MountedEquipment, type CriticalSlot } from '../force-serialization';
 import type { MotiveModes } from '../motiveModes.model';
 import { Equipment, WeaponEquipment } from '../equipment.model';
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
@@ -37,7 +37,8 @@ function entry(options: {
     destroyed?: boolean;
     critSlots?: CriticalSlot[];
 } = {}): MountedEquipment {
-    return {
+    return new MountedEquipment({
+        owner: undefined as unknown as CBTForceUnit,
         id: options.id ?? options.equipment?.id ?? 'entry',
         name: options.id ?? options.equipment?.name ?? 'entry',
         equipment: options.equipment,
@@ -46,7 +47,7 @@ function entry(options: {
         physical: options.physical,
         destroyed: options.destroyed,
         critSlots: options.critSlots,
-    } as unknown as MountedEquipment;
+    });
 }
 
 function createRulesHarness(options: {
@@ -81,7 +82,7 @@ function createRulesHarness(options: {
             return false;
         },
         getCrewMembers: () => crewStates.map(state => ({ getState: () => state })),
-        isEquipmentUnavailable: (source: MountedEquipment | CriticalSlot) => !!source.destroyed,
+        isEquipmentUnavailable: (source: MountedEquipment | CriticalSlot) => source instanceof MountedEquipment ? source.committedDestroyed() : !!source.destroyed,
         pilotingSkill: () => 5,
         turnState: () => ({
             moveMode: () => options.moveMode ?? null,
@@ -92,6 +93,7 @@ function createRulesHarness(options: {
         setDestroyed: jasmine.createSpy('setDestroyed'),
     } as unknown as CBTForceUnit;
 
+    options.inventory?.forEach(entry => entry.owner = unit);
     rules = new VehicleRules(unit);
     return rules;
 }

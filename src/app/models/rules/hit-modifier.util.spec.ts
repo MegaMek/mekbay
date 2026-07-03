@@ -1,16 +1,39 @@
-import type { MountedEquipment } from '../force-serialization';
-import type { AmmoEquipment } from '../equipment.model';
+import { MountedEquipment } from '../force-serialization';
+import type { AmmoEquipment, Equipment } from '../equipment.model';
 import { computeLinkedModifiers, resolveHitModifier } from './hit-modifier.util';
 
-function entry(flags: string[] = [], destroyed = false): MountedEquipment {
+let entryId = 0;
+
+function owner(unavailableEntry?: MountedEquipment) {
     return {
-        equipment: { flags: new Set(flags) },
+        ...(unavailableEntry && { isEquipmentUnavailable: (candidate: MountedEquipment) => candidate === unavailableEntry }),
+        rules: {
+            computeEntryState: (candidate: MountedEquipment) => ({ isDamaged: candidate.committedDestroyed(), isDisabled: candidate === unavailableEntry, hitMod: 0 }),
+            computeAllEntryStates: () => new Map<MountedEquipment, { isDamaged: boolean; isDisabled: boolean; hitMod: number }>(),
+            heatDissipation: () => null
+        }
+    } as never;
+}
+
+function entry(flags: string[] = [], destroyed = false): MountedEquipment {
+    return new MountedEquipment({
+        owner: owner(),
+        id: `entry-${entryId++}`,
+        name: 'Entry',
+        equipment: { flags: new Set(flags) } as Equipment,
         destroyed,
-    } as unknown as MountedEquipment;
+    });
 }
 
 function weapon(linkedWith: MountedEquipment[], baseHitMod = '-1'): MountedEquipment {
-    return { baseHitMod, equipment: { flags: new Set<string>() }, linkedWith } as unknown as MountedEquipment;
+    return new MountedEquipment({
+        owner: owner(),
+        id: `weapon-${entryId++}`,
+        name: 'Weapon',
+        baseHitMod,
+        equipment: { flags: new Set<string>() } as Equipment,
+        linkedWith
+    });
 }
 
 function ammo(munitionTypes: string[] = []): AmmoEquipment {
@@ -20,7 +43,7 @@ function ammo(munitionTypes: string[] = []): AmmoEquipment {
 }
 
 function unavailable(entry: MountedEquipment): MountedEquipment {
-    entry.owner = { isEquipmentUnavailable: (candidate: MountedEquipment) => candidate === entry } as never;
+    entry.owner = owner(entry);
     return entry;
 }
 

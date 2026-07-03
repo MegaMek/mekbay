@@ -62,13 +62,6 @@ import { type InventoryControlRuntimeEntryState, type InventoryControlRuntimeRan
 import { CBTInventoryControlRuntime } from './cbt-inventory-control-runtime.model';
 import { LINKED_LOCATIONS } from '../models/rules/mek-rules';
 
-/*
- * Author: Drake
- */
-interface EquipmentAvailabilityRules {
-    computeEntryState(entry: MountedEquipment): { isDisabled: boolean };
-}
-
 export class CBTForceUnit extends ForceUnit {
     override get force(): CBTForce { return super.force as CBTForce; }
     override set force(value: CBTForce) { super.force = value; }
@@ -680,11 +673,8 @@ export class CBTForceUnit extends ForceUnit {
 
     isEquipmentUnavailable(source: MountedEquipment | CriticalSlot, loc?: string): boolean {
         if (source instanceof MountedEquipment) {
-            if (source.destroyed) return true;
-            if (source.critSlots?.some(slot => this.isEquipmentUnavailable(slot))) return true;
-            if (loc ? this.isEquipmentLocationUnavailable(loc) : Array.from(source.locations ?? []).some(loc => this.isEquipmentLocationUnavailable(loc))) return true;
-            const rules = this._rules as Partial<EquipmentAvailabilityRules> | undefined;
-            return typeof rules?.computeEntryState === 'function' && rules.computeEntryState(source).isDisabled;
+            if (source.isUnavailable()) return true;
+            return loc ? this.isEquipmentLocationUnavailable(loc) : Array.from(source.locations ?? []).some(loc => this.isEquipmentLocationUnavailable(loc));
         }
         return !!source.destroyed || this.isEquipmentLocationUnavailable(source.loc);
     }
@@ -1019,8 +1009,8 @@ export class CBTForceUnit extends ForceUnit {
         this.state.setConditions([]);
         // Clear inventory destroyed items
         const inventory = this.state.inventory().map(item => {
-            if (item.destroyed) {
-                item.destroyed = false;
+            if (item.committedDestroyed()) {
+                item.setCommittedDestroyed(false);
             }
             if (item.consumed) {
                 item.consumed = 0;

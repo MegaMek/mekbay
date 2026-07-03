@@ -34,7 +34,7 @@
 import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { CriticalSlot, MountedEquipment } from '../force-serialization';
-import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type LocationConditionControl, type PSRCheck, type UnitHeatSource } from './unit-type-rules';
+import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type LocationConditionControl, type PSRCheck, type MountedEquipmentRuleState, type UnitHeatSource } from './unit-type-rules';
 import type { TurnState } from '../turn-state.model';
 import { type HeatScaleEntry, HeatManagement, getHeatEffects } from './heat-management';
 import type { MotiveModes } from '../motiveModes.model';
@@ -883,7 +883,7 @@ export class MekRules extends UnitTypeRulesBase {
     /**
      * Mek heat dissipation: extends base with SuperCooledMyomer and partial wing bonus.
      */
-    readonly heatDissipation = computed(() => {
+    override readonly heatDissipation = computed(() => {
         const base = this.heatMgmt.baseDissipation();
         if (!base) return null;
 
@@ -1187,37 +1187,41 @@ export class MekRules extends UnitTypeRulesBase {
     /**
      * Compute game state for ALL inventory entries in a single pass.
      */
-    computeAllEntryStates(): Map<MountedEquipment, { isDamaged: boolean; isDisabled: boolean; hitMod: number }> {
+    private readonly entryStates = computed<Map<MountedEquipment, MountedEquipmentRuleState>>(() => {
         const entries = this.unit.getInventory();
-        // Pass 1: sync destroyed flag from critSlots
-        for (const entry of entries) {
-            if (entry.critSlots?.length) {
-                entry.destroyed = entry.critSlots.some(s => this.isCritStructurallyDestroyed(s));
-            }
-        }
-        // Pass 2: compute full state
         const result = new Map<MountedEquipment, { isDamaged: boolean; isDisabled: boolean; hitMod: number }>();
         for (const entry of entries) {
             result.set(entry, this.computeEntryState(entry));
         }
         return result;
+    });
+
+    override computeAllEntryStates(): Map<MountedEquipment, MountedEquipmentRuleState> {
+        return this.entryStates();
+    }
+
+    private isEntryDestroyedByCriticalDamage(entry: MountedEquipment): boolean {
+        const destroyedCritSlots = this.entryCriticalSlots(entry).filter(slot => this.isCritStructurallyDestroyed(slot)).length;
+        // TODO: Equipment with F_SURVIVES_TWO_CRIT_HITS should use a higher destruction threshold here.
+        const destructionThreshold = 1;
+        return destroyedCritSlots >= destructionThreshold;
     }
 
     /**
      * Compute per-entry game state (damaged/disabled/hitMod) for an inventory entry.
      * Pure rules logic — no SVG/DOM access.
      */
-    computeEntryState(entry: MountedEquipment): { isDamaged: boolean; isDisabled: boolean; hitMod: number } {
+    override computeEntryState(entry: MountedEquipment): MountedEquipmentRuleState {
+        const physicallyDestroyed = this.entryInPhysicallyDestroyedLocation(entry);
+        const functionallyDestroyed = this.entryInFunctionallyDestroyedLocation(entry);
+        let isDamaged = entry.committedDestroyed() || physicallyDestroyed || this.isEntryDestroyedByCriticalDamage(entry);
+        let isDisabled = functionallyDestroyed || this.isEntryStateDisabled(entry);
+        let hitMod = 0;
+
         const physical = this.physicalCombat();
         const fire = this.fireControl();
         const systemsStatus = this.systemsStatus();
-        if (!physical || !fire) return { isDamaged: false, isDisabled: false, hitMod: 0 };
-
-        const physicallyDestroyed = this.entryInPhysicallyDestroyedLocation(entry);
-        const functionallyDestroyed = this.entryInFunctionallyDestroyedLocation(entry);
-        let isDamaged = physicallyDestroyed || !!(entry.critSlots?.some(slot => slot.destroyed));
-        let isDisabled = functionallyDestroyed;
-        let hitMod = 0;
+        if (!physical || !fire) return { isDamaged, isDisabled, hitMod };
 
         if (fire.globalMod !== 0) hitMod += fire.globalMod;
         if (entry.locations?.size === 1) {
@@ -1268,19 +1272,16 @@ export class MekRules extends UnitTypeRulesBase {
                 }
             }
         }
-
-        if (entry.states.get('state') === 'jammed') isDisabled = true;
-
         return { isDamaged, isDisabled, hitMod };
     }
 
     private entryInPhysicallyDestroyedLocation(entry: MountedEquipment): boolean {
-        if (entry.critSlots?.some(slot => this.locationPhysicallyDestroyed(slot.loc))) return true;
+        if (this.entryCriticalSlots(entry).some(slot => this.locationPhysicallyDestroyed(slot.loc))) return true;
         return Array.from(entry.locations ?? []).some(loc => this.locationPhysicallyDestroyed(loc));
     }
 
     private entryInFunctionallyDestroyedLocation(entry: MountedEquipment): boolean {
-        if (entry.critSlots?.some(slot => this.locationFunctionallyDestroyed(slot.loc))) return true;
+        if (this.entryCriticalSlots(entry).some(slot => this.locationFunctionallyDestroyed(slot.loc))) return true;
         return Array.from(entry.locations ?? []).some(loc => this.locationFunctionallyDestroyed(loc));
     }
 

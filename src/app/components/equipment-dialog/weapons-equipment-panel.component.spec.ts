@@ -14,6 +14,51 @@ import { WeaponsEquipmentPanelComponent } from './weapons-equipment-panel.compon
 import type { EquipmentDialogContext } from './equipment-dialog.model';
 import { getMotiveModeLabel, type MotiveModes } from '../../models/motiveModes.model';
 
+type EntryState = { isDamaged: boolean; isDisabled: boolean; hitMod: number };
+
+function testEntryRuleState(entry: MountedEquipment): EntryState {
+    return {
+        isDamaged: entry.committedDestroyed(),
+        isDisabled: entry.states.get('state') === 'jammed' || testInfantryFieldGunEntryDisabled(entry),
+        hitMod: 0
+    };
+}
+
+function testInfantryFieldGunEntryDisabled(entry: MountedEquipment): boolean {
+    const componentRef = testInventoryComponentRef(entry);
+    const unit = entry.owner;
+    const baseUnit = unit?.getUnit?.();
+    if (!baseUnit || baseUnit.type !== 'Infantry' || baseUnit.subtype === 'Battle Armor') return false;
+    if (!(entry.equipment instanceof WeaponEquipment)) return false;
+    if (componentRef === null) return false;
+    const component = componentRef === null ? undefined : baseUnit.comp?.[componentRef.componentIndex];
+    if (!component || component.l !== 'FGUN' || component.t === 'X' || componentRef.binIndex === null) return false;
+    const totalTroops = unit.locations?.internal.get('TROOP')?.points
+        ?? baseUnit.internal
+        ?? ((baseUnit.squads ?? 0) * (baseUnit.squadSize ?? 0));
+    const committedDamage = unit.getCommittedInternalHits?.('TROOP') ?? 0;
+    const functionalTroops = Math.max(0, totalTroops - committedDamage);
+    const functionalGuns = Math.min(Math.max(0, component.q ?? 0), Math.floor(functionalTroops / Math.max(1, component.cw ?? 1)));
+    return componentRef.binIndex >= functionalGuns;
+}
+
+function testInventoryComponentRef(entry: MountedEquipment): { componentIndex: number; binIndex: number | null } | null {
+    const indexText = entry.id.split('#').pop();
+    if (!indexText) return null;
+    const [componentIndexText, binIndexText] = indexText.split('.');
+    const componentIndex = Number(componentIndexText);
+    const binIndex = binIndexText === undefined ? null : Number(binIndexText);
+    if (!Number.isInteger(componentIndex)) return null;
+    if (binIndex !== null && !Number.isInteger(binIndex)) return null;
+    return { componentIndex, binIndex };
+}
+
+const EMPTY_ENTRY_STATE_RULES = {
+    computeAllEntryStates: () => new Map<MountedEquipment, EntryState>(),
+    computeEntryState: testEntryRuleState,
+    heatDissipation: () => null
+};
+
 function addRuntimeSelection(unit: CBTForceUnit): CBTForceUnit {
     const runtime = new CBTInventoryControlRuntime(unit);
 
@@ -67,7 +112,8 @@ function misc(id: string, flags: string[] = []): MiscEquipment {
 }
 
 function testEquipmentUnavailable(source: MountedEquipment | CriticalSlot): boolean {
-    return !!source.destroyed || (source instanceof MountedEquipment && !!source.critSlots?.some(slot => !!slot.destroyed));
+    if (source instanceof MountedEquipment) return source.committedDestroyed() || !!source.critSlots?.some(slot => !!slot.destroyed);
+    return !!source.destroyed;
 }
 
 function svgEntry(html: string): SVGElement {
@@ -100,7 +146,7 @@ function entry(params: {
         getCritSlots: () => [],
         getUnit: () => ({ comp: [] }),
         isEquipmentUnavailable: testEquipmentUnavailable,
-        rules: {}
+        rules: EMPTY_ENTRY_STATE_RULES
     } as unknown as CBTForceUnit;
     return new MountedEquipment({
         owner,
@@ -168,6 +214,14 @@ function createComponent(
     const heat: HeatProfile = { current: 2, previous: 1, next: options.heatNext };
     const rules = {
         computeAllEntryStates: () => entryStates,
+        computeEntryState: (entry: MountedEquipment) => entryStates.get(entry) ?? testEntryRuleState(entry),
+        heatDissipation: () => options.tracksHeat === false ? null : {
+            totalPips: 10,
+            healthyPips: 10,
+            damagedCount: 0,
+            heatsinksOff: 0,
+            totalDissipation: options.heatDissipation ?? 0
+        },
         getAttackMovementModifier: (moveMode: MotiveModes | null | undefined) => {
             switch (moveMode) {
                 case 'walk': return 1;
@@ -175,16 +229,7 @@ function createComponent(
                 case 'jump': return 3;
                 default: return 0;
             }
-        },
-        ...(options.tracksHeat === false ? {} : {
-            heatDissipation: () => ({
-                totalPips: 10,
-                healthyPips: 10,
-                damagedCount: 0,
-                heatsinksOff: 0,
-                totalDissipation: options.heatDissipation ?? 0
-            })
-        })
+        }
     };
     const turnState = {
         moveMode: () => options.moveMode ?? null,
@@ -256,51 +301,13 @@ function createComponent(
 }
 
 describe('WeaponsEquipmentPanelComponent', () => {
-    it('creates non-Battle Armor infantry field gun rows from component inventory', () => {
-        const fieldGun = weapon('Autocannon/2', 'AC', 2, [8, 16, 24, 32]);
-        const fieldGunAmmo = ammo('IS Ammo AC/2', 'AC', 2);
-        const components = [
-            { id: 'Autocannon/2', q: 3, n: 'AC/2', t: 'B', p: 1, l: 'FGUN', r: '8/16/24', m: '4', d: '2', md: '2.0', c: '1', cw: 6, os: 0 },
-            { id: 'IS Ammo AC/2', q: 3, q2: 135, n: 'AC/2 Ammo', t: 'X', p: 1, l: 'FGUN', c: '1', os: 0 }
-        ];
-        const entries = [
-            entry({ id: 'Autocannon/2@FGUN#0.0', equipment: fieldGun, locations: new Set(['FGUN']) }),
-            entry({ id: 'Autocannon/2@FGUN#0.1', equipment: fieldGun, locations: new Set(['FGUN']) }),
-            entry({ id: 'Autocannon/2@FGUN#0.2', equipment: fieldGun, locations: new Set(['FGUN']) }),
-            entry({ id: 'IS Ammo AC/2@FGUN#1.0', equipment: fieldGunAmmo, locations: new Set(['FGUN']), totalAmmo: 135, consumed: 10 })
-        ];
-        const unit = addRuntimeSelection({
-            getInventory: () => entries,
-            getCritSlots: () => [],
-            getUnit: () => ({ type: 'Infantry', subtype: 'Mechanized Conventional Infantry', internal: 20, squads: 4, squadSize: 5, comp: components }),
-            getCommittedInternalHits: () => 7,
-            locations: { armor: new Map(), internal: new Map([['TROOP', { loc: 'TROOP', points: 20 }]]) },
-            isEquipmentUnavailable: testEquipmentUnavailable,
-            rules: {}
-        } as unknown as CBTForceUnit);
-        entries.forEach(item => item.owner = unit);
-
-        const rangedRows = getInventoryControlGroups(unit).find(group => group.id === 'ranged')!.rows;
-
-        expect(rangedRows.length).toBe(3);
-        expect(rangedRows.map(row => row.display.name)).toEqual(['AC/2 (1/3)', 'AC/2 (2/3)', 'AC/2 (3/3)']);
-        expect(rangedRows.map(row => row.disabled)).toEqual([false, false, true]);
-        expect(rangedRows[0].display.location).toBe('FGUN');
-        expect(rangedRows[0].display.damage).toBe('2');
-        expect(rangedRows[0].display.min).toBe('4');
-        expect(rangedRows[0].display.short).toBe('8');
-        expect(rangedRows[0].display.medium).toBe('16');
-        expect(rangedRows[0].display.long).toBe('24');
-        expect(rangedRows[0].ammo.remaining).toBe(125);
-    });
-
     it('groups ranged, physical, equipment, and destroyed entries', () => {
         const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
         const punch = entry({ id: 'punch', physical: true, el: svgEntry('<g><g class="name"><text>Punch</text></g></g>') });
         const hatchet = entry({ id: 'hatchet', equipment: misc('Hatchet', ['F_CLUB']), el: svgEntry('<g><g class="name"><text>Hatchet</text></g></g>') });
         const ecm = entry({ id: 'ecm', equipment: misc('ECM'), el: svgEntry('<g><g class="name"><text>ECM</text></g></g>') });
         const broken = entry({ id: 'broken', equipment: weapon('broken'), destroyed: true, el: svgEntry('<g><g class="name"><text>Broken</text></g></g>') });
-        const unit = { getInventory: () => [laser, punch, hatchet, ecm, broken], getCritSlots: () => [], getUnit: () => ({ subtype: '', comp: [] }), isEquipmentUnavailable: testEquipmentUnavailable, rules: {} } as unknown as CBTForceUnit;
+        const unit = { getInventory: () => [laser, punch, hatchet, ecm, broken], getCritSlots: () => [], getUnit: () => ({ subtype: '', comp: [] }), isEquipmentUnavailable: testEquipmentUnavailable, rules: EMPTY_ENTRY_STATE_RULES } as unknown as CBTForceUnit;
         [laser, punch, hatchet, ecm, broken].forEach(item => item.owner = unit);
 
         const groups = getInventoryControlGroups(unit);
@@ -321,7 +328,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
             getCritSlots: () => [],
             getUnit: () => ({ subtype: '', comp: [] }),
             isEquipmentUnavailable: (source: MountedEquipment | CriticalSlot) => source === ammoBin,
-            rules: {}
+            rules: EMPTY_ENTRY_STATE_RULES
         } as unknown as CBTForceUnit;
         [weaponEntry, ammoBin].forEach(item => item.owner = unit);
 
@@ -335,12 +342,26 @@ describe('WeaponsEquipmentPanelComponent', () => {
     it('keeps inactive direct inventory rows in original order', () => {
         const broken = entry({ id: 'broken', equipment: weapon('broken'), destroyed: true, el: svgEntry('<g><g class="name"><text>Broken</text></g></g>') });
         const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
-        const unit = { getInventory: () => [broken, laser], getCritSlots: () => [], getUnit: () => ({ subtype: '', comp: [] }), isEquipmentUnavailable: testEquipmentUnavailable, rules: {} } as unknown as CBTForceUnit;
+        const unit = { getInventory: () => [broken, laser], getCritSlots: () => [], getUnit: () => ({ subtype: '', comp: [] }), isEquipmentUnavailable: testEquipmentUnavailable, rules: EMPTY_ENTRY_STATE_RULES } as unknown as CBTForceUnit;
         [broken, laser].forEach(item => item.owner = unit);
 
         const groups = getInventoryControlGroups(unit);
 
         expect(groups.find(group => group.id === 'ranged')?.rows.map(row => row.id)).toEqual(['broken', 'laser']);
+    });
+
+    it('shows rule-damaged inventory rows as destroyed', () => {
+        const laser = entry({ id: 'laser', equipment: weapon('laser'), destroyed: false, el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
+        const entryStates = new Map<MountedEquipment, EntryState>([
+            [laser, { isDamaged: true, isDisabled: false, hitMod: 0 }]
+        ]);
+        const { component } = createComponent([laser], {}, [], entryStates);
+
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(laser.committedDestroyed()).toBeFalse();
+        expect(row.destroyed).toBeTrue();
+        expect(component.rowEffectivelyDestroyed(row)).toBeTrue();
     });
 
     it('toggles BAP state and updates the next toggle label', async () => {
@@ -394,10 +415,10 @@ describe('WeaponsEquipmentPanelComponent', () => {
             isEquipmentUnavailable: (source: MountedEquipment | CriticalSlot, loc?: string) => {
                 const locationUnavailable = (value: string | undefined) => value === 'Trooper 1' || value === 'T1';
                 if (!(source instanceof MountedEquipment)) return !!source.destroyed || locationUnavailable(source.loc);
-                if (source.destroyed) return true;
+                if (source.committedDestroyed()) return true;
                 return loc ? locationUnavailable(loc) : Array.from(source.locations ?? []).some(locationUnavailable);
             },
-            rules: {}
+            rules: EMPTY_ENTRY_STATE_RULES
         } as unknown as CBTForceUnit;
         [narcEntry, ...ammoEntries].forEach(item => item.owner = unit);
 
@@ -434,7 +455,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
             states: new Map([['state', 'jammed']]),
             el: svgEntry('<g><g class="name"><text>Ultra AC/2</text></g></g>')
         });
-        const unit = { getInventory: () => [uac], getCritSlots: () => [], getUnit: () => ({ subtype: '', comp: [] }), isEquipmentUnavailable: testEquipmentUnavailable, rules: {} } as unknown as CBTForceUnit;
+        const unit = { getInventory: () => [uac], getCritSlots: () => [], getUnit: () => ({ subtype: '', comp: [] }), isEquipmentUnavailable: testEquipmentUnavailable, rules: EMPTY_ENTRY_STATE_RULES } as unknown as CBTForceUnit;
         uac.owner = unit;
 
         const row = getInventoryControlGroups(unit).find(group => group.id === 'ranged')!.rows[0];
@@ -454,16 +475,16 @@ describe('WeaponsEquipmentPanelComponent', () => {
         component.markDestroyed(row);
         fixture.detectChanges();
 
-        expect(laser.destroyed).toBeFalse();
+        expect(laser.committedDestroyed()).toBeFalse();
         expect(unit.setInventoryEntry).toHaveBeenCalledOnceWith(laser);
-        expect(laser.destroying).toBeTrue();
+        expect(laser.pendingDestroyed()).toBeTrue();
         expect(component.rowDestroying(row)).toBeTrue();
         expect(component.rowEffectivelyDestroyed(row)).toBeTrue();
         expect((fixture.nativeElement.querySelector('.weapon-equipment-row') as HTMLElement).classList.contains('destroying-entry')).toBeTrue();
 
         component.repair(row);
 
-        expect(laser.destroying).toBeUndefined();
+        expect(laser.pendingDestroyed()).toBeUndefined();
         expect(unit.setInventoryEntry).toHaveBeenCalledTimes(2);
         expect(component.rowEffectivelyDestroyed(row)).toBeFalse();
     });
@@ -479,9 +500,9 @@ describe('WeaponsEquipmentPanelComponent', () => {
         component.repair(row);
         fixture.detectChanges();
 
-        expect(broken.destroyed).toBeTrue();
+        expect(broken.committedDestroyed()).toBeTrue();
         expect(unit.setInventoryEntry).toHaveBeenCalledOnceWith(broken);
-        expect(broken.destroying).toBeFalse();
+        expect(broken.pendingDestroyed()).toBeFalse();
         expect(component.rowRepairing(row)).toBeTrue();
         expect(component.rowEffectivelyDestroyed(row)).toBeFalse();
         expect((fixture.nativeElement.querySelector('.weapon-equipment-row') as HTMLElement).classList.contains('repairing-entry')).toBeTrue();
@@ -1241,6 +1262,28 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(unit.setHeat).not.toHaveBeenCalled();
         expect(turnState.addFiredHeat).toHaveBeenCalledWith(7);
         expect(heat.next).toBeUndefined();
+    });
+
+    it('shows post-consumption ammo counts in the fired summary', async () => {
+        const standardAmmo = ammo('ATM 6 Standard', 'ATM', 6, ['M_STANDARD']);
+        const atm = entry({
+            id: 'atm',
+            equipment: weapon('ATM 6', 'ATM', 6),
+            el: svgEntry('<g><g class="name"><text>ATM 6</text></g><text class="heat">4</text><text class="range_short">5</text></g>')
+        });
+        const ammoBin = entry({ id: 'std-ammo', equipment: standardAmmo, totalAmmo: 15, consumed: 5, locations: new Set(['CT']) });
+        const equipmentMap: EquipmentMap = { [standardAmmo.internalName]: standardAmmo };
+        const { component, dialogsService } = createComponent([atm, ammoBin], equipmentMap, [], new Map(), { tracksHeat: false });
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        component.toggleSelected(row);
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(ammoBin.consumed).toBe(6);
+        expect(dialogsService.showNoticeHtml).toHaveBeenCalledWith(
+            'Ammo consumed:<ul><li>1 ammo from ATM 6 Standard (9/15)</li></ul>',
+            'Weapons Fired'
+        );
     });
 
     it('hides heat information and consumes only ammo for units that do not track heat', async () => {

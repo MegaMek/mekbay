@@ -417,8 +417,8 @@ export class UnitInitializerService {
                     physical: false,
                     linkedWith: null,
                     parent: null,
-                    destroyed: existingEntry?.destroyed ?? false,
-                    destroying: existingEntry?.destroying,
+                    destroyed: existingEntry?.committedDestroyedState() ?? false,
+                    destroying: existingEntry?.isDestroying(),
                     ammo: existingEntry?.ammo,
                     totalAmmo: existingEntry?.totalAmmo ?? originalTotalAmmo,
                     consumed: existingEntry?.consumed ?? 0,
@@ -454,8 +454,8 @@ export class UnitInitializerService {
                     physical: false,
                     linkedWith: null,
                     parent: null,
-                    destroyed: existingEntry?.destroyed ?? false,
-                    destroying: existingEntry?.destroying,
+                    destroyed: existingEntry?.committedDestroyedState() ?? false,
+                    destroying: existingEntry?.isDestroying(),
                     states: existingEntry?.states ?? new Map<string, string>(),
                 }));
             }

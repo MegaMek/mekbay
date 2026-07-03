@@ -32,7 +32,14 @@ type SvgInteractionServicePrivate = {
     locationConditionDropdownChoices(unit: any, loc: string): Array<{ key: string }>;
 };
 
-const NO_CONDITION_RULES = { conditionControls: [], crewStateControls: [], locationConditionControls: [] };
+const NO_CONDITION_RULES = {
+    conditionControls: [],
+    crewStateControls: [],
+    locationConditionControls: [],
+    computeAllEntryStates: () => new Map<MountedEquipment, { isDamaged: boolean; isDisabled: boolean; hitMod: number }>(),
+    computeEntryState: (entry: MountedEquipment) => ({ isDamaged: entry.committedDestroyed(), isDisabled: false, hitMod: 0 }),
+    heatDissipation: () => null
+};
 
 function createSvgInteractionUnit<T extends object>(overrides: T): T & { getInventory: () => MountedEquipment[]; rules: typeof NO_CONDITION_RULES } {
     return {

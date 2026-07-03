@@ -1,5 +1,5 @@
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
-import type { CriticalSlot, MountedEquipment } from '../models/force-serialization';
+import { MountedEquipment, type CriticalSlot } from '../models/force-serialization';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import { changeAmmoEntryRemaining, changeAmmoGroupRemaining, getAmmoControlEntriesForUnitWeapons, getAmmoControlGroups, getAmmoEntryRemaining, getAmmoGroupRemaining, type AmmoControlEntry } from './ammo-interaction.util';
@@ -110,7 +110,8 @@ function createCritEntry(params: {
 }
 
 function testEquipmentUnavailable(source: MountedEquipment | CriticalSlot): boolean {
-    return !!source.destroyed || !!(source as MountedEquipment).critSlots?.some(slot => !!slot.destroyed);
+    if (source instanceof MountedEquipment) return source.committedDestroyed() || !!source.critSlots?.some(slot => !!slot.destroyed);
+    return !!source.destroyed;
 }
 
 describe('ammo interaction direct inventory groups', () => {

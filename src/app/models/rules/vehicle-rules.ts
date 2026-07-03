@@ -33,7 +33,7 @@
 
 import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
-import type { CrewStateControlDefinition, CrewStateDefinition, UnitConditionControl, UnitSkillModifier } from './unit-type-rules';
+import type { CrewStateControlDefinition, CrewStateDefinition, UnitConditionControl, MountedEquipmentRuleState, UnitSkillModifier } from './unit-type-rules';
 import { crewStateDefinitions, unitConditionControls, UnitTypeRulesBase } from './unit-type-rules';
 import type { PSRCheck } from '../turn-state.model';
 import type { CriticalSlot, MountedEquipment } from '../force-serialization';
@@ -41,8 +41,6 @@ import { WeaponEquipment } from '../equipment.model';
 import { getDefaultAttackerMovementModifier } from '../target-number-calculator.model';
 import type { MotiveModes } from '../motiveModes.model';
 import { critId, timestampedMotiveHits, type MotiveHitTimestamp } from './vehicle-motive-hit.util';
-
-type VehicleEntryState = { isDamaged: boolean; isDisabled: boolean; hitMod: number };
 
 interface VehicleMovementState {
     moveImpaired: boolean;
@@ -315,18 +313,18 @@ export class VehicleRules extends UnitTypeRulesBase {
 
     override readonly PSRTargetRoll = computed<number>(() => this.unit.pilotingSkill() + this.PSRModifiers().modifier);
 
-    computeAllEntryStates(): Map<MountedEquipment, VehicleEntryState> {
-        const result = new Map<MountedEquipment, VehicleEntryState>();
+    override computeAllEntryStates(): Map<MountedEquipment, MountedEquipmentRuleState> {
+        const result = new Map<MountedEquipment, MountedEquipmentRuleState>();
         for (const entry of this.unit.getInventory()) {
             result.set(entry, this.computeEntryState(entry));
         }
         return result;
     }
 
-    computeEntryState(entry: MountedEquipment): VehicleEntryState {
+    override computeEntryState(entry: MountedEquipment): MountedEquipmentRuleState {
         const status = this.systemsStatus();
-        const isDamaged = !!(entry.critSlots?.some(slot => slot.destroyed) || entry.destroyed);
-        let isDisabled = false;
+        const isDamaged = this.entryCriticalSlots(entry).some(slot => slot.destroyed) || entry.committedDestroyed();
+        let isDisabled = this.isEntryStateDisabled(entry);
         let hitMod = 0;
         const isPhysical = this.isPhysicalEntry(entry);
 
@@ -339,11 +337,6 @@ export class VehicleRules extends UnitTypeRulesBase {
             }
             hitMod += this.stabilizerHitModifier(entry, status);
         }
-
-        if (entry.states?.get('state') === 'jammed') {
-            isDisabled = true;
-        }
-
         return { isDamaged, isDisabled, hitMod };
     }
 
@@ -393,7 +386,7 @@ export class VehicleRules extends UnitTypeRulesBase {
     }
 
     private isEntryDestroyed(entry: MountedEquipment): boolean {
-        return !!entry.destroyed || !!entry.critSlots?.some(slot => slot.destroyed);
+        return entry.committedDestroyed() || this.entryCriticalSlots(entry).some(slot => slot.destroyed);
     }
 
     private rotorCommittedCritHits(crit: CriticalSlot | undefined): number {

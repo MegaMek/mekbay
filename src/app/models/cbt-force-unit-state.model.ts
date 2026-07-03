@@ -316,12 +316,10 @@ export class CBTForceUnitState extends ForceUnitState {
                 const incoming = incomingMap.get(item.id);
                 if (incoming) {
                     // Apply incoming state
-                    if (item.destroyed !== incoming.destroyed) {
-                        item.destroyed = incoming.destroyed;
+                    if (item.setCommittedDestroyed(incoming.destroyed)) {
                         inventoryChanged = true;
                     }
-                    if (item.destroying !== incoming.destroying) {
-                        item.destroying = incoming.destroying;
+                    if (item.setPendingDestroyed(incoming.destroying)) {
                         inventoryChanged = true;
                     }
                     if (item.consumed !== incoming.consumed) {
@@ -342,11 +340,11 @@ export class CBTForceUnitState extends ForceUnitState {
                     }
                 } else {
                     // Not in incoming: reset to pristine if it had state
-                    if (item.destroyed || item.destroying !== undefined || (item.consumed ?? 0) > 0 ||
+                    if (item.committedDestroyed() || item.hasPendingDestroyedChange() || (item.consumed ?? 0) > 0 ||
                         (item.ammo !== undefined && item.ammo !== item.name) ||
                         (item.states && item.states.size > 0 && Array.from(item.states.values()).some(v => v !== ''))) {
-                        item.destroyed = undefined;
-                        item.destroying = undefined;
+                        item.setCommittedDestroyed(undefined);
+                        item.setPendingDestroyed(undefined);
                         item.consumed = undefined;
                         item.ammo = undefined;
                         item.totalAmmo = undefined;
@@ -505,11 +503,13 @@ export class CBTForceUnitState extends ForceUnitState {
             const hasStates = item.states !== undefined && item.states.size > 0 
                 && Array.from(item.states.values()).some(v => v !== '');
             const hasCustomAmmo = item.ammo !== undefined && item.ammo !== item.name;
-            if (item.destroyed || item.destroying !== undefined || (item.consumed ?? 0) > 0 || hasCustomAmmo || hasStates) {
+            const committedDestroyed = item.committedDestroyedState();
+            const pendingDestroyed = item.pendingDestroyed();
+            if (committedDestroyed || pendingDestroyed !== undefined || (item.consumed ?? 0) > 0 || hasCustomAmmo || hasStates) {
                 serializedData.push({
                     id: item.id,
-                    ...(item.destroyed && { destroyed: item.destroyed }),
-                    ...(item.destroying !== undefined && { destroying: item.destroying }),
+                    ...(committedDestroyed && { destroyed: committedDestroyed }),
+                    ...(pendingDestroyed !== undefined && { destroying: pendingDestroyed }),
                     ...((item.consumed ?? 0) > 0 && { consumed: item.consumed }),
                     ...(hasCustomAmmo && { ammo: item.ammo }),
                     ...(((item.consumed ?? 0) > 0 || hasCustomAmmo) && item.totalAmmo !== undefined && { totalAmmo: item.totalAmmo }),
@@ -541,9 +541,7 @@ export class CBTForceUnitState extends ForceUnitState {
                     states: new Map<string, string>(),
                 });
             }
-            if (entry.destroyed !== undefined) {
-                newItem.destroyed = entry.destroyed;
-            }
+            newItem.setCommittedDestroyed(entry.destroyed);
             if (entry.states !== undefined) {
                 newItem.states = new Map(entry.states.map(s => [s.name, s.value]));
             }
@@ -556,9 +554,7 @@ export class CBTForceUnitState extends ForceUnitState {
             if (entry.consumed !== undefined) {
                 newItem.consumed = entry.consumed;
             }
-            if (entry.destroying !== undefined) {
-                newItem.destroying = entry.destroying;
-            }
+            newItem.setPendingDestroyed(entry.destroying);
             if (allEquipment && newItem.name && !newItem.equipment) {
                 if (allEquipment) {
                     const equipment = allEquipment[newItem.name];

@@ -43,28 +43,13 @@ import { resolveWeaponRangeHitModifier, type WeaponRangeKey } from './weapon-ran
 /**
  * Compute per-entry linked-equipment modifiers
  */
-/**
- * Check whether a mounted-equipment entry is destroyed.
- * When critSlots exist they are the authoritative (signal-derived) source;
- * the mutable `destroyed` flag is only used as fallback for entries without crits.
- */
-export function isMountedDestroyed(entry: MountedEquipment): boolean {
-    if (entry.critSlots?.length) {
-        return entry.critSlots.some(s => s.destroyed);
-    }
-    return !!entry.destroyed;
-}
-
-function isMountedUnavailable(entry: MountedEquipment): boolean {
-    return entry.owner?.isEquipmentUnavailable?.(entry) ?? isMountedDestroyed(entry);
-}
 
 export function computeLinkedModifiers(entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null): number {
     let mod = 0;
     if (entry.linkedWith) {
         for (const linked of entry.linkedWith) {
              // TODO: once we move to direct calculation, we should inverse the ifs and give a -1 instead!
-            if (isMountedUnavailable(linked) && hasLinkedEquipmentToHitBonus(linked)) {
+            if (linked.isUnavailable() && hasLinkedEquipmentToHitBonus(linked)) {
                 mod += 1;
             } else if (hasArtemisVToHitBonus(linked) && selectedAmmo !== undefined && !selectedAmmo?.hasMunitionType('M_ARTEMIS_V_CAPABLE')) {
                 mod += 1;

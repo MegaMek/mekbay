@@ -45,9 +45,6 @@ const HEAT_BAR_SCALE = 30;
 const WEAPON_TARGET_CHOICE_OVERLAY_KEY = 'weapon-equipment-target-choice';
 
 type HeatDissipationWithWings = HeatDissipationState & { totalDissipationWithWings?: number };
-interface HeatAwareRules {
-    heatDissipation: () => HeatDissipationWithWings | null;
-}
 
 interface SelectedHeatProjection {
     current: number;
@@ -86,6 +83,17 @@ interface AmmoRowState {
     destroyed: boolean;
     canDecrease: boolean;
     canIncrease: boolean;
+}
+
+interface AmmoConsumptionRequest {
+    row: InventoryControlRow;
+    option: InventoryControlAmmoOption;
+    count: number;
+}
+
+interface AmmoConsumptionSummaryItem {
+    label: string;
+    count: number;
 }
 
 interface DragPreviewCellSizing {
@@ -557,7 +565,7 @@ export class WeaponsEquipmentPanelComponent {
         const selectedRows = this.selectedRows();
         if (selectedRows.length === 0) return;
 
-        const requests = new Map<string, { row: InventoryControlRow; option: InventoryControlAmmoOption; count: number }>();
+        const requests = new Map<string, AmmoConsumptionRequest>();
         for (const row of selectedRows) {
             if (!row.tracksAmmo) continue;
             const option = this.selectedAmmo(row);
@@ -585,8 +593,6 @@ export class WeaponsEquipmentPanelComponent {
             }
         }
 
-        const ammoSummary = Array.from(requests.values())
-            .map(request => ({ label: request.option.label, count: request.count }));
         const heatProjection = this.selectedHeatProjection();
 
         for (const request of requests.values()) {
@@ -597,6 +603,8 @@ export class WeaponsEquipmentPanelComponent {
             this.unit().turnState().addFiredHeat(heatProjection.selection);
         }
         this.inventoryControl().markInventoryViewChanged();
+        const ammoSummary = Array.from(requests.values())
+            .map(request => this.consumedAmmoSummaryItem(request));
         await this.context().dialogsService.showNoticeHtml(
             this.consumptionSummaryHtml(ammoSummary, heatProjection),
             'Weapons Fired'
@@ -634,7 +642,18 @@ export class WeaponsEquipmentPanelComponent {
         }
     }
 
-    private consumptionSummaryHtml(ammoSummary: { label: string; count: number }[], heatProjection: SelectedHeatProjection | null): string {
+    private consumedAmmoSummaryItem(request: AmmoConsumptionRequest): AmmoConsumptionSummaryItem {
+        const currentRow = this.groups()
+            .flatMap(group => group.rows)
+            .find(row => row.id === request.row.id);
+        const currentOption = currentRow?.ammo.options.find(option => option.id === request.option.id);
+        return {
+            label: currentOption?.label ?? request.option.label,
+            count: request.count
+        };
+    }
+
+    private consumptionSummaryHtml(ammoSummary: AmmoConsumptionSummaryItem[], heatProjection: SelectedHeatProjection | null): string {
         const ammoHtml = ammoSummary.length > 0
             ? `Ammo consumed:<ul>${ammoSummary.map(item => `<li>${item.count} ammo from ${this.escapeHtml(item.label)}</li>`).join('')}</ul>`
             : '<p>No ammo consumed.</p>';
@@ -692,8 +711,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     private heatDissipationState(): HeatDissipationWithWings | null {
-        const rules = this.unit().rules as Partial<HeatAwareRules>;
-        return typeof rules.heatDissipation === 'function' ? rules.heatDissipation() : null;
+        return this.unit().rules.heatDissipation() as HeatDissipationWithWings | null;
     }
 
     private heatDissipationValue(state: HeatDissipationWithWings): number {
@@ -917,7 +935,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     rowEffectivelyDestroyed(row: InventoryControlRow): boolean {
-        return row.entry.effectiveDestroyed();
+        return row.entry.resolvedDestroyed(row.destroyed);
     }
 
     rowDestroying(row: InventoryControlRow): boolean {
@@ -929,7 +947,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     rowCommittedDestroyed(row: InventoryControlRow): boolean {
-        return row.entry.committedDestroyed() && !row.entry.isRepairing();
+        return row.entry.resolvedCommittedDestroyed(row.destroyed);
     }
 
     private isVirtualTrooperRow(row: InventoryControlRow): boolean {
