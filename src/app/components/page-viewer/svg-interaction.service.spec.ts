@@ -14,6 +14,7 @@ import { EquipmentDialogComponent } from '../equipment-dialog/equipment-dialog.c
 import { MountedEquipment } from '../../models/force-serialization';
 import { InventoryControlRuntimeState, type InventoryControlRuntimeRangeKey } from '../../models/inventory-control-runtime-state.model';
 import { INVENTORY_CONTROL_MODE_STATE } from '../../utils/inventory-control.util';
+import { RISC_LASER_PULSE_MODE, RISC_LASER_STANDARD_MODE } from '../../equipment-handlers/risc-laser-pulse-module.handler';
 import { SvgInteractionService } from './svg-interaction.service';
 import type { ZoomPanServiceInterface } from './zoom-pan.interface';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
@@ -253,6 +254,49 @@ describe('SvgInteractionService', () => {
 
         expect(entry.states.get(INVENTORY_CONTROL_MODE_STATE)).toBe('Extended Range');
         expect(unit.isInventoryControlEntrySelected(entry.id)).toBeFalse();
+    });
+
+    it('toggles RISC mode from the linked row while selecting ranges on the parent laser row', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit(`
+            <g class="inventoryEntry">
+                <rect class="mainButton inventoryEntryButton"></rect>
+                <rect class="shrButton inventoryEntryButton"></rect>
+                <g class="name"><text>ER Medium Laser</text></g>
+                <text class="range_short">4</text>
+                <g class="inventoryEntry linked">
+                    <rect class="mainButton inventoryEntryButton"></rect>
+                    <g class="name"><text>w/RISC Laser Module</text></g>
+                </g>
+            </g>
+        `);
+        const module = new MountedEquipment({
+            owner: unit,
+            id: 'risc',
+            name: 'RISC Laser Pulse Module',
+            equipment: new MiscEquipment({ id: 'risc', name: 'RISC Laser Pulse Module', type: 'misc', flags: ['F_WEAPON_ENHANCEMENT', 'F_RISC_LASER_PULSE_MODULE'] }),
+            states: new Map<string, string>(),
+            el: entry.el!.querySelector(':scope > .inventoryEntry.linked') as SVGElement,
+            parent: entry
+        });
+        entry.equipment?.flags.add('F_ENERGY');
+        entry.equipment?.flags.add('F_LASER');
+        entry.linkedWith = [module];
+        module.owner = unit;
+        unit.getInventory = () => [entry, module];
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        (module.el!.querySelector(':scope > .mainButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(entry.states.get(INVENTORY_CONTROL_MODE_STATE)).toBe(RISC_LASER_PULSE_MODE);
+        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeTrue();
+
+        (entry.el!.querySelector(':scope > .shrButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(entry.states.get(INVENTORY_CONTROL_MODE_STATE)).toBe(RISC_LASER_PULSE_MODE);
+        expect(unit.getInventoryControlEntryRange(entry.id)).toBe('short');
+
+        module.el!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(entry.states.get(INVENTORY_CONTROL_MODE_STATE)).toBe(RISC_LASER_STANDARD_MODE);
+        expect(unit.isInventoryControlEntrySelected(entry.id)).toBeTrue();
     });
 
     it('opens ammo profile in the equipment dialog with unit navigation and inventory-dialog lifecycle', () => {

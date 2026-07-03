@@ -14,6 +14,7 @@ import { AtmHandler } from '../../equipment-handlers/atm.handler';
 import { ArtemisVHandler } from '../../equipment-handlers/artemis-v.handler';
 import { ApolloHandler } from '../../equipment-handlers/apollo.handler';
 import { LaserInsulatorHandler } from '../../equipment-handlers/laser-insulator.handler';
+import { RISC_LASER_PULSE_MODE, RiscLaserPulseModuleHandler } from '../../equipment-handlers/risc-laser-pulse-module.handler';
 import type { EquipmentInteractionHandler, HandlerChoice } from '../../services/equipment-interaction-registry.service';
 import { INVENTORY_CONTROL_MODE_STATE, inventoryControlSortKey, getInventoryControlGroups, type InventoryControlDisplayData, type InventoryControlDisplayEffectOptions } from '../../utils/inventory-control.util';
 import { PPC_CAPACITOR_STATE_KEY } from '../../utils/ppc-capacitor.util';
@@ -204,6 +205,7 @@ function createComponent(
         new ArtemisVHandler(),
         new ApolloHandler(),
         new LaserInsulatorHandler(),
+        new RiscLaserPulseModuleHandler(),
         ...(options.handlers ?? [])
     ];
     const toasts: Array<{ id: string; message: string; type: 'info' | 'success' | 'error'; data?: Record<string, unknown> }> = [];
@@ -274,7 +276,7 @@ function createComponent(
         hasDirectInventory: () => options.hasDirectInventory ?? true,
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
         setCritSlot: jasmine.createSpy('setCritSlot'),
-        isEquipmentUnavailable: testEquipmentUnavailable,
+        isEquipmentUnavailable: (source: MountedEquipment | CriticalSlot) => testEquipmentUnavailable(source),
         getLinkedEquipmentHitModifier: (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => entry.linkedWith?.reduce((total, linked) => {
             const modifier = handlers
                 .filter(handler => handler.flags.length === 0 || (!!linked.equipment?.flags && handler.flags.every(flag => linked.equipment!.flags.has(flag))))
@@ -316,6 +318,12 @@ function createComponent(
                     }
                 },
                 getLinkedEquipmentHitModifier: (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => unit.getLinkedEquipmentHitModifier(entry, selectedAmmo),
+                canPerformAimedShot: (entry: MountedEquipment) => handlers.every(handler => {
+                    const flagsMatch = handler.flags.length === 0
+                        || (!!entry.equipment?.flags && handler.flags.every(flag => entry.equipment!.flags.has(flag)));
+                    if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) return true;
+                    return handler.canPerformAimedShot?.(entry, context) !== false;
+                }),
                 inventoryControlRules: () => ({
                     applyDisplayEffects: (entry: MountedEquipment, display: InventoryControlDisplayData, options: InventoryControlDisplayEffectOptions) => {
                         let nextDisplay = display;
@@ -337,7 +345,17 @@ function createComponent(
                         }
                         return null;
                     },
-                    resolveLinkedHitModifier: (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => unit.getLinkedEquipmentHitModifier(entry, selectedAmmo)
+                    resolveLinkedHitModifier: (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => unit.getLinkedEquipmentHitModifier(entry, selectedAmmo),
+                    resolveBaseHitModifier: (entry: MountedEquipment) => {
+                        for (const handler of handlers) {
+                            const flagsMatch = handler.flags.length === 0
+                                || (!!entry.equipment?.flags && handler.flags.every(flag => entry.equipment!.flags.has(flag)));
+                            if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) continue;
+                            const result = handler.getInventoryControlBaseHitModifier?.(entry, context);
+                            if (result !== undefined && result !== null) return result;
+                        }
+                        return null;
+                    }
                 })
             }
         } as unknown as EquipmentDialogContext;
@@ -705,6 +723,44 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(row.base.heat).toBe('3*');
         expect(row.display.heat).toBe('4');
         expect((fixture.nativeElement.querySelector('.heat-cell') as HTMLElement).classList.contains('damaged')).toBeTrue();
+    });
+
+    it('applies RISC laser pulse module mode heat and hit from the linked laser row', async () => {
+        const laserEquipment = weapon('Medium Laser');
+        laserEquipment.flags.add('F_ENERGY');
+        laserEquipment.flags.add('F_LASER');
+        const module = entry({
+            id: 'RISC Laser Pulse Module@RA#5',
+            equipment: misc('RISC Laser Pulse Module', ['F_WEAPON_ENHANCEMENT', 'F_RISC_LASER_PULSE_MODULE']),
+            el: svgEntry('<g class="linked"><g class="name"><text>RISC Laser Pulse Module</text></g></g>')
+        });
+        const laser = entry({
+            id: 'Medium Laser@RA#3',
+            equipment: laserEquipment,
+            linkedWith: [module],
+            el: svgEntry('<g><g class="name"><text>Medium Laser</text></g><text class="heat">3</text><g class="damage"><text>5</text></g><text class="range_medium">6</text></g>')
+        });
+        module.parent = laser;
+        const { component, unit } = createComponent([laser, module]);
+        let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(component.modeChoice(row)?.value).toBe('Standard');
+        expect(row.display.heat).toBe('3');
+        expect(row.display.hit).toBe('+0');
+
+        await component.selectHandlerDropdown(row, component.modeChoice(row)!, RISC_LASER_PULSE_MODE);
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(laser.states.get(INVENTORY_CONTROL_MODE_STATE)).toBe(RISC_LASER_PULSE_MODE);
+        expect(row.display.heat).toBe('5');
+        expect(row.display.hit).toBe('-2');
+
+        laser.setCommittedDestroyed(true);
+
+        const rows = component.groups().flatMap(group => group.rows);
+        row = rows.find(candidate => candidate.entry === laser)!;
+        expect(component.modeChoice(row)).toBeUndefined();
+        expect(unit.isEquipmentUnavailable(module)).toBeFalse();
     });
 
     it('persists mode and sort order but keeps selection transient', async () => {

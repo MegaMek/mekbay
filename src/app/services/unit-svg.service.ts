@@ -49,6 +49,7 @@ import { formatAmmoName } from '../utils/ammo-interaction.util';
 import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection, readInventoryTargetDisplay } from '../utils/inventory-target-number.util';
 import { getInventoryControlModeAmmoSummary, INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE, resolveInventoryControlSelectedAmmoOption, type InventoryControlAmmoOption } from '../utils/inventory-control.util';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
+import { isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, selectedRiscLaserMode } from '../equipment-handlers/risc-laser-pulse-module.handler';
 
 const INVENTORY_CONTROL_SELECTION_COLOR_PROPERTY = '--inventory-control-selection-color';
 const HEAT_PROJECTION_ORIGINAL_OVERFLOW_STROKE = 'data-heat-projection-original-stroke';
@@ -951,7 +952,8 @@ export class UnitSvgService {
             0,
             range,
             this.inventoryTargetSelectedAmmo(entry),
-            (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo)
+            (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo),
+            candidate => this.unit.getInventoryControlBaseHitModifier(candidate)
         );
     }
 
@@ -995,6 +997,7 @@ export class UnitSvgService {
         this.unit.inventoryControl.inventoryViewVersion();
         const entryStates = this.unit.inventoryControl.entryStates();
         const targets = this.unit.inventoryControl.targetsMap();
+        const highlightedLinkedElements = new Set<SVGElement>();
         for (const entry of this.unit.getInventory()) {
             if (!entry.el) continue;
             const entryState = entryStates.get(entry.id);
@@ -1017,6 +1020,25 @@ export class UnitSvgService {
             this.renderInventoryControlTargetNumberEntry(entry, targetNumberText);
             for (const [range, className] of Object.entries(INVENTORY_CONTROL_RANGE_CLASS_NAMES) as [InventoryControlRuntimeRangeKey, string][]) {
                 entry.el.classList.toggle(className, selectedRange === range);
+            }
+            this.collectLinkedInventoryControlSelection(entry, selected, highlightedLinkedElements);
+        }
+        for (const entry of this.unit.getInventory()) {
+            if (entry.el && entry.parent) {
+                entry.el.classList.toggle('selected', highlightedLinkedElements.has(entry.el));
+            }
+        }
+        for (const el of highlightedLinkedElements) {
+            el.classList.add('selected');
+        }
+    }
+
+    private collectLinkedInventoryControlSelection(entry: MountedEquipment, selected: boolean, highlightedLinkedElements: Set<SVGElement>): void {
+        if (!selected || selectedRiscLaserMode(entry) !== RISC_LASER_PULSE_MODE) return;
+        const linkedWith = entry.linkedWith ?? [];
+        for (const linked of linkedWith) {
+            if (linked.el && isRiscLaserPulseModule(linked)) {
+                highlightedLinkedElements.add(linked.el);
             }
         }
     }

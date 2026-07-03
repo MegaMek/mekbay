@@ -14,6 +14,7 @@ import { createEmptyUnit } from '../testing/unit-test-helpers';
 import type { Unit } from './units.model';
 import { EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
 import { LaserInsulatorHandler } from '../equipment-handlers/laser-insulator.handler';
+import { RISC_LASER_PULSE_MODE, RiscLaserPulseModuleHandler } from '../equipment-handlers/risc-laser-pulse-module.handler';
 import { DialogsService } from '../services/dialogs.service';
 import { ToastService } from '../services/toast.service';
 import { getInventoryControlGroups } from '../utils/inventory-control.util';
@@ -65,6 +66,12 @@ function createEquipment(): EquipmentMap {
         type: 'misc',
         flags: ['F_WEAPON_ENHANCEMENT', 'F_LASER_INSULATOR']
     });
+    const riscLaserPulseModule = new MiscEquipment({
+        id: 'ISRISCLaserPulseModule',
+        name: 'RISC Laser Pulse Module',
+        type: 'misc',
+        flags: ['F_WEAPON_ENHANCEMENT', 'F_RISC_LASER_PULSE_MODULE']
+    });
     const droneOperatingSystem = new Equipment({
         id: 'ISDroneOperatingSystem',
         name: 'Drone (Remote) Operating System',
@@ -80,6 +87,7 @@ function createEquipment(): EquipmentMap {
         [mml9.internalName]: mml9,
         [mediumLaser.internalName]: mediumLaser,
         [laserInsulator.internalName]: laserInsulator,
+        [riscLaserPulseModule.internalName]: riscLaserPulseModule,
         [droneOperatingSystem.internalName]: droneOperatingSystem,
     };
 }
@@ -222,6 +230,49 @@ function createLaserInsulatorSvg(): SVGSVGElement {
                 <text class="hitMod-text" display="block">+0</text>
                 <g class="inventoryEntry" id="ISLaserInsulator@FR#0">
                     <g class="name"><text>Laser Insulator</text></g>
+                </g>
+            </g>
+        </svg>
+    `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+}
+
+function createRiscLaserUnit(equipment: EquipmentMap): Unit {
+    return createEmptyUnit({
+        name: 'RISC Laser Test Unit',
+        chassis: 'RISC Laser Test',
+        model: 'T1',
+        type: 'Tank',
+        subtype: 'Hovercraft',
+        heat: -1,
+        dissipation: -1,
+        comp: [
+            { id: 'ISMediumLaser', q: 1, q2: 0, n: 'Medium Laser', t: 'E', p: 1, l: 'FR', r: '3/6/9', m: '0', d: '5', md: '5.0', c: '1', os: 0, eq: equipment['ISMediumLaser'] },
+            { id: 'ISRISCLaserPulseModule', q: 1, q2: 0, n: 'RISC Laser Pulse Module', t: 'E', p: 0, l: 'FR', c: '1', os: 0, eq: equipment['ISRISCLaserPulseModule'] },
+        ],
+        sheets: ['vehicle/risc-laser-test.svg'],
+    });
+}
+
+function createRiscLaserSvg(): SVGSVGElement {
+    const parser = new DOMParser();
+    return parser.parseFromString(`
+        <svg xmlns="http://www.w3.org/2000/svg">
+            <g class="inventoryEntry" id="ISMediumLaser@FR#0" hitMod="0" hitMod2="0">
+                <rect class="mainButton inventoryEntryButton" inventory-id="ISMediumLaser@FR#0"></rect>
+                <rect class="shrButton inventoryEntryButton" inventory-id="ISMediumLaser@FR#0"></rect>
+                <g class="name"><text>Medium Laser</text></g>
+                <text class="heat">3</text>
+                <text class="location">FR</text>
+                <text class="range_short">3</text>
+                <text class="range_medium">6</text>
+                <text class="range_long">9</text>
+                <rect class="hitMod-rect" display="block"></rect>
+                <text class="hitMod-text" display="block">+0</text>
+                <g class="inventoryEntry linked" id="ISRISCLaserPulseModule@FR#1">
+                    <g class="name"><text>w/RISC Laser Module</text></g>
+                    <text class="heat">5</text>
+                    <rect class="hitMod-rect" display="block"></rect>
+                    <text class="hitMod-text" display="block">+0</text>
                 </g>
             </g>
         </svg>
@@ -839,6 +890,37 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         svgService.refreshInventory();
         expect(heatText.textContent).toBe('3*');
         expect(heatText.classList.contains('damaged')).toBeFalse();
+    });
+
+    it('renders RISC laser pulse split hit modifiers and linked row highlight on the SVG', () => {
+        TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(new RiscLaserPulseModuleHandler());
+        const forceUnit = createForceUnit(createRiscLaserUnit(equipment));
+        initialize(forceUnit, createRiscLaserSvg());
+        const laser = forceUnit.getInventory().find(entry => entry.id === 'ISMediumLaser@FR#0')!;
+        const module = laser.linkedWith![0];
+        const laserHitText = laser.el!.querySelector(':scope > .hitMod-text') as SVGTextElement;
+        const moduleHitText = module.el!.querySelector(':scope > .hitMod-text') as SVGTextElement;
+        spyOn(forceUnit.rules, 'computeAllEntryStates').and.returnValue(new Map([
+            [laser, { isDamaged: false, isDisabled: false, hitMod: 0 }],
+            [module, { isDamaged: false, isDisabled: false, hitMod: 1 }],
+        ]));
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgVehicleService(forceUnit, unitInitializer));
+
+        svgService.refreshInventory();
+        expect(laserHitText.textContent).toBe('+0');
+        expect(moduleHitText.textContent).toBe('-1');
+        expect(laser.el!.classList.contains('selected')).toBeFalse();
+        expect(module.el!.classList.contains('selected')).toBeFalse();
+
+        laser.setState('inventory_control_mode', RISC_LASER_PULSE_MODE);
+        forceUnit.setInventoryControlEntryRange(laser, 'short');
+        svgService.refreshInventory();
+
+        expect(laserHitText.textContent).toBe('-2');
+        expect(moduleHitText.textContent).toBe('-1');
+        expect(laser.el!.classList.contains('selected')).toBeTrue();
+        expect(laser.el!.classList.contains('selected-range-short')).toBeTrue();
+        expect(module.el!.classList.contains('selected')).toBeTrue();
     });
 
     it('renders linked locations detached when their parent torso is committed destroyed', () => {

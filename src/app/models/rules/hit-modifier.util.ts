@@ -45,6 +45,7 @@ import { resolveWeaponRangeHitModifier, type WeaponRangeKey } from './weapon-ran
  */
 
 export type LinkedEquipmentHitModifierResolver = (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => number;
+export type EntryBaseHitModifierResolver = (entry: MountedEquipment) => number | null;
 
 /**
  * Resolve the final hit modifier for an inventory entry.
@@ -59,9 +60,11 @@ export function resolveHitModifier(
     additionalModifiers: number,
     range?: WeaponRangeKey | null,
     selectedAmmo?: AmmoEquipment | null,
-    resolveLinkedModifiers?: LinkedEquipmentHitModifierResolver
+    resolveLinkedModifiers?: LinkedEquipmentHitModifierResolver,
+    resolveBaseModifier?: EntryBaseHitModifierResolver
 ): number | 'Vs' | '*' | null {
     const linkedModifiers = resolveLinkedModifiers?.(entry, selectedAmmo) ?? 0;
+    const baseModifier = resolveBaseModifier?.(entry) ?? null;
     if (entry.baseHitMod === 'Vs') {
         return entry.baseHitMod;
     }
@@ -76,10 +79,8 @@ export function resolveHitModifier(
         return null;
     }
     if (entry.equipment) {
-        if (entry.equipment.flags.has('F_WEAPON_ENHANCEMENT')) {
-            if (!entry.equipment.flags.has('F_RISC_LASER_PULSE_MODULE')) {
-                return null;
-            }
+        if (entry.equipment.flags.has('F_WEAPON_ENHANCEMENT') && baseModifier === null) {
+            return null;
         }
         if (entry.equipment instanceof WeaponEquipment) {
             if (entry.equipment.hasNoRange() && !entry.equipment.flags.has('F_CLUB') && !entry.equipment.flags.has('F_HAND_WEAPON') && !(entry.equipment.weapon.ammoType==='MML')) {
@@ -90,7 +91,7 @@ export function resolveHitModifier(
         }
     }
     const rangeHitModValue = resolveWeaponRangeHitModifier(entry, range);
-    const baseHitModValue = rangeHitModValue ?? parseInt(entry.baseHitMod || '0');
+    const baseHitModValue = rangeHitModValue ?? baseModifier ?? parseInt(entry.baseHitMod || '0');
     if (isNaN(baseHitModValue)) {
         return null;
     }

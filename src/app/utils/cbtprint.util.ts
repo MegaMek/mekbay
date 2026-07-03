@@ -38,6 +38,7 @@ import type { Unit, UnitComponent } from '../models/units.model';
 import type { DataService } from '../services/data.service';
 import type { UnitInitializerService } from '../services/unit-initializer.service';
 import type { Injector } from '@angular/core';
+import { getInventoryControlModes, INVENTORY_CONTROL_MODE_STATE, syncSvgMode } from './inventory-control.util';
 
 export interface CBTPrintServices {
     dataService: DataService;
@@ -167,6 +168,7 @@ export class CBTPrintUtil {
             printUnit.setHeatData({ current: 0, previous: 0, next: undefined });
         }
 
+        this.resetInventoryControlModes(printUnit);
         printUnit.clearInventoryControlTargets();
         printUnit.clearInventoryControlSelection();
         printUnit.turnState().update(undefined);
@@ -175,6 +177,15 @@ export class CBTPrintUtil {
         await this.nextAnimationFrames(2);
 
         return printUnit;
+    }
+
+    private static resetInventoryControlModes(printUnit: CBTForceUnit): void {
+        for (const entry of printUnit.getInventory()) {
+            if (entry.deleteState(INVENTORY_CONTROL_MODE_STATE)) {
+                printUnit.setInventoryEntry(entry);
+            }
+            syncSvgMode(entry, getInventoryControlModes(entry)[0]?.mode ?? null, false);
+        }
     }
 
     /**

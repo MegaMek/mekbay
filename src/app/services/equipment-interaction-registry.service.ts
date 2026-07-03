@@ -126,9 +126,19 @@ export abstract class EquipmentInteractionHandler {
     getLinkedEquipmentHitModifier?(equipment: MountedEquipment, parent: MountedEquipment, selectedAmmo?: AmmoEquipment | null): number | null;
 
     /**
+     * Hook called while resolving an entry's own base to-hit modifier.
+     */
+    getInventoryControlBaseHitModifier?(equipment: MountedEquipment, context: HandlerContext): number | null;
+
+    /**
      * Hook called while collecting turn heat sources from inventory entries.
      */
     getInventoryHeatSources?(equipment: MountedEquipment, turnState: TurnState): UnitHeatSource[];
+
+    /**
+     * Hook called when equipment-specific modes can veto aimed shots.
+     */
+    canPerformAimedShot?(equipment: MountedEquipment, context: HandlerContext): boolean | null;
 }
 
 /**
@@ -266,11 +276,25 @@ class EquipmentInteractionRegistry {
         }, 0) ?? 0;
     }
 
+    getInventoryControlBaseHitModifier(equipment: MountedEquipment, context: HandlerContext): number | null {
+        for (const handler of this.getHandlers(equipment)) {
+            const result = handler.getInventoryControlBaseHitModifier?.(equipment, context);
+            if (result !== undefined && result !== null) return result;
+        }
+        return null;
+    }
+
+    canPerformAimedShot(equipment: MountedEquipment, context: HandlerContext): boolean {
+        return this.getHandlers(equipment)
+            .every(handler => handler.canPerformAimedShot?.(equipment, context) !== false);
+    }
+
     inventoryControlRules(context: HandlerContext): InventoryControlRules {
         return {
             applyDisplayEffects: (equipment, display, options) => this.applyInventoryControlDisplayEffects(equipment, display, options, context),
             matchesAmmo: (equipment, ammo, mode) => this.matchesInventoryAmmo(equipment, ammo, mode, context),
-            resolveLinkedHitModifier: (equipment, selectedAmmo) => this.getLinkedEquipmentHitModifier(equipment, selectedAmmo)
+            resolveLinkedHitModifier: (equipment, selectedAmmo) => this.getLinkedEquipmentHitModifier(equipment, selectedAmmo),
+            resolveBaseHitModifier: equipment => this.getInventoryControlBaseHitModifier(equipment, context)
         };
     }
 

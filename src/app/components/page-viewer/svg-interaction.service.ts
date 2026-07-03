@@ -58,7 +58,7 @@ import { canAntiMech } from '../../utils/infantry.util';
 import { EquipmentDialogComponent } from '../equipment-dialog/equipment-dialog.component';
 import type { EquipmentDialogContext, EquipmentDialogData, EquipmentDialogTab } from '../equipment-dialog/equipment-dialog.model';
 import { WeaponTargetChoiceMenuComponent } from '../../components/equipment-dialog/weapon-target-choice-menu.component';
-import { getInventoryControlModes, getSelectedInventoryControlMode, selectInventoryControlEntry, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
+import { getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_MODE_STATE, selectInventoryControlEntry, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
 import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import { inventoryTargetCategory, inventoryTargetNumberText, parseInventoryTargetNumberCell, readInventoryTargetDisplay, readInventoryTargetText } from '../../utils/inventory-target-number.util';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
@@ -66,6 +66,7 @@ import { committedCriticalHitCount, isRepeatableMotiveHitId, motiveHitLevelFromI
 import { UnitStateDropdownComponent, type UnitStateDropdownChoice } from './unit-state-dropdown.component';
 import { getAmmoControlEntryForCriticalSlot, setAmmoEntry } from '../../utils/ammo-interaction.util';
 import { TORSO_LOCATIONS } from '../../models/rules/mek-rules';
+import { isLaserWithRiscModule, isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, RISC_LASER_STANDARD_MODE, selectedRiscLaserMode } from '../../equipment-handlers/risc-laser-pulse-module.handler';
 
 type SheetInventoryRangeKey = InventoryRangeKey | 'extreme';
 type HeatMarkerData = { el: SVGElement | null, heat: number; baselineHeat: number };
@@ -1083,7 +1084,7 @@ export class SvgInteractionService {
                 if (!unit) return;
 
                 const clickedMode = this.validInventoryModeForButton(entry, button);
-                const selectedMode = getSelectedInventoryControlMode(entry);
+                const selectedMode = this.selectedInventoryControlMode(entry);
                 const forceSelected = !!clickedMode && clickedMode !== selectedMode;
                 if (clickedMode) {
                     setInventoryControlMode(entry, clickedMode);
@@ -1107,7 +1108,7 @@ export class SvgInteractionService {
                 if (!unit || !range) return;
 
                 const clickedMode = this.validInventoryModeForButton(entry, button);
-                const selectedMode = getSelectedInventoryControlMode(entry);
+                const selectedMode = this.selectedInventoryControlMode(entry);
                 const forceSelected = !!clickedMode && clickedMode !== selectedMode;
 
                 if (clickedMode) {
@@ -1126,6 +1127,20 @@ export class SvgInteractionService {
             };
 
             el.classList.add('interactive');
+            if (isRiscLaserPulseModule(entry)) {
+                const toggleRiscMode = (evt: Event) => {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    this.toggleRiscLaserPulseMode(entry);
+                };
+                [...this.inventoryDialogButtons(el), ...this.inventoryRangeButtons(el)].forEach(button => {
+                    button.classList.add('interactive');
+                    button.style.cursor = 'pointer';
+                    button.addEventListener('click', toggleRiscMode, { passive: false, signal });
+                });
+                el.addEventListener('click', toggleRiscMode, { passive: false, signal });
+                return;
+            }
             this.inventoryDialogButtons(el).forEach(button => {
                 button.classList.add('interactive');
                 button.style.cursor = 'pointer';
@@ -1176,6 +1191,31 @@ export class SvgInteractionService {
         const mode = modeEl.getAttribute('mode');
         if (!mode) return null;
         return getInventoryControlModes(entry).some(candidate => candidate.mode === mode) ? mode : null;
+    }
+
+    private selectedInventoryControlMode(entry: MountedEquipment): string | null {
+        return entry.states.get(INVENTORY_CONTROL_MODE_STATE) ?? getSelectedInventoryControlMode(entry);
+    }
+
+    private toggleRiscLaserPulseMode(module: MountedEquipment): void {
+        const unit = this.unit();
+        const parent = module.parent;
+        if (!unit || !parent || !isLaserWithRiscModule(parent)) return;
+        const mode = selectedRiscLaserMode(parent) === RISC_LASER_PULSE_MODE
+            ? RISC_LASER_STANDARD_MODE
+            : RISC_LASER_PULSE_MODE;
+        setInventoryControlMode(parent, mode);
+        unit.setInventoryControlEntrySelected(parent, true);
+        this.removePicker();
+    }
+
+    private equipmentDialogContext(): EquipmentDialogContext {
+        return {
+            toastService: this.toastService,
+            dialogsService: this.dialogsService,
+            dataService: this.dataService,
+            registry: this.equipmentRegistryService.getRegistry()
+        };
     }
 
     private showInventoryTargetPicker(
@@ -1421,12 +1461,7 @@ export class SvgInteractionService {
         this.removePicker();
         this.overlayManager.closeAllManagedOverlays();
         const unitList = this.pageViewerState.forceUnits().length > 0 ? this.pageViewerState.forceUnits() : [unit];
-        const context: EquipmentDialogContext = {
-            toastService: this.toastService,
-            dialogsService: this.dialogsService,
-            dataService: this.dataService,
-            registry: this.equipmentRegistryService.getRegistry()
-        };
+        const context = this.equipmentDialogContext();
         this.pageViewerState.beginInventoryDialog();
         const ref = this.dialogsService.createDialog<void>(EquipmentDialogComponent, {
             data: {

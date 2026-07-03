@@ -12,6 +12,7 @@ export interface EquipmentDialogRegistry {
     handleSelection(entry: MountedEquipment, choice: HandlerChoice, context: HandlerContext): boolean | Promise<boolean>;
     afterInventoryControlFire(entry: MountedEquipment, context: HandlerContext): void | Promise<void>;
     getLinkedEquipmentHitModifier(entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null): number;
+    canPerformAimedShot(entry: MountedEquipment, context: HandlerContext): boolean;
     inventoryControlRules(context: HandlerContext): InventoryControlRules;
 }
 

@@ -268,7 +268,8 @@ export class UnitSvgMekService extends UnitSvgService {
             state.hitMod,
             range,
             this.inventoryTargetSelectedAmmo(entry),
-            (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo)
+            (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo),
+            candidate => this.unit.getInventoryControlBaseHitModifier(candidate)
         );
     }
 

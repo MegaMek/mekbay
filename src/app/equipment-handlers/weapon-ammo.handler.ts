@@ -54,6 +54,7 @@ export class WeaponAmmoHandler extends EquipmentInteractionHandler {
                             handleSelection: () => false,
                             afterInventoryControlFire: () => undefined,
                             getLinkedEquipmentHitModifier: () => 0,
+                            canPerformAimedShot: () => true,
                             inventoryControlRules: () => ({})
                         }
                     },

@@ -36,7 +36,7 @@ import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { MountedEquipment, type CriticalSlot } from '../models/force-serialization';
 import type { UnitComponent } from '../models/units.model';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../models/inventory-control-runtime-state.model';
-import { resolveHitModifier, type LinkedEquipmentHitModifierResolver } from '../models/rules/hit-modifier.util';
+import { resolveHitModifier, type EntryBaseHitModifierResolver, type LinkedEquipmentHitModifierResolver } from '../models/rules/hit-modifier.util';
 import { FIELD_GUN_LOCATION, InfantryRules } from '../models/rules/infantry-rules';
 import type { MountedEquipmentRuleState } from '../models/rules/unit-type-rules';
 import { resolveWeaponRangeDamageText, WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, type WeaponRangeKey } from '../models/rules/weapon-range-rules.util';
@@ -150,6 +150,7 @@ export interface InventoryControlRules {
     applyDisplayEffects?: InventoryControlDisplayEffectApplier;
     matchesAmmo?: (entry: MountedEquipment, ammo: AmmoEquipment, mode: string | null) => boolean | null;
     resolveLinkedHitModifier?: LinkedEquipmentHitModifierResolver;
+    resolveBaseHitModifier?: EntryBaseHitModifierResolver;
 }
 
 const GROUP_TITLES: Record<InventoryControlGroupId, string> = {
@@ -472,7 +473,7 @@ function buildInventoryControlRow(
     const ammo = getInventoryControlAmmoSummary(rowEntry, ammoSources, selectedMode, rules.matchesAmmo, options.locationLock);
     const selectedAmmo = resolveInventoryControlSelectedAmmoOption(ammo.options, rowEntry.owner.getInventoryControlEntryAmmoOption?.(rowEntry.id))?.ammo ?? null;
     const additionalHitModifier = state?.hitMod ?? 0;
-    const hitModifier = resolveHitModifier(rowEntry, additionalHitModifier, undefined, selectedAmmo, rules.resolveLinkedHitModifier);
+    const hitModifier = resolveHitModifier(rowEntry, additionalHitModifier, undefined, selectedAmmo, rules.resolveLinkedHitModifier, rules.resolveBaseHitModifier);
     const hit = formatHitModifier(hitModifier);
     const base = fieldGunComponent
         ? readInfantryFieldGunDisplayData(entry, fieldGunComponent, hit)
@@ -767,7 +768,8 @@ function applyInventoryControlDisplayEffects(
         options.selectedRange,
         options.additionalHitModifier,
         options.selectedAmmo,
-        rules.resolveLinkedHitModifier
+        rules.resolveLinkedHitModifier,
+        rules.resolveBaseHitModifier
     );
     nextDisplay = rules.applyDisplayEffects?.(entry, nextDisplay, options) ?? nextDisplay;
     return nextDisplay;
@@ -779,10 +781,11 @@ function applySelectedRangeDisplay(
     selectedRange: WeaponRangeKey | null,
     additionalHitModifier: number,
     selectedAmmo?: AmmoEquipment | null,
-    resolveLinkedHitModifier?: LinkedEquipmentHitModifierResolver
+    resolveLinkedHitModifier?: LinkedEquipmentHitModifierResolver,
+    resolveBaseHitModifier?: EntryBaseHitModifierResolver
 ): InventoryControlDisplayData {
     const damage = resolveWeaponRangeDamageText(entry, selectedRange, display.damage);
-    const hit = formatHitModifier(resolveHitModifier(entry, additionalHitModifier, selectedRange, selectedAmmo, resolveLinkedHitModifier));
+    const hit = formatHitModifier(resolveHitModifier(entry, additionalHitModifier, selectedRange, selectedAmmo, resolveLinkedHitModifier, resolveBaseHitModifier));
     if (damage === null && hit === display.hit) return display;
     return {
         ...display,
@@ -836,7 +839,7 @@ function normalizeCell(value: string): string {
     return text.length > 0 ? text : '—';
 }
 
-function formatHitModifier(hitModifier: number | 'Vs' | '*' | null): string {
+export function formatHitModifier(hitModifier: number | 'Vs' | '*' | null): string {
     if (hitModifier === null) return '—';
     if (hitModifier === 'Vs' || hitModifier === '*') return hitModifier;
     return hitModifier >= 0 ? `+${hitModifier}` : hitModifier.toString();

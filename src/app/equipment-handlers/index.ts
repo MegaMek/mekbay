@@ -46,6 +46,7 @@ import { AtmHandler } from './atm.handler';
 import { ArtemisVHandler } from './artemis-v.handler';
 import { ApolloHandler } from './apollo.handler';
 import { LaserInsulatorHandler } from './laser-insulator.handler';
+import { RiscLaserPulseModuleHandler } from './risc-laser-pulse-module.handler';
 
 /**
  * Register all equipment handlers.
@@ -65,6 +66,7 @@ export function registerAllHandlers(registryService: EquipmentInteractionRegistr
     registry.register(new ArtemisVHandler());
     registry.register(new ApolloHandler());
     registry.register(new LaserInsulatorHandler());
+    registry.register(new RiscLaserPulseModuleHandler());
     registry.register(new PpcCapacitorHandler());
     registry.register(new UACJammingHandler());
     registry.register(new C3Handler());
