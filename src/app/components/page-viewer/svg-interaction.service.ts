@@ -1313,7 +1313,7 @@ export class SvgInteractionService {
                 const clickTarget = this.state.clickTarget;
                 if (!unit || !clickTarget || (clickTarget !== el && !el.contains(clickTarget))) return;
                 if (condition === 'menu') {
-                    this.showConditionsDropdown(el, unit);
+                    this.showConditionsDropdown(el, unit, event);
                 } else {
                     unit.setCondition(condition, !unit.getCondition(condition));
                 }
@@ -1321,14 +1321,15 @@ export class SvgInteractionService {
         });
     }
 
-    private showConditionsDropdown(el: SVGElement, unit: CBTForceUnit): void {
+    private showConditionsDropdown(el: SVGElement, unit: CBTForceUnit, initialEvent?: PointerEvent): void {
         if (this.overlayManager.has(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY)) {
             this.overlayManager.closeManagedOverlay(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY);
             return;
         }
 
         this.removePicker();
-    this.overlayManager.closeAllManagedOverlays();
+        this.zoomPanService.cancelGesture();
+        this.overlayManager.closeAllManagedOverlays();
         const portal = new ComponentPortal(UnitStateDropdownComponent, null, this.injector);
         const { componentRef } = this.overlayManager.createManagedOverlay(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY, el as unknown as HTMLElement, portal, {
             hasBackdrop: false,
@@ -1342,6 +1343,7 @@ export class SvgInteractionService {
                 { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 }
             ]
         });
+        componentRef.setInput('initialEvent', initialEvent ?? null);
         const updateChoices = () => {
             componentRef.setInput('choices', this.unitStateDropdownChoices(el, unit));
             componentRef.changeDetectorRef.detectChanges();
@@ -1355,6 +1357,9 @@ export class SvgInteractionService {
             } else {
                 updateChoices();
             }
+        });
+        outputToObservable(componentRef.instance.cancelled).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            this.overlayManager.closeManagedOverlay(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY);
         });
     }
 
@@ -1380,23 +1385,24 @@ export class SvgInteractionService {
         svg.querySelectorAll<SVGElement>('.locationConditionButton, .locationConditionText').forEach(el => {
             const loc = el.getAttribute('loc');
             if (!loc) return;
-            this.addSvgTapHandler(el, () => {
+            this.addSvgTapHandler(el, (event: PointerEvent) => {
                 const unit = this.unit();
                 const clickTarget = this.state.clickTarget;
                 if (!unit || !clickTarget || (clickTarget !== el && !el.contains(clickTarget))) return;
-                this.showLocationConditionsDropdown(el, unit, loc);
+                this.showLocationConditionsDropdown(el, unit, loc, event);
             }, signal);
         });
     }
 
-    private showLocationConditionsDropdown(el: SVGElement, unit: CBTForceUnit, loc: string): void {
+    private showLocationConditionsDropdown(el: SVGElement, unit: CBTForceUnit, loc: string, initialEvent?: PointerEvent): void {
         if (this.overlayManager.has(SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY)) {
             this.overlayManager.closeManagedOverlay(SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY);
             return;
         }
 
         this.removePicker();
-    this.overlayManager.closeAllManagedOverlays();
+        this.zoomPanService.cancelGesture();
+        this.overlayManager.closeAllManagedOverlays();
         const portal = new ComponentPortal(UnitStateDropdownComponent, null, this.injector);
         const { componentRef } = this.overlayManager.createManagedOverlay(SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY, el as unknown as HTMLElement, portal, {
             hasBackdrop: false,
@@ -1411,6 +1417,7 @@ export class SvgInteractionService {
             ]
         });
         componentRef.setInput('closeOnSelect', false);
+        componentRef.setInput('initialEvent', initialEvent ?? null);
         const updateChoices = () => {
             componentRef.setInput('choices', this.locationConditionDropdownChoices(unit, loc));
             componentRef.changeDetectorRef.detectChanges();
@@ -1425,7 +1432,7 @@ export class SvgInteractionService {
             } else {
                 unit.setLocationCondition(loc, state, !unit.getLocationCondition(loc, state));
             }
-            updateChoices();
+            this.overlayManager.closeManagedOverlay(SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY);
         });
 
         outputToObservable(componentRef.instance.incremented).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(state => {
@@ -1438,6 +1445,12 @@ export class SvgInteractionService {
             const value = unit.getLocationConditionValue(loc, state) ?? 0;
             unit.setLocationConditionValue(loc, state, value - 1);
             updateChoices();
+        });
+        outputToObservable(componentRef.instance.holdSelectionCompleted).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            this.overlayManager.closeManagedOverlay(SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY);
+        });
+        outputToObservable(componentRef.instance.cancelled).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            this.overlayManager.closeManagedOverlay(SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY);
         });
     }
 
@@ -1782,18 +1795,19 @@ export class SvgInteractionService {
                 const unit = this.unit();
                 const clickTarget = this.state.clickTarget;
                 if (!unit || !clickTarget || (clickTarget !== el && !el.contains(clickTarget))) return;
-                this.showCrewStateDropdown(el, unit);
+                this.showCrewStateDropdown(el, unit, event);
             }, signal);
         });
     }
 
-    private showCrewStateDropdown(el: SVGElement, unit: CBTForceUnit): void {
+    private showCrewStateDropdown(el: SVGElement, unit: CBTForceUnit, initialEvent?: PointerEvent): void {
         if (this.overlayManager.has(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY)) {
             this.overlayManager.closeManagedOverlay(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY);
             return;
         }
 
         this.removePicker();
+        this.zoomPanService.cancelGesture();
         this.overlayManager.closeAllManagedOverlays();
         const crewId = Number(el.getAttribute('crewId') || 0);
         const portal = new ComponentPortal(UnitStateDropdownComponent, null, this.injector);
@@ -1809,6 +1823,7 @@ export class SvgInteractionService {
                 { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 }
             ]
         });
+        componentRef.setInput('initialEvent', initialEvent ?? null);
         const updateChoices = () => {
             componentRef.setInput('choices', this.crewStateDropdownChoices(unit, crewId));
             componentRef.changeDetectorRef.detectChanges();
@@ -1824,6 +1839,9 @@ export class SvgInteractionService {
             } else {
                 updateChoices();
             }
+        });
+        outputToObservable(componentRef.instance.cancelled).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            this.overlayManager.closeManagedOverlay(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY);
         });
     }
 
