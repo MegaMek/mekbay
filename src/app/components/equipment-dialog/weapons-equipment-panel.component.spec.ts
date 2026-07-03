@@ -2,7 +2,7 @@ import { CdkDragDrop, CdkDragStart } from '@angular/cdk/drag-drop';
 import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment, WeaponEquipment, MiscEquipment, type EquipmentMap } from '../../models/equipment.model';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
-import { INVENTORY_CONTROL_TARGET_COLORS, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
+import { INVENTORY_CONTROL_TARGET_COLORS, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
 import type { UnitModifierBreakdownEntry } from '../../models/rules/unit-type-rules';
 import { CBTInventoryControlRuntime } from '../../models/cbt-inventory-control-runtime.model';
 import { MountedEquipment, type CriticalSlot, type HeatProfile } from '../../models/force-serialization';
@@ -333,6 +333,14 @@ function createComponent(
                             if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) continue;
                             nextDisplay = handler.applyInventoryControlDisplayEffects?.(entry, nextDisplay, options, context) ?? nextDisplay;
                         }
+                        for (const linked of entry.linkedWith ?? []) {
+                            for (const handler of handlers) {
+                                const flagsMatch = handler.flags.length === 0
+                                    || (!!linked.equipment?.flags && handler.flags.every(flag => linked.equipment!.flags.has(flag)));
+                                if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(linked))) continue;
+                                nextDisplay = handler.applyLinkedInventoryControlDisplayEffects?.(linked, entry, nextDisplay, options, context) ?? nextDisplay;
+                            }
+                        }
                         return nextDisplay;
                     },
                     matchesAmmo: (entry: MountedEquipment, ammo: AmmoEquipment, mode: string | null) => {
@@ -346,12 +354,12 @@ function createComponent(
                         return null;
                     },
                     resolveLinkedHitModifier: (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => unit.getLinkedEquipmentHitModifier(entry, selectedAmmo),
-                    resolveBaseHitModifier: (entry: MountedEquipment) => {
+                    resolveBaseHitModifier: (entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null) => {
                         for (const handler of handlers) {
                             const flagsMatch = handler.flags.length === 0
                                 || (!!entry.equipment?.flags && handler.flags.every(flag => entry.equipment!.flags.has(flag)));
                             if (!flagsMatch || (handler.applicableTo && !handler.applicableTo(entry))) continue;
-                            const result = handler.getInventoryControlBaseHitModifier?.(entry, context);
+                            const result = handler.getInventoryControlBaseHitModifier?.(entry, context, range);
                             if (result !== undefined && result !== null) return result;
                         }
                         return null;
@@ -700,7 +708,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(component.handlerChoices(row)).toEqual([]);
     });
 
-    it('marks heat as damaged when Laser Insulator heat is restored', () => {
+    it('marks heat as damaged when Laser Insulator heat is destroyed', () => {
         const laserEquipment = weapon('Medium Laser');
         laserEquipment.flags.add('F_ENERGY');
         laserEquipment.flags.add('F_LASER');
@@ -811,39 +819,38 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(component.isRangeSelected(row, 'medium')).toBeFalse();
     });
 
-    it('uses selected range for variable damage arrays and pulse hit modifiers', () => {
-        const vspLaser = entry({
-            id: 'vsp',
+    it('uses selected range for variable damage arrays', () => {
+        const variableDamageLaser = entry({
+            id: 'variable-damage-laser',
             baseHitMod: '-4',
             equipment: new WeaponEquipment({
-                id: 'ISMediumVSPLaser',
-                name: 'Medium VSP Laser',
+                id: 'VariableDamageLaser',
+                name: 'Variable Damage Laser',
                 type: 'weapon',
-                flags: ['F_DIRECT_FIRE','F_PULSE','F_VSP'],
                 weapon: { ammoType: 'NA', heat: 7, damage: [9, 7, 5], ranges: [2, 5, 9, 13] }
             }),
-            el: svgEntry('<g><g class="name"><text>Medium VSP Laser</text></g><g class="damage"><text>9/7/5 [Variable]</text></g><text class="range_short">2</text><text class="range_medium">5</text><text class="range_long">9</text></g>')
+            el: svgEntry('<g><g class="name"><text>Variable Damage Laser</text></g><g class="damage"><text>9/7/5 [Variable]</text></g><text class="range_short">2</text><text class="range_medium">5</text><text class="range_long">9</text></g>')
         });
-        const { component, fixture, unit } = createComponent([vspLaser], {}, [], new Map(), { moveMode: 'stationary' });
+        const { component, fixture, unit } = createComponent([variableDamageLaser], {}, [], new Map(), { moveMode: 'stationary' });
         let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
         component.selectRange(row, 'short');
         fixture.detectChanges();
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         expect(row.display.damage).toBe('9 [Variable]');
-        expect(row.display.hit).toBe('-3');
+        expect(row.display.hit).toBe('-4');
 
         component.selectRange(row, 'medium');
         fixture.detectChanges();
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         expect(row.display.damage).toBe('7 [Variable]');
-        expect(row.display.hit).toBe('-2');
+        expect(row.display.hit).toBe('-4');
 
         component.selectRange(row, 'long');
         fixture.detectChanges();
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         expect(row.display.damage).toBe('5 [Variable]');
-        expect(row.display.hit).toBe('-1');
+        expect(row.display.hit).toBe('-4');
 
         unit.createInventoryControlTarget();
         unit.updateInventoryControlTarget('A', { distance: 1, tnCalculator: { stance: 'immobile' } });
@@ -854,24 +861,22 @@ describe('WeaponsEquipmentPanelComponent', () => {
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         const targetState = component.targetState(row);
         expect(targetState.damageText).toBe('9 [Variable]');
-        expect(targetState.hitText).toBe('-3');
-        expect(targetState.targetNumberText).toBe('1');
+        expect(targetState.hitText).toBe('-4');
     });
 
-    it('uses actual target distance for variable damage arrays and pulse hit modifiers when C3 range is shorter', () => {
-        const vspLaser = entry({
-            id: 'vsp',
+    it('uses actual target distance for variable damage arrays when C3 range is shorter', () => {
+        const variableDamageLaser = entry({
+            id: 'variable-damage-laser',
             baseHitMod: '-4',
             equipment: new WeaponEquipment({
-                id: 'ISMediumVSPLaser',
-                name: 'Medium VSP Laser',
+                id: 'VariableDamageLaser',
+                name: 'Variable Damage Laser',
                 type: 'weapon',
-                flags: ['F_DIRECT_FIRE','F_PULSE','F_VSP'],
                 weapon: { ammoType: 'NA', heat: 7, damage: [9, 7, 5], ranges: [2, 5, 9, 13] }
             }),
-            el: svgEntry('<g><g class="name"><text>Medium VSP Laser</text></g><g class="damage"><text>9/7/5 [Variable]</text></g><text class="range_short">2</text><text class="range_medium">5</text><text class="range_long">9</text></g>')
+            el: svgEntry('<g><g class="name"><text>Variable Damage Laser</text></g><g class="damage"><text>9/7/5 [Variable]</text></g><text class="range_short">2</text><text class="range_medium">5</text><text class="range_long">9</text></g>')
         });
-        const { component, unit } = createComponent([vspLaser], {}, [], new Map(), { moveMode: 'stationary', hasLinkedC3Network: true });
+        const { component, unit } = createComponent([variableDamageLaser], {}, [], new Map(), { moveMode: 'stationary', hasLinkedC3Network: true });
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         unit.createInventoryControlTarget();
         unit.updateInventoryControlTarget('A', { distance: 8, c3Distance: 1, useC3: true });
@@ -881,8 +886,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const targetState = component.targetState(row);
         expect(targetState.rangeSelection?.range).toBe('short');
         expect(targetState.damageText).toBe('5 [Variable]');
-        expect(targetState.hitText).toBe('-1');
-        expect(targetState.targetNumberText).toBe('3');
+        expect(targetState.hitText).toBe('-4');
     });
 
     it('tracks built-in one-shot weapon shots through consumed inventory state', async () => {

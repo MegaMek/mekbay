@@ -26,13 +26,13 @@ describe('LaserInsulatorHandler', () => {
     it('keeps precomputed heat while the insulator is available', () => {
         const linked = insulator();
 
-        expect(handler.applyInventoryControlDisplayEffects(laser(linked), display, { selectedRange: null, additionalHitModifier: 0 }, context).heat).toBe('3*');
+        expect(handler.applyLinkedInventoryControlDisplayEffects(linked, laser(linked), display, { selectedRange: null, additionalHitModifier: 0 }, context).heat).toBe('3*');
     });
 
     it('adds heat back when the linked insulator is unavailable', () => {
         const linked = insulator();
         linked.owner = owner(linked);
 
-        expect(handler.applyInventoryControlDisplayEffects(laser(linked), display, { selectedRange: null, additionalHitModifier: 0 }, context).heat).toBe('4');
+        expect(handler.applyLinkedInventoryControlDisplayEffects(linked, laser(linked), display, { selectedRange: null, additionalHitModifier: 0 }, context).heat).toBe('4');
     });
 });

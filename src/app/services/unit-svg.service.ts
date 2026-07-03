@@ -41,13 +41,12 @@ import { LINKED_LOCATIONS } from "../models/rules/mek-rules";
 import { LoggerService } from './logger.service';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { resolveHitModifier } from '../models/rules/hit-modifier.util';
-import { resolveWeaponRangeDamageText, WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE } from '../models/rules/weapon-range-rules.util';
 import { formatGunneryDisplay, formatPilotingDisplay, UNIT_CONDITION_DEFINITIONS, unitConditionSortIndex, type UnitHeatSource } from '../models/rules/unit-type-rules';
 import type { HeatDissipationState } from '../models/rules/heat-management';
 import { AmmoEquipment } from '../models/equipment.model';
 import { formatAmmoName } from '../utils/ammo-interaction.util';
 import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection, readInventoryTargetDisplay } from '../utils/inventory-target-number.util';
-import { getInventoryControlModeAmmoSummary, INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE, resolveInventoryControlSelectedAmmoOption, type InventoryControlAmmoOption } from '../utils/inventory-control.util';
+import { getInventoryControlModeAmmoSummary, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE, resolveInventoryControlRangeDamageText, resolveInventoryControlSelectedAmmoOption, type InventoryControlAmmoOption } from '../utils/inventory-control.util';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 import { isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, selectedRiscLaserMode } from '../equipment-handlers/risc-laser-pulse-module.handler';
 
@@ -953,7 +952,7 @@ export class UnitSvgService {
             range,
             this.inventoryTargetSelectedAmmo(entry),
             (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo),
-            candidate => this.unit.getInventoryControlBaseHitModifier(candidate)
+            (candidate, candidateRange?: InventoryControlRuntimeRangeKey | null) => this.unit.getInventoryControlBaseHitModifier(candidate, candidateRange)
         );
     }
 
@@ -1128,18 +1127,18 @@ export class UnitSvgService {
         const text = entry.el?.querySelector<SVGElement>(':scope > .damage > text');
         if (!text) return;
 
-        const originalDamage = text.getAttribute(WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE);
-        const damage = resolveWeaponRangeDamageText(entry, range, originalDamage ?? text.textContent);
+        const originalDamage = text.getAttribute(INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE);
+        const damage = resolveInventoryControlRangeDamageText(entry, range, originalDamage ?? text.textContent);
         if (damage === null) {
             if (originalDamage !== null) {
                 text.textContent = originalDamage;
-                text.removeAttribute(WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE);
+                text.removeAttribute(INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE);
             }
             return;
         }
 
         if (originalDamage === null) {
-            text.setAttribute(WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, text.textContent ?? '');
+            text.setAttribute(INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, text.textContent ?? '');
         }
         text.textContent = damage;
     }

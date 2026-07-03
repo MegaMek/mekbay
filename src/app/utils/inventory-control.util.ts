@@ -35,21 +35,28 @@ import { AmmoEquipment, WeaponEquipment, type EquipmentMap } from '../models/equ
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { MountedEquipment, type CriticalSlot } from '../models/force-serialization';
 import type { UnitComponent } from '../models/units.model';
-import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../models/inventory-control-runtime-state.model';
+import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../models/inventory-control-runtime-state.model';
 import { resolveHitModifier, type EntryBaseHitModifierResolver, type LinkedEquipmentHitModifierResolver } from '../models/rules/hit-modifier.util';
 import { FIELD_GUN_LOCATION, InfantryRules } from '../models/rules/infantry-rules';
 import type { MountedEquipmentRuleState } from '../models/rules/unit-type-rules';
-import { resolveWeaponRangeDamageText, WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, type WeaponRangeKey } from '../models/rules/weapon-range-rules.util';
 import { formatBattleArmorTrooperLocation, getBattleArmorTrooperNumber } from './ammo-interaction.util';
 
 export const INVENTORY_CONTROL_MODE_STATE = 'inventory_control_mode';
 export const INVENTORY_CONTROL_SORT_STATE = 'inventory_control_sort';
 export const INVENTORY_CONTROL_VIRTUAL_TROOPER_ROW_STATE = 'inventory_control_virtual_trooper_row';
+export const INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE = 'data-mekbay-original-damage-text';
 export const INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE = 'data-mekbay-original-heat-text';
 export const INVENTORY_CONTROL_MODE_DISPLAY_NAMES: Readonly<Record<string, string>> = {
     Standard: 'STD',
     'Extended Range': 'ER',
     'High Explosive': 'HE'
+};
+
+const RANGE_DAMAGE_INDEX: Record<InventoryControlRuntimeRangeKey, number> = {
+    short: 0,
+    medium: 1,
+    long: 2,
+    extreme: 3
 };
 
 export type InventoryControlGroupId = 'ranged' | 'physical' | 'equipment';
@@ -135,7 +142,7 @@ interface InventoryControlRowOptions {
 }
 
 export interface InventoryControlDisplayEffectOptions {
-    selectedRange: WeaponRangeKey | null;
+    selectedRange: InventoryControlRuntimeRangeKey | null;
     additionalHitModifier: number;
     selectedAmmo?: AmmoEquipment | null;
 }
@@ -160,6 +167,21 @@ const GROUP_TITLES: Record<InventoryControlGroupId, string> = {
 };
 
 export const BUILT_IN_ONE_SHOT_AMMO_OPTION_ID = '__built_in_one_shot__';
+
+export function resolveInventoryControlRangeDamageText(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey | null | undefined, baseDamageText: string | null | undefined): string | null {
+    if (!range || !(entry.equipment instanceof WeaponEquipment)) return null;
+    const damage = entry.equipment.weapon.damage;
+    if (!Array.isArray(damage)) return null;
+
+    const value = damage[RANGE_DAMAGE_INDEX[range]];
+    if (typeof value === 'number' && Number.isFinite(value)) return appendDamageBracketText(value.toString(), baseDamageText);
+    return null;
+}
+
+function appendDamageBracketText(damage: string, baseDamageText: string | null | undefined): string {
+    const bracketText = baseDamageText?.match(/(?:\s*\[[^\]]+\])+\s*$/)?.[0]?.trim();
+    return bracketText ? `${damage} ${bracketText}` : damage;
+}
 
 export function inventoryControlSortKey(groupId: InventoryControlGroupId): string {
     return `${INVENTORY_CONTROL_SORT_STATE}:${groupId}`;
@@ -778,13 +800,13 @@ function applyInventoryControlDisplayEffects(
 function applySelectedRangeDisplay(
     entry: MountedEquipment,
     display: InventoryControlDisplayData,
-    selectedRange: WeaponRangeKey | null,
+    selectedRange: InventoryControlRuntimeRangeKey | null,
     additionalHitModifier: number,
     selectedAmmo?: AmmoEquipment | null,
     resolveLinkedHitModifier?: LinkedEquipmentHitModifierResolver,
     resolveBaseHitModifier?: EntryBaseHitModifierResolver
 ): InventoryControlDisplayData {
-    const damage = resolveWeaponRangeDamageText(entry, selectedRange, display.damage);
+    const damage = resolveInventoryControlRangeDamageText(entry, selectedRange, display.damage);
     const hit = formatHitModifier(resolveHitModifier(entry, additionalHitModifier, selectedRange, selectedAmmo, resolveLinkedHitModifier, resolveBaseHitModifier));
     if (damage === null && hit === display.hit) return display;
     return {
@@ -820,8 +842,8 @@ function readDirectText(el: Element, selector: string): string {
 function readDamageText(el: Element): string {
     const damageEl = el.querySelector(':scope > .damage');
     const originalText = damageEl
-        ?.querySelector(`:scope > text[${WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE}]`)
-        ?.getAttribute(WEAPON_RANGE_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE);
+        ?.querySelector(`:scope > text[${INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE}]`)
+        ?.getAttribute(INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE);
     return (originalText ?? damageEl?.textContent ?? '').trim();
 }
 

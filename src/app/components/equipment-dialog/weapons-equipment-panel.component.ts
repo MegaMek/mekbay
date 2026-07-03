@@ -18,13 +18,13 @@ import { TooltipDirective } from '../../directives/tooltip.directive';
 import type { TooltipLine } from '../tooltip/tooltip.component';
 import { formatInventoryTargetSignedModifier, inventoryTargetNumberState, inventoryTargetRangeSelection, parseInventoryTargetNumberCell, type InventoryTargetNumberInput, type InventoryTargetRangeKey, type InventoryTargetRangeSelection } from '../../utils/inventory-target-number.util';
 import { resolveHitModifier } from '../../models/rules/hit-modifier.util';
-import { resolveWeaponRangeDamageText } from '../../models/rules/weapon-range-rules.util';
 import type { EquipmentDialogContext } from './equipment-dialog.model';
 import {
     formatInventoryControlModeName,
     getBuiltInOneShotCapacity,
     getBuiltInOneShotConsumed,
     getInventoryControlGroups,
+    resolveInventoryControlRangeDamageText,
     isBuiltInOneShotAmmoOption,
     INVENTORY_CONTROL_VIRTUAL_TROOPER_ROW_STATE,
     isInventoryControlSelectableEntry,
@@ -370,12 +370,14 @@ export class WeaponsEquipmentPanelComponent {
         if (!hasTarget) return row.display.hit;
 
         const selectedAmmo = this.resolvedSelectedAmmoOption(row)?.ammo ?? null;
+        const rules = this.context().registry.inventoryControlRules(this.context());
         const hitModifier = resolveHitModifier(
             row.entry,
             row.additionalHitModifier,
             range,
             selectedAmmo,
-            (entry, ammo) => this.context().registry.getLinkedEquipmentHitModifier(entry, ammo)
+            rules.resolveLinkedHitModifier,
+            rules.resolveBaseHitModifier
         );
         if (hitModifier === null) return row.display.hit;
         if (hitModifier === 'Vs' || hitModifier === '*') return hitModifier;
@@ -449,7 +451,7 @@ export class WeaponsEquipmentPanelComponent {
             target,
             rangeSelection,
             hitText,
-            damageText: resolveWeaponRangeDamageText(row.entry, weaponRuleRange, row.display.damage) ?? row.display.damage,
+            damageText: resolveInventoryControlRangeDamageText(row.entry, weaponRuleRange, row.display.damage) ?? row.display.damage,
             targetNumberText: targetNumber.text,
             breakdown
         };

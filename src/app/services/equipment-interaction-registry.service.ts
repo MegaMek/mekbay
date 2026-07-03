@@ -41,6 +41,7 @@ import type { AmmoEquipment } from '../models/equipment.model';
 import type { InventoryControlDisplayData, InventoryControlDisplayEffectOptions, InventoryControlRules } from '../utils/inventory-control.util';
 import type { TurnState } from '../models/turn-state.model';
 import type { UnitHeatSource } from '../models/rules/unit-type-rules';
+import type { InventoryControlRuntimeRangeKey } from '../models/inventory-control-runtime-state.model';
 
 /**
  * Context passed to handlers containing additional information
@@ -116,6 +117,17 @@ export abstract class EquipmentInteractionHandler {
     ): InventoryControlDisplayData;
 
     /**
+     * Hook called for linked equipment while building a parent entry's inventory-control row display.
+     */
+    applyLinkedInventoryControlDisplayEffects?(
+        equipment: MountedEquipment,
+        parent: MountedEquipment,
+        display: InventoryControlDisplayData,
+        options: InventoryControlDisplayEffectOptions,
+        context: HandlerContext
+    ): InventoryControlDisplayData;
+
+    /**
      * Hook called while filtering ammo options for a selected inventory-control mode.
      */
     matchesInventoryAmmo?(equipment: MountedEquipment, ammo: AmmoEquipment, mode: string | null, context: HandlerContext): boolean | null;
@@ -128,7 +140,7 @@ export abstract class EquipmentInteractionHandler {
     /**
      * Hook called while resolving an entry's own base to-hit modifier.
      */
-    getInventoryControlBaseHitModifier?(equipment: MountedEquipment, context: HandlerContext): number | null;
+    getInventoryControlBaseHitModifier?(equipment: MountedEquipment, context: HandlerContext, range?: InventoryControlRuntimeRangeKey | null): number | null;
 
     /**
      * Hook called while collecting turn heat sources from inventory entries.
@@ -257,6 +269,11 @@ class EquipmentInteractionRegistry {
         for (const handler of this.getHandlers(equipment)) {
             nextDisplay = handler.applyInventoryControlDisplayEffects?.(equipment, nextDisplay, options, context) ?? nextDisplay;
         }
+        for (const linked of equipment.linkedWith ?? []) {
+            for (const handler of this.getHandlers(linked)) {
+                nextDisplay = handler.applyLinkedInventoryControlDisplayEffects?.(linked, equipment, nextDisplay, options, context) ?? nextDisplay;
+            }
+        }
         return nextDisplay;
     }
 
@@ -276,9 +293,9 @@ class EquipmentInteractionRegistry {
         }, 0) ?? 0;
     }
 
-    getInventoryControlBaseHitModifier(equipment: MountedEquipment, context: HandlerContext): number | null {
+    getInventoryControlBaseHitModifier(equipment: MountedEquipment, context: HandlerContext, range?: InventoryControlRuntimeRangeKey | null): number | null {
         for (const handler of this.getHandlers(equipment)) {
-            const result = handler.getInventoryControlBaseHitModifier?.(equipment, context);
+            const result = handler.getInventoryControlBaseHitModifier?.(equipment, context, range);
             if (result !== undefined && result !== null) return result;
         }
         return null;
@@ -294,7 +311,7 @@ class EquipmentInteractionRegistry {
             applyDisplayEffects: (equipment, display, options) => this.applyInventoryControlDisplayEffects(equipment, display, options, context),
             matchesAmmo: (equipment, ammo, mode) => this.matchesInventoryAmmo(equipment, ammo, mode, context),
             resolveLinkedHitModifier: (equipment, selectedAmmo) => this.getLinkedEquipmentHitModifier(equipment, selectedAmmo),
-            resolveBaseHitModifier: equipment => this.getInventoryControlBaseHitModifier(equipment, context)
+            resolveBaseHitModifier: (equipment, range?: InventoryControlRuntimeRangeKey | null) => this.getInventoryControlBaseHitModifier(equipment, context, range)
         };
     }
 
