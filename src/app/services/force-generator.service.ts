@@ -5892,8 +5892,7 @@ export class ForceGeneratorService implements OnDestroy {
         selectedAttemptNumber: number,
         selectedReason: string,
     ): void {
-        if (!LOG_ATTEMPTS) return;
-        if (successfulAttempts.length === 0 || typeof console === 'undefined' || typeof console.log !== 'function') {
+        if (!LOG_ATTEMPTS || successfulAttempts.length === 0) {
             return;
         }
 
@@ -7132,7 +7131,7 @@ export class ForceGeneratorService implements OnDestroy {
         deadlineExpired: boolean,
         elapsedMs: number,
     ): void {
-        if (!LOG_ATTEMPTS || typeof console === 'undefined' || typeof console.log !== 'function') {
+        if (!LOG_ATTEMPTS) {
             return;
         }
 
@@ -7158,7 +7157,7 @@ export class ForceGeneratorService implements OnDestroy {
         message: string | null,
         deadlineExpired: boolean,
     ): void {
-        if (!LOG_ATTEMPTS || typeof console === 'undefined' || typeof console.log !== 'function') {
+        if (!LOG_ATTEMPTS) {
             return;
         }
 
