@@ -1708,7 +1708,7 @@ export class RsPolyfillUtil {
             textEl.style.pointerEvents = 'all';
             const textCoords = textEl.getBBox();
             const buttonX = textCoords.x - this.LOC_CONDITION_BUTTON_WIDTH - 1.5;
-            const buttonY = textCoords.y + 1.5;
+            const buttonY = textCoords.y + 1;
             const buttonGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
             buttonGroup.setAttribute('id', `location_condition_${loc}`);
             buttonGroup.setAttribute('class', 'locationConditionButton locConditionButton screen-only');

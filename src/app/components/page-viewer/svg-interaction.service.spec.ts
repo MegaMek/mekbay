@@ -65,7 +65,8 @@ describe('SvgInteractionService', () => {
     beforeEach(() => {
         zoomPanService = {
             pointerMoved: false,
-            isPanning: false
+            isPanning: false,
+            cancelGesture: jasmine.createSpy('cancelGesture')
         };
         dialogClosedCallbacks = [];
         dialogsService = {
@@ -481,6 +482,7 @@ describe('SvgInteractionService', () => {
             targetType: 'motive',
             horizontal: false,
         }));
+        expect(zoomPanService.cancelGesture).toHaveBeenCalled();
         expect(pickerFactory.createNumericPicker).not.toHaveBeenCalled();
     });
 

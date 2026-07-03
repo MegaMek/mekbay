@@ -881,6 +881,10 @@ export class PageViewerZoomPanService {
 
     // ========== Gesture Finalization ==========
 
+    cancelGesture(): void {
+        this.resetGestureState();
+    }
+
     private resetGestureState(): void {
         this.gestureState.isPanning = false;
         this.gestureState.isSwiping = false;
