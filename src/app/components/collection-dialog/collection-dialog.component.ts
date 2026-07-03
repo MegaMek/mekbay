@@ -33,6 +33,8 @@
 
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { DialogRef } from '@angular/cdk/dialog';
+import type { LoadForceEntry } from '../../models/load-force-entry.model';
+import type { LoadOrganizationEntry } from '../../models/organization.model';
 import type { Unit, UnitTagEntry } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -107,6 +109,8 @@ interface QuickAddQuantityConflict {
     nextQuantity: number;
 }
 
+type CollectionExportValue = string | number;
+
 @Component({
     selector: 'collection-dialog',
     standalone: true,
@@ -128,11 +132,19 @@ export class CollectionDialogComponent {
     private readonly userStateService = inject(UserStateService);
     private suppressEmptyHeaderTagChange = false;
     private readonly createdTagOptions = signal<string[]>([]);
+    private organizationFilterLoadToken = 0;
 
     readonly addNewTagOptionValue = '__add_new_tag__';
 
     readonly tagFilter = signal('');
     readonly unitTextFilter = signal('');
+    readonly advancedFiltersOpen = signal(false);
+    readonly organizations = signal<LoadOrganizationEntry[]>([]);
+    readonly organizationsLoading = signal(false);
+    readonly organizationsLoaded = signal(false);
+    readonly selectedOrganizationId = signal('');
+    readonly organizationUnitCounts = signal<ReadonlyMap<string, number>>(new Map<string, number>());
+    readonly organizationFilterLoading = signal(false);
     readonly selectedRows = signal<Set<string>>(new Set<string>());
     readonly massTag = signal('');
     readonly massQuantity = signal(1);
@@ -230,11 +242,17 @@ export class CollectionDialogComponent {
     readonly filteredRows = computed(() => {
         const tagFilter = this.tagFilter().trim().toLowerCase();
         const unitTextFilter = this.unitTextFilter().trim();
+        const organizationId = this.selectedOrganizationId();
+        const organizationUnitCounts = this.organizationUnitCounts();
         const textTokens = parseSearchQuery(unitTextFilter);
 
         let rows = this.allRows();
         if (tagFilter) {
             rows = rows.filter(row => row.tags.some(tag => tag.lowerTag === tagFilter));
+        }
+
+        if (organizationId) {
+            rows = rows.filter(row => (organizationUnitCounts.get(row.key) ?? 0) > 0);
         }
 
         if (textTokens.length > 0) {
@@ -257,6 +275,22 @@ export class CollectionDialogComponent {
         const selected = this.selectedRows();
         return rows.every(row => selected.has(row.key));
     });
+
+    readonly sortedOrganizations = computed(() => {
+        return [...this.organizations()]
+            .sort((left, right) => naturalCompare(left.name || 'Unnamed TO&E', right.name || 'Unnamed TO&E'));
+    });
+
+    readonly selectedOrganizationName = computed(() => {
+        const selectedId = this.selectedOrganizationId();
+        if (!selectedId) {
+            return '';
+        }
+
+        return this.organizations().find(org => org.organizationId === selectedId)?.name || 'Selected TO&E';
+    });
+
+    readonly showOrganizationQuantityColumn = computed(() => this.selectedOrganizationId().length > 0);
 
     readonly chassisOptions = computed(() => {
         const options = new Map<string, ChassisOption>();
@@ -517,6 +551,33 @@ export class CollectionDialogComponent {
         this.quickAddOpen.set(nextOpen);
     }
 
+    async toggleAdvancedFilters(): Promise<void> {
+        const nextOpen = !this.advancedFiltersOpen();
+        this.advancedFiltersOpen.set(nextOpen);
+        if (nextOpen) {
+            await this.loadOrganizationsOnce();
+        }
+    }
+
+    async onOrganizationFilterFocus(): Promise<void> {
+        await this.loadOrganizationsOnce();
+    }
+
+    async onOrganizationFilterChange(event: Event): Promise<void> {
+        const organizationId = (event.target as HTMLSelectElement).value;
+        this.selectedOrganizationId.set(organizationId);
+        this.clearMissingSelections();
+
+        if (!organizationId) {
+            this.organizationFilterLoadToken++;
+            this.organizationFilterLoading.set(false);
+            this.organizationUnitCounts.set(new Map<string, number>());
+            return;
+        }
+
+        await this.loadOrganizationUnitCounts(organizationId);
+    }
+
     onTagFilterChange(event: Event): void {
         const value = (event.target as HTMLSelectElement).value;
         if (this.suppressEmptyHeaderTagChange && !value) {
@@ -530,6 +591,40 @@ export class CollectionDialogComponent {
     onUnitTextFilterInput(event: Event): void {
         this.unitTextFilter.set((event.target as HTMLInputElement).value);
         this.clearMissingSelections();
+    }
+
+    exportVisibleEntries(): void {
+        const rows = this.filteredRows();
+        if (rows.length === 0) {
+            this.statusMessage.set('No collection entries to export.');
+            return;
+        }
+
+        const includeOrganizationQuantity = this.showOrganizationQuantityColumn();
+        const headers = includeOrganizationQuantity
+            ? ['Name', 'Target Type', 'TP', 'TO&E Amount', 'Tags']
+            : ['Name', 'Target Type', 'TP', 'Tags'];
+        const csvRows = rows.map(row => {
+            const values: CollectionExportValue[] = [
+                row.title,
+                row.rowType === 'chassis' ? 'Chassis' : 'Unit',
+                row.subtitle,
+            ];
+
+            if (includeOrganizationQuantity) {
+                values.push(this.getOrganizationRowQuantity(row));
+            }
+
+            values.push(this.formatTagsForExport(row.tags));
+            return values;
+        });
+
+        const csv = [headers, ...csvRows]
+            .map(row => row.map(value => this.escapeCsvValue(value)).join(','))
+            .join('\r\n');
+        const filename = this.getCollectionExportFilename(includeOrganizationQuantity);
+        this.downloadTextFile(filename, csv, 'text/csv');
+        this.statusMessage.set(`Exported ${rows.length} collection entr${rows.length === 1 ? 'y' : 'ies'}.`);
     }
 
     async shareSelectedTagLink(): Promise<void> {
@@ -890,6 +985,152 @@ export class CollectionDialogComponent {
             }
             return next;
         });
+    }
+
+    private async loadOrganizationsOnce(): Promise<void> {
+        if (this.organizationsLoaded() || this.organizationsLoading()) {
+            return;
+        }
+
+        this.organizationsLoading.set(true);
+        try {
+            const organizations = await this.dataService.listOrganizations();
+            this.organizations.set(organizations || []);
+            this.organizationsLoaded.set(true);
+        } catch {
+            this.statusMessage.set('Could not load TO&E filters.');
+        } finally {
+            this.organizationsLoading.set(false);
+        }
+    }
+
+    private async loadOrganizationUnitCounts(organizationId: string): Promise<void> {
+        const loadToken = ++this.organizationFilterLoadToken;
+        this.organizationFilterLoading.set(true);
+        this.organizationUnitCounts.set(new Map<string, number>());
+
+        try {
+            const organization = await this.dataService.getOrganization(organizationId);
+            if (!organization) {
+                if (loadToken === this.organizationFilterLoadToken) {
+                    this.statusMessage.set('Could not find the selected TO&E.');
+                }
+                return;
+            }
+
+            const forceInstanceIds = organization.forces.map(force => force.instanceId).filter(Boolean);
+            const forces = await this.dataService.getLoadForceEntriesByIds(forceInstanceIds);
+            if (loadToken !== this.organizationFilterLoadToken) {
+                return;
+            }
+
+            const forceByInstanceId = new Map(forces.map(force => [force.instanceId, force]));
+            this.organizationUnitCounts.set(this.countOrganizationUnits(organization.forces.map(force => force.instanceId), forceByInstanceId));
+            this.clearMissingSelections();
+        } catch {
+            if (loadToken === this.organizationFilterLoadToken) {
+                this.statusMessage.set('Could not load units from the selected TO&E.');
+            }
+        } finally {
+            if (loadToken === this.organizationFilterLoadToken) {
+                this.organizationFilterLoading.set(false);
+            }
+        }
+    }
+
+    private countOrganizationUnits(forceInstanceIds: string[], forceByInstanceId: ReadonlyMap<string, LoadForceEntry>): ReadonlyMap<string, number> {
+        const counts = new Map<string, number>();
+        for (const forceInstanceId of forceInstanceIds) {
+            const force = forceByInstanceId.get(forceInstanceId);
+            if (!force) {
+                continue;
+            }
+
+            for (const group of force.groups) {
+                for (const forceUnit of group.units) {
+                    const unit = forceUnit.unit;
+                    if (!unit) {
+                        continue;
+                    }
+
+                    this.incrementCount(counts, this.getRowKey('name', unit));
+                    this.incrementCount(counts, this.getRowKey('chassis', unit));
+                }
+            }
+        }
+
+        return counts;
+    }
+
+    private incrementCount(counts: Map<string, number>, key: string): void {
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+
+    getOrganizationRowQuantity(row: CollectionRow): number {
+        return this.organizationUnitCounts().get(row.key) ?? 0;
+    }
+
+    getCollectionEmptyStateMessage(): string {
+        if (this.organizationFilterLoading()) {
+            return 'LOADING TO&E UNITS...';
+        }
+
+        if (this.selectedOrganizationId()) {
+            return 'NO COLLECTION ENTRIES IN SELECTED TO&E';
+        }
+
+        return 'NO COLLECTION ENTRIES';
+    }
+
+    private formatTagsForExport(tags: readonly CollectionTagEntry[]): string {
+        return tags
+            .map(tag => `${tag.tag} x${tag.quantity}${tag.pendingRemoval ? ' (pending removal)' : ''}`)
+            .join('; ');
+    }
+
+    private escapeCsvValue(value: CollectionExportValue): string {
+        const text = String(value);
+        if (!/[",\r\n]/.test(text)) {
+            return text;
+        }
+
+        return `"${text.replace(/"/g, '""')}"`;
+    }
+
+    private getCollectionExportFilename(includeOrganizationQuantity: boolean): string {
+        const parts = ['mekbay-collection'];
+        const tag = this.selectedHeaderTag();
+        if (tag) {
+            parts.push(tag);
+        }
+
+        if (includeOrganizationQuantity) {
+            parts.push(this.selectedOrganizationName() || 'toe');
+        }
+
+        return `${this.sanitizeFilename(parts.join('-'))}.csv`;
+    }
+
+    private sanitizeFilename(value: string): string {
+        return value
+            .trim()
+            .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^[. -]+|[. -]+$/g, '')
+            .slice(0, 80) || 'mekbay-collection';
+    }
+
+    private downloadTextFile(filename: string, content: string, mimeType: string): void {
+        const blob = new Blob([content], { type: `${mimeType};charset=utf-8` });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
     }
 
     private toCollectionTags(
