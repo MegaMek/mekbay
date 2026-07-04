@@ -1382,7 +1382,7 @@ export class SvgInteractionService {
         const unit = this.unit();
         if (!unit || unit.rules.locationConditionControls.length === 0) return;
 
-        svg.querySelectorAll<SVGElement>('.locationConditionButton, .locationConditionText').forEach(el => {
+        svg.querySelectorAll<SVGElement>('.locationConditionText').forEach(el => {
             const loc = el.getAttribute('loc');
             if (!loc) return;
             this.addSvgTapHandler(el, (event: PointerEvent) => {

@@ -2195,6 +2195,10 @@ hr.divider {
                 filter: brightness(1.03);
             }
         }
+    
+        .locationConditionText {
+            text-decoration: underline dotted;
+        }
 
         .hot {
             &.heat0 {

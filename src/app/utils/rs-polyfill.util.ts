@@ -1707,36 +1707,6 @@ export class RsPolyfillUtil {
             textEl.setAttribute('loc', loc);
             textEl.style.pointerEvents = 'all';
             const textCoords = textEl.getBBox();
-            const buttonX = textCoords.x - this.LOC_CONDITION_BUTTON_WIDTH - 1.5;
-            const buttonY = textCoords.y + 1;
-            const buttonGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-            buttonGroup.setAttribute('id', `location_condition_${loc}`);
-            buttonGroup.setAttribute('class', 'locationConditionButton locConditionButton screen-only');
-            buttonGroup.setAttribute('loc', loc);
-
-            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-            rect.setAttribute('x', buttonX.toString());
-            rect.setAttribute('y', buttonY.toString());
-            rect.setAttribute('width', this.LOC_CONDITION_BUTTON_WIDTH.toString());
-            rect.setAttribute('height', this.LOC_CONDITION_BUTTON_HEIGHT.toString());
-            rect.setAttribute('fill', '#fff');
-            rect.setAttribute('stroke', '#000');
-            rect.setAttribute('stroke-width', '0.72');
-
-            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            text.setAttribute('x', (buttonX + this.LOC_CONDITION_BUTTON_WIDTH / 2).toString());
-            text.setAttribute('y', (buttonY + this.LOC_CONDITION_BUTTON_HEIGHT / 2 + 0.5).toString());
-            text.setAttribute('text-anchor', 'middle');
-            text.setAttribute('dominant-baseline', 'middle');
-            text.setAttribute('font-family', 'Roboto, sans-serif');
-            text.setAttribute('font-size', '6.5');
-            text.setAttribute('font-weight', 'bold');
-            text.setAttribute('fill', '#000');
-            text.textContent = '...';
-
-            buttonGroup.appendChild(rect);
-            buttonGroup.appendChild(text);
-            critGroup.insertBefore(buttonGroup, textEl);
 
             const narcBanner = document.createElementNS('http://www.w3.org/2000/svg', 'g');
             narcBanner.setAttribute('class', 'locationNarcBanner screen-only');
