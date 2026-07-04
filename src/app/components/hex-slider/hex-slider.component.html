@@ -18,7 +18,7 @@
         </div>
         @for (tick of displayTicks(); track tick) {
             <span class="tick" [style.left.%]="percentForValue(tick)" aria-hidden="true">
-                <span class="tick-label" [class.dot-label]="isCondensedDotTick(tick)">{{ tickLabel(tick) }}</span>
+                <span class="tick-label" [class.dot-label]="isCondensedDotTick(tick) && !isOverrideTick(tick)" [class.override-label]="isOverrideTick(tick)">{{ tickLabel(tick) }}</span>
             </span>
         }
         <div class="thumb-marker" [style.left.%]="valuePercent()" aria-hidden="true">

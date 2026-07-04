@@ -68,6 +68,7 @@ export class HexSliderComponent {
     readonly value = input<number>(0);
     readonly ticks = input<readonly number[] | null>(null);
     readonly tickLabels = input<readonly string[] | null>(null);
+    readonly tickLabelOverrides = input<Readonly<Record<number, string>> | null>(null);
     readonly label = input<string | number | null>(null);
     readonly ariaLabel = input<string>('Value');
     readonly valueAssigned = input<boolean>(false);
@@ -120,10 +121,16 @@ export class HexSliderComponent {
     }
 
     tickLabel(tick: number): string {
+        const override = this.tickLabelOverrides()?.[tick];
+        if (override !== undefined) return override;
         const labels = this.tickLabels();
         if (!labels) return this.isCondensedDotTick(tick) ? '•' : `${tick}`;
         const index = this.displayTicks().indexOf(tick);
         return labels[index] ?? `${tick}`;
+    }
+
+    isOverrideTick(tick: number): boolean {
+        return this.tickLabelOverrides()?.[tick] !== undefined;
     }
 
     isCondensedDotTick(tick: number): boolean {

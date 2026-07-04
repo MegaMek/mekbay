@@ -76,6 +76,18 @@ describe('HexSliderComponent', () => {
         expect(valueChanges).toEqual([1]);
         expect(valueCommits).toEqual([1]);
     });
+
+    it('uses tick label overrides without replacing other generated tick labels', () => {
+        fixture.componentRef.setInput('tickLabelOverrides', { 8: 'RUN', 10: 'MASC' });
+        fixture.detectChanges();
+
+        const labels = Array.from(fixture.nativeElement.querySelectorAll('.tick-label'))
+            .map(label => (label as HTMLElement).textContent);
+
+        expect(labels[0]).toBe('0');
+        expect(labels[8]).toBe('RUN');
+        expect(labels[10]).toBe('MASC');
+    });
 });
 
 function pointerEvent(type: string, pointerId: number, clientX: number): PointerEvent {

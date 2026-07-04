@@ -75,6 +75,11 @@
     display: inline-block;
 }
 
+.tick-label.override-label {
+    color: var(--bt-yellow);
+    text-shadow: 0 1px 2px #000;
+}
+
 .tick-label.dot-label {
     font-size: 0.72em;
     line-height: 1;
