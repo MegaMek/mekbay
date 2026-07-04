@@ -123,6 +123,12 @@ export class CBTForceUnit extends ForceUnit {
             .getInventoryHeatSources(this.getInventory(), turnState);
     }
 
+    getRunMovementMultiplierBonus(turnState: TurnState): number {
+        return this.injector.get(EquipmentInteractionRegistryService)
+            .getRegistry()
+            .getRunMovementMultiplierBonus(this.getInventory(), turnState);
+    }
+
     getLinkedEquipmentHitModifier(entry: MountedEquipment, selectedAmmo?: AmmoEquipmentType | null): number {
         return this.injector.get(EquipmentInteractionRegistryService)
             .getRegistry()
@@ -362,6 +368,9 @@ export class CBTForceUnit extends ForceUnit {
 
     setInventory(inventory: MountedEquipment[], initialization: boolean = false) {
         this.state.inventory.set(inventory.map(entry => MountedEquipment.from(entry)));
+        if (!initialization) {
+            this.turnState().clampMoveDistanceToCurrentModeRange();
+        }
         this.inventoryControl.markInventoryViewChanged();
         if (!initialization) {
             this.setModified();

@@ -196,6 +196,17 @@ export class TurnState {
         this.moveDistance.set(value);
     }
 
+    clampMoveDistanceToCurrentModeRange(): void {
+        const moveDistance = this.moveDistance();
+        if (moveDistance === null) return;
+        const maxDistance = this.maxDistanceCurrentMoveMode();
+        const minDistance = Math.min(this.minDistanceCurrentMoveMode(), maxDistance);
+        const nextDistance = Math.max(minDistance, Math.min(maxDistance, moveDistance));
+        if (nextDistance !== moveDistance) {
+            this.setMoveDistance(nextDistance);
+        }
+    }
+
     serialize(): SerializedTurnState | undefined {
         const turnState: SerializedTurnState = {};
         const airborne = this.airborne();
@@ -303,7 +314,7 @@ export class TurnState {
         }
         const forceUnit = this.unitState.unit;
         const rules = forceUnit.rules;
-        const rulesMaxDistance = rules.getMaxDistanceForMoveMode(moveMode);
+        const rulesMaxDistance = rules.getEffectiveMaxDistanceForMoveMode(moveMode, this);
         if (rulesMaxDistance !== null) {
             return rulesMaxDistance;
         }

@@ -2,9 +2,13 @@ import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { CrewMemberState } from '../crew-member.model';
 import { MountedEquipment, type CriticalSlot } from '../force-serialization';
 import type { MotiveModes } from '../motiveModes.model';
+import type { TurnState } from '../turn-state.model';
 import { Equipment, WeaponEquipment } from '../equipment.model';
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { VehicleRules } from './vehicle-rules';
+import { MascHandler, MASC_ACTIVE_STATE_KEY } from '../../equipment-handlers/masc.handler';
+
+const mascHandler = new MascHandler();
 
 function crit(id: string, destroyed: number): CriticalSlot {
     return { id, destroyed, destroying: destroyed };
@@ -50,6 +54,10 @@ function entry(options: {
     });
 }
 
+function turnState(airborne: boolean | null = null): TurnState {
+    return { airborne: () => airborne } as unknown as TurnState;
+}
+
 function createRulesHarness(options: {
     crits?: CriticalSlot[];
     inventory?: MountedEquipment[];
@@ -83,6 +91,8 @@ function createRulesHarness(options: {
         },
         getCrewMembers: () => crewStates.map(state => ({ getState: () => state })),
         isEquipmentUnavailable: (source: MountedEquipment | CriticalSlot) => source instanceof MountedEquipment ? source.committedDestroyed() : !!source.destroyed,
+        getRunMovementMultiplierBonus: (turnState: TurnState) => (options.inventory ?? [])
+            .reduce((total, entry) => total + mascHandler.getRunMovementMultiplierBonus(entry, turnState), 0),
         pilotingSkill: () => 5,
         turnState: () => ({
             moveMode: () => options.moveMode ?? null,
@@ -194,6 +204,52 @@ describe('VehicleRules', () => {
             maxRun: 16,
             moveImpaired: false,
         }));
+    });
+
+    it('uses active boost state for effective vehicle run MP without changing potential max run MP', () => {
+        const jetBooster = entry({ equipment: equipment('ISVTOLJetBooster', ['F_MASC', 'F_JET_BOOSTER']) });
+        const rules = createRulesHarness({
+            inventory: [jetBooster],
+            type: 'VTOL',
+            walk: 8,
+        });
+
+        expect(rules.getMaxDistanceForMoveMode('run')).toBe(16);
+        expect(rules.getEffectiveMaxDistanceForMoveMode('run', turnState(true))).toBe(12);
+
+        jetBooster.setState(MASC_ACTIVE_STATE_KEY, 'true');
+
+        expect(rules.getMaxDistanceForMoveMode('run')).toBe(16);
+        expect(rules.getEffectiveMaxDistanceForMoveMode('run', turnState(true))).toBe(16);
+    });
+
+    it('requires airborne state for active VTOL Jet Booster effective run MP', () => {
+        const jetBooster = entry({ equipment: equipment('ISVTOLJetBooster', ['F_MASC', 'F_JET_BOOSTER']) });
+        jetBooster.setState(MASC_ACTIVE_STATE_KEY, 'true');
+        const rules = createRulesHarness({
+            inventory: [jetBooster],
+            type: 'VTOL',
+            walk: 8,
+        });
+
+        expect(rules.getEffectiveMaxDistanceForMoveMode('run', turnState(false))).toBe(12);
+        expect(rules.getEffectiveMaxDistanceForMoveMode('run', turnState(true))).toBe(16);
+    });
+
+    it('keeps active destroyed VTOL Jet Booster effective run MP for the current turn', () => {
+        const jetBooster = entry({
+            equipment: equipment('ISVTOLJetBooster', ['F_MASC', 'F_JET_BOOSTER']),
+            destroyed: true,
+        });
+        jetBooster.setState(MASC_ACTIVE_STATE_KEY, 'true');
+        const rules = createRulesHarness({
+            inventory: [jetBooster],
+            type: 'VTOL',
+            walk: 8,
+        });
+
+        expect(rules.getMaxDistanceForMoveMode('run')).toBe(12);
+        expect(rules.getEffectiveMaxDistanceForMoveMode('run', turnState(true))).toBe(16);
     });
 
     it('disables run movement after a flight stabilizer hit', () => {

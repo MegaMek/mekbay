@@ -13,7 +13,7 @@ function svgEntry(html: string): SVGElement {
 
 function owner(): never {
     return {
-        rules: { computeEntryState: () => ({ isDamaged: false, isDisabled: false, hitMod: 0 }) }
+        rules: { computeEntryState: () => ({ isDamaged: false, isDisabled: false, hitMod: 0 }) },
     } as never;
 }
 
@@ -45,6 +45,18 @@ class ExtraDropdownHandler extends EquipmentInteractionHandler {
 
     getChoices(_equipment: MountedEquipment, _context: HandlerContext): PickerChoice[] {
         return [{ label: 'Extra', value: 'one', displayType: 'dropdown', choices: [{ label: 'One', value: 'one' }] }];
+    }
+
+    handleSelection(_equipment: MountedEquipment, _value: PickerChoice, _context: HandlerContext): boolean {
+        return true;
+    }
+}
+
+class SelectionHandler extends EquipmentInteractionHandler {
+    readonly id = 'selection-handler';
+
+    getChoices(_equipment: MountedEquipment, _context: HandlerContext): PickerChoice[] {
+        return [{ label: 'Select', value: 'select' }];
     }
 
     handleSelection(_equipment: MountedEquipment, _value: PickerChoice, _context: HandlerContext): boolean {
@@ -84,5 +96,15 @@ describe('EquipmentInteractionRegistryService', () => {
         expect(loggedMessage).toContain('Existing handler: AtmHandler.');
         expect(loggedMessage).toContain('Attempted handler: AtmHandler.');
         expect(loggedMessage).toContain('Error: Handler with id "atm-handler" is already registered');
+    });
+
+    it('delegates a handler selection to the selected handler', () => {
+        const registry = new EquipmentInteractionRegistryService().getRegistry();
+        const entry = atmEntry();
+        registry.register(new SelectionHandler());
+
+        const choice = registry.getChoices(entry, context())[0];
+
+        expect(registry.handleSelection(entry, choice, context())).toBeTrue();
     });
 });

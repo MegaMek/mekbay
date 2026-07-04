@@ -276,6 +276,9 @@ export interface UnitTypeRules {
     /** Unit-type-specific movement distance override. Return null to use base unit data. */
     getMaxDistanceForMoveMode(moveMode: MotiveModes): number | null;
 
+    /** Unit-type-specific effective movement distance for turn-state choices. */
+    getEffectiveMaxDistanceForMoveMode(moveMode: MotiveModes, turnState: TurnState): number | null;
+
     /** Unit-type-specific minimum movement distance override. Return null to use 0. */
     getMinDistanceForMoveMode(moveMode: MotiveModes): number | null;
 
@@ -446,6 +449,10 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
 
     getMaxDistanceForMoveMode(_moveMode: MotiveModes): number | null {
         return null;
+    }
+
+    getEffectiveMaxDistanceForMoveMode(moveMode: MotiveModes, _turnState: TurnState): number | null {
+        return this.getMaxDistanceForMoveMode(moveMode);
     }
 
     getMinDistanceForMoveMode(_moveMode: MotiveModes): number | null {

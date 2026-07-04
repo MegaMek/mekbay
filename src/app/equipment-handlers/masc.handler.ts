@@ -1,5 +1,6 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
 import type { MountedEquipment } from '../models/force-serialization';
+import type { TurnState } from '../models/turn-state.model';
 import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
 
 export const MASC_SEQUENCE_STATE_KEY = 'masc';
@@ -33,6 +34,19 @@ export function isMascActive(equipment: MountedEquipment): boolean {
     return equipment.states.get(MASC_ACTIVE_STATE_KEY) === 'true';
 }
 
+export function isJetBoosterMasc(equipment: MountedEquipment): boolean {
+    const flags = equipment.equipment?.flags;
+    return !!flags?.has('F_MASC') && !!flags?.has('F_JET_BOOSTER');
+}
+
+export function canUseMascHandler(equipment: MountedEquipment): boolean {
+    return !isJetBoosterMasc(equipment) || equipment.owner?.turnState?.().airborne() === true;
+}
+
+export function canUseMascMovementBonus(equipment: MountedEquipment, turnState: TurnState): boolean {
+    return !isJetBoosterMasc(equipment) || turnState.airborne() === true;
+}
+
 export function setMascActive(equipment: MountedEquipment, active: boolean): boolean {
     return active
         ? equipment.setState(MASC_ACTIVE_STATE_KEY, 'true')
@@ -40,7 +54,7 @@ export function setMascActive(equipment: MountedEquipment, active: boolean): boo
 }
 
 export function isMascSequenceButtonClickable(equipment: MountedEquipment, index: number): boolean {
-    return !equipment.isUnavailable() && index >= 0 && index < MASC_SEQUENCE_LABELS.length
+    return canUseMascHandler(equipment) && !equipment.isUnavailable() && index >= 0 && index < MASC_SEQUENCE_LABELS.length
         && index <= getMascSequenceState(equipment);
 }
 
@@ -80,6 +94,7 @@ export class MascHandler extends EquipmentInteractionHandler {
     override readonly priority = 10;
 
     getChoices(equipment: MountedEquipment, _context: HandlerContext): PickerChoice[] {
+        if (!canUseMascHandler(equipment)) return [];
         const state = getMascSequenceState(equipment);
         const active = isMascActive(equipment);
         return MASC_SEQUENCE_LABELS.map((label, index) => ({
@@ -96,6 +111,7 @@ export class MascHandler extends EquipmentInteractionHandler {
     }
 
     handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerContext): boolean {
+        if (!canUseMascHandler(equipment)) return true;
         const changed = toggleMascSequenceButton(equipment, Number(choice.value));
         if (!changed) return true;
 
@@ -112,5 +128,9 @@ export class MascHandler extends EquipmentInteractionHandler {
         if (setMascActive(equipment, false)) {
             equipment.owner.setInventoryEntry(equipment);
         }
+    }
+
+    override getRunMovementMultiplierBonus(equipment: MountedEquipment, turnState: TurnState): number {
+        return isMascActive(equipment) && canUseMascMovementBonus(equipment, turnState) ? 0.5 : 0;
     }
 }

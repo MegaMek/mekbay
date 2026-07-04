@@ -35,7 +35,7 @@ import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { CrewStateControlDefinition, CrewStateDefinition, UnitConditionControl, MountedEquipmentRuleState, UnitSkillModifier } from './unit-type-rules';
 import { crewStateDefinitions, unitConditionControls, UnitTypeRulesBase } from './unit-type-rules';
-import type { PSRCheck } from '../turn-state.model';
+import type { PSRCheck, TurnState } from '../turn-state.model';
 import type { CriticalSlot, MountedEquipment } from '../force-serialization';
 import { WeaponEquipment } from '../equipment.model';
 import { getDefaultAttackerMovementModifier } from '../target-number-calculator.model';
@@ -233,6 +233,16 @@ export class VehicleRules extends UnitTypeRulesBase {
         if (moveMode === 'walk') return movement.walk;
         if (moveMode === 'run') return movement.maxRun;
         return null;
+    }
+
+    override getEffectiveMaxDistanceForMoveMode(moveMode: MotiveModes, turnState: TurnState): number | null {
+        const movement = this.movementState();
+        if (moveMode === 'walk') return movement.walk;
+        if (moveMode !== 'run') return null;
+        if (movement.run === 0) return 0;
+
+        const runValueCoeff = 1.5 + this.unit.getRunMovementMultiplierBonus(turnState);
+        return Math.max(0, Math.round(movement.walk * runValueCoeff));
     }
 
     override isMotiveModeAvailable(moveMode: MotiveModes): boolean {

@@ -78,8 +78,10 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
         getCrewMembers: () => [{ getState: () => 'healthy' }],
         getCritSlots: () => critSlots(),
         getInventory: () => inventory(),
+        getHeat: () => heat(),
         getEquipmentHeatSources: () => inventory().flatMap(entry => heatSourceHandlers
             .flatMap(handler => handler.getInventoryHeatSources?.(entry, turnState) ?? [])),
+        getRunMovementMultiplierBonus: () => 0,
         isInternalLocCommittedDestroyed: (loc: string) => committedDestroyedLegs.has(loc),
         isInternalLocDestroyed: (loc: string) => currentDestroyedLegs.has(loc) || committedDestroyedLegs.has(loc),
         isEquipmentUnavailable: (slot: CriticalSlot) => !!slot.destroyed || (slot.loc ? committedDestroyedLegs.has(slot.loc) : false),
@@ -202,6 +204,18 @@ describe('TurnState', () => {
             });
 
             expect(turnState.serialize()).toBeUndefined();
+        });
+    });
+
+    describe('movement distance', () => {
+        it('clamps the selected move distance to the current move mode range', () => {
+            const { turnState } = createTurnStateHarness({ unit: { walk: 5, run: 8, run2: 8 } });
+            turnState.moveMode.set('run');
+            turnState.moveDistance.set(15);
+
+            turnState.clampMoveDistanceToCurrentModeRange();
+
+            expect(turnState.moveDistance()).toBe(8);
         });
     });
 

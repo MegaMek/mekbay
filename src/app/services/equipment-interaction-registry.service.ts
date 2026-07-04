@@ -153,6 +153,11 @@ export abstract class EquipmentInteractionHandler {
     getInventoryHeatSources?(equipment: MountedEquipment, turnState: TurnState): UnitHeatSource[];
 
     /**
+     * Hook called while calculating active run movement multiplier bonuses.
+     */
+    getRunMovementMultiplierBonus?(equipment: MountedEquipment, turnState: TurnState): number;
+
+    /**
      * Hook called when equipment-specific modes can veto aimed shots.
      */
     canPerformAimedShot?(equipment: MountedEquipment, context: HandlerContext): boolean | null;
@@ -254,7 +259,7 @@ class EquipmentInteractionRegistry {
         if (!choice._handler) {
             return false;
         }
-        
+
         return choice._handler.handleSelection(equipment, choice, context);
     }
 
@@ -329,6 +334,11 @@ class EquipmentInteractionRegistry {
     getInventoryHeatSources(inventory: readonly MountedEquipment[], turnState: TurnState): UnitHeatSource[] {
         return inventory.flatMap(equipment => this.getHandlers(equipment)
             .flatMap(handler => handler.getInventoryHeatSources?.(equipment, turnState) ?? []));
+    }
+
+    getRunMovementMultiplierBonus(inventory: readonly MountedEquipment[], turnState: TurnState): number {
+        return inventory.reduce((total, equipment) => total + this.getHandlers(equipment)
+            .reduce((equipmentTotal, handler) => equipmentTotal + (handler.getRunMovementMultiplierBonus?.(equipment, turnState) ?? 0), 0), 0);
     }
 }
 

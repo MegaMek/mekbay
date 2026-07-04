@@ -55,10 +55,12 @@ import { ToastService } from '../../../services/toast.service';
 import { DialogsService } from '../../../services/dialogs.service';
 import { DataService } from '../../../services/data.service';
 import type { MountedEquipment } from '../../../models/force-serialization';
+import { isMascActive } from '../../../equipment-handlers/masc.handler';
 
 interface MascControlRow {
     entry: MountedEquipment;
     label: string;
+    damaged: boolean;
     choices: HandlerChoice[];
 }
 
@@ -216,11 +218,18 @@ export class PageTurnSummaryPanelComponent {
         if (!unit) return [];
         return unit.getInventory()
             .filter(entry => entry.equipment?.flags?.has('F_MASC'))
-            .map(entry => ({
-                entry,
-                label: entry.equipment?.name || entry.name,
-                choices: this.equipmentRegistry.getChoices(entry, this.handlerContext()),
-            }))
+            .map(entry => {
+                const active = isMascActive(entry);
+                const damaged = entry.resolvedDestroyed();
+                return {
+                    entry,
+                    label: entry.equipment?.name || entry.name,
+                    damaged,
+                    active,
+                    choices: this.equipmentRegistry.getChoices(entry, this.handlerContext()),
+                };
+            })
+            .filter(row => !row.damaged || row.active)
             .filter(row => row.choices.length > 0);
     });
 

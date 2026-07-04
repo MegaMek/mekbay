@@ -7,9 +7,11 @@ import { MountedEquipment, type CriticalSlot, type LocationData } from '../force
 import { AmmoEquipment, Equipment, WeaponEquipment } from '../equipment.model';
 import type { Unit } from '../units.model';
 import { DataService } from '../../services/data.service';
+import { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
 import { UnitInitializerService } from '../../services/unit-initializer.service';
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { MekRules } from './mek-rules';
+import { MascHandler, MASC_ACTIVE_STATE_KEY } from '../../equipment-handlers/masc.handler';
 
 class TestCBTForce extends CBTForce {
     override emitChanged(): void {
@@ -140,6 +142,24 @@ function droneOperatingSystemEntry(forceUnit: CBTForceUnit, destroyed = false): 
     });
 }
 
+function miscEquipment(id: string, name: string, flags: string[]): Equipment {
+    return new Equipment({
+        id,
+        name,
+        type: 'misc',
+        flags,
+    });
+}
+
+function miscEntry(forceUnit: CBTForceUnit, equipment: Equipment): MountedEquipment {
+    return new MountedEquipment({
+        owner: forceUnit,
+        id: equipment.id,
+        name: equipment.name,
+        equipment,
+    });
+}
+
 describe('MekRules', () => {
     beforeEach(() => {
         dataService = jasmine.createSpyObj<DataService>('DataService', ['getUnitByName']);
@@ -152,6 +172,7 @@ describe('MekRules', () => {
 
         unitInitializer = TestBed.inject(UnitInitializerService);
         injector = TestBed.inject(Injector);
+        TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(new MascHandler());
     });
 
     it('keeps Mek immobile false by default when crew are functional', () => {
@@ -159,6 +180,52 @@ describe('MekRules', () => {
 
         expect(rules.hasComputedCondition('immobile')).toBeFalse();
         expect(rules.hasComputedCondition('abandoned')).toBeFalse();
+    });
+
+    it('uses active MASC state for effective Mek run MP without changing potential max run MP', () => {
+        const forceUnit = createForceUnitHarness({ walk: 5, critSlots: [crit('MASC', false)] });
+        const masc = miscEntry(forceUnit, miscEquipment('MASC', 'MASC', ['F_MASC']));
+        forceUnit.setInventory([masc]);
+        const rules = forceUnit.rules as MekRules;
+
+        expect(rules.getMaxDistanceForMoveMode('run')).toBe(10);
+        expect(rules.getEffectiveMaxDistanceForMoveMode('run', forceUnit.turnState())).toBe(8);
+
+        masc.setState(MASC_ACTIVE_STATE_KEY, 'true');
+
+        expect(rules.getMaxDistanceForMoveMode('run')).toBe(10);
+        expect(rules.getEffectiveMaxDistanceForMoveMode('run', forceUnit.turnState())).toBe(10);
+    });
+
+    it('stacks active MASC and active Supercharger for effective Mek run MP', () => {
+        const forceUnit = createForceUnitHarness({
+            walk: 6,
+            critSlots: [crit('MASC', false), crit('Supercharger', false)],
+        });
+        const masc = miscEntry(forceUnit, miscEquipment('MASC', 'MASC', ['F_MASC']));
+        const supercharger = miscEntry(forceUnit, miscEquipment('Supercharger', 'Supercharger', ['F_MASC', 'S_SUPERCHARGER']));
+        forceUnit.setInventory([masc, supercharger]);
+        const rules = forceUnit.rules as MekRules;
+
+        supercharger.setState(MASC_ACTIVE_STATE_KEY, 'true');
+
+        expect(rules.getMaxDistanceForMoveMode('run')).toBe(15);
+        expect(rules.getEffectiveMaxDistanceForMoveMode('run', forceUnit.turnState())).toBe(12);
+
+        masc.setState(MASC_ACTIVE_STATE_KEY, 'true');
+
+        expect(rules.getEffectiveMaxDistanceForMoveMode('run', forceUnit.turnState())).toBe(15);
+    });
+
+    it('keeps active destroyed MASC effective Mek run MP for the current turn', () => {
+        const forceUnit = createForceUnitHarness({ walk: 5, critSlots: [crit('MASC', true)] });
+        const masc = miscEntry(forceUnit, miscEquipment('MASC', 'MASC', ['F_MASC']));
+        masc.setState(MASC_ACTIVE_STATE_KEY, 'true');
+        forceUnit.setInventory([masc]);
+        const rules = forceUnit.rules as MekRules;
+
+        expect(rules.getMaxDistanceForMoveMode('run')).toBe(8);
+        expect(rules.getEffectiveMaxDistanceForMoveMode('run', forceUnit.turnState())).toBe(10);
     });
 
     it('applies drone operating system controls and skill modifiers', () => {

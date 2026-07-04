@@ -202,8 +202,20 @@
         .caption {
             flex: 1 1 auto;
             min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            white-space: break-spaces;
+            line-height: 1;
+            font-size: 0.9em;
+            font-weight: 500;
+        }
+        &.damaged {
+            .caption {
+                color: var(--danger);
+            }
+
+            .masc-controls {
+                border-color: #800;
+                background-color: #f002;
+            }
         }
     }
 

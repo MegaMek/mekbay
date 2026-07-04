@@ -2,6 +2,7 @@ import { MiscEquipment } from '../models/equipment.model';
 import { MountedEquipment } from '../models/force-serialization';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import {
+    canUseMascHandler,
     isMascActive,
     MASC_ACTIVE_STATE_KEY,
     getMascSequenceState,
@@ -10,19 +11,24 @@ import {
     setMascSequenceState,
 } from './masc.handler';
 
-function owner() {
+function owner(airborne: boolean | null = null, turnStateOverrides: Record<string, unknown> = {}) {
+    const turnState = {
+        airborne: () => airborne,
+        ...turnStateOverrides,
+    };
     return {
         rules: { computeEntryState: (entry: MountedEquipment) => ({ isDamaged: entry.committedDestroyed(), isDisabled: false, hitMod: 0 }) },
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
+        turnState: () => turnState,
     } as never;
 }
 
-function mascEntry(): MountedEquipment {
+function mascEntry(flags: string[] = ['F_MASC'], airborne: boolean | null = null, turnStateOverrides: Record<string, unknown> = {}): MountedEquipment {
     return new MountedEquipment({
-        owner: owner(),
+        owner: owner(airborne, turnStateOverrides),
         id: 'masc',
         name: 'MASC',
-        equipment: new MiscEquipment({ id: 'masc', name: 'MASC', type: 'misc', flags: ['F_MASC'] })
+        equipment: new MiscEquipment({ id: 'masc', name: 'MASC', type: 'misc', flags })
     });
 }
 
@@ -98,14 +104,58 @@ describe('MascHandler', () => {
         expect(isMascActive(entry)).toBeFalse();
     });
 
-    it('truncates the sequence and keeps MASC active when a previous button is clicked', () => {
+    it('truncates the sequence and clears active state when a previous button is clicked', () => {
         const entry = mascEntry();
         setMascSequenceState(entry, 3);
+        entry.setState(MASC_ACTIVE_STATE_KEY, 'true');
 
         handler.handleSelection(entry, handler.getChoices(entry, context())[0], context());
 
         expect(getMascSequenceState(entry)).toBe(1);
-        expect(isMascActive(entry)).toBeTrue();
+        expect(isMascActive(entry)).toBeFalse();
+    });
+
+    it('hides Jet Booster choices when the unit is not airborne', () => {
+        const entry = mascEntry(['F_MASC', 'F_JET_BOOSTER'], false);
+
+        expect(canUseMascHandler(entry)).toBeFalse();
+        expect(handler.getChoices(entry, context())).toEqual([]);
+    });
+
+    it('allows Jet Booster choices when the unit is airborne', () => {
+        const entry = mascEntry(['F_MASC', 'F_JET_BOOSTER'], true);
+
+        expect(canUseMascHandler(entry)).toBeTrue();
+        expect(handler.getChoices(entry, context()).length).toBe(5);
+    });
+
+    it('ignores Jet Booster selections when the unit is not airborne', () => {
+        const entry = mascEntry(['F_MASC', 'F_JET_BOOSTER'], false);
+
+        handler.handleSelection(entry, { label: '3+', value: 0, displayType: 'toggle' }, context());
+
+        expect(getMascSequenceState(entry)).toBe(0);
+        expect(isMascActive(entry)).toBeFalse();
+    });
+
+    it('adds a run movement multiplier bonus while active', () => {
+        const entry = mascEntry();
+
+        expect(handler.getRunMovementMultiplierBonus(entry, entry.owner.turnState())).toBe(0);
+
+        entry.setState(MASC_ACTIVE_STATE_KEY, 'true');
+
+        expect(handler.getRunMovementMultiplierBonus(entry, entry.owner.turnState())).toBe(0.5);
+    });
+
+    it('adds Jet Booster run movement bonus only while airborne', () => {
+        const groundedEntry = mascEntry(['F_MASC', 'F_JET_BOOSTER'], false);
+        const airborneEntry = mascEntry(['F_MASC', 'F_JET_BOOSTER'], true);
+        groundedEntry.setState(MASC_ACTIVE_STATE_KEY, 'true');
+        airborneEntry.setState(MASC_ACTIVE_STATE_KEY, 'true');
+
+        expect(handler.getRunMovementMultiplierBonus(groundedEntry, groundedEntry.owner.turnState())).toBe(0);
+        expect(handler.getRunMovementMultiplierBonus(airborneEntry, airborneEntry.owner.turnState())).toBe(0.5);
     });
 
     it('resets active state at end turn without changing sequence state', () => {

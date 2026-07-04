@@ -844,6 +844,16 @@ export class MekRules extends UnitTypeRulesBase {
         return null;
     }
 
+    override getEffectiveMaxDistanceForMoveMode(moveMode: MotiveModes, turnState: TurnState): number | null {
+        if (moveMode !== 'run') return this.getMaxDistanceForMoveMode(moveMode);
+        const movement = this.movementState();
+        if (!movement || movement.run === 0) return 0;
+
+        const runValueCoeff = 1.5 + this.unit.getRunMovementMultiplierBonus(turnState);
+        const armorModifierOnRun = (this.unit.getUnit().armorType === 'Hardened') ? -1 : 0;
+        return Math.max(0, Math.round(movement.walk * runValueCoeff) + armorModifierOnRun);
+    }
+
     override getAttackMovementModifier(moveMode: MotiveModes | null | undefined, airborne: boolean = false): number {
         const baseUnit = this.unit.getUnit();
         // LAM have different movement modifiers when airborne

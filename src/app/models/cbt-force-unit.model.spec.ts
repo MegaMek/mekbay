@@ -405,6 +405,23 @@ class EndTurnTestHandler extends EquipmentInteractionHandler {
     }
 }
 
+class RunMovementBonusTestHandler extends EquipmentInteractionHandler {
+    readonly id = 'run-movement-bonus-test-handler';
+    override readonly flags = ['F_RUN_MOVEMENT_BONUS_TEST'];
+
+    getChoices(): [] {
+        return [];
+    }
+
+    handleSelection(): boolean {
+        return false;
+    }
+
+    override getRunMovementMultiplierBonus(equipment: MountedEquipment): number {
+        return equipment.states.get('active') === 'true' ? 0.5 : 0;
+    }
+}
+
 describe('CBTForceUnit direct inventory ammo bins', () => {
     let equipment: EquipmentMap;
     let dataService: jasmine.SpyObj<DataService>;
@@ -455,6 +472,36 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.endTurn();
 
         expect(handler.calls).toBe(1);
+    });
+
+    it('clamps turn movement when committed inventory state reduces active run movement bonus', () => {
+        TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(new RunMovementBonusTestHandler());
+        const forceUnit = createForceUnit(createEmptyUnit({
+            name: 'RunMovementBonus_TEST-1',
+            chassis: 'Run Movement Bonus',
+            model: 'TEST-1',
+            type: 'Mek',
+            subtype: 'BattleMek',
+            walk: 5,
+            run: 8,
+            run2: 8,
+        }));
+        const entry = new MountedEquipment({
+            owner: forceUnit,
+            id: 'run-movement-bonus-test@CT#0',
+            name: 'Run Movement Bonus Test',
+            equipment: new Equipment({ id: 'run-movement-bonus-test', name: 'Run Movement Bonus Test', type: 'misc', flags: ['F_RUN_MOVEMENT_BONUS_TEST'] }),
+        });
+        forceUnit.isLoaded.set(true);
+        entry.setState('active', 'true');
+        forceUnit.setInventory([entry], true);
+        forceUnit.turnState().moveMode.set('run');
+        forceUnit.turnState().setMoveDistance(10);
+
+        entry.deleteState('active');
+        forceUnit.setInventoryEntry(entry);
+
+        expect(forceUnit.turnState().moveDistance()).toBe(8);
     });
 
     it('splits direct inventory ammo into one entry per bin using q and q2', () => {
