@@ -1,4 +1,4 @@
-import { getMotiveModesByUnit } from './motiveModes.model';
+import { getMotiveModeLabel, getMotiveModesByUnit } from './motiveModes.model';
 import type { Unit } from './units.model';
 
 function createUnit(overrides: Partial<Unit> = {}): Unit {
@@ -16,6 +16,15 @@ function createUnit(overrides: Partial<Unit> = {}): Unit {
 }
 
 describe('motiveModes', () => {
+    it('maps Aero movement to stationary and thrust modes', () => {
+        const unit = createUnit({ type: 'Aero', subtype: 'Spheroid DropShip', moveType: 'Spheroid', jump: 5, umu: 2 });
+
+        expect(getMotiveModesByUnit(unit, false)).toEqual(['stationary', 'walk', 'run']);
+        expect(getMotiveModesByUnit(unit, true)).toEqual(['stationary', 'walk', 'run']);
+        expect(getMotiveModeLabel('walk', unit)).toBe('Safe Thrust');
+        expect(getMotiveModeLabel('run', unit)).toBe('Maximum Thrust');
+    });
+
     it('omits stationary for airborne LAMs', () => {
         const unit = createUnit({ subtype: 'Land-Air BattleMek' });
 

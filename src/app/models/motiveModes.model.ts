@@ -48,6 +48,10 @@ export function canChangeAirborneGround(unit: Unit): boolean {
 }
 
 export function getMotiveModeLabel(mode: MotiveModes, unit: Unit, airborne: boolean = false): string {
+    if (unit.type === 'Aero') {
+        if (mode === 'walk') return 'Safe Thrust';
+        if (mode === 'run') return 'Maximum Thrust';
+    }
     let isVehicle = unit.type === 'VTOL' || unit.type === 'Naval' || unit.type === 'Tank' || unit.type === 'Aero';
     switch (mode) {
         case 'stationary':
@@ -118,6 +122,7 @@ function canVTOL(unit: Unit, airborne: boolean = false): boolean {
 
 export function getMotiveModesByUnit(unit: Unit, airborne: boolean = false): MotiveModes[] {
     if ((unit.type === 'Handheld Weapon')) return [];
+    if (unit.type === 'Aero') return ['stationary', 'walk', 'run'];
     const modes: MotiveModes[] = [];
     if (canStationary(unit, airborne)) {
         modes.push('stationary');
