@@ -40,6 +40,8 @@ import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 /*
  * Author: Drake
  */
+export const CRITICAL_ONLY_INVENTORY_EXCLUDED_EQUIPMENT = new Set<string>();
+
 @Injectable({
     providedIn: 'root'
 })
@@ -461,9 +463,43 @@ export class UnitInitializerService {
         return inventoryEntries;
     }
 
+    private getCriticalOnlyInventoryEntries(unit: CBTForceUnit, existingIds: Set<string>, currentInventory: MountedEquipment[]): MountedEquipment[] {
+        const critSlotsById = new Map<string, CriticalSlot[]>();
+        for (const critSlot of unit.getCritSlots()) {
+            if (!critSlot.id || existingIds.has(critSlot.id) || !critSlot.eq || this.isCriticalOnlyInventoryExcluded(critSlot)) continue;
+            const critSlots = critSlotsById.get(critSlot.id) ?? [];
+            critSlots.push(critSlot);
+            critSlotsById.set(critSlot.id, critSlots);
+        }
+
+        return Array.from(critSlotsById.entries()).map(([id, critSlots]) => {
+            const existingEntry = currentInventory.find(item => item.id === id);
+            const equipment = critSlots[0].eq;
+            return new MountedEquipment({
+                owner: unit,
+                id,
+                name: critSlots[0].name || id.split('@')[0],
+                locations: new Set(critSlots.map(slot => slot.loc).filter((loc): loc is string => !!loc)),
+                equipment,
+                physical: false,
+                linkedWith: null,
+                parent: null,
+                destroyed: existingEntry?.committedDestroyedState() ?? false,
+                destroying: existingEntry?.pendingDestroyed(),
+                critSlots,
+                states: existingEntry?.states ? new Map(existingEntry.states) : new Map<string, string>(),
+            });
+        });
+    }
+
+    private isCriticalOnlyInventoryExcluded(critSlot: CriticalSlot): boolean {
+        const equipment = critSlot.eq;
+        return [critSlot.id, critSlot.name, equipment?.internalName, equipment?.name]
+            .some(value => !!value && CRITICAL_ONLY_INVENTORY_EXCLUDED_EQUIPMENT.has(value));
+    }
+
     private initInventory(unit: CBTForceUnit, svg: SVGSVGElement): void {
         const inventoryEntryEls = svg.querySelectorAll(`.inventoryEntry:not(.inventoryEntry .inventoryEntry)`) as NodeListOf<SVGElement>;
-        if (inventoryEntryEls.length === 0 && svg.querySelector('.critSlot')) return;
         const inventory = this.getInventoryElements(unit, svg, inventoryEntryEls);
         const inventoryData: MountedEquipment[] = [];
         for (const entry of inventory) {
@@ -473,6 +509,9 @@ export class UnitInitializerService {
                     inventoryData.push(linkedEntry);
                 });
             }
+        }
+        if (svg.querySelector('.critSlot')) {
+            inventoryData.push(...this.getCriticalOnlyInventoryEntries(unit, new Set(inventoryData.map(entry => entry.id)), unit.getInventory()));
         }
         if (!svg.querySelector('.critSlot')) {
             inventoryData.push(...this.getInfantryFieldGunInventoryEntries(unit, unit.getInventory()));
