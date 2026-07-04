@@ -31,16 +31,20 @@
  * affiliated with Microsoft.
  */
 
-import type { PickerChoice } from '../components/picker/picker.interface';
 import { WeaponEquipment } from '../models/equipment.model';
 import type { MountedEquipment } from '../models/force-serialization';
-import { CycleModeHandler } from './base/cycle-mode.handler';
+import { DisabledStateToggleHandler } from './disabled-equipment.handler';
 
-export class UACJammingHandler extends CycleModeHandler {
-    protected override readonly modeLabel: string = 'State';
+export class UACJammingHandler extends DisabledStateToggleHandler {
     readonly id = 'uac-jamming-handler';
     override readonly flags = ['F_BALLISTIC', 'F_DIRECT_FIRE'];
     override readonly priority = 10;
+    protected override readonly enabledLabel = 'Jam';
+    protected override readonly disabledLabel = 'Jammed';
+    protected override readonly enabledShortLabel = 'Jam';
+    protected override readonly disabledShortLabel = 'Unjam';
+    protected override readonly enabledToastVerb = 'jammed';
+    protected override readonly disabledToastVerb = 'unjammed';
 
     override applicableTo = (equipment: MountedEquipment): boolean => {
         if (equipment.equipment instanceof WeaponEquipment) {
@@ -48,16 +52,5 @@ export class UACJammingHandler extends CycleModeHandler {
             return ammoType == 'AC_ULTRA' || ammoType == 'AC_ULTRA_THB' || ammoType == 'AC_ROTARY';
         }
         return false;
-    }
-
-    protected getDefaultMode(): string {
-        return 'working';
-    }
-
-    protected getModes(): PickerChoice[] {
-        return [
-            { value: 'working', label: 'Unjammed', shortLabel: 'Unjam', keepOpen: false, tooltipType: 'success' },
-            { value: 'jammed', label: 'Jammed', shortLabel: 'Jam', keepOpen: false, tooltipType: 'error' }
-        ];
     }
 }

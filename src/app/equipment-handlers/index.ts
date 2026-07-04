@@ -48,6 +48,7 @@ import { LaserInsulatorHandler } from './laser-insulator.handler';
 import { RiscLaserPulseModuleHandler } from './risc-laser-pulse-module.handler';
 import { VspPulseHandler } from './vsp-pulse.handler';
 import { MascHandler } from './masc.handler';
+import { DisabledEquipmentHandler } from './disabled-equipment.handler';
 
 /**
  * Register all equipment handlers.
@@ -69,6 +70,7 @@ export function registerAllHandlers(registryService: EquipmentInteractionRegistr
     registry.register(new RiscLaserPulseModuleHandler());
     registry.register(new VspPulseHandler());
     registry.register(new MascHandler());
+    registry.register(new DisabledEquipmentHandler());
     registry.register(new PpcCapacitorHandler());
     registry.register(new UACJammingHandler());
     registry.register(new C3Handler());

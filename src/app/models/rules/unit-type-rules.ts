@@ -75,6 +75,9 @@ export interface MountedEquipmentRuleState {
     hitMod: number;
 }
 
+export const ENTRY_DISABLED_STATE_KEY = 'disabled';
+export const ENTRY_DISABLED_STATE_VALUE = 'true';
+
 export interface LocationConditionControl {
     key: string;
     label: string;
@@ -369,7 +372,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     }
 
     protected isEntryStateDisabled(entry: MountedEquipment): boolean {
-        return entry.states.get('state') === 'jammed';
+        return entry.states.get(ENTRY_DISABLED_STATE_KEY) === ENTRY_DISABLED_STATE_VALUE;
     }
 
     protected entryCriticalSlots(entry: MountedEquipment): CriticalSlot[] {

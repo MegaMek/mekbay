@@ -20,13 +20,14 @@ import { INVENTORY_CONTROL_MODE_STATE, inventoryControlSortKey, getInventoryCont
 import { WeaponsEquipmentPanelComponent } from './weapons-equipment-panel.component';
 import type { EquipmentDialogContext } from './equipment-dialog.model';
 import { getMotiveModeLabel, type MotiveModes } from '../../models/motiveModes.model';
+import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from '../../models/rules/unit-type-rules';
 
 type EntryState = { isDamaged: boolean; isDisabled: boolean; hitMod: number };
 
 function testEntryRuleState(entry: MountedEquipment): EntryState {
     return {
         isDamaged: entry.committedDestroyed(),
-        isDisabled: entry.states.get('state') === 'jammed' || testInfantryFieldGunEntryDisabled(entry),
+        isDisabled: entry.states.get(ENTRY_DISABLED_STATE_KEY) === ENTRY_DISABLED_STATE_VALUE || testInfantryFieldGunEntryDisabled(entry),
         hitMod: 0
     };
 }
@@ -526,11 +527,11 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(row.destroyed).toBeFalse();
     });
 
-    it('marks jammed inventory-only rows disabled without entry state rules', () => {
+    it('marks disabled inventory-only rows disabled without entry state rules', () => {
         const uac = entry({
             id: 'uac',
             equipment: weapon('uac', 'AC_ULTRA'),
-            states: new Map([['state', 'jammed']]),
+            states: new Map([[ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE]]),
             el: svgEntry('<g><g class="name"><text>Ultra AC/2</text></g></g>')
         });
         const unit = { getInventory: () => [uac], getCritSlots: () => [], getUnit: () => ({ subtype: '', comp: [] }), isEquipmentUnavailable: testEquipmentUnavailable, rules: EMPTY_ENTRY_STATE_RULES } as unknown as CBTForceUnit;
