@@ -12,7 +12,7 @@ import { UnitSvgService } from '../services/unit-svg.service';
 import { UnitSvgVehicleService } from '../services/unit-svg-vehicle.service';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import type { Unit } from './units.model';
-import { EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
+import { EquipmentInteractionHandler, EquipmentInteractionRegistryService, type HandlerContext } from '../services/equipment-interaction-registry.service';
 import { LaserInsulatorHandler } from '../equipment-handlers/laser-insulator.handler';
 import { RISC_LASER_PULSE_MODE, RiscLaserPulseModuleHandler } from '../equipment-handlers/risc-laser-pulse-module.handler';
 import { DialogsService } from '../services/dialogs.service';
@@ -387,6 +387,24 @@ class TestCBTForce extends CBTForce {
     }
 }
 
+class EndTurnTestHandler extends EquipmentInteractionHandler {
+    readonly id = 'end-turn-test-handler';
+    override readonly flags = ['F_END_TURN_TEST'];
+    calls = 0;
+
+    getChoices(): [] {
+        return [];
+    }
+
+    handleSelection(): boolean {
+        return false;
+    }
+
+    override onEndTurn(_equipment: MountedEquipment, _context: HandlerContext): void {
+        this.calls++;
+    }
+}
+
 describe('CBTForceUnit direct inventory ammo bins', () => {
     let equipment: EquipmentMap;
     let dataService: jasmine.SpyObj<DataService>;
@@ -422,6 +440,22 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         unitInitializer.initializeUnitIfNeeded(unit, svg);
         unit.isLoaded.set(true);
     }
+
+    it('calls equipment handler end-turn hooks when ending turn', () => {
+        const handler = new EndTurnTestHandler();
+        TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(handler);
+        const forceUnit = createForceUnit();
+        forceUnit.setInventory([new MountedEquipment({
+            owner: forceUnit,
+            id: 'end-turn-test@FR#0',
+            name: 'End Turn Test',
+            equipment: new Equipment({ id: 'end-turn-test', name: 'End Turn Test', type: 'misc', flags: ['F_END_TURN_TEST'] }),
+        })], true);
+
+        forceUnit.endTurn();
+
+        expect(handler.calls).toBe(1);
+    });
 
     it('splits direct inventory ammo into one entry per bin using q and q2', () => {
         const forceUnit = createForceUnit(createVehicleUnit(equipment));

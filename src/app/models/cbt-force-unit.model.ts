@@ -136,11 +136,15 @@ export class CBTForceUnit extends ForceUnit {
     getInventoryControlRules(): InventoryControlRules {
         return this.injector.get(EquipmentInteractionRegistryService)
             .getRegistry()
-            .inventoryControlRules({
-                toastService: this.injector.get(ToastService),
-                dialogsService: this.injector.get(DialogsService),
-                dataService: this.injector.get(DataService)
-            });
+            .inventoryControlRules(this.getHandlerContext());
+    }
+
+    private getHandlerContext() {
+        return {
+            toastService: this.injector.get(ToastService),
+            dialogsService: this.injector.get(DialogsService),
+            dataService: this.injector.get(DataService)
+        };
     }
 
     applyInventoryControlDisplayEffects(
@@ -1123,6 +1127,9 @@ export class CBTForceUnit extends ForceUnit {
                 optionEl.classList.remove('selected');
             });
         });
+        const equipmentRegistry = this.injector.get(EquipmentInteractionRegistryService).getRegistry();
+        const handlerContext = this.getHandlerContext();
+        this.getInventory().forEach(entry => equipmentRegistry.onEndTurn(entry, handlerContext));
         this.state.endTurn();
         this.phaseTrigger.update(v => v + 1); // Trigger change detection
         this.state.resetTurnState();

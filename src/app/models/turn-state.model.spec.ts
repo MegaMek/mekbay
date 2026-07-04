@@ -8,8 +8,7 @@ import type { UnitTypeRules } from './rules/unit-type-rules';
 import type { Unit } from './units.model';
 import { TurnState } from './turn-state.model';
 import { Equipment } from './equipment.model';
-import { PpcCapacitorHandler } from '../equipment-handlers/ppc-capacitor.handler';
-import { PPC_CAPACITOR_STATE_KEY } from '../utils/ppc-capacitor.util';
+import { PpcCapacitorHandler, PPC_CAPACITOR_STATE_KEY } from '../equipment-handlers/ppc-capacitor.handler';
 
 interface TurnStateHarnessOptions {
     critSlots?: CriticalSlot[];
