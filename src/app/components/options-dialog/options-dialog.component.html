@@ -35,11 +35,6 @@
             @switch (currentViewId()) {
             @case ('General') {
             <div class="settings-view-content">
-            @if (appUpdateService.updatePending()) {
-            <div class="option-row update-restart-row">
-                <button type="button" class="bt-button warning restart-update-button" (click)="restartToUpdate()">RESTART TO UPDATE</button>
-            </div>
-            }
             <div class="option-row">
                 <label for="gameSystem">Default Game system:</label>
                 <select id="gameSystem" class="bt-select" [value]="optionsService.options().gameSystem"
@@ -732,14 +727,19 @@
         @if (isWideLayout()) {
         <div class="options-desktop-shell">
             <nav class="options-nav" aria-label="Options sections">
+                @if (appUpdateService.updatePending()) {
+                <div class="options-nav-item update-entry">
+                    <button type="button" class="bt-button warning restart-update-button" (click)="restartToUpdate()">
+                        INSTALL UPDATE
+                    </button>
+                </div>
+                }
                 <div class="options-nav-heading">Sections</div>
                 @for (section of topLevelViews; track section.id) {
                 <button type="button" class="options-nav-item" [class.active]="isSectionActive(section.id)"
                     [attr.aria-current]="isSectionActive(section.id) ? 'page' : null"
                     (click)="selectDesktopSection(section.id)">
-                    <span class="options-nav-label">{{ section.title }}
-                        @if (section.id === 'General' && appUpdateService.updatePending()) { <span class="settings-update-dot" aria-hidden="true"></span> }
-                    </span>
+                    <span class="options-nav-label">{{ section.title }}</span>
                     <span class="options-nav-description">{{ section.description }}</span>
                 </button>
                 }
@@ -762,13 +762,18 @@
         <div class="options-mobile-shell">
             @if (isAtRoot()) {
             <div class="mobile-settings-list" role="list">
+                @if (appUpdateService.updatePending()) {
+                <div class="mobile-settings-item update-entry">
+                    <button type="button" class="bt-button warning restart-update-button" (click)="restartToUpdate()">
+                        INSTALL UPDATE
+                    </button>
+                </div>
+                }
                 @for (section of topLevelViews; track section.id) {
                 <button type="button" class="mobile-settings-item" role="listitem"
                     (click)="openMobileSection(section.id)">
                     <span class="mobile-settings-copy">
-                        <span class="mobile-settings-label">{{ section.title }}
-                            @if (section.id === 'General' && appUpdateService.updatePending()) { <span class="settings-update-dot" aria-hidden="true"></span> }
-                        </span>
+                        <span class="mobile-settings-label">{{ section.title }}</span>
                         <span class="mobile-settings-description">{{ section.description }}</span>
                     </span>
                     <svg class="mobile-settings-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
