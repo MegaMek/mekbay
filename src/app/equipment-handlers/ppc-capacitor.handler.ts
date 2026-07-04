@@ -10,6 +10,7 @@ export const PPC_CAPACITOR_CHARGED_STATE = 'charged';
 export const PPC_CAPACITOR_HEAT_BONUS = 5;
 export const PPC_CAPACITOR_DAMAGE_BONUS = 5;
 export const PPC_CAPACITOR_CHARGED_COLOR = '#00a8ff';
+export const PPC_CAPACITOR_CHARGED_TEXT_COLOR = '#001829';
 
 export class PpcCapacitorHandler extends EquipmentInteractionHandler {
     readonly id = 'ppc-capacitor-handler';
@@ -30,7 +31,7 @@ export class PpcCapacitorHandler extends EquipmentInteractionHandler {
             shortLabel: charged ? 'Charged!' : 'Charge',
             value: charged ? 'discharged' : PPC_CAPACITOR_CHARGED_STATE,
             active: charged,
-            colors: charged ? { selected: PPC_CAPACITOR_CHARGED_COLOR } : undefined,
+            colors: charged ? { selected: PPC_CAPACITOR_CHARGED_COLOR, selectedText: PPC_CAPACITOR_CHARGED_TEXT_COLOR } : undefined,
             displayType: 'toggle'
         }];
     }

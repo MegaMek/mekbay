@@ -8,7 +8,7 @@ import { CBTInventoryControlRuntime } from '../../models/cbt-inventory-control-r
 import { MountedEquipment, type CriticalSlot, type HeatProfile } from '../../models/force-serialization';
 import { InventoryModeHandler } from '../../equipment-handlers/inventory-mode.handler';
 import { BAPHandler } from '../../equipment-handlers/bap.handler';
-import { PpcCapacitorHandler } from '../../equipment-handlers/ppc-capacitor.handler';
+import { PpcCapacitorHandler, PPC_CAPACITOR_CHARGED_COLOR, PPC_CAPACITOR_CHARGED_TEXT_COLOR, PPC_CAPACITOR_STATE_KEY } from '../../equipment-handlers/ppc-capacitor.handler';
 import { MmlHandler } from '../../equipment-handlers/mml.handler';
 import { AtmHandler } from '../../equipment-handlers/atm.handler';
 import { ArtemisVHandler } from '../../equipment-handlers/artemis-v.handler';
@@ -17,7 +17,6 @@ import { LaserInsulatorHandler } from '../../equipment-handlers/laser-insulator.
 import { RISC_LASER_PULSE_MODE, RiscLaserPulseModuleHandler } from '../../equipment-handlers/risc-laser-pulse-module.handler';
 import type { EquipmentInteractionHandler, HandlerChoice } from '../../services/equipment-interaction-registry.service';
 import { INVENTORY_CONTROL_MODE_STATE, inventoryControlSortKey, getInventoryControlGroups, type InventoryControlDisplayData, type InventoryControlDisplayEffectOptions } from '../../utils/inventory-control.util';
-import { PPC_CAPACITOR_STATE_KEY } from '../../utils/ppc-capacitor.util';
 import { WeaponsEquipmentPanelComponent } from './weapons-equipment-panel.component';
 import type { EquipmentDialogContext } from './equipment-dialog.model';
 import { getMotiveModeLabel, type MotiveModes } from '../../models/motiveModes.model';
@@ -667,7 +666,11 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(capacitor.states.get(PPC_CAPACITOR_STATE_KEY)).toBe('charged');
         expect(row.display.heat).toBe('10');
         expect(row.display.damage).toBe('10 [DE]');
-        expect(component.handlerChoices(row)[0]).toEqual(jasmine.objectContaining({ shortLabel: 'Charged', active: true }));
+        expect(component.handlerChoices(row)[0]).toEqual(jasmine.objectContaining({
+            shortLabel: 'Charged!',
+            active: true,
+            colors: { selected: PPC_CAPACITOR_CHARGED_COLOR, selectedText: PPC_CAPACITOR_CHARGED_TEXT_COLOR }
+        }));
 
         component.toggleSelected(row);
         expect(component.selectedHeatTotal()).toBe(10);

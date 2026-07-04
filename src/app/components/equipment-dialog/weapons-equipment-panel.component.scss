@@ -579,6 +579,26 @@
     color: var(--text-color);
 }
 
+.control-button {
+    background-color: var(--picker-choice-normal-color);
+    color: var(--picker-choice-normal-text-color, var(--text-color));
+
+    &.active {
+        background: var(--picker-choice-selected-color, var(--bt-yellow-background-bright));
+        color: var(--picker-choice-selected-text-color, var(--picker-choice-normal-text-color, var(--text-color)));
+    }
+
+    &.active.muted-active {
+        background: var(--picker-choice-muted-selected-color, var(--bt-yellow-background));
+        color: var(--picker-choice-muted-selected-text-color, var(--picker-choice-selected-text-color, var(--picker-choice-normal-text-color, var(--text-color))));
+    }
+
+    &:disabled {
+        background: var(--picker-choice-disabled-color);
+        color: var(--picker-choice-disabled-text-color, var(--picker-choice-normal-text-color, var(--text-color-secondary)));
+    }
+}
+
 @container (max-width: 760px) {
     .grid-fill,
     .weapon-equipment-header {

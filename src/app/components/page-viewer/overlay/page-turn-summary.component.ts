@@ -50,6 +50,17 @@ import { HexSliderComponent } from '../../hex-slider/hex-slider.component';
 import { TooltipDirective } from '../../../directives/tooltip.directive';
 import type { TooltipLine } from '../../tooltip/tooltip.component';
 import { calculateModifierTotal, type UnitModifierBreakdownEntry, type UnitModifierTotal } from '../../../models/rules/unit-type-rules';
+import { EquipmentInteractionRegistryService, type HandlerChoice, type HandlerContext } from '../../../services/equipment-interaction-registry.service';
+import { ToastService } from '../../../services/toast.service';
+import { DialogsService } from '../../../services/dialogs.service';
+import { DataService } from '../../../services/data.service';
+import type { MountedEquipment } from '../../../models/force-serialization';
+
+interface MascControlRow {
+    entry: MountedEquipment;
+    label: string;
+    choices: HandlerChoice[];
+}
 
 /*
  * Author: Drake
@@ -71,10 +82,22 @@ export class PageTurnSummaryPanelComponent {
     private injector = inject(Injector);
     private overlay = inject(Overlay);
     private parent = inject(PageInteractionOverlayComponent);
+    private equipmentRegistry = inject(EquipmentInteractionRegistryService).getRegistry();
+    private toastService = inject(ToastService);
+    private dialogsService = inject(DialogsService);
+    private dataService = inject(DataService);
     unit = this.parent.unit;
     force = this.parent.force;
     endTurnForAllButtonVisible = input<boolean>(false);
     endTurnForAllClicked = output<void>();
+
+    private handlerContext(): HandlerContext {
+        return {
+            toastService: this.toastService,
+            dialogsService: this.dialogsService,
+            dataService: this.dataService,
+        };
+    }
 
     endTurnForAll(event: MouseEvent) {
         event.stopPropagation();
@@ -188,6 +211,19 @@ export class PageTurnSummaryPanelComponent {
         return unit.PSRModifiers().modifiers.filter(modifier => modifier.pilotCheck !== undefined && modifier.pilotCheck !== 0);
     });
 
+    mascControlRows = computed<MascControlRow[]>(() => {
+        const unit = this.unit();
+        if (!unit) return [];
+        return unit.getInventory()
+            .filter(entry => entry.equipment?.flags?.has('F_MASC'))
+            .map(entry => ({
+                entry,
+                label: entry.equipment?.name || entry.name,
+                choices: this.equipmentRegistry.getChoices(entry, this.handlerContext()),
+            }))
+            .filter(row => row.choices.length > 0);
+    });
+
     gunneryModifiers = computed(() => {
         const unit = this.unit();
         if (!unit) return [];
@@ -287,6 +323,12 @@ export class PageTurnSummaryPanelComponent {
         if (!u) return;
         const turnState = u.turnState();
         turnState.spotting.set(!turnState.spotting());
+    }
+
+    async handleMascChoice(row: MascControlRow, choice: HandlerChoice): Promise<void> {
+        if (choice.disabled) return;
+        await this.equipmentRegistry.handleSelection(row.entry, choice, this.handlerContext());
+        this.unit()?.inventoryControl.markInventoryViewChanged();
     }
 
     overDistance = computed<boolean>(() => {

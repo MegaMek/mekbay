@@ -198,6 +198,51 @@
         flex-grow: 1;
     }
 
+    .masc-control-row {
+        .caption {
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    }
+
+    .masc-controls {
+        display: inline-flex;
+        align-items: center;
+        flex: 0 0 auto;
+        border: 2px solid #666;
+    }
+
+    .masc-button {
+        min-width: 32px;
+        border-radius: 0;
+        flex-grow: 0;
+        background-image: none;
+        background-color: var(--picker-choice-normal-color);
+        color: var(--picker-choice-normal-text-color);
+
+        &.selected {
+            background-color: var(--picker-choice-selected-color, var(--bt-yellow-background-bright));
+            color: var(--picker-choice-selected-text-color);
+        }
+
+        &.muted-selected {
+            background-color: var(--picker-choice-muted-selected-color, var(--bt-yellow-background));
+            color: var(--picker-choice-muted-selected-text-color, var(--picker-choice-selected-text-color));
+        }
+
+        &:disabled {
+            cursor: not-allowed;
+            background-color: var(--picker-choice-disabled-color);
+            color: var(--picker-choice-disabled-text-color);
+        }
+
+        &:not(:last-child):not(.selected) {
+            border-right: 1px solid #444;
+        }
+    }
+
     .move-slider {
         --hex-slider-track-height: 12px;
         --hex-slider-track-overhang: 14px;

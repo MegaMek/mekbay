@@ -20,16 +20,31 @@
     cursor: pointer;
     transition: background-color 0.15s ease-in-out;
     flex-shrink: 0;
+    background: var(--picker-choice-normal-color);
+    color: var(--picker-choice-normal-text-color);
 }
 
 .value-cell.disabled {
     cursor: not-allowed;
-    color: #666;
+    color: var(--picker-choice-disabled-text-color, #666);
     opacity: 0.6;
+    background: var(--picker-choice-disabled-color);
+}
+
+.value-cell.active:not(.disabled) {
+    background: var(--picker-choice-selected-color, var(--bt-yellow-background-bright));
+    color: var(--picker-choice-selected-text-color);
+    font-weight: bold;
+}
+
+.value-cell.active.muted-active:not(.disabled) {
+    background: var(--picker-choice-muted-selected-color, var(--bt-yellow-background));
+    color: var(--picker-choice-muted-selected-text-color, var(--picker-choice-selected-text-color));
 }
 
 .value-cell.selected {
-    background: var(--bt-yellow-background-bright);
+    background: var(--picker-choice-selected-color, var(--bt-yellow-background-bright));
+    color: var(--picker-choice-selected-text-color);
     font-weight: bold;
     z-index: 2;
 }
@@ -49,7 +64,7 @@
         outline: none;
         border: 0;
         background-color: transparent;
-        color: var(--text-color);
+        color: currentColor;
 
         option {
             background: #000;
@@ -65,12 +80,23 @@
 
     .value-cell {
         &.disabled {
-            color: #999;
-            background: #ccc;
+            color: var(--picker-choice-disabled-text-color, #999);
+            background: var(--picker-choice-disabled-color, #ccc);
+        }
+
+        &.active:not(.disabled) {
+            background: var(--picker-choice-selected-color, var(--bt-yellow-background-light));
+            color: var(--picker-choice-selected-text-color);
+        }
+
+        &.active.muted-active:not(.disabled) {
+            background: var(--picker-choice-muted-selected-color, var(--bt-yellow-background));
+            color: var(--picker-choice-muted-selected-text-color, var(--picker-choice-selected-text-color));
         }
 
         &.selected {
-            background: var(--bt-yellow-background-light);
+            background: var(--picker-choice-selected-color, var(--bt-yellow-background-light));
+            color: var(--picker-choice-selected-text-color);
         }
     }
 

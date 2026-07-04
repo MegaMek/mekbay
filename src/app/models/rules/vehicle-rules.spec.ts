@@ -166,7 +166,7 @@ describe('VehicleRules', () => {
             critSlots: [crit('Supercharger', 10)],
         });
         const destroyedJetBooster = entry({
-            equipment: equipment('ISVTOLJetBooster', ['F_MASC', 'S_JET_BOOSTER']),
+            equipment: equipment('ISVTOLJetBooster', ['F_MASC', 'F_JET_BOOSTER']),
             destroyed: true,
         });
         const rules = createRulesHarness({
@@ -182,7 +182,7 @@ describe('VehicleRules', () => {
     });
 
     it('treats VTOL jet boosters as Supercharger-equivalent movement equipment', () => {
-        const jetBooster = entry({ equipment: equipment('ISVTOLJetBooster', ['F_MASC', 'S_JET_BOOSTER']) });
+        const jetBooster = entry({ equipment: equipment('ISVTOLJetBooster', ['F_MASC', 'F_JET_BOOSTER']) });
         const rules = createRulesHarness({
             inventory: [jetBooster],
             type: 'VTOL',

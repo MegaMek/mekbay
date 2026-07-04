@@ -67,6 +67,21 @@ export type PickerValue = string | number;
 /** Display type for choice rendering */
 export type PickerDisplayType = 'button' | 'dropdown' | 'label' | 'state-button' | 'toggle';
 
+/** Active-choice visual tone. Selected is the strong/default active state; muted is a softer active state. */
+export type PickerChoiceSelectionTone = 'selected' | 'muted';
+
+/** Optional background and text colors for renderer states. */
+export interface PickerChoiceColors {
+    normal?: string;
+    normalText?: string;
+    selected?: string;
+    selectedText?: string;
+    mutedSelected?: string;
+    mutedSelectedText?: string;
+    disabled?: string;
+    disabledText?: string;
+}
+
 /** Option for dropdown-type choices */
 export interface PickerDropdownOption {
     label: string;
@@ -81,6 +96,8 @@ export interface PickerChoice {
     value: PickerValue;
     disabled?: boolean;
     active?: boolean;
+    selectionTone?: PickerChoiceSelectionTone;
+    colors?: PickerChoiceColors;
     keepOpen?: boolean;
     displayType?: PickerDisplayType;
     choices?: PickerDropdownOption[];
