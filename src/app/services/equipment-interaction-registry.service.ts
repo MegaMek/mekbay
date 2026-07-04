@@ -107,6 +107,11 @@ export abstract class EquipmentInteractionHandler {
     afterInventoryControlFire?(equipment: MountedEquipment, context: HandlerContext): void | Promise<void>;
 
     /**
+     * Hook called when the owning unit ends its turn.
+     */
+    onEndTurn?(equipment: MountedEquipment, context: HandlerContext): void;
+
+    /**
      * Hook called while building an inventory-control row display.
      */
     applyInventoryControlDisplayEffects?(
@@ -256,6 +261,12 @@ class EquipmentInteractionRegistry {
     async afterInventoryControlFire(equipment: MountedEquipment, context: HandlerContext): Promise<void> {
         for (const handler of this.getHandlers(equipment)) {
             await handler.afterInventoryControlFire?.(equipment, context);
+        }
+    }
+
+    onEndTurn(equipment: MountedEquipment, context: HandlerContext): void {
+        for (const handler of this.getHandlers(equipment)) {
+            handler.onEndTurn?.(equipment, context);
         }
     }
 
