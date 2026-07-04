@@ -141,12 +141,44 @@
     -webkit-overflow-scrolling: touch;
 }
 
+.options-viewport .option-item {
+    align-items: center;
+    height: var(--virtual-option-height);
+    min-height: var(--virtual-option-height);
+    max-height: var(--virtual-option-height);
+    padding-top: 4px;
+    padding-bottom: 4px;
+    overflow: hidden;
+}
+
 .option-label {
     flex: 1 1 auto;
     min-width: 0;
     white-space: normal;
     overflow-wrap: anywhere;
     line-height: 1.25;
+}
+
+.options-viewport .option-label {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    line-height: 1.08;
+    max-height: 2.16em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.options-viewport .custom-checkbox,
+.options-viewport .option-img,
+.options-viewport .quantity-input {
+    align-self: center;
+}
+
+.options-viewport .custom-checkbox,
+.options-viewport .option-img {
+    margin-top: 0;
 }
 
 .option-item ::ng-deep .matchHighlight {
@@ -183,7 +215,6 @@
     height: 16px;
     background-color: transparent;
     border: 1px solid silver;
-    border-radius: 2px;
     flex-shrink: 0;
     transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
     text-align: center;

@@ -99,7 +99,7 @@
         [class.options-dropdown-above]="overlayPlacement() === 'above'"
         (click)="$event.stopPropagation()"
         (keydown)="onDropdownKeydown($event)">
-        <div class="filter-container" [hidden]="!(options().length > 20 || showUnavailableToggle())" (click)="$event.stopPropagation()">
+        <div class="filter-container" [hidden]="!showFilterControls()" (click)="$event.stopPropagation()">
             <div class="filter-row">
                 <input 
                     #filterInput
@@ -142,8 +142,10 @@
                 [id]="optionsListId"
                 tabindex="0"
                 [attr.aria-activedescendant]="keyboardFocusedOptionId()"
+                (pointerdown)="onOptionsPointerDown($event)"
                 (focus)="onOptionsListFocus($event)"
                 [itemSize]="optionItemSize"
+                [style.--virtual-option-height]="optionItemSize + 'px'"
                 [style.height.px]="viewportHeight()">
                 <label class="option-item"
                     *cdkVirtualFor="let option of filteredOptions(); let optionIndex = index; trackBy: trackOptionName"
@@ -189,7 +191,10 @@
                     @if (option.img) {
                         <img [src]="option.img" class="option-img" alt="">
                     }
-                    <span class="option-label" [innerHTML]="highlight(option.displayName ?? option.name)"></span>
+                    <span
+                        class="option-label"
+                        [style.fontSize.px]="getVirtualOptionLabelFontSize(option)"
+                        [innerHTML]="highlight(option.displayName ?? option.name)"></span>
                     @if (countable() && (getState(option.name) === 'and' || getState(option.name) === 'or')) {
                         <div class="quantity-input">
                             <input type="number"
@@ -209,6 +214,7 @@
                 [id]="optionsListId"
                 tabindex="0"
                 [attr.aria-activedescendant]="keyboardFocusedOptionId()"
+                (pointerdown)="onOptionsPointerDown($event)"
                 (focus)="onOptionsListFocus($event)"
                 [style.maxHeight.px]="maxHeightOptions()">
                 @for (option of filteredOptions(); let i = $index; track option.name) {
