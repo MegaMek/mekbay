@@ -2,7 +2,7 @@ import { Injector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { CBTForce } from '../models/cbt-force.model';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
-import { MiscEquipment, WeaponEquipment, type EquipmentMap } from '../models/equipment.model';
+import { AmmoEquipment, MiscEquipment, WeaponEquipment, type EquipmentMap } from '../models/equipment.model';
 import { MountedEquipment } from '../models/force-serialization';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { DataService } from './data.service';
@@ -24,11 +24,13 @@ function createEquipment(): EquipmentMap {
     const supercharger = new MiscEquipment({ id: 'Supercharger', name: 'Supercharger', type: 'misc', flags: ['F_MASC', 'S_SUPERCHARGER'] });
     const caseII = new MiscEquipment({ id: 'CLCASEII', name: 'CASE II', type: 'misc', flags: ['F_CASE_II'] });
     const mediumLaser = new WeaponEquipment({ id: 'CLMediumLaser', name: 'Medium Laser', type: 'weapon', weapon: { ammoType: 'NA' } });
+    const ultraAc20Ammo = new AmmoEquipment({ id: 'CLUltraAC20Ammo', name: 'Ultra AC/20 Ammo', type: 'ammo', ammo: { type: 'AC_ULTRA', rackSize: 20, shots: 5 } });
     return {
         [masc.internalName]: masc,
         [supercharger.internalName]: supercharger,
         [caseII.internalName]: caseII,
         [mediumLaser.internalName]: mediumLaser,
+        [ultraAc20Ammo.internalName]: ultraAc20Ammo,
     };
 }
 
@@ -125,5 +127,18 @@ describe('UnitInitializerService', () => {
         service.initializeUnitIfNeeded(forceUnit, svg);
 
         expect(forceUnit.getInventory().filter(entry => entry.id === 'CLMASC@LT#7').length).toBe(1);
+    });
+
+    it('does not mirror Mek ammo critical slots into inventory entries', () => {
+        const forceUnit = createForceUnit();
+        const svg = createSvg(`
+            <rect class="critSlot ammoSlot" loc="LT" uid="CLUltraAC20Ammo@LT#7" slot="7" name="CLUltraAC20Ammo" totalAmmo="5"></rect>
+            <g class="inventoryEntry" id="CLUltraAC20Ammo@LT#7"><g class="location"><text>LT</text></g></g>
+        `);
+
+        service.initializeUnitIfNeeded(forceUnit, svg);
+
+        expect(forceUnit.getCritSlots().filter(entry => entry.id === 'CLUltraAC20Ammo@LT#7').length).toBe(1);
+        expect(forceUnit.getInventory().some(entry => entry.id === 'CLUltraAC20Ammo@LT#7')).toBeFalse();
     });
 });

@@ -300,6 +300,7 @@ export class UnitInitializerService {
     private getInventoryElements(unit: CBTForceUnit, svg: SVGSVGElement, inventoryEntryEls: NodeListOf<SVGElement>): MountedEquipment[] {
         const inventoryEntries: MountedEquipment[] = [];
         const allCritSlots = unit.getCritSlots();
+        const hasAmmoCritSlots = allCritSlots.some(slot => slot.eq instanceof AmmoEquipment);
         const currentInventory = unit.getInventory();
         inventoryEntryEls.forEach(entryEl => {
             const id = entryEl.getAttribute('id') || '';
@@ -331,6 +332,7 @@ export class UnitInitializerService {
                     locations = new Set(locText.split('/'));
                 }
             }
+            if (eq instanceof AmmoEquipment && hasAmmoCritSlots) return;
             let baseHitMod = entryEl.getAttribute('hitMod');
             if (entryEl.parentElement?.classList.contains('inventoryEntry')) {
                 baseHitMod = entryEl.parentElement.getAttribute('hitMod2');
@@ -466,7 +468,7 @@ export class UnitInitializerService {
     private getCriticalOnlyInventoryEntries(unit: CBTForceUnit, existingIds: Set<string>, currentInventory: MountedEquipment[]): MountedEquipment[] {
         const critSlotsById = new Map<string, CriticalSlot[]>();
         for (const critSlot of unit.getCritSlots()) {
-            if (!critSlot.id || existingIds.has(critSlot.id) || !critSlot.eq || this.isCriticalOnlyInventoryExcluded(critSlot)) continue;
+            if (!critSlot.id || existingIds.has(critSlot.id) || !critSlot.eq || critSlot.eq instanceof AmmoEquipment || this.isCriticalOnlyInventoryExcluded(critSlot)) continue;
             const critSlots = critSlotsById.get(critSlot.id) ?? [];
             critSlots.push(critSlot);
             critSlotsById.set(critSlot.id, critSlots);
