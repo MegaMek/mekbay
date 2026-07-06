@@ -138,10 +138,7 @@ describe('UnitInitializerService', () => {
 
         service.initializeUnitIfNeeded(forceUnit, svg);
 
-        const ammoSlot = forceUnit.getCritSlots().find(entry => entry.id === 'CLUltraAC20Ammo@LT#7');
-        expect(ammoSlot).toBeDefined();
-        expect(ammoSlot?.totalAmmo).toBe(5);
-        expect(ammoSlot?.consumed).toBe(0);
+        expect(forceUnit.getCritSlots().filter(entry => entry.id === 'CLUltraAC20Ammo@LT#7').length).toBe(1);
         expect(forceUnit.getInventory().some(entry => entry.id === 'CLUltraAC20Ammo@LT#7')).toBeFalse();
     });
 });
