@@ -210,6 +210,7 @@ export class UnitInitializerService {
             const loc = critSlotEl.getAttribute('loc');
             const name = critSlotEl.getAttribute('name') || '';
             const armored = critSlotEl.getAttribute('armored') === '1';
+            const totalAmmo = parseInt(critSlotEl.getAttribute('totalAmmo') || '', 10);
             if (!loc || !id) return;
 
             const slot = parseInt(critSlotEl.getAttribute('slot') as string, 10);
@@ -228,6 +229,12 @@ export class UnitInitializerService {
                 if (armored) {
                     critSlot.armored = true; // in case it was added later
                 }
+                if (critSlotEl.classList.contains('ammoSlot')) {
+                    critSlot.consumed ??= 0;
+                    if (critSlot.totalAmmo === undefined && !isNaN(totalAmmo)) {
+                        critSlot.totalAmmo = totalAmmo;
+                    }
+                }
                 criticalSlots.push(critSlot);
                 slotsChanged = true;
                 return;
@@ -244,6 +251,9 @@ export class UnitInitializerService {
 
             if (critSlotEl.classList.contains('ammoSlot')) {
                 critSlot.consumed = 0;
+                if (!isNaN(totalAmmo)) {
+                    critSlot.totalAmmo = totalAmmo;
+                }
             }
             if (armored) {
                 critSlot.armored = true;
