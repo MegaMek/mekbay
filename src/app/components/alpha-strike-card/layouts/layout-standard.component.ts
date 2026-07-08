@@ -763,7 +763,7 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
             return 60;
         }
 
-        return this.armorStructurePipX(pipCount - 1) + 14;
+        return this.armorStructurePipX(pipCount - 1) + 17;
     }
 
     protected damageTypeHitAreaY(rows: Array<{ centerY: number }>): number {
@@ -771,15 +771,15 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
             return 5;
         }
 
-        return rows[0].centerY - 11;
+        return rows[0].centerY - 17;
     }
 
     protected damageTypeHitAreaHeight(rows: Array<{ centerY: number }>): number {
         if (rows.length === 0) {
-            return 22;
+            return 34;
         }
 
-        return (rows[rows.length - 1].centerY + 11) - (rows[0].centerY - 11);
+        return (rows[rows.length - 1].centerY + 17) - (rows[0].centerY - 17);
     }
 
     protected damageTypeHitAreaWidth(rows: Array<{ pips: PipState[] }>): number {

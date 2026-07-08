@@ -185,11 +185,11 @@
 
                         <g data-damage-type="armor">
                             <rect
-                                x="1.5"
+                                x="5"
                                 [attr.y]="damageTypeHitAreaY(armorPipRows())"
                                 [attr.width]="damageTypeHitAreaWidth(armorPipRows())"
                                 [attr.height]="damageTypeHitAreaHeight(armorPipRows())"
-                                class="armor-row-hit-area-svg">
+                                class="armor-row-hit-area-svg" fill="transparent" pointer-events="visiblePainted">
                             </rect>
                             @for (row of armorPipRows(); track row.centerY) {
                                 @if ($first) {
@@ -214,11 +214,11 @@
 
                         <g data-damage-type="structure">
                             <rect
-                                x="1.5"
+                                x="5"
                                 [attr.y]="damageTypeHitAreaY(structurePipRows())"
                                 [attr.width]="damageTypeHitAreaWidth(structurePipRows())"
                                 [attr.height]="damageTypeHitAreaHeight(structurePipRows())"
-                                class="armor-row-hit-area-svg">
+                                class="armor-row-hit-area-svg" fill="transparent" pointer-events="visiblePainted">
                             </rect>
                             @for (row of structurePipRows(); track row.centerY) {
                                 @if ($first) {

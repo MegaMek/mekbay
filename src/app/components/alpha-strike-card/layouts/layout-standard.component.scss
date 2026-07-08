@@ -4,6 +4,10 @@
     display: contents;
 }
 
+.armor-row-hit-area-svg {
+    cursor: pointer;
+}
+
 .fluff-image-container,
 .era-icons,
 .destroyed-overlay {
@@ -34,9 +38,10 @@
     object-position: center top;
 }
 
+
+
 .clickable,
 .heat-track,
-.armor-row-hit-area-svg,
 .pips-wrapper,
 .critical-row-svg,
 .special-ability,
@@ -86,6 +91,11 @@
     from {
         fill: rgba(187, 0, 255, 0.3);
     }
+}
+
+.armor-box-caption-svg,
+.armor-pip-circle {
+    pointer-events: none;
 }
 
 .armor-pip-circle.damaged {
