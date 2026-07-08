@@ -24,12 +24,12 @@ describe('PageViewerUiGlueService', () => {
             renderedShadowCount: 2
         })).toEqual({
             shouldRedisplay: true,
-            shouldCloseInteractionOverlays: true,
+            shouldCloseInteractionOverlays: false,
             shouldScheduleShadowRender: false
         });
     });
 
-    it('requests a redisplay when shadows should exist but none are rendered yet', () => {
+    it('schedules shadow rendering without redisplaying the active page when shadows are missing', () => {
         expect(service.buildResizePlan({
             previousVisibleCount: 1,
             nextVisibleCount: 1,
@@ -39,9 +39,9 @@ describe('PageViewerUiGlueService', () => {
             totalUnits: 3,
             renderedShadowCount: 0
         })).toEqual({
-            shouldRedisplay: true,
-            shouldCloseInteractionOverlays: true,
-            shouldScheduleShadowRender: false
+            shouldRedisplay: false,
+            shouldCloseInteractionOverlays: false,
+            shouldScheduleShadowRender: true
         });
     });
 

@@ -32,7 +32,7 @@ export class PageViewerUiGlueService {
         if (nextVisibleCount !== previousVisibleCount && hasCurrentUnit) {
             return {
                 shouldRedisplay: true,
-                shouldCloseInteractionOverlays: true,
+                shouldCloseInteractionOverlays: false,
                 shouldScheduleShadowRender: false
             };
         }
@@ -48,9 +48,9 @@ export class PageViewerUiGlueService {
         const shouldShowShadows = shadowPagesEnabled && totalUnits > nextVisibleCount;
         if (shouldShowShadows && renderedShadowCount === 0 && hasCurrentUnit) {
             return {
-                shouldRedisplay: true,
-                shouldCloseInteractionOverlays: true,
-                shouldScheduleShadowRender: false
+                shouldRedisplay: false,
+                shouldCloseInteractionOverlays: false,
+                shouldScheduleShadowRender: true
             };
         }
 
