@@ -53,7 +53,7 @@ describe('UACJammingHandler', () => {
         const mounted = entry('AC_ULTRA');
 
         expect(handler.getChoices(mounted, context)[0]).toEqual(jasmine.objectContaining({
-            label: 'Jammed',
+            label: 'Jam',
             shortLabel: 'Jam',
             active: false,
             value: ENTRY_DISABLED_STATE_VALUE
