@@ -37,6 +37,7 @@ import { CdkConnectedOverlay, Overlay, OverlayModule, type ConnectedOverlayPosit
 import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
 import { LayoutService } from '../../services/layout.service';
 import { highlightMatches, matchesSearch, parseSearchQuery } from '../../utils/search.util';
+import { scrollElementIntoView } from '../../utils/dropdown-interaction.utils';
 
 /*
  * Author: Drake
@@ -77,8 +78,8 @@ export interface MultiStateSelection {
 }
 
 type ScrollRestoreState =
-        | { kind: 'virtual'; optionName: string; scrollOffset: number; optionVisibleTop?: number }
-        | { kind: 'dom'; optionName: string; visibleTop: number };
+    | { kind: 'virtual'; scrollOffset: number; optionName?: string; optionVisibleTop?: number }
+    | { kind: 'dom'; scrollTop: number; optionName?: string; optionVisibleTop?: number };
 
 type TriggerRect = { left: number; top: number; width: number; height: number };
 
@@ -86,6 +87,8 @@ interface OpenDropdownOptions {
     focusInput: boolean;
     scrollToOptionName?: string;
 }
+
+type OptionScrollAlignment = 'nearest' | 'center';
 
 @Component({
     selector: 'multi-select-dropdown',
@@ -96,6 +99,7 @@ interface OpenDropdownOptions {
     styleUrls: ['./multi-select-dropdown.component.css']
 })
 export class MultiSelectDropdownComponent {
+    private static nextId = 0;
     private static readonly BELOW_OVERLAY_POSITIONS: ConnectedPosition[] = [
         { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top' },
         { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top' },
@@ -111,11 +115,13 @@ export class MultiSelectDropdownComponent {
     private overlay = inject(Overlay);
     private destroyed = false;
     private lastPointerType = '';
+    private lastOptionsPointerType = '';
     private anchorFollowFrameId: number | null = null;
     private lastTriggerRect: TriggerRect | null = null;
     private overlayRefreshFrameId: number | null = null;
     private overlayRefreshNeedsMetrics = false;
     private lastOverlayPositionKey: string | null = null;
+    readonly optionsListId = `multiSelectDropdown-${MultiSelectDropdownComponent.nextId++}-options`;
     private preferredOverlayPlacement = signal<'above' | 'below'>('below');
     displayAreaEl = viewChild<ElementRef<HTMLDivElement>>('displayArea');
     filterInput = viewChild<ElementRef<HTMLInputElement>>('filterInput');
@@ -140,15 +146,26 @@ export class MultiSelectDropdownComponent {
 
     showUnavailable = signal(false);
     showUnavailableToggle = computed(() => this.multistate() && this.options().some(o => o.available === false));
+    showFilterControls = computed(() => this.options().length > 20 || this.showUnavailableToggle());
     isOpen = signal(false);
     filterText = signal('');
+    private readonly hoveredOptionName = signal<string | null>(null);
+    private readonly keyboardFocusedOptionName = signal<string | null>(null);
+    readonly keyboardFocusedIndex = computed(() => {
+        const optionName = this.keyboardFocusedOptionName();
+        return optionName ? this.indexOfFilteredOption(optionName) : -1;
+    });
+    readonly keyboardFocusedOptionId = computed(() => {
+        const index = this.keyboardFocusedIndex();
+        return index >= 0 && index < this.filteredOptions().length ? this.optionId(index) : null;
+    });
     private static readonly OVERLAY_GAP = 4;
     private static readonly DEFAULT_PANEL_HEIGHT_FALLBACK = 248;
     private static readonly FILTER_CONTAINER_HEIGHT_FALLBACK = 41;
     private static readonly VIEWPORT_MARGIN = 12;
     private openMaxHeight = signal(MultiSelectDropdownComponent.DEFAULT_PANEL_HEIGHT_FALLBACK);
     private overlayMinWidth = signal(0);
-    readonly virtualScrollThreshold = 80;
+    readonly virtualScrollThreshold = 150;
     readonly optionItemSize = 44;
     readonly overlayWidth = computed(() => this.overlayMinWidth() || this.measureOverlayWidth());
     readonly repositionScrollStrategy = this.overlay.scrollStrategies.reposition();
@@ -233,11 +250,25 @@ export class MultiSelectDropdownComponent {
         return nameFiltered;
     });
 
-    useVirtualScroll = computed(() => this.filteredOptions().length >= this.virtualScrollThreshold);
+    useVirtualScroll = computed(() => this.options().length >= this.virtualScrollThreshold);
 
     highlight(text: string): string {
         const searchTokens = parseSearchQuery(this.filterText());
         return highlightMatches(text, searchTokens, true);
+    }
+
+    getVirtualOptionLabelFontSize(option: DropdownOption): number {
+        const textLength = (option.displayName ?? option.name).length;
+        if (textLength <= 26) {
+            return 16;
+        }
+        if (textLength <= 38) {
+            return 14;
+        }
+        if (textLength <= 56) {
+            return 12.5;
+        }
+        return 11;
     }
 
     toggleUnavailable(event: MouseEvent) {
@@ -337,6 +368,27 @@ export class MultiSelectDropdownComponent {
                 this.optionsViewport()?.checkViewportSize();
             }, { injector: this.injector });
         });
+
+        effect(() => {
+            if (!this.isOpen()) {
+                return;
+            }
+
+            const optionName = this.keyboardFocusedOptionName();
+            if (!optionName || this.indexOfFilteredOption(optionName) < 0) {
+                return;
+            }
+
+            afterNextRender(() => {
+                if (this.destroyed || !this.isOpen() || this.keyboardFocusedOptionName() !== optionName) {
+                    return;
+                }
+
+                if (this.indexOfFilteredOption(optionName) >= 0) {
+                    this.scrollToOption(optionName);
+                }
+            }, { injector: this.injector });
+        });
     }
 
     private measureDropdownMaxHeight(placement = this.overlayPlacement()): number {
@@ -346,10 +398,6 @@ export class MultiSelectDropdownComponent {
         }
 
         return availableForList;
-    }
-
-    private shouldShowFilterControls(): boolean {
-        return this.options().length > 20 || this.showUnavailableToggle();
     }
 
     private measureAvailableVerticalSpace(placement: 'above' | 'below'): number {
@@ -380,7 +428,7 @@ export class MultiSelectDropdownComponent {
             return measuredHeight;
         }
 
-        return this.shouldShowFilterControls()
+        return this.showFilterControls()
             ? MultiSelectDropdownComponent.FILTER_CONTAINER_HEIGHT_FALLBACK
             : 0;
     }
@@ -542,6 +590,8 @@ export class MultiSelectDropdownComponent {
     private closeDropdown() {
         this.isOpen.set(false);
         this.filterText.set('');
+        this.hoveredOptionName.set(null);
+        this.keyboardFocusedOptionName.set(null);
         this.resetOverlayState();
     }
 
@@ -552,14 +602,18 @@ export class MultiSelectDropdownComponent {
         }
     }
 
-    private scrollToOption(optionName: string) {
+    private scrollToOption(optionName: string, alignment: OptionScrollAlignment = 'nearest') {
         const options = this.filteredOptions();
         const optionIndex = options.findIndex(option => option.name === optionName);
+        if (optionIndex < 0) {
+            return;
+        }
 
         if (this.useVirtualScroll()) {
             const viewport = this.optionsViewport();
-            if (viewport && optionIndex >= 0) {
-                viewport.scrollToIndex(optionIndex, 'smooth');
+            if (viewport) {
+                viewport.checkViewportSize();
+                this.scrollVirtualOptionIntoView(viewport, optionIndex, alignment);
             }
             return;
         }
@@ -572,14 +626,49 @@ export class MultiSelectDropdownComponent {
         const items = Array.from(container.querySelectorAll<HTMLElement>('.option-item'));
         for (const item of items) {
             if (item.getAttribute('data-option-name') === optionName) {
-                try {
-                    item.scrollIntoView({ block: 'center', behavior: 'smooth' });
-                } catch {
-                    item.scrollIntoView();
+                if (alignment === 'center') {
+                    this.scrollDomOptionToCenter(container, item);
+                } else {
+                    scrollElementIntoView(container, item);
                 }
                 break;
             }
         }
+    }
+
+    private scrollVirtualOptionIntoView(viewport: CdkVirtualScrollViewport, optionIndex: number, alignment: OptionScrollAlignment = 'nearest'): void {
+        const visibleTop = viewport.measureScrollOffset('top');
+        const viewportHeight = viewport.getViewportSize();
+        const visibleBottom = visibleTop + viewportHeight;
+        const optionTop = optionIndex * this.optionItemSize;
+        const optionBottom = optionTop + this.optionItemSize;
+        const maxScrollTop = Math.max(0, this.filteredOptions().length * this.optionItemSize - viewportHeight);
+
+        if (alignment === 'center') {
+            const centeredOffset = optionTop - ((viewportHeight - this.optionItemSize) / 2);
+            viewport.scrollToOffset(Math.max(0, Math.min(maxScrollTop, centeredOffset)), 'auto');
+            return;
+        }
+
+        if (optionTop < visibleTop) {
+            viewport.scrollToOffset(Math.max(0, optionTop), 'auto');
+        } else if (optionBottom > visibleBottom) {
+            viewport.scrollToOffset(Math.min(maxScrollTop, optionBottom - viewportHeight), 'auto');
+        }
+    }
+
+    private scrollDomOptionToCenter(container: HTMLElement, item: HTMLElement): void {
+        const containerRect = container.getBoundingClientRect();
+        const itemRect = item.getBoundingClientRect();
+        const itemOffsetTop = itemRect.top - containerRect.top + container.scrollTop;
+        const itemHeight = itemRect.height || item.offsetHeight;
+        const centeredScrollTop = itemOffsetTop - ((container.clientHeight - itemHeight) / 2);
+        const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+        container.scrollTop = Math.max(0, Math.min(maxScrollTop, centeredScrollTop));
+    }
+
+    optionId(index: number): string {
+        return `${this.optionsListId}-${index}`;
     }
 
     private openDropdown({ focusInput, scrollToOptionName }: OpenDropdownOptions) {
@@ -589,6 +678,9 @@ export class MultiSelectDropdownComponent {
         document.dispatchEvent(new CustomEvent('multi-select-dropdown-open', { detail: this }));
         this.isOpen.set(true);
         this.filterText.set('');
+        this.keyboardFocusedOptionName.set(
+            scrollToOptionName && this.indexOfFilteredOption(scrollToOptionName) >= 0 ? scrollToOptionName : null
+        );
 
         afterNextRender(() => {
             if (this.destroyed || !this.isOpen()) {
@@ -596,7 +688,7 @@ export class MultiSelectDropdownComponent {
             }
 
             if (scrollToOptionName) {
-                this.scrollToOption(scrollToOptionName);
+                this.scrollToOption(scrollToOptionName, 'center');
             }
             if (focusInput) {
                 this.focusFilterInput();
@@ -665,6 +757,132 @@ export class MultiSelectDropdownComponent {
         this.openDropdown({ focusInput: shouldFocusFilter });
     }
 
+    onTriggerKeydown(event: KeyboardEvent): void {
+        if (this.semanticOnly()) return;
+        if (event.target !== this.displayAreaEl()?.nativeElement) return;
+
+        switch (event.key) {
+            case 'ArrowDown':
+                event.preventDefault();
+                if (!this.isOpen()) {
+                    this.openDropdown({ focusInput: false });
+                    this.setKeyboardFocusedIndex(0);
+                    return;
+                }
+                this.moveKeyboardFocus(1);
+                break;
+            case 'ArrowUp':
+                event.preventDefault();
+                if (!this.isOpen()) {
+                    this.openDropdown({ focusInput: false });
+                    this.setKeyboardFocusedIndex(this.filteredOptions().length - 1);
+                    return;
+                }
+                this.moveKeyboardFocus(-1);
+                break;
+            case 'Enter':
+            case ' ':
+                event.preventDefault();
+                if (this.isOpen()) {
+                    this.toggleKeyboardFocusedOption();
+                } else {
+                    this.openDropdown({ focusInput: false });
+                }
+                break;
+            case 'Escape':
+                if (this.isOpen()) {
+                    event.preventDefault();
+                    this.closeDropdown();
+                }
+                break;
+        }
+    }
+
+    onDropdownKeydown(event: KeyboardEvent): void {
+        if (event.target instanceof HTMLInputElement) return;
+        this.handleOpenDropdownKeydown(event);
+    }
+
+    onOptionsListFocus(event: FocusEvent): void {
+        if (event.target !== event.currentTarget) {
+            return;
+        }
+
+        if (this.lastOptionsPointerType) {
+            this.lastOptionsPointerType = '';
+            return;
+        }
+
+        if (this.keyboardFocusedIndex() < 0) {
+            this.setKeyboardFocusedIndex(0);
+        }
+    }
+
+    onOptionsPointerDown(event: PointerEvent): void {
+        this.lastOptionsPointerType = event.pointerType || 'mouse';
+    }
+
+    onFilterKeydown(event: KeyboardEvent): void {
+        switch (event.key) {
+            case 'ArrowDown':
+                event.preventDefault();
+                event.stopPropagation();
+                this.moveKeyboardFocus(1);
+                break;
+            case 'ArrowUp':
+                event.preventDefault();
+                event.stopPropagation();
+                this.moveKeyboardFocus(-1);
+                break;
+            case 'Enter':
+                event.preventDefault();
+                event.stopPropagation();
+                this.toggleKeyboardFocusedOption();
+                break;
+            case 'Escape':
+                event.preventDefault();
+                event.stopPropagation();
+                this.closeDropdown();
+                break;
+        }
+    }
+
+    private handleOpenDropdownKeydown(event: KeyboardEvent): void {
+        switch (event.key) {
+            case 'ArrowDown':
+                event.preventDefault();
+                event.stopPropagation();
+                this.moveKeyboardFocus(1);
+                break;
+            case 'ArrowUp':
+                event.preventDefault();
+                event.stopPropagation();
+                this.moveKeyboardFocus(-1);
+                break;
+            case 'Home':
+                event.preventDefault();
+                event.stopPropagation();
+                this.setKeyboardFocusedIndex(0);
+                break;
+            case 'End':
+                event.preventDefault();
+                event.stopPropagation();
+                this.setKeyboardFocusedIndex(this.filteredOptions().length - 1);
+                break;
+            case 'Enter':
+            case ' ':
+                event.preventDefault();
+                event.stopPropagation();
+                this.toggleKeyboardFocusedOption();
+                break;
+            case 'Escape':
+                event.preventDefault();
+                event.stopPropagation();
+                this.closeDropdown();
+                break;
+        }
+    }
+
     openAndScrollTo(optionName: string, event: MouseEvent) {
         event.stopPropagation();
         this.openDropdown({ focusInput: true, scrollToOptionName: optionName });
@@ -694,11 +912,72 @@ export class MultiSelectDropdownComponent {
     onFilterInput(event: Event) {
         const inputElement = event.target as HTMLInputElement;
         this.filterText.set(inputElement.value);
+        this.hoveredOptionName.set(null);
+        this.keyboardFocusedOptionName.set(null);
     }
 
-    onOptionToggle(optionName: string, event?: MouseEvent) {
-        const restoreState = this.captureScrollRestoreState(optionName);
+    onOptionPointerHover(optionName: string): void {
+        this.hoveredOptionName.set(optionName);
+    }
 
+    onOptionPointerLeave(optionName: string): void {
+        if (this.hoveredOptionName() === optionName) {
+            this.hoveredOptionName.set(null);
+        }
+    }
+
+    private indexOfFilteredOption(optionName: string): number {
+        return this.filteredOptions().findIndex(option => option.name === optionName);
+    }
+
+    private moveKeyboardFocus(delta: number): void {
+        const options = this.filteredOptions();
+        if (options.length === 0) {
+            this.keyboardFocusedOptionName.set(null);
+            return;
+        }
+
+        const currentIndex = this.keyboardFocusedIndex();
+        const hoveredIndex = this.hoveredOptionName() ? this.indexOfFilteredOption(this.hoveredOptionName()!) : -1;
+        const baseIndex = currentIndex >= 0 ? currentIndex : hoveredIndex;
+        const nextIndex = currentIndex < 0
+            ? (baseIndex >= 0 ? Math.max(0, Math.min(options.length - 1, baseIndex + delta)) : (delta > 0 ? 0 : options.length - 1))
+            : Math.max(0, Math.min(options.length - 1, currentIndex + delta));
+        this.setKeyboardFocusedIndex(nextIndex);
+    }
+
+    private setKeyboardFocusedIndex(index: number): void {
+        const options = this.filteredOptions();
+        if (options.length === 0) {
+            this.keyboardFocusedOptionName.set(null);
+            return;
+        }
+
+        const clampedIndex = Math.max(0, Math.min(options.length - 1, index));
+        this.keyboardFocusedOptionName.set(options[clampedIndex].name);
+        this.scrollKeyboardFocusedOptionIntoView();
+    }
+
+    private scrollKeyboardFocusedOptionIntoView(): void {
+        const focusedOption = this.filteredOptions()[this.keyboardFocusedIndex()];
+        if (focusedOption) {
+            this.scrollToOption(focusedOption.name);
+        }
+    }
+
+    private toggleKeyboardFocusedOption(): void {
+        const focusedOption = this.filteredOptions()[this.keyboardFocusedIndex()];
+        if (!focusedOption) return;
+
+        if (this.multiselect()) {
+            this.onOptionToggle(focusedOption.name, false);
+        } else {
+            this.onSingleSelect(focusedOption.name);
+        }
+    }
+
+    onOptionToggle(optionName: string, restoreScroll = true) {
+        const restoreState = restoreScroll ? this.captureScrollRestoreState(optionName) : null;
         if (this.multistate()) {
             const option = this.options().find((entry) => entry.name === optionName);
             const sel = this.selected();
@@ -718,7 +997,9 @@ export class MultiSelectDropdownComponent {
                     this.selectionChange.emit({
                         [optionName]: { name: optionName, state: nextState, count: 1 },
                     });
-                    this.restoreScrollPosition(restoreState);
+                    if (restoreScroll) {
+                        this.restoreScrollPosition(restoreState);
+                    }
                     return;
                 }
 
@@ -744,7 +1025,9 @@ export class MultiSelectDropdownComponent {
             this.selectionChange.emit(newSelection);
         }
         
-        this.restoreScrollPosition(restoreState);
+        if (restoreScroll) {
+            this.restoreScrollPosition(restoreState);
+        }
     }
 
     private getSelectableStateCycle(option?: DropdownOption): readonly SelectableMultiState[] {
@@ -755,7 +1038,7 @@ export class MultiSelectDropdownComponent {
         return states.length > 0 ? states : ['or'];
     }
 
-    private captureScrollRestoreState(optionName: string): ScrollRestoreState | null {
+    private captureScrollRestoreState(optionName?: string): ScrollRestoreState | null {
         if (this.useVirtualScroll()) {
             const viewport = this.optionsViewport();
             const scrollOffset = viewport?.measureScrollOffset('top');
@@ -763,12 +1046,12 @@ export class MultiSelectDropdownComponent {
                 return null;
             }
 
-            const optionIndex = this.filteredOptions().findIndex(option => option.name === optionName);
+            const optionIndex = optionName ? this.indexOfFilteredOption(optionName) : -1;
+
             return {
                 kind: 'virtual',
-                optionName,
                 scrollOffset,
-                ...(optionIndex >= 0 ? { optionVisibleTop: optionIndex * this.optionItemSize - scrollOffset } : {}),
+                ...(optionName && optionIndex >= 0 ? { optionName, optionVisibleTop: (optionIndex * this.optionItemSize) - scrollOffset } : {}),
             };
         }
 
@@ -777,17 +1060,17 @@ export class MultiSelectDropdownComponent {
             return null;
         }
 
-        const item = container.querySelector<HTMLElement>('.option-item[data-option-name="' + CSS.escape(optionName) + '"]');
-        if (!item) {
-            return null;
-        }
+        const item = optionName
+            ? container.querySelector<HTMLElement>('.option-item[data-option-name="' + CSS.escape(optionName) + '"]')
+            : null;
+        const optionVisibleTop = item
+            ? item.getBoundingClientRect().top - container.getBoundingClientRect().top
+            : undefined;
 
-        const containerRect = container.getBoundingClientRect();
-        const itemRect = item.getBoundingClientRect();
         return {
             kind: 'dom',
-            optionName,
-            visibleTop: itemRect.top - containerRect.top,
+            scrollTop: container.scrollTop,
+            ...(optionName && optionVisibleTop !== undefined ? { optionName, optionVisibleTop } : {}),
         };
     }
 
@@ -804,16 +1087,8 @@ export class MultiSelectDropdownComponent {
                     return;
                 }
 
-                let nextOffset = restoreState.scrollOffset;
-                if (restoreState.optionVisibleTop !== undefined) {
-                    const optionIndex = this.filteredOptions().findIndex(option => option.name === restoreState.optionName);
-                    if (optionIndex >= 0) {
-                        nextOffset = optionIndex * this.optionItemSize - restoreState.optionVisibleTop;
-                    }
-                }
-
-                const maxOffset = Math.max(0, viewport.getDataLength() * this.optionItemSize - viewport.getViewportSize());
-                viewport.scrollToOffset(Math.max(0, Math.min(maxOffset, nextOffset)));
+                viewport.checkViewportSize();
+                this.restoreVirtualScrollPosition(viewport, restoreState);
                 return;
             }
 
@@ -822,27 +1097,39 @@ export class MultiSelectDropdownComponent {
                 return;
             }
 
-            // find the same item after update
-            const itemAfter = container.querySelector<HTMLElement>('.option-item[data-option-name="' + CSS.escape(restoreState.optionName) + '"]');
-            if (!itemAfter) {
-                return;
-            }
-
-            const containerRect = container.getBoundingClientRect();
-            const itemRect = itemAfter.getBoundingClientRect();
-
-            // item offset within the scrollable content (distance from content top)
-            const itemAfterOffsetTop = (itemRect.top - containerRect.top) + container.scrollTop;
-
-            // desired visible top within container is the preservedVisibleTop
-            let newScrollTop = itemAfterOffsetTop - restoreState.visibleTop;
-            newScrollTop = Math.max(0, Math.min(container.scrollHeight - container.clientHeight, newScrollTop));
-
-            // apply only if it meaningfully changes the scroll to avoid jitter
-            if (Math.abs(container.scrollTop - newScrollTop) > 0.5) {
-                container.scrollTop = newScrollTop;
-            }
+            this.restoreDomScrollPosition(container, restoreState);
         }, { injector: this.injector });
+    }
+
+    private restoreDomScrollPosition(container: HTMLElement, restoreState: Extract<ScrollRestoreState, { kind: 'dom' }>): void {
+        let newScrollTop = restoreState.scrollTop;
+        if (restoreState.optionName && restoreState.optionVisibleTop !== undefined) {
+            const item = container.querySelector<HTMLElement>('.option-item[data-option-name="' + CSS.escape(restoreState.optionName) + '"]');
+            if (item) {
+                const itemOffsetTop = (item.getBoundingClientRect().top - container.getBoundingClientRect().top) + container.scrollTop;
+                newScrollTop = itemOffsetTop - restoreState.optionVisibleTop;
+            }
+        }
+
+        newScrollTop = Math.max(0, Math.min(container.scrollHeight - container.clientHeight, newScrollTop));
+
+        // apply only if it meaningfully changes the scroll to avoid jitter
+        if (Math.abs(container.scrollTop - newScrollTop) > 0.5) {
+            container.scrollTop = newScrollTop;
+        }
+    }
+
+    private restoreVirtualScrollPosition(viewport: CdkVirtualScrollViewport, restoreState: Extract<ScrollRestoreState, { kind: 'virtual' }>) {
+        let nextOffset = restoreState.scrollOffset;
+        if (restoreState.optionName && restoreState.optionVisibleTop !== undefined) {
+            const optionIndex = this.indexOfFilteredOption(restoreState.optionName);
+            if (optionIndex >= 0) {
+                nextOffset = (optionIndex * this.optionItemSize) - restoreState.optionVisibleTop;
+            }
+        }
+
+        const maxOffset = Math.max(0, viewport.getDataLength() * this.optionItemSize - viewport.getViewportSize());
+        viewport.scrollToOffset(Math.max(0, Math.min(maxOffset, nextOffset)), 'auto');
     }
 
     getState(optionName: string): MultiState {

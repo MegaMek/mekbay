@@ -18,6 +18,8 @@ import type { LoadOrganizationEntry } from '../../models/organization.model';
 import { AlignmentPickerDialogComponent, type AlignmentPickerResult } from '../alignment-picker-dialog/alignment-picker-dialog.component';
 import { AddExternalForceDialogComponent } from '../add-external-force-dialog/add-external-force-dialog.component';
 import { getFactionImg } from '../../models/factions.model';
+import { GameSystem } from '../../models/common.model';
+import { AppUpdateService } from '../../services/app-update.service';
 
 /*
  * Sidebar footer component
@@ -38,6 +40,7 @@ export class SidebarFooterComponent {
     forceBuilderService = inject(ForceBuilderService);
     dialogsService = inject(DialogsService);
     dataService = inject(DataService);
+    appUpdateService = inject(AppUpdateService);
     compactModeService = inject(CompactModeService);
     menuTriggers = viewChildren<CdkMenuTrigger>(CdkMenuTrigger);
 
@@ -88,6 +91,20 @@ export class SidebarFooterComponent {
     alignmentFilterBlink = signal(false);
     private blinkTimeout: ReturnType<typeof setTimeout> | null = null;
     private remoteUpdateSub: Subscription | null = null;
+
+    optimizeBudgetLabel = computed(() => (
+        this.forceBuilderService.smartCurrentForce()?.gameSystem === GameSystem.ALPHA_STRIKE ? 'Optimize PV...' : 'Optimize BV...'
+    ));
+
+    canOpenForceGeneratorWithCurrentForce = computed(() => {
+        const force = this.forceBuilderService.smartCurrentForce();
+        return !!force && force.units().length > 0;
+    });
+
+    canOptimizeBudget = computed(() => {
+        const force = this.forceBuilderService.smartCurrentForce();
+        return !!force && force.units().length > 0 && !force.readOnly();
+    });
 
     constructor() {
         const destroyRef = inject(DestroyRef);
@@ -142,6 +159,21 @@ export class SidebarFooterComponent {
 
     showOptionsDialog(): void {
         this.dialogsService.createDialog(OptionsDialogComponent);
+    }
+
+    async showBudgetOptimizerDialog(): Promise<void> {
+        const force = this.forceBuilderService.smartCurrentForce();
+        if (!force || force.readOnly() || force.units().length === 0) { return; }
+        const { ForceBudgetOptimizerDialogComponent } = await import('../force-budget-optimizer-dialog/force-budget-optimizer-dialog.component');
+        this.dialogsService.createDialog(ForceBudgetOptimizerDialogComponent, {
+            data: { force },
+        });
+    }
+
+    async showCurrentForceInGeneratorDialog(): Promise<void> {
+        const force = this.forceBuilderService.smartCurrentForce();
+        if (!force || force.units().length === 0) { return; }
+        await this.forceBuilderService.showSearchForceGeneratorDialog({ importCurrentForce: true });
     }
 
     showForceOverview(): void {

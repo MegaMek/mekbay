@@ -16,6 +16,7 @@ import { DialogsService } from '../../services/dialogs.service';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { WsService } from '../../services/ws.service';
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
+import { getUnitVariantGroupKey } from '../../utils/unit-variant.util';
 
 describe('SearchForceGeneratorDialogComponent', () => {
     let component: SearchForceGeneratorDialogComponent;
@@ -590,10 +591,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         fixture.detectChanges();
 
         const dialog = fixture.componentInstance;
-        const inputs = Array.from(
-            fixture.nativeElement.querySelectorAll('input.bt-input.field-input[type="number"]'),
-        ) as HTMLInputElement[];
-        const maxBudgetInput = inputs[3];
+        const maxBudgetInput = fixture.nativeElement.querySelectorAll('thousands-integer-input input')[1] as HTMLInputElement;
 
         maxBudgetInput.value = '1';
         maxBudgetInput.dispatchEvent(new Event('input'));
@@ -613,7 +611,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         expect(dialog.budgetRange()).toEqual({ min: 7900, max: 10000 });
         expect(setOptionSpy).toHaveBeenCalledOnceWith('forceGenLastBVMax', 10000);
-        expect(maxBudgetInput.value).toBe('10000');
+        expect(maxBudgetInput.value).toBe('10,000');
     });
 
     it('does not replace the displayed preview when max budget is committed on blur', () => {
@@ -879,6 +877,84 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(preview.explanationLines).toContain('Imported current force into preview. Press REROLL to generate a new result for the current settings.');
         expect(buildPreviewSpy).not.toHaveBeenCalled();
         expect(sendWsMessageSpy).not.toHaveBeenCalled();
+    });
+
+    it('rejects preview units and excludes them from later generation requests', async () => {
+        const atlas = createEmptyUnit({
+            id: 1,
+            name: 'Atlas AS7-D',
+            chassis: 'Atlas',
+            model: 'AS7-D',
+            bv: 1897,
+        });
+        const locust = createEmptyUnit({
+            id: 2,
+            name: 'Locust LCT-1V',
+            chassis: 'Locust',
+            model: 'LCT-1V',
+            bv: 432,
+        });
+
+        forceGeneratorEligibleUnitsSignal.set([atlas, locust]);
+        (component as any).__test.setPreviewResult({
+            gameSystem: GameSystem.CLASSIC,
+            units: [{ unit: atlas, cost: 1897, gunnery: 4, piloting: 5, lockKey: 'atlas-slot' }],
+            totalCost: 1897,
+            error: null,
+            faction: null,
+            era: null,
+            explanationLines: [],
+        });
+
+        component.reroll();
+        const unitEntry = component.previewEntry()!.groups[0].units[0];
+        await component.onPreviewUnitMenuAction({ action: 'reject', unitEntry });
+
+        expect(component.rejectedUnitPills()).toEqual([{ name: atlas.name, label: 'Atlas AS7-D' }]);
+        expect(component.generationEligibleUnits()).toEqual([locust]);
+
+        component.reroll();
+
+        expect(buildPreviewSpy.calls.mostRecent().args[0].eligibleUnits).toEqual([locust]);
+    });
+
+    it('marks chassis-only locked preview units as variant-group locked generation slots', async () => {
+        const atlas = createEmptyUnit({
+            id: 1,
+            name: 'Atlas AS7-D',
+            chassis: 'Atlas',
+            model: 'AS7-D',
+            bv: 1897,
+            as: { TP: 'BM', PV: 42 },
+        });
+
+        forceGeneratorEligibleUnitsSignal.set([atlas]);
+        (component as any).__test.setPreviewResult({
+            gameSystem: GameSystem.CLASSIC,
+            units: [{ unit: atlas, cost: 1897, gunnery: 4, piloting: 5, lockKey: 'atlas-slot' }],
+            totalCost: 1897,
+            error: null,
+            faction: null,
+            era: null,
+            explanationLines: [],
+        });
+
+        component.reroll();
+        const unitEntry = component.previewEntry()!.groups[0].units[0];
+        await component.onPreviewUnitMenuAction({ action: 'toggle-chassis-lock', unitEntry });
+
+        expect(component.lockedUnitKeys().has('atlas-slot')).toBeTrue();
+        expect(component.chassisOnlyLockedUnitKeys().has('atlas-slot')).toBeTrue();
+
+        component.reroll();
+
+        expect(buildPreviewSpy.calls.mostRecent().args[0].lockedUnits).toEqual([
+            jasmine.objectContaining({
+                unit: atlas,
+                lockKey: 'atlas-slot',
+                variantGroupKey: getUnitVariantGroupKey(atlas),
+            }),
+        ]);
     });
 
     it('submits the rendered preview entry without rebuilding its groups', () => {
@@ -1442,10 +1518,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         fixture.detectChanges();
 
         const dialog = fixture.componentInstance;
-        const inputs = Array.from(
-            fixture.nativeElement.querySelectorAll('input.bt-input.field-input[type="number"]'),
-        ) as HTMLInputElement[];
-        const maxBudgetInput = inputs[3];
+        const maxBudgetInput = fixture.nativeElement.querySelectorAll('thousands-integer-input input')[1] as HTMLInputElement;
 
         buildPreviewSpy.calls.reset();
 

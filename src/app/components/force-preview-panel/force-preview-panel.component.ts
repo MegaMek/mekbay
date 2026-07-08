@@ -32,6 +32,7 @@
  */
 
 import { CommonModule } from '@angular/common';
+import { CdkMenuModule } from '@angular/cdk/menu';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -71,16 +72,35 @@ import { FormationInfoDialogComponent, type FormationInfoDialogData } from '../f
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { ForceTagsComponent, type ForceTagClickEvent } from '../force-tags/force-tags.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { GameSystem } from '../../models/common.model';
+import { PVCalculatorUtil } from '../../utils/pv-calculator.util';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
+import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 
 const UNIT_TILE_MIN_WIDTH = 86;
 const UNIT_TILE_MAX_WIDTH = 114;
 const UNIT_TILE_GAP = 4;
 type ForcePreviewSelectionMode = 'multi' | 'single';
+export type ForcePreviewUnitMenuAction = 'edit-pilot' | 'toggle-chassis-lock' | 'reroll-unit-keep-pilot' | 'reroll-unit-and-pilot' | 'reject';
+export type ForcePreviewUnitMenuIcon = 'pilot' | 'lock' | 'reroll' | 'reject';
+
+export interface ForcePreviewUnitMenuItem {
+    action: ForcePreviewUnitMenuAction;
+    label: string | ((unitEntry: ForcePreviewUnit) => string);
+    icon: ForcePreviewUnitMenuIcon;
+    danger?: boolean;
+    closeOnSelect?: boolean;
+}
+
+export interface ForcePreviewUnitMenuActionEvent {
+    action: ForcePreviewUnitMenuAction;
+    unitEntry: ForcePreviewUnit;
+}
 
 @Component({
     selector: 'force-preview-panel',
     standalone: true,
-    imports: [CommonModule, CleanModelStringPipe, MeasureClampOverflowDirective, UnitIconComponent, ForceTagsComponent],
+    imports: [CommonModule, CdkMenuModule, CleanModelStringPipe, MeasureClampOverflowDirective, UnitIconComponent, ForceTagsComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
     @let unitDisplayName = effectiveUnitDisplayName();
@@ -95,8 +115,10 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
                 @if (entry.faction?.img; as factionImg) {
                     <img [src]="factionImg" class="faction-icon" />
                 }
-                @if (entry.era?.img || entry.era?.icon; as eraImg) {
-                    <img [src]="eraImg" class="era-icon" [alt]="entry.era?.name || 'Era'" [title]="entry.era?.name || 'Era'" />
+                @if (entry.era; as era) {
+                    @if (era.img || era.icon; as eraImg) {
+                        <img [src]="eraImg" class="era-icon" [alt]="era.name || 'Era'" [title]="era.name || 'Era'" />
+                    }
                 }
                 <div class="force-name-block">
                     <span class="force-preview-name">{{ entry.name || forceOrgName() }}</span>
@@ -228,22 +250,79 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
                                     <div class="pilot-info info-slot numeric slim">
                                         <span class="value">{{ getPilotStats(unitEntry) }}</span>
                                     </div>
+                                    @if (showUnitCost() && unitEntry.unit) {
+                                    <div class="spanner"></div>
+                                    <div class="unit-cost">
+                                        <div class="value">{{ getUnitCost(unitEntry) }}</div>
+                                    </div>
+                                    }
                                 </div>
                             </div>
 
-                            @if (showLockControls() || showSelectionControls()) {
-                                <div class="unit-actions" [class.single-action]="showLockControls() !== showSelectionControls()">
+                            @if (showLockControls() || controls() !== 'none') {
+                                <div class="unit-actions" [class.single-action]="showLockControls() !== (controls() !== 'none')">
                                     @if (showLockControls()) {
                                         <button
                                             class="unit-lock-button bt-button"
                                             type="button"
                                             [class.locked]="isLocked(unitEntry)"
+                                            [class.locked-chassis-only]="isChassisOnlyLocked(unitEntry)"
                                             (click)="onLockButtonClick($event, unitEntry)">
-                                            {{ isLocked(unitEntry) ? 'UNLOCK' : 'LOCK' }}
+                                            {{ isLocked(unitEntry) ? ( isChassisOnlyLocked(unitEntry) ? 'UNLOCK CHASSIS' : 'UNLOCK' ) : 'LOCK' }}
                                         </button>
                                     }
 
-                                    @if (showSelectionControls()) {
+                                    @if (controls() === 'menu') {
+                                        <button
+                                            class="bt-button unit-menu-button"
+                                            type="button"
+                                            aria-label="Unit options"
+                                            [cdkMenuTriggerFor]="unitMenu"
+                                            #unitMenuTrigger="cdkMenuTriggerFor"
+                                            (click)="onUnitMenuClick($event, unitEntry)">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                                        </button>
+                                        <ng-template #unitMenu>
+                                            <div class="popup-menu glass framed-borders has-shadow" cdkMenu>
+                                                @for (item of unitMenuItems(); track item.action) {
+                                                    <button
+                                                        class="menu-item"
+                                                        type="button"
+                                                        cdkMenuItem
+                                                        [class.danger]="item.danger === true"
+                                                        [disabled]="!unitEntry.unit"
+                                                        (click)="onUnitMenuItemClick(item, unitEntry, unitMenuTrigger.close.bind(unitMenuTrigger))">
+                                                        <span class="icon">
+                                                            @switch (item.icon) {
+                                                                @case ('pilot') {
+                                                                    <svg width="16px" height="16px" viewBox="-3 -3 54 54" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                                                        <path d="M 24.9,0 C 13.1,0.516 3.5,10.2 3.5,21.5 v 22.2 c 0,0.3 0.2,0.6 0.5,0.7 l 15.4,6.5 c 1.2,0.4 2.3,-0.3 2.3,-1.5 v -7.9 c 0,0 0,0 0,0 v -7.2 c 0,-0.4 -0.2,-1 -0.5,-1.4 l -7.9,-5 v 0 c -1.2,-0.6 -2.1,-2 -2,-3.4 0.3,-2.1 2.2,-3.5 4.3,-3.5 h 6.3 c 0.9,0 1.7,0.6 1.7,1.5 v 9.3 c 0,0 0,0.8 2.3,0.8 2.3,0 2.3,-0.8 2.3,-0.8 V 22.5 C 28.1,21.6 29,21 29.8,21 H 36 c 2.2,0 4,1.4 4.3,3.5 0.1,1.4 -0.8,2.8 -1.9,3.4 v 0 l -7.9,5 c -0.2,0.4 -0.6,1 -0.6,1.4 v 7.2 7.9 c 0,1.2 1,1.9 2.3,1.5 l 15.1,-6.5 c 0.2,-0.1 0.2,-0.3 0.2,-0.7 V 21 C 47.7,9.04 37.2,-0.568 24.9,0 Z" />
+                                                                    </svg>
+                                                                }
+                                                                @case ('lock') {
+                                                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                                                        <path fill-rule="evenodd" clip-rule="evenodd" d="M4 6V4C4 1.79086 5.79086 0 8 0C10.2091 0 12 1.79086 12 4V6H14V16H2V6H4ZM6 4C6 2.89543 6.89543 2 8 2C9.10457 2 10 2.89543 10 4V6H6V4ZM7 13V9H9V13H7Z"/>
+                                                                    </svg>
+                                                                }
+                                                                @case ('reroll') {
+                                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                                                        <path d="M20 12C20 16.4183 16.4183 20 12 20C9.53614 20 7.33243 18.8868 5.86408 17.1359M4 12C4 7.58172 7.58172 4 12 4C14.4639 4 16.6676 5.11324 18.1359 6.86408M18.1359 6.86408V3M18.1359 6.86408H14.5M5.86408 17.1359V21M5.86408 17.1359H9.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                                                    </svg>
+                                                                }
+                                                                @case ('reject') {
+                                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                                                        <path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.41L10.59 13.41 4.29 19.71 2.88 18.3 9.17 12 2.88 5.71 4.29 4.29 10.59 10.59 16.89 4.29 18.3 5.71Z" />
+                                                                    </svg>
+                                                                }
+                                                            }
+                                                        </span>
+                                                        {{ getUnitMenuItemLabel(item, unitEntry) }}
+                                                    </button>
+                                                }
+                                            </div>
+                                        </ng-template>
+                                    }
+                                    @else if (controls() === 'selection') {
                                         <input
                                             class="bt-checkbox unit-selection-checkbox"
                                             type="checkbox"
@@ -271,6 +350,7 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
             display: flex;
             flex-direction: column;
             width: 100%;
+            touch-action: pan-y;
             --preview-selection-accent: #62c4ff;
         }
 
@@ -279,6 +359,7 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
             flex-direction: column;
             width: 100%;
             min-height: 0;
+            touch-action: pan-y;
         }
 
         .force-preview-shell.scroll-units-only {
@@ -294,6 +375,7 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
             width: 100%;
             box-sizing: border-box;
             min-height: 0;
+            touch-action: pan-y;
         }
 
         .force-preview-shell.scroll-units-only .force-preview {
@@ -467,6 +549,7 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
             flex-direction: column;
             gap: 4px;
             overflow-y: auto;
+            touch-action: pan-y;
         }
 
         .force-preview-shell.scroll-units-only .unit-scroll {
@@ -590,6 +673,7 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
 
         .unit-content {
             width: 100%;
+            height: 100%;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -628,6 +712,7 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
             padding: 2px 4px;
             font-size: 0.62em;
             letter-spacing: 0.08em;
+            white-space: normal;
         }
 
         .unit-actions {
@@ -651,6 +736,13 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
             flex: 1 1 100%;
             width: 100%;
             min-width: 0;
+        }
+
+        .unit-actions > .unit-menu-button {
+            flex: 0 0 32px;
+            max-width: 32px;
+            height: 24px;
+            margin: 0;
         }
 
         .unit-selection-checkbox {
@@ -682,6 +774,10 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
 
         .unit-lock-button.locked {
             background: #a2792c;
+        }
+
+        .unit-lock-button.locked-chassis-only {
+            background: #2c5fa2;
         }
 
         .unit-model {
@@ -735,6 +831,17 @@ type ForcePreviewSelectionMode = 'multi' | 'single';
             right: 3px;
         }
 
+        .unit-cost {
+            width: 100%;
+            box-sizing: border-box;
+            display: flex;
+            justify-content: right;
+            padding-right: 4px;
+            padding-bottom: 4px;
+            font-size: 0.7em;
+            margin-top: 6px;
+        }
+
         .hint {
             font-size: 0.7em;
             color: var(--text-color-secondary);
@@ -758,14 +865,18 @@ export class ForcePreviewPanelComponent {
     readonly showNote = input(true);
     readonly scrollUnitsOnly = input(false);
     readonly showLockControls = input(false);
-    readonly showSelectionControls = input(false);
+    readonly showUnitCost = input(false);
+    readonly controls = input<('none' | 'selection' | 'menu')>('none');
     readonly selectionMode = input<ForcePreviewSelectionMode>('multi');
     readonly displayMode = input<Options['unitDisplayName'] | null>(null);
+    readonly unitMenuItems = input<readonly ForcePreviewUnitMenuItem[]>([]);
     readonly lockedUnitKeys = input<ReadonlySet<string>>(new Set<string>());
+    readonly chassisOnlyLockedUnitKeys = input<ReadonlySet<string>>(new Set<string>());
     readonly lockToggle = input<((unitEntry: ForcePreviewUnit) => void) | null>(null);
     readonly variantChange = input<((unitEntry: ForcePreviewUnit, variant: Unit) => void) | null>(null);
     readonly hoveredUnitChange = output<ForcePreviewUnit | null>();
     readonly selectedUnitsChange = output<ForcePreviewUnit[]>();
+    readonly unitMenuAction = output<ForcePreviewUnitMenuActionEvent>();
     private readonly selectedUnits = signal<ReadonlySet<ForcePreviewUnit>>(new Set<ForcePreviewUnit>());
     readonly noteExpanded = signal(false);
     readonly forceTagsVersion = signal(0);
@@ -877,6 +988,18 @@ export class ForcePreviewPanelComponent {
         return getForcePreviewUnitPilotStats(loadForceUnit, this.force().type);
     }
 
+    getUnitCost(loadForceUnit: ForcePreviewUnit): string {
+        if (!loadForceUnit.unit) {
+            return '';
+        }
+        if (this.force().type == GameSystem.ALPHA_STRIKE) {
+            const adjustedPV = PVCalculatorUtil.calculateAdjustedPV(loadForceUnit.unit.as.PV, loadForceUnit.skill ?? DEFAULT_GUNNERY_SKILL);
+            return `PV: ${adjustedPV}`;
+        }
+        const adjustedBV = BVCalculatorUtil.calculateAdjustedBV(loadForceUnit.unit, loadForceUnit.unit.bv, loadForceUnit.gunnery ?? DEFAULT_GUNNERY_SKILL, loadForceUnit.piloting ?? DEFAULT_PILOTING_SKILL);
+        return `BV: ${adjustedBV}`;
+    }
+
     onUnitClick(loadForceUnit: ForcePreviewUnit): void {
         if (!loadForceUnit.unit) {
             return;
@@ -963,6 +1086,10 @@ export class ForcePreviewPanelComponent {
         return !!loadForceUnit.lockKey && this.lockedUnitKeys().has(loadForceUnit.lockKey);
     }
 
+    isChassisOnlyLocked(loadForceUnit: ForcePreviewUnit): boolean {
+        return !!loadForceUnit.lockKey && this.chassisOnlyLockedUnitKeys().has(loadForceUnit.lockKey);
+    }
+
     isSelected(loadForceUnit: ForcePreviewUnit): boolean {
         return this.selectedUnits().has(loadForceUnit);
     }
@@ -970,6 +1097,25 @@ export class ForcePreviewPanelComponent {
     onLockButtonClick(event: Event, loadForceUnit: ForcePreviewUnit): void {
         event.stopPropagation();
         this.lockToggle()?.(loadForceUnit);
+    }
+
+    onUnitMenuClick(event: Event, loadForceUnit: ForcePreviewUnit): void {
+        event.stopPropagation();
+    }
+
+    getUnitMenuItemLabel(item: ForcePreviewUnitMenuItem, unitEntry: ForcePreviewUnit): string {
+        return typeof item.label === 'function' ? item.label(unitEntry) : item.label;
+    }
+
+    onUnitMenuItemClick(item: ForcePreviewUnitMenuItem, unitEntry: ForcePreviewUnit, closeMenu: () => void): void {
+        this.onUnitMenuAction(item.action, unitEntry);
+        if (item.closeOnSelect !== false) {
+            closeMenu();
+        }
+    }
+
+    onUnitMenuAction(action: ForcePreviewUnitMenuAction, unitEntry: ForcePreviewUnit): void {
+        this.unitMenuAction.emit({ action, unitEntry });
     }
 
     onSelectionChange(event: Event, loadForceUnit: ForcePreviewUnit): void {

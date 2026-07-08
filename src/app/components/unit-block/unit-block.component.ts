@@ -49,6 +49,13 @@ import { C3NetworkUtil } from '../../utils/c3-network.util';
 import type { C3Component, C3NetworkType } from '../../models/c3-network.model';
 import { GameSystem } from '../../models/common.model';
 import { formatMovement, formatMovementWithAlternate } from '../../utils/as-common.util';
+import { getUnitConditionDefinition, unitConditionSortIndex } from '../../models/rules/unit-type-rules';
+
+interface UnitConditionDisplay {
+    key: string;
+    label: string;
+    color: string;
+}
 
 /**
  * Author: Drake
@@ -132,6 +139,24 @@ export class UnitBlockComponent {
         return false;
     });
 
+    activeConditions = computed<UnitConditionDisplay[]>(() => {
+        const forceUnit = this.forceUnit();
+        if (!forceUnit) return [];
+
+        const conditionKeys = new Set(forceUnit.getConditions().keys());
+
+        return Array.from(conditionKeys)
+            .map(key => {
+                const condition = getUnitConditionDefinition(key);
+                return {
+                    key,
+                    label: condition?.bannerLabel ?? condition?.label ?? key.toUpperCase(),
+                    color: condition?.color ?? '#666',
+                };
+            })
+            .sort((left, right) => unitConditionSortIndex(left.key) - unitConditionSortIndex(right.key) || left.label.localeCompare(right.label));
+    });
+
     hasECM = computed(() => {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return false;
@@ -185,7 +210,7 @@ export class UnitBlockComponent {
             forceUnit.getCritSlots();
             const mountedECM = forceUnit.getInventory().find(eq => eq.equipment?.flags.has('F_ECM'));
             if (!mountedECM) return undefined;
-            if (mountedECM.destroyed) {
+            if (forceUnit.isEquipmentUnavailable(mountedECM)) {
                 return false;
             }
             return true;
@@ -361,8 +386,9 @@ export class UnitBlockComponent {
             const sign = pilotBv > 0 ? '+' : '';
             lines.push({ label: 'Pilot', value: `${sign}${pilotBv}` });
         }
+        lines.push({ isBreak: true });
         if (tagBv > 0 || c3Tax > 0 || pilotBv !== 0) {
-            lines.push({ label: 'Total', value: `=${totalBv}` });
+            lines.push({ label: 'Total', value: `${totalBv}` });
         }
 
         return lines.length > 0 ? lines : null;

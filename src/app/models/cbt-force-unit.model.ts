@@ -32,11 +32,12 @@
  */
 
 import { computed, createEnvironmentInjector, EnvironmentInjector, type Injector, runInInjectionContext, signal, type Signal, untracked, type WritableSignal } from '@angular/core';
-import type { DataService } from '../services/data.service';
+import { DataService } from '../services/data.service';
 import type { Unit } from "./units.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
-import { type CriticalSlot, type HeatProfile, type LocationData, type MountedEquipment, type ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, type CBTSerializedState, type CBTSerializedUnit, type SerializedCrewMember } from './force-serialization';
+import { MountedEquipment, type CriticalSlot, type HeatProfile, type LocationData, type ViewportTransform, CRIT_SLOT_SCHEMA, HEAT_SCHEMA, LOCATION_SCHEMA, INVENTORY_SCHEMA, C3_POSITION_SCHEMA, type CBTSerializedState, type CBTSerializedUnit, type SerializedCrewMember, committedConditionData, conditionsForSerialization, conditionsHasActive, conditionsHasCommittedActive, conditionsMapFromSerialization, normalizeConditionData, normalizeConditionKey } from './force-serialization';
 import { ForceUnit } from './force-unit.model';
+import type { ConditionData } from './force-unit-state.model';
 import type { CBTForce } from './cbt-force.model';
 import { UnitSvgService } from '../services/unit-svg.service';
 import { CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './crew-member.model';
@@ -44,8 +45,10 @@ import { CBTForceUnitState } from './cbt-force-unit-state.model';
 import { UnitSvgMekService } from '../services/unit-svg-mek.service';
 import { UnitSvgAeroService } from '../services/unit-svg-aero.service';
 import { UnitSvgInfantryService } from '../services/unit-svg-infantry.service';
+import { UnitSvgVehicleService } from '../services/unit-svg-vehicle.service';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { AmmoEquipment, WeaponEquipment } from './equipment.model';
+import type { AmmoEquipment as AmmoEquipmentType } from './equipment.model';
 import { C3NetworkUtil } from '../utils/c3-network.util';
 import { getMotiveModesOptionsByUnit, type MotiveModeOption } from './motiveModes.model';
 import type { TurnState } from './turn-state.model';
@@ -54,11 +57,17 @@ import type { UnitTypeRules } from './rules/unit-type-rules';
 import { MekRules } from './rules/mek-rules';
 import { AeroRules } from './rules/aero-rules';
 import { InfantryRules } from './rules/infantry-rules';
+import { ProtoMekRules } from './rules/protomek-rules';
 import { VehicleRules } from './rules/vehicle-rules';
+import { type InventoryControlRuntimeEntryState, type InventoryControlRuntimeRangeKey, type InventoryControlRuntimeSnapshot, type InventoryControlRuntimeTarget, type InventoryControlRuntimeTargetId } from './inventory-control-runtime-state.model';
+import { CBTInventoryControlRuntime } from './cbt-inventory-control-runtime.model';
+import { LINKED_LOCATIONS } from '../models/rules/mek-rules';
+import { EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
+import type { UnitHeatSource } from './rules/unit-type-rules';
+import type { InventoryControlDisplayData, InventoryControlDisplayEffectOptions, InventoryControlRules } from '../utils/inventory-control.util';
+import { ToastService } from '../services/toast.service';
+import { DialogsService } from '../services/dialogs.service';
 
-/*
- * Author: Drake
- */
 export class CBTForceUnit extends ForceUnit {
     override get force(): CBTForce { return super.force as CBTForce; }
     override set force(value: CBTForce) { super.force = value; }
@@ -73,6 +82,8 @@ export class CBTForceUnit extends ForceUnit {
         internal: Map<string, { loc: string; points?: number }>;
     };
     protected override state: CBTForceUnitState;
+    readonly inventoryControl = new CBTInventoryControlRuntime(this);
+    private readonly inventoryControlRuntime = this.inventoryControl;
 
     readonly alias = computed<string | undefined>(() => {
         const pilot = this.getCrewMember(0);
@@ -106,12 +117,73 @@ export class CBTForceUnit extends ForceUnit {
     /** Unit-type-specific game rules (destruction, PSR, systems status for Meks). */
     get rules(): UnitTypeRules { return this._rules; }
 
+    getEquipmentHeatSources(turnState: TurnState): UnitHeatSource[] {
+        return this.injector.get(EquipmentInteractionRegistryService)
+            .getRegistry()
+            .getInventoryHeatSources(this.getInventory(), turnState);
+    }
+
+    getRunMovementMultiplierBonus(turnState: TurnState): number {
+        return this.injector.get(EquipmentInteractionRegistryService)
+            .getRegistry()
+            .getRunMovementMultiplierBonus(this.getInventory(), turnState);
+    }
+
+    getLinkedEquipmentHitModifier(entry: MountedEquipment, selectedAmmo?: AmmoEquipmentType | null): number {
+        return this.injector.get(EquipmentInteractionRegistryService)
+            .getRegistry()
+            .getLinkedEquipmentHitModifier(entry, selectedAmmo);
+    }
+
+    getInventoryControlBaseHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | null {
+        return this.getInventoryControlRules().resolveBaseHitModifier?.(entry, range) ?? null;
+    }
+
+    getInventoryControlRules(): InventoryControlRules {
+        return this.injector.get(EquipmentInteractionRegistryService)
+            .getRegistry()
+            .inventoryControlRules(this.getHandlerContext());
+    }
+
+    private getHandlerContext() {
+        return {
+            toastService: this.injector.get(ToastService),
+            dialogsService: this.injector.get(DialogsService),
+            dataService: this.injector.get(DataService)
+        };
+    }
+
+    applyInventoryControlDisplayEffects(
+        entry: MountedEquipment,
+        display: InventoryControlDisplayData,
+        options: InventoryControlDisplayEffectOptions
+    ): InventoryControlDisplayData {
+        return this.getInventoryControlRules().applyDisplayEffects?.(entry, display, options) ?? display;
+    }
+
+    override isComputedCondition(condition: string): boolean {
+        return this._rules?.isComputedCondition(condition) ?? false;
+    }
+
+    override hasComputedCondition(condition: string): boolean {
+        return this._rules?.hasComputedCondition(condition) ?? false;
+    }
+
+    override getConditions(): ReadonlyMap<string, ConditionData | undefined> {
+        const conditions = new Map(this.conditions);
+        for (const condition of this._rules.computedConditions()) {
+            if (this.getCondition(condition)) conditions.set(condition, undefined);
+        }
+        return conditions;
+    }
+
     /** 
      * Direct write to crits signal, bypassing evaluateDestroyed/setModified. For rules evaluators. 
      * USE IT CAREFULLY!!!
      */
     writeCrits(crits: CriticalSlot[]): void {
         this.state.crits.set(crits);
+        this.inventoryControl.markInventoryViewChanged();
     }
 
     private createRules(): UnitTypeRules {
@@ -119,6 +191,7 @@ export class CBTForceUnit extends ForceUnit {
             case 'Mek': return new MekRules(this);
             case 'Aero': return new AeroRules(this);
             case 'Infantry': return new InfantryRules(this);
+            case 'ProtoMek': return new ProtoMekRules(this);
             default: return new VehicleRules(this);
         }
     }
@@ -172,6 +245,11 @@ export class CBTForceUnit extends ForceUnit {
                     case 'Infantry':
                         this._svgService = new UnitSvgInfantryService(this, this.unitInitializer);
                         break;
+                    case 'Tank':
+                    case 'VTOL':
+                    case 'Naval':
+                        this._svgService = new UnitSvgVehicleService(this, this.unitInitializer);
+                        break;
                     default:
                         this._svgService = new UnitSvgService(this, this.unitInitializer);
                 }
@@ -218,6 +296,7 @@ export class CBTForceUnit extends ForceUnit {
 
     setCritSlots(critSlots: CriticalSlot[], initialization: boolean = false) {
         this.state.crits.set(critSlots);
+        this.inventoryControl.markInventoryViewChanged();
         if (!initialization) {
             this.evaluateDestroyed();
             this.setModified();
@@ -265,7 +344,7 @@ export class CBTForceUnit extends ForceUnit {
         if (consolidateImmediately) {
             this.state.consolidateCrits(); // Consolidate immediately in case we have pending hits to apply
         }
-        this.turnState().evaluateCritSlotHit(slot);
+        this._rules.evaluateCritSlotHit(slot);
     }
 
     getCritLoc(id: string): CriticalSlot | null {
@@ -288,7 +367,11 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     setInventory(inventory: MountedEquipment[], initialization: boolean = false) {
-        this.state.inventory.set(inventory);
+        this.state.inventory.set(inventory.map(entry => MountedEquipment.from(entry)));
+        if (!initialization) {
+            this.turnState().clampMoveDistanceToCurrentModeRange();
+        }
+        this.inventoryControl.markInventoryViewChanged();
         if (!initialization) {
             this.setModified();
         }
@@ -303,6 +386,95 @@ export class CBTForceUnit extends ForceUnit {
             inventory.push(inventoryEntry);
         }
         this.setInventory(inventory);
+    }
+
+    getInventoryControlSnapshot(): InventoryControlRuntimeSnapshot {
+        return this.inventoryControlRuntime.getSnapshot();
+    }
+
+    getInventoryControlEntryState(entryId: string): InventoryControlRuntimeEntryState | undefined {
+        return this.inventoryControlRuntime.getEntryState(entryId);
+    }
+
+    getInventoryControlTargets(): InventoryControlRuntimeTarget[] {
+        return this.inventoryControlRuntime.getTargets();
+    }
+
+    getInventoryControlTarget(targetId: InventoryControlRuntimeTargetId): InventoryControlRuntimeTarget | undefined {
+        return this.inventoryControlRuntime.getTarget(targetId);
+    }
+
+    getInventoryControlEntryTargetId(entryId: string): InventoryControlRuntimeTargetId | undefined {
+        return this.inventoryControlRuntime.getEntryTargetId(entryId);
+    }
+
+    isInventoryControlEntrySelected(entryId: string): boolean {
+        return this.inventoryControlRuntime.isEntrySelected(entryId);
+    }
+
+    getInventoryControlEntryRange(entryId: string): InventoryControlRuntimeRangeKey | undefined {
+        return this.inventoryControlRuntime.getEntryRange(entryId);
+    }
+
+    getInventoryControlEntryAmmoOption(entryId: string): string | undefined {
+        return this.inventoryControlRuntime.getEntryAmmoOption(entryId);
+    }
+
+    setInventoryControlEntrySelected(entry: MountedEquipment, selected: boolean): void {
+        this.inventoryControlRuntime.setEntrySelected(entry, selected);
+    }
+
+    setInventoryControlEntryRange(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey | null): void {
+        this.inventoryControlRuntime.setEntryRange(entry, range);
+    }
+
+    toggleInventoryControlEntryRange(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey, forceSelected = false): void {
+        this.inventoryControlRuntime.toggleEntryRange(entry, range, forceSelected);
+    }
+
+    setInventoryControlEntryAmmoOption(entryId: string, optionId: string): void {
+        this.inventoryControlRuntime.setEntryAmmoOption(entryId, optionId);
+    }
+
+    setInventoryControlEntryTarget(entry: MountedEquipment, targetId: InventoryControlRuntimeTargetId | null): void {
+        this.inventoryControlRuntime.setEntryTarget(entry, targetId);
+    }
+
+    createInventoryControlTarget(): InventoryControlRuntimeTarget | null {
+        return this.inventoryControlRuntime.createTarget();
+    }
+
+    updateInventoryControlTarget(targetId: InventoryControlRuntimeTargetId, patch: Partial<Omit<InventoryControlRuntimeTarget, 'id' | 'letter'>>): InventoryControlRuntimeTarget | null {
+        return this.inventoryControlRuntime.updateTarget(targetId, patch);
+    }
+
+    deleteInventoryControlTarget(targetId: InventoryControlRuntimeTargetId): void {
+        this.inventoryControlRuntime.deleteTarget(targetId);
+    }
+
+    resetInventoryControlTargets(): void {
+        this.inventoryControlRuntime.resetTargets();
+    }
+
+    hasLinkedC3Network(): boolean {
+        return C3NetworkUtil.hasC3(this.getUnit())
+            && C3NetworkUtil.isUnitConnected(this.id, this.force.c3Networks());
+    }
+
+    clearInventoryControlSelection(): void {
+        this.inventoryControlRuntime.clearSelection();
+    }
+
+    clearInventoryControlTargets(): void {
+        this.inventoryControlRuntime.resetTargets();
+    }
+
+    private reconcileInventoryControlSelection(): void {
+        this.inventoryControlRuntime.reconcile();
+    }
+
+    syncInventoryControlSelectionSvg(): void {
+        this.inventoryControlRuntime.syncSelectionSvg();
     }
 
     get getLocations() {
@@ -392,7 +564,8 @@ export class CBTForceUnit extends ForceUnit {
         }
         this.state.locations.set({ ...this.state.locations(), [loc]: locations[loc] });
         this.state.turnState().addDmgReceived(hits);
-        this.state.turnState().evaluateLegDestroyed(loc, hits);
+        this._rules.evaluateLegDestroyed(loc, hits);
+        this.clearNarcFromCommittedPhysicallyDestroyedLocations();
         this.evaluateDestroyed();
         this.setModified();
     }
@@ -405,21 +578,81 @@ export class CBTForceUnit extends ForceUnit {
         locations[loc].internal = hits;
         locations[loc].pendingInternal = undefined;
         this.state.locations.set({ ...this.state.locations(), [loc]: locations[loc] });
+        this.clearNarcFromCommittedPhysicallyDestroyedLocations();
         this.evaluateDestroyed();
         this.setModified();
+    }
+
+    getLocationConditions(loc: string): ReadonlyMap<string, ConditionData | undefined> {
+        return conditionsMapFromSerialization(this.state.locations()[loc]?.conditions);
+    }
+
+    getLocationCondition(loc: string, condition: string): boolean {
+        const normalizedCondition = this.normalizeLocationCondition(condition);
+        const conditions = this.getLocationConditions(loc);
+        return conditionsHasActive(conditions, normalizedCondition);
+    }
+
+    getLocationConditionValue(loc: string, condition: string): number | undefined {
+        return this.getLocationConditions(loc).get(this.normalizeLocationCondition(condition))?.value;
+    }
+
+    setLocationCondition(loc: string, condition: string, active: boolean): void {
+        const normalizedCondition = this.normalizeLocationCondition(condition);
+        if (!loc || !normalizedCondition) return;
+        const conditions = conditionsMapFromSerialization(this.state.locations()[loc]?.conditions);
+        const currentActive = conditionsHasActive(conditions, normalizedCondition);
+        if (currentActive === active) return;
+        const existing = conditions.get(normalizedCondition);
+        if (active) {
+            conditions.set(normalizedCondition, conditions.has(normalizedCondition)
+                ? committedConditionData(existing)
+                : { pending: true });
+        } else {
+            conditions.delete(normalizedCondition);
+        }
+        this.writeLocationConditions(loc, conditions);
+    }
+
+    setLocationConditionValue(loc: string, condition: string, value: number | undefined): void {
+        const normalizedCondition = this.normalizeLocationCondition(condition);
+        if (!loc || !normalizedCondition) return;
+        if (value === undefined || !Number.isFinite(value) || value <= 0) {
+            this.setLocationCondition(loc, normalizedCondition, false);
+            return;
+        }
+
+        const conditions = conditionsMapFromSerialization(this.state.locations()[loc]?.conditions);
+        if (conditions.get(normalizedCondition)?.value === value) return;
+        conditions.set(normalizedCondition, normalizeConditionData({ value }));
+        this.writeLocationConditions(loc, conditions);
     }
 
     isArmorLocDestroyed(loc: string, rear: boolean = false): boolean {
         const locKey = rear ? `${loc}-rear` : loc;
         if (!this.locations?.armor.has(locKey)) return false;
+        if (this.isLocationDestroyedByCondition(loc)) return true;
         const hits = this.getArmorHits(loc, rear);
         return hits >= this.getArmorPoints(loc, rear);
     }
 
     isInternalLocDestroyed(loc: string): boolean {
         if (!this.locations?.internal.has(loc)) return false;
+        if (this.isLocationDestroyedByCondition(loc)) return true;
         const hits = this.getInternalHits(loc);
         return hits >= this.getInternalPoints(loc);
+    }
+
+    isInternalLocPhysicallyDestroyed(loc: string): boolean {
+        if (!this.locations?.internal.has(loc)) return false;
+        if (this.getLocationCondition(loc, 'blown-off')) return true;
+        if (this.getInternalHits(loc) >= this.getInternalPoints(loc)) return true;
+
+        return Object.entries(LINKED_LOCATIONS).some(([sourceLoc, linkedLocations]) => {
+            if (!linkedLocations.includes(loc)) return false;
+            if (!this.locations?.internal.has(sourceLoc)) return false;
+            return this.isInternalLocPhysicallyDestroyed(sourceLoc);
+        });
     }
 
     getCommittedArmorHits(loc: string, rear?: boolean): number {
@@ -434,14 +667,153 @@ export class CBTForceUnit extends ForceUnit {
     isArmorLocCommittedDestroyed(loc: string, rear: boolean = false): boolean {
         const locKey = rear ? `${loc}-rear` : loc;
         if (!this.locations?.armor.has(locKey)) return false;
+        if (this.isLocationCommittedDestroyedByCondition(loc)) return true;
         const hits = this.getCommittedArmorHits(loc, rear);
-        return hits >= this.getArmorPoints(loc, rear);
+        if (hits >= this.getArmorPoints(loc, rear)) return true;
+
+        return Object.entries(LINKED_LOCATIONS).some(([sourceLoc, linkedLocations]) => {
+            if (!linkedLocations.includes(loc)) return false;
+            if (!this.locations?.internal.has(sourceLoc)) return false;
+            return this.isInternalLocCommittedDestroyed(sourceLoc);
+        });
     }
 
     isInternalLocCommittedDestroyed(loc: string): boolean {
         if (!this.locations?.internal.has(loc)) return false;
+        if (this.isLocationCommittedDestroyedByCondition(loc)) return true;
+        const hits = this.getCommittedInternalHits(loc);
+        if (hits >= this.getInternalPoints(loc)) return true;
+
+        return Object.entries(LINKED_LOCATIONS).some(([sourceLoc, linkedLocations]) => {
+            if (!linkedLocations.includes(loc)) return false;
+            if (!this.locations?.internal.has(sourceLoc)) return false;
+            return this.isInternalLocCommittedDestroyed(sourceLoc);
+        });
+    }
+
+    isInternalLocCommittedPhysicallyDestroyed(loc: string): boolean {
+        if (!this.locations?.internal.has(loc)) return false;
+        if (this.isLocationConditionCommittedActive(loc, 'blown-off')) return true;
+        const hits = this.getCommittedInternalHits(loc);
+        if (hits >= this.getInternalPoints(loc)) return true;
+
+        return Object.entries(LINKED_LOCATIONS).some(([sourceLoc, linkedLocations]) => {
+            if (!linkedLocations.includes(loc)) return false;
+            if (!this.locations?.internal.has(sourceLoc)) return false;
+            return this.isInternalLocCommittedPhysicallyDestroyed(sourceLoc);
+        });
+    }
+
+    isInternalLocStructurallyDestroyed(loc: string): boolean {
+        if (!this.locations?.internal.has(loc)) return false;
+        const hits = this.getInternalHits(loc);
+        return hits >= this.getInternalPoints(loc);
+    }
+
+    isInternalLocCommittedStructurallyDestroyed(loc: string): boolean {
+        if (!this.locations?.internal.has(loc)) return false;
         const hits = this.getCommittedInternalHits(loc);
         return hits >= this.getInternalPoints(loc);
+    }
+
+    isCockpitDestroyed(): boolean {
+        return this.getCritSlots().some(slot => {
+            if (!slot.name?.includes('Cockpit')) return false;
+            if (slot.destroyed) return true;
+            return slot.loc ? this.isInternalLocCommittedDestroyed(slot.loc) : false;
+        });
+    }
+
+    isEquipmentUnavailable(source: MountedEquipment | CriticalSlot, loc?: string): boolean {
+        if (source instanceof MountedEquipment) {
+            if (source.isUnavailable()) return true;
+            return loc ? this.isEquipmentLocationUnavailable(loc) : Array.from(source.locations ?? []).some(loc => this.isEquipmentLocationUnavailable(loc));
+        }
+        return !!source.destroyed || this.isEquipmentLocationUnavailable(source.loc);
+    }
+
+    private isEquipmentLocationUnavailable(loc: string | undefined): boolean {
+        if (!loc) return false;
+        const battleArmorLoc = this.battleArmorTrooperLocation(loc);
+        if (battleArmorLoc) return this.isArmorLocCommittedDestroyed(battleArmorLoc, false);
+        return this.isInternalLocCommittedDestroyed(loc);
+    }
+
+    private battleArmorTrooperLocation(loc: string): string | null {
+        if (this.getUnit().subtype !== 'Battle Armor') return null;
+        const match = loc.trim().match(/^(?:Trooper\s+|T)(\d+)$/i);
+        if (!match) return null;
+        const trooperNumber = Number(match[1]);
+        return Number.isInteger(trooperNumber) && trooperNumber > 0 ? `T${trooperNumber}` : null;
+    }
+
+    private isLocationDestroyedByCondition(loc: string): boolean {
+        return this.getLocationCondition(loc, 'flooded') || this.getLocationCondition(loc, 'blown-off');
+    }
+
+    private isLocationCommittedDestroyedByCondition(loc: string): boolean {
+        return this.isLocationConditionCommittedActive(loc, 'flooded')
+            || this.isLocationConditionCommittedActive(loc, 'blown-off');
+    }
+
+    private isLocationConditionCommittedActive(loc: string, condition: string): boolean {
+        const conditions = this.getLocationConditions(loc);
+        return conditionsHasCommittedActive(conditions, condition);
+    }
+
+    private writeLocationConditions(loc: string, conditions: ReadonlyMap<string, ConditionData | undefined>): void {
+        const locations = { ...this.state.locations() };
+        const current = locations[loc] ?? {};
+        const serializedConditions = conditionsForSerialization(conditions);
+        const next: LocationData = { ...current };
+        if (serializedConditions.length > 0) {
+            next.conditions = serializedConditions;
+        } else {
+            delete next.conditions;
+        }
+
+        if ((next.armor ?? 0) === 0 && (next.internal ?? 0) === 0
+            && (next.pendingArmor ?? 0) === 0 && (next.pendingInternal ?? 0) === 0
+            && (next.conditions?.length ?? 0) === 0) {
+            delete locations[loc];
+        } else {
+            locations[loc] = next;
+        }
+
+        this.state.locations.set(locations);
+        this.evaluateDestroyed();
+        this.inventoryControl.markInventoryViewChanged();
+        this.setModified();
+    }
+
+    clearNarcFromCommittedPhysicallyDestroyedLocations(): boolean {
+        const locations = { ...this.state.locations() };
+        let changed = false;
+        for (const [loc, locData] of Object.entries(locations)) {
+            if (!this.isInternalLocCommittedPhysicallyDestroyed(loc)) continue;
+            const conditions = conditionsMapFromSerialization(locData.conditions);
+            if (!conditions.delete('narc')) continue;
+
+            const serializedConditions = conditionsForSerialization(conditions);
+            const next: LocationData = { ...locData };
+            if (serializedConditions.length > 0) {
+                next.conditions = serializedConditions;
+            } else {
+                delete next.conditions;
+            }
+            locations[loc] = next;
+            changed = true;
+        }
+        if (!changed) return false;
+
+        this.state.locations.set(locations);
+        this.inventoryControl.markInventoryViewChanged();
+        this.setModified();
+        return true;
+    }
+
+    private normalizeLocationCondition(condition: string): string {
+        return normalizeConditionKey(condition) ?? '';
     }
 
     getCrewMembers = computed<CrewMember[]>(() => {
@@ -499,6 +871,18 @@ export class CBTForceUnit extends ForceUnit {
         let piloting = pilot.getSkill('piloting');
         return piloting;
     });
+
+    public gunneryModifier = computed<number>(() => {
+        return this.rules.gunneryModifier();
+    });
+
+    public pilotingModifier = computed<number>(() => {
+        return this.rules.pilotingModifier();
+    });
+
+    public effectiveGunnerySkill = computed<number>(() => this.gunnerySkill() + this.gunneryModifier());
+
+    public effectivePilotingSkill = computed<number>(() => this.pilotingSkill() + this.pilotingModifier());
 
     public customAmmoBvVariation = computed<number>(() => {
         if (!this.isLoaded()) return 0; // Ensure unit is loaded so that inventory and crits are available
@@ -654,6 +1038,15 @@ export class CBTForceUnit extends ForceUnit {
             if (crit.hits) {
                 crit.hits = 0;
             }
+            if (crit.pendingHits) {
+                crit.pendingHits = undefined;
+            }
+            if (crit.hitTimestamps) {
+                crit.hitTimestamps = undefined;
+            }
+            if (crit.pendingHitTimestamps) {
+                crit.pendingHitTimestamps = undefined;
+            }
             if (crit.consumed) {
                 crit.consumed = 0;
             }
@@ -666,14 +1059,27 @@ export class CBTForceUnit extends ForceUnit {
         this.state.heat.set({ current: 0, previous: 0 });
         // Clear destroyed state
         this.state.destroyed.set(false);
-        this.state.shutdown.set(false);
+        this.state.setConditions([]);
         // Clear inventory destroyed items
         const inventory = this.state.inventory().map(item => {
-            if (item.destroyed) {
-                item.destroyed = false;
+            if (item.committedDestroyed()) {
+                item.setCommittedDestroyed(false);
             }
             if (item.consumed) {
                 item.consumed = 0;
+            }
+            if (item.equipment instanceof AmmoEquipment) {
+                item.ammo = undefined;
+                const componentIndexText = item.id.split('#').pop();
+                const [componentIndexRaw, binIndexRaw] = (componentIndexText ?? '').split('.');
+                const componentIndex = Number(componentIndexRaw);
+                const binIndex = Number(binIndexRaw ?? 0);
+                const component = Number.isInteger(componentIndex) ? this.unit.comp[componentIndex] : undefined;
+                const binCount = Math.max(1, component?.q ?? 1);
+                const originalTotalAmmo = component?.q2 || (item.equipment.shots * binCount) || 0;
+                const baseBinAmmo = Math.floor(originalTotalAmmo / binCount);
+                const extraBinAmmo = originalTotalAmmo % binCount;
+                item.totalAmmo = baseBinAmmo + (binIndex < extraBinAmmo ? 1 : 0) || undefined;
             }
             if (item.states && item.states.size > 0) {
                 item.states.forEach((value, key) => {
@@ -696,8 +1102,13 @@ export class CBTForceUnit extends ForceUnit {
         this._rules.evaluateDestroyed();
     }
 
-    public getAvailableMotiveModes(): MotiveModeOption[] {
-        return getMotiveModesOptionsByUnit(this.getUnit(), this.turnState().airborne() ?? false);
+    public getAvailableMotiveModes(airborne: boolean): MotiveModeOption[] {
+        return getMotiveModesOptionsByUnit(this.getUnit(), airborne)
+            .filter(option => this._rules.isMotiveModeAvailable(option.mode))
+            .map(option => ({
+                ...option,
+                psr: this._rules.getCommittedDamageMovementModePSRCheck(option.mode) !== null,
+            }));
     }
 
     /** Delegates to unit-type rules. Non-Mek types return { modifier: 0, modifiers: [] }. */
@@ -708,7 +1119,7 @@ export class CBTForceUnit extends ForceUnit {
 
     endPhase() {
         this.state.endPhase();
-        this.phaseTrigger.set(this.phaseTrigger() + 1); // Trigger change detection
+        this.phaseTrigger.update(v => v + 1); // Trigger change detection
     }
 
     applyHeat() {
@@ -716,6 +1127,7 @@ export class CBTForceUnit extends ForceUnit {
     }
     
     public endTurn() {
+        this.clearInventoryControlSelection();
         // deselect all inventory items
         this.getInventory().forEach(entry => {
             if (!entry.el) return;
@@ -724,8 +1136,11 @@ export class CBTForceUnit extends ForceUnit {
                 optionEl.classList.remove('selected');
             });
         });
+        const equipmentRegistry = this.injector.get(EquipmentInteractionRegistryService).getRegistry();
+        const handlerContext = this.getHandlerContext();
+        this.getInventory().forEach(entry => equipmentRegistry.onEndTurn(entry, handlerContext));
         this.state.endTurn();
-        this.phaseTrigger.set(this.phaseTrigger() + 1); // Trigger change detection
+        this.phaseTrigger.update(v => v + 1); // Trigger change detection
         this.state.resetTurnState();
     }
 
@@ -749,6 +1164,8 @@ export class CBTForceUnit extends ForceUnit {
         this._formationCommander.set(data.commander ?? false);
         if (data.state) {
             this.state.update(data.state);
+            this.reconcileInventoryControlSelection();
+            this.syncInventoryControlSelectionSvg();
         }
     }
 
@@ -760,9 +1177,10 @@ export class CBTForceUnit extends ForceUnit {
             locations: this.state.locationsForSerialization(),
             modified: this.state.modified(),
             destroyed: this.state.destroyed(),
-            shutdown: this.state.shutdown(),
+            conditions: this.state.conditionsForSerialization(),
             c3Position: this.state.c3Position() ?? undefined,
-            inventory: this.state.inventoryForSerialization()
+            inventory: this.state.inventoryForSerialization(),
+            turnState: this.state.turnState().serialize()
         };
         const data: CBTSerializedUnit = {
             id: this.id,
@@ -781,7 +1199,9 @@ export class CBTForceUnit extends ForceUnit {
         this.state.heat.set(Sanitizer.sanitize(state.heat, HEAT_SCHEMA));
         this.state.modified.set(typeof state.modified === 'boolean' ? state.modified : false);
         this.state.destroyed.set(typeof state.destroyed === 'boolean' ? state.destroyed : false);
-        this.state.shutdown.set(typeof state.shutdown === 'boolean' ? state.shutdown : false);
+        this.state.setConditions(state.conditions ?? []);
+        this.state.inventory.update(inventory => inventory.map(item => item.clone({ destroying: undefined })));
+        this.state.turnState().update(state.turnState);
         
         if (state.inventory) {
             const inventoryData = Sanitizer.sanitizeArray(state.inventory, INVENTORY_SCHEMA);

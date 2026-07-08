@@ -57,7 +57,7 @@
                 }
             </div>
             @if (loading()) {
-                <div class="loading-spinner">Loading forces...</div>
+                <loading-spinner class="loading-spinner" message="Loading forces..." ariaLabel="Loading forces"></loading-spinner>
             } @else if (filteredForces().length === 0) {
                 <div class="empty-state">{{ getHangarEmptyStateMessage() }}</div>
             } @else {
@@ -80,8 +80,10 @@
                                     @if (force.faction) {
                                         <img [src]="force.faction.img" class="faction-icon" />
                                     }
-                                    @if (force.era?.img || force.era?.icon; as eraImg) {
-                                        <img [src]="eraImg" class="era-icon" [alt]="force.era?.name || 'Era'" [title]="force.era?.name || 'Era'" />
+                                    @if (force.era; as era) {
+                                        @if (era.img || era.icon; as eraImg) {
+                                            <img [src]="eraImg" class="era-icon" [alt]="era.name || 'Era'" [title]="era.name || 'Era'" />
+                                        }
                                     }
                                     <div class="force-name">{{ force.name }}</div>
                                 </div>
@@ -245,7 +247,7 @@
                     (click)="onGameTypeFilter(GameSystem.ALPHA_STRIKE)">Alpha Strike</button>
             </div>
             @if (operationsLoading()) {
-                <div class="loading-spinner">Loading operations...</div>
+                <loading-spinner class="loading-spinner" message="Loading operations..." ariaLabel="Loading operations"></loading-spinner>
             } @else if (filteredOperations().length === 0) {
                 <div class="empty-state">No saved operations found.</div>
             } @else {
@@ -308,7 +310,7 @@
         }
         @if (activeTab() === 'TO&E') {
             @if (organizationsLoading()) {
-                <div class="loading-spinner">Loading organizations...</div>
+                <loading-spinner class="loading-spinner" message="Loading organizations..." ariaLabel="Loading organizations"></loading-spinner>
             } @else if (filteredOrganizations().length === 0) {
                 <div class="empty-state">{{ getOrganizationEmptyStateMessage() }}</div>
             } @else {
@@ -341,8 +343,11 @@
                 </div>
             }
         }
-        <div class="tab-footer glass">
+        <div class="tab-footer">
             @if (activeTab() === 'Hangar') {
+            <input #mulFileInput type="file" accept=".mul,application/xml,text/xml" class="hidden-file-input" (change)="onMulFileSelected($event)" />
+            <button type="button" class="bt-button mul-load-btn" (click)="openMulFilePicker()">Load from MUL...</button>
+            <div class="spanner"></div>
             <div class="footer-filter-controls">
                 <compact-filter-menu
                     [options]="hangarFactionOptions()"

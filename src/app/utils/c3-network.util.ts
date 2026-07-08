@@ -1176,9 +1176,9 @@ export class C3NetworkUtil {
 
     public static getNetworkTypeName(type: C3NetworkType): string {
         switch (type) {
-            case C3NetworkType.C3: return 'C3';
-            case C3NetworkType.C3I: return 'C3i';
-            case C3NetworkType.NAVAL: return 'Naval C3';
+            case C3NetworkType.C3: return 'C³';
+            case C3NetworkType.C3I: return 'C³i';
+            case C3NetworkType.NAVAL: return 'Naval C³';
             case C3NetworkType.NOVA: return 'Nova';
             default: return 'Unknown';
         }

@@ -32,7 +32,7 @@
  */
 
 import type { ForceUnit } from '../models/force-unit.model';
-import { type MULFaction, MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../models/mulfactions.model';
+import { type MULFaction, MULFACTION_EXTINCT, MULFACTION_MERCENARY, MULFACTION_NONE } from '../models/mulfactions.model';
 import type { Era } from '../models/eras.model';
 import type { ForceNameWords } from '../models/force-name-words.model';
 import { Faction } from '../models/factions.model';
@@ -66,11 +66,14 @@ export interface FactionDisplayInfo {
     isMatching: boolean;
     /** Per-era availability and match data for this faction. */
     eraAvailability: FactionEraDisplayInfo[];
+    /** Search text */
+    _searchText: string;
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
-const MIN_UNITS_PERCENTAGE = 0.65;
+const MIN_UNITS_PERCENTAGE = 0.5;
+const KEEP_FACTION_PERCENTAGE = 0.4;
 
 /** Factions that get corporate-flavored names (e.g. "ComStar Apex Solutions"). */
 const CORPORATE_FACTIONS = new Set(['SLCOMNET', 'ComStar', 'Word of Blake']);
@@ -168,6 +171,10 @@ function hasFactionEraAvailability(
     availabilityContext?: ForceAvailabilityContext,
 ): boolean {
     return resolveAvailabilityContext(availabilityContext).getFactionEraUnitIds(faction, era).size > 0;
+}
+
+function isSelectableFaction(faction: Faction): boolean {
+    return faction.id !== MULFACTION_EXTINCT && faction.id !== MULFACTION_NONE;
 }
 
 function getEraMatchPercentage(
@@ -311,7 +318,7 @@ export class ForceNamerUtil {
         const results: Map<Faction, number> = new Map();
 
         for (const faction of factions) {
-            if (faction.id === MULFACTION_EXTINCT) continue;
+            if (!isSelectableFaction(faction)) continue;
             let bestMatchPercentage = 0;
             for (const era of eligibleEras) {
                 bestMatchPercentage = Math.max(
@@ -352,7 +359,7 @@ export class ForceNamerUtil {
         if (!availableFactions || availableFactions.size === 0) {
             if (selectedEra) {
                 const eraFactions = factions.filter(faction =>
-                    faction.id !== MULFACTION_EXTINCT && hasFactionEraAvailability(faction, selectedEra, resolvedAvailability)
+                    isSelectableFaction(faction) && hasFactionEraAvailability(faction, selectedEra, resolvedAvailability)
                 );
                 if (eraFactions.length > 0) return pick(eraFactions);
                 return mercenary && hasFactionEraAvailability(mercenary, selectedEra, resolvedAvailability) ? mercenary : null;
@@ -386,11 +393,11 @@ export class ForceNamerUtil {
             units,
             factions,
             eras,
-            MIN_UNITS_PERCENTAGE,
+            currentFaction ? KEEP_FACTION_PERCENTAGE : MIN_UNITS_PERCENTAGE, // if we got a faction, we pick them all.
             null,
             availabilityContext,
         );
-        if (!availableFactions || availableFactions.size === 0) return mercenary;
+        if (!availableFactions || availableFactions.size === 0) return null; // was "mercenary"...
 
         // Find the highest match percentage
         const entries = Array.from(availableFactions.entries());
@@ -398,12 +405,16 @@ export class ForceNamerUtil {
         const bestEntries = entries.filter(([, pct]) => pct === bestScore);
 
         // If the current faction is among the best, keep it
-        if (currentFaction && bestEntries.some(([faction]) => faction === currentFaction)) {
+        if (currentFaction && bestEntries.some(([faction, score]) => faction === currentFaction)) {
             return currentFaction;
         }
 
         // Pick a random faction from the best ones
-        return pick(bestEntries)[0];
+        const bestPick = pick(bestEntries);
+        if (bestPick[1] < MIN_UNITS_PERCENTAGE) {
+            return null;
+        }
+        return bestPick[0];
     }
 
     /**
@@ -426,7 +437,7 @@ export class ForceNamerUtil {
         const totalUnits = units.length;
 
         for (const faction of allFactions) {
-            if (faction.id === MULFACTION_EXTINCT) continue;
+            if (!isSelectableFaction(faction)) continue;
             const rawPct = displayEras.reduce(
                 (bestMatchPercentage, era) => Math.max(
                     bestMatchPercentage,
@@ -435,9 +446,11 @@ export class ForceNamerUtil {
                 0
             );
 
+            const searchText = faction.name.toLocaleLowerCase();
             result.push({
                 faction,
                 matchPercentage: rawPct,
+                _searchText: `${searchText} ${searchText.replace(/[^a-zA-Z0-9]/g, "")}`,
                 isMatching: rawPct >= MIN_UNITS_PERCENTAGE,
                 eraAvailability: eras.map(era => ({
                     era,

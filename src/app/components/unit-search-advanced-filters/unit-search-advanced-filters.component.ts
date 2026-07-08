@@ -117,13 +117,16 @@ export class UnitSearchAdvancedFiltersComponent {
 
     readonly booleanFilters = computed(() => {
         const gameSystem = this.filterGameSystem();
-        const availabilitySource = this.optionsService.options().availabilitySource;
+        const options = this.optionsService.options();
+        const availabilitySource = options.availabilitySource;
         const excludedKeys = this.excludedKeySet();
+        const hasCustomUnitServers = (options.unitServers?.length ?? 0) > 0;
 
         return BOOLEAN_FILTERS.filter((filter) => (
             (!filter.game || filter.game === gameSystem)
             && isFilterAvailableForAvailabilitySource(filter, availabilitySource)
             && !excludedKeys.has(filter.key)
+            && (filter.key !== 'serverHost' || hasCustomUnitServers)
         ));
     });
 

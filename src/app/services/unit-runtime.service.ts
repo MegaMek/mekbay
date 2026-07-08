@@ -81,7 +81,7 @@ export class UnitRuntimeService {
     }
 
     public async loadUnitTags(units: Unit[]): Promise<void> {
-        const tagData = await this.tagsService.getTagData();
+        const tagData = await this.tagsService.migrateChassisTagsToVariantGroups(units);
         this.applyTagDataToUnits(units, tagData);
     }
 
@@ -90,6 +90,10 @@ export class UnitRuntimeService {
         tagData: TagData | null,
         options?: { rebuildTagSearchIndex?: boolean }
     ): void {
+        if (tagData) {
+            void this.tagsService.migrateChassisTagsToVariantGroups(units, tagData);
+        }
+
         void this.tagsService.fixNameTagsCoveredByChassis(units, tagData);
         const tags = tagData?.tags || {};
 

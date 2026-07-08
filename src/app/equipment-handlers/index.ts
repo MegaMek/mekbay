@@ -35,9 +35,20 @@ import type { EquipmentInteractionRegistryService } from '../services/equipment-
 import { ECMHandler } from './ecm.handler';
 import { BAPHandler } from './bap.handler';
 import { StealthHandler } from './stealth.handler';
-import { MASCHandler } from './masc.handler';
 import { UACJammingHandler } from './uacjamming.handler';
 import { C3Handler } from './c3.handler';
+import { WeaponAmmoHandler } from './weapon-ammo.handler';
+import { InventoryModeHandler } from './inventory-mode.handler';
+import { PpcCapacitorHandler } from './ppc-capacitor.handler';
+import { MmlHandler } from './mml.handler';
+import { AtmHandler } from './atm.handler';
+import { ArtemisVHandler } from './artemis-v.handler';
+import { ApolloHandler } from './apollo.handler';
+import { LaserInsulatorHandler } from './laser-insulator.handler';
+import { RiscLaserPulseModuleHandler } from './risc-laser-pulse-module.handler';
+import { VspPulseHandler } from './vsp-pulse.handler';
+import { MascHandler } from './masc.handler';
+import { DisabledEquipmentHandler } from './disabled-equipment.handler';
 
 /**
  * Register all equipment handlers.
@@ -50,7 +61,18 @@ export function registerAllHandlers(registryService: EquipmentInteractionRegistr
     registry.register(new ECMHandler());
     registry.register(new BAPHandler());
     registry.register(new StealthHandler());
-    registry.register(new MASCHandler());
+    registry.register(new InventoryModeHandler());
+    registry.register(new MmlHandler());
+    registry.register(new AtmHandler());
+    registry.register(new ArtemisVHandler());
+    registry.register(new ApolloHandler());
+    registry.register(new LaserInsulatorHandler());
+    registry.register(new RiscLaserPulseModuleHandler());
+    registry.register(new VspPulseHandler());
+    registry.register(new MascHandler());
+    registry.register(new DisabledEquipmentHandler());
+    registry.register(new PpcCapacitorHandler());
     registry.register(new UACJammingHandler());
     registry.register(new C3Handler());
+    // registry.register(new WeaponAmmoHandler()); // TODO: is a bit annoying
 }

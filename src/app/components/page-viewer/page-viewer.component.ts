@@ -211,6 +211,7 @@ export class PageViewerComponent implements AfterViewInit {
     readonly rewriteShadowPages = this.pageViewerRenderModel.shadowPages;
     readonly rewriteCanNavigate = this.pageViewerNavigation.canNavigate;
     readonly stageSwiping = computed(() => this.isSwiping);
+    readonly performanceMode = computed(() => this.optionsService.options().performanceMode);
 
     readonly unit = computed(() => {
         const selectedUnit = this.forceBuilder.selectedUnit();
@@ -329,7 +330,7 @@ export class PageViewerComponent implements AfterViewInit {
     private interactionServiceEffectRefs = new Map<string, EffectRef>();
 
     // Track which SVGs have had interactions set up (to avoid re-setup)
-    private setupInteractionsSvgs = new WeakSet<SVGSVGElement>();
+    private setupInteractionsSvgModes = new WeakMap<SVGSVGElement, 'readonly' | 'full'>();
 
     // Event listener cleanup functions
     private eventListenerCleanups: (() => void)[] = [];
@@ -401,7 +402,14 @@ export class PageViewerComponent implements AfterViewInit {
             void (async () => {
                 // Load unit if needed
                 if (currentUnit) {
-                    await currentUnit.load();
+                    try {
+                        await currentUnit.load();
+                    } catch (error) {
+                        if (!cancelled && runId === unitEffectRunId) {
+                            this.setUnitLoadFailure(error);
+                        }
+                        return;
+                    }
                 }
 
                 // Ignore stale async continuations
@@ -487,6 +495,26 @@ export class PageViewerComponent implements AfterViewInit {
             this.zoomPanService.setDoubleTapZoomResetMode(this.optionsService.options().recordSheetDoubleTapZoomReset);
         }, { injector: this.injector });
 
+        effect(() => {
+            this.zoomPanService.setDoubleTapZoomResetMode(this.optionsService.options().recordSheetDoubleTapZoomReset);
+        }, { injector: this.injector });
+
+        effect(() => {
+            const performanceMode = this.performanceMode();
+
+            if (!this.viewInitialized() || this.isSwiping) {
+                return;
+            }
+
+            untracked(() => {
+                if (performanceMode) {
+                    this.clearShadowPages();
+                } else {
+                    this.scheduleRenderShadowPages();
+                }
+            });
+        }, { injector: this.injector });
+
         // Watch for allowMultipleActiveSheets option changes
         effect(() => {
             const allowMultiple = this.optionsService.options().allowMultipleActiveSheets;
@@ -562,7 +590,8 @@ export class PageViewerComponent implements AfterViewInit {
                 '.crewHit',
                 '.crewNameButton',
                 '.crewSkillButton',
-                '.crew-status-checkbox',
+                '.unitConditionButton',
+                '.locConditionButton',
                 '.soldierPip',
                 '#heatScale',
                 '#heatDataPanel',
@@ -957,6 +986,10 @@ export class PageViewerComponent implements AfterViewInit {
     }
 
     private queueSwipeUnitLoad(unitIndex: number): void {
+        if (this.performanceMode() && !this.isSwipeUnitActive(unitIndex)) {
+            return;
+        }
+
         const unit = this.swipeAllUnits[unitIndex];
         if (!this.pageViewerSwipeLoad.canQueueLoad(unitIndex, !!unit)) {
             return;
@@ -981,6 +1014,23 @@ export class PageViewerComponent implements AfterViewInit {
         }).catch(() => {
             this.pageViewerSwipeLoad.markLoadFailure(unitIndex);
         });
+    }
+
+    private isSwipeUnitActive(unitIndex: number): boolean {
+        const totalUnits = this.swipeAllUnits.length;
+        if (totalUnits === 0) {
+            return false;
+        }
+
+        const visiblePages = this.effectiveVisiblePageCount();
+        for (let offset = 0; offset < visiblePages; offset++) {
+            const activeUnitIndex = ((this.baseDisplayStartIndex + offset) % totalUnits + totalUnits) % totalUnits;
+            if (activeUnitIndex === unitIndex) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private setPageWrapperContentState(wrapper: HTMLDivElement, hasSvg: boolean): void {
@@ -1021,6 +1071,8 @@ export class PageViewerComponent implements AfterViewInit {
     }): void {
         const { wrapper, svg, scale, setAsCurrent = false } = options;
 
+        this.clearSwipePlaceholderContent(wrapper);
+
         if (scale === undefined) {
             svg.style.transform = '';
             svg.style.transformOrigin = '';
@@ -1045,6 +1097,29 @@ export class PageViewerComponent implements AfterViewInit {
         }
     }
 
+    private setSwipePlaceholderContent(wrapper: HTMLDivElement, unit: CBTForceUnit): void {
+        let placeholder = wrapper.querySelector(':scope > .swipe-page-placeholder') as HTMLDivElement | null;
+        if (!placeholder) {
+            placeholder = this.renderer.createElement('div') as HTMLDivElement;
+            this.renderer.addClass(placeholder, 'swipe-page-placeholder');
+            this.renderer.appendChild(wrapper, placeholder);
+        }
+
+        placeholder.textContent = unit.getDisplayName();
+        this.renderer.addClass(wrapper, 'has-placeholder');
+        this.renderer.removeClass(wrapper, 'has-svg');
+        this.renderer.removeClass(wrapper, 'is-empty');
+    }
+
+    private clearSwipePlaceholderContent(wrapper: HTMLDivElement): void {
+        const placeholder = wrapper.querySelector(':scope > .swipe-page-placeholder');
+        if (placeholder) {
+            this.renderer.removeChild(wrapper, placeholder);
+        }
+
+        this.renderer.removeClass(wrapper, 'has-placeholder');
+    }
+
     private bindWrapperInteractiveLayers(
         wrapper: HTMLDivElement,
         unit: CBTForceUnit,
@@ -1052,10 +1127,11 @@ export class PageViewerComponent implements AfterViewInit {
         overlayMode: 'fixed' | 'page'
     ): void {
         if (this.readOnly()) {
+            this.getOrCreateInteractionService(unit, svg, 'readonly');
             return;
         }
 
-        this.getOrCreateInteractionService(unit, svg);
+        this.getOrCreateInteractionService(unit, svg, 'full');
         this.getOrCreateCanvasOverlay(wrapper, unit);
         this.getOrCreateInteractionOverlay(wrapper, unit, overlayMode);
     }
@@ -1071,6 +1147,11 @@ export class PageViewerComponent implements AfterViewInit {
     }
 
     private scheduleRenderShadowPages(): void {
+        if (this.performanceMode()) {
+            this.clearShadowPages();
+            return;
+        }
+
         if (this.isSwiping) {
             return;
         }
@@ -1362,7 +1443,10 @@ export class PageViewerComponent implements AfterViewInit {
             visiblePages,
             readOnly: this.readOnly(),
             showFluff: this.optionsService.options().recordSheetCenterPanelContent === 'fluffImage',
+            performanceMode: this.performanceMode(),
             setPageWrapperContentState: (wrapper, hasSvg) => this.setPageWrapperContentState(wrapper, hasSvg),
+            setSwipePlaceholderContent: (wrapper, unit) => this.setSwipePlaceholderContent(wrapper, unit),
+            clearSwipePlaceholderContent: (wrapper) => this.clearSwipePlaceholderContent(wrapper),
             setWrapperSelectedState: (wrapper, isSelected) => this.setWrapperSelectedState(wrapper, isSelected),
             setSwipeNeighborVisibilityState: (wrapper, isVisible) => this.setSwipeNeighborVisibilityState(wrapper, isVisible),
             attachSvgToWrapper: (options) => this.attachSvgToWrapper(options),
@@ -1418,17 +1502,21 @@ export class PageViewerComponent implements AfterViewInit {
      * Services are keyed by unit ID and persist across re-renders.
      * This avoids constantly re-creating services and re-attaching event listeners.
      */
-    private getOrCreateInteractionService(unit: CBTForceUnit, svg: SVGSVGElement): SvgInteractionService {
+    private getOrCreateInteractionService(unit: CBTForceUnit, svg: SVGSVGElement, mode: 'readonly' | 'full' = 'full'): SvgInteractionService {
         const unitId = unit.id;
         
         // Check if we already have a service for this unit
         const existingService = this.interactionServices.get(unitId);
         if (existingService) {
             // Check if this SVG already has interactions set up
-            if (!this.setupInteractionsSvgs.has(svg)) {
+            if (this.setupInteractionsSvgModes.get(svg) !== mode) {
                 existingService.updateUnit(unit);
-                existingService.setupInteractions(svg);
-                this.setupInteractionsSvgs.add(svg);
+                if (mode === 'readonly') {
+                    existingService.setupReadOnlyInteractions(svg);
+                } else {
+                    existingService.setupInteractions(svg);
+                }
+                this.setupInteractionsSvgModes.set(svg, mode);
             }
             return existingService;
         }
@@ -1443,8 +1531,12 @@ export class PageViewerComponent implements AfterViewInit {
         );
         
         service.updateUnit(unit);
-        service.setupInteractions(svg);
-        this.setupInteractionsSvgs.add(svg);
+        if (mode === 'readonly') {
+            service.setupReadOnlyInteractions(svg);
+        } else {
+            service.setupInteractions(svg);
+        }
+        this.setupInteractionsSvgModes.set(svg, mode);
         
         // Monitor heat marker state for this service
         const effectRef = effect(() => {
@@ -1585,7 +1677,7 @@ export class PageViewerComponent implements AfterViewInit {
         this.heatDiffMarkers.set(new Map());
         
         // Also clear the SVG tracking set (WeakSet doesn't need explicit clearing but we note it)
-        this.setupInteractionsSvgs = new WeakSet<SVGSVGElement>();
+        this.setupInteractionsSvgModes = new WeakMap<SVGSVGElement, 'readonly' | 'full'>();
     }
 
     /**
@@ -1641,6 +1733,15 @@ export class PageViewerComponent implements AfterViewInit {
         if (resizePlan.shouldScheduleShadowRender) {
             this.scheduleRenderShadowPages();
         }
+    }
+
+    private loadUnits(units: readonly CBTForceUnit[]): Promise<void> {
+        return Promise.all(units.map(unit => unit.load())).then(() => undefined);
+    }
+
+    private setUnitLoadFailure(error: unknown): void {
+        const message = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+        this.loadError.set(message.trim() || 'Unable to load record sheet.');
     }
 
     // ========== Keyboard Navigation ==========
@@ -1736,6 +1837,19 @@ export class PageViewerComponent implements AfterViewInit {
             : (currentStartIndex + effectiveVisible) % totalUnits;
         const targetUnit = allUnits[targetIndex] as CBTForceUnit;
         if (!targetUnit) return;
+
+        if (this.performanceMode()) {
+            this.closeInteractionOverlays();
+            this.pageViewerNavigation.suppressNextSelectionRedisplay();
+            this.forceBuilder.selectUnit(targetUnit);
+            this.pageViewerNavigation.startTransition(
+                this.pageViewerNavigation.buildRequest(direction, 'keyboard'),
+                targetUnit.id
+            );
+            this.pageViewerNavigation.finishTransition(currentStartIndex + pagesToMove, targetUnit.id);
+            this.displayUnit({ fromSwipe: true });
+            return;
+        }
         
         // Check if there's an existing shadow page we can use
         const existingShadow = this.shadowPageElements.find(
@@ -1820,6 +1934,10 @@ export class PageViewerComponent implements AfterViewInit {
                     this.navigateToShadowPage(targetUnit, targetIndex, wrapper, 'keyboard');
                 }
             });
+        }).catch((error) => {
+            if (navigationVersion === this.asyncNavigationVersion) {
+                this.setUnitLoadFailure(error);
+            }
         });
     }
 
@@ -1861,14 +1979,20 @@ export class PageViewerComponent implements AfterViewInit {
         const currentVersion = ++this.displayVersion;
 
         // Load all displayed units first
-        const loadPromises = this.displayedUnits().map(u => u.load());
-
-        Promise.all(loadPromises).then(() => {
+        this.loadUnits(this.displayedUnits()).then(() => {
             // Check if this call is still valid
             if (this.displayVersion !== currentVersion) {
                 return;
             }
             this.renderPages({ fromSwipe });
+        }).catch((error) => {
+            if (this.displayVersion !== currentVersion) {
+                return;
+            }
+
+            this.displayedUnits.set([]);
+            this.currentSvg.set(null);
+            this.setUnitLoadFailure(error);
         });
     }
 
@@ -1912,9 +2036,8 @@ export class PageViewerComponent implements AfterViewInit {
 
         // Capture version to avoid stale async updates
         const currentVersion = ++this.displayVersion;
-        const loadPromises = expectedUnits.map(u => u.load());
 
-        Promise.all(loadPromises).then(() => {
+        this.loadUnits(expectedUnits).then(() => {
             if (this.displayVersion !== currentVersion) {
                 return;
             }
@@ -1944,6 +2067,10 @@ export class PageViewerComponent implements AfterViewInit {
             // Replace displayed units (model) without rebuilding wrappers
             this.displayedUnits.set(expectedUnits);
             this.finalizeActivePageRender(displayedUnitIds, { applyCurrentTransform: true });
+        }).catch((error) => {
+            if (this.displayVersion === currentVersion) {
+                this.setUnitLoadFailure(error);
+            }
         });
     }
 
@@ -2065,7 +2192,7 @@ export class PageViewerComponent implements AfterViewInit {
         }
         
         // Only render if shadowPages is enabled
-        if (!this.shadowPages()) {
+        if (!this.shadowPages() || this.performanceMode()) {
             this.clearShadowPages();
             return;
         }
@@ -2119,7 +2246,11 @@ export class PageViewerComponent implements AfterViewInit {
         
         // Pre-load shadow units to ensure SVGs are available
         const shadowUnits = desiredShadows.map(s => allUnits[s.unitIndex] as CBTForceUnit).filter(u => u);
-        await Promise.all(shadowUnits.map(u => u.load()));
+        try {
+            await this.loadUnits(shadowUnits);
+        } catch {
+            return;
+        }
 
         if (renderVersion !== this.shadowRenderVersion || this.isSwiping) {
             return;
@@ -2211,12 +2342,6 @@ export class PageViewerComponent implements AfterViewInit {
             this.setPromotedShadowState(clickedShadow, true);
         }
         
-        // Create incoming shadow pages that will slide into view during animation
-        // These are the pages beyond the clicked shadow in the direction of movement
-        if (direction) {
-            this.createIncomingShadowPages(clickedShadow, targetIndex, direction, shadowNavigationPlan.pagesToMove, scale, showFluff, allUnits as CBTForceUnit[]);
-        }
-
         const swipeWrapper = this.swipeWrapperRef().nativeElement;
         
         // Store state for animation
@@ -2225,6 +2350,12 @@ export class PageViewerComponent implements AfterViewInit {
         this.baseDisplayStartIndex = currentStartIndex;
         
         const animationVersion = this.swipeVersion;
+
+        // Create incoming shadow pages that will slide into view during animation
+        // These are the pages beyond the clicked shadow in the direction of movement
+        if (direction) {
+            this.createIncomingShadowPages(clickedShadow, targetIndex, direction, shadowNavigationPlan.pagesToMove, scale, showFluff, allUnits as CBTForceUnit[], animationVersion);
+        }
 
         this.startSwipeAnimation({
             durationMs: 300,
@@ -2268,7 +2399,8 @@ export class PageViewerComponent implements AfterViewInit {
         pagesToMove: number,
         scale: number,
         showFluff: boolean,
-        allUnits: CBTForceUnit[]
+        allUnits: CBTForceUnit[],
+        animationVersion: number
     ): void {
         this.pageViewerShadowRender.createIncomingShadowPages({
             clickedShadow,
@@ -2281,7 +2413,7 @@ export class PageViewerComponent implements AfterViewInit {
             shadowPageElements: this.shadowPageElements,
             activeUnitIds: new Set(this.displayedUnits().map((unit) => unit.id)),
             getShadowKey: (unitIndex, shadowDirection) => this.getShadowKey(unitIndex, shadowDirection),
-            isAnimationActive: () => this.pageViewerSwipeAnimation.hasActiveAnimation(),
+            isRequestCurrent: () => this.swipeVersion === animationVersion && this.pageViewerSwipeAnimation.hasActiveAnimation(),
             upsertTransientShadowPage: (descriptor, shadowScale, shouldShowFluff) => this.upsertTransientShadowPage(descriptor, shadowScale, shouldShowFluff)
         });
     }
@@ -2333,7 +2465,7 @@ export class PageViewerComponent implements AfterViewInit {
 
         return left.el === right.el &&
             left.heat === right.heat &&
-            left.currentHeat === right.currentHeat &&
+            left.baselineHeat === right.baselineHeat &&
             left.containerRect.left === right.containerRect.left &&
             left.containerRect.top === right.containerRect.top &&
             left.containerRect.width === right.containerRect.width &&
@@ -2421,7 +2553,10 @@ export class PageViewerComponent implements AfterViewInit {
         const currentUnit = this.unit();
         if (currentUnit) {
             currentUnit.load().then(() => {
+                this.loadError.set(null);
                 this.displayUnit();
+            }).catch((error) => {
+                this.setUnitLoadFailure(error);
             });
         }
     }

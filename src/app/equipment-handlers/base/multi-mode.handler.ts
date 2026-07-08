@@ -49,7 +49,7 @@ export abstract class MultiModeHandler extends EquipmentInteractionHandler {
             label: mode.label,
             shortLabel: mode.shortLabel,
             value: mode.value,
-            disabled: equipment.destroyed,
+            disabled: equipment.isUnavailable(),
             active: currentState === mode.value
         }));
     }

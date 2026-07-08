@@ -1,3 +1,4 @@
+import type { CrewStateControlKey } from '../../models/rules/unit-type-rules';
 /*
  * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
  *
@@ -32,9 +33,11 @@
  */
 
 import { Injectable, type ElementRef, DestroyRef, signal, type WritableSignal, type Injector, effect, type EffectRef, inject } from '@angular/core';
+import { Overlay } from '@angular/cdk/overlay';
+import { ComponentPortal } from '@angular/cdk/portal';
+import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DialogsService } from '../../services/dialogs.service';
 import { firstValueFrom } from 'rxjs';
-import type { ForceUnit } from '../../models/force-unit.model';
 import type { SkillType } from '../../models/crew-member.model';
 import type { CriticalSlot, MountedEquipment } from '../../models/force-serialization';
 import { OptionsService } from '../../services/options.service';
@@ -43,15 +46,60 @@ import type { ZoomPanServiceInterface } from './zoom-pan.interface';
 import { type ChoicePickerInstance, isChoicePickerInstance, type NumericPickerInstance, type NumericPickerResult, type PickerChoice, type PickerPosition, type PickerTargetType, type PickerValue } from '../picker/picker.interface';
 import { ToastService } from '../../services/toast.service';
 import { LayoutService } from '../../services/layout.service';
-import { SetAmmoDialogComponent, type SetAmmoDialogData } from '../set-ammo-dialog/set-ammo.dialog.component';
 import { DataService } from '../../services/data.service';
 import { AmmoEquipment } from '../../models/equipment.model';
 import { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
-import type { HandlerChoice, HandlerContext } from '../../services/equipment-interaction-registry.service';
+import type { HandlerChoice } from '../../services/equipment-interaction-registry.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
+import { OverlayManagerService } from '../../services/overlay-manager.service';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { type ChoicePickerStyle, PickerFactoryService } from '../../services/picker-factory.service';
 import { canAntiMech } from '../../utils/infantry.util';
+import { EquipmentDialogComponent } from '../equipment-dialog/equipment-dialog.component';
+import type { EquipmentDialogContext, EquipmentDialogData, EquipmentDialogTab } from '../equipment-dialog/equipment-dialog.model';
+import { WeaponTargetChoiceMenuComponent } from '../../components/equipment-dialog/weapon-target-choice-menu.component';
+import { getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_MODE_STATE, selectInventoryControlEntry, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
+import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
+import { inventoryTargetCategory, inventoryTargetNumberText, parseInventoryTargetNumberCell, readInventoryTargetDisplay, readInventoryTargetText } from '../../utils/inventory-target-number.util';
+import { PageViewerStateService } from './internal/page-viewer-state.service';
+import { committedCriticalHitCount, isRepeatableMotiveHitId, motiveHitLevelFromId, MOTIVE_HIT_PIP_COUNT, pendingCriticalHitTimestamps } from '../../models/rules/vehicle-motive-hit.util';
+import { UnitStateDropdownComponent, type UnitStateDropdownChoice } from './unit-state-dropdown.component';
+import { getAmmoControlEntryForCriticalSlot, setAmmoEntry } from '../../utils/ammo-interaction.util';
+import { TORSO_LOCATIONS } from '../../models/rules/mek-rules';
+import { isLaserWithRiscModule, isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, RISC_LASER_STANDARD_MODE, selectedRiscLaserMode } from '../../equipment-handlers/risc-laser-pulse-module.handler';
+
+type SheetInventoryRangeKey = InventoryRangeKey | 'extreme';
+type HeatMarkerData = { el: SVGElement | null, heat: number; baselineHeat: number };
+
+interface HeatCell {
+    el: SVGElement;
+    value: number;
+}
+
+interface ActiveHeatDrag {
+    pointerId: number;
+    selectedCell: HeatCell;
+    baselineHeat: number;
+    startElement: SVGElement;
+    cleanup: () => void;
+}
+
+const INVENTORY_RANGE_BUTTON_CLASSES: ReadonlyArray<readonly [string, SheetInventoryRangeKey]> = [
+    ['shrButton', 'short'],
+    ['medButton', 'medium'],
+    ['lngButton', 'long'],
+    ['extButton', 'extreme']
+];
+const VTOL_ROTOR_CRIT_ID = 'rotor';
+const VTOL_ROTOR_HITS_MAX = 20;
+const SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY = 'svg-inventory-target-choice';
+const SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY = 'svg-conditions-dropdown';
+const SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY = 'svg-crew-state-dropdown';
+const SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY = 'svg-location-conditions-dropdown';
+const REPEATABLE_MOTIVE_HIT_LABELS = new Map<number, string>([
+    [2, 'Medium'],
+    [3, 'Heavy']
+]);
 
 /*
  * Author: Drake
@@ -60,19 +108,23 @@ export interface InteractionState {
     clickTarget: SVGElement | null;
     isHeatDragging: boolean;
     diffHeatMarkerVisible: WritableSignal<boolean>;
-    heatMarkerData: WritableSignal<{ el: SVGElement | null, heat: number } | null>;
+    heatMarkerData: WritableSignal<HeatMarkerData | null>;
     isPickerOpen: WritableSignal<boolean>;
 }
 
 @Injectable()
 export class SvgInteractionService {
     private dataService = inject(DataService);
+    private destroyRef = inject(DestroyRef);
+    private overlay = inject(Overlay);
+    private overlayManager = inject(OverlayManagerService);
     private optionsService = inject(OptionsService);
     private dialogsService = inject(DialogsService);
     private toastService = inject(ToastService);
     private layoutService = inject(LayoutService);
     private forceBuilderService = inject(ForceBuilderService);
     private equipmentRegistryService = inject(EquipmentInteractionRegistryService);
+    private pageViewerState = inject(PageViewerStateService);
     private pickerFactory = inject(PickerFactoryService);
 
     // Zoom-pan service passed via initialize()
@@ -86,13 +138,14 @@ export class SvgInteractionService {
         clickTarget: null,
         isHeatDragging: false,
         diffHeatMarkerVisible: signal(false),
-        heatMarkerData: signal<{ el: SVGElement | null, heat: number } | null>(null),
+        heatMarkerData: signal<HeatMarkerData | null>(null),
         isPickerOpen: signal(false)
     };
 
     private pickerRef: ChoicePickerInstance | NumericPickerInstance | null = null;
     private heatMarkerEffectRef: EffectRef | null = null;
     private interactionAbortController: AbortController | null = null;
+    private activeHeatDrag: ActiveHeatDrag | null = null;
 
     private currentHighlightedElement: SVGElement | null = null;
 
@@ -102,7 +155,7 @@ export class SvgInteractionService {
     }
 
     constructor() {
-        inject(DestroyRef).onDestroy(() => {
+        this.destroyRef.onDestroy(() => {
             this.cleanup();
         });
     }
@@ -147,20 +200,19 @@ export class SvgInteractionService {
      * Gets the heat diff marker data for the HeatDiffMarkerComponent.
      * Returns null if no marker should be shown.
      */
-    getHeatDiffMarkerData(): { el: SVGElement | null; heat: number; currentHeat: number; containerRect: DOMRect } | null {
+    getHeatDiffMarkerData(): { el: SVGElement | null; heat: number; baselineHeat: number; containerRect: DOMRect } | null {
         const data = this.state.heatMarkerData();
         if (!data?.el) return null;
 
         const currentUnit = this.unit();
         if (!currentUnit) return null;
 
-        const currentHeat = currentUnit.getHeat();
         const containerRect = this.containerRef.nativeElement.getBoundingClientRect();
 
         return {
             el: data.el,
             heat: data.heat,
-            currentHeat: currentHeat.current,
+            baselineHeat: data.baselineHeat,
             containerRect
         };
     }
@@ -188,13 +240,27 @@ export class SvgInteractionService {
         this.setupPipInteractions(svg, signal);
         this.setupSoldierPipInteractions(svg, signal);
         this.setupArmorInteraction(svg, signal);
+        this.setupVtolRotorHitsInteraction(svg, signal);
         this.setupCritSlotInteractions(svg, signal);
         this.setupHeatInteractions(svg, signal);
         this.setupCritLocInteractions(svg, signal);
         this.setupCrewHitInteractions(svg, signal);
         this.setupSkillInteractions(svg, signal);
         this.setupCrewNameInteractions(svg, signal);
+        this.setupCrewStateInteractions(svg, signal);
+        this.setupConditionsInteractions(svg, signal);
+        this.setupLocationConditionInteractions(svg, signal);
         this.setupInventoryInteractions(svg, signal);
+        this.setupAmmoProfileInteractions(svg, signal);
+    }
+
+    setupReadOnlyInteractions(svg: SVGSVGElement) {
+        if (this.interactionAbortController) {
+            this.interactionAbortController.abort();
+        }
+        this.interactionAbortController = new AbortController();
+        const signal = this.interactionAbortController.signal;
+        this.setupAmmoProfileInteractions(svg, signal);
     }
 
     private addSvgTapHandler(
@@ -205,50 +271,109 @@ export class SvgInteractionService {
         let longTouchTimer: any = null;
         el.classList.add('interactive');
         const eventOptions = { passive: false, signal };
+        const globalEventOptions = { passive: false, signal, capture: true };
 
         let pointerId: number | null = null;
+        let tapStartEvent: PointerEvent | null = null;
+        let globalListenersActive = false;
+
+        const releasePointerCapture = (id: number | null) => {
+            if (id === null) return;
+            try {
+                if (el.hasPointerCapture(id)) {
+                    el.releasePointerCapture(id);
+                }
+            } catch { /* Ignore unsupported pointer capture */ }
+        };
 
         el.addEventListener('pointerdown', (evt: PointerEvent) => {
             evt.preventDefault();
             this.state.clickTarget = el;
             this.zoomPanService.pointerMoved = false;
             clearLongTouch();
+            pointerId = evt.pointerId;
+            tapStartEvent = evt;
+            try {
+                el.setPointerCapture(evt.pointerId);
+            } catch { /* Ignore unsupported pointer capture */ }
+            addGlobalPointerListeners();
             longTouchTimer = setTimeout(() => {
                 upHandlerSecondary(evt);
             }, 300);
-            pointerId = evt.pointerId;
             // Dispatch a custom event for page selection to work
             // Since we preventDefault on pointerdown, the click event won't fire naturally
             el.dispatchEvent(new CustomEvent('svg-interaction-click', { bubbles: true }));
         }, eventOptions);
 
         const clearLongTouch = () => {
+            const activePointerId = pointerId;
             pointerId = null;
+            tapStartEvent = null;
+            removeGlobalPointerListeners();
             if (longTouchTimer) {
                 clearTimeout(longTouchTimer);
                 longTouchTimer = null;
             }
+            releasePointerCapture(activePointerId);
+        };
+
+        const getAnchoredTapEvent = (evt: PointerEvent) => {
+            const anchor = tapStartEvent;
+            if (!anchor || (anchor.clientX === evt.clientX && anchor.clientY === evt.clientY)) {
+                return evt;
+            }
+
+            return new PointerEvent(evt.type, {
+                bubbles: evt.bubbles,
+                cancelable: evt.cancelable,
+                composed: evt.composed,
+                detail: evt.detail,
+                view: window,
+                screenX: anchor.screenX,
+                screenY: anchor.screenY,
+                clientX: anchor.clientX,
+                clientY: anchor.clientY,
+                ctrlKey: evt.ctrlKey,
+                shiftKey: evt.shiftKey,
+                altKey: evt.altKey,
+                metaKey: evt.metaKey,
+                button: evt.button,
+                buttons: evt.buttons,
+                relatedTarget: evt.relatedTarget,
+                pointerId: evt.pointerId,
+                width: evt.width,
+                height: evt.height,
+                pressure: evt.pressure,
+                tangentialPressure: evt.tangentialPressure,
+                tiltX: evt.tiltX,
+                tiltY: evt.tiltY,
+                twist: evt.twist,
+                pointerType: evt.pointerType,
+                isPrimary: evt.isPrimary
+            });
         };
 
         const upHandlerSecondary = (evt: PointerEvent) => {
             if (evt.pointerId !== pointerId) return;
+            const tapEvent = getAnchoredTapEvent(evt);
             clearLongTouch();
             evt.stopPropagation();
             evt.preventDefault();
             if (this.state.clickTarget && !this.zoomPanService.pointerMoved) {
-                handler(evt, false);
+                handler(tapEvent, false);
             }
             this.state.clickTarget = null;
         };
 
         const upHandler = (evt: PointerEvent) => {
             if (evt.pointerId !== pointerId) return;
+            const tapEvent = getAnchoredTapEvent(evt);
             clearLongTouch();
             evt.preventDefault();
             if (this.state.clickTarget && !this.zoomPanService.pointerMoved) {
                 let isLeftClick = true;
                 isLeftClick = evt.button === 0;
-                handler(evt, isLeftClick);
+                handler(tapEvent, isLeftClick);
             }
             this.state.clickTarget = null;
         };
@@ -260,7 +385,30 @@ export class SvgInteractionService {
             this.state.clickTarget = null;
         };
 
-        el.addEventListener('pointerleave', cancelHandler, eventOptions);
+        const addGlobalPointerListeners = () => {
+            if (globalListenersActive) return;
+            globalListenersActive = true;
+            window.addEventListener('pointerup', upHandler, globalEventOptions);
+            window.addEventListener('pointercancel', cancelHandler, globalEventOptions);
+        };
+
+        const removeGlobalPointerListeners = () => {
+            if (!globalListenersActive) return;
+            globalListenersActive = false;
+            window.removeEventListener('pointerup', upHandler, globalEventOptions);
+            window.removeEventListener('pointercancel', cancelHandler, globalEventOptions);
+        };
+
+        const leaveHandler = (evt: PointerEvent) => {
+            if (evt.pointerId !== pointerId) return;
+            try {
+                if (el.hasPointerCapture(evt.pointerId)) return;
+            } catch { /* Ignore unsupported pointer capture */ }
+            if (evt.pointerType === 'pen' || evt.pointerType === 'touch') return;
+            cancelHandler(evt);
+        };
+
+        el.addEventListener('pointerleave', leaveHandler, eventOptions);
         el.addEventListener('pointercancel', cancelHandler, eventOptions);
         el.addEventListener('pointerup', upHandler, eventOptions);
         signal.addEventListener('abort', () => {
@@ -276,26 +424,6 @@ export class SvgInteractionService {
                 (el as SVGElement).style.pointerEvents = 'none';
             });
         }
-        svg.querySelectorAll<SVGElement>('.crew-status-checkbox').forEach(el => {
-            el.classList.add('interactive');
-            this.addSvgTapHandler(el, (evt: Event, primaryAction: boolean) => {
-                // Handle the tap event for crew status checkboxes
-                if (this.state.clickTarget !== el) return;
-                const crewId = el.getAttribute('crewId') as number | null;
-                const state = el.getAttribute('state');
-                if (crewId === null || !state) return;
-                const unit = this.unit();
-                if (!unit) return;
-                const crewMember = unit.getCrewMember(crewId);
-                if (!crewMember) return;
-                if (state === 'dead') {
-                    crewMember.toggleDead();
-                } else if (state === 'unconscious') {
-                    crewMember.toggleUnconscious();
-                }
-            }, signal);
-        });
-
     }
 
     private setupSoldierPipInteractions(svg: SVGSVGElement, signal: AbortSignal) {
@@ -490,6 +618,9 @@ export class SvgInteractionService {
                             this.unit()?.addArmorHits(loc, valueToApply, rear, this.consolidateImmediately);
                         }
                     }
+                    if (loc === 'RO' && value !== 0) {
+                        this.applyVtolRotorHitDelta(unit, value > 0 ? 1 : -1, svg.getElementById('rotor_hits_group') as SVGElement | null);
+                    }
                     showArmorToast(value);
                 };
 
@@ -533,16 +664,235 @@ export class SvgInteractionService {
     private setupCritLocInteractions(svg: SVGSVGElement, signal: AbortSignal) {
         svg.querySelectorAll('.critLoc').forEach(el => {
             const svgEl = el as SVGElement;
+            if (this.critLocId(svgEl) === VTOL_ROTOR_CRIT_ID) return;
             this.addSvgTapHandler(svgEl, (evt: Event, primaryAction: boolean) => {
                 if (this.state.clickTarget !== svgEl) return;
-                const id = svgEl.getAttribute('id');
+                const id = this.critLocId(svgEl);
                 if (!id) return;
+                if (isRepeatableMotiveHitId(id)) {
+                    this.showMotiveHitPicker(evt, svgEl, id);
+                    return;
+                }
+                if (this.applySensorHitInteraction(id)) return;
                 let critLoc = this.unit()?.getCritLoc(id);
                 if (!critLoc) return;
                 critLoc.destroying = !!critLoc.destroying ? undefined : Date.now();
                 this.unit()?.setCritLoc(critLoc);
             }, signal);
         });
+    }
+
+    private setupVtolRotorHitsInteraction(svg: SVGSVGElement, signal: AbortSignal) {
+        const unit = this.unit();
+        if (!unit || unit.getUnit().type !== 'VTOL') return;
+
+        const rotorEl = svg.getElementById('rotor_hits_group') as SVGElement | null;
+        if (!rotorEl) return;
+
+        this.addSvgTapHandler(rotorEl, (event: PointerEvent) => {
+            if (this.state.clickTarget !== rotorEl) return;
+
+            const rotorCrit = unit.getCritLoc(VTOL_ROTOR_CRIT_ID);
+            const currentHits = Math.max(0, (rotorCrit?.hits ?? 0) + (rotorCrit?.pendingHits ?? 0));
+            this.showHitDeltaPicker(event, rotorEl, 'Rotor Hits', currentHits, VTOL_ROTOR_HITS_MAX - currentHits, (delta) => {
+                this.applyVtolRotorHitDelta(unit, delta, rotorEl);
+            });
+        }, signal);
+    }
+
+    private applyVtolRotorHitDelta(unit: CBTForceUnit, delta: number, rotorEl?: SVGElement | null): void {
+        if (delta === 0 || unit.getUnit().type !== 'VTOL') return;
+
+        const critLoc = unit.getCritLoc(VTOL_ROTOR_CRIT_ID) ?? { id: VTOL_ROTOR_CRIT_ID, name: VTOL_ROTOR_CRIT_ID };
+        const committedHits = Math.max(0, critLoc.hits ?? 0);
+        const pendingHits = critLoc.pendingHits ?? 0;
+        const totalHits = Math.max(0, Math.min(VTOL_ROTOR_HITS_MAX, committedHits + pendingHits + delta));
+        critLoc.id = VTOL_ROTOR_CRIT_ID;
+        critLoc.el = rotorEl ?? critLoc.el;
+        if (this.consolidateImmediately) {
+            critLoc.hits = totalHits;
+            critLoc.pendingHits = undefined;
+        } else {
+            const nextPendingHits = totalHits - committedHits;
+            critLoc.pendingHits = nextPendingHits === 0 ? undefined : nextPendingHits;
+        }
+        critLoc.destroying = undefined;
+        critLoc.destroyed = undefined;
+        unit.setCritLoc(critLoc);
+    }
+
+    private showMotiveHitPicker(event: Event, motiveEl: SVGElement, id: string): void {
+        const unit = this.unit();
+        if (!unit) return;
+
+        const critLoc = unit.getCritLoc(id) ?? { id, name: id, el: motiveEl };
+        const currentHits = Math.max(0, committedCriticalHitCount(critLoc) + (critLoc.pendingHits ?? 0));
+        const motiveHitLevel = motiveHitLevelFromId(id);
+        const motiveHitLabel = motiveHitLevel === null ? null : REPEATABLE_MOTIVE_HIT_LABELS.get(motiveHitLevel);
+        const title = motiveHitLabel ? `Motive Hits (${motiveHitLabel})` : 'Motive Hits';
+        this.showHitDeltaPicker(event, motiveEl, title, currentHits, MOTIVE_HIT_PIP_COUNT, (delta) => {
+            this.applyMotiveHitDelta(unit, id, delta, motiveEl);
+        });
+    }
+
+    private showHitDeltaPicker(
+        event: Event,
+        el: SVGElement,
+        title: string,
+        currentHits: number,
+        maxDelta: number,
+        onPick: (delta: number) => void
+    ): void {
+        const startValue = -currentHits;
+        const endValue = maxDelta;
+        const selectedValue = endValue >= 1 ? 1 : 0;
+        const applyHitDelta = (delta: number) => {
+            this.removePicker();
+            onPick(delta);
+        };
+        const position = event instanceof PointerEvent ? { x: event.clientX, y: event.clientY } : undefined;
+        const pickerStylePref = this.getUserPickerPreference();
+        if (pickerStylePref === 'radial' || pickerStylePref === 'default') {
+            this.showNumericPicker({
+                event,
+                el,
+                position,
+                title,
+                min: startValue,
+                max: endValue,
+                selected: selectedValue,
+                onPick: (result) => applyHitDelta(result.value),
+                onCancel: () => this.removePicker()
+            });
+        } else {
+            this.showChoicePicker({
+                event,
+                el,
+                position,
+                title,
+                values: this.hitDeltaChoices(startValue, endValue),
+                selected: selectedValue,
+                suggestedStyle: 'linear',
+                targetType: 'motive',
+                onPick: (val) => applyHitDelta(val.value as number),
+                onCancel: () => this.removePicker()
+            });
+        }
+    }
+
+    private applyMotiveHitDelta(unit: CBTForceUnit, id: string, delta: number, motiveEl?: SVGElement | null): void {
+        if (delta === 0) return;
+
+        const critLoc = unit.getCritLoc(id) ?? { id, name: id };
+        const committedHits = committedCriticalHitCount(critLoc);
+        const currentHits = Math.max(0, committedHits + (critLoc.pendingHits ?? 0));
+        const totalHits = Math.max(0, currentHits + delta);
+        const pendingHits = totalHits - committedHits;
+        critLoc.id = id;
+        critLoc.name = critLoc.name ?? id;
+        critLoc.el = motiveEl ?? critLoc.el;
+
+        if (this.consolidateImmediately) {
+            critLoc.hits = totalHits;
+            critLoc.hitTimestamps = this.updatedImmediateMotiveHitTimestamps(critLoc, totalHits, delta);
+            critLoc.pendingHits = undefined;
+            critLoc.pendingHitTimestamps = undefined;
+        } else {
+            critLoc.pendingHits = pendingHits === 0 ? undefined : pendingHits;
+            critLoc.pendingHitTimestamps = pendingHits > 0
+                ? this.updatedPendingMotiveHitTimestamps(critLoc, pendingHits)
+                : undefined;
+        }
+        critLoc.destroying = undefined;
+        critLoc.destroyed = undefined;
+        unit.setCritLoc(critLoc);
+    }
+
+    private updatedImmediateMotiveHitTimestamps(critLoc: CriticalSlot, totalHits: number, delta: number): number[] | undefined {
+        const committed = this.currentMotiveHitTimestamps(critLoc);
+        const timestamps = delta > 0
+            ? [...committed, ...this.newTimestamps(delta)]
+            : committed.slice(0, totalHits);
+        return timestamps.length > 0 ? timestamps.slice(0, totalHits) : undefined;
+    }
+
+    private currentMotiveHitTimestamps(critLoc: CriticalSlot): number[] {
+        const committed = (critLoc.hitTimestamps ?? [])
+            .filter(timestamp => Number.isFinite(timestamp))
+            .sort((a, b) => a - b);
+        const pendingHits = critLoc.pendingHits ?? 0;
+        if (pendingHits > 0) return [...committed, ...pendingCriticalHitTimestamps(critLoc).slice(0, pendingHits)].sort((a, b) => a - b);
+        if (pendingHits < 0) return committed.slice(0, Math.max(0, committed.length + pendingHits));
+        return committed;
+    }
+
+    private updatedPendingMotiveHitTimestamps(critLoc: CriticalSlot, pendingHits: number): number[] | undefined {
+        const current = pendingCriticalHitTimestamps(critLoc).slice(0, pendingHits);
+        const missing = pendingHits - current.length;
+        const timestamps = missing > 0 ? [...current, ...this.newTimestamps(missing)] : current;
+        return timestamps.length > 0 ? timestamps : undefined;
+    }
+
+    private newTimestamps(count: number): number[] {
+        const timestamp = Date.now();
+        return Array.from({ length: count }, (_value, index) => timestamp + index);
+    }
+
+    private hitDeltaChoices(startValue: number, endValue: number): PickerChoice[] {
+        const allowedValues = [0, 1, 2, 3, 4, 5, 10, 15, 20, -1, -2, -3, -4, -5, -10, -15, -20];
+        const values = allowedValues
+            .filter(value => value >= startValue && value <= endValue)
+            .map(value => ({ label: value.toString(), value }));
+
+        if (!values.some(value => value.value === startValue)) {
+            values.push({ label: startValue.toString(), value: startValue });
+        }
+        if (!values.some(value => value.value === endValue)) {
+            values.push({ label: endValue.toString(), value: endValue });
+        }
+        return values.sort((a, b) => a.value - b.value);
+    }
+
+    private critLocId(el: SVGElement): string | null {
+        return el.getAttribute('critId') || el.getAttribute('id');
+    }
+
+    private applySensorHitInteraction(id: string): boolean {
+        const unit = this.unit();
+        const targetLevel = this.sensorHitLevel(id);
+        if (!unit || targetLevel === null) return false;
+
+        const sensorCrits = unit.getCritSlots()
+            .map(crit => ({ crit, level: this.sensorHitLevel(crit.id || crit.name || '') }))
+            .filter((entry): entry is { crit: CriticalSlot; level: number } => entry.level !== null)
+            .sort((a, b) => a.level - b.level);
+        if (!sensorCrits.some(entry => entry.level === targetLevel)) return false;
+
+        const targetCrit = sensorCrits.find(entry => entry.level === targetLevel)?.crit;
+        const targetActive = targetCrit?.destroying !== undefined;
+        const highestActiveLevel = sensorCrits.reduce((highest, entry) => (
+            entry.crit.destroying !== undefined ? Math.max(highest, entry.level) : highest
+        ), 0);
+        const timestamp = Date.now();
+
+        sensorCrits.forEach(({ crit, level }) => {
+            let active: boolean;
+            if (highestActiveLevel > targetLevel) {
+                active = level <= targetLevel;
+            } else if (level === targetLevel && targetActive) {
+                active = false;
+            } else {
+                active = level <= targetLevel;
+            }
+            crit.destroying = active ? (crit.destroying ?? timestamp) : undefined;
+        });
+        unit.setCritSlots([...unit.getCritSlots()]);
+        return true;
+    }
+
+    private sensorHitLevel(id: string): number | null {
+        const match = id.match(/^sensor_hit_(\d+)$/);
+        return match ? parseInt(match[1], 10) : null;
     }
 
     private setupCritSlotInteractions(svg: SVGSVGElement, signal: AbortSignal) {
@@ -555,6 +905,12 @@ export class SvgInteractionService {
             const loc = svgEl.getAttribute('loc');
             const slot = parseInt(svgEl.getAttribute('slot') as string);
             const originalTotalAmmo = parseInt(svgEl.getAttribute('totalAmmo') || '0');
+            const equipmentRegistry = this.equipmentRegistryService.getRegistry();
+            const handlerContext = {
+                toastService: this.toastService,
+                dialogsService: this.dialogsService,
+                dataService: this.dataService
+            };
             let labelText = svgEl.textContent || '';
             if (svgEl.classList.contains('ammoSlot')) {
                 // for ammo, we remove the number at the end, example "Ammo (SRM 2) 5" should become "Ammo (SRM 2)"
@@ -581,10 +937,8 @@ export class SvgInteractionService {
                 this.toastService.showToast(`${amountText} ${amount >= 0 ? 'to' : 'from'} ${labelText} (${remaining}/${totalAmmo})`, 'info', ammoToastId);
             };
 
-            const registry = this.equipmentRegistryService.getRegistry();
-
             const createAndShowPicker = (event: Event) => {
-                if (unit.isInternalLocDestroyed(loc)) {
+                if (unit.isInternalLocPhysicallyDestroyed(loc)) {
                     return;
                 }
                 const calculateValues = () => {
@@ -597,7 +951,11 @@ export class SvgInteractionService {
                     if ((critSlot.hits ?? 0) > 0) {
                         values.push({ label: 'Repair', value: 'Repair' });
                     }
-                    if (!critSlot.destroyed && critSlot.eq instanceof AmmoEquipment) {
+                    const inventoryEntry = this.inventoryEntryForCritSlot(unit, critSlot);
+                    if (inventoryEntry) {
+                        values.push(...equipmentRegistry.getChoices(inventoryEntry, handlerContext));
+                    }
+                    if (!unit.isEquipmentUnavailable(critSlot) && critSlot.eq instanceof AmmoEquipment) {
                         values.unshift({ label: '+1', value: '+1', keepOpen: true, disabled: ((critSlot.consumed ?? 0) == 0) });
                         values.unshift({ label: '-1', value: '-1', keepOpen: true, disabled: ((critSlot.consumed ?? 0) >= totalAmmo) });
                         values.push({ label: 'Set Ammo', value: 'Set Ammo' });
@@ -622,7 +980,11 @@ export class SvgInteractionService {
                         if (!choice) return;
                         const critSlot = unit.getCritSlot(loc, slot);
                         if (!critSlot) return;
-                        if (choice.value == '+1') {
+                        const inventoryEntry = this.inventoryEntryForCritSlot(unit, critSlot);
+                        if (inventoryEntry && choice._handler) {
+                            await equipmentRegistry.handleSelection(inventoryEntry, choice, handlerContext);
+                        } else if (choice.value == '+1') {
+                            if (unit.isEquipmentUnavailable(critSlot)) return;
                             if (critSlot.consumed === undefined) {
                                 return;
                             }
@@ -631,6 +993,7 @@ export class SvgInteractionService {
                             unit.setCritSlot(critSlot);
                             showAmmoToast(critSlot, 1);
                         } else if (choice.value == '-1') {
+                            if (unit.isEquipmentUnavailable(critSlot)) return;
                             if (critSlot.consumed === undefined) {
                                 critSlot.consumed = 0;
                             }
@@ -643,61 +1006,16 @@ export class SvgInteractionService {
                             unit.setCritSlot(critSlot);
                             this.toastService.showToast(`Emptied ${labelText}`, 'info');
                         } else if (choice.value == 'Set Ammo') {
-                            const amountUsed = critSlot.consumed ?? 0;
-                            const ammoOptions: AmmoEquipment[] = [];
-                            if (!critSlot.name || !critSlot.eq) return;
-                            const ammoItem = critSlot.eq;
-                            let originalAmmo = ammoItem as AmmoEquipment;
-                            if (critSlot.originalName && critSlot.originalName !== critSlot.name) {
-                                originalAmmo = equipmentList[critSlot.originalName] as AmmoEquipment;
-                            }
-                            if (ammoItem instanceof AmmoEquipment) {
-                                const baseOrder: Record<string, number> = { 'All': 0, 'IS': 1, 'Clan': 2 };
-                                const unitBlueprint = unit.getUnit();
-                                const compatibleAmmo = Object.values(equipmentList)
-                                    .filter((e): e is AmmoEquipment => (e instanceof AmmoEquipment) && (originalAmmo.compatibleAmmo(e, unitBlueprint)))
-                                    .sort((a, b) => {
-                                        const ao = baseOrder[(a.techBase || '')] ?? 3;
-                                        const bo = baseOrder[(b.techBase || '')] ?? 3;
-                                        if (ao !== bo) return ao - bo;
-                                        if (!a.baseAmmo && b.baseAmmo) {
-                                            return -1;
-                                        }
-                                        return a.name.localeCompare(b.name);
-                                    });
-                                ammoOptions.push(...compatibleAmmo);
-                            }
-                            const ref = this.dialogsService.createDialog<{ name: string; quantity: number, totalAmmo: number } | null>(SetAmmoDialogComponent, {
-                                data: {
-                                    currentAmmo: ammoItem,
-                                    originalAmmo: originalAmmo,
-                                    originalTotalAmmo: originalTotalAmmo,
-                                    ammoOptions: ammoOptions,
-                                    quantity: totalAmmo - amountUsed,
-                                    maxQuantity: totalAmmo
-                                } as SetAmmoDialogData
-                            });
-                            const newAmmoValue = await firstValueFrom(ref.closed);
-                            if (!newAmmoValue) return;
-                            if (newAmmoValue.name && newAmmoValue.name != critSlot.name && equipmentList[newAmmoValue.name]) {
-                                if (!critSlot.originalName) {
-                                    critSlot.originalName = critSlot.name;
-                                } else
-                                    if (newAmmoValue.name == critSlot.originalName) {
-                                        delete critSlot.originalName;
-                                    }
-                                critSlot.name = newAmmoValue.name;
-                                totalAmmo = newAmmoValue.totalAmmo;
-                                critSlot.totalAmmo = totalAmmo;
-                                critSlot.eq = equipmentList[newAmmoValue.name];
-                                labelText = critSlot.eq.shortName;
-                            }
-                            const newQuantity = Math.max(0, Math.min(totalAmmo, newAmmoValue.quantity));
-                            critSlot.consumed = totalAmmo - newQuantity;
-                            unit.setCritSlot(critSlot);
-                            const deltaChange = amountUsed - critSlot.consumed;
-                            if (deltaChange !== 0) {
-                                showAmmoToast(critSlot, deltaChange);
+                            if (unit.isEquipmentUnavailable(critSlot)) return;
+                            const entry = getAmmoControlEntryForCriticalSlot(unit, critSlot, equipmentList);
+                            if (!entry) return;
+                            if (await setAmmoEntry(entry, {
+                                toastService: this.toastService,
+                                dialogsService: this.dialogsService,
+                                dataService: this.dataService
+                            })) {
+                                totalAmmo = entry.totalAmmo;
+                                labelText = entry.currentAmmo.shortName;
                             }
                         } else if (choice.value == 'Hit') {
                             unit.applyHitToCritSlot(critSlot, 1, this.consolidateImmediately);
@@ -744,269 +1062,449 @@ export class SvgInteractionService {
         });
     }
 
+    private inventoryEntryForCritSlot(unit: CBTForceUnit, critSlot: CriticalSlot): MountedEquipment | null {
+        return unit.getInventory().find(entry => entry.critSlots?.some(entryCritSlot => this.sameCritSlot(entryCritSlot, critSlot))) ?? null;
+    }
+
+    private sameCritSlot(left: CriticalSlot, right: CriticalSlot): boolean {
+        if (left.loc && right.loc && left.slot !== undefined && right.slot !== undefined) {
+            return left.loc === right.loc && left.slot === right.slot;
+        }
+        return !!left.id && !!right.id && left.id === right.id;
+    }
+
     private setupInventoryInteractions(svg: SVGSVGElement, signal: AbortSignal) {
         this.unit()?.getInventory().forEach(entry => {
             const el = entry.el;
             if (!el) return;
-            let nameText = entry.el?.querySelector(':scope > .name')?.textContent || '';
-            let totalAmmo = 0;
-            if (el.hasAttribute('totalAmmo')) {
-                totalAmmo = parseInt(el.getAttribute('totalAmmo') || '0');
-            }
-            const ammoToastId = `ammo-${this.unit()?.id}-${entry.id}`;
-            let lastAmountVariationTimestamp = 0;
-            let amount = 0;
-            const showAmmoToast = (equip: MountedEquipment, variation: number) => {
-                if (equip.consumed === undefined) {
-                    return;
+            syncSvgMode(entry, getSelectedInventoryControlMode(entry));
+
+            const selectEntry = (button: SVGElement) => {
+                const unit = this.unit();
+                if (!unit) return;
+
+                const clickedMode = this.validInventoryModeForButton(entry, button);
+                const selectedMode = this.selectedInventoryControlMode(entry);
+                const forceSelected = !!clickedMode && clickedMode !== selectedMode;
+                if (clickedMode) {
+                    setInventoryControlMode(entry, clickedMode);
                 }
-                const timeDiff = Date.now() - lastAmountVariationTimestamp;
-                if (timeDiff > 3000) {
-                    amount = 0;
+
+                const updated = selectInventoryControlEntry(unit, entry, (selectedTargetId, targets) => {
+                    this.showInventoryTargetPicker(entry, button, selectedTargetId, targets);
+                }, forceSelected);
+                if (updated) {
+                    this.removePicker();
+                } else if (button.classList.contains('mainButton') && entry.el?.classList.contains('bay')) {
+                    // This is a poorly designed workaround to allow toggling the bay entry selection.
+                    unit.setInventoryControlEntrySelected(entry, forceSelected || !unit.isInventoryControlEntrySelected(entry.id));
+                    this.removePicker();
                 }
-                amount += variation;
-                lastAmountVariationTimestamp = Date.now();
-                const remaining = totalAmmo - equip.consumed;
-                const amountText = amount > 0 ? `+${amount}` : amount.toString();
-                this.toastService.showToast(`${amountText} ${amount >= 0 ? 'to' : 'from'} ${nameText} (${remaining}/${totalAmmo})`, 'info', ammoToastId);
             };
 
-            const createAndShowPicker = (event: Event) => {
-                const context: HandlerContext = {
-                    toastService: this.toastService,
-                    dialogsService: this.dialogsService
-                };
+            const selectRange = (button: SVGElement) => {
+                const unit = this.unit();
+                const range = this.inventoryRangeForButton(button);
+                if (!unit || !range) return;
 
-                const registry = this.equipmentRegistryService.getRegistry();
+                const clickedMode = this.validInventoryModeForButton(entry, button);
+                const selectedMode = this.selectedInventoryControlMode(entry);
+                const forceSelected = !!clickedMode && clickedMode !== selectedMode;
 
-                const calculateValues = () => {
-                    let values: HandlerChoice[] = [];
-
-                    // Get equipment-specific choices based on flags
-                    const equipmentChoices = registry.getChoices(entry, context);
-                    if (equipmentChoices.length > 0) {
-                        values.push(...equipmentChoices);
-                    }
-
-
-                    // Add standard damage/repair options
-                    if (this.unit()?.hasDirectInventory()) {
-                        if (!entry.destroyed) {
-                            values.push({ label: 'Critical Hit', value: 'Hit' });
-                        } else {
-                            values.push({ label: 'Repair', value: 'Repair' });
-                        }
-                    }
-
-                    // Add ammo management options if applicable
-                    if (!entry.destroyed && (totalAmmo > 0)) {
-                        values.unshift({ label: '+1', value: '+1', keepOpen: true, disabled: ((entry.consumed ?? 0) == 0) });
-                        values.unshift({ label: '-1', value: '-1', keepOpen: true, disabled: ((entry.consumed ?? 0) >= totalAmmo) });
-                        values.push({ label: 'Empty', value: 'Empty', disabled: ((entry.consumed ?? 0) >= totalAmmo) });
-                    }
-                    return values;
-                };
-
-                let calculatePickerValues = calculateValues();
-                if (calculatePickerValues.length === 0) {
-                    return;
+                if (clickedMode) {
+                    setInventoryControlMode(entry, clickedMode);
                 }
+                const targets = unit.getInventoryControlTargets();
+                if (targets.length === 0) {
+                    unit.toggleInventoryControlEntryRange(entry, range, forceSelected);
+                } else if (targets.length === 1) {
+                    const targetId = targets[0].id;
+                    const selectedTargetId = unit.getInventoryControlEntryTargetId(entry.id);
+                    unit.setInventoryControlEntryTarget(entry, !forceSelected && selectedTargetId === targetId ? null : targetId);
+                } else {
+                    this.showInventoryTargetPicker(entry, button, unit.getInventoryControlEntryTargetId(entry.id) ?? null, targets);
+                }
+            };
 
-                const pickerInstance = this.showChoicePicker({
-                    event,
-                    el,
-                    title: nameText,
-                    values: calculatePickerValues,
-                    selected: null,
-                    style: 'linear',
-                    targetType: 'crit',
-                    onPick: async (choice: HandlerChoice) => {
-                        if (!choice || !choice.keepOpen) {
-                            this.removePicker();
-                        }
-                        if (!choice) return;
-
-                        // Try equipment-specific handlers first
-                        let handled = false;
-                        if (choice?._handler) {
-                            handled = await registry.handleSelection(entry, choice, context);
-                        }
-
-                        // Handle standard options
-                        if (!handled) {
-                            if (choice.value == '+1') {
-                                if (entry.consumed === undefined) {
-                                    return;
-                                }
-                                if (entry.consumed <= 0) return;
-                                entry.consumed--;
-                                this.unit()?.setInventoryEntry(entry);
-                                showAmmoToast(entry, 1);
-                            } else if (choice.value == '-1') {
-                                if (entry.consumed === undefined) {
-                                    entry.consumed = 0;
-                                }
-                                if (entry.consumed >= totalAmmo) return;
-                                entry.consumed++;
-                                this.unit()?.setInventoryEntry(entry);
-                                showAmmoToast(entry, -1);
-                            } else if (choice.value == 'Empty') {
-                                entry.consumed = totalAmmo;
-                                this.unit()?.setInventoryEntry(entry);
-                                this.toastService.showToast(`Emptied ${nameText}`, 'info');
-                            } else if (choice.value == 'Hit') {
-                                entry.destroyed = true;
-                                this.unit()?.setInventoryEntry(entry);
-                                this.toastService.showToast(`Critical Hit on ${nameText}`, 'error');
-                            } else if (choice.value == 'Repair') {
-                                entry.destroyed = false;
-                                this.unit()?.setInventoryEntry(entry);
-                                this.toastService.showToast(`Repaired ${nameText}`, 'success');
-                            }
-                        }
-                        if (choice.keepOpen && isChoicePickerInstance(pickerInstance)) {
-                            pickerInstance.component.values.set(calculateValues());
-                        }
-                    },
-                    onCancel: () => {
-                        this.removePicker();
-                    }
+            el.classList.add('interactive');
+            if (isRiscLaserPulseModule(entry)) {
+                const toggleRiscMode = (evt: Event) => {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    this.toggleRiscLaserPulseMode(entry);
+                };
+                [...this.inventoryDialogButtons(el), ...this.inventoryRangeButtons(el)].forEach(button => {
+                    button.classList.add('interactive');
+                    button.style.cursor = 'pointer';
+                    button.addEventListener('click', toggleRiscMode, { passive: false, signal });
                 });
+                el.addEventListener('click', toggleRiscMode, { passive: false, signal });
+                return;
             }
+            this.inventoryDialogButtons(el).forEach(button => {
+                button.classList.add('interactive');
+                button.style.cursor = 'pointer';
+                button.addEventListener('click', (evt: Event) => {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    selectEntry(button);
+                }, { passive: false, signal });
+            });
+            this.inventoryRangeButtons(el).forEach(button => {
+                button.classList.add('interactive');
+                button.style.cursor = 'pointer';
+                button.addEventListener('click', (evt: Event) => {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    selectRange(button);
+                }, { passive: false, signal });
+            });
+        });
+    }
 
-            this.addSvgTapHandler(el, (event: Event, primaryAction: boolean) => {
-                if (this.state.clickTarget !== el) return;
-                if (primaryAction && !el.classList.contains('damagedInventory') && !el.classList.contains('disabledInventory')) {
-                    if (event.target instanceof Element) {
-                        if (event.target.classList.contains('alternativeModeButton')) {
-                            const altModeEl = event.target.parentElement;
-                            if (altModeEl) {
-                                const wasSelected = altModeEl.classList.contains('selected');
-                                el.querySelectorAll('.alternativeMode').forEach(optionEl => {
-                                    if (optionEl === altModeEl) return;
-                                    optionEl.classList.remove('selected');
-                                });
-                                altModeEl.classList.toggle('selected', !wasSelected);
-                                el.classList.toggle('selected', !wasSelected);
-                                return;
-                            }
-                        }
-                    }
-                    el.classList.toggle('selected');
+    private inventoryDialogButtons(entryEl: SVGElement): SVGElement[] {
+        return [
+            ...Array.from(entryEl.querySelectorAll<SVGElement>(':scope > .mainButton')),
+            ...Array.from(entryEl.querySelectorAll<SVGElement>(':scope > .alternativeMode > .alternativeModeButton'))
+        ];
+    }
+
+    private inventoryRangeButtons(entryEl: SVGElement): SVGElement[] {
+        return Array.from(entryEl.querySelectorAll<SVGElement>(this.inventoryRangeButtonSelector()))
+            .filter(button => button.parentNode === entryEl
+                || (button.parentElement?.classList.contains('alternativeMode') && button.parentElement.parentNode === entryEl));
+    }
+
+    private inventoryRangeButtonSelector(): string {
+        return INVENTORY_RANGE_BUTTON_CLASSES
+            .map(([className]) => `.${className}`)
+            .join(', ');
+    }
+
+    private inventoryRangeForButton(button: SVGElement): SheetInventoryRangeKey | null {
+        return INVENTORY_RANGE_BUTTON_CLASSES.find(([className]) => button.classList.contains(className))?.[1] ?? null;
+    }
+
+    private validInventoryModeForButton(entry: MountedEquipment, button: SVGElement): string | null {
+        const modeEl = button.closest('.alternativeMode');
+        if (!modeEl || modeEl.parentNode !== entry.el) return null;
+        const mode = modeEl.getAttribute('mode');
+        if (!mode) return null;
+        return getInventoryControlModes(entry).some(candidate => candidate.mode === mode) ? mode : null;
+    }
+
+    private selectedInventoryControlMode(entry: MountedEquipment): string | null {
+        return entry.states.get(INVENTORY_CONTROL_MODE_STATE) ?? getSelectedInventoryControlMode(entry);
+    }
+
+    private toggleRiscLaserPulseMode(module: MountedEquipment): void {
+        const unit = this.unit();
+        const parent = module.parent;
+        if (!unit || !parent || !isLaserWithRiscModule(parent)) return;
+        const mode = selectedRiscLaserMode(parent) === RISC_LASER_PULSE_MODE
+            ? RISC_LASER_STANDARD_MODE
+            : RISC_LASER_PULSE_MODE;
+        setInventoryControlMode(parent, mode);
+        unit.setInventoryControlEntrySelected(parent, true);
+        this.removePicker();
+    }
+
+    private equipmentDialogContext(): EquipmentDialogContext {
+        return {
+            toastService: this.toastService,
+            dialogsService: this.dialogsService,
+            dataService: this.dataService,
+            registry: this.equipmentRegistryService.getRegistry()
+        };
+    }
+
+    private showInventoryTargetPicker(
+        entry: MountedEquipment,
+        button: SVGElement,
+        selectedTargetId: InventoryControlRuntimeTargetId | null,
+        targets: readonly InventoryControlRuntimeTarget[]
+    ): void {
+        const unit = this.unit();
+        if (!unit) return;
+        this.removePicker();
+        const portal = new ComponentPortal(WeaponTargetChoiceMenuComponent, null, this.injector);
+        const { componentRef } = this.overlayManager.createManagedOverlay(SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY, button as unknown as HTMLElement, portal, {
+            hasBackdrop: false,
+            panelClass: 'weapon-target-choice-overlay-panel',
+            closeOnOutsideClick: true,
+            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            positions: [
+                { originX: 'end', originY: 'center', overlayX: 'start', overlayY: 'center', offsetX: 4 },
+                { originX: 'start', originY: 'center', overlayX: 'end', overlayY: 'center', offsetX: -4 },
+                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 }
+            ]
+        });
+        componentRef.setInput('targets', targets);
+        componentRef.setInput('selectedTargetId', selectedTargetId);
+        componentRef.setInput('targetNumberTexts', this.inventoryTargetNumberTexts(entry, targets));
+        componentRef.changeDetectorRef.detectChanges();
+
+        outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(targetId => {
+            unit.setInventoryControlEntryTarget(entry, targetId);
+            this.overlayManager.closeManagedOverlay(SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY);
+        });
+    }
+
+    private inventoryTargetNumberTexts(entry: MountedEquipment, targets: readonly InventoryControlRuntimeTarget[]): Readonly<Record<InventoryControlRuntimeTargetId, string>> {
+        return Object.fromEntries(targets
+            .map(target => [target.id, this.inventoryTargetNumberText(entry, target)] as const)
+            .filter(([, targetNumber]) => targetNumber !== ''));
+    }
+
+    private inventoryTargetNumberText(entry: MountedEquipment, target: InventoryControlRuntimeTarget): string {
+        const unit = this.unit();
+        if (!unit) return '';
+        const svgText = unit.svgService?.inventoryTargetNumberText(entry, target);
+        if (svgText) return svgText;
+
+        const missingMovementModifier = unit.turnState().missingAttackMovementModifier();
+        const heatFireModifier = unit.svgService?.inventoryTargetHeatFireModifier(entry) ?? 0;
+        const hitModifier = parseInventoryTargetNumberCell(readInventoryTargetText(entry, 'hit')) ?? 0;
+        return inventoryTargetNumberText({
+            entry,
+            category: inventoryTargetCategory(entry),
+            display: readInventoryTargetDisplay(entry),
+            target: this.inventoryTargetForTargetNumber(unit, target),
+            gunnerySkill: unit.effectiveGunnerySkill(),
+            pilotingSkill: unit.effectivePilotingSkill(),
+            missingMovementModifier,
+            attackModifierBreakdown: unit.turnState().getAttackModifierBreakdown(),
+            hitModifier: hitModifier - heatFireModifier,
+            heatFireModifier
+        });
+    }
+
+    private inventoryTargetForTargetNumber(unit: CBTForceUnit, target: InventoryControlRuntimeTarget): InventoryControlRuntimeTarget {
+        if (unit.hasLinkedC3Network?.() === true || target.c3Distance === undefined) return target;
+        return { ...target, c3Distance: undefined };
+    }
+
+    private setupAmmoProfileInteractions(svg: SVGSVGElement, signal: AbortSignal) {
+        const ammoProfileEl = svg.querySelector('#ammoProfile') as SVGElement | null;
+        if (!ammoProfileEl) return;
+
+        ammoProfileEl.classList.add('interactive');
+        ammoProfileEl.style.cursor = 'pointer';
+        ammoProfileEl.addEventListener('click', (event: Event) => {
+            const unit = this.unit();
+            if (!unit) return;
+            this.openEquipmentDialog(unit, 'ammo');
+        }, { passive: false, signal });
+    }
+
+    private setupConditionsInteractions(svg: SVGSVGElement, signal: AbortSignal) {
+        const unit = this.unit();
+        if (!unit) return;
+        const buttonConditions = new Set(unit.rules.conditionControls
+            .filter(condition => condition.placement === 'button')
+            .map(condition => condition.key));
+        const hasMenuConditions = unit.rules.conditionControls.some(condition => condition.placement === 'menu');
+        svg.querySelectorAll<SVGElement>('.unitConditionButton, .locConditionButton').forEach(el => {
+            const condition = el.getAttribute('condition');
+            if (!condition || (condition !== 'menu' && !buttonConditions.has(condition)) || (condition === 'menu' && !hasMenuConditions)) return;
+            this.addSvgTapHandler(el, (event: PointerEvent) => {
+                const unit = this.unit();
+                const clickTarget = this.state.clickTarget;
+                if (!unit || !clickTarget || (clickTarget !== el && !el.contains(clickTarget))) return;
+                if (condition === 'menu') {
+                    this.showConditionsDropdown(el, unit, event);
+                } else {
+                    unit.setCondition(condition, !unit.getCondition(condition));
                 }
-                createAndShowPicker(event);
             }, signal);
         });
+    }
+
+    private showConditionsDropdown(el: SVGElement, unit: CBTForceUnit, initialEvent?: PointerEvent): void {
+        if (this.overlayManager.has(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY)) {
+            this.overlayManager.closeManagedOverlay(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY);
+            return;
+        }
+
+        this.removePicker();
+        this.zoomPanService.cancelGesture();
+        this.overlayManager.closeAllManagedOverlays();
+        const portal = new ComponentPortal(UnitStateDropdownComponent, null, this.injector);
+        const { componentRef } = this.overlayManager.createManagedOverlay(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY, el as unknown as HTMLElement, portal, {
+            hasBackdrop: false,
+            panelClass: 'unit-state-dropdown-overlay-panel',
+            closeOnOutsideClick: true,
+            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            positions: [
+                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 }
+            ]
+        });
+        componentRef.setInput('initialEvent', initialEvent ?? null);
+        const updateChoices = () => {
+            componentRef.setInput('choices', this.unitStateDropdownChoices(el, unit));
+            componentRef.changeDetectorRef.detectChanges();
+        };
+        updateChoices();
+
+        outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(state => {
+            unit.setCondition(state, !unit.getCondition(state));
+            if (componentRef.instance.closeOnSelect()) {
+                this.overlayManager.closeManagedOverlay(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY);
+            } else {
+                updateChoices();
+            }
+        });
+        outputToObservable(componentRef.instance.cancelled).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            this.overlayManager.closeManagedOverlay(SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY);
+        });
+    }
+
+    private unitStateDropdownChoices(el: SVGElement, unit: CBTForceUnit): UnitStateDropdownChoice[] {
+        return unit.rules.conditionControls
+            .filter(state => state.placement === 'menu')
+            .map(state => ({
+                key: state.key,
+                label: state.label,
+                color: this.unitStateColor(el, state.key, state.color),
+                active: unit.getCondition(state.key),
+            }));
+    }
+
+    private unitStateColor(el: SVGElement, state: string, fallback: string): string {
+        return el.ownerSVGElement?.querySelector<SVGElement>(`.unitConditionBanner[state="${state}"]`)?.getAttribute('state-color') ?? fallback;
+    }
+
+    private setupLocationConditionInteractions(svg: SVGSVGElement, signal: AbortSignal) {
+        const unit = this.unit();
+        if (!unit || unit.rules.locationConditionControls.length === 0) return;
+
+        svg.querySelectorAll<SVGElement>('.locationConditionText').forEach(el => {
+            const loc = el.getAttribute('loc');
+            if (!loc) return;
+            this.addSvgTapHandler(el, (event: PointerEvent) => {
+                const unit = this.unit();
+                const clickTarget = this.state.clickTarget;
+                if (!unit || !clickTarget || (clickTarget !== el && !el.contains(clickTarget))) return;
+                this.showLocationConditionsDropdown(el, unit, loc, event);
+            }, signal);
+        });
+    }
+
+    private showLocationConditionsDropdown(el: SVGElement, unit: CBTForceUnit, loc: string, initialEvent?: PointerEvent): void {
+        if (this.overlayManager.has(SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY)) {
+            this.overlayManager.closeManagedOverlay(SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY);
+            return;
+        }
+
+        this.removePicker();
+        this.zoomPanService.cancelGesture();
+        this.overlayManager.closeAllManagedOverlays();
+        const portal = new ComponentPortal(UnitStateDropdownComponent, null, this.injector);
+        const { componentRef } = this.overlayManager.createManagedOverlay(SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY, el as unknown as HTMLElement, portal, {
+            hasBackdrop: false,
+            panelClass: 'unit-state-dropdown-overlay-panel',
+            closeOnOutsideClick: true,
+            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            positions: [
+                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 }
+            ]
+        });
+        componentRef.setInput('closeOnSelect', false);
+        componentRef.setInput('initialEvent', initialEvent ?? null);
+        const updateChoices = () => {
+            componentRef.setInput('choices', this.locationConditionDropdownChoices(unit, loc));
+            componentRef.changeDetectorRef.detectChanges();
+        };
+        updateChoices();
+
+        outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(state => {
+            const control = unit.rules.locationConditionControls.find(candidate => candidate.key === state);
+            if (control?.counted) {
+                const value = unit.getLocationConditionValue(loc, state) ?? 0;
+                unit.setLocationConditionValue(loc, state, value > 0 ? undefined : 1);
+            } else {
+                unit.setLocationCondition(loc, state, !unit.getLocationCondition(loc, state));
+            }
+            this.overlayManager.closeManagedOverlay(SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY);
+        });
+
+        outputToObservable(componentRef.instance.incremented).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(state => {
+            const value = unit.getLocationConditionValue(loc, state) ?? 0;
+            unit.setLocationConditionValue(loc, state, value + 1);
+            updateChoices();
+        });
+
+        outputToObservable(componentRef.instance.decremented).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(state => {
+            const value = unit.getLocationConditionValue(loc, state) ?? 0;
+            unit.setLocationConditionValue(loc, state, value - 1);
+            updateChoices();
+        });
+        outputToObservable(componentRef.instance.holdSelectionCompleted).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            this.overlayManager.closeManagedOverlay(SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY);
+        });
+        outputToObservable(componentRef.instance.cancelled).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            this.overlayManager.closeManagedOverlay(SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY);
+        });
+    }
+
+    private locationConditionDropdownChoices(unit: CBTForceUnit, loc: string): UnitStateDropdownChoice[] {
+        return unit.rules.locationConditionControls
+            .filter(state => state.key !== 'blown-off' || !TORSO_LOCATIONS.has(loc))
+            .map(state => {
+            const value = unit.getLocationConditionValue(loc, state.key) ?? 0;
+            return {
+                key: state.key,
+                label: state.label,
+                color: state.color,
+                active: state.counted ? value > 0 : unit.getLocationCondition(loc, state.key),
+                counted: state.counted,
+                value: state.counted ? value : undefined,
+            };
+        });
+    }
+
+    private openEquipmentDialog(unit: CBTForceUnit, initialTab: EquipmentDialogTab): void {
+        this.removePicker();
+        this.overlayManager.closeAllManagedOverlays();
+        const unitList = this.pageViewerState.forceUnits().length > 0 ? this.pageViewerState.forceUnits() : [unit];
+        const context = this.equipmentDialogContext();
+        this.pageViewerState.beginInventoryDialog();
+        const ref = this.dialogsService.createDialog<void>(EquipmentDialogComponent, {
+            data: {
+                unitList,
+                unitIndex: Math.max(0, unitList.findIndex(candidate => candidate.id === unit.id)),
+                onUnitChange: (selectedUnit) => this.forceBuilderService.selectUnit(selectedUnit),
+                context,
+                initialTab
+            } as EquipmentDialogData,
+        });
+        ref.closed.subscribe(() => this.pageViewerState.endInventoryDialog());
     }
 
     private setupHeatInteractions(svg: SVGSVGElement, signal: AbortSignal) {
         const unit = this.unit();
         if (!unit) return;
 
-        let heatScale: SVGElement | null = svg.getElementById('heatScale') as SVGGElement | null;
+        const heatScale = svg.getElementById('heatScale') as SVGGElement | null;
         if (!heatScale) return;
 
-        let dragState: {
-            pointerId: number;
-            startElement: SVGElement;
-        } | null = null;
-
-        const findClosestHeat = (clientY: number): SVGElement | null => {
-            let closestHeat: SVGElement | null = null;
-            let minDist = Infinity;
-            svg.querySelectorAll('#heatScale .heat').forEach(heatEl => {
-                const rect = (heatEl as SVGElement).getBoundingClientRect();
-                const centerY = rect.top + rect.height / 2;
-                const dist = Math.abs(centerY - clientY);
-                if (dist < minDist) {
-                    minDist = dist;
-                    closestHeat = heatEl as SVGElement;
-                }
-            });
-            return closestHeat;
-        };
-
-        const updateHeatMarker = (clientY: number) => {
-            const closestHeat = findClosestHeat(clientY);
-            if (closestHeat) {
-                this.state.clickTarget = closestHeat;
-                const heatValue = Number(closestHeat.getAttribute('heat'));
-                this.state.heatMarkerData.set({
-                    el: closestHeat,
-                    heat: heatValue
-                });
-            }
-        };
-        const cancelHeatDrag = () => {
-            if (!dragState) return;
-            svg.removeEventListener('pointerdown', onPointerDown);
-            svg.removeEventListener('pointermove', onPointerMove);
-            svg.removeEventListener('pointerup', onPointerUp);
-            svg.removeEventListener('pointercancel', onPointerCancel);
-            this.state.isHeatDragging = false;
-            this.state.heatMarkerData.set(null);
-            dragState = null;
-        };
-
-        const onPointerMove = (evt: PointerEvent) => {
-            if (!dragState || !this.state.isHeatDragging) return;
-            if (evt.pointerId !== dragState.pointerId) {
-                cancelHeatDrag();
-                return;
-            }
-            evt.preventDefault();
-            evt.stopPropagation();
-            this.zoomPanService.isPanning = false;
-            updateHeatMarker(evt.clientY);
-        };
-
-        const onPointerUp = (evt: PointerEvent) => {
-            if (!dragState || evt.pointerId !== dragState.pointerId) return;
-            const heatValue = Number(this.state.clickTarget?.getAttribute('heat') || 0);
-            unit.setHeat(heatValue, this.consolidateImmediately);
-            cancelHeatDrag();
-        };
-
-        const onPointerCancel = (evt: PointerEvent) => {
-            if (!dragState || evt.pointerId !== dragState.pointerId) return;
-            cancelHeatDrag();
-        };
-
-        const onPointerDown = (evt: PointerEvent) => {
-            if (!dragState || evt.pointerId !== dragState.pointerId) {
-                cancelHeatDrag();
-                return;
-            }
-        };
-
-        svg.querySelectorAll<SVGElement>('#heatScale .heat').forEach(el => {
+        this.heatCells(svg).forEach(cell => {
+            const el = cell.el;
             el.classList.add('interactive');
             el.addEventListener('pointerdown', (evt: PointerEvent) => {
                 evt.preventDefault();
-                if (dragState) return;
-                this.zoomPanService.pointerMoved = false;
-                dragState = {
-                    pointerId: evt.pointerId,
-                    startElement: el
-                };
-                this.state.isHeatDragging = true;
-                this.zoomPanService.isPanning = false;
-                this.state.clickTarget = el as SVGElement;
-                const heatValue = Number(el.getAttribute('heat'));
-                this.state.heatMarkerData.set({
-                    el: this.state.clickTarget,
-                    heat: heatValue
-                });
-                svg.addEventListener('pointerdown', onPointerDown, { passive: false, signal: signal });
-                svg.addEventListener('pointermove', onPointerMove, { passive: false, signal });
-                svg.addEventListener('pointerup', onPointerUp, { passive: false, signal });
-                svg.addEventListener('pointercancel', onPointerCancel, { passive: false, signal });
+                const dragStarted = this.beginHeatDrag(evt, svg, cell, signal);
+                if (!dragStarted) return;
                 // Dispatch a custom event for page selection to work
                 // Since we preventDefault on pointerdown, the click event won't fire naturally
                 el.dispatchEvent(new CustomEvent('svg-interaction-click', { bubbles: true }));
-                try {
-                    this.state.clickTarget.setPointerCapture(evt.pointerId);
-                } catch (e) { /* Ignore */ }
             }, { passive: false, signal });
         });
 
@@ -1108,6 +1606,106 @@ export class SvgInteractionService {
         }
     }
 
+    private beginHeatDrag(evt: PointerEvent, svg: SVGSVGElement, cell: HeatCell, signal: AbortSignal): boolean {
+        const unit = this.unit();
+        if (!unit || this.activeHeatDrag) return false;
+
+        const onPointerMove = (moveEvent: PointerEvent) => {
+            const drag = this.activeHeatDrag;
+            if (!drag || moveEvent.pointerId !== drag.pointerId) return;
+            moveEvent.preventDefault();
+            moveEvent.stopPropagation();
+            this.zoomPanService.isPanning = false;
+            this.updateActiveHeatDrag(moveEvent.clientY, svg);
+        };
+
+        const onPointerUp = (upEvent: PointerEvent) => {
+            const drag = this.activeHeatDrag;
+            if (!drag || upEvent.pointerId !== drag.pointerId) return;
+            upEvent.preventDefault();
+            unit.setHeat(drag.selectedCell.value, this.consolidateImmediately);
+            this.endHeatDrag();
+        };
+
+        const onPointerCancel = (cancelEvent: PointerEvent) => {
+            const drag = this.activeHeatDrag;
+            if (!drag || cancelEvent.pointerId !== drag.pointerId) return;
+            this.endHeatDrag();
+        };
+
+        const onPointerDown = (downEvent: PointerEvent) => {
+            const drag = this.activeHeatDrag;
+            if (!drag || downEvent.pointerId === drag.pointerId) return;
+            this.endHeatDrag();
+        };
+
+        const removeDragListeners = () => {
+            svg.removeEventListener('pointerdown', onPointerDown);
+            svg.removeEventListener('pointermove', onPointerMove);
+            svg.removeEventListener('pointerup', onPointerUp);
+            svg.removeEventListener('pointercancel', onPointerCancel);
+        };
+
+        const currentHeat = unit.getHeat();
+        this.zoomPanService.pointerMoved = false;
+        this.zoomPanService.isPanning = false;
+        this.state.isHeatDragging = true;
+        this.activeHeatDrag = {
+            pointerId: evt.pointerId,
+            selectedCell: cell,
+            baselineHeat: this.displayedHeatValue(currentHeat),
+            startElement: cell.el,
+            cleanup: removeDragListeners
+        };
+        this.setHeatMarker(cell);
+
+        svg.addEventListener('pointerdown', onPointerDown, { passive: false, signal });
+        svg.addEventListener('pointermove', onPointerMove, { passive: false, signal });
+        svg.addEventListener('pointerup', onPointerUp, { passive: false, signal });
+        svg.addEventListener('pointercancel', onPointerCancel, { passive: false, signal });
+        signal.addEventListener('abort', () => this.endHeatDrag(), { once: true });
+
+        try {
+            cell.el.setPointerCapture(evt.pointerId);
+        } catch { /* Ignore unsupported pointer capture */ }
+        return true;
+    }
+
+    private updateActiveHeatDrag(clientY: number, svg: SVGSVGElement): void {
+        const drag = this.activeHeatDrag;
+        if (!drag) return;
+        const cell = this.closestHeatCell(svg, clientY);
+        if (!cell || drag.selectedCell.el === cell.el) return;
+        drag.selectedCell = cell;
+        this.setHeatMarker(cell);
+    }
+
+    private setHeatMarker(cell: HeatCell): void {
+        const drag = this.activeHeatDrag;
+        if (!drag) return;
+        this.state.clickTarget = cell.el;
+        this.state.heatMarkerData.set({
+            el: cell.el,
+            heat: cell.value,
+            baselineHeat: drag.baselineHeat
+        });
+    }
+
+    private endHeatDrag(): void {
+        const drag = this.activeHeatDrag;
+        if (!drag) return;
+        drag.cleanup();
+        try {
+            if (drag.startElement.hasPointerCapture(drag.pointerId)) {
+                drag.startElement.releasePointerCapture(drag.pointerId);
+            }
+        } catch { /* Ignore unsupported pointer capture */ }
+        this.activeHeatDrag = null;
+        this.state.isHeatDragging = false;
+        this.state.heatMarkerData.set(null);
+        this.state.clickTarget = null;
+    }
+
     private setupCrewHitInteractions(svg: SVGSVGElement, signal: AbortSignal) {
         svg.querySelectorAll('.crewHit').forEach(el => {
             const svgEl = el as SVGElement;
@@ -1191,45 +1789,137 @@ export class SvgInteractionService {
         });
     }
 
-    /**
-     * This is a light version of updateHeatDisplay from SvgService, is used for realtime show of the heatscale while drag operations.
-     * @param heatValue The current heat value.
-     * @returns 
-     */
+    private setupCrewStateInteractions(svg: SVGSVGElement, signal: AbortSignal) {
+        svg.querySelectorAll<SVGElement>('.crewStateButton').forEach(el => {
+            this.addSvgTapHandler(el, (event: PointerEvent) => {
+                const unit = this.unit();
+                const clickTarget = this.state.clickTarget;
+                if (!unit || !clickTarget || (clickTarget !== el && !el.contains(clickTarget))) return;
+                this.showCrewStateDropdown(el, unit, event);
+            }, signal);
+        });
+    }
+
+    private showCrewStateDropdown(el: SVGElement, unit: CBTForceUnit, initialEvent?: PointerEvent): void {
+        if (this.overlayManager.has(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY)) {
+            this.overlayManager.closeManagedOverlay(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY);
+            return;
+        }
+
+        this.removePicker();
+        this.zoomPanService.cancelGesture();
+        this.overlayManager.closeAllManagedOverlays();
+        const crewId = Number(el.getAttribute('crewId') || 0);
+        const portal = new ComponentPortal(UnitStateDropdownComponent, null, this.injector);
+        const { componentRef } = this.overlayManager.createManagedOverlay(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY, el as unknown as HTMLElement, portal, {
+            hasBackdrop: false,
+            panelClass: 'unit-state-dropdown-overlay-panel',
+            closeOnOutsideClick: true,
+            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            positions: [
+                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 }
+            ]
+        });
+        componentRef.setInput('initialEvent', initialEvent ?? null);
+        const updateChoices = () => {
+            componentRef.setInput('choices', this.crewStateDropdownChoices(unit, crewId));
+            componentRef.changeDetectorRef.detectChanges();
+        };
+        updateChoices();
+
+        outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(state => {
+            const crewMember = unit.getCrewMember(crewId);
+            const selectedState = state as CrewStateControlKey;
+            crewMember.setState(crewMember.getState() === selectedState ? 'healthy' : selectedState);
+            if (componentRef.instance.closeOnSelect()) {
+                this.overlayManager.closeManagedOverlay(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY);
+            } else {
+                updateChoices();
+            }
+        });
+        outputToObservable(componentRef.instance.cancelled).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            this.overlayManager.closeManagedOverlay(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY);
+        });
+    }
+
+    private crewStateDropdownChoices(unit: CBTForceUnit, crewId: number): UnitStateDropdownChoice[] {
+        const currentState = unit.getCrewMember(crewId).getState();
+        return unit.rules.crewStateControls.map(state => ({
+            key: state.key,
+            label: state.label,
+            color: state.color,
+            active: currentState === state.key,
+        }));
+    }
+
+    private heatCells(svg: SVGSVGElement): HeatCell[] {
+        return Array.from(svg.querySelectorAll<SVGElement>('#heatScale rect.heat[heat]'))
+            .map(el => ({ el, value: Number(el.getAttribute('heat')) }))
+            .filter((cell): cell is HeatCell => Number.isFinite(cell.value));
+    }
+
+    private closestHeatCell(svg: SVGSVGElement, clientY: number): HeatCell | null {
+        let closestCell: HeatCell | null = null;
+        let minDistance = Infinity;
+        for (const cell of this.heatCells(svg)) {
+            const rect = cell.el.getBoundingClientRect();
+            const centerY = rect.top + rect.height / 2;
+            const distance = Math.abs(centerY - clientY);
+            if (distance < minDistance) {
+                minDistance = distance;
+                closestCell = cell;
+            }
+        }
+        return closestCell;
+    }
+
+    private displayedHeatValue(heat: { current: number; next?: number | null }): number {
+        const heatValue = heat.next ?? heat.current;
+        return Number.isFinite(heatValue) ? heatValue : 0;
+    }
+
     private updateHeatHighlight(heatValue: number) {
         const unit = this.unit();
         if (!unit) return;
         const svg = unit.svg();
         if (!svg) return;
 
-        let highestHeatVal = -Infinity;
+        if (!Number.isFinite(heatValue)) {
+            heatValue = this.displayedHeatValue(unit.getHeat());
+        }
 
-        // Update heat scale rectangles
-        svg.querySelectorAll('#heatScale .heat').forEach(heatRect => {
-            const heatVal = Number((heatRect as SVGElement).getAttribute('heat'));
+        const highestHotHeat = this.updateHeatTrackHighlight(svg, heatValue);
+        this.updateHeatEffectHighlight(svg, heatValue);
+        this.updateHeatOverflowHighlight(svg, heatValue, highestHotHeat);
+    }
 
-            if (heatVal <= heatValue) {
-                heatRect.classList.add('hot');
-                if (heatVal > highestHeatVal) {
-                    highestHeatVal = heatVal;
-                }
-            } else {
-                heatRect.classList.remove('hot');
+    private updateHeatTrackHighlight(svg: SVGSVGElement, heatValue: number): number {
+        let highestHotHeat = -Infinity;
+        for (const cell of this.heatCells(svg)) {
+            const isHot = cell.value <= heatValue;
+            cell.el.classList.toggle('hot', isHot);
+            if (isHot && cell.value > highestHotHeat) {
+                highestHotHeat = cell.value;
             }
-        });
+        }
+        return highestHotHeat;
+    }
 
-        // Update heat effects highlight
-        svg.querySelectorAll('.heatEffect').forEach(effectEl => {
-            const effectVal = Number((effectEl as SVGElement).getAttribute('heat'));
+    private updateHeatEffectHighlight(svg: SVGSVGElement, heatValue: number): void {
+        svg.querySelectorAll<SVGElement>('.heatEffect').forEach(effectEl => {
+            const effectVal = Number(effectEl.getAttribute('heat'));
+            const isHot = Number.isFinite(effectVal) && effectVal <= heatValue;
             effectEl.classList.remove('surpassed');
-
-            if (effectVal <= heatValue) {
-                effectEl.classList.add('hot');
-            } else {
-                effectEl.classList.remove('hot');
-            }
+            effectEl.classList.toggle('hot', isHot);
         });
-        svg.querySelectorAll('.heatEffect.hot').forEach(effectEl => {
+        this.updateSurpassedHeatEffects(svg);
+    }
+
+    private updateSurpassedHeatEffects(svg: SVGSVGElement): void {
+        svg.querySelectorAll<SVGElement>('.heatEffect.hot').forEach(effectEl => {
             const attrs = [
                 { name: 'h-shut', value: effectEl.getAttribute('h-shut') },
                 { name: 'h-random', value: effectEl.getAttribute('h-random') },
@@ -1239,30 +1929,32 @@ export class SvgInteractionService {
             ];
             let surpassed = false;
             for (const attr of attrs) {
-                if (surpassed) break; // If already surpassed, no need to check further
+                if (surpassed) break;
                 if (attr.value === null) continue;
                 const currentVal = Number(attr.value);
-                // Search for another .heatEffect.hot element with same attribute, not null, and lower value
-                svg.querySelectorAll('.heatEffect.hot:not(.surpassed)').forEach(otherEl => {
-                    if (otherEl === effectEl) return; // same element, skip
+                if (!Number.isFinite(currentVal)) continue;
+                svg.querySelectorAll<SVGElement>('.heatEffect.hot:not(.surpassed)').forEach(otherEl => {
+                    if (otherEl === effectEl) return;
                     const otherVal = otherEl.getAttribute(attr.name);
-                    if (otherVal === null) return; // skip if no value
+                    if (otherVal === null) return;
+                    const otherNumber = Number(otherVal);
+                    if (!Number.isFinite(otherNumber)) return;
                     if (attr.inverse) {
-                        if (Number(otherVal) < currentVal) {
+                        if (otherNumber < currentVal) {
                             effectEl.classList.add('surpassed');
                             surpassed = true;
                         }
-                    } else
-                        if (Number(otherVal) > currentVal) {
-                            effectEl.classList.add('surpassed');
-                            surpassed = true;
-                        }
+                    } else if (otherNumber > currentVal) {
+                        effectEl.classList.add('surpassed');
+                        surpassed = true;
+                    }
                 });
             }
         });
+    }
 
-        // Handle overflow frame
-        if (highestHeatVal >= heatValue) {
+    private updateHeatOverflowHighlight(svg: SVGSVGElement, heatValue: number, highestHotHeat: number): void {
+        if (highestHotHeat >= heatValue) {
             svg.querySelector('#heatScale .overflowFrame')?.classList.remove('hot');
         }
     }
@@ -1282,11 +1974,15 @@ export class SvgInteractionService {
         selected: PickerValue | null;
         style?: ChoicePickerStyle;
         suggestedStyle?: ChoicePickerStyle;
+        horizontal?: boolean;
+        align?: 'topleft' | 'left' | 'center' | 'top';
         targetType?: PickerTargetType;
         onPick: (val: PickerChoice) => void;
         onCancel: () => void;
     }): ChoicePickerInstance {
         if (this.pickerRef) this.removePicker();
+
+        this.zoomPanService.cancelGesture();
 
         opts.el.classList.add('picker-active');
         this.currentHighlightedElement = opts.el;
@@ -1320,6 +2016,8 @@ export class SvgInteractionService {
                 y: opts.position?.y ?? (rect.top + rect.height / 2) 
             };
         }
+        horizontal = opts.horizontal ?? horizontal;
+        align = opts.align ?? align;
 
         this.pickerRef = this.pickerFactory.createChoicePicker({
             values: opts.values,
@@ -1357,6 +2055,8 @@ export class SvgInteractionService {
         onCancel: () => void;
     }): NumericPickerInstance {
         if (this.pickerRef) this.removePicker();
+
+        this.zoomPanService.cancelGesture();
 
         opts.el.classList.add('picker-active');
         this.currentHighlightedElement = opts.el;
@@ -1415,6 +2115,7 @@ export class SvgInteractionService {
     }
 
     cleanup() {
+        this.endHeatDrag();
         if (this.heatMarkerEffectRef) {
             this.heatMarkerEffectRef.destroy();
             this.heatMarkerEffectRef = null;
@@ -1430,6 +2131,7 @@ export class SvgInteractionService {
         this.currentHighlightedElement = null;
         this.state.clickTarget = null;
         this.state.heatMarkerData.set(null);
+        this.overlayManager.closeAllManagedOverlays();
         this.unit.set(null);
     }
 }

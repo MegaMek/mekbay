@@ -10,7 +10,7 @@ import type { AvailabilitySource } from '../models/options.model';
 import type { Unit, Units } from '../models/units.model';
 import { GameSystem } from '../models/common.model';
 import { DataService } from './data.service';
-import { DbService } from './db.service';
+import { DbService, type TagData } from './db.service';
 import { GameService } from './game.service';
 import { LoggerService } from './logger.service';
 import { OptionsService } from './options.service';
@@ -19,7 +19,7 @@ import { TagsService } from './tags.service';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
 import { UnitInitializerService } from './unit-initializer.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
-import { UrlStateService } from './url-state.service';
+import { UrlService } from './url.service';
 import { UserStateService } from './userState.service';
 import { WsService } from './ws.service';
 import {
@@ -662,15 +662,11 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         const httpClientStub = {};
 
-        const urlStateServiceStub = {
-            initialState: {
-                gameSystem: null,
-                hasMeaningfulParams: false,
-                params: new URLSearchParams(),
-            },
-            registerConsumer: jasmine.createSpy('registerConsumer'),
-            markConsumerReady: jasmine.createSpy('markConsumerReady'),
-            setParams: jasmine.createSpy('setParams'),
+        const urlServiceStub = {
+            initialParams: new URLSearchParams(),
+            initialPathname: '/',
+            getGameSystemOverride: () => null,
+            setQueryParams: jasmine.createSpy('setQueryParams'),
         };
 
         const tagsServiceStub = {
@@ -678,6 +674,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
             getNameTags: () => ({}),
             getChassisTags: () => ({}),
             getTagData: async () => ({ tags: {}, timestamp: 0, formatVersion: 3 as const }),
+            migrateChassisTagsToVariantGroups: jasmine.createSpy('migrateChassisTagsToVariantGroups')
+                .and.callFake(async (_units: Unit[], tagData?: TagData) => tagData ?? ({ tags: {}, timestamp: 0, formatVersion: 4 as const })),
             fixNameTagsCoveredByChassis: jasmine.createSpy('fixNameTagsCoveredByChassis').and.resolveTo(undefined),
             setRefreshUnitsCallback: jasmine.createSpy('setRefreshUnitsCallback'),
             setNotifyStoreUpdatedCallback: jasmine.createSpy('setNotifyStoreUpdatedCallback'),
@@ -715,7 +713,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 { provide: UnitInitializerService, useValue: unitInitializerStub },
                 { provide: OptionsService, useValue: optionsServiceStub },
                 { provide: GameService, useValue: gameServiceStub },
-                { provide: UrlStateService, useValue: urlStateServiceStub },
+                { provide: UrlService, useValue: urlServiceStub },
                 { provide: UserStateService, useValue: userStateServiceStub },
                 { provide: PublicTagsService, useValue: publicTagsServiceStub },
                 { provide: TagsService, useValue: tagsServiceStub },

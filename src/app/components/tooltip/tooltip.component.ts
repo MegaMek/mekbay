@@ -3,10 +3,11 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 
 export interface TooltipLine {
     label?: string;
-    value: string;
+    value?: string;
     iconSrc?: string;
     iconAlt?: string;
     isHeader?: boolean;
+    isBreak?: boolean;
 }
 
 export type TooltipType = 'info' | 'success' | 'error';
@@ -25,17 +26,21 @@ export type TooltipContent = string | TooltipLine[];
                 <div class="tooltip-html" [innerHTML]="htmlContent"></div>
             } @else {
                 @for (line of lines; track $index) {
-                    <div class="tooltip-row" [class.plain]="!line.label" [class.header]="!!line.isHeader">
-                        @if (line.iconSrc) {
-                            <img class="tooltip-icon" [src]="line.iconSrc" [alt]="line.iconAlt ?? ''" />
-                        }
-                        @if (line.label) {
-                            <span class="label">{{ line.label }}</span>
-                            <span class="value">{{ line.value }}</span>
-                        } @else {
-                            <span class="value">{{ line.value }}</span>
-                        }
-                    </div>
+                    @if (line.isBreak) {
+                        <hr class="divisor" />
+                    } @else {
+                        <div class="tooltip-row" [class.plain]="!line.label" [class.header]="!!line.isHeader">
+                            @if (line.iconSrc) {
+                                <img class="tooltip-icon" [src]="line.iconSrc" [alt]="line.iconAlt ?? ''" />
+                            }
+                            @if (line.label) {
+                                <span class="label">{{ line.label }}</span>
+                                <span class="value">{{ line.value }}</span>
+                            } @else {
+                                <span class="value">{{ line.value }}</span>
+                            }
+                        </div>
+                    }
                 }
             }
         </div>

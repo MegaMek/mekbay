@@ -36,14 +36,16 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ForceBuilderService } from '../../services/force-builder.service';
-import { ActivatedRoute, Router } from '@angular/router';
 import { ToastService } from '../../services/toast.service';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
+import { buildShareUrl } from '../../utils/share-url.util';
 import type { Force } from '../../models/force.model';
 import { buildForceQueryParams } from '../../utils/force-url.util';
 import { firstValueFrom } from 'rxjs';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForcePreviewComponent } from '../force-preview/force-preview.component';
+import { GameSystem } from '../../models/common.model';
+import type { CBTForce } from '../../models/cbt-force.model';
 
 /*
  * Author: Drake
@@ -115,6 +117,15 @@ export interface ShareForceDialogData {
                             EXCEL
                         }
                     </button>
+                    @if (force.gameSystem === GameSystem.CLASSIC) {
+                        <button class="bt-button export-btn" (click)="exportToMUL()" [disabled]="isExporting()">
+                            @if (isExporting()) {
+                                EXPORTING...
+                            } @else {
+                                MUL
+                            }
+                        </button>
+                    }
                 </div>
             </div>
         </div>
@@ -159,6 +170,10 @@ export interface ShareForceDialogData {
             align-items: center;
             justify-content: space-between;
             width: 100%;
+
+            @media (max-width: 600px) {
+                flex-direction: column;
+            }
         }
 
         .export-buttons {
@@ -197,13 +212,12 @@ export class ShareForceDialogComponent {
     forceBuilderService = inject(ForceBuilderService);
     toastService = inject(ToastService);
     private dialogsService = inject(DialogsService);
-    private router = inject(Router);
-    private route = inject(ActivatedRoute);
     instanceId = signal<string | null>(null);
     shareLiveUrl = signal<string | null>(null);
     cleanUrl = signal<string | null>(null);
     force: Force;
     isExporting = signal(false);
+    readonly GameSystem = GameSystem;
 
     constructor() {
         this.force = this.data.force;
@@ -269,34 +283,50 @@ export class ShareForceDialogComponent {
         }
     }
 
+    async exportToMUL() {
+        const forceUnits = this.force.units();
+        if (this.force.gameSystem !== GameSystem.CLASSIC) {
+            return;
+        }
+        if (!forceUnits || forceUnits.length === 0) {
+            this.toastService.showToast('No units to export.', 'error');
+            return;
+        }
+
+        this.isExporting.set(true);
+        try {
+            const { exportForceToMul } = await import('../../utils/mul-file.util');
+            await exportForceToMul(this.force as CBTForce);
+            this.toastService.showToast(`Exported ${forceUnits.length} units to MUL.`, 'success');
+        } catch (err) {
+            console.error('Failed to export to MUL:', err);
+            this.toastService.showToast('Failed to export to MUL.', 'error');
+        } finally {
+            this.isExporting.set(false);
+        }
+    }
+
     private buildUrls() {
         const origin = window.location.origin || '';
         // Single-force clean URL (units-based, for sharing without instance IDs)
         const singleForceParams = buildForceQueryParams(this.force);
 
         // Instance ID of the current force
-        this.instanceId.set(this.force.instanceId() || null);
+        const instanceId = this.force.instanceId() || null;
+        this.instanceId.set(instanceId);
 
-        const instanceTree = this.router.createUrlTree([], {
-            relativeTo: this.route,
-            queryParams: {
-                instance: this.force.instanceId() || null
-            }
-        });
-        const shareLiveUrl = this.router.serializeUrl(instanceTree);
-        this.shareLiveUrl.set(shareLiveUrl.length > 1 ? origin + shareLiveUrl : null);
+        this.shareLiveUrl.set(instanceId
+            ? buildShareUrl(origin, { instance: instanceId })
+            : null);
 
-        const cleanTree = this.router.createUrlTree([], {
-            relativeTo: this.route,
-            queryParams: {
-                gs: singleForceParams.gs || null,
+        this.cleanUrl.set(singleForceParams.units
+            ? buildShareUrl(origin, {
+                gs: singleForceParams.gs,
                 units: singleForceParams.units,
-                name: singleForceParams.name || null,
-                factionId: singleForceParams.factionId || null
-            }
-        });
-        const cleanUrl = this.router.serializeUrl(cleanTree);
-        this.cleanUrl.set(cleanUrl.length > 1 ? origin + cleanUrl : null);
+                name: singleForceParams.name,
+                factionId: singleForceParams.factionId,
+            })
+            : null);
     }
 
     async share(url: string) {

@@ -66,6 +66,8 @@ const DB_VERSION = 13;
 const DB_STORE = 'store';
 const UNITS_KEY = 'units';
 const UNITS_FLUFF_METADATA_KEY = 'unitsFluff';
+const CUSTOM_UNITS_KEY_PREFIX = 'units:server:';
+const CUSTOM_UNITS_FLUFF_KEY_PREFIX = 'units-fluff:server:';
 const EQUIPMENT_KEY = 'equipment';
 const FACTIONS_KEY = 'factions';
 const MEGAMEK_FACTIONS_KEY = 'megamekFactions';
@@ -128,7 +130,7 @@ export interface StoredChassisTags {
  * Uses short property names for wire efficiency.
  */
 export interface TagOp {
-    /** Key: unit name (for name tags) or chassis|type (for chassis tags). Empty for rename. */
+    /** Key: unit name (for name tags) or variant group key (for chassis tags). Empty for rename. */
     k: string;
     /** Tag name (original tag name for rename) */
     t: string;
@@ -167,14 +169,14 @@ export interface TagEntry {
 }
 
 /**
- * V3 Tag data format - uses lowercase tag IDs as keys.
+ * V4 Tag data format - uses lowercase tag IDs as keys.
  * This is the current storage format.
  */
 export interface TagData {
     /** Map of lowercase tagId -> TagEntry */
     tags: Record<string, TagEntry>;
-    /** Format version: 3 for V3 format */
-    formatVersion: 3;
+    /** Format version: 4 uses variant group keys for chassis tags. */
+    formatVersion: 3 | 4;
     /** Timestamp of last modification for sync purposes */
     timestamp: number;
 }
@@ -519,6 +521,30 @@ export class DbService {
         return await this.saveDataFromGeneralStore(unitsData, UNITS_KEY);
     }
 
+    private static customUnitsKey(serverUrl: string): string {
+        return `${CUSTOM_UNITS_KEY_PREFIX}${serverUrl}`;
+    }
+
+    public async getCustomServerUnits(serverUrl: string): Promise<Units | null> {
+        return await this.getDataFromGeneralStore<Units>(DbService.customUnitsKey(serverUrl));
+    }
+
+    public async saveCustomServerUnits(serverUrl: string, unitsData: Units): Promise<void> {
+        return await this.saveDataFromGeneralStore(unitsData, DbService.customUnitsKey(serverUrl));
+    }
+
+    private static customFluffKey(serverUrl: string): string {
+        return `${CUSTOM_UNITS_FLUFF_KEY_PREFIX}${serverUrl}`;
+    }
+
+    public async getCustomServerFluff(serverUrl: string): Promise<UnitFluffCatalog | null> {
+        return await this.getDataFromGeneralStore<UnitFluffCatalog>(DbService.customFluffKey(serverUrl));
+    }
+
+    public async saveCustomServerFluff(serverUrl: string, fluffData: UnitFluffCatalog): Promise<void> {
+        return await this.saveDataFromGeneralStore(fluffData, DbService.customFluffKey(serverUrl));
+    }
+
     public async getUnitFluffCatalogMetadata(): Promise<UnitFluffCatalogMetadata | null> {
         return await this.getDataFromGeneralStore<UnitFluffCatalogMetadata>(UNITS_FLUFF_METADATA_KEY);
     }
@@ -655,13 +681,14 @@ export class DbService {
 
             const tagsRequest = store.get('tags');
             const timestampRequest = store.get('timestamp');
+            const formatVersionRequest = store.get('formatVersion');
 
             transaction.oncomplete = () => {
                 if (tagsRequest.result) {
                     resolve({
                         tags: tagsRequest.result,
                         timestamp: timestampRequest.result || 0,
-                        formatVersion: 3
+                        formatVersion: formatVersionRequest.result || 3
                     } as TagData);
                 } else {
                     resolve(null);
@@ -682,7 +709,7 @@ export class DbService {
             // Save tag data
             store.put(data.tags, 'tags');
             store.put(data.timestamp, 'timestamp');
-            store.put(3, 'formatVersion');
+            store.put(data.formatVersion, 'formatVersion');
 
             transaction.oncomplete = () => resolve();
             transaction.onerror = () => reject(transaction.error);
@@ -750,7 +777,7 @@ export class DbService {
                 // Save tag data
                 store.put(tagData.tags, 'tags');
                 store.put(tagData.timestamp, 'timestamp');
-                store.put(3, 'formatVersion');
+                store.put(tagData.formatVersion, 'formatVersion');
                 store.put(newPending, 'pendingOps');
             };
 
@@ -1284,6 +1311,19 @@ export class DbService {
             for (const key of CATALOG_GENERAL_STORE_KEYS) {
                 store.delete(key);
             }
+
+            // Remove any cached additional-unit-server datasets (keys are dynamic per server URL).
+            const cursorRequest = store.openKeyCursor();
+            cursorRequest.onsuccess = () => {
+                const cursor = cursorRequest.result;
+                if (!cursor) return;
+                if (typeof cursor.key === 'string'
+                    && (cursor.key.startsWith(CUSTOM_UNITS_KEY_PREFIX) || cursor.key.startsWith(CUSTOM_UNITS_FLUFF_KEY_PREFIX))) {
+                    store.delete(cursor.key);
+                }
+                cursor.continue();
+            };
+
             transaction.objectStore(UNIT_FLUFF_STORE).clear();
 
             transaction.oncomplete = () => resolve();

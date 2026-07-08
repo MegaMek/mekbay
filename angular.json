@@ -17,6 +17,7 @@
             "index": "src/index.html",
             "tsConfig": "tsconfig.app.json",
             "allowedCommonJsDependencies": [
+              "dijkstrajs",
               "jszip",
               "qrcode"
             ],
@@ -153,5 +154,8 @@
         }
       }
     }
+  },
+  "cli": {
+    "analytics": false
   }
 }

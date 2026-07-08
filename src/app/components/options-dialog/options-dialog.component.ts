@@ -44,6 +44,7 @@ import { isIOS } from '../../utils/platform.util';
 import { LoggerService } from '../../services/logger.service';
 import { GameService } from '../../services/game.service';
 import type { GameSystem } from '../../models/common.model';
+import { normalizeUnitServerUrl } from '../../models/common.model';
 import type { AvailabilitySource, RecordSheetDoubleTapZoomResetMode } from '../../models/options.model';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { DataService } from '../../services/data.service';
@@ -56,6 +57,7 @@ import { OAuthProviderPickerDialogComponent, type OAuthProviderPickerDialogResul
 import type { AvailableAuthProvider, LinkedOAuthProvider, OAuthProvider } from '../../models/account-auth.model';
 import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { naturalCompare } from '../../utils/sort.util';
+import { AppUpdateService } from '../../services/app-update.service';
 
 type OptionsSectionId = 'General' | 'Account' | 'Tags' | 'Sheets' | 'Alpha Strike' | 'Advanced' | 'Logs';
 type OptionsViewId = OptionsSectionId;
@@ -142,6 +144,7 @@ export class OptionsDialogComponent {
     taggingService = inject(TaggingService);
     toastService = inject(ToastService);
     accountAuthService = inject(AccountAuthService);
+    appUpdateService = inject(AppUpdateService);
     destroyRef = inject(DestroyRef);
     isIOS = isIOS();
     modalClass = 'wide options-dialog-modal';
@@ -183,6 +186,15 @@ export class OptionsDialogComponent {
     sheetCacheCount = signal(0);
     canvasMemorySize = signal(0);
     unitIconsCount = signal(0);
+    unitServersDraft = signal<string[]>([...(this.optionsService.options().unitServers ?? [])]);
+    newUnitServerUrl = signal('');
+    unitServerError = signal('');
+    unitServersDirty = computed(() => {
+        const saved = this.optionsService.options().unitServers ?? [];
+        const draft = this.unitServersDraft();
+        if (saved.length !== draft.length) return true;
+        return draft.some((url, i) => url !== saved[i]);
+    });
     unitsCount = computed(() => this.dataService.getUnits().length);
     equipmentCount = computed(() => Object.keys(this.dataService.getEquipments()).length);
 
@@ -357,6 +369,10 @@ export class OptionsDialogComponent {
         this.dialogRef.close();
     }
 
+    restartToUpdate(): void {
+        void this.appUpdateService.restartForUpdate();
+    }
+
     onGameSystemChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as GameSystem;
         this.optionsService.setOption('gameSystem', value);
@@ -434,6 +450,51 @@ export class OptionsDialogComponent {
     onCanvasInputChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'all' | 'touch' | 'pen';
         this.optionsService.setOption('canvasInput', value);
+    }
+
+    onPerformanceModeChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value === 'true';
+        this.optionsService.setOption('performanceMode', value);
+    }
+
+    onNewUnitServerUrlInput(event: Event) {
+        this.newUnitServerUrl.set((event.target as HTMLInputElement).value);
+        if (this.unitServerError()) {
+            this.unitServerError.set('');
+        }
+    }
+
+    addUnitServer() {
+        const normalized = normalizeUnitServerUrl(this.newUnitServerUrl());
+        if (!normalized) {
+            this.unitServerError.set('Enter a valid http(s) server URL, e.g. https://db.example.com');
+            return;
+        }
+        const current = this.unitServersDraft();
+        if (current.includes(normalized)) {
+            this.unitServerError.set('That server is already in the list.');
+            return;
+        }
+        this.unitServersDraft.set([...current, normalized]);
+        this.newUnitServerUrl.set('');
+        this.unitServerError.set('');
+    }
+
+    removeUnitServer(index: number) {
+        const current = this.unitServersDraft();
+        this.unitServersDraft.set(current.filter((_, i) => i !== index));
+    }
+
+    async applyUnitServers() {
+        // Fold any pending text in the add field into the list before saving.
+        if (this.newUnitServerUrl().trim()) {
+            this.addUnitServer();
+            if (this.unitServerError()) {
+                return;
+            }
+        }
+        await this.optionsService.setOption('unitServers', [...this.unitServersDraft()]);
+        window.location.reload();
     }
 
     onSwipeToNextSheetChange(event: Event) {

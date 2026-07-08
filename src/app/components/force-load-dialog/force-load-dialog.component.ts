@@ -41,9 +41,11 @@ import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { MeasureClampOverflowDirective } from '../../directives/measure-clamp-overflow.directive';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
+import { ToastService } from '../../services/toast.service';
 import { Pipe, type PipeTransform } from "@angular/core";
+import type { Force } from '../../models/force.model';
 import { getForcePreviewUnitPilotStats } from '../../models/force-preview.model';
-import type { LoadForceEntry, LoadForceGroup } from '../../models/load-force-entry.model';
+import { type LoadForceEntry, type LoadForceGroup } from '../../models/load-force-entry.model';
 import type { LoadOperationEntry } from '../../models/operation.model';
 import type { SerializedOperation } from '../../models/operation.model';
 import type { LoadOrganizationEntry } from '../../models/organization.model';
@@ -53,6 +55,7 @@ import { OpPreviewComponent } from '../op-preview/op-preview.component';
 import { OptionsService } from '../../services/options.service';
 import { GameService } from '../../services/game.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
+import { UnitInitializerService } from '../../services/unit-initializer.service';
 import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { type ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
@@ -75,6 +78,7 @@ import { naturalCompare } from '../../utils/sort.util';
 import type { Era } from '../../models/eras.model';
 import type { Faction } from '../../models/factions.model';
 import { CompactFilterMenuComponent } from '../compact-filter-menu/compact-filter-menu.component';
+import { LoadingSpinnerComponent } from '../loading-spinner/loading-spinner.component';
 
 /*
  * Author: Drake
@@ -96,7 +100,7 @@ export class FormatTimestamp implements PipeTransform {
 export type ForceLoadMode = 'load' | 'add' | 'insert' | 'operation';
 
 export interface ForceLoadDialogEnvelope {
-    result: LoadForceEntry | ResolvedPack | LoadOperationEntry;
+    result: LoadForceEntry | ResolvedPack | LoadOperationEntry | Force;
     mode: ForceLoadMode;
     alignment: ForceAlignment;
 }
@@ -143,7 +147,7 @@ const DEFAULT_OPERATION_SORT_DIRECTION: SortDirection = 'desc';
     selector: 'force-load-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, MeasureClampOverflowDirective, UnitIconComponent, OpPreviewComponent, FactionImgPipe, ForceTagsComponent, CompactFilterMenuComponent],
+    imports: [CommonModule, ScrollingModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, MeasureClampOverflowDirective, UnitIconComponent, OpPreviewComponent, FactionImgPipe, ForceTagsComponent, CompactFilterMenuComponent, LoadingSpinnerComponent],
     templateUrl: './force-load-dialog.component.html',
     styleUrls: ['./force-load-dialog.component.css']
 })
@@ -155,16 +159,19 @@ export class ForceLoadDialogComponent {
     private injector = inject(Injector);
     private sessionPersistenceService = inject(SessionPersistenceService);
     private forceTaggingService = inject(ForceTaggingService);
+    private unitInitializer = inject(UnitInitializerService);
     forceBuilderService = inject(ForceBuilderService);
     optionsService = inject(OptionsService);
     gameService = inject(GameService);
     private dialogsService = inject(DialogsService);
+    private toastService = inject(ToastService);
     readonly hangarAllFilter = HANGAR_FILTER_ALL;
     readonly hangarUnfiledFilter = HANGAR_FILTER_UNFILED;
     readonly hangarClassicFilter = HANGAR_FILTER_CLASSIC;
     readonly hangarAlphaStrikeFilter = HANGAR_FILTER_ALPHA_STRIKE;
     searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
     private hangarViewport = viewChild<CdkVirtualScrollViewport>('hangarViewport');
+    mulFileInput = viewChild<ElementRef<HTMLInputElement>>('mulFileInput');
 
     readonly GameSystem = GameSystem;
     readonly getUnitPilotStats = getForcePreviewUnitPilotStats;
@@ -1545,6 +1552,68 @@ export class ForceLoadDialogComponent {
         return sanitizeForceTags(force.tags ?? []);
     }
 
+    openMulFilePicker(): void {
+        this.mulFileInput()?.nativeElement.click();
+    }
+
+    async onMulFileSelected(event: Event): Promise<void> {
+        const input = event.currentTarget as HTMLInputElement | null;
+        const file = input?.files?.[0];
+        if (!file) {
+            return;
+        }
+
+        try {
+            const text = await file.text();
+            const { parseMulForce } = await import('../../utils/mul-file.util');
+            const forceName = file.name.replace(/\.mul$/i, '').trim() || 'Imported MUL Force';
+            const { force, issues } = await parseMulForce(text, forceName, this.dataService, this.unitInitializer, this.injector);
+            force.instanceId.set(null);
+
+            const warningCount = issues.filter(issue => issue.severity === 'warning').length;
+            const loadedCount = force.units().length;
+            this.toastService.showToast(
+                warningCount > 0
+                    ? `Loaded ${loadedCount} units from MUL with ${warningCount} warning${warningCount === 1 ? '' : 's'}.`
+                    : `Loaded ${loadedCount} units from MUL.`,
+                warningCount > 0 ? 'info' : 'success'
+            );
+            await this.onLoadForce(force);
+        } catch (err) {
+            console.error('Failed to load MUL:', err);
+            this.toastService.showToast(err instanceof Error ? err.message : 'Failed to load MUL.', 'error');
+        } finally {
+            if (input) {
+                input.value = '';
+            }
+        }
+    }
+
+    private async onLoadForce(force: Force): Promise<void> {
+        if (this.forceBuilderService.loadedForces().length > 0) {
+            const ref = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
+                disableClose: true,
+                data: <ConfirmDialogData<string>>{
+                    title: 'Deploy Force',
+                    message: 'You already have forces deployed. Would you like to replace them or add this force alongside them?',
+                    buttons: [
+                        { label: 'REPLACE', value: 'replace' },
+                        { label: 'ADD', value: 'add' },
+                        { label: 'CANCEL', value: 'cancel' },
+                    ]
+                }
+            });
+            const answer = await firstValueFrom(ref.closed);
+            if (answer === 'replace') {
+                this.dialogRef.close({ result: force, mode: 'load', alignment: 'friendly' });
+            } else if (answer === 'add') {
+                await this.onAddForce(force);
+            }
+            return;
+        }
+        this.dialogRef.close({ result: force, mode: 'load', alignment: 'friendly' });
+    }
+
     async onLoad() {
         if (this.activeTab() === 'Operations') {
             await this.onLoadOperation();
@@ -1580,6 +1649,10 @@ export class ForceLoadDialogComponent {
     }
 
     async onAdd() {
+        await this.onAddForce();
+    }
+
+    private async onAddForce(force?: Force): Promise<void> {
         const currentForce = this.forceBuilderService.smartCurrentForce();
         const showInsert = !!currentForce && currentForce.owned();
         const ref = this.dialogsService.createDialog<ForceAddModePickerResult>(
@@ -1594,8 +1667,16 @@ export class ForceLoadDialogComponent {
         const result = await firstValueFrom(ref.closed);
         if (!result) return;
         if (result === 'insert') {
+            if (force) {
+                this.dialogRef.close({ result: force, mode: 'insert', alignment: 'friendly' });
+                return;
+            }
             await this.closeWithMode('insert', 'friendly');
         } else {
+            if (force) {
+                this.dialogRef.close({ result: force, mode: 'add', alignment: result });
+                return;
+            }
             await this.closeWithMode('add', result);
         }
     }
@@ -1631,7 +1712,7 @@ export class ForceLoadDialogComponent {
         );
         if (confirmed) {
             await this.dataService.deleteOperation(op.operationId);
-            this.operations.set(this.operations().filter(o => o !== op));
+            this.operations.update(ops => ops.filter(o => o !== op));
             this.selectedOperation.set(null);
         }
     }
@@ -1739,7 +1820,7 @@ export class ForceLoadDialogComponent {
             if (force.instanceId) {
                 await this.dataService.deleteForce(force.instanceId);
             }
-            this.forces.set(this.forces().filter(f => f !== force));
+            this.forces.update(forces => forces.filter(f => f !== force));
             this.ensureHangarTagFilterIsValid();
             this.selectedForce.set(null);
         }
@@ -1829,7 +1910,7 @@ export class ForceLoadDialogComponent {
         );
         if (confirmed) {
             await this.dataService.deleteOrganization(org.organizationId);
-            this.organizations.set(this.organizations().filter(o => o !== org));
+            this.organizations.update(orgs => orgs.filter(o => o !== org));
             this.selectedOrganization.set(null);
         }
     }

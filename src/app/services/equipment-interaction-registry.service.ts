@@ -36,6 +36,12 @@ import type { PickerChoice, PickerValue } from '../components/picker/picker.inte
 import type { MountedEquipment } from '../models/force-serialization';
 import type { ToastService } from './toast.service';
 import type { DialogsService } from './dialogs.service';
+import type { DataService } from './data.service';
+import type { AmmoEquipment } from '../models/equipment.model';
+import type { InventoryControlDisplayData, InventoryControlDisplayEffectOptions, InventoryControlRules } from '../utils/inventory-control.util';
+import type { TurnState } from '../models/turn-state.model';
+import type { UnitHeatSource } from '../models/rules/unit-type-rules';
+import type { InventoryControlRuntimeRangeKey } from '../models/inventory-control-runtime-state.model';
 
 /**
  * Context passed to handlers containing additional information
@@ -43,6 +49,7 @@ import type { DialogsService } from './dialogs.service';
 export interface HandlerContext {
     toastService: ToastService;
     dialogsService: DialogsService;
+    dataService: DataService;
 }
 
 /**
@@ -65,7 +72,7 @@ export abstract class EquipmentInteractionHandler {
     /**
      * The equipment flags this handler responds to ('F_ECM', 'F_MASC', etc.). If multiple flags, it has to match all.
      */
-    abstract readonly flags: string[];
+    readonly flags: string[] = [];
 
     /**
      * Optional method to determine if this handler applies to the given equipment
@@ -93,6 +100,67 @@ export abstract class EquipmentInteractionHandler {
      * @returns true if the picker should close, false to keep it open (can be async)
      */
     abstract handleSelection(equipment: MountedEquipment, value: PickerChoice, context: HandlerContext): boolean | Promise<boolean>;
+
+    /**
+     * Hook called after a mounted equipment entry is fired/consumed from the weapons panel.
+     */
+    afterInventoryControlFire?(equipment: MountedEquipment, context: HandlerContext): void | Promise<void>;
+
+    /**
+     * Hook called when the owning unit ends its turn.
+     */
+    onEndTurn?(equipment: MountedEquipment, context: HandlerContext): void;
+
+    /**
+     * Hook called while building an inventory-control row display.
+     */
+    applyInventoryControlDisplayEffects?(
+        equipment: MountedEquipment,
+        display: InventoryControlDisplayData,
+        options: InventoryControlDisplayEffectOptions,
+        context: HandlerContext
+    ): InventoryControlDisplayData;
+
+    /**
+     * Hook called for linked equipment while building a parent entry's inventory-control row display.
+     */
+    applyLinkedInventoryControlDisplayEffects?(
+        equipment: MountedEquipment,
+        parent: MountedEquipment,
+        display: InventoryControlDisplayData,
+        options: InventoryControlDisplayEffectOptions,
+        context: HandlerContext
+    ): InventoryControlDisplayData;
+
+    /**
+     * Hook called while filtering ammo options for a selected inventory-control mode.
+     */
+    matchesInventoryAmmo?(equipment: MountedEquipment, ammo: AmmoEquipment, mode: string | null, context: HandlerContext): boolean | null;
+
+    /**
+     * Hook called for linked equipment while resolving a parent weapon's to-hit modifier.
+     */
+    getLinkedEquipmentHitModifier?(equipment: MountedEquipment, parent: MountedEquipment, selectedAmmo?: AmmoEquipment | null): number | null;
+
+    /**
+     * Hook called while resolving an entry's own base to-hit modifier.
+     */
+    getInventoryControlBaseHitModifier?(equipment: MountedEquipment, context: HandlerContext, range?: InventoryControlRuntimeRangeKey | null): number | null;
+
+    /**
+     * Hook called while collecting turn heat sources from inventory entries.
+     */
+    getInventoryHeatSources?(equipment: MountedEquipment, turnState: TurnState): UnitHeatSource[];
+
+    /**
+     * Hook called while calculating active run movement multiplier bonuses.
+     */
+    getRunMovementMultiplierBonus?(equipment: MountedEquipment, turnState: TurnState): number;
+
+    /**
+     * Hook called when equipment-specific modes can veto aimed shots.
+     */
+    canPerformAimedShot?(equipment: MountedEquipment, context: HandlerContext): boolean | null;
 }
 
 /**
@@ -105,10 +173,26 @@ class EquipmentInteractionRegistry {
      * Register a new handler
      */
     register(handler: EquipmentInteractionHandler): void {
-        if (this.handlers.has(handler.id)) {
-            throw new Error(`Handler with id "${handler.id}" is already registered`);
+        const existingHandler = this.handlers.get(handler.id);
+        if (existingHandler) {
+            const error = new Error(`Handler with id "${handler.id}" is already registered`);
+            this.logDuplicateRegistration(handler, existingHandler, error);
+            throw error;
         }
         this.handlers.set(handler.id, handler);
+    }
+
+    private logDuplicateRegistration(
+        handler: EquipmentInteractionHandler,
+        existingHandler: EquipmentInteractionHandler,
+        error: Error
+    ): void {
+        console.error([
+            `Duplicate equipment handler registration attempted for "${handler.id}".`,
+            `Existing handler: ${existingHandler.constructor.name}.`,
+            `Attempted handler: ${handler.constructor.name}.`,
+            error.stack ?? error.message
+        ].join('\n'));
     }
     
     /**
@@ -129,10 +213,12 @@ class EquipmentInteractionRegistry {
      * Get all applicable handlers for an equipment, sorted by priority
      */
     getHandlers(equipment: MountedEquipment): EquipmentInteractionHandler[] {
-        if (!equipment.equipment?.flags) return [];
-        
         const applicableHandlers = Array.from(this.handlers.values())
-            .filter(handler => handler.flags.every(flag => equipment.equipment!.flags.has(flag)) && (!handler.applicableTo || handler.applicableTo(equipment)));
+            .filter(handler => {
+                const flagsMatch = handler.flags.length === 0
+                    || (!!equipment.equipment?.flags && handler.flags.every(flag => equipment.equipment!.flags.has(flag)));
+                return flagsMatch && (!handler.applicableTo || handler.applicableTo(equipment));
+            });
             
         // Sort by priority (descending)
         applicableHandlers.sort((a, b) => b.priority - a.priority);
@@ -173,8 +259,86 @@ class EquipmentInteractionRegistry {
         if (!choice._handler) {
             return false;
         }
-        
+
         return choice._handler.handleSelection(equipment, choice, context);
+    }
+
+    async afterInventoryControlFire(equipment: MountedEquipment, context: HandlerContext): Promise<void> {
+        for (const handler of this.getHandlers(equipment)) {
+            await handler.afterInventoryControlFire?.(equipment, context);
+        }
+    }
+
+    onEndTurn(equipment: MountedEquipment, context: HandlerContext): void {
+        for (const handler of this.getHandlers(equipment)) {
+            handler.onEndTurn?.(equipment, context);
+        }
+    }
+
+    applyInventoryControlDisplayEffects(
+        equipment: MountedEquipment,
+        display: InventoryControlDisplayData,
+        options: InventoryControlDisplayEffectOptions,
+        context: HandlerContext
+    ): InventoryControlDisplayData {
+        let nextDisplay = display;
+        for (const handler of this.getHandlers(equipment)) {
+            nextDisplay = handler.applyInventoryControlDisplayEffects?.(equipment, nextDisplay, options, context) ?? nextDisplay;
+        }
+        for (const linked of equipment.linkedWith ?? []) {
+            for (const handler of this.getHandlers(linked)) {
+                nextDisplay = handler.applyLinkedInventoryControlDisplayEffects?.(linked, equipment, nextDisplay, options, context) ?? nextDisplay;
+            }
+        }
+        return nextDisplay;
+    }
+
+    matchesInventoryAmmo(equipment: MountedEquipment, ammo: AmmoEquipment, mode: string | null, context: HandlerContext): boolean | null {
+        for (const handler of this.getHandlers(equipment)) {
+            const result = handler.matchesInventoryAmmo?.(equipment, ammo, mode, context);
+            if (result !== undefined && result !== null) return result;
+        }
+        return null;
+    }
+
+    getLinkedEquipmentHitModifier(equipment: MountedEquipment, selectedAmmo?: AmmoEquipment | null): number {
+        return equipment.linkedWith?.reduce((total, linked) => {
+            const modifier = this.getHandlers(linked)
+                .reduce((sum, handler) => sum + (handler.getLinkedEquipmentHitModifier?.(linked, equipment, selectedAmmo) ?? 0), 0);
+            return total + modifier;
+        }, 0) ?? 0;
+    }
+
+    getInventoryControlBaseHitModifier(equipment: MountedEquipment, context: HandlerContext, range?: InventoryControlRuntimeRangeKey | null): number | null {
+        for (const handler of this.getHandlers(equipment)) {
+            const result = handler.getInventoryControlBaseHitModifier?.(equipment, context, range);
+            if (result !== undefined && result !== null) return result;
+        }
+        return null;
+    }
+
+    canPerformAimedShot(equipment: MountedEquipment, context: HandlerContext): boolean {
+        return this.getHandlers(equipment)
+            .every(handler => handler.canPerformAimedShot?.(equipment, context) !== false);
+    }
+
+    inventoryControlRules(context: HandlerContext): InventoryControlRules {
+        return {
+            applyDisplayEffects: (equipment, display, options) => this.applyInventoryControlDisplayEffects(equipment, display, options, context),
+            matchesAmmo: (equipment, ammo, mode) => this.matchesInventoryAmmo(equipment, ammo, mode, context),
+            resolveLinkedHitModifier: (equipment, selectedAmmo) => this.getLinkedEquipmentHitModifier(equipment, selectedAmmo),
+            resolveBaseHitModifier: (equipment, range?: InventoryControlRuntimeRangeKey | null) => this.getInventoryControlBaseHitModifier(equipment, context, range)
+        };
+    }
+
+    getInventoryHeatSources(inventory: readonly MountedEquipment[], turnState: TurnState): UnitHeatSource[] {
+        return inventory.flatMap(equipment => this.getHandlers(equipment)
+            .flatMap(handler => handler.getInventoryHeatSources?.(equipment, turnState) ?? []));
+    }
+
+    getRunMovementMultiplierBonus(inventory: readonly MountedEquipment[], turnState: TurnState): number {
+        return inventory.reduce((total, equipment) => total + this.getHandlers(equipment)
+            .reduce((equipmentTotal, handler) => equipmentTotal + (handler.getRunMovementMultiplierBonus?.(equipment, turnState) ?? 0), 0), 0);
     }
 }
 

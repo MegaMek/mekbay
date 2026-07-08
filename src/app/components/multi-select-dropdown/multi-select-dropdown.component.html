@@ -1,5 +1,17 @@
 <div class="multi-select-container corner-borders" [class.open]="isOpen()" [class.disabled]="semanticOnly()" [class.semantic-only]="semanticOnly()">
-    <div #displayArea class="display-area" cdkOverlayOrigin #overlayOrigin="cdkOverlayOrigin" (pointerdown)="onPointerDown($event)" (click)="toggleDropdown()">
+    <div
+        #displayArea
+        class="display-area"
+        cdkOverlayOrigin
+        #overlayOrigin="cdkOverlayOrigin"
+        role="button"
+        [attr.tabindex]="semanticOnly() ? -1 : 0"
+        [attr.aria-haspopup]="'listbox'"
+        [attr.aria-expanded]="isOpen()"
+        [attr.aria-controls]="optionsListId"
+        (pointerdown)="onPointerDown($event)"
+        (click)="toggleDropdown()"
+        (keydown)="onTriggerKeydown($event)">
         <span class="label" [class.semantic-only]="semanticOnly()">{{ label() }}</span>
         <div class="pills-container">
             @if (semanticOnly() && displayItems()?.length) {
@@ -85,8 +97,9 @@
         class="options-dropdown framed-borders has-shadow"
         [class.options-dropdown-below]="overlayPlacement() === 'below'"
         [class.options-dropdown-above]="overlayPlacement() === 'above'"
-        (click)="$event.stopPropagation()">
-        <div class="filter-container" [hidden]="!(options().length > 20 || showUnavailableToggle())" (click)="$event.stopPropagation()">
+        (click)="$event.stopPropagation()"
+        (keydown)="onDropdownKeydown($event)">
+        <div class="filter-container" [hidden]="!showFilterControls()" (click)="$event.stopPropagation()">
             <div class="filter-row">
                 <input 
                     #filterInput
@@ -94,7 +107,9 @@
                     class="filter-input" 
                     placeholder="Filter..."
                     [value]="filterText()"
-                    (input)="onFilterInput($event)">
+                    [attr.aria-activedescendant]="keyboardFocusedOptionId()"
+                    (input)="onFilterInput($event)"
+                    (keydown)="onFilterKeydown($event)">
                 <button type="button" class="unavailable-toggle" [hidden]="!showUnavailableToggle()" (click)="toggleUnavailable($event)" aria-label="Toggle unavailable options" title="Toggle unavailable options">
                     @if (showUnavailable()) {
                         <!-- show eye -->
@@ -123,13 +138,27 @@
             <cdk-virtual-scroll-viewport
                 #optionsViewport
                 class="options-list options-viewport"
+                role="listbox"
+                [id]="optionsListId"
+                tabindex="0"
+                [attr.aria-activedescendant]="keyboardFocusedOptionId()"
+                (pointerdown)="onOptionsPointerDown($event)"
+                (focus)="onOptionsListFocus($event)"
                 [itemSize]="optionItemSize"
+                [style.--virtual-option-height]="optionItemSize + 'px'"
                 [style.height.px]="viewportHeight()">
                 <label class="option-item"
-                    *cdkVirtualFor="let option of filteredOptions(); trackBy: trackOptionName"
+                    *cdkVirtualFor="let option of filteredOptions(); let optionIndex = index; trackBy: trackOptionName"
+                    role="option"
+                    [id]="optionId(optionIndex)"
                     [attr.data-option-name]="option.name"
+                    [attr.aria-selected]="isSelected(option.name) ? 'true' : 'false'"
+                    [class.keyboard-focused]="optionIndex === keyboardFocusedIndex()"
                     [class.unavailable]="option.available === false"
                     [class.selected-single]="!multiselect() && isSelected(option.name)"
+                    (pointerenter)="onOptionPointerHover(option.name)"
+                    (pointermove)="onOptionPointerHover(option.name)"
+                    (pointerleave)="onOptionPointerLeave(option.name)"
                     (click)="!multiselect() ? onSingleSelect(option.name) : null">
                     @if (multiselect()) {
                         <input type="checkbox" [checked]="isSelected(option.name)" (change)="onOptionToggle(option.name)" />
@@ -162,7 +191,10 @@
                     @if (option.img) {
                         <img [src]="option.img" class="option-img" alt="">
                     }
-                    <span class="option-label" [innerHTML]="highlight(option.displayName ?? option.name)"></span>
+                    <span
+                        class="option-label"
+                        [style.fontSize.px]="getVirtualOptionLabelFontSize(option)"
+                        [innerHTML]="highlight(option.displayName ?? option.name)"></span>
                     @if (countable() && (getState(option.name) === 'and' || getState(option.name) === 'or')) {
                         <div class="quantity-input">
                             <input type="number"
@@ -178,12 +210,25 @@
             </cdk-virtual-scroll-viewport>
         } @else {
             <div #optionsEl class="options-list"
+                role="listbox"
+                [id]="optionsListId"
+                tabindex="0"
+                [attr.aria-activedescendant]="keyboardFocusedOptionId()"
+                (pointerdown)="onOptionsPointerDown($event)"
+                (focus)="onOptionsListFocus($event)"
                 [style.maxHeight.px]="maxHeightOptions()">
                 @for (option of filteredOptions(); let i = $index; track option.name) {
                         <label class="option-item"
+                            role="option"
+                            [id]="optionId(i)"
                             [attr.data-option-name]="option.name"
+                            [attr.aria-selected]="isSelected(option.name) ? 'true' : 'false'"
+                            [class.keyboard-focused]="i === keyboardFocusedIndex()"
                             [class.unavailable]="option.available === false"
                             [class.selected-single]="!multiselect() && isSelected(option.name)"
+                            (pointerenter)="onOptionPointerHover(option.name)"
+                            (pointermove)="onOptionPointerHover(option.name)"
+                            (pointerleave)="onOptionPointerLeave(option.name)"
                             (click)="!multiselect() ? onSingleSelect(option.name) : null"
                             >
                             @if (multiselect()) {

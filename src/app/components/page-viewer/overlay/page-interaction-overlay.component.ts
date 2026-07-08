@@ -39,7 +39,8 @@ import {
     input,
     computed,
     ElementRef,
-    DestroyRef
+    DestroyRef,
+    effect,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Overlay } from '@angular/cdk/overlay';
@@ -49,9 +50,19 @@ import { OptionsService } from '../../../services/options.service';
 import { DialogsService } from '../../../services/dialogs.service';
 import { LoggerService } from '../../../services/logger.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
+import { DataService } from '../../../services/data.service';
+import { EquipmentInteractionRegistryService } from '../../../services/equipment-interaction-registry.service';
+import { ForceBuilderService } from '../../../services/force-builder.service';
+import { ToastService } from '../../../services/toast.service';
 import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
 import type { CBTForce } from '../../../models/cbt-force.model';
 import { PageTurnSummaryPanelComponent } from './page-turn-summary.component';
+import { PageViewerStateService } from '../internal/page-viewer-state.service';
+import { EquipmentDialogComponent } from '../../equipment-dialog/equipment-dialog.component';
+import type { EquipmentDialogContext, EquipmentDialogData } from '../../equipment-dialog/equipment-dialog.model';
+import { WeaponTargetsOverlayController } from '../../equipment-dialog/weapon-targets-overlay.controller';
+
+const PAGE_TARGETS_OVERLAY_PREFIX = 'page-viewer-targets';
 
 /*
  * Author: Drake
@@ -80,6 +91,17 @@ export class PageInteractionOverlayComponent {
     private optionsService = inject(OptionsService);
     private overlay = inject(Overlay);
     private host = inject(ElementRef<HTMLElement>);
+    private pageViewerState = inject(PageViewerStateService);
+    private dataService = inject(DataService);
+    private equipmentRegistryService = inject(EquipmentInteractionRegistryService);
+    private forceBuilderService = inject(ForceBuilderService);
+    private toastService = inject(ToastService);
+    private targetsOverlay = new WeaponTargetsOverlayController({
+        overlay: this.overlay,
+        overlayManager: this.overlayManager,
+        injector: this.injector,
+        destroyRef: this.destroyRef
+    });
 
     // Inputs
     unit = input<CBTForceUnit | null>(null);
@@ -139,8 +161,19 @@ export class PageInteractionOverlayComponent {
         return units.some(u => u.turnState().dirty());
     });
 
+    turnTrackerVisible = computed(() => !this.pageViewerState.inventoryDialogOpen());
+
+    constructor() {
+        effect(() => {
+            if (this.pageViewerState.inventoryDialogOpen()) {
+                this.closeAllOverlays();
+            }
+        });
+    }
+
     openTurnSummary(event: MouseEvent) {
         event.stopPropagation();
+        if (!this.turnTrackerVisible()) return;
 
         const unitId = this.unit()?.id;
         const overlayKey = `turnSummary-${unitId}`;
@@ -150,6 +183,8 @@ export class PageInteractionOverlayComponent {
             this.overlayManager.closeManagedOverlay(overlayKey);
             return;
         }
+
+        this.closeAllOverlays();
 
         const target = event.currentTarget as HTMLElement || (event.target as HTMLElement);
 
@@ -180,6 +215,63 @@ export class PageInteractionOverlayComponent {
         }
     }
 
+    openTargets(event: MouseEvent): void {
+        event.stopPropagation();
+        if (!this.turnTrackerVisible()) return;
+
+        const unit = this.unit();
+        if (!unit) return;
+
+        const overlayKey = this.targetsOverlayKey(unit.id);
+        if (this.targetsOverlay.has(overlayKey)) {
+            this.targetsOverlay.close(overlayKey);
+            return;
+        }
+
+        this.closeAllOverlays();
+
+        const target = event.currentTarget as HTMLElement;
+        this.targetsOverlay.open({
+            overlayKey,
+            target,
+            unit,
+            sensitiveAreaReferenceElement: this.nativeElement,
+            afterTargetUpdate: updatedUnit => updatedUnit.syncInventoryControlSelectionSvg()
+        });
+    }
+
+    openWeaponEquipmentDialog(event: MouseEvent): void {
+        event.stopPropagation();
+        if (!this.turnTrackerVisible()) return;
+
+        const unit = this.unit();
+        if (!unit) return;
+
+        this.closeAllOverlays();
+        const unitList = this.pageViewerState.forceUnits().length > 0 ? this.pageViewerState.forceUnits() : [unit];
+        const context: EquipmentDialogContext = {
+            toastService: this.toastService,
+            dialogsService: this.dialogsService,
+            dataService: this.dataService,
+            registry: this.equipmentRegistryService.getRegistry()
+        };
+        this.pageViewerState.beginInventoryDialog();
+        const ref = this.dialogsService.createDialog<void>(EquipmentDialogComponent, {
+            data: {
+                unitList,
+                unitIndex: Math.max(0, unitList.findIndex(candidate => candidate.id === unit.id)),
+                onUnitChange: (selectedUnit) => this.forceBuilderService.selectUnit(selectedUnit),
+                context,
+                initialTab: 'weapons'
+            } as EquipmentDialogData,
+        });
+        ref.closed.subscribe(() => this.pageViewerState.endInventoryDialog());
+    }
+
+    private targetsOverlayKey(unitId: string): string {
+        return `${PAGE_TARGETS_OVERLAY_PREFIX}-${unitId}`;
+    }
+
     async endTurnForAll() {
         const confirm = await this.dialogsService.requestConfirmation(
             'Are you sure you want to end the turn for all units?',
@@ -205,15 +297,10 @@ export class PageInteractionOverlayComponent {
     }
 
     /**
-     * Closes all overlays opened by this component (turn summary, PSR warning, etc.).
+     * Closes all currently managed overlays.
      */
     closeAllOverlays(): void {
-        const unitId = this.unit()?.id;
-        if (!unitId) return;
-        
-        // Close turn summary overlay
-        this.overlayManager.closeManagedOverlay(`turnSummary-${unitId}`);
-        // Close PSR warning overlay if any
-        this.overlayManager.closeManagedOverlay(`psrWarning-${unitId}`);
+        this.overlayManager.closeAllManagedOverlays();
+        this.targetsOverlay.clearRef();
     }
 }

@@ -82,7 +82,8 @@ import { UnitsCatalogService } from './catalogs/units-catalog.service';
 import { UnitsFluffCatalogService } from './catalogs/units-fluff-catalog.service';
 import { EquipmentCatalogService } from './catalogs/equipment-catalog.service';
 import { ForceNameWordsCatalogService } from './catalogs/force-name-words-catalog.service';
-import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
+import { CatalogDownloadTrackerService } from './catalogs/catalog-base.service';
+import { MULFACTION_EXTINCT, MULFACTION_NONE } from '../models/mulfactions.model';
 import { naturalCompare } from '../utils/sort.util';
 import { getUnitVariantGroupKey } from '../utils/unit-variant.util';
 
@@ -180,6 +181,7 @@ export class DataService {
     private sarnaPageTitlesCatalog = inject(SarnaPageTitlesCatalogService);
     private sourcebooksCatalog = inject(SourcebooksCatalogService);
     private forceNameWordsCatalog = inject(ForceNameWordsCatalogService);
+    private catalogDownloadTracker = inject(CatalogDownloadTrackerService);
     private readonly megaMekAvailabilityCatalogState = createCatalogInitializationState();
     private readonly megaMekFactionsCatalogState = createCatalogInitializationState();
     private readonly megaMekRulesetsCatalogState = createCatalogInitializationState();
@@ -189,7 +191,7 @@ export class DataService {
     private readonly forceNameWordsCatalogState = createCatalogInitializationState();
 
     isDataReady = signal(false);
-    isDownloading = signal(false);
+    public readonly isDownloading = this.catalogDownloadTracker.isDownloading;
     public isCloudForceLoading = signal(false);
 
     /** Emits when a cloud save is rejected (not_owner) and the force needs adoption. */
@@ -295,7 +297,7 @@ export class DataService {
         const searchIndexChanged = options?.searchIndexChanged ?? true;
         this.unitRuntimeService.applyTagDataToUnits(this.getUnits(), tagData, { rebuildTagSearchIndex: searchIndexChanged });
         if (searchIndexChanged) {
-            this.tagsVersion.set(this.tagsVersion() + 1);
+            this.tagsVersion.update(v => v + 1);
         }
     }
 
@@ -305,7 +307,7 @@ export class DataService {
      */
     private applyPublicTagsToUnits(): void {
         this.unitRuntimeService.applyPublicTagsToUnits(this.getUnits());
-        this.tagsVersion.set(this.tagsVersion() + 1);
+        this.tagsVersion.update(v => v + 1);
     }
 
     public notifyStoreUpdated(action: BroadcastPayload['action'], store?: string, meta?: any) {
@@ -337,7 +339,7 @@ export class DataService {
      */
     private async loadUnitTags(units: Unit[]): Promise<void> {
         await this.unitRuntimeService.loadUnitTags(units);
-        this.tagsVersion.set(this.tagsVersion() + 1);
+        this.tagsVersion.update(v => v + 1);
     }
 
     public getUnits(): Unit[] {
@@ -348,7 +350,7 @@ export class DataService {
         return this.unitRuntimeService.getUnitByName(name);
     }
 
-    public getUnitFluff(unit: Pick<Unit, 'name' | 'fluff'>): Promise<UnitFluffCatalogEntry | undefined> {
+    public getUnitFluff(unit: Pick<Unit, 'name' | 'fluff' | 'serverHost'>): Promise<UnitFluffCatalogEntry | undefined> {
         return this.unitsFluffCatalog.getUnitFluff(unit);
     }
 
@@ -507,25 +509,67 @@ export class DataService {
     }
 
     private postprocessData(): void {
+        this.applyNoneFactionMemberships(this.getUnits(), this.getEras(), this.getFactions());
         this.unitRuntimeService.postprocessUnits(this.getUnits(), this.getEras());
         this.unitRuntimeService.linkEquipmentToUnits(this.getUnits(), this.getEquipments());
         const extinctFaction = this.getFactionById(MULFACTION_EXTINCT);
         this.unitSearchIndexService.rebuildIndexes(this.getUnits(), this.getEras(), this.getFactions(), extinctFaction);
     }
 
-    private async checkForUpdate(): Promise<void> {
-        try {
-            await Promise.all([
-                this.unitsCatalog.initialize(),
-                this.equipmentCatalog.initialize(),
-                this.erasCatalog.initialize(),
-                this.factionsCatalog.initialize(),
-            ]);
-            this.postprocessData();
-            this.bumpSearchCorpusVersion();
-        } finally {
-            this.isDownloading.set(false);
+    private applyNoneFactionMemberships(units: readonly Unit[], eras: readonly Era[], factions: readonly Faction[]): void {
+        const noneFaction = this.getFactionById(MULFACTION_NONE);
+        if (!noneFaction) {
+            return;
         }
+
+        const factionUnitIds = new Set<number>();
+        for (const faction of factions) {
+            if (faction.id === MULFACTION_NONE) {
+                continue;
+            }
+
+            for (const eraUnitIds of Object.values(faction.eras) as Set<number>[]) {
+                for (const unitId of eraUnitIds) {
+                    factionUnitIds.add(unitId);
+                }
+            }
+        }
+
+        const noneUnits = units.filter((unit) => !factionUnitIds.has(unit.id));
+
+        noneFaction.eras = {};
+        for (const era of eras) {
+            const noneEraUnitIds = new Set<number>();
+            for (const unit of noneUnits) {
+                if (!this.isUnitYearValidForEra(unit, era)) {
+                    continue;
+                }
+
+                noneEraUnitIds.add(unit.id);
+                (era.units as Set<number>).add(unit.id);
+            }
+
+            if (noneEraUnitIds.size > 0) {
+                noneFaction.eras[era.id] = noneEraUnitIds;
+                (era.factions as Set<number>).add(MULFACTION_NONE);
+            }
+        }
+    }
+
+    private isUnitYearValidForEra(unit: Pick<Unit, 'year'>, era: Era): boolean {
+        const eraEndYear = era.years.to ?? Number.POSITIVE_INFINITY;
+        return unit.year < eraEndYear;
+    }
+
+    private async checkForUpdate(): Promise<void> {
+        await Promise.all([
+            this.unitsCatalog.initialize(),
+            this.equipmentCatalog.initialize(),
+            this.erasCatalog.initialize(),
+            this.factionsCatalog.initialize(),
+        ]);
+        this.postprocessData();
+        this.bumpSearchCorpusVersion();
     }
 
     private describeError(error: unknown): string {
@@ -681,8 +725,6 @@ export class DataService {
                 this.applyPublicTagsToUnits();
             }
             this.isDataReady.set(hasData);
-        } finally {
-            this.isDownloading.set(false);
         }
     }
 
@@ -737,8 +779,10 @@ export class DataService {
             }
         }
 
+        let cloudIsNewer = false;
         if (local && cloud) {
-            result = this.isCloudNewer(localRaw, cloudRaw) ? cloud : local;
+            cloudIsNewer = this.isCloudNewer(localRaw, cloudRaw);
+            result = cloudIsNewer ? cloud : local;
         } else if (!triedCloud && local) {
             result = local;
         } else {
@@ -749,6 +793,14 @@ export class DataService {
         if (triedCloud && local && !cloud) {
             this.logger.info(`Force "${local.name}" exists locally but not in cloud: pushing to cloud.`);
             this.saveForceCloud(local);
+        } else 
+        if (triedCloud && (cloudIsNewer || !local) && cloud && cloud.owned()) {
+            if (!local) {
+                this.logger.info(`Force "${cloud.name}" exists in cloud but not locally: saving local copy.`);
+            } else {
+                this.logger.info(`Force "${cloud.name}" exists in cloud and is newer: updating local copy.`);
+            }
+            await this.dbService.saveForce(cloudRaw as SerializedForce);
         }
 
         // Fix any duplicate group/unit IDs that may have been persisted.
@@ -1479,7 +1531,7 @@ export class DataService {
         return forces;
     }
 
-    SAVE_FORCE_CLOUD_DEBOUNCE_MS = 1000;
+    SAVE_FORCE_CLOUD_DEBOUNCE_MS = 2000;
     // Debounce map to prevent multiple simultaneous saves for the same force
     private saveForceCloudDebounce = new Map<string, {
         timeout: ReturnType<typeof setTimeout>,

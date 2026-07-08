@@ -18,6 +18,7 @@
 
 .fluff-content {
     display: flow-root;
+    position: relative;
     padding: 16px;
     flex-grow: 1;
 }
@@ -42,6 +43,13 @@
     float: none;
     margin: auto;
     width: 100%;
+}
+
+.intel-loading-spinner {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: rgba(32, 43, 70, 0.62);
 }
 
 .fluff-image-container {

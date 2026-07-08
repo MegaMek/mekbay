@@ -28,20 +28,68 @@
                 @if (selectedHeaderTag()) {
                     <span>{{ selectedHeaderTagQuantityTotal() }} total sum</span>
                 }
+                @if (selectedOrganizationName()) {
+                    <span>TO&amp;E: {{ selectedOrganizationName() }}</span>
+                }
             </div>
         </div>
 
-        <label class="filter-control">
-            <span>UNIT FILTER</span>
-            <input
-                type="text"
-                class="bt-input"
-                [value]="unitTextFilter()"
-                (input)="onUnitTextFilterInput($event)"
-                placeholder="Chassis and/or model..."
-                aria-label="Filter units"
-            />
-        </label>
+        <div class="filter-stack">
+            <label class="filter-control">
+                <span>UNIT FILTER</span>
+                <input
+                    type="text"
+                    class="bt-input"
+                    [value]="unitTextFilter()"
+                    (input)="onUnitTextFilterInput($event)"
+                    placeholder="Chassis and/or model..."
+                    aria-label="Filter units"
+                />
+            </label>
+            <div class="filter-actions">
+                <button type="button" class="filter-action-button" (click)="toggleAdvancedFilters()" [attr.aria-expanded]="advancedFiltersOpen()" title="Advanced filters">
+                    <svg class="chevron" width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!advancedFiltersOpen()" aria-hidden="true">
+                        <path d="M0 2l5 6 5-6z" />
+                    </svg>
+                    <span>ADVANCED</span>
+                </button>
+                <button type="button" class="filter-action-button" (click)="exportVisibleEntries()" title="Export visible entries">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M12 3v12" />
+                        <path d="m7 10 5 5 5-5" />
+                        <path d="M5 21h14" />
+                    </svg>
+                    <span>EXPORT</span>
+                </button>
+            </div>
+            @if (advancedFiltersOpen()) {
+                <div class="advanced-filter-panel">
+                    <label class="filter-control">
+                        <span class="advanced-filter-label">
+                            <span>TO&amp;E FILTER</span>
+                            @if (organizationFilterLoading()) {
+                                <span class="advanced-filter-status">Loading units...</span>
+                            }
+                        </span>
+                        <select
+                            class="bt-select"
+                            [value]="selectedOrganizationId()"
+                            [disabled]="organizationsLoading()"
+                            (focus)="onOrganizationFilterFocus()"
+                            (change)="onOrganizationFilterChange($event)"
+                            aria-label="Filter by TO&E">
+                            <option value="" [selected]="!selectedOrganizationId()">No filter</option>
+                            @if (organizationsLoading()) {
+                                <option value="" disabled>Loading...</option>
+                            }
+                            @for (organization of sortedOrganizations(); track organization.organizationId) {
+                                <option [value]="organization.organizationId" [selected]="organization.organizationId === selectedOrganizationId()">{{ organization.name || 'Unnamed TO&E' }}</option>
+                            }
+                        </select>
+                    </label>
+                </div>
+            }
+        </div>
 
         <button type="button" class="header-icon-button" (click)="close()" aria-label="Dismiss" title="Dismiss">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -53,7 +101,7 @@
     </header>
 
     <main class="collection-body">
-        <div class="collection-table" role="table">
+        <div class="collection-table" [class.with-organization-quantity]="showOrganizationQuantityColumn()" role="table">
             <div class="collection-list-header">
                 <div class="list-toolbar">
                     <label class="select-all-control">
@@ -82,7 +130,10 @@
                         </label>
                     </div>
                     <div>NAME</div>
-                    <div>TYPE</div>
+                    <div class="center">TP</div>
+                    @if (showOrganizationQuantityColumn()) {
+                        <div class="center">AMOUNT</div>
+                    }
                     <div>TAGS</div>
                 </div>
             </div>
@@ -115,10 +166,16 @@
                                 [attr.title]="row.rowType === 'chassis' ? 'Open chassis details' : 'Open unit details'">
                                 <span class="target-title">{{ row.title }}</span>
                             </button>
+                            @if (row.rowType === 'chassis' && row.unit.omni) {
+                                <span class="target-omni-marker">(omni)</span>
+                            }
                             <span class="target-inline-type">{{ row.subtitle }}</span>
                         </div>
                     </div>
                     <div class="type-cell">{{ row.subtitle }}</div>
+                    @if (showOrganizationQuantityColumn()) {
+                        <div class="organization-quantity-cell">{{ getOrganizationRowQuantity(row) }}</div>
+                    }
                     <div class="tag-list">
                         @for (tag of row.tags; track tag.removalKey) {
                             <div class="tag-chip" [class.pending-removal]="tag.pendingRemoval">
@@ -143,7 +200,7 @@
                     </div>
                 </div>
             } @empty {
-                <div class="empty-state">NO COLLECTION ENTRIES</div>
+                <div class="empty-state">{{ getCollectionEmptyStateMessage() }}</div>
             }
         </div>
     </main>

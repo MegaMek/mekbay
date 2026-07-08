@@ -4,6 +4,7 @@ import { Injectable } from '@angular/core';
 export class PageViewerSwipeAnimationService {
     private transitionEndHandler: ((event?: Event) => void) | null = null;
     private timeoutId: number | null = null;
+    private activeWrapper: HTMLDivElement | null = null;
     private pendingPagesToMove = 0;
 
     hasActiveAnimation(): boolean {
@@ -29,15 +30,7 @@ export class PageViewerSwipeAnimationService {
     }): void {
         const { swipeWrapper, applyPendingMove, resetTransform } = options;
 
-        if (this.transitionEndHandler) {
-            swipeWrapper.removeEventListener('transitionend', this.transitionEndHandler);
-            this.transitionEndHandler = null;
-        }
-
-        if (this.timeoutId !== null) {
-            clearTimeout(this.timeoutId);
-            this.timeoutId = null;
-        }
+        this.clearActiveAnimation(swipeWrapper);
 
         if (applyPendingMove && this.pendingPagesToMove !== 0) {
             applyPendingMove();
@@ -51,6 +44,20 @@ export class PageViewerSwipeAnimationService {
         }
     }
 
+    private clearActiveAnimation(fallbackWrapper?: HTMLDivElement): void {
+        if (this.transitionEndHandler) {
+            (this.activeWrapper ?? fallbackWrapper)?.removeEventListener('transitionend', this.transitionEndHandler);
+            this.transitionEndHandler = null;
+        }
+
+        if (this.timeoutId !== null) {
+            clearTimeout(this.timeoutId);
+            this.timeoutId = null;
+        }
+
+        this.activeWrapper = null;
+    }
+
     start(options: {
         swipeWrapper: HTMLDivElement;
         durationMs: number;
@@ -59,25 +66,17 @@ export class PageViewerSwipeAnimationService {
         onComplete: () => void;
     }): void {
         const { swipeWrapper, durationMs, easing, transform, onComplete } = options;
+        this.clearActiveAnimation(swipeWrapper);
+
         let finished = false;
 
         const finalize = () => {
-            if (finished) {
+            if (finished || this.transitionEndHandler !== onTransitionEnd) {
                 return;
             }
 
             finished = true;
-
-            if (this.transitionEndHandler) {
-                swipeWrapper.removeEventListener('transitionend', this.transitionEndHandler);
-                this.transitionEndHandler = null;
-            }
-
-            if (this.timeoutId !== null) {
-                clearTimeout(this.timeoutId);
-                this.timeoutId = null;
-            }
-
+            this.clearActiveAnimation(swipeWrapper);
             onComplete();
         };
 
@@ -89,6 +88,7 @@ export class PageViewerSwipeAnimationService {
         };
 
         this.transitionEndHandler = onTransitionEnd;
+    this.activeWrapper = swipeWrapper;
         swipeWrapper.addEventListener('transitionend', onTransitionEnd);
         this.timeoutId = window.setTimeout(finalize, durationMs + 80);
 

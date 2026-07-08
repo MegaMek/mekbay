@@ -41,6 +41,7 @@ export interface Toast {
     id: string;
     message: string;
     type: 'info' | 'success' | 'error';
+    data?: Record<string, unknown>;
 }
 
 const TOAST_DURATION_MS = 3000;
@@ -52,7 +53,7 @@ export class ToastService {
     public toasts = this.toastsSignal.asReadonly();
     private timeouts = new Map<string, any>();
 
-    showToast(message: string, type: Toast['type'], id?: string): string {
+    showToast(message: string, type: Toast['type'], id?: string, data?: Toast['data']): string {
         const toastId = id || generateUUID();
         let toasts = this.toastsSignal();
         
@@ -69,7 +70,8 @@ export class ToastService {
                 updatedToasts[existingToastIndex] = {
                     ...updatedToasts[existingToastIndex],
                     message: message,
-                    type: type
+                    type: type,
+                    data
                 };
                 this.toastsSignal.set(updatedToasts);
                 
@@ -88,7 +90,7 @@ export class ToastService {
             toasts = toasts.slice(1); // Remove oldest
         }
         
-        const toast: Toast = { id: toastId, message, type };
+        const toast: Toast = { id: toastId, message, type, data };
         this.toastsSignal.set([...toasts, toast]);
         
         const timeout = setTimeout(() => this.dismiss(toastId), TOAST_DURATION_MS);
@@ -99,7 +101,7 @@ export class ToastService {
 
     dismiss(id: string) {
         this.clearTimeout(id);
-        this.toastsSignal.set(this.toastsSignal().filter(t => t.id !== id));
+        this.toastsSignal.update(toasts => toasts.filter(t => t.id !== id));
     }
 
     private clearTimeout(id: string) {

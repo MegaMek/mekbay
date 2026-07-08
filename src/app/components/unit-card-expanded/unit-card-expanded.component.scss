@@ -71,6 +71,11 @@
         font-weight: normal;
         margin-left: 4px;
     }
+
+    .custom-unit-badge {
+        margin-left: 8px;
+        vertical-align: middle;
+    }
 }
 
 .expanded-alias {
@@ -322,6 +327,25 @@
         text-overflow: ellipsis;
     }
 
+    .chassis {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+
+        > span:first-child {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
+        }
+
+        .custom-unit-badge {
+            flex: 0 0 auto;
+        }
+    }
+
     .pilot-info {
         background-color: rgba(255, 196, 0, 0.4);
 
@@ -402,46 +426,6 @@
     padding: 4px 8px 4px 4px;
     cursor: pointer;
     flex-shrink: 0;
-
-    input[type="checkbox"] {
-        opacity: 0;
-        width: 0;
-        height: 0;
-        position: absolute;
-    }
-
-    .custom-checkbox {
-        position: relative;
-        display: inline-block;
-        width: 16px;
-        height: 16px;
-        background-color: transparent;
-        border: 1px solid silver;
-        border-radius: 2px;
-        flex-shrink: 0;
-        transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
-        text-align: center;
-        font-size: 1em;
-        line-height: 16px;
-
-        &.checked {
-            background-color: var(--bt-yellow);
-            border-color: var(--bt-yellow);
-            color: #fff;
-        }
-    }
-
-    .checkbox-mark {
-        position: absolute;
-        left: 2px;
-        top: 0px;
-        width: 12px;
-        height: 16px;
-        font-size: 1em;
-        line-height: 16px;
-        text-align: center;
-        pointer-events: none;
-    }
 }
 
 /* =============================================

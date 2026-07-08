@@ -286,9 +286,10 @@
 }
 
 .loading-spinner {
-    text-align: center;
+    flex: 1 1 auto;
+    min-height: 0;
+    box-sizing: border-box;
     padding: 2em;
-    color: #aaa;
 }
 .empty-state {
     text-align: center;
@@ -436,6 +437,15 @@
     align-items: center;
     gap: 4px;
     flex: 0 0 auto;
+}
+
+.hidden-file-input {
+    display: none;
+}
+
+.mul-load-btn {
+    height: 32px;
+    white-space: nowrap;
 }
 
 .sort-controls {

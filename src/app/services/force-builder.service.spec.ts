@@ -1,11 +1,13 @@
 import { signal } from '@angular/core';
+import { of } from 'rxjs';
 import { GameSystem } from '../models/common.model';
 import type { Faction } from '../models/factions.model';
-import type { UnitGroup } from '../models/force.model';
+import { Force, type UnitGroup } from '../models/force.model';
 import type { ForceUnit } from '../models/force-unit.model';
 import { LoadForceEntry } from '../models/load-force-entry.model';
 import type { Unit } from '../models/units.model';
 import type { FormationTypeDefinition } from '../utils/formation-type.model';
+import { createEmptyForceNameWords } from '../models/force-name-words.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { ForceBuilderService } from './force-builder.service';
 
@@ -79,6 +81,7 @@ function createHarness(formation: FormationTypeDefinition, factions: Faction[]) 
 
     service.dataService = {
         getFactions: () => factions,
+        getForceNameWords: () => createEmptyForceNameWords(),
     };
     service.injector = {
         get: () => filtersService,
@@ -220,5 +223,33 @@ describe('ForceBuilderService formation filter integration', () => {
         expect(groupsSignal().map((group) => [...group.formationHistory])).toEqual([[lightFireFormation.id], []]);
         expect(groupsSignal().map((group) => group.formationLock)).toEqual([undefined, undefined]);
         expect(service.reconcileASFormationAssignments).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('ForceBuilderService load dialog', () => {
+    it('loads a source force from the dialog without resolving its empty instanceId', async () => {
+        const service = Object.create(ForceBuilderService.prototype) as any;
+        const sourceForce = Object.create(Force.prototype) as Force;
+        sourceForce.instanceId = signal<string | null>(null);
+
+        service.dialogsService = {
+            createDialog: jasmine.createSpy('createDialog').and.returnValue({
+                closed: of({
+                    result: sourceForce,
+                    mode: 'load',
+                    alignment: 'friendly',
+                }),
+            }),
+        };
+        service.dataService = {
+            getForce: jasmine.createSpy('getForce'),
+        };
+        service.loadForce = jasmine.createSpy('loadForce').and.resolveTo(true);
+
+        await service.showLoadForceDialog();
+
+        expect(service.dataService.getForce).not.toHaveBeenCalled();
+        expect(service.loadForce).toHaveBeenCalledOnceWith(sourceForce);
+        expect(sourceForce.instanceId()).toBeNull();
     });
 });

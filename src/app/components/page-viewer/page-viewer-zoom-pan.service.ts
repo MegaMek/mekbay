@@ -66,6 +66,7 @@ const POINTER_MOVE_THRESHOLD = 5;
 const SWIPE_THRESHOLD = 10;
 const DOUBLE_TAP_DELAY = 300;
 const DOUBLE_TAP_DISTANCE = 30;
+const WHEEL_LINE_DELTA_PX = 16;
 
 export interface ViewState {
     scale: number;
@@ -347,11 +348,12 @@ export class PageViewerZoomPanService {
         }
 
         this.visiblePageCount.set(optimalPages);
-        this.minScale.set(Math.max(MIN_SCALE_ABSOLUTE, optimalScale));
+        const minScaleValue = Math.max(MIN_SCALE_ABSOLUTE, optimalScale);
+        this.minScale.set(minScaleValue);
 
         // Ensure current scale isn't below minimum
-        if (this.scale() < this.minScale()) {
-            this.scale.set(this.minScale());
+        if (this.scale() < minScaleValue) {
+            this.scale.set(minScaleValue);
             this.centerContent();
         }
     }
@@ -393,10 +395,10 @@ export class PageViewerZoomPanService {
         };
 
         this.calculateMinScaleAndVisiblePages();
-
+        const minScaleValue = this.minScale();
         // Adjust scale if below minimum
-        if (this.scale() < this.minScale()) {
-            this.scale.set(this.minScale());
+        if (this.scale() < minScaleValue) {
+            this.scale.set(minScaleValue);
         }
 
         this.clampPan();
@@ -447,6 +449,11 @@ export class PageViewerZoomPanService {
     private onWheel(event: WheelEvent): void {
         event.preventDefault();
 
+        if (event.shiftKey || event.ctrlKey) {
+            this.panFromWheel(event.shiftKey ? 'x' : 'y', event);
+            return;
+        }
+
         const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
         let newScale = this.scale() * zoomFactor;
         newScale = Math.max(this.minScale(), Math.min(this.maxScale, newScale));
@@ -459,6 +466,31 @@ export class PageViewerZoomPanService {
         const mouseY = event.clientY - rect.top;
 
         this.zoomToPoint(mouseX, mouseY, newScale);
+    }
+
+    private panFromWheel(axis: 'x' | 'y', event: WheelEvent): void {
+        const delta = this.normalizeWheelDelta(event);
+        if (delta === 0) return;
+
+        const translate = this.translate();
+        this.translate.set(axis === 'x'
+            ? { x: translate.x - delta, y: translate.y }
+            : { x: translate.x, y: translate.y - delta });
+        this.clampPan();
+        this.applyTransform();
+    }
+
+    private normalizeWheelDelta(event: WheelEvent): number {
+        const rawDelta = event.deltaY || event.deltaX;
+
+        switch (event.deltaMode) {
+            case WheelEvent.DOM_DELTA_LINE:
+                return rawDelta * WHEEL_LINE_DELTA_PX;
+            case WheelEvent.DOM_DELTA_PAGE:
+                return rawDelta * this.containerDimensions.height;
+            default:
+                return rawDelta;
+        }
     }
 
     /**
@@ -848,6 +880,10 @@ export class PageViewerZoomPanService {
     }
 
     // ========== Gesture Finalization ==========
+
+    cancelGesture(): void {
+        this.resetGestureState();
+    }
 
     private resetGestureState(): void {
         this.gestureState.isPanning = false;

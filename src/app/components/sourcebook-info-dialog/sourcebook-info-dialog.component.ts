@@ -76,7 +76,7 @@ export interface SourcebookInfoDialogData {
                     <div class="sourcebook-title">
                         <span>{{ sourcebook.title }}</span>
                         @if (sourcebook.sourceAnnotations?.length) {
-                            <span class="source-note">({{ sourcebook.sourceAnnotations?.join(', ') }})</span>
+                            <span class="source-note">({{ sourcebook.sourceAnnotations.join(', ') }})</span>
                         }
                     </div>
                     @if (sourcebook.sku) {
@@ -106,7 +106,7 @@ export interface SourcebookInfoDialogData {
                     <div class="sourcebook-title">
                         <span>{{ unknown.abbrev }}</span>
                         @if (unknown.sourceAnnotations?.length) {
-                            <span class="source-note">({{ unknown.sourceAnnotations?.join(', ') }})</span>
+                            <span class="source-note">({{ unknown.sourceAnnotations.join(', ') }})</span>
                         }
                     </div>
                 </div>

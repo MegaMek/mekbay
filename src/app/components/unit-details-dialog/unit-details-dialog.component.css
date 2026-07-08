@@ -15,6 +15,96 @@
     padding-inline: 4px;
 }
 
+.dialog-footer-content {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    gap: 8px;
+}
+
+.stable-tab-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex: 0 0 auto;
+    padding: 0 4px 8px;
+    border-bottom: 1px solid var(--border-color);
+    flex-wrap: nowrap;
+}
+
+.zoom-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 200px;
+    min-width: 0;
+    max-width: 200px;
+}
+
+.zoom-control simple-slider {
+    flex: 1 1 140px;
+    min-width: 80px;
+}
+
+.zoom-control output {
+    min-width: 4ch;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.stable-tab-footer .bt-button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.sort-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.sort-select {
+    height: 32px;
+    padding: 0 8px;
+    font-size: 13px;
+}
+
+.sort-select option {
+    background-color: #222;
+    color: #fff;
+}
+
+.sort-direction-btn {
+    height: 32px;
+    width: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #bbb;
+    cursor: pointer;
+}
+
+.sort-direction-btn:hover {
+    color: white;
+}
+
+.sort-direction-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+.view-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.view-toggle-btn svg {
+    flex-shrink: 0;
+}
+
 :host ::ng-deep .modal {
     max-width: 1000px !important;
 }
@@ -155,6 +245,18 @@
     font-weight: bold;
     letter-spacing: 0.05em;
     margin-right: 8px;
+}
+
+.header-chassis-group {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.header-chassis-group .header-chassis {
+    margin-right: 0;
 }
 
 .header-details {

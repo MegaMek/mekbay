@@ -24,12 +24,12 @@ describe('PageViewerUiGlueService', () => {
             renderedShadowCount: 2
         })).toEqual({
             shouldRedisplay: true,
-            shouldCloseInteractionOverlays: true,
+            shouldCloseInteractionOverlays: false,
             shouldScheduleShadowRender: false
         });
     });
 
-    it('requests a redisplay when shadows should exist but none are rendered yet', () => {
+    it('schedules shadow rendering without redisplaying the active page when shadows are missing', () => {
         expect(service.buildResizePlan({
             previousVisibleCount: 1,
             nextVisibleCount: 1,
@@ -39,9 +39,9 @@ describe('PageViewerUiGlueService', () => {
             totalUnits: 3,
             renderedShadowCount: 0
         })).toEqual({
-            shouldRedisplay: true,
-            shouldCloseInteractionOverlays: true,
-            shouldScheduleShadowRender: false
+            shouldRedisplay: false,
+            shouldCloseInteractionOverlays: false,
+            shouldScheduleShadowRender: true
         });
     });
 
@@ -86,5 +86,26 @@ describe('PageViewerUiGlueService', () => {
             displayedUnits: units,
             currentUnitId: 'unit-a'
         })).toBeNull();
+    });
+
+    it('resolves selection events that originate from SVG sheet elements', () => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'page-wrapper';
+        wrapper.dataset['unitId'] = 'unit-b';
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const armorLocation = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        armorLocation.classList.add('unitLocation');
+        svg.appendChild(armorLocation);
+        wrapper.appendChild(svg);
+        const units = [{ id: 'unit-a' }, { id: 'unit-b' }] as never[];
+
+        expect(service.resolvePageSelectionUnit({
+            eventTarget: armorLocation,
+            pointerMoved: false,
+            isPanning: false,
+            isSwiping: false,
+            displayedUnits: units,
+            currentUnitId: 'unit-a'
+        })).toEqual(units[1]);
     });
 });

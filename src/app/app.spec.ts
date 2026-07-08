@@ -1,5 +1,6 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { SwUpdate } from '@angular/service-worker';
 import { Subject } from 'rxjs';
 import { App } from './app';
@@ -13,10 +14,11 @@ import { OptionsService } from './services/options.service';
 import { UnitSearchFiltersService } from './services/unit-search-filters.service';
 import { GameService } from './services/game.service';
 import { AccountAuthService } from './services/account-auth.service';
-import { UrlStateService } from './services/url-state.service';
+import { UrlService } from './services/url.service';
 import { SavedSearchesService } from './services/saved-searches.service';
 import { LoggerService } from './services/logger.service';
 import { GameSystem } from './models/common.model';
+import { AppUpdateService } from './services/app-update.service';
 
 describe('App', () => {
   const reloadHashStorageKey = 'mekbay:sw-update-reload-hash';
@@ -39,7 +41,7 @@ describe('App', () => {
   let unitSearchFiltersServiceMock: any;
   let gameServiceMock: any;
   let accountAuthServiceMock: any;
-  let urlStateServiceMock: any;
+  let urlServiceMock: any;
   let savedSearchesServiceMock: any;
   let loggerServiceMock: any;
 
@@ -106,11 +108,13 @@ describe('App', () => {
     accountAuthServiceMock = {
       handleOAuthRedirectReturn: jasmine.createSpy('handleOAuthRedirectReturn').and.resolveTo(undefined),
     };
-    urlStateServiceMock = {
-      registerConsumer: jasmine.createSpy('registerConsumer'),
+    urlServiceMock = {
+      initialParams: new URLSearchParams(),
+      initialPathname: '/',
       hasInitialParam: jasmine.createSpy('hasInitialParam').and.returnValue(false),
       getInitialParam: jasmine.createSpy('getInitialParam').and.returnValue(null),
-      markConsumerReady: jasmine.createSpy('markConsumerReady'),
+      getGameSystemOverride: jasmine.createSpy('getGameSystemOverride').and.returnValue(null),
+      setQueryParams: jasmine.createSpy('setQueryParams'),
     };
     savedSearchesServiceMock = {
       initialize: jasmine.createSpy('initialize'),
@@ -127,6 +131,7 @@ describe('App', () => {
       imports: [App],
       providers: [
         provideZonelessChangeDetection(),
+        provideRouter([]),
         {
           provide: SwUpdate,
           useValue: swUpdateMock,
@@ -141,7 +146,7 @@ describe('App', () => {
         { provide: UnitSearchFiltersService, useValue: unitSearchFiltersServiceMock },
         { provide: GameService, useValue: gameServiceMock },
         { provide: AccountAuthService, useValue: accountAuthServiceMock },
-        { provide: UrlStateService, useValue: urlStateServiceMock },
+        { provide: UrlService, useValue: urlServiceMock },
         { provide: SavedSearchesService, useValue: savedSearchesServiceMock },
         { provide: LoggerService, useValue: loggerServiceMock },
       ]
@@ -151,6 +156,7 @@ describe('App', () => {
   afterEach(() => {
     fixture?.destroy();
     fixture = null;
+    document.querySelectorAll('.mekbay-bootstrap-update-screen').forEach((element) => element.remove());
     localStorage.removeItem(reloadHashStorageKey);
     versionUpdates.complete();
   });
@@ -161,12 +167,19 @@ describe('App', () => {
     expect(app).toBeTruthy();
   });
 
-  it('suppresses auto reload when the same ready version already triggered a reload attempt', () => {
-    localStorage.setItem(reloadHashStorageKey, 'hash-ready');
+  it('does not check for service worker updates immediately after full app startup', () => {
     swUpdateMock.isEnabled = true;
 
     fixture = TestBed.createComponent(App);
-    const app = fixture.componentInstance as any;
+
+    expect(swUpdateMock.checkForUpdate).not.toHaveBeenCalled();
+  });
+
+  it('marks a service worker update as pending without activating it immediately', () => {
+    swUpdateMock.isEnabled = true;
+
+    fixture = TestBed.createComponent(App);
+    const appUpdateService = TestBed.inject(AppUpdateService);
 
     versionUpdates.next({
       type: 'VERSION_READY',
@@ -174,23 +187,80 @@ describe('App', () => {
       latestVersion: { hash: 'hash-ready' },
     });
 
-    expect(app.updateAvailable()).toBeTrue();
-    expect(app.updateAutoReloadEnabled()).toBeFalse();
+    expect(appUpdateService.updatePending()).toBeTrue();
+    expect(swUpdateMock.activateUpdate).not.toHaveBeenCalled();
   });
 
-  it('activates a pending service worker update before reloading', async () => {
+  it('checks for updates on focus and online only when the ten-minute update-check clock is due', async () => {
     swUpdateMock.isEnabled = true;
+    const startTime = 1_000_000;
+    const nowSpy = spyOn(Date, 'now').and.returnValue(startTime);
+    const flushUpdateCheck = async () => {
+      for (let i = 0; i < 6; i++) {
+        await Promise.resolve();
+      }
+    };
 
     fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance as any;
-    spyOn(app, 'performPageReload');
-    app.pendingUpdateHash = 'hash-ready';
+    const appUpdateService = TestBed.inject(AppUpdateService);
+    const scheduleUpdateCheckTimerSpy = spyOn(app, 'scheduleUpdateCheckTimer').and.callThrough();
 
-    await app.reloadForUpdate();
+    app.onFocus();
+    await flushUpdateCheck();
+    expect(swUpdateMock.checkForUpdate).not.toHaveBeenCalled();
+    expect(scheduleUpdateCheckTimerSpy).not.toHaveBeenCalled();
 
-    expect(swUpdateMock.activateUpdate).toHaveBeenCalled();
-    expect(localStorage.getItem(reloadHashStorageKey)).toBe('hash-ready');
-    expect(app.performPageReload).toHaveBeenCalled();
+    nowSpy.and.returnValue(startTime + appUpdateService.focusUpdateCheckIntervalMs + 1);
+    app.onFocus();
+    await swUpdateMock.checkForUpdate.calls.mostRecent().returnValue;
+    await flushUpdateCheck();
+
+    expect(swUpdateMock.checkForUpdate).toHaveBeenCalledTimes(1);
+    expect(scheduleUpdateCheckTimerSpy).toHaveBeenCalled();
+
+    nowSpy.and.returnValue(startTime + appUpdateService.focusUpdateCheckIntervalMs + 2);
+    app.onOnline();
+    await flushUpdateCheck();
+
+    expect(swUpdateMock.checkForUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('restarts to install an already pending update after six hours without focus', () => {
+    swUpdateMock.isEnabled = true;
+    const startTime = 1_000_000;
+    spyOn(Date, 'now').and.returnValue(startTime + (6 * 60 * 60 * 1000) + 1);
+
+    fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    const appUpdateService = TestBed.inject(AppUpdateService);
+    const restartSpy = spyOn(appUpdateService, 'restartForUpdate').and.resolveTo();
+
+    app.focusLostAt = startTime;
+    appUpdateService.updatePending.set(true);
+    app.onFocus();
+
+    expect(restartSpy).toHaveBeenCalled();
+    expect(swUpdateMock.checkForUpdate).not.toHaveBeenCalled();
+  });
+
+  it('keeps focus recovery passive after six hours when no update is pending', async () => {
+    swUpdateMock.isEnabled = true;
+    const startTime = 1_000_000;
+    const nowSpy = spyOn(Date, 'now').and.returnValue(startTime);
+
+    fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    const appUpdateService = TestBed.inject(AppUpdateService);
+    const restartSpy = spyOn(appUpdateService, 'restartForUpdate').and.resolveTo();
+
+    app.focusLostAt = startTime;
+    nowSpy.and.returnValue(startTime + (6 * 60 * 60 * 1000) + 1);
+    app.onFocus();
+    await Promise.resolve();
+
+    expect(restartSpy).not.toHaveBeenCalled();
+    expect(swUpdateMock.checkForUpdate).toHaveBeenCalledTimes(1);
   });
 
   it('adds a synthetic Android standalone PWA back history entry', () => {

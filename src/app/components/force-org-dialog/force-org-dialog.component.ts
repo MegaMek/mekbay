@@ -51,7 +51,7 @@ import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { LayoutService } from '../../services/layout.service';
-import { UrlStateService } from '../../services/url-state.service';
+import { UrlService } from '../../services/url.service';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import type { GroupSizeResult, OrgSizeResult } from '../../utils/org/org-types';
 import { GameSystem } from '../../models/common.model';
@@ -313,7 +313,7 @@ export class ForceOrgDialogComponent {
     private dialogsService = inject(DialogsService);
     private forceBuilderService = inject(ForceBuilderService);
     private destroyRef = inject(DestroyRef);
-    private urlStateService = inject(UrlStateService);
+    private urlService = inject(UrlService);
     protected layoutService = inject(LayoutService);
     private svgCanvas = viewChild<ElementRef<SVGSVGElement>>('svgCanvas');
     private dialogData: ForceOrgDialogData | null = inject(DIALOG_DATA, { optional: true });
@@ -934,10 +934,10 @@ export class ForceOrgDialogComponent {
         });
         this.destroyRef.onDestroy(() => {
             this.cleanupGlobalPointerState();
-            this.urlStateService.setParams({ toe: null });
+            this.urlService.setQueryParams({ toe: null });
         });
         effect(() => {
-            this.urlStateService.setParams({ toe: this.organizationId() });
+            this.urlService.setQueryParams({ toe: this.organizationId() });
         });
         if (this.dialogData?.organizationId) {
             this.loadOrganization(this.dialogData.organizationId);
@@ -1786,7 +1786,7 @@ export class ForceOrgDialogComponent {
             pf.groupId = null;
             if (group) this.recalcGroupBounds(group);
         }
-        this.placedForces.set(this.placedForces().filter(f => f !== pf));
+        this.placedForces.update(forces => forces.filter(f => f !== pf));
         // Clean up empty groups
         this.cleanupEmptyGroups();
     }
@@ -1826,7 +1826,7 @@ export class ForceOrgDialogComponent {
                 g.parentGroupId = group.parentGroupId;
             }
         }
-        this.groups.set(this.groups().filter(g => g.id !== group.id));
+        this.groups.update(groups => groups.filter(g => g.id !== group.id));
         this.placedForces.set([...this.placedForces()]);
         // Resize parent if exists
         if (group.parentGroupId) {

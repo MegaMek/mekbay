@@ -343,8 +343,8 @@ export class ASForceUnitState extends ForceUnitState {
         this.pendingHeat.set(0);
 
         // Commit armor/internal
-        this.armor.set(this.armor() + this.pendingArmor());
-        this.internal.set(this.internal() + this.pendingInternal());
+        this.armor.update(v => v + this.pendingArmor());
+        this.internal.update(v => v + this.pendingInternal());
         this.pendingArmor.set(0);
         this.pendingInternal.set(0);
 
@@ -432,7 +432,7 @@ export class ASForceUnitState extends ForceUnitState {
         
         this.modified.set(sanitized.modified);
         this.destroyed.set(sanitized.destroyed);
-        this.shutdown.set(sanitized.shutdown);
+        this.setConditions(sanitized.conditions ?? []);
         
         // Heat/armor/internal are already validated as [number, number] tuples
         this.heat.set(sanitized.heat[0]);

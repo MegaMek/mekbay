@@ -33,8 +33,6 @@
 
 import { Component, computed, signal, inject, effect, ChangeDetectionStrategy, viewChild, type ElementRef, afterNextRender, Injector, DestroyRef } from '@angular/core';
 
-import { SwUpdate } from '@angular/service-worker';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
 import { PageViewerComponent } from './components/page-viewer/page-viewer.component';
 import { AlphaStrikeViewerComponent } from './components/alpha-strike-viewer/alpha-strike-viewer.component';
@@ -56,8 +54,6 @@ import { WsService } from './services/ws.service';
 import { ToastService } from './services/toast.service';
 import { DialogsService } from './services/dialogs.service';
 import { BetaDialogComponent } from './components/beta-dialog/beta-dialog.component';
-import { CollectionDialogComponent } from './components/collection-dialog/collection-dialog.component';
-import { UpdateButtonComponent } from './components/update-button/update-button.component';
 import { UnitSearchFiltersService } from './services/unit-search-filters.service';
 import { DomPortal, PortalModule } from '@angular/cdk/portal';
 import { OverlayModule } from '@angular/cdk/overlay';
@@ -66,13 +62,16 @@ import { LoggerService } from './services/logger.service';
 import { isAndroid, isIOS, isRunningStandalone } from './utils/platform.util';
 import { GameService } from './services/game.service';
 import { AccountAuthService } from './services/account-auth.service';
+import { AppUpdateService } from './services/app-update.service';
+import { LoadingSpinnerComponent } from './components/loading-spinner/loading-spinner.component';
 
 import { GameSystem } from './models/common.model';
-import { UrlStateService } from './services/url-state.service';
+import { Router, RouterOutlet } from '@angular/router';
+import { UrlService } from './services/url.service';
 
-const SW_UPDATE_RELOAD_HASH_STORAGE_KEY = 'mekbay:sw-update-reload-hash';
 const ANDROID_PWA_BACK_EXIT_HISTORY_STATE_KEY = 'mekbayAndroidPwaBackExit';
 const ANDROID_PWA_BACK_RESTORE_GUARD_MS = 1000;
+const PENDING_UPDATE_RELOAD_AFTER_NO_FOCUS_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 /*
  * Author: Drake
@@ -85,13 +84,14 @@ const ANDROID_PWA_BACK_RESTORE_GUARD_MS = 1000;
     PageViewerComponent,
     AlphaStrikeViewerComponent,
     LayoutModule,
-    UpdateButtonComponent,
     SidebarComponent,
     ConnectionStatusBadgeComponent,
     ModeSwitchComponent,
     UnitSearchComponent,
     OverlayModule,
-    PortalModule
+    PortalModule,
+    LoadingSpinnerComponent,
+    RouterOutlet
 ],
     templateUrl: './app.html',
     styleUrl: './app.scss',
@@ -103,10 +103,10 @@ const ANDROID_PWA_BACK_RESTORE_GUARD_MS = 1000;
 })
 export class App {
     logger = inject(LoggerService);
-    private swUpdate = inject(SwUpdate);
     protected dataService = inject(DataService);
     forceBuilderService = inject(ForceBuilderService);
     protected layoutService = inject(LayoutService);
+    protected appUpdateService = inject(AppUpdateService);
     private wsService = inject(WsService);
     private dialogService = inject(DialogsService);
     private toastService = inject(ToastService);
@@ -115,18 +115,15 @@ export class App {
     public injector = inject(Injector);
     public gameService = inject(GameService);
     private accountAuthService = inject(AccountAuthService);
-    private urlStateService = inject(UrlStateService);
+    private router = inject(Router);
+    private urlService = inject(UrlService);
     private savedSearchesService = inject(SavedSearchesService);
     private destroyRef = inject(DestroyRef);
 
     protected GameSystem = GameSystem;
     protected buildInfo = APP_VERSION_STRING;
     protected isMainBuild = BUILD_BRANCH === 'main';
-    private lastUpdateCheck: number = 0;
-    private updateCheckInterval = 60 * 60 * 1000; // 1 hour
     private updateCheckTimeoutId: number | null = null;
-    protected updateAvailable = signal(false);
-    protected updateAutoReloadEnabled = signal(false);
     protected showInstallButton = signal(false);
     protected homeActionsPanelOpen = signal(false);
     private deferredPrompt: any;
@@ -134,7 +131,7 @@ export class App {
     private lastHandledCapturedUrl: string | null = null;
     private lastHandledCapturedUrlAt = 0;
     private readonly capturedUrlDedupWindowMs = 2000;
-    private pendingUpdateHash: string | null = null;
+    private focusLostAt: number | null = document.visibilityState === 'hidden' ? Date.now() : null;
     private androidPwaBackExitEnabled = false;
     private androidPwaBackRestoring = false;
     private androidPwaBackRestoreTimeoutId: number | null = null;
@@ -160,9 +157,6 @@ export class App {
     protected unitSearchPortalForceBuilder = signal<DomPortal<any> | undefined>(undefined);
 
     constructor() {
-        // Register as a URL state consumer - must call markConsumerReady when done reading URL
-        this.urlStateService.registerConsumer('app');
-        
         // if ("virtualKeyboard" in navigator) {
         //     (navigator as any).virtualKeyboard.overlaysContent = true; // Opt out of the automatic handling.
         // }
@@ -186,6 +180,7 @@ export class App {
         document.addEventListener('contextmenu', this.contextMenuHandler);
         window.addEventListener('beforeunload', this.beforeUnloadHandler);
         window.addEventListener('blur', this.onBlur);
+        document.addEventListener('visibilitychange', this.visibilityChangeHandler);
         window.addEventListener('keydown', this.keyboardNavigationHandler, true);
         window.addEventListener('pointerdown', this.pointerNavigationHandler, true);
         window.addEventListener('mousedown', this.pointerNavigationHandler, true);
@@ -195,29 +190,7 @@ export class App {
         // if ('serviceWorker' in navigator) {
         //     navigator.serviceWorker.addEventListener('message', this.serviceWorkerMessageHandler);
         // }
-        
-        if (this.swUpdate.isEnabled) {
-            this.swUpdate.versionUpdates
-                .pipe(takeUntilDestroyed(this.destroyRef))
-                .subscribe((event) => {
-                    switch (event.type) {
-                        case 'VERSION_DETECTED':
-                            this.logger.info('Service worker update detected, downloading...');
-                            break;
-                        case 'VERSION_READY':
-                            this.handleReadyServiceWorkerUpdate(event);
-                            break;
-                        case 'VERSION_INSTALLATION_FAILED':
-                            this.logger.error('Service worker update installation failed: ' + event.error);
-                            break;
-                        case 'NO_NEW_VERSION_DETECTED':
-                            // this.logger.info('No new service worker version detected');
-                            break;
-                    }
-                });
-            this.startPeriodicUpdateChecks();
-            this.checkForUpdate(true);
-        }
+        this.scheduleUpdateCheckTimer();
         this.wsService.setGlobalErrorHandler((msg: string) => {
             this.toastService.showToast(msg, 'error');
         });
@@ -299,41 +272,41 @@ export class App {
         effect(() => {
             if (this.dataService.isDataReady() && !initialShareHandled) {
                 initialShareHandled = true;
-                // Use UrlStateService to get initial URL params (captured before any routing effects)
-                const hasProtocolLink = this.urlStateService.hasInitialParam('protocolLink');
-                const organizationId = this.urlStateService.getInitialParam('toe');
-                const sharedUnitName = this.urlStateService.getInitialParam('shareUnit');
-                const tab = this.urlStateService.getInitialParam('tab') ?? undefined;
-                if (hasProtocolLink) {
-                    void this.handleCapturedUrl(window.location.href, 'protocol');
-                } else if (organizationId) {
+                // Routed pages (/toe, /forcegenerator, /collection) are handled
+                // natively by the router; only query-param-driven startup actions
+                // are handled here, based on the initial URL captured at startup.
+                const onHomePage = this.urlService.initialPathname.replace(/\/+$/, '') === '';
+                const organizationId = this.urlService.getInitialParam('toe');
+                const sharedUnitName = this.urlService.getInitialParam('shareUnit');
+                const tab = this.urlService.getInitialParam('tab') ?? undefined;
+                if (onHomePage && organizationId) {
+                    // Legacy ?toe=... link on the home page: open the TO&E page
                     void this.forceBuilderService.showForceOrgDialog(organizationId);
-                } else if (sharedUnitName) {
+                } else if (onHomePage && sharedUnitName) {
                     const unit = this.dataService.getUnitByName(sharedUnitName);
                     if (unit) {
                         this.showSingleUnitDetails(unit, tab);
                     }
-                } else {
+                } else if (onHomePage) {
                     afterNextRender(() => {
                         // Don't focus if loading forces
-                        if (this.urlStateService.hasInitialParam('instance') || this.urlStateService.hasInitialParam('units')) return;
+                        if (this.urlService.hasInitialParam('instance') || this.urlService.hasInitialParam('units')) return;
                         this.unitSearchComponentRef()?.focusInput();
                     }, { injector: this.injector });
                 }
-                // Signal that we're done reading URL state
-                this.urlStateService.markConsumerReady('app');
-                
+
                 // Process any pending foreign tags from URL (async, don't block)
                 this.unitSearchFiltersService.processPendingForeignTags();
             }
         });
         this.destroyRef.onDestroy(() => {
-            this.stopPeriodicUpdateChecks();
+            this.clearUpdateCheckTimer();
             this.removeBeforeUnloadHandler();
             window.removeEventListener('beforeinstallprompt', this.beforeInstallPromptHandler);
             window.removeEventListener('appinstalled', this.appInstalledHandler);
             document.removeEventListener('contextmenu', this.contextMenuHandler);
             window.removeEventListener('blur', this.onBlur);
+            document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
             window.removeEventListener('keydown', this.keyboardNavigationHandler, true);
             window.removeEventListener('pointerdown', this.pointerNavigationHandler, true);
             window.removeEventListener('mousedown', this.pointerNavigationHandler, true);
@@ -467,50 +440,50 @@ export class App {
     isCloudForceLoading = computed(() => this.dataService.isCloudForceLoading());
 
     onOnline() {
-        void this.checkForUpdate();
+        void this.checkForUpdateAfterFocusAndRestartTimer();
     }
 
     onFocus() {
-        // TODO: Temporarily disabled, this is for PWA URL handling but is causing issues with normal navigation.
-        // this.processFocusedCapturedUrl();
-        void this.checkForUpdate();
+        this.checkForUpdateAfterResume();
     }
 
     private onBlur = () => {
         this.urlAtLastBlur = this.getCurrentAppUrl();
+        this.markFocusLost();
     };
+
+    private readonly visibilityChangeHandler = () => {
+        if (document.visibilityState === 'hidden') {
+            this.markFocusLost();
+            return;
+        }
+
+        if (document.visibilityState === 'visible') {
+            this.checkForUpdateAfterResume();
+        }
+    };
+
+    private checkForUpdateAfterResume(): void {
+        const focusLostAt = this.focusLostAt;
+        this.focusLostAt = null;
+
+        if (focusLostAt !== null
+            && (Date.now() - focusLostAt) >= PENDING_UPDATE_RELOAD_AFTER_NO_FOCUS_MS
+            && this.appUpdateService.updatePending()) {
+            void this.appUpdateService.restartForUpdate();
+            return;
+        }
+
+        void this.checkForUpdateAfterFocusAndRestartTimer();
+    }
+
+    private markFocusLost(): void {
+        this.focusLostAt ??= Date.now();
+    }
 
     private getCurrentAppUrl(): string {
         return `${window.location.pathname}${window.location.search}`;
     }
-
-    // TODO: Temporarily disabled, this is for PWA URL handling but is causing issues with normal navigation.
-    // private processFocusedCapturedUrl(): void {
-    //     const currentUrl = this.getCurrentAppUrl();
-    //     if (currentUrl === this.urlAtLastBlur) {
-    //         return;
-    //     }
-    //     this.logger.info('[PWA] Focus detected URL change: ' + currentUrl);
-    //     this.urlAtLastBlur = currentUrl;
-    //     void this.handleCapturedUrl(window.location.href, 'focus');
-    // }
-
-    // TODO: Temporarily disabled, this is for PWA URL handling but is causing issues with normal navigation.
-    // private serviceWorkerMessageHandler = (event: MessageEvent) => {
-    //     const data = event.data as { type?: string; url?: string } | undefined;
-    //     if (data?.type !== 'NAVIGATE' || !data.url) {
-    //         return;
-    //     }
-    //     this.logger.info('[PWA] Received NAVIGATE message from service worker: ' + data.url);
-    //     this.urlAtLastBlur = this.getCurrentAppUrl();
-    //     void this.handleCapturedUrl(data.url, 'service-worker');
-    // };
-
-    // TODO: Temporarily disabled, this is for PWA URL handling but is causing issues with normal navigation.
-    // private historyNavigationHandler = () => {
-    //     this.logger.info('[PWA] History navigation detected, evaluating URL');
-    //     void this.handleCapturedUrl(window.location.href, 'history');
-    // };
 
     private shouldSkipDuplicateCapturedUrl(parsed: URL): boolean {
         const normalizedUrl = `${parsed.pathname}${parsed.search}`;
@@ -524,98 +497,26 @@ export class App {
         return false;
     }
 
-    private normalizeProtocolLinkPayload(value: string): string {
-        const decoded = (() => {
-            try {
-                return decodeURIComponent(value);
-            } catch {
-                return value;
-            }
-        })();
-
-        // URLSearchParams decodes '+' as space. Recover our custom scheme if needed.
-        if (decoded.startsWith('web mekbay://')) {
-            return 'web+mekbay://' + decoded.slice('web mekbay://'.length);
-        }
-
-        if (decoded.startsWith('web mekbay:')) {
-            return 'web+mekbay:' + decoded.slice('web mekbay:'.length);
-        }
-
-        return decoded;
+    private scheduleUpdateCheckTimer(): void {
+        this.clearUpdateCheckTimer();
+        this.updateCheckTimeoutId = window.setTimeout(async () => {
+            await this.appUpdateService.checkForUpdate({ force: true });
+            this.scheduleUpdateCheckTimer();
+        }, this.appUpdateService.updateCheckIntervalMs);
     }
 
-    private startPeriodicUpdateChecks() {
-        this.stopPeriodicUpdateChecks();
-        const scheduleNext = () => {
-            this.updateCheckTimeoutId = window.setTimeout(async () => {
-                await this.checkForUpdate(true);
-                scheduleNext();
-            }, this.updateCheckInterval);
-        };
-        scheduleNext();
-    }
-
-    private stopPeriodicUpdateChecks() {
+    private clearUpdateCheckTimer(): void {
         if (this.updateCheckTimeoutId !== null) {
             window.clearTimeout(this.updateCheckTimeoutId);
             this.updateCheckTimeoutId = null;
         }
     }
 
-    private getLatestServiceWorkerHash(event: { latestVersion?: { hash?: string } }): string | null {
-        const hash = event.latestVersion?.hash?.trim();
-        return hash ? hash : null;
-    }
-
-    private getRecordedUpdateReloadHash(): string | null {
-        try {
-            const hash = localStorage.getItem(SW_UPDATE_RELOAD_HASH_STORAGE_KEY)?.trim();
-            return hash ? hash : null;
-        } catch {
-            return null;
+    private async checkForUpdateAfterFocusAndRestartTimer(): Promise<void> {
+        const checkPerformed = await this.appUpdateService.checkForUpdateAfterFocus();
+        if (checkPerformed) {
+            this.scheduleUpdateCheckTimer();
         }
-    }
-
-    private recordUpdateReloadHash(hash: string | null): void {
-        if (!hash) {
-            return;
-        }
-
-        try {
-            localStorage.setItem(SW_UPDATE_RELOAD_HASH_STORAGE_KEY, hash);
-        } catch {
-            // Best effort only; startup must continue even if storage is unavailable.
-        }
-    }
-
-    private clearRecordedUpdateReloadHash(): void {
-        try {
-            localStorage.removeItem(SW_UPDATE_RELOAD_HASH_STORAGE_KEY);
-        } catch {
-            // Best effort only; startup must continue even if storage is unavailable.
-        }
-    }
-
-    private handleReadyServiceWorkerUpdate(event: { latestVersion?: { hash?: string } }): void {
-        const latestHash = this.getLatestServiceWorkerHash(event);
-        const recordedHash = this.getRecordedUpdateReloadHash();
-        const shouldSuppressAutoReload = !!latestHash && latestHash === recordedHash;
-
-        if (latestHash && recordedHash && latestHash !== recordedHash) {
-            this.clearRecordedUpdateReloadHash();
-        }
-
-        this.pendingUpdateHash = latestHash;
-        this.updateAutoReloadEnabled.set(!!latestHash && !shouldSuppressAutoReload);
-
-        if (shouldSuppressAutoReload) {
-            this.logger.warn(`Service worker update ${latestHash} is still pending after a previous reload attempt; suppressing automatic reload.`);
-        } else {
-            this.logger.info('Service worker update is ready');
-        }
-
-        this.updateAvailable.set(true);
     }
 
     private beforeInstallPromptHandler = (e: any) => {
@@ -639,193 +540,6 @@ export class App {
 
         event.preventDefault();
     };
-
-    private async checkForUpdate(force = false) {
-        if (!this.swUpdate.isEnabled) return;
-        const now = Date.now();
-        // Prevent too frequent checks
-        if (!force && now - this.lastUpdateCheck < (this.updateCheckInterval / 4)) {
-            return;
-        }
-        this.logger.info('Checking for updates...');
-        this.lastUpdateCheck = now;
-
-        try {
-            if (await this.swUpdate.checkForUpdate()) {
-                this.logger.info('Update available');
-                this.updateAvailable.set(true);
-                if (!this.pendingUpdateHash) {
-                    this.updateAutoReloadEnabled.set(false);
-                }
-            }
-        } catch (err) {
-            this.logger.error('Error checking for updates:' + err);
-        }
-    }
-
-    /**
-     * Handle a URL captured by the service worker (e.g. from a link click
-     * when the PWA is installed). Parses the URL and updates the app state
-     * without a full navigation, applying smart context-aware logic:
-     *
-     * - shareUnit: Opens the unit details dialog directly.
-     * - Search params (q, filters, sort, etc.):
-     *   A) No loaded forces → apply search params and switch game system.
-     *   B) Forces loaded + matching gs → apply search params.
-     *   B) Forces loaded + different gs → warn, offer to unload forces.
-     * - Force params (instance=, units=):
-     *   A) No loaded forces → load the force directly.
-     *   B) Forces loaded → offer to LOAD (replace), ADD (friendly/enemy), or DISMISS.
-     */
-    private async handleCapturedUrl(url: string, source: 'focus' | 'service-worker' | 'history' | 'protocol' = 'focus'): Promise<void> {
-        this.logger.info(`[PWA] Handling captured URL from ${source}: ${url}`);
-        let parsed: URL;
-        try {
-            parsed = new URL(url, window.location.origin);
-        } catch {
-            this.logger.error('[PWA] Failed to parse captured URL: ' + url);
-            return;
-        }
-
-        if (parsed.origin !== window.location.origin) {
-            this.logger.warn('[PWA] Ignoring captured URL from different origin: ' + parsed.origin);
-            return;
-        }
-
-        if (this.shouldSkipDuplicateCapturedUrl(parsed)) {
-            return;
-        }
-
-        const params = parsed.searchParams;
-
-        const encodedProtocolLink = params.get('protocolLink');
-        if (encodedProtocolLink) {
-            const decodedProtocolLink = this.normalizeProtocolLinkPayload(encodedProtocolLink);
-
-            let protocolUrl: URL;
-            try {
-                protocolUrl = new URL(decodedProtocolLink);
-            } catch {
-                this.logger.error('[PWA] Failed to parse protocolLink payload: ' + decodedProtocolLink);
-                return;
-            }
-
-            if (protocolUrl.protocol !== 'web+mekbay:') {
-                this.logger.warn('[PWA] Ignoring unsupported protocol payload: ' + protocolUrl.protocol);
-                return;
-            }
-
-            const translatedParams = protocolUrl.searchParams.toString();
-            const translatedUrl = `${window.location.origin}${window.location.pathname}${translatedParams ? `?${translatedParams}` : ''}`;
-            this.logger.info('[PWA] Translated protocol link to app URL: ' + translatedUrl);
-            await this.handleCapturedUrl(translatedUrl, 'protocol');
-            return;
-        }
-
-        // Update browser URL bar (no reload)
-        this.replaceCurrentHistoryState(parsed.pathname + parsed.search);
-
-        // ── shareUnit: just show the dialog ──────────────────────────────
-        const sharedUnitName = params.get('shareUnit');
-        if (sharedUnitName) {
-            const tab = params.get('tab') ?? undefined;
-            const unit = this.dataService.getUnitByName(sharedUnitName);
-            if (unit) {
-                this.showSingleUnitDetails(unit, tab);
-            } else {
-                this.toastService.showToast(`Unit "${sharedUnitName}" not found.`, 'error');
-            }
-            return;
-        }
-
-        const hasForceParams = params.has('instance') || params.has('units');
-        const hasSearchParams = params.has('q') || params.has('filters') || params.has('sort');
-        const requestedGs = (params.get('gs') as GameSystem) ?? null;
-        const hasForces = this.forceBuilderService.hasForces();
-
-        // ── Force params (instance= / units=) ───────────────────────────
-        if (hasForceParams) {
-            if (!hasForces) {
-                // A) No loaded forces → load directly
-                await this.forceBuilderService.loadForceFromUrlParams(params, 'replace');
-            } else {
-                // B) Forces loaded → ask the user
-                const choice = await this.dialogService.choose<'load' | 'add-friendly' | 'add-enemy' | 'dismiss'>(
-                    'Incoming Force',
-                    'A link with a force was opened. You already have forces loaded. What would you like to do?',
-                    [
-                        { label: 'LOAD (REPLACE)', value: 'load', class: 'danger' },
-                        { label: 'ADD AS FRIENDLY', value: 'add-friendly' },
-                        { label: 'ADD AS HOSTILE', value: 'add-enemy' },
-                        { label: 'DISMISS', value: 'dismiss' },
-                    ],
-                    'dismiss'
-                );
-
-                switch (choice) {
-                    case 'load':
-                        await this.forceBuilderService.loadForceFromUrlParams(params, 'replace');
-                        break;
-                    case 'add-friendly':
-                        await this.forceBuilderService.loadForceFromUrlParams(params, 'add', 'friendly');
-                        break;
-                    case 'add-enemy':
-                        await this.forceBuilderService.loadForceFromUrlParams(params, 'add', 'enemy');
-                        break;
-                    case 'dismiss':
-                        break;
-                }
-            }
-
-            // Also apply any search params that came along with the force URL
-            if (hasSearchParams) {
-                this.unitSearchFiltersService.applySearchParamsFromUrl(params, { expandView: false });
-            }
-            // Switch game system if specified
-            if (requestedGs) {
-                this.gameService.setOverride(requestedGs);
-            }
-            return;
-        }
-
-        // ── Search params only (no force) ────────────────────────────────
-        if (hasSearchParams) {
-            if (!hasForces) {
-                // A) No loaded forces → apply directly
-                this.unitSearchFiltersService.applySearchParamsFromUrl(params);
-                if (requestedGs) {
-                    this.gameService.setOverride(requestedGs);
-                }
-            } else {
-                // B) Forces loaded: check if gs matches
-                const currentGs = this.gameService.currentGameSystem();
-                const gsConflict = requestedGs && requestedGs !== currentGs;
-
-                if (!gsConflict) {
-                    // Same game system or no gs specified → apply search params
-                    this.unitSearchFiltersService.applySearchParamsFromUrl(params);
-                } else {
-                    // Different game system → warn
-                    const accepted = await this.dialogService.requestConfirmation(
-                        `This link uses ${requestedGs === GameSystem.ALPHA_STRIKE ? 'Alpha Strike' : 'Classic BattleTech'}, ` +
-                        `but you currently have forces loaded in ${currentGs === GameSystem.ALPHA_STRIKE ? 'Alpha Strike' : 'Classic BattleTech'}. ` +
-                        `To switch, all loaded forces will be removed.\n\nContinue?`,
-                        'Game System Conflict',
-                        'danger'
-                    );
-                    if (accepted) {
-                        await this.forceBuilderService.clear();
-                        this.unitSearchFiltersService.applySearchParamsFromUrl(params);
-                        this.gameService.setOverride(requestedGs);
-                    }
-                    // If declined, do nothing: keep current state
-                }
-            }
-            return;
-        }
-
-        // ── No recognized params: just update the URL bar (already done) ──
-    }
 
     async installPwa() {
         if (isIOS()) {
@@ -852,44 +566,22 @@ export class App {
     }
 
     beforeUnloadHandler = (event: BeforeUnloadEvent) => {
-        if (this.dataService.hasPendingCloudSaves()) {
+        if (!this.appUpdateService.reloadingForUpdate() && this.hasBlockingUnsavedWork()) {
             event.preventDefault();
-            return 'Cloud sync is still pending. Are you sure you want to leave?';
-        }
-        const loadedForces = this.forceBuilderService.loadedForces();
-        const hasUnsavedForce = loadedForces.some(forceSlot => forceSlot.force.units().length > 0 && !forceSlot.force.instanceId());
-        if (hasUnsavedForce) {
-            // We have forces with units and without an instanceId? This is not yet saved. Warn the user before leaving.
-            event.preventDefault();
-            return 'You have unsaved changes in your force. Are you sure you want to leave?';
+            return 'You have unsaved changes. Are you sure you want to leave?';
         }
         return undefined;
     };
 
-
-    async reloadForUpdate(): Promise<void> {
-        this.removeBeforeUnloadHandler();
-
-        if (this.swUpdate.isEnabled) {
-            this.recordUpdateReloadHash(this.pendingUpdateHash);
-            try {
-                const activated = await this.swUpdate.activateUpdate();
-                if (activated) {
-                    this.logger.info('Activated service worker update; reloading app.');
-                } else {
-                    this.logger.warn('Service worker activation returned false; reloading app anyway.');
-                }
-            } catch (err) {
-                this.logger.error('Error activating service worker update: ' + err);
-            }
+    private hasBlockingUnsavedWork(): boolean {
+        if (this.dataService.hasPendingCloudSaves()) {
+            return true;
         }
 
-        this.performPageReload();
+        const loadedForces = this.forceBuilderService.loadedForces();
+        return loadedForces.some(forceSlot => forceSlot.force.units().length > 0 && !forceSlot.force.instanceId());
     }
 
-    private performPageReload(): void {
-        window.location.reload();
-    }
 
     showLicenseDialog(): void {
         this.dialogService.createDialog(LicenseDialogComponent);
@@ -912,7 +604,7 @@ export class App {
     }
 
     showCollectionDialog(): void {
-        this.dialogService.createDialog(CollectionDialogComponent);
+        void this.router.navigate(['/collection'], { queryParamsHandling: 'preserve' });
     }
 
     showForceGeneratorDialog(): void {

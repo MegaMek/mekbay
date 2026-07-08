@@ -36,8 +36,12 @@ import type { SerializedCrewMember } from './force-serialization';
 
 export const DEFAULT_GUNNERY_SKILL = 4;
 export const DEFAULT_PILOTING_SKILL = 5;
+export const DEAD_CREW_HIT_THRESHOLD = 6;
+export const CRIPPLED_CREW_HIT_THRESHOLD = 4;
 
 export type SkillType = 'gunnery' | 'piloting';
+export type CrewMemberState = 'healthy' | 'ejected' | 'unconscious' | 'dead' | 'killed' | 'stunned';
+type StoredCrewMemberState = Exclude<CrewMemberState, 'dead'>;
 
 export class CrewMember {
     private unit: CBTForceUnit;
@@ -48,7 +52,7 @@ export class CrewMember {
     private asfGunnerySkill?: number; // Optional ASF gunnery skill for ASF
     private asfPilotingSkill?: number; // Optional ASF piloting skill for ASF units
     private hits: number;
-    private state: 'healthy' | 'unconscious' | 'dead' = 'healthy';
+    private state: StoredCrewMemberState = 'healthy';
 
     constructor(id: number, unit: CBTForceUnit) {
         this.unit = unit;
@@ -71,19 +75,22 @@ export class CrewMember {
         this.unit.setModified();
     }
 
-    toggleDead() {
-        const newState = this.state === 'dead' ? 'healthy' : 'dead';
-        if (this.state === newState) return;
-        this.state = newState;
-        this.unit.setCrewMember(this.id, this);
-        this.unit.setModified();
+    isDead(): boolean {
+        return this.hits >= DEAD_CREW_HIT_THRESHOLD || this.unit.isCockpitDestroyed();
     }
 
-    getState(): 'healthy' | 'unconscious' | 'dead' {
+    isCrippled(): boolean {
+        if (this.isDead()) return false; // is already dead...
+        if (this.state === 'ejected') return false; // the pilot is already gone!
+        return (this.hits >= CRIPPLED_CREW_HIT_THRESHOLD);
+    }
+
+    getState(): CrewMemberState {
+        if (this.isDead()) return 'dead';
         return this.state;
     }
 
-    setState(state: 'healthy' | 'unconscious' | 'dead') {
+    setState(state: StoredCrewMemberState) {
         if (this.state === state) return;
         this.state = state;
         this.unit.setCrewMember(this.id, this);
@@ -155,7 +162,7 @@ export class CrewMember {
             asfGunnerySkill: this.getSkill('gunnery', true),
             asfPilotingSkill: this.getSkill('piloting', true),
             hits: this.getHits(),
-            state: this.getState() === 'unconscious' ? 1 : this.getState() === 'dead' ? 2 : 0
+            state: this.serializeState()
         };
     }
 
@@ -171,7 +178,7 @@ export class CrewMember {
         if (data.asfPilotingSkill !== undefined)
             crew.setSkill('piloting', data.asfPilotingSkill, true);
         crew.setHits(data.hits);
-        crew.setState(data.state === 1 ? 'unconscious' : data.state === 2 ? 'dead' : 'healthy');
+        crew.setState(CrewMember.deserializeStoredState(data.state, unit));
         return crew;
     }
 
@@ -183,7 +190,25 @@ export class CrewMember {
         if (data.asfPilotingSkill !== this.asfPilotingSkill) this.asfPilotingSkill = data.asfPilotingSkill;
         if (data.hits !== this.hits) this.hits = data.hits;
 
-        const newState = data.state === 1 ? 'unconscious' : data.state === 2 ? 'dead' : 'healthy';
+        const newState = CrewMember.deserializeStoredState(data.state, this.unit);
         if (newState !== this.state) this.state = newState;
+    }
+
+    private static deserializeStoredState(state: number, unit: CBTForceUnit): StoredCrewMemberState {
+        if (state === 1) return 'unconscious';
+        // 'dead' (2) is excluded, we derive it
+        if (state === 3) return 'ejected';
+        if (state === 4) return 'killed';
+        if (state === 5) return 'stunned';
+        return 'healthy';
+    }
+
+    private serializeState(): number {
+        if (this.state === 'unconscious') return 1;
+        // 'dead' (2) is excluded, we derive it
+        if (this.state === 'ejected') return 3;
+        if (this.state === 'killed') return 4;
+        if (this.state === 'stunned') return 5;
+        return 0;
     }
 }

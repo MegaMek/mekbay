@@ -35,10 +35,10 @@
 
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { DialogRef } from '@angular/cdk/dialog';
-import { ActivatedRoute, Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ToastService } from '../../services/toast.service';
 import { copyTextToClipboard, shareUrlWithClipboardFallback } from '../../utils/clipboard.util';
+import { buildShareUrl } from '../../utils/share-url.util';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { GameService } from '../../services/game.service';
 import { GameSystem } from '../../models/common.model';
@@ -130,6 +130,10 @@ import { DialogsService } from '../../services/dialogs.service';
             align-items: center;
             justify-content: space-between;
             width: 100%;
+
+            @media (max-width: 380px) {
+                flex-direction: column;
+            }
         }
 
         .export-buttons {
@@ -166,8 +170,6 @@ export class ShareSearchDialogComponent {
     unitSearchFilters = inject(UnitSearchFiltersService);
     toastService = inject(ToastService);
     private dialogsService = inject(DialogsService);
-    private router = inject(Router);
-    private route = inject(ActivatedRoute);
     private gameService = inject(GameService);
     
     shareUrl: string = '';
@@ -183,11 +185,7 @@ export class ShareSearchDialogComponent {
         const queryParameters = this.unitSearchFilters.queryParameters();
         queryParameters.gs = this.gameService.currentGameSystem(); // Ensure game system is included in shared URL
 
-        const instanceTree = this.router.createUrlTree([], {
-            relativeTo: this.route,
-            queryParams: queryParameters
-        });
-        this.shareUrl = origin + this.router.serializeUrl(instanceTree);
+        this.shareUrl = buildShareUrl(origin, queryParameters);
     }
 
     private async confirmDataExportLicense(): Promise<boolean> {

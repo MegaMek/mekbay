@@ -20,6 +20,7 @@
             <div class="expanded-chassis">
                 <span [innerHTML]="highlight(u.chassis)"></span>
                 @if (alias(); as pilotName) { <span class="inline-alias">({{ pilotName }})</span> }
+                @if (u.serverHost) { <span class="custom-unit-badge" title="Custom unit from {{ u.serverHost }}">Custom</span> }
             </div>
         </div>
         <div class="expanded-subtitle">
@@ -30,9 +31,11 @@
                 <span [class.sort-slot]="isSortActive('as.TP')" [tooltip]="unitTypeDisplayNames[u.as.TP]">{{ u.as.TP }}</span>
                 <span> • {{ u.weightClass }}</span>
             </div>
+            @if (showTags()) {
             <div class="subtitle-line">
                 <unit-tags [unit]="u" mode="full" (tagClick)="onTagClick($event)" />
             </div>
+            }
         </div>
     </div>
     <div class="expanded-content as-view">
@@ -156,6 +159,7 @@
             <div class="expanded-chassis">
                 <span [innerHTML]="highlight(u.chassis)"></span>
                 @if (alias(); as pilotName) { <span class="inline-alias">({{ pilotName }})</span> }
+                @if (u.serverHost) { <span class="custom-unit-badge" title="Custom unit from {{ u.serverHost }}">Custom</span> }
             </div>
         </div>
         <div class="expanded-subtitle">
@@ -166,9 +170,11 @@
                 <span>{{ u.type }}@if(u.subtype && u.subtype !== u.type){<span> - {{ u.subtype }}</span>}</span>
                 <span> • {{ u.weightClass }}</span>
             </div>
+            @if (showTags()) {
             <div class="subtitle-line">
                 <unit-tags [unit]="u" mode="full" (tagClick)="onTagClick($event)" />
             </div>
+            }
         </div>
     </div>
     <div class="expanded-content">
@@ -332,7 +338,10 @@
             }
         </div>
         <div class="primary-info">
-            <div class="chassis" [innerHTML]="highlight(u.chassis)"></div>
+            <div class="chassis">
+                <span [innerHTML]="highlight(u.chassis)"></span>
+                @if (u.serverHost) { <span class="custom-unit-badge" title="Custom unit from {{ u.serverHost }}">Custom</span> }
+            </div>
             @if (alias(); as pilotName) { <span class="alias">({{ pilotName }})</span>  }
         </div>
         <div class="third-info">
@@ -366,8 +375,10 @@
                 }
                 <div class="info-slot" [class.sort-slot]="isSortActive('year')">
                     <span class="value">{{ u.year }}</span>
-                    @if (u._era?.img) {
-                    <img [src]="u._era?.img" class="icon era-icon" alt="Era" [title]="u._era?.name" />
+                    @if (u._era; as era) {
+                    @if (era.img) {
+                    <img [src]="era.img" class="icon era-icon" alt="Era" [title]="era.name" />
+                    }
                     }
                 </div>
                 @if (getSortSlotForCompact(u); as slot) {
@@ -379,17 +390,16 @@
                 }
             </div>
             <span class="spanner"></span>
-            <unit-tags [unit]="u" mode="compact" (tagClick)="onTagClick($event)" />
+            @if (showTags()) {
+                <unit-tags [unit]="u" mode="compact" (tagClick)="onTagClick($event)" />
+            }
         </div>
     </div>
     
     
     @if (showSelectCheckbox()) {
         <label class="select-btn" (click)="$event.stopPropagation()" title="Select unit">
-            <input type="checkbox" [checked]="isSelected()" (change)="onSelectClick($event)" />
-            <span class="custom-checkbox" [class.checked]="isSelected()">
-                @if (isSelected()) { <span class="checkbox-mark">&#10003;</span> }
-            </span>
+            <input type="checkbox" class="bt-checkbox" [checked]="isSelected()" (change)="onSelectClick($event)" />
         </label>
     } @else if (showInfoButton()) {
         <button class="info-btn" (click)="onInfoClick($event)" title="Unit info">

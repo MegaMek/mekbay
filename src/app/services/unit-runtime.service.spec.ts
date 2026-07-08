@@ -21,6 +21,7 @@ describe('UnitRuntimeService', () => {
     };
     const tagsServiceMock = {
         getTagData: jasmine.createSpy('getTagData'),
+        migrateChassisTagsToVariantGroups: jasmine.createSpy('migrateChassisTagsToVariantGroups'),
         fixNameTagsCoveredByChassis: jasmine.createSpy('fixNameTagsCoveredByChassis'),
     };
 
@@ -29,6 +30,8 @@ describe('UnitRuntimeService', () => {
         unitSearchIndexServiceMock.prepareUnits.calls.reset();
         unitSearchIndexServiceMock.rebuildTagSearchIndex.calls.reset();
         tagsServiceMock.getTagData.calls.reset();
+        tagsServiceMock.migrateChassisTagsToVariantGroups.calls.reset();
+        tagsServiceMock.migrateChassisTagsToVariantGroups.and.callFake((_units: Unit[], data?: TagData) => Promise.resolve(data));
         tagsServiceMock.fixNameTagsCoveredByChassis.calls.reset();
         tagsServiceMock.fixNameTagsCoveredByChassis.and.resolveTo(undefined);
 
@@ -82,7 +85,7 @@ describe('UnitRuntimeService', () => {
                         'Adder Prime': {},
                     },
                     chassis: {
-                        'Dasher|Mek': {},
+                        'Dasher|BM': {},
                     },
                 },
                 cjf: {
@@ -95,11 +98,11 @@ describe('UnitRuntimeService', () => {
                 },
             },
             timestamp: 1,
-            formatVersion: 3,
+            formatVersion: 4,
         };
         tagsServiceMock.fixNameTagsCoveredByChassis.and.callFake((units: Unit[], data: TagData | null) => {
             for (const unit of units) {
-                const chassisKey = `${unit.chassis}|${unit.type}`;
+                const chassisKey = TagsService.getChassisTagKey(unit);
                 for (const entry of Object.values(data?.tags ?? {})) {
                     if (entry.units[unit.name] !== undefined && entry.chassis[chassisKey] !== undefined) {
                         delete entry.units[unit.name];
@@ -118,6 +121,7 @@ describe('UnitRuntimeService', () => {
         expect(adder._nameTags).toEqual([{ tag: 'CLAN', quantity: 1 }]);
         expect(adder._chassisTags).toEqual([]);
         expect(tagData.tags['clan'].units).toEqual({ 'Adder Prime': {} });
+        expect(tagsServiceMock.migrateChassisTagsToVariantGroups).toHaveBeenCalledOnceWith([prime, variantA, adder], tagData);
         expect(tagsServiceMock.fixNameTagsCoveredByChassis).toHaveBeenCalledOnceWith([prime, variantA, adder], tagData);
     });
 });

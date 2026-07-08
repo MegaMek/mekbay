@@ -172,6 +172,7 @@ export interface UnitComponent {
     md?: string;     // max damage
     c?: string;      // slots/criticals
     os?: number;     // oneshot (0 = no, 1 = oneshot, 2 = double oneshot)
+    cw?: number;     // for field guns: CREW size required to operate the weapon
     bay?: UnitComponent[];
     eq?: Equipment; // linked equipment data
 }
@@ -260,7 +261,7 @@ export interface Unit {
     jump: number;
     umu: number; // UMU movement points
     c3: string;
-    dpt: number;
+    dpt: number; // Damage per Turn, weighted on heat
     comp: UnitComponent[];
     su: number;
     crewSize: number;
@@ -285,6 +286,7 @@ export interface Unit {
     sheets: string[];
     as: AlphaStrikeUnitStats;
     unitFile?: string;
+    serverHost?: string; // Base URL of the additional unit server this unit was loaded from; undefined means the primary db.mekbay.com host.
     _searchKey: string; // Pre-compiled lowercase search key: "chassis model"
     _displayType: string;
     _maxRange: number; // Max range of any weapon on this unit

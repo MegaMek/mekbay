@@ -28,7 +28,6 @@
 :host ::ng-deep .preview-radar force-radar-panel {
     display: block;
     width: 100%;
-    max-height: 30vh;
 }
 
 .dialog-body {
@@ -41,7 +40,6 @@
 .dialog-layout {
     display: grid;
     grid-template-columns: minmax(340px, 0.92fr) minmax(0, 1.48fr);
-    gap: 12px;
     width: 100%;
     min-height: 0;
     box-sizing: border-box;
@@ -112,6 +110,7 @@
 .preview-explanation-shell {
     background-color: var(--background-color-light);
     flex: 0 0 auto;
+    z-index: 1;
 }
 
 .preview-explanation-toggle {
@@ -619,6 +618,52 @@
     letter-spacing: 0.1em;
 }
 
+.rejected-units {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    background-color: var(--background-color-light);
+    min-width: 0;
+}
+
+.rejected-units-label {
+    color: var(--text-color-secondary);
+    font-size: 0.75em;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+.rejected-unit-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+}
+
+.rejected-unit-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    padding: 3px 7px;
+    border: 1px solid red;
+    background: rgba(128, 24, 24, 0.28);
+    color: var(--text-color);
+    font: inherit;
+    font-size: 0.78em;
+
+    .action {
+        cursor: pointer;
+        color: red;
+        opacity: 0.7;
+
+        &:hover {
+            opacity: 1;
+        }
+    }
+}
+
 .eligible-value {
     font-size: 1.05em;
     font-weight: 700;
@@ -636,13 +681,42 @@
 
 .preview-layout {
     display: grid;
-    grid-template-columns: minmax(0, 1.18fr) minmax(300px, 0.82fr);
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 1fr);
     gap: 12px;
     flex: 1 1 auto;
     min-height: 0;
+    position: relative;
+}
+
+.radar-toggle {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    padding: 3px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    bottom: 0px;
+    right: 0px;
+    color: var(--text-color-secondary);
+
+    &:hover {
+        color: var(--text-color);
+    }
+
+    svg {
+        display: block;
+        width: 24px;
+        height: 24px;
+    }
 }
 
 .preview-summary,
+.preview-radar-column,
 .preview-radar {
     display: flex;
     flex-direction: column;
@@ -650,12 +724,43 @@
     min-height: 0;
 }
 
-.preview-radar {
+.preview-radar-column {
     align-self: start;
+    gap: 8px;
+    height: 100%;
+}
+
+.preview-radar {
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--border-color, #333);
     box-sizing: border-box;
     overflow: hidden;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.preview-hover-unit-card {
+    display: block;
+    overflow: auto;
+    background-color: var(--background-color-light);
+}
+
+:host ::ng-deep .preview-hover-unit-card unit-card-expanded {
+    display: block;
+}
+
+.preview-radar.collapsed {
+    min-height: 32px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 34px;
+}
+
+.radar-collapsed-label {
+    color: var(--text-color-tertiary);
+    font-size: 0.82em;
+    line-height: 1.2;
 }
 
 .preview-empty {
@@ -718,15 +823,28 @@
 }
 
 @media (max-width: 1260px) {
+    :host ::ng-deep .preview-radar force-radar-panel {
+        max-height: 30vh;
+    }
+
+    .preview-hover-unit-card {
+        display: none;
+    }
+
     .preview-layout {
         display: flex;
         flex-direction: column;
         gap: 10px;
     }
 
-    .preview-radar {
+    .preview-radar-column {
         order: -1;
         flex: 0 0 auto;
+        width: 100%;
+        height: auto;
+    }
+
+    .preview-radar {
         width: 100%;
     }
 
@@ -751,27 +869,37 @@
         flex-direction: column;
         flex: 1 1 auto;
         min-height: 0;
+        overflow: hidden;
+        touch-action: pan-y;
     }
 
     .dialog-layout {
-        display: flex;
-        flex-direction: column;
+        display: grid;
+        grid-template-columns: 100% 100%;
         flex: 1 1 auto;
+        width: 100%;
         min-height: 0;
+        touch-action: pan-y;
+        transform: translateX(var(--mobile-track-offset, 0%));
+        transition: transform 180ms ease-out;
+        will-change: transform;
     }
 
-    .dialog-layout.mobile-configuration-active .preview-panel,
-    .dialog-layout.mobile-preview-active .controls-panel {
-        display: none;
+    .dialog-layout.mobile-swipe-active {
+        transition: none;
     }
 
     .panel {
-        flex: 1 1 auto;
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+        touch-action: pan-y;
     }
 
     .controls-panel,
     .preview-panel {
         min-height: 0;
+        touch-action: pan-y;
     }
 }
 

@@ -1,5 +1,7 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import type { Era } from '../models/eras.model';
+import type { Faction } from '../models/factions.model';
 import type { Unit } from '../models/units.model';
 import { GameSystem } from '../models/common.model';
 import { DataService } from './data.service';
@@ -12,7 +14,7 @@ import { UnitRuntimeService } from './unit-runtime.service';
 import { UserStateService } from './userState.service';
 import { WsService } from './ws.service';
 import { UnitSearchIndexService } from './unit-search-index.service';
-import { UnitsCatalogService } from './catalogs/units-catalog.service';
+import { normalizeNullMulUnitIds, UnitsCatalogService } from './catalogs/units-catalog.service';
 import { EquipmentCatalogService } from './catalogs/equipment-catalog.service';
 import { ErasCatalogService } from './catalogs/eras-catalog.service';
 import { FactionsCatalogService } from './catalogs/mulfactions-catalog.service';
@@ -22,7 +24,10 @@ import { MegaMekRulesetsCatalogService } from './catalogs/megamek-rulesets-catal
 import { QuirksCatalogService } from './catalogs/quirks-catalog.service';
 import { SarnaPageTitlesCatalogService } from './catalogs/sarna-page-titles-catalog.service';
 import { SourcebooksCatalogService } from './catalogs/sourcebooks-catalog.service';
+import { ForceNameWordsCatalogService } from './catalogs/force-name-words-catalog.service';
+import { createEmptyForceNameWords } from '../models/force-name-words.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
+import { MULFACTION_NONE } from '../models/mulfactions.model';
 
 function createUnit(name: string): Unit {
     return createEmptyUnit({ name });
@@ -103,6 +108,10 @@ describe('DataService', () => {
         initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
         getSourcebookByAbbrev: jasmine.createSpy('getSourcebookByAbbrev').and.returnValue(undefined),
         getSourcebookTitle: jasmine.createSpy('getSourcebookTitle').and.callFake((abbrev: string) => abbrev),
+    };
+    const forceNameWordsCatalogMock = {
+        initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
+        getWords: jasmine.createSpy('getWords').and.callFake(() => createEmptyForceNameWords()),
     };
     const tagsServiceMock = {
         setRefreshUnitsCallback: jasmine.createSpy('setRefreshUnitsCallback'),
@@ -205,6 +214,10 @@ describe('DataService', () => {
         sourcebooksCatalogMock.getSourcebookByAbbrev.and.returnValue(undefined);
         sourcebooksCatalogMock.getSourcebookTitle.calls.reset();
         sourcebooksCatalogMock.getSourcebookTitle.and.callFake((abbrev: string) => abbrev);
+        forceNameWordsCatalogMock.initialize.calls.reset();
+        forceNameWordsCatalogMock.initialize.and.resolveTo(undefined);
+        forceNameWordsCatalogMock.getWords.calls.reset();
+        forceNameWordsCatalogMock.getWords.and.callFake(() => createEmptyForceNameWords());
         tagsServiceMock.setRefreshUnitsCallback.calls.reset();
         tagsServiceMock.setNotifyStoreUpdatedCallback.calls.reset();
         tagsServiceMock.registerWsHandlers.calls.reset();
@@ -236,6 +249,7 @@ describe('DataService', () => {
                 { provide: QuirksCatalogService, useValue: quirksCatalogMock },
                 { provide: SarnaPageTitlesCatalogService, useValue: sarnaPageTitlesCatalogMock },
                 { provide: SourcebooksCatalogService, useValue: sourcebooksCatalogMock },
+                { provide: ForceNameWordsCatalogService, useValue: forceNameWordsCatalogMock },
                 { provide: TagsService, useValue: tagsServiceMock },
                 { provide: PublicTagsService, useValue: publicTagsServiceMock },
                 { provide: LoggerService, useValue: loggerServiceMock },
@@ -243,6 +257,19 @@ describe('DataService', () => {
         });
 
         service = TestBed.inject(DataService);
+    });
+
+    it('normalizes null MUL ids to unique runtime ids while loading units', () => {
+        const firstNullMulUnit = createEmptyUnit({ id: -1, name: 'First Null MUL' });
+        const secondNullMulUnit = createEmptyUnit({ id: 0, name: 'Second Null MUL' });
+        const mulUnit = createEmptyUnit({ id: 42, name: 'Real MUL' });
+
+        const normalized = normalizeNullMulUnitIds([firstNullMulUnit, secondNullMulUnit, mulUnit]);
+
+        expect(normalized[0].id).toBe(-1);
+        expect(normalized[1].id).toBe(-2);
+        expect(normalized[2].id).toBe(42);
+        expect(new Set(normalized.map((unit) => unit.id)).size).toBe(3);
     });
 
     it('delegates unit lookup to the runtime service', () => {
@@ -257,6 +284,80 @@ describe('DataService', () => {
 
         expect(service.getSarnaPageTitleForUnit(unit)).toBe('Avatar (OmniMech)');
         expect(sarnaPageTitlesCatalogMock.getPageTitleForUnit).toHaveBeenCalledOnceWith(unit);
+    });
+
+    it('adds units with no faction data to the synthetic None faction for valid eras', async () => {
+        const earlyEra: Era = {
+            id: 1,
+            name: 'Early',
+            years: { from: 2500, to: 2600 },
+            factions: new Set<number>(),
+            units: new Set<number>(),
+        };
+        const introEra: Era = {
+            id: 2,
+            name: 'Intro',
+            years: { from: 2600, to: 2700 },
+            factions: new Set<number>(),
+            units: new Set<number>(),
+        };
+        const openEra: Era = {
+            id: 3,
+            name: 'Open',
+            years: { from: 2701 },
+            factions: new Set<number>(),
+            units: new Set<number>(),
+        };
+        const noneFaction: Faction = {
+            id: MULFACTION_NONE,
+            name: 'None',
+            group: 'Other' as const,
+            img: '',
+            eras: {},
+        };
+        const houseFaction: Faction = {
+            id: 10,
+            name: 'House Test',
+            group: 'Inner Sphere' as const,
+            img: '',
+            eras: {
+                [introEra.id]: new Set<number>([3]),
+            },
+        };
+        const noFactionUnit = createEmptyUnit({ id: -1, name: 'No Faction', year: 2600 });
+        const futureNoFactionUnit = createEmptyUnit({ id: -2, name: 'Future No Faction', year: 2701 });
+        const houseUnit = createEmptyUnit({ id: 3, name: 'House Unit', year: 2600 });
+
+        unitsCatalogMock.getUnits.and.returnValue([noFactionUnit, futureNoFactionUnit, houseUnit]);
+        erasCatalogMock.getEras.and.returnValue([earlyEra, introEra, openEra]);
+        factionsCatalogMock.getFactions.and.returnValue([noneFaction, houseFaction]);
+        factionsCatalogMock.getFactionById.and.callFake((id: number) => {
+            if (id === noneFaction.id) return noneFaction;
+            if (id === houseFaction.id) return houseFaction;
+            return undefined;
+        });
+
+        await service.initialize();
+
+        expect(noneFaction.eras[introEra.id]).toEqual(new Set<number>([noFactionUnit.id]));
+        expect(noneFaction.eras[openEra.id]).toEqual(new Set<number>([noFactionUnit.id, futureNoFactionUnit.id]));
+        expect(noneFaction.eras[earlyEra.id]).toBeUndefined();
+        expect((earlyEra.units as Set<number>).has(noFactionUnit.id)).toBeFalse();
+        expect((earlyEra.units as Set<number>).has(futureNoFactionUnit.id)).toBeFalse();
+        expect((introEra.units as Set<number>).has(noFactionUnit.id)).toBeTrue();
+        expect((introEra.units as Set<number>).has(futureNoFactionUnit.id)).toBeFalse();
+        expect((openEra.units as Set<number>).has(noFactionUnit.id)).toBeTrue();
+        expect((openEra.units as Set<number>).has(futureNoFactionUnit.id)).toBeTrue();
+        expect((introEra.factions as Set<number>).has(MULFACTION_NONE)).toBeTrue();
+        expect((openEra.factions as Set<number>).has(MULFACTION_NONE)).toBeTrue();
+        expect((earlyEra.factions as Set<number>).has(MULFACTION_NONE)).toBeFalse();
+        expect(noneFaction.eras[introEra.id].has(houseUnit.id)).toBeFalse();
+        expect(unitSearchIndexServiceMock.rebuildIndexes).toHaveBeenCalledWith(
+            [noFactionUnit, futureNoFactionUnit, houseUnit],
+            [earlyEra, introEra, openEra],
+            [noneFaction, houseFaction],
+            undefined,
+        );
     });
 
     it('merges local force entries with lightweight cloud bulk entries', async () => {
@@ -386,6 +487,32 @@ describe('DataService', () => {
         });
         expect(dbServiceMock.saveForce).toHaveBeenCalledTimes(1);
         expect(dbServiceMock.saveForce).toHaveBeenCalledWith(jasmine.objectContaining({ instanceId: 'force-missing' }));
+    });
+
+    it('saves an owned cloud-only force locally when opened', async () => {
+        const cloudRawForce = {
+            version: 1,
+            instanceId: 'force-cloud-owned',
+            timestamp: '2026-04-05T00:00:00Z',
+            type: GameSystem.CLASSIC,
+            name: 'Owned Cloud Force',
+            owned: true,
+            groups: [],
+        };
+        dbServiceMock.getForce.and.resolveTo(null);
+        wsServiceMock.sendAndWaitForResponse.and.resolveTo({ data: cloudRawForce });
+        spyOn<any>(service, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
+
+        const force = await service.getForce('force-cloud-owned', true);
+
+        expect(force?.name).toBe('Owned Cloud Force');
+        expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith({
+            action: 'getForce',
+            uuid: 'user-1',
+            instanceId: 'force-cloud-owned',
+            ownedOnly: true,
+        });
+        expect(dbServiceMock.saveForce).toHaveBeenCalledOnceWith(cloudRawForce as any);
     });
 
     it('updates force tags through the lightweight local and cloud path', async () => {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -33,6 +33,7 @@
 
 import { Component, inject, ElementRef, signal, ChangeDetectionStrategy, output, viewChild, effect, computed, type Signal, isSignal, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { CdkMenuModule } from '@angular/cdk/menu';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import type { Unit } from '../../models/units.model';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
@@ -47,7 +48,7 @@ import { LongPressDirective } from '../../directives/long-press.directive';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
-import { REMOTE_HOST, GameSystem } from '../../models/common.model';
+import { GameSystem, getUnitServerHost } from '../../models/common.model';
 import { UnitDetailsGeneralTabComponent } from './tabs/unit-details-general-tab.component';
 import { UnitDetailsIntelTabComponent } from './tabs/unit-details-intel-tab.component';
 import { UnitDetailsFactionTabComponent } from './tabs/unit-details-factions-tab.component';
@@ -56,13 +57,15 @@ import { UnitDetailsVariantsTabComponent, type VariantsTabState, DEFAULT_VARIANT
 import { GameService } from '../../services/game.service';
 import { UnitDetailsCardTabComponent } from './tabs/unit-details-card-tab.component';
 import { UnitTagsComponent, type TagClickEvent } from '../unit-tags/unit-tags.component';
+import { SimpleSliderComponent } from '../simple-slider/simple-slider.component';
 import { TaggingService } from '../../services/tagging.service';
-import { UrlStateService } from '../../services/url-state.service';
+import { UrlService } from '../../services/url.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { LayoutService } from '../../services/layout.service';
 import { buildUnitShareLinks } from '../../utils/force-url.util';
 import { ConfirmDialogComponent, type ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
+import { isMegaMekRaritySortKey, SORT_OPTIONS } from '../../services/unit-search-filters.model';
 
 /*
  * Author: Drake
@@ -91,7 +94,7 @@ export interface UnitDetailsChangeAction {
 @Component({
     selector: 'unit-details-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, SwipeDirective, LongPressDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent, UnitDetailsVariantsTabComponent, UnitTagsComponent],
+    imports: [CommonModule, CdkMenuModule, BaseDialogComponent, SwipeDirective, LongPressDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent, UnitDetailsVariantsTabComponent, UnitTagsComponent, SimpleSliderComponent],
     templateUrl: './unit-details-dialog.component.html',
     styleUrls: ['./unit-details-dialog.component.css'],
     host: {
@@ -108,7 +111,7 @@ export class UnitDetailsDialogComponent {
     layoutService = inject(LayoutService);
     floatingOverlayService = inject(FloatingOverlayService);
     private taggingService = inject(TaggingService);
-    private urlStateService = inject(UrlStateService);
+    private urlService = inject(UrlService);
     private dialogsService = inject(DialogsService);
     private keyboardShortcutService = inject(KeyboardShortcutService);
     private destroyRef = inject(DestroyRef);
@@ -117,6 +120,7 @@ export class UnitDetailsDialogComponent {
     change = output<{ oldUnit: ForceUnit; newUnit: Unit }>();
     indexChange = output<number>();
     baseDialogRef = viewChild('baseDialog', { read: ElementRef });
+    sheetTabRef = viewChild<UnitDetailsSheetTabComponent>(UnitDetailsSheetTabComponent);
     currentPanelRef = viewChild<ElementRef<HTMLElement>>('currentPanel');
     incomingPanelRef = viewChild<ElementRef<HTMLElement>>('incomingPanel');
     shareButtonInActions = computed(() => this.layoutService.windowWidth() > 600);
@@ -207,6 +211,7 @@ export class UnitDetailsDialogComponent {
 
     /** View mode for variants tab (persisted while dialog is open) */
     variantsTabState = signal<VariantsTabState>({ ...DEFAULT_VARIANTS_TAB_STATE });
+    readonly variantSortOptions = SORT_OPTIONS.filter(opt => opt.key !== '' && !isMegaMekRaritySortKey(opt.key));
 
     // Header unit - shows the most visible unit during swipe
     headerUnit = computed(() => {
@@ -232,7 +237,7 @@ export class UnitDetailsDialogComponent {
         const unit = this.headerUnit();
         if (!unit?.fluff?.img) return null;
         if (unit.fluff.img.endsWith('hud.png')) return null; // Ignore HUD images
-        return `${REMOTE_HOST}/images/fluff/${unit.fluff.img}`;
+        return `${getUnitServerHost(unit)}/images/fluff/${unit.fluff.img}`;
     });
 
     get unit(): Unit {
@@ -275,11 +280,10 @@ export class UnitDetailsDialogComponent {
 
         effect(() => {
             this.unit;
-            this.activeTab()
-            // Use centralized URL state service to avoid race conditions
-            this.urlStateService.setParams({
+            const activeTab = this.activeTab();
+            this.urlService.setQueryParams({
                 shareUnit: this.unit.name,
-                tab: this.activeTab(),
+                tab: activeTab,
             });
         });
         
@@ -295,7 +299,7 @@ export class UnitDetailsDialogComponent {
         
         // Clean up URL params when dialog closes
         firstValueFrom(this.dialogRef.closed).then(() => {
-            this.urlStateService.setParams({
+            this.urlService.setQueryParams({
                 shareUnit: null,
                 tab: null,
             });
@@ -345,7 +349,7 @@ export class UnitDetailsDialogComponent {
             // Emulate RIGHT swipe: current goes right, prev comes from left
             // this.navigateToUnit(this.unitIndex() - 1, 'right');
             this.floatingOverlayService.hide();
-            this.unitIndex.set(this.unitIndex() - 1);
+            this.unitIndex.update(v => v - 1);
         }
     }
 
@@ -354,7 +358,7 @@ export class UnitDetailsDialogComponent {
             // Emulate LEFT swipe: current goes left, next comes from right
             // this.navigateToUnit(this.unitIndex() + 1, 'left');
             this.floatingOverlayService.hide();
-            this.unitIndex.set(this.unitIndex() + 1);
+            this.unitIndex.update(v => v + 1);
         }
     }
 
@@ -654,6 +658,8 @@ export class UnitDetailsDialogComponent {
         // Don't block if already swiping - only block before swipe starts
         if (this.isSwiping()) return false;
 
+        if (this.activeTab() === 'Sheet' && this.isSheetSwipeBlocked()) return true;
+
         // Block if animation is in progress
         if (this.isSwipeAnimating()) return true;
 
@@ -661,6 +667,50 @@ export class UnitDetailsDialogComponent {
         const index = this.unitIndex();
         return (index === 0 && !this.hasNext) || (index === this.unitList().length - 1 && !this.hasPrev);
     };
+
+    private isSheetSwipeBlocked(): boolean {
+        return this.sheetTabRef()?.isZoomPanActive() ?? false;
+    }
+
+    public setSheetZoomPercent(value: number): void {
+        this.sheetTabRef()?.setZoomPercent(value);
+    }
+
+    public resetSheetZoom(): void {
+        this.sheetTabRef()?.resetZoom();
+    }
+
+    public downloadSheetPng(): void {
+        void this.sheetTabRef()?.downloadPng();
+    }
+
+    public openSheetPng(): void {
+        void this.sheetTabRef()?.openPng();
+    }
+
+    public async copySheetPngToClipboard(): Promise<void> {
+        try {
+            await this.sheetTabRef()?.copyPngToClipboard();
+            this.toastService.showToast('Record sheet copied to clipboard', 'success');
+        } catch {
+            this.toastService.showToast('Could not copy the record sheet image to the clipboard.', 'error');
+        }
+    }
+
+    public setVariantSortOrder(key: string): void {
+        this.variantsTabState.update(state => ({ ...state, sortKey: key }));
+    }
+
+    public setVariantSortDirection(direction: 'asc' | 'desc'): void {
+        this.variantsTabState.update(state => ({ ...state, sortDirection: direction }));
+    }
+
+    public toggleVariantViewMode(): void {
+        this.variantsTabState.update(state => ({
+            ...state,
+            viewMode: state.viewMode === 'expanded' ? 'compact' : 'expanded',
+        }));
+    }
 
     public onSwipeStart(event: SwipeStartEvent): void {
         if (this.isSwipeAnimating()) return;

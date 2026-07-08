@@ -38,7 +38,7 @@ import { ECMMode } from '../models/common.model';
 
 export class ECMHandler extends EquipmentInteractionHandler {
     readonly id = 'ecm-handler';
-    readonly flags = ['F_ECM'];
+    override readonly flags = ['F_ECM'];
     override readonly priority = 10;
 
     private readonly stateKey = 'ecm_mode';
@@ -79,11 +79,11 @@ export class ECMHandler extends EquipmentInteractionHandler {
 
         return [
             {
-                label: 'ECM Mode:',
+                label: 'ECM Mode',
                 value: currentState,
                 displayType: 'dropdown',
                 choices: modes,
-                disabled: equipment.destroyed,
+                disabled: equipment.isUnavailable(),
                 keepOpen: true
             }
         ];

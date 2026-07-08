@@ -10,6 +10,8 @@ export class PageViewerShadowRenderService {
         descriptor: PageViewerShadowDescriptor;
         onShadowClick: (descriptor: PageViewerShadowDescriptor, wrapper: HTMLDivElement, event: MouseEvent) => void;
         sourceSvg: SVGSVGElement | null;
+        clickHandler: (event: MouseEvent) => void;
+        cleanup: () => void;
     }>();
 
     bindDeclarativeShadowPages(options: {
@@ -38,6 +40,12 @@ export class PageViewerShadowRenderService {
         } = options;
 
         const descriptorMap = new Map(descriptors.map((descriptor) => [descriptor.key, descriptor]));
+        const cleanups = [...currentCleanups];
+        const addCleanup = (cleanup: () => void) => {
+            if (!cleanups.includes(cleanup)) {
+                cleanups.push(cleanup);
+            }
+        };
 
         for (const wrapper of wrappers) {
             const shadowKey = wrapper.dataset['shadowKey'];
@@ -82,25 +90,39 @@ export class PageViewerShadowRenderService {
 
             setPageWrapperContentState(wrapper, !!boundSvg);
 
-            if (!currentBinding) {
-                wrapper.addEventListener('click', (event: MouseEvent) => {
+            let clickHandler = currentBinding?.clickHandler;
+            let cleanup = currentBinding?.cleanup;
+
+            if (!clickHandler || !cleanup) {
+                const newClickHandler = (event: MouseEvent) => {
                     const binding = this.shadowBindings.get(wrapper);
                     if (!binding) {
                         return;
                     }
 
                     binding.onShadowClick(binding.descriptor, wrapper, event);
-                });
+                };
+                const newCleanup = () => {
+                    wrapper.removeEventListener('click', newClickHandler);
+                    this.shadowBindings.delete(wrapper);
+                };
+                clickHandler = newClickHandler;
+                cleanup = newCleanup;
+                wrapper.addEventListener('click', clickHandler);
             }
+
+            addCleanup(cleanup);
 
             this.shadowBindings.set(wrapper, {
                 descriptor,
                 onShadowClick,
-                sourceSvg
+                sourceSvg,
+                clickHandler,
+                cleanup
             });
         }
 
-        return [];
+        return cleanups;
     }
 
     createIncomingShadowPages(options: {
@@ -114,7 +136,7 @@ export class PageViewerShadowRenderService {
         shadowPageElements: readonly HTMLDivElement[];
         activeUnitIds: ReadonlySet<string>;
         getShadowKey: (unitIndex: number, direction: 'left' | 'right') => string;
-        isAnimationActive: () => boolean;
+        isRequestCurrent: () => boolean;
         upsertTransientShadowPage: (descriptor: PageViewerShadowDescriptor, scale: number, showFluff: boolean) => void;
     }): void {
         const {
@@ -128,7 +150,7 @@ export class PageViewerShadowRenderService {
             shadowPageElements,
             activeUnitIds,
             getShadowKey,
-            isAnimationActive,
+            isRequestCurrent,
             upsertTransientShadowPage
         } = options;
 
@@ -156,7 +178,7 @@ export class PageViewerShadowRenderService {
             const incomingPosition = clickedShadowLeft + positionOffset * scaledPageStep;
 
             unit.load().then(() => {
-                if (!isAnimationActive() || !clickedShadow.isConnected) {
+                if (!isRequestCurrent() || !clickedShadow.isConnected) {
                     return;
                 }
 
@@ -170,6 +192,8 @@ export class PageViewerShadowRenderService {
                     scaledLeft: incomingPosition,
                     isDimmed: true
                 }, scale, showFluff);
+            }).catch(() => {
+                // Shadow pages are opportunistic; failed neighbor loads should not break navigation.
             });
         }
     }

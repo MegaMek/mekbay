@@ -59,20 +59,49 @@ describe('MultiSelectDropdownComponent', () => {
 
     async function flushRender() {
         await Promise.resolve();
-        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
     }
 
-    it('uses a virtual viewport for large visible option lists', () => {
+    it('uses a virtual viewport for large visible option lists', async () => {
         const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
 
-        fixture.componentRef.setInput('options', createOptions(100));
+        fixture.componentRef.setInput('options', createOptions(150));
         fixture.componentInstance.isOpen.set(true);
+        fixture.detectChanges();
+        await flushRender();
         fixture.detectChanges();
 
         expect(fixture.componentInstance.useVirtualScroll()).toBeTrue();
         const viewportEl = overlayContainerElement.querySelector('cdk-virtual-scroll-viewport') as HTMLElement | null;
         expect(viewportEl).not.toBeNull();
         expect(getComputedStyle(viewportEl!).overflowY).toBe('auto');
+    });
+
+    it('keeps virtual option rows fixed-height while scaling long labels', async () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        const component = fixture.componentInstance;
+        const longName = 'AA Weapon (Mk. 2, Man-Portable) With Extra Descriptor Text';
+
+        fixture.componentRef.setInput('options', [
+            { name: longName, available: true },
+            ...createOptions(149),
+        ]);
+        component.isOpen.set(true);
+        fixture.detectChanges();
+        await flushRender();
+        fixture.detectChanges();
+
+        const item = overlayContainerElement.querySelector('.options-viewport .option-item') as HTMLElement | null;
+        const viewport = overlayContainerElement.querySelector('cdk-virtual-scroll-viewport') as HTMLElement | null;
+        const label = item?.querySelector('.option-label') as HTMLElement | null;
+
+        expect(item).not.toBeNull();
+        expect(viewport).not.toBeNull();
+        expect(label).not.toBeNull();
+        expect(viewport!.style.getPropertyValue('--virtual-option-height')).toBe(`${component.optionItemSize}px`);
+        expect(getComputedStyle(item!).height).toBe(`${component.optionItemSize}px`);
+        expect(label!.style.fontSize).toBe(`${component.getVirtualOptionLabelFontSize({ name: longName })}px`);
+        expect(getComputedStyle(label!).webkitLineClamp).toBe('2');
     });
 
     it('keeps the plain list path for small option lists', () => {
@@ -299,46 +328,449 @@ describe('MultiSelectDropdownComponent', () => {
         expect(fixture.componentInstance.filteredOptions().map((option) => option.name)).toEqual(['Random']);
     });
 
-    xit('preserves scroll position when toggling an item in the virtualized list', async () => {
-        const fixture = TestBed.createComponent(TestHostComponent);
-        fixture.componentInstance.options.set(createOptions(140));
+    it('does not mark an option as keyboard-focused when opened by pointer', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        fixture.componentRef.setInput('options', createOptions(3));
         fixture.detectChanges();
 
-        const dropdown = fixture.componentInstance.dropdown();
-        expect(dropdown).toBeTruthy();
-
-        dropdown!.isOpen.set(true);
-        fixture.detectChanges();
-        await flushRender();
+        const displayArea = fixture.nativeElement.querySelector('.display-area') as HTMLElement;
+        displayArea.dispatchEvent(new PointerEvent('pointerdown', { pointerType: 'mouse', bubbles: true }));
+        displayArea.click();
         fixture.detectChanges();
 
-        const viewport = dropdown!.optionsViewport();
-        expect(viewport).toBeTruthy();
+        expect(fixture.componentInstance.keyboardFocusedIndex()).toBe(-1);
+        expect(overlayContainerElement.querySelector('.option-item.keyboard-focused')).toBeNull();
+    });
 
-        viewport!.scrollToOffset(dropdown!.optionItemSize * 90);
+    it('marks a keyboard-focused option only after keyboard navigation', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        fixture.componentRef.setInput('options', createOptions(3));
         fixture.detectChanges();
-        await flushRender();
+
+        const displayArea = fixture.nativeElement.querySelector('.display-area') as HTMLElement;
+        displayArea.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
         fixture.detectChanges();
 
-        const beforeOffset = viewport!.measureScrollOffset('top');
-        const renderedItems = Array.from(fixture.nativeElement.querySelectorAll('.option-item')) as HTMLElement[];
-        expect(renderedItems.length).toBeGreaterThan(0);
+        const optionItems = Array.from(overlayContainerElement.querySelectorAll('.option-item')) as HTMLElement[];
+        expect(fixture.componentInstance.keyboardFocusedIndex()).toBe(0);
+        expect(optionItems[0].classList.contains('keyboard-focused')).toBeTrue();
+    });
 
-        const targetItem = renderedItems[Math.floor(renderedItems.length / 2)];
-        const optionName = targetItem.getAttribute('data-option-name');
-        const checkbox = targetItem.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+    it('keeps keyboard focus on the same option when the option list changes', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        fixture.componentRef.setInput('options', createOptions(5));
+        fixture.componentInstance.isOpen.set(true);
+        fixture.detectChanges();
 
-        expect(optionName).toBeTruthy();
+        fixture.componentInstance['setKeyboardFocusedIndex'](4);
+        fixture.detectChanges();
+        expect(fixture.componentInstance.keyboardFocusedIndex()).toBe(4);
+
+        fixture.componentRef.setInput('options', [
+            { name: 'Option 1', available: true },
+            { name: 'Option 5', available: true },
+            { name: 'Option 2', available: true },
+            { name: 'Option 3', available: true },
+            { name: 'Option 4', available: true },
+        ]);
+        fixture.detectChanges();
+
+        const focusedOption = overlayContainerElement.querySelector('.option-item.keyboard-focused') as HTMLElement | null;
+        expect(fixture.componentInstance.keyboardFocusedIndex()).toBe(1);
+        expect(focusedOption?.getAttribute('data-option-name')).toBe('Option 5');
+    });
+
+    it('does not restore the old visual offset when keyboard toggle reorders the focused option', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        const component = fixture.componentInstance;
+        const baseOptions = createOptions(150);
+        const focusedOption = baseOptions[5];
+        const andOrderedOptions = [
+            focusedOption,
+            ...baseOptions.filter(option => option.name !== focusedOption.name),
+        ];
+        const notOrderedOptions = [
+            baseOptions[0],
+            baseOptions[1],
+            baseOptions[2],
+            focusedOption,
+            ...baseOptions.filter(option => !['Option 1', 'Option 2', 'Option 3', focusedOption.name].includes(option.name)),
+        ];
+        const restoreScrollPosition = spyOn<any>(component, 'restoreScrollPosition').and.callThrough();
+
+        component.selectionChange.subscribe(selection => {
+            fixture.componentRef.setInput('selected', selection);
+            fixture.componentRef.setInput('options', notOrderedOptions);
+        });
+        fixture.componentRef.setInput('multistate', true);
+        fixture.componentRef.setInput('options', andOrderedOptions);
+        fixture.componentRef.setInput('selected', {
+            [focusedOption.name]: { name: focusedOption.name, state: 'and', count: 1 },
+        });
+        component.isOpen.set(true);
+        fixture.detectChanges();
+
+        component['setKeyboardFocusedIndex'](0);
+        component['toggleKeyboardFocusedOption']();
+        fixture.detectChanges();
+
+        expect(restoreScrollPosition).not.toHaveBeenCalled();
+        expect(component.keyboardFocusedIndex()).toBe(3);
+    });
+
+    it('keeps keyboard focus on the same option when it moves back down the list', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        const component = fixture.componentInstance;
+        const baseOptions = createOptions(150);
+        const focusedOption = baseOptions[29];
+        const collapsedOptions = [
+            focusedOption,
+            ...baseOptions.filter(option => option.name !== focusedOption.name),
+        ];
+        const expandedOptions = [
+            ...baseOptions.slice(0, 29),
+            focusedOption,
+            ...baseOptions.slice(30),
+        ];
+
+        fixture.componentRef.setInput('options', collapsedOptions);
+        component.isOpen.set(true);
+        fixture.detectChanges();
+
+        component['setKeyboardFocusedIndex'](0);
+        fixture.detectChanges();
+        fixture.componentRef.setInput('options', expandedOptions);
+        fixture.detectChanges();
+
+        expect(component.keyboardFocusedIndex()).toBe(29);
+    });
+
+    it('starts keyboard navigation from the hovered option when nothing is keyboard-focused', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        fixture.componentRef.setInput('options', createOptions(10));
+        fixture.componentInstance.isOpen.set(true);
+        fixture.detectChanges();
+
+        const optionItems = Array.from(overlayContainerElement.querySelectorAll('.option-item')) as HTMLElement[];
+        optionItems[5].dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
+        fixture.detectChanges();
+
+        const optionsList = overlayContainerElement.querySelector('.options-list') as HTMLElement;
+        optionsList.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.keyboardFocusedIndex()).toBe(6);
+        expect(optionItems[6].classList.contains('keyboard-focused')).toBeTrue();
+    });
+
+    it('allows tab focus to land on the option list and initialize keyboard focus', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        fixture.componentRef.setInput('options', createOptions(3));
+        fixture.componentInstance.isOpen.set(true);
+        fixture.detectChanges();
+
+        const optionsList = overlayContainerElement.querySelector('.options-list') as HTMLElement;
+        expect(optionsList.getAttribute('tabindex')).toBe('0');
+
+        optionsList.dispatchEvent(new FocusEvent('focus'));
+        fixture.detectChanges();
+
+        const optionItems = Array.from(overlayContainerElement.querySelectorAll('.option-item')) as HTMLElement[];
+        expect(fixture.componentInstance.keyboardFocusedIndex()).toBe(0);
+        expect(optionItems[0].classList.contains('keyboard-focused')).toBeTrue();
+    });
+
+    it('does not scroll a virtual list to the top when the option list receives pointer focus', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        const component = fixture.componentInstance;
+        fixture.componentRef.setInput('options', createOptions(140));
+        component.isOpen.set(true);
+        fixture.detectChanges();
+
+        const optionsList = overlayContainerElement.querySelector('cdk-virtual-scroll-viewport') as HTMLElement;
+        const scrollToOption = spyOn<any>(component, 'scrollToOption').and.callThrough();
+
+        component.onOptionsPointerDown(new PointerEvent('pointerdown', { pointerType: 'mouse' }));
+        component.onOptionsListFocus({ target: optionsList, currentTarget: optionsList } as unknown as FocusEvent);
+
+        expect(component.keyboardFocusedIndex()).toBe(-1);
+        expect(scrollToOption).not.toHaveBeenCalled();
+    });
+
+    it('does not reset scroll focus when an option checkbox receives pointer focus', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        const component = fixture.componentInstance;
+        fixture.componentRef.setInput('options', createOptions(10));
+        component.isOpen.set(true);
+        fixture.detectChanges();
+
+        const scrollToOption = spyOn<any>(component, 'scrollToOption').and.callThrough();
+        const optionItems = Array.from(overlayContainerElement.querySelectorAll('.option-item')) as HTMLElement[];
+        const checkbox = optionItems[4].querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+
         expect(checkbox).not.toBeNull();
 
-        checkbox!.dispatchEvent(new Event('change', { bubbles: true }));
-        fixture.detectChanges();
-        await flushRender();
+        checkbox!.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
         fixture.detectChanges();
 
-        const afterOffset = viewport!.measureScrollOffset('top');
-        expect(Math.abs(afterOffset - beforeOffset)).toBeLessThan(dropdown!.optionItemSize + 1);
-        expect(fixture.componentInstance.selected()[optionName!]?.state).toBe('or');
+        expect(component.keyboardFocusedIndex()).toBe(-1);
+        expect(scrollToOption).not.toHaveBeenCalled();
+    });
+
+    it('keeps a pill-targeted option focused when the option list receives focus', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        const component = fixture.componentInstance;
+        fixture.componentRef.setInput('options', createOptions(100));
+        fixture.detectChanges();
+
+        const clickEvent = new MouseEvent('click', { bubbles: true });
+        const scrollToOption = spyOn<any>(component, 'scrollToOption').and.callThrough();
+
+        component.openAndScrollTo('Option 90', clickEvent);
+        fixture.detectChanges();
+
+        const optionsList = overlayContainerElement.querySelector('.options-list') as HTMLElement;
+        optionsList.dispatchEvent(new FocusEvent('focus'));
+        fixture.detectChanges();
+
+        expect(component.keyboardFocusedIndex()).toBe(89);
+        expect(scrollToOption).not.toHaveBeenCalledWith('Option 1');
+    });
+
+    it('styles keyboard-focused options like hovered options', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        fixture.componentRef.setInput('options', createOptions(3));
+        fixture.componentInstance.isOpen.set(true);
+        fixture.detectChanges();
+
+        const optionItems = Array.from(overlayContainerElement.querySelectorAll('.option-item')) as HTMLElement[];
+        const expectedBackground = document.createElement('div');
+        expectedBackground.style.backgroundColor = 'var(--background-color-light)';
+        overlayContainerElement.appendChild(expectedBackground);
+
+        optionItems[0].classList.add('keyboard-focused');
+
+        expect(getComputedStyle(optionItems[0]).backgroundColor).toBe(getComputedStyle(expectedBackground).backgroundColor);
+    });
+
+    it('centers a pill-targeted virtualized option below view', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        const component = fixture.componentInstance;
+        const scrollToOffset = jasmine.createSpy('scrollToOffset');
+        const viewport = {
+            measureScrollOffset: () => 0,
+            getViewportSize: () => component.optionItemSize * 3,
+            scrollToOffset,
+        } as unknown as Parameters<typeof component['scrollVirtualOptionIntoView']>[0];
+
+        fixture.componentRef.setInput('options', createOptions(100));
+        component.isOpen.set(true);
+        fixture.detectChanges();
+
+        component['scrollVirtualOptionIntoView'](viewport, 89, 'center');
+
+        expect(scrollToOffset).toHaveBeenCalledOnceWith(component.optionItemSize * 88, 'auto');
+    });
+
+    it('uses instant nearest-edge scrolling when a pill targets a plain-list option below view', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        fixture.componentRef.setInput('options', createOptions(10));
+        fixture.componentInstance.isOpen.set(true);
+        fixture.detectChanges();
+
+        const container = overlayContainerElement.querySelector('.options-list') as HTMLElement;
+        const optionItems = Array.from(overlayContainerElement.querySelectorAll('.option-item')) as HTMLElement[];
+        let scrollTop = 0;
+        Object.defineProperty(container, 'scrollTop', {
+            configurable: true,
+            get: () => scrollTop,
+            set: (value: number) => scrollTop = value,
+        });
+        spyOnProperty(container, 'clientHeight', 'get').and.returnValue(88);
+        spyOnProperty(container, 'scrollHeight', 'get').and.returnValue(440);
+        spyOn(container, 'getBoundingClientRect').and.returnValue({
+            top: 100,
+            bottom: 188,
+            height: 88,
+            left: 0,
+            right: 240,
+            width: 240,
+            x: 0,
+            y: 100,
+            toJSON: () => null,
+        } as DOMRect);
+        optionItems.forEach((item, index) => {
+            spyOnProperty(item, 'offsetTop', 'get').and.returnValue(24 + (index * 44));
+            spyOnProperty(item, 'offsetHeight', 'get').and.returnValue(44);
+            spyOn(item, 'getBoundingClientRect').and.returnValue({
+                top: 100 + (index * 44),
+                bottom: 100 + ((index + 1) * 44),
+                height: 44,
+                left: 0,
+                right: 240,
+                width: 240,
+                x: 0,
+                y: 100 + (index * 44),
+                toJSON: () => null,
+            } as DOMRect);
+        });
+
+        fixture.componentInstance['scrollToOption']('Option 5');
+
+        expect(scrollTop).toBe(132);
+    });
+
+    it('centers a pill-targeted plain-list option below view', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        fixture.componentRef.setInput('options', createOptions(10));
+        fixture.componentInstance.isOpen.set(true);
+        fixture.detectChanges();
+
+        const container = overlayContainerElement.querySelector('.options-list') as HTMLElement;
+        const optionItems = Array.from(overlayContainerElement.querySelectorAll('.option-item')) as HTMLElement[];
+        let scrollTop = 0;
+        Object.defineProperty(container, 'scrollTop', {
+            configurable: true,
+            get: () => scrollTop,
+            set: (value: number) => scrollTop = value,
+        });
+        spyOnProperty(container, 'clientHeight', 'get').and.returnValue(88);
+        spyOnProperty(container, 'scrollHeight', 'get').and.returnValue(440);
+        spyOn(container, 'getBoundingClientRect').and.returnValue({
+            top: 100,
+            bottom: 188,
+            height: 88,
+            left: 0,
+            right: 240,
+            width: 240,
+            x: 0,
+            y: 100,
+            toJSON: () => null,
+        } as DOMRect);
+        optionItems.forEach((item, index) => {
+            spyOnProperty(item, 'offsetTop', 'get').and.returnValue(24 + (index * 44));
+            spyOnProperty(item, 'offsetHeight', 'get').and.returnValue(44);
+            spyOn(item, 'getBoundingClientRect').and.returnValue({
+                top: 100 + (index * 44),
+                bottom: 100 + ((index + 1) * 44),
+                height: 44,
+                left: 0,
+                right: 240,
+                width: 240,
+                x: 0,
+                y: 100 + (index * 44),
+                toJSON: () => null,
+            } as DOMRect);
+        });
+
+        fixture.componentInstance['scrollToOption']('Option 5', 'center');
+
+        expect(scrollTop).toBe(154);
+    });
+
+    it('restores virtual scroll to the captured offset after selection updates', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        const component = fixture.componentInstance;
+        const scrollToOffset = jasmine.createSpy('scrollToOffset');
+        const viewport = {
+            getDataLength: () => 140,
+            getViewportSize: () => component.optionItemSize * 3,
+            scrollToOffset,
+        } as unknown as Parameters<typeof component['restoreVirtualScrollPosition']>[0];
+        const capturedOffset = component.optionItemSize * 90;
+
+        component['restoreVirtualScrollPosition'](viewport, { kind: 'virtual', scrollOffset: capturedOffset });
+
+        expect(scrollToOffset).toHaveBeenCalledOnceWith(capturedOffset, 'auto');
+    });
+
+    it('preserves virtual scroll offset when selection reorders the toggled option to the top', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        const component = fixture.componentInstance;
+        const scrollToOffset = jasmine.createSpy('scrollToOffset');
+        const viewport = {
+            getDataLength: () => 140,
+            getViewportSize: () => component.optionItemSize * 3,
+            scrollToOffset,
+        } as unknown as Parameters<typeof component['restoreVirtualScrollPosition']>[0];
+        const capturedOffset = component.optionItemSize * 90;
+
+        fixture.componentRef.setInput('options', [
+            { name: 'Option 96', available: true },
+            ...createOptions(140).filter(option => option.name !== 'Option 96'),
+        ]);
+
+        component['restoreVirtualScrollPosition'](viewport, { kind: 'virtual', scrollOffset: capturedOffset });
+
+        expect(scrollToOffset).toHaveBeenCalledOnceWith(capturedOffset, 'auto');
+    });
+
+    it('anchors tri-state selections to the clicked option', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        const component = fixture.componentInstance;
+        const captureScrollRestoreState = spyOn<any>(component, 'captureScrollRestoreState').and.returnValue(null);
+
+        fixture.componentRef.setInput('multistate', true);
+        fixture.componentRef.setInput('options', createOptions(3));
+        fixture.componentRef.setInput('selected', {
+            'Option 1': { name: 'Option 1', state: 'or', count: 1 },
+        });
+
+        component.onOptionToggle('Option 1');
+
+        expect(captureScrollRestoreState).toHaveBeenCalledOnceWith('Option 1');
+    });
+
+    it('keeps a virtual anchor at the same visible Y when rows above are removed', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        const component = fixture.componentInstance;
+        const scrollToOffset = jasmine.createSpy('scrollToOffset');
+        const viewport = {
+            getDataLength: () => 150,
+            getViewportSize: () => component.optionItemSize * 8,
+            scrollToOffset,
+        } as unknown as Parameters<typeof component['restoreVirtualScrollPosition']>[0];
+
+        fixture.componentRef.setInput('options', createOptions(150).filter(option => ![
+            'Option 81',
+            'Option 82',
+            'Option 83',
+            'Option 84',
+            'Option 85',
+        ].includes(option.name)));
+        component.isOpen.set(true);
+
+        component['restoreVirtualScrollPosition'](viewport, {
+            kind: 'virtual',
+            scrollOffset: component.optionItemSize * 90,
+            optionName: 'Option 96',
+            optionVisibleTop: component.optionItemSize * 5,
+        });
+
+        expect(scrollToOffset).toHaveBeenCalledOnceWith(component.optionItemSize * 85, 'auto');
+    });
+
+    it('keeps a virtual anchor at the same visible Y when rows above return', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        const component = fixture.componentInstance;
+        const scrollToOffset = jasmine.createSpy('scrollToOffset');
+        const viewport = {
+            getDataLength: () => 150,
+            getViewportSize: () => component.optionItemSize * 8,
+            scrollToOffset,
+        } as unknown as Parameters<typeof component['restoreVirtualScrollPosition']>[0];
+
+        fixture.componentRef.setInput('options', createOptions(150));
+        component.isOpen.set(true);
+
+        component['restoreVirtualScrollPosition'](viewport, {
+            kind: 'virtual',
+            scrollOffset: component.optionItemSize * 85,
+            optionName: 'Option 96',
+            optionVisibleTop: component.optionItemSize * 5,
+        });
+
+        expect(scrollToOffset).toHaveBeenCalledOnceWith(component.optionItemSize * 90, 'auto');
     });
 
     it('removes all selections in a compressed state bucket from the summary pill button', () => {

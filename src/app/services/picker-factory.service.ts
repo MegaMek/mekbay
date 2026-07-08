@@ -37,6 +37,7 @@ import { OptionsService } from './options.service';
 import { LayoutService } from './layout.service';
 import type {
     ChoicePickerInstance,
+    ChoicePickerComponent,
     NumericPickerInstance,
     NumericPickerResult,
     PickerChoice,
@@ -45,7 +46,8 @@ import type {
     PickerValue
 } from '../components/picker/picker.interface';
 import { RotatingPickerComponent } from '../components/rotating-picker/rotating-picker.component';
-import { LinearPickerComponent } from '../components/linear-picker/linear-picker.component';
+import { LinearPickerHorizontalComponent } from '../components/linear-picker/linear-picker-horizontal.component';
+import { LinearPickerVerticalComponent } from '../components/linear-picker/linear-picker-vertical.component';
 import { RadialPickerComponent } from '../components/radial-picker/radial-picker.component';
 import { outputToObservable } from '@angular/core/rxjs-interop';
 
@@ -201,34 +203,40 @@ export class PickerFactoryService {
      * Create a linear picker explicitly.
      */
     createLinearPicker(config: ChoicePickerConfig): ChoicePickerInstance {
-        const compRef = createComponent(LinearPickerComponent, {
+        if (config.horizontal) {
+            const compRef = createComponent(LinearPickerHorizontalComponent, {
+                environmentInjector: this.envInjector,
+                elementInjector: this.injector
+            });
+            compRef.setInput('align', config.align ?? 'center');
+            return this.configureChoicePicker(compRef, config);
+        }
+
+        const compRef = createComponent(LinearPickerVerticalComponent, {
             environmentInjector: this.envInjector,
             elementInjector: this.injector
         });
+        return this.configureChoicePicker(compRef, config);
+    }
 
+    private configureChoicePicker<T extends ChoicePickerComponent>(compRef: ComponentRef<T>, config: ChoicePickerConfig): ChoicePickerInstance {
         const instance = compRef.instance;
 
-        // Set inputs
         compRef.setInput('title', config.title ?? null);
         compRef.setInput('selected', config.selected ?? null);
         compRef.setInput('position', config.position);
         compRef.setInput('lightTheme', config.lightTheme ?? false);
-        compRef.setInput('horizontal', config.horizontal ?? false);
-        compRef.setInput('align', config.align ?? 'center');
         instance.values.set(config.values);
 
         if (config.initialEvent) {
             instance.initialEvent.set(config.initialEvent);
         }
 
-        // Create destroy signal for subscription cleanup
         const destroy$ = new Subject<void>();
 
-        // Subscribe to events with cleanup
         outputToObservable(instance.picked).pipe(takeUntil(destroy$)).subscribe(config.onPick);
         outputToObservable(instance.cancelled).pipe(takeUntil(destroy$)).subscribe(config.onCancel);
 
-        // Attach to DOM
         this.attachToDOM(compRef);
 
         return {

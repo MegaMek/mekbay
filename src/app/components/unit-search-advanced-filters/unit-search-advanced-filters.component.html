@@ -22,6 +22,9 @@
                 </tri-state-filter-checkbox>
             </div>
         }
+        @if (booleanFilters().length % 2) {
+            <div class="filter-row"></div>
+        }
 
     @for (conf of dropdownFilters(); track conf.key) {
       @let filterOpts = $any(filtersService.advOptions()[conf.key]);
@@ -50,8 +53,9 @@
             (selectionChange)="onFormationTargetSelectionChange($event)">
         </multi-select-dropdown>
     </div>
-    <div class="filter-row formation-target-filter-row">
-    </div>
+    }
+    @if ((dropdownFilters().length + (showFormationTargetFilter() ? 1 : 0)) % 2) {
+        <div class="filter-row"></div>
     }
 
     @for (conf of rangeFilters(); track conf.key) {

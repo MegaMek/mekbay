@@ -53,7 +53,7 @@ import type {
 } from '../models/megamek/rulesets.model';
 import { LoadForceEntry } from '../models/load-force-entry.model';
 import { MAX_UNITS as FORCE_MAX_UNITS } from '../models/force.model';
-import { MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../models/mulfactions.model';
+import { MULFACTION_EXTINCT, MULFACTION_MERCENARY, MULFACTION_NONE } from '../models/mulfactions.model';
 import type { Options } from '../models/options.model';
 import { getUnitsAverageTechBase } from '../models/tech.model';
 import type { Unit } from '../models/units.model';
@@ -74,6 +74,7 @@ import { getPositiveDropdownNamesFromFilter, resolveDropdownNamesFromFilter } fr
 import { ForceNamerUtil } from '../utils/force-namer.util';
 import { PVCalculatorUtil } from '../utils/pv-calculator.util';
 import { normalizeMultiStateSelection } from '../utils/unit-search-shared.util';
+import { getUnitVariantGroupKey } from '../utils/unit-variant.util';
 import { DataService } from './data.service';
 import { OptionsService } from './options.service';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
@@ -87,7 +88,7 @@ import { generateUUID } from './ws.service';
 const LOG_ATTEMPTS = false;
 const FORCE_GENERATION_OPTIMIZE_SELECTED_SKILLS_FOR_BUDGET = true;
 const FORCE_GENERATION_SKILL_OPTIMIZATION_STATE_LIMIT = 5_000;
-const DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT = 1;
+const DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT = 10;
 const FORCE_GENERATION_PRODUCTION_SOURCE_ROLL_WEIGHT = 5;
 const FORCE_GENERATION_SALVAGE_SOURCE_ROLL_WEIGHT = 1;
 const IMPLICIT_MULTI_FACTION_EXCLUDED_IDS = new Set<number>([MULFACTION_EXTINCT]);
@@ -128,6 +129,7 @@ interface ForceGenerationCandidateUnit {
     gunnery?: number;
     piloting?: number;
     lockKey?: string;
+    variantGroupKey?: string;
     locked: boolean;
     megaMekUnitType: string;
     megaMekWeightClass?: string;
@@ -546,6 +548,7 @@ export interface GeneratedForceUnit {
     alias?: string;
     commander?: boolean;
     lockKey?: string;
+    variantGroupKey?: string;
 }
 
 export interface ForceGeneratorBudgetDefaults {
@@ -1680,14 +1683,13 @@ function normalizeSelectionKey(value: string | undefined): string {
     return value?.trim().toLowerCase() || '';
 }
 
-function buildDuplicateChassisKey(unit: Pick<Unit, 'chassis' | 'type'>): string {
+function buildDuplicateChassisKey(unit: Unit): string {
     const chassisKey = normalizeSelectionKey(unit.chassis);
     if (chassisKey.length === 0) {
         return '';
     }
 
-    const typeKey = normalizeSelectionKey(unit.type);
-    return typeKey.length > 0 ? `${chassisKey}|${typeKey}` : chassisKey;
+    return normalizeSelectionKey(getUnitVariantGroupKey(unit));
 }
 
 function buildTaggedQuantityUnitKey(unit: Unit): string {
@@ -2202,31 +2204,32 @@ export class ForceGeneratorService implements OnDestroy {
                 'The selected target formation is not available for the current ruleset.',
             );
         }
-        const lockedCandidates = (options.lockedUnits ?? []).map((lockedUnit) => this.createCandidateUnit(
-            lockedUnit.unit,
-            options.context,
-            options,
-            {
-                ...lockedUnit,
-                lockKey: lockedUnit.lockKey ?? generateUUID(),
-            },
-            availabilityWeightCache,
-        ));
-        const lockedUnitNames = new Set(lockedCandidates.map((candidate) => candidate.unit.name));
         const taggedQuantityCaps = options.useTaggedQuantities === true && options.preventDuplicateChassis !== true
             ? this.resolveTaggedQuantityCaps(eligibleUnits, maxUnitCount, options.useUnitTagsAsChassisTags === true)
             : null;
         const useTaggedQuantityCaps = (taggedQuantityCaps?.capByKey.size ?? 0) > 0;
         const allowUnlimitedDuplicateUnits = options.preventDuplicateChassis !== true && !useTaggedQuantityCaps;
-        const lockedTaggedQuantityCounts = useTaggedQuantityCaps && taggedQuantityCaps
-            ? this.countTaggedQuantityCandidates(lockedCandidates, taggedQuantityCaps)
-            : new Map<string, number>();
         const preparedCandidateCache = this.resolvePreparedCandidateCache(
             eligibleUnits,
             options.context,
             options,
             availabilityWeightCache,
         );
+        const lockedCandidates = (options.lockedUnits ?? []).map((lockedUnit) => {
+            const unit = this.resolveLockedUnitVariant(lockedUnit, preparedCandidateCache.candidates);
+            const resolvedLockedUnit = this.resolveLockedUnitForSelection(lockedUnit, unit, options);
+            return this.createCandidateUnit(
+                unit,
+                options.context,
+                options,
+                resolvedLockedUnit,
+                availabilityWeightCache,
+            );
+        });
+        const lockedUnitNames = new Set(lockedCandidates.map((candidate) => candidate.unit.name));
+        const lockedTaggedQuantityCounts = useTaggedQuantityCaps && taggedQuantityCaps
+            ? this.countTaggedQuantityCandidates(lockedCandidates, taggedQuantityCaps)
+            : new Map<string, number>();
         const availabilityCandidates = lockedUnitNames.size === 0 || useTaggedQuantityCaps
             ? preparedCandidateCache.candidates
             : preparedCandidateCache.candidates.filter((candidate) => !lockedUnitNames.has(candidate.unit.name));
@@ -3432,17 +3435,22 @@ export class ForceGeneratorService implements OnDestroy {
     ): Faction | null {
         const candidateFactionIds = new Set(availablePairs.map((pair) => pair.factionId));
         const candidates = selectedFactions.length > 0
-            ? selectedFactions.filter((faction) => candidateFactionIds.has(faction.id))
+            ? selectedFactions.filter((faction) => faction.id !== MULFACTION_NONE && candidateFactionIds.has(faction.id))
             : [...candidateFactionIds]
                 .map((factionId) => this.dataService.getFactionById(factionId))
-                .filter((faction): faction is Faction => faction !== undefined && faction.id !== MULFACTION_EXTINCT);
+                .filter((faction): faction is Faction => faction !== undefined
+                    && faction.id !== MULFACTION_EXTINCT
+                    && faction.id !== MULFACTION_NONE);
 
         if (candidates.length > 0) {
             return pickWeightedRandomEntry(candidates, () => 1);
         }
 
         if (selectedFactions.length > 0) {
-            return pickWeightedRandomEntry(selectedFactions, () => 1);
+            const fallbackCandidates = selectedFactions.filter((faction) => faction.id !== MULFACTION_NONE);
+            return fallbackCandidates.length > 0
+                ? pickWeightedRandomEntry(fallbackCandidates, () => 1)
+                : this.dataService.getFactionById(MULFACTION_MERCENARY) ?? null;
         }
 
         return this.dataService.getFactionById(MULFACTION_MERCENARY) ?? null;
@@ -3573,11 +3581,63 @@ export class ForceGeneratorService implements OnDestroy {
             gunnery: lockedUnit?.gunnery ?? baseCandidate.gunnery,
             piloting: lockedUnit?.piloting ?? baseCandidate.piloting,
             lockKey: lockedUnit?.lockKey,
+            variantGroupKey: lockedUnit?.variantGroupKey,
             locked: lockedUnit !== undefined,
             megaMekUnitType: baseCandidate.megaMekUnitType,
             megaMekWeightClass: baseCandidate.megaMekWeightClass,
             role: baseCandidate.role,
             motive: baseCandidate.motive,
+        };
+    }
+
+    private resolveLockedUnitVariant(
+        lockedUnit: GeneratedForceUnit,
+        candidatePool: readonly ForceGenerationCandidateUnit[],
+    ): Unit {
+        const variantGroupKey = lockedUnit.variantGroupKey;
+        if (!variantGroupKey) {
+            return lockedUnit.unit;
+        }
+
+        const variantCandidates = candidatePool.filter((candidate) => getUnitVariantGroupKey(candidate.unit) === variantGroupKey);
+        if (variantCandidates.length === 0) {
+            return lockedUnit.unit;
+        }
+
+        return pickWeightedRandomEntry(
+            variantCandidates,
+            (candidate) => Math.max(1, candidate.requisitionWeight + candidate.salvageWeight),
+        ).unit;
+    }
+
+    private resolveLockedUnitForSelection(
+        lockedUnit: GeneratedForceUnit,
+        unit: Unit,
+        options: ForceGenerationRequest,
+    ): GeneratedForceUnit {
+        const skill = options.gameSystem === GameSystem.ALPHA_STRIKE
+            ? lockedUnit.skill ?? lockedUnit.gunnery ?? options.gunnery
+            : undefined;
+        const gunnery = options.gameSystem === GameSystem.CLASSIC
+            ? lockedUnit.gunnery ?? lockedUnit.skill ?? options.gunnery
+            : undefined;
+        const piloting = options.gameSystem === GameSystem.CLASSIC
+            ? lockedUnit.piloting ?? options.piloting
+            : undefined;
+
+        return {
+            ...lockedUnit,
+            unit,
+            cost: getBudgetMetric(
+                unit,
+                options.gameSystem,
+                skill ?? gunnery ?? options.gunnery,
+                piloting ?? options.piloting,
+            ),
+            skill,
+            gunnery,
+            piloting,
+            lockKey: lockedUnit.lockKey ?? generateUUID(),
         };
     }
 
@@ -4886,10 +4946,10 @@ export class ForceGeneratorService implements OnDestroy {
             return context.availabilityFactionIds;
         }
 
-        return context.forceFaction
-            ? [context.forceFaction.id]
-            : context.availabilityFactionIds.length > 0
-                ? [context.availabilityFactionIds[0]]
+        return context.availabilityFactionIds.length > 0
+            ? [context.availabilityFactionIds[0]]
+            : context.forceFaction
+                ? [context.forceFaction.id]
                 : [];
     }
 
@@ -5103,6 +5163,7 @@ export class ForceGeneratorService implements OnDestroy {
             alias: candidate.alias,
             commander: candidate.commander,
             lockKey: candidate.lockKey ?? generateUUID(),
+            variantGroupKey: candidate.variantGroupKey,
         };
     }
 
@@ -5191,7 +5252,7 @@ export class ForceGeneratorService implements OnDestroy {
                     ? `; ruleset bias ${step.rulesetReasons.join(', ')}`
                     : '';
                 lines.push(
-                    `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: locked, P ${formatForceGeneratorWeight(step.requisitionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}${skillNote}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
+                    `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: locked, R ${formatForceGeneratorWeight(step.requisitionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}${skillNote}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
                 );
                 continue;
             }
@@ -5203,7 +5264,7 @@ export class ForceGeneratorService implements OnDestroy {
                 ? `; ruleset bias ${step.rulesetReasons.join(', ')}`
                 : '';
             lines.push(
-                `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: ${step.source} pick${fallbackNote}, P ${formatForceGeneratorWeight(step.requisitionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}${skillNote}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
+                `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: ${step.source} pick${fallbackNote}, R ${formatForceGeneratorWeight(step.requisitionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}${skillNote}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
             );
         }
 
@@ -5260,13 +5321,13 @@ export class ForceGeneratorService implements OnDestroy {
         const eraCount = this.getScopedAvailabilityEraIds(context).length;
         const factionCount = this.getScopedAvailabilityFactionIds(context).length;
         if (usesEraScope && usesFactionScope && eraCount > 0 && factionCount > 0) {
-            return `Availability weights: max P/S across ${eraCount} eras x ${factionCount} factions.`;
+            return `Availability weights: max R/S across ${eraCount} eras x ${factionCount} factions.`;
         }
         if (usesEraScope && eraCount > 0) {
-            return `Availability weights: max P/S across ${eraCount} eras.`;
+            return `Availability weights: max R/S across ${eraCount} eras.`;
         }
         if (usesFactionScope && factionCount > 0) {
-            return `Availability weights: max P/S across ${factionCount} factions.`;
+            return `Availability weights: max R/S across ${factionCount} factions.`;
         }
 
         return null;
@@ -5831,8 +5892,7 @@ export class ForceGeneratorService implements OnDestroy {
         selectedAttemptNumber: number,
         selectedReason: string,
     ): void {
-        if (!LOG_ATTEMPTS) return;
-        if (successfulAttempts.length === 0 || typeof console === 'undefined' || typeof console.log !== 'function') {
+        if (!LOG_ATTEMPTS || successfulAttempts.length === 0) {
             return;
         }
 
@@ -7071,7 +7131,7 @@ export class ForceGeneratorService implements OnDestroy {
         deadlineExpired: boolean,
         elapsedMs: number,
     ): void {
-        if (!LOG_ATTEMPTS || typeof console === 'undefined' || typeof console.log !== 'function') {
+        if (!LOG_ATTEMPTS) {
             return;
         }
 
@@ -7097,7 +7157,7 @@ export class ForceGeneratorService implements OnDestroy {
         message: string | null,
         deadlineExpired: boolean,
     ): void {
-        if (!LOG_ATTEMPTS || typeof console === 'undefined' || typeof console.log !== 'function') {
+        if (!LOG_ATTEMPTS) {
             return;
         }
 

@@ -32,11 +32,22 @@
  */
 
 import { Injectable, inject } from '@angular/core';
-import { REMOTE_HOST } from '../../models/common.model';
+import { HttpErrorResponse } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
+import { REMOTE_HOST, normalizeUnitServerUrl } from '../../models/common.model';
 import type { Unit, Units } from '../../models/units.model';
 import { DbService } from '../db.service';
+import { OptionsService } from '../options.service';
 import { UnitRuntimeService } from '../unit-runtime.service';
+import { generateUUID } from '../ws.service';
 import { CatalogBaseService } from './catalog-base.service';
+
+export function normalizeNullMulUnitIds(units: readonly Unit[]): Unit[] {
+    let nextNullMulId = -1;
+    return units.map((unit) => unit.id > 0
+        ? unit
+        : { ...unit, id: nextNullMulId-- });
+}
 
 @Injectable({
     providedIn: 'root'
@@ -44,6 +55,7 @@ import { CatalogBaseService } from './catalog-base.service';
 export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
     private readonly dbService = inject(DbService);
     private readonly unitRuntimeService = inject(UnitRuntimeService);
+    private readonly optionsService = inject(OptionsService);
 
     private units: Unit[] = [];
 
@@ -53,6 +65,16 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
 
     protected override get remoteUrl(): string {
         return `${REMOTE_HOST}/units.json`;
+    }
+
+    /**
+     * Loads the primary db.mekbay.com catalog through the base flow, then merges in units
+     * from any user-supplied additional unit servers. The primary source always wins on
+     * name collisions; additional servers may only contribute new-named units.
+     */
+    public override async initialize(): Promise<void> {
+        await super.initialize();
+        await this.loadCustomServers();
     }
 
     public getUnits(): Unit[] {
@@ -72,7 +94,7 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
     }
 
     protected override hydrate(data: Units): void {
-        this.units = data.units;
+        this.units = normalizeNullMulUnitIds(data.units);
         this.unitRuntimeService.preprocessUnits(this.units);
         this.etag = data.etag || '';
     }
@@ -90,5 +112,124 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
 
     protected override getMinimumDatasetSize(): number {
         return 9000;
+    }
+
+    private async loadCustomServers(): Promise<void> {
+        const configured = this.optionsService.options().unitServers ?? [];
+        const primaryHost = normalizeUnitServerUrl(REMOTE_HOST);
+        const servers = Array.from(new Set(
+            configured
+                .map(normalizeUnitServerUrl)
+                .filter(server => server && server !== primaryHost)
+        ));
+
+        if (servers.length === 0) {
+            return;
+        }
+
+        const usedNames = new Set(this.units.map(unit => unit.name.toLowerCase()));
+        const usedIds = new Set(this.units.map(unit => unit.id));
+        let nextSyntheticId = this.units.reduce((min, unit) => Math.min(min, unit.id), 0) - 1;
+
+        const customUnits: Unit[] = [];
+        for (const server of servers) {
+            let data: Units | null = null;
+            try {
+                data = await this.loadServerUnits(server);
+            } catch (error) {
+                this.logger.warn(`Failed to load units from additional server ${server}: ${this.describeServerError(error)}`);
+                continue;
+            }
+
+            if (!data || !Array.isArray(data.units)) {
+                continue;
+            }
+
+            let added = 0;
+            for (const rawUnit of data.units) {
+                const nameKey = rawUnit.name?.toLowerCase();
+                if (!nameKey || usedNames.has(nameKey)) {
+                    continue; // Primary source (or an earlier server) already owns this name.
+                }
+                usedNames.add(nameKey);
+
+                let id = rawUnit.id;
+                if (!(id > 0) || usedIds.has(id)) {
+                    id = nextSyntheticId--;
+                }
+                usedIds.add(id);
+
+                customUnits.push({ ...rawUnit, id, serverHost: server });
+                added++;
+            }
+            this.logger.info(`Loaded ${added} additional unit(s) from ${server}.`);
+        }
+
+        if (customUnits.length === 0) {
+            return;
+        }
+
+        this.units = [...this.units, ...customUnits];
+        this.unitRuntimeService.preprocessUnits(this.units);
+    }
+
+    private async loadServerUnits(server: string): Promise<Units | null> {
+        const url = `${server}/units.json`;
+        const cached = await this.dbService.getCustomServerUnits(server);
+
+        if (!navigator.onLine) {
+            return cached ?? null;
+        }
+
+        const remoteEtag = await this.getRemoteEtagFor(url);
+        if (cached && remoteEtag && cached.etag === remoteEtag) {
+            return cached;
+        }
+
+        try {
+            const response = await firstValueFrom(this.http.get<Units>(url, {
+                observe: 'response',
+                reportProgress: false,
+            }));
+
+            const body = response.body;
+            if (!body || !Array.isArray(body.units) || body.units.length === 0) {
+                this.logger.warn(`Additional server ${server} returned no usable units.`);
+                return cached ?? null;
+            }
+
+            const etag = response.headers.get('ETag') || remoteEtag || generateUUID();
+            const data: Units = { ...body, etag };
+            await this.dbService.saveCustomServerUnits(server, data);
+            return data;
+        } catch (error) {
+            this.logger.warn(`Failed to download units from ${server}: ${this.describeServerError(error)}`);
+            return cached ?? null;
+        }
+    }
+
+    private async getRemoteEtagFor(url: string): Promise<string> {
+        try {
+            const response = await firstValueFrom(this.http.head(url, {
+                observe: 'response',
+                responseType: 'text',
+            }));
+            return response.headers.get('ETag') || '';
+        } catch {
+            return '';
+        }
+    }
+
+    private describeServerError(error: unknown): string {
+        if (error instanceof HttpErrorResponse) {
+            if (error.status === 0) {
+                return `network/CORS error (status 0). Ensure the server is reachable and sends an 'Access-Control-Allow-Origin' header for units.json.`;
+            }
+            return `HTTP ${error.status} ${error.statusText}`.trim();
+        }
+        if (error instanceof Error) {
+            return `${error.name}: ${error.message}`;
+        }
+        return String(error);
     }
 }

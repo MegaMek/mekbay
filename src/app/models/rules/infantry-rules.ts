@@ -31,19 +31,28 @@
  * affiliated with Microsoft.
  */
 
-import { signal } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
-import type { UnitTypeRules } from './unit-type-rules';
-import type { PSRCheck } from '../turn-state.model';
+import { WeaponEquipment } from '../equipment.model';
+import type { MountedEquipment } from '../force-serialization';
+import type { MotiveModes } from '../motiveModes.model';
+import { getTargetUnitTypeModifier } from '../target-number-calculator.model';
+import type { TurnState } from '../turn-state.model';
+import type { UnitComponent } from '../units.model';
+import type { MountedEquipmentRuleState } from './unit-type-rules';
+import { UnitTypeRulesBase, type UnitModifierBreakdownEntry } from './unit-type-rules';
+
+export const FIELD_GUN_LOCATION = 'FGUN';
 
 /**
  * Author: Drake
  * 
  * Infantry / Battle Armor game rules.
  */
-export class InfantryRules implements UnitTypeRules {
+export class InfantryRules extends UnitTypeRulesBase {
 
-    constructor(private unit: CBTForceUnit) {}
+    constructor(unit: CBTForceUnit) {
+        super(unit);
+    }
 
     evaluateDestroyed(): void {
         this.evaluateInventoryDestruction();
@@ -73,15 +82,85 @@ export class InfantryRules implements UnitTypeRules {
 
     /** Mark inventory entries as destroyed when the T1 armor location is gone. */
     evaluateInventoryDestruction(): void {
+        const squadSize = this.unit.getUnit().squadSize ?? 1;
+        let allSquadsDestroyed = true;
+        for (let i = 1; i <= squadSize; i++) {
+            if (!this.unit.isArmorLocCommittedDestroyed(`T${i}`)) {
+                allSquadsDestroyed = false;
+                break;
+            }
+        }
         const t1Destroyed = this.unit.isArmorLocDestroyed('T1');
         for (const entry of this.unit.getInventory()) {
-            if (entry.equipment) {
-                entry.destroyed = t1Destroyed;
+            if (!entry.equipment) continue;
+            entry.setCommittedDestroyed(allSquadsDestroyed);
+            if (allSquadsDestroyed) continue;
+            
+            // TODO: not working, locations is empty for Infantry!!!! FIX ME!
+            if (entry.locations?.has('SSW')) { 
+                entry.setCommittedDestroyed(t1Destroyed);
             }
         }
     }
 
-    /** Infantry does not support PSR. */
-    readonly PSRModifiers = signal<{ modifier: number; modifiers: PSRCheck[] }>({ modifier: 0, modifiers: [] });
-    readonly PSRTargetRoll = signal<number>(0);
+    protected override getTargetUnitTypeModifierBreakdown(_turnState: TurnState): UnitModifierBreakdownEntry[] {
+        const baseUnit = this.unit.getUnit();
+        if (baseUnit.subtype !== 'Battle Armor') return [];
+        return [{ label: 'Battle Armor', modifier: getTargetUnitTypeModifier('battle-armor') }];
+    }
+
+    override getMinDistanceForMoveMode(moveMode: MotiveModes): number | null {
+        if (moveMode === 'jump') return 1;
+        return null;
+    }
+
+    override computeEntryState(entry: MountedEquipment): MountedEquipmentRuleState {
+        const state = super.computeEntryState(entry);
+        return {
+            ...state,
+            isDisabled: state.isDisabled || this.isInfantryFieldGunEntryDisabled(entry)
+        };
+    }
+
+    isInfantryFieldGunEntryDisabled(entry: MountedEquipment): boolean {
+        const componentRef = this.getInventoryComponentRef(entry);
+        const component = this.getFieldGunComponent(entry);
+        if (!component || componentRef === null || componentRef.binIndex === null) return false;
+        return componentRef.binIndex >= this.getFieldGunFunctionalCount(component);
+    }
+
+    getFieldGunFunctionalCount(component: UnitComponent): number {
+        const crewSize = Math.max(1, component.cw ?? 1);
+        const maxGuns = Math.max(0, component.q ?? 0);
+        return Math.min(maxGuns, Math.floor(this.getCommittedInfantryTroopCount() / crewSize));
+    }
+
+    private getCommittedInfantryTroopCount(): number {
+        const totalTroops = this.unit.locations?.internal.get('TROOP')?.points
+            ?? this.unit.getUnit().internal
+            ?? ((this.unit.getUnit().squads ?? 0) * (this.unit.getUnit().squadSize ?? 0));
+        const committedDamage = this.unit.getCommittedInternalHits('TROOP');
+        return Math.max(0, totalTroops - committedDamage);
+    }
+
+    getFieldGunComponent(entry: MountedEquipment): UnitComponent | null {
+        if (this.unit.getUnit().type !== 'Infantry' || this.unit.getUnit().subtype === 'Battle Armor') return null;
+        if (!(entry.equipment instanceof WeaponEquipment)) return null;
+        const componentRef = this.getInventoryComponentRef(entry);
+        const component = componentRef === null ? undefined : this.unit.getUnit().comp[componentRef.componentIndex];
+        if (!component || component.l !== FIELD_GUN_LOCATION || component.t === 'X') return null;
+        return component;
+    }
+
+    private getInventoryComponentRef(entry: MountedEquipment): { componentIndex: number; binIndex: number | null } | null {
+        const indexText = entry.id.split('#').pop();
+        if (!indexText) return null;
+        const [componentIndexText, binIndexText] = indexText.split('.');
+        const componentIndex = Number(componentIndexText);
+        const binIndex = binIndexText === undefined ? null : Number(binIndexText);
+        if (!Number.isInteger(componentIndex)) return null;
+        if (binIndex !== null && !Number.isInteger(binIndex)) return null;
+        return { componentIndex, binIndex };
+    }
+
 }

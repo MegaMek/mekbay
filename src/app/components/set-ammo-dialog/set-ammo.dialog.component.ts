@@ -31,11 +31,16 @@
  * affiliated with Microsoft.
  */
 
-
 import { ChangeDetectionStrategy, Component, computed, type ElementRef, inject, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import type { AmmoEquipment } from '../../models/equipment.model';
+import type { Era } from '../../models/eras.model';
+import type { MountedEquipment } from '../../models/force-serialization';
+import type { UnitType } from '../../models/units.model';
 import { DialogsService } from '../../services/dialogs.service';
+import { AmmoValidityUtil } from '../../utils/ammo-validity.util';
+import { getAmmoInfoItems, SetAmmoDropdownComponent } from './set-ammo-dropdown.component';
+import { AdvancementTimelineComponent, getEquipmentAdvancementTimeline, type EquipmentAdvancementTimeline } from './advancement-timeline.component';
 
 /*
  * Author: Drake
@@ -47,13 +52,16 @@ export interface SetAmmoDialogData {
     ammoOptions: AmmoEquipment[];
     quantity: number;
     maxQuantity: number;
+    unitType?: UnitType;
+    era?: Era | null;
+    inventory?: readonly MountedEquipment[];
 }
 
 @Component({
     selector: 'set-ammo-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
+    imports: [SetAmmoDropdownComponent, AdvancementTimelineComponent],
     host: {
         class: 'fullscreen-dialog-host glass'
     },
@@ -63,32 +71,30 @@ export interface SetAmmoDialogData {
             <div class="form-row">
                 <div class="form-fields">
                     <label class="field-label">Ammo Type</label>
-                    <select
-                        class="field-input"
-                        #inputNameRef
-                        id="inputName"
-                        (change)="onAmmoTypeChange($event)"
-                        required
-                    >
-                        @for (ammo of data.ammoOptions; let i = $index; track i) {
-                            <option
-                                [value]="ammo.internalName"
-                                [selected]="ammo.internalName === data.currentAmmo.internalName"
-                            >
-                            @if (mixedTechBase() && ammo.techBase !== 'All') {
-                                [{{ ammo.techBase === 'IS' ? 'IS' : ammo.techBase === 'Clan' ? 'CL' : '*' }}]&nbsp;
+                    <set-ammo-dropdown
+                        class="ammo-select"
+                        controlId="inputName"
+                        label="Ammo Type"
+                        [options]="ammoOptions()"
+                        [ammoSelectionStatus]="ammoSelectionStatus()"
+                        [value]="selectedAmmoName()"
+                        [currentAmmo]="data.currentAmmo"
+                        [originalAmmo]="data.originalAmmo"
+                        (valueChange)="setSelectedAmmo($event)"
+                    />
+                    @let issues = selectedAmmoSelectionIssues();
+                    @if (issues.length > 0) {
+                        <div class="ammo-selection-issues">
+                            @for (issue of issues; track issue.reason) {
+                                <span class="ammo-selection-issue">{{ issue.message }}</span>
                             }
-                            {{ ammo.name }}
-                            @if (data.ammoOptions.length > 1
-                            && ammo.internalName === data.originalAmmo.internalName
-                            && data.originalAmmo.internalName != data.currentAmmo.internalName){&nbsp;\u2605}
-                            </option>
-                        }
-                    </select>
+                        </div>
+                    }
                 </div>
                 <div class="form-fields ammo-quantity">
                     <label class="field-label">Quantity</label>
                     <div class="quantity-group">
+                    <button class="bt-button square-small quantity-adjust" type="button" (click)="adjustQuantity(-1)">-</button>
                     <input
                         class="field-input"
                         #inputQuantityRef
@@ -102,9 +108,34 @@ export interface SetAmmoDialogData {
                         (keydown.enter)="submit()"
                         required
                     />
+                    <button class="bt-button square-small quantity-adjust" type="button" (click)="adjustQuantity(1)">+</button>
                     <span class="max-quantity">/{{ currentMaxQuantity() }}</span>
                     </div>
                 </div>
+            </div>
+            <div class="ammo-info-section">
+                <div class="ammo-info-items">
+                    @for (item of selectedAmmoInfoItems(); track item.label) {
+                        <span class="ammo-info-item"><span class="ammo-info-label">{{ item.label }}: </span><strong>{{ item.value }}</strong></span>
+                    }
+                </div>
+                @let timeline = advancement();
+                @if (timeline.timelines.length > 0) {
+                    <advancement-timeline [slots]="timeline.slots" [timelines]="timeline.timelines" />
+                }
+                <!-- @for (group of selectedAmmoInfo(); track group.group) {
+                    @if (group.group === 'History') {
+                    } @else {
+                        <div class="ammo-info-spec-grid">
+                            @for (item of group.items; track item.label) {
+                                <div class="ammo-info-spec">
+                                    <span class="ammo-info-spec-label">{{ item.label }}</span>
+                                    <span class="ammo-info-spec-value">{{ item.value }}</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                } -->
             </div>
         </div>
         <div class="wide-dialog-actions">
@@ -120,14 +151,19 @@ export interface SetAmmoDialogData {
                 align-self: center;
             }
         }
+
+        .ammo-select {
+            width: 100%;
+        }
+        
         .ammo-quantity {
             flex: 0 0 auto;
         }
 
         .quantity-group {
             display: flex;
-            align-items: baseline;
-            gap: 2px;
+            align-items: center;
+            gap: 4px;
         }
 
         .max-quantity {
@@ -154,46 +190,121 @@ export interface SetAmmoDialogData {
             -webkit-appearance: none;
             margin: 0;
         }
+
+        .quantity-adjust {
+            width: 32px;
+            height: 32px;
+            min-width: 32px;
+        }
+
+        .ammo-info-section {
+            display: grid;
+            gap: 8px;
+            color: var(--text-color-secondary);
+            text-align: left;
+        }
+
+        .ammo-info-items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px 12px;
+            align-items: baseline;
+            padding-left: 4px;
+        }
+
+        .ammo-info-item {
+            display: inline-flex;
+            gap: 2px;
+            align-items: baseline;
+            min-width: 0;
+            color: var(--text-color);
+            font-size: 0.92em;
+            line-height: 1.25;
+        }
+
+        .ammo-info-label {
+            color: var(--text-color-secondary);
+            white-space: nowrap;
+        }
+
+        .ammo-selection-issues {
+            display: grid;
+            gap: 2px;
+            margin-top: 0px;
+            padding-left: 4px;
+        }
+
+        .ammo-selection-issue {
+            display: block;
+            color: red;
+            font-size: 0.84em;
+            line-height: 1.15;
+        }
+
+        .ammo-info-spec-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 8px;
+        }
+
+        .ammo-info-spec {
+            display: grid;
+            gap: 3px;
+            min-width: 0;
+            padding: 9px 10px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(0, 0, 0, 0.22);
+        }
+
+        .ammo-info-spec-label {
+            color: var(--text-color-secondary);
+            font-size: 0.72em;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            line-height: 1.1;
+            text-transform: uppercase;
+        }
+
+        .ammo-info-spec-value {
+            min-width: 0;
+            color: var(--text-color);
+            font-size: 1.02em;
+            line-height: 1.2;
+            overflow-wrap: anywhere;
+        }
+
     `]
 })
 
 export class SetAmmoDialogComponent {
     private dialogsService = inject(DialogsService)
-    inputNameRef = viewChild.required<ElementRef<HTMLSelectElement>>('inputNameRef');
     inputQuantityRef = viewChild.required<ElementRef<HTMLInputElement>>('inputQuantityRef');
     public dialogRef: DialogRef<{name: string; quantity: number, totalAmmo: number} | null, SetAmmoDialogComponent> = inject(DialogRef);
     readonly data: SetAmmoDialogData = inject(DIALOG_DATA);
     public totalKgAvailable: number;
     
-    // Add a signal to track the currently selected ammo
-    private selectedAmmoName = signal(this.data.currentAmmo.internalName);
-    mixedTechBase = computed(() => {
-        return this.data.ammoOptions.some(ammo => ammo.techBase === 'Clan') &&
-            this.data.ammoOptions.some(ammo => ammo.techBase === 'IS');
-    });
+    selectedAmmoName = signal(this.data.currentAmmo.internalName);
+    ammoOptions = computed(() => this.data.ammoOptions);
+    ammoSelectionStatus = computed(() => AmmoValidityUtil.getAmmoSelectionStatus(this.ammoOptions(), this.data));
+    selectedAmmo = computed(() => this.ammoOptions().find(
+        ammo => ammo.internalName === this.selectedAmmoName()
+    ) ?? this.data.currentAmmo);
+    selectedAmmoInfoItems = computed(() => getAmmoInfoItems(this.selectedAmmo()));
+    selectedAmmoSelectionIssues = computed(() => this.ammoSelectionStatus()[this.selectedAmmo().internalName]?.issues ?? []);
+    advancement = computed<EquipmentAdvancementTimeline>(() => getEquipmentAdvancementTimeline(this.selectedAmmo()));
     
-    // Computed property for current max quantity
     public currentMaxQuantity = computed(() => {
-        const selectedAmmo = this.data.ammoOptions.find(
-            ammo => ammo.internalName === this.selectedAmmoName()
-        );
-        if (selectedAmmo) {
-            return Math.floor(this.totalKgAvailable / selectedAmmo.kgPerShot);
-        }
-        return this.data.maxQuantity;
+        return Math.floor(this.totalKgAvailable / this.selectedAmmo().kgPerShot);
     });
 
     constructor() {
         this.totalKgAvailable = this.data.originalAmmo.kgPerShot * this.data.originalTotalAmmo;
     }
 
-    // Add method to handle ammo type change
-    onAmmoTypeChange(event: Event) {
-        const selectElement = event.target as HTMLSelectElement;
+    setSelectedAmmo(internalName: string) {
         const previousMaxQuantity = this.currentMaxQuantity();
-        this.selectedAmmoName.set(selectElement.value);
+        this.selectedAmmoName.set(internalName);
         
-        // Reset quantity input to not exceed new max
         const nativeEl = this.inputQuantityRef().nativeElement;
         const currentQuantity = Number(nativeEl.value);
         const newMaxQuantity = this.currentMaxQuantity();
@@ -204,6 +315,15 @@ export class SetAmmoDialogComponent {
         }
     }
 
+    adjustQuantity(delta: number) {
+        const nativeEl = this.inputQuantityRef().nativeElement;
+        const currentQuantity = nativeEl.value === '' ? this.data.quantity : Number(nativeEl.value);
+        if (isNaN(currentQuantity)) return;
+
+        const nextQuantity = Math.max(0, Math.min(this.currentMaxQuantity(), currentQuantity + delta));
+        nativeEl.value = nextQuantity.toString();
+    }
+
     async dump() {
         const result = await this.dialogsService.requestConfirmation('Are you sure you want to dump all ammo?', 'Confirm Dump', 'danger')
         if (result) {
@@ -212,8 +332,8 @@ export class SetAmmoDialogComponent {
     }
 
     submit() {
-        const selectedInternalName = this.inputNameRef().nativeElement.value;
-        let selectedAmmo = this.data.ammoOptions.find(
+        const selectedInternalName = this.selectedAmmoName();
+        let selectedAmmo = this.ammoOptions().find(
             ammo => ammo.internalName === selectedInternalName
         );
         let quantity = this.inputQuantityRef().nativeElement.value;

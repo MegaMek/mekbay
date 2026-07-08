@@ -8,6 +8,7 @@
     left: 0;
     box-sizing: border-box;
     background-color: transparent;
+    transition: background-color 1.6s, outline 0.6s;
     cursor: pointer;
 }
 
@@ -19,7 +20,12 @@
     opacity: 0.1;
 }
 
-.page-wrapper.shadow-page svg {
+.page-wrapper.shadow-page.promoted-shadow-page {
+    opacity: 1;
+    cursor: default;
+}
+
+.page-wrapper.shadow-page ::ng-deep svg {
     pointer-events: none;
 }
 
@@ -30,5 +36,11 @@
 @media screen {
     :host-context(.night-mode) .page-wrapper.shadow-page.has-svg {
         background-color: unset;
+    }
+}
+
+@media print {
+    .page-wrapper.shadow-page {
+        display: none;
     }
 }

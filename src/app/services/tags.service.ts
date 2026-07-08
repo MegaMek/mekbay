@@ -38,6 +38,7 @@ import { UserStateService } from './userState.service';
 import { LoggerService } from './logger.service';
 import { DialogsService } from './dialogs.service';
 import type { Unit } from '../models/units.model';
+import { getUnitVariantGroupKey } from '../utils/unit-variant.util';
 
 /*
  * Author: Drake
@@ -60,6 +61,8 @@ const TAG_ACTION = {
     add: 1,
     rename: 2,
 } as const;
+
+const TAG_FORMAT_VERSION = 4;
 
 interface TagCommitOptions {
     timestamp?: number;
@@ -108,10 +111,10 @@ export class TagsService {
 
     /**
      * Generates the chassis tag key for a unit.
-     * Format: `${chassis}|${type}` to uniquely identify a chassis across types.
+     * Format: `${chassis}|${as.TP}|${omni ? 'O' : ''}` to match variant groups.
      */
     public static getChassisTagKey(unit: Unit): string {
-        return `${unit.chassis}|${unit.type}`;
+        return getUnitVariantGroupKey(unit);
     }
 
     // ================== Initialization ==================
@@ -131,7 +134,57 @@ export class TagsService {
     }
 
     private createEmptyTagData(): TagData {
-        return { tags: {}, timestamp: 0, formatVersion: 3 };
+        return { tags: {}, timestamp: 0, formatVersion: TAG_FORMAT_VERSION };
+    }
+
+    public async migrateChassisTagsToVariantGroups(units: Unit[], tagData?: TagData): Promise<TagData> {
+        const data = tagData ?? await this.getTagData();
+        const migration = this.migrateChassisTagDataToVariantGroups(data, units);
+        if (!migration.changed) {
+            return data;
+        }
+
+        try {
+            await this.commitFullState(data, { timestamp: Date.now(), notifyLocal: false, syncToCloud: migration.migratedKeys });
+        } catch (err) {
+            this.logger.error('Failed to migrate chassis tags to variant groups: ' + err);
+        }
+        return data;
+    }
+
+    private migrateChassisTagDataToVariantGroups(tagData: TagData, units: Unit[]): { changed: boolean; migratedKeys: boolean } {
+        if (tagData.formatVersion >= TAG_FORMAT_VERSION) {
+            return { changed: false, migratedKeys: false };
+        }
+
+        if (Object.keys(tagData.tags).length === 0) {
+            tagData.formatVersion = TAG_FORMAT_VERSION;
+            return { changed: true, migratedKeys: false };
+        }
+
+        const oldKeyToVariantKeys = this.buildLegacyChassisKeyMap(units);
+        let migratedKeys = false;
+
+        for (const entry of Object.values(tagData.tags)) {
+            const migratedChassis: Record<string, UnitTagData> = {};
+            for (const [chassisKey, tagValue] of Object.entries(entry.chassis)) {
+                const variantKeys = oldKeyToVariantKeys.get(chassisKey);
+                if (!variantKeys) {
+                    migratedChassis[chassisKey] = this.mergeTagData(migratedChassis[chassisKey], tagValue);
+                    continue;
+                }
+
+                migratedKeys = true;
+                for (const variantKey of variantKeys) {
+                    migratedChassis[variantKey] = this.mergeTagData(migratedChassis[variantKey], tagValue);
+                }
+            }
+
+            entry.chassis = migratedChassis;
+        }
+
+        tagData.formatVersion = TAG_FORMAT_VERSION;
+        return { changed: true, migratedKeys };
     }
 
     /** Get cached tag data (or load from storage if not cached) */
@@ -713,6 +766,28 @@ export class TagsService {
         return quantity > 1 ? { q: quantity } : {};
     }
 
+    private buildLegacyChassisKeyMap(units: Unit[]): Map<string, Set<string>> {
+        const result = new Map<string, Set<string>>();
+        for (const unit of units) {
+            const oldKey = `${unit.chassis}|${unit.type}`;
+            let variantKeys = result.get(oldKey);
+            if (!variantKeys) {
+                variantKeys = new Set<string>();
+                result.set(oldKey, variantKeys);
+            }
+            variantKeys.add(TagsService.getChassisTagKey(unit));
+        }
+        return result;
+    }
+
+    private mergeTagData(current: UnitTagData | undefined, next: UnitTagData): UnitTagData {
+        if (!current) {
+            return { ...next };
+        }
+
+        return this.toUnitTagData(Math.max(this.getStoredQuantity(current), this.getStoredQuantity(next)));
+    }
+
     private isUnitTagQuantity(tagData: TagData, tagId: string, unitName: string, quantity: number): boolean {
         const current = tagData.tags[tagId]?.units[unitName];
         return this.getStoredQuantity(current) === quantity;
@@ -941,10 +1016,21 @@ export class TagsService {
             } else {
                 // No pending ops - apply any cloud changes
                 await this.applyCloudState(response, serverTs);
+                const upgradedLocalData = await this.getTagData();
+                if (this.shouldUpgradeRemoteTagState(response, upgradedLocalData)) {
+                    await this.pushFullStateToCloud();
+                }
             }
         } catch (err) {
             this.logger.error('Failed to sync tags from cloud: ' + err);
         }
+    }
+
+    private shouldUpgradeRemoteTagState(response: any, localData: TagData): boolean {
+        const remoteFormatVersion = response.formatVersion ?? response.fullState?.formatVersion ?? TAG_FORMAT_VERSION;
+        return response.serverTs > 0
+            && remoteFormatVersion < TAG_FORMAT_VERSION
+            && localData.formatVersion >= TAG_FORMAT_VERSION;
     }
 
     /**
@@ -956,7 +1042,7 @@ export class TagsService {
             const v3Data: TagData = {
                 tags: response.fullState.tags || {},
                 timestamp: serverTs,
-                formatVersion: 3
+                formatVersion: response.fullState.formatVersion ?? TAG_FORMAT_VERSION
             };
             await this.dbService.saveAllTagData(v3Data);
             await this.dbService.clearPendingTagOps(serverTs);

@@ -95,7 +95,7 @@ export interface ConfirmDialogData<T = any> {
         }
 
         h2 {
-            margin-top: 8px;
+            margin-top: 4px;
             margin-bottom: 8px;
         }
 

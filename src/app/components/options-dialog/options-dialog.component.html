@@ -132,7 +132,7 @@
             }
             @case ('Account') {
             <div class="settings-view-content">
-            <div class="option-col">                
+            <div class="option-col">
                 <label for="userUuid">User identifier:</label>
                 <div class="option-row">
                     <div class="sensitive-input-wrapper">
@@ -282,7 +282,7 @@
                 <p>No OAuth providers are configured on the server yet.</p>
             </div>
             }
-            
+
             @if (userHasOAuth()) {
             <div class="option-section-title">Log Out</div>
             <div class="option-col account-logout-block">
@@ -566,6 +566,19 @@
             }
             @case ('Advanced') {
             <div class="settings-view-content">
+            <div class="option-col">
+                <div class="option-row">
+                    <label for="performanceMode">Performance mode:</label>
+                    <select id="performanceMode" class="bt-select" [value]="optionsService.options().performanceMode"
+                        (change)="onPerformanceModeChange($event)">
+                        <option value="false">Disabled (default)</option>
+                        <option value="true">Enabled</option>
+                    </select>
+                </div>
+                <div class="description">
+                    <p>Reduces expensive visual effects in components that support a lighter rendering path.</p>
+                </div>
+            </div>
             <div class="option-row">
                 <label for="pickerStyle">Picker style:</label>
                 <select id="pickerStyle" class="bt-select" [value]="optionsService.options().pickerStyle"
@@ -611,6 +624,46 @@
                 <div class="description">
                     <p>Controls how long the force generator keeps searching before stopping when no valid force is found.</p>
                 </div>
+            </div>
+            <hr />
+            <div class="option-col">
+                <div class="option-row">
+                    <label for="newUnitServerUrl">Additional unit servers:</label>
+                </div>
+                <div class="description">
+                    <p>Load custom units from your own unit servers in addition to db.mekbay.com.</p>
+                    <p>Each server must host a <code>units.json</code>, with record sheets under <code>/sheets/</code>
+                        and fluff art under <code>/images/fluff/</code>, mirroring db.mekbay.com. db.mekbay.com always
+                        takes precedence &mdash; custom servers may only add units with new names. Equipment and other
+                        catalogs are always loaded from db.mekbay.com.</p>
+                </div>
+                @if (unitServersDraft().length > 0) {
+                <div class="unit-servers-list">
+                    @for (server of unitServersDraft(); let i = $index; track server) {
+                    <div class="option-row unit-server-row">
+                        <span class="unit-server-url allow-select">{{ server }}</span>
+                        <button class="bt-button" (click)="removeUnitServer(i)">REMOVE</button>
+                    </div>
+                    }
+                </div>
+                }
+                <div class="option-row unit-server-add-row">
+                    <input id="newUnitServerUrl" type="url" class="bt-input" placeholder="https://db.example.com"
+                        [value]="newUnitServerUrl()" (input)="onNewUnitServerUrlInput($event)"
+                        (keydown.enter)="addUnitServer()" />
+                    <button class="bt-button" (click)="addUnitServer()">ADD</button>
+                </div>
+                @if (unitServerError()) {
+                <div class="description unit-server-error">
+                    <p>{{ unitServerError() }}</p>
+                </div>
+                }
+                @if (unitServersDirty()) {
+                <div class="option-row">
+                    <span>Changes require a reload to take effect.</span>
+                    <button class="bt-button" (click)="applyUnitServers()">SAVE &amp; RELOAD</button>
+                </div>
+                }
             </div>
             <hr />
             <div class="option-col">
@@ -674,6 +727,13 @@
         @if (isWideLayout()) {
         <div class="options-desktop-shell">
             <nav class="options-nav" aria-label="Options sections">
+                @if (appUpdateService.updatePending()) {
+                <div class="options-nav-item update-entry">
+                    <button type="button" class="bt-button warning restart-update-button" (click)="restartToUpdate()">
+                        INSTALL UPDATE
+                    </button>
+                </div>
+                }
                 <div class="options-nav-heading">Sections</div>
                 @for (section of topLevelViews; track section.id) {
                 <button type="button" class="options-nav-item" [class.active]="isSectionActive(section.id)"
@@ -702,6 +762,13 @@
         <div class="options-mobile-shell">
             @if (isAtRoot()) {
             <div class="mobile-settings-list" role="list">
+                @if (appUpdateService.updatePending()) {
+                <div class="mobile-settings-item update-entry">
+                    <button type="button" class="bt-button warning restart-update-button" (click)="restartToUpdate()">
+                        INSTALL UPDATE
+                    </button>
+                </div>
+                }
                 @for (section of topLevelViews; track section.id) {
                 <button type="button" class="mobile-settings-item" role="listitem"
                     (click)="openMobileSection(section.id)">

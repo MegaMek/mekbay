@@ -66,7 +66,7 @@ export type MegaMekRaritySortKey =
 export type DropdownOptionSource = 'indexed' | 'external' | 'context';
 export type DropdownAvailabilitySource = 'indexed' | 'context';
 export type DropdownPropertyShape = 'scalar' | 'array' | 'component';
-export type BooleanFilterSource = 'boolean' | 'nonEmptyArray';
+export type BooleanFilterSource = 'boolean' | 'nonEmptyArray' | 'truthy';
 export type TriStateBooleanFilterValue = null | 'or' | 'not';
 
 export enum AdvFilterType {
@@ -281,6 +281,10 @@ export function getBooleanFilterUnitValue(
         return Array.isArray(rawValue) && rawValue.length > 0;
     }
 
+    if (conf.booleanSource === 'truthy') {
+        return typeof rawValue === 'string' ? rawValue.trim().length > 0 : Boolean(rawValue);
+    }
+
     return rawValue === true;
 }
 
@@ -469,6 +473,12 @@ export const BOOLEAN_FILTERS: readonly BooleanFilterConfig[] = Object.freeze([
         label: 'Published Record Sheet',
         booleanSource: 'nonEmptyArray',
     },
+    {
+        key: 'serverHost',
+        semanticKey: 'custom',
+        label: 'Custom Unit',
+        booleanSource: 'truthy',
+    },
 ]);
 
 /** Range filters - separated for clean iteration */
@@ -489,7 +499,7 @@ export const RANGE_FILTERS: readonly RangeFilterConfig[] = Object.freeze([
     { key: 'run', semanticKey: 'run', label: 'Run MP', curve: 0.9, game: GameSystem.CLASSIC },
     { key: 'jump', semanticKey: 'jump', label: 'Jump MP', curve: 0.9, game: GameSystem.CLASSIC },
     { key: 'umu', semanticKey: 'umu', label: 'UMU MP', curve: 0.9, game: GameSystem.CLASSIC },
-    { key: 'year', semanticKey: 'year', label: 'Year', curve: 1 },
+    { key: 'year', semanticKey: 'year', label: 'Intro Year', curve: 1 },
     { key: 'cost', semanticKey: 'cost', label: 'Cost', curve: 0, game: GameSystem.CLASSIC },
     { key: 'as.SZ', semanticKey: 'sz', label: 'Size', curve: 1, game: GameSystem.ALPHA_STRIKE },
     { key: 'as.TMM', semanticKey: 'tmm', label: 'TMM', curve: 1, game: GameSystem.ALPHA_STRIKE },
@@ -551,6 +561,6 @@ export const SORT_OPTIONS: SortOption[] = [
             gameSystem: f.game,
             // slotIcon: f.slotIcon
         } as SortOption)),
-    { key: MEGAMEK_RARITY_PRODUCTION_SORT_KEY, label: 'RAT Rarity (P)', slotLabel: 'RAT Rarity (P)' },
-    { key: MEGAMEK_RARITY_SALVAGE_SORT_KEY, label: 'RAT Rarity (S)', slotLabel: 'RAT Rarity (S)' },
+    { key: MEGAMEK_RARITY_PRODUCTION_SORT_KEY, label: 'RAT Requisition', slotLabel: 'RAT Requisition' },
+    { key: MEGAMEK_RARITY_SALVAGE_SORT_KEY, label: 'RAT Salvage', slotLabel: 'RAT Salvage' },
 ];

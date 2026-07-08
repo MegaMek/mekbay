@@ -39,15 +39,15 @@ import { firstValueFrom } from 'rxjs';
 
 export class C3Handler extends EquipmentInteractionHandler {
     readonly id = 'c3-handler';
-    readonly flags: string[] = ['ANY_C3'];
+    override readonly flags: string[] = ['ANY_C3'];
     override readonly priority = 10;
 
     getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {
         return [
             {
-                label: 'Configure network',
+                label: 'Configure',
                 value: 'c3-network-configuration',
-                disabled: equipment.destroyed,
+                disabled: equipment.isUnavailable(),
                 displayType: 'button'
             }
         ];

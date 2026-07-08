@@ -47,7 +47,7 @@ import type { SpecialAbilityClickEvent } from './layouts/layout-base.component';
 import { CriticalHitRollDialogComponent, type CriticalHitRollDialogData } from './critical-hit-roll-dialog/critical-hit-roll-dialog.component';
 import { MotiveDamageRollDialogComponent, type MotiveDamageRollDialogData } from './motive-damage-roll-dialog/motive-damage-roll-dialog.component';
 import { AsLayoutStandardComponent, AsLayoutLargeVessel1Component, AsLayoutLargeVessel2Component } from './layouts';
-import { GameSystem, REMOTE_HOST } from '../../models/common.model';
+import { GameSystem, getUnitServerHost } from '../../models/common.model';
 import type { ChoicePickerInstance, NumericPickerInstance, NumericPickerResult, PickerChoice, PickerPosition } from '../picker/picker.interface';
 import { vibrate } from '../../utils/vibrate.util';
 import { firstValueFrom } from 'rxjs';
@@ -185,7 +185,7 @@ export class AlphaStrikeCardComponent {
             const unit = this.resolvedUnit();
             const imagePath = unit?.fluff?.img;
             if (imagePath) {
-                this.loadFluffImage(imagePath);
+                this.loadFluffImage(imagePath, unit?.serverHost);
             } else {
                 this.imageUrl.set('');
             }
@@ -247,13 +247,13 @@ export class AlphaStrikeCardComponent {
         });
     }
     
-    private async loadFluffImage(imagePath: string): Promise<void> {
+    private async loadFluffImage(imagePath: string, serverHost?: string): Promise<void> {
         try {    
             if (imagePath.endsWith('hud.png')) {
                 this.imageUrl.set('');
                 return;
             }
-            const fluffImageUrl = `${REMOTE_HOST}/images/fluff/${imagePath}`;
+            const fluffImageUrl = `${getUnitServerHost({ serverHost })}/images/fluff/${imagePath}`;
             this.imageUrl.set(fluffImageUrl);
         } catch {
             // Ignore errors, image will just not display
