@@ -1,5 +1,6 @@
 :host {
     display: block;
+    position: relative;
     container-type: inline-size;
 
     &.export-mode {
@@ -16,9 +17,9 @@
 }
 
 .card-container {
-    position: relative;
     width: 100%;
     aspect-ratio: 1120 / 800;
+    display: block;
     font-family: 'Roboto', sans-serif;
     font-size: 1cqw;
     page-break-inside: avoid;
@@ -30,17 +31,60 @@
     }
 }
 
-.card-shell {
+.crit-roll-button-overlay,
+.commit-button {
     position: absolute;
-    inset: 0;
+    z-index: 10;
+    pointer-events: auto;
+
+    @media print {
+        display: none;
+    }
+}
+
+.crit-roll-button-overlay {
+    top: 51.5%;
+    right: 3.2%;
+    width: 5.2%;
+    aspect-ratio: 1 / 1;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+
+    svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
+
+    path {
+        fill: #000;
+    }
+
+    :hover {
+        filter: invert(.4);
+    }
+}
+
+.commit-button {
+    bottom: 3%;
+    left: 53%;
+    transform: translateX(-50%);
+    min-height: 0;
+    padding: 0.45em 1.2em;
+    font-size: 0.8em;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.card-shell {
     width: 100%;
     height: 100%;
-    display: block;
 }
 
 .card-layout-layer {
-    position: absolute;
-    inset: 0;
+    transform-box: fill-box;
 }
 
 // Background styles
@@ -102,24 +146,3 @@
     }
 }
 
-// Commit button overlay
-.commit-overlay {
-    position: absolute;
-    bottom: 3%;
-    left: 53%;
-    transform: translateX(-50%);
-    z-index: 10;
-    pointer-events: auto;
-
-    @media print {
-        display: none;
-    }
-}
-
-.commit-button {
-    min-height: auto;
-    padding: 0.45em 1.2em;
-    font-size: 2.4em;
-    font-weight: bold;
-    cursor: pointer;
-}

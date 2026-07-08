@@ -31,16 +31,11 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy } from '@angular/core';
+import { Component, ChangeDetectionStrategy, NO_ERRORS_SCHEMA } from '@angular/core';
 import { AsCriticalHitsBase, CRITICAL_HITS_SHARED_STYLES } from './critical-hits-base';
 
 const EMPLACEMENT_CRITICAL_HITS_STYLES = `
     :host {
-        display: block;
-        width: 100%;
-    }
-
-    .critical-hits-svg-shell {
         --crit-viewbox-height: 62;
         --crit-roll-width: 32;
         --critical-name-font-size: 12px;
@@ -57,32 +52,16 @@ const EMPLACEMENT_CRITICAL_HITS_STYLES = `
  */
 
 @Component({
-    selector: 'as-critical-hits-emplacement',
+    selector: 'g[as-critical-hits-emplacement]',
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         '[class.monochrome]': 'cardStyle() === "monochrome"',
     },
+    schemas: [NO_ERRORS_SCHEMA],
     template: `
-        <div class="critical-hits-svg-shell">
-            @if (interactive()) {
-                <button class="crit-roll-button" (click)="onRollCriticalClick($event)" aria-label="Roll critical hit">
-                    <svg class="crit-roll-icon-svg" [attr.viewBox]="critRollIconViewBox" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-                        <path class="crit-roll-icon-path" [attr.d]="critRollIconPath"></path>
-                    </svg>
-                </button>
-            }
-            <svg class="critical-hits-svg" viewBox="0 0 262 62" preserveAspectRatio="xMidYMid meet">
-                <defs>
-                    <linearGradient [attr.id]="titleGradientId" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" stop-color="#5B504E" stop-opacity="0"></stop>
-                        <stop offset="6.25%" stop-color="#5B504E" stop-opacity="1"></stop>
-                        <stop offset="93.75%" stop-color="#5B504E" stop-opacity="1"></stop>
-                        <stop offset="100%" stop-color="#5B504E" stop-opacity="0"></stop>
-                    </linearGradient>
-                </defs>
                 <rect x="1.5" y="1.5" width="259" height="59" rx="7" ry="7" [attr.fill]="criticalHitsFill()" stroke="#221F20" stroke-width="1.5"></rect>
                 @if (showCriticalTitleBar()) {
-                    <rect x="50" y="6" width="162" height="22" [attr.fill]="'url(#' + titleGradientId + ')'" aria-hidden="true"></rect>
+                    <rect x="50" y="6" width="162" height="22" [attr.fill]="titleGradientUrl" aria-hidden="true"></rect>
                 }
                 <text x="131" y="24" text-anchor="middle" class="critical-title-svg" [attr.fill]="criticalTitleFill()">CRITICAL HITS</text>
 
@@ -108,8 +87,6 @@ const EMPLACEMENT_CRITICAL_HITS_STYLES = `
 
                     <text x="145.5" y="13" class="critical-desc-svg">-1 Damage Each</text>
                 </g>
-            </svg>
-        </div>
     `,
     styles: [EMPLACEMENT_CRITICAL_HITS_STYLES]
 })

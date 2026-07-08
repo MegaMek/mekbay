@@ -33,7 +33,7 @@
 
 import { Component, ChangeDetectionStrategy, computed } from '@angular/core';
 import { type CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
-import { AsLayoutBaseComponent } from './layout-base.component';
+import { AsLayoutBaseComponent, type PositionedTextRun } from './layout-base.component';
 import type { SpecialAbilityState } from '../../../models/as-special-ability-state.model';
 
 interface CriticalRowLayout {
@@ -53,13 +53,6 @@ interface CriticalLayoutConfig {
     noteY: number;
     noteTextY: number;
     rows: ReadonlyArray<CriticalRowLayout>;
-}
-
-interface PositionedTextRun<T> {
-    item: T;
-    text: string;
-    x: number;
-    y: number;
 }
 
 /*
@@ -351,37 +344,4 @@ export class AsLayoutLargeVessel1Component extends AsLayoutBaseComponent {
         return committed > 0 || pending > 0;
     }
 
-    private specialDisplayText(state: SpecialAbilityState, isLast: boolean): string {
-        const remaining = state.maxCount && state.consumedCount ? `[${state.maxCount - state.consumedCount}]` : '';
-        return `${state.effective}${remaining}${isLast ? '' : ','}`;
-    }
-
-    private layoutTextRuns<T>(
-        items: ReadonlyArray<T>,
-        startX: number,
-        startY: number,
-        rightX: number,
-        lineHeight: number,
-        charWidth: number,
-        gap: number,
-        wrapX: number = startX,
-    ): PositionedTextRun<T>[] {
-        const result: PositionedTextRun<T>[] = [];
-        let x = startX;
-        let y = startY;
-
-        for (const item of items) {
-            const text = typeof item === 'string' ? item : (item as { text: string }).text;
-            const estimatedWidth = Math.max(24, text.length * charWidth);
-            if (x + estimatedWidth > rightX) {
-                x = wrapX;
-                y += lineHeight;
-            }
-
-            result.push({ item, text, x, y });
-            x += estimatedWidth + gap;
-        }
-
-        return result;
-    }
 }

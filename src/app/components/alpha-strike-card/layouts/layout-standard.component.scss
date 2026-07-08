@@ -1,34 +1,29 @@
 @use '../common.scss';
 
 :host {
-    display: block;
-    position: absolute;
-    inset: 0;
+    display: contents;
 }
 
-// Fluff Image
-.fluff-image-container {
-    position: absolute;
-    top: 14%;
-    left: 57.14%;
-    width: 36.5%;
-    height: 58.75%;
-    overflow: hidden;
+.fluff-image-container,
+.era-icons,
+.destroyed-overlay {
     pointer-events: none;
+}
 
-    &.center-vertical {
-        top: 18%;
-    }
+.era-icon {
+    transition: opacity 0.2s ease;
+}
 
-    &.reduced-height {
-        height: 35%;
-    }
+.fluff-image-container {
+    overflow: hidden;
+}
 
-    :host-context(.export-mode) & {
-        display: flex;
-        align-items: flex-start;
-        justify-content: center;
-    }
+.fluff-image-foreign {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
 }
 
 .fluff-image {
@@ -37,459 +32,60 @@
     display: block;
     object-fit: contain;
     object-position: center top;
-
-    .center-vertical & {
-        object-position: center center;
-    }
-
-    :host:not(.monochrome) & {
-        filter: saturate(0) invert(1) brightness(1.25);
-        mix-blend-mode: lighten;
-    }
-
-    :host-context(.export-mode) & {
-        width: auto !important;
-        max-width: 100%;
-        height: 100% !important;
-        filter: none !important;
-        mix-blend-mode: normal !important;
-        opacity: 1 !important;
-    }
 }
 
-// Era Icons
-.era-icons {
-    position: absolute;
-    top: 13em;
-    right: 2.2em;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    z-index: 1;
-    pointer-events: none;
-}
-
-.era-icon {
-    width: 3em;
-    height: 3em;
-    object-fit: contain;
-    transition: opacity 0.2s ease;
-    mix-blend-mode: lighten;
-
-    :host(.monochrome) & {
-        filter: saturate(0) invert(1) brightness(1.25);
-    }
-
-    &.unavailable {
-        opacity: 0.3;
-    }
-
-    :host-context(.export-mode) & {
-        mix-blend-mode: normal !important;
-        filter: none !important;
-    }
-}
-
-// Header Section
-.header-section {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 16.25%;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-}
-
-.unit-name {
-    position: absolute;
-    top: 2.8em;
-    left: 2.8em;
-    width: 75%;
-    color: #000;
-
-    &.vessel {
-        display: flex;
-        flex-direction: column;
-        position: relative;
-        top: 0;
-        left: 0;
-        width: 100%;
-        padding: 1em;
-    }
-}
-
-.model-text {
-    font-size: 4em;
-
-    :host:not(.monochrome) & {
-        // color: #ECD24B;
-        color: #FFF;
-    }
-
-    &.small {
-        font-size: 3.3em;
-    }
-}
-
-.chassis-text {
-    font-weight: bold;
-    font-size: 7em;
-    line-height: 0.95em;
-
-    &.long-chassis {
-        font-size: 6em;
-    }
-
-    &.small {
-        font-size: 5em;
-    }
-}
-
-// Stats Container
-.stats-container {
-    position: absolute;
-    bottom: 12%;
-    left: 2.5%;
-    right: 2.5%;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    gap: 0.5em;
-}
-
-.stats-container-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 0.5em;
-}
-
-.stats-container-column {
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    gap: 0.5em;
-
-    &.stats-left {
-        flex: 0 0 57.5%;
-    }
-
-    &.stats-right {
-        flex: 0 0 42%;
-    }
-
-    &.stats-left:only-child {
-        flex: 1 1 100%;
-    }
-
-    &.stats-right:empty {
-        display: none;
-    }
-}
-
-// Stats Box
-.stats-box {
-    position: relative;
-    display: block;
-    min-height: 5.1em;
-}
-
-.stats-box-svg-shell {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-}
-
-.stats-box-svg {
-    display: block;
-    width: 100%;
-    height: 100%;
-}
-
-.stats-box-content {
-    position: relative;
-    z-index: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-around;
-    gap: 0.15em;
-    padding: 0.45em 9px 0.4em;
-
-    .as-caption,
-    .sprint-text {
-        color: #000;
-    }
-}
-
-.stats-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: start;
-    gap: 1.5em;
-
-    &.wrappable {
-        flex-wrap: wrap;
-        gap: 0.5em;
-
-        &.wrapped .right-column {
-            margin-left: auto;
-        }
-    }
-}
-
-.stat-item {
-    white-space: nowrap;
-    display: flex;
-    flex-direction: row;
-    align-items: baseline;
-    gap: 0.1em;
-
-    &.clickable {
-        cursor: pointer;
-        transition: text-decoration 0.15s ease;
-
-        &:hover {
-            text-decoration: underline;
-        }
-    }
-}
-
-.right-column {
-    text-align: right;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-}
-
-.sprint-text {
-    font-size: 2em;
-    line-height: 1em;
-    font-weight: 700;
-}
-
-// Damage Box
-.damage-box {
-    display: block;
-}
-
-.damage-box-svg-shell {
-    width: 100%;
-}
-
-.damage-box-svg {
-    display: block;
-    width: 100%;
-    height: auto;
-    overflow: visible;
-}
-
-.damage-label-text-svg {
-    fill: var(--as-red);
-    font-family: 'Roboto Condensed', sans-serif;
-    font-size: 16px;
-    font-weight: 900;
-    letter-spacing: 0.4px;
-}
-
-.damage-range-header-svg {
-    font-family: 'Roboto Condensed', sans-serif;
-    font-size: 14px;
-    font-weight: 700;
-}
-
-.damage-range-value-svg {
-    fill: var(--as-red);
-    font-family: 'Roboto Condensed', sans-serif;
-    font-size: 31px;
-    font-weight: 900;
-
-    &.reduced {
-        font-size: 28px;
-    }
-}
-
-.damage-range-distance-svg {
-    fill: #000;
-    font-family: 'Roboto Condensed', sans-serif;
-    font-size: 14px;
-    font-weight: 500;
-}
-
-// Heat Box
-.heat-box {
-    display: block;
-}
-
-.heat-box-svg-shell {
-    width: 100%;
-}
-
-.heat-box-svg {
-    display: block;
-    width: 100%;
-    height: auto;
-}
-
-.heat-ov-caption-svg {
-    fill: #000;
-    font-family: 'Roboto Condensed', sans-serif;
-    font-size: 22px;
-    font-weight: 700;
-}
-
-.heat-ov-value-svg {
-    fill: var(--as-red);
-    font-family: 'Roboto Condensed', sans-serif;
-    font-size: 33px;
-    font-weight: 900;
-}
-
-.heat-label-svg {
-    font-family: 'Roboto', sans-serif;
-    font-size: 18px;
-    font-weight: 700;
-    letter-spacing: 0.2px;
-}
-
-.heat-track {
-    pointer-events: auto;
-}
-
-.heat-track-background-svg {
-    fill: #888;
-    stroke: #000;
-    stroke-width: 2.25;
-}
-
+.clickable,
+.heat-track,
+.armor-row-hit-area-svg,
+.pips-wrapper,
+.critical-row-svg,
+.special-ability,
+.pilot-ability,
+.interactive,
 .heat-level {
     pointer-events: auto;
+}
 
-    :host(.interactive) & {
+:host(.interactive) {
+    .clickable,
+    .heat-level,
+    .critical-row-svg,
+    .special-ability,
+    .pilot-ability {
         cursor: pointer;
-
-        &.heat-1.active {
-            .heat-level-cell-svg {
-                fill: rgb(255, 200, 0);
-            }
-        }
-
-        &.heat-2.active {
-            .heat-level-cell-svg {
-                fill: rgb(255, 150, 0);
-            }
-        }
-
-        &.heat-3.active {
-            .heat-level-cell-svg {
-                fill: rgb(255, 100, 0);
-            }
-        }
-
-        &.heat-4.active {
-            .heat-level-cell-svg {
-                fill: rgb(255, 50, 0);
-            }
-        }
-
-        &.heat-s.active {
-            .heat-level-cell-svg {
-                fill: rgb(255, 0, 0);
-            }
-        }
     }
 
-    @media screen {
-        :host(.interactive) & {
+    .clickable:hover,
+    .special-ability:hover {
+        text-decoration: underline;
+    }
 
-            &.heat-0.active {
-                .heat-level-cell-svg {
-                    fill: rgb(0, 200, 0);
-                }
-            }
-
-            &.pending {
-                .heat-level-cell-svg {
-                    animation: pending-heat-pulse 0.6s cubic-bezier(0.8, 0, 1, 1) infinite alternate;
-                    fill: rgb(187, 0, 255);
-                }
-            }
-        }
+    .special-ability.exhausted:hover {
+        text-decoration: line-through underline;
     }
 }
 
-.heat-level-cell-svg {
-    fill: transparent;
-    transition: fill 0.2s;
-}
+@media screen {
+    :host(.interactive) .heat-level {
+        &.heat-0.active .heat-level-cell-svg {
+            fill: rgb(0, 200, 0);
+        }
 
-.heat-level-divider-svg {
-    stroke: #000;
-    stroke-width: 1.5;
-}
+        &.pending .heat-level-cell-svg {
+            animation: pending-heat-pulse 0.6s cubic-bezier(0.8, 0, 1, 1) infinite alternate;
+            fill: rgb(187, 0, 255);
+        }
+    }
 
-.heat-level-text-svg {
-    fill: #fff;
-    font-family: 'Roboto Condensed', sans-serif;
-    font-size: 19px;
-    font-weight: 700;
+    .heat-level-cell-svg {
+        transition: fill 0.2s;
+    }
 }
 
 @keyframes pending-heat-pulse {
     from {
         fill: rgba(187, 0, 255, 0.3);
     }
-}
-
-// Armor/Structure Box
-.armor-box {
-    display: block;
-}
-
-.armor-box-svg-shell {
-    width: 100%;
-}
-
-.armor-box-svg {
-    display: block;
-    width: 100%;
-    height: auto;
-    overflow: visible;
-}
-
-.armor-box-caption-svg {
-    fill: #000;
-    font-family: 'Roboto Condensed', sans-serif;
-    font-size: 21px;
-    font-weight: 700;
-}
-
-.thrust-caption-svg {
-    text-anchor: start;
-}
-
-.armor-box-thrust-value-svg {
-    fill: var(--as-red);
-    font-family: 'Roboto Condensed', sans-serif;
-    font-size: 31px;
-    font-weight: 900;
-    text-anchor: middle;
-}
-
-.armor-pip-circle {
-    fill: #fff;
-    stroke: #000;
-    stroke-width: 2;
-}
-
-.armor-row-hit-area-svg {
-    fill: transparent;
-    pointer-events: all;
-}
-
-.armor-pip-circle.structure {
-    fill: #bbb;
 }
 
 .armor-pip-circle.damaged {
@@ -504,93 +100,58 @@
     fill: #03a9f4;
 }
 
-// Specials Box
-.specials-box {
-    position: relative;
-    display: block;
-    flex: 1 1 100%;
-    width: 100%;
-    min-height: 2.45em;
+.critical-pip-circle.damaged {
+    fill: var(--damage-color);
 }
 
-.specials-box-svg-shell {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
+.critical-pip-circle.pending-damage {
+    fill: orange;
 }
 
-.specials-box-svg {
-    display: block;
-    width: 100%;
-    height: 100%;
+.critical-pip-circle.pending-heal {
+    fill: #03a9f4;
 }
 
-.specials-box-content {
-    position: relative;
-    z-index: 1;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    align-content: flex-start;
-    padding: 0.35em 9px 0.3em;
+:host(.night-mode) {
+    .fluff-image-container {
+        mix-blend-mode: lighten;
+    }
 
-    .as-caption {
-        color: #000;
+    .fluff-image {
+        filter: saturate(0) invert(1) brightness(1.25);
+    }
+
+    .era-icon {
+        mix-blend-mode: lighten;
+    }
+
+    .model-text,
+    .chassis-text {
+        fill: #fff;
+    }
+
+    .group-commander-indicator {
+        fill: var(--bt-yellow);
+        opacity: 0.6;
     }
 }
 
-.special-ability {
-    cursor: pointer;
-    transition: text-decoration 0.15s ease;
-
-    &:hover {
-        text-decoration: underline;
+:host-context(.export-mode) {
+    .fluff-image-container {
+        mix-blend-mode: normal !important;
     }
 
-    &.exhausted {
-        text-decoration: line-through;
-        color: var(--as-red-bright);
-
-        &:hover {
-            text-decoration: line-through underline;
-        }
+    .fluff-image {
+        width: auto !important;
+        max-width: 100%;
+        height: 100% !important;
+        filter: none !important;
+        opacity: 1 !important;
     }
 
-    .consumed-indicator {
-        color: var(--as-red-bright);
-    }
-
-    .special-separator {
-        &:hover {
-            text-decoration: none;
-        }
+    .era-icon {
+        mix-blend-mode: normal !important;
+        filter: none !important;
     }
 }
 
-.pilot-abilities {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.2em 0.7em;
-    margin-left: 0.5em;
-
-    .pilot-ability {
-        color: #000;
-        -webkit-text-stroke: #fff 0.3em;
-    }
-}
-
-.destroyed-text {
-    position: absolute;
-    right: 0.2em;
-    top: 3em;
-    font-family: 'Roboto Condensed', sans-serif;
-    font-size: 7em;
-    font-weight: 900;
-    color: #a00;
-    -webkit-text-stroke: 0.12em #111;
-    paint-order: stroke fill;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    transform: rotate(-15deg);
-}
