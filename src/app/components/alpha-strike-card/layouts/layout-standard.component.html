@@ -1,9 +1,9 @@
-export const LAYOUT_STANDARD_SVG_TEMPLATE = `
+<svg class="layout-content" x="0" y="0" width="1120" height="800" viewBox="0 0 1120 800" overflow="visible">
 @let layout = standardLayout();
 @let image = standardImageGeometry();
 
-@if (renderImageUrl()) {
-    <image class="fluff-image" [attr.href]="renderImageUrl()" [attr.x]="image.x" [attr.y]="image.y"
+@if (imageUrl()) {
+    <image class="fluff-image" [attr.href]="imageUrl()" [attr.x]="image.x" [attr.y]="image.y"
         [attr.width]="image.width" [attr.height]="image.height" [attr.preserveAspectRatio]="image.preserveAspectRatio"
         [attr.clip-path]="'url(#card-clip-' + instanceId + ')'" />
 }
@@ -53,7 +53,7 @@ export const LAYOUT_STANDARD_SVG_TEMPLATE = `
     @if (sprintMove()) {
         <text [attr.x]="layout.general.x + layout.general.width - 14" [attr.y]="layout.general.y + 57" fill="#000" font-family="Roboto, sans-serif" font-size="20" font-weight="700" text-anchor="end">Sprint: {{ sprintMove() }}</text>
     }
-    <text [attr.x]="layout.general.x + 14" [attr.y]="layout.general.y + 80" fill="#000" font-family="Roboto, sans-serif" font-size="27" font-weight="500">ROLE: <tspan class="as-value" fill="#7b0000" font-weight="900">{{ renderedUnit.role }}</tspan></text>
+    <text [attr.x]="layout.general.x + 14" [attr.y]="layout.general.y + 80" fill="#000" font-family="Roboto, sans-serif" font-size="27" font-weight="500">ROLE: <tspan class="as-value" fill="#7b0000" font-weight="900">{{ renderUnit().role }}</tspan></text>
     <text class="skill-control" [class.clickable]="interactive()" [attr.x]="layout.general.x + layout.general.width - 14" [attr.y]="layout.general.y + 80"
         fill="#000" font-family="Roboto, sans-serif" font-size="27" font-weight="500" text-anchor="end" (click)="interactive() && onEditPilotClick()">
         SKILL: <tspan class="as-value" fill="#7b0000" font-weight="900">{{ skill() }}</tspan>
@@ -137,6 +137,13 @@ export const LAYOUT_STANDARD_SVG_TEMPLATE = `
         <rect class="frame-background" [attr.x]="criticalFrame.x" [attr.y]="criticalFrame.y" [attr.width]="criticalFrame.width" [attr.height]="criticalFrame.height" rx="16" ry="16" fill="#fff" fill-opacity="0.85" stroke="#666" stroke-width="3" />
         <rect class="critical-title-background" [attr.x]="criticalFrame.x + 70" [attr.y]="criticalFrame.y + 8" [attr.width]="criticalFrame.width - 140" height="38" [attr.fill]="cardStyle() === 'night' ? 'url(#title-gradient-' + instanceId + ')' : 'transparent'" />
         <text class="critical-title-text" [attr.x]="criticalFrame.x + criticalFrame.width / 2" [attr.y]="criticalFrame.y + 38" fill="#000" font-family="Roboto, sans-serif" font-size="29" font-weight="900" text-anchor="middle">CRITICAL HITS</text>
+        @if (interactive()) {
+            <image class="crit-roll-control" href="/images/random-black.svg"
+                [attr.x]="criticalFrame.x + criticalFrame.width - 58" [attr.y]="criticalFrame.y + 8"
+                width="45" height="45" role="button" tabindex="0" aria-label="Roll critical hit"
+                (click)="$event.stopPropagation(); onRollCriticalClick()"
+                (keydown.enter)="$event.stopPropagation(); onRollCriticalClick()" />
+        }
         @for (row of criticalRows(); track row.key; let rowIndex = $index) {
             @let rowY = criticalFrame.y + 72 + rowIndex * 39;
             <g class="critical-row" [attr.data-crit]="row.key">
@@ -153,7 +160,7 @@ export const LAYOUT_STANDARD_SVG_TEMPLATE = `
                 <text [attr.x]="criticalFrame.x + 150 + row.maxPips * 24" [attr.y]="rowY" fill="#000" font-family="Roboto Condensed, sans-serif" font-size="20" font-weight="600">{{ row.description }}</text>
             </g>
         }
-        @if (currentCriticalHitsVariant() === 'vehicle') {
+        @if (criticalVariant() === 'vehicle') {
             @let motiveY = criticalFrame.y + criticalFrame.height - 24;
             <text [attr.x]="criticalFrame.x + 105" [attr.y]="motiveY" fill="#7b0000" font-family="Roboto Condensed, sans-serif" font-size="19" font-weight="900" text-anchor="end">MOTIVE</text>
             @for (motive of [{ key: 'motive1', desc: useHex() ? '-1⬢ MV' : '-2″ MV', pips: 2 }, { key: 'motive2', desc: '½ MV', pips: 2 }, { key: 'motive3', desc: '0 MV', pips: 1 }]; track motive.key; let motiveIndex = $index) {
@@ -184,7 +191,7 @@ export const LAYOUT_STANDARD_SVG_TEMPLATE = `
         @for (token of specialTokens(); track token.state.original) {
             <text class="special-ability as-value" [class.exhausted]="token.state.isExhausted || (token.state.maxCount && (token.state.consumedCount ?? 0) >= token.state.maxCount)" [class.has-consumed]="token.state.consumedCount"
                 [attr.data-original]="token.state.original" [attr.x]="token.x" [attr.y]="token.y" fill="#7b0000" font-family="Roboto, sans-serif" font-size="30" font-weight="900"
-                (click)="onSvgSpecialClick(token.state, $event)">{{ token.text }}</text>
+                (click)="onSpecialClick(token.state, $event)">{{ token.text }}</text>
         }
     </g>
 }
@@ -194,4 +201,5 @@ export const LAYOUT_STANDARD_SVG_TEMPLATE = `
         <text x="1080" y="210" fill="#a00" stroke="#111" stroke-width="8" paint-order="stroke fill" font-family="Roboto, sans-serif" font-size="72" font-weight="900" text-anchor="end">DESTROYED</text>
     </g>
 }
-`;
+</svg>
+

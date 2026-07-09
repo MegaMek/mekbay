@@ -1,4 +1,4 @@
-export const LAYOUT_VESSEL_FRONT_SVG_TEMPLATE = `
+<svg class="layout-content" x="0" y="0" width="1120" height="800" viewBox="0 0 1120 800" overflow="visible">
 <text class="chassis-text" [attr.x]="cardGeometry.bodyInset" y="64" fill="#000" font-family="Roboto Condensed, sans-serif"
     font-size="42" font-weight="700" letter-spacing="0.05em">
     {{ (forceUnit()?.alias() || chassis() + ' ' + model()).toUpperCase() }}
@@ -46,8 +46,8 @@ export const LAYOUT_VESSEL_FRONT_SVG_TEMPLATE = `
             [attr.y]="vesselFrontGeometry.secondRowY + 8"
             [attr.width]="vesselFrontGeometry.leftWidth - 190" height="104"
             fill="transparent" pointer-events="all" />
-        <text [attr.x]="vesselFrontGeometry.leftX + 337" [attr.y]="vesselFrontGeometry.secondRowY + 87" fill="#7b0000" font-size="48" font-weight="900" text-anchor="middle">
-            {{ committedArmorDamage() || '' }}@if (pendingArmorChange()) {<tspan>{{ pendingArmorChange() > 0 ? '+' : '' }}{{ pendingArmorChange() }}</tspan>}
+        <text class="committed-damage" [attr.x]="vesselFrontGeometry.leftX + 337" [attr.y]="vesselFrontGeometry.secondRowY + 87" font-size="48" font-weight="900" text-anchor="middle">
+            {{ committedArmorDamage() || pendingArmorChange() ? committedArmorDamage() : '' }}@if (pendingArmorChange()) {<tspan class="damage-delta" [class.pending-damage]="pendingArmorChange() > 0" [class.pending-heal]="pendingArmorChange() < 0">{{ pendingArmorChange() > 0 ? '+' : '' }}{{ pendingArmorChange() }}</tspan>}
         </text>
     </g>
     <text [attr.x]="vesselFrontGeometry.leftX + 187" [attr.y]="vesselFrontGeometry.secondRowY + 142" fill="#000" font-size="20" font-weight="900">DAMAGE</text>
@@ -57,8 +57,8 @@ export const LAYOUT_VESSEL_FRONT_SVG_TEMPLATE = `
             [attr.width]="vesselFrontGeometry.leftWidth - 190"
             [attr.height]="vesselFrontGeometry.damageHeight - 124"
             fill="transparent" pointer-events="all" />
-        <text [attr.x]="vesselFrontGeometry.leftX + 337" [attr.y]="vesselFrontGeometry.secondRowY + 207" fill="#7b0000" font-size="48" font-weight="900" text-anchor="middle">
-            {{ committedInternalDamage() || '' }}@if (pendingInternalChange()) {<tspan>{{ pendingInternalChange() > 0 ? '+' : '' }}{{ pendingInternalChange() }}</tspan>}
+        <text class="committed-damage" [attr.x]="vesselFrontGeometry.leftX + 337" [attr.y]="vesselFrontGeometry.secondRowY + 207" font-size="48" font-weight="900" text-anchor="middle">
+            {{ committedInternalDamage() || pendingInternalChange() ? committedInternalDamage() : '' }}@if (pendingInternalChange()) {<tspan class="damage-delta" [class.pending-damage]="pendingInternalChange() > 0" [class.pending-heal]="pendingInternalChange() < 0">{{ pendingInternalChange() > 0 ? '+' : '' }}{{ pendingInternalChange() }}</tspan>}
         </text>
     </g>
 </g>
@@ -71,8 +71,8 @@ export const LAYOUT_VESSEL_FRONT_SVG_TEMPLATE = `
     </text>
 </g>
 
-@if (renderImageUrl()) {
-    <image class="fluff-image" [attr.href]="renderImageUrl()" [attr.x]="vesselFrontGeometry.rightX"
+@if (imageUrl()) {
+    <image class="fluff-image" [attr.href]="imageUrl()" [attr.x]="vesselFrontGeometry.rightX"
         [attr.y]="vesselFrontGeometry.secondRowY + vesselFrontGeometry.statsHeight + cardGeometry.frameGap"
         [attr.width]="vesselFrontGeometry.rightWidth" height="330"
         preserveAspectRatio="xMidYMid meet" [attr.clip-path]="'url(#card-clip-' + instanceId + ')'" />
@@ -118,8 +118,9 @@ export const LAYOUT_VESSEL_FRONT_SVG_TEMPLATE = `
         @for (token of vesselSpecialsRenderModel().tokens; track token.state.original) {
             <text class="special-ability" [attr.data-original]="token.state.original" [attr.x]="token.x" [attr.y]="token.y"
                 fill="#7b0000" font-family="Roboto, sans-serif" font-size="30" font-weight="900"
-                (click)="onSvgSpecialClick(token.state, $event)">{{ token.text }}</text>
+                (click)="onSpecialClick(token.state, $event)">{{ token.text }}</text>
         }
     </g>
 }
-`;
+</svg>
+

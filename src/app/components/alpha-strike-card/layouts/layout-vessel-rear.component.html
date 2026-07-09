@@ -1,4 +1,4 @@
-export const LAYOUT_VESSEL_REAR_SVG_TEMPLATE = `
+<svg class="layout-content" x="0" y="0" width="1120" height="800" viewBox="0 0 1120 800" overflow="visible">
 <text class="chassis-text" [attr.x]="cardGeometry.bodyInset" y="62" fill="#000" font-family="Roboto Condensed, sans-serif"
     font-size="40" font-weight="700" letter-spacing="0.05em">
     {{ (forceUnit()?.alias() || chassis() + ' ' + model()).toUpperCase() }}
@@ -59,4 +59,5 @@ export const LAYOUT_VESSEL_REAR_SVG_TEMPLATE = `
 <text x="220" [attr.y]="vesselRearGeometry.noteBaseline" fill="#000" font-family="Roboto, sans-serif" font-size="17">
     Damage Value Reduced by 25% per hit. — Randomly determine an appropriate STD/@if (vesselHasCap()) {CAP/}SCAP/MSL column.
 </text>
-`;
+</svg>
+

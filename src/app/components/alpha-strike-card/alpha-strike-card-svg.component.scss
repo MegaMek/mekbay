@@ -1,0 +1,132 @@
+.battletech-logo .logo-text {
+    fill: #000;
+}
+
+.era-icon {
+    filter: saturate(0) invert(1) brightness(1.25);
+
+    &.unavailable {
+        opacity: 0.3;
+    }
+}
+
+@media screen {
+    :host(.interactive) .clickable,
+    :host(.interactive) .critical-row,
+    :host(.interactive) .damage-track,
+    :host(.interactive) .heat-level,
+    :host(.interactive) .pip-row,
+    :host(.interactive) .pilot-ability,
+    :host(.interactive) .special-ability,
+    :host(.interactive) .crit-roll-control {
+        cursor: pointer;
+    }
+
+    :host(.interactive) .clickable:hover,
+    :host(.interactive) .pilot-ability:hover,
+    :host(.interactive) .special-ability:hover {
+        text-decoration: underline;
+    }
+
+    .heat-level.pending rect {
+        fill: rgb(187, 0, 255);
+        animation: pending-heat-pulse 0.6s cubic-bezier(0.8, 0, 1, 1) infinite alternate;
+    }
+}
+
+:host(.night-mode) {
+    .frame-background {
+        fill: #e3eced;
+        fill-opacity: 0.7;
+    }
+
+    .fluff-image {
+        filter: saturate(0) invert(1) brightness(1.25);
+        mix-blend-mode: lighten;
+    }
+
+    .pilot-ability {
+        fill: #fff;
+        stroke: #000;
+    }
+
+    .header text,
+    .chassis-text,
+    .critical-title-text,
+    .heat-title-text,
+    .range-header-text {
+        fill: #fff;
+    }
+
+    .battletech-logo .logo-text {
+        fill: #fff;
+    }
+
+    .era-icon {
+        filter: none;
+    }
+}
+
+.pip.damaged {
+    fill: var(--damage-color);
+}
+
+.pip.pending-damage {
+    fill: orange;
+}
+
+.pip.pending-heal {
+    fill: #03a9f4;
+}
+
+.committed-damage {
+    fill: #a82418;
+}
+
+.damage-delta.pending-damage {
+    fill: #ef3f2b;
+}
+
+.damage-delta.pending-heal {
+    fill: #66a7ef;
+}
+
+.special-ability.exhausted {
+    fill: var(--as-red-bright, #cd0000);
+    text-decoration: line-through;
+}
+
+.heat-level[data-heat="0"].active rect {
+    fill: rgb(0, 200, 0);
+}
+
+.heat-level[data-heat="1"].active rect {
+    fill: rgb(255, 200, 0);
+}
+
+.heat-level[data-heat="2"].active rect {
+    fill: rgb(255, 150, 0);
+}
+
+.heat-level[data-heat="3"].active rect {
+    fill: rgb(255, 100, 0);
+}
+
+.heat-level[data-heat="4"].active rect {
+    fill: rgb(255, 50, 0);
+}
+
+.heat-level.heat-s.active rect {
+    fill: rgb(255, 0, 0);
+}
+
+.crit-roll-control:hover,
+.crit-roll-control:focus-visible {
+    filter: invert(0.4);
+}
+
+@keyframes pending-heat-pulse {
+    from {
+        fill: rgba(187, 0, 255, 0.3);
+    }
+}
