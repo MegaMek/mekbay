@@ -75,6 +75,10 @@ export const routes: Routes = [
         canActivate: [dataReadyGuard],
         loadComponent: () => import('./pages/collection-page.component').then(m => m.CollectionPageComponent),
     },
+    {
+        path: 'svg-frame-demo',
+        loadComponent: () => import('./pages/svg-frame-demo-page.component').then(m => m.SvgFrameDemoPageComponent),
+    },
     { path: '', pathMatch: 'full', children: [] },
     { path: '**', redirectTo: '' },
 ];
