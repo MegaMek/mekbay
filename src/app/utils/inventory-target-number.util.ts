@@ -36,6 +36,8 @@ export interface InventoryTargetNumberInput {
     target: InventoryControlRuntimeTarget | null;
     gunnerySkill: number;
     pilotingSkill: number;
+    gunneryModifierBreakdown?: readonly UnitModifierBreakdownEntry[];
+    pilotingModifierBreakdown?: readonly UnitModifierBreakdownEntry[];
     missingMovementModifier?: boolean;
     attackModifierBreakdown: readonly UnitModifierBreakdownEntry[];
     hitModifier: number;
@@ -133,6 +135,7 @@ export function inventoryTargetNumberBreakdown(
     const physical = isPhysicalInventoryTargetNumberEntry(input.entry, input.category);
     const skillLabel = physical ? 'Piloting' : 'Gunnery';
     const skill = physical ? input.pilotingSkill : input.gunnerySkill;
+    const skillModifierBreakdown = physical ? input.pilotingModifierBreakdown ?? [] : input.gunneryModifierBreakdown ?? [];
     const rangeModifier = inventoryTargetRangeModifier(rangeSelection.range);
     const minimumRangeModifier = rangeSelection.minimumRangeModifier;
     const ammoToHitModifier = physical ? 0 : (input.selectedAmmo?.stats.toHitModifier ?? 0);
@@ -142,6 +145,11 @@ export function inventoryTargetNumberBreakdown(
     ];
 
     terms.push(...input.attackModifierBreakdown.map(entry => ({
+        label: entry.label,
+        value: formatInventoryTargetSignedModifier(entry.modifier)
+    })));
+
+    terms.push(...skillModifierBreakdown.map(entry => ({
         label: entry.label,
         value: formatInventoryTargetSignedModifier(entry.modifier)
     })));
@@ -170,7 +178,8 @@ export function inventoryTargetNumberBreakdown(
     }
 
     const attackModifier = input.attackModifierBreakdown.reduce((total, entry) => total + entry.modifier, 0);
-    const total = skill + attackModifier + target.tnModifier + rangeModifier + minimumRangeModifier + input.hitModifier + ammoToHitModifier + heatFireModifier;
+    const skillModifier = skillModifierBreakdown.reduce((total, entry) => total + entry.modifier, 0);
+    const total = skill + skillModifier + attackModifier + target.tnModifier + rangeModifier + minimumRangeModifier + input.hitModifier + ammoToHitModifier + heatFireModifier;
     terms.push({ isBreak: true });
     terms.push({ label: 'Total', value: total.toString(), isHeader: true });
 

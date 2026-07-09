@@ -33,6 +33,7 @@
 
 import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
+import type { CrewMember, SkillType } from '../crew-member.model';
 import type { CriticalSlot, MountedEquipment } from '../force-serialization';
 import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type LocationConditionControl, type PSRCheck, type MountedEquipmentRuleState, type UnitHeatSource, type UnitModifierBreakdownEntry } from './unit-type-rules';
 import type { TurnState } from '../turn-state.model';
@@ -782,6 +783,14 @@ export class MekRules extends UnitTypeRulesBase {
                 reason: "Mounts small or torso cockpit"
             });
         }
+        const dedicatedPilotModifier = this.getTripodDedicatedPilotModifierEntry();
+        if (dedicatedPilotModifier) {
+            preExisting += dedicatedPilotModifier.modifier;
+            modifiers.push({
+                pilotCheck: dedicatedPilotModifier.modifier,
+                reason: dedicatedPilotModifier.label
+            });
+        }
         const destroyedHips = critSlots.filter(slot => slot.loc && this.isCritUnavailable(slot) && LEG_LOCATIONS.has(slot.loc) && !ignoreLeg.has(slot.loc) && this.isNamedCrit(slot, 'Hip'));
         for (const hip of destroyedHips) {
             if (!hip.loc) continue;
@@ -832,10 +841,8 @@ export class MekRules extends UnitTypeRulesBase {
     });
 
     override readonly PSRTargetRoll = computed<number>(() => {
-        const pilot = this.unit.getCrewMember(0);
-        const piloting = pilot?.getSkill('piloting') ?? 5;
         const modifiers = this.PSRModifiers();
-        return piloting + modifiers.modifier;
+        return this.getTargetNumberPilotingSkill() + modifiers.modifier;
     });
 
     override getMaxDistanceForMoveMode(moveMode: MotiveModes): number | null {
@@ -865,6 +872,61 @@ export class MekRules extends UnitTypeRulesBase {
             if (moveMode === 'run') return 4;
         }
         return getDefaultAttackerMovementModifier(moveMode);
+    }
+
+    override getTargetNumberGunnerySkill(): number {
+        if (!this.isTripodMek()) return super.getTargetNumberGunnerySkill();
+        const dedicatedGunneryOfficer = this.getActiveCrewMember(1);
+        if (dedicatedGunneryOfficer) return dedicatedGunneryOfficer.getSkill('gunnery');
+        return this.getBestActiveCrewMember('gunnery', new Set([1]))?.getSkill('gunnery') ?? super.getTargetNumberGunnerySkill();
+    }
+
+    override getTargetNumberPilotingSkill(): number {
+        if (!this.isTripodMek()) return super.getTargetNumberPilotingSkill();
+        const dedicatedPilot = this.getActiveCrewMember(0);
+        if (dedicatedPilot) return dedicatedPilot.getSkill('piloting');
+        return this.getBestActiveCrewMember('piloting', new Set([0]))?.getSkill('piloting') ?? super.getTargetNumberPilotingSkill();
+    }
+
+    override getTargetNumberGunneryModifierBreakdown(): UnitModifierBreakdownEntry[] {
+        if (!this.isTripodMek()) return super.getTargetNumberGunneryModifierBreakdown();
+        const dedicatedGunneryOfficer = this.unit.getCrewMember(1);
+        if (!dedicatedGunneryOfficer || this.isActiveCrewMember(dedicatedGunneryOfficer)) return super.getTargetNumberGunneryModifierBreakdown();
+        return [...super.getTargetNumberGunneryModifierBreakdown(), { label: 'Dedicated Gunnery Officer disabled', modifier: 2 }];
+    }
+
+    override getTargetNumberPilotingModifierBreakdown(): UnitModifierBreakdownEntry[] {
+        const dedicatedPilotModifier = this.getTripodDedicatedPilotModifierEntry();
+        if (!dedicatedPilotModifier) return super.getTargetNumberPilotingModifierBreakdown();
+        return [...super.getTargetNumberPilotingModifierBreakdown(), dedicatedPilotModifier];
+    }
+
+    private getTripodDedicatedPilotModifierEntry(): UnitModifierBreakdownEntry | null {
+        if (!this.isTripodMek()) return null;
+        const dedicatedPilot = this.unit.getCrewMember(0);
+        if (!dedicatedPilot) return null;
+        return this.isActiveCrewMember(dedicatedPilot)
+            ? { label: 'Dedicated Pilot', modifier: -1 }
+            : { label: 'Dedicated Pilot disabled', modifier: 2 };
+    }
+
+    private isTripodMek(): boolean {
+        return this.unit.getUnit().subtype.startsWith('Tripod');
+    }
+
+    private getActiveCrewMember(crewId: number): CrewMember | null {
+        const crewMember = this.unit.getCrewMember(crewId);
+        return crewMember && this.isActiveCrewMember(crewMember) ? crewMember : null;
+    }
+
+    private isActiveCrewMember(crewMember: CrewMember): boolean {
+        return crewMember.getState() === 'healthy';
+    }
+
+    private getBestActiveCrewMember(skillType: SkillType, excludedCrewIds: Set<number>): CrewMember | null {
+        return this.unit.getCrewMembers()
+            .filter(crewMember => !excludedCrewIds.has(crewMember.getId()) && this.isActiveCrewMember(crewMember))
+            .sort((first, second) => first.getSkill(skillType) - second.getSkill(skillType))[0] ?? null;
     }
 
     override getAttackModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[] {

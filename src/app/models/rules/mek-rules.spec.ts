@@ -5,7 +5,7 @@ import { CBTForceUnit } from '../cbt-force-unit.model';
 import { DEAD_CREW_HIT_THRESHOLD, type CrewMemberState } from '../crew-member.model';
 import { MountedEquipment, type CriticalSlot, type LocationData } from '../force-serialization';
 import { AmmoEquipment, Equipment, WeaponEquipment } from '../equipment.model';
-import type { Unit } from '../units.model';
+import type { Unit, UnitSubtype } from '../units.model';
 import { DataService } from '../../services/data.service';
 import { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
 import { UnitInitializerService } from '../../services/unit-initializer.service';
@@ -35,6 +35,7 @@ function createRulesHarness(options: {
     run?: number;
     jump?: number;
     umu?: number;
+    subtype?: UnitSubtype;
 } = {}): MekRules {
     return createForceUnitHarness(options).rules as MekRules;
 }
@@ -59,12 +60,13 @@ function createForceUnitHarness(options: {
     run?: number;
     jump?: number;
     umu?: number;
+    subtype?: UnitSubtype;
 } = {}): CBTForceUnit {
     const crewStates = options.crewStates ?? ['healthy'];
     const crewHits = options.crewHits ?? [];
     const baseUnit = createEmptyUnit({
         type: 'Mek',
-        subtype: 'BattleMek',
+        subtype: options.subtype ?? 'BattleMek',
         crewSize: Math.max(crewStates.length, crewHits.length),
         walk: options.walk ?? 5,
         run: options.run ?? 8,
@@ -240,6 +242,44 @@ describe('MekRules', () => {
         expect(rules.pilotingModifiers()).toEqual([{ modifier: 1, reason: 'Drone operating system' }]);
         expect(rules.gunneryModifier()).toBe(1);
         expect(rules.pilotingModifier()).toBe(1);
+    });
+
+    it('uses active Tripod dedicated crew for target-number skills', () => {
+        const forceUnit = createForceUnitHarness({ subtype: 'Tripod BattleMek', crewStates: ['healthy', 'healthy', 'healthy'] });
+        forceUnit.getCrewMember(0).setSkill('piloting', 5);
+        forceUnit.getCrewMember(1).setSkill('gunnery', 3);
+        forceUnit.getCrewMember(2).setSkill('gunnery', 2);
+        forceUnit.getCrewMember(2).setSkill('piloting', 4);
+        const rules = forceUnit.rules as MekRules;
+
+        expect(rules.getTargetNumberGunnerySkill()).toBe(3);
+        expect(rules.getTargetNumberGunneryModifierBreakdown()).toEqual([]);
+        expect(rules.getTargetNumberPilotingSkill()).toBe(5);
+        expect(rules.getTargetNumberPilotingModifierBreakdown()).toEqual([{ label: 'Dedicated Pilot', modifier: -1 }]);
+        expect(rules.PSRTargetRoll()).toBe(4);
+    });
+
+    it('uses the best active alternate gunner with a modifier when the Tripod dedicated gunnery officer is disabled', () => {
+        const forceUnit = createForceUnitHarness({ subtype: 'Tripod BattleMek', crewStates: ['healthy', 'unconscious', 'healthy'] });
+        forceUnit.getCrewMember(0).setSkill('gunnery', 5);
+        forceUnit.getCrewMember(1).setSkill('gunnery', 3);
+        forceUnit.getCrewMember(2).setSkill('gunnery', 2);
+        const rules = forceUnit.rules as MekRules;
+
+        expect(rules.getTargetNumberGunnerySkill()).toBe(2);
+        expect(rules.getTargetNumberGunneryModifierBreakdown()).toEqual([{ label: 'Dedicated Gunnery Officer disabled', modifier: 2 }]);
+    });
+
+    it('uses the best active alternate pilot with a modifier when the Tripod dedicated pilot is disabled', () => {
+        const forceUnit = createForceUnitHarness({ subtype: 'Tripod BattleMek', crewStates: ['unconscious', 'healthy', 'healthy'] });
+        forceUnit.getCrewMember(0).setSkill('piloting', 5);
+        forceUnit.getCrewMember(1).setSkill('piloting', 6);
+        forceUnit.getCrewMember(2).setSkill('piloting', 4);
+        const rules = forceUnit.rules as MekRules;
+
+        expect(rules.getTargetNumberPilotingSkill()).toBe(4);
+        expect(rules.getTargetNumberPilotingModifierBreakdown()).toEqual([{ label: 'Dedicated Pilot disabled', modifier: 2 }]);
+        expect(rules.PSRTargetRoll()).toBe(6);
     });
 
     it('ignores small cockpit PSR modifiers for drone operating system Meks', () => {

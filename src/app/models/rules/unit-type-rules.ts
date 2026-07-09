@@ -288,6 +288,18 @@ export interface UnitTypeRules {
     /** Unit-type-specific attack movement modifier. */
     getAttackMovementModifier(moveMode: MotiveModes | null | undefined, airborne?: boolean): number;
 
+    /** Unit-type-specific gunnery skill for runtime target-number calculations. */
+    getTargetNumberGunnerySkill(): number;
+
+    /** Unit-type-specific piloting skill for runtime target-number calculations. */
+    getTargetNumberPilotingSkill(): number;
+
+    /** Gunnery-specific runtime target-number modifier breakdown. */
+    getTargetNumberGunneryModifierBreakdown(): UnitModifierBreakdownEntry[];
+
+    /** Piloting-specific runtime target-number modifier breakdown. */
+    getTargetNumberPilotingModifierBreakdown(): UnitModifierBreakdownEntry[];
+
     /** Attack modifier breakdown for turn summary UI. */
     getAttackModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[];
 
@@ -465,6 +477,22 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
 
     getAttackMovementModifier(_moveMode: MotiveModes | null | undefined, _airborne: boolean = false): number {
         return 0;
+    }
+
+    getTargetNumberGunnerySkill(): number {
+        return this.unit.gunnerySkill();
+    }
+
+    getTargetNumberPilotingSkill(): number {
+        return this.unit.pilotingSkill();
+    }
+
+    getTargetNumberGunneryModifierBreakdown(): UnitModifierBreakdownEntry[] {
+        return [];
+    }
+
+    getTargetNumberPilotingModifierBreakdown(): UnitModifierBreakdownEntry[] {
+        return [];
     }
 
     getAttackModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[] {
