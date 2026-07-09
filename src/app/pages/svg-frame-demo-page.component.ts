@@ -4,12 +4,6 @@ import { SvgFrameUtil } from '../utils/svg-frame.util';
 @Component({
     selector: 'svg-frame-demo-page',
     template: `
-        <style>
-        .svg-frame-demo {
-            font-family: 'Roboto', sans-serif;
-            border: 1px solid silver;
-        }
-        </style>
         <section class="svg-frame-demo-page">
             <svg #frameCanvas class="svg-frame-demo" width="612" height="792" viewBox="0 0 612 792" role="img" aria-label="SVG frame demo">
                 <rect width="612" height="792" fill="#fff"></rect>
@@ -35,6 +29,8 @@ import { SvgFrameUtil } from '../utils/svg-frame.util';
         }
 
         .svg-frame-demo {
+            font-family: 'Roboto', sans-serif;
+            border: 1px solid silver;
             display: block;
             width: 612px;
             height: 792px;
