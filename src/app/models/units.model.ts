@@ -375,5 +375,5 @@ export interface AlphaStrikeArcStats {
         dmgE: string;
         dmgS: string;
     };
-    specials: string;
+    specials: string[];
 }

@@ -1,4 +1,4 @@
-import type { SvgFrameRect } from './standard-layout.model';
+import { estimateRobotoWidth, type SvgFrameRect } from './standard-layout.model';
 import { CARD_LAYOUT_GEOMETRY } from './card-layout.geometry';
 
 const VESSEL_FRONT_LEFT_WIDTH = 520;
@@ -34,7 +34,91 @@ export const VESSEL_REAR_GEOMETRY = {
         vesselRearFramesBottom - VESSEL_REAR_TOP - CARD_LAYOUT_GEOMETRY.frameGap
     ) / 2,
     noteBaseline: vesselRearNoteBaseline,
+    captionXOffset: 31,
+    tableXOffset: 64,
+    tableRightInset: 14,
+    rowLabelWidth: 106,
+    critDividerOffset: 244,
+    critPipCenterOffset: 257,
+    critPipSpacing: 20,
+    critPipRadius: 8,
 } as const;
+
+export const VESSEL_REAR_SPECIALS_GEOMETRY = {
+    contentXOffset: 106,
+    topOffset: 202,
+    height: 40,
+    maxFontSize: 20,
+    minFontSize: 8,
+} as const;
+
+export interface VesselRearSpecialTokenLayout {
+    value: string;
+    text: string;
+    x: number;
+    line: number;
+}
+
+export interface VesselRearSpecialsLayout {
+    fontSize: number;
+    lineHeight: number;
+    firstBaseline: number;
+    tokens: VesselRearSpecialTokenLayout[];
+}
+
+export function buildVesselRearSpecialsLayout(
+    values: string[],
+    maxWidth: number,
+    maxHeight = VESSEL_REAR_SPECIALS_GEOMETRY.height,
+): VesselRearSpecialsLayout {
+    const normalizedValues = values.map(value => value.trim()).filter(Boolean);
+
+    for (let fontSize = VESSEL_REAR_SPECIALS_GEOMETRY.maxFontSize;
+        fontSize >= VESSEL_REAR_SPECIALS_GEOMETRY.minFontSize;
+        fontSize--) {
+        const lineHeight = Math.ceil(fontSize * 1.15);
+        const tokens: VesselRearSpecialTokenLayout[] = [];
+        let x = 0;
+        let line = 0;
+        let fits = true;
+
+        normalizedValues.forEach((value, index) => {
+            const text = `${value}${index < normalizedValues.length - 1 ? ', ' : ''}`;
+            const width = estimateRobotoWidth(text, fontSize);
+            if (x > 0 && x + width > maxWidth) {
+                line++;
+                x = 0;
+            }
+            if (width > maxWidth) fits = false;
+            tokens.push({ value, text, x, line });
+            x += width;
+        });
+
+        const lineCount = tokens.length > 0 ? line + 1 : 0;
+        if (fits && lineCount * lineHeight <= maxHeight) {
+            return {
+                fontSize,
+                lineHeight,
+                firstBaseline: (maxHeight - lineCount * lineHeight) / 2 + fontSize,
+                tokens,
+            };
+        }
+    }
+
+    const fontSize = VESSEL_REAR_SPECIALS_GEOMETRY.minFontSize;
+    const lineHeight = Math.ceil(fontSize * 1.15);
+    return {
+        fontSize,
+        lineHeight,
+        firstBaseline: fontSize,
+        tokens: normalizedValues.map((value, index) => ({
+            value,
+            text: `${value}${index < normalizedValues.length - 1 ? ', ' : ''}`,
+            x: 0,
+            line: index,
+        })),
+    };
+}
 
 export const VESSEL_SPECIALS_GEOMETRY = {
     x: VESSEL_FRONT_GEOMETRY.rightX,

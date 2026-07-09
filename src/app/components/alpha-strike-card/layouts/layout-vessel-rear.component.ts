@@ -1,12 +1,31 @@
 import { ChangeDetectionStrategy, Component, computed } from '@angular/core';
+import type { SpecialAbilityState } from '../../../models/as-special-ability-state.model';
 import { CARD_LAYOUT_GEOMETRY } from './card-layout.geometry';
 import { AsLayoutBaseComponent } from './layout-base.component';
-import { VESSEL_REAR_GEOMETRY } from './vessel-layout.model';
+import {
+    VESSEL_REAR_GEOMETRY,
+    VESSEL_REAR_SPECIALS_GEOMETRY,
+    buildVesselRearSpecialsLayout,
+} from './vessel-layout.model';
+
+interface VesselRearSpecialToken {
+    state: SpecialAbilityState;
+    text: string;
+    x: number;
+    line: number;
+}
+
+interface VesselRearSpecialsRenderModel {
+    fontSize: number;
+    lineHeight: number;
+    firstBaseline: number;
+    tokens: VesselRearSpecialToken[];
+}
 
 interface VesselArcRenderModel {
     label: string;
     shortLabel: string;
-    specials: string;
+    specials: VesselRearSpecialsRenderModel;
     rows: Array<{ label: string; values: string[] }>;
 }
 
@@ -23,6 +42,7 @@ interface VesselArcRenderModel {
 export class AsLayoutVesselRearComponent extends AsLayoutBaseComponent {
     readonly cardGeometry = CARD_LAYOUT_GEOMETRY;
     readonly vesselRearGeometry = VESSEL_REAR_GEOMETRY;
+    readonly vesselRearSpecialsGeometry = VESSEL_REAR_SPECIALS_GEOMETRY;
     readonly vesselHasCap = computed(() => ['WS', 'SS', 'JS'].includes(this.asStats().TP));
     readonly vesselArcColumns = computed(() => this.vesselHasCap()
         ? ['STD', 'CAP', 'SCAP', 'MSL']
@@ -43,19 +63,32 @@ export class AsLayoutVesselRearComponent extends AsLayoutBaseComponent {
             { label: `E (${this.toHitExtreme()}+)`, key: 'dmgE' as const },
         ];
 
-        return definitions.map(definition => ({
-            label: definition.label,
-            shortLabel: definition.shortLabel,
-            specials: definition.arc?.specials ?? '',
-            rows: rangeDefinitions.map(rangeDefinition => ({
-                label: rangeDefinition.label,
-                values: this.vesselArcColumns().map(column => {
-                    const base = definition.arc?.[column as 'STD' | 'CAP' | 'SCAP' | 'MSL']?.[rangeDefinition.key];
-                    const crits = this.committedCritHits(`${definition.shortLabel}-${column}`);
-                    return this.applyVesselCritReduction(base, crits);
-                }),
-            })),
-        }));
+        return definitions.map(definition => {
+            const specialValues = definition.arc?.specials ?? [];
+            const specialsLayout = buildVesselRearSpecialsLayout(
+                specialValues,
+                VESSEL_REAR_GEOMETRY.frameWidth - 78 - VESSEL_REAR_SPECIALS_GEOMETRY.contentXOffset,
+            );
+            return {
+                label: definition.label,
+                shortLabel: definition.shortLabel,
+                specials: {
+                    ...specialsLayout,
+                    tokens: specialsLayout.tokens.map(token => ({
+                        ...token,
+                        state: { original: token.value, effective: token.value },
+                    })),
+                },
+                rows: rangeDefinitions.map(rangeDefinition => ({
+                    label: rangeDefinition.label,
+                    values: this.vesselArcColumns().map(column => {
+                        const base = definition.arc?.[column as 'STD' | 'CAP' | 'SCAP' | 'MSL']?.[rangeDefinition.key];
+                        const crits = this.committedCritHits(`${definition.shortLabel}-${column}`);
+                        return this.applyVesselCritReduction(base, crits);
+                    }),
+                })),
+            };
+        });
     });
 
     private committedCritHits(key: string): number {

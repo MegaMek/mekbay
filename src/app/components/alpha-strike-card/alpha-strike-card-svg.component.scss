@@ -16,16 +16,19 @@
     :host(.interactive) .damage-track,
     :host(.interactive) .heat-level,
     :host(.interactive) .pip-row,
-    :host(.interactive) .pilot-ability,
-    :host(.interactive) .special-ability,
     :host(.interactive) .crit-roll-control {
         cursor: pointer;
     }
 
     :host(.interactive) .clickable:hover,
-    :host(.interactive) .pilot-ability:hover,
-    :host(.interactive) .special-ability:hover {
+    .pilot-ability:hover,
+    .special-ability:hover {
         text-decoration: underline;
+    }
+
+    .pilot-ability,
+    .special-ability {
+        cursor: pointer;
     }
 
     .heat-level.pending rect {
