@@ -40,9 +40,6 @@ import {
     getTargetMovementBracketForDistance,
     TN_AIRBORNE_MOVE_TYPE_MODIFIER,
     TN_IMMOBILE,
-    TN_PRONE,
-    TN_PRONE_ADJACENT,
-    TN_PRONE_ATTACKER,
     TN_SKIDDING_ATTACKER,
     TN_SKIDDING_MODIFIER,
 } from '../target-number-calculator.model';
@@ -291,6 +288,18 @@ export interface UnitTypeRules {
     /** Unit-type-specific attack movement modifier. */
     getAttackMovementModifier(moveMode: MotiveModes | null | undefined, airborne?: boolean): number;
 
+    /** Unit-type-specific gunnery skill for runtime target-number calculations. */
+    getTargetNumberGunnerySkill(): number;
+
+    /** Unit-type-specific piloting skill for runtime target-number calculations. */
+    getTargetNumberPilotingSkill(): number;
+
+    /** Gunnery-specific runtime target-number modifier breakdown. */
+    getTargetNumberGunneryModifierBreakdown(): UnitModifierBreakdownEntry[];
+
+    /** Piloting-specific runtime target-number modifier breakdown. */
+    getTargetNumberPilotingModifierBreakdown(): UnitModifierBreakdownEntry[];
+
     /** Attack modifier breakdown for turn summary UI. */
     getAttackModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[];
 
@@ -470,6 +479,22 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         return 0;
     }
 
+    getTargetNumberGunnerySkill(): number {
+        return this.unit.gunnerySkill();
+    }
+
+    getTargetNumberPilotingSkill(): number {
+        return this.unit.pilotingSkill();
+    }
+
+    getTargetNumberGunneryModifierBreakdown(): UnitModifierBreakdownEntry[] {
+        return [];
+    }
+
+    getTargetNumberPilotingModifierBreakdown(): UnitModifierBreakdownEntry[] {
+        return [];
+    }
+
     getAttackModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[] {
         const entries = this.gunneryModifiers()
             .filter(modifier => modifier.modifier !== 0)
@@ -478,13 +503,6 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         const movementModifier = this.getAttackMovementModifier(turnState.moveMode(), turnState.airborne() ?? false);
         if (movementModifier !== 0 && moveMode !== null) {
             entries.push({ label: getMotiveModeLabel(moveMode, this.unit.getUnit(), turnState.airborne() ?? false), modifier: movementModifier });
-        }
-        if (turnState.unitState.hasCondition('prone')
-        && !this.unit.getUnit().subtype.startsWith('Quad')) { // does not apply to four-legged Meks
-            entries.push({
-                label: 'Prone',
-                modifier: TN_PRONE_ATTACKER,
-            });
         }
         if (turnState.unitState.hasCondition('skidding')) {
             entries.push({ label: 'Skidding', modifier: TN_SKIDDING_ATTACKER });
@@ -498,14 +516,6 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
 
     getDefenseModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[] {
         const entries: UnitModifierBreakdownEntry[] = [];
-        if (turnState.unitState.hasCondition('prone')) {
-            entries.push({
-                label: 'Prone',
-                modifier: Math.max(TN_PRONE, TN_PRONE_ADJACENT),
-                alternateModifier: Math.min(TN_PRONE, TN_PRONE_ADJACENT),
-                alternateModifierLabel: 'adjacent',
-            });
-        }
         if (turnState.unitState.hasCondition('immobile')) {
             entries.push({ label: 'Immobile', modifier: TN_IMMOBILE });
         }

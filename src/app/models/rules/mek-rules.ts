@@ -33,17 +33,21 @@
 
 import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
+import type { CrewMember, SkillType } from '../crew-member.model';
 import type { CriticalSlot, MountedEquipment } from '../force-serialization';
-import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type LocationConditionControl, type PSRCheck, type MountedEquipmentRuleState, type UnitHeatSource } from './unit-type-rules';
+import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type LocationConditionControl, type PSRCheck, type MountedEquipmentRuleState, type UnitHeatSource, type UnitModifierBreakdownEntry } from './unit-type-rules';
 import type { TurnState } from '../turn-state.model';
 import { type HeatScaleEntry, HeatManagement, getHeatEffects } from './heat-management';
 import type { MotiveModes } from '../motiveModes.model';
-import { getDefaultAttackerMovementModifier } from '../target-number-calculator.model';
+import { getDefaultAttackerMovementModifier, TN_PRONE, TN_PRONE_ADJACENT, TN_PRONE_ATTACKER } from '../target-number-calculator.model';
 
 type ArmLocation = 'LA' | 'RA';
 
 const SIDE_TORSO_LOCATIONS = new Set(['LT', 'RT']);
 export const TORSO_LOCATIONS = new Set(['CT', 'LT', 'RT']);
+export const BIPED_LEGS = new Set(['LL', 'RL']);
+export const TRIPOD_LEGS = new Set(['LL', 'CL', 'RL']);
+export const QUAD_LEGS = new Set(['RLL', 'FLL', 'RRL', 'FRL']);
 const LIMB_LOCATIONS = new Set(['LA', 'RA', 'LL', 'RL', 'CL', 'RLL', 'FLL', 'RRL', 'FRL']);
 export const LINKED_LOCATIONS: { [key: string]: string[] } = {
     'RT': ['RA', 'FRL'],
@@ -779,6 +783,14 @@ export class MekRules extends UnitTypeRulesBase {
                 reason: "Mounts small or torso cockpit"
             });
         }
+        const dedicatedPilotModifier = this.getTripodDedicatedPilotModifierEntry();
+        if (dedicatedPilotModifier) {
+            preExisting += dedicatedPilotModifier.modifier;
+            modifiers.push({
+                pilotCheck: dedicatedPilotModifier.modifier,
+                reason: dedicatedPilotModifier.label
+            });
+        }
         const destroyedHips = critSlots.filter(slot => slot.loc && this.isCritUnavailable(slot) && LEG_LOCATIONS.has(slot.loc) && !ignoreLeg.has(slot.loc) && this.isNamedCrit(slot, 'Hip'));
         for (const hip of destroyedHips) {
             if (!hip.loc) continue;
@@ -829,10 +841,8 @@ export class MekRules extends UnitTypeRulesBase {
     });
 
     override readonly PSRTargetRoll = computed<number>(() => {
-        const pilot = this.unit.getCrewMember(0);
-        const piloting = pilot?.getSkill('piloting') ?? 5;
         const modifiers = this.PSRModifiers();
-        return piloting + modifiers.modifier;
+        return this.getTargetNumberPilotingSkill() + modifiers.modifier;
     });
 
     override getMaxDistanceForMoveMode(moveMode: MotiveModes): number | null {
@@ -862,6 +872,106 @@ export class MekRules extends UnitTypeRulesBase {
             if (moveMode === 'run') return 4;
         }
         return getDefaultAttackerMovementModifier(moveMode);
+    }
+
+    override getTargetNumberGunnerySkill(): number {
+        if (!this.isTripodMek()) return super.getTargetNumberGunnerySkill();
+        const dedicatedGunneryOfficer = this.getActiveCrewMember(1);
+        if (dedicatedGunneryOfficer) return dedicatedGunneryOfficer.getSkill('gunnery');
+        return this.getBestActiveCrewMember('gunnery', new Set([1]))?.getSkill('gunnery') ?? super.getTargetNumberGunnerySkill();
+    }
+
+    override getTargetNumberPilotingSkill(): number {
+        if (!this.isTripodMek()) return super.getTargetNumberPilotingSkill();
+        const dedicatedPilot = this.getActiveCrewMember(0);
+        if (dedicatedPilot) return dedicatedPilot.getSkill('piloting');
+        return this.getBestActiveCrewMember('piloting', new Set([0]))?.getSkill('piloting') ?? super.getTargetNumberPilotingSkill();
+    }
+
+    override getTargetNumberGunneryModifierBreakdown(): UnitModifierBreakdownEntry[] {
+        if (!this.isTripodMek()) return super.getTargetNumberGunneryModifierBreakdown();
+        const dedicatedGunneryOfficer = this.unit.getCrewMember(1);
+        if (!dedicatedGunneryOfficer || this.isActiveCrewMember(dedicatedGunneryOfficer)) return super.getTargetNumberGunneryModifierBreakdown();
+        return [...super.getTargetNumberGunneryModifierBreakdown(), { label: 'Dedicated Gunnery Officer disabled', modifier: 2 }];
+    }
+
+    override getTargetNumberPilotingModifierBreakdown(): UnitModifierBreakdownEntry[] {
+        const dedicatedPilotModifier = this.getTripodDedicatedPilotModifierEntry();
+        if (!dedicatedPilotModifier) return super.getTargetNumberPilotingModifierBreakdown();
+        return [...super.getTargetNumberPilotingModifierBreakdown(), dedicatedPilotModifier];
+    }
+
+    private getTripodDedicatedPilotModifierEntry(): UnitModifierBreakdownEntry | null {
+        if (!this.isTripodMek()) return null;
+        const dedicatedPilot = this.unit.getCrewMember(0);
+        if (!dedicatedPilot) return null;
+        return this.isActiveCrewMember(dedicatedPilot)
+            ? { label: 'Dedicated Pilot', modifier: -1 }
+            : { label: 'Dedicated Pilot disabled', modifier: 2 };
+    }
+
+    private isTripodMek(): boolean {
+        return this.unit.getUnit().subtype.startsWith('Tripod');
+    }
+
+    private getActiveCrewMember(crewId: number): CrewMember | null {
+        const crewMember = this.unit.getCrewMember(crewId);
+        return crewMember && this.isActiveCrewMember(crewMember) ? crewMember : null;
+    }
+
+    private isActiveCrewMember(crewMember: CrewMember): boolean {
+        return crewMember.getState() === 'healthy';
+    }
+
+    private getBestActiveCrewMember(skillType: SkillType, excludedCrewIds: Set<number>): CrewMember | null {
+        return this.unit.getCrewMembers()
+            .filter(crewMember => !excludedCrewIds.has(crewMember.getId()) && this.isActiveCrewMember(crewMember))
+            .sort((first, second) => first.getSkill(skillType) - second.getSkill(skillType))[0] ?? null;
+    }
+
+    override getAttackModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[] {
+        const entries = [...super.getAttackModifierBreakdown(turnState)];
+        if (turnState.unitState.hasCondition('prone')) {
+            const subtype = this.unit.getUnit().subtype;
+            let proneEntry: UnitModifierBreakdownEntry | null = null;
+            const isTripod = subtype.startsWith('Tripod');
+            const isQuad = subtype.startsWith('Quad');
+            if (isTripod || isQuad) {
+                const legLocations = isTripod ? TRIPOD_LEGS : QUAD_LEGS;
+                let proneModifier = isTripod ? 1 : 0;
+                for (const loc of legLocations) {
+                    if (!this.unit.locations?.internal?.has(loc) || this.unit.isInternalLocCommittedDestroyed(loc)) {
+                        proneModifier = TN_PRONE_ATTACKER;
+                    }
+                }
+                const hasCommittedHipHit = this.unit.getCritSlots().some(slot => {
+                    if (!slot.loc || !legLocations.has(slot.loc)) return false;
+                    if (!this.isNamedCrit(slot, 'Hip')) return false;
+                    return this.isCritUnavailable(slot);
+                });
+                proneEntry = { label: 'Prone', modifier: hasCommittedHipHit ? TN_PRONE_ATTACKER : proneModifier };
+            } else { 
+                // Biped
+                proneEntry = { label: 'Prone', modifier: TN_PRONE_ATTACKER };
+            }
+            if (proneEntry) {
+                entries.push(proneEntry);
+            }
+        }
+        return entries;
+    }
+
+    override getDefenseModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[] {
+        const entries = [...super.getDefenseModifierBreakdown(turnState)];
+        if (turnState.unitState.hasCondition('prone')) {
+            entries.push({
+                label: 'Prone',
+                modifier: Math.max(TN_PRONE, TN_PRONE_ADJACENT),
+                alternateModifier: Math.min(TN_PRONE, TN_PRONE_ADJACENT),
+                alternateModifierLabel: 'adjacent',
+            });
+        }
+        return entries;
     }
 
     // ── Heat Scale ───────────────────────────────────────────────────────────

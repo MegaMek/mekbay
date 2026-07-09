@@ -27,7 +27,7 @@
     "@angular/pwa": "^22.0.5",
     "@angular/router": "^22.0.5",
     "@angular/service-worker": "^22.0.5",
-    "@zxing/browser": "^0.2.0",
+    "@zxing/browser": "^0.2.1",
     "@zxing/library": "^0.23.0",
     "@zxing/ngx-scanner": "^22.0.1",
     "angularx-qrcode": "^21.0.5",
@@ -43,6 +43,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/jszip": "^3.4.1",
     "@types/node": "^26.1.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "fast-xml-parser": "^5.9.3",
     "jasmine-core": "^6.3.0",
     "js-yaml": "^5.2.1",
@@ -53,6 +54,6 @@
     "karma-jasmine-html-reporter": "^2.2.0",
     "sharp": "^0.35.3",
     "tsx": "^4.23.0",
-    "typescript": "6.0.3"
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
   }
 }
