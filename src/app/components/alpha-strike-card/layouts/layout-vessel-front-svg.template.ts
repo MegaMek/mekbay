@@ -42,12 +42,21 @@ export const LAYOUT_VESSEL_FRONT_SVG_TEMPLATE = `
     <text [attr.x]="vesselFrontGeometry.leftX + 77" [attr.y]="vesselFrontGeometry.secondRowY + 207" fill="#000" font-size="55" font-weight="900" text-anchor="middle">{{ structurePips() }}</text>
     <text [attr.x]="vesselFrontGeometry.leftX + 187" [attr.y]="vesselFrontGeometry.secondRowY + 32" fill="#000" font-size="20" font-weight="900">DAMAGE</text>
     <g class="damage-track" data-damage-track="armor" [class.pending-damage]="pendingArmorChange() > 0" [class.pending-heal]="pendingArmorChange() < 0">
+        <rect class="damage-track-hit-area" [attr.x]="vesselFrontGeometry.leftX + 177"
+            [attr.y]="vesselFrontGeometry.secondRowY + 8"
+            [attr.width]="vesselFrontGeometry.leftWidth - 190" height="104"
+            fill="transparent" pointer-events="all" />
         <text [attr.x]="vesselFrontGeometry.leftX + 337" [attr.y]="vesselFrontGeometry.secondRowY + 87" fill="#7b0000" font-size="48" font-weight="900" text-anchor="middle">
             {{ committedArmorDamage() || '' }}@if (pendingArmorChange()) {<tspan>{{ pendingArmorChange() > 0 ? '+' : '' }}{{ pendingArmorChange() }}</tspan>}
         </text>
     </g>
     <text [attr.x]="vesselFrontGeometry.leftX + 187" [attr.y]="vesselFrontGeometry.secondRowY + 142" fill="#000" font-size="20" font-weight="900">DAMAGE</text>
     <g class="damage-track" data-damage-track="structure" [class.pending-damage]="pendingInternalChange() > 0" [class.pending-heal]="pendingInternalChange() < 0">
+        <rect class="damage-track-hit-area" [attr.x]="vesselFrontGeometry.leftX + 177"
+            [attr.y]="vesselFrontGeometry.secondRowY + 112"
+            [attr.width]="vesselFrontGeometry.leftWidth - 190"
+            [attr.height]="vesselFrontGeometry.damageHeight - 124"
+            fill="transparent" pointer-events="all" />
         <text [attr.x]="vesselFrontGeometry.leftX + 337" [attr.y]="vesselFrontGeometry.secondRowY + 207" fill="#7b0000" font-size="48" font-weight="900" text-anchor="middle">
             {{ committedInternalDamage() || '' }}@if (pendingInternalChange()) {<tspan>{{ pendingInternalChange() > 0 ? '+' : '' }}{{ pendingInternalChange() }}</tspan>}
         </text>
