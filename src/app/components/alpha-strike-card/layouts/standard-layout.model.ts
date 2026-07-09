@@ -1,20 +1,23 @@
+import { CARD_LAYOUT_GEOMETRY } from './card-layout.geometry';
+
 export const STANDARD_CARD_GEOMETRY = {
-    viewBoxWidth: 1120,
-    viewBoxHeight: 800,
-    contentLeft: 28,
-    contentRight: 1092,
-    contentBottom: 704,
-    columnGap: 6,
-    frameGap: 6,
+    viewBoxWidth: CARD_LAYOUT_GEOMETRY.viewBoxWidth,
+    viewBoxHeight: CARD_LAYOUT_GEOMETRY.viewBoxHeight,
+    contentLeft: CARD_LAYOUT_GEOMETRY.bodyInset,
+    contentRight: CARD_LAYOUT_GEOMETRY.bodyRight,
+    contentBottom: CARD_LAYOUT_GEOMETRY.bodyBottom,
     leftColumnRatio: 0.575,
-    generalHeight: 96,
-    damageHeight: 116,
-    heatHeight: 58,
+    generalHeight: 119,
+    damageHeight: 117,
+    heatHeight: 66,
     armorHeight: 96,
-    pipColumns: 16,
-    pipRowHeight: 27,
+    pipColumns: 14,
+    pipRadius: 13,
+    pipColumnWidth: 37,
+    pipRowHeight: 37,
+    pipFirstRowOffset: 23,
     specialsPaddingX: 14,
-    specialsPaddingY: 10,
+    specialsPaddingY: 14,
     specialsFontSize: 30,
     specialsLineHeight: 34,
 } as const;
@@ -62,6 +65,12 @@ export function estimateRobotoWidth(text: string, fontSize: number): number {
     return units * fontSize;
 }
 
+export function estimateRobotoCondensedWidth(text: string, fontSize: number, letterSpacingEm = 0.05): number {
+    const glyphWidth = estimateRobotoWidth(text, fontSize) * 0.9;
+    const letterSpacing = Math.max(0, text.length - 1) * fontSize * letterSpacingEm;
+    return glyphWidth + letterSpacing;
+}
+
 export function wrapSvgText(
     text: string,
     maxWidth: number,
@@ -95,9 +104,9 @@ export function wrapSvgText(
 export function buildStandardLayout(input: StandardLayoutInput): StandardLayoutModel {
     const geometry = STANDARD_CARD_GEOMETRY;
     const contentWidth = geometry.contentRight - geometry.contentLeft;
-    const usableColumnsWidth = contentWidth - geometry.columnGap;
+    const usableColumnsWidth = contentWidth - CARD_LAYOUT_GEOMETRY.frameGap;
     const leftWidth = Math.round(usableColumnsWidth * geometry.leftColumnRatio);
-    const rightX = geometry.contentLeft + leftWidth + geometry.columnGap;
+    const rightX = geometry.contentLeft + leftWidth + CARD_LAYOUT_GEOMETRY.frameGap;
     const rightWidth = geometry.contentRight - rightX;
 
     const specialsLines = wrapSvgText(
@@ -118,13 +127,13 @@ export function buildStandardLayout(input: StandardLayoutInput): StandardLayoutM
             height: specialsHeight,
         }
         : null;
-    const mainBottom = specials ? specials.y - geometry.frameGap : geometry.contentBottom;
+    const mainBottom = specials ? specials.y - CARD_LAYOUT_GEOMETRY.frameGap : geometry.contentBottom;
 
     const armorRows = Math.max(1, Math.ceil((input.armorPips ?? 0) / geometry.pipColumns));
     const structureRows = Math.max(1, Math.ceil((input.structurePips ?? 0) / geometry.pipColumns));
     const armorHeight = Math.max(
         geometry.armorHeight,
-        20 + (armorRows + structureRows) * geometry.pipRowHeight,
+        14 + (armorRows + structureRows) * geometry.pipRowHeight,
     );
 
     let cursor = mainBottom;
@@ -134,7 +143,7 @@ export function buildStandardLayout(input: StandardLayoutInput): StandardLayoutM
         width: leftWidth,
         height: armorHeight,
     };
-    cursor = armor.y - geometry.frameGap;
+    cursor = armor.y - CARD_LAYOUT_GEOMETRY.frameGap;
 
     const heat = input.usesHeat
         ? {
@@ -144,7 +153,7 @@ export function buildStandardLayout(input: StandardLayoutInput): StandardLayoutM
             height: geometry.heatHeight,
         }
         : null;
-    if (heat) cursor = heat.y - geometry.frameGap;
+    if (heat) cursor = heat.y - CARD_LAYOUT_GEOMETRY.frameGap;
 
     const damage: SvgFrameRect = {
         x: geometry.contentLeft,
@@ -152,7 +161,7 @@ export function buildStandardLayout(input: StandardLayoutInput): StandardLayoutM
         width: leftWidth,
         height: geometry.damageHeight,
     };
-    cursor = damage.y - geometry.frameGap;
+    cursor = damage.y - CARD_LAYOUT_GEOMETRY.frameGap;
 
     const general: SvgFrameRect = {
         x: geometry.contentLeft,

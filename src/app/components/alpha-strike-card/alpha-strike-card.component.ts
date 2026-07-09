@@ -53,9 +53,11 @@ import { firstValueFrom } from 'rxjs';
 import { OptionsService } from '../../services/options.service';
 import { PickerFactoryService } from '../../services/picker-factory.service';
 import { AsLayoutBaseComponent } from './layouts/layout-base.component';
-import { buildStandardLayout, estimateRobotoWidth, getStandardCriticalRows, type StandardCriticalVariant, type StandardLayoutModel } from './layouts/standard-layout.model';
+import { STANDARD_CARD_GEOMETRY, buildStandardLayout, estimateRobotoCondensedWidth, estimateRobotoWidth, getStandardCriticalRows, type StandardCriticalVariant, type StandardLayoutModel } from './layouts/standard-layout.model';
 import { formatMovement, isAerospace } from '../../utils/as-common.util';
 import { buildVesselSpecialsLayout, VESSEL_SPECIALS_GEOMETRY } from './layouts/vessel-layout.model';
+import { CARD_LAYOUT_GEOMETRY } from './layouts/card-layout.geometry';
+import { VESSEL_FRONT_GEOMETRY, VESSEL_REAR_GEOMETRY } from './layouts/vessel-layout.model';
 import { ALPHA_STRIKE_CARD_TEMPLATE } from './alpha-strike-card.template';
 
 interface VesselArcRenderModel {
@@ -82,6 +84,9 @@ interface VesselArcRenderModel {
     }
 })
 export class AlphaStrikeCardComponent extends AsLayoutBaseComponent {
+    readonly cardGeometry = CARD_LAYOUT_GEOMETRY;
+    readonly vesselFrontGeometry = VESSEL_FRONT_GEOMETRY;
+    readonly vesselRearGeometry = VESSEL_REAR_GEOMETRY;
     private static nextId = 0;
     private readonly injector = inject(Injector);
     private readonly optionsService = inject(OptionsService);
@@ -147,7 +152,7 @@ export class AlphaStrikeCardComponent extends AsLayoutBaseComponent {
         hasCriticalTable: this.currentCriticalHitsVariant() !== 'none',
         armorPips: this.armorPips(),
         structurePips: this.structurePips(),
-        criticalHeight: this.currentCriticalHitsVariant() === 'vehicle' ? 228 : 214,
+        criticalHeight: this.currentCriticalHitsVariant() === 'vehicle' ? 228 : 218,
     }));
 
     standardImageGeometry = computed(() => {
@@ -216,7 +221,7 @@ export class AlphaStrikeCardComponent extends AsLayoutBaseComponent {
         const chassisLine = alias || this.chassis();
         const maxWidth = 690;
         const preferredSize = chassisLine.length > 20 ? 60 : 70;
-        const measured = estimateRobotoWidth(chassisLine.toUpperCase(), preferredSize);
+        const measured = estimateRobotoCondensedWidth(chassisLine.toUpperCase(), preferredSize);
         const fontSize = measured > maxWidth ? Math.max(42, Math.floor(preferredSize * maxWidth / measured)) : preferredSize;
         return { model: modelLine.toUpperCase(), chassis: chassisLine.toUpperCase(), fontSize };
     });
@@ -255,7 +260,7 @@ export class AlphaStrikeCardComponent extends AsLayoutBaseComponent {
     vesselSpecialsRenderModel = computed(() => {
         const fontSize = 30;
         const startX = VESSEL_SPECIALS_GEOMETRY.textX + estimateRobotoWidth('SPECIAL: ', fontSize);
-        const maxX = 1078;
+        const maxX = CARD_LAYOUT_GEOMETRY.bodyRight - 14;
         let x = startX;
         let line = 0;
         const tokens = this.effectiveSpecials().map((state, index, values) => {
@@ -364,16 +369,22 @@ export class AlphaStrikeCardComponent extends AsLayoutBaseComponent {
     }
 
     pipRow(index: number): number {
-        return Math.floor(index / 16);
+        return Math.floor(index / STANDARD_CARD_GEOMETRY.pipColumns);
+    }
+
+    armorPipX(index: number, frameX: number): number {
+        return frameX + 68 + (index % STANDARD_CARD_GEOMETRY.pipColumns) * STANDARD_CARD_GEOMETRY.pipColumnWidth;
     }
 
     armorPipY(index: number, frameY: number): number {
-        return frameY + 27 + this.pipRow(index) * 27;
+        return frameY + STANDARD_CARD_GEOMETRY.pipFirstRowOffset
+            + this.pipRow(index) * STANDARD_CARD_GEOMETRY.pipRowHeight;
     }
 
     structurePipY(index: number, frameY: number): number {
-        const armorRows = Math.max(1, Math.ceil(this.armorPips() / 16));
-        return frameY + 27 + (armorRows + this.pipRow(index)) * 27;
+        const armorRows = Math.max(1, Math.ceil(this.armorPips() / STANDARD_CARD_GEOMETRY.pipColumns));
+        return frameY + STANDARD_CARD_GEOMETRY.pipFirstRowOffset
+            + (armorRows + this.pipRow(index)) * STANDARD_CARD_GEOMETRY.pipRowHeight;
     }
 
     onSvgSpecialClick(state: SpecialAbilityState, event: MouseEvent): void {

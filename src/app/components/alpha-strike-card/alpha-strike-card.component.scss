@@ -80,6 +80,15 @@
         stroke: #000;
     }
 
+    .header text,
+    .vessel-front > .chassis-text,
+    .vessel-rear > .chassis-text,
+    .critical-title-text,
+    .heat-title-text,
+    .range-header-text {
+        fill: #fff;
+    }
+
     .battletech-logo .logo-text {
         fill: #fff;
     }

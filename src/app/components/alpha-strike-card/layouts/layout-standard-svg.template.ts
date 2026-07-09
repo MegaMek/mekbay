@@ -11,7 +11,7 @@ export const LAYOUT_STANDARD_SVG_TEMPLATE = `
     @for (item of eraAvailability(); track item.era.id; let eraIndex = $index) {
         @if (item.era.icon) {
             <image class="era-icon" [class.unavailable]="!item.isAvailable" [attr.href]="item.era.icon"
-                x="1062" [attr.y]="105 + eraIndex * 35" width="28" height="28" preserveAspectRatio="xMidYMid meet">
+                [attr.x]="cardGeometry.bodyRight - 30" [attr.y]="145 + eraIndex * 35" width="28" height="28" preserveAspectRatio="xMidYMid meet">
                 <title>{{ item.era.name }}</title>
             </image>
         }
@@ -20,7 +20,7 @@ export const LAYOUT_STANDARD_SVG_TEMPLATE = `
 
 <g class="header" fill="#000" font-family="Roboto, sans-serif">
     @if (isCommander()) {
-        <svg class="group-commander-icon" x="28" y="20" width="84" height="104" viewBox="0 0 21.04 25.94" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+        <svg class="group-commander-icon" [attr.x]="cardGeometry.bodyInset" y="20" width="84" height="104" viewBox="0 0 21.04 25.94" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
             <g transform="translate(-.02) rotate(180 10.52 12.97)" fill="#000" opacity="0.3">
                 <g transform="matrix(.265 0 0 .265 -21.1 0)">
                     <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
@@ -29,8 +29,9 @@ export const LAYOUT_STANDARD_SVG_TEMPLATE = `
             </g>
         </svg>
     }
-    <text x="30" y="54" font-size="40" font-weight="400">{{ headerLines().model }}</text>
-    <text x="30" y="120" [attr.font-size]="headerLines().fontSize" font-weight="900">{{ headerLines().chassis }}</text>
+    <text [attr.x]="cardGeometry.bodyInset" y="54" font-size="40" font-weight="400">{{ headerLines().model }}</text>
+    <text class="chassis-text" [attr.x]="cardGeometry.bodyInset" y="120" [attr.font-size]="headerLines().fontSize"
+        font-family="Roboto Condensed, sans-serif" font-weight="700" letter-spacing="0.05em">{{ headerLines().chassis }}</text>
 </g>
 <path class="pv-background" d="M860 20 H1100 V105 H910 Z" fill="#000" />
 <text x="1010" y="78" fill="#fff" font-family="Roboto, sans-serif" font-size="58" font-weight="900" text-anchor="middle">{{ adjustedPV() }}</text>
@@ -40,7 +41,7 @@ export const LAYOUT_STANDARD_SVG_TEMPLATE = `
 }
 
 <g class="general-frame">
-    <rect class="frame-background" [attr.x]="layout.general.x" [attr.y]="layout.general.y" [attr.width]="layout.general.width" [attr.height]="layout.general.height" rx="16" ry="16" fill="#fff" fill-opacity="0.85" stroke="#221f20" stroke-width="3" />
+    <rect class="frame-background" [attr.x]="layout.general.x" [attr.y]="layout.general.y" [attr.width]="layout.general.width" [attr.height]="layout.general.height" rx="16" ry="16" fill="#fff" fill-opacity="0.85" stroke="#666" stroke-width="3" />
     <text [attr.x]="layout.general.x + 14" [attr.y]="layout.general.y + 35" fill="#000" font-family="Roboto, sans-serif" font-size="29" font-weight="500">TP: <tspan class="as-value" fill="#7b0000" font-weight="900">{{ asStats().TP }}</tspan></text>
     <text [attr.x]="layout.general.x + 145" [attr.y]="layout.general.y + 35" fill="#000" font-family="Roboto, sans-serif" font-size="29" font-weight="500">SZ: <tspan class="as-value" fill="#7b0000" font-weight="900">{{ asStats().SZ }}</tspan></text>
     @if (!isAerospaceUnit()) {
@@ -60,14 +61,17 @@ export const LAYOUT_STANDARD_SVG_TEMPLATE = `
 </g>
 
 <g class="damage-frame">
-    <rect class="frame-background" [attr.x]="layout.damage.x" [attr.y]="layout.damage.y" [attr.width]="layout.damage.width" [attr.height]="layout.damage.height" rx="16" ry="16" fill="#fff" fill-opacity="0.85" stroke="#221f20" stroke-width="3" />
+    <rect class="frame-background" [attr.x]="layout.damage.x" [attr.y]="layout.damage.y" [attr.width]="layout.damage.width" [attr.height]="layout.damage.height" rx="16" ry="16" fill="#fff" fill-opacity="0.85" stroke="#666" stroke-width="3" />
     <text [attr.x]="layout.damage.x + 20" [attr.y]="layout.damage.y + layout.damage.height / 2"
         [attr.transform]="'rotate(-90 ' + (layout.damage.x + 20) + ' ' + (layout.damage.y + layout.damage.height / 2) + ')'"
         fill="#7b0000" font-family="Roboto Condensed, sans-serif" font-size="23" font-weight="900" text-anchor="middle" dominant-baseline="middle">DAMAGE</text>
     @for (range of damageRanges(); track range.label; let rangeIndex = $index) {
         @let rangeWidth = (layout.damage.width - 54) / damageRanges().length;
         @let rangeX = layout.damage.x + 50 + rangeIndex * rangeWidth + rangeWidth / 2;
-        <text [attr.x]="rangeX" [attr.y]="layout.damage.y + 28" fill="#000" font-family="Roboto, sans-serif" font-size="20" font-weight="700" text-anchor="middle">{{ range.label }} ({{ range.modifier === 0 ? '0' : '+' + range.modifier }} | {{ range.toHit }}+)</text>
+        <rect class="range-title-background" [attr.x]="layout.damage.x + 50 + rangeIndex * rangeWidth" [attr.y]="layout.damage.y + 7"
+            [attr.width]="rangeWidth" height="28"
+            [attr.fill]="cardStyle() === 'night' ? (rangeIndex === 0 ? 'url(#range-left-gradient-' + instanceId + ')' : rangeIndex === damageRanges().length - 1 ? 'url(#range-right-gradient-' + instanceId + ')' : 'url(#title-gradient-' + instanceId + ')') : 'transparent'" />
+        <text class="range-header-text" [attr.x]="rangeX" [attr.y]="layout.damage.y + 28" fill="#000" font-family="Roboto, sans-serif" font-size="20" font-weight="700" text-anchor="middle">{{ range.label }} ({{ range.modifier === 0 ? '0' : '+' + range.modifier }} | {{ range.toHit }}+)</text>
         <text class="damage-value" [class.reduced]="weaponHits() > 0" [attr.x]="rangeX" [attr.y]="layout.damage.y + 75" fill="#7b0000" font-family="Roboto, sans-serif" font-size="42" font-weight="900" text-anchor="middle">{{ range.value }}</text>
         <text [attr.x]="rangeX" [attr.y]="layout.damage.y + 102" fill="#000" font-family="Roboto, sans-serif" font-size="19" text-anchor="middle">{{ range.distance }}</text>
     }
@@ -75,9 +79,11 @@ export const LAYOUT_STANDARD_SVG_TEMPLATE = `
 
 @if (layout.heat; as heatFrame) {
     <g class="heat-frame">
-        <rect class="frame-background" [attr.x]="heatFrame.x" [attr.y]="heatFrame.y" [attr.width]="heatFrame.width" [attr.height]="heatFrame.height" rx="16" ry="16" fill="#fff" fill-opacity="0.85" stroke="#221f20" stroke-width="3" />
+        <rect class="frame-background" [attr.x]="heatFrame.x" [attr.y]="heatFrame.y" [attr.width]="heatFrame.width" [attr.height]="heatFrame.height" rx="16" ry="16" fill="#fff" fill-opacity="0.85" stroke="#666" stroke-width="3" />
         <text [attr.x]="heatFrame.x + 14" [attr.y]="heatFrame.y + 39" fill="#000" font-family="Roboto, sans-serif" font-size="28" font-weight="500">OV: <tspan class="as-value" fill="#7b0000" font-weight="900">{{ asStats().OV }}</tspan></text>
-        <text class="frame-title" [attr.x]="heatFrame.x + 142" [attr.y]="heatFrame.y + 39" fill="#000" font-family="Roboto, sans-serif" font-size="29" font-weight="900">HEAT SCALE</text>
+        <rect class="heat-title-background" [attr.x]="heatFrame.x + 110" [attr.y]="heatFrame.y + 8" width="235" height="40"
+            [attr.fill]="cardStyle() === 'night' ? 'url(#title-gradient-' + instanceId + ')' : 'transparent'" />
+        <text class="heat-title-text" [attr.x]="heatFrame.x + 142" [attr.y]="heatFrame.y + 43" fill="#000" font-family="Roboto, sans-serif" font-size="29" font-weight="900">HEAT SCALE</text>
         @let heatLevels = heatTrackLevels();
         @let cellWidth = heatLevels.length > 4 ? 34 : 44;
         @let trackX = heatFrame.x + heatFrame.width - (heatLevels.length + 1) * cellWidth - 14;
@@ -88,14 +94,16 @@ export const LAYOUT_STANDARD_SVG_TEMPLATE = `
             @let previewHeat = committedHeat + pendingHeatDelta;
             @for (level of heatLevels; track level; let heatIndex = $index) {
                 <g class="heat-level" [class.active]="committedHeat === level" [class.pending]="pendingHeatDelta !== 0 && previewHeat === level" [attr.data-heat]="level">
-                    <rect [attr.x]="trackX + heatIndex * cellWidth" [attr.y]="heatFrame.y + 7" [attr.width]="cellWidth" height="44" fill="transparent" />
+                    <rect class="heat-cell" [attr.x]="trackX + heatIndex * cellWidth + (heatIndex === 0 ? 2 : 1)" [attr.y]="heatFrame.y + 9"
+                        [attr.width]="cellWidth - 2" height="40" [attr.rx]="heatIndex === 0 ? 9 : 0" [attr.ry]="heatIndex === 0 ? 9 : 0" fill="transparent" />
                     <text [attr.x]="trackX + heatIndex * cellWidth + cellWidth / 2" [attr.y]="heatFrame.y + 41" fill="#fff" font-family="Roboto, sans-serif" font-size="31" text-anchor="middle">{{ level }}</text>
                     <line class="heat-separator" [attr.x1]="trackX + (heatIndex + 1) * cellWidth" [attr.x2]="trackX + (heatIndex + 1) * cellWidth"
                         [attr.y1]="heatFrame.y + 9" [attr.y2]="heatFrame.y + 49" stroke="#000" stroke-width="2" />
                 </g>
             }
             <g class="heat-level heat-s" [class.active]="committedHeat >= shutdownHeatThreshold()" [class.pending]="pendingHeatDelta !== 0 && previewHeat >= shutdownHeatThreshold()" [attr.data-heat]="shutdownHeatThreshold()">
-                <rect [attr.x]="trackX + heatLevels.length * cellWidth" [attr.y]="heatFrame.y + 7" [attr.width]="cellWidth" height="44" fill="transparent" />
+                <rect class="heat-cell" [attr.x]="trackX + heatLevels.length * cellWidth + 1" [attr.y]="heatFrame.y + 9"
+                    [attr.width]="cellWidth - 3" height="40" rx="9" ry="9" fill="transparent" />
                 <text [attr.x]="trackX + heatLevels.length * cellWidth + cellWidth / 2" [attr.y]="heatFrame.y + 41" fill="#fff" font-family="Roboto, sans-serif" font-size="31" text-anchor="middle">S</text>
             </g>
         </g>
@@ -103,19 +111,19 @@ export const LAYOUT_STANDARD_SVG_TEMPLATE = `
 }
 
 <g class="armor-frame pips-wrapper">
-    <rect class="frame-background" [attr.x]="layout.armor.x" [attr.y]="layout.armor.y" [attr.width]="layout.armor.width" [attr.height]="layout.armor.height" rx="16" ry="16" fill="#fff" fill-opacity="0.85" stroke="#221f20" stroke-width="3" />
+    <rect class="frame-background" [attr.x]="layout.armor.x" [attr.y]="layout.armor.y" [attr.width]="layout.armor.width" [attr.height]="layout.armor.height" rx="16" ry="16" fill="#fff" fill-opacity="0.85" stroke="#666" stroke-width="3" />
     <g class="pip-row" data-damage-type="armor">
         <text [attr.x]="layout.armor.x + 14" [attr.y]="layout.armor.y + 37" fill="#000" font-family="Roboto, sans-serif" font-size="29" font-weight="500">A:</text>
         @for (pipState of armorPipStates(); track pipState.index) {
             <circle class="pip" [class.damaged]="pipState.isDamaged" [class.pending-damage]="pipState.isPendingDamage" [class.pending-heal]="pipState.isPendingHeal"
-                [attr.cx]="layout.armor.x + 66 + (pipState.index % 16) * 31" [attr.cy]="armorPipY(pipState.index, layout.armor.y)" r="12" fill="#fff" stroke="#000" stroke-width="3" />
+                [attr.cx]="armorPipX(pipState.index, layout.armor.x)" [attr.cy]="armorPipY(pipState.index, layout.armor.y)" r="13" fill="#fff" stroke="#000" stroke-width="3" />
         }
     </g>
     <g class="pip-row" data-damage-type="structure">
         <text [attr.x]="layout.armor.x + 14" [attr.y]="structurePipY(0, layout.armor.y) + 10" fill="#000" font-family="Roboto, sans-serif" font-size="29" font-weight="500">S:</text>
         @for (pipState of structurePipStates(); track pipState.index) {
             <circle class="pip structure" [class.damaged]="pipState.isDamaged" [class.pending-damage]="pipState.isPendingDamage" [class.pending-heal]="pipState.isPendingHeal"
-                [attr.cx]="layout.armor.x + 66 + (pipState.index % 16) * 31" [attr.cy]="structurePipY(pipState.index, layout.armor.y)" r="12" fill="#bbb" stroke="#000" stroke-width="3" />
+                [attr.cx]="armorPipX(pipState.index, layout.armor.x)" [attr.cy]="structurePipY(pipState.index, layout.armor.y)" r="13" fill="#bbb" stroke="#000" stroke-width="3" />
         }
     </g>
     @if (asStats().usesTh) {
@@ -126,9 +134,9 @@ export const LAYOUT_STANDARD_SVG_TEMPLATE = `
 
 @if (layout.critical; as criticalFrame) {
     <g class="critical-frame">
-        <rect class="frame-background" [attr.x]="criticalFrame.x" [attr.y]="criticalFrame.y" [attr.width]="criticalFrame.width" [attr.height]="criticalFrame.height" rx="16" ry="16" fill="#fff" fill-opacity="0.85" stroke="#221f20" stroke-width="3" />
+        <rect class="frame-background" [attr.x]="criticalFrame.x" [attr.y]="criticalFrame.y" [attr.width]="criticalFrame.width" [attr.height]="criticalFrame.height" rx="16" ry="16" fill="#fff" fill-opacity="0.85" stroke="#666" stroke-width="3" />
         <rect class="critical-title-background" [attr.x]="criticalFrame.x + 70" [attr.y]="criticalFrame.y + 8" [attr.width]="criticalFrame.width - 140" height="38" [attr.fill]="cardStyle() === 'night' ? 'url(#title-gradient-' + instanceId + ')' : 'transparent'" />
-        <text [attr.x]="criticalFrame.x + criticalFrame.width / 2" [attr.y]="criticalFrame.y + 38" fill="#000" font-family="Roboto, sans-serif" font-size="29" font-weight="900" text-anchor="middle">CRITICAL HITS</text>
+        <text class="critical-title-text" [attr.x]="criticalFrame.x + criticalFrame.width / 2" [attr.y]="criticalFrame.y + 38" fill="#000" font-family="Roboto, sans-serif" font-size="29" font-weight="900" text-anchor="middle">CRITICAL HITS</text>
         @for (row of criticalRows(); track row.key; let rowIndex = $index) {
             @let rowY = criticalFrame.y + 72 + rowIndex * 39;
             <g class="critical-row" [attr.data-crit]="row.key">
@@ -171,7 +179,7 @@ export const LAYOUT_STANDARD_SVG_TEMPLATE = `
 }
 @if (layout.specials; as specialsFrame) {
     <g class="specials-frame">
-        <rect class="frame-background" [attr.x]="specialsFrame.x" [attr.y]="specialsFrame.y" [attr.width]="specialsFrame.width" [attr.height]="specialsFrame.height" rx="16" ry="16" fill="#fff" fill-opacity="0.85" stroke="#221f20" stroke-width="3" />
+        <rect class="frame-background" [attr.x]="specialsFrame.x" [attr.y]="specialsFrame.y" [attr.width]="specialsFrame.width" [attr.height]="specialsFrame.height" rx="16" ry="16" fill="#fff" fill-opacity="0.85" stroke="#666" stroke-width="3" />
         <text [attr.x]="specialsFrame.x + 14" [attr.y]="specialsFrame.y + 38" fill="#000" font-family="Roboto, sans-serif" font-size="30" font-weight="500">SPECIAL:</text>
         @for (token of specialTokens(); track token.state.original) {
             <text class="special-ability as-value" [class.exhausted]="token.state.isExhausted || (token.state.maxCount && (token.state.consumedCount ?? 0) >= token.state.maxCount)" [class.has-consumed]="token.state.consumedCount"

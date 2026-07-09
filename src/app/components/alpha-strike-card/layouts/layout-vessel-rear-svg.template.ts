@@ -1,20 +1,20 @@
 export const LAYOUT_VESSEL_REAR_SVG_TEMPLATE = `
-<text x="30" y="62" fill="#000" font-size="40" font-weight="900">
+<text class="chassis-text" [attr.x]="cardGeometry.bodyInset" y="62" fill="#000" font-family="Roboto Condensed, sans-serif"
+    font-size="40" font-weight="700" letter-spacing="0.05em">
     {{ (forceUnit()?.alias() || chassis() + ' ' + model()).toUpperCase() }}
 </text>
 @for (arc of vesselArcData(); track arc.label; let arcIndex = $index) {
-    @let arcGap = 10;
-    @let arcWidth = 527;
-    @let arcHeight = 278;
-    @let arcX = arcIndex % 2 === 0 ? 28 : 28 + arcWidth + arcGap;
-    @let arcY = arcIndex < 2 ? 78 : 78 + arcHeight + arcGap;
+    @let arcWidth = vesselRearGeometry.frameWidth;
+    @let arcHeight = vesselRearGeometry.frameHeight;
+    @let arcX = arcIndex % 2 === 0 ? cardGeometry.bodyInset : cardGeometry.bodyInset + arcWidth + cardGeometry.frameGap;
+    @let arcY = arcIndex < 2 ? vesselRearGeometry.top : vesselRearGeometry.top + arcHeight + cardGeometry.frameGap;
     @let columns = vesselArcColumns();
     @let tableX = arcX + 64;
     @let tableWidth = arcWidth - 78;
     @let valueWidth = (tableWidth - 106) / columns.length;
     <g class="arc-damage-table">
         <rect class="frame-background" [attr.x]="arcX" [attr.y]="arcY" [attr.width]="arcWidth" [attr.height]="arcHeight"
-            rx="16" fill="#fff" fill-opacity="0.85" stroke="#221f20" stroke-width="3" />
+            rx="16" fill="#fff" fill-opacity="0.85" stroke="#666" stroke-width="3" />
         <text [attr.x]="arcX + 25" [attr.y]="arcY + arcHeight / 2" fill="#7b0000" font-family="Roboto Condensed, sans-serif" font-size="26" font-weight="900"
             text-anchor="middle" [attr.transform]="'rotate(-90 ' + (arcX + 25) + ' ' + (arcY + arcHeight / 2) + ')'">{{ arc.label }}</text>
         @for (column of columns; track column; let columnIndex = $index) {
@@ -55,8 +55,8 @@ export const LAYOUT_VESSEL_REAR_SVG_TEMPLATE = `
         }
     </g>
 }
-<text x="28" y="682" fill="#000" font-size="19" font-weight="900">WEAPON CRITICALS</text>
-<text x="220" y="682" fill="#000" font-family="Roboto, sans-serif" font-size="17">
+<text [attr.x]="cardGeometry.bodyInset" [attr.y]="vesselRearGeometry.noteBaseline" fill="#000" font-size="19" font-weight="900">WEAPON CRITICALS</text>
+<text x="220" [attr.y]="vesselRearGeometry.noteBaseline" fill="#000" font-family="Roboto, sans-serif" font-size="17">
     Damage Value Reduced by 25% per hit. — Randomly determine an appropriate STD/@if (vesselHasCap()) {CAP/}SCAP/MSL column.
 </text>
 `;

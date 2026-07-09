@@ -51,7 +51,7 @@ export const ALPHA_STRIKE_CARD_TEMPLATE = `
         }
 
         <g class="footer">
-            <path d="M20 704 H535 L590 780 H20 Z" fill="#000" />
+            <path d="M20 708 H535 L590 780 H20 Z" fill="#000" />
             ${FOOTER_LOGOS_SVG_TEMPLATE}
         </g>
     </svg>
@@ -60,7 +60,7 @@ export const ALPHA_STRIKE_CARD_TEMPLATE = `
         @if (interactive() && currentDesign() === 'standard' && standardLayout().critical) {
             @let critical = standardLayout().critical!;
             <button class="crit-roll-button" type="button" aria-label="Roll critical hit"
-                [style.left.%]="(critical.x + critical.width - 45) / 11.2" [style.top.%]="(critical.y + 8) / 8"
+                [style.left.%]="(critical.x + critical.width - 58) / 11.2" [style.top.%]="(critical.y + 8) / 8"
                 (click)="$event.stopPropagation(); onRollCriticalClick()"></button>
         }
         @if (interactive() && isDirty()) {
