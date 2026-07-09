@@ -389,7 +389,7 @@ export class AlphaStrikeViewerComponent {
     }
     
     toggleCardStyle(): void {
-        this.optionsService.setOption('ASCardStyle', this.cardStyle() === 'colored' ? 'monochrome' : 'colored');
+        this.optionsService.setOption('ASCardStyle', this.cardStyle() === 'night' ? 'default' : 'night');
     }
     
     resetZoom(): void {

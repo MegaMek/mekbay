@@ -64,6 +64,28 @@ const FONT_FACE_SPECS: FontFaceSpec[] = [
 export class SvgExportUtil {
     private static embeddedFontCssPromise: Promise<string> | null = null;
 
+    static async serializeSvg(svg: SVGSVGElement): Promise<string> {
+        try {
+            await document.fonts?.ready;
+        } catch {
+            // Embedded font rules keep the serialized SVG self-contained.
+        }
+        return this.serializeSvgForExport(svg, await this.getEmbeddedFontCss());
+    }
+
+    static async downloadSvg(svg: SVGSVGElement, fileName: string): Promise<void> {
+        const blob = new Blob([await this.serializeSvg(svg)], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        try {
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${fileName}.svg`;
+            link.click();
+        } finally {
+            URL.revokeObjectURL(url);
+        }
+    }
+
     static async downloadPng(svgs: SVGSVGElement[], fileName: string, options: SvgPngRenderOptions = {}): Promise<void> {
         const renderedPng = await this.generatePng(svgs, options);
         if (!renderedPng) return;
@@ -214,9 +236,30 @@ export class SvgExportUtil {
             clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
         }
 
+        this.inlineRenderedStyles(svg, clone);
         await this.inlineExternalImages(clone);
         this.injectExportStyles(clone, embeddedFontCss);
         return new XMLSerializer().serializeToString(clone);
+    }
+
+    private static inlineRenderedStyles(source: SVGSVGElement, clone: SVGSVGElement): void {
+        const sourceElements = [source, ...Array.from(source.querySelectorAll<SVGElement>('*'))];
+        const cloneElements = [clone, ...Array.from(clone.querySelectorAll<SVGElement>('*'))];
+        for (let index = 0; index < sourceElements.length; index += 1) {
+            const sourceElement = sourceElements[index];
+            const cloneElement = cloneElements[index];
+            const style = getComputedStyle(sourceElement);
+            if (style.fill && style.fill !== 'none') cloneElement.setAttribute('fill', style.fill);
+            if (style.stroke && style.stroke !== 'none') cloneElement.setAttribute('stroke', style.stroke);
+            if (style.opacity && style.opacity !== '1') cloneElement.setAttribute('opacity', style.opacity);
+            if (style.filter && style.filter !== 'none') cloneElement.style.filter = style.filter;
+            if (style.mixBlendMode && style.mixBlendMode !== 'normal') {
+                cloneElement.style.mixBlendMode = style.mixBlendMode;
+            }
+            if (style.textDecorationLine && style.textDecorationLine !== 'none') {
+                cloneElement.style.textDecoration = style.textDecorationLine;
+            }
+        }
     }
 
     private static async inlineExternalImages(svg: SVGSVGElement): Promise<void> {

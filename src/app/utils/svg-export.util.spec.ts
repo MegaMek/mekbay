@@ -110,6 +110,48 @@ describe('SvgExportUtil', () => {
         expect(revokeObjectUrl).toHaveBeenCalledWith('blob:svg-2');
     });
 
+    it('serializes a default card from SVG presentation attributes without external card CSS', async () => {
+        mockFontFetch();
+        const svg = makeSvg(1120, 800);
+        const field = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        field.classList.add('card-field');
+        field.setAttribute('fill', '#fff');
+        svg.appendChild(field);
+        document.body.appendChild(svg);
+
+        try {
+            const serialized = await SvgExportUtil.serializeSvg(svg);
+            const exported = new DOMParser().parseFromString(serialized, 'image/svg+xml');
+            expect(exported.querySelector('.card-field')?.getAttribute('fill')).toBe('rgb(255, 255, 255)');
+            expect(serialized).toContain('@font-face');
+        } finally {
+            svg.remove();
+        }
+    });
+
+    it('retains computed night-mode fills in standalone SVG export', async () => {
+        mockFontFetch();
+        const style = document.createElement('style');
+        style.textContent = '.night-export-card .card-field { fill: #242424; }';
+        document.head.appendChild(style);
+        const svg = makeSvg(1120, 800);
+        svg.classList.add('night-export-card');
+        const field = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        field.classList.add('card-field');
+        field.setAttribute('fill', '#fff');
+        svg.appendChild(field);
+        document.body.appendChild(svg);
+
+        try {
+            const serialized = await SvgExportUtil.serializeSvg(svg);
+            const exported = new DOMParser().parseFromString(serialized, 'image/svg+xml');
+            expect(exported.querySelector('.card-field')?.getAttribute('fill')).toBe('rgb(36, 36, 36)');
+        } finally {
+            svg.remove();
+            style.remove();
+        }
+    });
+
     it('embeds foreignObject fluff images before rendering PNGs', async () => {
         const svg = makeSvg();
         addFluffImage(svg);

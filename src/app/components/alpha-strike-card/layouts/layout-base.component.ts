@@ -44,6 +44,7 @@ import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
 import { formatMovement, formatMovementWithAlternate } from '../../../utils/as-common.util';
 import { FormationAbilityAssignmentUtil } from '../../../utils/formation-ability-assignment.util';
 import type { SpecialAbilityState } from '../../../models/as-special-ability-state.model';
+import type { ASCardStyle } from '../../../models/options.model';
 
 /*
  * Author: Drake
@@ -84,9 +85,9 @@ export abstract class AsLayoutBaseComponent {
 
     // Common inputs
     forceUnit = input<ASForceUnit>();
-    unit = input.required<Unit>();
+    unit = input<Unit | undefined>(undefined);
     useHex = input<boolean>(false);
-    cardStyle = input<'colored' | 'monochrome'>('colored');
+    cardStyle = input<ASCardStyle>('default');
     imageUrl = input<string>('');
     interactive = input<boolean>(false);
 
@@ -103,9 +104,15 @@ export abstract class AsLayoutBaseComponent {
     rollCriticalClick = output<void>();
 
     // Derived from unit
-    asStats = computed<AlphaStrikeUnitStats>(() => this.unit().as);
-    model = computed<string>(() => this.unit().model);
-    chassis = computed<string>(() => this.unit().chassis);
+    resolvedUnit = computed<Unit | undefined>(() => this.forceUnit()?.getUnit() ?? this.unit());
+    renderUnit = computed<Unit>(() => {
+        const unit = this.resolvedUnit();
+        if (!unit) throw new Error('Alpha Strike card requires a forceUnit or unit input');
+        return unit;
+    });
+    asStats = computed<AlphaStrikeUnitStats>(() => this.renderUnit().as);
+    model = computed<string>(() => this.renderUnit().model);
+    chassis = computed<string>(() => this.renderUnit().chassis);
 
     // Critical hits variant from layout config
     criticalHitsVariant = computed<CriticalHitsVariant>(() => {
@@ -296,7 +303,7 @@ export abstract class AsLayoutBaseComponent {
 
     // Era availability (grouped by image)
     eraAvailability = computed<EraAvailability[]>(() => {
-        const u = this.unit();
+        const u = this.renderUnit();
         const allEras = this.dataService.getEras().sort((a, b) => (a.years.from || 0) - (b.years.from || 0));
         if (allEras.length === 0) return [];
 

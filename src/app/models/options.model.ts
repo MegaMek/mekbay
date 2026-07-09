@@ -37,6 +37,7 @@ import type { GameSystem } from "./common.model";
  * Author: Drake
  */
 export type AvailabilitySource = 'mul' | 'megamek';
+export type ASCardStyle = 'default' | 'night';
 export type RecordSheetDoubleTapZoomResetMode = 'disabled' | 'fit-to-screen' | 'full-width' | 'contextual';
 
 export interface SkillRangeOption {
@@ -71,7 +72,7 @@ export interface Options {
     sidebarLipPosition?: string;
     useAutomations: boolean;
     ASUseHex: boolean;
-    ASCardStyle: 'colored' | 'monochrome';
+    ASCardStyle: ASCardStyle;
     ASPrintPageBreakOnGroups: boolean;
     c3NetworkConnectionsAboveNodes: boolean;
     automaticallyConvertFiltersToSemantic: boolean;

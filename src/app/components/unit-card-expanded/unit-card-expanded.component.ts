@@ -295,7 +295,7 @@ export class UnitCardExpandedComponent {
     showSelectCheckbox = input(false);
 
     /** Card style for alpha-strike card view */
-    cardStyle = input<'colored' | 'monochrome'>('monochrome');
+    cardStyle = input<'default' | 'night'>('default');
 
     /** Emitted when the info button is clicked */
     infoClick = output<void>();

@@ -462,7 +462,7 @@ export class ASPrintUtil {
         
         componentRef.setInput('forceUnit', item.forceUnit);
         componentRef.setInput('cardIndex', item.cardIndex);
-        componentRef.setInput('cardStyle', 'monochrome' /* cardStyle */);
+        componentRef.setInput('cardStyle', 'default');
         componentRef.setInput('useHex', useHex);
         componentRef.setInput('isSelected', false);
         

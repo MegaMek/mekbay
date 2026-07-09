@@ -1,0 +1,62 @@
+export const LAYOUT_VESSEL_REAR_SVG_TEMPLATE = `
+<text x="30" y="62" fill="#000" font-size="40" font-weight="900">
+    {{ (forceUnit()?.alias() || chassis() + ' ' + model()).toUpperCase() }}
+</text>
+@for (arc of vesselArcData(); track arc.label; let arcIndex = $index) {
+    @let arcGap = 10;
+    @let arcWidth = 527;
+    @let arcHeight = 278;
+    @let arcX = arcIndex % 2 === 0 ? 28 : 28 + arcWidth + arcGap;
+    @let arcY = arcIndex < 2 ? 78 : 78 + arcHeight + arcGap;
+    @let columns = vesselArcColumns();
+    @let tableX = arcX + 64;
+    @let tableWidth = arcWidth - 78;
+    @let valueWidth = (tableWidth - 106) / columns.length;
+    <g class="arc-damage-table">
+        <rect class="frame-background" [attr.x]="arcX" [attr.y]="arcY" [attr.width]="arcWidth" [attr.height]="arcHeight"
+            rx="16" fill="#fff" fill-opacity="0.85" stroke="#221f20" stroke-width="3" />
+        <text [attr.x]="arcX + 25" [attr.y]="arcY + arcHeight / 2" fill="#7b0000" font-family="Roboto Condensed, sans-serif" font-size="26" font-weight="900"
+            text-anchor="middle" [attr.transform]="'rotate(-90 ' + (arcX + 25) + ' ' + (arcY + arcHeight / 2) + ')'">{{ arc.label }}</text>
+        @for (column of columns; track column; let columnIndex = $index) {
+            <text [attr.x]="tableX + 106 + columnIndex * valueWidth + valueWidth / 2" [attr.y]="arcY + 30"
+                fill="#000" font-size="23" font-weight="900" text-anchor="middle">{{ column }}</text>
+        }
+        <line [attr.x1]="tableX" [attr.y1]="arcY + 38" [attr.x2]="arcX + arcWidth - 14" [attr.y2]="arcY + 38" stroke="#000" stroke-width="2" />
+        @for (row of arc.rows; track row.label; let rowIndex = $index) {
+            @let rowY = arcY + 70 + rowIndex * 38;
+            <text [attr.x]="tableX" [attr.y]="rowY" fill="#000" font-size="23" font-weight="700">{{ row.label }}</text>
+            @for (value of row.values; track $index; let valueIndex = $index) {
+                <text [attr.x]="tableX + 106 + valueIndex * valueWidth + valueWidth / 2" [attr.y]="rowY"
+                    fill="#000" font-size="23" font-weight="600" text-anchor="middle">{{ value }}</text>
+            }
+            <line [attr.x1]="tableX" [attr.y1]="rowY + 10" [attr.x2]="arcX + arcWidth - 14" [attr.y2]="rowY + 10" stroke="#bbb" stroke-width="1" />
+        }
+        <text [attr.x]="tableX" [attr.y]="arcY + 229" fill="#000" font-size="23" font-weight="700">SPE</text>
+        <text [attr.x]="tableX + 106" [attr.y]="arcY + 229" fill="#000" font-size="20">{{ arc.specials }}</text>
+        <text [attr.x]="tableX" [attr.y]="arcY + 264" fill="#000" font-size="23" font-weight="700">CRIT</text>
+        @for (column of columns; track column; let columnIndex = $index) {
+            @let critKey = arc.shortLabel + '-' + column;
+            <g class="critical-row arc-critical-row" [attr.data-crit]="critKey">
+                @for (pipIndex of range(4); track pipIndex) {
+                    <circle class="pip" [class.damaged]="isCritPipDamaged(critKey, pipIndex)"
+                        [class.pending-damage]="isCritPipPendingDamage(critKey, pipIndex)"
+                        [class.pending-heal]="isCritPipPendingHeal(critKey, pipIndex)"
+                        [attr.cx]="tableX + 106 + columnIndex * valueWidth + 12 + pipIndex * 18"
+                        [attr.cy]="arcY + 257" r="8" fill="#fff" stroke="#000" stroke-width="3" />
+                }
+            </g>
+            @if (columnIndex < columns.length - 1) {
+                <line class="crit-pip-separator"
+                    [attr.x1]="tableX + 106 + (columnIndex + 1) * valueWidth"
+                    [attr.x2]="tableX + 106 + (columnIndex + 1) * valueWidth"
+                    [attr.y1]="arcY + 244" [attr.y2]="arcY + 270"
+                    stroke="#000" stroke-width="2" />
+            }
+        }
+    </g>
+}
+<text x="28" y="682" fill="#000" font-size="19" font-weight="900">WEAPON CRITICALS</text>
+<text x="220" y="682" fill="#000" font-family="Roboto, sans-serif" font-size="17">
+    Damage Value Reduced by 25% per hit. — Randomly determine an appropriate STD/@if (vesselHasCap()) {CAP/}SCAP/MSL column.
+</text>
+`;

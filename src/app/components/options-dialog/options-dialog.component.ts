@@ -513,7 +513,7 @@ export class OptionsDialogComponent {
     }
 
     onASCardStyleChange(event: Event) {
-        const value = (event.target as HTMLSelectElement).value as 'colored' | 'monochrome';
+        const value = (event.target as HTMLSelectElement).value as 'default' | 'night';
         this.optionsService.setOption('ASCardStyle', value);
     }
 

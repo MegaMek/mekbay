@@ -33,7 +33,7 @@
 
 import { inject, Injectable, signal } from '@angular/core';
 import { DbService } from './db.service';
-import type { ForceBudgetOptimizerLastSkills, Options } from '../models/options.model';
+import type { ASCardStyle, ForceBudgetOptimizerLastSkills, Options } from '../models/options.model';
 import { GameSystem } from '../models/common.model';
 
 /*
@@ -70,7 +70,7 @@ const DEFAULT_OPTIONS: Options = {
     
     // Alpha Strike
     ASUseHex: false,
-    ASCardStyle: 'monochrome',
+    ASCardStyle: 'default',
     ASPrintPageBreakOnGroups: true,
     ASUseAutomations: true,
     ASVehiclesCriticalHitTable: 'default',
@@ -177,7 +177,8 @@ export class OptionsService {
 
     async initOptions() {
         const saved = await this.dbService.getOptions();
-        this.options.set({
+        const normalizedCardStyle = normalizeASCardStyle(saved?.ASCardStyle);
+        const normalizedOptions: Options = {
             sheetsColor: saved?.sheetsColor ?? DEFAULT_OPTIONS.sheetsColor,
             pickerStyle: saved?.pickerStyle ?? DEFAULT_OPTIONS.pickerStyle,
             quickActions: saved?.quickActions ?? DEFAULT_OPTIONS.quickActions,
@@ -194,7 +195,7 @@ export class OptionsService {
             sidebarLipPosition: saved?.sidebarLipPosition,
             useAutomations: saved?.useAutomations ?? DEFAULT_OPTIONS.useAutomations,
             ASUseHex: saved?.ASUseHex ?? DEFAULT_OPTIONS.ASUseHex,
-            ASCardStyle: saved?.ASCardStyle ?? DEFAULT_OPTIONS.ASCardStyle,
+            ASCardStyle: normalizedCardStyle,
             ASPrintPageBreakOnGroups: saved?.ASPrintPageBreakOnGroups ?? DEFAULT_OPTIONS.ASPrintPageBreakOnGroups,
             c3NetworkConnectionsAboveNodes: saved?.c3NetworkConnectionsAboveNodes ?? DEFAULT_OPTIONS.c3NetworkConnectionsAboveNodes,
             automaticallyConvertFiltersToSemantic: saved?.automaticallyConvertFiltersToSemantic ?? DEFAULT_OPTIONS.automaticallyConvertFiltersToSemantic,
@@ -226,7 +227,11 @@ export class OptionsService {
             forceGenUseTaggedQuantities: saved?.forceGenUseTaggedQuantities ?? DEFAULT_OPTIONS.forceGenUseTaggedQuantities,
             forceGenUseUnitTagsAsChassisTags: saved?.forceGenUseUnitTagsAsChassisTags ?? DEFAULT_OPTIONS.forceGenUseUnitTagsAsChassisTags,
             forceBudgetOptimizerLastSkills: resolveForceBudgetOptimizerLastSkills(saved),
-        });
+        };
+        this.options.set(normalizedOptions);
+        if (saved?.ASCardStyle !== normalizedCardStyle) {
+            await this.dbService.saveOptions(normalizedOptions);
+        }
     }
 
     async setOption<K extends keyof Options>(key: K, value: Options[K]) {
@@ -234,4 +239,9 @@ export class OptionsService {
         this.options.set(updated);
         await this.dbService.saveOptions(updated);
     }
+}
+
+export function normalizeASCardStyle(value: unknown): ASCardStyle {
+    if (value === 'night' || value === 'colored') return 'night';
+    return 'default';
 }

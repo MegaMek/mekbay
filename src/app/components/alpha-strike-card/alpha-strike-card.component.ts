@@ -31,12 +31,12 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output, ElementRef, DestroyRef, afterNextRender, type ComponentRef, Injector } from '@angular/core';
-import type { ASUnitTypeCode, Unit } from '../../models/units.model';
+import { Component, ChangeDetectionStrategy, input, computed, inject, signal, effect, output, ElementRef, DestroyRef, afterNextRender, Injector } from '@angular/core';
+import type { ASUnitTypeCode } from '../../models/units.model';
 import type { ASForceUnit, AbilitySelection } from '../../models/as-force-unit.model';
 import { COMMAND_ABILITIES } from '../../models/command-abilities.model';
 import { PILOT_ABILITIES, type ASCustomPilotAbility } from '../../models/pilot-abilities.model';
-import { AsAbilityLookupService, type ParsedAbility } from '../../services/as-ability-lookup.service';
+import type { ParsedAbility } from '../../services/as-ability-lookup.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { AbilityInfoDialogComponent, type AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
 import { InputDialogComponent, type InputDialogData } from '../input-dialog/input-dialog.component';
@@ -46,13 +46,24 @@ import type { SpecialAbilityState } from '../../models/as-special-ability-state.
 import type { SpecialAbilityClickEvent } from './layouts/layout-base.component';
 import { CriticalHitRollDialogComponent, type CriticalHitRollDialogData } from './critical-hit-roll-dialog/critical-hit-roll-dialog.component';
 import { MotiveDamageRollDialogComponent, type MotiveDamageRollDialogData } from './motive-damage-roll-dialog/motive-damage-roll-dialog.component';
-import { AsLayoutStandardComponent, AsLayoutLargeVessel1Component, AsLayoutLargeVessel2Component } from './layouts';
 import { GameSystem, getUnitServerHost } from '../../models/common.model';
 import type { ChoicePickerInstance, NumericPickerInstance, NumericPickerResult, PickerChoice, PickerPosition } from '../picker/picker.interface';
 import { vibrate } from '../../utils/vibrate.util';
 import { firstValueFrom } from 'rxjs';
 import { OptionsService } from '../../services/options.service';
 import { PickerFactoryService } from '../../services/picker-factory.service';
+import { AsLayoutBaseComponent } from './layouts/layout-base.component';
+import { buildStandardLayout, estimateRobotoWidth, getStandardCriticalRows, type StandardCriticalVariant, type StandardLayoutModel } from './layouts/standard-layout.model';
+import { formatMovement, isAerospace } from '../../utils/as-common.util';
+import { buildVesselSpecialsLayout, VESSEL_SPECIALS_GEOMETRY } from './layouts/vessel-layout.model';
+import { ALPHA_STRIKE_CARD_TEMPLATE } from './alpha-strike-card.template';
+
+interface VesselArcRenderModel {
+    label: string;
+    shortLabel: string;
+    specials: string;
+    rows: Array<{ label: string; values: string[] }>;
+}
 
 /*
  * Author: Drake
@@ -61,25 +72,19 @@ import { PickerFactoryService } from '../../services/picker-factory.service';
 @Component({
     selector: 'alpha-strike-card',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [
-        AsLayoutStandardComponent,
-        AsLayoutLargeVessel1Component,
-        AsLayoutLargeVessel2Component,
-    ],
-    templateUrl: './alpha-strike-card.component.html',
+    template: ALPHA_STRIKE_CARD_TEMPLATE,
     styleUrl: './alpha-strike-card.component.scss',
     host: {
-        '[class.monochrome]': 'cardStyle() === "monochrome"',
+        '[class.night-mode]': 'cardStyle() === "night"',
         '[class.selected]': 'isSelected()',
         '[class.interactive]': 'interactive()',
         '(click)': 'onCardClick()'
     }
 })
-export class AlphaStrikeCardComponent {
+export class AlphaStrikeCardComponent extends AsLayoutBaseComponent {
     private static nextId = 0;
     private readonly injector = inject(Injector);
     private readonly optionsService = inject(OptionsService);
-    private readonly abilityLookup = inject(AsAbilityLookupService);
     private readonly dialogs = inject(DialogsService);
     private readonly elRef = inject(ElementRef<HTMLElement>);
     private readonly destroyRef = inject(DestroyRef);
@@ -88,24 +93,16 @@ export class AlphaStrikeCardComponent {
     /** Unique instance ID for SVG filter deduplication */
     readonly instanceId = AlphaStrikeCardComponent.nextId++;
     
-    /** Optional: provide the stateful AS unit wrapper (preferred when available). */
-    forceUnit = input<ASForceUnit | undefined>(undefined);
-    /** Optional: provide a plain Unit (used when no forceUnit is available). */
-    unit = input<Unit | undefined>(undefined);
-    useHex = input<boolean>(false);
-    cardStyle = input<'colored' | 'monochrome'>('colored');
     isSelected = input<boolean>(false);
     /** Which card index to render (0 for first/only card, 1 for second card) */
     cardIndex = input<number>(0);
-    /** Enable interactive mode (damage/crit pickers) */
-    interactive = input<boolean>(false);
     /** Trigger to update picker position (viewer increments this on scroll/resize) */
     updatePickerPositionTrigger = input<number>(0);
     
     selected = output<ASForceUnit>();
     editPilot = output<ASForceUnit>();
     
-    imageUrl = signal<string>('');
+    renderImageUrl = signal<string>('');
     
     // Interaction state
     private interactionAbortController: AbortController | null = null;
@@ -119,9 +116,6 @@ export class AlphaStrikeCardComponent {
             this.selected.emit(fu);
         }
     }
-    
-    /** Effective Unit for rendering: forceUnit.getUnit() wins, otherwise the plain unit input. */
-    resolvedUnit = computed<Unit | undefined>(() => this.forceUnit()?.getUnit() ?? this.unit());
     
     /** Get the Alpha Strike unit type (BM, IM, CV, CI, WS, etc.) */
     unitType = computed<ASUnitTypeCode>(() => this.resolvedUnit()?.as.TP || 'BM');
@@ -142,6 +136,250 @@ export class AlphaStrikeCardComponent {
     /** Get the critical hits variant for the current card */
     currentCriticalHitsVariant = computed<CriticalHitsVariant>(() => this.currentCardConfig().criticalHits);
 
+    private readonly specialsText = computed(() => {
+        const values = this.effectiveSpecials().map(item => item.effective).join(', ');
+        return values ? `SPECIAL: ${values}` : '';
+    });
+
+    standardLayout = computed<StandardLayoutModel>(() => buildStandardLayout({
+        specialsText: this.specialsText(),
+        usesHeat: this.asStats().usesOV,
+        hasCriticalTable: this.currentCriticalHitsVariant() !== 'none',
+        armorPips: this.armorPips(),
+        structurePips: this.structurePips(),
+        criticalHeight: this.currentCriticalHitsVariant() === 'vehicle' ? 228 : 214,
+    }));
+
+    standardImageGeometry = computed(() => {
+        const variant = this.currentCriticalHitsVariant();
+        const centered = variant !== 'mek';
+        const reduced = variant === 'vehicle' || variant === 'aerofighter';
+        return {
+            x: 640,
+            y: centered ? 144 : 112,
+            width: 410,
+            height: reduced ? 280 : 470,
+            preserveAspectRatio: centered ? 'xMidYMid meet' : 'xMidYMin meet',
+        };
+    });
+
+    sprintMove = computed<string | null>(() => {
+        const forceUnit = this.forceUnit();
+        if (!forceUnit) return null;
+        const groundEntries = this.getMovementEntries(forceUnit.effectiveMovement())
+            .filter(([mode]) => mode !== 'j');
+        if (groundEntries.length === 0) return null;
+        const defaultGround = groundEntries.find(([mode]) => mode === '') ?? groundEntries[0];
+        const sprintInches = Math.ceil(defaultGround[1] * 1.5);
+        return formatMovement(sprintInches, '', this.useHex());
+    });
+
+    tmmDisplay = computed<string>(() => {
+        const forceUnit = this.forceUnit();
+        if (!forceUnit) return String(this.asStats().TMM ?? '');
+        const isBattleMek = this.asStats().TP === 'BM';
+        return Object.entries(forceUnit.effectiveTmm())
+            .filter(([mode]) => !isBattleMek || (mode !== 'a' && mode !== 'g'))
+            .map(([mode, value]) => `${value}${mode}`)
+            .join('/');
+    });
+
+    isAerospaceUnit = computed(() => isAerospace(this.asStats().TP, this.asStats().MVm));
+    pendingHeat = computed(() => this.forceUnit()?.getState().pendingHeat() ?? 0);
+    heatTrackLevels = computed(() => this.forceUnit()?.heatTrackLevels('committed') ?? [0, 1, 2, 3]);
+    shutdownHeatThreshold = computed(() => this.forceUnit()?.shutdownHeatThreshold('committed') ?? 4);
+    effectiveDamageS = computed(() => this.forceUnit()?.effectiveDamageS() ?? this.asStats().dmg.dmgS);
+    effectiveDamageM = computed(() => this.forceUnit()?.effectiveDamageM() ?? this.asStats().dmg.dmgM);
+    effectiveDamageL = computed(() => this.forceUnit()?.effectiveDamageL() ?? this.asStats().dmg.dmgL);
+    effectiveDamageE = computed(() => this.forceUnit()?.effectiveDamageE() ?? this.asStats().dmg.dmgE);
+    rangeShort = computed(() => this.useHex() ? '0~3' : '0″~6″');
+    rangeMedium = computed(() => this.useHex() ? '4~12' : '>6″~24″');
+    rangeLong = computed(() => this.useHex() ? '13~21' : '>24″~42″');
+    rangeExtreme = computed(() => this.useHex() ? '22+' : '>42″');
+    movementSvgText = computed(() => this.movementDisplay().replace(/<[^>]*>/g, ''));
+
+    damageRanges = computed(() => {
+        const ranges = [
+            { label: 'S', modifier: 0, toHit: this.toHitShort(), value: this.effectiveDamageS(), distance: this.rangeShort() },
+            { label: 'M', modifier: 2, toHit: this.toHitMedium(), value: this.effectiveDamageM(), distance: this.rangeMedium() },
+            { label: 'L', modifier: 4, toHit: this.toHitLong(), value: this.effectiveDamageL(), distance: this.rangeLong() },
+        ];
+        if (this.hasExtremeRange()) {
+            ranges.push({ label: 'E', modifier: 6, toHit: this.toHitExtreme(), value: this.effectiveDamageE(), distance: this.rangeExtreme() });
+        }
+        return ranges;
+    });
+
+    headerLines = computed(() => {
+        const alias = this.forceUnit()?.alias();
+        const modelLine = alias ? `${this.chassis()} ${this.model()}`.trim() : this.model();
+        const chassisLine = alias || this.chassis();
+        const maxWidth = 690;
+        const preferredSize = chassisLine.length > 20 ? 60 : 70;
+        const measured = estimateRobotoWidth(chassisLine.toUpperCase(), preferredSize);
+        const fontSize = measured > maxWidth ? Math.max(42, Math.floor(preferredSize * maxWidth / measured)) : preferredSize;
+        return { model: modelLine.toUpperCase(), chassis: chassisLine.toUpperCase(), fontSize };
+    });
+
+    specialsLines = computed(() => this.standardLayout().specialsLines);
+
+    specialTokens = computed(() => {
+        const frame = this.standardLayout().specials;
+        if (!frame) return [];
+        const fontSize = 30;
+        const maxX = frame.x + frame.width - 14;
+        const lineHeight = 34;
+        let x = frame.x + 14 + estimateRobotoWidth('SPECIAL: ', fontSize);
+        let line = 0;
+        return this.effectiveSpecials().map((state, index, values) => {
+            const remaining = state.maxCount && state.consumedCount
+                ? `[${state.maxCount - state.consumedCount}]`
+                : '';
+            const text = `${state.effective}${remaining}${index < values.length - 1 ? ', ' : ''}`;
+            const width = estimateRobotoWidth(text, fontSize);
+            if (x + width > maxX && x > frame.x + 14) {
+                line++;
+                x = frame.x + 14;
+            }
+            const token = {
+                state,
+                text,
+                x,
+                y: frame.y + 10 + (line + 1) * lineHeight - 6,
+            };
+            x += width;
+            return token;
+        });
+    });
+
+    vesselSpecialsRenderModel = computed(() => {
+        const fontSize = 30;
+        const startX = VESSEL_SPECIALS_GEOMETRY.textX + estimateRobotoWidth('SPECIAL: ', fontSize);
+        const maxX = 1078;
+        let x = startX;
+        let line = 0;
+        const tokens = this.effectiveSpecials().map((state, index, values) => {
+            const text = `${state.effective}${index < values.length - 1 ? ', ' : ''}`;
+            const width = estimateRobotoWidth(text, fontSize);
+            if (x + width > maxX && x > startX) {
+                line++;
+                x = VESSEL_SPECIALS_GEOMETRY.textX;
+            }
+            const token = { state, text, x, line };
+            x += width;
+            return token;
+        });
+        const layout = buildVesselSpecialsLayout(tokens.length > 0 ? line + 1 : 0);
+        return {
+            ...layout,
+            tokens: tokens.map(token => ({
+                ...token,
+                y: layout.firstBaseline + token.line * VESSEL_SPECIALS_GEOMETRY.lineHeight,
+            })),
+        };
+    });
+
+    criticalRows = computed(() => {
+        return getStandardCriticalRows(this.currentCriticalHitsVariant() as StandardCriticalVariant);
+    });
+
+    vesselCriticalRows = computed(() => {
+        const common = [
+            { key: 'crew', name: 'CREW', maxPips: 2, descriptions: ['+2 Weapon To-Hit Each', '+2 Control Roll Each'] },
+            { key: 'engine', name: 'ENGINE', maxPips: 3, descriptions: ['-25%/-50%/-100% THR'] },
+            { key: 'fire-control', name: 'FIRE CONTROL', maxPips: 4, descriptions: ['+2 To-Hit Each'] },
+        ];
+        if (this.currentCriticalHitsVariant() === 'dropship-1') {
+            return [
+                ...common,
+                { key: 'kf-boom', name: 'KF BOOM', maxPips: 1, descriptions: ['Cannot transport via JumpShip'] },
+                { key: 'dock-collar', name: 'DOCK COLLAR', maxPips: 1, descriptions: ['Cannot dock'] },
+                { key: 'thruster', name: 'THRUSTER', maxPips: 1, descriptions: ['-1 Thrust (THR)'] },
+            ];
+        }
+        return [
+            ...common,
+            { key: 'thruster', name: 'THRUSTER', maxPips: 1, descriptions: ['-1 Thrust (THR)'] },
+        ];
+    });
+
+    vesselHasCap = computed(() => ['WS', 'SS', 'JS'].includes(this.asStats().TP));
+
+    vesselArcColumns = computed(() => this.vesselHasCap()
+        ? ['STD', 'CAP', 'SCAP', 'MSL']
+        : ['STD', 'SCAP', 'MSL']);
+
+    vesselArcData = computed<VesselArcRenderModel[]>(() => {
+        const stats = this.asStats();
+        const definitions = [
+            { label: 'NOSE ARC DAMAGE', shortLabel: 'NOSE', arc: stats.frontArc },
+            { label: 'AFT ARC DAMAGE', shortLabel: 'AFT', arc: stats.rearArc },
+            { label: 'LEFT SIDE DAMAGE', shortLabel: 'LS', arc: stats.leftArc },
+            { label: 'RIGHT SIDE DAMAGE', shortLabel: 'RS', arc: stats.rightArc },
+        ];
+        const rangeDefinitions = [
+            { label: `S (${this.toHitShort()}+)`, key: 'dmgS' as const },
+            { label: `M (${this.toHitMedium()}+)`, key: 'dmgM' as const },
+            { label: `L (${this.toHitLong()}+)`, key: 'dmgL' as const },
+            { label: `E (${this.toHitExtreme()}+)`, key: 'dmgE' as const },
+        ];
+
+        return definitions.map(definition => ({
+            label: definition.label,
+            shortLabel: definition.shortLabel,
+            specials: definition.arc?.specials ?? '',
+            rows: rangeDefinitions.map(rangeDefinition => ({
+                label: rangeDefinition.label,
+                values: this.vesselArcColumns().map(column => {
+                    const base = definition.arc?.[column as 'STD' | 'CAP' | 'SCAP' | 'MSL']?.[rangeDefinition.key];
+                    const crits = this.committedCritHits(`${definition.shortLabel}-${column}`);
+                    return this.applyVesselCritReduction(base, crits);
+                }),
+            })),
+        }));
+    });
+
+    private applyVesselCritReduction(value: string | undefined, critHits: number): string {
+        const numericValue = Number.parseInt(value ?? '', 10);
+        if (!Number.isFinite(numericValue) || numericValue === 0) return '—';
+        const reductionFactor = 1 - Math.min(critHits, 4) * 0.25;
+        return String(Math.max(0, Math.floor(numericValue * reductionFactor)));
+    }
+
+    committedCritHits(key: string): number {
+        return this.forceUnit()?.getState().getCommittedCritHits(key) ?? 0;
+    }
+
+    pendingCritChange(key: string): number {
+        return this.forceUnit()?.getState().getPendingCritChange(key) ?? 0;
+    }
+
+    showNumericCritPips(key: string, maxPips: number): boolean {
+        return this.committedCritHits(key) + Math.max(0, this.pendingCritChange(key)) > maxPips;
+    }
+
+    pendingCritDelta(key: string): string {
+        const pending = this.pendingCritChange(key);
+        return pending > 0 ? `+${pending}` : String(pending);
+    }
+
+    pipRow(index: number): number {
+        return Math.floor(index / 16);
+    }
+
+    armorPipY(index: number, frameY: number): number {
+        return frameY + 27 + this.pipRow(index) * 27;
+    }
+
+    structurePipY(index: number, frameY: number): number {
+        const armorRows = Math.max(1, Math.ceil(this.armorPips() / 16));
+        return frameY + 27 + (armorRows + this.pipRow(index)) * 27;
+    }
+
+    onSvgSpecialClick(state: SpecialAbilityState, event: MouseEvent): void {
+        this.handleSpecialClick({ state, event });
+    }
+
     /** Check if the force unit has uncommitted changes */
     isDirty = computed<boolean>(() => {
         const fu = this.forceUnit();
@@ -158,6 +396,7 @@ export class AlphaStrikeCardComponent {
     }
 
     constructor() {
+        super();
         // Effect to load image
         effect(() => {
             const unit = this.resolvedUnit();
@@ -165,7 +404,7 @@ export class AlphaStrikeCardComponent {
             if (imagePath) {
                 this.loadFluffImage(imagePath, unit?.serverHost);
             } else {
-                this.imageUrl.set('');
+                this.renderImageUrl.set('');
             }
         });
         
@@ -228,19 +467,19 @@ export class AlphaStrikeCardComponent {
     private async loadFluffImage(imagePath: string, serverHost?: string): Promise<void> {
         try {    
             if (imagePath.endsWith('hud.png')) {
-                this.imageUrl.set('');
+                this.renderImageUrl.set('');
                 return;
             }
             const fluffImageUrl = `${getUnitServerHost({ serverHost })}/images/fluff/${imagePath}`;
-            this.imageUrl.set(fluffImageUrl);
+            this.renderImageUrl.set(fluffImageUrl);
         } catch {
             // Ignore errors, image will just not display
-            this.imageUrl.set('');
+            this.renderImageUrl.set('');
         }
     }
     
     // Handle special ability click from layout components
-    onSpecialClick(clickEvent: SpecialAbilityClickEvent): void {
+    handleSpecialClick(clickEvent: SpecialAbilityClickEvent): void {
         const { state, event } = clickEvent;
         event.stopPropagation();
         const parsedAbility = this.abilityLookup.parseAbility(state.original);
@@ -364,14 +603,14 @@ export class AlphaStrikeCardComponent {
     }
 
     // Handle edit pilot click
-    onEditPilotClick(): void {
+    override onEditPilotClick(): void {
         const fu = this.forceUnit();
         if (fu) {
             this.editPilot.emit(fu);
         }
     }
 
-    onPilotAbilityClick(selection: AbilitySelection): void {
+    override onPilotAbilityClick(selection: AbilitySelection): void {
         let isCustom = typeof selection !== 'string';
         let isCommand = false;
         let ability: PilotAbilityInfoDialogData['ability'];
@@ -401,7 +640,7 @@ export class AlphaStrikeCardComponent {
     }
 
     // Handle roll critical click - shows the critical hit roll dialog
-    async onRollCriticalClick(): Promise<void> {
+    override async onRollCriticalClick(): Promise<void> {
         const fu = this.forceUnit();
         if (!fu) return;
         
@@ -567,14 +806,14 @@ export class AlphaStrikeCardComponent {
         if (!heatTrack) return;
 
         this.addTapHandler(heatTrack as HTMLElement, (event) => {
-            const target = event.target instanceof HTMLElement
-                ? event.target.closest<HTMLElement>('.heat-level')
+            const target = event.target instanceof Element
+                ? event.target.closest<SVGElement>('.heat-level')
                 : null;
             if (!target || !heatTrack.contains(target)) return;
 
             const unit = this.forceUnit();
             if (!unit) return;
-            const targetHeat = Number(target.dataset['heat']);
+            const targetHeat = Number(target.getAttribute('data-heat'));
             if (!Number.isFinite(targetHeat)) return;
 
             const committedHeat = unit.getState().heat();
@@ -941,7 +1180,7 @@ export class AlphaStrikeCardComponent {
         
         // Store anchor element for position updates on scroll
         this.pickerAnchorElement = config.anchorElement;
-        const lightTheme = this.cardStyle() === 'colored';
+        const lightTheme = this.cardStyle() === 'night';
         
         // Check user's picker style preference
         const pickerStyle = this.optionsService.options().pickerStyle;
@@ -1011,7 +1250,7 @@ export class AlphaStrikeCardComponent {
             values: config.values,
             position,
             title: config.title,
-            lightTheme: this.cardStyle() === 'colored',
+            lightTheme: this.cardStyle() === 'night',
             align: 'top',
             horizontal: true,
             onPick: config.onPick,

@@ -31,7 +31,7 @@ describe('UnitSearchComponent card virtualization', () => {
     let openDialogs: unknown[];
     const optionsSignal = signal({
         ASUseHex: false,
-        ASCardStyle: 'monochrome',
+        ASCardStyle: 'default',
         availabilitySource: 'mul' as 'mul' | 'megamek',
         unitSearchExpandedViewLayout: 'panel-list-filters',
         unitSearchViewMode: 'card' as 'list' | 'card' | 'chassis' | 'table',
@@ -151,7 +151,7 @@ describe('UnitSearchComponent card virtualization', () => {
         filteredUnitsSignal.set([]);
         optionsSignal.set({
             ASUseHex: false,
-            ASCardStyle: 'monochrome',
+            ASCardStyle: 'default',
             availabilitySource: 'mul',
             unitSearchExpandedViewLayout: 'panel-list-filters',
             unitSearchViewMode: 'card',
