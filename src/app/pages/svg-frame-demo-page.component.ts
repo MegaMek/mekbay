@@ -59,43 +59,43 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
         const mechDataFrameHeight = 302;
         const warriorDataFrameHeight = 140;
         const warriorDataFrameWidth = 150;
-        const criticalTableFrameY = mechDataFrameHeight-2;
-        const criticalTableFrameWidth = mechDataFrameWidth+7+warriorDataFrameWidth;
+        const criticalTableFrameY = mechDataFrameHeight - 2;
+        const criticalTableFrameWidth = mechDataFrameWidth + 7 + warriorDataFrameWidth;
         const criticalTableFrameHeight = 397;
         const heatDataFrameHeight = 200;
         const heatDataFrameY = criticalTableFrameY + (criticalTableFrameHeight - heatDataFrameHeight);
         svg.getElementById('rs')?.replaceChildren(
             this.createFrameGroup('\'MECH DATA', 0, 0, mechDataFrameWidth, 302, {
-                id: "mechDataFrame",
+                id: 'mechDataFrame',
                 bottomLeftNotchWidth: 100,
                 cornerAngleDegrees: {
                     topRight: 45,
                     bottomLeft: 45
                 }
             }),
-            this.createFrameGroup('WARRIOR DATA', mechDataFrameWidth+7, 0, warriorDataFrameWidth, warriorDataFrameHeight, {
-                id: "warriorDataFrame",
+            this.createFrameGroup('WARRIOR DATA', mechDataFrameWidth + 7, 0, warriorDataFrameWidth, warriorDataFrameHeight, {
+                id: 'warriorDataFrame',
                 cornerAngleDegrees: {
                     topRight: 0,
                     bottomLeft: 0,
                     bottomRight: 45
                 },
             }),
-            this.createFrameGroup('HIT LOCATION AND CLUSTER TABLE', mechDataFrameWidth+7, warriorDataFrameHeight+7, warriorDataFrameWidth, 155, {
-                id: "hitFrame",
+            this.createFrameGroup('HIT LOCATION AND CLUSTER TABLE', mechDataFrameWidth + 7, warriorDataFrameHeight + 7, warriorDataFrameWidth, 155, {
+                id: 'hitFrame',
                 fullWidthHeader: true,
                 headerFontSize: 8
             }),
             this.createFrameGroup('CRITICAL TABLE', 0, criticalTableFrameY, criticalTableFrameWidth, criticalTableFrameHeight, {
-                id: "critTableFrame",
+                id: 'critTableFrame',
                 cornerAngleDegrees: {
                     topRight: 45,
                     bottomLeft: 45,
                     bottomRight: 45
                 }
             }),
-            this.createFrameGroup('HEAT DATA', criticalTableFrameWidth+7, heatDataFrameY, 180, heatDataFrameHeight, {
-                id: "heatDataFrame",
+            this.createFrameGroup('HEAT DATA', criticalTableFrameWidth + 7, heatDataFrameY, 180, heatDataFrameHeight, {
+                id: 'heatDataFrame',
                 cornerAngleDegrees: {
                     topRight: 45,
                     bottomLeft: 45,
