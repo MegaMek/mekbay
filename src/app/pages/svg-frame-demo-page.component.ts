@@ -61,7 +61,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
             }),
             this.createFrameGroup('HIT LOCATION AND CLUSTER TABLE', 230, 155, 150, 145, {
                 fullWidthHeader: true,
-                headerFontSize: 6.76
+                headerFontSize: 8
             }),
         );
     }
