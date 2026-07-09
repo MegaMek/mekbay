@@ -84,7 +84,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
             this.createFrameGroup('HIT LOCATION AND CLUSTER TABLE', mechDataFrameWidth + 7, warriorDataFrameHeight + 7, warriorDataFrameWidth, 155, {
                 id: 'hitFrame',
                 fullWidthHeader: true,
-                headerFontSize: 8
+                // headerFontSize: 8
             }),
             this.createFrameGroup('CRITICAL TABLE', 0, criticalTableFrameY, criticalTableFrameWidth, criticalTableFrameHeight, {
                 id: 'critTableFrame',
