@@ -34,16 +34,19 @@
 import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { CriticalSlot, MountedEquipment } from '../force-serialization';
-import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type LocationConditionControl, type PSRCheck, type MountedEquipmentRuleState, type UnitHeatSource } from './unit-type-rules';
+import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type LocationConditionControl, type PSRCheck, type MountedEquipmentRuleState, type UnitHeatSource, type UnitModifierBreakdownEntry } from './unit-type-rules';
 import type { TurnState } from '../turn-state.model';
 import { type HeatScaleEntry, HeatManagement, getHeatEffects } from './heat-management';
 import type { MotiveModes } from '../motiveModes.model';
-import { getDefaultAttackerMovementModifier } from '../target-number-calculator.model';
+import { getDefaultAttackerMovementModifier, TN_PRONE, TN_PRONE_ADJACENT, TN_PRONE_ATTACKER } from '../target-number-calculator.model';
 
 type ArmLocation = 'LA' | 'RA';
 
 const SIDE_TORSO_LOCATIONS = new Set(['LT', 'RT']);
 export const TORSO_LOCATIONS = new Set(['CT', 'LT', 'RT']);
+export const BIPED_LEGS = new Set(['LL', 'RL']);
+export const TRIPOD_LEGS = new Set(['LL', 'CL', 'RL']);
+export const QUAD_LEGS = new Set(['RLL', 'FLL', 'RRL', 'FRL']);
 const LIMB_LOCATIONS = new Set(['LA', 'RA', 'LL', 'RL', 'CL', 'RLL', 'FLL', 'RRL', 'FRL']);
 export const LINKED_LOCATIONS: { [key: string]: string[] } = {
     'RT': ['RA', 'FRL'],
@@ -862,6 +865,51 @@ export class MekRules extends UnitTypeRulesBase {
             if (moveMode === 'run') return 4;
         }
         return getDefaultAttackerMovementModifier(moveMode);
+    }
+
+    override getAttackModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[] {
+        const entries = [...super.getAttackModifierBreakdown(turnState)];
+        if (turnState.unitState.hasCondition('prone')) {
+            const subtype = this.unit.getUnit().subtype;
+            let proneEntry: UnitModifierBreakdownEntry | null = null;
+            const isTripod = subtype.startsWith('Tripod');
+            const isQuad = subtype.startsWith('Quad');
+            if (isTripod || isQuad) {
+                const legLocations = isTripod ? TRIPOD_LEGS : QUAD_LEGS;
+                let proneModifier = isTripod ? 1 : 0;
+                for (const loc of legLocations) {
+                    if (!this.unit.locations?.internal?.has(loc) || this.unit.isInternalLocCommittedDestroyed(loc)) {
+                        proneModifier = TN_PRONE_ATTACKER;
+                    }
+                }
+                const hasCommittedHipHit = this.unit.getCritSlots().some(slot => {
+                    if (!slot.loc || !legLocations.has(slot.loc)) return false;
+                    if (!this.isNamedCrit(slot, 'Hip')) return false;
+                    return this.isCritUnavailable(slot);
+                });
+                proneEntry = { label: 'Prone', modifier: hasCommittedHipHit ? TN_PRONE_ATTACKER : proneModifier };
+            } else { 
+                // Biped
+                proneEntry = { label: 'Prone', modifier: TN_PRONE_ATTACKER };
+            }
+            if (proneEntry) {
+                entries.push(proneEntry);
+            }
+        }
+        return entries;
+    }
+
+    override getDefenseModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[] {
+        const entries = [...super.getDefenseModifierBreakdown(turnState)];
+        if (turnState.unitState.hasCondition('prone')) {
+            entries.push({
+                label: 'Prone',
+                modifier: Math.max(TN_PRONE, TN_PRONE_ADJACENT),
+                alternateModifier: Math.min(TN_PRONE, TN_PRONE_ADJACENT),
+                alternateModifierLabel: 'adjacent',
+            });
+        }
+        return entries;
     }
 
     // ── Heat Scale ───────────────────────────────────────────────────────────
