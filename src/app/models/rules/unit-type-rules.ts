@@ -237,6 +237,15 @@ export interface UnitTypeRules {
     /** Display definition for a crew state supported by this unit type. */
     crewStateDefinition(state: CrewMemberState): CrewStateDefinition | undefined;
 
+    /** Whether rules derive that the cockpit of this crew member has been destroyed. */
+    isCrewCockpitDestroyed(crewId: number): boolean;
+
+    /** Whether this unit type allows swapping two crew seats right now. */
+    canSwapCrewMembers(leftCrewId?: number, rightCrewId?: number): boolean;
+
+    /** Swap two crew seats if allowed by this unit type. */
+    swapCrewMembers(leftCrewId?: number, rightCrewId?: number): boolean;
+
     /** Whether this unit currently has crew for gameplay/UI purposes. */
     hasCrew(): boolean;
 
@@ -337,6 +346,18 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     }
 
     abstract evaluateDestroyed(): void;
+
+    isCrewCockpitDestroyed(_crewId: number): boolean {
+        return false;
+    }
+
+    canSwapCrewMembers(_leftCrewId = 0, _rightCrewId = 1): boolean {
+        return false;
+    }
+
+    swapCrewMembers(_leftCrewId = 0, _rightCrewId = 1): boolean {
+        return false;
+    }
 
     constructor(
         protected unit: CBTForceUnit,
@@ -480,11 +501,11 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     }
 
     getTargetNumberGunnerySkill(): number {
-        return this.unit.gunnerySkill();
+        return this.unit.getCrewMember(0)?.getSkill('gunnery') ?? this.unit.gunnerySkill();
     }
 
     getTargetNumberPilotingSkill(): number {
-        return this.unit.pilotingSkill();
+        return this.unit.getCrewMember(0)?.getSkill('piloting') ?? this.unit.pilotingSkill();
     }
 
     getTargetNumberGunneryModifierBreakdown(): UnitModifierBreakdownEntry[] {

@@ -70,6 +70,7 @@ import { isLaserWithRiscModule, isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, R
 
 type SheetInventoryRangeKey = InventoryRangeKey | 'extreme';
 type HeatMarkerData = { el: SVGElement | null, heat: number; baselineHeat: number };
+const CREW_SWAP_ACTION = 'swap';
 
 interface HeatCell {
     el: SVGElement;
@@ -1833,9 +1834,13 @@ export class SvgInteractionService {
         updateChoices();
 
         outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(state => {
-            const crewMember = unit.getCrewMember(crewId);
-            const selectedState = state as CrewStateControlKey;
-            crewMember.setState(crewMember.getState() === selectedState ? 'healthy' : selectedState);
+            if (state === CREW_SWAP_ACTION) {
+                unit.rules.swapCrewMembers();
+            } else {
+                const crewMember = unit.getCrewMember(crewId);
+                const selectedState = state as CrewStateControlKey;
+                crewMember.setState(crewMember.getState() === selectedState ? 'healthy' : selectedState);
+            }
             if (componentRef.instance.closeOnSelect()) {
                 this.overlayManager.closeManagedOverlay(SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY);
             } else {
@@ -1849,12 +1854,24 @@ export class SvgInteractionService {
 
     private crewStateDropdownChoices(unit: CBTForceUnit, crewId: number): UnitStateDropdownChoice[] {
         const currentState = unit.getCrewMember(crewId).getState();
-        return unit.rules.crewStateControls.map(state => ({
+        const choices: UnitStateDropdownChoice[] = unit.rules.crewStateControls.map(state => ({
             key: state.key,
             label: state.label,
             color: state.color,
             active: currentState === state.key,
         }));
+        if ((crewId === 0 || crewId === 1) && unit.rules.canSwapCrewMembers()) {
+            if (choices.length > 0) {
+                choices.push({ key: 'swap-break', label: '', color: '', active: false, isBreak: true });
+            }
+            choices.push({
+                key: CREW_SWAP_ACTION,
+                label: 'Swap',
+                color: '#666',
+                active: false,
+            });
+        }
+        return choices;
     }
 
     private heatCells(svg: SVGSVGElement): HeatCell[] {

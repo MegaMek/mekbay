@@ -716,14 +716,6 @@ export class CBTForceUnit extends ForceUnit {
         return hits >= this.getInternalPoints(loc);
     }
 
-    isCockpitDestroyed(): boolean {
-        return this.getCritSlots().some(slot => {
-            if (!slot.name?.includes('Cockpit')) return false;
-            if (slot.destroyed) return true;
-            return slot.loc ? this.isInternalLocCommittedDestroyed(slot.loc) : false;
-        });
-    }
-
     isEquipmentUnavailable(source: MountedEquipment | CriticalSlot, loc?: string): boolean {
         if (source instanceof MountedEquipment) {
             if (source.isUnavailable()) return true;

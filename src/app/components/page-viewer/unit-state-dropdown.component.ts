@@ -14,6 +14,7 @@ export interface UnitStateDropdownChoice {
     color: string;
     active: boolean;
     counted?: boolean;
+    isBreak?: boolean;
     value?: number;
 }
 
@@ -24,8 +25,10 @@ export interface UnitStateDropdownChoice {
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div #dropdown class="unit-state-dropdown has-shadow" cdkMenu aria-label="Unit states">
-            @for (choice of choices(); track choice.key) {
-                @if (choice.counted) {
+            @for (choice of choices(); track choice.isBreak ? $index : choice.key) {
+                @if (choice.isBreak) {
+                    <div class="unit-state-dropdown-break" aria-hidden="true"></div>
+                } @else if (choice.counted) {
                     <div
                         class="unit-state-dropdown-item counted"
                         [class.has-count]="choice.active"
@@ -117,6 +120,12 @@ export interface UnitStateDropdownChoice {
             padding: 4px 6px;
             background: transparent;
             cursor: default;
+        }
+
+        .unit-state-dropdown-break {
+            height: 1px;
+            margin: 4px 2px;
+            background-color: #bbb;
         }
 
         .state-label-button,

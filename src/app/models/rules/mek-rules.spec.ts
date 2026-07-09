@@ -259,27 +259,46 @@ describe('MekRules', () => {
         expect(rules.PSRTargetRoll()).toBe(4);
     });
 
-    it('uses the best active alternate gunner with a modifier when the Tripod dedicated gunnery officer is disabled', () => {
+    it('uses the first active alternate gunner with a modifier when the Tripod dedicated gunnery officer is disabled', () => {
         const forceUnit = createForceUnitHarness({ subtype: 'Tripod BattleMek', crewStates: ['healthy', 'unconscious', 'healthy'] });
         forceUnit.getCrewMember(0).setSkill('gunnery', 5);
         forceUnit.getCrewMember(1).setSkill('gunnery', 3);
         forceUnit.getCrewMember(2).setSkill('gunnery', 2);
         const rules = forceUnit.rules as MekRules;
 
-        expect(rules.getTargetNumberGunnerySkill()).toBe(2);
+        expect(rules.getTargetNumberGunnerySkill()).toBe(5);
         expect(rules.getTargetNumberGunneryModifierBreakdown()).toEqual([{ label: 'Dedicated Gunnery Officer disabled', modifier: 2 }]);
     });
 
-    it('uses the best active alternate pilot with a modifier when the Tripod dedicated pilot is disabled', () => {
+    it('uses the first active alternate pilot with a modifier when the Tripod dedicated pilot is disabled', () => {
         const forceUnit = createForceUnitHarness({ subtype: 'Tripod BattleMek', crewStates: ['unconscious', 'healthy', 'healthy'] });
         forceUnit.getCrewMember(0).setSkill('piloting', 5);
         forceUnit.getCrewMember(1).setSkill('piloting', 6);
         forceUnit.getCrewMember(2).setSkill('piloting', 4);
         const rules = forceUnit.rules as MekRules;
 
-        expect(rules.getTargetNumberPilotingSkill()).toBe(4);
+        expect(rules.getTargetNumberPilotingSkill()).toBe(6);
         expect(rules.getTargetNumberPilotingModifierBreakdown()).toEqual([{ label: 'Dedicated Pilot disabled', modifier: 2 }]);
-        expect(rules.PSRTargetRoll()).toBe(6);
+        expect(rules.PSRTargetRoll()).toBe(8);
+    });
+
+    it('uses crew order instead of best skill for non-Tripod Mek target-number skills', () => {
+        const forceUnit = createForceUnitHarness({ crewStates: ['healthy', 'healthy', 'healthy'] });
+        forceUnit.getCrewMember(0).setSkill('gunnery', 5);
+        forceUnit.getCrewMember(0).setSkill('piloting', 6);
+        forceUnit.getCrewMember(1).setSkill('gunnery', 4);
+        forceUnit.getCrewMember(1).setSkill('piloting', 5);
+        forceUnit.getCrewMember(2).setSkill('gunnery', 2);
+        forceUnit.getCrewMember(2).setSkill('piloting', 3);
+        const rules = forceUnit.rules as MekRules;
+
+        expect(rules.getTargetNumberGunnerySkill()).toBe(5);
+        expect(rules.getTargetNumberPilotingSkill()).toBe(6);
+
+        forceUnit.getCrewMember(0).setState('unconscious');
+
+        expect(rules.getTargetNumberGunnerySkill()).toBe(4);
+        expect(rules.getTargetNumberPilotingSkill()).toBe(5);
     });
 
     it('ignores small cockpit PSR modifiers for drone operating system Meks', () => {
@@ -308,6 +327,72 @@ describe('MekRules', () => {
         expect(headCockpitRules.crewStateControls.map(control => control.key)).toEqual(['unconscious', 'ejected']);
         expect(centerTorsoCockpitRules.crewStateControls.map(control => control.key)).toEqual(['unconscious']);
         expect(sideTorsoCockpitRules.crewStateControls.map(control => control.key)).toEqual(['unconscious']);
+    });
+
+    it('maps main cockpit and command console destruction to their assigned crew members', () => {
+        const forceUnit = createForceUnitHarness({
+            crewStates: ['healthy', 'healthy'],
+            critSlots: [
+                { id: 'cockpit', name: 'Cockpit', loc: 'HD', slot: 2, destroyed: 1 },
+                { id: 'command-console', name: 'Command Console', loc: 'HD', slot: 3 },
+            ],
+        });
+
+        expect(forceUnit.getCrewMember(0).getState()).toBe('dead');
+        expect(forceUnit.getCrewMember(1).getState()).toBe('healthy');
+
+        forceUnit.writeCrits([
+            { id: 'cockpit', name: 'Cockpit', loc: 'HD', slot: 2 },
+            { id: 'command-console', name: 'Command Console', loc: 'HD', slot: 3, destroyed: 1 },
+        ]);
+
+        expect(forceUnit.getCrewMember(0).getState()).toBe('healthy');
+        expect(forceUnit.getCrewMember(1).getState()).toBe('dead');
+    });
+
+    it('swaps dual-cockpit crew member data while preserving crew slots', () => {
+        const forceUnit = createForceUnitHarness({
+            crewStates: ['healthy', 'healthy'],
+            critSlots: [
+                { id: 'cockpit', name: 'Cockpit', loc: 'HD', slot: 2 },
+                { id: 'command-console', name: 'Command Console', loc: 'HD', slot: 3 },
+            ],
+        });
+        forceUnit.getCrewMember(0).setName('Pilot');
+        forceUnit.getCrewMember(0).setSkill('gunnery', 4);
+        forceUnit.getCrewMember(0).setSkill('piloting', 5);
+        forceUnit.getCrewMember(1).setName('Gunner');
+        forceUnit.getCrewMember(1).setSkill('gunnery', 2);
+        forceUnit.getCrewMember(1).setSkill('piloting', 6);
+        forceUnit.getCrewMember(1).setState('unconscious');
+        const rules = forceUnit.rules as MekRules;
+
+        expect(rules.swapCrewMembers()).toBeTrue();
+
+        expect(forceUnit.getCrewMember(0).getId()).toBe(0);
+        expect(forceUnit.getCrewMember(0).getName()).toBe('Gunner');
+        expect(forceUnit.getCrewMember(0).getSkill('gunnery')).toBe(2);
+        expect(forceUnit.getCrewMember(0).getSkill('piloting')).toBe(6);
+        expect(forceUnit.getCrewMember(0).getState()).toBe('unconscious');
+        expect(forceUnit.getCrewMember(1).getId()).toBe(1);
+        expect(forceUnit.getCrewMember(1).getName()).toBe('Pilot');
+        expect(forceUnit.getCrewMember(1).getSkill('gunnery')).toBe(4);
+        expect(forceUnit.getCrewMember(1).getSkill('piloting')).toBe(5);
+        expect(forceUnit.getCrewMember(1).getState()).toBe('healthy');
+    });
+
+    it('does not swap dual-cockpit crew when either cockpit is destroyed', () => {
+        const forceUnit = createForceUnitHarness({
+            crewStates: ['healthy', 'healthy'],
+            critSlots: [
+                { id: 'cockpit', name: 'Cockpit', loc: 'HD', slot: 2 },
+                { id: 'command-console', name: 'Command Console', loc: 'HD', slot: 3, destroyed: 1 },
+            ],
+        });
+        const rules = forceUnit.rules as MekRules;
+
+        expect(rules.canSwapCrewMembers()).toBeFalse();
+        expect(rules.swapCrewMembers()).toBeFalse();
     });
 
     it('treats drone operating system Meks as crewless for crew-derived conditions', () => {
