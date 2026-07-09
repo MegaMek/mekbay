@@ -245,7 +245,7 @@ export class MekRules extends UnitTypeRulesBase {
         const engineHitThreshold = svg?.querySelectorAll('[id^="engine_hit_"]').length ?? 3;
         const destroyedEngineSlots = crits.filter(slot => this.isNamedCrit(slot, "Engine") && this.isCritUnavailable(slot)).length;
         const engineBlown = destroyedEngineSlots >= engineHitThreshold;
-        const cockpitDestroyed = crits.some(slot => this.isNamedCrit(slot, "Cockpit") && this.isCritUnavailable(slot));
+        const cockpitDestroyed = this.allCrewCockpitsUnavailable(crits);
 
         const destroyed = engineBlown || cockpitDestroyed;
         if (this.unit.destroyed !== destroyed) {
@@ -594,6 +594,13 @@ export class MekRules extends UnitTypeRulesBase {
         return this.unit.getCritSlots().some(slot => this.isMainCockpitSlot(slot) && this.isCrewSeatDestroyed(slot));
     }
 
+    private allCrewCockpitsUnavailable(crits: readonly CriticalSlot[]): boolean {
+        const mainCockpitUnavailable = crits.some(slot => this.isMainCockpitSlot(slot) && this.isCritUnavailable(slot));
+        if (!this.hasCommandConsole()) return mainCockpitUnavailable;
+        const commandConsoleUnavailable = crits.some(slot => this.isCommandConsoleSlot(slot) && this.isCritUnavailable(slot));
+        return mainCockpitUnavailable && commandConsoleUnavailable;
+    }
+
     private hasMainCockpit(): boolean {
         return this.unit.getCritSlots().some(slot => this.isMainCockpitSlot(slot));
     }
@@ -931,6 +938,14 @@ export class MekRules extends UnitTypeRulesBase {
         return getDefaultAttackerMovementModifier(moveMode);
     }
 
+    override getSpottingModifier(): number {
+        return this.canUseCommandConsole() ? 0 : 1;
+    }
+
+    override getIndirectFireModifier(): number {
+        return this.canUseCommandConsole() ? 0 : 1;
+    }
+
     override getTargetNumberGunnerySkill(): number {
         const primaryCrewId = this.isTripodMek() ? 1 : 0;
         return this.getTargetNumberCrewSkill('gunnery', primaryCrewId) ?? super.getTargetNumberGunnerySkill();
@@ -964,6 +979,14 @@ export class MekRules extends UnitTypeRulesBase {
 
     private isTripodMek(): boolean {
         return this.unit.getUnit().subtype.startsWith('Tripod');
+    }
+
+    private canUseCommandConsole(): boolean {
+        return this.hasMainCockpit()
+            && this.hasCommandConsole()
+            && this.getActiveCrewMember(0) !== null // Pilot can pilot...
+            && this.getActiveCrewMember(1) !== null // ... and commander can command!
+            && !this.isCrewCockpitDestroyed(1);
     }
 
     private getActiveCrewMember(crewId: number): CrewMember | null {

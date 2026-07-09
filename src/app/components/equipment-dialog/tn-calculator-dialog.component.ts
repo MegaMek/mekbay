@@ -57,6 +57,7 @@ import {
 export interface TnCalculatorDialogData {
     target: InventoryControlRuntimeTarget;
     showC3Distance?: boolean;
+    indirectFireBaseModifier?: number;
 }
 
 export interface TnCalculatorDialogResult {
@@ -91,7 +92,7 @@ export interface TnCalculatorDialogResult {
                         </div>
                         <div class="button-row">
                             <button type="button" class="bt-button move-button" [class.selected]="indirectFire()" [attr.aria-pressed]="indirectFire()" (click)="toggleIndirectFire()">
-                                <span>Indirect Fire</span><span class="modifier-badge">+1</span>
+                                <span>Indirect Fire</span>@if (indirectFireModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }
                             </button>
                         </div>
                         @if (indirectFire()) {
@@ -731,6 +732,7 @@ export class TnCalculatorDialogComponent {
 
     readonly target = this.data.target;
     readonly showC3Distance = signal<boolean>(this.data.showC3Distance ?? false);
+    readonly indirectFireBaseModifier = this.data.indirectFireBaseModifier ?? 1;
     readonly unitTypeOptions = TN_TARGET_UNIT_TYPE_OPTIONS;
     readonly unitTypeDropdownOptions = computed<MultilineDropdownOption[]>(() => this.unitTypeOptions.map(option => ({
         value: option.value,
@@ -773,7 +775,8 @@ export class TnCalculatorDialogComponent {
     readonly c3BlockedByIndirectFire = computed(() => this.indirectFire());
     readonly c3Enabled = computed(() => this.showC3Distance() && this.useC3() && !this.c3BlockedByIndirectFire());
     readonly c3DistanceLabel = computed(() => this.c3Enabled() ? `${this.c3Distance()}` : '');
-    readonly indirectFireModifier = computed(() => getIndirectFireModifier(this.indirectFire(), this.spotterMoveMode(), this.spotterDeclaredAttacks()));
+    readonly indirectFireModifier = computed(() => getIndirectFireModifier(this.indirectFire(), this.spotterMoveMode(), this.spotterDeclaredAttacks(), this.indirectFireBaseModifier));
+    readonly indirectFireModifierLabel = computed(() => this.formatModifier(getIndirectFireModifier(true, this.spotterMoveMode(), this.spotterDeclaredAttacks(), this.indirectFireBaseModifier)));
     readonly totalModifier = computed(() => calculateTargetTnModifier({
         unitType: this.unitType(),
         range: this.range(),
@@ -790,6 +793,7 @@ export class TnCalculatorDialogComponent {
         secondaryTargetSideBack: this.secondaryTargetSideBack(),
         spotterMoveMode: this.spotterMoveMode(),
         spotterDeclaredAttacks: this.spotterDeclaredAttacks(),
+        indirectFireBaseModifier: this.indirectFireBaseModifier,
     }));
     readonly signedTotal = computed(() => this.totalModifier() >= 0 ? `+${this.totalModifier()}` : `${this.totalModifier()}`);
     readonly woodsCaption = computed(() => {

@@ -297,6 +297,12 @@ export interface UnitTypeRules {
     /** Unit-type-specific attack movement modifier. */
     getAttackMovementModifier(moveMode: MotiveModes | null | undefined, airborne?: boolean): number;
 
+    /** Unit-type-specific attack modifier for spotting. */
+    getSpottingModifier(): number;
+
+    /** Unit-type-specific attack modifier for indirect fire. */
+    getIndirectFireModifier(): number;
+
     /** Unit-type-specific gunnery skill for runtime target-number calculations. */
     getTargetNumberGunnerySkill(): number;
 
@@ -500,6 +506,14 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         return 0;
     }
 
+    getSpottingModifier(): number {
+        return 1;
+    }
+
+    getIndirectFireModifier(): number {
+        return 1;
+    }
+
     getTargetNumberGunnerySkill(): number {
         return this.unit.getCrewMember(0)?.getSkill('gunnery') ?? this.unit.gunnerySkill();
     }
@@ -528,7 +542,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         if (turnState.unitState.hasCondition('skidding')) {
             entries.push({ label: 'Skidding', modifier: TN_SKIDDING_ATTACKER });
         }
-        const spottingModifier = turnState.spotting() ? 1 : 0;
+        const spottingModifier = turnState.spotting() ? this.getSpottingModifier() : 0;
         if (spottingModifier !== 0) {
             entries.push({ label: 'Spotting', modifier: spottingModifier });
         }

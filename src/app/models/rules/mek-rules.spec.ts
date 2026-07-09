@@ -282,6 +282,34 @@ describe('MekRules', () => {
         expect(rules.PSRTargetRoll()).toBe(8);
     });
 
+    it('does not apply the spotting attack modifier when an active command console crew member can spot', () => {
+        const forceUnit = createForceUnitHarness({
+            crewStates: ['healthy', 'healthy'],
+            critSlots: [
+                { id: 'cockpit', name: 'Cockpit', loc: 'HD', slot: 2 },
+                { id: 'command-console', name: 'Command Console', loc: 'HD', slot: 3 },
+            ],
+        });
+        forceUnit.turnState().spotting.set(true);
+
+        expect(forceUnit.turnState().getSpottingModifier()).toBe(0);
+        expect(forceUnit.turnState().getAttackModifierBreakdown()).toEqual([]);
+    });
+
+    it('applies the spotting attack modifier when the command console crew member is disabled', () => {
+        const forceUnit = createForceUnitHarness({
+            crewStates: ['healthy', 'unconscious'],
+            critSlots: [
+                { id: 'cockpit', name: 'Cockpit', loc: 'HD', slot: 2 },
+                { id: 'command-console', name: 'Command Console', loc: 'HD', slot: 3 },
+            ],
+        });
+        forceUnit.turnState().spotting.set(true);
+
+        expect(forceUnit.turnState().getSpottingModifier()).toBe(1);
+        expect(forceUnit.turnState().getAttackModifierBreakdown()).toEqual([{ label: 'Spotting', modifier: 1 }]);
+    });
+
     it('uses crew order instead of best skill for non-Tripod Mek target-number skills', () => {
         const forceUnit = createForceUnitHarness({ crewStates: ['healthy', 'healthy', 'healthy'] });
         forceUnit.getCrewMember(0).setSkill('gunnery', 5);
@@ -348,6 +376,30 @@ describe('MekRules', () => {
 
         expect(forceUnit.getCrewMember(0).getState()).toBe('healthy');
         expect(forceUnit.getCrewMember(1).getState()).toBe('dead');
+    });
+
+    it('does not destroy command-console Meks until both cockpits are destroyed', () => {
+        const forceUnit = createForceUnitHarness({
+            crewStates: ['healthy', 'healthy'],
+            critSlots: [
+                { id: 'cockpit', name: 'Cockpit', loc: 'HD', slot: 2, destroyed: 1 },
+                { id: 'command-console', name: 'Command Console', loc: 'HD', slot: 3 },
+            ],
+        });
+        const rules = forceUnit.rules as MekRules;
+
+        rules.evaluateDestroyed();
+
+        expect(forceUnit.destroyed).toBeFalse();
+
+        forceUnit.writeCrits([
+            { id: 'cockpit', name: 'Cockpit', loc: 'HD', slot: 2, destroyed: 1 },
+            { id: 'command-console', name: 'Command Console', loc: 'HD', slot: 3, destroyed: 1 },
+        ]);
+
+        rules.evaluateDestroyed();
+
+        expect(forceUnit.destroyed).toBeTrue();
     });
 
     it('swaps dual-cockpit crew member data while preserving crew slots', () => {

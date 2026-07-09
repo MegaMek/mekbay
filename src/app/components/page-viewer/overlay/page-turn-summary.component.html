@@ -80,7 +80,7 @@
             }
             <div class="row grid">
                 <button type="button" class="bt-button move-button" [class.selected]="spotting()" [attr.aria-pressed]="spotting()" (click)="toggleSpotting()">
-                    <span>Spotting</span><span class="modifier-badge">+1</span>
+                    <span>Spotting</span>@if (spottingModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }
                 </button>
             </div>
         </div>

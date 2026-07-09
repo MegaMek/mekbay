@@ -91,7 +91,7 @@ export class TurnState {
     });
 
     getSpottingModifier = computed<number>(() => {
-        return this.spotting() ? 1 : 0;
+        return this.spotting() ? this.unitState.unit.rules.getSpottingModifier() : 0;
     });
 
     getAttackMovementModifier = computed<number>(() => {
