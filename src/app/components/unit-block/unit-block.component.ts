@@ -50,11 +50,17 @@ import type { C3Component, C3NetworkType } from '../../models/c3-network.model';
 import { GameSystem } from '../../models/common.model';
 import { formatMovement, formatMovementWithAlternate } from '../../utils/as-common.util';
 import { getUnitConditionDefinition, unitConditionSortIndex } from '../../models/rules/unit-type-rules';
+import type { CrewMember } from '../../models/crew-member.model';
 
 interface UnitConditionDisplay {
     key: string;
     label: string;
     color: string;
+}
+
+export interface UnitBlockPilotEditEvent {
+    event: MouseEvent;
+    crewMember: CrewMember;
 }
 
 /**
@@ -78,11 +84,13 @@ export class UnitBlockComponent {
     onRemoveUnit = output<MouseEvent>();
     onOpenC3Network = output<MouseEvent>();
     onRepairUnit = output<MouseEvent>();
-    onEditPilot = output<MouseEvent>();
+    onEditPilot = output<UnitBlockPilotEditEvent>();
 
     unit = computed<Unit | undefined>(() => {
         return this.forceUnit()?.getUnit();
     });
+
+    crewMembers = computed<CrewMember[]>(() => this.forceUnit()?.getCrewMembers() ?? []);
 
     /** Derives Alpha Strike status from the unit's own force, not the global game system. */
     isAlphaStrike = computed<boolean>(() => this.forceUnit()?.force?.gameSystem === GameSystem.ALPHA_STRIKE);
@@ -354,6 +362,13 @@ export class UnitBlockComponent {
         return entries;
     }
 
+    getCrewMemberPilotStats(crewMember: CrewMember): string {
+        if (this.unit()?.type === 'ProtoMek') {
+            return `${crewMember.getSkill('gunnery')}`;
+        }
+        return `${crewMember.getSkill('gunnery')}/${crewMember.getSkill('piloting')}`;
+    }
+
     bvTooltip = computed<TooltipLine[] | null>(() => {
         const forceUnit = this.forceUnit();
         const unit = this.unit();
@@ -418,8 +433,8 @@ export class UnitBlockComponent {
         this.onOpenC3Network.emit(event);
     }
 
-    editPilot(event: MouseEvent): void {
+    editPilot(event: MouseEvent, crewMember: CrewMember): void {
         event.stopPropagation();
-        this.onEditPilot.emit(event);
+        this.onEditPilot.emit({ event, crewMember });
     }
 }

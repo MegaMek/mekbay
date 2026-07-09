@@ -43,7 +43,7 @@ import type { ForceUnit } from '../../models/force-unit.model';
 import { DragDropModule, type CdkDragDrop, type CdkDragMove } from '@angular/cdk/drag-drop'
 import { DialogsService } from '../../services/dialogs.service';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
-import { UnitBlockComponent } from '../unit-block/unit-block.component';
+import { UnitBlockComponent, type UnitBlockPilotEditEvent } from '../unit-block/unit-block.component';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { ToastService } from '../../services/toast.service';
 import { formatSummaryMovement } from '../../models/pilot-abilities.model';
@@ -354,12 +354,10 @@ export class ForceBuilderViewerComponent {
         await this.forceBuilderService.openC3Network(unit.force, unit.readOnly());
     }
 
-    async editPilot(event: MouseEvent, unit: ForceUnit) {
+    async editPilot({ event, crewMember }: UnitBlockPilotEditEvent, unit: ForceUnit) {
         if (unit.readOnly()) return;
         event.stopPropagation();
-        const crew = unit.getCrewMembers();
-        const pilot = crew.length > 0 ? crew[0] : undefined;
-        await this.forceBuilderService.editPilotOfUnit(unit, pilot);
+        await this.forceBuilderService.editPilotOfUnit(unit, crewMember);
     }
 
 

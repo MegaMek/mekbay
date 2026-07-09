@@ -40,7 +40,7 @@ import { ForceUnit } from './force-unit.model';
 import type { ConditionData } from './force-unit-state.model';
 import type { CBTForce } from './cbt-force.model';
 import { UnitSvgService } from '../services/unit-svg.service';
-import { CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './crew-member.model';
+import { CrewMember, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, type SkillType } from './crew-member.model';
 import { CBTForceUnitState } from './cbt-force-unit-state.model';
 import { UnitSvgMekService } from '../services/unit-svg-mek.service';
 import { UnitSvgAeroService } from '../services/unit-svg-aero.service';
@@ -821,20 +821,13 @@ export class CBTForceUnit extends ForceUnit {
     });
 
     public getPilotStats = computed<string>(() => {
-        const crew = this.state.crew();
+        const crew = this.getCrewMembers();
         if (crew.length === 0) return 'N/A';
-        const pilot = crew[0];
-        const gunnery = pilot.getSkill('gunnery');
         if (this.unit.type === 'ProtoMek') {
+            const gunnery = crew[0].getSkill('gunnery');
             return `${gunnery}`;
         }
-        const piloting = pilot.getSkill('piloting');
-        if (crew.length > 1) {
-            const gunner = crew[1];
-            const gunnery2 = gunner.getSkill('gunnery');
-            return `${gunnery2}/${piloting}`;
-        }
-        return `${gunnery}/${piloting}`;
+        return `${this.gunnerySkill()}/${this.pilotingSkill()}`;
     });
 
     getCrewMember(crewId: number): CrewMember {
@@ -851,26 +844,28 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     public gunnerySkill = computed<number>(() => {
-        this.state.crew(); // Track crew changes
-        const pilot = this.getCrewMember(0);
-        if (!pilot) return DEFAULT_GUNNERY_SKILL;
-        let gunnery = pilot.getSkill('gunnery');
-        if (this.unit.crewSize > 1) {
-            const gunner = this.getCrewMember(1);
-            if (gunner) {
-                gunnery = gunner.getSkill('gunnery');
-            }
-        }
-        return gunnery;
+        return this.getBestCrewSkill('gunnery', DEFAULT_GUNNERY_SKILL);
     });
 
     public pilotingSkill = computed<number>(() => {
-        this.state.crew(); // Track crew changes
-        const pilot = this.getCrewMember(0);
-        if (!pilot) return DEFAULT_PILOTING_SKILL;
-        let piloting = pilot.getSkill('piloting');
-        return piloting;
+        return this.getBestCrewSkill('piloting', DEFAULT_PILOTING_SKILL);
     });
+
+    private getBestCrewSkill(skillType: SkillType, defaultSkill: number): number {
+        const crewMembers = this.getCrewMembers();
+        const isLAM = this.getUnit().subtype === 'Land-Air BattleMek';
+        const skills: number[] = [];
+        for (const crewMember of crewMembers) {
+            skills.push(crewMember.getSkill(skillType));
+            if (isLAM) {
+                skills.push(crewMember.getSkill(skillType, true));
+            }
+        }
+        if (skills.length === 0) {
+            return defaultSkill;
+        }
+        return Math.min(...skills);
+    }
 
     public gunneryModifier = computed<number>(() => {
         return this.rules.gunneryModifier();

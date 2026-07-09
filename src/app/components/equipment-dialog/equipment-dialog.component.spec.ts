@@ -99,7 +99,11 @@ function createUnit(id: string, entries: MountedEquipment[] = []): CBTForceUnit 
                 damagedCount: 0,
                 heatsinksOff: 0,
                 totalDissipation: 0
-            })
+            }),
+            getTargetNumberGunnerySkill: () => 4,
+            getTargetNumberPilotingSkill: () => 5,
+            getTargetNumberGunneryModifierBreakdown: () => [],
+            getTargetNumberPilotingModifierBreakdown: () => []
         }
     } as unknown as CBTForceUnit);
     entries.forEach(entry => entry.owner = unit);
