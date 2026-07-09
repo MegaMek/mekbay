@@ -275,7 +275,7 @@
                                     <unit-block
                                         [forceUnit]="forceUnit"
                                         [compactMode]="false"
-                                        (onEditPilot)="onPilotClick(forceUnit)"
+                                        (onEditPilot)="onPilotClick(forceUnit, $event.crewMember)"
                                         (onOpenC3Network)="openC3Network($event, forceUnit)"
                                         (onRemoveUnit)="removeUnit($event, forceUnit)"
                                         (onRepairUnit)="repairUnit($event, forceUnit)"

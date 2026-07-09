@@ -107,6 +107,10 @@ body {
     cursor: default;
 }
 
+[data-tooltip-host] {
+    cursor: help;
+}
+
 :root:not(.keyboard-navigation) *:focus,
 :root:not(.keyboard-navigation) *:focus-visible {
     outline: none !important;

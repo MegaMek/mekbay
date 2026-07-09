@@ -134,7 +134,7 @@ export class WeaponTargetsOverlayController {
         };
         const portal = new ComponentPortal(TnCalculatorDialogComponent, null, Injector.create({
             providers: [
-                { provide: DIALOG_DATA, useValue: { target, showC3Distance: this.showC3Distance(options.unit) } satisfies TnCalculatorDialogData },
+                { provide: DIALOG_DATA, useValue: { target, showC3Distance: this.showC3Distance(options.unit), indirectFireBaseModifier: options.unit.rules.getSpottingModifier() } satisfies TnCalculatorDialogData },
                 { provide: DialogRef, useValue: { close: closeWithResult } },
             ],
             parent: this.deps.injector,

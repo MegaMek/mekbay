@@ -121,6 +121,7 @@ export interface TnTargetNumberCalculatorState {
 export interface TnTargetNumberCalculationInput extends TnTargetNumberCalculatorState {
     unitType?: TnTargetUnitType;
     range?: number;
+    indirectFireBaseModifier?: number;
 }
 
 export function getTargetMovementDistanceModifier(distance: number | null | undefined): number {
@@ -166,9 +167,9 @@ export function getTargetHexCoverModifier(cover: TnTargetHexCover | null | undef
     }
 }
 
-export function getIndirectFireModifier(indirectFire: boolean | null | undefined, spotterMoveMode: TnSpotterMoveMode | null | undefined, spotterDeclaredAttacks: boolean | null | undefined): number {
+export function getIndirectFireModifier(indirectFire: boolean | null | undefined, spotterMoveMode: TnSpotterMoveMode | null | undefined, spotterDeclaredAttacks: boolean | null | undefined, baseModifier = 1): number {
     if (!indirectFire) return 0;
-    return 1
+    return baseModifier
         + getDefaultAttackerMovementModifier(spotterMoveMode ?? 'stationary')
         + (spotterDeclaredAttacks ? 1 : 0);
 }
@@ -190,7 +191,7 @@ export function calculateTargetTnModifier(input: TnTargetNumberCalculationInput)
     total += input.partialCover && range > ADJACENT_RANGE && stance !== 'prone' ? TN_PARTIAL_COVER_MODIFIER : 0;
     total += input.secondaryTarget ? TN_SECONDARY_TARGET_MODIFIER : 0;
     total += !input.secondaryTarget && input.secondaryTargetSideBack ? TN_SECONDARY_TARGET_SIDE_BACK_MODIFIER : 0;
-    total += getIndirectFireModifier(input.indirectFire, input.spotterMoveMode, input.spotterDeclaredAttacks);
+    total += getIndirectFireModifier(input.indirectFire, input.spotterMoveMode, input.spotterDeclaredAttacks, input.indirectFireBaseModifier);
 
     return total;
 }

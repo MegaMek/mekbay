@@ -195,6 +195,12 @@ export class PageTurnSummaryPanelComponent {
         return u.turnState().spotting();
     });
 
+    spottingModifierLabel = computed(() => {
+        const unit = this.unit();
+        if (!unit) return null;
+        return this.formatModifier(unit.rules.getSpottingModifier());
+    });
+
     tracksHeat = computed(() => {
         const u = this.unit();
         if (!u) return false;

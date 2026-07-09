@@ -245,7 +245,11 @@ function createComponent(
                 case 'jump': return 3;
                 default: return 0;
             }
-        }
+        },
+        getTargetNumberGunnerySkill: () => options.gunnerySkill ?? 4,
+        getTargetNumberPilotingSkill: () => options.pilotingSkill ?? 5,
+        getTargetNumberGunneryModifierBreakdown: () => [],
+        getTargetNumberPilotingModifierBreakdown: () => []
     };
     const turnState = {
         moveMode: () => options.moveMode ?? null,

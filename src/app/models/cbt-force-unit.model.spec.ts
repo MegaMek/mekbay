@@ -581,6 +581,52 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(weaponEntry.pendingDestroyed()).toBeUndefined();
     });
 
+    it('uses the lowest gunnery skill among crew members', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({
+            name: 'BMTest_MEK-1',
+            type: 'Mek',
+            subtype: 'BattleMek',
+            crewSize: 3,
+        }));
+        forceUnit.getCrewMember(0).setSkill('gunnery', 6);
+        forceUnit.getCrewMember(1).setSkill('gunnery', 5);
+        forceUnit.getCrewMember(2).setSkill('gunnery', 3);
+
+        expect(forceUnit.gunnerySkill()).toBe(3);
+    });
+
+    it('uses the lowest piloting skill among crew members', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({
+            name: 'BMTest_MEK-1',
+            type: 'Mek',
+            subtype: 'BattleMek',
+            crewSize: 3,
+        }));
+        forceUnit.getCrewMember(0).setSkill('piloting', 6);
+        forceUnit.getCrewMember(1).setSkill('piloting', 4);
+        forceUnit.getCrewMember(2).setSkill('piloting', 5);
+
+        expect(forceUnit.pilotingSkill()).toBe(4);
+    });
+
+    it('includes ASF skills when choosing the best Land-Air BattleMek crew skills', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({
+            name: 'LAMTest_MEK-1',
+            type: 'Mek',
+            subtype: 'Land-Air BattleMek',
+            crewSize: 2,
+        }));
+        forceUnit.getCrewMember(0).setSkill('gunnery', 6);
+        forceUnit.getCrewMember(0).setSkill('piloting', 6);
+        forceUnit.getCrewMember(1).setSkill('gunnery', 5);
+        forceUnit.getCrewMember(1).setSkill('piloting', 5);
+        forceUnit.getCrewMember(1).setSkill('gunnery', 2, true);
+        forceUnit.getCrewMember(1).setSkill('piloting', 3, true);
+
+        expect(forceUnit.gunnerySkill()).toBe(2);
+        expect(forceUnit.pilotingSkill()).toBe(3);
+    });
+
     it('filters available movement modes through unit rules', () => {
         const forceUnit = createForceUnit(createVehicleUnit(equipment));
         initialize(forceUnit);

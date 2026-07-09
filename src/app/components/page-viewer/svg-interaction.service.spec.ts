@@ -39,7 +39,11 @@ const NO_CONDITION_RULES = {
     locationConditionControls: [],
     computeAllEntryStates: () => new Map<MountedEquipment, { isDamaged: boolean; isDisabled: boolean; hitMod: number }>(),
     computeEntryState: (entry: MountedEquipment) => ({ isDamaged: entry.committedDestroyed(), isDisabled: false, hitMod: 0 }),
-    heatDissipation: () => null
+    heatDissipation: () => null,
+    getTargetNumberGunnerySkill: () => 4,
+    getTargetNumberPilotingSkill: () => 5,
+    getTargetNumberGunneryModifierBreakdown: () => [],
+    getTargetNumberPilotingModifierBreakdown: () => []
 };
 
 function createSvgInteractionUnit<T extends object>(overrides: T): T & { getInventory: () => MountedEquipment[]; rules: typeof NO_CONDITION_RULES } {

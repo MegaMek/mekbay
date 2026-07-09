@@ -292,7 +292,6 @@ describe('TurnState', () => {
 
         it('keeps the defender modifier total in sync with the rules breakdown', () => {
             const { turnState } = createTurnStateHarness({
-                prone: true,
                 skidding: true,
                 rulesType: 'infantry',
                 unit: { type: 'Infantry', subtype: 'Battle Armor', moveType: 'VTOL' },
@@ -301,13 +300,12 @@ describe('TurnState', () => {
             turnState.moveDistance.set(7);
 
             expect(turnState.getDefenseModifierBreakdown()).toEqual([
-                { label: 'Prone', modifier: 1, alternateModifier: -2, alternateModifierLabel: 'adjacent' },
                 { label: 'Skidding', modifier: 2 },
                 { label: 'Jumped', modifier: 1 },
                 { label: 'Moved 7-9 hexes', modifier: 3 },
                 { label: 'Battle Armor', modifier: 1 },
             ]);
-            expect(turnState.getTotalTargetModifierAsDefender()).toEqual({ modifier: 8, alternateModifier: 5 });
+            expect(turnState.getTotalTargetModifierAsDefender()).toEqual({ modifier: 7 });
         });
 
         it('counts an explicitly airborne defender even before movement is selected', () => {
@@ -330,9 +328,9 @@ describe('TurnState', () => {
             turnState.moveDistance.set(3);
 
             expect(turnState.getDefenseModifierBreakdown()).toEqual([
-                { label: 'Prone', modifier: 1, alternateModifier: -2, alternateModifierLabel: 'adjacent' },
                 { label: 'Skidding', modifier: 2 },
                 { label: 'Moved 3-4 hexes', modifier: 1 },
+                { label: 'Prone', modifier: 1, alternateModifier: -2, alternateModifierLabel: 'adjacent' },
             ]);
             expect(turnState.getTotalTargetModifierAsDefender()).toEqual({ modifier: 4, alternateModifier: 1 });
         });

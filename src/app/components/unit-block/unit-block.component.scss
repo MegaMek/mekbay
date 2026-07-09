@@ -115,11 +115,25 @@
         }
     }
 
-    .pilot-info {
-        top: -1px;
+    .pilot-info-list {
+        position: absolute;
+        top: 0px;
         right: -1px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        pointer-events: auto;
+    }
+
+    .pilot-info {
+        position: static;
+        line-height: 1;
         paint-order: stroke fill;
         -webkit-text-stroke: 2px rgba(0, 0, 0, 0.5);;
+
+        &.interactive {
+            cursor: pointer;
+        }
     }
 
     .group-commander-indicator {

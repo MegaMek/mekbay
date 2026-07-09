@@ -87,6 +87,27 @@ export class MekRules extends UnitTypeRulesBase {
             : controls;
     }
 
+    override canSwapCrewMembers(leftCrewId = 0, rightCrewId = 1): boolean {
+        const crew = this.unit.getCrewMembers();
+        if (!crew[leftCrewId] || !crew[rightCrewId]) return false;
+        if (!this.hasMainCockpit() || !this.hasCommandConsole()) return false;
+        return !this.isCrewCockpitDestroyed(leftCrewId) && !this.isCrewCockpitDestroyed(rightCrewId);
+    }
+
+    override swapCrewMembers(leftCrewId = 0, rightCrewId = 1): boolean {
+        if (!this.canSwapCrewMembers(leftCrewId, rightCrewId)) return false;
+        const leftCrew = this.unit.getCrewMember(leftCrewId);
+        const rightCrew = this.unit.getCrewMember(rightCrewId);
+        const leftData = leftCrew.serialize();
+        const rightData = rightCrew.serialize();
+
+        leftCrew.update(rightData);
+        rightCrew.update(leftData);
+        this.unit.setCrewMember(leftCrewId, leftCrew);
+        this.unit.setCrewMember(rightCrewId, rightCrew);
+        return true;
+    }
+
     protected override readonly abandoned = computed<boolean>(() => {
         const crew = this.unit.getCrewMembers();
         return crew.length > 0 && crew.every(crewMember => {
@@ -224,7 +245,7 @@ export class MekRules extends UnitTypeRulesBase {
         const engineHitThreshold = svg?.querySelectorAll('[id^="engine_hit_"]').length ?? 3;
         const destroyedEngineSlots = crits.filter(slot => this.isNamedCrit(slot, "Engine") && this.isCritUnavailable(slot)).length;
         const engineBlown = destroyedEngineSlots >= engineHitThreshold;
-        const cockpitDestroyed = crits.some(slot => this.isNamedCrit(slot, "Cockpit") && this.isCritUnavailable(slot));
+        const cockpitDestroyed = this.allCrewCockpitsUnavailable(crits);
 
         const destroyed = engineBlown || cockpitDestroyed;
         if (this.unit.destroyed !== destroyed) {
@@ -558,6 +579,49 @@ export class MekRules extends UnitTypeRulesBase {
         return Math.min(10, engineHits * 5);
     }
 
+    override isCrewCockpitDestroyed(crewId: number): boolean {
+        if (!this.hasCommandConsole()) return this.isCockpitDestroyed();
+        if (crewId === 0) {
+            return this.unit.getCritSlots().some(slot => this.isMainCockpitSlot(slot) && this.isCrewSeatDestroyed(slot));
+        }
+        if (crewId === 1) {
+            return this.unit.getCritSlots().some(slot => this.isCommandConsoleSlot(slot) && this.isCrewSeatDestroyed(slot));
+        }
+        return false;
+    }
+
+    private isCockpitDestroyed(): boolean {
+        return this.unit.getCritSlots().some(slot => this.isMainCockpitSlot(slot) && this.isCrewSeatDestroyed(slot));
+    }
+
+    private allCrewCockpitsUnavailable(crits: readonly CriticalSlot[]): boolean {
+        const mainCockpitUnavailable = crits.some(slot => this.isMainCockpitSlot(slot) && this.isCritUnavailable(slot));
+        if (!this.hasCommandConsole()) return mainCockpitUnavailable;
+        const commandConsoleUnavailable = crits.some(slot => this.isCommandConsoleSlot(slot) && this.isCritUnavailable(slot));
+        return mainCockpitUnavailable && commandConsoleUnavailable;
+    }
+
+    private hasMainCockpit(): boolean {
+        return this.unit.getCritSlots().some(slot => this.isMainCockpitSlot(slot));
+    }
+
+    private hasCommandConsole(): boolean {
+        return this.unit.getCritSlots().some(slot => this.isCommandConsoleSlot(slot));
+    }
+
+    private isMainCockpitSlot(slot: CriticalSlot): boolean {
+        return this.isNamedCrit(slot, 'Cockpit') && !this.isCommandConsoleSlot(slot);
+    }
+
+    private isCommandConsoleSlot(slot: CriticalSlot): boolean {
+        return slot.name === 'Command Console';
+    }
+
+    private isCrewSeatDestroyed(slot: CriticalSlot): boolean {
+        if (slot.destroyed) return true;
+        return slot.loc ? this.unit.isInternalLocCommittedDestroyed(slot.loc) : false;
+    }
+
     private hasTorsoMountedCockpit(): boolean {
         return this.unit.getCritSlots().some(slot => !!slot.loc && TORSO_LOCATIONS.has(slot.loc) && this.isNamedCrit(slot, 'Cockpit'));
     }
@@ -874,18 +938,21 @@ export class MekRules extends UnitTypeRulesBase {
         return getDefaultAttackerMovementModifier(moveMode);
     }
 
+    override getSpottingModifier(): number {
+        return this.canUseCommandConsole() ? 0 : 1;
+    }
+
+    override getIndirectFireModifier(): number {
+        return this.canUseCommandConsole() ? 0 : 1;
+    }
+
     override getTargetNumberGunnerySkill(): number {
-        if (!this.isTripodMek()) return super.getTargetNumberGunnerySkill();
-        const dedicatedGunneryOfficer = this.getActiveCrewMember(1);
-        if (dedicatedGunneryOfficer) return dedicatedGunneryOfficer.getSkill('gunnery');
-        return this.getBestActiveCrewMember('gunnery', new Set([1]))?.getSkill('gunnery') ?? super.getTargetNumberGunnerySkill();
+        const primaryCrewId = this.isTripodMek() ? 1 : 0;
+        return this.getTargetNumberCrewSkill('gunnery', primaryCrewId) ?? super.getTargetNumberGunnerySkill();
     }
 
     override getTargetNumberPilotingSkill(): number {
-        if (!this.isTripodMek()) return super.getTargetNumberPilotingSkill();
-        const dedicatedPilot = this.getActiveCrewMember(0);
-        if (dedicatedPilot) return dedicatedPilot.getSkill('piloting');
-        return this.getBestActiveCrewMember('piloting', new Set([0]))?.getSkill('piloting') ?? super.getTargetNumberPilotingSkill();
+        return this.getTargetNumberCrewSkill('piloting', 0) ?? super.getTargetNumberPilotingSkill();
     }
 
     override getTargetNumberGunneryModifierBreakdown(): UnitModifierBreakdownEntry[] {
@@ -914,6 +981,14 @@ export class MekRules extends UnitTypeRulesBase {
         return this.unit.getUnit().subtype.startsWith('Tripod');
     }
 
+    private canUseCommandConsole(): boolean {
+        return this.hasMainCockpit()
+            && this.hasCommandConsole()
+            && this.getActiveCrewMember(0) !== null // Pilot can pilot...
+            && this.getActiveCrewMember(1) !== null // ... and commander can command!
+            && !this.isCrewCockpitDestroyed(1);
+    }
+
     private getActiveCrewMember(crewId: number): CrewMember | null {
         const crewMember = this.unit.getCrewMember(crewId);
         return crewMember && this.isActiveCrewMember(crewMember) ? crewMember : null;
@@ -923,10 +998,15 @@ export class MekRules extends UnitTypeRulesBase {
         return crewMember.getState() === 'healthy';
     }
 
-    private getBestActiveCrewMember(skillType: SkillType, excludedCrewIds: Set<number>): CrewMember | null {
+    private getTargetNumberCrewSkill(skillType: SkillType, primaryCrewId: number): number | null {
+        const primaryCrewMember = this.getActiveCrewMember(primaryCrewId);
+        if (primaryCrewMember) return primaryCrewMember.getSkill(skillType);
+        return this.getFirstActiveAlternateCrewMember(primaryCrewId)?.getSkill(skillType) ?? null;
+    }
+
+    private getFirstActiveAlternateCrewMember(primaryCrewId: number): CrewMember | null {
         return this.unit.getCrewMembers()
-            .filter(crewMember => !excludedCrewIds.has(crewMember.getId()) && this.isActiveCrewMember(crewMember))
-            .sort((first, second) => first.getSkill(skillType) - second.getSkill(skillType))[0] ?? null;
+            .filter(crewMember => crewMember.getId() !== primaryCrewId && this.isActiveCrewMember(crewMember))[0] ?? null;
     }
 
     override getAttackModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[] {
