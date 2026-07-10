@@ -94,21 +94,19 @@
         </div>
 
         <!-- Footer -->
-        <div panel-footer class="footer">
-            <button 
-                type="button"
-                class="footer-nav footer-nav-left"
-                [class.hidden]="!hasPrev()"
-                (click)="prev.emit()"
-                [attr.aria-label]="prevUnitLabel() ? 'Previous Unit: ' + prevUnitLabel() : 'Previous Unit'"
-                [title]="prevUnitLabel()">
-                <span class="nav-arrow-symbol" aria-hidden="true">&#10094;</span>
-                <span class="nav-unit-name">
-                    <span class="nav-unit-model">{{ prevUnit()?.model }}</span>
-                    <span class="nav-unit-chassis">{{ prevUnit()?.chassis }}</span>
-                </span>
-            </button>
-            <div class="footer-actions">
+        <unit-details-footer panel-footer
+                [activeTab]="activeTab()"
+                [prevUnit]="prevUnit()"
+                [nextUnit]="nextUnit()"
+                [hasPrev]="hasPrev()"
+                [hasNext]="hasNext()"
+                [sheetTab]="sheetTabRef()"
+                [variantsTabState]="variantsTabState()"
+                [gameSystem]="currentGameSystem()"
+                (prev)="prev.emit()"
+                (next)="next.emit()"
+                (variantsTabStateChange)="variantsTabState.set($event)">
+                <ng-container unit-details-footer-actions>
                 <div class="bt-split-button add-split-button" [class.disabled]="forceBuilderService.currentForce()?.readOnly()">
                     <button
                         type="button"
@@ -126,21 +124,8 @@
                         +
                     </button>
                 </div>
-            </div>
-            <button 
-                type="button"
-                class="footer-nav footer-nav-right"
-                [class.hidden]="!hasNext()"
-                (click)="next.emit()"
-                [attr.aria-label]="nextUnitLabel() ? 'Next Unit: ' + nextUnitLabel() : 'Next Unit'"
-                [title]="nextUnitLabel()">
-                <span class="nav-unit-name">
-                    <span class="nav-unit-model">{{ nextUnit()?.model }}</span>
-                    <span class="nav-unit-chassis">{{ nextUnit()?.chassis }}</span>
-                </span>
-                <span class="nav-arrow-symbol" aria-hidden="true">&#10095;</span>
-            </button>
-        </div>
+                </ng-container>
+        </unit-details-footer>
     </base-panel>
 } @else {
     <div class="panel-empty">
