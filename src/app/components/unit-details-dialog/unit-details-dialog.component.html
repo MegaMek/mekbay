@@ -153,6 +153,14 @@
         }
         @if (activeTab() === 'Card') {
         <div class="stable-tab-footer card-controls">
+            <label class="zoom-control">
+                <simple-slider [min]="cardTabRef()?.minZoomPercent ?? 100"
+                    [max]="cardTabRef()?.maxZoomPercent ?? 300" [step]="5"
+                    [value]="cardTabRef()?.zoomPercent() ?? 100" ariaLabel="Zoom"
+                    (valueChange)="setCardZoomPercent($event)"></simple-slider>
+                <output>{{ cardTabRef()?.zoomPercent() ?? 100 }}%</output>
+            </label>
+            <button type="button" class="bt-button" (click)="resetCardZoom()">Reset</button>
             <button type="button" class="bt-button" [cdkMenuTriggerFor]="cardExportMenu">Export</button>
             <ng-template #cardExportMenu>
                 <div class="popup-menu glass framed-borders has-shadow" cdkMenu>

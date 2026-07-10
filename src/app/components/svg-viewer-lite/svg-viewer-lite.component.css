@@ -28,7 +28,17 @@
     touch-action: none;
 }
 
+.svgl-container.center-content {
+    display: flex;
+    flex-direction: column;
+}
+
 .svgl-content {
     width: 100%;
     margin: 0 auto;
+}
+
+.center-content .svgl-content {
+    flex: 0 0 auto;
+    margin: auto;
 }

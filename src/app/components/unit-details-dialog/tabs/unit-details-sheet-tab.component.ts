@@ -49,11 +49,11 @@ export class UnitDetailsSheetTabComponent {
     private viewer = viewChild<SvgViewerLiteComponent>(SvgViewerLiteComponent);
 
     get minZoomPercent(): number {
-        return this.viewer()?.minZoomPercent ?? 100;
+        return this.viewer()?.minZoomPercent() ?? 100;
     }
 
     get maxZoomPercent(): number {
-        return this.viewer()?.maxZoomPercent ?? 300;
+        return this.viewer()?.maxZoomPercent() ?? 300;
     }
 
     zoomPercent(): number {

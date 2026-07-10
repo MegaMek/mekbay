@@ -1,3 +1,3 @@
-<div #container class="svgl-container" [class.zoomable]="zoomable()">
-	<div #content class="svgl-content"></div>
+<div #container class="svgl-container" [class.zoomable]="zoomable()" [class.center-content]="centerContent()">
+	<div #content class="svgl-content"><ng-content></ng-content></div>
 </div>

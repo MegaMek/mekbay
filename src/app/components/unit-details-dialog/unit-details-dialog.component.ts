@@ -659,7 +659,8 @@ export class UnitDetailsDialogComponent {
         // Don't block if already swiping - only block before swipe starts
         if (this.isSwiping()) return false;
 
-        if (this.activeTab() === 'Sheet' && this.isSheetSwipeBlocked()) return true;
+        if ((this.activeTab() === 'Sheet' && this.isSheetSwipeBlocked())
+            || (this.activeTab() === 'Card' && this.isCardSwipeBlocked())) return true;
 
         // Block if animation is in progress
         if (this.isSwipeAnimating()) return true;
@@ -673,12 +674,24 @@ export class UnitDetailsDialogComponent {
         return this.sheetTabRef()?.isZoomPanActive() ?? false;
     }
 
+    private isCardSwipeBlocked(): boolean {
+        return this.cardTabRef()?.isZoomPanActive() ?? false;
+    }
+
     public setSheetZoomPercent(value: number): void {
         this.sheetTabRef()?.setZoomPercent(value);
     }
 
     public resetSheetZoom(): void {
         this.sheetTabRef()?.resetZoom();
+    }
+
+    public setCardZoomPercent(value: number): void {
+        this.cardTabRef()?.setZoomPercent(value);
+    }
+
+    public resetCardZoom(): void {
+        this.cardTabRef()?.resetZoom();
     }
 
     public downloadSheetPng(): void {

@@ -32,17 +32,17 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, input, viewChildren } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, viewChild, viewChildren } from '@angular/core';
 import type { Unit } from '../../../models/units.model';
 import { AlphaStrikeCardComponent } from '../../alpha-strike-card/alpha-strike-card.component';
 import { getCardCountForUnitType } from '../../alpha-strike-card/card-layout.config';
 import { OptionsService } from '../../../services/options.service';
-import { SvgExportUtil } from '../../../utils/svg-export.util';
+import { SvgViewerLiteComponent } from '../../svg-viewer-lite/svg-viewer-lite.component';
 
 @Component({
     selector: 'unit-details-card-tab',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, AlphaStrikeCardComponent],
+    imports: [CommonModule, AlphaStrikeCardComponent, SvgViewerLiteComponent],
     templateUrl: './unit-details-card-tab.component.html',
     styleUrls: ['./unit-details-card-tab.component.css']
 })
@@ -50,6 +50,7 @@ export class UnitDetailsCardTabComponent {
     optionsService = inject(OptionsService);
     unit = input.required<Unit>();
     private readonly cards = viewChildren(AlphaStrikeCardComponent);
+    private readonly viewer = viewChild<SvgViewerLiteComponent>(SvgViewerLiteComponent);
 
     readonly unitType = computed(() => this.unit().as?.TP ?? '');
     readonly cardIndices = computed<number[]>(() => {
@@ -59,26 +60,44 @@ export class UnitDetailsCardTabComponent {
 
     readonly useHex = computed<boolean>(() => this.optionsService.options().ASUseHex);
     readonly cardStyle = computed<'default' | 'night'>(() => this.optionsService.options().ASCardStyle);
+    readonly cardSvgs = computed(() => this.cards()
+        .map(card => card.getSvgElement())
+        .filter((svg): svg is SVGSVGElement => svg !== null));
+    readonly exportFileName = computed(() => this.unit().name || 'alpha-strike-card');
+
+    get minZoomPercent(): number {
+        return this.viewer()?.minZoomPercent() ?? 100;
+    }
+
+    get maxZoomPercent(): number {
+        return this.viewer()?.maxZoomPercent() ?? 200;
+    }
+
+    zoomPercent(): number {
+        return this.viewer()?.zoomPercent() ?? this.minZoomPercent;
+    }
+
+    isZoomPanActive(): boolean {
+        return this.viewer()?.isZoomPanActive() ?? false;
+    }
+
+    setZoomPercent(value: number): void {
+        this.viewer()?.setZoomPercent(value);
+    }
+
+    resetZoom(): void {
+        this.viewer()?.resetZoom();
+    }
 
     downloadPng(): Promise<void> {
-        return SvgExportUtil.downloadPng(this.svgs(), this.exportFileName());
+        return this.viewer()?.downloadPng() ?? Promise.resolve();
     }
 
     openPng(): Promise<void> {
-        return SvgExportUtil.openPng(this.svgs());
+        return this.viewer()?.openPng() ?? Promise.resolve();
     }
 
     copyPngToClipboard(): Promise<void> {
-        return SvgExportUtil.copyPngToClipboard(this.svgs(), this.exportFileName());
-    }
-
-    private svgs(): SVGSVGElement[] {
-        return this.cards()
-            .map(card => card.getSvgElement())
-            .filter((svg): svg is SVGSVGElement => svg !== null);
-    }
-
-    private exportFileName(): string {
-        return this.unit().name || 'alpha-strike-card';
+        return this.viewer()?.copyPngToClipboard() ?? Promise.resolve();
     }
 }

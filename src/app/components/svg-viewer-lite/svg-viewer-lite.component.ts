@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, DestroyRef, signal, effect, input, inject, viewChild, type ElementRef } from '@angular/core';
+import { Component, ChangeDetectionStrategy, DestroyRef, signal, effect, input, inject, viewChild, computed, type ElementRef } from '@angular/core';
 
 import type { Unit } from '../../models/units.model';
 import { SheetService } from '../../services/sheet.service';
@@ -31,18 +31,29 @@ export class SvgViewerLiteComponent {
 
     unit = input<Unit | null>(null);
     zoomable = input<boolean>(false);
+    hasProjectedContent = input<boolean>(false);
+    exportSvgs = input<readonly SVGSVGElement[]>([]);
+    exportFileName = input<string | null>(null);
+    contentBaseWidth = input<number | null>(null);
+    centerContent = input<boolean>(false);
 
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
     contentRef = viewChild.required<ElementRef<HTMLDivElement>>('content');
 
-    readonly minZoomPercent = 100;
-    readonly maxZoomPercent = 300;
-    readonly zoomPercent = signal(this.minZoomPercent);
+    readonly minZoomPercent = input(100);
+    readonly maxZoomPercent = input(300);
+    readonly zoomPercent = signal(100);
 
     private svgs = signal<SVGSVGElement[]>([]);
+    private readonly exportTargets = computed(() => {
+        const projectedSvgs = this.exportSvgs();
+        return projectedSvgs.length > 0 ? [...projectedSvgs] : this.svgs();
+    });
     private svgsAttached = signal(false);
     private scale = 1;
-    private readonly maxScale = this.maxZoomPercent / 100;
+    private get maxScale(): number {
+        return this.maxZoomPercent() / 100;
+    }
     private readonly doubleTapZoomScale = 2.5;
     private readonly doubleTapMaxMs = 300;
     private readonly tapMaxDistance = 12;
@@ -68,6 +79,13 @@ export class SvgViewerLiteComponent {
             });
 
             const u = this.unit();
+            if (this.hasProjectedContent()) {
+                this.svgs.set([]);
+                this.svgsAttached.set(true);
+                this.resetZoom();
+                return;
+            }
+
             this.svgs.set([]);
             this.svgsAttached.set(false);
             this.cleanContainer();
@@ -357,14 +375,19 @@ export class SvgViewerLiteComponent {
         }
 
         const previous = this.pointerGesture;
-        this.panBy(previous.center.x - nextGesture.center.x, previous.center.y - nextGesture.center.y);
-
-        if (previous.distance > 0) {
-            this.zoomAt(nextGesture.center, this.scale * (nextGesture.distance / previous.distance));
-        } else {
-            this.clampScroll();
+        if (previous.distance <= 0) {
+            this.pointerGesture = nextGesture;
+            return;
         }
 
+        const nextScale = this.clamp(this.scale * (nextGesture.distance / previous.distance), 1, this.maxScale);
+        if (Math.abs(nextScale - this.scale) < this.zoomEpsilon) {
+            this.pointerGesture = nextGesture;
+            return;
+        }
+
+        this.panBy(previous.center.x - nextGesture.center.x, previous.center.y - nextGesture.center.y);
+        this.zoomAt(nextGesture.center, nextScale);
         this.pointerGesture = this.currentPointerGesture();
     }
 
@@ -475,7 +498,7 @@ export class SvgViewerLiteComponent {
     setZoomPercent(value: number): void {
         if (!Number.isFinite(value)) return;
 
-        const percent = this.clamp(value, this.minZoomPercent, this.maxZoomPercent);
+        const percent = this.clamp(value, this.minZoomPercent(), this.maxZoomPercent());
         this.zoomPercent.set(percent);
         this.pendingSliderZoomPercent = percent;
 
@@ -494,7 +517,7 @@ export class SvgViewerLiteComponent {
 
     async downloadPng(): Promise<void> {
         try {
-            await SvgExportUtil.downloadPng(this.svgs(), this.exportFileName());
+            await SvgExportUtil.downloadPng(this.exportTargets(), this.getExportFileName());
         } catch (err) {
             this.logger.error('svg-viewer-lite: failed to download PNG: ' + JSON.stringify(err));
         }
@@ -502,7 +525,7 @@ export class SvgViewerLiteComponent {
     
     async openPng(): Promise<void> {
         try {
-            await SvgExportUtil.openPng(this.svgs());
+            await SvgExportUtil.openPng(this.exportTargets());
         } catch (err) {
             this.logger.error('svg-viewer-lite: failed to open PNG: ' + JSON.stringify(err));
         }
@@ -510,7 +533,7 @@ export class SvgViewerLiteComponent {
     
     async copyPngToClipboard(): Promise<void> {
         try {
-            await SvgExportUtil.copyPngToClipboard(this.svgs(), this.exportFileName());
+            await SvgExportUtil.copyPngToClipboard(this.exportTargets(), this.getExportFileName());
         } catch (err) {
             this.logger.error('svg-viewer-lite: failed to copy PNG to clipboard: ' + JSON.stringify(err));
             throw err;
@@ -518,7 +541,15 @@ export class SvgViewerLiteComponent {
     }
 
     private applyScale(): void {
-        this.contentRef().nativeElement.style.width = `${this.scale * 100}%`;
+        const content = this.contentRef().nativeElement;
+        const baseWidth = this.contentBaseWidth();
+        if (baseWidth && baseWidth > 0) {
+            const availableWidth = this.containerRef().nativeElement.clientWidth;
+            content.style.width = `${Math.min(availableWidth, baseWidth) * this.scale}px`;
+            return;
+        }
+
+        content.style.width = `${this.scale * 100}%`;
     }
 
     private syncZoomPercent(): void {
@@ -598,7 +629,12 @@ export class SvgViewerLiteComponent {
         if (stopPropagation) event.stopPropagation();
     }
 
-    private exportFileName(): string {
+    private getExportFileName(): string {
+        const explicitFileName = this.exportFileName();
+        if (explicitFileName) {
+            return explicitFileName.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '') || 'record-sheet';
+        }
+
         const unit = this.unit();
         const name = [unit?.chassis, unit?.model].filter(Boolean).join('-') || unit?.name || 'record-sheet';
         return name.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '') || 'record-sheet';
