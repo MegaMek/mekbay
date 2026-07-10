@@ -87,6 +87,11 @@
     @for (row of vesselCriticalRows(); track row.key; let rowIndex = $index) {
         @let rowY = vesselFrontGeometry.criticalY + 84 + rowIndex * 36;
         <g class="critical-row" [attr.data-crit]="row.key">
+            <rect class="pip-hit-area" [attr.x]="vesselFrontGeometry.leftX + 2"
+                [attr.y]="rowY - (rowIndex === 0 && row.descriptions.length > 1 ? 33 : 19)"
+                [attr.width]="vesselFrontGeometry.leftWidth - 4"
+                [attr.height]="rowIndex === 0 && row.descriptions.length > 1 ? 52 : 38"
+                fill="transparent" pointer-events="all" />
             <text x="150" [attr.y]="rowY" fill="#7b0000" font-family="Roboto Condensed, sans-serif" font-size="19" font-weight="900" text-anchor="end">{{ row.name }}</text>
             @for (pipIndex of range(row.maxPips); track pipIndex) {
                 <circle class="pip" [class.damaged]="isCritPipDamaged(row.key, pipIndex)"
@@ -114,11 +119,17 @@
         <rect class="frame-background" [attr.x]="specialsFrame.x" [attr.y]="specialsFrame.y"
             [attr.width]="specialsFrame.width" [attr.height]="specialsFrame.height"
             rx="16" fill="#fff" fill-opacity="0.85" stroke="#666" stroke-width="3" />
-        <text [attr.x]="specialsFrame.x + 14" [attr.y]="vesselSpecialsRenderModel().firstBaseline" fill="#000" font-size="30">SPECIAL:</text>
-        @for (token of vesselSpecialsRenderModel().tokens; track token.state.original) {
-            <text class="special-ability" [attr.data-original]="token.state.original" [attr.x]="token.x" [attr.y]="token.y"
-                fill="#7b0000" font-family="Roboto, sans-serif" font-size="30" font-weight="900"
-                (click)="onSpecialClick(token.state, $event)">{{ token.text }}</text>
+        @for (line of vesselSpecialsRenderModel().lines; track $index; let lineIndex = $index) {
+            <text [attr.x]="vesselSpecialsGeometry.textX"
+                [attr.y]="vesselSpecialsRenderModel().firstBaseline + lineIndex * vesselSpecialsGeometry.lineHeight"
+                font-family="Roboto, sans-serif" font-size="30">
+                @if (lineIndex === 0) {<tspan fill="#000">SPECIAL:</tspan>}
+                @for (token of line; track $index; let firstToken = $first) {
+                    <tspan class="special-ability" [attr.data-original]="token.state.original"
+                        [attr.dx]="firstToken ? (lineIndex === 0 ? 8 : 0) : 6" fill="#7b0000" font-weight="900"
+                        (click)="onSpecialClick(token.state, $event)">{{ token.text }}</tspan>
+                }
+            </text>
         }
     </g>
 }

@@ -7,17 +7,17 @@ export const STANDARD_CARD_GEOMETRY = {
     contentRight: CARD_LAYOUT_GEOMETRY.bodyRight,
     contentBottom: CARD_LAYOUT_GEOMETRY.bodyBottom,
     leftColumnRatio: 0.575,
-    generalHeight: 119,
+        generalHeight: 95,
     damageHeight: 117,
-    heatHeight: 66,
-    armorHeight: 96,
+        heatHeight: 58,
+        armorHeight: 87,
     pipColumns: 14,
     pipRadius: 13,
     pipColumnWidth: 37,
     pipRowHeight: 37,
     pipFirstRowOffset: 23,
     specialsPaddingX: 14,
-    specialsPaddingY: 14,
+        specialsPaddingY: 10,
     specialsFontSize: 30,
     specialsLineHeight: 34,
 } as const;
@@ -48,6 +48,7 @@ export interface StandardLayoutInput {
     armorPips?: number;
     structurePips?: number;
     criticalHeight?: number;
+        specialsLineCount?: number;
     measureText?: (text: string, font: string) => number;
 }
 
@@ -57,12 +58,40 @@ export function estimateRobotoWidth(text: string, fontSize: number): number {
     let units = 0;
     for (const character of text) {
         if (character === ' ') units += 0.25;
-        else if (/[ilI1|.,:'`]/.test(character)) units += 0.28;
+            else if (/[ilI|.,:'`]/.test(character)) units += 0.28;
         else if (/[mwMW@%&]/.test(character)) units += 0.82;
         else if (/[A-Z0-9]/.test(character)) units += 0.58;
         else units += 0.48;
     }
     return units * fontSize;
+}
+
+export function wrapSvgTokenLines<T>(
+    tokens: T[],
+    getText: (token: T) => string,
+    maxWidth: number,
+    fontSize: number,
+    firstLinePrefix = '',
+): T[][] {
+    if (tokens.length === 0) return [];
+
+    const lines: T[][] = [];
+    let line: T[] = [];
+    let lineWidth = estimateRobotoWidth(firstLinePrefix, fontSize) * 1.05;
+
+    for (const token of tokens) {
+        const width = estimateRobotoWidth(getText(token), fontSize) * 1.05;
+        if (line.length > 0 && lineWidth + width > maxWidth) {
+            lines.push(line);
+            line = [];
+            lineWidth = 0;
+        }
+        line.push(token);
+        lineWidth += width;
+    }
+
+    if (line.length > 0) lines.push(line);
+    return lines;
 }
 
 export function estimateRobotoCondensedWidth(text: string, fontSize: number, letterSpacingEm = 0.05): number {
@@ -116,8 +145,9 @@ export function buildStandardLayout(input: StandardLayoutInput): StandardLayoutM
         900,
         input.measureText,
     );
-    const specialsHeight = specialsLines.length > 0
-        ? geometry.specialsPaddingY * 2 + specialsLines.length * geometry.specialsLineHeight
+    const specialsLineCount = input.specialsLineCount ?? specialsLines.length;
+    const specialsHeight = specialsLineCount > 0
+        ? geometry.specialsPaddingY * 2 + specialsLineCount * geometry.specialsLineHeight
         : 0;
     const specials = specialsHeight > 0
         ? {
@@ -133,7 +163,7 @@ export function buildStandardLayout(input: StandardLayoutInput): StandardLayoutM
     const structureRows = Math.max(1, Math.ceil((input.structurePips ?? 0) / geometry.pipColumns));
     const armorHeight = Math.max(
         geometry.armorHeight,
-        14 + (armorRows + structureRows) * geometry.pipRowHeight,
+            13 + (armorRows + structureRows) * geometry.pipRowHeight,
     );
 
     let cursor = mainBottom;

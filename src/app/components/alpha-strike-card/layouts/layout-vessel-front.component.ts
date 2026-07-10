@@ -7,7 +7,7 @@ import {
     VESSEL_FRONT_GEOMETRY,
     VESSEL_SPECIALS_GEOMETRY,
 } from './vessel-layout.model';
-import { estimateRobotoWidth } from './standard-layout.model';
+import { wrapSvgTokenLines } from './standard-layout.model';
 
 @Component({
     selector: 'g[as-layout-vessel-front]',
@@ -24,6 +24,7 @@ export class AsLayoutVesselFrontComponent extends AsLayoutBaseComponent {
     readonly criticalVariant = input.required<CriticalHitsVariant>();
     readonly cardGeometry = CARD_LAYOUT_GEOMETRY;
     readonly vesselFrontGeometry = VESSEL_FRONT_GEOMETRY;
+    readonly vesselSpecialsGeometry = VESSEL_SPECIALS_GEOMETRY;
     readonly movementSvgText = computed(() => this.movementDisplay().replace(/<[^>]*>/g, ''));
 
     readonly vesselCriticalRows = computed(() => {
@@ -48,28 +49,21 @@ export class AsLayoutVesselFrontComponent extends AsLayoutBaseComponent {
 
     readonly vesselSpecialsRenderModel = computed(() => {
         const fontSize = 30;
-        const startX = VESSEL_SPECIALS_GEOMETRY.textX + estimateRobotoWidth('SPECIAL: ', fontSize);
-        const maxX = CARD_LAYOUT_GEOMETRY.bodyRight - 14;
-        let x = startX;
-        let line = 0;
-        const tokens = this.effectiveSpecials().map((state, index, values) => {
-            const text = `${state.effective}${index < values.length - 1 ? ', ' : ''}`;
-            const width = estimateRobotoWidth(text, fontSize);
-            if (x + width > maxX && x > startX) {
-                line++;
-                x = VESSEL_SPECIALS_GEOMETRY.textX;
-            }
-            const token = { state, text, x, line };
-            x += width;
-            return token;
+        const states = this.effectiveSpecials();
+        const tokens = states.map((state, index) => {
+            return { state, text: `${state.effective}${index < states.length - 1 ? ',' : ''}` };
         });
-        const layout = buildVesselSpecialsLayout(tokens.length > 0 ? line + 1 : 0);
+        const lines = wrapSvgTokenLines(
+            tokens,
+            token => `${token.text} `,
+            VESSEL_SPECIALS_GEOMETRY.width - 28,
+            fontSize,
+            'SPECIAL: ',
+        );
+        const layout = buildVesselSpecialsLayout(lines.length);
         return {
             ...layout,
-            tokens: tokens.map(token => ({
-                ...token,
-                y: layout.firstBaseline + token.line * VESSEL_SPECIALS_GEOMETRY.lineHeight,
-            })),
+            lines,
         };
     });
 }

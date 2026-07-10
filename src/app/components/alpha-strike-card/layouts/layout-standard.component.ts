@@ -8,8 +8,8 @@ import {
     STANDARD_CARD_GEOMETRY,
     buildStandardLayout,
     estimateRobotoCondensedWidth,
-    estimateRobotoWidth,
     getStandardCriticalRows,
+    wrapSvgTokenLines,
     type StandardCriticalVariant,
 } from './standard-layout.model';
 
@@ -27,14 +27,36 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
     readonly instanceId = input.required<number>();
     readonly criticalVariant = input.required<CriticalHitsVariant>();
     readonly cardGeometry = CARD_LAYOUT_GEOMETRY;
+    readonly standardGeometry = STANDARD_CARD_GEOMETRY;
 
     private readonly specialsText = computed(() => {
         const values = this.effectiveSpecials().map(item => item.effective).join(', ');
         return values ? `SPECIAL: ${values}` : '';
     });
 
+    readonly specialLines = computed(() => {
+        const states = this.effectiveSpecials();
+        const tokens = states.map((state, index) => {
+            const remaining = state.maxCount && state.consumedCount
+                ? `[${state.maxCount - state.consumedCount}]`
+                : '';
+            return {
+                state,
+                text: `${state.effective}${remaining}${index < states.length - 1 ? ',' : ''}`,
+            };
+        });
+        return wrapSvgTokenLines(
+            tokens,
+            token => `${token.text} `,
+            CARD_LAYOUT_GEOMETRY.bodyWidth - STANDARD_CARD_GEOMETRY.specialsPaddingX * 2,
+            STANDARD_CARD_GEOMETRY.specialsFontSize,
+            'SPECIAL: ',
+        );
+    });
+
     readonly standardLayout = computed(() => buildStandardLayout({
         specialsText: this.specialsText(),
+        specialsLineCount: this.specialLines().length,
         usesHeat: this.asStats().usesOV,
         hasCriticalTable: this.criticalVariant() !== 'none',
         armorPips: this.armorPips(),
@@ -112,30 +134,6 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
         return { model: modelLine.toUpperCase(), chassis: chassisLine.toUpperCase(), fontSize };
     });
 
-    readonly specialTokens = computed(() => {
-        const frame = this.standardLayout().specials;
-        if (!frame) return [];
-        const fontSize = 30;
-        const maxX = frame.x + frame.width - 14;
-        const lineHeight = 34;
-        let x = frame.x + 14 + estimateRobotoWidth('SPECIAL: ', fontSize);
-        let line = 0;
-        return this.effectiveSpecials().map((state, index, values) => {
-            const remaining = state.maxCount && state.consumedCount
-                ? `[${state.maxCount - state.consumedCount}]`
-                : '';
-            const text = `${state.effective}${remaining}${index < values.length - 1 ? ', ' : ''}`;
-            const width = estimateRobotoWidth(text, fontSize);
-            if (x + width > maxX && x > frame.x + 14) {
-                line++;
-                x = frame.x + 14;
-            }
-            const token = { state, text, x, y: frame.y + 10 + (line + 1) * lineHeight - 6 };
-            x += width;
-            return token;
-        });
-    });
-
     readonly criticalRows = computed(() => getStandardCriticalRows(this.criticalVariant() as StandardCriticalVariant));
 
     committedCritHits(key: string): number {
@@ -168,6 +166,25 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
         const armorRows = Math.max(1, Math.ceil(this.armorPips() / STANDARD_CARD_GEOMETRY.pipColumns));
         return frameY + STANDARD_CARD_GEOMETRY.pipFirstRowOffset
             + (armorRows + this.pipRow(index)) * STANDARD_CARD_GEOMETRY.pipRowHeight;
+    }
+
+    armorHitAreaHeight(frameY: number): number {
+        return this.damagePipRowsBoundary(frameY) - frameY;
+    }
+
+    structureHitAreaY(frameY: number): number {
+        return this.damagePipRowsBoundary(frameY);
+    }
+
+    damagePipHitAreaWidth(pipCount: number, frameWidth: number): number {
+        const columns = Math.max(1, Math.min(pipCount, STANDARD_CARD_GEOMETRY.pipColumns));
+        const contentWidth = 86 + (columns - 1) * STANDARD_CARD_GEOMETRY.pipColumnWidth;
+        return Math.min(frameWidth - 4, contentWidth);
+    }
+
+    private damagePipRowsBoundary(frameY: number): number {
+        const lastArmorIndex = Math.max(0, this.armorPips() - 1);
+        return (this.armorPipY(lastArmorIndex, frameY) + this.structurePipY(0, frameY)) / 2;
     }
 
     private pipRow(index: number): number {

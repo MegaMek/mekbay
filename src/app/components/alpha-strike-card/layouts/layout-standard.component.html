@@ -29,8 +29,8 @@
             </g>
         </svg>
     }
-    <text [attr.x]="cardGeometry.bodyInset" y="54" font-size="40" font-weight="400">{{ headerLines().model }}</text>
-    <text class="chassis-text" [attr.x]="cardGeometry.bodyInset" y="120" [attr.font-size]="headerLines().fontSize"
+    <text [attr.x]="cardGeometry.bodyInset" y="62" font-size="40" font-weight="400">{{ headerLines().model }}</text>
+    <text class="chassis-text" [attr.x]="cardGeometry.bodyInset" y="130" [attr.font-size]="headerLines().fontSize"
         font-family="Roboto Condensed, sans-serif" font-weight="700" letter-spacing="0.05em">{{ headerLines().chassis }}</text>
 </g>
 <path class="pv-background" d="M860 20 H1100 V105 H910 Z" fill="#000" />
@@ -113,6 +113,9 @@
 <g class="armor-frame pips-wrapper">
     <rect class="frame-background" [attr.x]="layout.armor.x" [attr.y]="layout.armor.y" [attr.width]="layout.armor.width" [attr.height]="layout.armor.height" rx="16" ry="16" fill="#fff" fill-opacity="0.85" stroke="#666" stroke-width="3" />
     <g class="pip-row" data-damage-type="armor">
+        <rect class="pip-hit-area" [attr.x]="layout.armor.x + 2" [attr.y]="layout.armor.y + 2"
+            [attr.width]="damagePipHitAreaWidth(armorPips(), layout.armor.width)" [attr.height]="armorHitAreaHeight(layout.armor.y) - 2"
+            fill="transparent" pointer-events="all" />
         <text [attr.x]="layout.armor.x + 14" [attr.y]="layout.armor.y + 37" fill="#000" font-family="Roboto, sans-serif" font-size="29" font-weight="500">A:</text>
         @for (pipState of armorPipStates(); track pipState.index) {
             <circle class="pip" [class.damaged]="pipState.isDamaged" [class.pending-damage]="pipState.isPendingDamage" [class.pending-heal]="pipState.isPendingHeal"
@@ -120,6 +123,9 @@
         }
     </g>
     <g class="pip-row" data-damage-type="structure">
+        <rect class="pip-hit-area" [attr.x]="layout.armor.x + 2" [attr.y]="structureHitAreaY(layout.armor.y)"
+            [attr.width]="damagePipHitAreaWidth(structurePips(), layout.armor.width)" [attr.height]="layout.armor.y + layout.armor.height - structureHitAreaY(layout.armor.y) - 2"
+            fill="transparent" pointer-events="all" />
         <text [attr.x]="layout.armor.x + 14" [attr.y]="structurePipY(0, layout.armor.y) + 10" fill="#000" font-family="Roboto, sans-serif" font-size="29" font-weight="500">S:</text>
         @for (pipState of structurePipStates(); track pipState.index) {
             <circle class="pip structure" [class.damaged]="pipState.isDamaged" [class.pending-damage]="pipState.isPendingDamage" [class.pending-heal]="pipState.isPendingHeal"
@@ -147,6 +153,8 @@
         @for (row of criticalRows(); track row.key; let rowIndex = $index) {
             @let rowY = criticalFrame.y + 72 + rowIndex * 39;
             <g class="critical-row" [attr.data-crit]="row.key">
+                <rect class="pip-hit-area" [attr.x]="criticalFrame.x + 8" [attr.y]="rowY - 28"
+                    [attr.width]="criticalFrame.width - 16" height="36" fill="transparent" pointer-events="all" />
                 <text [attr.x]="criticalFrame.x + 128" [attr.y]="rowY" fill="#7b0000" font-family="Roboto Condensed, sans-serif" font-size="19" font-weight="900" text-anchor="end">{{ row.name }}</text>
                 @if (showNumericCritPips(row.key, row.maxPips)) {
                     <text class="pip-count" [class.pending-damage]="pendingCritChange(row.key) > 0" [class.pending-heal]="pendingCritChange(row.key) < 0" [attr.x]="criticalFrame.x + 145" [attr.y]="rowY" fill="var(--damage-color)" font-family="Roboto, sans-serif" font-size="23" font-weight="900">{{ committedCritHits(row.key) }}{{ pendingCritChange(row.key) ? pendingCritDelta(row.key) : '' }}</text>
@@ -165,11 +173,14 @@
             <text [attr.x]="criticalFrame.x + 105" [attr.y]="motiveY" fill="#7b0000" font-family="Roboto Condensed, sans-serif" font-size="19" font-weight="900" text-anchor="end">MOTIVE</text>
             @for (motive of [{ key: 'motive1', desc: useHex() ? '-1⬢ MV' : '-2″ MV', pips: 2 }, { key: 'motive2', desc: '½ MV', pips: 2 }, { key: 'motive3', desc: '0 MV', pips: 1 }]; track motive.key; let motiveIndex = $index) {
                 <g class="critical-row motive-row" [attr.data-crit]="motive.key">
+                    <rect class="pip-hit-area" [attr.x]="criticalFrame.x + 109 + motiveIndex * 105" [attr.y]="motiveY - 23"
+                        [attr.width]="motiveIndex < 2 ? 105 : criticalFrame.x + criticalFrame.width - 8 - (criticalFrame.x + 109 + motiveIndex * 105)"
+                        height="32" fill="transparent" pointer-events="all" />
                     @for (pipIndex of range(motive.pips); track pipIndex) {
                         <circle class="pip" [class.damaged]="isCritPipDamaged(motive.key, pipIndex)" [class.pending-damage]="isCritPipPendingDamage(motive.key, pipIndex)" [class.pending-heal]="isCritPipPendingHeal(motive.key, pipIndex)"
                             [attr.cx]="criticalFrame.x + 120 + motiveIndex * 105 + pipIndex * 23" [attr.cy]="motiveY - 7" r="9" fill="#fff" stroke="#000" stroke-width="3" />
                     }
-                    <text [attr.x]="criticalFrame.x + 120 + motiveIndex * 105 + motive.pips * 23" [attr.y]="motiveY" fill="#000" font-family="Roboto Condensed, sans-serif" font-size="18" font-weight="600">{{ motive.desc }}</text>
+                    <text [attr.x]="criticalFrame.x + 118 + motiveIndex * 105 + motive.pips * 23" [attr.y]="motiveY" fill="#000" font-family="Roboto Condensed, sans-serif" font-size="18" font-weight="600">{{ motive.desc }}</text>
                 </g>
             }
         }
@@ -187,11 +198,17 @@
 @if (layout.specials; as specialsFrame) {
     <g class="specials-frame">
         <rect class="frame-background" [attr.x]="specialsFrame.x" [attr.y]="specialsFrame.y" [attr.width]="specialsFrame.width" [attr.height]="specialsFrame.height" rx="16" ry="16" fill="#fff" fill-opacity="0.85" stroke="#666" stroke-width="3" />
-        <text [attr.x]="specialsFrame.x + 14" [attr.y]="specialsFrame.y + 38" fill="#000" font-family="Roboto, sans-serif" font-size="30" font-weight="500">SPECIAL:</text>
-        @for (token of specialTokens(); track token.state.original) {
-            <text class="special-ability as-value" [class.exhausted]="token.state.isExhausted || (token.state.maxCount && (token.state.consumedCount ?? 0) >= token.state.maxCount)" [class.has-consumed]="token.state.consumedCount"
-                [attr.data-original]="token.state.original" [attr.x]="token.x" [attr.y]="token.y" fill="#7b0000" font-family="Roboto, sans-serif" font-size="30" font-weight="900"
-                (click)="onSpecialClick(token.state, $event)">{{ token.text }}</text>
+        @for (line of specialLines(); track $index; let lineIndex = $index) {
+            <text [attr.x]="specialsFrame.x + standardGeometry.specialsPaddingX"
+                [attr.y]="specialsFrame.y + 10 + (lineIndex + 1) * standardGeometry.specialsLineHeight - 6"
+                font-family="Roboto, sans-serif" [attr.font-size]="standardGeometry.specialsFontSize">
+                @if (lineIndex === 0) {<tspan fill="#000" font-weight="500">SPECIAL:</tspan>}
+                @for (token of line; track $index; let firstToken = $first) {
+                    <tspan class="special-ability as-value" [class.exhausted]="token.state.isExhausted || (token.state.maxCount && (token.state.consumedCount ?? 0) >= token.state.maxCount)" [class.has-consumed]="token.state.consumedCount"
+                        [attr.data-original]="token.state.original" [attr.dx]="firstToken ? (lineIndex === 0 ? 8 : 0) : 6"
+                        fill="#7b0000" font-weight="900" (click)="onSpecialClick(token.state, $event)">{{ token.text }}</tspan>
+                }
+            </text>
         }
     </g>
 }

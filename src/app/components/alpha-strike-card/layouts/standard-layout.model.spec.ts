@@ -126,9 +126,12 @@ describe('standard Alpha Strike SVG layout', () => {
             * STANDARD_CARD_GEOMETRY.leftColumnRatio,
         );
         const rightX = CARD_LAYOUT_GEOMETRY.bodyInset + leftWidth + CARD_LAYOUT_GEOMETRY.frameGap;
-        const specialsY = STANDARD_CARD_GEOMETRY.contentBottom - 96;
+        const specialsHeight = STANDARD_CARD_GEOMETRY.specialsPaddingY * 2
+            + 2 * STANDARD_CARD_GEOMETRY.specialsLineHeight;
+        const specialsY = STANDARD_CARD_GEOMETRY.contentBottom - specialsHeight;
         const mainBottom = specialsY - CARD_LAYOUT_GEOMETRY.frameGap;
-        const armorY = mainBottom - 125;
+        const wrappedArmorHeight = 13 + 3 * STANDARD_CARD_GEOMETRY.pipRowHeight;
+        const armorY = mainBottom - wrappedArmorHeight;
         const heatY = armorY - CARD_LAYOUT_GEOMETRY.frameGap - STANDARD_CARD_GEOMETRY.heatHeight;
         const damageY = heatY - CARD_LAYOUT_GEOMETRY.frameGap - STANDARD_CARD_GEOMETRY.damageHeight;
         const generalY = damageY - CARD_LAYOUT_GEOMETRY.frameGap - STANDARD_CARD_GEOMETRY.generalHeight;
@@ -152,7 +155,7 @@ describe('standard Alpha Strike SVG layout', () => {
             x: CARD_LAYOUT_GEOMETRY.bodyInset,
             y: specialsY,
             width: CARD_LAYOUT_GEOMETRY.bodyWidth,
-            height: 96,
+            height: specialsHeight,
         });
     });
 

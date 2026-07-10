@@ -11,7 +11,6 @@ import {
 interface VesselRearSpecialToken {
     state: SpecialAbilityState;
     text: string;
-    x: number;
     line: number;
 }
 
@@ -20,6 +19,7 @@ interface VesselRearSpecialsRenderModel {
     lineHeight: number;
     firstBaseline: number;
     tokens: VesselRearSpecialToken[];
+    lines: VesselRearSpecialToken[][];
 }
 
 interface VesselArcRenderModel {
@@ -69,15 +69,19 @@ export class AsLayoutVesselRearComponent extends AsLayoutBaseComponent {
                 specialValues,
                 VESSEL_REAR_GEOMETRY.frameWidth - 78 - VESSEL_REAR_SPECIALS_GEOMETRY.contentXOffset,
             );
+            const tokens = specialsLayout.tokens.map(token => ({
+                state: { original: token.value, effective: token.value },
+                text: token.text.trimEnd(),
+                line: token.line,
+            }));
+            const lineCount = tokens.length > 0 ? Math.max(...tokens.map(token => token.line)) + 1 : 0;
             return {
                 label: definition.label,
                 shortLabel: definition.shortLabel,
                 specials: {
                     ...specialsLayout,
-                    tokens: specialsLayout.tokens.map(token => ({
-                        ...token,
-                        state: { original: token.value, effective: token.value },
-                    })),
+                    tokens,
+                    lines: Array.from({ length: lineCount }, (_, line) => tokens.filter(token => token.line === line)),
                 },
                 rows: rangeDefinitions.map(rangeDefinition => ({
                     label: rangeDefinition.label,

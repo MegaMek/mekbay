@@ -32,12 +32,16 @@
             <line [attr.x1]="tableX" [attr.y1]="rowY + 10" [attr.x2]="arcX + arcWidth - 14" [attr.y2]="rowY + 10" stroke="#bbb" stroke-width="1" />
         }
         <text [attr.x]="tableX" [attr.y]="arcY + 229" fill="#000" font-size="23" font-weight="700">SPE</text>
-        @for (token of arc.specials.tokens; track $index) {
-            <text class="special-ability as-value" [attr.data-original]="token.state.original"
-                [attr.x]="tableX + vesselRearSpecialsGeometry.contentXOffset + token.x"
-                [attr.y]="arcY + vesselRearSpecialsGeometry.topOffset + arc.specials.firstBaseline + token.line * arc.specials.lineHeight"
-                fill="#7b0000" font-family="Roboto, sans-serif" [attr.font-size]="arc.specials.fontSize" font-weight="900"
-                (click)="onSpecialClick(token.state, $event)">{{ token.text }}</text>
+        @for (line of arc.specials.lines; track $index; let lineIndex = $index) {
+            <text [attr.x]="tableX + vesselRearSpecialsGeometry.contentXOffset"
+                [attr.y]="arcY + vesselRearSpecialsGeometry.topOffset + arc.specials.firstBaseline + lineIndex * arc.specials.lineHeight"
+                font-family="Roboto, sans-serif" [attr.font-size]="arc.specials.fontSize">
+                @for (token of line; track $index; let firstToken = $first) {
+                    <tspan class="special-ability as-value" [attr.data-original]="token.state.original"
+                        [attr.dx]="firstToken ? 0 : 4" fill="#7b0000" font-weight="900"
+                        (click)="onSpecialClick(token.state, $event)">{{ token.text }}</tspan>
+                }
+            </text>
         }
         <line [attr.x1]="tableX + vesselRearGeometry.rowLabelWidth" [attr.y1]="arcY + vesselRearGeometry.critDividerOffset"
             [attr.x2]="arcX + arcWidth - vesselRearGeometry.tableRightInset" [attr.y2]="arcY + vesselRearGeometry.critDividerOffset"
@@ -48,6 +52,10 @@
             @let pipClusterX = tableX + vesselRearGeometry.rowLabelWidth + columnIndex * valueWidth
                 + (valueWidth - 3 * vesselRearGeometry.critPipSpacing) / 2;
             <g class="critical-row arc-critical-row" [attr.data-crit]="critKey">
+                <rect class="pip-hit-area"
+                    [attr.x]="tableX + vesselRearGeometry.rowLabelWidth + columnIndex * valueWidth + 1"
+                    [attr.y]="arcY + vesselRearGeometry.critDividerOffset + 1"
+                    [attr.width]="valueWidth - 2" [attr.height]="26" fill="transparent" pointer-events="all" />
                 @for (pipIndex of range(4); track pipIndex) {
                     <circle class="pip" [class.damaged]="isCritPipDamaged(critKey, pipIndex)"
                         [class.pending-damage]="isCritPipPendingDamage(critKey, pipIndex)"
