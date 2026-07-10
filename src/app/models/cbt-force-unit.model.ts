@@ -930,7 +930,8 @@ export class CBTForceUnit extends ForceUnit {
                 // Check crit slots (Mek-type units where ammo swapping happens on crits)
                 const crits = forceUnit.getCritSlots();
                 for (const crit of crits) {
-                    if (crit.eq instanceof AmmoEquipment && crit.eq.hasMunitionType('M_SEMIGUIDED')) {
+                    if (crit.eq instanceof AmmoEquipment 
+                        && (crit.eq.hasMunitionType('M_SEMIGUIDED') || crit.eq.hasMunitionType('M_HOMING'))) {
                         const ammo = crit.eq;
                         const forceUnitComps = forceUnit.getUnit().comp;
                         // Check if the unit carrying this ammo has any weapon that can use it (matching ammoType and rackSize)
@@ -955,7 +956,8 @@ export class CBTForceUnit extends ForceUnit {
                 // Check direct inventory entries (vehicles, ProtoMeks, etc.)
                 const inventory = forceUnit.getInventory();
                 for (const item of inventory) {
-                    if (item.equipment instanceof AmmoEquipment && item.equipment.hasMunitionType('M_SEMIGUIDED')) {
+                    if (item.equipment instanceof AmmoEquipment 
+                    && (item.equipment.hasMunitionType('M_SEMIGUIDED') || item.equipment.hasMunitionType('M_HOMING'))) {
                         totalSemiGuidedBV += item.equipment.bv;
                     }
                 }
