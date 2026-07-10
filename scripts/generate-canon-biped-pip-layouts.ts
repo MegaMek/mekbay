@@ -39,8 +39,8 @@ type PathToken =
     | { kind: 'number'; value: number };
 
 const APP_ROOT = path.resolve(__dirname, '..');
-const OUTPUT_FILE = path.join(APP_ROOT, 'src', 'app', 'data', 'biped-pip-layouts.generated.ts');
-const OUTPUT_DECIMAL_PLACES = 4;
+const OUTPUT_FILE = path.join(APP_ROOT, 'src', 'app', 'data', 'biped-canon-pip-layouts.generated.ts');
+const OUTPUT_DECIMAL_PLACES = 3;
 const ARMOR_LOCATION_ORDER = ['HD', 'CT', 'CT_R', 'LT', 'LT_R', 'RT', 'RT_R', 'LA', 'RA', 'LL', 'RL'];
 const STRUCTURE_LOCATION_ORDER = ['HD', 'CT', 'LT', 'RT', 'LA', 'RA', 'LL', 'RL'];
 const ARMOR_FILE_PATTERN = /^Armor_(Head|CT|LT|RT|LArm|RArm|LLeg|RLeg)(?:_(R))?_(\d+)_Humanoid\.svg$/u;

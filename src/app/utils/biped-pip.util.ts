@@ -2,7 +2,7 @@ import {
     BIPED_ARMOR_PIP_LAYOUTS,
     BIPED_STRUCTURE_PIP_LAYOUTS,
     type BipedPipLayout,
-} from '../data/biped-pip-layouts.generated';
+} from '../data/biped-canon-pip-layouts.generated';
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 const DEFAULT_STROKE_WIDTH_RATIO = 0.21;
@@ -57,6 +57,9 @@ export class BipedPipUtil {
         }
 
         const pipCount = Math.floor(count);
+        if (pipCount <= 0) {
+            return null;
+        }
         const aspectRatio = containerWidth / containerHeight;
         const columns = Math.max(1, Math.min(pipCount, Math.ceil(Math.sqrt(pipCount * aspectRatio))));
         const rows = Math.ceil(pipCount / columns);
