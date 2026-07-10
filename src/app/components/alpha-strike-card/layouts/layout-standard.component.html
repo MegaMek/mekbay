@@ -5,7 +5,7 @@
 @if (imageUrl()) {
     <image class="fluff-image" [attr.href]="imageUrl()" [attr.x]="image.x" [attr.y]="image.y"
         [attr.width]="image.width" [attr.height]="image.height" [attr.preserveAspectRatio]="image.preserveAspectRatio"
-        [attr.clip-path]="'url(#card-clip-' + instanceId + ')'" />
+        [attr.clip-path]="'url(#card-clip-' + instanceId() + ')'" />
 }
 <g class="era-icons" aria-label="Era availability">
     @for (item of eraAvailability(); track item.era.id; let eraIndex = $index) {
@@ -65,12 +65,13 @@
     <text [attr.x]="layout.damage.x + 20" [attr.y]="layout.damage.y + layout.damage.height / 2"
         [attr.transform]="'rotate(-90 ' + (layout.damage.x + 20) + ' ' + (layout.damage.y + layout.damage.height / 2) + ')'"
         fill="#7b0000" font-family="Roboto Condensed, sans-serif" font-size="23" font-weight="900" text-anchor="middle" dominant-baseline="middle">DAMAGE</text>
+    @let rangeAreaX = layout.damage.x + 80;
+    @let rangeWidth = (layout.damage.width - 90) / damageRanges().length;
+    <rect class="range-title-background" [attr.x]="rangeAreaX" [attr.y]="layout.damage.y + 7"
+        [attr.width]="layout.damage.width - 90" height="28"
+        [attr.fill]="cardStyle() === 'night' ? 'url(#title-gradient-' + instanceId() + ')' : 'transparent'" />
     @for (range of damageRanges(); track range.label; let rangeIndex = $index) {
-        @let rangeWidth = (layout.damage.width - 54) / damageRanges().length;
-        @let rangeX = layout.damage.x + 50 + rangeIndex * rangeWidth + rangeWidth / 2;
-        <rect class="range-title-background" [attr.x]="layout.damage.x + 50 + rangeIndex * rangeWidth" [attr.y]="layout.damage.y + 7"
-            [attr.width]="rangeWidth" height="28"
-            [attr.fill]="cardStyle() === 'night' ? (rangeIndex === 0 ? 'url(#range-left-gradient-' + instanceId + ')' : rangeIndex === damageRanges().length - 1 ? 'url(#range-right-gradient-' + instanceId + ')' : 'url(#title-gradient-' + instanceId + ')') : 'transparent'" />
+        @let rangeX = rangeAreaX + rangeIndex * rangeWidth + rangeWidth / 2;
         <text class="range-header-text" [attr.x]="rangeX" [attr.y]="layout.damage.y + 28" fill="#000" font-family="Roboto, sans-serif" font-size="20" font-weight="700" text-anchor="middle">{{ range.label }} ({{ range.modifier === 0 ? '0' : '+' + range.modifier }} | {{ range.toHit }}+)</text>
         <text class="damage-value" [class.reduced]="weaponHits() > 0" [attr.x]="rangeX" [attr.y]="layout.damage.y + 75" fill="#7b0000" font-family="Roboto, sans-serif" font-size="42" font-weight="900" text-anchor="middle">{{ range.value }}</text>
         <text [attr.x]="rangeX" [attr.y]="layout.damage.y + 102" fill="#000" font-family="Roboto, sans-serif" font-size="19" text-anchor="middle">{{ range.distance }}</text>
@@ -81,9 +82,9 @@
     <g class="heat-frame">
         <rect class="frame-background" [attr.x]="heatFrame.x" [attr.y]="heatFrame.y" [attr.width]="heatFrame.width" [attr.height]="heatFrame.height" rx="16" ry="16" fill="#fff" fill-opacity="0.85" stroke="#666" stroke-width="3" />
         <text [attr.x]="heatFrame.x + 14" [attr.y]="heatFrame.y + 39" fill="#000" font-family="Roboto, sans-serif" font-size="28" font-weight="500">OV: <tspan class="as-value" fill="#7b0000" font-weight="900">{{ asStats().OV }}</tspan></text>
-        <rect class="heat-title-background" [attr.x]="heatFrame.x + 110" [attr.y]="heatFrame.y + 8" width="235" height="40"
-            [attr.fill]="cardStyle() === 'night' ? 'url(#title-gradient-' + instanceId + ')' : 'transparent'" />
-        <text class="heat-title-text" [attr.x]="heatFrame.x + 142" [attr.y]="heatFrame.y + 43" fill="#000" font-family="Roboto, sans-serif" font-size="29" font-weight="900">HEAT SCALE</text>
+        <rect class="heat-title-background" [attr.x]="heatFrame.x + 80" [attr.y]="heatFrame.y + 8" width="270" height="40"
+            [attr.fill]="cardStyle() === 'night' ? 'url(#title-gradient-' + instanceId() + ')' : 'transparent'" />
+        <text class="heat-title-text" [attr.x]="heatFrame.x + 120" [attr.y]="heatFrame.y + 43" fill="#000" font-family="Roboto, sans-serif" font-size="29" font-weight="900">HEAT SCALE</text>
         @let heatLevels = heatTrackLevels();
         @let cellWidth = heatLevels.length > 4 ? 34 : 44;
         @let trackX = heatFrame.x + heatFrame.width - (heatLevels.length + 1) * cellWidth - 14;
@@ -141,7 +142,7 @@
 @if (layout.critical; as criticalFrame) {
     <g class="critical-frame">
         <rect class="frame-background" [attr.x]="criticalFrame.x" [attr.y]="criticalFrame.y" [attr.width]="criticalFrame.width" [attr.height]="criticalFrame.height" rx="16" ry="16" fill="#fff" fill-opacity="0.85" stroke="#666" stroke-width="3" />
-        <rect class="critical-title-background" [attr.x]="criticalFrame.x + 70" [attr.y]="criticalFrame.y + 8" [attr.width]="criticalFrame.width - 140" height="38" [attr.fill]="cardStyle() === 'night' ? 'url(#title-gradient-' + instanceId + ')' : 'transparent'" />
+        <rect class="critical-title-background" [attr.x]="criticalFrame.x + criticalFrame.width / 2 - 145" [attr.y]="criticalFrame.y + 8" width="290" height="38" [attr.fill]="cardStyle() === 'night' ? 'url(#title-gradient-' + instanceId() + ')' : 'transparent'" />
         <text class="critical-title-text" [attr.x]="criticalFrame.x + criticalFrame.width / 2" [attr.y]="criticalFrame.y + 38" fill="#000" font-family="Roboto, sans-serif" font-size="29" font-weight="900" text-anchor="middle">CRITICAL HITS</text>
         @if (interactive()) {
             <image class="crit-roll-control" href="/images/random-black.svg"
