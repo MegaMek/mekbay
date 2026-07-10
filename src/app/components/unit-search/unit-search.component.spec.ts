@@ -14,6 +14,7 @@ import { DialogsService } from '../../services/dialogs.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { GameService } from '../../services/game.service';
 import { LayoutService } from '../../services/layout.service';
+import { LongPressDirective } from '../../directives/long-press.directive';
 import { OptionsService } from '../../services/options.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { SavedSearchesService } from '../../services/saved-searches.service';
@@ -21,6 +22,7 @@ import { TaggingService } from '../../services/tagging.service';
 import { MEGAMEK_RARITY_PRODUCTION_SORT_KEY } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { createEmptyUnit, type TestUnitOverrides } from '../../testing/unit-test-helpers';
+import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 import { UnitSearchComponent } from './unit-search.component';
 
 describe('UnitSearchComponent card virtualization', () => {
@@ -198,7 +200,7 @@ describe('UnitSearchComponent card virtualization', () => {
         })
             .overrideComponent(UnitSearchComponent, {
                 set: {
-                    imports: [CommonModule, ScrollingModule],
+                    imports: [CommonModule, ScrollingModule, LongPressDirective, UnitCardExpandedComponent],
                     template: `
                         <div #resultsDropdown class="results-dropdown" style="width: 920px;">
                             @if (viewMode() === 'card' && gameService.isAlphaStrike()) {
@@ -216,6 +218,19 @@ describe('UnitSearchComponent card virtualization', () => {
                                     }
                                 </div>
                             </cdk-virtual-scroll-viewport>
+                            }
+                            @if (showInlinePanel()) {
+                            <div class="inline-panel-unit">{{ inlinePanelUnit()?.name }}</div>
+                            }
+                            @if (expandedView()) {
+                            @for (unit of displayedUnits(); track unit.name) {
+                            <unit-card-expanded class="click-result"
+                                longPress
+                                [unit]="unit"
+                                [expandedView]="true"
+                                (shortPress)="onUnitCardClick(unit, $event)">
+                            </unit-card-expanded>
+                            }
                             }
                         </div>
                     `,
@@ -276,6 +291,47 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(filtersServiceStub.expandedView()).toBeTrue();
         expect(component.viewMode()).toBe('table');
         expect(optionsServiceStub.setOption).toHaveBeenCalledOnceWith('unitSearchViewMode', 'table');
+    });
+
+    it('selects a result into the inline panel when the view starts expanded', async () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const unit = createUnit('Unit 1');
+
+        optionsSignal.set({
+            ...optionsSignal(),
+            unitSearchViewMode: 'list',
+        });
+        filteredUnitsSignal.set([unit]);
+        filtersServiceStub.expandedView.set(true);
+        layoutServiceStub.windowWidth.set(2200);
+        fixture.detectChanges();
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        const result = fixture.nativeElement.querySelector('.click-result') as HTMLElement | null;
+        expect(result).not.toBeNull();
+        expect(component.showInlinePanel()).toBeTrue();
+
+        result!.dispatchEvent(new PointerEvent('pointerdown', {
+            bubbles: true,
+            button: 0,
+            pointerId: 1,
+            clientX: 10,
+            clientY: 10,
+        }));
+        result!.dispatchEvent(new PointerEvent('pointerup', {
+            bubbles: true,
+            button: 0,
+            pointerId: 1,
+            clientX: 10,
+            clientY: 10,
+        }));
+        result!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        fixture.detectChanges();
+
+        expect(component.inlinePanelUnit()).toBe(unit);
+        expect(fixture.nativeElement.querySelector('.inline-panel-unit').textContent).toContain(unit.name);
     });
 
     it('disables Alpha Strike card view while in Classic mode', () => {
