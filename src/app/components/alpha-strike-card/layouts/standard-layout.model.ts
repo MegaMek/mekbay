@@ -20,6 +20,9 @@ export const STANDARD_CARD_GEOMETRY = {
         specialsPaddingY: 10,
     specialsFontSize: 30,
     specialsLineHeight: 34,
+        criticalTitleHeight: 62,
+        criticalRowHeight: 39,
+        criticalMotiveHeight: 49,
 } as const;
 
 export interface SvgFrameRect {
@@ -48,6 +51,8 @@ export interface StandardLayoutInput {
     armorPips?: number;
     structurePips?: number;
     criticalHeight?: number;
+    criticalRowCount?: number;
+    hasCriticalMotiveRow?: boolean;
         specialsLineCount?: number;
     measureText?: (text: string, font: string) => number;
 }
@@ -201,7 +206,11 @@ export function buildStandardLayout(input: StandardLayoutInput): StandardLayoutM
     };
     const mainTop = general.y;
 
-    const criticalHeight = input.criticalHeight ?? DEFAULT_CRITICAL_HEIGHT;
+    const criticalHeight = input.criticalHeight ?? (input.criticalRowCount === undefined
+        ? DEFAULT_CRITICAL_HEIGHT
+        : geometry.criticalTitleHeight
+            + input.criticalRowCount * geometry.criticalRowHeight
+            + (input.hasCriticalMotiveRow ? geometry.criticalMotiveHeight : 0));
     const critical = input.hasCriticalTable
         ? {
             x: rightX,

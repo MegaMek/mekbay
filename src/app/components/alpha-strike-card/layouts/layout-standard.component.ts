@@ -61,7 +61,8 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
         hasCriticalTable: this.criticalVariant() !== 'none',
         armorPips: this.armorPips(),
         structurePips: this.structurePips(),
-        criticalHeight: this.criticalVariant() === 'vehicle' ? 228 : 218,
+        criticalRowCount: this.criticalRows().length,
+        hasCriticalMotiveRow: this.criticalVariant() === 'vehicle',
     }));
 
     readonly standardImageGeometry = computed(() => {

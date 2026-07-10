@@ -117,7 +117,7 @@ describe('standard Alpha Strike SVG layout', () => {
             hasCriticalTable: true,
             armorPips: 15,
             structurePips: 10,
-            criticalHeight: 218,
+            criticalRowCount: 4,
             measureText: (text) => text.length * 20,
         });
 
@@ -157,6 +157,32 @@ describe('standard Alpha Strike SVG layout', () => {
             width: CARD_LAYOUT_GEOMETRY.bodyWidth,
             height: specialsHeight,
         });
+    });
+
+    it('sizes the critical frame from its rows and vehicle motive row', () => {
+        const emplacement = buildStandardLayout({
+            specialsText: '',
+            usesHeat: false,
+            hasCriticalTable: true,
+            criticalRowCount: 1,
+        });
+        const mek = buildStandardLayout({
+            specialsText: '',
+            usesHeat: false,
+            hasCriticalTable: true,
+            criticalRowCount: 4,
+        });
+        const vehicle = buildStandardLayout({
+            specialsText: '',
+            usesHeat: false,
+            hasCriticalTable: true,
+            criticalRowCount: 3,
+            hasCriticalMotiveRow: true,
+        });
+
+        expect(emplacement.critical?.height).toBe(101);
+        expect(mek.critical?.height).toBe(218);
+        expect(vehicle.critical?.height).toBe(228);
     });
 
     it('defines native critical rows for every standard card variant', () => {
