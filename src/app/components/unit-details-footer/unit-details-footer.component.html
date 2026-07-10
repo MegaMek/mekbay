@@ -1,0 +1,99 @@
+<div class="unit-details-footer">
+    @if (activeTab() === 'Sheet') {
+    <div class="stable-tab-footer sheet-controls">
+        <label class="zoom-control">
+            <simple-slider [min]="minZoomPercent()" [max]="maxZoomPercent()" [step]="5"
+                [value]="zoomPercent()" ariaLabel="Zoom"
+                (valueChange)="setSheetZoomPercent($event)"></simple-slider>
+            <output>{{ zoomPercent() }}%</output>
+        </label>
+        <button type="button" class="bt-button" (click)="resetSheetZoom()">Reset</button>
+        <button type="button" class="bt-button" [cdkMenuTriggerFor]="sheetExportMenu">Export</button>
+        <ng-template #sheetExportMenu>
+            <div class="popup-menu glass framed-borders has-shadow" cdkMenu>
+                <button type="button" class="menu-item" cdkMenuItem (click)="openSheetPng()">Open PNG</button>
+                <button type="button" class="menu-item" cdkMenuItem (click)="downloadSheetPng()">Download PNG</button>
+                <button type="button" class="menu-item" cdkMenuItem (click)="copySheetPngToClipboard()">Copy to Clipboard</button>
+            </div>
+        </ng-template>
+    </div>
+    }
+
+    @if (activeTab() === 'Variants') {
+    <div class="stable-tab-footer variants-controls">
+        <div class="sort-controls">
+            <select class="bt-input sort-select" (change)="setVariantSortOrder($any($event.target).value)">
+                @for (opt of variantSortOptions(); track opt.key) {
+                <option [value]="opt.key" [selected]="opt.key === variantsTabState().sortKey">{{ opt.label }}</option>
+                }
+            </select>
+            <button type="button" class="bt-button sort-direction-btn"
+                (click)="setVariantSortDirection(variantsTabState().sortDirection === 'asc' ? 'desc' : 'asc')"
+                [title]="variantsTabState().sortDirection === 'asc' ? 'Ascending' : 'Descending'"
+                [attr.aria-label]="variantsTabState().sortDirection === 'asc' ? 'Ascending' : 'Descending'">
+                @if (variantsTabState().sortDirection === 'asc') {
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
+                    aria-hidden="true" role="img">
+                    <path d="M4 16L13 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                    <path d="M6 11H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                    <path d="M8 6L13 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                    <path d="M17 4L17 20L20 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                </svg>
+                } @else {
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
+                    aria-hidden="true" role="img">
+                    <path d="M4 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                    <path d="M6 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                    <path d="M8 18L13 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                    <path d="M17 20V4L20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                </svg>
+                }
+            </button>
+        </div>
+        <button type="button" class="bt-button view-toggle-btn" (click)="toggleVariantViewMode()"
+            [title]="variantsTabState().viewMode === 'expanded' ? 'Switch to compact view' : 'Switch to expanded view'">
+            @if (variantsTabState().viewMode === 'expanded') {
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="7" height="7" rx="1" />
+                <rect x="14" y="3" width="7" height="7" rx="1" />
+                <rect x="3" y="14" width="7" height="7" rx="1" />
+                <rect x="14" y="14" width="7" height="7" rx="1" />
+            </svg>
+            <span>Compact</span>
+            } @else {
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="4" width="18" height="6" rx="1" />
+                <rect x="3" y="14" width="18" height="6" rx="1" />
+            </svg>
+            <span>Expanded</span>
+            }
+        </button>
+    </div>
+    }
+
+    <div class="footer">
+        <button [class.hidden]="!hasPrev()" class="footer-nav footer-nav-left" (click)="prev.emit()"
+            [attr.aria-label]="prevUnitLabel() ? 'Previous Unit: ' + prevUnitLabel() : 'Previous Unit'"
+            [title]="prevUnitLabel()">
+            <span class="nav-arrow-symbol" aria-hidden="true">&#10094;</span>
+            <span class="nav-unit-name">
+                <span class="nav-unit-model">{{ prevUnit()?.model }}</span>
+                <span class="nav-unit-chassis">{{ prevUnit()?.chassis }}</span>
+            </span>
+        </button>
+        <div class="footer-actions">
+            <ng-content select="[unit-details-footer-actions]"></ng-content>
+        </div>
+        <button [class.hidden]="!hasNext()" class="footer-nav footer-nav-right" (click)="next.emit()"
+            [attr.aria-label]="nextUnitLabel() ? 'Next Unit: ' + nextUnitLabel() : 'Next Unit'"
+            [title]="nextUnitLabel()">
+            <span class="nav-unit-name">
+                <span class="nav-unit-model">{{ nextUnit()?.model }}</span>
+                <span class="nav-unit-chassis">{{ nextUnit()?.chassis }}</span>
+            </span>
+            <span class="nav-arrow-symbol" aria-hidden="true">&#10095;</span>
+        </button>
+    </div>
+</div>

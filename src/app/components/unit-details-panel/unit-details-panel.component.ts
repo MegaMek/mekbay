@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input, output, signal, computed, inject, DestroyRef } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, output, signal, computed, inject, DestroyRef, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 import type { Unit } from '../../models/units.model';
@@ -54,6 +54,7 @@ import { UnitDetailsCardTabComponent } from '../unit-details-dialog/tabs/unit-de
 import { UnitDetailsVariantsTabComponent, type VariantsTabState, DEFAULT_VARIANTS_TAB_STATE } from '../unit-details-dialog/tabs/unit-details-variants-tab.component';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { ConfirmDialogComponent, type ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
+import { UnitDetailsFooterComponent } from '../unit-details-footer/unit-details-footer.component';
 
 /**
  * Inline unit details panel for expanded view mode.
@@ -73,7 +74,8 @@ import { ConfirmDialogComponent, type ConfirmDialogData } from '../confirm-dialo
         UnitDetailsFactionTabComponent,
         UnitDetailsSheetTabComponent,
         UnitDetailsCardTabComponent,
-        UnitDetailsVariantsTabComponent
+        UnitDetailsVariantsTabComponent,
+        UnitDetailsFooterComponent
     ],
     templateUrl: './unit-details-panel.component.html',
     styleUrl: './unit-details-panel.component.scss',
@@ -102,16 +104,6 @@ export class UnitDetailsPanelComponent {
     readonly prev = output<void>();
     readonly next = output<void>();
 
-    readonly prevUnitLabel = computed(() => {
-        const unit = this.prevUnit();
-        return unit ? this.formatUnitLabel(unit) : '';
-    });
-
-    readonly nextUnitLabel = computed(() => {
-        const unit = this.nextUnit();
-        return unit ? this.formatUnitLabel(unit) : '';
-    });
-
     readonly tabs = computed<string[]>(() => {
         return ['General', 'Intel', 'Factions', 'Variants', 'Sheet', 'Card'];
     });
@@ -120,6 +112,8 @@ export class UnitDetailsPanelComponent {
 
     /** View mode for variants tab (persisted while panel is open) */
     readonly variantsTabState = signal<VariantsTabState>({ ...DEFAULT_VARIANTS_TAB_STATE });
+    readonly currentGameSystem = computed(() => this.gameService.currentGameSystem());
+    readonly sheetTabRef = viewChild(UnitDetailsSheetTabComponent);
 
     constructor() {
         this.keyboardShortcutService.register({
@@ -155,10 +149,6 @@ export class UnitDetailsPanelComponent {
     formatThousands(value: number): string {
         if (value === undefined || value === null) return '';
         return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    }
-
-    private formatUnitLabel(unit: Unit): string {
-        return [unit.chassis, unit.model].filter(Boolean).join(' ') || unit.name;
     }
 
     private handleShortcutKeyDown(event: KeyboardEvent): boolean {
