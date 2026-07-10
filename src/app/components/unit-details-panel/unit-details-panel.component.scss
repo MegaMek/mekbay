@@ -38,8 +38,6 @@
     width: 100%;
     background-color: #222;
     overflow: hidden;
-    container-type: inline-size;
-    container-name: details-panel;
     padding: 2px;
     box-sizing: border-box;
 }
@@ -173,24 +171,6 @@
     z-index: 0;
 }
 
-/* Footer */
-.footer {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) max-content minmax(0, 1fr);
-    align-items: center;
-    gap: 12px;
-    width: 100%;
-}
-
-.footer-actions {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    min-width: max-content;
-    padding-inline: 4px;
-}
-
 .add-split-button .split-main {
     padding: 8px 24px;
 }
@@ -199,98 +179,7 @@
     padding: 8px 10px;
 }
 
-/* Navigation */
-.footer-nav {
-    background-color: transparent;
-    color: gray;
-    border: none;
-    cursor: pointer;
-    transition: color 0.2s;
-    outline: none;
-    padding: 0px 6px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-    max-width: 100%;
-    font: inherit;
-}
-
-.footer-nav-left {
-    justify-self: start;
-    text-align: left;
-}
-
-.footer-nav-right {
-    justify-self: end;
-    text-align: right;
-}
-
-.footer-nav:hover {
-    color: var(--text-color);
-}
-
-.footer-nav.hidden {
-    visibility: hidden;
-    pointer-events: none;
-}
-
-.nav-arrow-symbol {
-    flex: 0 0 auto;
-    font-size: 2rem;
-    line-height: 1;
-}
-
-.nav-unit-name {
-    color: var(--text-color-secondary);
-    font-size: 0.85rem;
-    font-weight: 600;
-    max-width: 20ch;
-    min-width: 0;
-    overflow: hidden;
-    line-height: 1.1;
-}
-
-.nav-unit-model,
-.nav-unit-chassis {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.nav-unit-model {
-    color: var(--text-color-tertiary);
-    font-size: 0.78rem;
-}
-
-.footer-nav:hover .nav-unit-name {
-    color: var(--text-color);
-}
-
-.footer-nav:hover .nav-unit-model {
-    color: var(--text-color-secondary);
-}
-
-@container (max-width: 760px) {
-    .nav-unit-name {
-        display: none;
-    }
-}
-
 @container (max-width: 600px) {
-    .footer {
-        gap: 4px;
-    }
-
-    .footer-actions {
-        gap: 4px;
-    }
-
-    .footer-nav {
-        padding: 0px 2px;
-    }
-
     .add-split-button .split-main {
         padding: 8px 16px;
     }

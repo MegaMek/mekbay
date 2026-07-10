@@ -53,7 +53,7 @@ async function loadXlsx() {
  */
 function sanitizeFilename(name: string): string {
     return name
-        .replace(/[<>:"/\\|?*]/g, '') // Remove invalid file characters
+        .replace(/[<>:"/\\|?*']/g, '') // Remove invalid file characters
         .replace(/\s+/g, '-')          // Replace spaces with dashes
         .replace(/-+/g, '-')           // Collapse multiple dashes
         .replace(/^-|-$/g, '')         // Remove leading/trailing dashes
@@ -68,6 +68,7 @@ function sanitizeFilename(name: string): string {
 function sanitizeSheetName(name: string): string {
     return name
         .replace(/[\\/?*[\]:]/g, '') // Remove invalid sheet name characters
+    .replace(/^'+|'+$/g, '')        // Excel sheet names cannot start or end with apostrophes
         .slice(0, 31) || 'Force';     // Limit length, fallback if empty
 }
 

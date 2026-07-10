@@ -60,7 +60,7 @@ interface UnitConditionDisplay {
 
 export interface UnitBlockPilotEditEvent {
     event: MouseEvent;
-    crewMember: CrewMember;
+    crewMember?: CrewMember;
 }
 
 /**
@@ -91,6 +91,11 @@ export class UnitBlockComponent {
     });
 
     crewMembers = computed<CrewMember[]>(() => this.forceUnit()?.getCrewMembers() ?? []);
+
+    alphaStrikePilotSkill = computed<number | undefined>(() => {
+        const forceUnit = this.forceUnit();
+        return forceUnit instanceof ASForceUnit ? forceUnit.getPilotSkill() : undefined;
+    });
 
     /** Derives Alpha Strike status from the unit's own force, not the global game system. */
     isAlphaStrike = computed<boolean>(() => this.forceUnit()?.force?.gameSystem === GameSystem.ALPHA_STRIKE);
@@ -433,7 +438,7 @@ export class UnitBlockComponent {
         this.onOpenC3Network.emit(event);
     }
 
-    editPilot(event: MouseEvent, crewMember: CrewMember): void {
+    editPilot(event: MouseEvent, crewMember?: CrewMember): void {
         event.stopPropagation();
         this.onEditPilot.emit({ event, crewMember });
     }
