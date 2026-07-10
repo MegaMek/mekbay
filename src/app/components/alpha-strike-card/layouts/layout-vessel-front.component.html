@@ -84,6 +84,13 @@
         rx="16" fill="#fff" fill-opacity="0.85" stroke="#666" stroke-width="3" />
     <text class="critical-title-text" [attr.x]="vesselFrontGeometry.leftX + vesselFrontGeometry.leftWidth / 2"
         [attr.y]="vesselFrontGeometry.criticalY + 38" fill="#000" font-size="29" font-weight="900" text-anchor="middle">CRITICAL HITS</text>
+    @if (interactive()) {
+        <image class="crit-roll-control" href="/images/random-black.svg"
+            [attr.x]="vesselFrontGeometry.leftX + vesselFrontGeometry.leftWidth - 58" [attr.y]="vesselFrontGeometry.criticalY + 8"
+            width="45" height="45" role="button" tabindex="0" aria-label="Roll critical hit"
+            (click)="$event.stopPropagation(); onRollCriticalClick()"
+            (keydown.enter)="$event.stopPropagation(); onRollCriticalClick()" />
+    }
     @for (row of vesselCriticalRows(); track row.key; let rowIndex = $index) {
         @let rowY = vesselFrontGeometry.criticalY + 84 + rowIndex * 36;
         <g class="critical-row" [attr.data-crit]="row.key">
