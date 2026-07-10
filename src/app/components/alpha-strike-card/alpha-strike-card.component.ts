@@ -53,7 +53,6 @@ import { firstValueFrom } from 'rxjs';
 import { OptionsService } from '../../services/options.service';
 import { PickerFactoryService } from '../../services/picker-factory.service';
 import { AsLayoutBaseComponent } from './layouts/layout-base.component';
-import { AsFooterLogosComponent } from './footer-logos.component';
 import { AsLayoutStandardComponent } from './layouts/layout-standard.component';
 import { AsLayoutVesselFrontComponent } from './layouts/layout-vessel-front.component';
 import { AsLayoutVesselRearComponent } from './layouts/layout-vessel-rear.component';
@@ -66,7 +65,6 @@ import { AsLayoutVesselRearComponent } from './layouts/layout-vessel-rear.compon
     selector: 'alpha-strike-card',
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
-        AsFooterLogosComponent,
         AsLayoutStandardComponent,
         AsLayoutVesselFrontComponent,
         AsLayoutVesselRearComponent,
