@@ -151,6 +151,18 @@
             </ng-template>
         </div>
         }
+        @if (activeTab() === 'Card') {
+        <div class="stable-tab-footer card-controls">
+            <button type="button" class="bt-button" [cdkMenuTriggerFor]="cardExportMenu">Export</button>
+            <ng-template #cardExportMenu>
+                <div class="popup-menu glass framed-borders has-shadow" cdkMenu>
+                    <button type="button" class="menu-item" cdkMenuItem (click)="openCardPng()">Open PNG</button>
+                    <button type="button" class="menu-item" cdkMenuItem (click)="downloadCardPng()">Download PNG</button>
+                    <button type="button" class="menu-item" cdkMenuItem (click)="copyCardPngToClipboard()">Copy to Clipboard</button>
+                </div>
+            </ng-template>
+        </div>
+        }
         @if (activeTab() === 'Variants') {
         <div class="stable-tab-footer variants-controls">
             <div class="sort-controls">

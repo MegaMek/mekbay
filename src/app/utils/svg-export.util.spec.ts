@@ -223,11 +223,11 @@ describe('SvgExportUtil', () => {
         expect(revokeObjectUrl).toHaveBeenCalledWith('blob:png');
     });
 
-    it('opens rendered SVGs as a 3x PNG in a new tab', async () => {
+    it('opens rendered SVGs as a 3x PNG in a new tab when noopener returns null', async () => {
         mockFontFetch();
         spyOn(URL, 'createObjectURL').and.returnValues('blob:svg', 'blob:png');
         const revokeObjectUrl = spyOn(URL, 'revokeObjectURL').and.stub();
-        const open = spyOn(window, 'open').and.returnValue({} as Window);
+        const open = spyOn(window, 'open').and.returnValue(null);
         spyOn(CanvasRenderingContext2D.prototype, 'drawImage').and.stub();
         let canvasWidth = 0;
         let canvasHeight = 0;

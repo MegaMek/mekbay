@@ -135,11 +135,7 @@ export class SvgExportUtil {
 
     static openPngBlob(pngBlob: Blob): void {
         const pngUrl = URL.createObjectURL(pngBlob);
-        const opened = window.open(pngUrl, '_blank', 'noopener');
-        if (!opened) {
-            URL.revokeObjectURL(pngUrl);
-            throw new Error('Could not open PNG in a new tab');
-        }
+        window.open(pngUrl, '_blank', 'noopener');
     }
 
     static async sharePngBlob(pngBlob: Blob, fileName: string): Promise<void> {

@@ -121,6 +121,7 @@ export class UnitDetailsDialogComponent {
     indexChange = output<number>();
     baseDialogRef = viewChild('baseDialog', { read: ElementRef });
     sheetTabRef = viewChild<UnitDetailsSheetTabComponent>(UnitDetailsSheetTabComponent);
+    cardTabRef = viewChild<UnitDetailsCardTabComponent>(UnitDetailsCardTabComponent);
     currentPanelRef = viewChild<ElementRef<HTMLElement>>('currentPanel');
     incomingPanelRef = viewChild<ElementRef<HTMLElement>>('incomingPanel');
     shareButtonInActions = computed(() => this.layoutService.windowWidth() > 600);
@@ -694,6 +695,23 @@ export class UnitDetailsDialogComponent {
             this.toastService.showToast('Record sheet copied to clipboard', 'success');
         } catch {
             this.toastService.showToast('Could not copy the record sheet image to the clipboard.', 'error');
+        }
+    }
+
+    public downloadCardPng(): void {
+        void this.cardTabRef()?.downloadPng();
+    }
+
+    public openCardPng(): void {
+        void this.cardTabRef()?.openPng();
+    }
+
+    public async copyCardPngToClipboard(): Promise<void> {
+        try {
+            await this.cardTabRef()?.copyPngToClipboard();
+            this.toastService.showToast('Alpha Strike card copied to clipboard', 'success');
+        } catch {
+            this.toastService.showToast('Could not copy the Alpha Strike card image to the clipboard.', 'error');
         }
     }
 

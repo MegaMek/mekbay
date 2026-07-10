@@ -113,6 +113,11 @@ export class AlphaStrikeCardComponent extends AsLayoutBaseComponent {
             this.selected.emit(fu);
         }
     }
+
+    getSvgElement(): SVGSVGElement | null {
+        const hostElement = this.elRef.nativeElement as HTMLElement;
+        return hostElement.querySelector<SVGSVGElement>('svg.card-svg');
+    }
     
     /** Get the Alpha Strike unit type (BM, IM, CV, CI, WS, etc.) */
     unitType = computed<ASUnitTypeCode>(() => this.resolvedUnit()?.as.TP || 'BM');

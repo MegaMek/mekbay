@@ -32,11 +32,12 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, viewChildren } from '@angular/core';
 import type { Unit } from '../../../models/units.model';
 import { AlphaStrikeCardComponent } from '../../alpha-strike-card/alpha-strike-card.component';
 import { getCardCountForUnitType } from '../../alpha-strike-card/card-layout.config';
 import { OptionsService } from '../../../services/options.service';
+import { SvgExportUtil } from '../../../utils/svg-export.util';
 
 @Component({
     selector: 'unit-details-card-tab',
@@ -48,6 +49,7 @@ import { OptionsService } from '../../../services/options.service';
 export class UnitDetailsCardTabComponent {
     optionsService = inject(OptionsService);
     unit = input.required<Unit>();
+    private readonly cards = viewChildren(AlphaStrikeCardComponent);
 
     readonly unitType = computed(() => this.unit().as?.TP ?? '');
     readonly cardIndices = computed<number[]>(() => {
@@ -57,4 +59,26 @@ export class UnitDetailsCardTabComponent {
 
     readonly useHex = computed<boolean>(() => this.optionsService.options().ASUseHex);
     readonly cardStyle = computed<'default' | 'night'>(() => this.optionsService.options().ASCardStyle);
+
+    downloadPng(): Promise<void> {
+        return SvgExportUtil.downloadPng(this.svgs(), this.exportFileName());
+    }
+
+    openPng(): Promise<void> {
+        return SvgExportUtil.openPng(this.svgs());
+    }
+
+    copyPngToClipboard(): Promise<void> {
+        return SvgExportUtil.copyPngToClipboard(this.svgs(), this.exportFileName());
+    }
+
+    private svgs(): SVGSVGElement[] {
+        return this.cards()
+            .map(card => card.getSvgElement())
+            .filter((svg): svg is SVGSVGElement => svg !== null);
+    }
+
+    private exportFileName(): string {
+        return this.unit().name || 'alpha-strike-card';
+    }
 }
