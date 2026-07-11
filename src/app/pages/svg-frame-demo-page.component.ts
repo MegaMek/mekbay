@@ -1,12 +1,103 @@
 import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, ViewChild } from '@angular/core';
-import { BipedPaperdollUtil } from '../utils/biped-paperdoll.util';
+import { BipedPaperdollUtil, type BipedArmorLocation, type BipedStructureLocation, type BipedStructureTonnage } from '../utils/biped-paperdoll.util';
 import { PipUtil } from '../utils/pip.util';
 import { SvgFrameUtil } from '../utils/svg-frame.util';
 
 @Component({
     selector: 'svg-frame-demo-page',
     template: `
-        <section class="svg-frame-demo-page">
+        <section class="svg-frame-demo-page" [class.sidebar-open]="sidebarOpen">
+            <button
+                type="button"
+                class="sidebar-toggle"
+                [attr.aria-expanded]="sidebarOpen"
+                aria-controls="paperdoll-controls"
+                (click)="toggleSidebar()">
+                {{ sidebarOpen ? 'Hide controls' : 'Show controls' }}
+            </button>
+
+            <aside id="paperdoll-controls" class="svg-frame-demo-sidebar" [class.is-open]="sidebarOpen" aria-label="Paperdoll controls">
+                <section class="control-section" aria-labelledby="armor-controls-title">
+                    <div class="section-heading">
+                        <h2 id="armor-controls-title">Armor counts</h2>
+                        <output aria-live="polite">{{ totalArmorCount }} pips</output>
+                    </div>
+                    <div class="slider-list">
+                        @for (location of armorLocations; track location) {
+                            <label class="slider-control">
+                                <div class="slider-control-heading">
+                                    <span>{{ formatLocation(location) }}</span>
+                                    <output>{{ armorCounts[location] }}</output>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    [attr.max]="armorCountMaximum"
+                                    step="1"
+                                    [attr.aria-label]="'Armor count for ' + formatLocation(location)"
+                                    [value]="armorCounts[location]"
+                                    (input)="updateArmorCount(location, $event)" />
+                            </label>
+                        }
+                    </div>
+                </section>
+                <hr/>
+                <section class="control-section" aria-labelledby="structure-controls-title">
+                    <div class="section-heading">
+                        <h2 id="structure-controls-title">Structure</h2>
+                        <output aria-live="polite">{{ totalStructureCount }} pips</output>
+                    </div>
+                    <label class="structure-link-control">
+                        <input type="checkbox" [checked]="structureLinked" (change)="updateStructureLink($event)" />
+                        <span>Link all locations</span>
+                    </label>
+                    @if (structureLinked) {
+                        <label class="slider-control">
+                            <div class="slider-control-heading">
+                                <span>Global tonnage</span>
+                                <output>{{ globalStructureTonnage }} t</output>
+                            </div>
+                            <input
+                                type="range"
+                                min="10"
+                                max="100"
+                                step="5"
+                                aria-label="Global structure tonnage"
+                                [value]="globalStructureTonnage"
+                                (input)="updateGlobalStructureTonnage($event)" />
+                        </label>
+                    } @else {
+                        <div class="slider-list">
+                            @for (location of structureLocations; track location) {
+                                <label class="slider-control">
+                                    <div class="slider-control-heading">
+                                        <span>{{ formatLocation(location) }}</span>
+                                        <output>{{ structureTonnageByLocation[location] }} t</output>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min="10"
+                                        max="100"
+                                        step="5"
+                                        [attr.aria-label]="'Structure tonnage for ' + formatLocation(location)"
+                                        [value]="structureTonnageByLocation[location]"
+                                        (input)="updateStructureTonnage(location, $event)" />
+                                </label>
+                            }
+                        </div>
+                    }
+                    <div class="structure-grid" aria-label="Structure pip counts by location">
+                        @for (location of structureLocations; track location) {
+                            <div class="structure-count">
+                                <span>{{ formatLocation(location) }}</span>
+                                <output>{{ getStructureCount(location) }} pips</output>
+                            </div>
+                        }
+                    </div>
+                </section>
+            </aside>
+
+            <div class="svg-frame-stage">
             <svg #frameCanvas class="svg-frame-demo" width="612" height="792" viewBox="0 0 612 792" role="img" aria-label="SVG frame demo">
                 <rect width="612" height="792" fill="#fff"></rect>
                 <g id="btLogoColor" transform="scale(.791)"><path d="M32.125 9.167c20.5 0 18.5 25.75 7.375 25.75c10 0 19.125 27.5-9.125 27.5H0V9.167H32.125z M16.25 22.542v6h12 c4.75 0 4.375-6 0-6H16.25z M16.25 42.507v6H29c5.046 0 4.648-6 0-6H16.25z"></path><polygon fill="#e0ad2a" points="78.208,0 52.958,44.75 69.542,44.75 78.208,29.917 86.875,44.75 103.458,44.75 "></polygon><polygon fill="#e0ad2a" points="94.708,48.833 61.708,48.833 53.875,62.417 102.542,62.417 "></polygon><polygon points="141.636,9.167 97.136,9.167 97.136,23.75 111.031,23.75 111.031,62.417 127.74,62.417 127.739,23.75 141.636,23.75   "></polygon><polygon points="188.959,9.167 144.459,9.167 144.459,23.75 158.354,23.75 158.354,62.417 175.063,62.417 175.063,23.75   188.959,23.75 "></polygon><polygon points="209.313,48.25 209.313,9.167 192.604,9.167 192.604,62.417 229.042,62.417 229.042,48.25 "></polygon><polygon points="363.75,23.292 363.75,9.167 323.5,9.167 323.5,62.417 363.75,62.417 363.75,48.292 339.5,48.292 339.5,42.667   362.875,42.667 362.875,28.542 339.5,28.542 339.5,23.292 "></polygon><polygon points="320.209,9.167 233.375,9.167 233.375,62.417 273.625,62.417 273.625,48.292 249.375,48.292 249.375,42.667   272.75,42.667 272.75,28.542 249.375,28.542 249.375,23.75 289.604,23.75 289.604,62.417 306.313,62.417 306.313,23.75   320.209,23.75 "></polygon><path d="M405.214 41.084c-1.789 4.745-6.023 8.082-10.964 8.082c-6.558 0-11.875-5.876-11.875-13.125 c0-7.249 5.317-13.125 11.875-13.125c4.748 0 8.833 3.087 10.733 7.539l14.02-6.592c-4.572-9.151-14.132-15.45-25.19-15.45 c-15.5 0-28.063 12.371-28.063 27.629s12.563 27.629 28.063 27.629c11.305 0 21.041-6.584 25.486-16.066L405.214 41.084z"></path><polygon points="456.5,9.167 456.5,28 438.541,28 438.541,9.167 421.708,9.167 421.833,62.417 438.542,62.417 438.541,42.583   456.5,42.583 456.499,62.417 473.208,62.417 473.333,9.167 "></polygon><path d="M476.664 13.623v-3.67h-1.396V9.206h3.74v.747h-1.394v3.67H476.664z"></path><path d="M479.608 13.623V9.206h1.422l.854 3.013l.845-3.013h1.426v4.417h-.883v-3.477l-.935 3.477h-.915l-.931-3.477v3.477 H479.608z"></path></g>
@@ -21,6 +112,7 @@ import { SvgFrameUtil } from '../utils/svg-frame.util';
                 </g>
                 <g id="rs" transform="translate(1 70)"></g>
             </svg>
+            </div>
         </section>
     `,
     styles: [`
@@ -34,29 +126,340 @@ import { SvgFrameUtil } from '../utils/svg-frame.util';
         }
 
         .svg-frame-demo-page {
-            width: 612px;
-            height: 792px;
+            position: relative;
+            width: min(612px, calc(100vw - 32px));
             margin: 24px auto;
+        }
+
+        .sidebar-toggle {
+            position: fixed;
+            top: 24px;
+            left: 24px;
+            z-index: 1002;
+            padding: 9px 13px;
+            border: 1px solid #344148;
+            color: #fff;
+            background: #1e2a2e;
+            box-shadow: 0 8px 24px rgb(21 29 30 / 18%);
+            cursor: pointer;
+            font: 700 0.76rem/1.2 'Roboto', sans-serif;
+        }
+
+        .sidebar-toggle:hover {
+            border-color: #e0ad2a;
+            background: #26353a;
+        }
+
+        .sidebar-toggle:focus-visible {
+            outline: 2px solid #e0ad2a;
+            outline-offset: 2px;
+        }
+
+        .svg-frame-demo-sidebar {
+            position: fixed;
+            top: 72px;
+            left: 24px;
+            z-index: 1001;
+            width: min(280px, calc(100vw - 48px));
+            max-height: calc(100vh - 96px);
+            overflow: auto;
+            box-sizing: border-box;
+            padding: 20px;
+            border: 1px solid #344148;
+            color: #edf2ef;
+            background: #1e2a2e;
+            color-scheme: dark;
+            opacity: 0;
+            pointer-events: none;
+            transform: translateX(calc(-100% - 32px));
+            transition: opacity 160ms ease, transform 160ms ease, visibility 160ms ease;
+            visibility: hidden;
+        }
+
+        .svg-frame-demo-sidebar.is-open {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateX(0);
+            visibility: visible;
+        }
+
+        .section-heading {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .section-heading h2 {
+            margin: 0;
+            color: #fff;
+            font-size: 0.84rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .section-heading output {
+            color: #79c6b5;
+            font-size: 0.76rem;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+
+        .count-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .count-control,
+        .tonnage-control {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            min-width: 0;
+            color: #b9c4c1;
+            font-size: 0.77rem;
+            font-weight: 700;
+        }
+
+        .count-control input,
+        .tonnage-control input {
+            width: 58px;
+            min-width: 0;
+            box-sizing: border-box;
+            padding: 6px 7px;
+            border: 1px solid #4a5a60;
+            color: #fff;
+            background: #26353a;
+            font: inherit;
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+        }
+
+        .count-control input:focus,
+        .tonnage-control input:focus {
+            border-color: #e0ad2a;
+        }
+
+        .slider-list {
+            display: grid;
+            gap: 11px;
+        }
+
+        .slider-control {
+            display: grid;
+            gap: 5px;
+            color: #b9c4c1;
+            font-size: 0.77rem;
+            font-weight: 700;
+        }
+
+        .slider-control-heading {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .slider-control-heading output {
+            color: #79c6b5;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+
+        .slider-control input[type='range'] {
+            width: 100%;
+            height: 18px;
+            margin: 0;
+            accent-color: #e0ad2a;
+            cursor: pointer;
+        }
+
+        .structure-link-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 14px;
+            color: #d4ddda;
+            font-size: 0.77rem;
+            font-weight: 700;
+        }
+
+        .structure-link-control input {
+            width: 15px;
+            height: 15px;
+            margin: 0;
+            accent-color: #79c6b5;
+        }
+
+        .tonnage-control {
+            margin-bottom: 14px;
+        }
+
+        .tonnage-control input {
+            width: 80px;
+        }
+
+        .structure-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 7px;
+        }
+
+        .structure-count {
+            display: grid;
+            gap: 3px;
+            padding: 7px 5px;
+            border: 1px solid #344148;
+            text-align: center;
+        }
+
+        .structure-count span {
+            color: #8e9c99;
+            font-size: 0.64rem;
+            font-weight: 700;
+            overflow-wrap: anywhere;
+        }
+
+        .structure-count output {
+            color: #79c6b5;
+            font-size: 0.9rem;
+            font-variant-numeric: tabular-nums;
+            font-weight: 800;
+        }
+
+        .svg-frame-stage {
+            min-width: 0;
         }
 
         .svg-frame-demo {
             font-family: 'Roboto', sans-serif;
             border: 1px solid silver;
             display: block;
-            width: 612px;
-            height: 792px;
+            width: 100%;
+            height: auto;
+            aspect-ratio: 612 / 792;
+            background: #fff;
+        }
+
+        @media (max-width: 940px) {
+            .svg-frame-demo-page {
+                width: min(612px, calc(100vw - 32px));
+            }
+
+            .svg-frame-demo-sidebar {
+                left: 16px;
+                width: calc(100vw - 32px);
+            }
+
+            .sidebar-toggle {
+                top: 16px;
+                left: 16px;
+            }
         }
     `],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SvgFrameDemoPageComponent implements AfterViewInit {
     protected readonly currentYear = new Date().getFullYear();
+    protected readonly armorCountMaximum = 40;
+    protected sidebarOpen = true;
+    protected structureLinked = true;
+    protected globalStructureTonnage = 50;
+    protected readonly armorLocations: readonly BipedArmorLocation[] = [
+        'HD', 'CT', 'LT', 'RT', 'LA', 'RA', 'LL', 'RL', 'CT_R', 'LT_R', 'RT_R',
+    ];
+    protected readonly structureLocations: readonly BipedStructureLocation[] = [
+        'HD', 'CT', 'LT', 'RT', 'LA', 'RA', 'LL', 'RL',
+    ];
+    protected armorCounts: Record<BipedArmorLocation, number> = {
+        HD: 5,
+        CT: 15,
+        LT: 10,
+        RT: 6,
+        LA: 10,
+        RA: 10,
+        LL: 16,
+        RL: 16,
+        CT_R: 10,
+        LT_R: 8,
+        RT_R: 8,
+    };
+    protected structureTonnageByLocation: Record<BipedStructureLocation, number> = {
+        HD: 50,
+        CT: 50,
+        LT: 50,
+        RT: 50,
+        LA: 50,
+        RA: 50,
+        LL: 50,
+        RL: 50,
+    };
 
     @ViewChild('frameCanvas', { static: true })
     private readonly frameCanvas!: ElementRef<SVGSVGElement>;
+    private paperdollRenderRoot?: SVGGElement;
+    private paperdollRenderVersion = 0;
+
+    protected get totalArmorCount(): number {
+        return Object.values(this.armorCounts).reduce((total, count) => total + count, 0);
+    }
+
+    protected get totalStructureCount(): number {
+        return this.structureLocations.reduce((total, location) => total + this.getStructureCount(location), 0);
+    }
+
+    protected toggleSidebar(): void {
+        this.sidebarOpen = !this.sidebarOpen;
+    }
+
+    protected formatLocation(location: BipedArmorLocation | BipedStructureLocation): string {
+        return location.endsWith('_R') ? `${location.slice(0, -2)} rear` : location;
+    }
+
+    protected getStructureCount(location: BipedStructureLocation): number {
+        return PipUtil.getCanonStructurePipCount(this.getStructureTonnage(location), location);
+    }
+
+    protected updateArmorCount(location: BipedArmorLocation, event: Event): void {
+        this.armorCounts = {
+            ...this.armorCounts,
+            [location]: this.readIntegerInput(event, this.armorCountMaximum),
+        };
+        void this.updatePaperdolls();
+    }
+
+    protected updateGlobalStructureTonnage(event: Event): void {
+        this.globalStructureTonnage = this.readIntegerInput(event, 100);
+        void this.updatePaperdolls();
+    }
+
+    protected updateStructureTonnage(location: BipedStructureLocation, event: Event): void {
+        this.structureTonnageByLocation = {
+            ...this.structureTonnageByLocation,
+            [location]: this.readIntegerInput(event, 100),
+        };
+        void this.updatePaperdolls();
+    }
+
+    protected updateStructureLink(event: Event): void {
+        const linked = (event.target as HTMLInputElement).checked;
+        if (!linked) {
+            this.structureTonnageByLocation = this.createStructureTonnageValues(this.globalStructureTonnage);
+        }
+        this.structureLinked = linked;
+        void this.updatePaperdolls();
+    }
 
     public async ngAfterViewInit(): Promise<void> {
         const svg = this.frameCanvas.nativeElement;
+        this.paperdollRenderRoot = svg.getElementById('rs') as SVGGElement | null ?? undefined;
+        if (!this.paperdollRenderRoot) {
+            return;
+        }
         const mechDataFrameWidth = 225;
         const mechDataFrameHeight = 302;
         const warriorDataFrameHeight = 140;
@@ -66,8 +469,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
         const criticalTableFrameHeight = 397;
         const heatDataFrameHeight = 200;
         const heatDataFrameY = criticalTableFrameY + (criticalTableFrameHeight - heatDataFrameHeight);
-        const bipedPipDemoFrame = await this.createBipedPipDemoFrame();
-        svg.getElementById('rs')?.replaceChildren(
+        this.paperdollRenderRoot.replaceChildren(
             this.createFrameGroup('\'MECH DATA', 0, 0, mechDataFrameWidth, 302, {
                 id: 'mechDataFrame',
                 bottomLeftNotchWidth: 100,
@@ -89,7 +491,6 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 fullWidthHeader: true,
                 // headerFontSize: 8
             }),
-            bipedPipDemoFrame,
             this.createFrameGroup('CRITICAL TABLE', 0, criticalTableFrameY, criticalTableFrameWidth, criticalTableFrameHeight, {
                 id: 'critTableFrame',
                 cornerAngleDegrees: {
@@ -107,24 +508,17 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 },
             }),
         );
+        await this.updatePaperdolls();
     }
 
     private async createBipedPipDemoFrame(): Promise<SVGGElement> {
         const frame = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        frame.setAttribute('id', 'bipedPipDemoFrame');
         frame.setAttribute('transform', `translate(400 0)`);
-        const armorCounts: Readonly<Record<string, number>> = {
-            HD: 5,
-            CT: 15,
-            LT: 12,
-            RT: 6,
-            LA: 10,
-            RA: 10,
-            LL: 16,
-            RL: 16,
-            CT_R: 10,
-            LT_R: 8,
-            RT_R: 8,
-        };
+        const armorCounts = this.armorCounts;
+        const structureTonnage: BipedStructureTonnage = this.structureLinked
+            ? this.globalStructureTonnage
+            : { ...this.structureTonnageByLocation };
         const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(84.68, 238, armorCounts, {
             className: 'biped-paperdoll-armor',
             shieldValues: {
@@ -132,16 +526,16 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 RA: { dc: 8, da: 1 },
             },
             pipOptions: {
-                padding: 1.8,
+                inset: 1.8,
                 stroke: '#b4492f',
             },
         });
         armorLayer.setAttribute('transform', 'translate(2 2)');
 
-        const structureLayer = await BipedPaperdollUtil.createStructurePaperdoll(55.32, 238, 50, {
+        const structureLayer = await BipedPaperdollUtil.createStructurePaperdoll(55.32, 238, structureTonnage, {
             className: 'biped-paperdoll-structure',
             pipOptions: {
-                padding: 1.8,
+                inset: 1.8,
                 stroke: '#356a8a',
             },
         });
@@ -157,25 +551,62 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
             railPipsPerPath: 5,
             shieldValues: railShieldValues,
             pipOptions: {
-                padding: 1,
+                inset: 1.8,
                 stroke: '#a63d83',
             },
         });
         railArmorLayer.setAttribute('transform', 'translate(94 2)');
 
-        const railStructureLayer = await BipedPaperdollUtil.createStructurePaperdoll(55.32, 238, 50, {
-            className: 'biped-placeholder-rail-structure',
-            pipLayout: 'rail',
-            railPipsPerPath: 5,
+        const fillArmorLayer = await BipedPaperdollUtil.createArmorPaperdoll(84.68, 238, armorCounts, {
+            className: 'biped-placeholder-fill-armor',
+            pipLayout: 'fill',
             pipOptions: {
-                padding: 1.8,
+                inset: 1.8,
                 stroke: '#2f8f83',
             },
         });
-        railStructureLayer.setAttribute('transform', 'translate(100 120)');
-        frame.append(armorLayer, structureLayer, railArmorLayer, railStructureLayer);
+        fillArmorLayer.setAttribute('transform', 'translate(94 150)');
+        frame.append(armorLayer, structureLayer, railArmorLayer, fillArmorLayer);
 
         return frame;
+    }
+
+    private getStructureTonnage(location: BipedStructureLocation): number {
+        return this.structureLinked
+            ? this.globalStructureTonnage
+            : this.structureTonnageByLocation[location];
+    }
+
+    private createStructureTonnageValues(tonnage: number): Record<BipedStructureLocation, number> {
+        const values = {} as Record<BipedStructureLocation, number>;
+        for (const location of this.structureLocations) {
+            values[location] = tonnage;
+        }
+        return values;
+    }
+
+    private async updatePaperdolls(): Promise<void> {
+        const renderVersion = ++this.paperdollRenderVersion;
+        const frame = await this.createBipedPipDemoFrame();
+        if (renderVersion !== this.paperdollRenderVersion || !this.paperdollRenderRoot) {
+            return;
+        }
+
+        const currentFrame = this.paperdollRenderRoot.querySelector('#bipedPipDemoFrame');
+        if (currentFrame) {
+            currentFrame.replaceWith(frame);
+        } else {
+            this.paperdollRenderRoot.appendChild(frame);
+        }
+    }
+
+    private readIntegerInput(event: Event, maximum: number): number {
+        const input = event.target as HTMLInputElement;
+        const value = Number(input.value);
+        if (!Number.isFinite(value)) {
+            return 0;
+        }
+        return Math.min(Math.max(Math.floor(value), 0), maximum);
     }
 
     private createFrameGroup(

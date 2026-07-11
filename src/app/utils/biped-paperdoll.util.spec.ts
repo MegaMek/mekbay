@@ -20,10 +20,10 @@ describe('BipedPaperdollUtil', () => {
                 LA: { dc: 8, da: 1 },
                 RA: { dc: 8, da: 1 },
             },
-            pipOptions: { padding: 1.8, stroke: '#b4492f' },
+            pipOptions: { inset: 1.8, stroke: '#b4492f' },
         });
         const structureLayer = await BipedPaperdollUtil.createStructurePaperdoll(55.32, 238, 50, {
-            pipOptions: { padding: 1.8, stroke: '#356a8a' },
+            pipOptions: { inset: 1.8, stroke: '#356a8a' },
         });
         armorLayer.setAttribute('transform', 'translate(2 2)');
         structureLayer.setAttribute('transform', 'translate(96.68 2)');
@@ -60,33 +60,58 @@ describe('BipedPaperdollUtil', () => {
         expect(scaleGroup.getAttribute('transform')).toContain('scale(');
     });
 
-    it('renders the Affinity-exported armor asset', async () => {
-        const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(84.68, 238, {
-            HD: 5,
-            CT: 15,
-            LT: 12,
-            RT: 12,
-            LA: 10,
-            RA: 10,
-            LL: 16,
-            RL: 16,
-            CT_R: 10,
-            LT_R: 8,
-            RT_R: 8,
-        }, {
-            assetUrl: '/images/paperdolls/biped-armor-affinity.svg',
-            shieldValues: {
-                LA: { dc: 8, da: 1 },
-                RA: { dc: 8, da: 1 },
-            },
+    it('renders independent structure tonnage for each location', async () => {
+        const structureTonnage = {
+            HD: 10,
+            CT: 20,
+            LT: 30,
+            RT: 40,
+            LA: 50,
+            RA: 60,
+            LL: 70,
+            RL: 80,
+        } as const;
+        const structureLayer = await BipedPaperdollUtil.createStructurePaperdoll(55.32, 238, structureTonnage);
+
+        const headZone = structureLayer.querySelector('[data-location="HD"][data-zone-type="structure"]');
+        const centerTorsoZone = structureLayer.querySelector('[data-location="CT"][data-zone-type="structure"]');
+        expect(headZone?.querySelectorAll('circle').length).toBe(PipUtil.getCanonStructurePipCount(10, 'HD'));
+        expect(centerTorsoZone?.querySelectorAll('circle').length).toBe(PipUtil.getCanonStructurePipCount(20, 'CT'));
+    });
+
+    it('falls back to distributed placement when a canon amount is unavailable', async () => {
+        const source = encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
+                <g id="paperdoll-art-armor">
+                    <rect id="placeholder-canon-armor-HD" x="0" y="0" width="100" height="20" />
+                </g>
+            </svg>
+        `);
+        const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 20, { HD: 10 }, {
+            assetUrl: `data:image/svg+xml,${source}`,
         });
 
-        expect(armorLayer.querySelector('#paperdoll-art-armor')).not.toBeNull();
-        expect(armorLayer.querySelectorAll('.biped-paperdoll-zone').length).toBe(15);
-        expect(armorLayer.querySelectorAll('[data-pip-type="shield-dc"] circle').length).toBe(16);
-        expect(armorLayer.querySelectorAll('[data-pip-type="shield-da"] polygon').length).toBe(2);
-        expect(armorLayer.querySelectorAll('[data-placeholder]').length).toBe(0);
-        expect(armorLayer.querySelectorAll('rect').length).toBe(0);
+        const zone = armorLayer.querySelector('[data-location="HD"][data-zone-type="armor"]');
+        expect(zone?.getAttribute('data-layout')).toBeNull();
+        expect(zone?.querySelector('g')?.getAttribute('data-pip-layout')).toBe('distributed');
+        expect(zone?.querySelectorAll('circle').length).toBe(10);
+    });
+
+    it('supports distributed placement as an explicit paperdoll mode', async () => {
+        const source = encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
+                <g id="paperdoll-art-armor">
+                    <rect id="placeholder-canon-armor-HD" x="0" y="0" width="100" height="20" />
+                </g>
+            </svg>
+        `);
+        const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 20, { HD: 1 }, {
+            assetUrl: `data:image/svg+xml,${source}`,
+            pipLayout: 'distributed',
+        });
+
+        expect(armorLayer.querySelector('[data-pip-layout="canon"]')).toBeNull();
+        expect(armorLayer.querySelector('[data-pip-layout="distributed"]')).not.toBeNull();
     });
 
     it('prefers rail capacity attributes and falls back to durable SVG IDs', async () => {
@@ -108,6 +133,79 @@ describe('BipedPaperdollUtil', () => {
         expect(zones[0].querySelector('circle')?.getAttribute('cy')).toBe('4');
         expect(zones[0].querySelectorAll('circle').length).toBe(3);
         expect(zones[1].querySelectorAll('circle').length).toBe(1);
+    });
+
+    it('shares a radius per location without unused rails shrinking it', async () => {
+        const source = encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
+                <g id="paperdoll-art-armor">
+                    <path id="placeholder-rail-armor-CT-00-capacity-5" d="M 0 10 L 100 10" />
+                    <path id="placeholder-rail-armor-CT-01-capacity-5" d="M 0 4 L 2 4" />
+                    <path id="placeholder-rail-armor-CT-02-capacity-5" d="M 0 16 L 2 16" />
+                </g>
+            </svg>
+        `);
+        const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 20, { CT: 5 }, {
+            assetUrl: `data:image/svg+xml,${source}`,
+            pipLayout: 'rail',
+        });
+
+        const circles = armorLayer.querySelectorAll('[data-layout="rail"] circle');
+        const radii = new Set(Array.from(circles, circle => circle.getAttribute('r')));
+        expect(circles.length).toBe(5);
+        expect(radii.size).toBe(1);
+        expect(circles[0].getAttribute('r')).toBe('3');
+    });
+
+    it('renders fill placeholders from a detached paperdoll layer', async () => {
+        const source = encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60">
+                <g id="paperdoll-art-armor">
+                    <path id="placeholder-fill-armor-CT-00" d="M 0 0 H 100 V 60 H 0 Z" />
+                </g>
+            </svg>
+        `);
+        const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 60, { CT: 4 }, {
+            assetUrl: `data:image/svg+xml,${source}`,
+            pipLayout: 'fill',
+        });
+
+        const zone = armorLayer.querySelector('[data-layout="fill"]');
+        expect(zone).not.toBeNull();
+        expect(zone?.querySelectorAll('circle').length).toBe(4);
+    });
+
+    it('renders the real armor fill placeholder', async () => {
+        const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(84.68, 238, {
+            LT: 12,
+        }, {
+            pipLayout: 'fill',
+        });
+
+        const zone = armorLayer.querySelector('[data-location="LT"][data-layout="fill"]');
+        expect(zone).not.toBeNull();
+        expect(zone?.querySelectorAll('circle').length).toBe(12);
+    });
+
+    it('balances numbered fill areas for one location by area', async () => {
+        const source = encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 50">
+                <g id="paperdoll-art-armor">
+                    <path id="placeholder-fill-armor-CT-00" d="M 0 0 H 80 V 50 H 0 Z" />
+                    <path id="placeholder-fill-armor-CT-01" d="M 80 0 H 120 V 50 H 80 Z" />
+                </g>
+            </svg>
+        `);
+        const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(120, 50, { CT: 6 }, {
+            assetUrl: `data:image/svg+xml,${source}`,
+            pipLayout: 'fill',
+        });
+
+        const zone = armorLayer.querySelector('[data-location="CT"][data-layout="fill"]');
+        const circles = Array.from(zone?.querySelectorAll('circle') ?? []);
+        expect(circles.length).toBe(6);
+        expect(circles.filter(circle => Number(circle.getAttribute('cx')) < 80).length).toBe(4);
+        expect(circles.filter(circle => Number(circle.getAttribute('cx')) > 80).length).toBe(2);
     });
 
     it('places rail diamonds along curved SVG geometry', () => {

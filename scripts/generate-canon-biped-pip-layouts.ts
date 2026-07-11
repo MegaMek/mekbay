@@ -19,20 +19,36 @@ interface Bounds {
     maxY: number;
 }
 
+interface ParsedPath {
+    data: string;
+    strokeWidth: number;
+}
+
 interface ParsedPip {
     center: Point;
     radius: number;
+    strokeWidth: number;
 }
 
-interface PipLayout {
+interface PipLayoutInfo {
     width: number;
     height: number;
+}
+
+interface PipAmountLayout {
     radius: number;
+    stroke: number;
     points: Array<readonly [number, number]>;
 }
 
-type ArmorLayouts = Record<string, Record<number, PipLayout>>;
-type StructureLayouts = Record<number, Record<string, PipLayout>>;
+interface PipLocationLayout {
+    info: PipLayoutInfo;
+    amount: Record<number, PipAmountLayout>;
+}
+
+type RawLayouts = Record<string, Record<number, ParsedPip[]>>;
+type ArmorLayouts = RawLayouts;
+type StructureLayouts = RawLayouts;
 
 type PathToken =
     | { kind: 'command'; value: string }
@@ -228,7 +244,7 @@ function parsePathBounds(pathData: string): Bounds {
     return bounds;
 }
 
-function collectPathData(value: unknown, result: string[]): void {
+function collectPathData(value: unknown, result: ParsedPath[]): void {
     if (Array.isArray(value)) {
         for (const child of value) {
             collectPathData(child, result);
@@ -242,7 +258,11 @@ function collectPathData(value: unknown, result: string[]): void {
 
     const objectValue = value as Record<string, unknown>;
     if (typeof objectValue.d === 'string') {
-        result.push(objectValue.d);
+        const strokeWidth = Number(objectValue['stroke-width']);
+        if (!Number.isFinite(strokeWidth) || strokeWidth < 0) {
+            throw new Error('SVG pip path has no valid stroke-width');
+        }
+        result.push({ data: objectValue.d, strokeWidth });
     }
 
     for (const [key, child] of Object.entries(objectValue)) {
@@ -254,14 +274,14 @@ function collectPathData(value: unknown, result: string[]): void {
 
 function extractPips(svgText: string, fileName: string): ParsedPip[] {
     const parsed = xmlParser.parse(svgText) as unknown;
-    const pathData: string[] = [];
+    const pathData: ParsedPath[] = [];
     collectPathData(parsed, pathData);
     if (pathData.length === 0) {
         throw new Error(`No SVG paths found in ${fileName}`);
     }
 
-    return pathData.map(pathValue => {
-        const bounds = parsePathBounds(pathValue);
+    return pathData.map(path => {
+        const bounds = parsePathBounds(path.data);
         const width = bounds.maxX - bounds.minX;
         const height = bounds.maxY - bounds.minY;
         return {
@@ -270,78 +290,139 @@ function extractPips(svgText: string, fileName: string): ParsedPip[] {
                 y: (bounds.minY + bounds.maxY) / 2,
             },
             radius: (width + height) / 4,
+            strokeWidth: path.strokeWidth,
         };
     });
 }
 
-function createLayout(pips: ParsedPip[]): PipLayout {
+function getPipBounds(pips: ParsedPip[]): Bounds {
+    return {
+        minX: Math.min(...pips.map(pip => pip.center.x - pip.radius)),
+        minY: Math.min(...pips.map(pip => pip.center.y - pip.radius)),
+        maxX: Math.max(...pips.map(pip => pip.center.x + pip.radius)),
+        maxY: Math.max(...pips.map(pip => pip.center.y + pip.radius)),
+    };
+}
+
+function createAmountLayout(pips: ParsedPip[], bounds: Bounds, scale: number): PipAmountLayout {
     const averageRadius = pips.reduce((sum, pip) => sum + pip.radius, 0) / pips.length;
-    const minX = Math.min(...pips.map(pip => pip.center.x - pip.radius));
-    const minY = Math.min(...pips.map(pip => pip.center.y - pip.radius));
-    const maxX = Math.max(...pips.map(pip => pip.center.x + pip.radius));
-    const maxY = Math.max(...pips.map(pip => pip.center.y + pip.radius));
-    const width = maxX - minX;
-    const height = maxY - minY;
-    const scale = 1 / Math.max(width, height);
+    const averageStrokeWidth = pips.reduce((sum, pip) => sum + pip.strokeWidth, 0) / pips.length;
 
     return {
-        width: round(width * scale),
-        height: round(height * scale),
         radius: round(averageRadius * scale),
+        stroke: round(averageStrokeWidth * scale),
         points: pips.map(pip => [
-            round((pip.center.x - minX) * scale),
-            round((pip.center.y - minY) * scale),
+            round((pip.center.x - bounds.minX) * scale),
+            round((pip.center.y - bounds.minY) * scale),
         ]),
     };
 }
 
-function addArmorLayout(layouts: ArmorLayouts, fileName: string, location: string, count: number, layout: PipLayout): void {
+function createLocationLayout(amounts: Record<number, ParsedPip[]>): PipLocationLayout {
+    const referencePips = Object.values(amounts).reduce((largest, current) =>
+        current.length > largest.length ? current : largest);
+    const bounds = getPipBounds(referencePips);
+    const width = bounds.maxX - bounds.minX;
+    const height = bounds.maxY - bounds.minY;
+    const scale = 1 / Math.max(width, height);
+
+    return {
+        info: {
+            width: round(width * scale),
+            height: round(height * scale),
+        },
+        amount: Object.fromEntries(Object.entries(amounts)
+            .sort(([left], [right]) => Number(left) - Number(right))
+            .map(([amount, pips]) => [amount, createAmountLayout(pips, bounds, scale)])),
+    };
+}
+
+function addLayout(layouts: RawLayouts, fileName: string, location: string, amount: number, pips: ParsedPip[], locationOrder: string[]): void {
     const locationLayouts = layouts[location] ?? {};
-    locationLayouts[count] = layout;
+    locationLayouts[amount] = pips;
     layouts[location] = locationLayouts;
-    if (!ARMOR_LOCATION_ORDER.includes(location)) {
-        throw new Error(`Unknown armor location ${location} in ${fileName}`);
+    if (!locationOrder.includes(location)) {
+        throw new Error(`Unknown pip location ${location} in ${fileName}`);
     }
 }
 
-function addStructureLayout(layouts: StructureLayouts, fileName: string, tonnage: number, location: string, layout: PipLayout): void {
-    const tonnageLayouts = layouts[tonnage] ?? {};
-    tonnageLayouts[location] = layout;
-    layouts[tonnage] = tonnageLayouts;
-    if (!STRUCTURE_LOCATION_ORDER.includes(location)) {
-        throw new Error(`Unknown structure location ${location} in ${fileName}`);
-    }
-}
-
-function sortArmorLayouts(layouts: ArmorLayouts): ArmorLayouts {
-    return Object.fromEntries(ARMOR_LOCATION_ORDER
+function sortLayouts(layouts: RawLayouts, locationOrder: string[]): RawLayouts {
+    return Object.fromEntries(locationOrder
         .filter(location => layouts[location])
-        .map(location => [location, Object.fromEntries(Object.entries(layouts[location]).sort(([left], [right]) => Number(left) - Number(right)))]));
-}
-
-function sortStructureLayouts(layouts: StructureLayouts): StructureLayouts {
-    return Object.fromEntries(Object.entries(layouts)
-        .sort(([left], [right]) => Number(left) - Number(right))
-        .map(([tonnage, locationLayouts]) => [
-            tonnage,
-            Object.fromEntries(STRUCTURE_LOCATION_ORDER
-                .filter(location => locationLayouts[location])
-                .map(location => [location, locationLayouts[location]])),
+        .map(location => [
+            location,
+            Object.fromEntries(Object.entries(layouts[location])
+                .sort(([left], [right]) => Number(left) - Number(right))),
         ]));
 }
 
+function createLocationLayouts(layouts: RawLayouts, locationOrder: string[]): Record<string, PipLocationLayout> {
+    const sortedLayouts = sortLayouts(layouts, locationOrder);
+    return Object.fromEntries(Object.entries(sortedLayouts)
+        .map(([location, amounts]) => [location, createLocationLayout(amounts)]));
+}
+
+function formatAmountLayout(layout: PipAmountLayout, indentation: string): string {
+    const propertyIndentation = `${indentation}    `;
+    const pointIndentation = `${propertyIndentation}    `;
+    return [
+        '{',
+        `${propertyIndentation}radius: ${layout.radius},`,
+        `${propertyIndentation}stroke: ${layout.stroke},`,
+        `${propertyIndentation}points: [`,
+        layout.points.map(point => `${pointIndentation}[ ${point[0]}, ${point[1]} ]`).join(',\n'),
+        `${propertyIndentation}]`,
+        `${indentation}}`,
+    ].join('\n');
+}
+
+function formatLocationLayout(layout: PipLocationLayout, indentation: string): string {
+    const propertyIndentation = `${indentation}    `;
+    const amountIndentation = `${propertyIndentation}    `;
+    return [
+        '{',
+        `${propertyIndentation}info: { width: ${layout.info.width}, height: ${layout.info.height} },`,
+        `${propertyIndentation}amount: {`,
+        Object.entries(layout.amount)
+            .map(([amount, amountLayout]) =>
+                `${amountIndentation}${JSON.stringify(amount)}: ${formatAmountLayout(amountLayout, amountIndentation)}`)
+            .join(',\n'),
+        `${propertyIndentation}}`,
+        `${indentation}}`,
+    ].join('\n');
+}
+
+function formatLayouts(layouts: Record<string, PipLocationLayout>): string {
+    const outerEntries = Object.entries(layouts);
+    return [
+        '{',
+        outerEntries.map(([location, layout]) =>
+            `    ${JSON.stringify(location)}: ${formatLocationLayout(layout, '    ')}`).join(',\n'),
+        '}',
+    ].join('\n');
+}
+
 function createGeneratedFile(armorLayouts: ArmorLayouts, structureLayouts: StructureLayouts): string {
-    const armorJson = JSON.stringify(sortArmorLayouts(armorLayouts), null, 4);
-    const structureJson = JSON.stringify(sortStructureLayouts(structureLayouts), null, 4);
+    const armorJson = formatLayouts(createLocationLayouts(armorLayouts, ARMOR_LOCATION_ORDER));
+    const structureJson = formatLayouts(createLocationLayouts(structureLayouts, STRUCTURE_LOCATION_ORDER));
     return `export interface BipedPipLayout {
-    readonly width: number;
-    readonly height: number;
     readonly radius: number;
+    readonly stroke: number;
     readonly points: readonly (readonly [number, number])[];
 }
 
-export type BipedArmorPipLayouts = Readonly<Record<string, Readonly<Record<number, BipedPipLayout>>>>;
-export type BipedStructurePipLayouts = Readonly<Record<number, Readonly<Record<string, BipedPipLayout>>>>;
+export interface BipedPipLayoutInfo {
+    readonly width: number;
+    readonly height: number;
+}
+
+export interface BipedPipLocationLayout {
+    readonly info: BipedPipLayoutInfo;
+    readonly amount: Readonly<Record<number, BipedPipLayout>>;
+}
+
+export type BipedArmorPipLayouts = Readonly<Record<string, BipedPipLocationLayout>>;
+export type BipedStructurePipLayouts = Readonly<Record<string, BipedPipLocationLayout>>;
 
 export const BIPED_ARMOR_PIP_LAYOUTS: BipedArmorPipLayouts = ${armorJson};
 
@@ -365,12 +446,13 @@ function main(): void {
         const armorMatch = ARMOR_FILE_PATTERN.exec(entry.name);
         if (armorMatch) {
             const location = `${armorLocationNames[armorMatch[1]]}${armorMatch[2] ? '_R' : ''}`;
-            addArmorLayout(
+            addLayout(
                 armorLayouts,
                 entry.name,
                 location,
                 Number(armorMatch[3]),
-                createLayout(extractPips(fs.readFileSync(path.join(sourceDirectory, entry.name), 'utf8'), entry.name)),
+                extractPips(fs.readFileSync(path.join(sourceDirectory, entry.name), 'utf8'), entry.name),
+                ARMOR_LOCATION_ORDER,
             );
             armorFileCount += 1;
             continue;
@@ -381,12 +463,13 @@ function main(): void {
             continue;
         }
 
-        addStructureLayout(
+        addLayout(
             structureLayouts,
             entry.name,
-            Number(structureMatch[1]),
             structureMatch[2],
-            createLayout(extractPips(fs.readFileSync(path.join(sourceDirectory, entry.name), 'utf8'), entry.name)),
+            Number(structureMatch[1]),
+            extractPips(fs.readFileSync(path.join(sourceDirectory, entry.name), 'utf8'), entry.name),
+            STRUCTURE_LOCATION_ORDER,
         );
         structureFileCount += 1;
     }
