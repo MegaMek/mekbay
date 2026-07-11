@@ -152,7 +152,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
             RA: { dc: 8, da: 1 },
         } as const;
         const railArmorLayer = await BipedPaperdollUtil.createArmorPaperdoll(84.68, 238, armorCounts, {
-            className: 'biped-paperdoll-rail-armor',
+            className: 'biped-placeholder-rail-armor',
             pipLayout: 'rail',
             railPipsPerPath: 5,
             shieldValues: railShieldValues,
@@ -164,7 +164,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
         railArmorLayer.setAttribute('transform', 'translate(94 2)');
 
         const railStructureLayer = await BipedPaperdollUtil.createStructurePaperdoll(55.32, 238, 50, {
-            className: 'biped-paperdoll-rail-structure',
+            className: 'biped-placeholder-rail-structure',
             pipLayout: 'rail',
             railPipsPerPath: 5,
             pipOptions: {

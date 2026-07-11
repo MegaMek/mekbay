@@ -510,7 +510,7 @@ function createArtworkId(type: PaperdollType, location: string, sourceId: string
 
 function createPlaceholderId(type: PlaceholderType, location: string, rowIndex?: number): string {
     const rowSuffix = rowIndex === undefined ? '' : `-${rowIndex.toString().padStart(2, '0')}`;
-    return `paperdoll-placeholder-${type}-${location}${rowSuffix}`;
+    return `placeholder-canon-${type}-${location}${rowSuffix}`;
 }
 
 function getShieldRowIndex(id: string | undefined): number | undefined {

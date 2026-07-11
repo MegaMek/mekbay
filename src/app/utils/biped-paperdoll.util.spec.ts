@@ -44,7 +44,7 @@ describe('BipedPaperdollUtil', () => {
         expect(paperdoll.querySelectorAll('.shield').length).toBeGreaterThan(0);
         expect(paperdoll.querySelectorAll('path').length).toBeGreaterThan(0);
         expect(paperdoll.querySelectorAll('circle').length).toBeGreaterThan(0);
-        expect(paperdoll.querySelectorAll('[id^="paperdoll-rail-"]').length).toBe(0);
+        expect(paperdoll.querySelectorAll('[id^="placeholder-rail-"]').length).toBe(0);
         expect(paperdoll.querySelectorAll('[data-placeholder]').length).toBe(0);
         expect(paperdoll.querySelectorAll('rect').length).toBe(0);
     });
@@ -93,8 +93,8 @@ describe('BipedPaperdollUtil', () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
                 <g id="paperdoll-art-armor">
-                    <path id="paperdoll-rail-armor-CT-01-capacity-1" d="M 0 16 L 30 16" />
-                    <path id="paperdoll-rail-armor-CT-00-capacity-1" data-rail-capacity="3" d="M 0 4 L 30 4" />
+                    <path id="placeholder-rail-armor-CT-01-capacity-1" d="M 0 16 L 30 16" />
+                    <path id="placeholder-rail-armor-CT-00-capacity-1" data-rail-capacity="3" d="M 0 4 L 30 4" />
                 </g>
             </svg>
         `);
@@ -146,9 +146,9 @@ describe('BipedPaperdollUtil', () => {
         expect(structure.querySelector('#paperdoll-art-structure')).not.toBeNull();
         expect(armor.querySelector('#paperdoll-art-armor-RT-armorRT')).not.toBeNull();
         expect(structure.querySelector('#paperdoll-art-structure-RT-isRT')).not.toBeNull();
-        expect(armor.querySelector('#paperdoll-placeholder-armor-RT')).not.toBeNull();
-        expect(structure.querySelector('#paperdoll-placeholder-structure-RT')).not.toBeNull();
-        expect(armor.querySelector('#paperdoll-placeholder-shield-dc-RA-00')).not.toBeNull();
-        expect(armor.querySelector('#paperdoll-placeholder-shield-da-LA-00')).not.toBeNull();
+        expect(armor.querySelector('#placeholder-canon-armor-RT')).not.toBeNull();
+        expect(structure.querySelector('#placeholder-canon-structure-RT')).not.toBeNull();
+        expect(armor.querySelector('#placeholder-canon-shield-dc-RA-00')).not.toBeNull();
+        expect(armor.querySelector('#placeholder-canon-shield-da-LA-00')).not.toBeNull();
     });
 });

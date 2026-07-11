@@ -643,7 +643,7 @@ export class BipedPaperdollUtil {
     }
 
     private static readPlaceholderIdContext(element: SVGElement): PlaceholderContext | null {
-        const idMatch = /^paperdoll-(placeholder|rail)-(armor|structure|shield-dc|shield-da)-([A-Za-z_]+)(?:-(\d+))?(?:-(?:capacity|cap)-(\d+))?$/u.exec(element.getAttribute('id') ?? '');
+        const idMatch = /^placeholder-(canon|rail)-(armor|structure|shield-dc|shield-da)-([A-Za-z_]+)(?:-(\d+))?(?:-(?:capacity|cap)-(\d+))?$/u.exec(element.getAttribute('id') ?? '');
         if (!idMatch) {
             return null;
         }
