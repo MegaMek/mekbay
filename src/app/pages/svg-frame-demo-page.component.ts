@@ -1,5 +1,6 @@
 import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, ViewChild } from '@angular/core';
 import { BipedPaperdollUtil } from '../utils/biped-paperdoll.util';
+import { PipUtil } from '../utils/pip.util';
 import { SvgFrameUtil } from '../utils/svg-frame.util';
 
 @Component({
@@ -115,7 +116,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
             HD: 5,
             CT: 15,
             LT: 12,
-            RT: 12,
+            RT: 6,
             LA: 10,
             RA: 10,
             LL: 16,
@@ -145,7 +146,34 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
             },
         });
         structureLayer.setAttribute('transform', 'translate(20 120)');
-        frame.append(armorLayer, structureLayer);
+
+        const railShieldValues = {
+            LA: { dc: 8, da: 1 },
+            RA: { dc: 8, da: 1 },
+        } as const;
+        const railArmorLayer = await BipedPaperdollUtil.createArmorPaperdoll(84.68, 238, armorCounts, {
+            className: 'biped-paperdoll-rail-armor',
+            pipLayout: 'rail',
+            railPipsPerPath: 5,
+            shieldValues: railShieldValues,
+            pipOptions: {
+                padding: 1,
+                stroke: '#a63d83',
+            },
+        });
+        railArmorLayer.setAttribute('transform', 'translate(94 2)');
+
+        const railStructureLayer = await BipedPaperdollUtil.createStructurePaperdoll(55.32, 238, 50, {
+            className: 'biped-paperdoll-rail-structure',
+            pipLayout: 'rail',
+            railPipsPerPath: 5,
+            pipOptions: {
+                padding: 1.8,
+                stroke: '#2f8f83',
+            },
+        });
+        railStructureLayer.setAttribute('transform', 'translate(100 120)');
+        frame.append(armorLayer, structureLayer, railArmorLayer, railStructureLayer);
 
         return frame;
     }

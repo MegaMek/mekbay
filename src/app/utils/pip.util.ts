@@ -7,7 +7,7 @@ import {
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 const DEFAULT_STROKE_WIDTH_RATIO = 0.21;
 
-export interface BipedPipRenderOptions {
+export interface PipRenderOptions {
     className?: string;
     fill?: string;
     railPipRadius?: number;
@@ -31,7 +31,7 @@ export class PipUtil {
         armorPipCount: number,
         containerWidth: number,
         containerHeight: number,
-        options: BipedPipRenderOptions = {},
+        options: PipRenderOptions = {},
     ): SVGGElement | null {
         const layout = BIPED_ARMOR_PIP_LAYOUTS[location]?.[armorPipCount];
         return layout
@@ -44,7 +44,7 @@ export class PipUtil {
         location: string,
         containerWidth: number,
         containerHeight: number,
-        options: BipedPipRenderOptions = {},
+        options: PipRenderOptions = {},
     ): SVGGElement | null {
         const layout = BIPED_STRUCTURE_PIP_LAYOUTS[tonnage]?.[location];
         return layout
@@ -60,7 +60,7 @@ export class PipUtil {
         count: number,
         containerWidth: number,
         containerHeight: number,
-        options: BipedPipRenderOptions = {},
+        options: PipRenderOptions = {},
         type = 'generic',
         location = '',
     ): SVGGElement | null {
@@ -96,7 +96,7 @@ export class PipUtil {
     public static createDistributedPips(
         rows: readonly PipRow[],
         count: number,
-        options: BipedPipRenderOptions = {},
+        options: PipRenderOptions = {},
         type = 'shield',
         location = '',
     ): SVGGElement | null {
@@ -215,6 +215,9 @@ export class PipUtil {
 
         const group = document.createElementNS(SVG_NAMESPACE, 'g');
         group.setAttribute('class', options.className ?? `biped-${type}-pips`);
+        if (type === 'shield' || type.startsWith('shield-')) {
+            group.classList.add('shield');
+        }
         group.setAttribute('data-pip-type', type);
         group.setAttribute('data-pip-location', location);
         group.setAttribute('data-pip-value', pipCount.toString());
@@ -269,7 +272,7 @@ export class PipUtil {
     public static createRailPips(
         rail: SVGGeometryElement,
         count: number,
-        options: BipedPipRenderOptions = {},
+        options: PipRenderOptions = {},
         type = 'rail',
         location = '',
         maxPipsPerRail = 5,
@@ -289,7 +292,7 @@ export class PipUtil {
             return null;
         }
 
-        const spacing = length / pipCount;
+        const spacing = length / pipCount; //or capacity
         const defaultRadius = length / (capacity * 2.4);
         const requestedRadius = Number.isFinite(options.railPipRadius)
             ? Math.max(options.railPipRadius ?? defaultRadius, 0)
@@ -301,6 +304,9 @@ export class PipUtil {
 
         const group = document.createElementNS(SVG_NAMESPACE, 'g');
         group.setAttribute('class', options.className ?? `biped-${type}-pips`);
+        if (type === 'shield' || type.startsWith('shield-')) {
+            group.classList.add('shield');
+        }
         group.setAttribute('data-pip-type', type);
         group.setAttribute('data-pip-location', location);
         group.setAttribute('data-pip-value', pipCount.toString());
@@ -343,7 +349,7 @@ export class PipUtil {
         layout: BipedPipLayout,
         containerWidth: number,
         containerHeight: number,
-        options: BipedPipRenderOptions,
+        options: PipRenderOptions,
         type: string,
         location: string,
         value: number,

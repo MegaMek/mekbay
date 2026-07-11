@@ -1,4 +1,4 @@
-import { BipedPipUtil, type BipedPipRenderOptions, type BipedShieldPipRow } from './biped-pip.util';
+import { PipUtil, type PipRenderOptions, type PipRow } from './pip.util';
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 const ARMOR_ASSET_URL = '/images/paperdolls/biped-armor.svg';
@@ -12,6 +12,7 @@ export type BipedArmorLocation = typeof ARMOR_LOCATIONS[number];
 export type BipedStructureLocation = typeof STRUCTURE_LOCATIONS[number];
 export type BipedShieldLocation = typeof SHIELD_LOCATIONS[number];
 export type BipedArmorValues = Readonly<Partial<Record<BipedArmorLocation, number>>>;
+export type BipedPaperdollPipLayout = 'canon' | 'rail';
 
 export interface BipedShieldLocationValues {
     readonly dc?: number;
@@ -23,7 +24,9 @@ export type BipedShieldValues = Readonly<Partial<Record<BipedShieldLocation, Bip
 export interface BipedPaperdollLayerOptions {
     assetUrl?: string;
     className?: string;
-    pipOptions?: BipedPipRenderOptions;
+    pipLayout?: BipedPaperdollPipLayout;
+    pipOptions?: PipRenderOptions;
+    railPipsPerPath?: number;
     shieldValues?: BipedShieldValues;
     silhouetteFill?: string;
     silhouetteStroke?: string;
@@ -65,67 +68,36 @@ interface ShieldPlaceholderGroup {
     parent: SVGElement;
     type: 'shield-dc' | 'shield-da';
     location: string;
-    rows: BipedShieldPipRow[];
+    rows: PipRow[];
+    elements: SVGElement[];
+}
+
+interface PlaceholderContext {
+    type: PaperdollPlaceholderType;
+    location: string;
+    rail: boolean;
+    capacity?: number;
+    index?: number;
+}
+
+interface RailDefinition {
+    geometry: SVGGeometryElement;
+    parent: SVGElement;
+    transform: string | null;
+    capacity?: number;
+    index?: number;
+    order: number;
+}
+
+interface RailGroup {
+    type: PaperdollPlaceholderType;
+    location: string;
+    rails: RailDefinition[];
     elements: SVGElement[];
 }
 
 export class BipedPaperdollUtil {
     private static readonly assetCache = new Map<string, Promise<SVGSVGElement>>();
-
-    public static async createBipedPaperdoll(
-        width: number,
-        height: number,
-        armor: BipedArmorValues,
-        structureTonnage: number,
-        options: BipedPaperdollOptions = {},
-    ): Promise<SVGGElement> {
-        const group = document.createElementNS(SVG_NAMESPACE, 'g');
-        group.setAttribute('class', options.className ?? 'biped-paperdoll');
-        group.setAttribute('data-paperdoll-type', 'biped');
-        group.setAttribute('data-paperdoll-width', width.toString());
-        group.setAttribute('data-paperdoll-height', height.toString());
-
-        const padding = Math.max(options.padding ?? 0, 0);
-        const gap = Math.min(6, Math.max(width * 0.04, 0));
-        const availableWidth = Math.max(width - padding * 2 - gap, 0);
-        const availableHeight = Math.max(height - padding * 2, 0);
-        const layout = options.layout ?? 'side-by-side';
-        const armorOptions: BipedPaperdollLayerOptions = {
-            ...options.armor,
-            className: 'biped-paperdoll-armor',
-            shieldValues: options.shields ?? options.armor?.shieldValues,
-        };
-
-        if (layout === 'stacked') {
-            const armorHeight = Math.max((availableHeight - gap) * 0.64, 0);
-            const structureHeight = Math.max(availableHeight - gap - armorHeight, 0);
-            const armorLayer = await this.createArmorPaperdoll(availableWidth, armorHeight, armor, armorOptions);
-            armorLayer.setAttribute('transform', `translate(${padding} ${padding})`);
-            group.appendChild(armorLayer);
-
-            const structureLayer = await this.createStructurePaperdoll(availableWidth, structureHeight, structureTonnage, {
-                ...options.structure,
-                className: 'biped-paperdoll-structure',
-            });
-            structureLayer.setAttribute('transform', `translate(${padding} ${padding + armorHeight + gap})`);
-            group.appendChild(structureLayer);
-        } else {
-            const armorWidth = availableWidth * 0.58;
-            const structureWidth = availableWidth - armorWidth;
-            const armorLayer = await this.createArmorPaperdoll(armorWidth, availableHeight, armor, armorOptions);
-            armorLayer.setAttribute('transform', `translate(${padding} ${padding})`);
-            group.appendChild(armorLayer);
-
-            const structureLayer = await this.createStructurePaperdoll(structureWidth, availableHeight, structureTonnage, {
-                ...options.structure,
-                className: 'biped-paperdoll-structure',
-            });
-            structureLayer.setAttribute('transform', `translate(${padding + armorWidth + gap} ${padding})`);
-            group.appendChild(structureLayer);
-        }
-
-        return group;
-    }
 
     public static createArmorPaperdoll(
         width: number,
@@ -158,10 +130,10 @@ export class BipedPaperdollUtil {
         const viewBox = this.readViewBox(source);
         const layer = document.createElementNS(SVG_NAMESPACE, 'g');
         layer.setAttribute('class', options.className ?? `biped-paperdoll-${type}`);
-        layer.setAttribute('data-paperdoll-type', type);
-        layer.setAttribute('data-paperdoll-source', assetUrl);
-        layer.setAttribute('data-paperdoll-width', width.toString());
-        layer.setAttribute('data-paperdoll-height', height.toString());
+        layer.setAttribute('data-type', type);
+        layer.setAttribute('data-source', assetUrl);
+        layer.setAttribute('data-width', width.toString());
+        layer.setAttribute('data-height', height.toString());
 
         const padding = Math.max(options.pipOptions?.padding ?? 0, 0);
         const availableWidth = Math.max(width - padding * 2, 0);
@@ -225,10 +197,39 @@ export class BipedPaperdollUtil {
             if (parsed.querySelector('parsererror')) {
                 throw new Error(`Unable to parse biped paperdoll SVG: ${url}`);
             }
-            return parsed.documentElement as unknown as SVGSVGElement;
+            const asset = parsed.documentElement as unknown as SVGSVGElement;
+            this.normalizePlaceholderMetadata(asset);
+            return asset;
         });
         this.assetCache.set(url, load);
         return load;
+    }
+
+    private static normalizePlaceholderMetadata(source: SVGSVGElement): void {
+        const elements = Array.from(source.querySelectorAll<SVGElement>('[id]'));
+        for (const element of elements) {
+            const idContext = this.readPlaceholderIdContext(element);
+            if (!idContext) {
+                continue;
+            }
+
+            if (!element.hasAttribute('data-rail') && !element.hasAttribute('data-placeholder')) {
+                element.setAttribute(
+                    idContext.rail ? 'data-rail' : 'data-placeholder',
+                    idContext.type,
+                );
+            }
+            if (!element.hasAttribute('data-location')) {
+                element.setAttribute('data-location', idContext.location);
+            }
+            if (idContext.index !== undefined && !element.hasAttribute('data-rail-index')) {
+                element.setAttribute('data-rail-index', idContext.index.toString());
+            }
+            if (idContext.capacity !== undefined
+                && !element.hasAttribute('data-rail-capacity')) {
+                element.setAttribute('data-rail-capacity', idContext.capacity.toString());
+            }
+        }
     }
 
     private static readViewBox(source: SVGSVGElement): ViewBox {
@@ -258,7 +259,7 @@ export class BipedPaperdollUtil {
         const elements = new Set<SVGGraphicsElement>([
             ...sourceGroup.querySelectorAll<SVGGraphicsElement>(`[id^="paperdoll-art-${type}-"]`),
             ...sourceGroup.querySelectorAll<SVGGraphicsElement>(type === 'armor' ? '[id^="armor"]' : '[id^="is"]'),
-            ...sourceGroup.querySelectorAll<SVGGraphicsElement>('[data-paperdoll-location]:not([data-paperdoll-placeholder])'),
+            ...sourceGroup.querySelectorAll<SVGGraphicsElement>('[data-location]:not([data-placeholder])'),
         ]);
         elements.forEach(element => {
             if (options.silhouetteFill) {
@@ -281,24 +282,77 @@ export class BipedPaperdollUtil {
         options: BipedPaperdollLayerOptions,
     ): void {
         const placeholders = Array.from(sourceGroup.querySelectorAll<SVGElement>(
-            '[id^="paperdoll-placeholder-"], [data-paperdoll-placeholder]',
+            '[data-placeholder], [data-rail]',
         ));
         const groups: PlaceholderGroup[] = [];
         const shieldGroups: ShieldPlaceholderGroup[] = [];
+        const railGroups: RailGroup[] = [];
+        const seenRails = new Set<SVGGeometryElement>();
         for (const element of placeholders) {
+            const context = this.readPlaceholderContext(element);
+            if (!context) {
+                continue;
+            }
             const rectangles = element instanceof SVGRectElement
                 ? [element]
                 : Array.from(element.querySelectorAll<SVGRectElement>('rect'));
-            const parent = element instanceof SVGRectElement
-                ? element.parentNode instanceof SVGElement ? element.parentNode : null
-                : element;
-            const metadata = this.readPlaceholderMetadata(element);
-            if (!parent || !metadata || rectangles.length === 0) {
+            const geometries = context.rail
+                ? this.readRailGeometries(element).filter(geometry => {
+                if (seenRails.has(geometry)) {
+                    return false;
+                }
+                seenRails.add(geometry);
+                return true;
+                })
+                : [];
+            const { type: placeholderType, location } = context;
+
+            if (geometries.length > 0) {
+                let group = railGroups.find(candidate => candidate.type === placeholderType && candidate.location === location);
+                if (!group) {
+                    const createdGroup: RailGroup = {
+                        type: placeholderType,
+                        location,
+                        rails: [],
+                        elements: [],
+                    };
+                    railGroups.push(createdGroup);
+                    group = createdGroup;
+                }
+                for (const geometry of geometries) {
+                    const parent = geometry.parentElement instanceof SVGElement ? geometry.parentElement : null;
+                    if (!parent) {
+                        continue;
+                    }
+                    const geometryContext = this.readPlaceholderContext(geometry);
+                    group.rails.push({
+                        geometry,
+                        parent,
+                        transform: geometry.getAttribute('transform'),
+                        capacity: geometryContext?.capacity ?? context.capacity,
+                        index: geometryContext?.index ?? context.index,
+                        order: group.rails.length,
+                    });
+                    group.elements.push(geometry);
+                }
+            }
+
+            const shieldRows = placeholderType === 'shield-dc' || placeholderType === 'shield-da'
+                ? this.readShieldRows(element, rectangles)
+                : [];
+            if (rectangles.length === 0 && shieldRows.length === 0) {
                 continue;
             }
-            const { type: placeholderType, location } = metadata;
 
-            const bounds = this.readRectBounds(element);
+            const parent = rectangles.length > 0
+                ? element instanceof SVGRectElement
+                    ? element.parentNode instanceof SVGElement ? element.parentNode : null
+                    : element
+                : element.parentNode instanceof SVGElement ? element.parentNode : null;
+            if (!parent) {
+                continue;
+            }
+
             if (placeholderType === 'shield-dc' || placeholderType === 'shield-da') {
                 let group = shieldGroups.find(candidate => candidate.type === placeholderType && candidate.location === location);
                 if (!group) {
@@ -312,17 +366,14 @@ export class BipedPaperdollUtil {
                     shieldGroups.push(createdGroup);
                     group = createdGroup;
                 }
-                for (const rectangle of rectangles) {
-                    const rectangleBounds = this.readRectBounds(rectangle);
-                    group.rows.push({
-                        x: rectangleBounds.minX,
-                        y: rectangleBounds.minY,
-                        width: rectangleBounds.maxX - rectangleBounds.minX,
-                        height: rectangleBounds.maxY - rectangleBounds.minY,
-                    });
-                    group.elements.push(rectangle);
-                }
+                group.rows.push(...shieldRows);
+                group.elements.push(...(rectangles.length > 0 ? rectangles : [element]));
                 continue;
+            }
+
+            let bounds = this.readRectBounds(rectangles[0]);
+            for (const rectangle of rectangles.slice(1)) {
+                bounds = this.mergeBounds(bounds, this.readRectBounds(rectangle));
             }
 
             let group = groups.find(candidate => candidate.parent === parent && candidate.type === placeholderType && candidate.location === location);
@@ -336,11 +387,26 @@ export class BipedPaperdollUtil {
             group.elements.push(...rectangles);
         }
 
+        const railKeys = new Set<string>();
+        for (const group of railGroups) {
+            const count = this.readRailPipCount(group, armor, structureTonnage, options);
+            if (options.pipLayout === 'rail'
+                && typeof count === 'number'
+                && this.appendRailPips(group, count, options)) {
+                railKeys.add(this.getPlaceholderKey(group.type, group.location));
+            }
+            group.elements.forEach(element => element.remove());
+        }
+
         for (const group of shieldGroups) {
+            if (railKeys.has(this.getPlaceholderKey(group.type, group.location))) {
+                group.elements.forEach(element => element.remove());
+                continue;
+            }
             const shieldValues = options.shieldValues?.[group.location as BipedShieldLocation];
             const count = group.type === 'shield-dc' ? shieldValues?.dc : shieldValues?.da;
             if (typeof count === 'number') {
-                const pips = BipedPipUtil.createShieldPips(
+                const pips = PipUtil.createDistributedPips(
                     group.rows,
                     count,
                     {
@@ -354,8 +420,8 @@ export class BipedPaperdollUtil {
                 if (pips) {
                     const zone = document.createElementNS(SVG_NAMESPACE, 'g');
                     zone.setAttribute('class', `biped-paperdoll-zone biped-paperdoll-zone-${group.location} biped-paperdoll-zone-${group.type}`);
-                    zone.setAttribute('data-paperdoll-location', group.location);
-                    zone.setAttribute('data-paperdoll-zone-type', group.type);
+                    zone.setAttribute('data-location', group.location);
+                    zone.setAttribute('data-zone-type', group.type);
                     zone.appendChild(pips);
                     group.parent.appendChild(zone);
                 }
@@ -364,41 +430,249 @@ export class BipedPaperdollUtil {
         }
 
         for (const group of groups) {
+            if (railKeys.has(this.getPlaceholderKey(group.type, group.location))) {
+                group.elements.forEach(element => element.remove());
+                continue;
+            }
             const pips = this.createPlaceholderPips(group, type, armor, structureTonnage, options);
             if (pips) {
                 const zone = document.createElementNS(SVG_NAMESPACE, 'g');
                 zone.setAttribute('class', `biped-paperdoll-zone biped-paperdoll-zone-${group.location} biped-paperdoll-zone-${group.type}`);
-                zone.setAttribute('data-paperdoll-location', group.location);
-                zone.setAttribute('data-paperdoll-zone-type', group.type);
+                zone.setAttribute('data-location', group.location);
+                zone.setAttribute('data-zone-type', group.type);
                 zone.setAttribute('transform', `translate(${group.bounds.minX} ${group.bounds.minY})`);
                 zone.appendChild(pips);
                 group.parent.appendChild(zone);
             }
             group.elements.forEach(element => element.remove());
         }
+
+        placeholders.forEach(element => {
+            element.removeAttribute('data-placeholder');
+            element.removeAttribute('data-rail');
+            element.removeAttribute('data-location');
+            element.removeAttribute('data-rail-index');
+            element.removeAttribute('data-rail-capacity');
+        });
+    }
+
+    private static appendRailPips(
+        group: RailGroup,
+        count: number,
+        options: BipedPaperdollLayerOptions,
+    ): boolean {
+        const defaultCapacity = Number.isFinite(options.railPipsPerPath)
+            ? Math.max(1, Math.floor(options.railPipsPerPath ?? 5))
+            : 5;
+        const rails = [...group.rails].sort((first, second) => {
+            if (first.index === undefined && second.index === undefined) {
+                return first.order - second.order;
+            }
+            if (first.index === undefined) {
+                return 1;
+            }
+            if (second.index === undefined) {
+                return -1;
+            }
+            return first.index - second.index || first.order - second.order;
+        });
+        const totalCapacity = rails.reduce(
+            (total, rail) => total + (rail.capacity ?? defaultCapacity),
+            0,
+        );
+        if (count <= 0 || totalCapacity < count) {
+            return false;
+        }
+
+        const pipOptions: PipRenderOptions = {
+            ...options.pipOptions,
+            ...(group.type === 'shield-dc' || group.type === 'shield-da'
+                ? {
+                    fill: options.pipOptions?.fill ?? '#fff',
+                    shape: group.type === 'shield-da' ? 'diamond' as const : 'circle' as const,
+                }
+                : {}),
+        };
+        const rendered: Array<{ parent: SVGElement; transform: string | null; pips: SVGGElement }> = [];
+        let remaining = count;
+        for (const rail of rails) {
+            if (remaining <= 0) {
+                break;
+            }
+            const capacity = rail.capacity ?? defaultCapacity;
+            const railCount = Math.min(remaining, capacity);
+            const pips = PipUtil.createRailPips(
+                rail.geometry,
+                railCount,
+                pipOptions,
+                group.type,
+                group.location,
+                capacity,
+            );
+            if (!pips) {
+                return false;
+            }
+            rendered.push({ parent: rail.parent, transform: rail.transform, pips });
+            remaining -= railCount;
+        }
+        if (remaining > 0) {
+            return false;
+        }
+
+        for (const item of rendered) {
+            const zone = document.createElementNS(SVG_NAMESPACE, 'g');
+            zone.setAttribute('class', `biped-paperdoll-zone biped-paperdoll-zone-${group.location} biped-paperdoll-zone-${group.type}`);
+            zone.setAttribute('data-location', group.location);
+            zone.setAttribute('data-zone-type', group.type);
+            zone.setAttribute('data-layout', 'rail');
+            if (item.transform) {
+                zone.setAttribute('transform', item.transform);
+            }
+            zone.appendChild(item.pips);
+            item.parent.appendChild(zone);
+        }
+        return true;
+    }
+
+    private static readRailPipCount(
+        group: RailGroup,
+        armor: BipedArmorValues | undefined,
+        structureTonnage: number | undefined,
+        options: BipedPaperdollLayerOptions,
+    ): number | undefined {
+        if (group.type === 'armor') {
+            const value = armor?.[group.location as BipedArmorLocation];
+            return typeof value === 'number' ? value : undefined;
+        }
+        if (group.type === 'structure') {
+            return typeof structureTonnage === 'number'
+                ? PipUtil.getCanonStructurePipCount(structureTonnage, group.location)
+                : undefined;
+        }
+        const shieldValues = options.shieldValues?.[group.location as BipedShieldLocation];
+        return group.type === 'shield-dc' ? shieldValues?.dc : shieldValues?.da;
+    }
+
+    private static getPlaceholderKey(type: PaperdollPlaceholderType, location: string): string {
+        return `${type}:${location}`;
+    }
+
+    private static readRailGeometries(element: SVGElement): SVGGeometryElement[] {
+        const geometries: SVGGeometryElement[] = [];
+        const addGeometry = (candidate: SVGElement): void => {
+            if (this.isRailGeometry(candidate)) {
+                geometries.push(candidate);
+            }
+        };
+        addGeometry(element);
+        element.querySelectorAll<SVGElement>('path, line, polyline').forEach(addGeometry);
+        return geometries;
+    }
+
+    private static readShieldRows(element: SVGElement, rectangles: SVGRectElement[]): PipRow[] {
+        if (rectangles.length > 0) {
+            return rectangles.map(rectangle => {
+                const bounds = this.readRectBounds(rectangle);
+                return {
+                    x: bounds.minX,
+                    y: bounds.minY,
+                    width: bounds.maxX - bounds.minX,
+                    height: bounds.maxY - bounds.minY,
+                };
+            });
+        }
+        if (!this.isRailGeometry(element)) {
+            return [];
+        }
+        try {
+            const bounds = element.getBBox();
+            if (bounds.width > 0 && bounds.height > 0) {
+                return [{ x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }];
+            }
+        } catch {
+        }
+        if (!(element instanceof SVGPathElement)) {
+            return [];
+        }
+        const coordinates = (element.getAttribute('d') ?? '')
+            .match(/[-+]?(?:\d*\.\d+|\d+\.?)(?:e[-+]?\d+)?/giu)
+            ?.map(Number) ?? [];
+        if (coordinates.length < 2) {
+            return [];
+        }
+        const points = [];
+        for (let index = 0; index + 1 < coordinates.length; index += 2) {
+            points.push({ x: coordinates[index], y: coordinates[index + 1] });
+        }
+        const minX = Math.min(...points.map(point => point.x));
+        const minY = Math.min(...points.map(point => point.y));
+        const maxX = Math.max(...points.map(point => point.x));
+        const maxY = Math.max(...points.map(point => point.y));
+        return maxX > minX && maxY > minY
+            ? [{ x: minX, y: minY, width: maxX - minX, height: maxY - minY }]
+            : [];
+    }
+
+    private static isRailGeometry(element: SVGElement): element is SVGGeometryElement {
+        const tagName = element.tagName.toLowerCase();
+        return tagName === 'path' || tagName === 'line' || tagName === 'polyline';
     }
 
     private static findArtRoot(source: SVGSVGElement, type: 'armor' | 'structure'): SVGGElement | SVGSVGElement {
         return source.querySelector<SVGGElement>(`[id="paperdoll-art-${type}"]`)
-            ?? source.querySelector<SVGGElement>(`[data-paperdoll-art="${type}"]`)
+            ?? source.querySelector<SVGGElement>(`[data-art="${type}"]`)
             ?? source;
     }
 
-    private static readPlaceholderMetadata(element: SVGElement): { type: PaperdollPlaceholderType; location: string } | null {
-        const idMatch = /^paperdoll-placeholder-(armor|structure|shield-dc|shield-da)-([A-Za-z_]+)(?:-\d+)?$/u.exec(element.getAttribute('id') ?? '');
-        if (idMatch) {
-            return { type: idMatch[1] as PaperdollPlaceholderType, location: idMatch[2].toUpperCase() };
-        }
-
-        const type = element.getAttribute('data-paperdoll-placeholder');
-        const location = element.getAttribute('data-paperdoll-location');
+    private static readPlaceholderContext(element: SVGElement): PlaceholderContext | null {
+        const railType = element.getAttribute('data-rail');
+        const placeholderType = element.getAttribute('data-placeholder');
+        const type = railType ?? placeholderType;
+        const location = element.getAttribute('data-location');
         if (!this.isPlaceholderType(type) || !location) {
             return null;
         }
-        return { type, location };
+        const capacity = element.getAttribute('data-rail-capacity');
+        return {
+            type,
+            location: location.toUpperCase(),
+            rail: railType !== null,
+            capacity: this.parsePositiveInteger(capacity),
+            index: this.parseNonNegativeInteger(element.getAttribute('data-rail-index')),
+        };
     }
 
-    private static isPlaceholderType(value: string | null): value is PaperdollPlaceholderType {
+    private static readPlaceholderIdContext(element: SVGElement): PlaceholderContext | null {
+        const idMatch = /^paperdoll-(placeholder|rail)-(armor|structure|shield-dc|shield-da)-([A-Za-z_]+)(?:-(\d+))?(?:-(?:capacity|cap)-(\d+))?$/u.exec(element.getAttribute('id') ?? '');
+        if (!idMatch) {
+            return null;
+        }
+        return {
+            type: idMatch[2] as PaperdollPlaceholderType,
+            location: idMatch[3].toUpperCase(),
+            rail: idMatch[1] === 'rail',
+            index: this.parseNonNegativeInteger(idMatch[4] ?? null),
+            capacity: this.parsePositiveInteger(idMatch[5] ?? null),
+        };
+    }
+
+    private static parseNonNegativeInteger(value: string | null): number | undefined {
+        if (value === null) {
+            return undefined;
+        }
+        const parsed = Number(value);
+        return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
+    }
+
+    private static parsePositiveInteger(value: string | null): number | undefined {
+        if (value === null) {
+            return undefined;
+        }
+        const parsed = Number(value);
+        return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+    }
+
+    private static isPlaceholderType(value: string | null | undefined): value is PaperdollPlaceholderType {
         return value === 'armor' || value === 'structure' || value === 'shield-dc' || value === 'shield-da';
     }
 
@@ -413,10 +687,10 @@ export class BipedPaperdollUtil {
         const height = group.bounds.maxY - group.bounds.minY;
         if (group.type === 'armor' && armor && typeof armor[group.location as BipedArmorLocation] === 'number') {
             const count = armor[group.location as BipedArmorLocation] as number;
-            return BipedPipUtil.createCanonArmorPips(group.location, count, width, height, options.pipOptions);
+            return PipUtil.createCanonArmorPips(group.location, count, width, height, options.pipOptions);
         }
         if (group.type === 'structure' && typeof structureTonnage === 'number') {
-            return BipedPipUtil.createCanonStructurePips(structureTonnage, group.location, width, height, options.pipOptions);
+            return PipUtil.createCanonStructurePips(structureTonnage, group.location, width, height, options.pipOptions);
         }
         return null;
     }
