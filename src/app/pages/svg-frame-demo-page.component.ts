@@ -1,4 +1,5 @@
 import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, ViewChild } from '@angular/core';
+import { BipedPaperdollUtil } from '../utils/biped-paperdoll.util';
 import { SvgFrameUtil } from '../utils/svg-frame.util';
 
 @Component({
@@ -53,7 +54,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
     @ViewChild('frameCanvas', { static: true })
     private readonly frameCanvas!: ElementRef<SVGSVGElement>;
 
-    public ngAfterViewInit(): void {
+    public async ngAfterViewInit(): Promise<void> {
         const svg = this.frameCanvas.nativeElement;
         const mechDataFrameWidth = 225;
         const mechDataFrameHeight = 302;
@@ -64,6 +65,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
         const criticalTableFrameHeight = 397;
         const heatDataFrameHeight = 200;
         const heatDataFrameY = criticalTableFrameY + (criticalTableFrameHeight - heatDataFrameHeight);
+        const bipedPipDemoFrame = await this.createBipedPipDemoFrame();
         svg.getElementById('rs')?.replaceChildren(
             this.createFrameGroup('\'MECH DATA', 0, 0, mechDataFrameWidth, 302, {
                 id: 'mechDataFrame',
@@ -86,6 +88,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 fullWidthHeader: true,
                 // headerFontSize: 8
             }),
+            bipedPipDemoFrame,
             this.createFrameGroup('CRITICAL TABLE', 0, criticalTableFrameY, criticalTableFrameWidth, criticalTableFrameHeight, {
                 id: 'critTableFrame',
                 cornerAngleDegrees: {
@@ -103,6 +106,48 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 },
             }),
         );
+    }
+
+    private async createBipedPipDemoFrame(): Promise<SVGGElement> {
+        const frame = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        frame.setAttribute('transform', `translate(400 0)`);
+        const armorCounts: Readonly<Record<string, number>> = {
+            HD: 5,
+            CT: 15,
+            LT: 12,
+            RT: 12,
+            LA: 10,
+            RA: 10,
+            LL: 16,
+            RL: 16,
+            CT_R: 10,
+            LT_R: 8,
+            RT_R: 8,
+        };
+        const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(84.68, 238, armorCounts, {
+            className: 'biped-paperdoll-armor',
+            shieldValues: {
+                LA: { dc: 8, da: 1 },
+                RA: { dc: 8, da: 1 },
+            },
+            pipOptions: {
+                padding: 1.8,
+                stroke: '#b4492f',
+            },
+        });
+        armorLayer.setAttribute('transform', 'translate(2 2)');
+
+        const structureLayer = await BipedPaperdollUtil.createStructurePaperdoll(55.32, 238, 50, {
+            className: 'biped-paperdoll-structure',
+            pipOptions: {
+                padding: 1.8,
+                stroke: '#356a8a',
+            },
+        });
+        structureLayer.setAttribute('transform', 'translate(20 120)');
+        frame.append(armorLayer, structureLayer);
+
+        return frame;
     }
 
     private createFrameGroup(
