@@ -38,7 +38,7 @@ import type { InventoryControlRuntimeRangeKey } from "../models/inventory-contro
 import { committedCriticalHitCount, isRepeatableMotiveHitId, MOTIVE_HIT_PIP_COUNT } from "../models/rules/vehicle-motive-hit.util";
 import { UnitSvgService } from "./unit-svg.service";
 
-type VehicleEntryState = { isDamaged: boolean; isDisabled: boolean; hitMod: number };
+type VehicleEntryState = { isDamaged: boolean; isDisabled: boolean; hitMod: number; weakenedHitMod: boolean };
 const VTOL_ROTOR_CRIT_ID = 'rotor';
 
 /*
@@ -181,12 +181,6 @@ export class UnitSvgVehicleService extends UnitSvgService {
 
     protected override resolveInventoryControlHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {
         const state = this.currentEntryStates?.get(entry) ?? this.vehicleRules.computeEntryState(entry);
-        if (this.unit.turnState().moveMode() === null && this.vehicleRules.hasDamagedStabilizerAffectingEntry(entry)) {
-            return '*';
-        }
-        const svgBaseHitModifier = this.getSvgBaseHitModifier(entry, range);
-        if (svgBaseHitModifier !== null) return svgBaseHitModifier;
-
         return resolveHitModifier(
             entry,
             state.hitMod,
@@ -202,7 +196,8 @@ export class UnitSvgVehicleService extends UnitSvgService {
         hitModifier: number | 'Vs' | '*' | null,
         range?: InventoryControlRuntimeRangeKey | null
     ) {
-        super.renderHitModEntry(entry, hitModifier, range);
+        const state = this.currentEntryStates?.get(entry) ?? this.vehicleRules.computeEntryState(entry);
+        super.renderHitModEntry(entry, hitModifier, range, !!state.weakenedHitMod);
         if (hitModifier === '*' && this.vehicleRules.hasDamagedStabilizerAffectingEntry(entry)) {
             entry.el?.classList.add('weakenedHitMod');
         }

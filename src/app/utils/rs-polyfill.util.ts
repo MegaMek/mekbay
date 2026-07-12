@@ -914,19 +914,11 @@ export class RsPolyfillUtil {
             const existingHitModRect = group.querySelector<SVGElement>(':scope > .hitMod-rect');
             const existingHitModText = group.querySelector<SVGElement>(':scope > .hitMod-text');
             if (existingHitModRect && existingHitModText) {
+                existingHitModRect.setAttribute('display', 'none');
+                existingHitModText.setAttribute('display', 'none');
+                existingHitModText.textContent = '';
                 this.addTargetTnOverlay(group, existingHitModRect, existingHitModText);
                 return;
-            }
-
-            // Gather hitMod attributes
-            let hitMod: string | null = '';
-            if (group.hasAttribute('hitMod')) {
-                hitMod = group.getAttribute('hitMod');
-            } else {
-                const parent = group.closest('.inventoryEntry');
-                if (parent && parent.hasAttribute('hitMod2')) {
-                    hitMod = parent.getAttribute('hitMod2');
-                }
             }
 
             // Find .name elements for alignment
@@ -974,9 +966,7 @@ export class RsPolyfillUtil {
             rect.setAttribute('height', rectHeight.toString());
             rect.setAttribute('fill', '#000');
             rect.setAttribute('class', 'hitMod-rect');
-            if (hitMod === '') {
-                rect.setAttribute('display', 'none');
-            }
+            rect.setAttribute('display', 'none');
 
             // // Create text
             const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
@@ -988,10 +978,7 @@ export class RsPolyfillUtil {
             text.setAttribute('font-weight', 'bold');
             text.setAttribute('fill', '#fff');
             text.setAttribute('class', 'hitMod-text');
-            text.textContent = hitMod == '*' ? 'vs' : hitMod;
-            if (hitMod === '') {
-                text.setAttribute('display', 'none');
-            }
+            text.setAttribute('display', 'none');
 
             nameEl.parentElement?.appendChild(rect);
             nameEl.parentElement?.appendChild(text);

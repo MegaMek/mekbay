@@ -333,10 +333,6 @@ export class UnitInitializerService {
                 }
             }
             if (eq instanceof AmmoEquipment && hasAmmoCritSlots) return;
-            let baseHitMod = entryEl.getAttribute('hitMod');
-            if (entryEl.parentElement?.classList.contains('inventoryEntry')) {
-                baseHitMod = entryEl.parentElement.getAttribute('hitMod2');
-            }
             // We remove the buttons in inventory for weapon enhancements (except RISC LASER)
             if (eq && eq.flags.has('F_WEAPON_ENHANCEMENT')) {
                 svg.querySelector(`.inventoryEntryButton[inventory-id="${id}"]`)?.remove();
@@ -345,7 +341,6 @@ export class UnitInitializerService {
                 svg.querySelector(`.lngButton[inventory-id="${id}"]`)?.remove();
                 svg.querySelector(`.extButton[inventory-id="${id}"]`)?.remove();
             }
-            const baseHitModClean = (baseHitMod || '').replace('−', '-');
             let inventoryEntry: MountedEquipment;
             const existingEntry = currentInventory.find(item => item.id === id);
             if (existingEntry) {
@@ -354,7 +349,6 @@ export class UnitInitializerService {
                 inventoryEntry.name = iPhysAtk || name;
                 inventoryEntry.locations = locations;
                 inventoryEntry.equipment = eq;
-                inventoryEntry.baseHitMod = baseHitModClean;
                 inventoryEntry.physical = !!iPhysAtk;
                 inventoryEntry.linkedWith = null;
                 inventoryEntry.parent = null;
@@ -367,7 +361,6 @@ export class UnitInitializerService {
                     name: iPhysAtk || name,
                     locations: locations,
                     equipment: eq,
-                    baseHitMod: baseHitModClean,
                     physical: !!iPhysAtk,
                     linkedWith: null,
                     parent: null,

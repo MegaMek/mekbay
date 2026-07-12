@@ -685,11 +685,20 @@ export class MekRules extends UnitTypeRulesBase {
             checkLeg('FRL');
         }
 
+        const legLocations = Array.from(internalLocations).filter(loc => LEG_LOCATIONS.has(loc));
+        const legAESLocations = new Set(critSlots
+            .filter(slot => slot.loc && LEG_LOCATIONS.has(slot.loc) && this.isNamedCrit(slot, 'AES'))
+            .map(slot => slot.loc!));
+        const hasLegAES = legLocations.length > 0 && legLocations.every(loc => legAESLocations.has(loc));
+        const hasFunctionalLegAES = hasLegAES && !destroyedLegAES;
+
         let destroyedArmActuatorsCount = { 'LA': 0, 'RA': 0 };
 
         // Capabilities
         const getArmsModifiers = (loc: string) => {
-            const destroyedAES = critSlots.some(slot => slot.loc == loc && this.isNamedCrit(slot, 'AES') && this.isCritUnavailable(slot));
+            const armAESSlots = critSlots.filter(slot => slot.loc === loc && this.isNamedCrit(slot, 'AES'));
+            const hasAES = armAESSlots.length > 0;
+            const hasFunctionalAES = hasAES && armAESSlots.every(slot => !this.isCritUnavailable(slot));
             if (!this.unit.locations?.armor?.has(loc)) {
                 return null;
             }
@@ -708,11 +717,14 @@ export class MekRules extends UnitTypeRulesBase {
                 pushMod: destroyedShoulder ? 2 : 0,
                 punchMod: (destroyedHand ? 1 : 0) + (destroyedUpperArms ? 2 : 0) + (destroyedLowerArms ? 2 : 0),
                 fireMod: destroyedShoulder ? 4 : (destroyedUpperArms ? 1 : 0) + (destroyedLowerArms ? 1 : 0),
-                physWeaponMod: (destroyedHand ? 2 : 0) + (destroyedUpperArms ? 2 : 0) + (destroyedLowerArms ? 2 : 0),
-                singleArmMod: destroyedAES ? 1 : 0,
+                physWeaponMod: (destroyedHand ? 2 : 0) + (destroyedUpperArms ? 2 : 0) + (destroyedLowerArms ? 2 : 0)
+                    - (hasFunctionalAES ? 1 : 0),
+                hasAES,
+                hasFunctionalAES,
+                singleArmMod: hasFunctionalAES ? -1 : 0,
             };
         };
-        const locationModifiers: { [key: string]: { canPunch: boolean; canPhysWeapon: boolean; pushMod: number; punchMod: number; fireMod: number; physWeaponMod: number; singleArmMod: number; } | null } = {
+        const locationModifiers: { [key: string]: { canPunch: boolean; canPhysWeapon: boolean; pushMod: number; punchMod: number; fireMod: number; physWeaponMod: number; hasAES: boolean; hasFunctionalAES: boolean; singleArmMod: number; } | null } = {
             'LA': getArmsModifiers('LA'),
             'RA': getArmsModifiers('RA'),
         };
@@ -738,6 +750,8 @@ export class MekRules extends UnitTypeRulesBase {
             hasTargetingComputer,
             destroyedTargetingComputers,
             destroyedLegAES,
+            hasLegAES,
+            hasFunctionalLegAES,
             destroyedLegsCount,
             destroyedHipsCount,
             destroyedLegActuatorsCount,
@@ -1322,7 +1336,8 @@ export class MekRules extends UnitTypeRulesBase {
 
         return {
             canKick: systemsStatus.destroyedLegsCount === 0 && systemsStatus.destroyedHipsCount === 0,
-            kickMod: (systemsStatus.destroyedLegActuatorsCount * 2) + (systemsStatus.destroyedFeetCount) + (systemsStatus.destroyedLegAES ? 1 : 0),
+            kickMod: (systemsStatus.destroyedLegActuatorsCount * 2) + systemsStatus.destroyedFeetCount
+                - (systemsStatus.hasFunctionalLegAES ? 1 : 0),
             canPunch: {
                 'LA': (locationModifiers['LA']?.canPunch && !destroyedLA) || false,
                 'RA': (locationModifiers['RA']?.canPunch && !destroyedRA) || false,
@@ -1340,9 +1355,11 @@ export class MekRules extends UnitTypeRulesBase {
                 'RA': locationModifiers['RA']?.physWeaponMod || 0,
             },
             canPush: !destroyedLA && !destroyedRA,
-            pushMod: (locationModifiers['LA']?.pushMod || 0) + (locationModifiers['RA']?.pushMod || 0),
+            pushMod: (locationModifiers['LA']?.pushMod || 0) + (locationModifiers['RA']?.pushMod || 0)
+                - (locationModifiers['LA']?.hasFunctionalAES && locationModifiers['RA']?.hasFunctionalAES ? 1 : 0),
             canClub: (locationModifiers['LA']?.canPhysWeapon && !destroyedLA) && (locationModifiers['RA']?.canPhysWeapon && !destroyedRA),
-            clubMod: (locationModifiers['LA']?.physWeaponMod || 0) + (locationModifiers['RA']?.physWeaponMod || 0),
+            clubMod: (locationModifiers['LA']?.physWeaponMod || 0) + (locationModifiers['RA']?.physWeaponMod || 0)
+                + (locationModifiers['LA']?.hasFunctionalAES && locationModifiers['RA']?.hasFunctionalAES ? 1 : 0),
             spikeBonus,
         };
     });
@@ -1402,7 +1419,7 @@ export class MekRules extends UnitTypeRulesBase {
      */
     private readonly entryStates = computed<Map<MountedEquipment, MountedEquipmentRuleState>>(() => {
         const entries = this.unit.getInventory();
-        const result = new Map<MountedEquipment, { isDamaged: boolean; isDisabled: boolean; hitMod: number }>();
+        const result = new Map<MountedEquipment, MountedEquipmentRuleState>();
         for (const entry of entries) {
             result.set(entry, this.computeEntryState(entry));
         }
@@ -1427,22 +1444,17 @@ export class MekRules extends UnitTypeRulesBase {
     override computeEntryState(entry: MountedEquipment): MountedEquipmentRuleState {
         const physicallyDestroyed = this.entryInPhysicallyDestroyedLocation(entry);
         const functionallyDestroyed = this.entryInFunctionallyDestroyedLocation(entry);
-        let isDamaged = entry.committedDestroyed() || physicallyDestroyed || this.isEntryDestroyedByCriticalDamage(entry);
+        const isDamaged = entry.committedDestroyed() || physicallyDestroyed || this.isEntryDestroyedByCriticalDamage(entry);
         let isDisabled = functionallyDestroyed || this.isEntryStateDisabled(entry);
         let hitMod = 0;
+        let weakenedHitMod = false;
 
         const physical = this.physicalCombat();
         const fire = this.fireControl();
         const systemsStatus = this.systemsStatus();
-        if (!physical || !fire) return { isDamaged, isDisabled, hitMod };
+        if (!physical || !fire) return { isDamaged, isDisabled, hitMod, weakenedHitMod };
 
         if (fire.globalMod !== 0) hitMod += fire.globalMod;
-        if (entry.locations?.size === 1) {
-            const singleLoc = Array.from(entry.locations)[0];
-            if (singleLoc in fire.singleArmMod) {
-                hitMod += fire.singleArmMod[singleLoc as ArmLocation];
-            }
-        }
 
         if (entry.physical) {
             switch (entry.name) {
@@ -1450,43 +1462,75 @@ export class MekRules extends UnitTypeRulesBase {
                     const loc = Array.from(entry.locations!)[0] as ArmLocation;
                     if (loc in physical.canPunch && !physical.canPunch[loc]) isDisabled = true;
                     if (loc in physical.punchMod) hitMod += physical.punchMod[loc];
+                    hitMod += fire.singleArmMod[loc] ?? 0;
+                    if (this.hasBrokenArmAES(systemsStatus.locationModifiers, loc)) weakenedHitMod = true;
                     break;
                 }
                 case 'club':
                     if (!physical.canClub) isDisabled = true;
                     hitMod += physical.clubMod;
+                    if (this.hasLostClubAESBonus(systemsStatus.locationModifiers)) weakenedHitMod = true;
                     break;
                 case 'push':
                     if (!physical.canPush) isDisabled = true;
                     hitMod += physical.pushMod || 0;
+                    if (this.hasBrokenPairedArmAES(systemsStatus.locationModifiers)) weakenedHitMod = true;
                     break;
                 case 'kick [talons]':
                 case 'kick':
                     if (!physical.canKick) isDisabled = true;
                     hitMod += physical.kickMod;
+                    if (systemsStatus.hasLegAES && !systemsStatus.hasFunctionalLegAES) weakenedHitMod = true;
                     break;
             }
         } else if (entry.equipment?.flags.has('F_CLUB') || entry.equipment?.flags.has('F_HAND_WEAPON')) {
             entry.locations?.forEach(loc => {
                 if ((loc in physical.canPhysWeapon) && !physical.canPhysWeapon[loc as ArmLocation]) isDisabled = true;
                 if (loc in physical.physWeaponMod) hitMod += physical.physWeaponMod[loc as ArmLocation];
+                if (this.hasBrokenArmAES(systemsStatus.locationModifiers, loc)) weakenedHitMod = true;
             });
         } else {
+            if (entry.locations?.size === 1) {
+                const singleLoc = Array.from(entry.locations)[0];
+                if (singleLoc in fire.singleArmMod) {
+                    hitMod += fire.singleArmMod[singleLoc as ArmLocation];
+                    if (this.hasBrokenArmAES(systemsStatus.locationModifiers, singleLoc)) weakenedHitMod = true;
+                }
+            }
             if (!fire.canFire) isDisabled = true;
             if (fire.globalFireMod) hitMod += fire.globalFireMod;
             entry.locations?.forEach(loc => {
                 if (loc in fire.fireMod) hitMod += fire.fireMod[loc as ArmLocation];
             });
-            if (systemsStatus.hasTargetingComputer && systemsStatus.destroyedTargetingComputers === 0 && entry.equipment) {
-                const equipment = entry.parent?.equipment ?? entry.equipment;
-                if (equipment.flags.has('F_DIRECT_FIRE')
-                    && !equipment.flags.has('F_CWS')
-                    && !equipment.flags.has('F_TASER')) {
+            const equipment = entry.parent?.equipment ?? entry.equipment;
+            if (systemsStatus.hasTargetingComputer && this.isTargetingComputerEligible(equipment)) {
+                if (systemsStatus.destroyedTargetingComputers === 0) {
                     hitMod--;
+                } else {
+                    weakenedHitMod = true;
                 }
             }
         }
-        return { isDamaged, isDisabled, hitMod };
+        return { isDamaged, isDisabled, hitMod, weakenedHitMod };
+    }
+
+    private hasBrokenArmAES(
+        locationModifiers: ReturnType<MekRules['systemsStatus']>['locationModifiers'],
+        loc: string
+    ): boolean {
+        const armStatus = locationModifiers[loc];
+        return !!armStatus?.hasAES && !armStatus.hasFunctionalAES;
+    }
+
+    private hasBrokenPairedArmAES(locationModifiers: ReturnType<MekRules['systemsStatus']>['locationModifiers']): boolean {
+        const left = locationModifiers['LA'];
+        const right = locationModifiers['RA'];
+        return !!left?.hasAES && !!right?.hasAES && (!left.hasFunctionalAES || !right.hasFunctionalAES);
+    }
+
+    private hasLostClubAESBonus(locationModifiers: ReturnType<MekRules['systemsStatus']>['locationModifiers']): boolean {
+        const arms = [locationModifiers['LA'], locationModifiers['RA']];
+        return arms.some(arm => arm?.hasAES) && arms.every(arm => !arm?.hasFunctionalAES);
     }
 
     private entryInPhysicallyDestroyedLocation(entry: MountedEquipment): boolean {

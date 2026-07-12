@@ -40,10 +40,10 @@ import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
 import { LINKED_LOCATIONS } from "../models/rules/mek-rules";
 import { LoggerService } from './logger.service';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
-import { resolveHitModifier } from '../models/rules/hit-modifier.util';
+import { getEntryBaseHitModifier, resolveHitModifier } from '../models/rules/hit-modifier.util';
 import { formatGunneryDisplay, formatPilotingDisplay, UNIT_CONDITION_DEFINITIONS, unitConditionSortIndex, type UnitHeatSource } from '../models/rules/unit-type-rules';
 import type { HeatDissipationState } from '../models/rules/heat-management';
-import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
+import { AmmoEquipment } from '../models/equipment.model';
 import { formatAmmoName } from '../utils/ammo-interaction.util';
 import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection, readInventoryTargetDisplay } from '../utils/inventory-target-number.util';
 import { getInventoryControlModeAmmoSummary, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE, resolveInventoryControlRangeDamageText, resolveInventoryControlSelectedAmmoOption, type InventoryControlAmmoOption } from '../utils/inventory-control.util';
@@ -946,9 +946,6 @@ export class UnitSvgService {
     }
 
     protected resolveInventoryControlHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {
-        const svgBaseHitModifier = this.getSvgBaseHitModifier(entry, range);
-        if (svgBaseHitModifier !== null) return svgBaseHitModifier;
-
         return resolveHitModifier(
             entry,
             0,
@@ -957,11 +954,6 @@ export class UnitSvgService {
             (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo),
             (candidate, candidateRange?: InventoryControlRuntimeRangeKey | null) => this.unit.getInventoryControlBaseHitModifier(candidate, candidateRange)
         );
-    }
-
-    protected getSvgBaseHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): '*' | null {
-        if (range || entry.baseHitMod !== '*' || !(entry.equipment instanceof WeaponEquipment)) return null;
-        return entry.equipment.getToHitModifiers().length > 1 ? entry.baseHitMod : null;
     }
 
     /** Override to inject entry-specific effective hit modifiers. */
@@ -1190,7 +1182,8 @@ export class UnitSvgService {
     protected renderHitModEntry(
         entry: MountedEquipment,
         hitModifier: number | 'Vs' | '*' | null,
-        range?: InventoryControlRuntimeRangeKey | null
+        range?: InventoryControlRuntimeRangeKey | null,
+        forceWeakened = false
     ) {
         if (!entry.el) return;
         const hitModRect = entry.el.querySelector(`:scope > .hitMod-rect`);
@@ -1207,15 +1200,14 @@ export class UnitSvgService {
             hitModRect.setAttribute('display', 'block');
             hitModText.setAttribute('display', 'block');
             hitModText.textContent = hitModifier;
-            entry.el.classList.remove('weakenedHitMod');
+            entry.el.classList.toggle('weakenedHitMod', forceWeakened);
             return;
         }
 
-        const equipmentBaseHitModifier = entry.equipment instanceof WeaponEquipment
-            ? entry.equipment.getToHitModifier(range)
-            : parseInt(entry.baseHitMod || '0');
-        const weakenedHitMod = hitModifier > equipmentBaseHitModifier;
-        if (hitModifier !== 0 || equipmentBaseHitModifier !== 0) {
+        const resolvedBaseHitModifier = getEntryBaseHitModifier(entry, range);
+        const baseHitModifier = typeof resolvedBaseHitModifier === 'number' ? resolvedBaseHitModifier : 0;
+        const weakenedHitMod = forceWeakened || hitModifier > baseHitModifier;
+        if (hitModifier !== 0 || baseHitModifier !== 0 || forceWeakened) {
             hitModRect.setAttribute('display', 'block');
             hitModText.setAttribute('display', 'block');
             hitModText.textContent = (hitModifier >= 0 ? '+' : '') + hitModifier.toString();

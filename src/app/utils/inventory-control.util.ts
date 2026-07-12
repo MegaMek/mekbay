@@ -537,7 +537,7 @@ function formatInventoryControlHitModifier(
     rules: InventoryControlRules
 ): string {
     const modifierValues = entry.equipment instanceof WeaponEquipment ? entry.equipment.getToHitModifiers() : [];
-    if (modifierValues.length <= 1 || entry.baseHitMod === 'Vs') {
+    if (modifierValues.length <= 1) {
         return formatHitModifier(resolveHitModifier(
             entry,
             additionalHitModifier,
