@@ -1,7 +1,7 @@
 import {
     BIPED_ARMOR_PIP_LAYOUTS,
     BIPED_STRUCTURE_PIP_LAYOUTS,
-} from '../data/biped-canon-pip-layouts.generated';
+} from '../../data/biped-canon-pip-layouts.generated';
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 const DEFAULT_STROKE_WIDTH_RATIO = 0.21;

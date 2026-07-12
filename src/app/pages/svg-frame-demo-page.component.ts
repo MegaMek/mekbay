@@ -1,7 +1,7 @@
 import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, ViewChild } from '@angular/core';
 import { BipedPaperdollUtil, type BipedArmorLocation, type BipedPaperdollPipLayout, type BipedStructureLocation, type BipedStructureTonnage } from '../utils/biped-paperdoll.util';
-import { PipUtil } from '../utils/pip.util';
-import { SvgFrameUtil } from '../utils/svg-frame.util';
+import { PipUtil } from '../utils/sheets/pip.util';
+import { SvgFrameUtil } from '../utils/sheets/svg-frame.util';
 
 @Component({
     selector: 'svg-frame-demo-page',
