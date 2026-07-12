@@ -646,6 +646,7 @@ export class MekRules extends UnitTypeRulesBase {
         const cockpitLoc = critSlots.find(slot => this.isNamedCrit(slot, "Cockpit"))?.loc ?? 'HD';
         const destroyedSensorsCountInHD = critSlots.filter(slot => slot.loc === 'HD' && this.isNamedCrit(slot, 'Sensor') && this.isCritUnavailable(slot)).length;
         const destroyedSensorsCount = critSlots.filter(slot => this.isNamedCrit(slot, 'Sensor') && this.isCritUnavailable(slot)).length;
+        const hasTargetingComputer = critSlots.some(slot => this.isNamedCrit(slot, 'Targeting Computer'));
         const destroyedTargetingComputers = critSlots.filter(slot => this.isNamedCrit(slot, 'Targeting Computer') && this.isCritUnavailable(slot)).length;
 
         const internalLocations = new Set<string>(this.unit.locations?.internal?.keys() || []);
@@ -734,6 +735,7 @@ export class MekRules extends UnitTypeRulesBase {
             cockpitLoc,
             destroyedSensorsCountInHD,
             destroyedSensorsCount,
+            hasTargetingComputer,
             destroyedTargetingComputers,
             destroyedLegAES,
             destroyedLegsCount,
@@ -1475,11 +1477,12 @@ export class MekRules extends UnitTypeRulesBase {
             entry.locations?.forEach(loc => {
                 if (loc in fire.fireMod) hitMod += fire.fireMod[loc as ArmLocation];
             });
-            if (systemsStatus.destroyedTargetingComputers > 0 && entry.equipment) {
+            if (systemsStatus.hasTargetingComputer && systemsStatus.destroyedTargetingComputers === 0 && entry.equipment) {
                 const equipment = entry.parent?.equipment ?? entry.equipment;
-                if ((equipment.flags.has('F_ENERGY') || equipment.flags.has('F_BALLISTIC'))
-                    && equipment.flags.has('F_DIRECT_FIRE')) {
-                    hitMod += 1;
+                if (equipment.flags.has('F_DIRECT_FIRE')
+                    && !equipment.flags.has('F_CWS')
+                    && !equipment.flags.has('F_TASER')) {
+                    hitMod--;
                 }
             }
         }

@@ -1022,7 +1022,7 @@ export class UnitSvgService {
             this.renderInventoryControlHeatEntry(entry, weaponRuleRange);
             this.renderInventoryControlRangeDamageEntry(entry, weaponRuleRange);
             if (!entry.isDestroyed()) {
-                this.renderHitModEntry(entry, this.resolveInventoryControlHitModifier(entry, weaponRuleRange));
+                this.renderHitModEntry(entry, this.resolveInventoryControlHitModifier(entry, weaponRuleRange), weaponRuleRange);
             }
             entry.el.classList.toggle('selected', selected);
             entry.el.classList.toggle('selected-alternative-mode', selected && hasSelectedMode);
@@ -1187,7 +1187,11 @@ export class UnitSvgService {
     }
 
     /** Render hit modifier badge for a single inventory entry. Pure presentation. */
-    protected renderHitModEntry(entry: MountedEquipment, hitModifier: number | 'Vs' | '*' | null) {
+    protected renderHitModEntry(
+        entry: MountedEquipment,
+        hitModifier: number | 'Vs' | '*' | null,
+        range?: InventoryControlRuntimeRangeKey | null
+    ) {
         if (!entry.el) return;
         const hitModRect = entry.el.querySelector(`:scope > .hitMod-rect`);
         const hitModText = entry.el.querySelector(`:scope > .hitMod-text`);
@@ -1207,8 +1211,11 @@ export class UnitSvgService {
             return;
         }
 
-        const weakenedHitMod = hitModifier > parseInt(entry.baseHitMod || '0');
-        if (hitModifier !== 0 || entry.baseHitMod === '+0' || weakenedHitMod) {
+        const equipmentBaseHitModifier = entry.equipment instanceof WeaponEquipment
+            ? entry.equipment.getToHitModifier(range)
+            : parseInt(entry.baseHitMod || '0');
+        const weakenedHitMod = hitModifier > equipmentBaseHitModifier;
+        if (hitModifier !== 0 || equipmentBaseHitModifier !== 0) {
             hitModRect.setAttribute('display', 'block');
             hitModText.setAttribute('display', 'block');
             hitModText.textContent = (hitModifier >= 0 ? '+' : '') + hitModifier.toString();

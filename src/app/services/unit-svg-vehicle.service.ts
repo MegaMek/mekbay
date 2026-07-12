@@ -197,8 +197,12 @@ export class UnitSvgVehicleService extends UnitSvgService {
         );
     }
 
-    protected override renderHitModEntry(entry: MountedEquipment, hitModifier: number | 'Vs' | '*' | null) {
-        super.renderHitModEntry(entry, hitModifier);
+    protected override renderHitModEntry(
+        entry: MountedEquipment,
+        hitModifier: number | 'Vs' | '*' | null,
+        range?: InventoryControlRuntimeRangeKey | null
+    ) {
+        super.renderHitModEntry(entry, hitModifier, range);
         if (hitModifier === '*' && this.vehicleRules.hasDamagedStabilizerAffectingEntry(entry)) {
             entry.el?.classList.add('weakenedHitMod');
         }

@@ -162,6 +162,22 @@ function miscEntry(forceUnit: CBTForceUnit, equipment: Equipment): MountedEquipm
     });
 }
 
+function directFireWeaponEntry(forceUnit: CBTForceUnit, flags: string[] = []): MountedEquipment {
+    const equipment = new WeaponEquipment({
+        id: 'DirectFireWeapon',
+        name: 'Direct Fire Weapon',
+        type: 'weapon',
+        flags: ['F_DIRECT_FIRE', ...flags],
+        weapon: { damage: 10, ranges: [5, 10, 15, 20], ammoType: 'NA' },
+    });
+    return new MountedEquipment({
+        owner: forceUnit,
+        id: equipment.id,
+        name: equipment.name,
+        equipment,
+    });
+}
+
 describe('MekRules', () => {
     beforeEach(() => {
         dataService = jasmine.createSpyObj<DataService>('DataService', ['getUnitByName']);
@@ -182,6 +198,16 @@ describe('MekRules', () => {
 
         expect(rules.hasComputedCondition('immobile')).toBeFalse();
         expect(rules.hasComputedCondition('abandoned')).toBeFalse();
+    });
+
+    it('applies a functional targeting computer only to eligible direct-fire weapons', () => {
+        const activeForceUnit = createForceUnitHarness({ critSlots: [crit('Targeting Computer', false)] });
+        const destroyedForceUnit = createForceUnitHarness({ critSlots: [crit('Targeting Computer')] });
+
+        expect(activeForceUnit.rules.computeEntryState(directFireWeaponEntry(activeForceUnit)).hitMod).toBe(-1);
+        expect(destroyedForceUnit.rules.computeEntryState(directFireWeaponEntry(destroyedForceUnit)).hitMod).toBe(0);
+        expect(activeForceUnit.rules.computeEntryState(directFireWeaponEntry(activeForceUnit, ['F_CWS'])).hitMod).toBe(0);
+        expect(activeForceUnit.rules.computeEntryState(directFireWeaponEntry(activeForceUnit, ['F_TASER'])).hitMod).toBe(0);
     });
 
     it('uses active MASC state for effective Mek run MP without changing potential max run MP', () => {
