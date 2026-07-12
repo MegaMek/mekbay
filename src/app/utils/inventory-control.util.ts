@@ -58,6 +58,7 @@ const RANGE_DAMAGE_INDEX: Record<InventoryControlRuntimeRangeKey, number> = {
     long: 2,
     extreme: 3
 };
+const RANGE_MODIFIER_KEYS: readonly InventoryControlRuntimeRangeKey[] = ['short', 'medium', 'long', 'extreme'];
 
 export type InventoryControlGroupId = 'ranged' | 'physical' | 'equipment';
 export type InventoryRangeKey = 'short' | 'medium' | 'long';
@@ -495,8 +496,7 @@ function buildInventoryControlRow(
     const ammo = getInventoryControlAmmoSummary(rowEntry, ammoSources, selectedMode, rules.matchesAmmo, options.locationLock);
     const selectedAmmo = resolveInventoryControlSelectedAmmoOption(ammo.options, rowEntry.owner.getInventoryControlEntryAmmoOption?.(rowEntry.id))?.ammo ?? null;
     const additionalHitModifier = state?.hitMod ?? 0;
-    const hitModifier = resolveHitModifier(rowEntry, additionalHitModifier, undefined, selectedAmmo, rules.resolveLinkedHitModifier, rules.resolveBaseHitModifier);
-    const hit = formatHitModifier(hitModifier);
+    const hit = formatInventoryControlHitModifier(rowEntry, additionalHitModifier, selectedAmmo, rules);
     const base = fieldGunComponent
         ? readInfantryFieldGunDisplayData(entry, fieldGunComponent, hit)
         : readEntryDisplayData(entry.el!, hit);
@@ -528,6 +528,37 @@ function buildInventoryControlRow(
         selectedMode,
         ammo
     };
+}
+
+function formatInventoryControlHitModifier(
+    entry: MountedEquipment,
+    additionalHitModifier: number,
+    selectedAmmo: AmmoEquipment | null,
+    rules: InventoryControlRules
+): string {
+    const modifierValues = entry.equipment instanceof WeaponEquipment ? entry.equipment.getToHitModifiers() : [];
+    if (modifierValues.length <= 1 || entry.baseHitMod === 'Vs') {
+        return formatHitModifier(resolveHitModifier(
+            entry,
+            additionalHitModifier,
+            undefined,
+            selectedAmmo,
+            rules.resolveLinkedHitModifier,
+            rules.resolveBaseHitModifier
+        ));
+    }
+
+    return RANGE_MODIFIER_KEYS
+        .slice(0, modifierValues.length)
+        .map(range => formatHitModifier(resolveHitModifier(
+            entry,
+            additionalHitModifier,
+            range,
+            selectedAmmo,
+            rules.resolveLinkedHitModifier,
+            rules.resolveBaseHitModifier
+        )))
+        .join('/');
 }
 
 function createInventoryControlRowEntry(entry: MountedEquipment, options: InventoryControlRowOptions): MountedEquipment {
@@ -807,7 +838,9 @@ function applySelectedRangeDisplay(
     resolveBaseHitModifier?: EntryBaseHitModifierResolver
 ): InventoryControlDisplayData {
     const damage = resolveInventoryControlRangeDamageText(entry, selectedRange, display.damage);
-    const hit = formatHitModifier(resolveHitModifier(entry, additionalHitModifier, selectedRange, selectedAmmo, resolveLinkedHitModifier, resolveBaseHitModifier));
+    const hit = selectedRange === null
+        ? display.hit
+        : formatHitModifier(resolveHitModifier(entry, additionalHitModifier, selectedRange, selectedAmmo, resolveLinkedHitModifier, resolveBaseHitModifier));
     if (damage === null && hit === display.hit) return display;
     return {
         ...display,

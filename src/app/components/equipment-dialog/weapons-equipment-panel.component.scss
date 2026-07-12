@@ -658,6 +658,11 @@
         }
     }
 
+    .group-stats {
+        flex-wrap: wrap;
+        min-width: 0;
+    }
+
     .centered-cell {
         justify-content: flex-start;
         gap: 4px;
@@ -681,6 +686,13 @@
 
     .hit-cell, .location-cell, .heat-cell, .min-cell {
         width: 48px;
+    }
+
+    .hit-cell, .location-cell {
+        width: auto;
+        min-width: 48px;
+        max-width: 100%;
+        overflow-wrap: anywhere;
     }
 
     .min-value {
@@ -712,5 +724,10 @@
 
     .hit-cell, .location-cell, .heat-cell, .min-cell {
         width: 32px;
+    }
+
+    .hit-cell, .location-cell {
+        width: auto;
+        min-width: 32px;
     }
 }

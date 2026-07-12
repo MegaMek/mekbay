@@ -47,6 +47,13 @@ import type { InventoryControlRuntimeRangeKey } from '../inventory-control-runti
 export type LinkedEquipmentHitModifierResolver = (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => number;
 export type EntryBaseHitModifierResolver = (entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null) => number | null;
 
+export function getEquipmentBaseHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | null {
+    if (!(entry.equipment instanceof WeaponEquipment)) return null;
+
+    const modifier = entry.equipment.getToHitModifier(range);
+    return modifier === 0 ? null : modifier;
+}
+
 /**
  * Resolve the final hit modifier for an inventory entry.
  * Returns `null` if the entry is not eligible for hit modifiers
@@ -64,7 +71,7 @@ export function resolveHitModifier(
     resolveBaseModifier?: EntryBaseHitModifierResolver
 ): number | 'Vs' | '*' | null {
     const linkedModifiers = resolveLinkedModifiers?.(entry, selectedAmmo) ?? 0;
-    const baseModifier = resolveBaseModifier?.(entry, range) ?? null;
+    const baseModifier = resolveBaseModifier?.(entry, range) ?? getEquipmentBaseHitModifier(entry, range);
     if (entry.baseHitMod === 'Vs') {
         return entry.baseHitMod;
     }
