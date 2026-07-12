@@ -202,6 +202,7 @@ function unitToASRow(unit: Unit): Record<string, unknown> {
         dmgM: as?.dmg?.dmgM ?? '',
         dmgL: as?.dmg?.dmgL ?? '',
         dmgE: as?.dmg?.dmgE ?? '',
+        specials: as?.specials?.join(', ') ?? '',
         usesArcs: as?.usesArcs ?? '',
         // Front Arc columns
         'frontArc STD': formatArcDamage(as?.frontArc, 'STD'),

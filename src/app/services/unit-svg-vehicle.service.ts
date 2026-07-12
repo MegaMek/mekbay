@@ -184,6 +184,9 @@ export class UnitSvgVehicleService extends UnitSvgService {
         if (this.unit.turnState().moveMode() === null && this.vehicleRules.hasDamagedStabilizerAffectingEntry(entry)) {
             return '*';
         }
+        const svgBaseHitModifier = this.getSvgBaseHitModifier(entry, range);
+        if (svgBaseHitModifier !== null) return svgBaseHitModifier;
+
         return resolveHitModifier(
             entry,
             state.hitMod,
