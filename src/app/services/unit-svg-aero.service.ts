@@ -33,6 +33,8 @@
 
 import { UnitSvgService } from "./unit-svg.service";
 import { AeroRules } from "../models/rules/aero-rules";
+import { MountedEquipment } from "../models/force-serialization";
+import type { InventoryControlRuntimeRangeKey } from "../models/inventory-control-runtime-state.model";
 
 /*
  * Author: Drake
@@ -54,42 +56,45 @@ export class UnitSvgAeroService extends UnitSvgService {
 
         // Update hsPips (visual damaged/fresh/disabled)
         const hsPipsContainer = svg.querySelector('.hsPips');
-        if (hsPipsContainer) {
-            const allHsPips = Array.from(hsPipsContainer.querySelectorAll('.pip')) as SVGElement[];
-            let idx = 0;
-            allHsPips.forEach(pip => {
-                if (idx < dissipation.damagedCount) {
-                    if (!pip.classList.contains('damaged')) {
-                        pip.classList.add('fresh');
-                        pip.classList.add('damaged');
-                    } else {
-                        pip.classList.remove('fresh');
-                    }
-                } else {
-                    if (pip.classList.contains('damaged')) {
-                        pip.classList.add('fresh');
-                        pip.classList.remove('damaged');
-                    } else {
-                        pip.classList.remove('fresh');
-                    }
-                }
-                idx++;
-            });
 
-            idx = 0;
-            allHsPips.reverse().forEach(pip => {
-                if (idx < dissipation.heatsinksOff) {
-                    if (!pip.classList.contains('disabled')) {
-                        pip.classList.add('disabled');
-                    }
+        // This unit has no heatsink pips, lets skip all, probably is a vessel or something.
+        // TODO: implement this better...
+        if (!hsPipsContainer) return;
+        
+        const allHsPips = Array.from(hsPipsContainer.querySelectorAll('.pip')) as SVGElement[];
+        let idx = 0;
+        allHsPips.forEach(pip => {
+            if (idx < dissipation.damagedCount) {
+                if (!pip.classList.contains('damaged')) {
+                    pip.classList.add('fresh');
+                    pip.classList.add('damaged');
                 } else {
-                    if (pip.classList.contains('disabled')) {
-                        pip.classList.remove('disabled');
-                    }
+                    pip.classList.remove('fresh');
                 }
-                idx++;
-            });
-        }
+            } else {
+                if (pip.classList.contains('damaged')) {
+                    pip.classList.add('fresh');
+                    pip.classList.remove('damaged');
+                } else {
+                    pip.classList.remove('fresh');
+                }
+            }
+            idx++;
+        });
+
+        idx = 0;
+        allHsPips.reverse().forEach(pip => {
+            if (idx < dissipation.heatsinksOff) {
+                if (!pip.classList.contains('disabled')) {
+                    pip.classList.add('disabled');
+                }
+            } else {
+                if (pip.classList.contains('disabled')) {
+                    pip.classList.remove('disabled');
+                }
+            }
+            idx++;
+        });
 
         // Update heatsink count display
         const hsCountElement = svg.querySelector('#hsCount');
@@ -113,8 +118,12 @@ export class UnitSvgAeroService extends UnitSvgService {
 
     // ── Hit Modifiers ────────────────────────────────────────────────────────
 
-    protected override getGlobalFireModifier(): number {
-        const heat = this.unit.getHeat().current;
-        return AeroRules.getHeatEffects(heat).fireModifier;
+    protected override resolveInventoryControlHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {
+        const hitModifier = super.resolveInventoryControlHitModifier(entry, range);
+        return typeof hitModifier === 'number' ? hitModifier + this.inventoryTargetHeatFireModifier(entry) : hitModifier;
+    }
+ 
+    override inventoryTargetHeatFireModifier(entry: MountedEquipment): number {
+        return AeroRules.getHeatEffects(this.unit.getHeat().current).fireModifier;
     }
 }

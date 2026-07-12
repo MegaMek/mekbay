@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Component, inject, signal, ChangeDetectionStrategy, viewChild, ElementRef, afterNextRender, computed } from '@angular/core';
+import { Component, inject, signal, ChangeDetectionStrategy, viewChild, type ElementRef, type afterNextRender, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DialogRef } from '@angular/cdk/dialog';
 import { firstValueFrom } from 'rxjs';
@@ -40,8 +40,8 @@ import { DataService } from '../../services/data.service';
 import { GameService } from '../../services/game.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
-import { PackUnitEntry, ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
-import { CustomizeForcePackDialogComponent, CustomizeForcePackDialogData, CustomizeForcePackDialogResult } from '../customize-force-pack-dialog/customize-force-pack-dialog.component';
+import { type PackUnitEntry, type ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
+import { CustomizeForcePackDialogComponent, type CustomizeForcePackDialogData, type CustomizeForcePackDialogResult } from '../customize-force-pack-dialog/customize-force-pack-dialog.component';
 
 /*
  * Author: Drake

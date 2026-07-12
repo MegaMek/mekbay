@@ -33,7 +33,7 @@
 
 import { inject, Injectable, signal } from '@angular/core';
 import { DbService } from './db.service';
-import { Options } from '../models/options.model';
+import type { ForceBudgetOptimizerLastSkills, Options } from '../models/options.model';
 import { GameSystem } from '../models/common.model';
 
 /*
@@ -44,9 +44,18 @@ const DEFAULT_OPTIONS: Options = {
     canvasInput: 'all',
     unitDisplayName: 'chassisModel',
     gameSystem: GameSystem.CLASSIC,
+    availabilitySource: 'mul',
+    megaMekAvailabilityFiltersUseAllScopedOptions: true,
     c3NetworkConnectionsAboveNodes: false,
     automaticallyConvertFiltersToSemantic: false,
     unitSearchExpandedViewLayout: 'panel-list-filters',
+    showFilteredComponents: false,
+    unitSearchViewMode: 'list',
+    forceOverviewViewMode: 'compact',
+    printRosterSummary: false,
+    printMargin: 'browserDefined',
+    performanceMode: false,
+    unitServers: [],
     
     // Classic
     sheetsColor: 'normal',
@@ -54,6 +63,7 @@ const DEFAULT_OPTIONS: Options = {
     quickActions: 'disabled',
     swipeToNextSheet: 'horizontal',
     recordSheetCenterPanelContent: 'clusterTable',
+    recordSheetDoubleTapZoomReset: 'contextual',
     syncZoomBetweenSheets: true,
     useAutomations: true,
     allowMultipleActiveSheets: false,
@@ -65,7 +75,48 @@ const DEFAULT_OPTIONS: Options = {
     ASUseAutomations: true,
     ASVehiclesCriticalHitTable: 'default',
     ASUnifiedDamagePicker: true,
+    forceGenLastBVMin: 7900,
+    forceGenLastBVMax: 8000,
+    forceGenLastPVMin: 290,
+    forceGenLastPVMax: 300,
+    forceGenLastMinUnitCount: 4,
+    forceGenLastMaxUnitCount: 8,
+    forceGenLastGunnerySkillMin: 4,
+    forceGenLastGunnerySkillMax: 4,
+    forceGenLastPilotingSkillMin: 5,
+    forceGenLastPilotingSkillMax: 5,
+    forceGenLastMaxPilotSkillDelta: 1,
+    forceGenFailureSearchWindowMs: 300,
+    forceGenPreventDuplicateChassis: false,
+    forceGenUseTaggedQuantities: false,
+    forceGenUseUnitTagsAsChassisTags: false,
+    forceBudgetOptimizerLastSkills: {
+        gunnery: { min: 2, max: 4 },
+        piloting: { min: 3, max: 5 },
+        skill: { min: 2, max: 5 },
+        maxDelta: 1,
+    },
 };
+
+function resolveForceBudgetOptimizerLastSkills(saved: Options | null | undefined): ForceBudgetOptimizerLastSkills {
+    const defaults = DEFAULT_OPTIONS.forceBudgetOptimizerLastSkills;
+    const skills = saved?.forceBudgetOptimizerLastSkills;
+    return {
+        gunnery: {
+            min: skills?.gunnery?.min ?? defaults.gunnery.min,
+            max: skills?.gunnery?.max ?? defaults.gunnery.max,
+        },
+        piloting: {
+            min: skills?.piloting?.min ?? defaults.piloting.min,
+            max: skills?.piloting?.max ?? defaults.piloting.max,
+        },
+        skill: {
+            min: skills?.skill?.min ?? defaults.skill.min,
+            max: skills?.skill?.max ?? defaults.skill.max,
+        },
+        maxDelta: skills?.maxDelta ?? defaults.maxDelta,
+    };
+}
 
 @Injectable({ providedIn: 'root' })
 export class OptionsService {
@@ -80,7 +131,10 @@ export class OptionsService {
         syncZoomBetweenSheets: DEFAULT_OPTIONS.syncZoomBetweenSheets,
         unitDisplayName: DEFAULT_OPTIONS.unitDisplayName,
         gameSystem: DEFAULT_OPTIONS.gameSystem,
+        availabilitySource: DEFAULT_OPTIONS.availabilitySource,
+        megaMekAvailabilityFiltersUseAllScopedOptions: DEFAULT_OPTIONS.megaMekAvailabilityFiltersUseAllScopedOptions,
         recordSheetCenterPanelContent: DEFAULT_OPTIONS.recordSheetCenterPanelContent,
+        recordSheetDoubleTapZoomReset: DEFAULT_OPTIONS.recordSheetDoubleTapZoomReset,
         useAutomations: DEFAULT_OPTIONS.useAutomations,
         ASUseHex: DEFAULT_OPTIONS.ASUseHex,
         ASCardStyle: DEFAULT_OPTIONS.ASCardStyle,
@@ -89,9 +143,32 @@ export class OptionsService {
         automaticallyConvertFiltersToSemantic: DEFAULT_OPTIONS.automaticallyConvertFiltersToSemantic,
         allowMultipleActiveSheets: DEFAULT_OPTIONS.allowMultipleActiveSheets,
         unitSearchExpandedViewLayout: DEFAULT_OPTIONS.unitSearchExpandedViewLayout,
+        showFilteredComponents: DEFAULT_OPTIONS.showFilteredComponents,
+        unitSearchViewMode: DEFAULT_OPTIONS.unitSearchViewMode,
+        forceOverviewViewMode: DEFAULT_OPTIONS.forceOverviewViewMode,
         ASVehiclesCriticalHitTable: DEFAULT_OPTIONS.ASVehiclesCriticalHitTable,
         ASUseAutomations: DEFAULT_OPTIONS.ASUseAutomations,
         ASUnifiedDamagePicker: DEFAULT_OPTIONS.ASUnifiedDamagePicker,
+        printRosterSummary: DEFAULT_OPTIONS.printRosterSummary,
+        printMargin: DEFAULT_OPTIONS.printMargin,
+        performanceMode: DEFAULT_OPTIONS.performanceMode,
+        unitServers: DEFAULT_OPTIONS.unitServers,
+        forceGenLastBVMin: DEFAULT_OPTIONS.forceGenLastBVMin,
+        forceGenLastBVMax: DEFAULT_OPTIONS.forceGenLastBVMax,
+        forceGenLastPVMin: DEFAULT_OPTIONS.forceGenLastPVMin,
+        forceGenLastPVMax: DEFAULT_OPTIONS.forceGenLastPVMax,
+        forceGenLastMinUnitCount: DEFAULT_OPTIONS.forceGenLastMinUnitCount,
+        forceGenLastMaxUnitCount: DEFAULT_OPTIONS.forceGenLastMaxUnitCount,
+        forceGenLastGunnerySkillMin: DEFAULT_OPTIONS.forceGenLastGunnerySkillMin,
+        forceGenLastGunnerySkillMax: DEFAULT_OPTIONS.forceGenLastGunnerySkillMax,
+        forceGenLastPilotingSkillMin: DEFAULT_OPTIONS.forceGenLastPilotingSkillMin,
+        forceGenLastPilotingSkillMax: DEFAULT_OPTIONS.forceGenLastPilotingSkillMax,
+        forceGenLastMaxPilotSkillDelta: DEFAULT_OPTIONS.forceGenLastMaxPilotSkillDelta,
+        forceGenFailureSearchWindowMs: DEFAULT_OPTIONS.forceGenFailureSearchWindowMs,
+        forceGenPreventDuplicateChassis: DEFAULT_OPTIONS.forceGenPreventDuplicateChassis,
+        forceGenUseTaggedQuantities: DEFAULT_OPTIONS.forceGenUseTaggedQuantities,
+        forceGenUseUnitTagsAsChassisTags: DEFAULT_OPTIONS.forceGenUseUnitTagsAsChassisTags,
+        forceBudgetOptimizerLastSkills: DEFAULT_OPTIONS.forceBudgetOptimizerLastSkills,
     });
 
     constructor() {
@@ -109,7 +186,10 @@ export class OptionsService {
             syncZoomBetweenSheets: saved?.syncZoomBetweenSheets ?? DEFAULT_OPTIONS.syncZoomBetweenSheets,
             unitDisplayName: saved?.unitDisplayName ?? DEFAULT_OPTIONS.unitDisplayName,
             gameSystem: saved?.gameSystem ?? DEFAULT_OPTIONS.gameSystem,
+            availabilitySource: saved?.availabilitySource ?? DEFAULT_OPTIONS.availabilitySource,
+            megaMekAvailabilityFiltersUseAllScopedOptions: saved?.megaMekAvailabilityFiltersUseAllScopedOptions ?? DEFAULT_OPTIONS.megaMekAvailabilityFiltersUseAllScopedOptions,
             recordSheetCenterPanelContent: saved?.recordSheetCenterPanelContent ?? DEFAULT_OPTIONS.recordSheetCenterPanelContent,
+            recordSheetDoubleTapZoomReset: saved?.recordSheetDoubleTapZoomReset ?? DEFAULT_OPTIONS.recordSheetDoubleTapZoomReset,
             lastCanvasState: saved?.lastCanvasState,
             sidebarLipPosition: saved?.sidebarLipPosition,
             useAutomations: saved?.useAutomations ?? DEFAULT_OPTIONS.useAutomations,
@@ -120,9 +200,32 @@ export class OptionsService {
             automaticallyConvertFiltersToSemantic: saved?.automaticallyConvertFiltersToSemantic ?? DEFAULT_OPTIONS.automaticallyConvertFiltersToSemantic,
             allowMultipleActiveSheets: saved?.allowMultipleActiveSheets ?? DEFAULT_OPTIONS.allowMultipleActiveSheets,
             unitSearchExpandedViewLayout: saved?.unitSearchExpandedViewLayout ?? DEFAULT_OPTIONS.unitSearchExpandedViewLayout,
+            showFilteredComponents: saved?.showFilteredComponents ?? DEFAULT_OPTIONS.showFilteredComponents,
+            unitSearchViewMode: saved?.unitSearchViewMode ?? DEFAULT_OPTIONS.unitSearchViewMode,
+            forceOverviewViewMode: saved?.forceOverviewViewMode ?? DEFAULT_OPTIONS.forceOverviewViewMode,
             ASVehiclesCriticalHitTable: saved?.ASVehiclesCriticalHitTable ?? DEFAULT_OPTIONS.ASVehiclesCriticalHitTable,
             ASUseAutomations: saved?.ASUseAutomations ?? DEFAULT_OPTIONS.ASUseAutomations,
             ASUnifiedDamagePicker: saved?.ASUnifiedDamagePicker ?? DEFAULT_OPTIONS.ASUnifiedDamagePicker,
+            printRosterSummary: saved?.printRosterSummary ?? DEFAULT_OPTIONS.printRosterSummary,
+            printMargin: saved?.printMargin ?? DEFAULT_OPTIONS.printMargin,
+            performanceMode: saved?.performanceMode ?? DEFAULT_OPTIONS.performanceMode,
+            unitServers: saved?.unitServers ?? DEFAULT_OPTIONS.unitServers,
+            forceGenLastBVMin: saved?.forceGenLastBVMin ?? DEFAULT_OPTIONS.forceGenLastBVMin,
+            forceGenLastBVMax: saved?.forceGenLastBVMax ?? DEFAULT_OPTIONS.forceGenLastBVMax,
+            forceGenLastPVMin: saved?.forceGenLastPVMin ?? DEFAULT_OPTIONS.forceGenLastPVMin,
+            forceGenLastPVMax: saved?.forceGenLastPVMax ?? DEFAULT_OPTIONS.forceGenLastPVMax,
+            forceGenLastMinUnitCount: saved?.forceGenLastMinUnitCount ?? DEFAULT_OPTIONS.forceGenLastMinUnitCount,
+            forceGenLastMaxUnitCount: saved?.forceGenLastMaxUnitCount ?? DEFAULT_OPTIONS.forceGenLastMaxUnitCount,
+            forceGenLastGunnerySkillMin: saved?.forceGenLastGunnerySkillMin ?? DEFAULT_OPTIONS.forceGenLastGunnerySkillMin,
+            forceGenLastGunnerySkillMax: saved?.forceGenLastGunnerySkillMax ?? DEFAULT_OPTIONS.forceGenLastGunnerySkillMax,
+            forceGenLastPilotingSkillMin: saved?.forceGenLastPilotingSkillMin ?? DEFAULT_OPTIONS.forceGenLastPilotingSkillMin,
+            forceGenLastPilotingSkillMax: saved?.forceGenLastPilotingSkillMax ?? DEFAULT_OPTIONS.forceGenLastPilotingSkillMax,
+            forceGenLastMaxPilotSkillDelta: saved?.forceGenLastMaxPilotSkillDelta ?? DEFAULT_OPTIONS.forceGenLastMaxPilotSkillDelta,
+            forceGenFailureSearchWindowMs: saved?.forceGenFailureSearchWindowMs ?? DEFAULT_OPTIONS.forceGenFailureSearchWindowMs,
+            forceGenPreventDuplicateChassis: saved?.forceGenPreventDuplicateChassis ?? DEFAULT_OPTIONS.forceGenPreventDuplicateChassis,
+            forceGenUseTaggedQuantities: saved?.forceGenUseTaggedQuantities ?? DEFAULT_OPTIONS.forceGenUseTaggedQuantities,
+            forceGenUseUnitTagsAsChassisTags: saved?.forceGenUseUnitTagsAsChassisTags ?? DEFAULT_OPTIONS.forceGenUseUnitTagsAsChassisTags,
+            forceBudgetOptimizerLastSkills: resolveForceBudgetOptimizerLastSkills(saved),
         });
     }
 

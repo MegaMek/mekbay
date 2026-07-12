@@ -42,6 +42,7 @@ export interface Sourcebook {
     url?: string;
     mul_url?: string;
     image?: string;
+    canon: boolean;
 }
 
 export interface Sourcebooks {

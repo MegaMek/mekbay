@@ -30,10 +30,12 @@
  * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
  * affiliated with Microsoft.
  */
-
 import { BaseEntity, ComponentTechLevel, EquipmentTechBase, SplitTechDates, TechDates, parseTechDate } from './entity';
 import { getNumCriticalSlots } from './entity/utils/equipment-helpers';
-import { Unit } from './units.model';
+import { TechBaseAvailability } from './tech.model';
+import type { MountedEquipment } from './mounted-equipment.model';
+import type { Unit } from './units.model';
+import { AmmoValidityUtil } from '../utils/ammo-validity.util';
 
 /*
  * Author: Drake
@@ -91,8 +93,8 @@ export const AMMO_TYPE_CATEGORY: Record<AmmoType, AmmoCategory> = {
     SRM_TORPEDO: 'Missile',
     SRM_STREAK: 'Missile',
     MRM: 'Missile',
-    NARC: 'Special',
-    AMS: 'Special',
+    NARC: 'Missile',
+    AMS: 'Ballistic',
     ARROW_IV: 'Artillery',
     LONG_TOM: 'Artillery',
     SNIPER: 'Artillery',
@@ -108,7 +110,7 @@ export const AMMO_TYPE_CATEGORY: Record<AmmoType, AmmoCategory> = {
     MINE: 'Special',
     ATM: 'Missile',
     ROCKET_LAUNCHER: 'Missile',
-    INARC: 'Special',
+    INARC: 'Missile',
     LRM_STREAK: 'Missile',
     AC_LBX_THB: 'Ballistic',
     AC_ULTRA_THB: 'Ballistic',
@@ -150,7 +152,7 @@ export const AMMO_TYPE_CATEGORY: Record<AmmoType, AmmoCategory> = {
     SWORDFISH: 'Missile',
     STINGRAY: 'Missile',
     PIRANHA: 'Missile',
-    TASER: 'Special',
+    TASER: 'Ballistic',
     BOMB: 'Bomb',
     AAA_MISSILE: 'Missile',
     AS_MISSILE: 'Missile',
@@ -256,7 +258,7 @@ export interface EquipmentStats {
 
 export interface WeaponData {
     heat: number;
-    damage: string | number;
+    damage: string | number | Array<number>;
     explosionDamage: number;
     rackSize: number;
     ammoType: AmmoType;
@@ -516,16 +518,17 @@ export class Equipment {
 
     // Convenience accessors for common stats
     get internalName(): string { return this.id; }
+    get tonnage(): number | "variable" { return this.stats.tonnage; }
+    get cost(): number | "variable" { return this.stats.cost; }
+    get bv(): number | "variable" { return this.stats.bv; }
+    get critSlots(): number | "variable" { return this.stats.criticalSlots; }
+    get svSlots(): number { return this.stats.svSlots; }
+    get tankSlots(): number { return this.stats.tankSlots; }
     get techBase(): EquipmentTechBase { return this.tech.base; }
     get level(): ComponentTechLevel { return this.tech.level; }
     get rating(): string { return this.tech.rating; }
     get availability(): String { return [this.tech.availability.sl??'X', this.tech.availability.sw??'X', this.tech.availability.clan??'X', this.tech.availability.da??'X'].join('-'); }
     get isSpreadable(): boolean { return this.stats.spreadable; }
-
-    //TODO: convert to methods like getNumCriticalSlots that take entity context to handle variable cases
-    get tonnage(): number | "variable" { return this.stats.tonnage; }
-    get cost(): number | "variable" { return this.stats.cost; }
-    get bv(): number | "variable" { return this.stats.bv; }
 
     hasFlag(flag: string): boolean { return this.flags.has(flag); }
     hasAnyFlag(flags: string[]): boolean { return flags.some(f => this.flags.has(f)); }
@@ -562,7 +565,7 @@ export class WeaponEquipment extends Equipment {
     }
 
     get heat(): number { return this.weapon.heat; }
-    get damage(): string | number { return this.weapon.damage; }
+    get damage(): string | number | Array<number> { return this.weapon.damage; }
     get rackSize(): number { return this.weapon.rackSize; }
     get ammoType(): AmmoType { return this.weapon.ammoType; }
     get ranges(): number[] { return this.weapon.ranges; }
@@ -594,7 +597,11 @@ export class AmmoEquipment extends Equipment {
 
     constructor(data: EquipmentRawData) {
         super({ ...data, type: 'ammo' });
-        this.ammo = merge(AMMO_DEFAULTS, data.ammo);
+        const ammo = merge(AMMO_DEFAULTS, data.ammo);
+        this.ammo = {
+            ...ammo,
+            category: getAmmoCategory(ammo.type) // data.ammo?.category ?? 
+        };
         this.munitionType = new Set(this.ammo.munitionType);
     }
 
@@ -619,40 +626,8 @@ export class AmmoEquipment extends Equipment {
         return this.munitionType.has(type);
     }
 
-    equalsAmmoTypeOnly(other: AmmoEquipment): boolean {
-        if (!(other instanceof AmmoEquipment)) return false;
-
-        if (this.ammoType === 'MML') {
-            if (this.hasFlag('F_MML_LRM') !== other.hasFlag('F_MML_LRM')) return false;
-        } else if (this.ammoType === 'AR10') {
-            const ar10Flags = ['F_AR10_BARRACUDA', 'F_AR10_WHITE_SHARK', 'F_AR10_KILLER_WHALE', 'F_NUCLEAR'];
-            if (ar10Flags.some(f => this.hasFlag(f) !== other.hasFlag(f))) return false;
-        }
-
-        return this.ammoType === other.ammoType;
-    }
-
-    compatibleAmmo(other: AmmoEquipment, unit?: Unit): boolean {
-        if (this.ammoType !== other.ammoType) return false;
-        // Tech base compatibility
-        if (this.techBase !== other.techBase) {
-            if (!unit) {
-                if (this.techBase !== 'All' && other.techBase !== 'All') return false;
-            } else if (unit.techBase !== 'Mixed') {
-                if (unit.techBase === 'Clan' && this.techBase === 'IS') return false;
-                if (unit.techBase === 'Inner Sphere' && this.techBase === 'Clan') return false;
-            }
-        }
-
-        // Flag incompatibilities
-        if (this.hasFlag('M_CASELESS') !== other.hasFlag('M_CASELESS')) return false;
-        if (this.hasFlag('F_BATTLEARMOR') !== other.hasFlag('F_BATTLEARMOR')) return false;
-
-        if (this.ammoType === 'AR10') return true;
-        if (this.rackSize !== other.rackSize) return false;
-        if (this.ammoType === 'MML' || this.ammoType === 'AC_LBX') return true;
-
-        return this.equalsAmmoTypeOnly(other);
+    compatibleAmmo(other: AmmoEquipment, unit?: Unit, inventory: readonly MountedEquipment[] = []): boolean {
+        return AmmoValidityUtil.isAmmoCompatible(this, other, unit, inventory);
     }
 }
 

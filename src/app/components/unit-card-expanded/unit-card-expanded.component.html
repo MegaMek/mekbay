@@ -20,6 +20,7 @@
             <div class="expanded-chassis">
                 <span [innerHTML]="highlight(u.chassis)"></span>
                 @if (alias(); as pilotName) { <span class="inline-alias">({{ pilotName }})</span> }
+                @if (u.serverHost) { <span class="custom-unit-badge" title="Custom unit from {{ u.serverHost }}">Custom</span> }
             </div>
         </div>
         <div class="expanded-subtitle">
@@ -30,9 +31,11 @@
                 <span [class.sort-slot]="isSortActive('as.TP')" [tooltip]="unitTypeDisplayNames[u.as.TP]">{{ u.as.TP }}</span>
                 <span> • {{ u.weightClass }}</span>
             </div>
+            @if (showTags()) {
             <div class="subtitle-line">
                 <unit-tags [unit]="u" mode="full" (tagClick)="onTagClick($event)" />
             </div>
+            }
         </div>
     </div>
     <div class="expanded-content as-view">
@@ -98,6 +101,32 @@
                     <span class="info-label muted">Tons:</span>
                     <span class="info-value" [class.sort-slot]="isSortActive('tons')">{{ u.tons | formatTons }}</span>
                 </div>
+                @if (megaMekAvailability() !== null) {
+                <div class="info-item">
+                    <span class="info-label muted">RAT Rarity:</span>
+                    <span class="info-value mega-mek-availability-icons" [class.sort-slot]="isSortActive(megaMekRarityRequisitionSortKey, megaMekRaritySalvageSortKey)" [tooltip]="megaMekAvailabilityTooltip()">
+                        @if (megaMekAvailabilityBadges().length > 0) {
+                        @for (badge of megaMekAvailabilityBadges(); track badge.source) {
+                        <span class="mega-mek-availability-badge" role="img" [attr.aria-label]="badge.source === megaMekAvailabilityUnknown ? 'Availability: ' + badge.rarity : badge.source + ': ' + badge.rarity" [style.color]="badge.color">
+                            @if (badge.source === 'Requisition') {
+                            <svg class="faction-megamek-availability-icon" viewBox="0 0 36 36" aria-hidden="true">
+                                <path [attr.d]="megaMekRequisitionIconPath" fill="currentColor" />
+                            </svg>
+                            } @else if (badge.source === 'Salvage') {
+                            <svg class="faction-megamek-availability-icon" viewBox="0 0 256 256" aria-hidden="true">
+                                <path [attr.d]="megaMekSalvageIconPath" fill="currentColor" />
+                            </svg>
+                            } @else {
+                            <span class="mega-mek-availability-unknown">?</span>
+                            }
+                        </span>
+                        }
+                        } @else {
+                        <span>—</span>
+                        }
+                    </span>
+                </div>
+                }
                 @if (sortSlot(); as slot) {
                 <div class="info-item">
                     <span class="info-label muted">{{ slot.label }}</span>
@@ -130,6 +159,7 @@
             <div class="expanded-chassis">
                 <span [innerHTML]="highlight(u.chassis)"></span>
                 @if (alias(); as pilotName) { <span class="inline-alias">({{ pilotName }})</span> }
+                @if (u.serverHost) { <span class="custom-unit-badge" title="Custom unit from {{ u.serverHost }}">Custom</span> }
             </div>
         </div>
         <div class="expanded-subtitle">
@@ -140,9 +170,11 @@
                 <span>{{ u.type }}@if(u.subtype && u.subtype !== u.type){<span> - {{ u.subtype }}</span>}</span>
                 <span> • {{ u.weightClass }}</span>
             </div>
+            @if (showTags()) {
             <div class="subtitle-line">
                 <unit-tags [unit]="u" mode="full" (tagClick)="onTagClick($event)" />
             </div>
+            }
         </div>
     </div>
     <div class="expanded-content">
@@ -216,6 +248,32 @@
                     <span class="info-value" [class.sort-slot]="isSortActive('movement')">{{ u.walk }} / {{ u.run }} @if(u.run2 != u.run){ [{{ u.run2 }}]} @if(u.jump){ / {{ u.jump }} } @if (u.umu) { / {{ u.umu }}}</span>
                 </div>
                 }
+                @if (megaMekAvailability() !== null) {
+                <div class="info-item">
+                    <span class="info-label muted">RAT Rarity:</span>
+                    <span class="info-value mega-mek-availability-icons" [class.sort-slot]="isSortActive(megaMekRarityRequisitionSortKey, megaMekRaritySalvageSortKey)" [tooltip]="megaMekAvailabilityTooltip()">
+                        @if (megaMekAvailabilityBadges().length > 0) {
+                        @for (badge of megaMekAvailabilityBadges(); track badge.source) {
+                        <span class="mega-mek-availability-badge" role="img" [attr.aria-label]="badge.source === megaMekAvailabilityUnknown ? 'Availability: ' + badge.rarity : badge.source + ': ' + badge.rarity" [style.color]="badge.color">
+                            @if (badge.source === 'Requisition') {
+                            <svg class="faction-megamek-availability-icon" viewBox="0 0 36 36" aria-hidden="true">
+                                <path [attr.d]="megaMekRequisitionIconPath" fill="currentColor" />
+                            </svg>
+                            } @else if (badge.source === 'Salvage') {
+                            <svg class="faction-megamek-availability-icon" viewBox="0 0 256 256" aria-hidden="true">
+                                <path [attr.d]="megaMekSalvageIconPath" fill="currentColor" />
+                            </svg>
+                            } @else {
+                            <span class="mega-mek-availability-unknown">?</span>
+                            }
+                        </span>
+                        }
+                        } @else {
+                        <span>—</span>
+                        }
+                    </span>
+                </div>
+                }
                 @if (sortSlot(); as slot) {
                 <div class="info-item">
                     <span class="info-label muted">{{ slot.label }}</span>
@@ -240,24 +298,25 @@
             </div>
         </div>
         <div class="expanded-right">
-            @if ((u.comp | expandedComponents); as componentsList) {
+            @let componentsList = expandedComponents();
             @if (componentsList.length > 0) {
-            <div class="components-header">Equipment</div>
-            <div class="expanded-components">
-                <div class="components-pills">
-                    @for (comp of componentsList; let i = $index; track i) {
-                    <unit-component-item [unit]="u" [comp]="comp" displayStyle="tiny"></unit-component-item>
-                    }
+            <div class="components-inline">
+                <div class="components-header">Equipment:</div>
+                <div class="expanded-components">
+                    <div class="components-pills">
+                        @for (comp of componentsList; let i = $index; track i) {
+                        <unit-component-item [unit]="u" [comp]="comp" displayStyle="tiny"></unit-component-item>
+                        }
+                    </div>
                 </div>
             </div>
-            }
             }
             @if ((u.comp | filterAmmo); as ammoList) {
             @if (ammoList.length > 0) {
             <div class="ammo-list">
                 <span class="info-label muted">Ammo: </span>
                 @for (comp of ammoList; let last = $last; let i = $index; track i) {
-                <unit-component-item [unit]="u" [comp]="comp" displayStyle="text"></unit-component-item>@if(!last){<span>, </span>}
+                <span class="ammo-entry">@if (getCaseLabel(comp.l); as caseType) {<span class="case-bracket">[</span><unit-component-item [unit]="u" [comp]="comp" displayStyle="text"></unit-component-item><span class="case-bracket">]</span>} @else {<unit-component-item [unit]="u" [comp]="comp" displayStyle="text"></unit-component-item>}@if(!last){,}</span>
                 }
             </div>
             }
@@ -279,7 +338,10 @@
             }
         </div>
         <div class="primary-info">
-            <div class="chassis" [innerHTML]="highlight(u.chassis)"></div>
+            <div class="chassis">
+                <span [innerHTML]="highlight(u.chassis)"></span>
+                @if (u.serverHost) { <span class="custom-unit-badge" title="Custom unit from {{ u.serverHost }}">Custom</span> }
+            </div>
             @if (alias(); as pilotName) { <span class="alias">({{ pilotName }})</span>  }
         </div>
         <div class="third-info">
@@ -313,8 +375,10 @@
                 }
                 <div class="info-slot" [class.sort-slot]="isSortActive('year')">
                     <span class="value">{{ u.year }}</span>
-                    @if (u._era?.img) {
-                    <img [src]="u._era?.img" class="icon era-icon" alt="Era" [title]="u._era?.name" />
+                    @if (u._era; as era) {
+                    @if (era.img) {
+                    <img [src]="era.img" class="icon era-icon" alt="Era" [title]="era.name" />
+                    }
                     }
                 </div>
                 @if (getSortSlotForCompact(u); as slot) {
@@ -326,17 +390,16 @@
                 }
             </div>
             <span class="spanner"></span>
-            <unit-tags [unit]="u" mode="compact" (tagClick)="onTagClick($event)" />
+            @if (showTags()) {
+                <unit-tags [unit]="u" mode="compact" (tagClick)="onTagClick($event)" />
+            }
         </div>
     </div>
     
     
     @if (showSelectCheckbox()) {
         <label class="select-btn" (click)="$event.stopPropagation()" title="Select unit">
-            <input type="checkbox" [checked]="isSelected()" (change)="onSelectClick($event)" />
-            <span class="custom-checkbox" [class.checked]="isSelected()">
-                @if (isSelected()) { <span class="checkbox-mark">&#10003;</span> }
-            </span>
+            <input type="checkbox" class="bt-checkbox" [checked]="isSelected()" (change)="onSelectClick($event)" />
         </label>
     } @else if (showInfoButton()) {
         <button class="info-btn" (click)="onInfoClick($event)" title="Unit info">

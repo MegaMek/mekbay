@@ -90,6 +90,23 @@
     flex-shrink: 0;
 }
 
+.tag-quantity-input {
+    width: 42px;
+    min-width: 42px;
+    background: var(--background-color);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    padding: 2px;
+    box-sizing: border-box;
+    text-align: center;
+    margin-top: -2px;
+    margin-bottom: -2px;
+}
+
+.tag-quantity-input:disabled {
+    display: none;
+}
+
 .tag-action-btn {
     background: transparent;
     border: none;

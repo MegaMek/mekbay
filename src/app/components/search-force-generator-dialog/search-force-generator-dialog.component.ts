@@ -1,0 +1,2189 @@
+/*
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
+ *
+ * This file is part of MekBay.
+ *
+ * MekBay is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MekBay is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
+ */
+
+import { CommonModule } from '@angular/common';
+import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
+
+import { GameSystem } from '../../models/common.model';
+import type { Era } from '../../models/eras.model';
+import type { Faction } from '../../models/factions.model';
+import { MAX_UNITS as FORCE_MAX_UNITS } from '../../models/force.model';
+import { createForcePreviewEntryFromForce, getForcePreviewUnitEntries, type ForcePreviewEntry, type ForcePreviewUnit } from '../../models/force-preview.model';
+import type { LoadForceEntry } from '../../models/load-force-entry.model';
+import type { AvailabilitySource } from '../../models/options.model';
+import type { Unit } from '../../models/units.model';
+import { BOOLEAN_FILTERS, DROPDOWN_FILTERS, RANGE_FILTERS } from '../../services/unit-search-filters.model';
+import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
+import { ForcePreviewPanelComponent, type ForcePreviewUnitMenuActionEvent, type ForcePreviewUnitMenuItem } from '../force-preview-panel/force-preview-panel.component';
+import { ForceRadarPanelComponent } from '../force-radar-panel/force-radar-panel.component';
+import { ModeSwitchComponent } from '../mode-switch/mode-switch.component';
+import { MultiSelectDropdownComponent, type DropdownOption, type MultiStateSelection } from '../multi-select-dropdown/multi-select-dropdown.component';
+import { RangeSliderComponent } from '../range-slider/range-slider.component';
+import { TooltipDirective } from '../../directives/tooltip.directive';
+import { SwipeDirective, type SwipeEndEvent } from '../../directives/swipe.directive';
+import { UnitSearchAdvancedFiltersComponent } from '../unit-search-advanced-filters/unit-search-advanced-filters.component';
+import { ThousandsIntegerInputComponent } from '../thousands-integer-input/thousands-integer-input.component';
+import { DataService } from '../../services/data.service';
+import { ForceBuilderService } from '../../services/force-builder.service';
+import {
+    DEFAULT_FORCE_GENERATION_MAX_CBT_SKILL_DELTA,
+    FORCE_GENERATION_MAX_PILOT_SKILL,
+    FORCE_GENERATION_MIN_PILOT_SKILL,
+    ForceGeneratorService,
+    type ForceGenerationPreview,
+    type ForceGenerationPreviewTask,
+    type ForceGenerationRequest,
+    type ForceGenerationSkillRange,
+    type ForceGenerationSkillRanges,
+    type ForceGenerationTargetFormationSelection,
+    type GeneratedForceUnit,
+} from '../../services/force-generator.service';
+import { GameService } from '../../services/game.service';
+import { OptionsService } from '../../services/options.service';
+import { DialogsService } from '../../services/dialogs.service';
+import { generateUUID, WsService } from '../../services/ws.service';
+import type { AdvFilterOptions, DropdownFilterOptions } from '../../services/unit-search-filters.model';
+import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
+import { resolveDropdownNamesFromFilter } from '../../utils/filter-name-resolution.util';
+import { getFormationDefinitions } from '../../utils/formation-blueprints';
+import { FormationRequirementEngine } from '../../utils/formation-requirement-engine.util';
+import { getFormationDropdownDisplayName, type FormationTypeDefinition } from '../../utils/formation-type.model';
+import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
+import { type HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
+import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
+import { normalizeMultiStateSelection } from '../../utils/unit-search-shared.util';
+import { SyntaxInputComponent } from '../syntax-input/syntax-input.component';
+import { EditPilotDialogComponent, type EditPilotDialogData, type EditPilotResult } from '../edit-pilot-dialog/edit-pilot-dialog.component';
+import { EditASPilotDialogComponent, type EditASPilotDialogData, type EditASPilotResult } from '../edit-as-pilot-dialog/edit-as-pilot-dialog.component';
+import { getUnitVariantGroupKey } from '../../utils/unit-variant.util';
+import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
+
+export interface SearchForceGeneratorDialogConfig {
+    gameSystem: GameSystem;
+    availabilitySource: AvailabilitySource;
+    budgetRange: {
+        min: number;
+        max: number;
+    };
+    minUnitCount: number;
+    maxUnitCount: number;
+    skillRanges: ForceGenerationSkillRanges;
+    crossEraAvailabilityInMultiEraSelection: boolean;
+    randomFaction: boolean;
+    mergeSelectedFactionAvailability: boolean;
+    preventDuplicateChassis: boolean;
+    useTaggedQuantities: boolean;
+    useUnitTagsAsChassisTags: boolean;
+    targetFormationId?: string;
+    targetFormations?: readonly ForceGenerationTargetFormationSelection[];
+}
+
+export interface SearchForceGeneratorDialogResult {
+    forceEntry: LoadForceEntry;
+    config: SearchForceGeneratorDialogConfig;
+    totalCost: number;
+}
+
+export interface SearchForceGeneratorDialogData {
+    importCurrentForce?: boolean;
+}
+
+type MultiStateFilterKey = 'era' | 'faction' | '_tags';
+type UnitTypeFilterKey = 'type' | 'as.TP';
+type GeneratorDialogTab = 'configuration' | 'preview';
+type FormationTargetDropdownFilterKey = 'era' | 'faction';
+const RANDOM_FACTION_OPTION_NAME = '__force-generator-random-faction__';
+type FormationTargetDropdownOptionsProvider = UnitSearchFiltersService & {
+    getDropdownOptionsForFormationTarget?: (
+        filterKey: FormationTargetDropdownFilterKey,
+        definition: FormationTypeDefinition | null,
+    ) => DropdownOption[] | null;
+};
+
+@Component({
+    selector: 'search-force-generator-dialog',
+    standalone: true,
+    providers: [ForceGeneratorService],
+    imports: [
+        CommonModule,
+        BaseDialogComponent,
+        ForcePreviewPanelComponent,
+        ForceRadarPanelComponent,
+        ModeSwitchComponent,
+        MultiSelectDropdownComponent,
+        RangeSliderComponent,
+        SyntaxInputComponent,
+        ThousandsIntegerInputComponent,
+        TooltipDirective,
+        SwipeDirective,
+        UnitCardExpandedComponent,
+        UnitSearchAdvancedFiltersComponent,
+    ],
+    changeDetection: ChangeDetectionStrategy.OnPush,
+    templateUrl: './search-force-generator-dialog.component.html',
+    styleUrls: ['./search-force-generator-dialog.component.scss'],
+})
+export class SearchForceGeneratorDialogComponent {
+    readonly GameSystem = GameSystem;
+    readonly MAX_UNITS = FORCE_MAX_UNITS;
+    private readonly dialogRef = inject(DialogRef<SearchForceGeneratorDialogResult | null>);
+    private readonly dialogData = inject(DIALOG_DATA, { optional: true }) as SearchForceGeneratorDialogData | null;
+    readonly dataService = inject(DataService);
+    private readonly forceBuilderService = inject(ForceBuilderService);
+    private readonly forceGeneratorService = inject(ForceGeneratorService);
+    private readonly gameService = inject(GameService);
+    private readonly optionsService = inject(OptionsService);
+    private readonly dialogsService = inject(DialogsService);
+    private readonly wsService = inject(WsService);
+    readonly filtersService = inject(UnitSearchFiltersService);
+    private activeForceGenerationTask: ForceGenerationPreviewTask | null = null;
+    private activeForceGenerationRunId = 0;
+    private readonly initialOptions = this.optionsService.options();
+    private readonly initialGameSystem = this.gameService.currentGameSystem();
+    private readonly selectedGameSystem = signal<GameSystem>(this.initialGameSystem);
+    private readonly initialBudgetDefaults = this.forceGeneratorService.resolveInitialBudgetDefaults(
+        this.initialOptions,
+        0,
+        this.initialGameSystem,
+    );
+    private readonly initialUnitCountDefaults = this.forceGeneratorService.resolveInitialUnitCountDefaults(
+        this.initialOptions,
+    );
+    private readonly initialSkillDefaults = this.forceGeneratorService.resolveInitialSkillDefaults(
+        this.initialOptions,
+    );
+
+    readonly gameSystem = this.selectedGameSystem.asReadonly();
+    readonly isAlphaStrike = computed(() => this.gameSystem() === GameSystem.ALPHA_STRIKE);
+    readonly useHex = computed<boolean>(() => this.optionsService.options().ASUseHex);
+    readonly availabilitySource = computed(() => this.optionsService.options().availabilitySource);
+    readonly eligibleUnits = this.filtersService.forceGeneratorEligibleUnits;
+    readonly pilotGunnerySkill = computed(() => this.filtersService.pilotGunnerySkill());
+    readonly pilotPilotingSkill = computed(() => this.filtersService.pilotPilotingSkill());
+    readonly minPilotSkill = FORCE_GENERATION_MIN_PILOT_SKILL;
+    readonly maxPilotSkill = FORCE_GENERATION_MAX_PILOT_SKILL;
+    readonly pilotSkillAvailableRange: [number, number] = [FORCE_GENERATION_MIN_PILOT_SKILL, FORCE_GENERATION_MAX_PILOT_SKILL];
+    readonly gunnerySkillRange = signal<[number, number]>([
+        this.initialSkillDefaults.gunnery.min,
+        this.initialSkillDefaults.gunnery.max,
+    ]);
+    readonly pilotingSkillRange = signal<[number, number]>([
+        this.initialSkillDefaults.piloting.min,
+        this.initialSkillDefaults.piloting.max,
+    ]);
+    readonly maxPilotSkillDelta = signal(this.initialSkillDefaults.maxDelta);
+    readonly forceGenerationSkillRanges = computed<ForceGenerationSkillRanges>(() => ({
+        gunnery: this.toSkillRangeObject(this.gunnerySkillRange()),
+        piloting: this.toSkillRangeObject(this.pilotingSkillRange()),
+        maxDelta: this.maxPilotSkillDelta(),
+    }));
+    readonly gunnerySkillRangeActive = computed(() => {
+        const range = this.gunnerySkillRange();
+        return range[0] !== 4 || range[1] !== 4;
+    });
+    readonly pilotingSkillRangeActive = computed(() => {
+        const range = this.pilotingSkillRange();
+        return range[0] !== 5 || range[1] !== 5;
+    });
+    readonly maxPilotSkillDeltaActive = computed(() => this.maxPilotSkillDelta() !== DEFAULT_FORCE_GENERATION_MAX_CBT_SKILL_DELTA);
+    readonly eraFilter = computed(() => this.getDropdownFilter('era'));
+    readonly factionFilter = computed(() => this.getDropdownFilter('faction'));
+    readonly unitTypeFilterKey = computed<UnitTypeFilterKey | null>(() => this.resolveUnitTypeFilterKey());
+    readonly unitTypeFilter = computed(() => {
+        const filterKey = this.unitTypeFilterKey();
+        return filterKey ? this.getDropdownFilter(filterKey) : null;
+    });
+    readonly subtypeFilter = computed(() => this.gameSystem() === GameSystem.CLASSIC ? this.getDropdownFilter('subtype') : null);
+    readonly tagsFilter = computed(() => this.getDropdownFilter('_tags'));
+    readonly targetFormationEraOptions = computed(() => this.getDropdownOptionsForTargetFormation('era', this.eraFilter()));
+    readonly randomFactionOption: DropdownOption = {
+        name: RANDOM_FACTION_OPTION_NAME,
+        displayName: 'Random',
+        img: '/images/random.svg',
+        alwaysVisible: true,
+        exclusive: true,
+        stateCycle: ['or'],
+    };
+    readonly targetFormationFactionOptions = computed(() => [
+        this.randomFactionOption,
+        ...this.getDropdownOptionsForTargetFormation('faction', this.factionFilter()),
+    ]);
+    readonly selectedEraValues = computed(() => this.getSelectedMultiStateValues(this.eraFilter()));
+    readonly selectedFactionValues = computed<MultiStateSelection>(() => this.randomFactionSelected()
+        ? {
+            [RANDOM_FACTION_OPTION_NAME]: {
+                name: RANDOM_FACTION_OPTION_NAME,
+                state: 'or' as const,
+                count: 1,
+            },
+        }
+        : this.getSelectedMultiStateValues(this.factionFilter()));
+    readonly selectedUnitTypeValues = computed(() => this.getSelectedDropdownValues(this.unitTypeFilter()));
+    readonly selectedSubtypeValues = computed(() => this.getSelectedDropdownValues(this.subtypeFilter()));
+    readonly selectedTagValues = computed(() => this.getSelectedMultiStateValues(this.tagsFilter()));
+    readonly crossEraAvailabilityInMultiEraSelection = signal(false);
+    readonly randomFactionSelected = signal(false);
+    readonly mergeSelectedFactionAvailability = signal(true);
+    readonly positiveEraSelectionCount = computed(() => this.countPositiveMultiStateSelections(this.eraFilter()));
+    readonly positiveFactionSelectionCount = computed(() => this.countPositiveMultiStateSelections(this.factionFilter()));
+    readonly selectedFactionAvailabilityMergeToggleVisible = computed(() => (
+        !this.randomFactionSelected() && this.positiveFactionSelectionCount() > 1
+    ));
+    readonly crossEraAvailabilityToggleEnabled = computed(() => {
+        const positiveEraSelectionCount = this.positiveEraSelectionCount();
+        return positiveEraSelectionCount === 0 || positiveEraSelectionCount > 1;
+    });
+    readonly crossEraAvailabilityTooltip = computed(() => {
+        const baseMessage = 'When enabled, MegaMek availability weights can span the full multi-era selection instead of staying on a single resolved era.';
+        return this.crossEraAvailabilityToggleEnabled()
+            ? baseMessage
+            : `${baseMessage} Available only when no positive era is selected or when multiple eras are selected.`;
+    });
+    readonly mergeSelectedFactionAvailabilityTooltip = computed(() => (
+        'When enabled, availability uses max P/S across selected factions. When disabled, generation rolls one selected faction and uses only that faction\'s weights.'
+    ));
+    readonly advPanelFilterGameSystem = signal<GameSystem>(this.initialGameSystem);
+    readonly pilotSkillsOpen = signal(false);
+    readonly additionalFiltersOpen = signal(false);
+    readonly pilotSkillsHasActiveSettings = computed(() => {
+        if (this.gunnerySkillRangeActive()) {
+            return true;
+        }
+
+        return this.gameSystem() === GameSystem.CLASSIC
+            && (this.pilotingSkillRangeActive() || this.maxPilotSkillDeltaActive());
+    });
+    private readonly primaryDialogFilterKeys = computed(() => {
+        const excludedKeys = new Set<string>(['era', 'faction', '_tags']);
+        const unitTypeFilterKey = this.unitTypeFilterKey();
+        if (unitTypeFilterKey) {
+            excludedKeys.add(unitTypeFilterKey);
+        }
+        if (this.subtypeFilter()) {
+            excludedKeys.add('subtype');
+        }
+
+        return [...excludedKeys];
+    });
+    readonly additionalFiltersExcludedKeys = computed(() => this.primaryDialogFilterKeys());
+    readonly otherAdvPanelFilterGameSystem = computed(() => this.getOtherGameSystem(this.advPanelFilterGameSystem()));
+    readonly otherAdvPanelFilterGameSystemHasActiveFilters = computed(() => {
+        const filterState = this.filtersService.effectiveFilterState();
+        const otherGameSystem = this.otherAdvPanelFilterGameSystem();
+        const excludedKeys = new Set(this.primaryDialogFilterKeys());
+        const availabilitySource = this.optionsService.options().availabilitySource;
+
+        return [...BOOLEAN_FILTERS, ...DROPDOWN_FILTERS, ...RANGE_FILTERS].some((filter) => (
+            filter.game === otherGameSystem
+            && !excludedKeys.has(filter.key)
+            && isFilterAvailableForAvailabilitySource(filter, availabilitySource)
+            && filterState[filter.key]?.interactedWith
+        ));
+    });
+    readonly additionalFiltersHasActiveSettings = computed(() => {
+        const hasSearchText = this.filtersService.searchText().trim().length > 0;
+        const filterState = this.filtersService.effectiveFilterState();
+        const excludedKeys = new Set(this.primaryDialogFilterKeys());
+        const availabilitySource = this.optionsService.options().availabilitySource;
+        const hasActiveAdvancedFilters = [...BOOLEAN_FILTERS, ...DROPDOWN_FILTERS, ...RANGE_FILTERS].some((filter) => (
+            !excludedKeys.has(filter.key)
+            && isFilterAvailableForAvailabilitySource(filter, availabilitySource)
+            && filterState[filter.key]?.interactedWith
+        ));
+
+        return hasSearchText || hasActiveAdvancedFilters;
+    });
+    readonly searchHighlightTokens = computed((): HighlightToken[] => {
+        const text = this.filtersService.searchText();
+        return text.length > 0
+            ? tokenizeForHighlight(text, this.gameSystem())
+            : [];
+    });
+    readonly currentForce = this.forceBuilderService.smartCurrentForce;
+    readonly canImportCurrentForce = computed(() => (this.currentForce()?.units().length ?? 0) > 0);
+    readonly targetFormationSelection = signal<MultiStateSelection>({});
+    readonly targetFormationStateCycle = ['or'] as const;
+    readonly targetFormationOptions = computed<DropdownOption[]>(() => {
+        const definitions = getFormationDefinitions()
+            .filter((definition) => FormationRequirementEngine.hasBlueprint(definition.id))
+            .filter((definition) => LanceTypeIdentifierUtil.getDefinitionById(definition.id, this.gameSystem()) !== null)
+            .filter((definition) => this.isTargetFormationAvailableForSelectedFactions(definition));
+
+        return definitions
+            .map((definition) => ({
+                name: definition.id,
+                displayName: getFormationDropdownDisplayName(definition),
+            }))
+            .sort((left, right) => (
+                (left.displayName ?? left.name).localeCompare(right.displayName ?? right.name)
+                || left.name.localeCompare(right.name)
+            ));
+    });
+    readonly targetFormations = computed<ForceGenerationTargetFormationSelection[]>(() => {
+        const availableFormationIds = new Set(this.targetFormationOptions().map((option) => option.name));
+        return Object.values(this.targetFormationSelection())
+            .filter((selection) => selection.state === 'or' && availableFormationIds.has(selection.name))
+            .map((selection) => ({
+                formationId: selection.name,
+                count: Math.max(1, Math.floor(selection.count || 1)),
+            }));
+    });
+    readonly targetFormationId = computed(() => {
+        const targetFormations = this.targetFormations();
+        return targetFormations.length === 1 && targetFormations[0].count === 1
+            ? targetFormations[0].formationId
+            : '';
+    });
+    readonly targetFormationAvailabilityDefinition = computed<FormationTypeDefinition | null>(() => {
+        for (const targetFormation of this.targetFormations()) {
+            const definition = LanceTypeIdentifierUtil.getDefinitionById(targetFormation.formationId, this.gameSystem());
+            if (definition?.exclusiveFaction?.length) {
+                return definition;
+            }
+        }
+
+        return null;
+    });
+    readonly targetFormationSummary = computed(() => this.formatTargetFormationSummary(this.targetFormations()));
+    readonly preventDuplicateChassis = signal(this.initialOptions.forceGenPreventDuplicateChassis);
+    readonly useTaggedQuantities = signal(
+        this.initialOptions.forceGenUseTaggedQuantities && !this.initialOptions.forceGenPreventDuplicateChassis,
+    );
+    readonly useUnitTagsAsChassisTags = signal(this.initialOptions.forceGenUseUnitTagsAsChassisTags);
+    readonly preventDuplicateChassisTooltip = computed(() => (
+        'Blocks additional copies that share the same chassis and type as an already selected unit. Useful when you want one variant per chassis pair.'
+    ));
+    readonly useTaggedQuantitiesTooltip = computed(() => (
+        'Uses selected tag quantities as copy limits during force generation. Unit-variant tags stay exact-unit by default; chassis tags already apply to all variants of the same chassis/type.'
+    ));
+    readonly useUnitTagsAsChassisTagsTooltip = computed(() => (
+        'Unit-variant tag quantities are grouped by chassis and type instead of by exact unit. Variants sharing that chassis share one pool, and if a chassis tag and a unit-variant tag pool both apply, the larger cap wins.'
+    ));
+    private readonly lockedUnits = signal<GeneratedForceUnit[]>([]);
+    private readonly chassisOnlyLockVariantGroupByLockKey = signal<ReadonlyMap<string, string>>(new Map<string, string>());
+    private readonly rejectedUnits = signal<readonly Unit[]>([]);
+    readonly lockedUnitKeys = computed(() => {
+        return new Set(
+            this.lockedUnits()
+                .map((unit) => unit.lockKey)
+                .filter((lockKey): lockKey is string => !!lockKey),
+        );
+    });
+    readonly chassisOnlyLockedUnitKeys = computed(() => new Set(this.chassisOnlyLockVariantGroupByLockKey().keys()));
+    readonly rejectedUnitNames = computed(() => new Set(this.rejectedUnits().map((unit) => unit.name)));
+    readonly generationEligibleUnits = computed(() => {
+        const rejectedUnitNames = this.rejectedUnitNames();
+        if (rejectedUnitNames.size === 0) {
+            return this.eligibleUnits();
+        }
+
+        return this.eligibleUnits().filter((unit) => !rejectedUnitNames.has(unit.name));
+    });
+    readonly rejectedUnitPills = computed(() => this.rejectedUnits().map((unit) => ({
+        name: unit.name,
+        label: this.formatUnitLabel(unit),
+    })));
+    readonly previewUnitMenuItems: readonly ForcePreviewUnitMenuItem[] = [
+        {
+            action: 'edit-pilot',
+            label: 'Edit pilot...',
+            icon: 'pilot',
+        },
+        {
+            action: 'toggle-chassis-lock',
+            label: (unitEntry) => this.isPreviewUnitChassisOnlyLocked(unitEntry) ? 'Remove same-chassis lock' : 'Lock same-chassis variants',
+            icon: 'lock',
+            closeOnSelect: false,
+        },
+        {
+            action: 'reroll-unit-and-pilot',
+            label: (unitEntry) => this.isPreviewUnitChassisOnlyLocked(unitEntry) ? 'Reroll variant and pilot' : 'Reroll unit and pilot',
+            icon: 'reroll',
+        },
+        {
+            action: 'reroll-unit-keep-pilot',            
+            label: (unitEntry) => this.isPreviewUnitChassisOnlyLocked(unitEntry) ? 'Reroll variant (keep pilot)' : 'Reroll (keep pilot)',
+            icon: 'reroll',
+        },
+        {
+            action: 'reject',
+            label: 'Reject variant',
+            icon: 'reject',
+            danger: true,
+        },
+    ];
+    readonly previewLockToggle = (unitEntry: ForcePreviewUnit): void => {
+        this.togglePreviewUnitLock(unitEntry);
+    };
+    readonly previewVariantChange = (unitEntry: ForcePreviewUnit, variant: Unit): void => {
+        this.changePreviewUnitVariant(unitEntry, variant);
+    };
+    readonly hoveredPreviewUnit = signal<ForcePreviewUnit | null>(null);
+    readonly selectedPreviewUnit = signal<ForcePreviewUnit | null>(null);
+    readonly radarExpanded = signal(true);
+    readonly hoveredRadarUnit = computed(() => this.hoveredPreviewUnit()?.unit ?? this.selectedPreviewUnit()?.unit ?? null);
+    readonly descriptionLines = computed(() => {
+        const lines = [];
+        const query = this.filtersService.searchText().trim();
+        if (query.length > 0) {
+            lines.push(`Query: ${query}`);
+        }
+
+        const filterSummary = this.summarizeActiveFilters();
+        if (filterSummary.length > 0) {
+            lines.push(`Filters: ${filterSummary}`);
+        }
+
+        const targetFormationSummary = this.targetFormationSummary();
+        if (targetFormationSummary) {
+            lines.push(`Target Formations: ${targetFormationSummary}`);
+        }
+
+        const skillLabel = this.gameSystem() === GameSystem.ALPHA_STRIKE
+            ? `Pilot Skill ${this.formatSkillRange(this.gunnerySkillRange())}`
+            : `Gunnery ${this.formatSkillRange(this.gunnerySkillRange())} Piloting ${this.formatSkillRange(this.pilotingSkillRange())} Delta ${this.maxPilotSkillDelta()}`;
+        lines.push(`${skillLabel}`);
+
+        // if (this.lockedUnits().length > 0) {
+        //     lines.push(`Locked Units: ${this.lockedUnits().length}.`);
+        // }
+        // if (this.preventDuplicateChassis()) {
+        //     lines.push('Prevent Duplicate Chassis: On.');
+        // }
+
+        // const generationContext = this.resolvedGenerationContext();
+        // const contextParts = [generationContext.forceFaction?.name, generationContext.forceEra?.name].filter(Boolean);
+        // if (contextParts.length > 0) {
+        //     lines.push(`Generation Context: ${contextParts.join(' - ')}.`);
+        // }
+
+        return lines;
+    });
+    readonly classicBudgetMin = signal(this.initialBudgetDefaults.classic.min);
+    readonly classicBudgetMax = signal(this.initialBudgetDefaults.classic.max);
+    readonly alphaStrikeBudgetMin = signal(this.initialBudgetDefaults.alphaStrike.min);
+    readonly alphaStrikeBudgetMax = signal(this.initialBudgetDefaults.alphaStrike.max);
+    readonly budgetRange = computed(() => this.gameSystem() === GameSystem.ALPHA_STRIKE
+        ? { min: this.alphaStrikeBudgetMin(), max: this.alphaStrikeBudgetMax() }
+        : { min: this.classicBudgetMin(), max: this.classicBudgetMax() });
+    readonly minUnitCount = signal(this.initialUnitCountDefaults.min);
+    readonly maxUnitCount = signal(this.initialUnitCountDefaults.max);
+    readonly collapsedHowPicksWhereChosen = signal(false);
+    readonly previewDisplaySettings = computed(() => ({
+        gameSystem: this.gameSystem(),
+        gunnery: this.gunnerySkillRange()[0],
+        piloting: this.pilotingSkillRange()[0],
+    }));
+    readonly generationSettings = computed(() => {
+        const gameSystem = this.gameSystem();
+        const skillRanges = this.forceGenerationSkillRanges();
+        return {
+            gameSystem,
+            budgetRange: gameSystem === GameSystem.ALPHA_STRIKE
+                ? { min: this.alphaStrikeBudgetMin(), max: this.alphaStrikeBudgetMax() }
+                : { min: this.classicBudgetMin(), max: this.classicBudgetMax() },
+            gunnery: skillRanges.gunnery.min,
+            piloting: skillRanges.piloting?.min ?? this.pilotingSkillRange()[0],
+            skillRanges,
+            minUnitCount: this.minUnitCount(),
+            maxUnitCount: this.maxUnitCount(),
+            targetFormationId: this.targetFormationId() || undefined,
+            targetFormations: this.targetFormations(),
+        };
+    });
+    readonly mobileTab = signal<GeneratorDialogTab>('configuration');
+    readonly mobileSwipeActive = signal(false);
+    private readonly mobileSwipeRatio = signal(0);
+    readonly mobileTrackOffset = computed(() => {
+        const tabOffset = this.mobileTab() === 'preview' ? 1 : 0;
+        return `${(this.mobileSwipeRatio() - tabOffset) * 100}%`;
+    });
+    readonly forceGenerationInProgress = signal(false);
+    readonly forceGenerationTerminateRequested = signal(false);
+    private readonly previewState = signal<ForceGenerationPreview>(this.createEmptyPreview(
+        'Press REROLL to generate a force preview for the current settings.',
+    ));
+    readonly preview = computed(() => this.projectPreviewForDisplay(this.previewState()));
+    readonly previewError = computed(() => {
+        const preview = this.preview();
+        if (preview.error) {
+            return preview.error;
+        }
+        if (preview.units.length === 0) {
+            return null;
+        }
+
+        return this.resolvePreviewValidationError(
+            preview.units.length,
+            preview.totalCost,
+            this.generationSettings(),
+        );
+    });
+    readonly previewEntry = computed<ForcePreviewEntry | null>(() => {
+        const preview = this.preview();
+        const entry = this.forceGeneratorService.createForcePreviewEntry(preview);
+        return entry;
+    });
+
+    constructor() {
+        effect(() => {
+            const currentGameSystem = this.gameSystem();
+            untracked(() => this.advPanelFilterGameSystem.set(currentGameSystem));
+        });
+
+        effect(() => {
+            if (!this.crossEraAvailabilityToggleEnabled()) {
+                untracked(() => this.crossEraAvailabilityInMultiEraSelection.set(false));
+            }
+        });
+
+        effect(() => {
+            const availableFormationIds = new Set(this.targetFormationOptions().map((option) => option.name));
+            const currentSelection = this.targetFormationSelection();
+            const nextSelection: MultiStateSelection = {};
+            for (const [formationId, selection] of Object.entries(currentSelection)) {
+                if (availableFormationIds.has(formationId) && (selection.state === 'or' || selection.state === 'and')) {
+                    nextSelection[formationId] = {
+                        ...selection,
+                        state: selection.state === 'and' ? 'or' : selection.state,
+                    };
+                }
+            }
+            if (JSON.stringify(nextSelection) !== JSON.stringify(currentSelection)) {
+                untracked(() => this.targetFormationSelection.set(nextSelection));
+            }
+        });
+
+        if (this.dialogData?.importCurrentForce) {
+            this.importCurrentForce();
+        }
+    }
+
+    budgetMinimumFieldLabel(): string {
+        return this.gameSystem() === GameSystem.ALPHA_STRIKE ? 'Min PV' : 'Min BV';
+    }
+
+    budgetMaximumFieldLabel(): string {
+        return this.gameSystem() === GameSystem.ALPHA_STRIKE ? 'Max PV' : 'Max BV';
+    }
+
+    setPilotSkill(type: 'gunnery' | 'piloting', value: number): void {
+        const normalizedValue = this.normalizeSkillValue(value, type === 'gunnery' ? this.gunnerySkillRange()[0] : this.pilotingSkillRange()[0]);
+        const currentGunnery = this.filtersService.pilotGunnerySkill();
+        const currentPiloting = this.filtersService.pilotPilotingSkill();
+        if (type === 'gunnery') {
+            this.setSkillRange('gunnery', [normalizedValue, normalizedValue]);
+            this.filtersService.setPilotSkills(normalizedValue, currentPiloting);
+        } else {
+            this.setSkillRange('piloting', [normalizedValue, normalizedValue]);
+            this.filtersService.setPilotSkills(currentGunnery, normalizedValue);
+        }
+    }
+
+    onGunnerySkillRangeChange(range: [number, number]): void {
+        this.setSkillRange('gunnery', range);
+    }
+
+    onPilotingSkillRangeChange(range: [number, number]): void {
+        this.setSkillRange('piloting', range);
+    }
+
+    onMaxPilotSkillDeltaChange(event: Event): void {
+        this.setMaxPilotSkillDelta(this.normalizeMaxPilotSkillDelta(
+            this.parseNumericValue(event, this.maxPilotSkillDelta()),
+        ));
+    }
+
+    onMaxPilotSkillDeltaBlur(event: Event): void {
+        this.onMaxPilotSkillDeltaChange(event);
+        this.syncInputValue(event, this.maxPilotSkillDelta());
+    }
+
+    formatSkillRange(range: readonly [number, number]): string {
+        return range[0] === range[1] ? `${range[0]}` : `${range[0]}-${range[1]}`;
+    }
+
+    toggleAdditionalFilters(): void {
+        this.additionalFiltersOpen.update((value) => !value);
+    }
+
+    togglePilotSkills(): void {
+        this.pilotSkillsOpen.update((value) => !value);
+    }
+
+    setAdvPanelFilterGameSystem(gameSystem: GameSystem): void {
+        this.advPanelFilterGameSystem.set(gameSystem);
+    }
+
+    toggleAdvPanelFilterGameSystem(): void {
+        this.advPanelFilterGameSystem.set(this.otherAdvPanelFilterGameSystem());
+    }
+
+    advPanelFilterGameSystemToggleTitle(): string {
+        return this.otherAdvPanelFilterGameSystem() === GameSystem.CLASSIC
+            ? 'Show BattleTech filters'
+            : 'Show Alpha Strike filters';
+    }
+
+    setGameSystem(gameSystem: GameSystem): void {
+        if (!this.dataService.isDataReady() || this.gameSystem() === gameSystem) {
+            return;
+        }
+
+        this.selectedGameSystem.set(gameSystem);
+    }
+
+    toggleGameSystem(): void {
+        this.setGameSystem(this.isAlphaStrike() ? GameSystem.CLASSIC : GameSystem.ALPHA_STRIKE);
+    }
+
+    onEraSelectionChange(selection: MultiStateSelection | readonly string[]): void {
+        this.setMultiStateFilter('era', selection);
+    }
+
+    onFactionSelectionChange(selection: MultiStateSelection | readonly string[]): void {
+        const normalizedSelection = normalizeMultiStateSelection(selection);
+        const randomSelection = normalizedSelection[RANDOM_FACTION_OPTION_NAME];
+        if (randomSelection?.state !== undefined && randomSelection.state !== false) {
+            this.randomFactionSelected.set(true);
+            this.filtersService.setFilter('faction', {});
+            return;
+        }
+
+        delete normalizedSelection[RANDOM_FACTION_OPTION_NAME];
+        this.randomFactionSelected.set(false);
+        this.setMultiStateFilter('faction', normalizedSelection);
+    }
+
+    onUnitTypeSelectionChange(selection: MultiStateSelection | readonly string[]): void {
+        const filterKey = this.unitTypeFilterKey();
+        if (!filterKey) {
+            return;
+        }
+
+        this.setArrayFilter(filterKey, selection);
+    }
+
+    onSubtypeSelectionChange(selection: MultiStateSelection | readonly string[]): void {
+        this.setArrayFilter('subtype', selection);
+    }
+
+    onTagsSelectionChange(selection: MultiStateSelection | readonly string[]): void {
+        this.setMultiStateFilter('_tags', selection);
+    }
+
+    onSearchTextChange(value: string): void {
+        this.filtersService.setSearchText(value);
+    }
+
+    clearSearchText(): void {
+        this.filtersService.setSearchText('');
+    }
+
+    onPreventDuplicateChassisChange(event: Event): void {
+        const checked = (event.target as HTMLInputElement).checked;
+        if (this.preventDuplicateChassis() !== checked) {
+            this.preventDuplicateChassis.set(checked);
+            void this.optionsService.setOption('forceGenPreventDuplicateChassis', checked);
+        }
+
+        if (checked && this.useTaggedQuantities()) {
+            this.useTaggedQuantities.set(false);
+            void this.optionsService.setOption('forceGenUseTaggedQuantities', false);
+        }
+    }
+
+    onUseTaggedQuantitiesChange(event: Event): void {
+        const checked = (event.target as HTMLInputElement).checked;
+        if (this.useTaggedQuantities() !== checked) {
+            this.useTaggedQuantities.set(checked);
+            void this.optionsService.setOption('forceGenUseTaggedQuantities', checked);
+        }
+
+        if (checked && this.preventDuplicateChassis()) {
+            this.preventDuplicateChassis.set(false);
+            void this.optionsService.setOption('forceGenPreventDuplicateChassis', false);
+        }
+    }
+
+    onUseUnitTagsAsChassisTagsChange(event: Event): void {
+        const checked = (event.target as HTMLInputElement).checked;
+        if (this.useUnitTagsAsChassisTags() !== checked) {
+            this.useUnitTagsAsChassisTags.set(checked);
+            void this.optionsService.setOption('forceGenUseUnitTagsAsChassisTags', checked);
+        }
+    }
+
+    onCrossEraAvailabilityInMultiEraSelectionChange(event: Event): void {
+        const target = event.target as HTMLInputElement;
+        this.crossEraAvailabilityInMultiEraSelection.set(
+            this.crossEraAvailabilityToggleEnabled() && target.checked,
+        );
+    }
+
+    onMergeSelectedFactionAvailabilityChange(event: Event): void {
+        this.mergeSelectedFactionAvailability.set((event.target as HTMLInputElement).checked);
+    }
+
+    onTargetFormationSelectionChange(selection: MultiStateSelection | readonly string[]): void {
+        const availableFormationIds = new Set(this.targetFormationOptions().map((option) => option.name));
+        const normalizedSelection = normalizeMultiStateSelection(selection);
+        const nextSelection: MultiStateSelection = {};
+
+        for (const [formationId, targetSelection] of Object.entries(normalizedSelection)) {
+            if ((targetSelection.state === 'or' || targetSelection.state === 'and') && availableFormationIds.has(formationId)) {
+                nextSelection[formationId] = {
+                    name: formationId,
+                    state: 'or',
+                    count: Math.max(1, Math.floor(targetSelection.count || 1)),
+                };
+            }
+        }
+
+        this.targetFormationSelection.set(nextSelection);
+    }
+
+    onBudgetMinChange(valueOrEvent: number | Event): void {
+        const value = typeof valueOrEvent === 'number'
+            ? valueOrEvent
+            : this.parseNumericValue(valueOrEvent, 0);
+
+        this.setBudgetRangeForSystem(
+            this.gameSystem(),
+            this.forceGeneratorService.resolveBudgetRangeForEditedMin(
+                this.budgetRange(),
+                value,
+            ),
+        );
+    }
+
+    onBudgetMaxCommit(value: number): void {
+        this.setBudgetMax(value);
+    }
+
+    onBudgetMaxBlur(event: Event): void {
+        this.setBudgetMax(this.parseNumericValue(event, 0));
+        this.syncInputValue(event, this.budgetRange().max || '');
+    }
+
+    private setBudgetMax(value: number): void {
+        this.setBudgetRangeForSystem(
+            this.gameSystem(),
+            this.forceGeneratorService.resolveBudgetRangeForEditedMax(
+                this.budgetRange(),
+                value,
+            ),
+        );
+    }
+
+    onMinUnitCountChange(event: Event): void {
+        this.setUnitCountRange(this.forceGeneratorService.resolveUnitCountRangeForEditedMin(
+            {
+                min: this.minUnitCount(),
+                max: this.maxUnitCount(),
+            },
+            this.parseNumericValue(event, this.minUnitCount()),
+        ));
+    }
+
+    onMinUnitCountBlur(event: Event): void {
+        this.syncInputValue(event, this.minUnitCount());
+    }
+
+    onMaxUnitCountBlur(event: Event): void {
+        this.setUnitCountRange(this.forceGeneratorService.resolveUnitCountRangeForEditedMax(
+            {
+                min: this.minUnitCount(),
+                max: this.maxUnitCount(),
+            },
+            this.parseNumericValue(event, this.minUnitCount()),
+        ));
+        this.syncInputValue(event, this.maxUnitCount());
+    }
+
+    readonly shouldBlockMobileSwipe = (): boolean => typeof window === 'undefined' || window.innerWidth > 960;
+
+    setMobileTab(tab: GeneratorDialogTab): void {
+        this.mobileTab.set(tab);
+        this.mobileSwipeRatio.set(0);
+        this.mobileSwipeActive.set(false);
+    }
+
+    onMobileSwipeStart(): void {
+        this.mobileSwipeActive.set(true);
+        this.mobileSwipeRatio.set(0);
+    }
+
+    onMobileSwipeRatio(ratio: number): void {
+        this.mobileSwipeRatio.set(this.normalizeMobileSwipeRatio(ratio));
+    }
+
+    onMobileSwipeEnd(event: SwipeEndEvent): void {
+        const currentTab = this.mobileTab();
+        if (event.success && currentTab === 'configuration' && event.direction === 'left') {
+            this.mobileTab.set('preview');
+        } else if (event.success && currentTab === 'preview' && event.direction === 'right') {
+            this.mobileTab.set('configuration');
+        }
+
+        this.mobileSwipeRatio.set(0);
+        this.mobileSwipeActive.set(false);
+    }
+
+    onMobileSwipeCancel(): void {
+        this.mobileSwipeRatio.set(0);
+        this.mobileSwipeActive.set(false);
+    }
+
+    reroll(): void {
+        this.cancelActiveForceGeneration();
+        this.clearHoveredPreviewUnit();
+        this.clearSelectedPreviewUnit();
+        this.mobileTab.set('preview');
+
+        const request = this.buildForceGenerationRequest();
+        const buildPreviewAsync = (this.forceGeneratorService as Partial<Pick<ForceGeneratorService, 'buildPreviewAsync'>>)
+            .buildPreviewAsync?.bind(this.forceGeneratorService);
+        if (!buildPreviewAsync) {
+            this.completeGeneratedPreview(this.forceGeneratorService.buildPreview(request));
+            return;
+        }
+
+        const task = buildPreviewAsync(request);
+        if (!task.isAsync) {
+            void task.result.then((preview) => this.completeGeneratedPreview(preview));
+            return;
+        }
+
+        const runId = this.activeForceGenerationRunId + 1;
+        this.activeForceGenerationRunId = runId;
+        this.activeForceGenerationTask = task;
+        this.forceGenerationTerminateRequested.set(false);
+        this.forceGenerationInProgress.set(true);
+
+        void task.result
+            .then((preview) => {
+                if (!this.isActiveForceGenerationTask(task, runId)) {
+                    return;
+                }
+
+                this.completeGeneratedPreview(preview);
+            })
+            .catch(() => {
+                if (!this.isActiveForceGenerationTask(task, runId)) {
+                    return;
+                }
+
+                this.previewState.set(this.createEmptyPreview('Unable to generate a force preview.'));
+            })
+            .finally(() => {
+                if (!this.isActiveForceGenerationTask(task, runId)) {
+                    return;
+                }
+
+                this.activeForceGenerationTask = null;
+                this.forceGenerationInProgress.set(false);
+                this.forceGenerationTerminateRequested.set(false);
+            });
+    }
+
+    importCurrentForce(): void {
+        const currentForce = this.currentForce();
+        if (!currentForce) {
+            return;
+        }
+
+        this.cancelActiveForceGeneration();
+        this.clearHoveredPreviewUnit();
+        this.clearSelectedPreviewUnit();
+
+        const importedPreviewEntry = createForcePreviewEntryFromForce(currentForce);
+        const importedUnits = getForcePreviewUnitEntries(importedPreviewEntry)
+            .map((unitEntry) => this.toLockedGeneratedUnit(unitEntry))
+            .filter((unit): unit is GeneratedForceUnit => unit !== null);
+
+        this.lockedUnits.set(importedUnits);
+        this.previewState.set(this.createPreviewFromUnits(importedUnits, {
+            faction: importedPreviewEntry.faction,
+            era: importedPreviewEntry.era,
+            name: importedPreviewEntry.name,
+            explanationLines: ['Imported current force into preview. Press REROLL to generate a new result for the current settings.'],
+            error: importedUnits.length === 0 ? 'No units from the current force could be loaded into the preview.' : null,
+        }));
+    }
+
+    toggleHowPicksWereChosen(): void {
+        this.collapsedHowPicksWhereChosen.update((value) => !value);
+    }
+
+    onPreviewUnitHover(unitEntry: ForcePreviewUnit | null): void {
+        if (unitEntry?.unit) {
+            this.hoveredPreviewUnit.set(unitEntry);
+        }
+    }
+
+    onPreviewSelectedUnitsChange(selectedUnits: ForcePreviewUnit[]): void {
+        this.selectedPreviewUnit.set(selectedUnits[0] ?? null);
+    }
+
+    toggleRadarExpanded(): void {
+        this.radarExpanded.update((expanded) => !expanded);
+    }
+
+    isPreviewUnitChassisOnlyLocked(unitEntry: ForcePreviewUnit): boolean {
+        return !!unitEntry.lockKey && this.chassisOnlyLockedUnitKeys().has(unitEntry.lockKey);
+    }
+
+    async onPreviewUnitMenuAction(event: ForcePreviewUnitMenuActionEvent): Promise<void> {
+        switch (event.action) {
+            case 'edit-pilot':
+                await this.editPreviewUnitPilot(event.unitEntry);
+                break;
+            case 'toggle-chassis-lock':
+                this.togglePreviewUnitChassisOnlyLock(event.unitEntry);
+                break;
+            case 'reroll-unit-keep-pilot':
+                this.rerollPreviewUnitSlot(event.unitEntry);
+                break;
+            case 'reroll-unit-and-pilot':
+                this.rerollPreviewUnitAndPilotSlot(event.unitEntry);
+                break;
+            case 'reject':
+                this.rejectPreviewUnit(event.unitEntry);
+                break;
+        }
+    }
+
+    onHoverPreviewUnitPilotClick(unitEntry: ForcePreviewUnit): void {
+        void this.editPreviewUnitPilot(unitEntry);
+    }
+
+    removeRejectedUnit(unitName: string): void {
+        this.rejectedUnits.update((units) => units.filter((unit) => unit.name !== unitName));
+    }
+
+    submit(): void {
+        const previewEntry = this.previewEntry();
+        if (this.forceGenerationInProgress() || !previewEntry || this.previewError()) {
+            return;
+        }
+
+        const preview = this.preview();
+        const forceEntry = this.forceGeneratorService.createForceEntryFromPreviewEntry(previewEntry);
+        if (!forceEntry) {
+            return;
+        }
+
+        this.filtersService.requestClosePanels({ exitExpandedView: true });
+        this.dialogRef.close({
+            forceEntry,
+            config: {
+                gameSystem: this.gameSystem(),
+                availabilitySource: this.availabilitySource(),
+                budgetRange: this.budgetRange(),
+                minUnitCount: this.minUnitCount(),
+                maxUnitCount: this.maxUnitCount(),
+                skillRanges: this.forceGenerationSkillRanges(),
+                crossEraAvailabilityInMultiEraSelection: this.crossEraAvailabilityInMultiEraSelection(),
+                randomFaction: this.randomFactionSelected(),
+                mergeSelectedFactionAvailability: this.mergeSelectedFactionAvailability(),
+                preventDuplicateChassis: this.preventDuplicateChassis(),
+                useTaggedQuantities: this.useTaggedQuantities(),
+                useUnitTagsAsChassisTags: this.useTaggedQuantities() && this.useUnitTagsAsChassisTags(),
+                targetFormationId: this.targetFormationId() || undefined,
+                targetFormations: this.targetFormations(),
+            },
+            totalCost: preview.totalCost,
+        });
+    }
+
+    dismiss(): void {
+        this.cancelActiveForceGeneration();
+        this.dialogRef.close(null);
+    }
+
+    terminateForceGeneration(): void {
+        if (!this.activeForceGenerationTask) {
+            return;
+        }
+
+        this.forceGenerationTerminateRequested.set(true);
+        this.activeForceGenerationTask.terminate();
+    }
+
+    private clearHoveredPreviewUnit(): void {
+        this.hoveredPreviewUnit.set(null);
+    }
+
+    private clearSelectedPreviewUnit(): void {
+        this.selectedPreviewUnit.set(null);
+    }
+
+    private completeGeneratedPreview(preview: ForceGenerationPreview): void {
+        this.previewState.set(preview);
+        this.recordForceGeneration(preview);
+    }
+
+    private cancelActiveForceGeneration(): void {
+        if (!this.activeForceGenerationTask && !this.forceGenerationInProgress()) {
+            return;
+        }
+
+        this.activeForceGenerationTask?.terminate();
+        this.activeForceGenerationTask = null;
+        this.activeForceGenerationRunId += 1;
+        this.forceGenerationInProgress.set(false);
+        this.forceGenerationTerminateRequested.set(false);
+    }
+
+    private isActiveForceGenerationTask(task: ForceGenerationPreviewTask, runId: number): boolean {
+        return this.activeForceGenerationTask === task && this.activeForceGenerationRunId === runId;
+    }
+
+    private getDropdownFilter(key: string): DropdownFilterOptions | null {
+        const option = this.filtersService.advOptions()[key];
+        return option?.type === 'dropdown' ? option : null;
+    }
+
+    private getSelectedMultiStateValues(option: DropdownFilterOptions | null): MultiStateSelection {
+        return normalizeMultiStateSelection(option?.value);
+    }
+
+    private getSelectedDropdownValues(option: DropdownFilterOptions | null): string[] {
+        return Array.isArray(option?.value) ? [...option.value] : [];
+    }
+
+    private getDropdownOptionsForTargetFormation(
+        filterKey: FormationTargetDropdownFilterKey,
+        option: DropdownFilterOptions | null,
+    ): DropdownOption[] {
+        const baseOptions = option?.options ?? [];
+        const definition = this.targetFormationAvailabilityDefinition();
+        if (!definition) {
+            return baseOptions;
+        }
+
+        const projectedOptions = (this.filtersService as FormationTargetDropdownOptionsProvider)
+            .getDropdownOptionsForFormationTarget?.(filterKey, definition);
+        if (projectedOptions) {
+            return projectedOptions;
+        }
+
+        return filterKey === 'faction'
+            ? this.getFallbackFactionOptionsForTargetFormation(baseOptions, definition)
+            : baseOptions;
+    }
+
+    private getFallbackFactionOptionsForTargetFormation(
+        options: readonly DropdownOption[],
+        definition: FormationTypeDefinition,
+    ): DropdownOption[] {
+        return options.map((option) => ({
+            ...option,
+            available: option.available !== false && LanceTypeIdentifierUtil.isFormationAvailableForFaction(
+                definition,
+                this.dataService.getFactionByName(option.name) ?? option.name,
+            ),
+        }));
+    }
+
+    private formatTargetFormationSummary(targetFormations: readonly ForceGenerationTargetFormationSelection[]): string {
+        if (targetFormations.length === 0) {
+            return '';
+        }
+
+        const displayNameByFormationId = new Map(this.targetFormationOptions().map((option) => [
+            option.name,
+            option.displayName ?? option.name,
+        ]));
+
+        return targetFormations
+            .map((targetFormation) => {
+                const displayName = displayNameByFormationId.get(targetFormation.formationId);
+                if (!displayName) {
+                    return '';
+                }
+                return targetFormation.count > 1
+                    ? `${targetFormation.count} ${displayName}`
+                    : displayName;
+            })
+            .filter((entry) => entry.length > 0)
+            .join(', ');
+    }
+
+    private isTargetFormationAvailableForSelectedFactions(definition: FormationTypeDefinition): boolean {
+        if (this.randomFactionSelected()) {
+            return true;
+        }
+
+        const factionFilter = this.factionFilter();
+        if (!factionFilter) {
+            return true;
+        }
+
+        const resolvedFactionNames = resolveDropdownNamesFromFilter(
+            this.selectedFactionValues(),
+            factionFilter.options.map((entry) => entry.name),
+        );
+        const positiveFactionNames = [...new Set([...resolvedFactionNames.or, ...resolvedFactionNames.and])];
+        if (positiveFactionNames.length === 0) {
+            return true;
+        }
+
+        return positiveFactionNames.some((factionName) => (
+            LanceTypeIdentifierUtil.isFormationAvailableForFaction(
+                definition,
+                this.dataService.getFactionByName(factionName) ?? factionName,
+            )
+        ));
+    }
+
+    private countPositiveMultiStateSelections(option: DropdownFilterOptions | null): number {
+        if (!option) {
+            return 0;
+        }
+
+        const resolvedNames = resolveDropdownNamesFromFilter(
+            this.getSelectedMultiStateValues(option),
+            option.options.map((entry) => entry.name),
+        );
+
+        return new Set([...resolvedNames.or, ...resolvedNames.and]).size;
+    }
+
+    private buildForceGenerationRequest(): ForceGenerationRequest {
+        const settings = this.generationSettings();
+        const eligibleUnits = this.generationEligibleUnits();
+        const lockedUnits = this.resolvePreviewUnits(
+            this.lockedUnits(),
+            settings.gameSystem,
+            settings.gunnery,
+            settings.piloting,
+        );
+
+        return {
+            eligibleUnits,
+            searchSettings: this.buildSearchSettingsExplanationLines(),
+            context: this.forceGeneratorService.resolveGenerationContext(eligibleUnits, {
+                crossEraAvailabilityInMultiEraSelection: this.crossEraAvailabilityInMultiEraSelection(),
+                randomFaction: this.randomFactionSelected(),
+                mergeSelectedFactionAvailability: this.mergeSelectedFactionAvailability(),
+                gameSystem: settings.gameSystem,
+                targetFormationId: settings.targetFormationId,
+                targetFormations: settings.targetFormations,
+            }),
+            gameSystem: settings.gameSystem,
+            budgetRange: settings.budgetRange,
+            minUnitCount: settings.minUnitCount,
+            maxUnitCount: settings.maxUnitCount,
+            gunnery: settings.gunnery,
+            piloting: settings.piloting,
+            skillRanges: settings.skillRanges,
+            lockedUnits,
+            preventDuplicateChassis: this.preventDuplicateChassis(),
+            useTaggedQuantities: this.useTaggedQuantities(),
+            useUnitTagsAsChassisTags: this.useTaggedQuantities() && this.useUnitTagsAsChassisTags(),
+            targetFormationId: settings.targetFormationId,
+            targetFormations: settings.targetFormations,
+        };
+    }
+
+    private recordForceGeneration(preview: ForceGenerationPreview): void {
+        if (preview.error || preview.units.length === 0 || !this.wsService.wsConnected()) {
+            return;
+        }
+
+        this.wsService.send({ action: 'recordForceGeneration' });
+    }
+
+    private createEmptyPreview(error: string | null = null): ForceGenerationPreview {
+        return {
+            gameSystem: this.gameSystem(),
+            name: undefined,
+            units: [],
+            totalCost: 0,
+            error,
+            faction: null,
+            era: null,
+            explanationLines: [],
+            targetFormationId: this.targetFormationId() || undefined,
+            targetFormations: this.targetFormations(),
+        };
+    }
+
+    private projectPreviewForDisplay(storedPreview: ForceGenerationPreview): ForceGenerationPreview {
+        const settings = this.previewDisplaySettings();
+        const units = this.resolvePreviewUnits(
+            storedPreview.units,
+            settings.gameSystem,
+            settings.gunnery,
+            settings.piloting,
+        );
+        const totalCost = units.reduce((sum, unit) => sum + unit.cost, 0);
+
+        return {
+            gameSystem: settings.gameSystem,
+            name: storedPreview.name,
+            units,
+            totalCost,
+            error: storedPreview.error,
+            faction: storedPreview.faction,
+            era: storedPreview.era,
+            explanationLines: storedPreview.explanationLines,
+            targetFormationId: storedPreview.targetFormationId,
+            targetFormations: storedPreview.targetFormations,
+            targetFormationGroups: storedPreview.targetFormationGroups,
+        };
+    }
+
+    private createPreviewFromUnits(
+        units: readonly GeneratedForceUnit[],
+        options: {
+            faction?: Faction | null;
+            era?: Era | null;
+            explanationLines?: readonly string[];
+            error?: string | null;
+            name?: string;
+        } = {},
+    ): ForceGenerationPreview {
+        const settings = this.previewDisplaySettings();
+        const resolvedUnits = this.resolvePreviewUnits(
+            units,
+            settings.gameSystem,
+            settings.gunnery,
+            settings.piloting,
+        );
+
+        return {
+            gameSystem: settings.gameSystem,
+            name: options.name,
+            units: resolvedUnits,
+            totalCost: resolvedUnits.reduce((sum, unit) => sum + unit.cost, 0),
+            error: options.error ?? null,
+            faction: options.faction ?? null,
+            era: options.era ?? null,
+            explanationLines: [...(options.explanationLines ?? [])],
+            targetFormationId: this.targetFormationId() || undefined,
+            targetFormations: this.targetFormations(),
+        };
+    }
+
+    private resolvePreviewValidationError(
+        unitCount: number,
+        totalCost: number,
+        settings: {
+            gameSystem: GameSystem;
+            budgetRange: { min: number; max: number };
+            minUnitCount: number;
+            maxUnitCount: number;
+        },
+    ): string | null {
+        if (unitCount < settings.minUnitCount || unitCount > settings.maxUnitCount) {
+            const unitLabel = unitCount === 1 ? 'unit' : 'units';
+            const unitRange = settings.minUnitCount === settings.maxUnitCount
+                ? `${settings.minUnitCount}`
+                : `${settings.minUnitCount}-${settings.maxUnitCount}`;
+            return `Current preview has ${unitCount} ${unitLabel}, outside the current unit range of ${unitRange}. Press REROLL to generate a force for the updated settings.`;
+        }
+
+        const budgetRange = this.normalizePreviewBudgetRange(settings.budgetRange);
+        if (totalCost < budgetRange.min || totalCost > budgetRange.max) {
+            const budgetLabel = settings.gameSystem === GameSystem.ALPHA_STRIKE ? 'PV' : 'BV';
+            return `Current preview totals ${totalCost.toLocaleString()} ${budgetLabel}, outside the current target of ${this.formatBudgetTarget(budgetRange, budgetLabel)}. Press REROLL to generate a force for the updated settings.`;
+        }
+
+        return null;
+    }
+
+    private normalizePreviewBudgetRange(range: { min: number; max: number }): { min: number; max: number } {
+        const min = Math.max(0, Math.floor(range.min));
+        const rawMax = Math.max(0, Math.floor(range.max));
+        return {
+            min,
+            max: rawMax > 0 ? Math.max(min, rawMax) : Number.POSITIVE_INFINITY,
+        };
+    }
+
+    private formatBudgetTarget(range: { min: number; max: number }, budgetLabel: 'BV' | 'PV'): string {
+        if (!Number.isFinite(range.max)) {
+            return `at least ${range.min.toLocaleString()} ${budgetLabel}`;
+        }
+        if (range.min === 0) {
+            return `at most ${range.max.toLocaleString()} ${budgetLabel}`;
+        }
+        if (range.min === range.max) {
+            return `${range.min.toLocaleString()} ${budgetLabel}`;
+        }
+
+        return `${range.min.toLocaleString()}-${range.max.toLocaleString()} ${budgetLabel}`;
+    }
+
+    private resolvePreviewUnits(
+        lockedUnits: readonly GeneratedForceUnit[],
+        gameSystem: GameSystem,
+        gunnery: number,
+        piloting: number,
+    ): GeneratedForceUnit[] {
+        return lockedUnits.map((lockedUnit) => {
+            const skill = gameSystem === GameSystem.ALPHA_STRIKE
+                ? lockedUnit.skill ?? lockedUnit.gunnery ?? gunnery
+                : undefined;
+            const resolvedGunnery = gameSystem === GameSystem.CLASSIC
+                ? lockedUnit.gunnery ?? lockedUnit.skill ?? gunnery
+                : undefined;
+            const resolvedPiloting = gameSystem === GameSystem.CLASSIC
+                ? lockedUnit.piloting ?? piloting
+                : undefined;
+
+            return {
+                unit: lockedUnit.unit,
+                cost: this.forceGeneratorService.getBudgetMetric(
+                    lockedUnit.unit,
+                    gameSystem,
+                    skill ?? resolvedGunnery ?? gunnery,
+                    resolvedPiloting ?? piloting,
+                ),
+                skill,
+                gunnery: resolvedGunnery,
+                piloting: resolvedPiloting,
+                alias: lockedUnit.alias,
+                commander: lockedUnit.commander,
+                lockKey: lockedUnit.lockKey,
+                variantGroupKey: lockedUnit.variantGroupKey,
+            };
+        });
+    }
+
+    private resolveUnitTypeFilterKey(): UnitTypeFilterKey | null {
+        const filterKey = this.gameSystem() === GameSystem.ALPHA_STRIKE ? 'as.TP' : 'type';
+        return this.getDropdownFilter(filterKey) ? filterKey : null;
+    }
+
+    private getOtherGameSystem(gameSystem: GameSystem): GameSystem {
+        return gameSystem === GameSystem.CLASSIC
+            ? GameSystem.ALPHA_STRIKE
+            : GameSystem.CLASSIC;
+    }
+
+    private setMultiStateFilter(key: MultiStateFilterKey, selection: MultiStateSelection | readonly string[]): void {
+        this.filtersService.setFilter(key, normalizeMultiStateSelection(selection));
+    }
+
+    private setArrayFilter(key: string, selection: MultiStateSelection | readonly string[]): void {
+        if (Array.isArray(selection)) {
+            this.filtersService.setFilter(key, [...selection]);
+            return;
+        }
+
+        const selectedValues = Object.values(selection)
+            .filter((option) => option.state !== false)
+            .map((option) => option.name);
+        this.filtersService.setFilter(key, selectedValues);
+    }
+
+    private buildSearchSettingsExplanationLines(): string[] {
+        const searchText = this.filtersService.searchText().trim();
+        const filterSummary = this.summarizeActiveFilters(Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
+        const filterSettingsSummary = filterSummary.length > 0 ? filterSummary : 'none';
+        const settings = [
+            searchText.length > 0 ? `query "${searchText}"` : null,
+            `filters ${filterSettingsSummary}`,
+            this.formatFactionGenerationModeSummary(),
+        ].filter((setting): setting is string => setting !== null);
+
+        return [`Search settings: ${settings.join('; ')}.`];
+    }
+
+    private summarizeActiveFilters(maxVisibleFilters = 4, maxVisibleSelections = 2): string {
+        const summaries = Object.values(this.filtersService.advOptions())
+            .filter((option) => option.interacted)
+            .map((option) => this.formatFilterSummary(option, maxVisibleSelections))
+            .filter((summary): summary is string => summary.length > 0);
+
+        if (summaries.length === 0) {
+            return '';
+        }
+
+        if (!Number.isFinite(maxVisibleFilters)) {
+            return summaries.join(' | ');
+        }
+
+        const visibleSummaries = summaries.slice(0, maxVisibleFilters);
+        const hiddenCount = summaries.length - visibleSummaries.length;
+        return hiddenCount > 0
+            ? `${visibleSummaries.join(' | ')} | +${hiddenCount} more`
+            : visibleSummaries.join(' | ');
+    }
+
+    private formatFilterSummary(option: AdvFilterOptions, maxVisibleSelections = 2): string {
+        if (option.type === 'range') {
+            const [min, max] = option.value;
+            return `${option.label} ${option.displayText ?? `${min}-${max}`}`;
+        }
+
+        if (option.type === 'boolean') {
+            return option.value === 'or'
+                ? `${option.label} Yes`
+                : option.value === 'not'
+                    ? `${option.label} No`
+                    : '';
+        }
+
+        if (option.displayText) {
+            return `${option.label} ${option.displayText}`;
+        }
+
+        if (Array.isArray(option.value)) {
+            if (option.value.length === 0) {
+                return '';
+            }
+
+            const visibleValues = option.value.slice(0, maxVisibleSelections);
+            const hiddenCount = option.value.length - visibleValues.length;
+            return `${option.label} ${visibleValues.join(', ')}${hiddenCount > 0 ? ` +${hiddenCount}` : ''}`;
+        }
+
+        const activeSelections = Object.values(option.value as MultiStateSelection)
+            .filter((selection) => selection.state !== false)
+            .map((selection) => selection.state === 'not' ? `!${selection.name}` : selection.name);
+        if (activeSelections.length === 0) {
+            return '';
+        }
+
+        const visibleSelections = activeSelections.slice(0, maxVisibleSelections);
+        const hiddenCount = activeSelections.length - visibleSelections.length;
+        return `${option.label} ${visibleSelections.join(', ')}${hiddenCount > 0 ? ` +${hiddenCount}` : ''}`;
+    }
+
+    private formatFactionGenerationModeSummary(): string | null {
+        if (this.randomFactionSelected()) {
+            return 'Faction mode: Random';
+        }
+
+        if (this.positiveFactionSelectionCount() > 1 && !this.mergeSelectedFactionAvailability()) {
+            return 'Faction mode: Random selected faction';
+        }
+
+        return null;
+    }
+
+    private setBudgetRangeForSystem(gameSystem: GameSystem, range: { min: number; max: number }): void {
+        const nextMin = Math.max(0, Math.floor(range.min));
+        const nextMax = Math.max(0, Math.floor(range.max));
+        const optionKeys = this.forceGeneratorService.getStoredBudgetOptionKeys(gameSystem);
+
+        if (gameSystem === GameSystem.ALPHA_STRIKE) {
+            const didChangeMin = this.alphaStrikeBudgetMin() !== nextMin;
+            const didChangeMax = this.alphaStrikeBudgetMax() !== nextMax;
+            if (!didChangeMin && !didChangeMax) {
+                return;
+            }
+
+            this.alphaStrikeBudgetMin.set(nextMin);
+            this.alphaStrikeBudgetMax.set(nextMax);
+
+            if (didChangeMin) {
+                void this.optionsService.setOption(optionKeys.min, nextMin);
+            }
+            if (didChangeMax) {
+                void this.optionsService.setOption(optionKeys.max, nextMax);
+            }
+        } else {
+            const didChangeMin = this.classicBudgetMin() !== nextMin;
+            const didChangeMax = this.classicBudgetMax() !== nextMax;
+            if (!didChangeMin && !didChangeMax) {
+                return;
+            }
+
+            this.classicBudgetMin.set(nextMin);
+            this.classicBudgetMax.set(nextMax);
+
+            if (didChangeMin) {
+                void this.optionsService.setOption(optionKeys.min, nextMin);
+            }
+            if (didChangeMax) {
+                void this.optionsService.setOption(optionKeys.max, nextMax);
+            }
+        }
+    }
+
+    private setUnitCountRange(range: { min: number; max: number }): void {
+        const nextMin = Math.max(1, Math.floor(range.min));
+        const nextMax = Math.max(nextMin, Math.floor(range.max));
+        const optionKeys = this.forceGeneratorService.getStoredUnitCountOptionKeys();
+        const didChangeMin = this.minUnitCount() !== nextMin;
+        const didChangeMax = this.maxUnitCount() !== nextMax;
+
+        if (!didChangeMin && !didChangeMax) {
+            return;
+        }
+
+        this.minUnitCount.set(nextMin);
+        this.maxUnitCount.set(nextMax);
+
+        if (didChangeMin) {
+            void this.optionsService.setOption(optionKeys.min, nextMin);
+        }
+        if (didChangeMax) {
+            void this.optionsService.setOption(optionKeys.max, nextMax);
+        }
+    }
+
+    private setSkillRange(type: 'gunnery' | 'piloting', range: readonly [number, number]): void {
+        const currentRange = type === 'gunnery'
+            ? this.gunnerySkillRange()
+            : this.pilotingSkillRange();
+        const nextRange = this.normalizeSkillRange(range, currentRange);
+        const didChangeMin = currentRange[0] !== nextRange[0];
+        const didChangeMax = currentRange[1] !== nextRange[1];
+
+        if (!didChangeMin && !didChangeMax) {
+            return;
+        }
+
+        if (type === 'gunnery') {
+            this.gunnerySkillRange.set(nextRange);
+        } else {
+            this.pilotingSkillRange.set(nextRange);
+        }
+
+        const optionKeys = this.forceGeneratorService.getStoredSkillOptionKeys();
+        const minOptionKey = type === 'gunnery' ? optionKeys.gunneryMin : optionKeys.pilotingMin;
+        const maxOptionKey = type === 'gunnery' ? optionKeys.gunneryMax : optionKeys.pilotingMax;
+
+        if (didChangeMin) {
+            void this.optionsService.setOption(minOptionKey, nextRange[0]);
+        }
+        if (didChangeMax) {
+            void this.optionsService.setOption(maxOptionKey, nextRange[1]);
+        }
+    }
+
+    private setMaxPilotSkillDelta(value: number): void {
+        const nextValue = this.normalizeMaxPilotSkillDelta(value);
+        if (this.maxPilotSkillDelta() === nextValue) {
+            return;
+        }
+
+        this.maxPilotSkillDelta.set(nextValue);
+        void this.optionsService.setOption(
+            this.forceGeneratorService.getStoredSkillOptionKeys().maxDelta,
+            nextValue,
+        );
+    }
+
+    private normalizeSkillValue(value: number, fallback: number): number {
+        const resolvedValue = Number.isFinite(value) ? value : fallback;
+        return Math.min(this.maxPilotSkill, Math.max(this.minPilotSkill, Math.floor(resolvedValue)));
+    }
+
+    private normalizeSkillRange(
+        range: readonly [number, number],
+        fallback: readonly [number, number],
+    ): [number, number] {
+        const firstValue = this.normalizeSkillValue(range[0], fallback[0]);
+        const secondValue = this.normalizeSkillValue(range[1], fallback[1]);
+        return [Math.min(firstValue, secondValue), Math.max(firstValue, secondValue)];
+    }
+
+    private normalizeMaxPilotSkillDelta(value: number): number {
+        return Math.min(this.maxPilotSkill, Math.max(0, Math.floor(Number.isFinite(value) ? value : this.maxPilotSkillDelta())));
+    }
+
+    private normalizeMobileSwipeRatio(ratio: number): number {
+        return this.mobileTab() === 'configuration'
+            ? Math.min(0, Math.max(-1, ratio))
+            : Math.max(0, Math.min(1, ratio));
+    }
+
+    private toSkillRangeObject(range: readonly [number, number]): ForceGenerationSkillRange {
+        return {
+            min: range[0],
+            max: range[1],
+        };
+    }
+
+    private parseNumericValue(event: Event, fallback: number): number {
+        const value = Number.parseInt((event.target as HTMLInputElement).value, 10);
+        return Number.isFinite(value) ? value : fallback;
+    }
+
+    private syncInputValue(event: Event, value: string | number): void {
+        const input = event.target as HTMLInputElement | null;
+        if (!input) {
+            return;
+        }
+
+        input.value = `${value}`;
+    }
+
+    private togglePreviewUnitLock(unitEntry: ForcePreviewUnit): void {
+        const lockKey = unitEntry.lockKey;
+        if (!lockKey) {
+            return;
+        }
+
+        this.lockedUnits.update((lockedUnits) => {
+            if (lockedUnits.some((unit) => unit.lockKey === lockKey)) {
+                this.removeChassisOnlyLockKey(lockKey);
+                return lockedUnits.filter((unit) => unit.lockKey !== lockKey);
+            }
+
+            const previewUnit = this.preview().units.find((unit) => unit.lockKey === lockKey);
+            return previewUnit ? [...lockedUnits, { ...previewUnit }] : lockedUnits;
+        });
+    }
+
+    private changePreviewUnitVariant(unitEntry: ForcePreviewUnit, variant: Unit): void {
+        if (!unitEntry.unit || unitEntry.unit.name === variant.name) {
+            return;
+        }
+
+        let didChange = false;
+        let gameSystem = this.gameSystem();
+        this.previewState.update((preview) => {
+            const index = this.findPreviewUnitIndex(preview.units, unitEntry);
+            if (index < 0) {
+                return preview;
+            }
+
+            gameSystem = preview.gameSystem;
+            const units = [...preview.units];
+            units[index] = this.createReplacementPreviewUnit(units[index], variant, gameSystem);
+            didChange = true;
+
+            return {
+                ...preview,
+                units,
+                totalCost: units.reduce((sum, unit) => sum + unit.cost, 0),
+            };
+        });
+
+        if (!didChange) {
+            return;
+        }
+
+        const lockKey = unitEntry.lockKey;
+        if (lockKey) {
+            this.lockedUnits.update((lockedUnits) => lockedUnits.map((unit) => (
+                unit.lockKey === lockKey
+                    ? this.createReplacementPreviewUnit(unit, variant, gameSystem)
+                    : unit
+            )));
+        }
+
+        this.clearHoveredPreviewUnit();
+        this.clearSelectedPreviewUnit();
+    }
+
+    private togglePreviewUnitChassisOnlyLock(unitEntry: ForcePreviewUnit): void {
+        const lockKey = unitEntry.lockKey;
+        if (!unitEntry.unit || !lockKey) {
+            return;
+        }
+
+        if (this.chassisOnlyLockVariantGroupByLockKey().has(lockKey)) {
+            this.removeChassisOnlyLockKey(lockKey);
+            this.lockedUnits.update((lockedUnits) => lockedUnits.filter((unit) => unit.lockKey !== lockKey));
+            return;
+        }
+
+        const variantGroupKey = getUnitVariantGroupKey(unitEntry.unit);
+        const lockedUnit = this.toLockedGeneratedUnit(unitEntry, variantGroupKey);
+        if (!lockedUnit) {
+            return;
+        }
+
+        this.chassisOnlyLockVariantGroupByLockKey.update((current) => {
+            const next = new Map(current);
+            next.set(lockKey, variantGroupKey);
+            return next;
+        });
+        this.lockedUnits.update((lockedUnits) => {
+            const remainingLockedUnits = lockedUnits.filter((unit) => unit.lockKey !== lockKey);
+            return [...remainingLockedUnits, lockedUnit];
+        });
+    }
+
+    private rerollPreviewUnitSlot(unitEntry: ForcePreviewUnit): void {
+        if (!unitEntry.unit) {
+            return;
+        }
+        const replacementUnit = this.pickPreviewSlotRerollUnit(unitEntry);
+        if (!replacementUnit || replacementUnit.name === unitEntry.unit.name) {
+            return;
+        }
+
+        this.changePreviewUnitVariant(unitEntry, replacementUnit);
+    }
+
+    private rerollPreviewUnitAndPilotSlot(unitEntry: ForcePreviewUnit): void {
+        if (!unitEntry.unit) {
+            return;
+        }
+
+        const replacementPreviewUnit = this.pickPreviewSlotRerollUnitAndPilot(unitEntry);
+        if (!replacementPreviewUnit) {
+            return;
+        }
+
+        this.replacePreviewGeneratedUnit(unitEntry, replacementPreviewUnit);
+    }
+
+    private pickPreviewSlotRerollUnit(unitEntry: ForcePreviewUnit): Unit | null {
+        const lockKey = unitEntry.lockKey;
+        const preview = this.preview();
+        const previewUnitIndex = this.findPreviewUnitIndex(preview.units, unitEntry);
+        if (previewUnitIndex < 0) {
+            return null;
+        }
+
+        const originalPreviewUnit = preview.units[previewUnitIndex];
+        const rollableCandidates = this.getPreviewSlotRerollUnitCandidates(unitEntry, preview);
+        if (rollableCandidates.length === 0) {
+            return null;
+        }
+
+        const budgetRange = this.normalizePreviewBudgetRange(this.generationSettings().budgetRange);
+        const evaluatedCandidates = rollableCandidates.map((unit) => {
+            const replacementPreviewUnit = this.createReplacementPreviewUnit(originalPreviewUnit, unit, preview.gameSystem);
+            const totalCost = preview.totalCost - originalPreviewUnit.cost + replacementPreviewUnit.cost;
+            return {
+                unit,
+                totalCost,
+                budgetDistance: this.getBudgetRangeDistance(totalCost, budgetRange),
+            };
+        });
+        const inBudgetCandidates = evaluatedCandidates.filter((candidate) => candidate.budgetDistance === 0);
+        if (inBudgetCandidates.length > 0) {
+            return this.pickRandomPreviewSlotCandidate(inBudgetCandidates)?.unit ?? null;
+        }
+
+        const bestBudgetDistance = Math.min(...evaluatedCandidates.map((candidate) => candidate.budgetDistance));
+        const closestCandidates = evaluatedCandidates.filter((candidate) => candidate.budgetDistance === bestBudgetDistance);
+        return this.pickRandomPreviewSlotCandidate(closestCandidates)?.unit ?? null;
+    }
+
+    private pickPreviewSlotRerollUnitAndPilot(unitEntry: ForcePreviewUnit): GeneratedForceUnit | null {
+        const lockKey = unitEntry.lockKey;
+        const preview = this.preview();
+        const previewUnitIndex = this.findPreviewUnitIndex(preview.units, unitEntry);
+        if (previewUnitIndex < 0) {
+            return null;
+        }
+
+        const originalPreviewUnit = preview.units[previewUnitIndex];
+        const budgetRange = this.normalizePreviewBudgetRange(this.generationSettings().budgetRange);
+        const evaluatedCandidates = this.getPreviewSlotRerollUnitCandidates(unitEntry, preview)
+            .flatMap((unit) => this.createPreviewSlotPilotRerollCandidates(originalPreviewUnit, unit, preview.gameSystem))
+            .map((replacementPreviewUnit) => {
+                const totalCost = preview.totalCost - originalPreviewUnit.cost + replacementPreviewUnit.cost;
+                return {
+                    replacementPreviewUnit,
+                    totalCost,
+                    budgetDistance: this.getBudgetRangeDistance(totalCost, budgetRange),
+                };
+            });
+
+        if (evaluatedCandidates.length === 0) {
+            return null;
+        }
+
+        const inBudgetCandidates = evaluatedCandidates.filter((candidate) => candidate.budgetDistance === 0);
+        if (inBudgetCandidates.length > 0) {
+            return this.pickRandomPreviewSlotCandidate(inBudgetCandidates)?.replacementPreviewUnit ?? null;
+        }
+
+        const bestBudgetDistance = Math.min(...evaluatedCandidates.map((candidate) => candidate.budgetDistance));
+        const closestCandidates = evaluatedCandidates.filter((candidate) => candidate.budgetDistance === bestBudgetDistance);
+        const pickedCandidate = this.pickRandomPreviewSlotCandidate(closestCandidates)?.replacementPreviewUnit ?? null;
+        return pickedCandidate; 
+    }
+
+    private getPreviewSlotRerollUnitCandidates(unitEntry: ForcePreviewUnit, preview: ForceGenerationPreview): Unit[] {
+        const lockKey = unitEntry.lockKey;
+        const chassisOnlyVariantGroupKey = lockKey
+            ? this.chassisOnlyLockVariantGroupByLockKey().get(lockKey)
+            : undefined;
+        let candidates = this.generationEligibleUnits();
+
+        if (chassisOnlyVariantGroupKey) {
+            candidates = candidates.filter((unit) => getUnitVariantGroupKey(unit) === chassisOnlyVariantGroupKey);
+        } else if (this.preventDuplicateChassis()) {
+            const otherPreviewVariantGroupKeys = new Set(
+                preview.units
+                    .filter((unit) => unit.lockKey !== lockKey && unit.unit.name !== unitEntry.unit?.name)
+                    .map((unit) => getUnitVariantGroupKey(unit.unit)),
+            );
+            candidates = candidates.filter((unit) => !otherPreviewVariantGroupKeys.has(getUnitVariantGroupKey(unit)));
+        }
+
+        const alternateCandidates = candidates.filter((unit) => unit.name !== unitEntry.unit?.name);
+        return alternateCandidates.length > 0 ? alternateCandidates : candidates;
+    }
+
+    private createPreviewSlotPilotRerollCandidates(
+        original: GeneratedForceUnit,
+        unit: Unit,
+        gameSystem: GameSystem,
+    ): GeneratedForceUnit[] {
+        if (gameSystem === GameSystem.ALPHA_STRIKE) {
+            return this.expandSkillRange(this.gunnerySkillRange()).map((skill) => ({
+                ...original,
+                unit,
+                alias: undefined,
+                cost: this.forceGeneratorService.getBudgetMetric(unit, gameSystem, skill, this.pilotingSkillRange()[0]),
+                skill,
+                gunnery: undefined,
+                piloting: undefined,
+            }));
+        }
+
+        const maxDelta = this.maxPilotSkillDelta();
+        return this.expandSkillRange(this.gunnerySkillRange()).flatMap((gunnery) => (
+            this.expandSkillRange(this.pilotingSkillRange())
+                .filter((piloting) => Math.abs(gunnery - piloting) <= maxDelta)
+                .map((piloting) => ({
+                    ...original,
+                    unit,
+                    alias: undefined,
+                    cost: this.forceGeneratorService.getBudgetMetric(unit, gameSystem, gunnery, piloting),
+                    skill: undefined,
+                    gunnery,
+                    piloting,
+                }))
+        ));
+    }
+
+    private expandSkillRange(range: readonly [number, number]): number[] {
+        return Array.from({ length: range[1] - range[0] + 1 }, (_, index) => range[0] + index);
+    }
+
+    private replacePreviewGeneratedUnit(unitEntry: ForcePreviewUnit, replacementUnit: GeneratedForceUnit): void {
+        this.previewState.update((preview) => {
+            const index = this.findPreviewUnitIndex(preview.units, unitEntry);
+            if (index < 0) {
+                return preview;
+            }
+
+            const units = [...preview.units];
+            units[index] = replacementUnit;
+            return {
+                ...preview,
+                units,
+                totalCost: units.reduce((sum, unit) => sum + unit.cost, 0),
+            };
+        });
+
+        if (replacementUnit.lockKey) {
+            this.lockedUnits.update((lockedUnits) => lockedUnits.map((unit) => (
+                unit.lockKey === replacementUnit.lockKey ? replacementUnit : unit
+            )));
+        }
+
+        this.clearHoveredPreviewUnit();
+        this.clearSelectedPreviewUnit();
+    }
+
+    private getBudgetRangeDistance(totalCost: number, budgetRange: { min: number; max: number }): number {
+        if (totalCost < budgetRange.min) {
+            return budgetRange.min - totalCost;
+        }
+        if (totalCost > budgetRange.max) {
+            return totalCost - budgetRange.max;
+        }
+        return 0;
+    }
+
+    private pickRandomPreviewSlotCandidate<T>(candidates: readonly T[]): T | null {
+        if (candidates.length === 0) {
+            return null;
+        }
+
+        return candidates[Math.floor(Math.random() * candidates.length)] ?? null;
+    }
+
+    private removeChassisOnlyLockKey(lockKey: string): void {
+        this.chassisOnlyLockVariantGroupByLockKey.update((current) => {
+            if (!current.has(lockKey)) {
+                return current;
+            }
+
+            const next = new Map(current);
+            next.delete(lockKey);
+            return next;
+        });
+    }
+
+    private rejectPreviewUnit(unitEntry: ForcePreviewUnit): void {
+        if (!unitEntry.unit) {
+            return;
+        }
+
+        const unitName = unitEntry.unit.name;
+        this.rejectedUnits.update((units) => units.some((unit) => unit.name === unitName)
+            ? units
+            : [...units, unitEntry.unit!]);
+
+        const lockKey = unitEntry.lockKey;
+        if (lockKey) {
+            this.removeChassisOnlyLockKey(lockKey);
+            this.lockedUnits.update((lockedUnits) => lockedUnits.filter((unit) => unit.lockKey !== lockKey));
+        }
+
+        this.previewState.update((preview) => {
+            const index = this.findPreviewUnitIndex(preview.units, unitEntry);
+            if (index < 0) {
+                return preview;
+            }
+
+            const units = preview.units.filter((_, unitIndex) => unitIndex !== index);
+            return {
+                ...preview,
+                units,
+                totalCost: units.reduce((sum, unit) => sum + unit.cost, 0),
+            };
+        });
+        this.clearHoveredPreviewUnit();
+        this.clearSelectedPreviewUnit();
+    }
+
+    private async editPreviewUnitPilot(unitEntry: ForcePreviewUnit): Promise<void> {
+        if (!unitEntry.unit) {
+            return;
+        }
+
+        if (this.gameSystem() === GameSystem.ALPHA_STRIKE) {
+            await this.editAlphaStrikePreviewUnitPilot(unitEntry);
+            return;
+        }
+
+        await this.editClassicPreviewUnitPilot(unitEntry);
+    }
+
+    private async editClassicPreviewUnitPilot(unitEntry: ForcePreviewUnit): Promise<void> {
+        const unit = unitEntry.unit;
+        if (!unit) {
+            return;
+        }
+
+        const ref = this.dialogsService.createDialog<EditPilotResult | null, EditPilotDialogComponent, EditPilotDialogData>(
+            EditPilotDialogComponent,
+            {
+                data: {
+                    unitId: unitEntry.lockKey,
+                    name: unitEntry.alias ?? '',
+                    gunnery: unitEntry.gunnery ?? this.gunnerySkillRange()[0],
+                    piloting: unitEntry.piloting ?? this.pilotingSkillRange()[0],
+                    labelGunnery: 'Gunnery Skill',
+                    labelPiloting: 'Piloting Skill',
+                    commander: unitEntry.commander ?? false,
+                    group: null,
+                    preSkillBv: unit.bv,
+                    unit,
+                },
+            },
+        );
+
+        const result = await firstValueFrom(ref.closed) as EditPilotResult | null;
+        if (!result) {
+            return;
+        }
+
+        this.updatePreviewGeneratedUnit(unitEntry, (original) => ({
+            ...original,
+            alias: result.name.trim() || undefined,
+            gunnery: result.gunnery,
+            piloting: result.piloting,
+            skill: undefined,
+            commander: result.commander,
+            cost: this.forceGeneratorService.getBudgetMetric(unit, GameSystem.CLASSIC, result.gunnery, result.piloting),
+        }));
+    }
+
+    private async editAlphaStrikePreviewUnitPilot(unitEntry: ForcePreviewUnit): Promise<void> {
+        const unit = unitEntry.unit;
+        if (!unit) {
+            return;
+        }
+
+        const ref = this.dialogsService.createDialog<EditASPilotResult | null, EditASPilotDialogComponent, EditASPilotDialogData>(
+            EditASPilotDialogComponent,
+            {
+                data: {
+                    unitId: unitEntry.lockKey ?? generateUUID(),
+                    name: unitEntry.alias ?? '',
+                    skill: unitEntry.skill ?? unitEntry.gunnery ?? this.gunnerySkillRange()[0],
+                    abilities: [],
+                    formationAbilities: [],
+                    commander: unitEntry.commander ?? false,
+                    group: null,
+                    unitTypeCode: unit.as.TP,
+                    basePv: unit.pv,
+                },
+            },
+        );
+
+        const result = await firstValueFrom(ref.closed) as EditASPilotResult | null;
+        if (!result) {
+            return;
+        }
+
+        this.updatePreviewGeneratedUnit(unitEntry, (original) => ({
+            ...original,
+            alias: result.name.trim() || undefined,
+            skill: result.skill,
+            gunnery: undefined,
+            piloting: undefined,
+            commander: result.commander,
+            cost: this.forceGeneratorService.getBudgetMetric(unit, GameSystem.ALPHA_STRIKE, result.skill, this.pilotingSkillRange()[0]),
+        }));
+    }
+
+    private updatePreviewGeneratedUnit(
+        unitEntry: ForcePreviewUnit,
+        updateUnit: (unit: GeneratedForceUnit) => GeneratedForceUnit,
+    ): void {
+        let updatedUnit: GeneratedForceUnit | null = null;
+        this.previewState.update((preview) => {
+            const index = this.findPreviewUnitIndex(preview.units, unitEntry);
+            if (index < 0) {
+                return preview;
+            }
+
+            const units = [...preview.units];
+            updatedUnit = updateUnit(units[index]);
+            units[index] = updatedUnit;
+            return {
+                ...preview,
+                units,
+                totalCost: units.reduce((sum, unit) => sum + unit.cost, 0),
+            };
+        });
+
+        const appliedUpdatedUnit = updatedUnit as GeneratedForceUnit | null;
+        if (appliedUpdatedUnit?.lockKey) {
+            this.lockedUnits.update((lockedUnits) => lockedUnits.map((unit) => (
+                unit.lockKey === appliedUpdatedUnit.lockKey ? appliedUpdatedUnit : unit
+            )));
+        }
+
+        this.clearHoveredPreviewUnit();
+        this.clearSelectedPreviewUnit();
+    }
+
+    private findPreviewUnitIndex(units: readonly GeneratedForceUnit[], unitEntry: ForcePreviewUnit): number {
+        if (unitEntry.lockKey) {
+            const lockKeyIndex = units.findIndex((unit) => unit.lockKey === unitEntry.lockKey);
+            if (lockKeyIndex >= 0) {
+                return lockKeyIndex;
+            }
+        }
+
+        return units.findIndex((unit) => unit.unit === unitEntry.unit || unit.unit.name === unitEntry.unit?.name);
+    }
+
+    private createReplacementPreviewUnit(
+        original: GeneratedForceUnit,
+        variant: Unit,
+        gameSystem: GameSystem,
+    ): GeneratedForceUnit {
+        const defaultGunnery = this.gunnerySkillRange()[0];
+        const defaultPiloting = this.pilotingSkillRange()[0];
+        const skill = gameSystem === GameSystem.ALPHA_STRIKE
+            ? original.skill ?? original.gunnery ?? defaultGunnery
+            : undefined;
+        const gunnery = gameSystem === GameSystem.CLASSIC
+            ? original.gunnery ?? original.skill ?? defaultGunnery
+            : undefined;
+        const piloting = gameSystem === GameSystem.CLASSIC
+            ? original.piloting ?? defaultPiloting
+            : undefined;
+
+        return {
+            ...original,
+            unit: variant,
+            cost: this.forceGeneratorService.getBudgetMetric(
+                variant,
+                gameSystem,
+                skill ?? gunnery ?? defaultGunnery,
+                piloting ?? defaultPiloting,
+            ),
+            skill,
+            gunnery,
+            piloting,
+        };
+    }
+
+    private toLockedGeneratedUnit(unitEntry: ForcePreviewUnit, variantGroupKey?: string): GeneratedForceUnit | null {
+        if (!unitEntry.unit) {
+            return null;
+        }
+
+        const gameSystem = this.gameSystem();
+        const defaultGunnery = this.gunnerySkillRange()[0];
+        const defaultPiloting = this.pilotingSkillRange()[0];
+        const skill = gameSystem === GameSystem.ALPHA_STRIKE
+            ? unitEntry.skill ?? defaultGunnery
+            : undefined;
+        const gunnery = gameSystem === GameSystem.CLASSIC
+            ? unitEntry.gunnery ?? defaultGunnery
+            : undefined;
+        const piloting = gameSystem === GameSystem.CLASSIC
+            ? unitEntry.piloting ?? defaultPiloting
+            : undefined;
+
+        return {
+            unit: unitEntry.unit,
+            cost: this.forceGeneratorService.getBudgetMetric(
+                unitEntry.unit,
+                gameSystem,
+                skill ?? gunnery ?? defaultGunnery,
+                piloting ?? defaultPiloting,
+            ),
+            skill,
+            gunnery,
+            piloting,
+            alias: unitEntry.alias,
+            commander: unitEntry.commander,
+            lockKey: unitEntry.lockKey ?? generateUUID(),
+            variantGroupKey,
+        };
+    }
+
+    private formatUnitLabel(unit: Unit): string {
+        return `${unit.chassis} ${unit.model}`.trim();
+    }
+}

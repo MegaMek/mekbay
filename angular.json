@@ -17,7 +17,9 @@
             "index": "src/index.html",
             "tsConfig": "tsconfig.app.json",
             "allowedCommonJsDependencies": [
-              "jszip"
+              "dijkstrajs",
+              "jszip",
+              "qrcode"
             ],
             "assets": [
               {
@@ -54,8 +56,8 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "2MB",
-                  "maximumError": "5MB"
+                  "maximumWarning": "5MB",
+                  "maximumError": "10MB"
                 },
                 {
                   "type": "anyComponentStyle",
@@ -84,8 +86,8 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "2MB",
-                  "maximumError": "5MB"
+                  "maximumWarning": "5MB",
+                  "maximumError": "10MB"
                 },
                 {
                   "type": "anyComponentStyle",
@@ -147,13 +149,13 @@
                 "input": "public/icons/dev",
                 "output": "icons"
               }
-            ],
-            "styles": [
-              "src/styles.css"
             ]
           }
         }
       }
     }
+  },
+  "cli": {
+    "analytics": false
   }
 }

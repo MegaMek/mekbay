@@ -1,5 +1,5 @@
 <div class="ability-dialog glass framed-borders has-shadow">
-    <div class="dialog-header">
+    <div class="dialog-header allow-select">
         <span class="ability-tag">{{ effectiveText() }}</span>
         @if (hasModification()) {
             <span class="original-tag">{{ originalText() }}</span>
@@ -13,7 +13,7 @@
         @if (mainAbility()) {
         <div class="ability-section main-ability">
             @if (turretDamage()) {
-            <div class="turret-damage">
+            <div class="turret-damage allow-select">
                 <span class="label">Turret Damage:</span>
                 <span class="value">{{ turretDamage() }}</span>
                 @if (hasTurretModification()) {
@@ -30,14 +30,14 @@
             </div>
             }
 
-            <div class="summary">
+            <div class="summary allow-select">
                 @for (line of mainAbility()!.summary; track line) {
                 <p>{{ line }}</p>
                 }
             </div>
 
             @if (mainAbility()!.rulesPage) {
-            <div class="rules-reference">
+            <div class="rules-reference allow-select">
                 <span>{{ mainAbility()!.rulesBook }}, page {{ mainAbility()!.rulesPage }}</span>
             </div>
             }
@@ -50,7 +50,7 @@
 
         @if (hasSubAbilities()) {
         <hr class="divider" />
-        <div class="sub-abilities">
+        <div class="sub-abilities allow-select">
             <div class="sub-abilities-header">Sub-Abilities:</div>
             @for (sub of subAbilitiesDisplay(); track sub.effectiveText) {
             <div class="sub-ability">

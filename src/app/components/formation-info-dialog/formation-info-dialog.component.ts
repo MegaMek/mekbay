@@ -33,9 +33,9 @@
 
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { FormationTypeDefinition } from '../../utils/formation-type.model';
+import type { FormationTypeDefinition } from '../../utils/formation-type.model';
 import { FormationInfoComponent } from '../formation-info/formation-info.component';
-import { GameSystem } from '../../models/common.model';
+import type { GameSystem } from '../../models/common.model';
 
 /*
  * Author: Drake
@@ -54,8 +54,12 @@ export interface FormationInfoDialogData {
     unitCount?: number;
     /** Whether the formation is valid for the current group composition */
     isValid?: boolean;
-    /** Whether the formation was matched via the Nova rule (Infantry filtered out) */
-    novaFiltered?: boolean;
+    /** Whether organization-level units were ignored while checking requirements */
+    requirementsFiltered?: boolean;
+    /** Optional org composition name that caused requirement filtering */
+    requirementsFilterCompositionName?: string;
+    /** Optional notice describing which structural units were ignored */
+    requirementsFilterNotice?: string;
 }
 
 @Component({
@@ -70,7 +74,7 @@ export interface FormationInfoDialogData {
         <div class="content">
             <h2 dialog-title>{{ data.formationDisplayName || data.formation.name }}</h2>
             <div dialog-content>
-                <formation-info [formation]="data.formation" [gameSystem]="data.gameSystem" [unitCount]="data.unitCount" [isValid]="data.isValid" [novaFiltered]="data.novaFiltered ?? false" [showTitle]="false"></formation-info>
+                <formation-info [formation]="data.formation" [gameSystem]="data.gameSystem" [unitCount]="data.unitCount" [isValid]="data.isValid" [requirementsFiltered]="data.requirementsFiltered ?? false" [requirementsFilterCompositionName]="data.requirementsFilterCompositionName" [requirementsFilterNotice]="data.requirementsFilterNotice" [showTitle]="false"></formation-info>
             </div>
             <div dialog-actions>
                 <button (click)="close()" class="bt-button">DISMISS</button>

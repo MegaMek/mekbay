@@ -31,10 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { computed, signal } from '@angular/core';
+import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
-import { PSRCheck } from '../turn-state.model';
-import { UnitTypeRules } from './unit-type-rules';
+import { UnitTypeRulesBase } from './unit-type-rules';
 import {
     type HeatScaleEntry,
     type HeatDissipationState,
@@ -47,11 +46,16 @@ import {
  * 
  * Aerospace Fighter game rules
  */
-export class AeroRules implements UnitTypeRules {
+export class AeroRules extends UnitTypeRulesBase {
+
+    protected override supportsDroneOperatingSystem(): boolean {
+        return true;
+    }
 
     private readonly heatMgmt: HeatManagement;
 
-    constructor(private unit: CBTForceUnit) {
+    constructor(unit: CBTForceUnit) {
+        super(unit);
         this.heatMgmt = new HeatManagement(unit);
     }
 
@@ -84,10 +88,6 @@ export class AeroRules implements UnitTypeRules {
     }
 
     // ── PSR / Control Rolls ──────────────────────────────────────────────────
-
-    /** Placeholder for now. */
-    readonly PSRModifiers = signal<{ modifier: number; modifiers: PSRCheck[] }>({ modifier: 0, modifiers: [] });
-    readonly PSRTargetRoll = signal<number>(0);
 
     // ── Heat Scale ───────────────────────────────────────────────────────────
 
@@ -126,7 +126,7 @@ export class AeroRules implements UnitTypeRules {
     /**
      * Aero heat dissipation: engine HS - turned-off.
      */
-    readonly heatDissipation = computed<HeatDissipationState | null>(() => {
+    override readonly heatDissipation = computed<HeatDissipationState | null>(() => {
         return this.heatMgmt.baseDissipation();
     });
 }

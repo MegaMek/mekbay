@@ -7,7 +7,7 @@
     cursor: pointer;
 }
 
-.component:not(.text-data)::after {
+.component:not(.text-data):not(.additional-data)::after {
     content: '';
     position: absolute;
     top: -1px;
@@ -20,13 +20,14 @@
     transition: opacity 0.15s;
 }
 
-.component:not(.text-data):hover::after {
+.component:not(.text-data):not(.additional-data):hover::after {
     opacity: 1;
 }
 
 .normal-data,
 .small-data,
-.tiny-data {
+.tiny-data,
+.additional-data {
     display: flex;
     box-sizing: border-box;
     gap: 2px 4px;
@@ -51,6 +52,23 @@
     font-size: .85em;
 }
 
+.additional-data,
+.component.ammo {
+    padding-top: 4px;
+    padding-bottom: 4px;
+    font-size: 0.85em;
+}
+
+.additional-data {
+    cursor: default;
+    border-left: 5px solid #888;
+    border-top: 1px solid #555;
+    border-right: 1px solid #555;
+    border-bottom: 1px solid #555;
+    background: #2c2c2c;
+    color: #aaa;
+}
+
 floating-comp-info {
     position: fixed;
     z-index: 9999;
@@ -68,8 +86,14 @@ floating-comp-info {
     width: 100%;
 }
 
+.additional-data .comp-title {
+    display: contents;
+    width: 100%;
+    font-weight: 500;
+}
+
 .comp-qty {
-    color: #aaa;
+    color: #ccc;
     text-align: right;
 }
 
@@ -83,6 +107,15 @@ floating-comp-info {
 
 .structural .comp-name {
     color: var(--text-color-secondary);
+}
+
+.additional-data .comp-qty,
+.additional-data .comp-name {
+    color: #fff;
+}
+
+.additional-data .tech-base {
+    display: none;
 }
 
 .tech-base {

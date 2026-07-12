@@ -1,29 +1,5 @@
-.footer {
-    width: 100%;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-direction: row;
-    gap: 8px;
-}
-
 :host ::ng-deep .modal {
     max-width: 1000px !important;
-    position: relative;
-    overflow: visible;
-    clip-path: polygon(0 0, calc(100% - 40px) 0, 100% 40px, 100% 100%, 0 100%);
-}
-
-:host ::ng-deep .modal::before {
-    content: "";
-    position: absolute;
-    top: 0px;
-    right: 26px;
-    width: 120px;
-    height: 10px;
-    pointer-events: none;
-    background: repeating-linear-gradient(-60deg, rgba(255, 255, 255, 0.18) 0px, rgba(255, 255, 255, 0.18) 2px, transparent 4px, transparent 10px);
-    z-index: 2;
 }
 
 :host ::ng-deep .modal-body {
@@ -164,6 +140,18 @@
     margin-right: 8px;
 }
 
+.header-chassis-group {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.header-chassis-group .header-chassis {
+    margin-right: 0;
+}
+
 .header-details {
     display: flex;
     flex-direction: row;
@@ -200,27 +188,6 @@
     font-weight: bold;
     font-size: 20px;
     line-height: 16px;
-}
-
-.nav-arrow {
-    background-color: transparent;
-    color: gray;
-    bottom: 0px;
-    border: none;
-    font-size: 2rem;
-    cursor: pointer;
-    transition: color 0.2s;
-    outline: none;
-    padding: 0px 6px;
-    pointer-events: auto;
-}
-
-.nav-arrow:hover {
-    color: var(--text-color);
-}
-
-.nav-arrow.hidden {
-    visibility: hidden;
 }
 
 /* Fluff Tab */

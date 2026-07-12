@@ -42,7 +42,7 @@ import {
     computed,
     DestroyRef,
     afterNextRender,
-    ElementRef,
+    type ElementRef,
     effect,
     Injector
 } from '@angular/core';
@@ -50,8 +50,8 @@ import { PageViewerCanvasService } from './page-viewer-canvas.service';
 import { OptionsService } from '../../../services/options.service';
 import { DbService } from '../../../services/db.service';
 import { LoggerService } from '../../../services/logger.service';
-import { ForceUnit } from '../../../models/force-unit.model';
-import { GameSystem } from '../../../models/common.model';
+import type { ForceUnit } from '../../../models/force-unit.model';
+import type { GameSystem } from '../../../models/common.model';
 
 /*
  * Author: Drake

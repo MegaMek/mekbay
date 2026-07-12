@@ -31,9 +31,10 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, inject, Signal, WritableSignal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, type Signal, type WritableSignal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DIALOG_DATA } from '@angular/cdk/dialog';
+import { LoadingSpinnerComponent } from '../loading-spinner/loading-spinner.component';
 
 /*
  * Author: Drake
@@ -68,7 +69,7 @@ export interface ForceLoadingOverlayData {
     selector: 'force-loading-overlay',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [CommonModule, LoadingSpinnerComponent],
     host: {
         class: 'fullscreen-dialog-host glass'
     },
@@ -94,11 +95,7 @@ export interface ForceLoadingOverlayData {
             </div>
             <div class="wide-dialog-actions">
                 @if (data.loading()) {
-                    <div class="spinner-container">
-                        <div class="spinner">
-                            <div class="ring"></div>
-                        </div>
-                    </div>
+                    <loading-spinner class="spinner-container"></loading-spinner>
                 } @else if (data.failedCount() > 0) {
                     <div class="error-section">
                         <div class="error-message">
@@ -114,6 +111,12 @@ export interface ForceLoadingOverlayData {
         </div>
     `,
     styles: [`
+
+        .wide-dialog-actions {
+            border: 0;
+            margin-top: 0;
+        }
+
         .force-list {
             display: flex;
             flex-direction: column;
@@ -160,12 +163,6 @@ export interface ForceLoadingOverlayData {
             font-variant-numeric: tabular-nums;
         }
 
-        .spinner-container {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
         .error-section {
             display: flex;
             flex-direction: column;
@@ -183,34 +180,6 @@ export interface ForceLoadingOverlayData {
             gap: 8px;
         }
 
-        .spinner {
-            width: 44px;
-            height: 44px;
-            position: relative;
-            display: inline-block;
-        }
-
-        .spinner .ring {
-            box-sizing: border-box;
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            border-top: 5px solid #BFC1C2;
-            border-right: 5px solid #A00000;
-            border-bottom: 5px solid #2357c6;
-            border-left: 5px solid #2357c6;
-            border-radius: 50%;
-            animation: spin 1.1s cubic-bezier(0.77, 0, 0.175, 1) infinite;
-        }
-
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-            100% {
-                transform: rotate(360deg);
-            }
-        }
     `]
 })
 export class ForceLoadingOverlayComponent {

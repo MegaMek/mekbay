@@ -34,11 +34,12 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { WsService } from './ws.service';
 import { UserStateService } from './userState.service';
-import { DbService, PublicTagData, TagEntry, TagOp } from './db.service';
+import { DbService, type PublicTagData, type TagEntry, type TagOp } from './db.service';
 import { LoggerService } from './logger.service';
-import { Unit, PublicTagInfo } from '../models/units.model';
+import type { Unit, PublicTagInfo } from '../models/units.model';
 import { TagsService } from './tags.service';
 import { DialogsService } from './dialogs.service';
+import { naturalCompare } from '../utils/sort.util';
 
 /*
  * Author: Drake
@@ -147,6 +148,10 @@ function applyOpsToPublicTag(data: PublicTagData, ops: TagOp[], tagName: string)
             }
         }
     }
+}
+
+function comparePublicTags(left: PublicTagData, right: PublicTagData): number {
+    return naturalCompare(left.tagName, right.tagName) || naturalCompare(left.publicId, right.publicId);
 }
 
 @Injectable({
@@ -596,14 +601,14 @@ export class PublicTagsService {
         return [
             ...Array.from(this.temporaryTags.values()),
             ...Array.from(this.subscribedTags.values())
-        ];
+        ].sort(comparePublicTags);
     }
 
     /**
      * Get all subscribed tags
      */
     public getSubscribedTags(): PublicTagData[] {
-        return Array.from(this.subscribedTags.values());
+        return Array.from(this.subscribedTags.values()).sort(comparePublicTags);
     }
 
     /**
@@ -674,7 +679,7 @@ export class PublicTagsService {
         for (const tagData of this.getAllPublicTags()) {
             names.add(tagData.tagName);
         }
-        return Array.from(names);
+        return Array.from(names).sort(naturalCompare);
     }
 
     /**

@@ -33,7 +33,7 @@
 
 import { Component, ChangeDetectionStrategy, computed } from '@angular/core';
 import { UpperCasePipe } from '@angular/common';
-import { CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
+import { type CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
 import {
     AsCriticalHitsAerospace1Component,
     AsCriticalHitsDropship1Component,

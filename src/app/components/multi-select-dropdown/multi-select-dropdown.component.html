@@ -1,5 +1,17 @@
 <div class="multi-select-container corner-borders" [class.open]="isOpen()" [class.disabled]="semanticOnly()" [class.semantic-only]="semanticOnly()">
-    <div class="display-area" (pointerdown)="onPointerDown($event)" (click)="toggleDropdown($event)">
+    <div
+        #displayArea
+        class="display-area"
+        cdkOverlayOrigin
+        #overlayOrigin="cdkOverlayOrigin"
+        role="button"
+        [attr.tabindex]="semanticOnly() ? -1 : 0"
+        [attr.aria-haspopup]="'listbox'"
+        [attr.aria-expanded]="isOpen()"
+        [attr.aria-controls]="optionsListId"
+        (pointerdown)="onPointerDown($event)"
+        (click)="toggleDropdown()"
+        (keydown)="onTriggerKeydown($event)">
         <span class="label" [class.semantic-only]="semanticOnly()">{{ label() }}</span>
         <div class="pills-container">
             @if (semanticOnly() && displayItems()?.length) {
@@ -14,9 +26,14 @@
                 }
             } @else if (semanticOnly() && displayText()) {
                 <!-- Semantic-only mode fallback: show plain text -->
-                <span class="semantic-display-text">✓ {{ displayText() }}</span>
-            } @else if (selectedOptions().length === 0) {
+                <span class="semantic-display-text">{{ displayText() }}</span>
+            } @else if (!semanticOnly() && selectedOptions().length === 0) {
                 <span class="placeholder">Any</span>
+            } @else if (!multiselect() && singleSelectedOption(); as selectedOption) {
+                <span class="single-selected-value pill or">
+                    {{ getDisplayName(selectedOption.name) }}
+                    <button type="button" class="remove-pill" aria-label="Remove {{ getDisplayName(selectedOption.name) }}" (click)="removeOption(selectedOption.name, $event)">&#10005;</button>
+                </span>
             } @else if (compressedPills(); as compressed) {
                 @for (cp of compressed; track cp.state) {
                     <span class="pill"
@@ -29,6 +46,13 @@
                         @else if (cp.state === 'and') { &amp; }
                         @else if (cp.state === 'not') { ! }
                         {{ cp.count }}
+                        <button
+                            type="button"
+                            class="remove-pill"
+                            [attr.aria-label]="'Remove all ' + cp.state + ' selections'"
+                            (click)="removeCompressedState(cp.state, $event)">
+                            &#10005;
+                        </button>
                     </span>
                 }
             } @else {
@@ -41,7 +65,7 @@
                             'pill-not': option.state === 'not'
                           }">
                         {{ getDisplayName(option.name) }}{{ (option.count > 1) ? ' (' + option.count + ')' : '' }}
-                        <button class="remove-pill" (click)="removeOption(option.name, $event)">&#10005;</button>
+                        <button type="button" class="remove-pill" (click)="removeOption(option.name, $event)">&#10005;</button>
                     </span>
                 }
             }
@@ -54,8 +78,28 @@
         }
     </div>
 
-    <div #optionsDropdown class="options-dropdown framed-borders has-shadow" [hidden]="!isOpen()">
-        <div class="filter-container" [hidden]="!(options().length > 20 || showUnavailableToggle())" (click)="$event.stopPropagation()">
+    <ng-template
+        cdkConnectedOverlay
+        [cdkConnectedOverlayOrigin]="overlayOrigin"
+        [cdkConnectedOverlayOpen]="isOpen()"
+        [cdkConnectedOverlayPositions]="overlayPositions()"
+        [cdkConnectedOverlayPush]="false"
+        [cdkConnectedOverlayFlexibleDimensions]="false"
+        [cdkConnectedOverlayViewportMargin]="8"
+        [cdkConnectedOverlayWidth]="overlayWidth()"
+        [cdkConnectedOverlayPanelClass]="'multi-select-dropdown-overlay-pane'"
+        [cdkConnectedOverlayScrollStrategy]="repositionScrollStrategy"
+        (attach)="onOverlayAttached()"
+        (detach)="onOverlayDetached()"
+        (positionChange)="onOverlayPositionChange($event)">
+    <div
+        #optionsDropdown
+        class="options-dropdown framed-borders has-shadow"
+        [class.options-dropdown-below]="overlayPlacement() === 'below'"
+        [class.options-dropdown-above]="overlayPlacement() === 'above'"
+        (click)="$event.stopPropagation()"
+        (keydown)="onDropdownKeydown($event)">
+        <div class="filter-container" [hidden]="!showFilterControls()" (click)="$event.stopPropagation()">
             <div class="filter-row">
                 <input 
                     #filterInput
@@ -63,7 +107,9 @@
                     class="filter-input" 
                     placeholder="Filter..."
                     [value]="filterText()"
-                    (input)="onFilterInput($event)">
+                    [attr.aria-activedescendant]="keyboardFocusedOptionId()"
+                    (input)="onFilterInput($event)"
+                    (keydown)="onFilterKeydown($event)">
                 <button type="button" class="unavailable-toggle" [hidden]="!showUnavailableToggle()" (click)="toggleUnavailable($event)" aria-label="Toggle unavailable options" title="Toggle unavailable options">
                     @if (showUnavailable()) {
                         <!-- show eye -->
@@ -88,70 +134,160 @@
                 </button>
             </div>
         </div>
-        <div #optionsEl class="options-list"
-            [style.maxHeight.px]="maxHeightOptions()">
-            @for (option of filteredOptions(); let i = $index; track option.name) {
-                    <label class="option-item"
-                        [attr.data-option-name]="option.name"
-                        [class.unavailable]="option.available === false"
-                        [class.selected-single]="!multiselect() && isSelected(option.name)"
-                        (click)="!multiselect() ? onSingleSelect(option.name) : null"
-                        >
-                        @if (multiselect()) {
-                            <input type="checkbox" [checked]="isSelected(option.name)" (change)="onOptionToggle(option.name)" />
-                            <span class="custom-checkbox"
-                                [ngClass]="{
-                                    'checkbox-or': multistate() && isSelected(option.name) === 'or',
-                                    'checkbox-and': multistate() && isSelected(option.name) === 'and',
-                                    'checkbox-not': multistate() && isSelected(option.name) === 'not',
-                                    'checked': !multistate() && isSelected(option.name)
-                                }">
-                                @if (multistate()) {
-                                    @switch (isSelected(option.name)) {
-                                        @case ('and') {
-                                            <span class="checkbox-mark">&</span>
-                                        }
-                                        @case ('not') {
-                                            <span class="checkbox-mark">&ndash;</span>
-                                        }
-                                        @case ('or') {
-                                            <span class="checkbox-mark">&#10003;</span>
-                                        }
+        @if (useVirtualScroll()) {
+            <cdk-virtual-scroll-viewport
+                #optionsViewport
+                class="options-list options-viewport"
+                role="listbox"
+                [id]="optionsListId"
+                tabindex="0"
+                [attr.aria-activedescendant]="keyboardFocusedOptionId()"
+                (pointerdown)="onOptionsPointerDown($event)"
+                (focus)="onOptionsListFocus($event)"
+                [itemSize]="optionItemSize"
+                [style.--virtual-option-height]="optionItemSize + 'px'"
+                [style.height.px]="viewportHeight()">
+                <label class="option-item"
+                    *cdkVirtualFor="let option of filteredOptions(); let optionIndex = index; trackBy: trackOptionName"
+                    role="option"
+                    [id]="optionId(optionIndex)"
+                    [attr.data-option-name]="option.name"
+                    [attr.aria-selected]="isSelected(option.name) ? 'true' : 'false'"
+                    [class.keyboard-focused]="optionIndex === keyboardFocusedIndex()"
+                    [class.unavailable]="option.available === false"
+                    [class.selected-single]="!multiselect() && isSelected(option.name)"
+                    (pointerenter)="onOptionPointerHover(option.name)"
+                    (pointermove)="onOptionPointerHover(option.name)"
+                    (pointerleave)="onOptionPointerLeave(option.name)"
+                    (click)="!multiselect() ? onSingleSelect(option.name) : null">
+                    @if (multiselect()) {
+                        <input type="checkbox" [checked]="isSelected(option.name)" (change)="onOptionToggle(option.name)" />
+                        <span class="custom-checkbox"
+                            [ngClass]="{
+                                'checkbox-or': multistate() && isSelected(option.name) === 'or',
+                                'checkbox-and': multistate() && isSelected(option.name) === 'and',
+                                'checkbox-not': multistate() && isSelected(option.name) === 'not',
+                                'checked': !multistate() && isSelected(option.name)
+                            }">
+                            @if (multistate()) {
+                                @switch (isSelected(option.name)) {
+                                    @case ('and') {
+                                        <span class="checkbox-mark">&</span>
                                     }
-                                } @else {
-                                    @if (isSelected(option.name)) {
+                                    @case ('not') {
+                                        <span class="checkbox-mark">&ndash;</span>
+                                    }
+                                    @case ('or') {
                                         <span class="checkbox-mark">&#10003;</span>
                                     }
                                 }
-                            </span>
-                        }
-                        @if (option.img) {
-                            <img [src]="option.img" class="option-img" alt="">
-                        }
-                        <span [innerHTML]="highlight(option.displayName ?? option.name)"></span>
-                        @if (countable() && (getState(option.name) === 'and' || getState(option.name) === 'or')) {
-                            <div class="quantity-input">
-                            <input type="number" 
-                                    [value]="getCount(option.name)"
-                                    min="1"
-                                    class="quantity-field"
-                                    (input)="onQuantityInput(option.name, $event)"
-                                    (click)="$event.stopPropagation()"
-                                    (wheel)="onQuantityWheel(option.name, $event)" />
-                            </div>
-                        }
-                    </label>
-                }
-                @if (filteredOptions().length === 0 && options().length > 0) {
-                    <div class="no-options">
-                        No matching options
-                    </div>
-                }
-                @if (options().length === 0) {
-                    <div class="no-options">
-                        No options available
-                    </div>
-                }
+                            } @else {
+                                @if (isSelected(option.name)) {
+                                    <span class="checkbox-mark">&#10003;</span>
+                                }
+                            }
+                        </span>
+                    }
+                    @if (option.img) {
+                        <img [src]="option.img" class="option-img" alt="">
+                    }
+                    <span
+                        class="option-label"
+                        [style.fontSize.px]="getVirtualOptionLabelFontSize(option)"
+                        [innerHTML]="highlight(option.displayName ?? option.name)"></span>
+                    @if (countable() && (getState(option.name) === 'and' || getState(option.name) === 'or')) {
+                        <div class="quantity-input">
+                            <input type="number"
+                                [value]="getCount(option.name)"
+                                min="1"
+                                class="quantity-field"
+                                (input)="onQuantityInput(option.name, $event)"
+                                (click)="$event.stopPropagation()"
+                                (wheel)="onQuantityWheel(option.name, $event)" />
+                        </div>
+                    }
+                </label>
+            </cdk-virtual-scroll-viewport>
+        } @else {
+            <div #optionsEl class="options-list"
+                role="listbox"
+                [id]="optionsListId"
+                tabindex="0"
+                [attr.aria-activedescendant]="keyboardFocusedOptionId()"
+                (pointerdown)="onOptionsPointerDown($event)"
+                (focus)="onOptionsListFocus($event)"
+                [style.maxHeight.px]="maxHeightOptions()">
+                @for (option of filteredOptions(); let i = $index; track option.name) {
+                        <label class="option-item"
+                            role="option"
+                            [id]="optionId(i)"
+                            [attr.data-option-name]="option.name"
+                            [attr.aria-selected]="isSelected(option.name) ? 'true' : 'false'"
+                            [class.keyboard-focused]="i === keyboardFocusedIndex()"
+                            [class.unavailable]="option.available === false"
+                            [class.selected-single]="!multiselect() && isSelected(option.name)"
+                            (pointerenter)="onOptionPointerHover(option.name)"
+                            (pointermove)="onOptionPointerHover(option.name)"
+                            (pointerleave)="onOptionPointerLeave(option.name)"
+                            (click)="!multiselect() ? onSingleSelect(option.name) : null"
+                            >
+                            @if (multiselect()) {
+                                <input type="checkbox" [checked]="isSelected(option.name)" (change)="onOptionToggle(option.name)" />
+                                <span class="custom-checkbox"
+                                    [ngClass]="{
+                                        'checkbox-or': multistate() && isSelected(option.name) === 'or',
+                                        'checkbox-and': multistate() && isSelected(option.name) === 'and',
+                                        'checkbox-not': multistate() && isSelected(option.name) === 'not',
+                                        'checked': !multistate() && isSelected(option.name)
+                                    }">
+                                    @if (multistate()) {
+                                        @switch (isSelected(option.name)) {
+                                            @case ('and') {
+                                                <span class="checkbox-mark">&</span>
+                                            }
+                                            @case ('not') {
+                                                <span class="checkbox-mark">&ndash;</span>
+                                            }
+                                            @case ('or') {
+                                                <span class="checkbox-mark">&#10003;</span>
+                                            }
+                                        }
+                                    } @else {
+                                        @if (isSelected(option.name)) {
+                                            <span class="checkbox-mark">&#10003;</span>
+                                        }
+                                    }
+                                </span>
+                            }
+                            @if (option.img) {
+                                <img [src]="option.img" class="option-img" alt="">
+                            }
+                            <span class="option-label" [innerHTML]="highlight(option.displayName ?? option.name)"></span>
+                            @if (countable() && (getState(option.name) === 'and' || getState(option.name) === 'or')) {
+                                <div class="quantity-input">
+                                <input type="number" 
+                                        [value]="getCount(option.name)"
+                                        min="1"
+                                        class="quantity-field"
+                                        (input)="onQuantityInput(option.name, $event)"
+                                        (click)="$event.stopPropagation()"
+                                        (wheel)="onQuantityWheel(option.name, $event)" />
+                                </div>
+                            }
+                        </label>
+                    }
+                </div>
+        }
+        @if (filteredOptions().length === 0 && options().length > 0) {
+            <div class="no-options">
+                No matching options
             </div>
+        }
+        @if (options().length === 0) {
+            <div class="no-options">
+                No options available
+            </div>
+        }
         </div>
+    </ng-template>
 </div>

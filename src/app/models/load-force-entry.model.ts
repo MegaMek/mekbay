@@ -32,32 +32,84 @@
  */
 
 import { GameSystem } from "./common.model";
-import { Unit } from "./units.model";
+import type { Era } from './eras.model';
+import type { Faction } from './factions.model';
+import type { ForceEntryResolver } from './force-entry-resolver.model';
+import {
+    createForcePreviewEntry,
+    createForcePreviewEntryFromSerializedForce,
+    type ForcePreviewEntry,
+    type ForcePreviewGroup,
+    type ForcePreviewUnit,
+} from './force-preview.model';
+import type { SerializedForce } from './force-serialization';
+import type {
+    RemoteLoadForceEntry,
+    RemoteLoadForceGroup,
+    RemoteLoadForceUnit,
+} from './remote-load-force-entry.model';
+
+export type {
+    RemoteLoadForceEntry,
+    RemoteLoadForceGroup,
+    RemoteLoadForceUnit,
+} from './remote-load-force-entry.model';
 
 /*
  * Author: Drake
- * Description: Lightweight interface used to show summary of saved forces in load dialog 
+ * Description: Preview-compatible unit data used by saved force entries.
  */
-export interface LoadForceUnit {
-    unit: Unit | undefined;
-    alias?: string;
-    destroyed: boolean;
+export type LoadForceUnit = ForcePreviewUnit;
+
+function cloneLoadForceGroups(groups: readonly ForcePreviewGroup[]): LoadForceGroup[] {
+    return groups.map((group) => ({
+        name: group.name,
+        formationId: group.formationId,
+        units: group.units.map((unit) => ({ ...unit })),
+    }));
 }
 
-export interface LoadForceGroup {
-    name?: string;
-    formationId?: string;
-    units: LoadForceUnit[];
+export function createLoadForceEntry(
+    raw: RemoteLoadForceEntry,
+    resolver: ForceEntryResolver,
+    options: { cloud?: boolean; local?: boolean } = {},
+): LoadForceEntry {
+    const previewEntry = createForcePreviewEntry(raw, resolver, options);
+    return new LoadForceEntry({
+        ...previewEntry,
+        groups: cloneLoadForceGroups(previewEntry.groups),
+    });
 }
 
-export class LoadForceEntry {
+export function createLoadForceEntryFromSerializedForce(
+    raw: SerializedForce,
+    resolver: ForceEntryResolver,
+    options: { cloud?: boolean; local?: boolean } = {},
+): LoadForceEntry {
+    const previewEntry = createForcePreviewEntryFromSerializedForce(raw, resolver, options);
+    return new LoadForceEntry({
+        ...previewEntry,
+        groups: cloneLoadForceGroups(previewEntry.groups),
+    });
+}
+
+export interface LoadForceGroup extends Omit<ForcePreviewGroup, 'force'> {
+    force?: LoadForceEntry;
+}
+
+export class LoadForceEntry implements ForcePreviewEntry {
     instanceId: string;
     timestamp: string;
     type: GameSystem;
+    owned: boolean;
     cloud: boolean;
     local: boolean;
+    missing: boolean;
     name: string;
-    factionId?: number;
+    note?: string;
+    tags?: string[];
+    faction: Faction | null;
+    era: Era | null;
     bv?: number;
     pv?: number;
     groups: LoadForceGroup[];
@@ -67,12 +119,20 @@ export class LoadForceEntry {
         this.instanceId = data.instanceId ?? '';
         this.timestamp = data.timestamp ?? '';
         this.type = data.type ?? GameSystem.CLASSIC;
+        this.owned = data.owned ?? true;
         this.cloud = data.cloud ?? false;
         this.local = data.local ?? false;
+        this.missing = data.missing ?? false;
         this.name = data.name ?? '';
-        this.factionId = data.factionId ?? undefined;
+        this.note = data.note || undefined;
+        this.tags = data.tags?.length ? [...data.tags] : undefined;
+        this.faction = data.faction ?? null;
+        this.era = data.era ?? null;
         this.bv = data.bv ?? undefined;
         this.pv = data.pv ?? undefined;
         this.groups = data.groups ?? [];
+        for (const group of this.groups) {
+            group.force = this;
+        }
     }
 }

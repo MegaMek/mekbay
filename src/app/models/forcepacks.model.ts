@@ -35,6 +35,8 @@
  * Author: Drake
  */
 
+import { naturalCompare } from '../utils/sort.util';
+
 interface ForcePackUnit {
   name: string;
 }
@@ -286,7 +288,7 @@ const FORCE_PACKS: ForcePack[] = [
     "name": "Snord's Irregulars Assault Lance",
     "units": [
       { "name": "BMSpartan_SPTN2" },
-      { "name": "BMRifleman_RFL3N" },
+      { "name": "BMHybridRifleman_RFL3NSneede" },
       { "name": "BMGuillotine_GLT3N" },
       { "name": "BMHighlander_HGN732" }
     ]
@@ -805,4 +807,4 @@ const FORCE_PACKS: ForcePack[] = [
 ];
 
 // Sort once at module load and cache
-const sortedForcePacks = [...FORCE_PACKS].sort((a, b) => a.name.localeCompare(b.name));
+const sortedForcePacks = [...FORCE_PACKS].sort((a, b) => naturalCompare(a.name, b.name));

@@ -10,7 +10,12 @@
                     <div class="header-model allow-select">{{ headerUnit().model }}</div>
                 </div>
                 <div class="header-row">
-                    <div class="header-chassis allow-select">{{ headerUnit().chassis }}</div>
+                    <div class="header-chassis-group">
+                        <div class="header-chassis allow-select">{{ headerUnit().chassis }}</div>
+                        @if (headerUnit().serverHost) {
+                            <span class="custom-unit-badge" title="Custom unit from {{ headerUnit().serverHost }}">Custom</span>
+                        }
+                    </div>
                     <div class="header-details">
                         @if (headerUnit().role && headerUnit().role != 'None') {
                         <div class="role"><strong>{{ headerUnit().role }}</strong></div>
@@ -53,7 +58,7 @@
         <!-- Swipe animation container -->
         <div class="swipe-container" [class.animating]="isSwipeAnimating()" [class.swiping]="isSwiping()">
             <!-- Current unit view -->
-            <div class="swipe-panel current-panel" [style.--current-offset]="currentPanelOffset()">
+            <div #currentPanel class="swipe-panel current-panel" [style.--current-offset]="currentPanelOffset()">
                 @if (activeTab() === 'General') {
                 <unit-details-general-tab [unit]="unit" [gunnerySkill]="gunnerySkill()"
                     [pilotingSkill]="pilotingSkill()">
@@ -89,7 +94,8 @@
 
             <!-- Incoming unit view (visible during animation or swiping) -->
             @if (incomingUnit()) {
-            <div #incomingPanel class="swipe-panel incoming-panel" [style.--incoming-offset]="incomingPanelOffset()">
+            <div #incomingPanel class="swipe-panel incoming-panel" [style.--incoming-offset]="incomingPanelOffset()"
+                [scrollTop]="incomingPanelScrollTop()">
                 @if (activeTab() === 'General') {
                 <unit-details-general-tab [unit]="incomingUnit()!" [gunnerySkill]="gunnerySkill()"
                     [pilotingSkill]="pilotingSkill()">
@@ -124,11 +130,19 @@
             }
         </div>
     </div>
-    <div class="footer" dialog-footer>
-        <button [class.hidden]="!hasPrev" class="nav-arrow nav-arrow-left" (click)="onPrev()"
-            aria-label="Previous Unit">
-            &#10094;
-        </button>
+    <unit-details-footer dialog-footer
+            [activeTab]="activeTab()"
+            [prevUnit]="prevUnit()"
+            [nextUnit]="nextUnit()"
+            [hasPrev]="hasPrev"
+            [hasNext]="hasNext"
+            [sheetTab]="sheetTabRef()"
+            [variantsTabState]="variantsTabState()"
+            [gameSystem]="currentGameSystem()"
+            (prev)="onPrev()"
+            (next)="onNext()"
+            (variantsTabStateChange)="variantsTabState.set($event)">
+            <ng-container unit-details-footer-actions>
         @if (data.selectMode) {
         <button class="modal-btn bt-button" (click)="onSelect()">SELECT</button>
         } @else if (!data.hideAddButton) {
@@ -147,8 +161,6 @@
             (click)="onChange()">CHANGE</button>
         }
         <button class="modal-btn bt-button" (click)="onClose()">DISMISS</button>
-        <button [class.hidden]="!hasNext" class="nav-arrow nav-arrow-right" (click)="onNext()" aria-label="Next Unit">
-            &#10095;
-        </button>
-    </div>
+            </ng-container>
+    </unit-details-footer>
 </base-dialog>

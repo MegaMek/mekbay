@@ -12,6 +12,7 @@
     --background-color: #141414;
     --background-color-menu: #292929;
     --background-color-light: #313131;
+    --background-warning: orange;
     --background-input: rgba(40, 40, 40, 0.5);
     --background-highlight: #3D3D3D;
     --background-highlight-bright: #7A7A7A;
@@ -55,6 +56,9 @@
 
     --friendly-color: 100, 180, 255;
     --enemy-color: 220, 80, 80;
+
+    --chassis-tag-color: 78 201 176;
+    --name-tag-color: 255 193 7;
 }
 
 ::-webkit-scrollbar {
@@ -101,6 +105,38 @@ body {
     user-select: none;
     box-sizing: border-box;
     cursor: default;
+}
+
+[data-tooltip-host] {
+    cursor: help;
+}
+
+:root:not(.keyboard-navigation) *:focus,
+:root:not(.keyboard-navigation) *:focus-visible {
+    outline: none !important;
+    outline-offset: 0 !important;
+}
+
+:root.keyboard-navigation *:focus {
+    outline: 2px solid var(--primary-focus-color-highlight) !important;
+    outline-offset: 2px !important;
+}
+
+:root.keyboard-navigation .cdk-dialog-container:focus,
+:root.keyboard-navigation .fullscreen-dialog-host:focus,
+:root.keyboard-navigation .wide-dialog:focus {
+    outline: none !important;
+    outline-offset: 0 !important;
+}
+
+@media print {
+    :root {
+        color-scheme: light;
+    }
+    body,
+    html {    
+        background-color: white;
+    }
 }
 
 /* Hex symbol for movement display - scaled and raised like inch mark */
@@ -181,6 +217,12 @@ hr {
     backdrop-filter: blur(5px);
 }
 
+.gradient-frame {
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(0, 0, 0, 0.16));
+}
+
 .modal-btn {
     padding: 8px 36px;
     font-size: 1.1em;
@@ -205,7 +247,7 @@ hr {
     box-sizing: border-box;
     width: 100vw;
     pointer-events: auto;
-    padding: 16px;
+    padding: 0;
     max-height: 100%;
 
     &.fullheight {
@@ -215,6 +257,16 @@ hr {
         min-height: 100dvh;
         max-height: 100vh;
         max-height: 100dvh;
+    }
+
+    &.nopadding {
+        padding: 0;
+    }
+
+    & > .content {
+        display: block;
+        max-width: 600px;
+        padding: 16px;
     }
 }
 
@@ -241,6 +293,21 @@ hr {
     cursor: pointer;
 }
 
+.custom-unit-badge {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    background: var(--accent-color);
+    color: var(--background-color);
+    font-size: 0.5em;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 0.125em 0.4em;
+    line-height: 1.35;
+    white-space: nowrap;
+}
+
 .framed-borders {
     background-repeat: no-repeat;
     background-origin: border-box;
@@ -251,10 +318,28 @@ hr {
         linear-gradient(white, white), linear-gradient(white, white);
     background-size: 2px 12px, 2px 12px, 2px 12px, 2px 12px;
     background-position: top left, top right, bottom left, bottom right;
+
+    &.error {
+        border-color: red;
+        background-color: rgba(128, 24, 24, 0.28);
+        background-image:
+            linear-gradient(red, red),
+            linear-gradient(red, red),
+            linear-gradient(red, red),
+            linear-gradient(red, red),
+    }
+    &.muted-frame {
+        border-color: silver;
+        background-image:
+            linear-gradient(silver, silver),
+            linear-gradient(silver, silver),
+            linear-gradient(silver, silver),
+            linear-gradient(silver, silver),
+    }
 }
 
 .corner-borders {
-    transition: all 0.2s ease-in-out;
+    transition: border 0.2s ease-in-out, background 0.2s ease-in-out, color 0.2s ease-in-out;
     background-repeat: no-repeat;
     background-origin: border-box;
     background-image:
@@ -317,7 +402,7 @@ hr {
     color: white;
     background: var(--background-input);
     box-sizing: border-box;
-    transition: all 0.2s ease-in-out;
+    transition: border 0.2s ease-in-out, background 0.2s ease-in-out, color 0.2s ease-in-out;
     background-repeat: no-repeat;
     background-origin: border-box;
     background-image:
@@ -404,7 +489,7 @@ hr {
     box-sizing: border-box;
     cursor: pointer;
     background: var(--background-input);
-    transition: all 0.2s ease-in-out;
+    transition: border 0.2s ease-in-out, background 0.2s ease-in-out, color 0.2s ease-in-out;
     background-repeat: no-repeat;
     background-origin: border-box;
     background-image:
@@ -417,7 +502,7 @@ hr {
         linear-gradient(#666, #666),
         linear-gradient(#666, #666),
         linear-gradient(#666, #666);
-    background-size: 2px 2px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px;
+    background-size: 12px 12px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px;
     background-position: center, top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
 
     &:hover {
@@ -432,6 +517,7 @@ hr {
             linear-gradient(white, white),
             linear-gradient(white, white),
             linear-gradient(white, white);
+        background-size: 12px 12px, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
     }
 
     &:focus,
@@ -448,8 +534,7 @@ hr {
             linear-gradient(white, white),
             linear-gradient(white, white),
             linear-gradient(white, white);
-        background-size: 2px 2px, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
-        background-position: center, top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+            background-size: 12px 12px, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
     }
 
     &:checked {
@@ -465,8 +550,6 @@ hr {
             linear-gradient(var(--bt-yellow), var(--bt-yellow));
         background-repeat: no-repeat;
         background-origin: border-box;
-        background-size: 12px 12px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px;
-        background-position: center, top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
     }
 
     &:disabled,
@@ -477,7 +560,7 @@ hr {
 }
 
 .bt-select {
-    touch-action: none;
+    touch-action: manipulation;
     cursor: pointer;
     padding: 8px 20px 8px 8px;
     border: 2px transparent;
@@ -486,9 +569,8 @@ hr {
     color: white;
     -webkit-appearance: none;
     appearance: none;
-    transition: all 0.2s ease-in-out;
+    transition: border 0.2s ease-in-out, background 0.2s ease-in-out, color 0.2s ease-in-out;
     background-origin: border-box;
-    ;
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23999999'%3e%3cpath d='M8 11L2 5h12z'/%3e%3c/svg%3e"),
         linear-gradient(#666, #666),
         linear-gradient(#666, #666),
@@ -501,6 +583,10 @@ hr {
     background-repeat: no-repeat;
     background-position: right 6px center, top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
     background-size: 12px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
+
+    &.small {
+        padding: 2px 20px 2px 6px;
+    }
 
     &:focus,
     &:focus-visible,
@@ -560,7 +646,7 @@ hr {
 .bt-button {
     cursor: pointer;
     white-space: nowrap;
-    touch-action: none;
+    touch-action: manipulation;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -570,7 +656,7 @@ hr {
     box-sizing: border-box;
     text-align: center;
     border: 2px solid transparent;
-    transition: all 0.2s ease-in-out;
+    transition: border 0.2s ease-in-out, background 0.2s ease-in-out, color 0.2s ease-in-out;
     min-height: 32px;
     background-repeat: no-repeat;
     background-origin: border-box;
@@ -581,6 +667,11 @@ hr {
         linear-gradient(#666, #666), linear-gradient(#666, #666);
     background-size: 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
     background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+
+    &.multiline {
+        white-space: normal;
+        font-weight: initial;
+    }
 
     &:hover {
         border-color: transparent;
@@ -595,14 +686,22 @@ hr {
         background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
     }
 
+    &.tiny {
+        background-size: 8px 2px, 2px 8px, 8px 2px, 2px 8px, 8px 2px, 2px 8px, 8px 2px, 2px 8px;
+
+        &:hover {
+            background-size: 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
+        }
+    }
+
     &.selected {
         border-color: white;
         background-color: var(--bt-yellow);
         color: #000;
     }
 
-    &.danger {
-        color: #a00;
+    &.danger:not(.selected) {
+        color: #d00;
         background-image:
             linear-gradient(#a00, #a00), linear-gradient(#a00, #a00),
             linear-gradient(#a00, #a00), linear-gradient(#a00, #a00),
@@ -690,6 +789,7 @@ hr {
         width: 40px;
         height: 40px;
         overflow: hidden;
+        min-width: 40px;
     }
 
     &.square-small {
@@ -698,6 +798,7 @@ hr {
         width: 32px;
         height: 32px;
         overflow: hidden;
+        min-width: 32px;
     }
 
     &.square-large {
@@ -706,6 +807,7 @@ hr {
         width: 48px;
         height: 48px;
         overflow: hidden;
+        min-width: 48px;
     }
 
     &.borderless {
@@ -724,13 +826,13 @@ hr {
 .bt-split-button {
     cursor: pointer;
     white-space: nowrap;
-    touch-action: none;
+    touch-action: manipulation;
     display: inline-flex;
     align-items: stretch;
     background: var(--background-input);
     box-sizing: border-box;
     border: 2px solid transparent;
-    transition: all 0.2s ease-in-out;
+    transition: border 0.2s ease-in-out, background 0.2s ease-in-out, color 0.2s ease-in-out;
     min-height: 32px;
     background-repeat: no-repeat;
     background-origin: border-box;
@@ -834,6 +936,7 @@ hr {
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.04em;
+        letter-spacing: 0.1em;
 
         &.centered {
             text-align: center;
@@ -871,7 +974,7 @@ hr {
         flex: 1 1 auto;
         min-width: 0;
         font-family: inherit;
-        font-size: 1.5em;
+        font-size: 1.2em;
         padding: 4px 4px 6px 4px;
         box-sizing: border-box;
         background: var(--background-input);
@@ -879,13 +982,81 @@ hr {
         border: 0;
         border-bottom: 1px solid #666;
         outline: none;
-        transition: all 0.2s ease-in-out;
+        transition: border 0.2s ease-in-out, background 0.2s ease-in-out, color 0.2s ease-in-out;
         white-space: normal;
         overflow-wrap: break-word;
         word-break: break-word;
 
         &:focus {
             border-bottom: 1px solid #fff;
+            outline: none;
+        }
+
+        &:disabled {
+            color: var(--text-color-tertiary);
+            cursor: not-allowed;
+        }
+
+        &[contenteditable]:empty::before {
+            content: attr(data-placeholder);
+            color: #888;
+            pointer-events: none;
+        }
+    }
+
+    select.field-input {
+        cursor: pointer;
+        text-overflow: ellipsis;
+    }
+}
+
+// specific for inventory dialog, to make the input fields smaller and more compact
+.weapons-equipment-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    text-align: left;
+
+    .field-label {
+        font-size: 0.85em;
+        color: var(--text-color-secondary);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        letter-spacing: 0.1em;
+
+        &.centered {
+            text-align: center;
+        }
+        
+        .optional {
+            font-weight: normal;
+            text-transform: none;
+            font-style: italic;
+        }
+    }
+
+    &.disabled .field-label {
+        color: var(--text-color-tertiary);
+    }
+
+    .field-input {
+        width: 100%;
+        flex: 1 1 auto;
+        min-width: 0;
+        font-family: inherit;
+        font-size: inherit;
+        box-sizing: border-box;
+        background: transparent;
+        color: white;
+        border: 0;
+        outline: none;
+        white-space: normal;
+        overflow-wrap: break-word;
+        word-break: break-word;
+
+        &:focus {
             outline: none;
         }
 
@@ -919,17 +1090,44 @@ hr {
 .wide-dialog {
     display: flex;
     flex-direction: column;
-    width: 90vw;
+    width: 100dvw;
     max-width: 700px;
-    max-height: calc(100dvh - 32px);
+    padding: 16px;
+    max-height: 100dvh;
     text-align: center;
     box-sizing: border-box;
     container-type: inline-size;
+
+    @media (max-width: 500px) {
+        &.mobile-fullscreen {
+            width: 100dvw;
+            height: 100dvh;
+            max-width: none;
+            max-height: none;
+            padding: 8px;
+        }
+    }
+}
+
+h2 {
+    font-size: 1.5em;
+}
+
+h2 {
+    font-size: 1.3em;
+}
+
+h3 {
+    font-size: 1.2em;
 }
 
 .wide-dialog-title {
     margin: 8px 0;
     flex-shrink: 0;
+
+    @media (max-height: 400px) {
+        margin: 2px 0;
+    }
 }
 
 .wide-dialog-body {
@@ -939,6 +1137,7 @@ hr {
     flex: 1 1 auto;
     overflow-y: auto;
     min-height: 0;
+    padding-bottom: 16px;
 }
 
 /* Row of .form-fields placed side-by-side; stacks below 400cqi */
@@ -959,7 +1158,8 @@ hr {
 }
 
 .wide-dialog-actions {
-    padding-top: 16px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 8px;
     display: flex;
     gap: 8px;
     justify-content: center;
@@ -1004,6 +1204,20 @@ span {
     }
 }
 
+.info-notice {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 12px;
+    block-size: 12px;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    font-size: 0.60rem;
+    font-weight: 600;
+    line-height: 0;
+    text-transform: none;
+}
+
 .popup-menu {
     padding: 8px 0;
     display: flex;
@@ -1029,6 +1243,10 @@ span {
 
         &:hover {
             background-color: var(--background-highlight);
+        }
+
+        &.danger {
+            color: var(--danger);
         }
 
         &[aria-expanded='true'] {
@@ -1079,6 +1297,29 @@ hr.divider {
     margin-right: 6px;
     padding: 0;
     border: 0;
+}
+
+
+
+.update-marker-anchor {
+    position: relative;
+}
+
+.update-marker {
+    position: absolute;
+    right: 4px;
+    top: 4px;
+    width: 9px;
+    height: 9px;
+    border: 2px solid var(--background-color-menu);
+    border-radius: 50%;
+    background: var(--bt-yellow);
+    pointer-events: none;
+
+    &.wrapped {
+        top: -2px;
+        right: -4px;
+    }
 }
 
 /* Unit Card */
@@ -1242,14 +1483,41 @@ hr.divider {
     background: #292313;
 }
 
-/* Ammo: #CCCCCC, background: #272727, inbetween: #999999 */
-.ammo {
+/* Bomb: #CC2222, background: #271111, inbetween: #992222 */
+.ammo-bomb {
+    --type-color: #c22;
+    border-left: 5px solid var(--type-color);
+    border-top: 1px solid #922;
+    border-right: 1px solid #922;
+    border-bottom: 1px solid #922;
+    background: #271111;
+}
+
+/* Chemical: #7BA3A0, background: #1a2524, inbetween: #4d7370 */
+.ammo-chemical {
+    --type-color: #7BA3A0;
+    border-left: 5px solid var(--type-color);
+    border-top: 1px solid #4d7370;
+    border-right: 1px solid #4d7370;
+    border-bottom: 1px solid #4d7370;
+    background: #1a2524;
+}
+
+/* Special: #CCCCCC, background: #272727, inbetween: #999999 */
+.ammo-special {
     --type-color: #ccc;
     border-left: 5px solid var(--type-color);
     border-top: 1px solid #999;
     border-right: 1px solid #999;
     border-bottom: 1px solid #999;
     background: #272727;
+}
+
+.ammo {
+    border-left-style: double;
+    border-top-style: solid;
+    border-right-style: solid;
+    border-bottom-style: solid;
 }
 
 /* Misc: #7BA3A0, background: #1a2524, inbetween: #4d7370 */
@@ -1289,7 +1557,7 @@ hr.divider {
     justify-content: flex-end;
     gap: 2px;
     width: 20px;
-    height: 20px;
+    height: 16px;
     padding: 0;
     border: 0;
     background: transparent;
@@ -1305,6 +1573,44 @@ hr.divider {
 
 .add-tag-btn svg {
     width: 100%;
+}
+
+.destroying-entry {
+    background-image: repeating-linear-gradient(
+        140deg,
+        rgba(205, 100, 0, 0.7333333333) 0px,
+        rgba(205, 100, 0, 0.7333333333) 12px,
+        rgba(205, 80, 0, 0.6666666667) 12px,
+        rgba(205, 80, 0, 0.6666666667) 24px);
+}
+
+.repairing-entry {
+    background-image: repeating-linear-gradient(
+        140deg,
+        rgba(3, 169, 244, 0.7333333333) 0px,
+        rgba(3, 169, 244, 0.7333333333) 12px,
+        rgba(0, 122, 204, 0.6666666667) 12px,
+        rgba(0, 122, 204, 0.6666666667) 24px);
+}
+
+.destroyed-entry {
+    color: var(--damage-color);
+    background-image: repeating-linear-gradient(
+        140deg,
+        rgba(85, 0, 0, 0.7333333333) 0px,
+        rgba(85, 0, 0, 0.7333333333) 12px,
+        rgba(51, 0, 0, 0.6666666667) 12px,
+        rgba(51, 0, 0, 0.6666666667) 24px);
+}
+
+.disabled-entry {
+    color: var(--text-color-secondary);
+    background-image: repeating-linear-gradient(
+        140deg,
+        rgba(85, 85, 85, 0.56) 0px,
+        rgba(85, 85, 85, 0.56) 12px,
+        rgba(45, 45, 45, 0.52) 12px,
+        rgba(45, 45, 45, 0.52) 24px);
 }
 
 .component-damaged {
@@ -1357,6 +1663,10 @@ hr.divider {
 
     .damaged-strike {
         display: none;
+    }
+
+    text.disabled-text {
+        fill: #aaa;
     }
 
     .disabledInventory .damaged-strike {
@@ -1435,9 +1745,32 @@ hr.divider {
         fill: var(--damage-color) !important;
     }
 
-    .detached,
+    .flooded,
+    .flooded>path,
+    .flooded path {
+        fill: #66f;
+    }
+
+    .unitLocation.disabledLocation {
+        fill: silver !important;
+    }
+
+    .unitLocation.flooded {
+        fill: #66f !important;
+    }
+
+    .pip.flooded {
+        stroke: #00d;
+    }
+
+    .critGroup.flooded text {
+        fill: #00d !important;
+        pointer-events: none;
+    }
+
+    path.detached,
     .detached>path {
-        fill: gray !important;
+        fill: #888 !important;
         pointer-events: none;
     }
 
@@ -1446,13 +1779,47 @@ hr.divider {
     }
 
     .detached path {
-        fill: gray !important;
+        fill: #888 !important;
         pointer-events: none;
     }
 
-    .critGroup.detached text {
-        fill: silver !important;
+    .critGroup.detached text.locationConditionText {
+        fill: #888;
+    }
+
+    .critGroup.detached text:not(.locationConditionText) {
+        fill: #888 !important;
         pointer-events: none;
+    }
+
+
+
+    .critGroup.flooded .critSlot-bg-rect {
+        fill: #66f;
+    }
+
+    .critGroup.detached .critSlot text,
+    .critGroup.flooded .critSlot text,
+    .critGroup.disabledLocation .critSlot text {
+        text-decoration: line-through;
+    }
+
+    .critGroup.flooded,
+    .critGroup.detached,
+    .critGroup.disabledLocation,
+    .critGroup.flooded .locationConditionButton,
+    .critGroup.detached .locationConditionButton,
+    .critGroup.disabledLocation .locationConditionButton,
+    .critGroup.flooded .locationConditionText,
+    .critGroup.detached .locationConditionText,
+    .critGroup.disabledLocation .locationConditionText {
+        pointer-events: all;
+    }
+
+    .critGroup.flooded .locationConditionButton text,
+    .critGroup.detached .locationConditionButton text,
+    .critGroup.disabledLocation .locationConditionButton text {
+        fill: inherit !important;
     }
 
     .pip {
@@ -1487,7 +1854,7 @@ hr.divider {
         text-decoration: line-through;
     }
 
-    .critLoc {
+    .critLoc:not(.counterGroup) {
         &.damaged {
             fill: var(--damage-color) !important;
         }
@@ -1520,14 +1887,22 @@ hr.divider {
             }
 
             &.willDamage .critSlot-bg-rect {
-                fill: #f669;
+                fill: #f669 !important;
 
                 &:hover {
-                    fill: #f999;
+                    fill: #f999 !important;
                 }
             }
 
 
+        }
+
+        .critGroup.flooded .critSlot-bg-rect:hover {
+            fill: #99f;
+        }
+
+        .critGroup.disabledLocation .critSlot-bg-rect:hover {
+            fill: #999;
         }
 
 
@@ -1593,7 +1968,7 @@ hr.divider {
             stroke: transparent !important;
         }
 
-        .critLoc.willChange:not(.damaged) {
+        .critLoc:not(.counterGroup).willChange:not(.damaged) {
             fill: orange !important;
             stroke: #FF0 !important;
             stroke-width: 1.5px;
@@ -1603,9 +1978,107 @@ hr.divider {
             vector-effect: non-scaling-stroke;
         }
 
-        .critLoc.damaged.willChange {
+        .critLoc:not(.counterGroup).damaged.willChange {
             stroke: #03a9f4 !important;
             fill: #d2f1ff !important;
+        }
+
+        .motiveHitPips {
+            pointer-events: none;
+
+            .motiveHitPip {
+                fill: transparent;
+                stroke: transparent;
+
+                &.damaged {
+                    fill: var(--damage-color) !important;
+                }
+
+                &.willChange:not(.damaged) {
+                    fill: orange !important;
+                }
+
+                &.damaged.pendingRemoval {
+                    fill: #03a9f4 !important;
+                }
+            }
+        }
+
+        .rotorHitsControl {
+            &.rotorHitsPendingPositive rect {
+                stroke: orange !important;
+                stroke-width: 1.5px;
+            }
+
+            &.rotorHitsPendingNegative rect {
+                stroke: #03a9f4 !important;
+                stroke-width: 1.5px;
+            }
+
+            #rotor_hits_counter {
+                .rotorHitsCommitted {
+                    fill: var(--damage-color) !important;
+                }
+
+                .rotorHitsPending.positive {
+                    fill: orange !important;
+                }
+
+                .rotorHitsPending.negative {
+                    fill: #03a9f4 !important;
+                }
+            }
+        }
+
+        .unitConditionButton {
+            cursor: pointer;
+
+            text {
+                pointer-events: none;
+            }
+
+            &.active rect {
+                fill: var(--unit-condition-active-color, #666) !important;
+            }
+
+            &.active text {
+                fill: #fff !important;
+            }
+        }
+        
+        .locConditionButton {
+            cursor: pointer;
+
+            text {
+                pointer-events: none;
+            }
+
+        }
+
+        .unitConditionBanner {
+            pointer-events: none;
+            opacity: 0;
+
+            .unitConditionBannerRect {
+                transform-box: fill-box;
+                transform-origin: left center;
+                transform: scaleX(0);
+                fill-opacity: 0.9;
+                transition: transform 90ms ease-out;
+            }
+
+            &.visible {
+                opacity: 1;
+
+                .unitConditionBannerRect {
+                    transform: scaleX(1);
+                }
+            }
+        }
+
+        .crewStateBanner .unitConditionBannerRect {
+            transform-origin: right center;
+            transition: none;
         }
 
         .pip.disabled {
@@ -1662,9 +2135,59 @@ hr.divider {
                 filter: brightness(1.03);
             }
 
-            &.selected>.inventoryEntryButton {
-                fill: var(--bt-yellow);
+            &.selected:not(.selected-alternative-mode):not(.selected-range-short):not(.selected-range-medium):not(.selected-range-long):not(.selected-range-extreme)>.inventoryEntryButton,
+            &.selected-range-short:not(.selected-alternative-mode)>.mainButton,
+            &.selected-range-short:not(.selected-alternative-mode)>.shrButton,
+            &.selected-range-medium:not(.selected-alternative-mode)>.mainButton,
+            &.selected-range-medium:not(.selected-alternative-mode)>.medButton,
+            &.selected-range-long:not(.selected-alternative-mode)>.mainButton,
+            &.selected-range-long:not(.selected-alternative-mode)>.lngButton,
+            &.selected-range-extreme:not(.selected-alternative-mode)>.mainButton,
+            &.selected-range-extreme:not(.selected-alternative-mode)>.extButton,
+            &.selected.selected-alternative-mode:not(.selected-range-short):not(.selected-range-medium):not(.selected-range-long):not(.selected-range-extreme)>.alternativeMode.selected>.inventoryEntryButton,
+            &.selected-alternative-mode.selected-range-short>.alternativeMode.selected>.alternativeModeButton,
+            &.selected-alternative-mode.selected-range-short>.alternativeMode.selected>.shrButton,
+            &.selected-alternative-mode.selected-range-medium>.alternativeMode.selected>.alternativeModeButton,
+            &.selected-alternative-mode.selected-range-medium>.alternativeMode.selected>.medButton,
+            &.selected-alternative-mode.selected-range-long>.alternativeMode.selected>.alternativeModeButton,
+            &.selected-alternative-mode.selected-range-long>.alternativeMode.selected>.lngButton,
+            &.selected-alternative-mode.selected-range-extreme>.alternativeMode.selected>.alternativeModeButton,
+            &.selected-alternative-mode.selected-range-extreme>.alternativeMode.selected>.extButton {
+                fill: var(--inventory-control-selection-color, var(--bt-yellow));
             }
+
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.shrButton,
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.medButton,
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.lngButton,
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.extButton,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.shrButton,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.medButton,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.lngButton,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.extButton {
+                fill: var(--damage-color);
+            }
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.range_short,
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.range_medium,
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.range_long,
+            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.range_extreme,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.range_short,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.range_medium,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.range_long,
+            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.range_extreme {
+                fill: #fff;
+            }
+
+            &.selected.selected-target-out-of-range>.targetTn-rect {
+                fill: var(--damage-color);
+            }
+            
+            &.selected.selected-target-out-of-range>.targetTn-text {
+                fill: #fff;
+            }
+        }
+
+        #ammoProfile:hover>.inventoryEntryButton {
+            fill: var(--highlight-color);
         }
 
         .inventoryEntry>.alternativeMode {
@@ -1675,10 +2198,10 @@ hr.divider {
             &:active>.inventoryEntryButton {
                 filter: brightness(1.03);
             }
-
-            &.selected>.inventoryEntryButton {
-                fill: var(--bt-yellow);
-            }
+        }
+    
+        .locationConditionText {
+            text-decoration: underline dotted;
         }
 
         .hot {
@@ -1847,6 +2370,14 @@ hr.divider {
         .unusedMoveMode {
             opacity: 0.5;
         }
+
+        .movePsrWarning {
+            fill: var(--danger);
+            font-family: Roboto, sans-serif;
+            font-size: 7px;
+            font-weight: 700;
+            pointer-events: none;
+        }
     }
 }
 
@@ -1860,56 +2391,62 @@ hr.divider {
         color: var(--svg-fg-color);
         fill: var(--svg-fg-color);
 
-        [fill="#000000" i],
-        [fill="#000" i],
-        [fill="black" i],
-        [style*="fill:#000000" i],
-        [style*="fill:black" i],
-        [style*="fill: #000000" i],
-        [style*="fill: black" i],
-        [style*="fill:#000" i],
-        [style*="fill: #000" i],
-        [style*="fill: rgb(0, 0, 0)" i] {
-            fill: var(--svg-fg-color) !important;
-        }
+        :where(:not(mask):not(mask *):not(.no-autocolor):not(.no-autocolor *)) {
+            &[fill="#000000" i],
+            &[fill="#000" i],
+            &[fill="black" i],
+            &[style*="fill:#000000" i],
+            &[style*="fill:black" i],
+            &[style*="fill: #000000" i],
+            &[style*="fill: black" i],
+            &[style*="fill:#000" i],
+            &[style*="fill: #000" i],
+            &[style*="fill:rgb(0" i],
+            &[style*="fill: rgb(0" i] {
+                fill: var(--svg-fg-color) !important;
+            }
 
-        [stroke="#000000" i],
-        [stroke="#000" i],
-        [stroke="black" i],
-        [style*="stroke:#000000" i],
-        [style*="stroke:black" i],
-        [style*="stroke: #000000" i],
-        [style*="stroke: black" i],
-        [style*="stroke:#000" i],
-        [style*="stroke: #000" i],
-        [style*="stroke: rgb(0, 0, 0)" i] {
-            stroke: var(--svg-fg-color) !important;
-        }
+            &[stroke="#000000" i],
+            &[stroke="#000" i],
+            &[stroke="black" i],
+            &[style*="stroke:#000000" i],
+            &[style*="stroke:black" i],
+            &[style*="stroke: #000000" i],
+            &[style*="stroke: black" i],
+            &[style*="stroke:#000" i],
+            &[style*="stroke: #000" i],
+            &[style*="stroke:rgb(0" i],
+            &[style*="stroke: rgb(0" i] {
+                stroke: var(--svg-fg-color) !important;
+            }
 
-        [fill="#FFFFFF" i],
-        [fill="#FFF" i],
-        [fill="white" i],
-        [style*="fill:#FFFFFF" i],
-        [style*="fill:white" i],
-        [style*="fill: #FFFFFF" i],
-        [style*="fill: white" i],
-        [style*="fill:#FFF" i],
-        [style*="fill: #FFF" i],
-        [style*="fill: rgb(255, 255, 255)" i] {
-            fill: var(--svg-fg-color-inv) !important;
-        }
+            &[fill="#FFFFFF" i],
+            &[fill="#FFF" i],
+            &[fill="white" i],
+            &[style*="fill:#FFFFFF" i],
+            &[style*="fill:white" i],
+            &[style*="fill: #FFFFFF" i],
+            &[style*="fill: white" i],
+            &[style*="fill:#FFF" i],
+            &[style*="fill: #FFF" i],
+            &[style*="fill:rgb(255" i],
+            &[style*="fill: rgb(255" i] {
+                fill: var(--svg-fg-color-inv) !important;
+            }
 
-        [stroke="#FFFFFF" i],
-        [stroke="#FFF" i],
-        [stroke="white" i],
-        [style*="stroke:#FFFFFF" i],
-        [style*="stroke:white" i],
-        [style*="stroke: #FFFFFF" i],
-        [style*="stroke: white" i],
-        [style*="stroke:#FFF" i],
-        [style*="stroke: #FFF" i],
-        [style*="stroke: rgb(255, 255, 255)" i] {
-            stroke: var(--svg-fg-color-inv) !important;
+            &[stroke="#FFFFFF" i],
+            &[stroke="#FFF" i],
+            &[stroke="white" i],
+            &[style*="stroke:#FFFFFF" i],
+            &[style*="stroke:white" i],
+            &[style*="stroke: #FFFFFF" i],
+            &[style*="stroke: white" i],
+            &[style*="stroke:#FFF" i],
+            &[style*="stroke: #FFF" i],
+            &[style*="stroke:rgb(255" i],
+            &[style*="stroke: rgb(255" i] {
+                stroke: var(--svg-fg-color-inv) !important;
+            }
         }
 
         [fill="#c7c8ca" i],
@@ -1939,6 +2476,10 @@ hr.divider {
         [fill="#bbb" i],
         [style*="fill:#bbb" i] {
             fill: #444 !important;
+        }
+
+        text.disabled-text {
+            fill: #666;
         }
 
         .damaged {
@@ -1982,11 +2523,41 @@ hr.divider {
             pointer-events: none;
         }
 
+        .disabledLocation,
+        .disabledLocation>path,
+        .disabledLocation path {
+            fill: gray !important;
+        }
+
         .critGroup.detached text {
-            fill: #3f3f3f !important;
+            fill: rgb(63, 63, 63) !important;
+        }
+
+        .critGroup.disabledLocation text {
+            fill: rgb(63, 63, 63) !important;
+        }
+
+        .critGroup.flooded .critSlot-bg-rect {
+            fill: #006;
+        }
+
+        .critGroup.flooded text {
+            fill: #99f !important;
+        }
+
+        .unitLocation.disabledLocation {
+            fill: gray !important;
+        }
+
+        .unitLocation.flooded {
+            fill: #006 !important;
         }
 
         .pip.detached {
+            stroke: gray;
+        }
+
+        .pip.disabledLocation {
             stroke: gray;
         }
 
@@ -2056,26 +2627,38 @@ hr.divider {
 
 
         .inventoryEntry {
-            &.selected>text {
+            &.selected:not(.selected-alternative-mode)>text:not(.hitMod-text):not(.targetTn-text):not(.targetAimedShotWarning-text),
+            &.selected:not(.selected-alternative-mode)>g:not(.alternativeMode) text,
+            &.selected.selected-alternative-mode>.alternativeMode.selected text {
                 fill: #000;
             }
 
-            &.selected>g:not(.alternativeMode):not(.weaponQuirks):not(.linked)>text {
-                fill: #000;
+            &.selected-range-short .range_medium,
+            &.selected-range-short .range_long,
+            &.selected-range-short .range_extreme,
+            &.selected-range-medium .range_short,
+            &.selected-range-medium .range_long,
+            &.selected-range-medium .range_extreme,
+            &.selected-range-long .range_short,
+            &.selected-range-long .range_medium,
+            &.selected-range-long .range_extreme,
+            &.selected-range-extreme .range_short,
+            &.selected-range-extreme .range_medium,
+            &.selected-range-extreme .range_long,
+            &.selected.selected-alternative-mode>.alternativeMode:not(.selected) .range_short,
+            &.selected.selected-alternative-mode>.alternativeMode:not(.selected) .range_medium,
+            &.selected.selected-alternative-mode>.alternativeMode:not(.selected) .range_long,
+            &.selected.selected-alternative-mode>.alternativeMode:not(.selected) .range_extreme {
+                fill: #888 !important;
             }
         }
 
-        .inventoryEntry>.alternativeMode {
-            &.selected>text {
-                fill: #000;
-            }
-
-            &.selected>g>text {
-                fill: #000;
-            }
+        rect.heat {
+            fill: #000;
+            stroke: #fff;      
         }
 
-        .hot {
+        rect.heat.hot {
             &.heat0 {
                 fill: #000000 !important;
             }
@@ -2198,6 +2781,21 @@ hr.divider {
 
             &.heat30 {
                 fill: #FF0000 !important;
+            }
+        }
+
+        .locationNarcBanner > rect {
+            stroke: #fff !important;
+            fill: #f00 !important;
+        }
+
+        .locationNarcBanner > text {
+            fill: #fff !important;
+        }
+
+        .unitConditionButton {
+            .conditionText {
+                fill: #fff !important;
             }
         }
     }

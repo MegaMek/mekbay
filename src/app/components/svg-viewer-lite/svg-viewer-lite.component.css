@@ -1,13 +1,34 @@
-.svgl-container {
-    position: relative;
+:host {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
     width: 100%;
     height: 100%;
-    box-sizing: border-box;    
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+}
+
+.svgl-container {
+    position: relative;
+    flex: 1 1 auto;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow: hidden;
     pointer-events: auto;
     touch-action: pan-x pan-y;
     -webkit-overflow-scrolling: touch;
+}
+
+.svgl-container.zoomable {
+    overflow: auto;
+    overscroll-behavior: contain;
+    touch-action: none;
+}
+
+.svgl-content {
+    width: 100%;
+    margin: 0 auto;
 }

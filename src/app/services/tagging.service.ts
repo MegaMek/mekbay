@@ -36,21 +36,25 @@ import { outputToObservable } from '@angular/core/rxjs-interop';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { firstValueFrom, takeUntil } from 'rxjs';
-import { Unit, PublicTagInfo } from '../models/units.model';
+import type { Unit, PublicTagInfo } from '../models/units.model';
+import { getChassisTagTargetUnits } from '../utils/chassis-tag-target.util';
+import { collectAllChassisTags, collectAllNameTags } from '../utils/tag-list.util';
+import { DataService } from './data.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 import { OverlayManagerService } from './overlay-manager.service';
 import { DialogsService } from './dialogs.service';
-import { TagSelectorComponent, TagSelectionEvent } from '../components/tag-selector/tag-selector.component';
-import { InputDialogComponent, InputDialogData } from '../components/input-dialog/input-dialog.component';
+import { TagSelectorComponent, type TagSelectionEvent, type TagQuantityChangeEvent } from '../components/tag-selector/tag-selector.component';
+import { InputDialogComponent, type InputDialogData } from '../components/input-dialog/input-dialog.component';
 import { TagsService } from './tags.service';
 import { PublicTagsService } from './public-tags.service';
+import type { TagData } from './db.service';
 
 // const PRECONFIGURED_TAGS = [];
 
 /**
  * Maximum length for tag names.
  */
-export const TAG_MAX_LENGTH = 16;
+export const TAG_MAX_LENGTH = 32;
 
 /**
  * Allowed characters in tag names.
@@ -94,6 +98,7 @@ export function validateTagName(tag: string): string | null {
 })
 export class TaggingService {
     private filtersService = inject(UnitSearchFiltersService);
+    private dataService = inject(DataService);
     private tagsService = inject(TagsService);
     private publicTagsService = inject(PublicTagsService);
     private overlayManager = inject(OverlayManagerService);
@@ -119,8 +124,9 @@ export class TaggingService {
         if (units.length === 0) return;
 
         // Get all unique tags from all units (for both sections)
-        const allNameTags = this.filtersService.getAllNameTags();
-        const allChassisTags = this.filtersService.getAllChassisTags();
+        const allUnits = this.dataService.getUnits();
+        const allNameTags = collectAllNameTags(allUnits);
+        const allChassisTags = collectAllChassisTags(allUnits);
 
         // Add preconfigured tags to both sections if not present
         // for (const preconfiguredTag of PRECONFIGURED_TAGS) {
@@ -163,25 +169,29 @@ export class TaggingService {
         componentRef.instance.publicTags.set(Array.from(publicTagsSet.values()));
 
         // Calculate tag states for all selected units
-        const updateTagStates = () => {
+        const updateTagStates = async () => {
             const { fullyAssigned: nameFullyAssigned, partiallyAssigned: namePartiallyAssigned } = 
                 this.calculateTagStates(units, 'name');
             const { fullyAssigned: chassisFullyAssigned, partiallyAssigned: chassisPartiallyAssigned } = 
                 this.calculateTagStates(units, 'chassis');
+            const nameTagQuantities = await this.calculateTagQuantities(units, 'name');
+            const chassisTagQuantities = await this.calculateTagQuantities(units, 'chassis');
             
             // Update signals to trigger reactivity
             componentRef.instance.assignedNameTags.set([...nameFullyAssigned]);
             componentRef.instance.partialNameTags.set([...namePartiallyAssigned]);
             componentRef.instance.assignedChassisTags.set([...chassisFullyAssigned]);
             componentRef.instance.partialChassisTags.set([...chassisPartiallyAssigned]);
+            componentRef.instance.nameTagQuantities.set(nameTagQuantities);
+            componentRef.instance.chassisTagQuantities.set(chassisTagQuantities);
         };
 
-        updateTagStates();
+        await updateTagStates();
 
         // Handle tag removal - cleanup when overlay closes
         outputToObservable(componentRef.instance.tagRemoved).pipe(takeUntil(closed)).subscribe(async (event: TagSelectionEvent) => {
             await this.tagsService.modifyTag(units, event.tag, event.tagType, 'remove');
-            updateTagStates();
+            await updateTagStates();
             this.filtersService.invalidateTagsCache();
         });
 
@@ -238,9 +248,19 @@ export class TaggingService {
                 }
             }
 
-            await this.tagsService.modifyTag(units, selectedTag, tagType, 'add');
-            updateTagStates();
+            const unitsToTag = tagType === 'chassis'
+                ? getChassisTagTargetUnits(units, allUnits)
+                : units;
+
+            await this.tagsService.modifyTag(unitsToTag, selectedTag, tagType, 'add');
+            await updateTagStates();
             this.filtersService.invalidateTagsCache();
+        });
+
+        // Handle tag quantity edits
+        outputToObservable(componentRef.instance.quantityChanged).pipe(takeUntil(closed)).subscribe(async (event: TagQuantityChangeEvent) => {
+            await this.tagsService.setTagQuantity(units, event.tag, event.tagType, event.quantity);
+            await updateTagStates();
         });
 
         // Handle unsubscribe from public tag
@@ -278,8 +298,8 @@ export class TaggingService {
         
         for (const unit of units) {
             const tags = tagType === 'name' ? (unit._nameTags || []) : (unit._chassisTags || []);
-            for (const tag of tags) {
-                const lowerTag = tag.toLowerCase();
+            for (const entry of tags) {
+                const lowerTag = entry.tag.toLowerCase();
                 tagCounts.set(lowerTag, (tagCounts.get(lowerTag) || 0) + 1);
             }
         }
@@ -292,9 +312,9 @@ export class TaggingService {
             let originalTag = lowerTag;
             for (const unit of units) {
                 const tags = tagType === 'name' ? (unit._nameTags || []) : (unit._chassisTags || []);
-                const found = tags.find(t => t.toLowerCase() === lowerTag);
+                const found = tags.find(t => t.tag.toLowerCase() === lowerTag);
                 if (found) {
-                    originalTag = found;
+                    originalTag = found.tag;
                     break;
                 }
             }
@@ -307,6 +327,46 @@ export class TaggingService {
         }
 
         return { fullyAssigned, partiallyAssigned };
+    }
+
+    /**
+     * Build a lowercase tag-id keyed map of quantities for selected units.
+     * Quantity defaults to 1 when not explicitly stored.
+     */
+    private async calculateTagQuantities(units: Unit[], tagType: 'name' | 'chassis'): Promise<Record<string, number>> {
+        const result: Record<string, number> = {};
+        if (units.length === 0) {
+            return result;
+        }
+
+        const tagData = await this.tagsService.getTagData();
+        const selectedUnitNames = new Set(units.map(unit => unit.name));
+        const selectedChassisKeys = new Set(units.map(unit => TagsService.getChassisTagKey(unit)));
+
+        for (const [tagId, entry] of Object.entries(tagData.tags)) {
+            if (tagType === 'name') {
+                for (const [unitName, unitTagData] of Object.entries(entry.units)) {
+                    if (selectedUnitNames.has(unitName)) {
+                        result[tagId] = this.getUnitTagQuantity(unitTagData);
+                        break;
+                    }
+                }
+            } else {
+                for (const [chassisKey, chassisTagData] of Object.entries(entry.chassis)) {
+                    if (selectedChassisKeys.has(chassisKey)) {
+                        result[tagId] = this.getUnitTagQuantity(chassisTagData);
+                        break;
+                    }
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private getUnitTagQuantity(unitTagData: TagData['tags'][string]['units'][string]): number {
+        const quantity = unitTagData?.q;
+        return quantity && quantity > 0 ? quantity : 1;
     }
 
     /**
@@ -323,9 +383,9 @@ export class TaggingService {
      * 
      * @param oldTag The current tag name to rename
      * @param tagType Whether this is a 'name' or 'chassis' tag (optional - will check both if not specified)
-     * @returns true if rename was successful, false if cancelled or failed
+     * @returns The final tag name if rename was successful, or null if cancelled or failed
      */
-    async renameTag(oldTag: string, tagType?: 'name' | 'chassis'): Promise<boolean> {
+    async renameTag(oldTag: string, tagType?: 'name' | 'chassis'): Promise<string | null> {
         const newTag = await this.dialogsService.prompt(
             'Enter new tag name:',
             `Rename Tag "${oldTag}"`,
@@ -334,21 +394,21 @@ export class TaggingService {
 
         // User cancelled or entered empty string
         if (!newTag || newTag.trim().length === 0) {
-            return false;
+            return null;
         }
         
         // Validate tag name
         const validationError = validateTagName(newTag);
         if (validationError) {
             await this.dialogsService.showError(validationError, 'Invalid Tag');
-            return false;
+            return null;
         }
 
         const trimmedNew = newTag.trim();
         
         // No change (case-insensitive for same tag, but allow case changes)
         if (trimmedNew.toLowerCase() === oldTag.toLowerCase() && trimmedNew === oldTag) {
-            return false;
+            return null;
         }
 
         // Determine tag type if not specified - check both stores
@@ -365,7 +425,7 @@ export class TaggingService {
                 effectiveTagType = 'chassis';
             } else {
                 await this.dialogsService.showError('Tag not found.', 'Rename Failed');
-                return false;
+                return null;
             }
         }
 
@@ -384,7 +444,7 @@ export class TaggingService {
             
             if (!merge) {
                 // User declined merge, abort rename
-                return false;
+                return null;
             }
         }
 
@@ -393,17 +453,17 @@ export class TaggingService {
         
         if (result === 'not-found') {
             await this.dialogsService.showError('Tag not found.', 'Rename Failed');
-            return false;
+            return null;
         }
         if (result === 'conflict') {
             // Should not happen since we already prompted for merge
             await this.dialogsService.showError('Tag name conflict.', 'Rename Failed');
-            return false;
+            return null;
         }
 
         // No need to rename "other type" separately - renameTag now merges BOTH collections
 
         this.filtersService.invalidateTagsCache();
-        return true;
+        return existingTag ?? trimmedNew;
     }
 }

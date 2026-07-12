@@ -32,7 +32,7 @@
  */
 
 import { Component, ChangeDetectionStrategy, input, computed } from '@angular/core';
-import { ASForceUnit } from '../../../models/as-force-unit.model';
+import type { ASForceUnit } from '../../../models/as-force-unit.model';
 
 /*
  * Author: Drake

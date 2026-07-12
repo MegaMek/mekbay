@@ -31,23 +31,23 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentInteractionHandler, HandlerContext } from '../services/equipment-interaction-registry.service';
-import { MountedEquipment } from '../models/force-serialization';
-import { PickerChoice } from '../components/picker/picker.interface';
-import { ALL_C3_FLAGS } from '../models/c3-network.model';
+import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
+import type { MountedEquipment } from '../models/force-serialization';
+import type { PickerChoice } from '../components/picker/picker.interface';
+import type { ALL_C3_FLAGS } from '../models/c3-network.model';
 import { firstValueFrom } from 'rxjs';
 
 export class C3Handler extends EquipmentInteractionHandler {
     readonly id = 'c3-handler';
-    readonly flags: string[] = ['ANY_C3'];
+    override readonly flags: string[] = ['ANY_C3'];
     override readonly priority = 10;
 
     getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {
         return [
             {
-                label: 'Configure network',
+                label: 'Configure',
                 value: 'c3-network-configuration',
-                disabled: equipment.destroyed,
+                disabled: equipment.isUnavailable(),
                 displayType: 'button'
             }
         ];

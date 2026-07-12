@@ -32,12 +32,12 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { Component, ChangeDetectionStrategy, input, inject, computed, ElementRef, viewChild } from '@angular/core';
-import { Unit, UnitComponent } from '../../models/units.model';
+import { Component, ChangeDetectionStrategy, input, inject, computed, type ElementRef, viewChild } from '@angular/core';
+import type { Unit, UnitComponent } from '../../models/units.model';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
 import { FloatingOverlayService } from '../../services/floating-overlay.service';
 
-type ComponentDisplayStyle = 'normal' | 'small' | 'tiny' | 'text';
+type ComponentDisplayStyle = 'normal' | 'small' | 'tiny' | 'text' | 'additional';
 
 /**
  * Author: Drake
@@ -58,33 +58,38 @@ export class UnitComponentItemComponent {
     damaged = input<boolean>(false);
     comp = input<UnitComponent | null>(null);
     displayStyle = input<ComponentDisplayStyle>('normal');
-    componentEl = viewChild<ElementRef<HTMLDivElement>>('component');
+    componentEl = viewChild<ElementRef<HTMLElement>>('component');
 
     typeClass = computed(() => {
-        return getWeaponTypeCSSClass(this.comp()?.t ?? '');
+        const component = this.comp();
+        return getWeaponTypeCSSClass(component?.t ?? '', component?.eq);
     });
 
     hostDisplay = computed(() => this.displayStyle() === 'text' ? 'inline' : 'block');
+    isInteractive = computed(() => this.displayStyle() !== 'additional');
 
     constructor() {}
 
     onCompClick(event: MouseEvent) {
+        if (!this.isInteractive()) return;
         event.stopPropagation();
         event.preventDefault();
         this.showFloatingOverlay();
     }
 
-    onPointerEnter(event: MouseEvent) {
+    onPointerEnter(event: PointerEvent) {
         this.showFloatingOverlay();
     }
 
     showFloatingOverlay() {
+        if (!this.isInteractive()) return;
         const el = this.componentEl()?.nativeElement;
         if (!el) return;
         this.floatingOverlayService.show(this.unit(), this.comp(), el);
     }
 
     onPointerLeave(event: PointerEvent) {
+        if (!this.isInteractive()) return;
         if (event.pointerType !== 'mouse') return; // only care about mouse pointers
         this.floatingOverlayService.hideWithDelay();
     }

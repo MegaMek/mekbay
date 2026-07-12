@@ -1,6 +1,6 @@
-import { Component, ChangeDetectionStrategy, inject, input, output, TemplateRef, ViewChild, ElementRef, ViewContainerRef, computed, signal, viewChild, DestroyRef, effect } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, input, output, type TemplateRef, type ViewChild, type ElementRef, ViewContainerRef, computed, signal, viewChild, DestroyRef, effect } from '@angular/core';
 
-import { Overlay, OverlayRef } from '@angular/cdk/overlay';
+import { Overlay, type OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import { LayoutService } from '../../../../services/layout.service';
 import { takeUntil } from 'rxjs';

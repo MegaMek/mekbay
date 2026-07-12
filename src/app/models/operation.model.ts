@@ -31,8 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { ForceAlignment } from './force-slot.model';
-import { GameSystem } from './common.model';
+import type { ForceAlignment } from './force-slot.model';
+import type { GameSystem } from './common.model';
+import { FactionId } from './factions.model';
 
 /*
  * Author: Drake
@@ -83,7 +84,8 @@ export interface OperationForceInfo {
     /** Game system type: from server join */
     type?: GameSystem;
     /** Faction ID: from server join */
-    factionId?: number;
+    factionId?: FactionId;
+    eraId?: number;
     /** BV: from server join */
     bv?: number;
     /** PV: from server join */

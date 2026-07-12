@@ -1,7 +1,9 @@
-<div #container class="slider-container" [class.disabled]="disabled()">
-    <div class="slider-track" [class.active]="interacted()"></div>
+<div #container class="slider-container" [class.disabled]="disabled()" [class.single-value]="isSingleValueMode()">
+    <div class="slider-track" [class.active]="isSingleValueMode() ? focusedThumb() === 'single' : interacted()"></div>
+    @if (!isSingleValueMode()) {
     <div class="slider-range" [style.left.%]="valueToPercent(left())" [style.right.%]="100 - valueToPercent(right())">
     </div>
+    }
 
     <!-- Exclude range indicators (semantic-only) -->
     @if (excludeRanges()?.length) {
@@ -23,6 +25,7 @@
         }
     }
 
+    @if (!isSingleValueMode()) {
     <!-- Left Thumb -->
     <div #leftThumb class="thumb thumb-left" [style.left.%]="valueToPercent(left())"
         [class.active]="isLeftThumbActive()" [class.clamped]="isLeftThumbClamped()" [class.focused]="focusedThumb() === 'min'"
@@ -30,19 +33,20 @@
         (blur)="onThumbBlur()" (dblclick)="resetThumb('min', $event)" [attr.tabindex]="disabled() ? -1 : 0">
         @if (dragging() === 'min' || focusedThumb() === 'min') {
         <div class="thumb-label">
-            {{ left() | formatNumber}}
+            {{ displayValue(left()) }}
         </div>
         }
     </div>
+    }
 
     <!-- Right Thumb -->
-    <div #rightThumb class="thumb thumb-right" [style.left.%]="valueToPercent(right())"
-        [class.active]="isRightThumbActive()" [class.clamped]="isRightThumbClamped()" [class.focused]="focusedThumb() === 'max'"
-        (pointerdown)="startDrag('max', $event)" (focus)="onThumbFocus('max')"
-        (blur)="onThumbBlur()" (dblclick)="resetThumb('max', $event)" [attr.tabindex]="disabled() ? -1 : 0">
-        @if (dragging() === 'max' || focusedThumb() === 'max') {
+    <div #rightThumb class="thumb" [class.thumb-right]="!isSingleValueMode()" [class.thumb-single]="isSingleValueMode()" [style.left.%]="valueToPercent(right())"
+        [class.active]="isSingleValueMode() ? focusedThumb() === 'single' : isRightThumbActive()" [class.clamped]="!isSingleValueMode() && isRightThumbClamped()" [class.focused]="focusedThumb() === rightThumbKind()"
+        (pointerdown)="startDrag(rightThumbKind(), $event)" (focus)="onThumbFocus(rightThumbKind())"
+        (blur)="onThumbBlur()" (dblclick)="resetThumb(rightThumbKind(), $event)" [attr.tabindex]="disabled() ? -1 : 0">
+        @if (dragging() === rightThumbKind() || focusedThumb() === rightThumbKind()) {
         <div class="thumb-label">
-            {{ right() | formatNumber }}
+            {{ displayValue(right()) }}
         </div>
         }
     </div>

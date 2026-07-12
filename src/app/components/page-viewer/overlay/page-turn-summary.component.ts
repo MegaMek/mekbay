@@ -37,8 +37,6 @@ import {
     inject,
     Injector,
     input,
-    viewChild,
-    ElementRef,
     output,
     computed
 } from '@angular/core';
@@ -47,7 +45,24 @@ import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
-import { canChangeAirborneGround, MotiveModeOption, MotiveModes } from '../../../models/motiveModes.model';
+import { canChangeAirborneGround, type MotiveModeOption, type MotiveModes } from '../../../models/motiveModes.model';
+import { HexSliderComponent } from '../../hex-slider/hex-slider.component';
+import { TooltipDirective } from '../../../directives/tooltip.directive';
+import type { TooltipLine } from '../../tooltip/tooltip.component';
+import { calculateModifierTotal, type UnitModifierBreakdownEntry, type UnitModifierTotal } from '../../../models/rules/unit-type-rules';
+import { EquipmentInteractionRegistryService, type HandlerChoice, type HandlerContext } from '../../../services/equipment-interaction-registry.service';
+import { ToastService } from '../../../services/toast.service';
+import { DialogsService } from '../../../services/dialogs.service';
+import { DataService } from '../../../services/data.service';
+import type { MountedEquipment } from '../../../models/force-serialization';
+import { isMascActive } from '../../../equipment-handlers/masc.handler';
+
+interface MascControlRow {
+    entry: MountedEquipment;
+    label: string;
+    damaged: boolean;
+    choices: HandlerChoice[];
+}
 
 /*
  * Author: Drake
@@ -59,25 +74,32 @@ import { canChangeAirborneGround, MotiveModeOption, MotiveModes } from '../../..
 
 @Component({
     selector: 'page-turn-summary-panel',
-    imports: [CommonModule],
+    imports: [CommonModule, HexSliderComponent, TooltipDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './page-turn-summary.component.html',
     styleUrl: './page-turn-summary.component.scss'
 })
 export class PageTurnSummaryPanelComponent {
-    readonly MOVE_MIN = 0;
-    readonly MOVE_MAX = 25;
-
     private overlayManager = inject(OverlayManagerService);
     private injector = inject(Injector);
     private overlay = inject(Overlay);
     private parent = inject(PageInteractionOverlayComponent);
+    private equipmentRegistry = inject(EquipmentInteractionRegistryService).getRegistry();
+    private toastService = inject(ToastService);
+    private dialogsService = inject(DialogsService);
+    private dataService = inject(DataService);
     unit = this.parent.unit;
     force = this.parent.force;
-    sliderContainer = viewChild<ElementRef<HTMLDivElement>>('sliderContainer');
-    private activePointerId: number | null = null;
     endTurnForAllButtonVisible = input<boolean>(false);
     endTurnForAllClicked = output<void>();
+
+    private handlerContext(): HandlerContext {
+        return {
+            toastService: this.toastService,
+            dialogsService: this.dialogsService,
+            dataService: this.dataService,
+        };
+    }
 
     endTurnForAll(event: MouseEvent) {
         event.stopPropagation();
@@ -114,28 +136,69 @@ export class PageTurnSummaryPanelComponent {
         return unit.turnState().PSRRollsCount();
     });
 
+    controlRollShortLabel = computed(() => {
+        const unit = this.unit();
+        if (!unit) return 'PSR';
+        return unit.rules.controlRollShortLabel;
+    });
+
+    controlRollFullLabel = computed(() => {
+        const unit = this.unit();
+        if (!unit) return 'Piloting Skill Rolls';
+        return unit.rules.controlRollFullLabel;
+    });
+
     currentMoveMode = computed(() => {
         const u = this.unit();
         if (!u) return null;
         return u.turnState().moveMode();
     });
 
-    getTargetModifierAsDefender = computed(() => {
+    moveModeModifierLabel(mode: MotiveModes): string | null {
+        const unit = this.unit();
+        const modifier = unit?.rules.getAttackMovementModifier(mode, unit.turnState().airborne() ?? false) ?? 0;
+        if (modifier === 0) return null;
+        return modifier > 0 ? `+${modifier}` : `${modifier}`;
+    }
+
+    getTotalTargetModifierAsDefender = computed(() => {
         const u = this.unit();
-        let value = 0;
-        if (u) {
-            value = u.turnState().getTargetModifierAsDefender();
-        }
-        return value >= 0 ? `+${value}` : `${value}`;
+        return this.formatModifierTotal(u
+            ? u.turnState().getTotalTargetModifierAsDefender()
+            : { modifier: 0 });
     });
 
-    getTargetModifierAsAttacker = computed<number>(() => {
+    defenseTargetModifierTooltip = computed<TooltipLine[] | null>(() => {
+        const u = this.unit();
+        if (!u) return null;
+        return this.buildModifierTooltip('Defense Target Modifier', u.turnState().getDefenseModifierBreakdown());
+    });
+
+    getTotalTargetModifierAsAttacker = computed<number>(() => {
         const u = this.unit();
         let value = 0;
         if (u) {
-            value = u.turnState().getTargetModifierAsAttacker();
+            value = u.turnState().getTotalTargetModifierAsAttacker();
         }
         return value;
+    });
+
+    attackModifierTooltip = computed<TooltipLine[] | null>(() => {
+        const u = this.unit();
+        if (!u) return null;
+        return this.buildModifierTooltip('Attack Target Modifier', u.turnState().getAttackModifierBreakdown());
+    });
+
+    spotting = computed(() => {
+        const u = this.unit();
+        if (!u) return false;
+        return u.turnState().spotting();
+    });
+
+    spottingModifierLabel = computed(() => {
+        const unit = this.unit();
+        if (!unit) return null;
+        return this.formatModifier(unit.rules.getSpottingModifier());
     });
 
     tracksHeat = computed(() => {
@@ -144,16 +207,42 @@ export class PageTurnSummaryPanelComponent {
         return u.getUnit().heat >= 0;
     });
 
-    heatFromMovement = computed(() => {
+    heatSources = computed(() => {
         const u = this.unit();
-        if (!u) return 0;
-        return u.turnState().heatGeneratedFromMovement();
+        if (!u) return [];
+        return u.turnState().heatSources();
     });
 
-    heatGeneratedFromDamagedEngine = computed(() => {
-        const u = this.unit();
-        if (!u) return 0;
-        return u.turnState().heatGeneratedFromDamagedEngine();
+    psrModifiers = computed(() => {
+        const unit = this.unit();
+        if (!unit) return [];
+        return unit.PSRModifiers().modifiers.filter(modifier => modifier.pilotCheck !== undefined && modifier.pilotCheck !== 0);
+    });
+
+    mascControlRows = computed<MascControlRow[]>(() => {
+        const unit = this.unit();
+        if (!unit) return [];
+        return unit.getInventory()
+            .filter(entry => entry.equipment?.flags?.has('F_MASC'))
+            .map(entry => {
+                const active = isMascActive(entry);
+                const damaged = entry.resolvedDestroyed();
+                return {
+                    entry,
+                    label: entry.equipment?.name || entry.name,
+                    damaged,
+                    active,
+                    choices: this.equipmentRegistry.getChoices(entry, this.handlerContext()),
+                };
+            })
+            .filter(row => !row.damaged || row.active)
+            .filter(row => row.choices.length > 0);
+    });
+
+    gunneryModifiers = computed(() => {
+        const unit = this.unit();
+        if (!unit) return [];
+        return unit.rules.gunneryModifiers().filter(modifier => modifier.modifier !== 0);
     });
 
     close() {
@@ -226,7 +315,7 @@ export class PageTurnSummaryPanelComponent {
     moveModes = computed<MotiveModeOption[]>(() => {
         const u = this.unit();
         if (!u) return [];
-        return u.getAvailableMotiveModes();
+        return u.getAvailableMotiveModes(u.turnState().airborne() ?? false);
     });
 
     selectMove(mode: MotiveModes) {
@@ -236,14 +325,25 @@ export class PageTurnSummaryPanelComponent {
         const current = turnState.moveMode();
         if (current === mode) {
             turnState.moveMode.set(null);
+            turnState.moveDistance.set(null);
         } else {
             turnState.moveMode.set(mode);
-            if (mode === 'stationary') {
-                turnState.moveDistance.set(null);
-            }
+            turnState.moveDistance.set(mode === 'stationary' ? null : turnState.minDistanceCurrentMoveMode());
         }
-        turnState.moveDistance.set(null);
         turnState.applyMovePSR.set(true);
+    }
+
+    toggleSpotting() {
+        const u = this.unit();
+        if (!u) return;
+        const turnState = u.turnState();
+        turnState.spotting.set(!turnState.spotting());
+    }
+
+    async handleMascChoice(row: MascControlRow, choice: HandlerChoice): Promise<void> {
+        if (choice.disabled) return;
+        await this.equipmentRegistry.handleSelection(row.entry, choice, this.handlerContext());
+        this.unit()?.inventoryControl.markInventoryViewChanged();
     }
 
     overDistance = computed<boolean>(() => {
@@ -253,9 +353,10 @@ export class PageTurnSummaryPanelComponent {
         turnState.airborne();
         turnState.moveMode();
         const moveDistance = this.moveDistance();
+        const minDistance = turnState.minDistanceCurrentMoveMode();
         const maxDistance = turnState.maxDistanceCurrentMoveMode();
         if (moveDistance === null) return false;
-        return moveDistance > maxDistance;
+        return moveDistance < minDistance || moveDistance > maxDistance;
     });
 
     moveDistance = computed(() => {
@@ -266,18 +367,26 @@ export class PageTurnSummaryPanelComponent {
 
     moveMax = computed(() => {
         const u = this.unit();
-        if (!u) return this.MOVE_MAX;
+        if (!u) return 0;
         const baseUnit = u.getUnit();
-        if (!baseUnit) return this.MOVE_MAX;
+        if (!baseUnit) return 0;
         const mode = u.turnState().moveMode();
-        if (!mode) return this.MOVE_MAX;
-        return Math.min(this.MOVE_MAX, u.turnState().maxDistanceCurrentMoveMode());
+        if (!mode) return 0;
+        return u.turnState().maxDistanceCurrentMoveMode();
     });
 
-    moveDistancePercent = computed(() => {
+    moveMin = computed(() => {
+        const u = this.unit();
+        if (!u) return 0;
+        const mode = u.turnState().moveMode();
+        if (!mode) return 0;
+        return Math.min(u.turnState().minDistanceCurrentMoveMode(), this.moveMax());
+    });
+
+    moveDistanceTicks = computed(() => {
         const max = this.moveMax();
-        const val = this.moveDistance() || 0;
-        return Math.max(0, Math.min(100, (val / max) * 100));
+        const length = Math.max(0, max + 1);
+        return Array.from({ length }, (_value, index) => index);
     });
 
     hasMoveDistance = computed(() => {
@@ -286,82 +395,43 @@ export class PageTurnSummaryPanelComponent {
         return u.turnState().moveDistance() !== null;
     });
 
-    moveDistanceLabel = computed(() => {
-        const v = this.moveDistance();
-        if (v >= this.MOVE_MAX) {
-            return `${this.MOVE_MAX}+`;
-        }
-        return `${v}`;
-    });
-
-    private percentToValue(percent: number): number {
+    setMoveDistance(value: number, markModified = true) {
+        const u = this.unit();
+        if (!u) return;
+        const min = this.moveMin();
         const max = this.moveMax();
-        const v = this.MOVE_MIN + percent * (max - this.MOVE_MIN);
-        return this.alignToStep(v);
+        u.turnState().setMoveDistance(Math.max(min, Math.min(max, value)), { markModified });
     }
 
-    private alignToStep(value: number): number {
-        const max = this.moveMax();
-        const stepped = Math.round(value / 1);
-        return Math.max(this.MOVE_MIN, Math.min(max, stepped));
-    }
-
-    onMoveDistanceInput(event: Event) {
-        const el = event.target as HTMLInputElement;
-        const value = Number(el.value || 0);
+    commitMoveDistance(value: number) {
         const u = this.unit();
         if (!u) return;
-        u.turnState().moveDistance.set(this.alignToStep(value));
+        this.setMoveDistance(value, false);
+        u.turnState().markModified();
     }
 
-    // Pointer down on the visual hex: start capturing and listen for moves
-    startDrag(event: PointerEvent) {
-        event.preventDefault();
-        const container = this.sliderContainer()?.nativeElement;
-        if (!container) return;
-        this.activePointerId = event.pointerId;
-        try {
-            (event.target as Element).setPointerCapture(this.activePointerId);
-        } catch { /* ignore */ }
-        window.addEventListener('pointermove', this.onPointerMove);
-        window.addEventListener('pointerup', this.onPointerUp, { once: true });
-        this.onPointerMove(event);
+    private buildModifierTooltip(title: string, entries: UnitModifierBreakdownEntry[]): TooltipLine[] {
+        const total = calculateModifierTotal(entries);
+        return [
+            { value: title, isHeader: true },
+            ...(entries.length > 0
+                ? entries.map(entry => ({ label: entry.label, value: this.formatModifierTotal(entry) }))
+                : [{ label: 'No active modifiers', value: '+0' }]),
+            { isBreak: true },
+            { label: 'Total', value: this.formatModifierTotal(total) },
+        ];
     }
 
-    private onPointerMove = (ev: PointerEvent) => {
-        if (this.activePointerId != null && ev.pointerId !== this.activePointerId) return;
-        const container = this.sliderContainer()?.nativeElement;
-        if (!container) return;
-        const rect = container.getBoundingClientRect();
-        const x = ev.clientX - rect.left;
-        const percent = Math.max(0, Math.min(1, rect.width > 0 ? x / rect.width : 0));
-        const value = this.percentToValue(percent);
-        const u = this.unit();
-        if (!u) return;
-        u.turnState().moveDistance.set(value);
-    };
+    private formatModifierTotal(total: UnitModifierTotal): string {
+        const value = this.formatModifier(total.modifier);
+        const alternateModifierLabel = total.alternateModifierLabel ? ` ${total.alternateModifierLabel}` : '';
+        return total.alternateModifier !== undefined && total.alternateModifier !== total.modifier
+            ? `${value} (${this.formatModifier(total.alternateModifier)}${alternateModifierLabel})`
+            : value;
+    }
 
-    private onPointerUp = (ev: PointerEvent) => {
-        if (this.activePointerId != null) {
-            try {
-                (ev.target as Element).releasePointerCapture(this.activePointerId);
-            } catch { /* ignore */ }
-        }
-        this.activePointerId = null;
-        window.removeEventListener('pointermove', this.onPointerMove);
-    };
-
-    // Keyboard support when the slider container is focused
-    onKeyDown(event: KeyboardEvent) {
-        const u = this.unit();
-        if (!u) return;
-        let delta = 0;
-        if (event.key === 'ArrowRight' || event.key === 'ArrowUp') delta = 1;
-        if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') delta = -1;
-        if (delta === 0) return;
-        event.preventDefault();
-        const next = this.alignToStep((u.turnState().moveDistance() || 0) + delta);
-        u.turnState().moveDistance.set(next);
+    private formatModifier(value: number): string {
+        return value >= 0 ? `+${value}` : `${value}`;
     }
 }
 
@@ -371,11 +441,11 @@ export class PageTurnSummaryPanelComponent {
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
     <div class="panel glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
-        <div class="header">Piloting Skill Rolls</div>
+        <div class="header">{{ controlRollFullLabel() }}</div>
         <div class="body">
             <div class="psr-list">
                 @for (check of psrChecks(); let i = $index; track i) {
-                    @if (check.fallCheck) {
+                    @if (check.fallCheck !== undefined) {
                         <div class="psr-item">
                             <div class="psr-marker">▸</div>
                             <div class="psr-reason">{{ check.reason }}</div>
@@ -489,9 +559,15 @@ export class PagePsrWarningPanelComponent {
         return unit.PSRModifiers().modifiers;
     });
 
+    controlRollFullLabel = computed(() => {
+        const unit = this.unit();
+        if (!unit) return 'Piloting Skill Rolls';
+        return unit.rules.controlRollFullLabel;
+    });
+
     psrChecks = computed(() => {
         const unit = this.unit();
         if (!unit) return [];
-        return unit.turnState().getPSRChecks().filter(c => !c.fallCheck !== undefined);
+        return unit.turnState().getPSRChecks().filter(c => c.fallCheck !== undefined);
     });
 }

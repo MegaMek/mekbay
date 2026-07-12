@@ -33,6 +33,33 @@
 
 export const REMOTE_HOST = 'https://db.mekbay.com';
 
+/**
+ * Resolves the base host a given unit's assets (record-sheet SVGs and fluff art)
+ * should be loaded from. Units imported from a user-supplied additional unit server
+ * carry a `serverHost`; everything else defaults to the canonical {@link REMOTE_HOST}.
+ */
+export function getUnitServerHost(unit: { serverHost?: string } | null | undefined): string {
+    return unit?.serverHost || REMOTE_HOST;
+}
+
+/**
+ * Normalizes a user-supplied unit server base URL: trims whitespace and removes any
+ * trailing slashes. Returns an empty string when the input is not a valid http(s) URL.
+ */
+export function normalizeUnitServerUrl(url: string): string {
+    const trimmed = (url ?? '').trim().replace(/\/+$/, '');
+    try {
+        const parsed = new URL(trimmed);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return '';
+        }
+        // Preserve pathname (to allow hosting under a sub-path), but drop query/hash and trailing slashes.
+        return `${parsed.origin}${parsed.pathname}`.replace(/\/+$/, '');
+    } catch {
+        return '';
+    }
+}
+
 export enum GameSystem {
     CLASSIC = 'cbt',
     ALPHA_STRIKE = 'as'
@@ -42,18 +69,33 @@ export enum Rulebook {
     ASCE = "Alpha Strike: Commander's Edition",
     ASC = "Alpha Strike: Companion",
     ASC_ERR16 = "Alpha Strike Companion Errata v1.6 (2022)",
-    CO = "BattleTech: Campaign Operations"
+    BOT = "Battle of Tukayyid",
+    CO = "BattleTech: Campaign Operations",
+    FMD = "Force Manual: Davion",
+    FMK = "Force Manual: Kurita",
+    FMMERC = "Force Manual: Mercenaries",
+    EA = "Empire Alone",
+    TR = "Tamar Rising",
+    DD = "Dominions Divided",
+    IEO = "IlKhan's Eyes Only"
 }
 
 /**
- * A reference to a specific rulebook and page number.
+ * A reference to a specific rulebook and page number or numbers.
  */
 export interface RulesReference {
     book: Rulebook;
-    page: number;
+    page: number | number[];
 }
 
-export type TechBase = 'Inner Sphere' | 'Clan' | 'Mixed';
+export function formatRulesPages(page: RulesReference['page']): string {
+    return Array.isArray(page) ? page.join(', ') : String(page);
+}
+
+export function formatRulesReference(reference: RulesReference): string {
+    const pageLabel = Array.isArray(reference.page) ? 'pp.' : 'p.';
+    return `${reference.book}, ${pageLabel}${formatRulesPages(reference.page)}`;
+}
 
 export enum ECMMode {
     ECM = 'ecm',

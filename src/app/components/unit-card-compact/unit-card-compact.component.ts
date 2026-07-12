@@ -33,10 +33,10 @@
 
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Unit } from '../../models/units.model';
+import type { Unit } from '../../models/units.model';
 import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
-import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
+import { UnitTagsComponent, type TagClickEvent } from '../unit-tags/unit-tags.component';
 import { GameService } from '../../services/game.service';
 import { AdjustedBV } from '../../pipes/adjusted-bv.pipe';
 import { AdjustedPV } from '../../pipes/adjusted-pv.pipe';

@@ -34,13 +34,27 @@
 import { ChangeDetectionStrategy, Component, ElementRef, inject, signal, viewChild, computed, DestroyRef, Injector } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { PILOT_ABILITIES, PilotAbility, ASCustomPilotAbility, getAbilityLimitsForSkill, PilotAbilityLimits, getAbilityDetails } from '../../models/pilot-abilities.model';
+import { PILOT_ABILITIES, type PilotAbility, type ASCustomPilotAbility, getAbilityLimitsForSkill, type PilotAbilityLimits, getAbilityDetails, formatSummaryMovement } from '../../models/pilot-abilities.model';
+import type { ASForceUnit } from '../../models/as-force-unit.model';
+import { COMMAND_ABILITIES } from '../../models/command-abilities.model';
+import type { UnitGroup } from '../../models/force.model';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
-import { AbilityDropdownPanelComponent } from './ability-dropdown-panel.component';
+import { DialogsService } from '../../services/dialogs.service';
+import { AbilityDropdownPanelComponent, type AbilityDropdownOption } from './ability-dropdown-panel.component';
 import { CustomAbilityDialogComponent } from './custom-ability-dialog.component';
+import { SkillDropdownPanelComponent, type SkillPreviewEntry } from '../skill-dropdown-panel/skill-dropdown-panel.component';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { RulesReference, GameSystem } from '../../models/common.model';
-import { ASUnitTypeCode } from '../../models/units.model';
+import { GameSystem, formatRulesReference, type RulesReference } from '../../models/common.model';
+import type { ASUnitTypeCode } from '../../models/units.model';
+import { PVCalculatorUtil } from '../../utils/pv-calculator.util';
+import { DEFAULT_GUNNERY_SKILL } from '../../models/crew-member.model';
+import {
+    FormationAbilityAssignmentUtil,
+    type FormationAssignmentPreview,
+    type FormationEffectPreview,
+    type UnsupportedFormationEffectDescriptor,
+} from '../../utils/formation-ability-assignment.util';
+import { OptionsService } from '../../services/options.service';
 
 /*
  * Author: Drake
@@ -50,17 +64,33 @@ import { ASUnitTypeCode } from '../../models/units.model';
 export type AbilitySelection = string | ASCustomPilotAbility;
 
 export interface EditASPilotDialogData {
+    unitId: string;
     name: string;
     skill: number;
     abilities: AbilitySelection[]; // Array of ability IDs or custom abilities
+    formationAbilities?: string[];
+    commander?: boolean;
+    group?: UnitGroup<ASForceUnit> | null;
     /** The unit's AS type code (e.g. 'BM', 'CV') for filtering abilities by unitTypeFilter. */
     unitTypeCode?: ASUnitTypeCode;
+    /** Base PV at skill 4 for PV preview calculation. */
+    basePv?: number;
 }
 
 export interface EditASPilotResult {
     name: string;
     skill: number;
     abilities: AbilitySelection[]; // Array of ability IDs or custom abilities
+    formationAbilities: string[];
+    formationAbilityOverrides?: Map<string, string[]>;
+    commander: boolean;
+}
+
+interface FormationEffectCardView {
+    key: string;
+    title: string;
+    countLabel: string;
+    effects: FormationEffectPreview[];
 }
 
 @Component({
@@ -75,7 +105,8 @@ export interface EditASPilotResult {
 })
 export class EditASPilotDialogComponent {
     nameInput = viewChild.required<ElementRef<HTMLInputElement>>('nameInput');
-    skillInput = viewChild.required<ElementRef<HTMLInputElement>>('skillInput');
+    skillTrigger = viewChild.required<ElementRef<HTMLDivElement>>('skillTrigger');
+
     dropdownTrigger0 = viewChild<ElementRef<HTMLButtonElement>>('dropdownTrigger0');
     dropdownTrigger1 = viewChild<ElementRef<HTMLButtonElement>>('dropdownTrigger1');
     dropdownTrigger2 = viewChild<ElementRef<HTMLButtonElement>>('dropdownTrigger2');
@@ -83,13 +114,34 @@ export class EditASPilotDialogComponent {
     public dialogRef = inject(DialogRef<EditASPilotResult | null, EditASPilotDialogComponent>);
     readonly data: EditASPilotDialogData = inject(DIALOG_DATA) as EditASPilotDialogData;
     private overlayManager = inject(OverlayManagerService);
+    private dialogsService = inject(DialogsService);
     private injector = inject(Injector);
     private destroyRef = inject(DestroyRef);
+    private readonly optionsService = inject(OptionsService);
+    readonly formatRuleReference = formatRulesReference;
 
     availableAbilities = signal<PilotAbility[]>(PILOT_ABILITIES);
     selectedAbilities = signal<(AbilitySelection | null)[]>([null, null, null]);
+    selectedFormationAbilities = signal<string[]>([]);
+    selectedFormationCommander = signal<boolean>(false);
+    formationAbilityOverrides = signal<Map<string, string[]>>(new Map());
     openDropdown = signal<number | null>(null);
+    openFormationDropdownKey = signal<string | null>(null);
     currentSkill = signal<number>(4);
+
+    private readonly hasPvPreview = this.data.basePv != null;
+
+    skillEntries = computed<SkillPreviewEntry[]>(() => {
+        if (!this.hasPvPreview) {
+            return [0, 1, 2, 3, 4, 5, 6, 7, 8].map(skill => ({ skill, adjustedValue: 0, delta: 0 }));
+        }
+        const basePv = this.data.basePv!;
+        const baselineValue = PVCalculatorUtil.calculateAdjustedPV(basePv, DEFAULT_GUNNERY_SKILL);
+        return [0, 1, 2, 3, 4, 5, 6, 7, 8].map(skill => {
+            const adjustedValue = PVCalculatorUtil.calculateAdjustedPV(basePv, skill);
+            return { skill, adjustedValue, delta: adjustedValue - baselineValue };
+        });
+    });
 
     abilityLimits = computed<PilotAbilityLimits>(() => {
         return getAbilityLimitsForSkill(this.currentSkill());
@@ -98,6 +150,143 @@ export class EditASPilotDialogComponent {
     currentAbilityCount = computed(() => {
         return this.selectedAbilities().filter(a => a !== null).length;
     });
+
+    effectiveCommanderUnitId = computed<string | null>(() => {
+        if (!this.data.group) {
+            return this.selectedFormationCommander() ? this.data.unitId : null;
+        }
+
+        if (this.selectedFormationCommander()) {
+            return this.data.unitId;
+        }
+
+        return this.data.group.units().find((unit) =>
+            unit.id !== this.data.unitId && unit.commander()
+        )?.id ?? null;
+    });
+
+    formationPreview = computed<FormationAssignmentPreview | null>(() => {
+        if (!this.data.group) {
+            return null;
+        }
+
+        return FormationAbilityAssignmentUtil.previewGroupFormationAssignments(this.data.group, {
+            abilityOverrides: this.buildFormationAbilityOverrides(),
+            commanderUnitId: this.effectiveCommanderUnitId(),
+        });
+    });
+
+    formationEffectPreviews = computed<FormationEffectPreview[]>(() => {
+        return [...(this.formationPreview()?.effectPreviews ?? [])];
+    });
+
+    formationEffectCards = computed<FormationEffectCardView[]>(() => {
+        const cards = new Map<string, FormationEffectCardView>();
+
+        for (const effect of this.formationEffectPreviews()) {
+            if (!this.shouldDisplayFormationEffect(effect)) {
+                continue;
+            }
+
+            const existingCard = cards.get(effect.descriptor.sourceFormationId);
+            const countLabels = existingCard?.countLabel ? existingCard.countLabel.split(' · ') : [];
+            const nextCountLabel = this.getFormationEffectCountLabel(effect);
+            const mergedCountLabels = countLabels.includes(nextCountLabel)
+                ? countLabels
+                : [...countLabels, nextCountLabel];
+
+            if (existingCard) {
+                existingCard.effects.push(effect);
+                existingCard.countLabel = mergedCountLabels.join(' · ');
+                continue;
+            }
+
+            cards.set(effect.descriptor.sourceFormationId, {
+                key: effect.descriptor.sourceFormationId,
+                title: effect.descriptor.sourceFormationName,
+                countLabel: nextCountLabel,
+                effects: [effect],
+            });
+        }
+
+        return [...cards.values()];
+    });
+
+    unsupportedFormationEffects = computed<UnsupportedFormationEffectDescriptor[]>(() => {
+        return [...(this.formationPreview()?.unsupportedEffects ?? [])];
+    });
+
+    hasResettableFormationAssignments = computed<boolean>(() => {
+        if (!this.data.group) {
+            return false;
+        }
+
+        const overrides = this.buildFormationAbilityOverrides();
+        if (!overrides) {
+            return false;
+        }
+
+        return this.data.group.units().some((unit) => {
+            const requestedAbilityIds = overrides.has(unit.id)
+                ? overrides.get(unit.id) ?? []
+                : unit.formationAbilities();
+            return requestedAbilityIds.length > 0;
+        });
+    });
+
+    persistedOtherCommander = computed<ASForceUnit | null>(() => {
+        if (!this.data.group) {
+            return null;
+        }
+
+        return this.data.group.units().find((unit) =>
+            unit.id !== this.data.unitId && unit.commander()
+        ) ?? null;
+    });
+
+    persistedOtherCommanderName = computed<string | null>(() => {
+        const commander = this.persistedOtherCommander();
+        if (!commander) {
+            return null;
+        }
+
+        return this.formatCommanderDisplayName(commander);
+    });
+
+    formationCommanderSummary = computed<string>(() => {
+        if (this.selectedFormationCommander()) {
+            return 'This unit is designated as the group commander.';
+        }
+
+        const otherCommanderName = this.persistedOtherCommanderName();
+        if (otherCommanderName) {
+            return `Current group commander: ${otherCommanderName}.`;
+        }
+
+        return 'No commander is currently selected for this group.';
+    });
+
+    formationCommanderWarning = computed<string | null>(() => {
+        if (this.selectedFormationCommander()) {
+            return null;
+        }
+
+        const otherCommanderName = this.persistedOtherCommanderName();
+        if (!otherCommanderName) {
+            return null;
+        }
+
+        return `Selecting this unit will remove the commander flag from ${otherCommanderName} and may also remove commander-only formation abilities from that unit.`;
+    });
+
+    private formatCommanderDisplayName(unit: ASForceUnit): string {
+        const pilotName = unit.alias()?.trim();
+        const unitName = unit.getDisplayName();
+        if (pilotName) {
+            return `${unitName} (${pilotName})`;
+        }
+        return unitName;
+    }
 
     remainingCost = computed(() => {
         return this.abilityLimits().maxCost - this.totalCost();
@@ -117,6 +306,8 @@ export class EditASPilotDialogComponent {
     constructor() {
         // Initialize skill first (needed for limits calculation)
         this.currentSkill.set(this.data.skill);
+        this.selectedFormationAbilities.set([...(this.data.formationAbilities ?? [])]);
+        this.selectedFormationCommander.set(this.data.commander ?? false);
 
         // Initialize with existing abilities from data (max 3 slots)
         const initialAbilities: (AbilitySelection | null)[] = [null, null, null];
@@ -126,11 +317,14 @@ export class EditASPilotDialogComponent {
             }
         }
         this.selectedAbilities.set(initialAbilities);
+        this.normalizeFormationSelectionState();
 
         // Cleanup overlays when dialog is destroyed
         this.destroyRef.onDestroy(() => {
             this.closeDropdownOverlay();
+            this.closeFormationDropdownOverlay();
             this.closeCustomAbilityOverlay();
+            this.overlayManager.closeManagedOverlay('skill-dropdown');
         });
     }
 
@@ -162,7 +356,7 @@ export class EditASPilotDialogComponent {
         return {
             name: standardAbility.name,
             cost: standardAbility.cost,
-            summary: details.summary[0],
+            summary: formatSummaryMovement(details.summary, this.optionsService.options().ASUseHex)[0],
             isCustom: false,
             rulesRef: details.rulesRef,
             unitTypeInvalid
@@ -183,8 +377,35 @@ export class EditASPilotDialogComponent {
         this.openDropdown.set(null);
     }
 
+    private closeFormationDropdownOverlay(): void {
+        this.overlayManager.closeManagedOverlay('formation-ability-dropdown');
+        this.openFormationDropdownKey.set(null);
+    }
+
     private closeCustomAbilityOverlay(): void {
         this.overlayManager.closeManagedOverlay('custom-ability-dialog');
+    }
+
+    private buildFormationAbilityOverrides(currentAbilityIds: string[] = this.selectedFormationAbilities()): Map<string, string[]> | undefined {
+        if (!this.data.group) {
+            return undefined;
+        }
+
+        const overrides = new Map<string, string[]>();
+        for (const [unitId, abilityIds] of this.formationAbilityOverrides()) {
+            overrides.set(unitId, [...abilityIds]);
+        }
+        overrides.set(this.data.unitId, [...new Set(currentAbilityIds)]);
+        return overrides;
+    }
+
+    private snapshotFormationAbilityOverrides(): Map<string, string[]> | undefined {
+        const overrides = this.buildFormationAbilityOverrides();
+        if (!overrides) {
+            return undefined;
+        }
+
+        return new Map([...overrides].map(([unitId, abilityIds]) => [unitId, [...abilityIds]]));
     }
 
     getAbilityById(id: string | null): PilotAbility | undefined {
@@ -194,6 +415,59 @@ export class EditASPilotDialogComponent {
 
     isAbilitySelected(id: string): boolean {
         return this.selectedAbilities().some(ability => ability === id);
+    }
+
+    getFormationAbilityById(id: string): PilotAbility | undefined {
+        return PILOT_ABILITIES.find((ability) => ability.id === id);
+    }
+
+    private buildPilotAbilityDropdownOption(ability: PilotAbility): AbilityDropdownOption {
+        const details = getAbilityDetails(ability, GameSystem.ALPHA_STRIKE);
+        const unitTypeCode = this.data.unitTypeCode;
+        const unitTypeRestricted = !!(unitTypeCode && details.unitTypeFilter?.length && !details.unitTypeFilter.includes(unitTypeCode));
+
+        return {
+            id: ability.id,
+            name: ability.name,
+            cost: ability.cost,
+            summary: formatSummaryMovement(details.summary, this.optionsService.options().ASUseHex)[0] ?? '',
+            rulesRef: details.rulesRef ?? [],
+            unitTypeRestricted,
+            unitTypeLabel: details.unitType,
+        };
+    }
+
+    private getFormationDropdownOptionById(id: string): AbilityDropdownOption | null {
+        const pilotAbility = this.getFormationAbilityById(id);
+        if (pilotAbility) {
+            return this.buildPilotAbilityDropdownOption(pilotAbility);
+        }
+
+        const commandAbility = COMMAND_ABILITIES.find((ability) => ability.id === id);
+        if (!commandAbility) {
+            return null;
+        }
+
+        return {
+            id: commandAbility.id,
+            name: commandAbility.name,
+            cost: 0,
+            summary: commandAbility.summary[0] ?? '',
+            rulesRef: commandAbility.rulesRef,
+        };
+    }
+
+    getFormationAbilityDisplayInfo(id: string): { name: string; summary: string; rulesRef?: RulesReference[] } | null {
+        const ability = this.getFormationDropdownOptionById(id);
+        if (!ability) {
+            return null;
+        }
+
+        return {
+            name: ability.name,
+            summary: ability.summary,
+            rulesRef: ability.rulesRef,
+        };
     }
 
     /** Check if an ability can be afforded within remaining cost budget */
@@ -207,14 +481,39 @@ export class EditASPilotDialogComponent {
     }
 
     /** Handle skill input change to update limits */
-    onSkillChange(event: Event): void {
-        const input = event.target as HTMLInputElement;
-        const newSkill = Number(input.value);
-        if (!isNaN(newSkill) && newSkill >= 0 && newSkill <= 8) {
-            this.currentSkill.set(newSkill);
-            // Clear abilities that exceed new limits
-            this.enforceAbilityLimits();
-        }
+    toggleSkillDropdown(): void {
+        this.closeDropdownOverlay();
+        this.closeFormationDropdownOverlay();
+        this.overlayManager.closeManagedOverlay('skill-dropdown');
+
+        const trigger = this.skillTrigger();
+        if (!trigger) return;
+
+        const portal = new ComponentPortal(SkillDropdownPanelComponent, null, this.injector);
+
+        const { componentRef } = this.overlayManager.createManagedOverlay(
+            'skill-dropdown',
+            trigger,
+            portal,
+            {
+                closeOnOutsideClick: true,
+                matchTriggerWidth: true,
+                anchorActiveSelector: '.skill-option.active'
+            }
+        );
+
+        componentRef.setInput('entries', this.skillEntries());
+        componentRef.setInput('selectedSkill', this.currentSkill());
+        componentRef.setInput('valueLabel', 'PV');
+        componentRef.setInput('title', 'Skill');
+
+        outputToObservable(componentRef.instance.selected)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((skill: number) => {
+                this.currentSkill.set(skill);
+                this.enforceAbilityLimits();
+                this.overlayManager.closeManagedOverlay('skill-dropdown');
+            });
     }
 
     /** Remove abilities that exceed current skill limits */
@@ -272,6 +571,7 @@ export class EditASPilotDialogComponent {
         }
 
         // Close any existing dropdown first
+        this.closeFormationDropdownOverlay();
         this.closeDropdownOverlay();
 
         const trigger = this.getDropdownTrigger(slot);
@@ -297,12 +597,9 @@ export class EditASPilotDialogComponent {
             }
         );
 
-        componentRef.setInput('abilities', this.availableAbilities());
+        componentRef.setInput('abilities', this.availableAbilities().map((ability) => this.buildPilotAbilityDropdownOption(ability)));
         componentRef.setInput('disabledIds', disabledIds);
         componentRef.setInput('remainingCost', this.remainingCost());
-        if (this.data.unitTypeCode) {
-            componentRef.setInput('unitTypeCode', this.data.unitTypeCode);
-        }
 
         // Handle standard ability selection - cleanup when dialog closes
         outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((abilityId: string) => {
@@ -317,6 +614,148 @@ export class EditASPilotDialogComponent {
         });
 
         this.openDropdown.set(slot);
+    }
+
+    getFormationDropdownAbilities(effect: FormationEffectPreview): AbilityDropdownOption[] {
+        return effect.descriptor.abilityIds
+            .map((abilityId) => this.getFormationDropdownOptionById(abilityId))
+            .filter((ability): ability is AbilityDropdownOption => ability !== null);
+    }
+
+    getFormationEffectSlots(effect: FormationEffectPreview): (string | null)[] {
+        const assignedAbilityIds = this.getFormationEffectAssignedAbilityIds(effect);
+
+        switch (effect.descriptor.group.selection) {
+            case 'choose-one':
+                return [assignedAbilityIds[0] ?? null];
+            case 'choose-each':
+                return Array.from({ length: effect.maxPerUnit }, (_, index) => assignedAbilityIds[index] ?? null);
+            case 'all':
+                return Array.from({ length: Math.max(effect.descriptor.abilityIds.length, 1) }, (_, index) => assignedAbilityIds[index] ?? null);
+            default:
+                return assignedAbilityIds.length > 0 ? [...assignedAbilityIds] : [null];
+        }
+    }
+
+    private canSelectFormationAbility(effect: FormationEffectPreview, slot: number, abilityId: string): boolean {
+        const assignedAbilityIds = this.getFormationEffectAssignedAbilityIds(effect);
+        const currentAbilityId = assignedAbilityIds[slot] ?? null;
+        if (currentAbilityId === abilityId) {
+            return true;
+        }
+
+        if (assignedAbilityIds.includes(abilityId)) {
+            return false;
+        }
+
+        if (effect.descriptor.group.selection === 'all') {
+            return this.canToggleFormationEffect(effect);
+        }
+
+        return this.canToggleFormationAbility(effect, abilityId);
+    }
+
+    getFormationDropdownDisabledIds(effect: FormationEffectPreview, slot: number): string[] {
+        return effect.descriptor.abilityIds.filter((abilityId) => !this.canSelectFormationAbility(effect, slot, abilityId));
+    }
+
+    canOpenFormationAbilitySlot(effect: FormationEffectPreview, slot: number): boolean {
+        if (this.isFormationEffectAutoAssigned(effect)) {
+            return false;
+        }
+
+        return this.getFormationDropdownAbilities(effect)
+            .some((ability) => this.canSelectFormationAbility(effect, slot, ability.id));
+    }
+
+    toggleFormationDropdown(effect: FormationEffectPreview, slot: number, triggerButton: HTMLButtonElement): void {
+        const dropdownKey = `${effect.descriptor.key}:${slot}`;
+        if (this.openFormationDropdownKey() === dropdownKey) {
+            this.closeFormationDropdownOverlay();
+            return;
+        }
+
+        this.closeDropdownOverlay();
+        this.closeFormationDropdownOverlay();
+
+        const abilities = this.getFormationDropdownAbilities(effect);
+        if (abilities.length === 0) {
+            return;
+        }
+
+        const portal = new ComponentPortal(AbilityDropdownPanelComponent, null, this.injector);
+        const { componentRef } = this.overlayManager.createManagedOverlay(
+            'formation-ability-dropdown',
+            new ElementRef(triggerButton),
+            portal,
+            {
+                closeOnOutsideClick: true,
+                panelClass: 'ability-dropdown-overlay',
+                matchTriggerWidth: true,
+                anchorActiveSelector: '.dropdown-option:first-child'
+            }
+        );
+
+        componentRef.setInput('abilities', abilities);
+        componentRef.setInput('disabledIds', this.getFormationDropdownDisabledIds(effect, slot));
+        componentRef.setInput('remainingCost', Number.MAX_SAFE_INTEGER);
+        componentRef.setInput('allowCustom', false);
+        componentRef.setInput('showCost', false);
+
+        outputToObservable(componentRef.instance.selected)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((abilityId: string) => {
+                this.selectFormationAbility(effect, slot, abilityId);
+                this.closeFormationDropdownOverlay();
+            });
+
+        this.openFormationDropdownKey.set(dropdownKey);
+    }
+
+    selectFormationAbility(effect: FormationEffectPreview, slot: number, abilityId: string): void {
+        if (!this.canSelectFormationAbility(effect, slot, abilityId)) {
+            return;
+        }
+
+        const nextAbilityIds = new Set(this.selectedFormationAbilities());
+
+        switch (effect.descriptor.group.selection) {
+            case 'all':
+                effect.descriptor.abilityIds.forEach((effectAbilityId) => nextAbilityIds.add(effectAbilityId));
+                break;
+            case 'choose-one':
+                effect.descriptor.abilityIds.forEach((effectAbilityId) => nextAbilityIds.delete(effectAbilityId));
+                nextAbilityIds.add(abilityId);
+                break;
+            case 'choose-each': {
+                const assignedAbilityIds = this.getFormationEffectAssignedAbilityIds(effect);
+                const nextAssignedAbilityIds = [...assignedAbilityIds];
+                nextAssignedAbilityIds[slot] = abilityId;
+                effect.descriptor.abilityIds.forEach((effectAbilityId) => nextAbilityIds.delete(effectAbilityId));
+                nextAssignedAbilityIds
+                    .filter((selectedAbilityId): selectedAbilityId is string => !!selectedAbilityId)
+                    .forEach((selectedAbilityId) => nextAbilityIds.add(selectedAbilityId));
+                break;
+            }
+        }
+
+        this.applyFormationAbilityOverride([...nextAbilityIds]);
+    }
+
+    removeFormationAbility(effect: FormationEffectPreview, slot: number): void {
+        const nextAbilityIds = new Set(this.selectedFormationAbilities());
+
+        if (effect.descriptor.group.selection === 'all' || effect.descriptor.group.selection === 'choose-one') {
+            effect.descriptor.abilityIds.forEach((effectAbilityId) => nextAbilityIds.delete(effectAbilityId));
+        } else {
+            const abilityId = this.getFormationEffectAssignedAbilityIds(effect)[slot];
+            if (!abilityId) {
+                return;
+            }
+            nextAbilityIds.delete(abilityId);
+        }
+
+        this.applyFormationAbilityOverride([...nextAbilityIds]);
     }
 
     private openCustomAbilityDialog(slot: number, existingAbility?: ASCustomPilotAbility): void {
@@ -375,12 +814,287 @@ export class EditASPilotDialogComponent {
         this.selectedAbilities.set(abilities);
     }
 
+    isFormationEffectEligible(effect: FormationEffectPreview): boolean {
+        return effect.candidateUnitIds.includes(this.data.unitId);
+    }
+
+    shouldDisplayFormationEffect(effect: FormationEffectPreview): boolean {
+        if (effect.descriptor.group.distribution === 'commander') {
+            return this.selectedFormationCommander();
+        }
+
+        if (effect.descriptor.group.excludeCommander) {
+            return !this.selectedFormationCommander();
+        }
+
+        return true;
+    }
+
+    isFormationEffectCardIneligible(effects: readonly FormationEffectPreview[]): boolean {
+        return effects.every((effect) => !this.isFormationEffectEligible(effect));
+    }
+
+    getFormationEffectCountLabel(effect: FormationEffectPreview): string {
+        return `${effect.recipientUnitIds.length}/${effect.recipientLimit ?? effect.candidateUnitIds.length}`;
+    }
+
+    getFormationEffectAssignedAbilityIds(effect: FormationEffectPreview): string[] {
+        return [...(effect.assignedByUnitId.get(this.data.unitId) ?? [])];
+    }
+
+    isFormationEffectAutoAssigned(effect: FormationEffectPreview): boolean {
+        if (effect.descriptor.group.selection !== 'all') {
+            return false;
+        }
+
+        switch (effect.descriptor.group.distribution) {
+            case 'all':
+            case 'conditional':
+            case 'remainder':
+            case 'role-filtered':
+            case 'commander':
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    canToggleFormationEffect(effect: FormationEffectPreview): boolean {
+        const assignedAbilityIds = this.getFormationEffectAssignedAbilityIds(effect);
+        if (assignedAbilityIds.length > 0) {
+            return true;
+        }
+
+        if (!this.isFormationEffectEligible(effect)) {
+            return false;
+        }
+
+        return effect.recipientLimit == null || effect.recipientUnitIds.length < effect.recipientLimit;
+    }
+
+    canToggleFormationAbility(effect: FormationEffectPreview, abilityId: string): boolean {
+        if (!this.isFormationEffectEligible(effect)) {
+            return false;
+        }
+
+        const assignedAbilityIds = this.getFormationEffectAssignedAbilityIds(effect);
+        if (assignedAbilityIds.includes(abilityId)) {
+            return true;
+        }
+
+        if (effect.descriptor.group.selection === 'choose-one') {
+            const otherRecipients = effect.recipientUnitIds.some((unitId) => unitId !== this.data.unitId);
+            if (otherRecipients && effect.lockedAbilityId && effect.lockedAbilityId !== abilityId) {
+                return false;
+            }
+        }
+
+        if (assignedAbilityIds.length >= effect.maxPerUnit) {
+            return false;
+        }
+
+        if (effect.recipientLimit != null && effect.recipientUnitIds.length >= effect.recipientLimit && assignedAbilityIds.length === 0) {
+            return false;
+        }
+
+        if (effect.descriptor.group.distribution === 'fixed-pairs') {
+            const assignedCount = effect.recipientUnitIds.filter((unitId) =>
+                (effect.assignedByUnitId.get(unitId) ?? []).includes(abilityId)
+            ).length;
+            if (assignedCount >= 2) {
+                return false;
+            }
+
+            const distinctAbilityIds = new Set(
+                effect.recipientUnitIds.flatMap((unitId) => effect.assignedByUnitId.get(unitId) ?? [])
+            );
+            if (!distinctAbilityIds.has(abilityId) && distinctAbilityIds.size >= (effect.descriptor.group.count ?? 0)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    getFormationSelectionLabel(effect: FormationEffectPreview): string {
+        switch (effect.descriptor.group.selection) {
+            case 'choose-one':
+                return 'Choose one ability for each recipient set';
+            case 'choose-each':
+                return effect.maxPerUnit > 1
+                    ? `Choose up to ${effect.maxPerUnit} abilities per recipient`
+                    : 'Each recipient chooses individually';
+            case 'all':
+                return 'Assign all listed abilities together';
+            default:
+                return effect.descriptor.group.selection;
+        }
+    }
+
+    getFormationDistributionLabel(effect: FormationEffectPreview): string {
+        switch (effect.descriptor.group.distribution) {
+            case 'all':
+                return 'All eligible units';
+            case 'half-round-down':
+                return `Up to half (${effect.recipientLimit ?? 0})`;
+            case 'half-round-up':
+                return `Up to half (${effect.recipientLimit ?? 0})`;
+            case 'percent-75':
+                return `75% of eligible units (${effect.recipientLimit ?? 0})`;
+            case 'up-to-50-percent':
+                return `Up to 50% (${effect.recipientLimit ?? 0})`;
+            case 'fixed':
+                return `Up to ${effect.descriptor.group.count ?? 0} units`;
+            case 'fixed-pairs':
+                return `${effect.descriptor.group.count ?? 0} pairs`;
+            case 'conditional':
+                return effect.descriptor.group.condition ?? 'Conditional';
+            case 'remainder':
+                return 'Remaining eligible units';
+            case 'role-filtered':
+                return `${effect.descriptor.group.roleFilter ?? 'Matching'} role units`;
+            case 'commander':
+                return 'Commander only';
+            default:
+                return effect.descriptor.group.distribution;
+        }
+    }
+
+    getFormationEffectSummary(effect: FormationEffectPreview): string {
+        return `${this.getFormationSelectionLabel(effect)}. ${this.getFormationDistributionLabel(effect)}.`;
+    }
+
+    getFormationRequirementsFilterNotice(
+        preview: FormationAssignmentPreview,
+        fallback = 'Some structurally attached units are ignored when checking formation bonus eligibility.',
+    ): string {
+        const notice = preview.requirementsFilterNotice ?? fallback;
+        return preview.requirementsFilterCompositionName
+            ? `${preview.requirementsFilterCompositionName}: ${notice}`
+            : notice;
+    }
+
+    getFormationEffectUnavailableText(effect: FormationEffectPreview): string {
+        const preview = this.formationPreview();
+        if (preview && !preview.eligibleUnitIds.includes(this.data.unitId)) {
+            return this.getFormationRequirementsFilterNotice(
+                preview,
+                'This unit is excluded from formation bonus eligibility by the group structure.',
+            );
+        }
+
+        if (effect.descriptor.group.excludeCommander && this.selectedFormationCommander()) {
+            return 'Commander units cannot receive this formation bonus.';
+        }
+
+        switch (effect.descriptor.group.distribution) {
+            case 'commander':
+                return 'Only the selected commander can receive this formation bonus.';
+            case 'role-filtered':
+                return `Only ${effect.descriptor.group.roleFilter ?? 'matching'} role units can receive this formation bonus.`;
+            case 'conditional':
+                return effect.descriptor.group.condition ?? 'This unit does not satisfy the formation bonus condition.';
+            case 'remainder':
+                return 'Only units not already assigned an earlier formation bonus in this sequence can receive this effect.';
+            default:
+                return 'This unit is not eligible for this formation bonus.';
+        }
+    }
+
+    getUnsupportedFormationEffectNotice(effect: UnsupportedFormationEffectDescriptor): string {
+        return `${effect.sourceFormationName}: shared-pool formation abilities are tracked at the formation level and are not assigned per unit here.`;
+    }
+
+    async setFormationCommanderSelected(value: boolean): Promise<void> {
+        if (value && !this.selectedFormationCommander()) {
+            const otherCommanderName = this.persistedOtherCommanderName();
+            if (otherCommanderName) {
+                const confirmed = await this.dialogsService.requestConfirmation(
+                    `${otherCommanderName} is currently marked as the group commander. Making this unit the commander will remove that flag from ${otherCommanderName} and may also remove commander-only formation abilities from that unit. Continue?`,
+                    'Replace Group Commander',
+                    'warning',
+                );
+                if (!confirmed) {
+                    this.selectedFormationCommander.set(false);
+                    return;
+                }
+            }
+        }
+
+        this.selectedFormationCommander.set(value);
+        this.normalizeFormationSelectionState();
+    }
+
+    async confirmResetFormationAssignments(): Promise<void> {
+        if (!this.data.group || !this.hasResettableFormationAssignments()) {
+            return;
+        }
+
+        this.closeDropdownOverlay();
+        this.closeFormationDropdownOverlay();
+        this.closeCustomAbilityOverlay();
+        this.overlayManager.closeManagedOverlay('skill-dropdown');
+
+        const confirmed = await this.dialogsService.requestConfirmation(
+            'This will clear all stored formation ability assignments for every unit in this group. Automatic formation bonuses will be recalculated immediately and may still appear afterward. Continue?',
+            'Reset Formation Assignments',
+            'warning',
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        const overrides = new Map<string, string[]>();
+        for (const unit of this.data.group.units()) {
+            overrides.set(unit.id, []);
+        }
+
+        this.formationAbilityOverrides.set(overrides);
+        this.selectedFormationAbilities.set([]);
+        this.normalizeFormationSelectionState();
+    }
+
+    private applyFormationAbilityOverride(abilityIds: string[]): void {
+        if (!this.data.group) {
+            this.selectedFormationAbilities.set([...new Set(abilityIds)]);
+            return;
+        }
+
+        const nextAbilityIds = [...new Set(abilityIds)];
+        const preview = FormationAbilityAssignmentUtil.previewGroupFormationAssignments(this.data.group, {
+            abilityOverrides: this.buildFormationAbilityOverrides(nextAbilityIds),
+            commanderUnitId: this.effectiveCommanderUnitId(),
+        });
+        this.selectedFormationAbilities.set(nextAbilityIds);
+        this.selectedFormationCommander.set(preview.commanderUnitId === this.data.unitId);
+    }
+
+    private normalizeFormationSelectionState(): void {
+        const preview = this.formationPreview();
+        if (!preview) {
+            return;
+        }
+
+        const isCommander = preview.commanderUnitId === this.data.unitId;
+        if (this.selectedFormationCommander() !== isCommander) {
+            this.selectedFormationCommander.set(isCommander);
+        }
+    }
+
     submit() {
         const name = this.nameInput().nativeElement.value.trim();
-        const skillValue = this.skillInput().nativeElement.value;
-        const skill = Number(skillValue === '' ? this.data.skill : skillValue);
+        const skill = this.currentSkill();
         const abilities = this.selectedAbilities().filter((a): a is AbilitySelection => a !== null);
-        this.dialogRef.close({ name, skill, abilities });
+        const preview = this.formationPreview();
+        this.dialogRef.close({
+            name,
+            skill,
+            abilities,
+            formationAbilities: [...(preview?.assignmentsByUnitId.get(this.data.unitId) ?? this.selectedFormationAbilities())],
+            formationAbilityOverrides: this.snapshotFormationAbilityOverrides(),
+            commander: preview?.commanderUnitId === this.data.unitId || this.selectedFormationCommander(),
+        });
     }
 
     close(value: null = null) {

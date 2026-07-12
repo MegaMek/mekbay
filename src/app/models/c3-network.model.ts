@@ -31,8 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { ForceUnit } from './force-unit.model';
-import { UnitComponent } from './units.model';
+import type { ForceUnit } from './force-unit.model';
+import type { UnitComponent } from './units.model';
 
 /**
  * C3 Network Types based on equipment flags

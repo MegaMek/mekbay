@@ -33,18 +33,18 @@
 
 import { ChangeDetectionStrategy, Component, inject, input, output, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Unit } from '../../models/units.model';
+import type { Unit, UnitComponent } from '../../models/units.model';
 import { ForceUnit } from '../../models/force-unit.model';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
-import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
+import { UnitTagsComponent, type TagClickEvent } from '../unit-tags/unit-tags.component';
 import { UnitComponentItemComponent } from '../unit-component-item/unit-component-item.component';
 import { GameService } from '../../services/game.service';
 import { GameSystem } from '../../models/common.model';
 import { DialogsService } from '../../services/dialogs.service';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
-import { AbilityInfoDialogComponent, AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
+import { AbilityInfoDialogComponent, type AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
 import { AdjustedBV } from '../../pipes/adjusted-bv.pipe';
 import { AdjustedPV } from '../../pipes/adjusted-pv.pipe';
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
@@ -53,11 +53,25 @@ import { StatBarSpecsPipe } from '../../pipes/stat-bar-specs.pipe';
 import { FilterAmmoPipe } from '../../pipes/filter-ammo.pipe';
 import { ExpandedComponentsPipe } from '../../pipes/expanded-components.pipe';
 import { TooltipDirective } from '../../directives/tooltip.directive';
-import { SearchTokensGroup, highlightMatches } from '../../utils/search.util';
-import { AS_TYPE_DISPLAY_NAMES } from '../../services/unit-search-filters.model';
+import { type SearchTokensGroup, highlightMatches } from '../../utils/search.util';
+import { formatASDamageValue, isASDamageFilterKey } from '../../utils/as-damage.util';
+import type { TooltipLine } from '../tooltip/tooltip.component';
+import {
+    MEGAMEK_AVAILABILITY_BADGE_COLORS,
+    MEGAMEK_AVAILABILITY_UNKNOWN,
+    MEGAMEK_PRODUCTION_ICON_PATH,
+    MEGAMEK_SALVAGE_ICON_PATH,
+} from '../../models/megamek/availability.model';
+import {
+    AS_TYPE_DISPLAY_NAMES,
+    MEGAMEK_RARITY_PRODUCTION_SORT_KEY,
+    MEGAMEK_RARITY_SALVAGE_SORT_KEY,
+    isMegaMekRaritySortKey,
+} from '../../services/unit-search-filters.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
 import { formatMovement, isAerospace } from '../../utils/as-common.util';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
+import type { MegaMekUnitAvailabilityDetail } from '../../services/unit-availability-source.service';
 
 /**
  * Author: Drake
@@ -79,17 +93,23 @@ import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card
         FormatTonsPipe,
         StatBarSpecsPipe,
         FilterAmmoPipe,
-        ExpandedComponentsPipe,
         TooltipDirective
     ],
     templateUrl: './unit-card-expanded.component.html',
     styleUrl: './unit-card-expanded.component.scss'
 })
 export class UnitCardExpandedComponent {
+    readonly megaMekAvailabilityUnknown = MEGAMEK_AVAILABILITY_UNKNOWN;
+
     gameService = inject(GameService);
     private dialogsService = inject(DialogsService);
     private abilityLookup = inject(AsAbilityLookupService);
+    private expandedComponentsPipe = new ExpandedComponentsPipe();
     readonly unitTypeDisplayNames = AS_TYPE_DISPLAY_NAMES;
+    readonly megaMekRequisitionIconPath = MEGAMEK_PRODUCTION_ICON_PATH;
+    readonly megaMekSalvageIconPath = MEGAMEK_SALVAGE_ICON_PATH;
+    readonly megaMekRarityRequisitionSortKey = MEGAMEK_RARITY_PRODUCTION_SORT_KEY;
+    readonly megaMekRaritySalvageSortKey = MEGAMEK_RARITY_SALVAGE_SORT_KEY;
 
     /** 
      * The unit to display. Can be either a Unit or a ForceUnit.
@@ -103,8 +123,17 @@ export class UnitCardExpandedComponent {
     /** Piloting skill for BV adjustment. Ignored when unit is a ForceUnit. */
     pilotingInput = input(DEFAULT_PILOTING_SKILL, { alias: 'piloting' });
 
+    /** To force view of pilot skills even when we don't have a ForceUnit (e.g., force generator) */
+    forceShowPilotInfo = input(false);
+
+    /** Forcibly override game system detection */
+    gameSystemOverride = input<GameSystem | null>(null);
+
+    /** Whether to show tags on the unit card */
+    showTags = input(true);
+
     /** Check if the input is a ForceUnit */
-    private isForceUnit(u: Unit | ForceUnit): u is ForceUnit {
+    protected isForceUnit(u: Unit | ForceUnit): u is ForceUnit {
         return u instanceof ForceUnit;
     }
 
@@ -167,6 +196,12 @@ export class UnitCardExpandedComponent {
         if (this.isForceUnit(u)) {
             return u.getPilotStats?.() ?? null;
         }
+        if (this.forceShowPilotInfo()) {
+            if (this.isAlphaStrike()) {
+                return `${this.gunnery()}`;
+            }
+            return `${this.gunnery()}/${this.piloting()}`;
+        }
         return null;
     });
 
@@ -178,12 +213,19 @@ export class UnitCardExpandedComponent {
         }
         return null; // Let the pipe calculate it
     });
+
+    readonly expandedComponents = computed<UnitComponent[]>(() => {
+        return this.expandedComponentsPipe.transform(this.resolvedUnit().comp ?? []);
+    });
     
     /** Derives Alpha Strike status from the ForceUnit's force when available, falls back to global game mode. */
     isAlphaStrike = computed<boolean>(() => {
         const u = this.unit();
         if (this.isForceUnit(u)) {
             return u.force.gameSystem === GameSystem.ALPHA_STRIKE;
+        }
+        if (this.gameSystemOverride()) {
+            return this.gameSystemOverride() === GameSystem.ALPHA_STRIKE;
         }
         return this.gameService.isAlphaStrike();
     });
@@ -210,6 +252,32 @@ export class UnitCardExpandedComponent {
 
     /** Label for sort slot when showing non-displayed sort field */
     sortSlotLabel = input<string | null>(null);
+
+    /** Optional per-card sort slot override for custom sort keys. */
+    sortSlotOverride = input<{ value: string; numeric?: boolean } | null>(null);
+
+    /** Optional fixed MegaMek availability display, used by unit-search results only. */
+    megaMekAvailability = input<readonly MegaMekUnitAvailabilityDetail[] | null>(null);
+
+    readonly megaMekAvailabilityBadges = computed(() => {
+        const badges = this.megaMekAvailability() ?? [];
+        return badges.map((badge) => ({
+            ...badge,
+            color: MEGAMEK_AVAILABILITY_BADGE_COLORS[badge.rarity],
+        }));
+    });
+
+    readonly megaMekAvailabilityTooltip = computed<TooltipLine[] | null>(() => {
+        const badges = this.megaMekAvailability();
+        if (!badges || badges.length === 0) {
+            return null;
+        }
+
+        return badges.map((badge) => ({
+            label: badge.source === MEGAMEK_AVAILABILITY_UNKNOWN ? 'Availability' : badge.source,
+            value: badge.rarity,
+        }));
+    });
 
     /** Search tokens for text highlighting (optional) */
     searchTokens = input<SearchTokensGroup[]>([]);
@@ -241,8 +309,8 @@ export class UnitCardExpandedComponent {
     /** Emitted when the tag button is clicked */
     tagClick = output<TagClickEvent>();
 
-    /** Emitted when the pilot info is clicked (only for ForceUnit) */
-    pilotClick = output<ForceUnit>();
+    /** Emitted whenever visible pilot info is clicked. */
+    pilotInfoClick = output<void>();
 
     /**
      * Keys that are grouped together in the UI display.
@@ -309,6 +377,14 @@ export class UnitCardExpandedComponent {
         // If this key is already displayed for this unit, don't show a separate slot
         if (this.isSortKeyDisplayedForUnit(key, unit)) return null;
 
+        const override = this.sortSlotOverride();
+        if (override) {
+            return {
+                value: override.value,
+                label: this.sortSlotLabel()
+            };
+        }
+
         // Use nested property access for dotted keys like 'as.PV'
         const raw = this.getNestedProperty(unit, key);
         let value: string;
@@ -316,7 +392,7 @@ export class UnitCardExpandedComponent {
         if (raw == null) {
             value = '—';
         } else if (typeof raw === 'number') {
-            value = FormatNumberPipe.formatValue(raw, true, false);
+            value = isASDamageFilterKey(key) ? formatASDamageValue(raw) : FormatNumberPipe.formatValue(raw, true, false);
         } else {
             value = String(raw);
         }
@@ -348,10 +424,7 @@ export class UnitCardExpandedComponent {
     /** Handle pilot info click - emits pilotClick if this is a ForceUnit */
     onPilotClick(event: Event): void {
         event.stopPropagation();
-        const u = this.unit();
-        if (this.isForceUnit(u)) {
-            this.pilotClick.emit(u);
-        }
+        this.pilotInfoClick.emit();
     }
 
     /** Handle AS special ability click - opens ability info dialog */
@@ -433,6 +506,17 @@ export class UnitCardExpandedComponent {
         if (!sortKey) return null;
         if (this.isSortKeyDisplayedForUnit(sortKey, unit)) return null;
 
+        const override = this.sortSlotOverride();
+        if (override) {
+            return {
+                key: sortKey,
+                value: override.value,
+                label: this.sortSlotLabel() ?? undefined,
+                alt: this.sortSlotLabel() ?? sortKey,
+                numeric: override.numeric ?? false,
+            };
+        }
+
         const raw = this.getNestedProperty(unit, sortKey);
         let value: string;
         let numeric = false;
@@ -440,7 +524,7 @@ export class UnitCardExpandedComponent {
         if (raw == null) {
             value = '—';
         } else if (typeof raw === 'number') {
-            value = FormatNumberPipe.formatValue(raw, true, false);
+            value = isASDamageFilterKey(sortKey) ? formatASDamageValue(raw) : FormatNumberPipe.formatValue(raw, true, false);
             numeric = true;
         } else {
             value = String(raw);
@@ -459,6 +543,10 @@ export class UnitCardExpandedComponent {
      * Check if a sort key is actually displayed for a specific unit.
      */
     private isSortKeyDisplayedForUnit(sortKey: string, unit: Unit): boolean {
+        if (isMegaMekRaritySortKey(sortKey) && this.megaMekAvailability() !== null) {
+            return true;
+        }
+
         const viewKeys = UnitCardExpandedComponent.VIEW_DISPLAYED_KEYS[this.getViewMode()] || [];
 
         for (const keyOrGroup of viewKeys) {
@@ -492,6 +580,35 @@ export class UnitCardExpandedComponent {
             cur = cur[p];
         }
         return cur;
+    }
+
+    /** Map of normalized location code -> '[CASE]' or '[CASE II]' for locations that have CASE equipment */
+    private caseByLocation = computed<Map<string, string>>(() => {
+        const u = this.resolvedUnit();
+        const result = new Map<string, string>();
+        if (!u?.comp) return result;
+        for (const comp of u.comp) {
+            if (!comp.eq || !comp.l) continue;
+            let label: string | undefined;
+            if (comp.eq.hasFlag('F_CASE_II')) label = '[CASE II]';
+            else if (comp.eq.hasFlag('F_CASE') || comp.eq.hasFlag('F_CASE_P')) label = '[CASE]';
+            if (label) result.set(this.normalizeLoc(comp.l), label);
+        }
+        return result;
+    });
+
+    private normalizeLoc(loc: string): string {
+        if (!loc) return 'UNK';
+        let norm = (loc === '*') ? 'ALL' : loc.trim();
+        norm = norm.replace(/[^A-Za-z0-9_-]/g, '');
+        if (/^[0-9]/.test(norm)) norm = 'L' + norm;
+        if (!norm) norm = 'UNK';
+        return norm;
+    }
+
+    /** Returns the CASE label for a raw location string */
+    getCaseLabel(loc: string): string {
+        return this.caseByLocation().get(this.normalizeLoc(loc)) ?? '';
     }
 
     /** Format armor type - removes " Armor" suffix if present */

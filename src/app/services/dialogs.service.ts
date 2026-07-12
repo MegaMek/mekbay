@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -33,10 +33,10 @@
 
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { ConfirmDialogComponent, ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
-import { InputDialogComponent, InputDialogData } from '../components/input-dialog/input-dialog.component';
-import { Dialog, DialogRef as CdkDialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { ComponentType } from '@angular/cdk/portal';
+import { ConfirmDialogComponent, type ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
+import { InputDialogComponent, type InputDialogData } from '../components/input-dialog/input-dialog.component';
+import { Dialog, type DialogRef as CdkDialogRef, type DIALOG_DATA } from '@angular/cdk/dialog';
+import type { ComponentType } from '@angular/cdk/portal';
 
 /*
  * Author: Drake
@@ -47,6 +47,21 @@ export interface DialogRef<T = any, R = any> {
     close: (result?: R) => void;
 }
 
+type DialogAutoFocus = boolean | string;
+
+export interface DialogOptions<D = unknown> {
+    data?: D;
+    panelClass?: string | string[];
+    backdropClass?: string | string[];
+    disableClose?: boolean;
+    hasBackdrop?: boolean;
+    width?: string;
+    height?: string;
+    maxWidth?: string;
+    maxHeight?: string;
+    autoFocus?: DialogAutoFocus;
+}
+
 @Injectable({ providedIn: 'root' })
 export class DialogsService {
     private dialog = inject(Dialog);
@@ -54,17 +69,7 @@ export class DialogsService {
     // Generic dialog creator using CDK Overlay, compatible with components expecting CDK Dialog
     public createDialog<R = any, T = any, D = unknown>(
         component: ComponentType<T>,
-        opts?: {
-            data?: D;
-            panelClass?: string | string[];
-            backdropClass?: string | string[];
-            disableClose?: boolean;
-            hasBackdrop?: boolean;
-            width?: string;
-            height?: string;
-            maxWidth?: string;
-            maxHeight?: string;
-        }
+        opts?: DialogOptions<D>
     ): DialogRef<T, R> {
         const cdkRef = this.dialog.open<R, D, T>(component, {
             data: opts?.data,
@@ -76,7 +81,7 @@ export class DialogsService {
             height: opts?.height,
             maxWidth: opts?.maxWidth ?? '100dvw',
             maxHeight: opts?.maxHeight ?? '100dvh',
-            autoFocus: 'first-tabbable',
+            autoFocus: opts?.autoFocus ?? false,
             restoreFocus: false
         });
 
@@ -111,7 +116,7 @@ export class DialogsService {
         await firstValueFrom(ref.closed);
     }
 
-    async requestConfirmation(message: string, title: string, type: 'info' | 'danger'): Promise<boolean> {
+    async requestConfirmation(message: string, title: string, type: 'info' | 'warning' | 'danger'): Promise<boolean> {
         const ref = this.createDialog<string>(ConfirmDialogComponent, {
             disableClose: true,
             panelClass: type,
@@ -144,6 +149,7 @@ export class DialogsService {
     async prompt(message: string, title: string, defaultValue = '', hint = ''): Promise<string | null> {
         const ref = this.createDialog<string | null>(InputDialogComponent, {
             disableClose: true,
+            autoFocus: 'first-tabbable',
             data: <InputDialogData>{
                 title,
                 message,

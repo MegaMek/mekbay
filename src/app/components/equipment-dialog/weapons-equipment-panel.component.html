@@ -1,0 +1,241 @@
+<div class="weapons-equipment-panel" [class.hide-actions-column]="!hasActionsColumn()" [class.has-targets]="hasTargets()">
+    <div class="weapon-equipment-grid">
+            @for (group of groups(); track group.id) {
+                <section class="weapon-equipment-section">
+                    <h3>
+                        <span class="grid-fill grid-fill-left" aria-hidden="true"></span>
+                        <span class="section-title">{{ group.title }}</span>
+                        <span class="grid-fill grid-fill-right" aria-hidden="true"></span>
+                    </h3>
+                    <div class="weapon-equipment-header">
+                        <span class="grid-fill grid-fill-left" aria-hidden="true"></span>
+                        <span></span>
+                        <span class="select-header">
+                            @if (group.id === 'ranged') {
+                                @if (hasTargets()) {
+                                    @let selectedGroupTarget = groupTargetSelection(group);
+                                    <button
+                                        class="target-selector ranged-select-all"
+                                        type="button"
+                                        [class.target-selected]="!!selectedGroupTarget"
+                                        [class.target-mixed]="groupSomeTargetRowsSelected(group)"
+                                        [style.background]="selectedGroupTarget?.color ?? null"
+                                        aria-label="Select target for all ranged weapons"
+                                        (click)="onGroupTargetSelectorClick($event, group)">
+                                        {{ selectedGroupTarget?.letter ?? '' }}
+                                    </button>
+                                } @else {
+                                    <input
+                                        type="checkbox"
+                                        class="bt-checkbox ranged-select-all"
+                                        aria-label="Select all ranged weapons"
+                                        [checked]="groupAllSelectableRowsSelected(group)"
+                                        [indeterminate]="groupSomeSelectableRowsSelected(group)"
+                                        (change)="toggleGroupSelectableRows(group)">
+                                }
+                            }
+                        </span>
+                        @if (hasTargets()) {
+                            <span class="tn-header">TN</span>
+                        }
+                        <span class="name-header">Name</span>
+                        <span class="centered-header hit-header" title="Hit modifier">
+                            <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="2"></circle><path d="M12 1v5M12 18v5M1 12h5M18 12h5"></path></svg>
+                        </span>
+                        <span class="centered-header">Loc</span>
+                        <span class="centered-header">Ht</span>
+                        <span class="centered-header">Dmg</span>
+                        <span class="centered-header">Min</span>
+                        <span class="centered-header">Sht</span>
+                        <span class="centered-header">Med</span>
+                        <span class="centered-header">Lng</span>
+                        @if (hasActionsColumn()) {
+                            <span class="actions-header">{{ groupActionsHeader(group) }}</span>
+                        }
+                        <span class="grid-fill grid-fill-right" aria-hidden="true"></span>
+                    </div>
+                    <div
+                        class="weapon-equipment-list"
+                        cdkDropList
+                        cdkDropListLockAxis="y"
+                        [cdkDropListData]="group.rows"
+                        [cdkDropListDisabled]="!group.sortable || readOnly()"
+                        (cdkDropListDropped)="drop($event, group)">
+                        @for (row of group.rows; track row.id) {
+                            @let rowTarget = targetState(row);
+                            <div class="weapon-equipment-row" cdkDrag cdkDragLockAxis="y" cdkDragBoundary=".weapon-equipment-section" cdkDragPreviewContainer="parent" [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0" [cdkDragDisabled]="!group.sortable || readOnly()" [class.destroying-entry]="rowDestroying(row)" [class.repairing-entry]="rowRepairing(row)" [class.destroyed-entry]="rowCommittedDestroyed(row)" [class.disabled-entry]="!rowEffectivelyDestroyed(row) && row.disabled" (pointerdown)="cacheDragPreviewCellWidths($event)" (cdkDragStarted)="onDragStarted($event)">
+                                <span class="grid-fill grid-fill-left" aria-hidden="true"></span>
+                                <span class="grouped-cells group-identity">
+                                    <div class="drag-cell">
+                                        @if (group.sortable) {
+                                            <button class="drag-handle" type="button" cdkDragHandle aria-label="Reorder">::::</button>
+                                        }
+                                    </div>
+                                    <div class="select-cell">
+                                        @if (isSelectable(row)) {
+                                            @if (hasTargets()) {
+                                                <button
+                                                    class="target-selector"
+                                                    type="button"
+                                                    [class.target-selected]="!!rowTarget.target"
+                                                    [style.background]="rowTarget.target?.color ?? null"
+                                                    [attr.aria-label]="rowTarget.target ? 'Selected target ' + rowTarget.target.letter : 'No selected target'"
+                                                    (click)="onRowTargetSelectorClick($event, row)">
+                                                    {{ rowTarget.target?.letter ?? '' }}
+                                                </button>
+                                            } @else {
+                                                <input type="checkbox" class="bt-checkbox" [checked]="isSelected(row)" (change)="toggleSelected(row)">
+                                            }
+                                        }
+                                    </div>
+                                    @if (hasTargets()) {
+                                        <span class="tn-cell" [class.out-of-range]="rowTarget.rangeSelection?.outOfLongRange ?? false" [tooltip]="rowTarget.rangeSelection?.outOfLongRange ? outOfRangeTooltip : rowTarget.breakdown?.lines ?? null">
+                                            @if (rowTarget.targetNumberText; as tnText) {
+                                                <span class="tn-value">{{ tnText }}</span>
+                                            }
+                                        </span>
+                                    }
+                                    <div class="name-cell">
+                                        <span>{{ row.display.name }}</span>
+                                        @for (modifier of row.modifiers; track modifier.name) {
+                                            <span class="modifier" [class.destroyed]="modifier.destroyed">{{ modifier.name }}</span>
+                                        }
+                                        @if (modeChoice(row); as choice) {
+                                            @if ((choice.choices?.length ?? 0) > 1 && !choice.disabled && !readOnly()) {
+                                                <multiline-dropdown
+                                                    class="bt-button tiny mode-choice"
+                                                    [title]="choice.label"
+                                                    [label]="choice.label"
+                                                    [options]="handlerDropdownOptions(choice)"
+                                                    [value]="handlerDropdownValue(choice)"
+                                                    [disabled]="choice.disabled || readOnly()"
+                                                    (valueChange)="selectHandlerDropdown(row, choice, $event)"
+                                                />
+                                            } @else {
+                                                <span class="mode-badge">{{ modeText(row, choice) }}</span>
+                                            }
+                                        }
+                                    </div>
+                                </span>
+                                <span class="grouped-cells group-stats">
+                                    <span class="centered-cell hit-cell meta-cell" data-label="Hit">{{ rowTarget.hitText }}</span>
+                                    <span class="centered-cell location-cell meta-cell" data-label="Loc">{{ row.display.location }}</span>
+                                    <span class="centered-cell heat-cell meta-cell" data-label="Ht" [class.damaged]="row.display.heat !== row.base.heat">{{ row.display.heat }}</span>
+                                    <span class="centered-cell damage-cell meta-cell" data-label="Dmg">{{ rowTarget.damageText }}</span>
+                                </span>
+                                <span class="grouped-cells group-ranges">
+                                    <span class="centered-cell min-cell meta-cell" data-label="Min" [class.minimum-range-active]="!!rowTarget.targetNumberText && (rowTarget.rangeSelection?.minimumRangeModifier ?? 0) > 0">
+                                        <span class="min-value">{{ row.display.min }}</span>
+                                    </span>
+                                    <span class="grouped-cells range-cells meta-cell" data-label="Range">
+                                        <span class="range-cells">
+                                            @for (range of rangeKeys; track range) {
+                                                <button
+                                                    class="range-cell"
+                                                    type="button"
+                                                    [attr.data-label]="rangeLabel(range)"
+                                                    [class.range-short]="range === 'short'"
+                                                    [class.range-medium]="range === 'medium'"
+                                                    [class.range-long]="range === 'long'"
+                                                    [disabled]="!canSelectRange(row, range, rowTarget)"
+                                                    [class.selected-range]="isRangeSelected(row, range, rowTarget)"
+                                                    [class.out-of-range]="rowTarget.rangeSelection?.outOfLongRange ?? false"
+                                                    [style.--range-selection-color]="rowTarget.rangeSelection?.outOfLongRange ? null : rowTarget.target?.color ?? null"
+                                                    (click)="selectRange(row, range)">
+                                                    {{ rangeValue(row, range) }}
+                                                </button>
+                                            }
+                                        </span>
+                                    </span>
+                                </span>
+                                @if (hasActionsColumn()) {
+                                <span class="grouped-cells group-actions">
+                                    <div class="actions-cell" [class.empty-row-actions]="!rowHasActions(row)">
+                                        @if (row.tracksAmmo) {
+                                        @let ammo = ammoState(row);
+                                        <div class="ammo-cell meta-cell" data-label="Ammo" [class.empty-ammo]="ammo.depleted" [class.destroyed-ammo]="ammo.destroyed">
+                                            <span class="grouped-cells">
+                                                @if (ammo.hasAmmo) {
+                                                    @if (ammo.showDropdown) {
+                                                        <multiline-dropdown
+                                                            class="bt-button tiny ammo-choice"
+                                                            title="Ammo"
+                                                            label="Ammo"
+                                                            [options]="ammoDropdownOptions(row)"
+                                                            [value]="ammo.selectedOptionId"
+                                                            [disabled]="readOnly()"
+                                                            (valueChange)="selectAmmoOption(row, $event)"
+                                                        />
+                                                    } @else {
+                                                        <span class="ammo-choice-static">{{ ammo.text }}</span>
+                                                    }
+                                                } @else {
+                                                    <span class="ammo-choice-static">NO AMMO</span>
+                                                }
+                                                @if (ammo.canDecrease || ammo.canIncrease) {
+                                                    <button class="bt-button tiny ammo-stepper-button" type="button" aria-label="Decrease ammo" title="Decrease Ammo" [disabled]="!ammo.canDecrease" (click)="adjustAmmo(row, 1)">-</button>
+                                                    <button class="bt-button tiny ammo-stepper-button" type="button" aria-label="Increase ammo" title="Increase Ammo" [disabled]="!ammo.canIncrease" (click)="adjustAmmo(row, -1)">+</button>
+                                                }
+                                            </span>
+                                        </div>
+                                        }
+                                        <div class="controls-cell" [class.empty-row-controls]="!rowHasControls(row)">
+                                            @for (choice of handlerChoices(row); track choice.label) {
+                                                @switch (choice.displayType) {
+                                                    @case ('dropdown') {
+                                                        <multiline-dropdown
+                                                            class="bt-button tiny control-select"
+                                                            [title]="choice.label"
+                                                            [label]="choice.label"
+                                                            [options]="handlerDropdownOptions(choice)"
+                                                            [value]="handlerDropdownValue(choice)"
+                                                            [disabled]="choice.disabled || readOnly()"
+                                                            (valueChange)="selectHandlerDropdown(row, choice, $event)"
+                                                        />
+                                                    }
+                                                    @case ('label') {
+                                                        <span class="control-label control-button">{{ choice.label }}</span>
+                                                    }
+                                                    @case ('toggle') {
+                                                        <button class="bt-button tiny control-button" type="button" [class.active]="choice.active" [class.muted-active]="choice.active && choice.selectionTone === 'muted'"
+                                                            [style.--picker-choice-normal-color]="choice.colors?.normal"
+                                                            [style.--picker-choice-normal-text-color]="choice.colors?.normalText"
+                                                            [style.--picker-choice-selected-color]="choice.colors?.selected"
+                                                            [style.--picker-choice-selected-text-color]="choice.colors?.selectedText"
+                                                            [style.--picker-choice-muted-selected-color]="choice.colors?.mutedSelected"
+                                                            [style.--picker-choice-muted-selected-text-color]="choice.colors?.mutedSelectedText"
+                                                            [style.--picker-choice-disabled-color]="choice.colors?.disabled"
+                                                            [style.--picker-choice-disabled-text-color]="choice.colors?.disabledText"
+                                                            [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.label }}</button>
+                                                    }
+                                                    @default {
+                                                        <button class="bt-button tiny control-button" type="button" [class.active]="choice.active" [class.muted-active]="choice.active && choice.selectionTone === 'muted'"
+                                                            [style.--picker-choice-normal-color]="choice.colors?.normal"
+                                                            [style.--picker-choice-normal-text-color]="choice.colors?.normalText"
+                                                            [style.--picker-choice-selected-color]="choice.colors?.selected"
+                                                            [style.--picker-choice-selected-text-color]="choice.colors?.selectedText"
+                                                            [style.--picker-choice-muted-selected-color]="choice.colors?.mutedSelected"
+                                                            [style.--picker-choice-muted-selected-text-color]="choice.colors?.mutedSelectedText"
+                                                            [style.--picker-choice-disabled-color]="choice.colors?.disabled"
+                                                            [style.--picker-choice-disabled-text-color]="choice.colors?.disabledText"
+                                                            [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.shortLabel || choice.label }}</button>
+                                                    }
+                                                }
+                                            }
+                                            @if (canMarkDestroyed(row)) {
+                                                <button class="bt-button tiny" type="button" (click)="markDestroyed(row)">HIT</button>
+                                            } @else if (canRepair(row)) {
+                                                <button class="bt-button tiny" type="button" (click)="repair(row)">REPAIR</button>
+                                            }
+                                        </div>
+                                    </div>
+                                </span>
+                                }
+                                <span class="grid-fill grid-fill-right" aria-hidden="true"></span>
+                            </div>
+                        }
+                    </div>
+                </section>
+            }
+    </div>
+</div>

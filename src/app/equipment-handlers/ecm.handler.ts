@@ -31,14 +31,14 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentInteractionHandler, HandlerContext } from '../services/equipment-interaction-registry.service';
-import { MountedEquipment } from '../models/force-serialization';
-import { PickerChoice, PickerValue } from '../components/picker/picker.interface';
+import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
+import type { MountedEquipment } from '../models/force-serialization';
+import type { PickerChoice, PickerValue } from '../components/picker/picker.interface';
 import { ECMMode } from '../models/common.model';
 
 export class ECMHandler extends EquipmentInteractionHandler {
     readonly id = 'ecm-handler';
-    readonly flags = ['F_ECM'];
+    override readonly flags = ['F_ECM'];
     override readonly priority = 10;
 
     private readonly stateKey = 'ecm_mode';
@@ -79,11 +79,11 @@ export class ECMHandler extends EquipmentInteractionHandler {
 
         return [
             {
-                label: 'ECM Mode:',
+                label: 'ECM Mode',
                 value: currentState,
                 displayType: 'dropdown',
                 choices: modes,
-                disabled: equipment.destroyed,
+                disabled: equipment.isUnavailable(),
                 keepOpen: true
             }
         ];

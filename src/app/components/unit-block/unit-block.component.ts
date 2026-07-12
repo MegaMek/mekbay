@@ -33,8 +33,8 @@
 
 import { Component, ChangeDetectionStrategy, computed, input, output, inject } from '@angular/core';
 import { UpperCasePipe } from '@angular/common';
-import { ForceUnit } from '../../models/force-unit.model';
-import { Unit } from '../../models/units.model';
+import type { ForceUnit } from '../../models/force-unit.model';
+import type { Unit } from '../../models/units.model';
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 import { OptionsService } from '../../services/options.service';
@@ -42,13 +42,26 @@ import { CdkMenuModule } from '@angular/cdk/menu';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { TooltipDirective } from '../../directives/tooltip.directive';
-import { TooltipLine } from '../tooltip/tooltip.component';
+import type { TooltipLine } from '../tooltip/tooltip.component';
 import { ECMMode } from '../../models/common.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { C3NetworkUtil } from '../../utils/c3-network.util';
-import { C3Component, C3NetworkType } from '../../models/c3-network.model';
+import type { C3Component, C3NetworkType } from '../../models/c3-network.model';
 import { GameSystem } from '../../models/common.model';
-import { formatMovement } from '../../utils/as-common.util';
+import { formatMovement, formatMovementWithAlternate } from '../../utils/as-common.util';
+import { getUnitConditionDefinition, unitConditionSortIndex } from '../../models/rules/unit-type-rules';
+import type { CrewMember } from '../../models/crew-member.model';
+
+interface UnitConditionDisplay {
+    key: string;
+    label: string;
+    color: string;
+}
+
+export interface UnitBlockPilotEditEvent {
+    event: MouseEvent;
+    crewMember?: CrewMember;
+}
 
 /**
  * Author: Drake
@@ -71,14 +84,30 @@ export class UnitBlockComponent {
     onRemoveUnit = output<MouseEvent>();
     onOpenC3Network = output<MouseEvent>();
     onRepairUnit = output<MouseEvent>();
-    onEditPilot = output<MouseEvent>();
+    onEditPilot = output<UnitBlockPilotEditEvent>();
 
     unit = computed<Unit | undefined>(() => {
         return this.forceUnit()?.getUnit();
     });
 
+    crewMembers = computed<CrewMember[]>(() => this.forceUnit()?.getCrewMembers() ?? []);
+
+    alphaStrikePilotSkill = computed<number | undefined>(() => {
+        const forceUnit = this.forceUnit();
+        return forceUnit instanceof ASForceUnit ? forceUnit.getPilotSkill() : undefined;
+    });
+
     /** Derives Alpha Strike status from the unit's own force, not the global game system. */
     isAlphaStrike = computed<boolean>(() => this.forceUnit()?.force?.gameSystem === GameSystem.ALPHA_STRIKE);
+
+    isCommander = computed<boolean>(() => {
+        const forceUnit = this.forceUnit();
+        if (!forceUnit) return false;
+        if (forceUnit instanceof ASForceUnit || forceUnit instanceof CBTForceUnit) {
+            return forceUnit.commander();
+        }
+        return false;
+    });
 
     dirty = computed<boolean>(() => {
         if (!this.optionsService.options().useAutomations) {
@@ -123,6 +152,24 @@ export class UnitBlockComponent {
         return false;
     });
 
+    activeConditions = computed<UnitConditionDisplay[]>(() => {
+        const forceUnit = this.forceUnit();
+        if (!forceUnit) return [];
+
+        const conditionKeys = new Set(forceUnit.getConditions().keys());
+
+        return Array.from(conditionKeys)
+            .map(key => {
+                const condition = getUnitConditionDefinition(key);
+                return {
+                    key,
+                    label: condition?.bannerLabel ?? condition?.label ?? key.toUpperCase(),
+                    color: condition?.color ?? '#666',
+                };
+            })
+            .sort((left, right) => unitConditionSortIndex(left.key) - unitConditionSortIndex(right.key) || left.label.localeCompare(right.label));
+    });
+
     hasECM = computed(() => {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return false;
@@ -137,6 +184,35 @@ export class UnitBlockComponent {
         return false;
     });
 
+    getTAGLabel = computed<'TAG' | 'LTAG' | undefined>(() => {
+        const forceUnit = this.forceUnit();
+        if (!forceUnit) return undefined;
+        if (forceUnit instanceof ASForceUnit) {
+            if (forceUnit.getUnit().as.specials.includes('LTAG')) {
+                return 'LTAG';
+            }
+            if (forceUnit.getUnit().as.specials.includes('TAG')) {
+                return 'TAG';
+            }
+            return undefined;
+        } else
+        if (forceUnit instanceof CBTForceUnit) {
+            const tagComponents = forceUnit.getUnit().comp.filter(component => component.eq?.flags.has('F_TAG'));
+            if (tagComponents.length === 0) {
+                return undefined;
+            }
+
+            const hasLightTag = tagComponents.some(component => {
+                const names = [component.n, component.eq?.name, component.eq?.shortName, component.eq?.sortingName]
+                    .filter((name): name is string => !!name);
+                return names.some(name => /\blight\b/i.test(name));
+            });
+
+            return hasLightTag ? 'LTAG' : 'TAG';
+        }
+        return undefined;
+    });
+
     getECMStatus = computed<boolean | undefined>(() => {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return undefined;
@@ -147,7 +223,7 @@ export class UnitBlockComponent {
             forceUnit.getCritSlots();
             const mountedECM = forceUnit.getInventory().find(eq => eq.equipment?.flags.has('F_ECM'));
             if (!mountedECM) return undefined;
-            if (mountedECM.destroyed) {
+            if (forceUnit.isEquipmentUnavailable(mountedECM)) {
                 return false;
             }
             return true;
@@ -259,11 +335,21 @@ export class UnitBlockComponent {
             const entries = this.getMovementEntries(effectiveMv);
             if (entries.length === 0) return forceUnit.getUnit()?.as?.MV ?? '';
             return entries
-                .map(([mode, inches]) => formatMovement(inches, mode, this.optionsService.options().ASUseHex))
+                .map(([mode, inches]) => this.formatASMovementEntry(forceUnit, mode, inches))
                 .join('/');
         }
         return forceUnit.getUnit()?.as?.MV ?? '';
     });
+
+    private formatASMovementEntry(forceUnit: ASForceUnit, mode: string, inches: number): string {
+        const useHex = this.optionsService.options().ASUseHex;
+        const display = forceUnit.movementDisplayValue(mode, inches);
+        const formatted = display.adjustedInches !== undefined
+            ? formatMovementWithAlternate(display.baseInches, display.adjustedInches, mode, useHex)
+            : formatMovement(display.baseInches, mode, useHex);
+
+        return formatted;
+    }
 
     showTMM = computed<boolean>(() => {
         const forceUnit = this.forceUnit();
@@ -279,6 +365,13 @@ export class UnitBlockComponent {
         const entries = Object.entries(mvm)
             .filter(([, value]) => typeof value === 'number') as Array<[string, number]>;
         return entries;
+    }
+
+    getCrewMemberPilotStats(crewMember: CrewMember): string {
+        if (this.unit()?.type === 'ProtoMek') {
+            return `${crewMember.getSkill('gunnery')}`;
+        }
+        return `${crewMember.getSkill('gunnery')}/${crewMember.getSkill('piloting')}`;
     }
 
     bvTooltip = computed<TooltipLine[] | null>(() => {
@@ -313,8 +406,9 @@ export class UnitBlockComponent {
             const sign = pilotBv > 0 ? '+' : '';
             lines.push({ label: 'Pilot', value: `${sign}${pilotBv}` });
         }
+        lines.push({ isBreak: true });
         if (tagBv > 0 || c3Tax > 0 || pilotBv !== 0) {
-            lines.push({ label: 'Total', value: `=${totalBv}` });
+            lines.push({ label: 'Total', value: `${totalBv}` });
         }
 
         return lines.length > 0 ? lines : null;
@@ -344,8 +438,8 @@ export class UnitBlockComponent {
         this.onOpenC3Network.emit(event);
     }
 
-    editPilot(event: MouseEvent): void {
+    editPilot(event: MouseEvent, crewMember?: CrewMember): void {
         event.stopPropagation();
-        this.onEditPilot.emit(event);
+        this.onEditPilot.emit({ event, crewMember });
     }
 }

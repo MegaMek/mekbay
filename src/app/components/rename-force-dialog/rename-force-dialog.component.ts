@@ -32,19 +32,26 @@
  */
 
 
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, ElementRef, inject, Injector, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, type ComponentRef, DestroyRef, type ElementRef, inject, Injector, type OnDestroy, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { outputToObservable } from '@angular/core/rxjs-interop';
 import { DecimalPipe } from '@angular/common';
 import { DataService } from '../../services/data.service';
-import { Force } from '../../models/force.model';
-import { Faction, FACTION_MERCENARY } from '../../models/factions.model';
-import { ForceNamerUtil, FactionDisplayInfo } from '../../utils/force-namer.util';
+import { buildEraWarningMessage, getEraUnitValidationSummary, type Force } from '../../models/force.model';
+import { getFactionImg, type Faction, type FactionId } from '../../models/factions.model';
+import type { Era } from '../../models/eras.model';
+import { ForceNamerUtil, type FactionDisplayInfo } from '../../utils/force-namer.util';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
-import { FactionDropdownPanelComponent } from './faction-dropdown-panel.component';
-import { resolveFromGroups, GroupSizeResult } from '../../utils/org-solver.util';
+import { FactionDropdownPanelComponent, type FactionDropdownPointerHoverEvent } from './faction-dropdown-panel.component';
+import { buildFactionEraTitle, getFactionEraIconFilter } from './faction-era-visuals.util';
+import { EraDropdownPanelComponent, type EraDisplayInfo, type EraDropdownPointerHoverEvent } from './era-dropdown-panel.component';
+import { MULFACTION_EXTINCT } from '../../models/mulfactions.model';
+import { UnitAvailabilitySourceService } from '../../services/unit-availability-source.service';
+import { DropdownPointerActivationGuard, scrollActiveOptionIntoView } from '../../utils/dropdown-interaction.utils';
+
+
 
 
 /*
@@ -58,6 +65,7 @@ export interface RenameForceDialogData {
 export interface RenameForceDialogResult {
     name: string;
     faction: Faction | null;
+    era: Era | null;
     action: 'confirm' | 'unset';
 }
 
@@ -71,94 +79,141 @@ export interface RenameForceDialogResult {
     },
     template: `
     <div class="wide-dialog">
-      <div class="wide-dialog-body">
-        <div class="form-fields">
-            <label class="field-label" for="name">{{ forceSizeName() }} Name</label>
-            <div class="input-wrapper">
-                <div class="name-input-wrapper">
-                    <div
-                        class="field-input"
-                        id="name"
-                        contentEditable="true"
-                        #inputRef
-                        autocomplete="off"
-                        [attr.data-placeholder]="placeholderName()"
-                        [textContent]="data.force.name"
-                        (keydown.enter)="submit()"
-                        (input)="onInputCleanup($event)"
-                        required
-                    ></div>
-                    @if (nameHasText()) {
+        <div class="wide-dialog-body">
+            <div class="form-fields">
+                <label class="field-label" for="name">Force Name</label>
+                <div class="input-wrapper">
+                    <div class="name-input-wrapper">
+                        <div
+                            class="field-input"
+                            id="name"
+                            contentEditable="true"
+                            #inputRef
+                            autocomplete="off"
+                            [attr.data-placeholder]="placeholderName()"
+                            [textContent]="data.force.name"
+                            (keydown.enter)="submit()"
+                            (input)="onInputCleanup($event)"
+                            required
+                        ></div>
+                        @if (nameHasText()) {
+                        <button
+                            type="button"
+                            class="clear-btn"
+                            (click)="clearName()"
+                            title="Clear"
+                            aria-label="Clear"
+                            tabindex="-1"
+                        >&#10005;</button>
+                        }
+                    </div>
                     <button
                         type="button"
-                        class="clear-btn"
-                        (click)="clearName()"
-                        title="Clear"
-                        aria-label="Clear"
-                        tabindex="-1"
-                    >&#10005;</button>
-                    }
+                        class="random-button"
+                        (click)="fillRandomName()"
+                        aria-label="Generate random force name"
+                    ></button>
                 </div>
+            </div>
+
+
+            <div class="form-fields">
+                <label class="field-label" for="era">Era</label>
+                <div #eraTriggerWrapper class="input-wrapper">
+                <button
+                    id="era"
+                    class="era-selector bt-select"
+                    [class.danger]="hasEraWarningState()"
+                    aria-haspopup="listbox"
+                    [attr.aria-controls]="eraOptionsId"
+                    [attr.aria-expanded]="eraDropdownOpen()"
+                    (click)="toggleEraDropdown()"
+                    (keydown)="onEraTriggerKeydown($event)">
+                    @if (selectedEraDisplay(); as display) {
+                    <div class="era-selector-content">
+                        @if (display.era.icon) {
+                        <img [src]="display.era.icon" class="era-selector-icon" [alt]="display.era.name" />
+                        }
+                        <div class="era-selector-details">
+                        <div class="era-selector-header">
+                            <span class="era-selector-name">{{ display.era.name }}</span>
+                            <span class="match-badge">{{ (display.matchPercentage * 100) | number:'1.0-0' }}% match</span>
+                        </div>
+                        <span class="era-selector-years">{{ display.era.years.from ?? '?' }}&ndash;{{ display.era.years.to ?? 'present' }}</span>
+                        </div>
+                    </div>
+                    } @else {
+                    <span class="placeholder">Any</span>
+                    }
+                </button>
+                </div>
+                @if (selectedEraWarning(); as warning) {
+                    <p class="hint warning" aria-live="polite">{{ warning }}</p>
+                }
+            </div>
+
+            <div class="form-fields">
+                <label class="field-label" for="faction">Faction</label>
+                <div #factionTriggerWrapper class="input-wrapper">
+                <button
+                    id="faction"
+                    #factionTrigger
+                    class="faction-selector bt-select"
+                    aria-haspopup="listbox"
+                    [attr.aria-controls]="factionOptionsId"
+                    [attr.aria-expanded]="factionDropdownOpen()"
+                    (click)="toggleFactionDropdown()"
+                    (keydown)="onFactionTriggerKeydown($event)">
+                    @if (selectedFactionDisplay(); as display) {
+                    <div class="faction-selector-content">
+                        @if (display.faction && getFactionImg(display.faction); as factionImage) {
+                        <img [src]="factionImage" class="faction-selector-icon" [alt]="display.faction.name" />
+                        }
+                        <div class="faction-selector-details">
+                        <div class="faction-selector-header">
+                            <span class="faction-selector-name">{{ display.faction.name }}</span>
+                            <span class="match-badge">{{ (display.matchPercentage * 100) | number:'1.0-0' }}% match</span>
+                        </div>
+                        <div class="faction-selector-eras">
+                            @for (eraItem of display.eraAvailability; track eraItem.era.id) {
+                            @if (eraItem.era.icon) {
+                                <span class="faction-selector-era-chip"
+                                        [class.past-era]="eraItem.isBeforeReferenceYear"
+                                            [title]="getEraTitle(eraItem)">
+                                    <img class="faction-selector-era-icon"
+                                                [src]="eraItem.era.icon"
+                                        [alt]="eraItem.era.name"
+                                    [class.unavailable]="!eraItem.isAvailable"
+                                    [style.filter]="getEraIconFilter(eraItem)" />
+                                </span>
+                            }
+                            }
+                        </div>
+                        </div>
+                    </div>
+                } @else {
+                    <span class="placeholder">None</span>
+                }
+                </button>
                 <button
                     type="button"
                     class="random-button"
-                    (click)="fillRandomName()"
-                    aria-label="Generate random force name"
+                    (click)="fillRandomFaction()"
+                    aria-label="Pick random faction"
                 ></button>
+                </div>
+                @if (!data.force.factionLock) {
+                    <p class="hint">The faction will change dynamically based on force composition. Confirm to lock it in.</p>
+                }
             </div>
         </div>
-
-        <div class="form-fields">
-            <label class="field-label" for="faction">Faction</label>
-            <div #factionTriggerWrapper class="input-wrapper">
-              <button id="faction" #factionTrigger class="faction-selector bt-select" (click)="toggleFactionDropdown()">
-                @if (selectedFactionDisplay(); as display) {
-                  <div class="faction-selector-content">
-                    @if (display.faction.img) {
-                      <img [src]="display.faction.img" class="faction-selector-icon" [alt]="display.faction.name" />
-                    }
-                    <div class="faction-selector-details">
-                      <div class="faction-selector-header">
-                        <span class="faction-selector-name">{{ display.faction.name }}</span>
-                        @if (display.faction.id !== FACTION_MERCENARY) {
-                          <span class="match-badge">{{ (display.matchPercentage * 100) | number:'1.0-0' }}% match</span>
-                        }
-                      </div>
-                      <div class="faction-selector-eras">
-                        @for (eraItem of display.eraAvailability; track eraItem.era.id) {
-                          @if (eraItem.era.icon) {
-                            <img class="faction-selector-era-icon"
-                                 [src]="eraItem.era.icon"
-                                 [alt]="eraItem.era.name"
-                                 [class.unavailable]="!eraItem.isAvailable" />
-                          }
-                        }
-                      </div>
-                    </div>
-                  </div>
-              } @else {
-                <span class="placeholder">None</span>
-              }
-              </button>
-              <button
-                type="button"
-                class="random-button"
-                (click)="fillRandomFaction()"
-                aria-label="Pick random faction"
-              ></button>
-            </div>
+        <div class="wide-dialog-actions">
+            <button (click)="submit()" class="bt-button">CONFIRM</button>
+            @if (!data.hideUnset) {
+            <button (click)="submitUnset()" class="bt-button">UNSET</button>
+            }
+            <button (click)="close()" class="bt-button">DISMISS</button>
         </div>
-      </div>
-      @if (!data.force.factionLock) {
-        <p class="faction-hint">The faction will change dynamically based on force composition. Confirm to lock it in.</p>
-      }
-      <div class="wide-dialog-actions">
-        <button (click)="submit()" class="bt-button">CONFIRM</button>
-        @if (!data.hideUnset) {
-          <button (click)="submitUnset()" class="bt-button">UNSET</button>
-        }
-        <button (click)="close()" class="bt-button">DISMISS</button>
-      </div>
     </div>
     `,
     styles: [`
@@ -248,6 +303,25 @@ export interface RenameForceDialogResult {
             align-items: center;
         }
 
+        .faction-selector-era-chip {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2px;
+        }
+
+        .faction-selector-era-chip.past-era::before {
+            content: '';
+            position: absolute;
+            left: -2px;
+            top: -1px;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 0, 0, 0.2);
+            pointer-events: none;
+        }
+
         .faction-selector-era-icon {
             width: 1.2em;
             height: 1.2em;
@@ -255,18 +329,22 @@ export interface RenameForceDialogResult {
         }
 
         .faction-selector-era-icon.unavailable {
-            opacity: 0.15;
+            opacity: 0.18;
         }
 
         .placeholder {
             color: #888;
         }
 
-        .faction-hint {
+        .hint {
             font-size: 0.85em;
-            color: var(--text-color-tertiary);
-            margin: 4px 0 0;
+            color: var(--bt-yellow);
+            margin: 0;
             text-align: center;
+            
+            &.warning {
+                color: red;
+            }
         }
 
         .name-input-wrapper {
@@ -305,15 +383,82 @@ export interface RenameForceDialogResult {
         .clear-btn:hover {
             color: #ff4444;
         }
+
+        @media (max-width: 500px) {
+            .faction-selector-era-chip {
+                padding: 0;
+            }
+        }
+
+        @media (max-width: 370px) {
+            .faction-selector-era-icon {
+                height: 0.9em;
+                width: 0.9em;
+            }
+        }
+
+        .era-selector {
+            box-sizing: border-box;
+            flex: 1 1 auto;
+            min-width: 0;
+            padding: 10px 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            text-align: left;
+            font-size: 1em;
+        }
+
+        .era-selector:hover {
+            border-color: #666;
+        }
+
+        .era-selector-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+        }
+
+        .era-selector-icon {
+            width: 2.4em;
+            height: 2.4em;
+            object-fit: contain;
+            flex-shrink: 0;
+        }
+
+        .era-selector-details {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .era-selector-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            padding-right: 16px;
+        }
+
+        .era-selector-name {
+            font-weight: 600;
+        }
+
+        .era-selector-years {
+            font-size: 0.85em;
+            color: var(--text-color-secondary);
+        }
     `]
 })
 
-export class RenameForceDialogComponent {
-    readonly FACTION_MERCENARY = FACTION_MERCENARY;
-
+export class RenameForceDialogComponent implements OnDestroy {
     inputRef = viewChild.required<ElementRef<HTMLDivElement>>('inputRef');
     factionTrigger = viewChild.required<ElementRef<HTMLButtonElement>>('factionTrigger');
     factionTriggerWrapper = viewChild.required<ElementRef<HTMLDivElement>>('factionTriggerWrapper');
+    eraTriggerWrapper = viewChild.required<ElementRef<HTMLDivElement>>('eraTriggerWrapper');
 
     public dialogRef: DialogRef<RenameForceDialogResult | null, RenameForceDialogComponent> = inject(DialogRef);
     readonly data: RenameForceDialogData = inject(DIALOG_DATA);
@@ -321,11 +466,76 @@ export class RenameForceDialogComponent {
     private overlayManager = inject(OverlayManagerService);
     private injector = inject(Injector);
     private destroyRef = inject(DestroyRef);
+    private unitAvailabilitySource = inject(UnitAvailabilitySourceService);
+    private readonly eraPointerActivationGuard = new DropdownPointerActivationGuard();
+    private readonly factionPointerActivationGuard = new DropdownPointerActivationGuard();
+    private eraPanelRef: ComponentRef<EraDropdownPanelComponent> | null = null;
+    private factionPanelRef: ComponentRef<FactionDropdownPanelComponent> | null = null;
+    private eraClosedSubscription: { unsubscribe(): void } | null = null;
+    private factionClosedSubscription: { unsubscribe(): void } | null = null;
+    readonly eraOptionsId = 'renameForceEra-options';
+    readonly factionOptionsId = 'renameForceFaction-options';
+
+    getFactionImg = getFactionImg;
 
     /** Tracks whether the name input has text */
     nameHasText = signal<boolean>(!!this.data.force.name);
 
     selectedFaction = signal<Faction | null>(this.data.force.faction());
+    selectedEra = signal<Era | null>(this.data.force.era());
+    eraDropdownOpen = signal(false);
+    factionDropdownOpen = signal(false);
+    activeEraId = signal<number | null>(this.data.force.era()?.id ?? null);
+    activeFactionId = signal<FactionId | null>(this.data.force.faction()?.id ?? null);
+    availabilityContext = computed(() => this.unitAvailabilitySource.createForceAvailabilityContextForUnits(
+        this.data.force.units().map((unit) => unit.getUnit()),
+        this.dataService.getEras(),
+    ));
+
+    eraDisplayList = computed<EraDisplayInfo[]>(() => {
+        const eras = this.dataService.getEras();
+        const units = this.data.force.units();
+        const availabilityContext = this.availabilityContext();
+        if (units.length === 0) {
+            return eras.map(era => ({ era, matchPercentage: 100 }));
+        }
+        const extinctFaction = this.dataService.getFactionById(MULFACTION_EXTINCT) ?? null;
+
+        return eras.map(era => {
+            const validation = getEraUnitValidationSummary(units, era, eras, extinctFaction, availabilityContext);
+            return {
+                era,
+                matchPercentage: validation.totalUnits > 0
+                    ? validation.validUnits / validation.totalUnits
+                    : 1,
+            };
+        });
+    });
+
+    selectedEraDisplay = computed<EraDisplayInfo | null>(() => {
+        const era = this.selectedEra();
+        if (!era) return null;
+        return this.eraDisplayList().find(e => e.era.id === era.id) ?? null;
+    });
+
+    selectedEraWarning = computed<string | null>(() => {
+        const availabilityContext = this.availabilityContext();
+        const extinctFaction = this.dataService.getFactionById(MULFACTION_EXTINCT) ?? null;
+        return buildEraWarningMessage(
+            this.data.force.units(),
+            this.selectedEra(),
+            this.selectedFaction(),
+            this.dataService.getEras(),
+            extinctFaction,
+            availabilityContext,
+            (faction, era) => this.unitAvailabilitySource.factionExistsInEra(faction, era, availabilityContext.source),
+        );
+    });
+
+    hasEraWarningState = computed<boolean>(() => {
+        return !!this.selectedEraWarning()
+            || (this.selectedEraDisplay()?.matchPercentage ?? 1) < 1;
+    });
 
     selectedFactionDisplay = computed<FactionDisplayInfo | null>(() => {
         const faction = this.selectedFaction();
@@ -338,29 +548,15 @@ export class RenameForceDialogComponent {
         return ForceNamerUtil.buildFactionDisplayList(
             units,
             this.dataService.getFactions(),
-            this.dataService.getEras()
+            this.dataService.getEras(),
+            this.selectedEra(),
+            this.availabilityContext()
         );
     });
 
-    forceSizeResult = computed<GroupSizeResult | null>(() => {
-        const units = this.data.force.units();
-        if (units.length === 0) return null;
-        const factionName = this.selectedFaction()?.name ?? 'Mercenary';
-        const isComStarOrWoB = factionName.includes('ComStar') || factionName.includes('Word of Blake');
-        const techBase = isComStarOrWoB ? '' : this.data.force.techBase();
-        const groupResults: GroupSizeResult[] = this.data.force.groups()
-            .filter(g => g.units().length > 0)
-            .map(g => g.sizeResult());
-        return resolveFromGroups(techBase, factionName, groupResults);
-    });
-
-    forceSizeName = computed<string>(() => {
-        return this.forceSizeResult()?.name.toUpperCase() ?? 'FORCE';
-    });
-    
     /** Placeholder name based force size. */
     placeholderName = computed<string>(() => {
-        return this.data.force.sizeName() ?? 'Force';
+        return this.data.force.organizationalName() ?? 'Force';
     });
 
     constructor() { }
@@ -385,11 +581,120 @@ export class RenameForceDialogComponent {
         }
     }
 
+    toggleEraDropdown(): void {
+        if (this.eraDropdownOpen()) {
+            this.closeEraDropdown();
+            return;
+        }
+        this.openEraDropdown();
+    }
+
+    openEraDropdown(): void {
+        if (this.eraDropdownOpen()) return;
+        this.eraPointerActivationGuard.suppress();
+        this.activeEraId.set(this.selectedEra()?.id ?? null);
+        this.eraDropdownOpen.set(true);
+
+        const eraTriggerWrapper = this.eraTriggerWrapper();
+        if (!eraTriggerWrapper) {
+            this.eraDropdownOpen.set(false);
+            return;
+        }
+
+        const portal = new ComponentPortal(EraDropdownPanelComponent, null, this.injector);
+
+        const { componentRef, closed } = this.overlayManager.createManagedOverlay(
+            'era-dropdown',
+            eraTriggerWrapper,
+            portal,
+            {
+                closeOnOutsideClick: true,
+                panelClass: 'era-dropdown-overlay',
+                matchTriggerWidth: true,
+                anchorActiveSelector: '.dropdown-option.active, .none-option.active'
+            }
+        );
+
+        this.eraPanelRef = componentRef;
+        this.syncEraPanelInputs();
+
+        outputToObservable(componentRef.instance.selected)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((era: Era | null) => {
+                if (era?.id !== this.selectedEra()?.id) {
+                    this.selectedEra.set(era);
+                }
+                this.closeEraDropdown();
+            });
+
+        outputToObservable(componentRef.instance.pointerHovered)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(event => this.activatePointerEraOption(event));
+
+        this.eraClosedSubscription = closed.subscribe(() => {
+            this.eraDropdownOpen.set(false);
+            this.eraPanelRef = null;
+            this.eraClosedSubscription = null;
+        });
+    }
+
+    onEraTriggerKeydown(event: KeyboardEvent): void {
+        switch (event.key) {
+            case 'ArrowDown':
+                event.preventDefault();
+                this.openEraDropdown();
+                this.moveActiveEraOption(1);
+                break;
+            case 'ArrowUp':
+                event.preventDefault();
+                this.openEraDropdown();
+                this.moveActiveEraOption(-1);
+                break;
+            case 'Home':
+                event.preventDefault();
+                this.openEraDropdown();
+                this.activateKeyboardEraOption(0);
+                break;
+            case 'End':
+                event.preventDefault();
+                this.openEraDropdown();
+                this.activateKeyboardEraOption(this.visibleEraIds().length - 1);
+                break;
+            case 'Tab':
+                if (!this.eraDropdownOpen()) break;
+                event.preventDefault();
+                this.moveActiveEraOption(event.shiftKey ? -1 : 1);
+                break;
+            case 'Enter':
+            case ' ':
+                event.preventDefault();
+                if (this.eraDropdownOpen()) {
+                    this.selectActiveEraOption();
+                } else {
+                    this.openEraDropdown();
+                }
+                break;
+            case 'Escape':
+                event.preventDefault();
+                this.closeEraDropdown();
+                break;
+        }
+    }
+
+    activatePointerEraOption(event: EraDropdownPointerHoverEvent): void {
+        if (this.eraPointerActivationGuard.shouldIgnore(event)) return;
+        if (event.eraId === this.activeEraId()) return;
+
+        this.activeEraId.set(event.eraId);
+        this.syncEraPanelInputs(false);
+    }
+
     submit() {
         const value = this.inputRef().nativeElement.textContent?.trim() || '';
         this.dialogRef.close({
             name: value,
             faction: this.selectedFaction(),
+            era: this.selectedEra(),
             action: 'confirm'
         });
     }
@@ -398,13 +703,14 @@ export class RenameForceDialogComponent {
         this.dialogRef.close({
             name: '',
             faction: null,
+            era: null,
             action: 'unset'
         });
     }
 
     fillRandomName() {
         const faction = this.selectedFaction();
-        const newName = ForceNamerUtil.generateForceNameForFaction(faction);
+        const newName = ForceNamerUtil.generateForceNameForFaction(faction, this.dataService.getForceNameWords());
         this.setInputText(newName);
     }
 
@@ -413,21 +719,37 @@ export class RenameForceDialogComponent {
         const randomFaction = ForceNamerUtil.pickRandomFaction(
             units,
             this.dataService.getFactions(),
-            this.dataService.getEras()
+            this.dataService.getEras(),
+            this.selectedEra(),
+            this.availabilityContext()
         );
         if (randomFaction === this.selectedFaction()) return; // no change
         this.selectedFaction.set(randomFaction);
     }
 
     toggleFactionDropdown(): void {
-        this.overlayManager.closeManagedOverlay('faction-dropdown');
+        if (this.factionDropdownOpen()) {
+            this.closeFactionDropdown();
+            return;
+        }
+        this.openFactionDropdown();
+    }
+
+    openFactionDropdown(): void {
+        if (this.factionDropdownOpen()) return;
+        this.factionPointerActivationGuard.suppress();
+        this.activeFactionId.set(this.selectedFaction()?.id ?? null);
+        this.factionDropdownOpen.set(true);
 
         const factionTriggerWrapper = this.factionTriggerWrapper();
-        if (!factionTriggerWrapper) return;
+        if (!factionTriggerWrapper) {
+            this.factionDropdownOpen.set(false);
+            return;
+        }
 
         const portal = new ComponentPortal(FactionDropdownPanelComponent, null, this.injector);
 
-        const { componentRef } = this.overlayManager.createManagedOverlay(
+        const { componentRef, closed } = this.overlayManager.createManagedOverlay(
             'faction-dropdown',
             factionTriggerWrapper,
             portal,
@@ -439,16 +761,207 @@ export class RenameForceDialogComponent {
             }
         );
 
-        componentRef.setInput('factions', this.factionDisplayList());
-        componentRef.setInput('selectedFactionId', this.selectedFaction()?.id ?? null);
+        this.factionPanelRef = componentRef;
+        this.syncFactionPanelInputs();
 
         outputToObservable(componentRef.instance.selected)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((faction: Faction | null) => {
-                this.overlayManager.closeManagedOverlay('faction-dropdown');
-                if (faction?.id === this.selectedFaction()?.id) return; // no change
-                this.selectedFaction.set(faction);
+                if (faction?.id !== this.selectedFaction()?.id) {
+                    this.selectedFaction.set(faction);
+                }
+                this.closeFactionDropdown();
             });
+
+        outputToObservable(componentRef.instance.pointerHovered)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(event => this.activatePointerFactionOption(event));
+
+        this.factionClosedSubscription = closed.subscribe(() => {
+            this.factionDropdownOpen.set(false);
+            this.factionPanelRef = null;
+            this.factionClosedSubscription = null;
+        });
+    }
+
+    onFactionTriggerKeydown(event: KeyboardEvent): void {
+        switch (event.key) {
+            case 'ArrowDown':
+                event.preventDefault();
+                this.openFactionDropdown();
+                this.moveActiveFactionOption(1);
+                break;
+            case 'ArrowUp':
+                event.preventDefault();
+                this.openFactionDropdown();
+                this.moveActiveFactionOption(-1);
+                break;
+            case 'Home':
+                event.preventDefault();
+                this.openFactionDropdown();
+                this.activateKeyboardFactionOption(0);
+                break;
+            case 'End':
+                event.preventDefault();
+                this.openFactionDropdown();
+                this.activateKeyboardFactionOption(this.visibleFactionIds().length - 1);
+                break;
+            case 'Tab':
+                if (!this.factionDropdownOpen()) break;
+                event.preventDefault();
+                this.moveActiveFactionOption(event.shiftKey ? -1 : 1);
+                break;
+            case 'Enter':
+            case ' ':
+                event.preventDefault();
+                if (this.factionDropdownOpen()) {
+                    this.selectActiveFactionOption();
+                } else {
+                    this.openFactionDropdown();
+                }
+                break;
+            case 'Escape':
+                event.preventDefault();
+                this.closeFactionDropdown();
+                break;
+        }
+    }
+
+    activatePointerFactionOption(event: FactionDropdownPointerHoverEvent): void {
+        if (this.factionPointerActivationGuard.shouldIgnore(event)) return;
+        if (event.factionId === this.activeFactionId()) return;
+
+        this.activeFactionId.set(event.factionId);
+        this.syncFactionPanelInputs(false);
+    }
+
+    ngOnDestroy(): void {
+        this.closeEraDropdown();
+        this.closeFactionDropdown();
+    }
+
+    private closeEraDropdown(): void {
+        this.eraDropdownOpen.set(false);
+        this.eraClosedSubscription?.unsubscribe();
+        this.eraClosedSubscription = null;
+        this.eraPanelRef = null;
+        this.overlayManager.closeManagedOverlay('era-dropdown');
+    }
+
+    private closeFactionDropdown(): void {
+        this.factionDropdownOpen.set(false);
+        this.factionClosedSubscription?.unsubscribe();
+        this.factionClosedSubscription = null;
+        this.factionPanelRef = null;
+        this.overlayManager.closeManagedOverlay('faction-dropdown');
+    }
+
+    private syncEraPanelInputs(scrollActiveIntoView = true): void {
+        const panelRef = this.eraPanelRef;
+        if (!panelRef) return;
+
+        panelRef.setInput('eras', this.eraDisplayList());
+        panelRef.setInput('selectedEraId', this.selectedEra()?.id ?? null);
+        panelRef.setInput('activeEraId', this.activeEraId());
+        panelRef.setInput('label', 'Select era');
+        panelRef.setInput('optionsId', this.eraOptionsId);
+        panelRef.changeDetectorRef.detectChanges();
+
+        if (scrollActiveIntoView) {
+            scrollActiveOptionIntoView(
+                panelRef.location.nativeElement as HTMLElement,
+                '[data-scroll-container]',
+                '.dropdown-option.keyboard-active'
+            );
+        }
+    }
+
+    private syncFactionPanelInputs(scrollActiveIntoView = true): void {
+        const panelRef = this.factionPanelRef;
+        if (!panelRef) return;
+
+        panelRef.setInput('factions', this.factionDisplayList());
+        panelRef.setInput('selectedFactionId', this.selectedFaction()?.id ?? null);
+        panelRef.setInput('activeFactionId', this.activeFactionId());
+        panelRef.setInput('label', 'Select faction');
+        panelRef.setInput('optionsId', this.factionOptionsId);
+        panelRef.changeDetectorRef.detectChanges();
+
+        if (scrollActiveIntoView) {
+            scrollActiveOptionIntoView(
+                panelRef.location.nativeElement as HTMLElement,
+                '[data-scroll-container]',
+                '.dropdown-option.keyboard-active'
+            );
+        }
+    }
+
+    private moveActiveEraOption(delta: number): void {
+        const ids = this.visibleEraIds();
+        if (ids.length === 0) return;
+
+        const currentIndex = Math.max(0, ids.indexOf(this.activeEraId()));
+        this.activateKeyboardEraOption((currentIndex + delta + ids.length) % ids.length);
+    }
+
+    private moveActiveFactionOption(delta: number): void {
+        const ids = this.visibleFactionIds();
+        if (ids.length === 0) return;
+
+        const currentIndex = Math.max(0, ids.indexOf(this.activeFactionId()));
+        this.activateKeyboardFactionOption((currentIndex + delta + ids.length) % ids.length);
+    }
+
+    private activateKeyboardEraOption(index: number): void {
+        const ids = this.visibleEraIds();
+        if (ids.length === 0) return;
+
+        this.eraPointerActivationGuard.suppress();
+        this.activeEraId.set(ids[Math.max(0, Math.min(index, ids.length - 1))]);
+        this.syncEraPanelInputs();
+    }
+
+    private activateKeyboardFactionOption(index: number): void {
+        const ids = this.visibleFactionIds();
+        if (ids.length === 0) return;
+
+        this.factionPointerActivationGuard.suppress();
+        this.activeFactionId.set(ids[Math.max(0, Math.min(index, ids.length - 1))]);
+        this.syncFactionPanelInputs();
+    }
+
+    private selectActiveEraOption(): void {
+        const eraId = this.activeEraId();
+        const era = eraId == null
+            ? null
+            : this.eraDisplayList().find(item => item.era.id === eraId)?.era ?? null;
+        this.selectedEra.set(era);
+        this.closeEraDropdown();
+    }
+
+    private selectActiveFactionOption(): void {
+        const factionId = this.activeFactionId();
+        const faction = factionId == null
+            ? null
+            : this.factionDisplayList().find(item => item.faction.id === factionId)?.faction ?? null;
+        this.selectedFaction.set(faction);
+        this.closeFactionDropdown();
+    }
+
+    private visibleEraIds(): (number | null)[] {
+        return this.eraPanelRef?.instance.visibleEraIds() ?? [null, ...this.eraDisplayList().map(item => item.era.id)];
+    }
+
+    private visibleFactionIds(): (FactionId | null)[] {
+        if (this.factionPanelRef) return this.factionPanelRef.instance.visibleFactionIds();
+
+        const matching = this.factionDisplayList().filter(item => item.isMatching);
+        const nonMatching = this.factionDisplayList().filter(item => !item.isMatching);
+        return [
+            null,
+            ...matching.map(item => item.faction.id),
+            ...nonMatching.map(item => item.faction.id),
+        ];
     }
 
     private setInputText(text: string): void {
@@ -467,4 +980,8 @@ export class RenameForceDialogComponent {
     close(value = null) {
         this.dialogRef.close(null);
     }
+
+    getEraTitle = buildFactionEraTitle;
+
+    getEraIconFilter = getFactionEraIconFilter;
 }

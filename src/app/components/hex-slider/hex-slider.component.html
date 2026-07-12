@@ -1,0 +1,36 @@
+<div
+    class="hex-slider"
+    [class.has-modifier]="modifierLabel() !== null"
+    role="slider"
+    tabindex="0"
+    [attr.aria-label]="ariaLabel()"
+    [attr.aria-valuemin]="effectiveMinValue()"
+    [attr.aria-valuemax]="maxValue()"
+    [attr.aria-valuenow]="clampedValue()"
+    [attr.aria-valuetext]="valueLabel()"
+    (keydown)="onKeyDown($event)"
+    (pointerdown)="startDrag($event)">
+    <div class="slider-scale" #sliderScale>
+        <div class="track" aria-hidden="true">
+            @if (blockedMinPercent() > 0) {
+                <div class="blocked-track" [style.width.%]="blockedMinPercent()"></div>
+            }
+        </div>
+        @for (tick of displayTicks(); track tick) {
+            <span class="tick" [style.left.%]="percentForValue(tick)" aria-hidden="true">
+                <span class="tick-label" [class.dot-label]="isCondensedDotTick(tick) && !isOverrideTick(tick)" [class.override-label]="isOverrideTick(tick)">{{ tickLabel(tick) }}</span>
+            </span>
+        }
+        <div class="thumb-marker" [style.left.%]="valuePercent()" aria-hidden="true">
+            @if (touchDragging()) {
+                <div class="floating-value-label">{{ valueLabel() }}</div>
+            }
+            <div class="hex" [class.value-assigned]="valueAssigned()" [class.danger]="danger()" [class.compact-label]="compactLabel()" [class.has-modifier]="visibleModifierLabel() !== null">
+                <span class="hex-value-label">{{ valueLabel() }}</span>
+                @if (visibleModifierLabel(); as modifier) {
+                    <span class="modifier-badge">{{ modifier }}</span>
+                }
+            </div>
+        </div>
+    </div>
+</div>

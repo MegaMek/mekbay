@@ -31,22 +31,22 @@
  * affiliated with Microsoft.
  */
 
-import { Component, computed, signal, inject, effect, ChangeDetectionStrategy, viewChild, ElementRef, afterNextRender, Injector, DestroyRef } from '@angular/core';
+import { Component, computed, signal, inject, effect, ChangeDetectionStrategy, viewChild, type ElementRef, afterNextRender, Injector, DestroyRef } from '@angular/core';
 
-import { SwUpdate } from '@angular/service-worker';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
 import { PageViewerComponent } from './components/page-viewer/page-viewer.component';
 import { AlphaStrikeViewerComponent } from './components/alpha-strike-viewer/alpha-strike-viewer.component';
 import { DataService } from './services/data.service';
 import { ForceBuilderService } from './services/force-builder.service';
-import { Unit } from './models/units.model';
+import type { Unit } from './models/units.model';
 import { LayoutService } from './services/layout.service';
 import { LayoutModule } from '@angular/cdk/layout';
-import { UnitDetailsDialogComponent, UnitDetailsDialogData } from './components/unit-details-dialog/unit-details-dialog.component';
+import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from './components/unit-details-dialog/unit-details-dialog.component';
 import { OptionsService } from './services/options.service';
 import { OptionsDialogComponent } from './components/options-dialog/options-dialog.component';
 import { SidebarComponent } from './components/sidebar/sidebar.component';
+import { ConnectionStatusBadgeComponent } from './components/connection-status-badge/connection-status-badge.component';
+import { ModeSwitchComponent } from './components/mode-switch/mode-switch.component';
 import { LicenseDialogComponent } from './components/license-dialog/license-dialog.component';
 import { ToastsComponent } from './components/toasts/toasts.component';
 import { SavedSearchesService } from './services/saved-searches.service';
@@ -54,17 +54,24 @@ import { WsService } from './services/ws.service';
 import { ToastService } from './services/toast.service';
 import { DialogsService } from './services/dialogs.service';
 import { BetaDialogComponent } from './components/beta-dialog/beta-dialog.component';
-import { UpdateButtonComponent } from './components/update-button/update-button.component';
 import { UnitSearchFiltersService } from './services/unit-search-filters.service';
 import { DomPortal, PortalModule } from '@angular/cdk/portal';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { APP_VERSION_STRING, BUILD_BRANCH } from './build-meta';
 import { LoggerService } from './services/logger.service';
-import { isIOS, isRunningStandalone } from './utils/platform.util';
+import { isAndroid, isIOS, isRunningStandalone } from './utils/platform.util';
 import { GameService } from './services/game.service';
+import { AccountAuthService } from './services/account-auth.service';
+import { AppUpdateService } from './services/app-update.service';
+import { LoadingSpinnerComponent } from './components/loading-spinner/loading-spinner.component';
 
 import { GameSystem } from './models/common.model';
-import { UrlStateService } from './services/url-state.service';
+import { Router, RouterOutlet } from '@angular/router';
+import { UrlService } from './services/url.service';
+
+const ANDROID_PWA_BACK_EXIT_HISTORY_STATE_KEY = 'mekbayAndroidPwaBackExit';
+const ANDROID_PWA_BACK_RESTORE_GUARD_MS = 1000;
+const PENDING_UPDATE_RELOAD_AFTER_NO_FOCUS_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 /*
  * Author: Drake
@@ -77,25 +84,29 @@ import { UrlStateService } from './services/url-state.service';
     PageViewerComponent,
     AlphaStrikeViewerComponent,
     LayoutModule,
-    UpdateButtonComponent,
     SidebarComponent,
+    ConnectionStatusBadgeComponent,
+    ModeSwitchComponent,
     UnitSearchComponent,
     OverlayModule,
-    PortalModule
+    PortalModule,
+    LoadingSpinnerComponent,
+    RouterOutlet
 ],
     templateUrl: './app.html',
     styleUrl: './app.scss',
     host: {
         '(window:online)': 'onOnline()',
-        '(window:focus)': 'onFocus()'
+        '(window:focus)': 'onFocus()',
+        '(window:keydown.escape)': 'closeHomeActionsPanel()'
     }
 })
 export class App {
     logger = inject(LoggerService);
-    private swUpdate = inject(SwUpdate);
     protected dataService = inject(DataService);
     forceBuilderService = inject(ForceBuilderService);
     protected layoutService = inject(LayoutService);
+    protected appUpdateService = inject(AppUpdateService);
     private wsService = inject(WsService);
     private dialogService = inject(DialogsService);
     private toastService = inject(ToastService);
@@ -103,23 +114,38 @@ export class App {
     public unitSearchFiltersService = inject(UnitSearchFiltersService);
     public injector = inject(Injector);
     public gameService = inject(GameService);
-    private urlStateService = inject(UrlStateService);
+    private accountAuthService = inject(AccountAuthService);
+    private router = inject(Router);
+    private urlService = inject(UrlService);
     private savedSearchesService = inject(SavedSearchesService);
     private destroyRef = inject(DestroyRef);
 
     protected GameSystem = GameSystem;
     protected buildInfo = APP_VERSION_STRING;
     protected isMainBuild = BUILD_BRANCH === 'main';
-    private lastUpdateCheck: number = 0;
-    private updateCheckInterval = 60 * 60 * 1000; // 1 hour
     private updateCheckTimeoutId: number | null = null;
-    protected updateAvailable = signal(false);
     protected showInstallButton = signal(false);
+    protected homeActionsPanelOpen = signal(false);
     private deferredPrompt: any;
     private urlAtLastBlur = this.getCurrentAppUrl();
     private lastHandledCapturedUrl: string | null = null;
     private lastHandledCapturedUrlAt = 0;
     private readonly capturedUrlDedupWindowMs = 2000;
+    private focusLostAt: number | null = document.visibilityState === 'hidden' ? Date.now() : null;
+    private androidPwaBackExitEnabled = false;
+    private androidPwaBackRestoring = false;
+    private androidPwaBackRestoreTimeoutId: number | null = null;
+    private readonly keyboardNavigationKeys = new Set([
+        'Tab',
+        'ArrowUp',
+        'ArrowRight',
+        'ArrowDown',
+        'ArrowLeft',
+        'Home',
+        'End',
+        'PageUp',
+        'PageDown',
+    ]);
 
 
     private readonly unitSearchContainer = viewChild.required<ElementRef>('unitSearchContainer');
@@ -131,15 +157,13 @@ export class App {
     protected unitSearchPortalForceBuilder = signal<DomPortal<any> | undefined>(undefined);
 
     constructor() {
-        // Register as a URL state consumer - must call markConsumerReady when done reading URL
-        this.urlStateService.registerConsumer('app');
-        
         // if ("virtualKeyboard" in navigator) {
         //     (navigator as any).virtualKeyboard.overlaysContent = true; // Opt out of the automatic handling.
         // }
         this.dataService.initialize();
         this.savedSearchesService.initialize();
         this.savedSearchesService.registerWsHandlers();
+        void this.accountAuthService.handleOAuthRedirectReturn();
         
         // Set up foreign tag import dialog callback
         this.unitSearchFiltersService.setForeignTagDialogCallback(
@@ -156,40 +180,30 @@ export class App {
         document.addEventListener('contextmenu', this.contextMenuHandler);
         window.addEventListener('beforeunload', this.beforeUnloadHandler);
         window.addEventListener('blur', this.onBlur);
+        document.addEventListener('visibilitychange', this.visibilityChangeHandler);
+        window.addEventListener('keydown', this.keyboardNavigationHandler, true);
+        window.addEventListener('pointerdown', this.pointerNavigationHandler, true);
+        window.addEventListener('mousedown', this.pointerNavigationHandler, true);
+        window.addEventListener('touchstart', this.pointerNavigationHandler, true);
+        this.initializeAndroidPwaBackExitHandling();
         // window.addEventListener('popstate', this.historyNavigationHandler);
         // if ('serviceWorker' in navigator) {
         //     navigator.serviceWorker.addEventListener('message', this.serviceWorkerMessageHandler);
         // }
-        
-        if (this.swUpdate.isEnabled) {
-            this.swUpdate.versionUpdates
-                .pipe(takeUntilDestroyed(this.destroyRef))
-                .subscribe((event) => {
-                    switch (event.type) {
-                        case 'VERSION_DETECTED':
-                            this.logger.info('Service worker update detected, downloading...');
-                            break;
-                        case 'VERSION_READY':
-                            this.logger.info('Service worker update is ready');
-                            this.updateAvailable.set(true);
-                            break;
-                        case 'VERSION_INSTALLATION_FAILED':
-                            this.logger.error('Service worker update installation failed: ' + event.error);
-                            break;
-                        case 'NO_NEW_VERSION_DETECTED':
-                            // this.logger.info('No new service worker version detected');
-                            break;
-                    }
-                });
-            this.startPeriodicUpdateChecks();
-            this.checkForUpdate(true);
-        }
+        this.scheduleUpdateCheckTimer();
         this.wsService.setGlobalErrorHandler((msg: string) => {
             this.toastService.showToast(msg, 'error');
         });
         effect(() => {
             const colorMode = this.optionsService.options().sheetsColor;
             document.documentElement.classList.toggle('night-mode', (colorMode === 'night'));
+        });
+        effect(() => {
+            if (!this.dataService.isDataReady() || this.optionsService.options().availabilitySource !== 'megamek') {
+                return;
+            }
+
+            void this.dataService.ensureMegaMekAvailabilityCatalogInitialized();
         });
         effect(() => {
             const unitSearchContainer = this.unitSearchContainer();
@@ -258,38 +272,46 @@ export class App {
         effect(() => {
             if (this.dataService.isDataReady() && !initialShareHandled) {
                 initialShareHandled = true;
-                // Use UrlStateService to get initial URL params (captured before any routing effects)
-                const hasProtocolLink = this.urlStateService.hasInitialParam('protocolLink');
-                const sharedUnitName = this.urlStateService.getInitialParam('shareUnit');
-                const tab = this.urlStateService.getInitialParam('tab') ?? undefined;
-                if (hasProtocolLink) {
-                    void this.handleCapturedUrl(window.location.href, 'protocol');
-                } else if (sharedUnitName) {
+                // Routed pages (/toe, /forcegenerator, /collection) are handled
+                // natively by the router; only query-param-driven startup actions
+                // are handled here, based on the initial URL captured at startup.
+                const onHomePage = this.urlService.initialPathname.replace(/\/+$/, '') === '';
+                const organizationId = this.urlService.getInitialParam('toe');
+                const sharedUnitName = this.urlService.getInitialParam('shareUnit');
+                const tab = this.urlService.getInitialParam('tab') ?? undefined;
+                if (onHomePage && organizationId) {
+                    // Legacy ?toe=... link on the home page: open the TO&E page
+                    void this.forceBuilderService.showForceOrgDialog(organizationId);
+                } else if (onHomePage && sharedUnitName) {
                     const unit = this.dataService.getUnitByName(sharedUnitName);
                     if (unit) {
                         this.showSingleUnitDetails(unit, tab);
                     }
-                } else {
+                } else if (onHomePage) {
                     afterNextRender(() => {
                         // Don't focus if loading forces
-                        if (this.urlStateService.hasInitialParam('instance') || this.urlStateService.hasInitialParam('units')) return;
+                        if (this.urlService.hasInitialParam('instance') || this.urlService.hasInitialParam('units')) return;
                         this.unitSearchComponentRef()?.focusInput();
                     }, { injector: this.injector });
                 }
-                // Signal that we're done reading URL state
-                this.urlStateService.markConsumerReady('app');
-                
+
                 // Process any pending foreign tags from URL (async, don't block)
                 this.unitSearchFiltersService.processPendingForeignTags();
             }
         });
         this.destroyRef.onDestroy(() => {
-            this.stopPeriodicUpdateChecks();
+            this.clearUpdateCheckTimer();
             this.removeBeforeUnloadHandler();
             window.removeEventListener('beforeinstallprompt', this.beforeInstallPromptHandler);
             window.removeEventListener('appinstalled', this.appInstalledHandler);
             document.removeEventListener('contextmenu', this.contextMenuHandler);
             window.removeEventListener('blur', this.onBlur);
+            document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
+            window.removeEventListener('keydown', this.keyboardNavigationHandler, true);
+            window.removeEventListener('pointerdown', this.pointerNavigationHandler, true);
+            window.removeEventListener('mousedown', this.pointerNavigationHandler, true);
+            window.removeEventListener('touchstart', this.pointerNavigationHandler, true);
+            this.removeAndroidPwaBackExitHandling();
             // window.removeEventListener('popstate', this.historyNavigationHandler);
             // if ('serviceWorker' in navigator) {
             //     navigator.serviceWorker.removeEventListener('message', this.serviceWorkerMessageHandler);
@@ -299,53 +321,169 @@ export class App {
 
     hasForces = this.forceBuilderService.hasForces;
 
+    private readonly keyboardNavigationHandler = (event: KeyboardEvent) => {
+        if (event.metaKey || event.ctrlKey || event.altKey) {
+            return;
+        }
+
+        if (this.keyboardNavigationKeys.has(event.key)) {
+            document.documentElement.classList.add('keyboard-navigation');
+        }
+    };
+
+    private readonly pointerNavigationHandler = () => {
+        document.documentElement.classList.remove('keyboard-navigation');
+    };
+
+    private initializeAndroidPwaBackExitHandling(): void {
+        if (!this.shouldHandleAndroidPwaBackExit()) {
+            return;
+        }
+
+        this.androidPwaBackExitEnabled = true;
+        window.addEventListener('popstate', this.androidPwaBackExitHandler);
+        this.pushAndroidPwaBackExitState();
+    }
+
+    private removeAndroidPwaBackExitHandling(): void {
+        window.removeEventListener('popstate', this.androidPwaBackExitHandler);
+        this.clearAndroidPwaBackRestoreGuard();
+        this.androidPwaBackExitEnabled = false;
+    }
+
+    private shouldHandleAndroidPwaBackExit(): boolean {
+        // iOS web apps do not expose the same app-closing Back button path, and window.close() is not reliable there.
+        return isAndroid()
+            && isRunningStandalone()
+            && typeof window.history.pushState === 'function'
+            && typeof window.history.forward === 'function';
+    }
+
+    private pushAndroidPwaBackExitState(): void {
+        if (this.isAndroidPwaBackExitState(window.history.state)) {
+            return;
+        }
+
+        try {
+            window.history.pushState(
+                this.withAndroidPwaBackExitState(window.history.state),
+                '',
+                window.location.href
+            );
+        } catch (err) {
+            window.removeEventListener('popstate', this.androidPwaBackExitHandler);
+            this.androidPwaBackExitEnabled = false;
+            this.logger.warn('Unable to initialize Android PWA back handling: ' + err);
+        }
+    }
+
+    private replaceCurrentHistoryState(url: string): void {
+        const state = this.androidPwaBackExitEnabled
+            ? this.withAndroidPwaBackExitState(window.history.state)
+            : null;
+        window.history.replaceState(state, '', url);
+    }
+
+    private withAndroidPwaBackExitState(state: unknown): Record<string, unknown> {
+        const stateObject = state && typeof state === 'object' && !Array.isArray(state)
+            ? state as Record<string, unknown>
+            : {};
+        return { ...stateObject, [ANDROID_PWA_BACK_EXIT_HISTORY_STATE_KEY]: true };
+    }
+
+    private isAndroidPwaBackExitState(state: unknown): boolean {
+        return !!state
+            && typeof state === 'object'
+            && (state as Record<string, unknown>)[ANDROID_PWA_BACK_EXIT_HISTORY_STATE_KEY] === true;
+    }
+
+    private readonly androidPwaBackExitHandler = (event: PopStateEvent) => {
+        if (!this.androidPwaBackExitEnabled) {
+            return;
+        }
+
+        if (this.androidPwaBackRestoring) {
+            this.androidPwaBackRestoring = false;
+            this.clearAndroidPwaBackRestoreGuard();
+            return;
+        }
+
+        if (this.isAndroidPwaBackExitState(event.state)) {
+            return;
+        }
+
+        this.logger.info('[PWA] Android back button reached app root; closing standalone window.');
+        this.androidPwaBackRestoring = true;
+        try {
+            window.history.forward();
+            this.androidPwaBackRestoreTimeoutId = window.setTimeout(() => {
+                this.androidPwaBackRestoring = false;
+                this.androidPwaBackRestoreTimeoutId = null;
+            }, ANDROID_PWA_BACK_RESTORE_GUARD_MS);
+        } catch {
+            this.androidPwaBackRestoring = false;
+        }
+        this.closeStandaloneWindow();
+    };
+
+    private clearAndroidPwaBackRestoreGuard(): void {
+        if (this.androidPwaBackRestoreTimeoutId !== null) {
+            window.clearTimeout(this.androidPwaBackRestoreTimeoutId);
+            this.androidPwaBackRestoreTimeoutId = null;
+        }
+    }
+
+    private closeStandaloneWindow(): void {
+        window.close();
+    }
+
     isCloudForceLoading = computed(() => this.dataService.isCloudForceLoading());
 
     onOnline() {
-        void this.checkForUpdate();
+        void this.checkForUpdateAfterFocusAndRestartTimer();
     }
 
     onFocus() {
-        // TODO: Temporarily disabled, this is for PWA URL handling but is causing issues with normal navigation.
-        // this.processFocusedCapturedUrl();
-        void this.checkForUpdate();
+        this.checkForUpdateAfterResume();
     }
 
     private onBlur = () => {
         this.urlAtLastBlur = this.getCurrentAppUrl();
+        this.markFocusLost();
     };
+
+    private readonly visibilityChangeHandler = () => {
+        if (document.visibilityState === 'hidden') {
+            this.markFocusLost();
+            return;
+        }
+
+        if (document.visibilityState === 'visible') {
+            this.checkForUpdateAfterResume();
+        }
+    };
+
+    private checkForUpdateAfterResume(): void {
+        const focusLostAt = this.focusLostAt;
+        this.focusLostAt = null;
+
+        if (focusLostAt !== null
+            && (Date.now() - focusLostAt) >= PENDING_UPDATE_RELOAD_AFTER_NO_FOCUS_MS
+            && this.appUpdateService.updatePending()) {
+            void this.appUpdateService.restartForUpdate();
+            return;
+        }
+
+        void this.checkForUpdateAfterFocusAndRestartTimer();
+    }
+
+    private markFocusLost(): void {
+        this.focusLostAt ??= Date.now();
+    }
 
     private getCurrentAppUrl(): string {
         return `${window.location.pathname}${window.location.search}`;
     }
-
-    // TODO: Temporarily disabled, this is for PWA URL handling but is causing issues with normal navigation.
-    // private processFocusedCapturedUrl(): void {
-    //     const currentUrl = this.getCurrentAppUrl();
-    //     if (currentUrl === this.urlAtLastBlur) {
-    //         return;
-    //     }
-    //     this.logger.info('[PWA] Focus detected URL change: ' + currentUrl);
-    //     this.urlAtLastBlur = currentUrl;
-    //     void this.handleCapturedUrl(window.location.href, 'focus');
-    // }
-
-    // TODO: Temporarily disabled, this is for PWA URL handling but is causing issues with normal navigation.
-    // private serviceWorkerMessageHandler = (event: MessageEvent) => {
-    //     const data = event.data as { type?: string; url?: string } | undefined;
-    //     if (data?.type !== 'NAVIGATE' || !data.url) {
-    //         return;
-    //     }
-    //     this.logger.info('[PWA] Received NAVIGATE message from service worker: ' + data.url);
-    //     this.urlAtLastBlur = this.getCurrentAppUrl();
-    //     void this.handleCapturedUrl(data.url, 'service-worker');
-    // };
-
-    // TODO: Temporarily disabled, this is for PWA URL handling but is causing issues with normal navigation.
-    // private historyNavigationHandler = () => {
-    //     this.logger.info('[PWA] History navigation detected, evaluating URL');
-    //     void this.handleCapturedUrl(window.location.href, 'history');
-    // };
 
     private shouldSkipDuplicateCapturedUrl(parsed: URL): boolean {
         const normalizedUrl = `${parsed.pathname}${parsed.search}`;
@@ -359,42 +497,25 @@ export class App {
         return false;
     }
 
-    private normalizeProtocolLinkPayload(value: string): string {
-        const decoded = (() => {
-            try {
-                return decodeURIComponent(value);
-            } catch {
-                return value;
-            }
-        })();
-
-        // URLSearchParams decodes '+' as space. Recover our custom scheme if needed.
-        if (decoded.startsWith('web mekbay://')) {
-            return 'web+mekbay://' + decoded.slice('web mekbay://'.length);
-        }
-
-        if (decoded.startsWith('web mekbay:')) {
-            return 'web+mekbay:' + decoded.slice('web mekbay:'.length);
-        }
-
-        return decoded;
+    private scheduleUpdateCheckTimer(): void {
+        this.clearUpdateCheckTimer();
+        this.updateCheckTimeoutId = window.setTimeout(async () => {
+            await this.appUpdateService.checkForUpdate({ force: true });
+            this.scheduleUpdateCheckTimer();
+        }, this.appUpdateService.updateCheckIntervalMs);
     }
 
-    private startPeriodicUpdateChecks() {
-        this.stopPeriodicUpdateChecks();
-        const scheduleNext = () => {
-            this.updateCheckTimeoutId = window.setTimeout(async () => {
-                await this.checkForUpdate(true);
-                scheduleNext();
-            }, this.updateCheckInterval);
-        };
-        scheduleNext();
-    }
-
-    private stopPeriodicUpdateChecks() {
+    private clearUpdateCheckTimer(): void {
         if (this.updateCheckTimeoutId !== null) {
             window.clearTimeout(this.updateCheckTimeoutId);
             this.updateCheckTimeoutId = null;
+        }
+    }
+
+    private async checkForUpdateAfterFocusAndRestartTimer(): Promise<void> {
+        const checkPerformed = await this.appUpdateService.checkForUpdateAfterFocus();
+        if (checkPerformed) {
+            this.scheduleUpdateCheckTimer();
         }
     }
 
@@ -411,192 +532,14 @@ export class App {
     };
 
     private contextMenuHandler = (event: Event) => {
+        const target = event.target;
+        const targetElement = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+        if (targetElement?.closest('input, textarea, .allow-select, [data-allow-native-context-menu="true"]')) {
+            return;
+        }
+
         event.preventDefault();
     };
-
-    private async checkForUpdate(force = false) {
-        if (!this.swUpdate.isEnabled) return;
-        const now = Date.now();
-        // Prevent too frequent checks
-        if (!force && now - this.lastUpdateCheck < (this.updateCheckInterval / 4)) {
-            return;
-        }
-        this.logger.info('Checking for updates...');
-        this.lastUpdateCheck = now;
-
-        try {
-            if (await this.swUpdate.checkForUpdate()) {
-                this.logger.info('Update available');
-                this.updateAvailable.set(true);
-            }
-        } catch (err) {
-            this.logger.error('Error checking for updates:' + err);
-        }
-    }
-
-    /**
-     * Handle a URL captured by the service worker (e.g. from a link click
-     * when the PWA is installed). Parses the URL and updates the app state
-     * without a full navigation, applying smart context-aware logic:
-     *
-     * - shareUnit: Opens the unit details dialog directly.
-     * - Search params (q, filters, sort, etc.):
-     *   A) No loaded forces → apply search params and switch game system.
-     *   B) Forces loaded + matching gs → apply search params.
-     *   B) Forces loaded + different gs → warn, offer to unload forces.
-     * - Force params (instance=, units=):
-     *   A) No loaded forces → load the force directly.
-     *   B) Forces loaded → offer to LOAD (replace), ADD (friendly/enemy), or DISMISS.
-     */
-    private async handleCapturedUrl(url: string, source: 'focus' | 'service-worker' | 'history' | 'protocol' = 'focus'): Promise<void> {
-        this.logger.info(`[PWA] Handling captured URL from ${source}: ${url}`);
-        let parsed: URL;
-        try {
-            parsed = new URL(url, window.location.origin);
-        } catch {
-            this.logger.error('[PWA] Failed to parse captured URL: ' + url);
-            return;
-        }
-
-        if (parsed.origin !== window.location.origin) {
-            this.logger.warn('[PWA] Ignoring captured URL from different origin: ' + parsed.origin);
-            return;
-        }
-
-        if (this.shouldSkipDuplicateCapturedUrl(parsed)) {
-            return;
-        }
-
-        const params = parsed.searchParams;
-
-        const encodedProtocolLink = params.get('protocolLink');
-        if (encodedProtocolLink) {
-            const decodedProtocolLink = this.normalizeProtocolLinkPayload(encodedProtocolLink);
-
-            let protocolUrl: URL;
-            try {
-                protocolUrl = new URL(decodedProtocolLink);
-            } catch {
-                this.logger.error('[PWA] Failed to parse protocolLink payload: ' + decodedProtocolLink);
-                return;
-            }
-
-            if (protocolUrl.protocol !== 'web+mekbay:') {
-                this.logger.warn('[PWA] Ignoring unsupported protocol payload: ' + protocolUrl.protocol);
-                return;
-            }
-
-            const translatedParams = protocolUrl.searchParams.toString();
-            const translatedUrl = `${window.location.origin}${window.location.pathname}${translatedParams ? `?${translatedParams}` : ''}`;
-            this.logger.info('[PWA] Translated protocol link to app URL: ' + translatedUrl);
-            await this.handleCapturedUrl(translatedUrl, 'protocol');
-            return;
-        }
-
-        // Update browser URL bar (no reload)
-        window.history.replaceState(null, '', parsed.pathname + parsed.search);
-
-        // ── shareUnit: just show the dialog ──────────────────────────────
-        const sharedUnitName = params.get('shareUnit');
-        if (sharedUnitName) {
-            const tab = params.get('tab') ?? undefined;
-            const unit = this.dataService.getUnitByName(sharedUnitName);
-            if (unit) {
-                this.showSingleUnitDetails(unit, tab);
-            } else {
-                this.toastService.showToast(`Unit "${sharedUnitName}" not found.`, 'error');
-            }
-            return;
-        }
-
-        const hasForceParams = params.has('instance') || params.has('units');
-        const hasSearchParams = params.has('q') || params.has('filters') || params.has('sort');
-        const requestedGs = (params.get('gs') as GameSystem) ?? null;
-        const hasForces = this.forceBuilderService.hasForces();
-
-        // ── Force params (instance= / units=) ───────────────────────────
-        if (hasForceParams) {
-            if (!hasForces) {
-                // A) No loaded forces → load directly
-                await this.forceBuilderService.loadForceFromUrlParams(params, 'replace');
-            } else {
-                // B) Forces loaded → ask the user
-                const choice = await this.dialogService.choose<'load' | 'add-friendly' | 'add-enemy' | 'dismiss'>(
-                    'Incoming Force',
-                    'A link with a force was opened. You already have forces loaded. What would you like to do?',
-                    [
-                        { label: 'LOAD (REPLACE)', value: 'load', class: 'danger' },
-                        { label: 'ADD AS FRIENDLY', value: 'add-friendly' },
-                        { label: 'ADD AS OPPOSING', value: 'add-enemy' },
-                        { label: 'DISMISS', value: 'dismiss' },
-                    ],
-                    'dismiss'
-                );
-
-                switch (choice) {
-                    case 'load':
-                        await this.forceBuilderService.loadForceFromUrlParams(params, 'replace');
-                        break;
-                    case 'add-friendly':
-                        await this.forceBuilderService.loadForceFromUrlParams(params, 'add', 'friendly');
-                        break;
-                    case 'add-enemy':
-                        await this.forceBuilderService.loadForceFromUrlParams(params, 'add', 'enemy');
-                        break;
-                    case 'dismiss':
-                        break;
-                }
-            }
-
-            // Also apply any search params that came along with the force URL
-            if (hasSearchParams) {
-                this.unitSearchFiltersService.applySearchParamsFromUrl(params, { expandView: false });
-            }
-            // Switch game system if specified
-            if (requestedGs) {
-                this.gameService.setOverride(requestedGs);
-            }
-            return;
-        }
-
-        // ── Search params only (no force) ────────────────────────────────
-        if (hasSearchParams) {
-            if (!hasForces) {
-                // A) No loaded forces → apply directly
-                this.unitSearchFiltersService.applySearchParamsFromUrl(params);
-                if (requestedGs) {
-                    this.gameService.setOverride(requestedGs);
-                }
-            } else {
-                // B) Forces loaded: check if gs matches
-                const currentGs = this.gameService.currentGameSystem();
-                const gsConflict = requestedGs && requestedGs !== currentGs;
-
-                if (!gsConflict) {
-                    // Same game system or no gs specified → apply search params
-                    this.unitSearchFiltersService.applySearchParamsFromUrl(params);
-                } else {
-                    // Different game system → warn
-                    const accepted = await this.dialogService.requestConfirmation(
-                        `This link uses ${requestedGs === GameSystem.ALPHA_STRIKE ? 'Alpha Strike' : 'Classic BattleTech'}, ` +
-                        `but you currently have forces loaded in ${currentGs === GameSystem.ALPHA_STRIKE ? 'Alpha Strike' : 'Classic BattleTech'}. ` +
-                        `To switch, all loaded forces will be removed.\n\nContinue?`,
-                        'Game System Conflict',
-                        'danger'
-                    );
-                    if (accepted) {
-                        await this.forceBuilderService.clear();
-                        this.unitSearchFiltersService.applySearchParamsFromUrl(params);
-                        this.gameService.setOverride(requestedGs);
-                    }
-                    // If declined, do nothing: keep current state
-                }
-            }
-            return;
-        }
-
-        // ── No recognized params: just update the URL bar (already done) ──
-    }
 
     async installPwa() {
         if (isIOS()) {
@@ -623,24 +566,22 @@ export class App {
     }
 
     beforeUnloadHandler = (event: BeforeUnloadEvent) => {
-        if (this.dataService.hasPendingCloudSaves()) {
+        if (!this.appUpdateService.reloadingForUpdate() && this.hasBlockingUnsavedWork()) {
             event.preventDefault();
-            return 'Cloud sync is still pending. Are you sure you want to leave?';
-        }
-        const loadedForces = this.forceBuilderService.loadedForces();
-        const hasUnsavedForce = loadedForces.some(forceSlot => forceSlot.force.units().length > 0 && !forceSlot.force.instanceId());
-        if (hasUnsavedForce) {
-            // We have forces with units and without an instanceId? This is not yet saved. Warn the user before leaving.
-            event.preventDefault();
-            return 'You have unsaved changes in your force. Are you sure you want to leave?';
+            return 'You have unsaved changes. Are you sure you want to leave?';
         }
         return undefined;
     };
 
+    private hasBlockingUnsavedWork(): boolean {
+        if (this.dataService.hasPendingCloudSaves()) {
+            return true;
+        }
 
-    reloadForUpdate(): void {
-        window.location.reload();
+        const loadedForces = this.forceBuilderService.loadedForces();
+        return loadedForces.some(forceSlot => forceSlot.force.units().length > 0 && !forceSlot.force.instanceId());
     }
+
 
     showLicenseDialog(): void {
         this.dialogService.createDialog(LicenseDialogComponent);
@@ -660,6 +601,22 @@ export class App {
 
     showLoadForceDialog(): void {
         this.forceBuilderService.showLoadForceDialog();
+    }
+
+    showCollectionDialog(): void {
+        void this.router.navigate(['/collection'], { queryParamsHandling: 'preserve' });
+    }
+
+    showForceGeneratorDialog(): void {
+        void this.forceBuilderService.showForceGeneratorDialog();
+    }
+
+    openHomeActionsPanel(): void {
+        this.homeActionsPanelOpen.set(true);
+    }
+
+    closeHomeActionsPanel(): void {
+        this.homeActionsPanelOpen.set(false);
     }
 
     showSingleUnitDetails(unit: Unit, tab?: string) {

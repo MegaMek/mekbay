@@ -31,9 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentInteractionHandler, HandlerContext } from '../../services/equipment-interaction-registry.service';
-import { MountedEquipment } from '../../models/force-serialization';
-import { PickerChoice, PickerValue } from '../../components/picker/picker.interface';
+import { EquipmentInteractionHandler, type HandlerContext } from '../../services/equipment-interaction-registry.service';
+import type { MountedEquipment } from '../../models/force-serialization';
+import type { PickerChoice, PickerValue } from '../../components/picker/picker.interface';
 
 /**
  * Base handler for equipment with multiple modes
@@ -48,7 +48,7 @@ export abstract class CycleModeHandler extends EquipmentInteractionHandler {
         const nextMode = this.getNextMode(equipment);
         
         // Return single choice representing the next mode
-        return [{...nextMode, disabled: equipment.destroyed }];
+        return [{...nextMode, disabled: equipment.isUnavailable() }];
     }
     
     handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerContext): boolean {

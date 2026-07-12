@@ -32,8 +32,8 @@
     gap: 4px;
     flex: 1;
     margin-top: 6px;
-    max-height: 100px;
-    overflow-y: auto;
+    min-width: 0;
+    overflow: visible;
 }
 
 .placeholder {
@@ -97,31 +97,88 @@
 }
 
 .options-dropdown {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    z-index: 1001;
+    position: relative;
+    width: 100%;
     padding: 2px;
-    margin-top: 4px;
     background-color: var(--background-color-menu);
+    box-sizing: border-box;
 }
 
 .options-list {
     position: relative;
-    width: 100%;    
+    width: 100%;
     overflow-y: auto;
     background-color: var(--background-color-menu);
+}
+
+:host ::ng-deep .cdk-overlay-pane.multi-select-dropdown-overlay-pane {
+    z-index: 1002;
+    box-sizing: border-box;
+}
+
+.options-dropdown.options-dropdown-below {
+    margin-top: 4px;
+}
+
+.options-dropdown.options-dropdown-above {
+    margin-bottom: 4px;
+}
+
+.options-viewport {
+    display: block;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .option-item {
     display: flex;
     align-items: flex-start;
     padding: 8px 12px;
+    min-height: 28px;
+    box-sizing: border-box;
     cursor: pointer;
     gap: 8px;
-    overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+}
+
+.options-viewport .option-item {
+    align-items: center;
+    height: var(--virtual-option-height);
+    min-height: var(--virtual-option-height);
+    max-height: var(--virtual-option-height);
+    padding-top: 4px;
+    padding-bottom: 4px;
+    overflow: hidden;
+}
+
+.option-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.25;
+}
+
+.options-viewport .option-label {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    line-height: 1.08;
+    max-height: 2.16em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.options-viewport .custom-checkbox,
+.options-viewport .option-img,
+.options-viewport .quantity-input {
+    align-self: center;
+}
+
+.options-viewport .custom-checkbox,
+.options-viewport .option-img {
+    margin-top: 0;
 }
 
 .option-item ::ng-deep .matchHighlight {
@@ -134,7 +191,8 @@
     color: var(--bt-yellow);
 }
 
-.option-item:hover {
+.option-item:hover,
+.option-item.keyboard-focused {
     background-color: var(--background-color-light);
 }
 
@@ -157,12 +215,12 @@
     height: 16px;
     background-color: transparent;
     border: 1px solid silver;
-    border-radius: 2px;
     flex-shrink: 0;
     transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
     text-align: center;
     font-size: 1em;
     line-height: 16px;
+    margin-top: 2px;
 }
 
 /* For normal checkbox */
@@ -204,6 +262,8 @@
     width: 20px;
     height: 20px;
     object-fit: contain;
+    margin-top: 2px;
+    flex-shrink: 0;
 }
 
 .no-options {
@@ -263,6 +323,7 @@
 
 .quantity-input {
     margin-left: auto;
+    padding-left: 8px;
 }
 
 .quantity-input .quantity-field {

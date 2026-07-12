@@ -60,7 +60,7 @@
     transition: opacity 0.2s ease;
     mix-blend-mode: lighten;
 
-    :host:has(.monochrome) & {
+    :host(.monochrome) & {
         filter: saturate(0) invert(1) brightness(1.25);
     }
 
@@ -350,7 +350,7 @@
     transition: background-color 0.2s;
     border-right: .06em solid #000;
 
-    &.hot-dog {
+    &.extended-heat {
         width: 0.98em;
     }
 
@@ -362,19 +362,19 @@
         cursor: pointer;
         
         // These are outside the @media screen so they get printed
-        &.heat-1.active {
+        &[data-heat="1"].active {
             background: rgb(255, 200, 0);
         }
 
-        &.heat-2.active {
+        &[data-heat="2"].active {
             background: rgb(255, 150, 0);
         }
 
-        &.heat-3.active {
+        &[data-heat="3"].active {
             background: rgb(255, 100, 0);
         }
 
-        &.heat-4.active {
+        &[data-heat="4"].active {
             background: rgb(255, 50, 0);
         }
 
@@ -386,7 +386,7 @@
     @media screen {
         :host(.interactive) & {
 
-            &.heat-0.active {
+            &[data-heat="0"].active {
                 background: rgb(0, 200, 0);
             }
 

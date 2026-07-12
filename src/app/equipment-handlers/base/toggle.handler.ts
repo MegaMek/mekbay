@@ -31,9 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentInteractionHandler, HandlerContext } from '../../services/equipment-interaction-registry.service';
-import { MountedEquipment } from '../../models/force-serialization';
-import { PickerChoice, PickerValue } from '../../components/picker/picker.interface';
+import { EquipmentInteractionHandler, type HandlerContext } from '../../services/equipment-interaction-registry.service';
+import type { MountedEquipment } from '../../models/force-serialization';
+import type { PickerChoice, PickerValue } from '../../components/picker/picker.interface';
 
 /**
  * Base handler for simple on/off equipment
@@ -45,11 +45,12 @@ export abstract class ToggleHandler extends EquipmentInteractionHandler {
     
     getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {
         const currentState = equipment.states?.get(this.stateKey) || 'disabled';
+        const nextState = currentState === 'enabled' ? 'disabled' : 'enabled';
         return [
             {
-                label: this.enabledLabel,
-                value: 'enabled',
-                disabled: equipment.destroyed,
+                label: currentState === 'enabled' ? this.enabledLabel : this.disabledLabel,
+                value: nextState,
+                disabled: equipment.isUnavailable(),
                 active: currentState === 'enabled',
                 displayType: 'toggle',
             },
@@ -57,7 +58,7 @@ export abstract class ToggleHandler extends EquipmentInteractionHandler {
     }
     
     handleSelection(equipment: MountedEquipment, value: PickerChoice, context: HandlerContext): boolean {
-        const newState = value.value === 'enabled' ? 'disabled' : 'enabled';
+        const newState = value.value === 'enabled' ? 'enabled' : 'disabled';
         equipment.states?.set(this.stateKey, newState);
         equipment.owner.setInventoryEntry(equipment);
         context.toastService.showToast(

@@ -32,17 +32,26 @@
  */
 
 import { CommonModule } from '@angular/common';
-import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, inject, viewChild } from '@angular/core';
+import { type AfterViewInit, ChangeDetectionStrategy, Component, type ElementRef, inject, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { Sourcebook } from '../../models/sourcebook.model';
+import type { Sourcebook } from '../../models/sourcebook.model';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 
 /*
  * Author: Drake
  */
+export interface SourcebookInfoDialogSource extends Sourcebook {
+    sourceAnnotations?: string[];
+}
+
+export interface SourcebookInfoDialogUnknownSource {
+    abbrev: string;
+    sourceAnnotations?: string[];
+}
+
 export interface SourcebookInfoDialogData {
-    sourcebooks: Sourcebook[];
-    unknownSources: string[];
+    sourcebooks: SourcebookInfoDialogSource[];
+    unknownSources: SourcebookInfoDialogUnknownSource[];
     selectedIndex?: number;
 }
 
@@ -64,7 +73,12 @@ export interface SourcebookInfoDialogData {
                             <img [src]="sourcebook.image" [alt]="sourcebook.title" (error)="onImageError($event)" />
                         </div>
                     }
-                    <div class="sourcebook-title">{{ sourcebook.title }}</div>
+                    <div class="sourcebook-title">
+                        <span>{{ sourcebook.title }}</span>
+                        @if (sourcebook.sourceAnnotations?.length) {
+                            <span class="source-note">({{ sourcebook.sourceAnnotations.join(', ') }})</span>
+                        }
+                    </div>
                     @if (sourcebook.sku) {
                         <div class="sourcebook-sku">
                             <span class="label">SKU:</span>
@@ -84,12 +98,17 @@ export interface SourcebookInfoDialogData {
                     <hr class="sourcebook-separator" />
                 }
             }
-            @for (unknown of data.unknownSources; let last = $last; track unknown) {
+            @for (unknown of data.unknownSources; let last = $last; track unknown.abbrev) {
                 @if (data.sourcebooks.length > 0 || !$first) {
                     <hr class="sourcebook-separator" />
                 }
                 <div class="sourcebook-entry unknown">
-                    <div class="sourcebook-title">{{ unknown }}</div>
+                    <div class="sourcebook-title">
+                        <span>{{ unknown.abbrev }}</span>
+                        @if (unknown.sourceAnnotations?.length) {
+                            <span class="source-note">({{ unknown.sourceAnnotations.join(', ') }})</span>
+                        }
+                    </div>
                 </div>
             }
         </div>
@@ -136,9 +155,20 @@ export interface SourcebookInfoDialogData {
         }
 
         .sourcebook-title {
+            display: inline-flex;
+            align-items: baseline;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 4px;
             font-weight: 600;
             font-size: 1.1em;
             text-align: center;
+        }
+
+        .source-note {
+            color: var(--text-color-secondary);
+            font-weight: normal;
+            font-size: 0.9em;
         }
 
         .sourcebook-sku {

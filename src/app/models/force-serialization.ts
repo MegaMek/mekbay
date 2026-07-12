@@ -31,20 +31,67 @@
  * affiliated with Microsoft.
  */
 
-import { Equipment } from './equipment.model';
+import type { Equipment } from './equipment.model';
 import { Sanitizer } from '../utils/sanitizer.util';
-import { ForceUnit } from './force-unit.model';
-import { GameSystem } from './common.model';
-import { CBTForceUnit } from './cbt-force-unit.model';
-import { ASCustomPilotAbility } from './pilot-abilities.model';
-import { C3NetworkType } from './c3-network.model';
-import { DEFAULT_GUNNERY_SKILL } from './crew-member.model';
+import type { ForceUnit } from './force-unit.model';
+import type { GameSystem } from './common.model';
+import type { ASCustomPilotAbility } from './pilot-abilities.model';
+import type { C3NetworkType } from './c3-network.model';
+import type { MotiveModes } from './motiveModes.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './crew-member.model';
+export { MountedEquipment } from './mounted-equipment.model';
+export type { MountedEquipmentInit } from './mounted-equipment.model';
+
+export const FORCE_NOTE_MAX_LENGTH = 2000;
+export const FORCE_TAG_MAX_LENGTH = 48;
+export const FORCE_TAG_MAX_COUNT = 32;
+
+export function sanitizeForceTagLabel(rawTag: unknown): string | null {
+    if (typeof rawTag !== 'string') {
+        return null;
+    }
+
+    const sanitizedTag = rawTag.trim().replace(/\s+/g, ' ').slice(0, FORCE_TAG_MAX_LENGTH);
+    return sanitizedTag.length > 0 ? sanitizedTag : null;
+}
+
+/** Sanitizes a force tag label catalog without applying the per-force tag count limit. */
+export function sanitizeForceTagLabels(tags: readonly string[] | null | undefined): string[] {
+    if (!Array.isArray(tags) || tags.length === 0) {
+        return [];
+    }
+
+    const sanitizedTags: string[] = [];
+    const seen = new Set<string>();
+
+    for (const rawTag of tags) {
+        const sanitizedTag = sanitizeForceTagLabel(rawTag);
+        if (!sanitizedTag) {
+            continue;
+        }
+
+        const normalizedTag = sanitizedTag.toLocaleLowerCase();
+        if (seen.has(normalizedTag)) {
+            continue;
+        }
+
+        seen.add(normalizedTag);
+        sanitizedTags.push(sanitizedTag);
+    }
+
+    return sanitizedTags;
+}
+
+export function sanitizeForceTags(tags: readonly string[] | null | undefined): string[] {
+    return sanitizeForceTagLabels(tags).slice(0, FORCE_TAG_MAX_COUNT);
+}
 
 export interface LocationData {
     armor?: number;
     internal?: number;
     pendingArmor?: number;
     pendingInternal?: number;
+    conditions?: SerializedCondition[];
 }
 
 export interface HeatProfile {
@@ -54,14 +101,38 @@ export interface HeatProfile {
     heatsinksOff?: number;
 }
 
+export interface SerializedPSRChecks {
+    legActuators?: Record<string, number>;
+    hipsHit?: string[];
+    gyroHit?: number;
+    gyroDestroyed?: boolean;
+    legsDestroyed?: string[];
+    shutdown?: boolean;
+}
+
+export interface SerializedTurnState {
+    airborne?: boolean;
+    moveMode?: MotiveModes;
+    moveDistance?: number;
+    dmgReceived?: number;
+    weaponsHeat?: number;
+    psrChecks?: SerializedPSRChecks;
+    applyMovePSR?: boolean;
+    spotting?: boolean;
+}
+
 export interface SerializedForce {
     version: number;
     timestamp: string;
     instanceId: string;
     type: GameSystem;
     name: string;
+    note?: string;
+    tags?: string[];
     factionId?: number;
     factionLock?: boolean;
+    eraId?: number;
+    eraLock?: boolean;
     bv?: number;
     pv?: number;
     owned?: boolean;
@@ -99,6 +170,7 @@ export interface SerializedUnit {
     model?: string;
     chassis?: string;
     alias?: string;
+    commander?: boolean;
     updatedTs?: number;
     state: SerializedState;
 }
@@ -106,15 +178,95 @@ export interface ASSerializedUnit extends SerializedUnit {
     state: ASSerializedState;
     skill: number;
     abilities: (string | ASCustomPilotAbility)[]; // Array of ability IDs or custom abilities
+    formationAbilities?: string[];
+    commander?: boolean;
 }
 
 export interface CBTSerializedUnit extends SerializedUnit {
     state: CBTSerializedState;
 }
+export interface ConditionData {
+    value?: number;
+    pending?: boolean;
+}
+
+export interface SerializedConditionValue {
+    key: string;
+    value?: number;
+    pending?: boolean;
+}
+export type SerializedCondition = string | SerializedConditionValue;
+
+export function normalizeConditionKey(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    const condition = value.trim().slice(0, 48);
+    return condition.length > 0 ? condition : null;
+}
+
+export function normalizeConditionData(data: ConditionData | undefined): ConditionData | undefined {
+    const value = data?.value;
+    const normalized: ConditionData = {};
+    if (typeof value === 'number' && Number.isFinite(value) && value !== 0) normalized.value = value;
+    if (data?.pending === true) normalized.pending = true;
+    return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+export function conditionFromSerialized(entry: SerializedCondition): [string, ConditionData | undefined] | null {
+    if (typeof entry === 'string') {
+        const key = normalizeConditionKey(entry);
+        return key ? [key, undefined] : null;
+    }
+
+    if ((entry as unknown as Record<string, unknown>)['remove'] === true) return null;
+
+    const key = normalizeConditionKey(entry.key);
+    return key ? [key, normalizeConditionData(entry)] : null;
+}
+
+export function conditionToSerialized(key: string, data: ConditionData | undefined): SerializedCondition {
+    const normalized = normalizeConditionData(data);
+    return normalized ? { key, ...normalized } : key;
+}
+
+export function conditionsMapFromSerialization(conditions: Iterable<SerializedCondition> | undefined): Map<string, ConditionData | undefined> {
+    const result = new Map<string, ConditionData | undefined>();
+    for (const condition of conditions ?? []) {
+        const parsed = conditionFromSerialized(condition);
+        if (parsed) result.set(parsed[0], parsed[1]);
+    }
+    return result;
+}
+
+export function conditionsForSerialization(conditions: ReadonlyMap<string, ConditionData | undefined>): SerializedCondition[] {
+    return Array.from(conditions.entries())
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, data]) => conditionToSerialized(key, data));
+}
+
+export function conditionIsActive(_data: ConditionData | undefined): boolean {
+    return true;
+}
+
+export function conditionIsCommittedActive(data: ConditionData | undefined): boolean {
+    return data?.pending !== true;
+}
+
+export function conditionsHasActive(conditions: ReadonlyMap<string, ConditionData | undefined>, key: string): boolean {
+    return conditions.has(key);
+}
+
+export function conditionsHasCommittedActive(conditions: ReadonlyMap<string, ConditionData | undefined>, key: string): boolean {
+    return conditions.has(key) && conditionIsCommittedActive(conditions.get(key));
+}
+
+export function committedConditionData(data: ConditionData | undefined): ConditionData | undefined {
+    return normalizeConditionData({ value: data?.value });
+}
+
 export interface SerializedState {
     modified: boolean;
     destroyed: boolean;
-    shutdown: boolean;
+    conditions?: SerializedCondition[];
     /** Position in the C3 network visual editor */
     c3Position?: { x: number; y: number };
 }
@@ -191,16 +343,29 @@ export interface ASCriticalHit {
     timestamp: number;
 }
 
+export interface SerializedCrewMember {
+    id: number;
+    name: string;
+    gunnerySkill: number;
+    pilotingSkill: number;
+    asfGunnerySkill?: number;
+    asfPilotingSkill?: number;
+    hits: number;
+    state: number;
+}
+
 export interface CBTSerializedState extends SerializedState {
-    crew: any[]; // Serialized CrewMember objects
+    crew: SerializedCrewMember[];
     crits: CriticalSlot[];
     locations: Record<string, LocationData>;
     heat: HeatProfile;
     inventory?: SerializedInventory[];
+    turnState?: SerializedTurnState;
 }
 export interface SerializedInventory {
     id: string;
     destroyed?: boolean;
+    destroying?: boolean;
     states?: { name: string; value: string }[];
     consumed?: number;
     ammo?: string;
@@ -213,6 +378,9 @@ export interface CriticalSlot {
     loc?: string; // Location of the critical slot (HD, LT, RT, ...)
     slot?: number; // Slot number of the critical slot
     hits?: number; // How many hits did this location receive. If is an armored location, this is the number of hits it has taken
+    pendingHits?: number; // Pending hit delta for count-based criticals, such as VTOL rotor hits
+    hitTimestamps?: number[]; // Committed hit timestamps for count-based criticals that need chronological application
+    pendingHitTimestamps?: number[]; // Pending addition timestamps for count-based criticals
     totalAmmo?: number; // If is an ammo slot: how much total ammo is in this slot.
     consumed?: number; // If is an ammo slot: how much ammo have been consumed. If is a F_MODULAR_ARMOR, is the armor points used
     destroying?: number; // If this location is in the process of being destroyed. Contains the timestamp of when the destruction started
@@ -263,11 +431,38 @@ export const HEAT_SCHEMA = Sanitizer.schema<HeatProfile>()
     .number('heatsinksOff', { min: 0 })
     .build();
 
+const MOTIVE_MODE_VALUES: readonly MotiveModes[] = ['stationary', 'walk', 'run', 'jump', 'UMU', 'VTOL'];
+
+export const PSR_CHECKS_SCHEMA = Sanitizer.schema<SerializedPSRChecks>()
+    .custom('legActuators', sanitizeNumberRecord)
+    .custom('hipsHit', sanitizeStringArray)
+    .number('gyroHit', { min: 0 })
+    .boolean('gyroDestroyed')
+    .custom('legsDestroyed', sanitizeStringArray)
+    .boolean('shutdown')
+    .build();
+
+export const TURN_STATE_SCHEMA = Sanitizer.schema<SerializedTurnState>()
+    .custom('airborne', (value: unknown) => typeof value === 'boolean' ? value : undefined)
+    .custom('moveMode', (value: unknown) => MOTIVE_MODE_VALUES.includes(value as MotiveModes) ? value as MotiveModes : undefined)
+    .number('moveDistance', { min: 0 })
+    .number('dmgReceived', { min: 0 })
+    .number('weaponsHeat', { min: 0 })
+    .custom('psrChecks', (value: unknown) => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+        const psrChecks = Sanitizer.sanitize(value, PSR_CHECKS_SCHEMA);
+        return Object.keys(psrChecks).length > 0 ? psrChecks : undefined;
+    })
+    .custom('applyMovePSR', (value: unknown) => typeof value === 'boolean' ? value : undefined)
+    .custom('spotting', (value: unknown) => typeof value === 'boolean' ? value : undefined)
+    .build();
+
 export const LOCATION_SCHEMA = Sanitizer.schema<LocationData>()
     .number('armor')
     .number('internal')
     .number('pendingArmor')
     .number('pendingInternal')
+    .custom('conditions', sanitizeConditions)
     .build();
 
 export const CRIT_SLOT_SCHEMA = Sanitizer.schema<CriticalSlot>()
@@ -276,6 +471,9 @@ export const CRIT_SLOT_SCHEMA = Sanitizer.schema<CriticalSlot>()
     .string('loc')
     .number('slot')
     .number('hits')
+    .number('pendingHits')
+    .custom('hitTimestamps', sanitizeTimestampArray)
+    .custom('pendingHitTimestamps', sanitizeTimestampArray)
     .number('totalAmmo')
     .number('consumed')
     .number('destroying')
@@ -287,6 +485,71 @@ export const CRIT_SLOT_SCHEMA = Sanitizer.schema<CriticalSlot>()
     .string('originalName')
     .boolean('armored')
     .build();
+
+function sanitizeTimestampArray(value: unknown): number[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const timestamps = value
+        .map(timestamp => typeof timestamp === 'number' ? timestamp : Number(timestamp))
+        .filter(timestamp => Number.isFinite(timestamp));
+    return timestamps.length > 0 ? timestamps : undefined;
+}
+
+function sanitizeStringArray(value: unknown): string[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const values = value
+        .filter((entry): entry is string => typeof entry === 'string')
+        .map(entry => entry.trim())
+        .filter(entry => entry.length > 0);
+    return values.length > 0 ? [...new Set(values)] : undefined;
+}
+
+function sanitizeNumberRecord(value: unknown): Record<string, number> | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const result: Record<string, number> = {};
+    for (const [key, rawEntry] of Object.entries(value as Record<string, unknown>)) {
+        const entry = typeof rawEntry === 'number' ? rawEntry : Number(rawEntry);
+        if (key.trim().length === 0 || !Number.isFinite(entry) || entry === 0) {
+            continue;
+        }
+        result[key] = entry;
+    }
+    return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function sanitizeConditions(value: unknown): SerializedCondition[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const states = new Map<string, ConditionData | undefined>();
+
+    for (const entry of value) {
+        if (typeof entry === 'string') {
+            const condition = normalizeConditionKey(entry);
+            if (condition) states.set(condition, undefined);
+            continue;
+        }
+
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+            continue;
+        }
+
+        const record = entry as Record<string, unknown>;
+        const condition = normalizeConditionKey(record['key'] ?? record['state']);
+        const countedValue = record['value'];
+        if (!condition) {
+            continue;
+        }
+        if (record['remove'] === true) {
+            continue;
+        }
+
+        const data: ConditionData = {};
+        if (typeof countedValue === 'number' && Number.isFinite(countedValue) && countedValue !== 0) data.value = countedValue;
+        if (record['pending'] === true) data.pending = true;
+        states.set(condition, normalizeConditionData(data));
+    }
+
+    const serializedConditions = conditionsForSerialization(states);
+    return serializedConditions.length > 0 ? serializedConditions : undefined;
+}
 
 export const INVENTORY_SCHEMA = Sanitizer.schema<SerializedInventory>()
     .string('id')
@@ -311,16 +574,17 @@ export const INVENTORY_SCHEMA = Sanitizer.schema<SerializedInventory>()
         return undefined;
     })
     .boolean('destroyed')
+    .boolean('destroying')
     .build();
 
 /**
  * Schema for crew member serialized data
  */
-export const CREW_MEMBER_SCHEMA = Sanitizer.schema<any>()
+export const CREW_MEMBER_SCHEMA = Sanitizer.schema<SerializedCrewMember>()
     .number('id', { default: 0, min: 0 })
     .string('name', { default: '' })
     .number('gunnerySkill', { default: DEFAULT_GUNNERY_SKILL, min: 0, max: 8 })
-    .number('pilotingSkill', { default: 5, min: 0, max: 8 })
+    .number('pilotingSkill', { default: DEFAULT_PILOTING_SKILL, min: 0, max: 8 })
     .number('asfGunnerySkill')
     .number('asfPilotingSkill')
     .number('hits', { default: 0, min: 0 })
@@ -333,7 +597,7 @@ export const CREW_MEMBER_SCHEMA = Sanitizer.schema<any>()
 export const CBT_SERIALIZED_STATE_SCHEMA = Sanitizer.schema<CBTSerializedState>()
     .boolean('modified', { default: false })
     .boolean('destroyed', { default: false })
-    .boolean('shutdown', { default: false })
+    .custom('conditions', sanitizeConditions)
     .custom('c3Position', (value: unknown) => {
         if (!value || typeof value !== 'object') return undefined;
         return Sanitizer.sanitize(value, C3_POSITION_SCHEMA);
@@ -358,6 +622,11 @@ export const CBT_SERIALIZED_STATE_SCHEMA = Sanitizer.schema<CBTSerializedState>(
         if (!Array.isArray(value)) return undefined;
         return Sanitizer.sanitizeArray(value, INVENTORY_SCHEMA);
     })
+    .custom('turnState', (value: unknown) => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+        const turnState = Sanitizer.sanitize(value, TURN_STATE_SCHEMA);
+        return Object.keys(turnState).length > 0 ? turnState : undefined;
+    })
     .build();
 
 /**
@@ -369,6 +638,7 @@ export const CBT_SERIALIZED_UNIT_SCHEMA = Sanitizer.schema<CBTSerializedUnit>()
     .string('model')
     .string('chassis')
     .string('alias')
+    .boolean('commander')
     .number('updatedTs')
     .custom('state', (value: unknown) => {
         if (!value || typeof value !== 'object') {
@@ -402,8 +672,16 @@ export const CBT_SERIALIZED_FORCE_SCHEMA = Sanitizer.schema<CBTSerializedForce>(
     .string('instanceId')
     .string('type')
     .string('name', { default: 'Unnamed Force' })
+    .string('note', { maxLength: FORCE_NOTE_MAX_LENGTH })
+    .custom('tags', (value: unknown) => {
+        if (!Array.isArray(value)) return undefined;
+        const tags = sanitizeForceTags(value);
+        return tags.length > 0 ? tags : undefined;
+    })
     .boolean('factionLock')
     .number('factionId')
+    .number('eraId')
+    .boolean('eraLock')
     .number('bv')
     .boolean('owned', { default: true })
     .custom('groups', (value: unknown) => {
@@ -441,7 +719,7 @@ export const AS_CUSTOM_PILOT_ABILITY_SCHEMA = Sanitizer.schema<ASCustomPilotAbil
 export const AS_SERIALIZED_STATE_SCHEMA = Sanitizer.schema<ASSerializedState>()
     .boolean('modified', { default: false })
     .boolean('destroyed', { default: false })
-    .boolean('shutdown', { default: false })
+    .custom('conditions', sanitizeConditions)
     .custom('c3Position', (value: unknown) => {
         if (!value || typeof value !== 'object') return undefined;
         return Sanitizer.sanitize(value, C3_POSITION_SCHEMA);
@@ -527,6 +805,12 @@ export const AS_SERIALIZED_UNIT_SCHEMA = Sanitizer.schema<ASSerializedUnit>()
             return null;
         }).filter((item): item is string | ASCustomPilotAbility => item !== null);
     })
+    .custom('formationAbilities', (value: unknown) => {
+        if (!Array.isArray(value)) return undefined;
+        const abilities = value.filter((item): item is string => typeof item === 'string');
+        return abilities.length > 0 ? [...new Set(abilities)] : undefined;
+    })
+    .boolean('commander')
     .custom('state', (value: unknown) => {
         if (!value || typeof value !== 'object') {
             return Sanitizer.sanitize({}, AS_SERIALIZED_STATE_SCHEMA);
@@ -559,8 +843,16 @@ export const AS_SERIALIZED_FORCE_SCHEMA = Sanitizer.schema<ASSerializedForce>()
     .string('instanceId')
     .string('type')
     .string('name', { default: 'Unnamed Force' })
+    .string('note', { maxLength: FORCE_NOTE_MAX_LENGTH })
+    .custom('tags', (value: unknown) => {
+        if (!Array.isArray(value)) return undefined;
+        const tags = sanitizeForceTags(value);
+        return tags.length > 0 ? tags : undefined;
+    })
     .boolean('factionLock')
     .number('factionId')
+    .number('eraId')
+    .boolean('eraLock')
     .number('pv')
     .boolean('owned', { default: true })
     .custom('groups', (value: unknown) => {
@@ -574,27 +866,6 @@ export const AS_SERIALIZED_FORCE_SCHEMA = Sanitizer.schema<ASSerializedForce>()
     .build();
 
     
-export interface MountedEquipment {
-    owner: CBTForceUnit;
-    id: string;
-    name: string;
-    locations?: Set<string>;
-    equipment?: Equipment;
-    baseHitMod?: string;
-    hitModVariation?: null | number; // Temporary variable to calculate delta hit modifier
-    physical?: boolean;
-    linkedWith?: null | MountedEquipment[];
-    parent?: null | MountedEquipment;
-    destroyed?: boolean;
-    critSlots?: CriticalSlot[];
-    states: Map<string, string>;
-    el?: SVGElement;
-    // Used for entries that doesn't have critical slots
-    ammo?: string;
-    totalAmmo?: number;
-    consumed?: number;
-}
-
 export interface ViewportTransform {
     scale: number;
     translateX: number;

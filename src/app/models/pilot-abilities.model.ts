@@ -31,9 +31,26 @@
  * affiliated with Microsoft.
  */
 
-import { Rulebook, RulesReference } from './common.model';
+import { Rulebook, type RulesReference } from './common.model';
 import { GameSystem } from '../models/common.model';
-import { ASUnitTypeCode } from './units.model';
+import type { ASUnitTypeCode } from './units.model';
+import { formatMovement } from '../utils/as-common.util';
+
+function formatMovementPlaceholders(text: string, useHex: boolean): string {
+    return text.replace(/\[\[(\d+)\]\]/g, (_, val) => {
+        return formatMovement(Number(val), '', useHex);
+    });
+}
+
+export function formatSummaryMovement(summary: string, useHex?: boolean): string;
+export function formatSummaryMovement(summaries: string[], useHex?: boolean): string[];
+export function formatSummaryMovement(summaries: string | string[], useHex: boolean = false): string | string[] {
+    if (Array.isArray(summaries)) {
+        return summaries.map(text => formatMovementPlaceholders(text, useHex));
+    }
+
+    return formatMovementPlaceholders(summaries, useHex);
+}
 
 /** Game-system-specific details for a pilot ability */
 export interface PilotAbilityRuleDetails {
@@ -122,7 +139,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             rulesRef: [{ book: Rulebook.ASCE, page: 92 }],
             unitType: "'Mechs, ProtoMechs",
             unitTypeFilter: ['BM', 'IM', 'PM'],
-            summary: ["Reduces Move cost for ultra-heavy woods, ultra-heavy jungle, and buildings by 2\" per inch. During Combat Phase, may intimidate one enemy within medium range and LOS (2D6 roll, TN 8 + Skill \u2013 SZ); success subtracts 2\" MV, 1 TMM (min 2\"/0 TMM) and applies +1 TN for attacks against this unit. Lasts through End Phase of next turn."],
+            summary: ["Reduces Move cost for ultra-heavy woods, ultra-heavy jungle, and buildings by [[2]] per [[1]]. During Combat Phase, may intimidate one enemy within medium range and LOS (2D6 roll, TN 8 + Skill \u2013 SZ); success subtracts [[2]] MV, 1 TMM (min [[2]]/0 TMM) and applies +1 TN for attacks against this unit. Lasts through End Phase of next turn."],
             description: [
                 "The pilot with this SPA has combined an exceptional understanding of animal behavior with their own natural aptitude at the controls to give the movements of their machine an uncanny\u2014even frightening\u2014resemblance to that of a wild animal.",
                 "This ability, which works only with 'Mech and ProtoMech units where the model has four legs, reduces the unit's Move cost for passing through ultra-heavy woods terrain, ultra-heavy jungle terrain, or any buildings by 2 inches per inch of movement.",
@@ -148,7 +165,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         },
         as: {
             rulesRef: [{ book: Rulebook.ASCE, page: 92 }],
-            summary: ["During Combat Phase, in place of attack, may enrage one enemy within short range (2D6 roll, TN 5 + Skill). Enraged unit must move toward Antagonizer by most direct route, ignoring terrain costs, and can only attack the Antagonizer. Effect lasts through End Phase of next turn. Breaks if enraged unit begins any phase more than 24\" away or without LOS. No effect vs. aerospace units."],
+            summary: ["During Combat Phase, in place of attack, may enrage one enemy within short range (2D6 roll, TN 5 + Skill). Enraged unit must move toward Antagonizer by most direct route, ignoring terrain costs, and can only attack the Antagonizer. Effect lasts through End Phase of next turn. Breaks if enraged unit begins any phase more than [[24]] away or without LOS. No effect vs. aerospace units."],
             description: [
                 "As combat talents go, the ability to enrage the enemy may seem ill-conceived at first, but few can overstate how effective it is when it draws fire from a wounded friend\u2014or exposes the berserking target's weaker back armor at the worst possible moment.",
                 "During the Combat Phase, in place of the unit's attack, the player may select one enemy unit within short range of this unit to try to enrage. The Antagonizer unit must make a 2D6 roll, with a target number of 5 + their Skill. Success will enrage the target. The enrage takes effect in the End Phase of this turn and lasts through the End Phase of the next turn.",
@@ -212,7 +229,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         cost: 3,
         cbt: {
             rulesRef: [{ book: Rulebook.CO, page: 73 }],
-            summary: ["Declare focus in End Phase (inflicts 1 pilot damage; vehicle crews are stunned). Next turn the unit may act after all others, or pre-empt any single unit\u2019s actions. Damage from pre-emptive attacks applies immediately."],
+            summary: ["Declare focus in End Phase (inflicts 1 pilot damage; vehicle crews are stunned). Next turn the unit may act after all others, or pre-empt any single unit\u2019s actions. Damage and effects from pre-emptive attacks applies immediately."],
             description: [
                 "A MechWarrior, pilot, or vehicle crew commander with the Combat Intuition SPA can accurately predict an opponent's actions by focusing intently on them.",
                 "To use this special ability, a player must declare that a pilot with this SPA is focusing on his environment during the End Phase. This action is extremely taxing, and inflicts 1 point of pilot damage to the pilot. For vehicle crews, they are stunned in the turn after next. No Consciousness Roll is required when this damage is taken. Though Combat Intuition may be used as often as every turn, this damage effect can pose a danger to the warrior if the ability is overused.",
@@ -222,7 +239,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         },
         as: {
             rulesRef: [{ book: Rulebook.ASCE, page: 93 }],
-            summary: ["If this unit's side wins Initiative, the unit may move and resolve all attacks during the Movement Phase, applying damage immediately\u2014before targets can act. Usable once every 3 turns."],
+            summary: ["If this unit's side wins Initiative, the unit may move and resolve all attacks during the Movement Phase, applying all damage effects immediately\u2014before targets can act. Usable once every 3 turns."],
             description: [
                 "The pilot or crew commander with this SPA has a knack for accurately predicting an enemy's actions if they focus hard enough on them. Though this intuition is not quite powerful enough to pass along to an entire force before the enemy has time to react, the warrior can make use of their insight to cut off a single opponent once in a while.",
                 "If this unit's side wins Initiative, the unit whose pilot has this SPA can move and resolve all of its attacks during the Movement Phase, applying all damage effects immediately\u2014before any target units can act. This ability can only be used once every 3 turns.",
@@ -247,7 +264,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             rulesRef: [{ book: Rulebook.ASCE, page: 93 }],
             unitType: "Ground Vehicles",
             unitTypeFilter: ['CV', 'SV'],
-            summary: ["Ground vehicle may enter woods, rough, rubble, or water terrain up to 1\" deep even if normally prohibited. Move costs for these terrains are double the cost for a 'Mech unit."],
+            summary: ["Ground vehicle may enter woods, rough, rubble, or water terrain up to [[1]] deep even if normally prohibited. Move costs for these terrains are double the cost for a 'Mech unit."],
             description: [
                 "The vehicle driver with this SPA is not merely able to get their ride into and out of tight spots; they can get it into some places it's just not meant to enter!",
                 "This ground unit may enter woods, rough, or rubble terrain, as well as water terrain up to 1 inch deep, even if the vehicle's movement type would ordinarily prohibit such movement. When entering terrain ordinarily prohibited to the unit, consider all Move costs for these terrains as double the cost to traverse as they would be for a 'Mech unit.",
@@ -271,7 +288,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         },
         as: {
             rulesRef: [{ book: Rulebook.ASCE, page: 93 }],
-            summary: ["During Combat Phase, may intimidate one enemy within LOS and medium range (2D6 roll, TN 8 + Skill \u2013 SZ). Success subtracts 2\" MV, 1 TMM (min 2\"/0 TMM) and applies +1 TN for attacks against the Demoralizer. Lasts through End Phase of next turn. Breaks if target begins any phase more than 24\" away or without LOS. No effect vs. aerospace units."],
+            summary: ["During Combat Phase, may intimidate one enemy within LOS and medium range (2D6 roll, TN 8 + Skill \u2013 SZ). Success subtracts [[2]] MV, 1 TMM (min [[2]]/0 TMM) and applies +1 TN for attacks against the Demoralizer. Lasts through End Phase of next turn. Breaks if target begins any phase more than [[24]] away or without LOS. No effect vs. aerospace units."],
             description: [
                 "A warrior with the Demoralizer SPA can make their unit a holy terror on the battlefield, projecting an intimidating presence that manifests in the way they maneuver and taunt their enemies\u2014with or without the use of communications.",
                 "During the Combat Phase, the player may select one enemy unit within line of sight and within medium range of this unit to try to intimidate. The Demoralizer unit must make a 2D6 roll, with a target number of 8 + the Demoralizer's Skill \u2013 the Demoralizer's SZ. Success will intimidate the target.",
@@ -348,7 +365,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         },
         as: {
             rulesRef: [{ book: Rulebook.ASCE, page: 95 }],
-            summary: ["Adds 2\" detection range to any probe specials (BH, PRB, LPRB). Confers RCN special even if not normally possessed. Hidden units within 2\" are automatically detected, ignoring ECM specials (AECM, ECM, LECM). Adds +2 TN to avoid minefield attacks."],
+            summary: ["Adds [[2]] detection range to any probe specials (BH, PRB, LPRB). Confers RCN special even if not normally possessed. Hidden units within [[2]] are automatically detected, ignoring ECM specials (AECM, ECM, LECM). Adds +2 TN to avoid minefield attacks."],
             description: [
                 "For some warriors, even thirty-first century sensors are superfluous. The warrior with this SPA is so alert and sensor-savvy that they can practically identify threats before their tactical computers can identify them, a vital edge in spotting hidden surprises before it's too late.",
                 "This unit adds 2 inches of detection range to any probe special abilities it already possesses (including BH, PRB, and LPRB), and confers the RCN special to the unit even if it does not possess such abilities normally.",
@@ -371,10 +388,34 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         },
         as: {
             rulesRef: [{ book: Rulebook.ASCE, page: 95 }],
-            summary: ["Specify one Environmental Condition before the scenario. Reduces additional Move costs from that condition by 2\" (min +0\") and reduces Target Number modifiers from that condition by \u20131 (min +0)."],
+            summary: ["Specify one Environmental Condition before the scenario. Reduces additional Move costs from that condition by [[2]] (min +[[0]]) and reduces Target Number modifiers from that condition by \u20131 (min +0)."],
             description: [
                 "The pilot with the Environmental Specialist SPA has not only learned how to survive in a harsh environment, but can actually thrive in it. This ability specifically focuses on atmospheric and weather aspects of a given environment (as opposed to terrain mastery), and the nature of this specialization must be identified when assigned.",
                 "The conditions that apply to this SPA must be specified for this unit before the scenario begins, and may include any one condition described under Environmental Conditions. If the given environmental condition applies to the scenario, this reduces any additional Move costs created by that condition by 2 inches (to a minimum of +0 inches), and any Target Number modifiers applied by the condition are also reduced by \u20131 (to a minimum of +0).",
+            ],
+        },
+    },
+    {
+        id: "evasive_maneuver",
+        name: "Evasive Maneuver",
+        cost: 2,
+        cbt: {
+            rulesRef: [{ book: Rulebook.TR, page: 109 }],
+            unitType: "Combat Vehicles (ground movement types only)",
+            summary: ["Vehicles using cruising or flanking movement with at least 5 cruising speed apply a \u20132 modifier on the motive system damage table."],
+            description: [
+                "A skilled driver can make last second turns to avoid taking hits to exposed treads, wheels, skirts.",
+                "When using cruising or flanking movement in a vehicle with at least 5 cruising speed, the unit applies a \u20132 modifier on the motive system damage table."
+            ],
+        },
+        as:{
+            rulesRef: [{ book: Rulebook.TR, page: 109 }],
+            unitType: "Combat Vehicles (ground movement types only)",
+            unitTypeFilter: ['CV'],
+            summary: ["Unit with [[10]]+ Move applies a \u20132 modifier to the motive effects table."],
+            description: [
+                "A skilled driver can make last second turns to avoid taking hits to exposed treads, wheels, skirts.",
+                "A Unit with a MV value of [[10]]+ applies a \u20132 modifier to the motive effects table."
             ],
         },
     },
@@ -409,7 +450,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         name: "Float Like a Butterfly",
         cost: 1,
         as: {
-            rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
+            rulesRef: [{ book: Rulebook.ASCE, page: 96 }, { book: Rulebook.EA, page: 117 }],
             summary: ["For each point spent on this SPA, may force an opponent to reroll one attack roll or critical hit effects roll targeting this unit. The second roll stands even if worse. Cannot affect own attack rolls, hull breach checks, Initiative, or Morale rolls."],
             description: [
                 "For every point spent on purchasing this special pilot ability, this unit may force an opponent to reroll an attack with this unit as the target. This unit may force a reroll of the attack roll, or the critical hit effects roll. The second roll result stands, even if it fails or is worse than the first.",
@@ -422,7 +463,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         name: "Float Like a Butterfly",
         cost: 2,
         as: {
-            rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
+            rulesRef: [{ book: Rulebook.ASCE, page: 96 }, { book: Rulebook.EA, page: 117 }],
             summary: ["For each point spent on this SPA, may force an opponent to reroll one attack roll or critical hit effects roll targeting this unit. The second roll stands even if worse. Cannot affect own attack rolls, hull breach checks, Initiative, or Morale rolls."],
             description: [
                 "For every point spent on purchasing this special pilot ability, this unit may force an opponent to reroll an attack with this unit as the target. This unit may force a reroll of the attack roll, or the critical hit effects roll. The second roll result stands, even if it fails or is worse than the first.",
@@ -435,7 +476,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         name: "Float Like a Butterfly",
         cost: 3,
         as: {
-            rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
+            rulesRef: [{ book: Rulebook.ASCE, page: 96 }, { book: Rulebook.EA, page: 117 }],
             summary: ["For each point spent on this SPA, may force an opponent to reroll one attack roll or critical hit effects roll targeting this unit. The second roll stands even if worse. Cannot affect own attack rolls, hull breach checks, Initiative, or Morale rolls."],
             description: [
                 "For every point spent on purchasing this special pilot ability, this unit may force an opponent to reroll an attack with this unit as the target. This unit may force a reroll of the attack roll, or the critical hit effects roll. The second roll result stands, even if it fails or is worse than the first.",
@@ -448,7 +489,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         name: "Float Like a Butterfly",
         cost: 4,
         as: {
-            rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
+            rulesRef: [{ book: Rulebook.ASCE, page: 96 }, { book: Rulebook.EA, page: 117 }],
             summary: ["For each point spent on this SPA, may force an opponent to reroll one attack roll or critical hit effects roll targeting this unit. The second roll stands even if worse. Cannot affect own attack rolls, hull breach checks, Initiative, or Morale rolls."],
             description: [
                 "For every point spent on purchasing this special pilot ability, this unit may force an opponent to reroll an attack with this unit as the target. This unit may force a reroll of the attack roll, or the critical hit effects roll. The second roll result stands, even if it fails or is worse than the first.",
@@ -504,6 +545,32 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         },
     },
     {
+        id: "goshen_grad",
+        name: "Goshen Grad",
+        cost: 2,
+        cbt: {
+            rulesRef: [{ book: Rulebook.FMD, page: 81 }],
+            unitType: "'Mechs",
+            summary: ["Applies Shielding SCA to this unit."],
+            description: [
+                "Any opposing unit must fire on this unit before targeting another unit, as long as the Goshen Grad is closer and in the LOS between the attacker and the other unit.",
+                "Actual grads (not in the Training Battalion) with this SPA possess that ability and once per battle may cause one enemy to possess the Blood Stalker SPA, with the grad as target.",
+                "The Blood Stalker SPA stays with that enemy unit until it is broken."
+            ],
+        },
+        as: {
+            rulesRef: [{ book: Rulebook.FMD, page: 81 }],
+            unitType: "'Mechs",
+            unitTypeFilter: ['BM', 'IM'],
+            summary: ["Applies Shielding SCA to this unit."],
+            description: [
+                "Any opposing unit must fire on this unit before targeting another unit, as long as the Goshen Grad is closer and in the LOS between the attacker and the other unit.",
+                "Actual grads (not in the Training Battalion) with this SPA possess that ability and once per battle may cause one enemy to possess the Blood Stalker SPA, with the grad as target.",
+                "The Blood Stalker SPA stays with that enemy unit until it is broken."
+            ],
+        }
+    },
+    {
         id: "ground_hugger",
         name: "Ground-Hugger",
         cost: 2,
@@ -521,7 +588,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
             unitType: "VTOLs, Fighters, Small Craft",
             unitTypeFilter: ['CV', 'SV', 'AF', 'CF', 'SC'],
-            summary: ["Can execute a 'double strafe' (two strafing areas, each at least 2\" long, total 10\") or a 'double strike' (two strike attacks in a single pass). All attacks must be along the unit's flight path."],
+            summary: ["Can execute a 'double strafe' (two strafing areas, each at least [[2]] long, total [[10]]) or a 'double strike' (two strike attacks in a single pass). All attacks must be along the unit's flight path."],
             description: [
                 "Another special skill for ace aviators, the Ground-Hugger SPA reflects a pilot whose fast reflexes and sense of timing enable them to deliver more damage in a single pass than most others.",
                 "When resolving air-to-ground combat rules the pilot with this SPA can execute either a 'double strafe', or a 'double strike' attack in a single ground-attack pass. The double strafe attack allows the unit to break its normal 10-inch strafing run into two strafing areas, each at least 2 inches long (and 2 inches wide), with a total combined strafe line of 10 inches.",
@@ -534,7 +601,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         name: "Headhunter",
         cost: 2,
         as: {
-            rulesRef: [{ book: Rulebook.ASCE, page: 96 }],
+            rulesRef: [{ book: Rulebook.ASCE, page: 96 }, { book: Rulebook.TR, page: 113 }],
             summary: ["Automatically identifies enemy command units (overall and sub-unit commanders). Gains +1 Initiative bonus (cumulative, max +3) for each opposing command unit killed/disabled. If no designated commanders, highest PV unit (after Skill mod) in a Formation is the commander."],
             description: [
                 "Can automatically identify enemy command units. This includes overall (e.g., company) and subunit (lance) commanders in a given battle.",
@@ -561,7 +628,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             rulesRef: [{ book: Rulebook.ASCE, page: 97 }],
             unitType: "'Mechs",
             unitTypeFilter: ['BM', 'IM'],
-            summary: ["Adds 1 level to the max Size of cargo/units the 'Mech can lift, drag, or throw (External Cargo Carriers rules). If this exceeds Size 5, can lift LG cargo; if LG already included, can lift VLG. If cargo is more than 3 Sizes smaller than the 'Mech, movement is only reduced by 2\" instead of by half."],
+            summary: ["Adds 1 level to the max Size of cargo/units the 'Mech can lift, drag, or throw (External Cargo Carriers rules). If this exceeds Size 5, can lift LG cargo; if LG already included, can lift VLG. If cargo is more than 3 Sizes smaller than the 'Mech, movement is only reduced by [[2]] instead of by half."],
             description: [
                 "The Heavy Lifter is a MechWarrior or IndustrialMech pilot who has mastered the finer points of balance and control when using their machine to lift and carry external cargo.",
                 "With this SPA, the unit adds 1 level to the maximum Size of any cargo (or units) their 'Mech can lift, drag, or throw using the External Cargo Carriers rules. If this would exceed a Size of 5, the unit can lift cargo or units that also have the LG special. If the maximum Size allowance already includes the LG special, the unit can lift Very Large cargo or units (VLG).",
@@ -613,7 +680,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             rulesRef: [{ book: Rulebook.ASCE, page: 97 }],
             unitType: "'Mechs, Aerospace Fighters",
             unitTypeFilter: ['BM', 'IM', 'AF'],
-            summary: ["Unit acts as if one level lower on the Heat scale. Can sustain 4 points of Heat before auto-shutdown instead of 3. At 4 Heat: loses 6\" ground MV, \u20131 TMM (min 0), and +3 TN modifier instead of shutting down."],
+            summary: ["Unit acts as if one level lower on the Heat scale. Can sustain 4 points of Heat before auto-shutdown instead of 3. At 4 Heat: loses [[6]] ground MV, \u20131 TMM (min 0), and +3 TN modifier instead of shutting down."],
             description: [
                 "This MechWarrior or fighter pilot knows how to ride the heat envelope.",
                 "The unit acts as if it was one level lower on the Heat scale, and can sustain 4 points of Heat before automatically shutting down rather than the usual 3. At 4 points of Heat, the unit loses 6\" of ground movement, subtracts 1 from its target movement modifier (minimum TMM of 0), and suffers a +3 Target Number modifier instead of shutting down.",
@@ -635,11 +702,95 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         },
         as: {
             rulesRef: [{ book: Rulebook.ASCE, page: 97 }],
-            summary: ["If Concealing Unit Data rules are in play, automatically identifies any non-hidden unit within 12\", revealing its data card as if the unit has LPRB (does not reveal hidden units). Once per game, may declare before rolling to hit: if the attack hits, make an additional Critical Hit check against the target."],
+            summary: ["If Concealing Unit Data rules are in play, automatically identifies any non-hidden unit within [[12]], revealing its data card as if the unit has LPRB (does not reveal hidden units). Once per game, may declare before rolling to hit: if the attack hits, make an additional Critical Hit check against the target."],
             description: [
                 "Everyone has a hobby; this one's happens to be memorizing the specs for thousands of 'Mechs\u2014and they won't let you forget it!",
                 "If the Concealing Unit Data rules are in play, this unit will automatically identify any non-hidden unit within 12 inches, revealing the subject's data card as if the Human TRO's unit has the LPRB special. This ability applies even if the Human TRO's unit does not have an active probe of any kind, but it does not confer the ability to reveal hidden units.",
                 "In addition, the Human TRO may look for a weak spot in a target unit once per game. The use of this ability must be declared before rolling to hit. If the attack hits, the attacker may roll once on the Determining Critical Hits Table, in addition to any such rolls required for any other reason.",
+            ],
+        },
+    },
+    {
+        id: "inspiring_commander",
+        name: "Inspiring Commander",
+        cost: 1,
+        cbt: {
+            rulesRef: [{ book: Rulebook.EA, page: 118 }],
+            summary: ["For each point spent on this SPA, may grant one friendly unit the ability to reroll one attack per scenario. The second result stands, even if worse."],
+            description: [
+                "For every point spent on purchasing this special pilot ability, this unit may grant a friendly unit the ability to reroll one attack per scenario.",
+                "The second roll result stands, even if it fails or is worse than the first."
+            ],
+        },
+        as: {
+            rulesRef: [{ book: Rulebook.EA, page: 118 }],
+            summary: ["For each point spent on this SPA, may grant one friendly unit the ability to reroll one attack per scenario. The second result stands, even if worse."],
+            description: [
+                "For every point spent on purchasing this special pilot ability, this unit may grant a friendly unit the ability to reroll one attack per scenario.",
+                "The second roll result stands, even if it fails or is worse than the first."
+            ],
+        },
+    },
+    {
+        id: "inspiring_commander2",
+        name: "Inspiring Commander",
+        cost: 2,
+        cbt: {
+            rulesRef: [{ book: Rulebook.EA, page: 118 }],
+            summary: ["For each point spent on this SPA, may grant one friendly unit the ability to reroll one attack per scenario. The second result stands, even if worse."],
+            description: [
+                "For every point spent on purchasing this special pilot ability, this unit may grant a friendly unit the ability to reroll one attack per scenario.",
+                "The second roll result stands, even if it fails or is worse than the first."
+            ],
+        },
+        as: {
+            rulesRef: [{ book: Rulebook.EA, page: 118 }],
+            summary: ["For each point spent on this SPA, may grant one friendly unit the ability to reroll one attack per scenario. The second result stands, even if worse."],
+            description: [
+                "For every point spent on purchasing this special pilot ability, this unit may grant a friendly unit the ability to reroll one attack per scenario.",
+                "The second roll result stands, even if it fails or is worse than the first."
+            ],
+        },
+    },
+    {
+        id: "inspiring_commander3",
+        name: "Inspiring Commander",
+        cost: 3,
+        cbt: {
+            rulesRef: [{ book: Rulebook.EA, page: 118 }],
+            summary: ["For each point spent on this SPA, may grant one friendly unit the ability to reroll one attack per scenario. The second result stands, even if worse."],
+            description: [
+                "For every point spent on purchasing this special pilot ability, this unit may grant a friendly unit the ability to reroll one attack per scenario.",
+                "The second roll result stands, even if it fails or is worse than the first."
+            ],
+        },
+        as: {
+            rulesRef: [{ book: Rulebook.EA, page: 118 }],
+            summary: ["For each point spent on this SPA, may grant one friendly unit the ability to reroll one attack per scenario. The second result stands, even if worse."],
+            description: [
+                "For every point spent on purchasing this special pilot ability, this unit may grant a friendly unit the ability to reroll one attack per scenario.",
+                "The second roll result stands, even if it fails or is worse than the first."
+            ],
+        },
+    },
+    {
+        id: "inspiring_commander4",
+        name: "Inspiring Commander",
+        cost: 4,
+        cbt: {
+            rulesRef: [{ book: Rulebook.EA, page: 118 }],
+            summary: ["For each point spent on this SPA, may grant one friendly unit the ability to reroll one attack per scenario. The second result stands, even if worse."],
+            description: [
+                "For every point spent on purchasing this special pilot ability, this unit may grant a friendly unit the ability to reroll one attack per scenario.",
+                "The second roll result stands, even if it fails or is worse than the first."
+            ],
+        },
+        as: {
+            rulesRef: [{ book: Rulebook.EA, page: 118 }],
+            summary: ["For each point spent on this SPA, may grant one friendly unit the ability to reroll one attack per scenario. The second result stands, even if worse."],
+            description: [
+                "For every point spent on purchasing this special pilot ability, this unit may grant a friendly unit the ability to reroll one attack per scenario.",
+                "The second roll result stands, even if it fails or is worse than the first."
             ],
         },
     },
@@ -663,6 +814,31 @@ export const PILOT_ABILITIES: PilotAbility[] = [
                 "This warrior knows no fear. A unit with this ability is resistant to 'psychological attacks' by opposing units, and can even overcome their natural impulse to flee when all hope seems lost.",
                 "When forced to make a roll against the intimidating or enraging effects of an opponent using the Animal Mimicry, Antagonizer, or Demoralizer SPAs, a unit whose pilot or crew has the Iron Will SPA applies a +2 modifier to the roll result to resist these effects.",
                 "Furthermore, if the Morale rules are in play, a unit controlled by a pilot or crew with this ability adds a \u20132 target modifier to avoid being routed or when recovering its nerve.",
+            ],
+        },
+    },
+        {
+        id: "judo",
+        name: "Judo",
+        cost: 3,
+        cbt: {
+            rulesRef: [{ book: Rulebook.DD, page: 132 }],
+            unitType: "'Mechs",
+            summary: [ "Target 'mech unit that moved this turn must make a Piloting Skill Roll with a +1 TN modifier +1 modifier for each 25 tons it outweights the attacker, or fall if succesfully attacked by a physical attack." ],
+            description: [
+                "If the target 'Mech unit moves this turn and this pilot makes a successful physical attack against it, the target must make a Piloting Skill Roll with a +1 TN modifier or fall.",
+                "This roll applies a +1 modifier for every full 25 tons the target is heavier than the Attacker."
+            ],
+        },
+        as: {
+            rulesRef: [{ book: Rulebook.DD, page: 132 }],
+            unitType: "'Mechs",
+            unitTypeFilter: ['BM', 'IM'],
+            summary: ["Target 'mech not using standstill movement succesfully attacked by a physical attack must make a Skill roll +1, + attacker size, \u2013 target size. If the roll fails, the target takes 1 damage, \u2013[[2]] Move and \u20131 TMM during the following turn." ],
+            description: [
+                "If this unit makes a successful physical attack against a target that is not using standstill movement, the target makes a 2D6 roll with a TN equal to the unit's Skill Rating +1.",
+                "Add the Attacker's size and subtract the target's Size from the Target Number.",
+                "If the roll fails, the target takes 1 damage, \u2013[[2]] Move and \u20131 TMM during the following turn."
             ],
         },
     },
@@ -798,7 +974,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         },
         as: {
             rulesRef: [{ book: Rulebook.ASCE, page: 97 }],
-            summary: ["Reduces Move cost through all woods and jungle terrain types by 1\" per inch of movement. For aerospace units, reduces the Control Roll target modifier for atmospheric combat from +2 to +1."],
+            summary: ["Reduces Move cost through all woods and jungle terrain types by [[1]] per [[1]] of movement. For aerospace units, reduces the Control Roll target modifier for atmospheric combat from +2 to +1."],
             description: [
                 "This pilot knows how to get their ride into and out of tight spots in a hurry.",
                 "This unit reduces the cost for moving through all woods and jungle terrain types by 1 inch per inch of movement. For aerospace units, a pilot with this SPA reduces the unit's Control Roll target modifier for atmospheric combat from +2 to +1.",
@@ -919,7 +1095,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             rulesRef: [{ book: Rulebook.ASCE, page: 98 }],
             unitType: "'Mechs, ProtoMechs",
             unitTypeFilter: ['BM', 'IM', 'PM'],
-            summary: ["Unit may attack as if it has a 360-degree firing arc (still suffers 1 extra damage if attacked through rear facing). Reduces Move cost for ultra-heavy woods, ultra-heavy jungle, and buildings by 1\" per inch of movement."],
+            summary: ["Unit may attack as if it has a 360-degree firing arc (still suffers 1 extra damage if attacked through rear facing). Reduces Move cost for ultra-heavy woods, ultra-heavy jungle, and buildings by [[1]] per [[1]] of movement."],
             description: [
                 "They just don't teach the piloting skills this warrior can demonstrate in the normal academies!",
                 "This unit may make attacks as if it has a 360-degree firing arc (but still suffers 1 additional damage point if attacked through the rear facing). It also reduces its Move cost for passing through ultra-heavy woods terrain, ultra-heavy jungle terrain, or any buildings by 1 inch per inch of movement.",
@@ -1106,7 +1282,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             rulesRef: [{ book: Rulebook.ASCE, page: 99 }],
             unitType: "'Mechs",
             unitTypeFilter: ['BM', 'IM'],
-            summary: ["Unit can obtain an improvised melee weapon by spending 2\" extra movement in woods, jungle, rubble, or building terrain (no roll required, declared during Movement). After obtaining the weapon, may execute physical attacks as if it has the MEL special. No effect if the unit already has MEL."],
+            summary: ["Unit can obtain an improvised melee weapon by spending [[2]] extra movement in woods, jungle, rubble, or building terrain (no roll required, declared during Movement). After obtaining the weapon, may execute physical attacks as if it has the MEL special. No effect if the unit already has MEL."],
             description: [
                 "Some 'Mechs have built-in swords and hatchets to fight with, but this MechWarrior knows how to improvise their own.",
                 "This unit can make use of an improvised melee weapon by simply spending 2 extra inches of movement in a woods, jungle, rubble, or building terrain to find an appropriate weapon. This action requires no roll and creates no special modifiers, but must be declared during the unit's Movement Phase.",
@@ -1148,7 +1324,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         },
         as: {
             rulesRef: [{ book: Rulebook.ASCE, page: 99 }],
-            summary: ["Ground units receive +2\" Move per turn and +4\" Sprinting movement (does not change TMM). Aerospace units receive an effective Thrust value 1 point higher than listed on their stat card."],
+            summary: ["Ground units receive +[[2]] Move per turn and +[[4]] Sprinting movement (does not change TMM). Aerospace units receive an effective Thrust value 1 point higher than listed on their stat card."],
             description: [
                 "A pilot with the Speed Demon SPA can really pour it on!",
                 "Ground units of all motive types (including VTOLs and WiGE vehicles) receive an additional 2 inches of Move per turn when driven by a pilot with this ability, and increase their Sprinting movement by 4 inches per turn. This speed boost will not change the unit's target movement modifier, however.",
@@ -1172,7 +1348,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
         },
         as: {
             rulesRef: [{ book: Rulebook.ASCE, page: 99 }],
-            summary: ["Unit can move through hostile units during Movement Phase at +1\" Move cost, causing no damage to either unit. Also immune to the maneuver-limiting effects of any opposing unit's Zone of Control command ability."],
+            summary: ["Unit can move through hostile units during Movement Phase at +[[1]] Move cost, causing no damage to either unit. Also immune to the maneuver-limiting effects of any opposing unit's Zone of Control command ability."],
             description: [
                 "This unit can move through hostile units during its Movement Phase, at an additional cost of 1 inch of Move. This action causes no damage to either unit; it simply negates the normal 'stacking restriction' that prevents units from moving directly through enemy-occupied positions on the map.",
                 "Zone of Control: A unit piloted by a warrior with this SPA is also immune to the maneuver-limiting effects of any opposing unit using the Zone of Control special command ability against it.",
@@ -1215,7 +1391,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             rulesRef: [{ book: Rulebook.ASCE, page: 100 }],
             unitType: "'Mechs, ProtoMechs",
             unitTypeFilter: ['BM', 'IM', 'PM'],
-            summary: ["Receives +2\" Move on paved or ice terrain (plus normal pavement bonus). Sprinting adds +4\" instead. If Skidding rules are in play, applies \u20132 TN to the unit's Control Roll."],
+            summary: ["Receives +[[2]] Move on paved or ice terrain (plus normal pavement bonus). Sprinting adds +[[4]] instead. If Skidding rules are in play, applies \u20132 TN to the unit's Control Roll."],
             description: [
                 "This unit receives an additional 2 inches to its normal movement allowance any turn it remains entirely on paved or ice terrain (in addition to the normal pavement movement bonus). If Sprinting movement is used, the Sure-Footed unit adds 4 inches (plus any pavement bonus) as long as the unit remains on the paved or ice terrain.",
                 "Furthermore, if the Skidding rules are in play, the Sure-Footed SPA applies a \u20132 Target Number modifier to the unit's Control Roll.",
@@ -1289,7 +1465,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             rulesRef: [{ book: Rulebook.ASCE, page: 100 }],
             unitType: "Combat Vehicles (tracked or wheeled)",
             unitTypeFilter: ['CV'],
-            summary: ["Receives +4\" Move on paved or ice terrain (plus normal pavement bonus). Sprinting adds +6\" instead. If Skidding rules are in play, applies \u20132 TN to the unit's Control Roll."],
+            summary: ["Receives +[[4]] Move on paved or ice terrain (plus normal pavement bonus). Sprinting adds +[[6]] instead. If Skidding rules are in play, applies \u20132 TN to the unit's Control Roll."],
             description: [
                 "A vehicle driver with this SPA isn't just a speed demon; he's practically a professional racer.",
                 "This unit receives an additional 4 inches to its normal movement allowance any turn it remains entirely on paved or ice terrain (in addition to the normal pavement movement bonus). If Sprinting movement is used, the Drag Racer adds 6 inches (plus any pavement bonus) as long as their vehicle remains on the paved or ice terrain.",
@@ -1315,7 +1491,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             rulesRef: [{ book: Rulebook.ASCE, page: 100 }],
             unitType: "Any non-airborne unit",
             unitTypeFilter: ['BM', 'IM', 'PM', 'CV', 'SV', 'BA', 'CI'],
-            summary: ["Reduces additional Move costs through woods/jungle terrain (including heavy and ultra-heavy) by 1\" per inch of movement (min +0\"). Attacks against this unit suffer +1 Terrain Modifier if it ends movement in wooded or jungle terrain."],
+            summary: ["Reduces additional Move costs through woods/jungle terrain (including heavy and ultra-heavy) by [[1]] per [[1]] of movement (min +[[0]]). Attacks against this unit suffer +1 Terrain Modifier if it ends movement in wooded or jungle terrain."],
             description: [
                 "This warrior with this ability is truly at home in woodlands.",
                 "A unit piloted by a warrior with this SPA reduces its additional Move costs when travelling through woods or jungle terrain (including heavy and ultra-heavy woods and jungle) by 1 inch per inch of movement (to a minimum added cost of +0 inches).",
@@ -1341,7 +1517,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             rulesRef: [{ book: Rulebook.ASCE, page: 100 }],
             unitType: "'Mechs, ProtoMechs",
             unitTypeFilter: ['BM', 'IM', 'PM'],
-            summary: ["Reduces movement costs for underwater movement by 1\" per inch of travel (min +0\"). Only applies when fully submerged."],
+            summary: ["Reduces movement costs for underwater movement by [[1]] per [[1]] of travel (min +[[0]]). Only applies when fully submerged."],
             description: [
                 "This MechWarrior or ProtoMech pilot is uncommonly good at maneuvering their machine underwater, even without the benefits of UMU mobility.",
                 "This SPA reduces the unit's movement costs for underwater movement by 1 inch per inch of travel, to a minimum added Move cost of +0 inches. This benefit only applies when the unit is fully submerged.",
@@ -1366,7 +1542,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             rulesRef: [{ book: Rulebook.ASCE, page: 100 }],
             unitType: "Any non-airborne unit",
             unitTypeFilter: ['BM', 'IM', 'PM', 'CV', 'SV', 'BA', 'CI'],
-            summary: ["Reduces additional Move costs for changing levels, Climbing, or passing through rough/rubble terrain (including ultra-rough/ultra-rubble) by 1\" per inch of travel (min +0\")."],
+            summary: ["Reduces additional Move costs for changing levels, Climbing, or passing through rough/rubble terrain (including ultra-rough/ultra-rubble) by [[1]] per [[1]] of travel (min +[[0]])."],
             description: [
                 "The Mountaineer is a warrior or vehicle pilot who has an affinity for steep slopes and rocks.",
                 "This SPA reduces the additional Move costs for changing levels, using Climbing movement, or for passing through rough and rubble terrain types (including ultra-rough and ultra-rubble) by 1 inch per inch of travel, to a minimum added Move cost of +0 inches.",
@@ -1406,7 +1582,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             rulesRef: [{ book: Rulebook.ASCE, page: 101 }],
             unitType: "Any non-airborne unit",
             unitTypeFilter: ['BM', 'IM', 'PM', 'CV', 'SV', 'BA', 'CI'],
-            summary: ["Reduces additional Move costs for water terrain by 1\" per inch of travel (min +0\"). Attacks against this unit suffer +1 Terrain Modifier while in water terrain of depth 1\"\u20132\". Ignores the +1 underwater terrain modifier when attacking."],
+            summary: ["Reduces additional Move costs for water terrain by [[1]] per [[1]] of travel (min +[[0]]). Attacks against this unit suffer +1 Terrain Modifier while in water terrain of depth [[1]]\u2013[[2]]. Ignores the +1 underwater terrain modifier when attacking."],
             description: [
                 "This unit reduces the additional Move costs for passing through water terrain by 1 inch per inch of travel, to a minimum added cost of +0 inches.",
                 "In addition to this, attacks against this pilot's unit will suffer an additional +1 Terrain Modifier as long as the unit is occupying water terrain of depth 1\"\u20132\". The Sea Monster ignores the +1 underwater terrain modifier when it is attacking.",
@@ -1431,7 +1607,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             rulesRef: [{ book: Rulebook.ASCE, page: 101 }],
             unitType: "Any non-airborne unit",
             unitTypeFilter: ['BM', 'IM', 'PM', 'CV', 'SV', 'BA', 'CI'],
-            summary: ["Reduces additional Move costs for swamp terrain by 1\" per inch of travel (min +0\"). Ignores Bogging Down rules in mud/swamp terrain. Attacks against this unit suffer +1 Terrain Modifier while in mud or swamp terrain."],
+            summary: ["Reduces additional Move costs for swamp terrain by [[1]] per [[1]] of travel (min +[[0]]). Ignores Bogging Down rules in mud/swamp terrain. Attacks against this unit suffer +1 Terrain Modifier while in mud or swamp terrain."],
             description: [
                 "Terrain masters have honed their piloting skills under particularly treacherous conditions; the 'swamp beast' knows how to handle mud, marsh\u2014even quicksand, if it comes up.",
                 "This unit reduces the additional Move costs for passing through swamp terrain by 1 inch per inch of travel, to a minimum added cost of +0 inches. In addition to this, the Swamp Beast ignores the Bogging Down rules when traveling through mud or swamp terrain.",
@@ -1453,7 +1629,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             ],
         },
         as: {
-            rulesRef: [{ book: Rulebook.ASCE, page: 101 }],
+            rulesRef: [{ book: Rulebook.ASCE, page: [101, 175] }],
             summary: ["If the unit makes a standard weapons attack and misses by 1, the attack deals half damage (round down, min 1 point)."],
             description: [
                 "The weapon specialist is a superlative expert with certain types of weapons, and can deliver much more accurate fire when he sticks to those guns alone.",
@@ -1531,7 +1707,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             rulesRef: [{ book: Rulebook.ASCE, page: 101 }],
             unitType: "CI (beast-mounted only)",
             unitTypeFilter: ['CI'],
-            summary: ["Beast-mounted infantry receives +2\" Move per turn and reduces additional movement costs for wooded or rough terrain by 1\" per inch of travel (min +0\")."],
+            summary: ["Beast-mounted infantry receives +[[2]] Move per turn and reduces additional movement costs for wooded or rough terrain by [[1]] per [[1]] of travel (min +[[0]])."],
             description: [
                 "Yes, it may be the future, but that doesn\u2019t mean horse (or horse-analog) infantry doesn\u2019t still exist\u2014or that there aren\u2019t troops out there who specialize in their use.",
                 "A beast-mounted infantry unit with this SPA receives an additional 2 inches of movement per turn, and reduces the additional movement costs for wooded or rough terrain types by 1 inch per inch of travel (to a minimum added movement cost of +0 inches).",
@@ -1580,7 +1756,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             rulesRef: [{ book: Rulebook.ASCE, page: 101 }],
             unitType: "CI (foot motive type only)",
             unitTypeFilter: ['CI'],
-            summary: ["Foot infantry receives +2\" Move per turn, reduces additional movement costs for woods, jungle, rough, rubble, and building terrain by 1\" per inch of travel, and halves elevation change costs (min +0\")."],
+            summary: ["Foot infantry receives +[[2]] Move per turn, reduces additional movement costs for woods, jungle, rough, rubble, and building terrain by [[1]] per [[1]] of travel, and halves elevation change costs (min +[[0]])."],
             description: [
                 "The foot cavalry\u2019s squad leader has trained for endurance running, even in full combat gear\u2014and pushes their troops hard to keep them up to their level.",
                 "A conventional foot infantry unit with this SPA receives an additional 2 inches of movement per turn, and reduces the additional movement costs for all wooded, jungle, rough, rubble, and building terrain types by 1 inch per inch of travel and halves the elevation change movement costs (to a minimum added movement cost of +0 inches).",
@@ -1606,7 +1782,7 @@ export const PILOT_ABILITIES: PilotAbility[] = [
             rulesRef: [{ book: Rulebook.ASCE, page: 101 }],
             unitType: "CI, BA",
             unitTypeFilter: ['CI', 'BA'],
-            summary: ["Attacks against this infantry unit suffer +1 TN and \u20131 damage if in building, rough, rubble, or paved terrain. Once per urban scenario, may spawn a friendly CI unit (2\" Move, 1 armor, 1 structure, 1 damage at Short range, Skill +2) within 6\"."],
+            summary: ["Attacks against this infantry unit suffer +1 TN and \u20131 damage if in building, rough, rubble, or paved terrain. Once per urban scenario, may spawn a friendly CI unit ([[2]] Move, 1 armor, 1 structure, 1 damage at Short range, Skill +2) within [[6]]."],
             description: [
                 "Nobody knows the streets like this infantry force\u2014but is this really a regular outfit, or a street gang?",
                 "Attacks against an infantry unit with this SPA suffer a +1 Target Number modifier, and a \u20131 damage point reduction if the unit is occupying building, rough, rubble, or paved terrain types.",

@@ -1,5 +1,6 @@
 @let gunnery = this.filtersService.pilotGunnerySkill();
 @let piloting = this.filtersService.pilotPilotingSkill();
+@let resultUnits = displayedUnits();
 
 <div class="search-overlay overlay-backdrop" [class.expanded]="this.expandedView()"
     [hidden]="!this.filtersService.isDataReady() || !overlayVisible()" (click)="onOverlayClick()">
@@ -41,18 +42,15 @@
         </svg>
         }
     </button>
-    <button type="button" class="bt-button card-view-btn square"
-        (click)="cycleViewMode()"
-        [title]="viewMode() === 'chassis' ? 'Chassis View' : viewMode() === 'card' ? 'Card View' : 'List View'"
-        [attr.aria-label]="viewMode() === 'chassis' ? 'Chassis View' : viewMode() === 'card' ? 'Card View' : 'List View'">
-        @if (viewMode() === 'chassis') {
-        <!-- Chassis view -->
+    <ng-template #viewModeIcon let-mode="mode">
+        @switch (mode) {
+        @case ('chassis') {
         <svg width="24px" height="24px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
             <path d="M2 20h1v1H1v-2h1zm20 0h-1v1h2v-2h-1zM1 5h1V4h1V3H1zm1 2H1v2h1zm0 4H1v2h1zm20-2h1V7h-1zm0 4h1v-2h-1zM2 15H1v2h1zm20 2h1v-2h-1zM5 4h2V3H5zm6 0V3H9v1zm2 0h2V3h-2zm6-1h-2v1h2zM5 21h2v-1H5zm4 0h2v-1H9zm4 0h2v-1h-2zm4 0h2v-1h-2zm4-17h1v1h1V3h-2zm-1 4v2a1.001 1.001 0 0 1-1 1H5a1.001 1.001 0 0 1-1-1V8a1.001 1.001 0 0 1 1-1h14a1.001 1.001 0 0 1 1 1zm-.999 2H19V8H5v2h14m1 4v2a1.001 1.001 0 0 1-1 1H5a1.001 1.001 0 0 1-1-1v-2a1.001 1.001 0 0 1 1-1h14a1.001 1.001 0 0 1 1 1zm-.999 2H19v-2H5v2h14"/>
         </svg>
-        } @else if (viewMode() === 'card') {
-        <!-- Card view -->
-        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+        }
+        @case ('card') {
+        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5"
             stroke-linecap="arcs" stroke-linejoin="arcs" xmlns="http://www.w3.org/2000/svg">
             <rect x="2" y="4.5" width="20" height="15"/>
             <line x1="4.5" y1="8" x2="12" y2="8"/>
@@ -60,13 +58,70 @@
             <line x1="4.5" y1="16" x2="10" y2="16"/>
             <rect x="14.5" y="8" width="4" height="4"/>
         </svg>
-        } @else {
-        <!-- List view -->
-        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="arcs" />
+        }
+        @case ('table') {
+        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+            <path d="M21.167 22H2V2h19.167v20zM15.333 20.333H19.5V17h-4.167v3.333zM9.5 20.333h4.167V17H9.5v3.333zM3.667 20.333h4.167V17H3.667v3.333zM15.333 15.333H19.5V7h-4.167v3.333H19.5V12h-4.167v3.333zM9.5 15.333h4.167V12H9.5v3.333zM3.667 15.333h4.167V12H3.667v3.333zM9.5 10.333h4.167V7H9.5v3.333zM3.667 10.333h4.167V7H3.667v3.333zM3.667 5.333H19.5V3.667H3.667v1.666z" />
         </svg>
         }
+        @default {
+        <svg width="24px" height="24px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M23 3C23 1.89543 22.1046 1 21 1H3C1.89543 1 1 1.89543 1 3V5C1 6.10457 1.89543 7 3 7H21C22.1046 7 23 6.10457 23 5V3ZM21 3H3V5H21V3Z"/>
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M23 11C23 9.89543 22.1046 9 21 9H3C1.89543 9 1 9.89543 1 11V13C1 14.1046 1.89543 15 3 15H21C22.1046 15 23 14.1046 23 13V11ZM21 11H3V13H21V11Z"/>
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M23 19C23 17.8954 22.1046 17 21 17H3C1.89543 17 1 17.8954 1 19V21C1 22.1046 1.89543 23 3 23H21C22.1046 23 23 22.1046 23 21V19ZM21 19H3V21H21V19Z"/>
+        </svg>
+        }
+        }
+    </ng-template>
+    <button type="button" class="bt-button card-view-btn view-mode-btn square"
+        cdkOverlayOrigin #viewModeOrigin="cdkOverlayOrigin"
+        (click)="toggleViewModeMenu($event)"
+        [class.active]="viewModeMenuOpen()"
+        [title]="currentViewModeTitle()"
+        [attr.aria-label]="currentViewModeTitle()"
+        aria-haspopup="menu"
+        [attr.aria-expanded]="viewModeMenuOpen()">
+        <ng-container [ngTemplateOutlet]="viewModeIcon" [ngTemplateOutletContext]="{ mode: viewMode() }"></ng-container>
     </button>
+    <ng-template
+        cdkConnectedOverlay
+        [cdkConnectedOverlayOrigin]="viewModeOrigin"
+        [cdkConnectedOverlayOpen]="viewModeMenuOpen()"
+        [cdkConnectedOverlayPositions]="viewModeMenuPositions"
+        [cdkConnectedOverlayPush]="true"
+        [cdkConnectedOverlayFlexibleDimensions]="false"
+        [cdkConnectedOverlayViewportMargin]="4"
+        [cdkConnectedOverlayHasBackdrop]="true"
+        [cdkConnectedOverlayBackdropClass]="'cdk-overlay-transparent-backdrop'"
+        [cdkConnectedOverlayPanelClass]="'view-mode-menu-overlay-pane'"
+        [cdkConnectedOverlayScrollStrategy]="viewModeMenuScrollStrategy"
+        (backdropClick)="closeViewModeMenu()"
+        (detach)="closeViewModeMenu()">
+        <div class="view-mode-menu framed-borders has-shadow" role="menu" (click)="$event.stopPropagation()">
+            @for (option of viewModeOptions(); track option.mode) {
+            <button type="button" class="view-mode-option"
+                role="menuitemradio"
+                [class.active]="option.mode === viewMode()"
+                [class.disabled]="option.disabled"
+                [disabled]="option.disabled"
+                [attr.aria-checked]="option.mode === viewMode()"
+                [attr.aria-disabled]="option.disabled"
+                [title]="option.disabledReason || option.label"
+                (click)="selectViewMode(option.mode, $event)">
+                <span class="view-mode-option-icon">
+                    <ng-container [ngTemplateOutlet]="viewModeIcon" [ngTemplateOutletContext]="{ mode: option.mode }"></ng-container>
+                </span>
+                <span class="view-mode-option-label-container">
+                    <span class="view-mode-option-label">{{ option.label }}</span>
+                    <span class="view-mode-option-caption">{{ option.caption }}</span>
+                </span>
+                @if (option.willExpand) {
+                <span class="view-mode-option-hint">EXPANDS</span>
+                }
+            </button>
+            }
+        </div>
+    </ng-template>
     <!-- Adv button on left when filters are on left side -->
     @if (this.expandedView() && this.filtersOnLeft()) {
     <button #advBtn class="bt-button adv-btn square" [class.active]="isAdvActive()"
@@ -118,19 +173,23 @@
 <!-- Results Container -->
 <div #resultsContainer class="results-container"
     [class.expanded]="this.expandedView()"
+    [class.css-anchor-positioned]="supportsCssAnchorPositioning"
+    [class.has-results]="resultUnits.length > 0"
     [class.with-details-panel]="showInlinePanel()"
     [hidden]="!this.filtersService.isDataReady() || !resultsVisible()"
-    [style.top]="this.expandedView() ? expandedWrapperStyle().top : resultsDropdownStyle().top"
+    [style.top]="supportsCssAnchorPositioning ? null : (this.expandedView() ? expandedWrapperStyle().top : resultsDropdownStyle().top)"
     [style.left]="this.expandedView() ? expandedWrapperStyle().left : null"
     [style.right]="this.expandedView() ? expandedWrapperStyle().right : null"
     [style.bottom]="this.expandedView() ? expandedWrapperStyle().bottom : null"
-    [style.width]="this.expandedView() ? null : resultsDropdownStyle().width"
-    [style.height]="this.expandedView() ? null : resultsDropdownStyle().height"
+    [style.width]="this.expandedView() || supportsCssAnchorPositioning ? null : resultsDropdownStyle().width"
+    [style.height]="this.expandedView() || supportsCssAnchorPositioning ? null : resultsDropdownStyle().height"
     [style.flex-direction]="this.expandedView() ? expandedWrapperStyle().flexDirection : null">
 
     <!-- Inline Details Panel (visible when screen permits in expanded view) -->
     @if (showInlinePanel()) {
     <unit-details-panel class="inline-details-panel framed-borders" [unit]="inlinePanelUnit()"
+        [prevUnit]="inlinePanelPrevUnit()"
+        [nextUnit]="inlinePanelNextUnit()"
         [gunnerySkill]="this.filtersService.pilotGunnerySkill()"
         [pilotingSkill]="this.filtersService.pilotPilotingSkill()"
         [hasPrev]="inlinePanelHasPrev()"
@@ -141,34 +200,27 @@
     </unit-details-panel>
     }
 
-    <div class="results-dropdown framed-borders" [class.expanded]="this.expandedView()">
+    <div #resultsDropdown class="results-dropdown framed-borders" [class.expanded]="this.expandedView()">
         <div class="results-dropdown-content">
-            @if (this.filtersService.filteredUnits().length > 0) {
-            <!-- Table Header for AS Table View (expanded only, not in card or compact view) -->
-            @if (this.expandedView() && gameService.isAlphaStrike() && viewMode() === 'list') {
-            <div class="as-table-header"
-                 [class.sort-asc]="filtersService.selectedSortDirection() === 'asc'"
-                 [class.sort-desc]="filtersService.selectedSortDirection() === 'desc'">
-                <div class="as-th as-th-icon"></div>
-                <div class="as-th as-th-name as-th-sortable" [class.sort-active]="isSortActive('name')" (click)="onHeaderSort('name')">Name</div>
-                <div class="as-th as-th-type as-th-sortable" [class.sort-active]="isSortActive('as.TP')" (click)="onHeaderSort('as.TP')">Type</div>
-                <div class="as-th as-th-role as-th-sortable" [class.sort-active]="isSortActive('role')" (click)="onHeaderSort('role')">Role</div>
-                <div class="as-th as-th-pv as-th-sortable" [class.sort-active]="isSortActive('as.PV')" (click)="onHeaderSort('as.PV')">PV</div>
-                <div class="as-th as-th-sz as-th-sortable" [class.sort-active]="isSortActive('as.SZ')" (click)="onHeaderSort('as.SZ')">SZ</div>
-                <div class="as-th as-th-mv as-th-sortable" [class.sort-active]="isSortActive('as._mv')" (click)="onHeaderSort('as._mv')">MV</div>
-                <div class="as-th as-th-tmm as-th-sortable" [class.sort-active]="isSortActive('as.TMM')" (click)="onHeaderSort('as.TMM')">TMM</div>
-                <div class="as-th as-th-dmg as-th-sortable" [class.sort-active]="isSortActive('as.damage')" (click)="onHeaderSort('as.dmg._dmgS', 'as.damage')">S/M/L</div>
-                <div class="as-th as-th-arm as-th-sortable" [class.sort-active]="isSortActive('as.Arm')" (click)="onHeaderSort('as.Arm')">A</div>
-                <div class="as-th as-th-str as-th-sortable" [class.sort-active]="isSortActive('as.Str')" (click)="onHeaderSort('as.Str')">S</div>
-                <div class="as-th as-th-ov as-th-sortable" [class.sort-active]="isSortActive('as.OV')" (click)="onHeaderSort('as.OV')">OV</div>
-                @if (asTableSortSlotHeader(); as sortHeader) {
-                <div class="as-th as-th-sort-slot">{{ sortHeader }}</div>
+            @if (activeVariantGroupFilter(); as variantGroup) {
+            <div class="variant-filter-bar">
+                @if (activeVariantGroupRepresentativeUnit(); as representativeUnit) {
+                <div class="variant-filter-icon"><unit-icon [unit]="representativeUnit" [size]="30"></unit-icon></div>
                 }
-                <div class="as-th as-th-specials">Special</div>
-                <div class="as-th as-th-tags">Tags</div>
+                <div class="variant-filter-title-container">
+                    <div class="variant-filter-title">{{ activeVariantGroupTitle() }}</div>
+                    <div class="variant-filter-meta">{{ activeVariantGroupMeta() }}</div>
+                </div>
+                <button type="button" class="bt-button square variant-filter-clear"
+                    (click)="clearVariantGroupFilter(); $event.stopPropagation()"
+                    title="Clear variant group" aria-label="Clear variant group">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                        <path d="M6 6L18 18M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                    </svg>
+                </button>
             </div>
             }
-
+            @if (resultUnits.length > 0) {
             @if (viewMode() === 'chassis') {
             <!-- Compact Chassis-Grouped View -->
             <div class="chassis-view-grid" [class.has-sort-slot]="chassisSortSlotHeader()">
@@ -181,11 +233,14 @@
                     <div class="chassis-view-th chassis-view-th-sort-slot">{{ sortHeader }}</div>
                     }
                 </div>
-                @for (group of groupedUnits(); track group.chassis + group.type) {
-                <div class="chassis-view-row" (click)="onCompactGroupClick(group)">
+                @for (group of groupedUnits(); track group.key) {
+                <div class="chassis-view-row" [attr.data-variant-group-key]="group.key" (click)="onCompactGroupClick(group)">
                     <div class="chassis-view-td chassis-view-td-count">{{ group.variantCount }}</div>
                     <div class="chassis-view-td chassis-view-td-icon"><unit-icon [unit]="group.representativeUnit" [size]="28"></unit-icon></div>
-                    <div class="chassis-view-td chassis-view-td-chassis">{{ group.chassis }}</div>
+                    <div class="chassis-view-td chassis-view-td-chassis">
+                        <span class="chassis-view-chassis-name">{{ group.chassis }}</span>
+                        <span class="chassis-view-type">{{ formatVariantGroupType(group) }}@if (group.omni) {<span class="chassis-view-omni">(omni)</span>}</span>
+                    </div>
                     <div class="chassis-view-td chassis-view-td-value">{{ gameService.isAlphaStrike()
                         ? (group.minPV === group.maxPV ? '' + group.minPV : group.minPV + '–' + group.maxPV)
                         : (group.minBV === group.maxBV ? '' + group.minBV : group.minBV + '–' + group.maxBV) }}</div>
@@ -196,35 +251,119 @@
                 }
             </div>
             } @else if (viewMode() === 'card' && gameService.isAlphaStrike()) {
-            <!-- Card View Grid (replaces virtual scroll) -->
-            <div class="card-view-grid">
-                @for (unit of this.filtersService.filteredUnits(); track unit.name) {
+            <cdk-virtual-scroll-viewport class="results-dropdown-viewport card-view-viewport"
+                [itemSize]="this.itemSize()"
+                [style.--item-size.px]="this.itemSize()"
+                [style.--card-columns]="cardViewColumnCount()"
+                minBufferPx="900" maxBufferPx="1600" tabindex="0">
+                <div class="card-view-row"
+                    *cdkVirtualFor="let row of cardViewRows(); let rowIndex = index; trackBy: trackCardRow">
+                    @for (unit of row; let columnIndex = $index; track unit.name) {
                     <div class="card-view-cell"
-                         longPress
-                         [class.selected]="isUnitSelected(unit)"
-                         (shortPress)="onUnitCardClick(unit, $event)"
-                         (longPress)="multiSelectUnit(unit)">
-                        @defer (on viewport) {
+                        longPress
+                        [class.selected]="isUnitSelected(unit)"
+                        [class.active]="activeIndex() === getCardUnitIndex(rowIndex, columnIndex)"
+                        (pointerenter)="onResultPointerHover(getCardUnitIndex(rowIndex, columnIndex), $event)"
+                        (pointermove)="onResultPointerHover(getCardUnitIndex(rowIndex, columnIndex), $event)"
+                        (shortPress)="onUnitCardClick(unit, $event)"
+                        (longPress)="multiSelectUnit(unit)">
                         <alpha-strike-card
                             [unit]="unit"
                             [useHex]="useHex()"
                             [cardStyle]="cardStyle()"
                             [isSelected]="isUnitSelected(unit)" />
-                        } @placeholder {
-                        <div class="card-view-placeholder"></div>
-                        }
                     </div>
-                }
-            </div>
+                    }
+                </div>
+            </cdk-virtual-scroll-viewport>
+            } @else if (this.expandedView() && isTableMode()) {
+            <mb-data-table class="unit-search-as-table"
+                [rows]="resultUnits"
+                [columns]="unitSearchTableColumns()"
+                [itemSize]="48"
+                [minWidth]="unitSearchTableMinWidth()"
+                [sortDirection]="filtersService.selectedSortDirection()"
+                [rowTrackBy]="trackByUnitId"
+                [rowClass]="unitTableRowClass"
+                [minBufferPx]="900"
+                [maxBufferPx]="1600"
+                (sort)="onUnitTableSort($event)"
+                (rowClick)="onUnitTableRowClick($event)"
+                (rowLongPress)="onUnitTableRowLongPress($event)"
+                (rowPointerEnter)="onUnitTableRowPointerEnter($event)"
+                (rowPointerMove)="onUnitTableRowPointerMove($event)">
+            </mb-data-table>
+
+            <ng-template #tableIconCell let-unit>
+                <div class="as-td as-td-icon"><unit-icon [unit]="unit" [size]="36"></unit-icon></div>
+            </ng-template>
+
+            <ng-template #tableNameCell let-unit>
+                <div class="as-td as-td-name">
+                    <span class="as-td-model" [innerHTML]="highlight(unit.model)"></span>
+                    <span class="as-td-chassis">
+                        <span class="as-td-chassis-name" [innerHTML]="highlight(unit.chassis)"></span>
+                        @if (unit.serverHost) { <span class="custom-unit-badge" title="Custom unit from {{ unit.serverHost }}">Custom</span> }
+                    </span>
+                </div>
+            </ng-template>
+
+            <ng-template #tableYearCell let-unit>
+                <div class="as-td as-td-year">
+                    @if (unit._era?.img) {
+                    <img class="as-era-icon" [src]="unit._era?.img" [alt]="unit._era?.name || 'Era'" [title]="unit._era?.name || ''" />
+                    }
+                    <span>{{ unit.year ?? '—' }}</span>
+                </div>
+            </ng-template>
+
+            <ng-template #tableBvCell let-unit>
+                <div class="as-td cbt-td-bv">{{ formatClassicBv(unit, gunnery, piloting) }}</div>
+            </ng-template>
+
+            <ng-template #tableTonsCell let-unit>
+                <div class="as-td cbt-td-tons">{{ formatTons(unit.tons) }}</div>
+            </ng-template>
+
+            <ng-template #tableTypeCell let-unit>
+                <div class="as-td as-td-type" [tooltip]="unitTypeDisplayNames[unit.as.TP]">{{ unit.as.TP }}</div>
+            </ng-template>
+
+            <ng-template #tablePvCell let-unit>
+                <div class="as-td as-td-pv">{{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:false }}</div>
+            </ng-template>
+
+            <ng-template #tableMovementCell let-unit>
+                <div class="as-td as-td-mv" [innerHTML]="formatASMovement(unit)"></div>
+            </ng-template>
+
+            <ng-template #tableClassicMovementCell let-unit>
+                <div class="as-td cbt-td-mv">{{ formatClassicMovement(unit) }}</div>
+            </ng-template>
+
+            <ng-template #tableSpecialsCell let-unit>
+                <div class="as-td as-td-specials">
+                    @for (special of unit.as.specials; let i = $index; track i) {
+                    <span class="special-pill" (click)="showAbilityInfoDialog(special); $event.stopPropagation()" title="Click for details">{{ special }}</span>
+                    }
+                </div>
+            </ng-template>
+
+            <ng-template #tableTagsCell let-unit>
+                <div class="as-td as-td-tags">
+                    <unit-tags [unit]="unit" mode="full" size="small" (tagClick)="onAddTag($event)" />
+                </div>
+            </ng-template>
             } @else {
             <cdk-virtual-scroll-viewport class="results-dropdown-viewport" [itemSize]="this.itemSize()"
                 [style.--item-size.px]="this.itemSize()" minBufferPx="900" maxBufferPx="1600" tabindex="0">
                 <div class="results-dropdown-item"
-                    *cdkVirtualFor="let unit of this.filtersService.filteredUnits(); let i = index; trackBy: trackByUnitId"
+                    *cdkVirtualFor="let unit of resultUnits; let i = index; trackBy: trackByUnitId"
                     [class.selected]="isUnitSelected(unit)"
                     [class.active]="activeIndex() === i"
                     [class.panel-selected]="showInlinePanel() && inlinePanelUnit()?.name === unit.name"
-                    (pointerenter)="activeIndex.set(i)">
+                    (pointerenter)="onResultPointerHover(i, $event)"
+                    (pointermove)="onResultPointerHover(i, $event)">
 
                     @if (this.expandedView()) {
                         <!-- Expanded View Cards -->
@@ -237,44 +376,14 @@
                             [unit]="unit"
                             [gunnery]="gunnery"
                             [useHex]="useHex()"
+                            [megaMekAvailability]="getSearchResultMegaMekAvailability(unit)"
                             [sortKey]="currentSortKey()"
                             [isSelected]="isUnitSelected(unit)"
                             [sortSlotLabel]="currentSortSlotLabel()"
+                            [sortSlotOverride]="getCardSortSlotOverride(unit)"
                             [searchTokens]="this.filtersService.searchTokens()"
                             (tagClick)="onAddTag($event)">
                         </unit-card-expanded>
-                        <!-- AS Table Row View (visible at >= 1200px) -->
-                        <div class="as-table-row"
-                            longPress
-                            (shortPress)="onUnitCardClick(unit, $event)"
-                            (longPress)="multiSelectUnit(unit, $event)">
-                            <div class="as-td as-td-icon"><unit-icon [unit]="unit" [size]="36"></unit-icon></div>
-                            <div class="as-td as-td-name">
-                                <span class="as-td-model" [innerHTML]="highlight(unit.model)"></span>
-                                <span class="as-td-chassis" [innerHTML]="highlight(unit.chassis)"></span>
-                            </div>
-                            <div class="as-td as-td-type" [class.sort-slot]="isSortActive('as.TP')" [tooltip]="unitTypeDisplayNames[unit.as.TP]">{{ unit.as.TP }}</div>
-                            <div class="as-td as-td-role" [class.sort-slot]="isSortActive('role')">{{ unit.role !== 'None' ? unit.role : '' }}</div>
-                            <div class="as-td as-td-pv" [class.sort-slot]="isSortActive('as.PV')">{{ unit.as.PV | adjustedPV:gunnery | formatNumber:true:false }}</div>
-                            <div class="as-td as-td-sz" [class.sort-slot]="isSortActive('as.SZ')">{{ unit.as.SZ }}</div>
-                            <div class="as-td as-td-mv" [class.sort-slot]="isSortActive('as._mv')" [innerHTML]="formatASMovement(unit)"></div>
-                            <div class="as-td as-td-tmm" [class.sort-slot]="isSortActive('as.TMM')">{{ unit.as.TMM ?? '—' }}</div>
-                            <div class="as-td as-td-dmg" [class.sort-slot]="isSortActive('as.damage')">@if (!unit.as.usesArcs) { {{ unit.as.dmg.dmgS }}/{{ unit.as.dmg.dmgM }}/{{ unit.as.dmg.dmgL }} }</div>
-                            <div class="as-td as-td-arm" [class.sort-slot]="isSortActive('as.Arm')">{{ unit.as.Arm }}</div>
-                            <div class="as-td as-td-str" [class.sort-slot]="isSortActive('as.Str')">{{ unit.as.Str }}</div>
-                            <div class="as-td as-td-ov" [class.sort-slot]="isSortActive('as.OV')">@if (unit.as.usesOV) { {{ unit.as.OV }} }</div>
-                            @if (getAsTableSortSlot(unit); as sortValue) {
-                            <div class="as-td as-td-sort-slot sort-slot">{{ sortValue }}</div>
-                            }
-                            <div class="as-td as-td-specials">
-                                @for (special of unit.as.specials; let i = $index; track i) {
-                                <span class="special-pill" (click)="showAbilityInfoDialog(special); $event.stopPropagation()" title="Click for details">{{ special }}</span>
-                                }
-                            </div>
-                            <div class="as-td as-td-tags">
-                                <unit-tags [unit]="unit" mode="full" size="small" (tagClick)="onAddTag($event)" />
-                            </div>
-                        </div>
                         } @else {
                         <!-- BT Expanded Card -->
                         <unit-card-expanded
@@ -284,9 +393,11 @@
                             [unit]="unit"
                             [gunnery]="gunnery"
                             [piloting]="piloting"
+                            [megaMekAvailability]="getSearchResultMegaMekAvailability(unit)"
                             [isSelected]="isUnitSelected(unit)"
                             [sortKey]="currentSortKey()"
                             [sortSlotLabel]="currentSortSlotLabel()"
+                            [sortSlotOverride]="getCardSortSlotOverride(unit)"
                             [searchTokens]="this.filtersService.searchTokens()"
                             (tagClick)="onAddTag($event)">
                         </unit-card-expanded>
@@ -302,9 +413,11 @@
                             [piloting]="piloting"
                             [expandedView]="false"
                             [showSelectCheckbox]="true"
+                            [megaMekAvailability]="getSearchResultMegaMekAvailability(unit)"
                             [isSelected]="isUnitSelected(unit)"
                             [sortKey]="currentSortKey()"
                             [sortSlotLabel]="currentSortSlotLabel()"
+                            [sortSlotOverride]="getCardSortSlotOverride(unit)"
                             [searchTokens]="this.filtersService.searchTokens()"
                             (tagClick)="onAddTag($event)"
                             (selectClick)="multiSelectUnit(unit)">
@@ -324,13 +437,13 @@
                     <button type="button" class="bt-button" (click)="clearSelection()">CLEAR</button>
                 </div>
             }
-            @if (this.filtersService.filteredUnits().length > 0) {
+            @if (resultUnits.length > 0) {
                 <div class="results-footer">
                     <div class="results-count">
                         @if (viewMode() === 'chassis') {
-                        {{ groupedUnits().length }} chassis{{ groupedUnits().length === 1 ? '' : 'es' }} ({{ this.filtersService.filteredUnits().length }} variant{{ this.filtersService.filteredUnits().length === 1 ? '' : 's' }})
+                        {{ groupedUnits().length }} chassis ({{ resultUnits.length }} variant{{ resultUnits.length === 1 ? '' : 's' }})
                         } @else {
-                        {{ this.filtersService.filteredUnits().length }} result{{ this.filtersService.filteredUnits().length === 1 ? '' : 's' }}
+                        {{ resultUnits.length }} result{{ resultUnits.length === 1 ? '' : 's' }}
                         }
                     </div>
                     <span class="spanner"></span>
@@ -342,7 +455,7 @@
                             <option [value]="opt.key" [selected]="opt.key === this.filtersService.selectedSort()">{{ opt.label }}</option>
                             }
                             }
-                        </select><button type="button" class="bt-button sort-direction-btn"
+                        </select><button type="button" class="bt-button square-small sort-direction-btn"
                             (click)="this.filtersService.setSortDirection(this.filtersService.selectedSortDirection() === 'asc' ? 'desc' : 'asc')"
                             [title]="this.filtersService.selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'"
                             [attr.aria-label]="this.filtersService.selectedSortDirection() === 'asc' ? 'Ascending' : 'Descending'">
@@ -367,7 +480,12 @@
                             }
                         </button>
                     </div>
-                    <button class="bt-button square" (click)="openShareSearch($event)" title="Share Search Results">
+                    <button type="button square" class="bt-button square-small generate-force-btn" (click)="showGenerateForceDialog()" title="Generate Force from Search Results" aria-label="Generate Force from Search Results">
+                        <svg fill="currentColor" width="24px" height="24px" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+                            <path d="M30.8,2.29A.49.49,0,0,0,30.35,2H16.42a.5.5,0,0,0-.42.23l-10.71,17A.49.49,0,0,0,5.7,20h7.67L6.6,33.25a.52.52,0,0,0,.46.75h3a.5.5,0,0,0,.37-.16L28,14.85a.5.5,0,0,0-.37-.85H20.89L30.72,2.82A.49.49,0,0,0,30.8,2.29Z"></path>
+                        </svg>
+                    </button>
+                    <button class="bt-button square-small" (click)="openShareSearch($event)" title="Share Search Results" aria-label="Share Search Results">
                         <svg width="24px" height="24px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
                             <path fill-rule="evenodd" clip-rule="evenodd"
                                 d="M13.803 5.33333C13.803 3.49238 15.3022 2 17.1515 2C19.0008 2 20.5 3.49238 20.5 5.33333C20.5 7.17428 19.0008 8.66667 17.1515 8.66667C16.2177 8.66667 15.3738 8.28596 14.7671 7.67347L10.1317 10.8295C10.1745 11.0425 10.197 11.2625 10.197 11.4872C10.197 11.9322 10.109 12.3576 9.94959 12.7464L15.0323 16.0858C15.6092 15.6161 16.3473 15.3333 17.1515 15.3333C19.0008 15.3333 20.5 16.8257 20.5 18.6667C20.5 20.5076 19.0008 22 17.1515 22C15.3022 22 13.803 20.5076 13.803 18.6667C13.803 18.1845 13.9062 17.7255 14.0917 17.3111L9.05007 13.9987C8.46196 14.5098 7.6916 14.8205 6.84848 14.8205C4.99917 14.8205 3.5 13.3281 3.5 11.4872C3.5 9.64623 4.99917 8.15385 6.84848 8.15385C7.9119 8.15385 8.85853 8.64725 9.47145 9.41518L13.9639 6.35642C13.8594 6.03359 13.803 5.6896 13.803 5.33333Z" />
@@ -392,13 +510,44 @@
 </div>
 }
 <div #advPanel class="adv-panel framed-borders has-shadow" [hidden]="!advOpen()"
-    [style.left]="advPanelStyle().left"
-    [style.top]="advPanelStyle().top"
+    [class.css-anchor-positioned]="supportsCssAnchorPositioning"
+    [class.filters-left]="this.expandedView() && filtersOnLeft()"
+    [class.anchor-below]="supportsCssAnchorPositioning && advPanelAnchoredBelow()"
+    [class.two-column-panel]="advPanelStyle().columnsCount === 2"
+    [style.left]="supportsCssAnchorPositioning ? null : advPanelStyle().left"
+    [style.top]="supportsCssAnchorPositioning ? null : advPanelStyle().top"
     [style.width]="advPanelStyle().width"
-    [style.height]="advPanelStyle().height"
+    [style.height]="supportsCssAnchorPositioning ? null : advPanelStyle().height"
     [class.docked]="advPanelDocked()" [class.docked-left]="advPanelDocked() && filtersOnLeft()">
     <div class="adv-panel-header" [class.two-columns]="advPanelStyle().columnsCount === 2">
-        <button (click)="clearAdvFilters()" type="button" class="bt-button clear-btn">RESET FILTERS</button>
+        <div class="adv-panel-actions">
+            <button (click)="clearAdvFilters()" type="button" class="bt-button clear-btn">RESET FILTERS</button>
+            @if (advPanelStyle().columnsCount !== 2) {
+            <button type="button" class="bt-button square adv-filter-system-toggle"
+                [class.active]="otherAdvPanelFilterGameSystemHasActiveFilters()"
+                [title]="advPanelFilterGameSystemToggleTitle()"
+                [attr.aria-label]="advPanelFilterGameSystemToggleTitle()"
+                (click)="toggleAdvPanelFilterGameSystem()">
+                @if (otherAdvPanelFilterGameSystem() === gameSystemEnum.CLASSIC) {
+                <svg width="21" height="26" viewBox="0 0 21 25.9" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                    <g transform="translate(-.02)">
+                        <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
+                            <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
+                            <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
+                        </g>
+                    </g>
+                </svg>
+                } @else {
+                <svg width="24" height="19" viewBox="0 0 14.6 11.5" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                    <g transform="translate(-2.47,-1.1)">
+                        <path class="as-stroke" transform="translate(3,12)" d="m5.15-10.3 1.53 10.3h-2.74l-0.13-1.85h-0.96l-0.16 1.85h-2.766l1.356-10.3zm-1.42 6.63c-0.13-1.16-0.27-2.6-0.4-4.31-0.27 1.97-0.44 3.4-0.51 4.31zm9.77-3.5h-2.5v-0.76c0-0.35 0-0.58-0.1-0.68s-0.2-0.14-0.3-0.14c-0.2 0-0.3 0.1-0.4 0.19-0.1 0.13-0.1 0.33-0.1 0.6 0 0.34 0 0.6 0.1 0.77s0.4 0.38 0.8 0.63c1.2 0.71 1.9 1.29 2.2 1.74s0.5 1.18 0.5 2.19c0 0.73-0.1 1.27-0.3 1.62-0.1 0.347-0.5 0.64-1 0.877-0.5 0.233-1 0.349-1.7 0.349-0.73 0-1.33-0.135-1.83-0.406s-0.9-0.618-1-1.04c-0.1-0.41-0.2-1.01-0.2-1.78v-0.67h2.53v1.25c0 0.39 0 0.63 0.1 0.74s0.2 0.17 0.3 0.17c0.2 0 0.3-0.1 0.4-0.21 0.1-0.14 0.2-0.35 0.2-0.62 0-0.61-0.1-1-0.3-1.19-0.1-0.19-0.5-0.5-1.23-0.94-0.7-0.44-1.1-0.76-1.4-0.95-0.2-0.2-0.4-0.48-0.5-0.83s-0.2-0.8-0.2-1.34c0-0.79 0.1-1.37 0.3-1.73 0.2-0.37 0.5-0.66 1-0.87 0.4-0.2 0.9-0.3 1.63-0.3 0.7 0 1.3 0.1 1.8 0.3 0.5 0.25 0.8 0.55 0.9 0.89 0.2 0.34 0.3 0.92 0.3 1.74z" fill="none" stroke="currentColor" stroke-miterlimit="3.226" stroke-width=".8" />
+                        <path class="as-fill" transform="translate(3,12)" d="m5.15-10.3 1.53 10.3h-2.74l-0.13-1.85h-0.96l-0.16 1.85h-2.766l1.356-10.3zm-1.42 6.63c-0.13-1.16-0.27-2.6-0.4-4.31-0.27 1.97-0.44 3.4-0.51 4.31zm9.77-3.5h-2.5v-0.76c0-0.35 0-0.58-0.1-0.68s-0.2-0.14-0.3-0.14c-0.2 0-0.3 0.1-0.4 0.19-0.1 0.13-0.1 0.33-0.1 0.6 0 0.34 0 0.6 0.1 0.77s0.4 0.38 0.8 0.63c1.2 0.71 1.9 1.29 2.2 1.74s0.5 1.18 0.5 2.19c0 0.73-0.1 1.27-0.3 1.62-0.1 0.347-0.5 0.64-1 0.877-0.5 0.233-1 0.349-1.7 0.349-0.73 0-1.33-0.135-1.83-0.406s-0.9-0.618-1-1.04c-0.1-0.41-0.2-1.01-0.2-1.78v-0.67h2.53v1.25c0 0.39 0 0.63 0.1 0.74s0.2 0.17 0.3 0.17c0.2 0 0.3-0.1 0.4-0.21 0.1-0.14 0.2-0.35 0.2-0.62 0-0.61-0.1-1-0.3-1.19-0.1-0.19-0.5-0.5-1.23-0.94-0.7-0.44-1.1-0.76-1.4-0.95-0.2-0.2-0.4-0.48-0.5-0.83s-0.2-0.8-0.2-1.34c0-0.79 0.1-1.37 0.3-1.73 0.2-0.37 0.5-0.66 1-0.87 0.4-0.2 0.9-0.3 1.63-0.3 0.7 0 1.3 0.1 1.8 0.3 0.5 0.25 0.8 0.55 0.9 0.89 0.2 0.34 0.3 0.92 0.3 1.74z" fill="#444" />
+                    </g>
+                </svg>
+                }
+            </button>
+            }
+        </div>
         <div class="pilot-skills-section framed-borders">
             <div class="pilot-skills-controls">
                 @if (gameService.isAlphaStrike()) {
@@ -458,67 +607,36 @@
                 }
             </div>
         </div>
-    </div>
-    <div class="adv-panel-content" [style.gridTemplateColumns]="advPanelStyle().columnsCount === 2 ? '1fr 1fr' : '1fr'">
-        @if (isComplexQuery()) {
-        <!-- Complex query: show semantic guide as sidebar -->
-        <div class="complex-query-guide">
-            <div class="complex-query-notice">
-                <span class="notice-text">Filters controlled by search query</span>
-            </div>
-            <semantic-guide [compact]="true" />
-        </div>
-        } @else {
-        <!-- Dropdown filters -->
-        @for (conf of dropdownFilters(); let i = $index; track i) {
-          @let filterOpts = $any(filtersService.advOptions()[conf.key]);
-          <div class="filter-row" [class.semantic-only]="filterOpts?.semanticOnly">
-            <multi-select-dropdown class="dropdown"
-                [label]="filterOpts?.label ?? ''"
-                [options]="filterOpts?.options ?? []"
-                [selected]="filterOpts?.value ?? []"
-                [multistate]="conf.multistate ?? false"
-                [countable]="conf.countable ?? false" 
-                [semanticOnly]="filterOpts?.semanticOnly ?? false"
-                [displayText]="filterOpts?.displayText"
-                [displayItems]="filterOpts?.displayItems"
-                (selectionChange)="setAdvFilter(conf.key, $event)">
-            </multi-select-dropdown>
-          </div>
-        }
-        <!-- Range Filters -->
-        @for (conf of rangeFilters(); let i = $index; track i) {
-          @let rangeOpts = $any(filtersService.advOptions()[conf.key]);
-          <div class="filter-row" [class.semantic-only]="rangeOpts?.semanticOnly">
-            <div class="range">
-                <label class="range-label" [class.disabled]="rangeOpts?.semanticOnly"
-                    (click)="!rangeOpts?.semanticOnly && openRangeValueDialog(conf.key, rangeOpts?.value, rangeOpts?.options)">{{
-                    rangeOpts?.label }}
-                    @if (rangeOpts?.displayText) {
-                    <span class="effective-range" title="Effective range after exclusions">
-                        ✓ {{ rangeOpts?.displayText }}
-                    </span>
-                    } @else {
-                    <span class="range-values">
-                        (<span class="range-value-min">{{ rangeOpts?.value?.[0] | formatNumber:false:true }}</span>~<span
-                            class="range-value-max">{{ rangeOpts?.value?.[1] | formatNumber:false:true }}</span>)
-                    </span>
-                    }
-                </label>
-                <range-slider [min]="rangeOpts?.totalRange?.[0] ?? 0"
-                    [max]="rangeOpts?.totalRange?.[1] ?? 100"
-                    [value]="rangeOpts?.value"
-                    [availableRange]="rangeOpts?.options"
-                    [interacted]="rangeOpts?.interacted ?? false"
-                    [curve]="conf.curve ?? 1" [stepSize]="conf.stepSize ?? 1"
-                    [disabled]="rangeOpts?.semanticOnly ?? false"
-                    [excludeRanges]="rangeOpts?.excludeRanges"
-                    [includeRanges]="rangeOpts?.includeRanges"
-                    (valueChange)="setAdvFilter(conf.key, $event)">
-                </range-slider>
-            </div>
-          </div>
-        }
+        @if (advPanelStyle().columnsCount === 2) {
+        <button type="button" class="bt-button adv-filter-system-toggle"
+            [class.active]="otherAdvPanelFilterGameSystemHasActiveFilters()"
+            [title]="advPanelFilterGameSystemToggleTitle()"
+            [attr.aria-label]="advPanelFilterGameSystemToggleTitle()"
+            (click)="toggleAdvPanelFilterGameSystem()">
+            @if (otherAdvPanelFilterGameSystem() === gameSystemEnum.CLASSIC) {
+            <svg width="21" height="26" viewBox="0 0 21 25.9" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                <g transform="translate(-.02)">
+                    <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
+                        <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
+                        <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
+                    </g>
+                </g>
+            </svg>
+            } @else {
+            <svg width="24" height="19" viewBox="0 0 14.6 11.5" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                <g transform="translate(-2.47,-1.1)">
+                    <path class="as-stroke" transform="translate(3,12)" d="m5.15-10.3 1.53 10.3h-2.74l-0.13-1.85h-0.96l-0.16 1.85h-2.766l1.356-10.3zm-1.42 6.63c-0.13-1.16-0.27-2.6-0.4-4.31-0.27 1.97-0.44 3.4-0.51 4.31zm9.77-3.5h-2.5v-0.76c0-0.35 0-0.58-0.1-0.68s-0.2-0.14-0.3-0.14c-0.2 0-0.3 0.1-0.4 0.19-0.1 0.13-0.1 0.33-0.1 0.6 0 0.34 0 0.6 0.1 0.77s0.4 0.38 0.8 0.63c1.2 0.71 1.9 1.29 2.2 1.74s0.5 1.18 0.5 2.19c0 0.73-0.1 1.27-0.3 1.62-0.1 0.347-0.5 0.64-1 0.877-0.5 0.233-1 0.349-1.7 0.349-0.73 0-1.33-0.135-1.83-0.406s-0.9-0.618-1-1.04c-0.1-0.41-0.2-1.01-0.2-1.78v-0.67h2.53v1.25c0 0.39 0 0.63 0.1 0.74s0.2 0.17 0.3 0.17c0.2 0 0.3-0.1 0.4-0.21 0.1-0.14 0.2-0.35 0.2-0.62 0-0.61-0.1-1-0.3-1.19-0.1-0.19-0.5-0.5-1.23-0.94-0.7-0.44-1.1-0.76-1.4-0.95-0.2-0.2-0.4-0.48-0.5-0.83s-0.2-0.8-0.2-1.34c0-0.79 0.1-1.37 0.3-1.73 0.2-0.37 0.5-0.66 1-0.87 0.4-0.2 0.9-0.3 1.63-0.3 0.7 0 1.3 0.1 1.8 0.3 0.5 0.25 0.8 0.55 0.9 0.89 0.2 0.34 0.3 0.92 0.3 1.74z" fill="none" stroke="currentColor" stroke-miterlimit="3.226" stroke-width=".8" />
+                    <path class="as-fill" transform="translate(3,12)" d="m5.15-10.3 1.53 10.3h-2.74l-0.13-1.85h-0.96l-0.16 1.85h-2.766l1.356-10.3zm-1.42 6.63c-0.13-1.16-0.27-2.6-0.4-4.31-0.27 1.97-0.44 3.4-0.51 4.31zm9.77-3.5h-2.5v-0.76c0-0.35 0-0.58-0.1-0.68s-0.2-0.14-0.3-0.14c-0.2 0-0.3 0.1-0.4 0.19-0.1 0.13-0.1 0.33-0.1 0.6 0 0.34 0 0.6 0.1 0.77s0.4 0.38 0.8 0.63c1.2 0.71 1.9 1.29 2.2 1.74s0.5 1.18 0.5 2.19c0 0.73-0.1 1.27-0.3 1.62-0.1 0.347-0.5 0.64-1 0.877-0.5 0.233-1 0.349-1.7 0.349-0.73 0-1.33-0.135-1.83-0.406s-0.9-0.618-1-1.04c-0.1-0.41-0.2-1.01-0.2-1.78v-0.67h2.53v1.25c0 0.39 0 0.63 0.1 0.74s0.2 0.17 0.3 0.17c0.2 0 0.3-0.1 0.4-0.21 0.1-0.14 0.2-0.35 0.2-0.62 0-0.61-0.1-1-0.3-1.19-0.1-0.19-0.5-0.5-1.23-0.94-0.7-0.44-1.1-0.76-1.4-0.95-0.2-0.2-0.4-0.48-0.5-0.83s-0.2-0.8-0.2-1.34c0-0.79 0.1-1.37 0.3-1.73 0.2-0.37 0.5-0.66 1-0.87 0.4-0.2 0.9-0.3 1.63-0.3 0.7 0 1.3 0.1 1.8 0.3 0.5 0.25 0.8 0.55 0.9 0.89 0.2 0.34 0.3 0.92 0.3 1.74z" fill="#444" />
+                </g>
+            </svg>
+            }
+        </button>
         }
     </div>
+    <unit-search-advanced-filters
+        [filterGameSystem]="advPanelFilterGameSystem()"
+        [columnsCount]="advPanelStyle().columnsCount"
+        [showFormationTargetFilter]="true"
+        [showAvailabilitySourceDisclaimer]="true">
+    </unit-search-advanced-filters>
 </div>

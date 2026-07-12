@@ -34,7 +34,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 
 /*
  * Author: Drake
@@ -85,13 +85,17 @@ export interface ConfirmDialogData<T = any> {
             background-color: #4d0400;
         }
 
+        .cdk-overlay-pane.warning :host {
+            background-color: #4a3100;
+        }
+
         .content {
             display: block;
             max-width: 500px;
         }
 
         h2 {
-            margin-top: 8px;
+            margin-top: 4px;
             margin-bottom: 8px;
         }
 

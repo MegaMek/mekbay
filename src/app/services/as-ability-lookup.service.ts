@@ -32,9 +32,9 @@
  */
 
 import { inject, Injectable } from '@angular/core';
-import { AS_SPECIAL_ABILITIES, ASSpecialAbility } from '../models/as-abilities.model';
-import { AlternateMunition, getAlternateMunitionsForAbility } from '../models/as-alternate-munitions.model';
-import { Unit } from '../models/units.model';
+import { AS_SPECIAL_ABILITIES, type ASSpecialAbility } from '../models/as-abilities.model';
+import { type AlternateMunition, getAlternateMunitionsForAbility } from '../models/as-alternate-munitions.model';
+import type { Unit } from '../models/units.model';
 import { LoggerService } from './logger.service';
 
 /**

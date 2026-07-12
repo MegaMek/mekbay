@@ -1,0 +1,155 @@
+:host {
+    display: flex;
+    min-height: 0;
+}
+
+.mb-data-table {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.mb-data-table-header-viewport {
+    overflow: hidden;
+    flex: 0 0 auto;
+    min-width: 0;
+    background-color: #333;
+}
+
+.mb-data-table-viewport {
+    width: 100%;
+    min-width: 0;
+    flex: 1;
+    min-height: 0;
+    background-color: #222;
+    overflow-x: auto !important;
+    overflow-y: auto !important;
+    scrollbar-gutter: stable;
+}
+
+.mb-data-table-viewport::-webkit-scrollbar-corner {
+    background-color: #222;
+}
+
+.mb-data-table-header,
+.mb-data-table-row {
+    display: grid;
+    align-items: center;
+    gap: 8px;
+    box-sizing: border-box;
+    padding-left: 12px;
+    padding-right: 20px;
+}
+
+.mb-data-table-header {
+    min-height: 34px;
+    background-color: #333;
+    border-bottom: 2px solid #555;
+    color: var(--text-color-secondary);
+    font-size: 0.85em;
+    font-weight: bold;
+    will-change: transform;
+}
+
+.mb-data-table-row-item {
+    min-height: var(--mb-data-table-item-size, 48px);
+    box-sizing: border-box;
+    border-bottom: 1px solid #444;
+    transition: background-color 0.2s;
+    cursor: pointer;
+}
+
+.mb-data-table-row-item:hover,
+.mb-data-table-row-item.is-active {
+    background-color: var(--background-highlight);
+}
+
+.mb-data-table-row-item.is-selected {
+    background-color: var(--bt-yellow-background-transparent);
+}
+
+.mb-data-table-row-item.is-selected:hover {
+    background-color: var(--bt-yellow-background-bright-transparent);
+}
+
+.mb-data-table-row-item.is-panel-selected {
+    background-color: var(--background-highlight);
+}
+
+.mb-data-table-row {
+    min-height: var(--mb-data-table-item-size, 48px);
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+.mb-data-table-full-row {
+    min-height: var(--mb-data-table-item-size, 48px);
+    box-sizing: border-box;
+    cursor: initial;
+}
+
+.mb-data-table-cell {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mb-data-table-header-cell {
+    background-color: inherit;
+}
+
+.mb-data-table-header-cell.align-center,
+.mb-data-table-body-cell.align-center {
+    text-align: center;
+}
+
+.mb-data-table-header-cell.align-right,
+.mb-data-table-body-cell.align-right {
+    text-align: right;
+}
+
+.mb-data-table-body-cell.sort-slot {
+    color: var(--bt-yellow);
+}
+
+.mb-data-table-body-cell.is-bold {
+    font-weight: bold;
+}
+
+.mb-data-table-header-cell.is-sortable {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    overflow: visible;
+}
+
+.mb-data-table-header-cell.is-sortable:hover {
+    color: var(--text-color-primary, #fff);
+}
+
+.mb-data-table-header-cell.sort-active {
+    color: var(--bt-yellow);
+}
+
+.mb-data-table-header-cell.sort-active::after {
+    content: '';
+    display: inline-block;
+    vertical-align: middle;
+    width: 0;
+    height: 0;
+    margin-left: 2px;
+    margin-right: -12px;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+}
+
+.mb-data-table.sort-asc .mb-data-table-header-cell.is-sortable.sort-active::after {
+    border-bottom: 5px solid currentColor;
+}
+
+.mb-data-table.sort-desc .mb-data-table-header-cell.is-sortable.sort-active::after {
+    border-top: 5px solid currentColor;
+}

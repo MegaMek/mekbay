@@ -32,15 +32,18 @@
  */
 
 import { Directive, input, output, computed, inject, signal } from '@angular/core';
-import { ASForceUnit, AbilitySelection } from '../../../models/as-force-unit.model';
-import { AlphaStrikeUnitStats, Unit } from '../../../models/units.model';
-import { Era } from '../../../models/eras.model';
+import type { ASForceUnit, AbilitySelection } from '../../../models/as-force-unit.model';
+import type { AlphaStrikeUnitStats, Unit } from '../../../models/units.model';
+import type { Era } from '../../../models/eras.model';
 import { DataService } from '../../../services/data.service';
 import { AsAbilityLookupService } from '../../../services/as-ability-lookup.service';
-import { PILOT_ABILITIES, PilotAbility, ASCustomPilotAbility } from '../../../models/pilot-abilities.model';
-import { CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
+import { COMMAND_ABILITIES } from '../../../models/command-abilities.model';
+import { PILOT_ABILITIES, type PilotAbility, type ASCustomPilotAbility } from '../../../models/pilot-abilities.model';
+import { type CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
 import { PVCalculatorUtil } from '../../../utils/pv-calculator.util';
-import { formatMovement } from '../../../utils/as-common.util';
+import { formatMovement, formatMovementWithAlternate } from '../../../utils/as-common.util';
+import { FormationAbilityAssignmentUtil } from '../../../utils/formation-ability-assignment.util';
+import type { SpecialAbilityState } from '../../../models/as-special-ability-state.model';
 
 /*
  * Author: Drake
@@ -62,20 +65,6 @@ export interface PipState {
     isDamaged: boolean;           // Committed damage
     isPendingDamage: boolean;     // Pending damage (not yet committed)
     isPendingHeal: boolean;       // Pending heal (not yet committed)
-}
-
-/**
- * Represents a special ability with both original and effective values.
- */
-export interface SpecialAbilityState {
-    original: string;
-    effective: string;
-    /** True if this ability is exhausted (should show strikethrough) */
-    isExhausted?: boolean;
-    /** For consumable abilities, how many have been consumed */
-    consumedCount?: number;
-    /** For consumable abilities, the max count */
-    maxCount?: number;
 }
 
 /**
@@ -125,13 +114,42 @@ export abstract class AsLayoutBaseComponent {
     });
 
     // Skill and PV
+    isCommander = computed<boolean>(() => this.forceUnit()?.commander() ?? false);
     skill = computed<number>(() => this.forceUnit()?.getPilotStats() ?? 4);
     basePV = computed<number>(() => this.asStats().PV);
     adjustedPV = computed<number>(() => {
         return PVCalculatorUtil.calculateAdjustedPV(this.asStats().PV, this.skill());
     });
     pilotAbilities = computed<AbilitySelection[]>(() => {
-        return this.forceUnit()?.pilotAbilities() ?? [];
+        const forceUnit = this.forceUnit();
+        const abilities: AbilitySelection[] = [...(forceUnit?.pilotAbilities() ?? [])];
+        if (!forceUnit) {
+            return abilities;
+        }
+
+        const group = forceUnit.getGroup() as import('../../../models/force.model').UnitGroup<ASForceUnit> | null;
+        if (!group) {
+            return abilities;
+        }
+
+        const preview = FormationAbilityAssignmentUtil.previewGroupFormationAssignments(group);
+        if (!preview.eligibleUnitIds.includes(forceUnit.id)) {
+            return abilities;
+        }
+
+        const seenAbilityIds = new Set(
+            abilities.filter((ability): ability is string => typeof ability === 'string')
+        );
+
+        for (const abilityId of preview.assignmentsByUnitId.get(forceUnit.id) ?? []) {
+            if (seenAbilityIds.has(abilityId)) {
+                continue;
+            }
+            abilities.push(abilityId);
+            seenAbilityIds.add(abilityId);
+        }
+
+        return abilities;
     });
 
     // Armor and structure
@@ -347,7 +365,7 @@ export abstract class AsLayoutBaseComponent {
     heatLevelToHitModifier = computed<number>(() => {
         const fu = this.forceUnit();
         if (!fu) return 0;
-        return Math.max(0, this.heatLevel() - (fu.hasHotDog() ? 1 : 0));
+        return fu.heatToHitModifier('committed');
     });
 
     // Heat level (committed)
@@ -376,7 +394,7 @@ export abstract class AsLayoutBaseComponent {
         };
 
         return entries
-            .map(([mode, inches]) => formatMovement(inches, mode, this.useHex()))
+            .map(([mode, inches]) => this.formatMovementDisplay(mode, inches))
             .join('/');
     });
 
@@ -450,10 +468,43 @@ export abstract class AsLayoutBaseComponent {
         return entries;
     }
 
+    protected formatMovementDisplay(mode: string, inches: number): string {
+        const fu = this.forceUnit();
+        if (!fu) {
+            return formatMovement(inches, mode, this.useHex());
+        }
+
+        const display = fu.movementDisplayValue(mode, inches);
+        const formatted = display.adjustedInches !== undefined
+            ? formatMovementWithAlternate(display.baseInches, display.adjustedInches, mode, this.useHex())
+            : formatMovement(display.baseInches, mode, this.useHex());
+
+        return formatted;
+    }
+
+    protected formatSprintMovementDisplay(mode: string, inches: number): string {
+        const fu = this.forceUnit();
+        if (!fu) {
+            return formatMovement(inches, mode, this.useHex());
+        }
+
+        const display = fu.movementDisplayValue(mode, inches, 'sprint');
+        const formatted = display.adjustedInches !== undefined
+            ? formatMovementWithAlternate(display.baseInches, display.adjustedInches, mode, this.useHex())
+            : formatMovement(display.baseInches, mode, this.useHex());
+
+        return formatted;
+    }
+
     formatPilotAbility(selection: AbilitySelection): string {
         if (typeof selection === 'string') {
             const ability = this.PILOT_ABILITIES.find(a => a.id === selection);
-            return ability ? `${ability.name} (${ability.cost})` : selection;
+            if (ability) {
+                return `${ability.name} (${ability.cost})`;
+            }
+
+            const commandAbility = COMMAND_ABILITIES.find((entry) => entry.id === selection);
+            return commandAbility?.name ?? selection;
         }
         return `${selection.name} (${selection.cost})`;
     }

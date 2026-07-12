@@ -1,0 +1,7 @@
+<div #container
+    class="page-viewer-container"
+     [class.swiping]="swiping()"
+     [class.multiple-visible]="multipleVisible()"
+     [class.at-min-zoom]="atMinZoom()">
+    <ng-content></ng-content>
+</div>

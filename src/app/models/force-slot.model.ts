@@ -31,8 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { Subscription } from 'rxjs';
-import { Force } from './force.model';
+import type { Subscription } from 'rxjs';
+import type { Force } from './force.model';
 
 /**
  * Author: Drake

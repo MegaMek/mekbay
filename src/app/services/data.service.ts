@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -32,77 +32,104 @@
  */
 
 import { Injectable, signal, Injector, inject, DestroyRef } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Unit, UnitComponent, Units } from '../models/units.model';
-import { Faction, Factions } from '../models/factions.model';
-import { Era, Eras } from '../models/eras.model';
-import { DbService, TagData } from './db.service';
+import type { Unit, UnitFluffCatalogEntry } from '../models/units.model';
+import type { Faction, FactionId } from '../models/factions.model';
+import type { Era } from '../models/eras.model';
+import { DbService, type TagData } from './db.service';
 import { TagsService } from './tags.service';
 import { PublicTagsService } from './public-tags.service';
 
-import { Equipment, EquipmentData, EquipmentMap, RawEquipmentData, createEquipment } from '../models/equipment.model';
-import { Quirk, Quirks } from '../models/quirks.model';
+import { type Equipment, type EquipmentMap } from '../models/equipment.model';
+import type { Quirk } from '../models/quirks.model';
 import { generateUUID, WsService } from './ws.service';
-import { ForceUnit } from '../models/force-unit.model';
-import { Force }    from '../models/force.model';
-import { ASSerializedForce, CBTSerializedForce, SerializedForce, SerializedGroup, SerializedUnit } from '../models/force-serialization';
+import type { ForceUnit } from '../models/force-unit.model';
+import type { Force }    from '../models/force.model';
+import { sanitizeForceTags, type ASSerializedForce, type CBTSerializedForce, type SerializedForce } from '../models/force-serialization';
 import { UnitInitializerService } from './unit-initializer.service';
 import { UserStateService } from './userState.service';
-import { LoadForceEntry, LoadForceGroup, LoadForceUnit } from '../models/load-force-entry.model';
+import {
+    createLoadForceEntry,
+    createLoadForceEntryFromSerializedForce,
+    LoadForceEntry,
+    type RemoteLoadForceEntry,
+} from '../models/load-force-entry.model';
 import { LoggerService } from './logger.service';
-import { SerializedOperation, LoadOperationEntry, OperationForceInfo } from '../models/operation.model';
-import { SerializedOrganization, LoadOrganizationEntry } from '../models/organization.model';
-import { DialogsService } from './dialogs.service';
-import { firstValueFrom, Subject } from 'rxjs';
-import { GameSystem, REMOTE_HOST } from '../models/common.model';
+import { type SerializedOperation, LoadOperationEntry, type OperationForceInfo } from '../models/operation.model';
+import { type LoadedOrganization, type SerializedOrganization, LoadOrganizationEntry } from '../models/organization.model';
+import { Subject } from 'rxjs';
+import { GameSystem } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { ASForce } from '../models/as-force.model';
-import { Sourcebook, Sourcebooks } from '../models/sourcebook.model';
-import { MULUnitSources, MULUnitSourcesData } from '../models/mul-unit-sources.model';
-import { removeAccents } from '../utils/string.util';
+import type { Sourcebook } from '../models/sourcebook.model';
+import type { SarnaLookupUnit } from '../models/sarna-page-titles.model';
+import type { MegaMekFactionAffiliation, MegaMekFactionRecord, MegaMekFactions } from '../models/megamek/factions.model';
+import type { MegaMekWeightedAvailabilityRecord } from '../models/megamek/availability.model';
+import type { MegaMekRulesetRecord } from '../models/megamek/rulesets.model';
+import type { ForceNameWords } from '../models/force-name-words.model';
 import { getForcePacks } from '../models/forcepacks.model';
+import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot } from '../utils/unit-search-worker-protocol.util';
+import { MegaMekAvailabilityCatalogService } from './catalogs/megamek-availability-catalog.service';
+import { MegaMekFactionsCatalogService } from './catalogs/megamek-factions-catalog.service';
+import { MegaMekRulesetsCatalogService } from './catalogs/megamek-rulesets-catalog.service';
+import { ErasCatalogService } from './catalogs/eras-catalog.service';
+import { FactionsCatalogService } from './catalogs/mulfactions-catalog.service';
+import { QuirksCatalogService } from './catalogs/quirks-catalog.service';
+import { SarnaPageTitlesCatalogService } from './catalogs/sarna-page-titles-catalog.service';
+import { SourcebooksCatalogService } from './catalogs/sourcebooks-catalog.service';
+import { UnitSearchIndexService } from './unit-search-index.service';
+import { UnitRuntimeService } from './unit-runtime.service';
+import { UnitsCatalogService } from './catalogs/units-catalog.service';
+import { UnitsFluffCatalogService } from './catalogs/units-fluff-catalog.service';
+import { EquipmentCatalogService } from './catalogs/equipment-catalog.service';
+import { ForceNameWordsCatalogService } from './catalogs/force-name-words-catalog.service';
+import { CatalogDownloadTrackerService } from './catalogs/catalog-base.service';
+import { MULFACTION_EXTINCT, MULFACTION_NONE } from '../models/mulfactions.model';
+import { naturalCompare } from '../utils/sort.util';
+import { getUnitVariantGroupKey } from '../utils/unit-variant.util';
 
 /*
  * Author: Drake
  */
 export const DOES_NOT_TRACK = 999;
 
+export interface BucketStatSummary {
+    min: number;
+    max: number;
+    average: number;
+}
+
 export interface MinMaxStatsRange {
-    armor: [number, number],
-    internal: [number, number],
-    heat: [number, number],
-    dissipation: [number, number],
-    dissipationEfficiency: [number, number],
-    runMP: [number, number],
-    run2MP: [number, number],
-    umuMP: [number, number],
-    jumpMP: [number, number],
-    alphaNoPhysical: [number, number],
-    alphaNoPhysicalNoOneshots: [number, number],
-    maxRange: [number, number],
-    dpt: [number, number],
+    armor: BucketStatSummary,
+    internal: BucketStatSummary,
+    heat: BucketStatSummary,
+    dissipation: BucketStatSummary,
+    dissipationEfficiency: BucketStatSummary,
+    runMP: BucketStatSummary,
+    run2MP: BucketStatSummary,
+    umuMP: BucketStatSummary,
+    jumpMP: BucketStatSummary,
+    alphaNoPhysical: BucketStatSummary,
+    alphaNoPhysicalNoOneshots: BucketStatSummary,
+    maxRange: BucketStatSummary,
+    weightedMaxRange: BucketStatSummary,
+    dpt: BucketStatSummary,
+    asTmm: BucketStatSummary,
+    asArm: BucketStatSummary,
+    asStr: BucketStatSummary,
+    asDmgS: BucketStatSummary,
+    asDmgM: BucketStatSummary,
+    asDmgL: BucketStatSummary,
 
     // Capital ships
-    dropshipCapacity: [number, number],
-    escapePods: [number, number],
-    lifeBoats: [number, number],
-    sailIntegrity: [number, number],
-    kfIntegrity: [number, number],
+    dropshipCapacity: BucketStatSummary,
+    escapePods: BucketStatSummary,
+    lifeBoats: BucketStatSummary,
+    gravDecks: BucketStatSummary,
+    sailIntegrity: BucketStatSummary,
+    kfIntegrity: BucketStatSummary,
 }
-export interface UnitTypeMaxStats {
-    [unitType: string]: MinMaxStatsRange
-}
-
-interface RemoteStore<T> {
-    key: string;
-    url: string;
-    getFromLocalStorage: () => Promise<T | null>;
-    putInLocalStorage: (data: T) => Promise<void>;
-    preprocess?: (data: T) => T;
-    postprocess?: (data: T) => T;
-}
-interface LocalStore {
-    [key: string]: any;
+export interface UnitSubtypeMaxStats {
+    [unitSubtype: string]: MinMaxStatsRange
 }
 
 // Generic store update payload used for cross-tab notifications
@@ -113,6 +140,18 @@ export type BroadcastPayload = {
     meta?: any;         // optional misc info
 };
 
+interface CatalogInitializationState {
+    ready: boolean;
+    promise: Promise<boolean> | null;
+}
+
+function createCatalogInitializationState(): CatalogInitializationState {
+    return {
+        ready: false,
+        promise: null,
+    };
+}
+
 @Injectable({
     providedIn: 'root'
 })
@@ -121,7 +160,6 @@ export class DataService {
     private broadcast?: BroadcastChannel;
     private broadcastHandler?: (ev: MessageEvent) => void;
     private injector = inject(Injector);
-    private http = inject(HttpClient);
     private dbService = inject(DbService);
     private wsService = inject(WsService);
     private userStateService = inject(UserStateService);
@@ -129,208 +167,46 @@ export class DataService {
     private tagsService = inject(TagsService);
     private publicTagsService = inject(PublicTagsService);
     private destroyRef = inject(DestroyRef);
+    private unitSearchIndexService = inject(UnitSearchIndexService);
+    private unitRuntimeService = inject(UnitRuntimeService);
+    private unitsCatalog = inject(UnitsCatalogService);
+    private unitsFluffCatalog = inject(UnitsFluffCatalogService);
+    private equipmentCatalog = inject(EquipmentCatalogService);
+    private erasCatalog = inject(ErasCatalogService);
+    private factionsCatalog = inject(FactionsCatalogService);
+    private megaMekAvailabilityCatalog = inject(MegaMekAvailabilityCatalogService);
+    private megaMekFactionsCatalog = inject(MegaMekFactionsCatalogService);
+    private megaMekRulesetsCatalog = inject(MegaMekRulesetsCatalogService);
+    private quirksCatalog = inject(QuirksCatalogService);
+    private sarnaPageTitlesCatalog = inject(SarnaPageTitlesCatalogService);
+    private sourcebooksCatalog = inject(SourcebooksCatalogService);
+    private forceNameWordsCatalog = inject(ForceNameWordsCatalogService);
+    private catalogDownloadTracker = inject(CatalogDownloadTrackerService);
+    private readonly megaMekAvailabilityCatalogState = createCatalogInitializationState();
+    private readonly megaMekFactionsCatalogState = createCatalogInitializationState();
+    private readonly megaMekRulesetsCatalogState = createCatalogInitializationState();
+    private readonly quirksCatalogState = createCatalogInitializationState();
+    private readonly sarnaPageTitlesCatalogState = createCatalogInitializationState();
+    private readonly sourcebooksCatalogState = createCatalogInitializationState();
+    private readonly forceNameWordsCatalogState = createCatalogInitializationState();
 
     isDataReady = signal(false);
-    isDownloading = signal(false);
+    public readonly isDownloading = this.catalogDownloadTracker.isDownloading;
     public isCloudForceLoading = signal(false);
 
     /** Emits when a cloud save is rejected (not_owner) and the force needs adoption. */
     public forceNeedsAdoption = new Subject<Force>();
 
-    private data: LocalStore = {};
-    private unitNameMap = new Map<string, Unit>();
-    private eraNameMap = new Map<string, Era>();
-    private eraIdMap = new Map<number, Era>();
-    private factionNameMap = new Map<string, Faction>();
-    private factionIdMap = new Map<number, Faction>();
-    private unitTypeMaxStats: UnitTypeMaxStats = {};
-    private quirksMap = new Map<string, Quirk>();
-    private sourcebooksMap = new Map<string, Sourcebook>();
-    private mulUnitSourcesMap = new Map<number, string[]>();
-
-    /** packName -> Set<chassis|type> for force pack membership checks */
-    private forcePackToChassisType: Map<string, Set<string>> | null = null;
-    /** chassis|type -> sorted pack names[] for reverse lookups */
-    private chassisTypeToForcePacks: Map<string, string[]> | null = null;
+    /** packName -> Set<chassis|as.TP|omni> for force pack membership checks */
+    private forcePackToLookupKey: Map<string, Set<string>> | null = null;
+    /** chassis|as.TP|omni -> sorted pack names[] for reverse lookups */
+    private lookupKeyToForcePacks: Map<string, string[]> | null = null;
+    private cachedForceTagsByInstanceId = new Map<string, string[]>();
 
     public tagsVersion = signal(0);
-
-    private readonly remoteStores: RemoteStore<any>[] = [
-        {
-            key: 'units',
-            url: `${REMOTE_HOST}/units.json`,
-            getFromLocalStorage: async () => (await this.dbService.getUnits()) ?? null,
-            putInLocalStorage: async (data: Units) => this.dbService.saveUnits(data),
-            preprocess: (data: Units): Units => {
-                this.unitNameMap.clear();
-                for (const unit of data.units) {
-                    this.unitNameMap.set(unit.name, unit);
-                }
-                this.buildFilterIndexes(data.units); // Build all indexes
-                return data;
-            },
-            postprocess: (data: Units): Units => {
-                const eras = this.getEras();
-                for (const unit of data.units) {
-                    // Find era for unit.year
-                    let foundEra: Era | undefined;
-                    for (const era of eras) {
-                        const from = era.years.from ?? Number.MIN_SAFE_INTEGER;
-                        const to = era.years.to ?? Number.MAX_SAFE_INTEGER;
-                        if (unit.year >= from && unit.year <= to) {
-                            foundEra = era;
-                            break;
-                        }
-                    }
-                    unit._era = foundEra; // Attach era object for fast lookup
-
-                    // Merge sources from original data and unit_sources.json
-                    const originalSource = unit.source;
-                    const sourcesSet = new Set<string>();
-
-                    // Add original source(s)
-                    if (Array.isArray(originalSource)) {
-                        originalSource.forEach(s => sourcesSet.add(s));
-                    } else if (originalSource) {
-                        sourcesSet.add(originalSource);
-                    }
-
-                    // Add sources from unit_sources.json (by MUL ID)
-                    const mulSources = this.mulUnitSourcesMap.get(unit.id);
-                    if (mulSources) {
-                        mulSources.forEach(s => sourcesSet.add(s));
-                    }
-
-                    unit.source = Array.from(sourcesSet);
-                }
-                this.loadUnitTags(data.units);
-                return data;
-            }
-        },
-        {
-            key: 'equipment',
-            url: `${REMOTE_HOST}/equipment2.json`,
-            getFromLocalStorage: async () => (await this.dbService.getEquipments()) ?? null,
-            putInLocalStorage: async (data: EquipmentData) => this.dbService.saveEquipment(data),
-            preprocess: (data: RawEquipmentData): EquipmentData => {
-                const newData: EquipmentData = {
-                    version: data.version,
-                    etag: data.etag,
-                    equipment: {}
-                };
-                for (const [internalName, rawEquipment] of Object.entries(data.equipment)) {
-                    try {
-                        newData.equipment[internalName] = createEquipment(rawEquipment);
-                    } catch (error) {
-                        this.logger.error(`Failed to create equipment ${internalName}: ${error}`);
-                    }
-                }
-                return newData;
-            }
-        },
-        {
-            key: 'quirks',
-            url: `${REMOTE_HOST}/quirks.json`,
-            getFromLocalStorage: async () => (await this.dbService.getQuirks()) ?? null,
-            putInLocalStorage: async (data: Quirks) => this.dbService.saveQuirks(data),
-            preprocess: (data: Quirks): Quirks => {
-                // Quirks index
-                const quirksMap = new Map<string, Quirk>();
-                for (const quirk of data.quirks) {
-                    quirksMap.set(quirk.name, quirk);
-                }
-                this.quirksMap = quirksMap;
-                return data;
-            }
-        },
-        {
-            key: 'factions',
-            url: `${REMOTE_HOST}/factions.json`,
-            getFromLocalStorage: async () => (await this.dbService.getFactions()) ?? null,
-            putInLocalStorage: async (data: Factions) => this.dbService.saveFactions(data),
-            preprocess: (data: Factions): Factions => {
-                this.factionNameMap.clear();
-                this.factionIdMap.clear();
-                for (const faction of data.factions) {
-                    this.factionNameMap.set(faction.name, faction);
-                    if (faction.id !== undefined) {
-                        this.factionIdMap.set(faction.id, faction);
-                    }
-                    for (const eraId in faction.eras) {
-                        faction.eras[eraId] = new Set(faction.eras[eraId]) as any; // Convert to Set for faster lookups
-                    }
-                }
-                return data;
-            }
-        }, {
-            key: 'eras',
-            url: `${REMOTE_HOST}/eras.json`,
-            getFromLocalStorage: async () => (await this.dbService.getEras()) ?? null,
-            putInLocalStorage: async (data: Eras) => this.dbService.saveEras(data),
-            preprocess: (data: Eras): Eras => {
-                this.eraNameMap.clear();
-                this.eraIdMap.clear();
-                for (const era of data.eras) {
-                    this.eraNameMap.set(era.name, era);
-                    this.eraIdMap.set(era.id, era);
-                    era.factions = new Set(era.factions) as any; // Convert to Set for faster lookups
-                    era.units = new Set(era.units) as any; // Convert to Set for faster lookups
-                }
-                return data;
-            }
-        }, {
-            key: 'units_sources',
-            url: `${REMOTE_HOST}/units_sources.json`,
-            getFromLocalStorage: async () => (await this.dbService.getMULUnitSources()) ?? null,
-            putInLocalStorage: async (data: MULUnitSources) => this.dbService.saveMULUnitSources(data),
-            preprocess: (data: MULUnitSources | MULUnitSourcesData): MULUnitSources => {
-                // Handle both raw object format (from JSON file) and wrapped format (from IndexedDB)
-                let sources: MULUnitSourcesData;
-                if ('sources' in data && 'etag' in data && typeof data.sources === 'object' && !Array.isArray(data.sources)) {
-                    sources = data.sources as MULUnitSourcesData;
-                } else {
-                    sources = data as MULUnitSourcesData;
-                }
-                this.mulUnitSourcesMap.clear();
-                for (const [mulIdStr, sourceAbbrevs] of Object.entries(sources)) {
-                    const mulId = parseInt(mulIdStr, 10);
-                    if (!isNaN(mulId)) {
-                        const filteredAbbrevs = sourceAbbrevs.filter(abbrev => abbrev !== 'None');
-                        if (filteredAbbrevs.length > 0) {
-                            this.mulUnitSourcesMap.set(mulId, filteredAbbrevs);
-                        }
-                    }
-                }
-                return {
-                    etag: (data as any).etag || '',
-                    sources
-                };
-            }
-        },
-        {
-            key: 'sourcebooks',
-            url: 'assets/sourcebooks.json',
-            getFromLocalStorage: async () => (await this.dbService.getSourcebooks()) ?? null,
-            putInLocalStorage: async (data: Sourcebooks) => this.dbService.saveSourcebooks(data),
-            preprocess: (data: Sourcebooks | Sourcebook[]): Sourcebooks => {
-                // Handle both array format (from JSON file) and wrapped format (from IndexedDB)
-                let sourcebooks: Sourcebook[];
-                if (Array.isArray(data)) {
-                    sourcebooks = data;
-                } else {
-                    sourcebooks = data.sourcebooks;
-                }
-                this.sourcebooksMap.clear();
-                for (const sb of sourcebooks) {
-                    this.sourcebooksMap.set(sb.abbrev, sb);
-                }
-                return {
-                    etag: (data as any).etag || '',
-                    sourcebooks
-                };
-            }
-        },
-    ];
+    public searchCorpusVersion = signal(0);
+    public megaMekAvailabilityVersion = signal(0);
+    public sarnaPageTitlesVersion = signal(0);
 
 
     constructor() {
@@ -389,11 +265,11 @@ export class DataService {
         }
 
         // Wire up TagsService callbacks
-        this.tagsService.setRefreshUnitsCallback((tagData) => {
-            this.applyTagDataToUnits(tagData);
+        this.tagsService.setRefreshUnitsCallback((tagData, options) => {
+            this.applyTagDataToUnits(tagData, options);
         });
-        this.tagsService.setNotifyStoreUpdatedCallback(() => {
-            this.notifyStoreUpdated('update', 'tags');
+        this.tagsService.setNotifyStoreUpdatedCallback((options) => {
+            this.notifyStoreUpdated('update', 'tags', options);
         });
 
         // Register WS message handlers for tag sync (handled by TagsService)
@@ -417,23 +293,12 @@ export class DataService {
      * 
      * V3 format: tags = { tagId: { label, units: {unitName: {}}, chassis: {chassisKey: {}} } }
      */
-    private applyTagDataToUnits(tagData: TagData | null): void {
-        const tags = tagData?.tags || {};
-
-        for (const unit of this.getUnits()) {
-            const chassisKey = TagsService.getChassisTagKey(unit);
-            
-            // V3 format: find all tags that have this unit in their units map
-            unit._nameTags = Object.values(tags)
-                .filter(entry => entry.units[unit.name] !== undefined)
-                .map(entry => entry.label);
-            
-            // V3 format: find all tags that have this chassis in their chassis map
-            unit._chassisTags = Object.values(tags)
-                .filter(entry => entry.chassis[chassisKey] !== undefined)
-                .map(entry => entry.label);
+    private applyTagDataToUnits(tagData: TagData | null, options?: { searchIndexChanged?: boolean }): void {
+        const searchIndexChanged = options?.searchIndexChanged ?? true;
+        this.unitRuntimeService.applyTagDataToUnits(this.getUnits(), tagData, { rebuildTagSearchIndex: searchIndexChanged });
+        if (searchIndexChanged) {
+            this.tagsVersion.update(v => v + 1);
         }
-        this.tagsVersion.set(this.tagsVersion() + 1);
     }
 
     /**
@@ -441,10 +306,8 @@ export class DataService {
      * Called by PublicTagsService when public tags change (import/subscribe/update).
      */
     private applyPublicTagsToUnits(): void {
-        for (const unit of this.getUnits()) {
-            unit._publicTags = this.publicTagsService.getPublicTagsForUnit(unit);
-        }
-        this.tagsVersion.set(this.tagsVersion() + 1);
+        this.unitRuntimeService.applyPublicTagsToUnits(this.getUnits());
+        this.tagsVersion.update(v => v + 1);
     }
 
     public notifyStoreUpdated(action: BroadcastPayload['action'], store?: string, meta?: any) {
@@ -463,7 +326,7 @@ export class DataService {
             if (action === 'update' && context === 'tags') {
                 // Reload tag data from TagsService and apply to units
                 const tagData = await this.tagsService.getTagData();
-                this.applyTagDataToUnits(tagData);
+                this.applyTagDataToUnits(tagData, msg.meta);
             }
         } catch (err) {
             this.logger.error('Error handling store update broadcast: ' + err);
@@ -475,67 +338,60 @@ export class DataService {
      * Uses TagsService for cached data.
      */
     private async loadUnitTags(units: Unit[]): Promise<void> {
-        const tagData = await this.tagsService.getTagData();
-        this.applyTagDataToUnits(tagData);
-    }
-
-    private formatUnitType(type: string): string {
-        if (type === 'Handheld Weapon') {
-            return 'Weapon';
-        }
-        return type;
-    }
-
-    public static removeAccents(str: string): string {
-        return removeAccents(str);
+        await this.unitRuntimeService.loadUnitTags(units);
+        this.tagsVersion.update(v => v + 1);
     }
 
     public getUnits(): Unit[] {
-        return (this.data['units'] as Units)?.units ?? [];
+        return this.unitsCatalog.getUnits();
     }
 
     public getUnitByName(name: string): Unit | undefined {
-        return this.unitNameMap.get(name);
+        return this.unitRuntimeService.getUnitByName(name);
+    }
+
+    public getUnitFluff(unit: Pick<Unit, 'name' | 'fluff' | 'serverHost'>): Promise<UnitFluffCatalogEntry | undefined> {
+        return this.unitsFluffCatalog.getUnitFluff(unit);
     }
 
     public getEquipments(): EquipmentMap {
-        return (this.data['equipment'] as EquipmentData)?.equipment ?? {};
+        return this.equipmentCatalog.getEquipments();
     }
 
     public getEquipmentByName(internalName: string): Equipment | undefined {
-        return (this.data['equipment'] as EquipmentData)?.equipment[internalName];
+        return this.equipmentCatalog.getEquipmentByName(internalName);
     }
 
     public getFactions(): Faction[] {
-        return (this.data['factions'] as Factions)?.factions ?? [];
+        return this.factionsCatalog.getFactions();
     }
 
     public getFactionByName(name: string): Faction | undefined {
-        return this.factionNameMap.get(name);
+        return this.factionsCatalog.getFactionByName(name);
     }
 
-    public getFactionById(id: number): Faction | undefined {
-        return this.factionIdMap.get(id);
+    public getFactionById(id: FactionId): Faction | undefined {
+        return this.factionsCatalog.getFactionById(id);
     }
 
     public getEras(): Era[] {
-        return (this.data['eras'] as Eras)?.eras ?? [];
+        return this.erasCatalog.getEras();
     }
 
     public getEraByName(name: string): Era | undefined {
-        return this.eraNameMap.get(name);
+        return this.erasCatalog.getEraByName(name);
     }
 
     public getEraById(id: number): Era | undefined {
-        return this.eraIdMap.get(id);
+        return this.erasCatalog.getEraById(id);
     }
 
     public getQuirkByName(name: string): Quirk | undefined {
-        return this.quirksMap.get(name);
+        return this.quirksCatalog.getQuirkByName(name);
     }
 
     public getSourcebookByAbbrev(abbrev: string): Sourcebook | undefined {
-        return this.sourcebooksMap.get(abbrev);
+        return this.sourcebooksCatalog.getSourcebookByAbbrev(abbrev);
     }
 
     /**
@@ -543,320 +399,308 @@ export class DataService {
      * Falls back to the abbreviation itself if not found.
      */
     public getSourcebookTitle(abbrev: string): string {
-        return this.sourcebooksMap.get(abbrev)?.title ?? abbrev;
+        return this.sourcebooksCatalog.getSourcebookTitle(abbrev);
     }
 
-    /**
-     * Get the sourcebook abbreviations for a unit by its MUL ID.
-     * @param mulId The Master Unit List ID of the unit
-     * @returns Array of sourcebook abbreviations, or undefined if not found
-     */
-    public getUnitSourcesByMulId(mulId: number): string[] | undefined {
-        return this.mulUnitSourcesMap.get(mulId);
+    public getSarnaPageTitleForUnit(unit: SarnaLookupUnit | null | undefined): string | undefined {
+        return this.sarnaPageTitlesCatalog.getPageTitleForUnit(unit);
     }
 
-    private sumWeaponDamageNoPhysical(unit: Unit, components: UnitComponent[], ignoreOneshots: boolean = false): number {
-        let sum = 0;
-        for (const weapon of components) {
-            if (ignoreOneshots && weapon.os && weapon.os > 0) {
-                continue; // Skip oneshots
-            }
-            if ((weapon.md) && (weapon.t !== 'P')) {
-                let maxDamage = weapon.md ? parseFloat(weapon.md) || 0 : 0;
-                // Multiply by internal units for Battle Armor (except SSW and position is not on a specific soldier (p < 1))
-                if (unit.subtype === 'Battle Armor' && weapon.l !== 'SSW' && weapon.p < 1) {
-                    maxDamage *= unit.internal;
-                }
-                sum += maxDamage * (weapon.q || 1);
-            }
-            if (weapon.bay && Array.isArray(weapon.bay)) {
-                sum += this.sumWeaponDamageNoPhysical(unit, weapon.bay, ignoreOneshots);
-            }
-        }
-        return Math.round(sum);
+    public getForceNameWords(): ForceNameWords {
+        return this.forceNameWordsCatalog.getWords();
     }
 
-    private weaponsMaxRange(unit: Unit, components: UnitComponent[]): number {
-        let maxRange = 0;
-        for (const weapon of components) {
-            if (weapon.r) {
-                const rangeParts = weapon.r.split('/');
-                const weaponMaxRange = Math.max(...rangeParts.map(r => parseInt(r, 10) || 0));
-                maxRange = Math.max(maxRange, weaponMaxRange);
-            }
-        }
-        return maxRange;
+    public getMegaMekFactions(): MegaMekFactions {
+        return this.megaMekFactionsCatalog.getFactions();
     }
 
-    private buildFilterIndexes(units: Unit[]) {
-        const statsByType: {
-            [type: string]: {
-                armor: [number, number],
-                internal: [number, number],
-                heat: [number, number],
-                dissipation: [number, number],
-                dissipationEfficiency: [number, number],
-                runMP: [number, number],
-                run2MP: [number, number],
-                jumpMP: [number, number],
-                umuMP: [number, number],
-                alphaNoPhysical: [number, number],
-                alphaNoPhysicalNoOneshots: [number, number],
-                maxRange: [number, number],
-                dpt: [number, number],
-                // Capital ships
-                dropshipCapacity: [number, number],
-                escapePods: [number, number],
-                lifeBoats: [number, number],
-                sailIntegrity: [number, number],
-                kfIntegrity: [number, number],
-            }
-        } = {};
-        
-        const updateMinMax = (minMax: [number, number], value: number): void => {
-            if (value < minMax[0]) minMax[0] = value;
-            if (value > minMax[1]) minMax[1] = value;
-        };
-
-        for (const unit of units) {
-            // Combine chassis + model into single search key to save memory
-            const chassis = DataService.removeAccents(unit.chassis?.toLowerCase() || '');
-            const model = DataService.removeAccents(unit.model?.toLowerCase() || '');
-            unit._searchKey = `${chassis} ${model}`;
-            unit._displayType = this.formatUnitType(unit.type);
-            unit._mdSumNoPhysical = unit.comp ? this.sumWeaponDamageNoPhysical(unit, unit.comp) : 0;
-            unit._mdSumNoPhysicalNoOneshots = unit.comp ? this.sumWeaponDamageNoPhysical(unit, unit.comp, true) : 0;
-            unit._maxRange = unit.comp ? this.weaponsMaxRange(unit, unit.comp) : 0;
-            unit._dissipationEfficiency = (unit.heat && unit.dissipation) ? unit.dissipation - unit.heat : 0;
-            if (unit.as) {
-                if (unit.as.dmg) {
-                    unit.as.dmg._dmgS = parseFloat(unit.as.dmg.dmgS) || 0;
-                    unit.as.dmg._dmgM = parseFloat(unit.as.dmg.dmgM) || 0;
-                    unit.as.dmg._dmgL = parseFloat(unit.as.dmg.dmgL) || 0;
-                    unit.as.dmg._dmgE = parseFloat(unit.as.dmg.dmgE) || 0;
-                }
-                // Normalize MVm: ensure standard movement ('') exists when only jump is present
-                if (unit.as.MVm && unit.as.MVm['j'] !== undefined && unit.as.MVm[''] === undefined) {
-                    const mvmKeys = Object.keys(unit.as.MVm);
-                    if (unit.as.TP === 'BM' || (mvmKeys.length === 1 && mvmKeys[0] === 'j')) {
-                        unit.as.MVm = { '': unit.as.MVm['j'], ...unit.as.MVm };
-                    }
-                }
-            }
-            if (unit.comp) {
-                if (unit.armorType) {
-                    let armorName = unit.armorType;
-                    if (!armorName.endsWith(' Armor')) {
-                        armorName += ' Armor';
-                    }
-                    const armorType: UnitComponent = { q: 1, n: armorName, id: armorName, l: 'Armor', t: 'HIDDEN', p: -1 };
-                    unit.comp.push(armorType);
-                }
-                if (unit.structureType) {
-                    let structureName = unit.structureType;
-                    if (!structureName.endsWith(' Structure')) {
-                        structureName += ' Structure';
-                    }
-                    const structureType: UnitComponent = { q: 1, n: structureName, id: structureName, l: 'Structure', t: 'HIDDEN', p: -1 };
-                    unit.comp.push(structureType);
-                }
-                if (unit.engine) {
-                    let engineName = unit.engine;
-                    if (!engineName.endsWith(' Engine')) {
-                        engineName += ' Engine';
-                    }
-                    const engineType: UnitComponent = { q: 1, n: engineName, id: engineName, l: 'Engine', t: 'HIDDEN', p: -1 };
-                    unit.comp.push(engineType);
-                }
-            }
-
-            const t = unit.type;
-            if (!statsByType[t]) {
-                statsByType[t] = {
-                    armor: [Infinity, -Infinity],
-                    internal: [Infinity, -Infinity],
-                    heat: [Infinity, -Infinity],
-                    dissipation: [Infinity, -Infinity],
-                    dissipationEfficiency: [Infinity, -Infinity],
-                    runMP: [Infinity, -Infinity],
-                    run2MP: [Infinity, -Infinity],
-                    jumpMP: [Infinity, -Infinity],
-                    umuMP: [Infinity, -Infinity],
-                    alphaNoPhysical: [Infinity, -Infinity],
-                    alphaNoPhysicalNoOneshots: [Infinity, -Infinity],
-                    maxRange: [Infinity, -Infinity],
-                    dpt: [Infinity, -Infinity],
-                    // Capital ships
-                    dropshipCapacity: [Infinity, -Infinity],
-                    escapePods: [Infinity, -Infinity],
-                    lifeBoats: [Infinity, -Infinity],
-                    sailIntegrity: [Infinity, -Infinity],
-                    kfIntegrity: [Infinity, -Infinity],
-                };
-            }
-            const s = statsByType[t];
-            updateMinMax(s.armor, unit.armor || 0);
-            updateMinMax(s.internal, unit.internal || 0);
-            updateMinMax(s.heat, unit.heat || 0);
-            updateMinMax(s.dissipation, unit.dissipation || 0);
-            updateMinMax(s.dissipationEfficiency, unit._dissipationEfficiency || 0);
-            updateMinMax(s.runMP, unit.run || 0);
-            updateMinMax(s.run2MP, unit.run2 || 0);
-            updateMinMax(s.jumpMP, unit.jump || 0);
-            updateMinMax(s.umuMP, unit.umu || 0);
-            updateMinMax(s.alphaNoPhysical, unit._mdSumNoPhysical || 0);
-            updateMinMax(s.alphaNoPhysicalNoOneshots, unit._mdSumNoPhysicalNoOneshots || 0);
-            updateMinMax(s.maxRange, unit._maxRange || 0);
-            updateMinMax(s.dpt, unit.dpt || 0);
-            // Capital ships
-            if (unit.capital) {
-                updateMinMax(s.dropshipCapacity, unit.capital.dropshipCapacity || 0);
-                updateMinMax(s.escapePods, unit.capital.escapePods || 0);
-                updateMinMax(s.lifeBoats, unit.capital.lifeBoats || 0);
-                updateMinMax(s.sailIntegrity, unit.capital.sailIntegrity || 0);
-                updateMinMax(s.kfIntegrity, unit.capital.kfIntegrity || 0);
-            }
-        }
-
-        // Helper to normalize Infinity values to 0 (when no units of that type exist)
-        const normalize = (minMax: [number, number]): [number, number] => [
-            minMax[0] === Infinity ? 0 : Math.min(minMax[0], 0),
-            minMax[1] === -Infinity ? 0 : Math.max(minMax[1], 0)
-        ];
-        
-        for (const [type, stats] of Object.entries(statsByType)) {
-            this.unitTypeMaxStats[type] = {
-                armor: normalize(stats.armor),
-                internal: normalize(stats.internal),
-                heat: normalize(stats.heat),
-                dissipation: normalize(stats.dissipation),
-                dissipationEfficiency: normalize(stats.dissipationEfficiency),
-                runMP: normalize(stats.runMP),
-                run2MP: normalize(stats.run2MP),
-                jumpMP: normalize(stats.jumpMP),
-                umuMP: normalize(stats.umuMP),
-                alphaNoPhysical: normalize(stats.alphaNoPhysical),
-                alphaNoPhysicalNoOneshots: normalize(stats.alphaNoPhysicalNoOneshots),
-                maxRange: normalize(stats.maxRange),
-                dpt: normalize(stats.dpt),
-                // Capital ships
-                dropshipCapacity: normalize(stats.dropshipCapacity),
-                escapePods: normalize(stats.escapePods),
-                lifeBoats: normalize(stats.lifeBoats),
-                sailIntegrity: normalize(stats.sailIntegrity),
-                kfIntegrity: normalize(stats.kfIntegrity),
-            };
-        }
+    public getMegaMekFactionByKey(key: string): MegaMekFactionRecord | undefined {
+        return this.megaMekFactionsCatalog.getFactionByKey(key);
     }
 
-    public getUnitTypeMaxStats(type: string): MinMaxStatsRange {
-        return this.unitTypeMaxStats[type] || {
-            armor: [0, 0],
-            internal: [0, 0],
-            heat: [0, 0],
-            dissipation: [0, 0],
-            dissipationEfficiency: [0, 0],
-            runMP: [0, 0],
-            run2MP: [0, 0],
-            umuMP: [0, 0],
-            jumpMP: [0, 0],
-            alphaNoPhysical: [0, 0],
-            alphaNoPhysicalNoOneshots: [0, 0],
-            maxRange: [0, 0],
-            dpt: [0, 0],
-            // Capital ships
-            dropshipCapacity: [0, 0],
-            escapePods: [0, 0],
-            lifeBoats: [0, 0],
-            sailIntegrity: [0, 0],
-            kfIntegrity: [0, 0],
-            gravDecks: [0, 0],
-        };
+    public getMegaMekFactionsByMulId(mulId: number): MegaMekFactionRecord[] {
+        return this.megaMekFactionsCatalog.getFactionsByMulId(mulId);
     }
 
-    private async getRemoteETag(url: string): Promise<string> {
-        if (!navigator.onLine) {
-            return '';
-        }
-        try {
-            const resp = await firstValueFrom(
-                this.http.head(url, { observe: 'response' as const })
-            );
-            const etag = resp.headers.get('ETag') || '';
-            return etag;
-        } catch (err: any) {
-            this.logger.warn(`Failed to fetch ETag via HttpClient HEAD for ${url}: ${err.message ?? err}`);
-            return '';
-        }
+    public getMegaMekRulesets(): readonly MegaMekRulesetRecord[] {
+        return this.megaMekRulesetsCatalog.getRulesets();
+    }
+
+    public getMegaMekRulesetByFactionKey(factionKey: string): MegaMekRulesetRecord | undefined {
+        return this.megaMekRulesetsCatalog.getRulesetByFactionKey(factionKey);
+    }
+
+    public getMegaMekRulesetsByMulFactionId(mulFactionId: number): MegaMekRulesetRecord[] {
+        return this.getMegaMekFactionsByMulId(mulFactionId)
+            .map((faction) => this.megaMekRulesetsCatalog.getRulesetByFactionKey(faction.id))
+            .filter((ruleset): ruleset is MegaMekRulesetRecord => ruleset !== undefined);
+    }
+
+    public getMegaMekAvailabilityRecords(): readonly MegaMekWeightedAvailabilityRecord[] {
+        return this.megaMekAvailabilityCatalog.getRecords();
+    }
+
+    public getMegaMekAvailabilityRecordForUnit(unit: Pick<Unit, 'name'>): MegaMekWeightedAvailabilityRecord | undefined {
+        return this.megaMekAvailabilityCatalog.getRecordForUnit(unit);
+    }
+
+    private bumpSearchCorpusVersion(): void {
+        this.searchCorpusVersion.update(version => version + 1);
+    }
+
+    private bumpMegaMekAvailabilityVersion(): void {
+        this.megaMekAvailabilityVersion.update(version => version + 1);
+    }
+
+    private bumpSarnaPageTitlesVersion(): void {
+        this.sarnaPageTitlesVersion.update(version => version + 1);
+    }
+
+    private invalidateForcePackCaches(): void {
+        this.forcePackToLookupKey = null;
+        this.lookupKeyToForcePacks = null;
+    }
+
+    private rebuildUnitCatalogIndexes(units: Unit[]): void {
+        this.invalidateForcePackCaches();
+        this.unitRuntimeService.preprocessUnits(units);
+    }
+
+    public getIndexedUnitIds(filterKey: string, value: string): ReadonlySet<string> | undefined {
+        return this.unitSearchIndexService.getIndexedUnitIds(filterKey, value);
+    }
+
+    public getIndexedFilterValues(filterKey: string): string[] {
+        return this.unitSearchIndexService.getIndexedFilterValues(filterKey);
+    }
+
+    public getSearchWorkerIndexSnapshot(): UnitSearchWorkerIndexSnapshot {
+        return this.unitSearchIndexService.getSearchWorkerIndexSnapshot();
+    }
+
+    public getSearchWorkerFactionEraSnapshot(): UnitSearchWorkerFactionEraSnapshot {
+        return this.unitSearchIndexService.getSearchWorkerFactionEraSnapshot();
+    }
+
+    public getDropdownOptionUniverse(filterKey: string): Array<{ name: string; img?: string }> {
+        return this.unitSearchIndexService.getDropdownOptionUniverse(filterKey);
+    }
+
+    public getIndexedComponentUnitCounts(name: string): ReadonlyMap<string, number> | undefined {
+        return this.unitSearchIndexService.getIndexedComponentUnitCounts(name);
+    }
+
+    public refreshSearchCorpus(): void {
+        this.rebuildUnitCatalogIndexes(this.getUnits());
+        this.postprocessData();
+        this.bumpSearchCorpusVersion();
+    }
+
+    private rebuildTagSearchIndex(): void {
+        this.unitSearchIndexService.rebuildTagSearchIndex(this.getUnits());
+    }
+
+    public getUnitSubtypeMaxStats(subtype: string): MinMaxStatsRange {
+        return this.unitSearchIndexService.getUnitSubtypeMaxStats(subtype);
+    }
+
+    public getASUnitTypeMaxStats(asUnitType: string): MinMaxStatsRange {
+        return this.unitSearchIndexService.getASUnitTypeMaxStats(asUnitType);
     }
 
     private postprocessData(): void {
-        for (const store of this.remoteStores) {
-            const storeData = this.data[store.key as keyof LocalStore];
-            if (storeData && store.postprocess) {
-                this.data[store.key as keyof LocalStore] = store.postprocess(storeData);
-            }
-        }
-        this.linkEquipmentToUnits();
+        this.applyNoneFactionMemberships(this.getUnits(), this.getEras(), this.getFactions());
+        this.unitRuntimeService.postprocessUnits(this.getUnits(), this.getEras());
+        this.unitRuntimeService.linkEquipmentToUnits(this.getUnits(), this.getEquipments());
+        const extinctFaction = this.getFactionById(MULFACTION_EXTINCT);
+        this.unitSearchIndexService.rebuildIndexes(this.getUnits(), this.getEras(), this.getFactions(), extinctFaction);
     }
 
-    /**
-     * Link equipment objects to unit components so methods like .eq.hasFlag() work.
-     */
-    private linkEquipmentToUnits(): void {
-        const units = this.getUnits();
-        const equipment = this.getEquipments();
-        for (const unit of units) {
-            if (!unit.comp) continue;
-            this.linkEquipmentToComponents(unit.comp, equipment);
+    private applyNoneFactionMemberships(units: readonly Unit[], eras: readonly Era[], factions: readonly Faction[]): void {
+        const noneFaction = this.getFactionById(MULFACTION_NONE);
+        if (!noneFaction) {
+            return;
+        }
+
+        const factionUnitIds = new Set<number>();
+        for (const faction of factions) {
+            if (faction.id === MULFACTION_NONE) {
+                continue;
+            }
+
+            for (const eraUnitIds of Object.values(faction.eras) as Set<number>[]) {
+                for (const unitId of eraUnitIds) {
+                    factionUnitIds.add(unitId);
+                }
+            }
+        }
+
+        const noneUnits = units.filter((unit) => !factionUnitIds.has(unit.id));
+
+        noneFaction.eras = {};
+        for (const era of eras) {
+            const noneEraUnitIds = new Set<number>();
+            for (const unit of noneUnits) {
+                if (!this.isUnitYearValidForEra(unit, era)) {
+                    continue;
+                }
+
+                noneEraUnitIds.add(unit.id);
+                (era.units as Set<number>).add(unit.id);
+            }
+
+            if (noneEraUnitIds.size > 0) {
+                noneFaction.eras[era.id] = noneEraUnitIds;
+                (era.factions as Set<number>).add(MULFACTION_NONE);
+            }
         }
     }
 
-    private linkEquipmentToComponents(components: UnitComponent[], equipment: EquipmentMap): void {
-        for (const comp of components) {
-            if (comp.id && !comp.eq) {
-                comp.eq = equipment[comp.id];
-            }
-            if (comp.bay) {
-                this.linkEquipmentToComponents(comp.bay, equipment);
-            }
-        }
+    private isUnitYearValidForEra(unit: Pick<Unit, 'year'>, era: Era): boolean {
+        const eraEndYear = era.years.to ?? Number.POSITIVE_INFINITY;
+        return unit.year < eraEndYear;
     }
 
     private async checkForUpdate(): Promise<void> {
-        try {
-            const updatePromises = this.remoteStores.map(async (store) => {
-                let localData = this.data[store.key as keyof LocalStore];
-                if (!localData) {
-                    localData = await store.getFromLocalStorage();
-                    if (localData && store.preprocess) {
-                        localData = store.preprocess(localData);
-                    }
-                }
-                const etag = await this.getRemoteETag(store.url);
-                // If offline/error (empty etag), use local data if available, otherwise fetch
-                if (!etag) {
-                    if (localData) {
-                        this.data[store.key as keyof LocalStore] = localData;
-                        this.logger.info(`${store.key} loaded from cache (offline or remote unavailable).`);
-                        return;
-                    }
-                    // No cached data and no etag, try to fetch anyway
-                    await this.fetchFromRemote(store);
-                    return;
-                }
-                if (localData && localData.etag === etag) {
-                    this.data[store.key as keyof LocalStore] = localData;
-                    this.logger.info(`${store.key} is up to date. (ETag: ${etag})`);
-                    return;
-                }
-                await this.fetchFromRemote(store);
-            });
-            await Promise.all(updatePromises);
-            this.postprocessData();
-        } finally {
-            this.isDownloading.set(false);
+        await Promise.all([
+            this.unitsCatalog.initialize(),
+            this.equipmentCatalog.initialize(),
+            this.erasCatalog.initialize(),
+            this.factionsCatalog.initialize(),
+        ]);
+        this.postprocessData();
+        this.bumpSearchCorpusVersion();
+    }
+
+    private describeError(error: unknown): string {
+        if (error instanceof Error) {
+            return `${error.name}: ${error.message}`;
         }
+
+        return String(error);
+    }
+
+    private ensureCatalogInitialized(
+        state: CatalogInitializationState,
+        name: string,
+        initialize: () => Promise<void>,
+        onInitialized?: () => void,
+    ): Promise<boolean> {
+        if (state.ready) {
+            return Promise.resolve(true);
+        }
+
+        if (state.promise) {
+            return state.promise;
+        }
+
+        state.promise = initialize()
+            .then(() => {
+                state.ready = true;
+                onInitialized?.();
+                return true;
+            })
+            .catch((error) => {
+                this.logger.error(`Failed to initialize catalog service "${name}": ${this.describeError(error)}`);
+                return false;
+            })
+            .finally(() => {
+                state.promise = null;
+            });
+
+        return state.promise;
+    }
+
+    private async ensureCatalogGroupInitialized(
+        catalogs: readonly { name: string; ensure: () => Promise<boolean> }[],
+    ): Promise<boolean> {
+        const results = await Promise.all(catalogs.map(async ({ name, ensure }) => ({ name, success: await ensure() })));
+        const failures = results.filter((result) => !result.success).map((result) => result.name);
+
+        if (failures.length === 0) {
+            return true;
+        }
+
+        this.logger.error(
+            `Failed to initialize ${failures.length} catalog service${failures.length === 1 ? '' : 's'}: ${failures.map((name) => `"${name}"`).join(', ')}`,
+        );
+        return false;
+    }
+
+    private ensureQuirksCatalogInitialized(): Promise<boolean> {
+        return this.ensureCatalogInitialized(
+            this.quirksCatalogState,
+            'quirks',
+            () => this.quirksCatalog.initialize(),
+        );
+    }
+
+    private ensureSourcebooksCatalogInitialized(): Promise<boolean> {
+        return this.ensureCatalogInitialized(
+            this.sourcebooksCatalogState,
+            'sourcebooks',
+            () => this.sourcebooksCatalog.initialize(),
+        );
+    }
+
+    private ensureSarnaPageTitlesCatalogInitialized(): Promise<boolean> {
+        return this.ensureCatalogInitialized(
+            this.sarnaPageTitlesCatalogState,
+            'sarna_page_titles',
+            () => this.sarnaPageTitlesCatalog.initialize(),
+            () => this.bumpSarnaPageTitlesVersion(),
+        );
+    }
+
+    private ensureForceNameWordsCatalogInitialized(): Promise<boolean> {
+        return this.ensureCatalogInitialized(
+            this.forceNameWordsCatalogState,
+            'force_name_words',
+            () => this.forceNameWordsCatalog.initialize(),
+        );
+    }
+
+    private initializeStartupCatalogs(): Promise<boolean> {
+        return this.ensureCatalogGroupInitialized([
+            { name: 'force_name_words', ensure: () => this.ensureForceNameWordsCatalogInitialized() },
+            { name: 'megamek_availability', ensure: () => this.ensureMegaMekAvailabilityCatalogInitialized() },
+            { name: 'quirks', ensure: () => this.ensureQuirksCatalogInitialized() },
+            { name: 'sarna_page_titles', ensure: () => this.ensureSarnaPageTitlesCatalogInitialized() },
+            { name: 'sourcebooks', ensure: () => this.ensureSourcebooksCatalogInitialized() },
+        ]);
+    }
+
+    public ensureMegaMekAvailabilityCatalogInitialized(): Promise<boolean> {
+        return this.ensureCatalogInitialized(
+            this.megaMekAvailabilityCatalogState,
+            'megamek_availability',
+            () => this.megaMekAvailabilityCatalog.initialize(),
+            () => this.bumpMegaMekAvailabilityVersion(),
+        );
+    }
+
+    private ensureMegaMekFactionsCatalogInitialized(): Promise<boolean> {
+        return this.ensureCatalogInitialized(
+            this.megaMekFactionsCatalogState,
+            'megamek_factions',
+            () => this.megaMekFactionsCatalog.initialize(),
+        );
+    }
+
+    private ensureMegaMekRulesetsCatalogInitialized(): Promise<boolean> {
+        return this.ensureCatalogInitialized(
+            this.megaMekRulesetsCatalogState,
+            'megamek_rulesets',
+            () => this.megaMekRulesetsCatalog.initialize(),
+        );
+    }
+
+    public ensureMegaMekCatalogsInitialized(): Promise<boolean> {
+        return this.ensureCatalogGroupInitialized([
+            { name: 'megamek_availability', ensure: () => this.ensureMegaMekAvailabilityCatalogInitialized() },
+            { name: 'megamek_factions', ensure: () => this.ensureMegaMekFactionsCatalogInitialized() },
+            { name: 'megamek_rulesets', ensure: () => this.ensureMegaMekRulesetsCatalogInitialized() },
+        ]);
     }
 
     public async initialize(): Promise<void> {
@@ -866,51 +710,21 @@ export class DataService {
         this.logger.info('Database is ready, checking for updates...');
         try {
             await this.checkForUpdate();
+            await this.initializeStartupCatalogs();
             this.logger.info('All data stores are ready.');
             // Apply public tags to units now that data is ready
             // (PublicTagsService.initialize() may have loaded cached tags before units were ready)
             this.applyPublicTagsToUnits();
             this.isDataReady.set(true);
         } catch (error) {
-            this.logger.error('Failed to initialize data: ' + error);
+            this.logger.error(`Failed to initialize data: ${this.describeError(error)}`);
             // Check if we have any data loaded despite the error
-            const hasData = this.remoteStores.every(store => !!this.data[store.key as keyof LocalStore]);
+            const hasData = this.getUnits().length > 0 && Object.keys(this.getEquipments()).length > 0;
             if (hasData) {
                 // Apply public tags even on partial load
                 this.applyPublicTagsToUnits();
             }
             this.isDataReady.set(hasData);
-        } finally {
-            this.isDownloading.set(false);
-        }
-    }
-
-    private async fetchFromRemote<T extends object>(remoteStore: RemoteStore<T>): Promise<void> {
-        this.isDownloading.set(true);
-        this.logger.info(`Downloading ${remoteStore.key}...`);
-        try {
-            const response = await firstValueFrom(
-                this.http.get<T>(remoteStore.url, {
-                    reportProgress: false,
-                    observe: 'response',
-                })
-            );
-            const etag = response.headers.get('ETag') || generateUUID(); // Fallback to random UUID if no ETag
-            const data = response.body;
-            if (!data) {
-                throw new Error(`No body received for ${remoteStore.key}`);
-            }
-            (data as any).etag = etag;
-            let processedData = data;
-            if (remoteStore.preprocess) {
-                processedData = remoteStore.preprocess(data);
-            }
-            this.data[remoteStore.key as keyof LocalStore] = processedData;
-            await remoteStore.putInLocalStorage(data); // Save original data with etag
-            this.logger.info(`${remoteStore.key} updated. (ETag: ${etag})`);
-        } catch (err: any) {
-            this.logger.error(`Failed to download ${remoteStore.key}: ` + (err.message ?? err));
-            throw err;
         }
     }
 
@@ -965,8 +779,10 @@ export class DataService {
             }
         }
 
+        let cloudIsNewer = false;
         if (local && cloud) {
-            result = this.isCloudNewer(localRaw, cloudRaw) ? cloud : local;
+            cloudIsNewer = this.isCloudNewer(localRaw, cloudRaw);
+            result = cloudIsNewer ? cloud : local;
         } else if (!triedCloud && local) {
             result = local;
         } else {
@@ -977,6 +793,14 @@ export class DataService {
         if (triedCloud && local && !cloud) {
             this.logger.info(`Force "${local.name}" exists locally but not in cloud: pushing to cloud.`);
             this.saveForceCloud(local);
+        } else 
+        if (triedCloud && (cloudIsNewer || !local) && cloud && cloud.owned()) {
+            if (!local) {
+                this.logger.info(`Force "${cloud.name}" exists in cloud but not locally: saving local copy.`);
+            } else {
+                this.logger.info(`Force "${cloud.name}" exists in cloud and is newer: updating local copy.`);
+            }
+            await this.dbService.saveForce(cloudRaw as SerializedForce);
         }
 
         // Fix any duplicate group/unit IDs that may have been persisted.
@@ -1002,6 +826,59 @@ export class DataService {
         }
     }
 
+    public async updateForceTags(instanceId: string, tags: readonly string[], updateCloud: boolean = true): Promise<string[]> {
+        const normalizedTags = sanitizeForceTags(tags);
+        const updatedLocalForce = await this.dbService.updateForceTags(instanceId, normalizedTags);
+        let updated = updatedLocalForce !== null;
+
+        if (updateCloud) {
+            updated = (await this.updateForceTagsCloud(instanceId, normalizedTags)) || updated;
+        }
+
+        if (!updated) {
+            throw new Error('The selected force could not be updated.');
+        }
+
+        this.updateCachedForceTags(instanceId, normalizedTags);
+        return normalizedTags;
+    }
+
+    public getCachedForceTagLabels(): string[] {
+        const labels = new Map<string, string>();
+        for (const tags of this.cachedForceTagsByInstanceId.values()) {
+            for (const tag of tags) {
+                const key = tag.toLocaleLowerCase();
+                if (!labels.has(key)) {
+                    labels.set(key, tag);
+                }
+            }
+        }
+
+        return Array.from(labels.values())
+            .sort(naturalCompare);
+    }
+
+    public updateCachedForceTags(instanceId: string, tags: readonly string[] | null | undefined): void {
+        if (!instanceId) {
+            return;
+        }
+
+        this.cachedForceTagsByInstanceId.set(instanceId, sanitizeForceTags(tags ?? []));
+    }
+
+    private refreshCachedForceTags(forces: readonly Pick<LoadForceEntry, 'instanceId' | 'tags'>[]): void {
+        const nextCache = new Map<string, string[]>();
+        for (const force of forces) {
+            if (!force.instanceId) {
+                continue;
+            }
+
+            nextCache.set(force.instanceId, sanitizeForceTags(force.tags ?? []));
+        }
+
+        this.cachedForceTagsByInstanceId = nextCache;
+    }
+
 
 
     public async saveSerializedForceToLocalStorage(serialized: SerializedForce): Promise<void> {
@@ -1010,7 +887,7 @@ export class DataService {
 
     public async listForces(): Promise<LoadForceEntry[]> {
         this.logger.info(`Retrieving local forces...`);
-        const localForces = await this.dbService.listForces(this, this.unitInitializer, this.injector);
+        const localForces = await this.dbService.listForces(this);
         this.logger.info(`Retrieving cloud forces...`);
         const cloudForces = await this.listForcesCloud();
         this.logger.info(`Found ${localForces.length} local forces and ${cloudForces.length} cloud forces.`);
@@ -1038,8 +915,99 @@ export class DataService {
             }
         }
         const mergedForces = Array.from(forceMap.values()).sort((a, b) => getTimestamp(b) - getTimestamp(a));
+        this.refreshCachedForceTags(mergedForces);
         this.logger.info(`Found ${mergedForces.length} unique forces.`);
         return mergedForces;
+    }
+
+    private static readonly FORCE_BULK_CHUNK_SIZE = 100;
+
+    public async cacheForcesLocally(instanceIds: readonly string[]): Promise<number> {
+        const uniqueIds = Array.from(new Set(instanceIds.filter((instanceId): instanceId is string => !!instanceId)));
+        if (uniqueIds.length === 0) return 0;
+
+        const localRawForces = await Promise.all(uniqueIds.map((instanceId) => this.dbService.getForce(instanceId)));
+        const missingIds = uniqueIds.filter((instanceId, index) => !localRawForces[index]);
+        if (missingIds.length === 0) return 0;
+
+        const cloudForces = await this.getForcesCloudRawByIds(missingIds);
+        for (const force of cloudForces) {
+            await this.dbService.saveForce(force);
+        }
+
+        return cloudForces.length;
+    }
+
+    public async getLoadForceEntriesByIds(instanceIds: readonly string[]): Promise<LoadForceEntry[]> {
+        const orderedIds = Array.from(new Set(instanceIds.filter((instanceId): instanceId is string => !!instanceId)));
+        if (orderedIds.length === 0) return [];
+
+        const entryMap = new Map<string, LoadForceEntry>();
+        const localRawForces = await Promise.all(orderedIds.map(instanceId => this.dbService.getForce(instanceId)));
+
+        for (const localRaw of localRawForces) {
+            if (!localRaw?.instanceId) continue;
+            entryMap.set(localRaw.instanceId, createLoadForceEntryFromSerializedForce(localRaw, this, { local: true }));
+        }
+
+        const cloudForces = await this.getForcesBulkSummaries(orderedIds);
+        for (const raw of cloudForces) {
+            if (!raw?.instanceId) continue;
+            const cloudEntry = createLoadForceEntry(raw, this, { cloud: true });
+            const existing = entryMap.get(raw.instanceId);
+            if (!existing || this.getComparableTimestamp(raw.timestamp) >= this.getComparableTimestamp(existing.timestamp)) {
+                if (existing?.local) cloudEntry.local = true;
+                entryMap.set(raw.instanceId, cloudEntry);
+            }
+        }
+
+        return orderedIds
+            .map(instanceId => entryMap.get(instanceId))
+            .filter((entry): entry is LoadForceEntry => entry !== undefined);
+    }
+
+    private async getForcesBulkSummaries(instanceIds: readonly string[]): Promise<RemoteLoadForceEntry[]> {
+        const ws = await this.canUseCloud();
+        if (!ws) return [];
+
+        const orderedIds = Array.from(new Set(instanceIds.filter((instanceId): instanceId is string => !!instanceId)));
+        const result: RemoteLoadForceEntry[] = [];
+
+        for (let i = 0; i < orderedIds.length; i += DataService.FORCE_BULK_CHUNK_SIZE) {
+            const chunk = orderedIds.slice(i, i + DataService.FORCE_BULK_CHUNK_SIZE);
+            const response = await this.wsService.sendAndWaitForResponse({
+                action: 'getForcesBulk',
+                instanceIds: chunk,
+            });
+            if (!response?.data || !Array.isArray(response.data)) continue;
+            result.push(...response.data as RemoteLoadForceEntry[]);
+        }
+
+        return result;
+    }
+
+    private async getForcesCloudRawByIds(instanceIds: readonly string[]): Promise<SerializedForce[]> {
+        const ws = await this.canUseCloud();
+        if (!ws) return [];
+
+        const orderedIds = Array.from(new Set(instanceIds.filter((instanceId): instanceId is string => !!instanceId)));
+        const uuid = this.userStateService.uuid();
+        const result: SerializedForce[] = [];
+
+        for (const instanceId of orderedIds) {
+            const response = await this.wsService.sendAndWaitForResponse({
+                action: 'getForce',
+                uuid,
+                instanceId,
+                ownedOnly: false,
+            });
+            const raw = response?.data as SerializedForce | null | undefined;
+            if (raw?.instanceId) {
+                result.push(raw);
+            }
+        }
+
+        return result;
     }
 
     private _cloudReadyChecked = false;
@@ -1376,6 +1344,7 @@ export class DataService {
                     cloudForce.name = localForce.name ?? cloudForce.name;
                     cloudForce.type = localForce.type ?? cloudForce.type;
                     cloudForce.factionId = localForce.factionId ?? cloudForce.factionId;
+                    cloudForce.eraId = localForce.eraId ?? cloudForce.eraId;
                     cloudForce.bv = localForce.bv ?? cloudForce.bv;
                     cloudForce.pv = localForce.pv ?? cloudForce.pv;
                     cloudForce.forceTimestamp = localForce.forceTimestamp;
@@ -1402,6 +1371,7 @@ export class DataService {
                     name: localForce?.name,
                     type: localForce?.type as GameSystem | undefined,
                     factionId: localForce?.factionId,
+                    eraId: localForce?.eraId,
                     bv: localForce?.bv,
                     pv: localForce?.pv,
                     forceTimestamp: localForce?.timestamp,
@@ -1442,6 +1412,7 @@ export class DataService {
                 name: f.name,
                 type: f.type,
                 factionId: f.factionId,
+                eraId: f.eraId,
                 bv: f.bv,
                 pv: f.pv,
                 forceTimestamp: f.forceTimestamp,
@@ -1516,6 +1487,7 @@ export class DataService {
                         name: entry.name,
                         type: entry.type,
                         factionId: entry.factionId,
+                        eraId: entry.eraId,
                         bv: entry.bv,
                         pv: entry.pv,
                         forceTimestamp: entry.timestamp,
@@ -1530,6 +1502,12 @@ export class DataService {
         return result;
     }
 
+    private getComparableTimestamp(timestamp: string | number | null | undefined): number {
+        if (typeof timestamp === 'number') return timestamp;
+        if (timestamp) return new Date(timestamp).getTime();
+        return 0;
+    }
+
 
     private async listForcesCloud(): Promise<LoadForceEntry[]> {
         const ws = await this.canUseCloud();
@@ -1542,39 +1520,9 @@ export class DataService {
         };
         const response = await this.wsService.sendAndWaitForResponse(payload);
         if (response && Array.isArray(response.data)) {
-            for (const raw of response.data as SerializedForce[]) {
+            for (const raw of response.data as RemoteLoadForceEntry[]) {
                 try {
-                    const groups: LoadForceGroup[] = [];
-                    if (raw.groups && Array.isArray(raw.groups)) {
-                        for (const group of raw.groups as SerializedGroup[]) {
-                            const loadGroup: LoadForceGroup = {
-                                name: group.name,
-                                formationId: group.formationId,
-                                units: []
-                            };
-                            for (const unit of group.units as SerializedUnit[]) {
-                                const loadUnit: LoadForceUnit = {
-                                    unit: this.getUnitByName(unit.unit),
-                                    alias: unit.alias,
-                                    destroyed: unit.state.destroyed ?? false
-                                };
-                                loadGroup.units.push(loadUnit);
-                            }
-                            groups.push(loadGroup);
-                        }
-                    }
-                    const entry: LoadForceEntry = new LoadForceEntry({
-                        cloud: true,
-                        instanceId: raw.instanceId,
-                        name: raw.name,
-                        type: raw.type,
-                        factionId: raw.factionId,
-                        bv: raw.bv ?? undefined,
-                        pv: raw.pv ?? undefined,
-                        timestamp: raw.timestamp,
-                        groups: groups
-                    });
-                    forces.push(entry);
+                    forces.push(createLoadForceEntry(raw, this, { cloud: true }));
                 } catch (error) {
                     this.logger.error('Failed to deserialize force: ' + error + ' ' + raw);
                 }
@@ -1583,7 +1531,7 @@ export class DataService {
         return forces;
     }
 
-    SAVE_FORCE_CLOUD_DEBOUNCE_MS = 1000;
+    SAVE_FORCE_CLOUD_DEBOUNCE_MS = 2000;
     // Debounce map to prevent multiple simultaneous saves for the same force
     private saveForceCloudDebounce = new Map<string, {
         timeout: ReturnType<typeof setTimeout>,
@@ -1628,6 +1576,42 @@ export class DataService {
                 });
             }
         });
+    }
+
+    private async updateForceTagsCloud(instanceId: string, tags: readonly string[]): Promise<boolean> {
+        const ws = await this.canUseCloud();
+        if (!ws) {
+            return false;
+        }
+
+        try {
+            const uuid = this.userStateService.uuid();
+            const response = await this.wsService.sendAndWaitForResponse({
+                action: 'setForceTags',
+                uuid,
+                instanceId,
+                tags,
+            });
+
+            if (!response) {
+                return false;
+            }
+
+            if (response.code === 'not_owner') {
+                this.logger.warn(`Cannot update force tags in cloud for ${instanceId}: not the owner.`);
+                return false;
+            }
+
+            if (response.action === 'error') {
+                this.logger.error(`Failed to update force tags in cloud for ${instanceId}: ${response.message ?? 'unknown error'}`);
+                return false;
+            }
+
+            return response.action === 'forceTagsUpdated';
+        } catch (err) {
+            this.logger.error(`Failed to update force tags in cloud for ${instanceId}: ${err}`);
+            return false;
+        }
     }
 
     // Flush function performs the actual cloud save for the latest Force for a given instanceId
@@ -1746,22 +1730,22 @@ export class DataService {
 
     /**
      * Build both force pack lookup maps on first use.
-     * - forcePackToChassisType: packName -> Set<chassis|type>
-     * - chassisTypeToForcePacks: chassis|type -> sorted packName[]
+        * - forcePackToLookupKey: packName -> Set<chassis|as.TP|omni>
+        * - lookupKeyToForcePacks: chassis|as.TP|omni -> sorted packName[]
      */
     private buildForcePackCaches(): void {
-        this.forcePackToChassisType = new Map();
+        this.forcePackToLookupKey = new Map();
         const reverseMap = new Map<string, Set<string>>();
 
         for (const pack of getForcePacks()) {
-            const chassisTypeSet = new Set<string>();
+            const lookupKeys = new Set<string>();
 
             const processUnits = (unitList: Array<{ name: string }>) => {
                 for (const pu of unitList) {
-                    const unit = this.unitNameMap.get(pu.name);
+                    const unit = this.getUnitByName(pu.name);
                     if (unit) {
-                        const key = `${unit.chassis}|${unit.type}`;
-                        chassisTypeSet.add(key);
+                        const key = getUnitVariantGroupKey(unit);
+                        lookupKeys.add(key);
                         if (!reverseMap.has(key)) reverseMap.set(key, new Set());
                         reverseMap.get(key)!.add(pack.name);
                     }
@@ -1775,39 +1759,39 @@ export class DataService {
                 }
             }
 
-            this.forcePackToChassisType.set(pack.name, chassisTypeSet);
+            this.forcePackToLookupKey.set(pack.name, lookupKeys);
         }
 
-        this.chassisTypeToForcePacks = new Map();
+        this.lookupKeyToForcePacks = new Map();
         for (const [key, names] of reverseMap) {
-            this.chassisTypeToForcePacks.set(key, Array.from(names).sort());
+            this.lookupKeyToForcePacks.set(key, Array.from(names).sort());
         }
     }
 
     /**
-     * Check if a unit belongs to a force pack (by chassis|type).
+    * Check if a unit belongs to a force pack (by variants).
      */
     public unitBelongsToForcePack(unit: Unit, packName: string): boolean {
-        if (!this.forcePackToChassisType) this.buildForcePackCaches();
-        const chassisSet = this.forcePackToChassisType!.get(packName);
-        if (!chassisSet) return false;
-        return chassisSet.has(`${unit.chassis}|${unit.type}`);
+        if (!this.forcePackToLookupKey) this.buildForcePackCaches();
+        const lookupSet = this.forcePackToLookupKey!.get(packName);
+        if (!lookupSet) return false;
+        return lookupSet.has(getUnitVariantGroupKey(unit));
     }
 
     /**
-     * Get the chassis|type set for a force pack (for bulk filtering).
+    * Get the variants set for a force pack (for bulk filtering).
      */
-    public getForcePackChassisTypeSet(packName: string): Set<string> | undefined {
-        if (!this.forcePackToChassisType) this.buildForcePackCaches();
-        return this.forcePackToChassisType!.get(packName);
+    public getForcePackLookupSet(packName: string): Set<string> | undefined {
+        if (!this.forcePackToLookupKey) this.buildForcePackCaches();
+        return this.forcePackToLookupKey!.get(packName);
     }
 
     /**
-     * Get the sorted list of force pack names that contain a unit's chassis|type.
+    * Get the sorted list of force pack names that contain a unit's variants.
      */
     public getForcePacksForUnit(unit: Unit): string[] {
-        if (!this.chassisTypeToForcePacks) this.buildForcePackCaches();
-        return this.chassisTypeToForcePacks!.get(`${unit.chassis}|${unit.type}`) ?? [];
+        if (!this.lookupKeyToForcePacks) this.buildForcePackCaches();
+        return this.lookupKeyToForcePacks!.get(getUnitVariantGroupKey(unit)) ?? [];
     }
 
     /* ----------------------------------------------------------
@@ -1873,9 +1857,9 @@ export class DataService {
         return Array.from(orgMap.values()).sort((a, b) => b.timestamp - a.timestamp);
     }
 
-    public async getOrganization(organizationId: string): Promise<SerializedOrganization | null> {
+    public async getOrganization(organizationId: string): Promise<LoadedOrganization | null> {
         const localPromise = this.dbService.getOrganization(organizationId);
-        let cloudOrg: SerializedOrganization | null = null;
+        let cloudOrg: LoadedOrganization | null = null;
 
         try {
             const ws = await this.canUseCloud();
@@ -1968,7 +1952,8 @@ export class DataService {
                 organizationId,
             });
             if (response?.data) {
-                await this.dbService.saveOrganization(response.data);
+                const { owned: _owned, ...serialized } = response.data as LoadedOrganization;
+                await this.dbService.saveOrganization(serialized);
             }
         } catch {
             // Silently fail — will retry on next list

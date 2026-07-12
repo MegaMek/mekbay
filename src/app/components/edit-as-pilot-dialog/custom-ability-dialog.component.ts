@@ -31,8 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { afterNextRender, ChangeDetectionStrategy, Component, ElementRef, input, output, viewChild } from '@angular/core';
-import { ASCustomPilotAbility } from '../../models/pilot-abilities.model';
+import { afterNextRender, ChangeDetectionStrategy, Component, type ElementRef, input, output, viewChild } from '@angular/core';
+import type { ASCustomPilotAbility } from '../../models/pilot-abilities.model';
 
 @Component({
     selector: 'custom-ability-dialog',

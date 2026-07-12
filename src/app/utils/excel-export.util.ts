@@ -53,7 +53,7 @@ async function loadXlsx() {
  */
 function sanitizeFilename(name: string): string {
     return name
-        .replace(/[<>:"/\\|?*]/g, '') // Remove invalid file characters
+        .replace(/[<>:"/\\|?*']/g, '') // Remove invalid file characters
         .replace(/\s+/g, '-')          // Replace spaces with dashes
         .replace(/-+/g, '-')           // Collapse multiple dashes
         .replace(/^-|-$/g, '')         // Remove leading/trailing dashes
@@ -68,6 +68,7 @@ function sanitizeFilename(name: string): string {
 function sanitizeSheetName(name: string): string {
     return name
         .replace(/[\\/?*[\]:]/g, '') // Remove invalid sheet name characters
+    .replace(/^'+|'+$/g, '')        // Excel sheet names cannot start or end with apostrophes
         .slice(0, 31) || 'Force';     // Limit length, fallback if empty
 }
 
@@ -80,6 +81,34 @@ function formatArcDamage(arc: AlphaStrikeArcStats | undefined, type: 'STD' | 'CA
     return `${dmg.dmgS}/${dmg.dmgM}/${dmg.dmgL}/${dmg.dmgE}`;
 }
 
+function getMergedUnitTags(unit: Unit): string {
+    const merged = new Map<string, { label: string; quantity: number }>();
+
+    const mergeTag = (tag: string, quantity: number) => {
+        const key = tag.toLowerCase();
+        const existing = merged.get(key);
+        if (!existing) {
+            merged.set(key, { label: tag, quantity });
+            return;
+        }
+
+        if (quantity > existing.quantity) {
+            existing.quantity = quantity;
+        }
+    };
+
+    for (const entry of unit._chassisTags ?? []) {
+        mergeTag(entry.tag, entry.quantity);
+    }
+    for (const entry of unit._nameTags ?? []) {
+        mergeTag(entry.tag, entry.quantity);
+    }
+
+    return Array.from(merged.values())
+        .map(entry => entry.quantity > 1 ? `${entry.label} (${entry.quantity})` : entry.label)
+        .join(', ');
+}
+
 /**
  * Converts units to CBT (Classic BattleTech) export format.
  */
@@ -87,7 +116,7 @@ function unitToCBTRow(unit: Unit): Record<string, unknown> {
     return {
         chassis: unit.chassis,
         model: unit.model,
-        mul_id: unit.id === -1 ? '' : unit.id,
+        mul_id: unit.id <= 0 ? '' : unit.id,
         year: unit.year,
         BV: unit.bv,
         cost: unit.cost,
@@ -102,6 +131,8 @@ function unitToCBTRow(unit: Unit): Record<string, unknown> {
         engine: unit.engine,
         engineRating: unit.engineRating,
         source: unit.source?.join(', ') ?? '',
+        publishedRS: unit.published?.join(', ') ?? '',
+        tags: getMergedUnitTags(unit),
         role: unit.role,
         armorType: unit.armorType,
         structureType: unit.structureType,
@@ -115,7 +146,6 @@ function unitToCBTRow(unit: Unit): Record<string, unknown> {
         walk: unit.walk,
         maxWalk: unit.walk2,
         jump: unit.jump,
-        maxJump: unit.jump2,
         umu: unit.umu,
         c3: unit.c3,
         dpt: unit.dpt,
@@ -130,7 +160,7 @@ function unitToCBTRow(unit: Unit): Record<string, unknown> {
         lifeBoats: unit.capital?.lifeBoats ?? '',
         gravDecks: unit.capital?.gravDecks?.join(', ') ?? '',
         sailIntegrity: unit.capital?.sailIntegrity ?? '',
-        kfIntegrity: unit.capital?.kfIntegrity ?? ''
+        kfIntegrity: unit.capital?.kfIntegrity ?? '',
     };
 }
 
@@ -146,7 +176,7 @@ function unitToASRow(unit: Unit): Record<string, unknown> {
     return {
         chassis: unit.chassis,
         model: unit.model,
-        mul_id: unit.id === -1 ? '' : unit.id,
+        mul_id: unit.id <= 0 ? '' : unit.id,
         year: unit.year,
         PV: as?.PV ?? '',
         cost: unit.cost,
@@ -154,6 +184,8 @@ function unitToASRow(unit: Unit): Record<string, unknown> {
         techBase: unit.techBase,
         techRating: unit.techRating,
         source: unit.source?.join(', ') ?? '',
+        publishedRS: unit.published?.join(', ') ?? '',
+        tags: getMergedUnitTags(unit),
         role: unit.role,
         SZ: as?.SZ ?? '',
         usesOV: as?.usesOV ?? '',

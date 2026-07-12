@@ -43,7 +43,7 @@ import {
     viewChild,
 } from '@angular/core';
 import { UpperCasePipe } from '@angular/common';
-import { CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
+import { type CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
 import {
     AsCriticalHitsMekComponent,
     AsCriticalHitsVehicleComponent,
@@ -116,7 +116,7 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
         if (groundMoveInches <= 0) return formatMovement(0, '', this.useHex());
 
         const sprintInches = Math.ceil(groundMoveInches * 1.5);
-        return formatMovement(sprintInches, '', this.useHex());
+        return this.formatSprintMovementDisplay('', sprintInches);
     });
 
     tmmDisplay = computed<string>(() => {
@@ -147,6 +147,18 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
     // Pending heat change (delta: 0 = no change)
     pendingHeat = computed<number>(() => {
         return this.forceUnit()?.getState().pendingHeat() ?? 0;
+    });
+
+    heatTrackLevels = computed<number[]>(() => {
+        return this.forceUnit()?.heatTrackLevels('committed') ?? [0, 1, 2, 3];
+    });
+
+    shutdownHeatThreshold = computed<number>(() => {
+        return this.forceUnit()?.shutdownHeatThreshold('committed') ?? 4;
+    });
+
+    hasExtendedHeatTrack = computed<boolean>(() => {
+        return this.heatTrackLevels().length > 4;
     });
 
     // Damage values affected by weapon critical hits: -1 per hit

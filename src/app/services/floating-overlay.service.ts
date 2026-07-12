@@ -32,7 +32,7 @@
  */
 
 import { afterNextRender, DestroyRef, inject, Injectable, Injector } from '@angular/core';
-import { Overlay, OverlayRef } from '@angular/cdk/overlay';
+import { Overlay, type OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { FloatingCompInfoComponent } from '../components/floating-comp-info/floating-comp-info.component';
 import type { Unit, UnitComponent } from '../models/units.model';
@@ -93,7 +93,8 @@ export class FloatingOverlayService {
                 { originX: 'start', originY: 'top', overlayX: 'end', overlayY: 'top', offsetX: -6, offsetY: 0 },
             ])
             .withFlexibleDimensions(false)
-            .withPush(true);
+            .withPush(true)
+            .withViewportMargin(6);
     }
 
     private ensureZIndex() {

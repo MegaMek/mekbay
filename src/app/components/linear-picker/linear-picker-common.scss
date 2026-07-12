@@ -1,0 +1,118 @@
+.linear-picker {
+    font-family: 'Roboto', sans-serif;
+    position: fixed;
+    z-index: 9999;
+    -webkit-user-select: none;
+    user-select: none;
+    padding: 0;
+    background: #000;
+    color: #fff;
+    border: 2px solid #fff;
+    width: auto;
+    min-width: max-content;
+    white-space: nowrap;
+}
+
+.value-cell {
+    position: relative;
+    font-size: 0.8em;
+    text-align: center;
+    cursor: pointer;
+    transition: background-color 0.15s ease-in-out;
+    flex-shrink: 0;
+    background: var(--picker-choice-normal-color);
+    color: var(--picker-choice-normal-text-color);
+}
+
+.value-cell.disabled {
+    cursor: not-allowed;
+    color: var(--picker-choice-disabled-text-color, #666);
+    opacity: 0.6;
+    background: var(--picker-choice-disabled-color);
+}
+
+.value-cell.active:not(.disabled) {
+    background: var(--picker-choice-selected-color, var(--bt-yellow-background-bright));
+    color: var(--picker-choice-selected-text-color);
+    font-weight: bold;
+}
+
+.value-cell.active.muted-active:not(.disabled) {
+    background: var(--picker-choice-muted-selected-color, var(--bt-yellow-background));
+    color: var(--picker-choice-muted-selected-text-color, var(--picker-choice-selected-text-color));
+}
+
+.value-cell.selected {
+    background: var(--picker-choice-selected-color, var(--bt-yellow-background-bright));
+    color: var(--picker-choice-selected-text-color);
+    font-weight: bold;
+    z-index: 2;
+}
+
+.state-button-cell.highlight:not(.disabled),
+.button-cell.highlight:not(.disabled) {
+    background: var(--bt-yellow);
+}
+
+.dropdown-cell {
+    display: flex;
+    flex-direction: row;
+    gap: 4px;
+    align-items: center;
+
+    select {
+        outline: none;
+        border: 0;
+        background-color: transparent;
+        color: currentColor;
+
+        option {
+            background: #000;
+            color: #fff;
+        }
+    }
+}
+
+.linear-picker.light-theme {
+    background: #fff;
+    color: #000;
+    border-color: #000;
+
+    .value-cell {
+        &.disabled {
+            color: var(--picker-choice-disabled-text-color, #999);
+            background: var(--picker-choice-disabled-color, #ccc);
+        }
+
+        &.active:not(.disabled) {
+            background: var(--picker-choice-selected-color, var(--bt-yellow-background-light));
+            color: var(--picker-choice-selected-text-color);
+        }
+
+        &.active.muted-active:not(.disabled) {
+            background: var(--picker-choice-muted-selected-color, var(--bt-yellow-background));
+            color: var(--picker-choice-muted-selected-text-color, var(--picker-choice-selected-text-color));
+        }
+
+        &.selected {
+            background: var(--picker-choice-selected-color, var(--bt-yellow-background-light));
+            color: var(--picker-choice-selected-text-color);
+        }
+    }
+
+    .state-button-cell.highlight:not(.disabled),
+    .button-cell.highlight:not(.disabled) {
+        background: var(--bt-yellow);
+    }
+
+    .dropdown-cell {
+        select {
+            color: #000;
+
+            option {
+                background: #fff;
+                color: #000;
+            }
+        }
+    }
+}

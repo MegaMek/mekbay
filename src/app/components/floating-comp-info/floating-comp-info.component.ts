@@ -33,10 +33,10 @@
 
 import { Component, input, computed, inject, ChangeDetectionStrategy } from '@angular/core';
 
-import { UnitComponent } from '../../models/units.model';
+import type { UnitComponent } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
-import { Unit } from '../../models/units.model';
-import { Equipment, WeaponEquipment } from '../../models/equipment.model';
+import type { Unit } from '../../models/units.model';
+import { AmmoEquipment, type Equipment, WeaponEquipment } from '../../models/equipment.model';
 import { TechDate, TechDates, techDateYear, formatTechDate } from '../../models/entity';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
 
@@ -86,11 +86,29 @@ export class FloatingCompInfoComponent {
     }
 
     get typeClass(): string {
-        return getWeaponTypeCSSClass(this.comp()?.t ?? '');
+        const currentComp = this.comp();
+        return getWeaponTypeCSSClass(currentComp?.t ?? '', this.equipment() ?? currentComp?.eq);
     }
 
     get typeLabel(): string {
+        const currentComp = this.comp();
+        if (currentComp?.t === 'X') {
+            const equipment = this.equipment() ?? currentComp.eq;
+            if (equipment instanceof AmmoEquipment) {
+                const labels = [equipment.category, ...(equipment.stats.explosive ? ['Explosive'] : [])];
+                return `Ammo (${labels.join(', ')})`;
+            }
+
+            return 'Ammo';
+        }
+
         return this.typeClass.charAt(0).toUpperCase() + this.typeClass.slice(1);
+    }
+
+    get toHitModifier(): string | null {
+        const modifier = (this.equipment() ?? this.comp()?.eq)?.stats.toHitModifier ?? 0;
+        if (modifier === 0) return null;
+        return modifier > 0 ? `+${modifier}` : String(modifier);
     }
 
     get rackSize(): number | null {
@@ -147,6 +165,12 @@ export class FloatingCompInfoComponent {
         if (!unit) return [];
         const eq = this.equipment();
         if (!eq) return [];
+
+        // Helper to pick earliest date from two options
+        const earliest = (a?: string, b?: string): string | undefined => {
+            const aY = parseAdvancementYear(a), bY = parseAdvancementYear(b);
+            if (aY === null) return b;
+            if (bY === null) return a;
         // Helper to pick earliest TechDate from two options
         const earliest = (a: TechDate, b: TechDate): TechDate => {
             const aY = techDateYear(a), bY = techDateYear(b);
@@ -155,6 +179,11 @@ export class FloatingCompInfoComponent {
             return aY <= bY ? a : b;
         };
 
+        // Helper to pick latest date from two options
+        const latest = (a?: string, b?: string): string | undefined => {
+            const aY = parseAdvancementYear(a), bY = parseAdvancementYear(b);
+            if (aY === null) return b;
+            if (bY === null) return a;
         // Helper to pick latest TechDate from two options
         const latest = (a: TechDate, b: TechDate): TechDate => {
             const aY = techDateYear(a), bY = techDateYear(b);
@@ -218,6 +247,14 @@ export class FloatingCompInfoComponent {
             if (isNaN(bYear)) return -1;
             return aYear - bYear;
         });
+
+        const unitType = unit.as?.TP;
+        let slots = eq.critSlots;
+        if (unitType === 'SV') {
+            slots = eq.svSlots > -1 ? eq.svSlots : eq.critSlots;
+        } else if (unitType !== 'BM' && unitType !== 'IM') {
+            slots = eq.tankSlots > -1 ? eq.tankSlots : eq.critSlots;
+        }
 
         const ratingString = `${eq.techBase} | ${eq.rating}/${eq.availability}`;
         const result = [

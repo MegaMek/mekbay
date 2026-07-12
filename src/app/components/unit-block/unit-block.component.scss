@@ -2,12 +2,30 @@
     display: contents;
 }
 
+.group-commander-indicator {
+    position: absolute;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--bt-yellow);
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0.5;
+}
+
+.group-commander-icon {
+    width: 25px;
+    height: auto;
+    transform: rotate(180deg);
+    flex-shrink: 0;
+}
+
 .unit-square.compact-mode {
     position: relative;
     pointer-events: none;
-    width: 84px;
+    width: 80px;
     max-height: 105px;
-    min-width: 84px;
+    min-width: 80px;
     background: #0003;
     display: flex;
     flex-direction: column;
@@ -97,9 +115,34 @@
         }
     }
 
+    .pilot-info-list {
+        position: absolute;
+        top: 0px;
+        right: -1px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        pointer-events: auto;
+    }
+
     .pilot-info {
-        top: 3px;
-        right: 3px;
+        position: static;
+        line-height: 1;
+        paint-order: stroke fill;
+        -webkit-text-stroke: 2px rgba(0, 0, 0, 0.5);;
+
+        &.interactive {
+            cursor: pointer;
+        }
+    }
+
+    .group-commander-indicator {
+        top: 2px;
+        left: 2px;
+
+        .group-commander-icon {
+            width: 16px;
+        }
     }
 }
 
@@ -123,11 +166,6 @@
         white-space: normal;
         overflow-wrap: anywhere;
         word-break: break-all;
-    }
-
-    // We hide extra infos because we don't have space
-    .pilot-info {
-        display: none;
     }
 }
 
@@ -170,8 +208,8 @@
         position: absolute;
         color: black;
         left: -17px;
-        top: 2px;
-        bottom: 2px;
+        top: -4px;
+        bottom: -5px;
         line-height: 1;
         text-align: center;
         white-space: nowrap;
@@ -188,13 +226,24 @@
         font-weight: normal;
     }
 
+    .group-commander-indicator {
+        top: 4px;
+        left: 4px;
+    }
+
     .info-slot {
         &.interactive {
             pointer-events: auto;
             cursor: pointer;
             transition: background-color 0.2s;
             position: relative;
-            
+
+            &:hover {
+                text-decoration: underline;
+                text-underline-offset: 0.15em;
+                text-decoration-thickness: 1px;
+            }
+
             &::after {
                 content: '';
                 position: absolute;
@@ -220,6 +269,15 @@
             &.enabled {
                 background-color: color-mix(in srgb, var(--network-color) 100%, transparent 50%);
             }
+        }
+
+        &.tag {
+            background-color: rgba(191, 119, 18, 0.55);
+        }
+
+        &.condition {
+            background-color: color-mix(in srgb, var(--condition-color) 100%, transparent 50%);
+            color: white;
         }
         
         &.ecm {

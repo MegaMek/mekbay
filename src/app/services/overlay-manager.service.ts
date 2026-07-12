@@ -31,9 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, ElementRef, Injector, effect, ComponentRef } from '@angular/core';
-import { GlobalPositionStrategy, Overlay, OverlayRef } from '@angular/cdk/overlay';
-import { ComponentPortal } from '@angular/cdk/portal';
+import { Injectable, type ElementRef, Injector, effect, type ComponentRef } from '@angular/core';
+import { type GlobalPositionStrategy, Overlay, type OverlayRef } from '@angular/cdk/overlay';
+import type { ComponentPortal } from '@angular/cdk/portal';
 import { DOCUMENT } from '@angular/common';
 import { inject } from '@angular/core';
 import { Subject, take, takeUntil } from 'rxjs';
@@ -60,6 +60,7 @@ type ManagedEntry = {
     resizeObserver?: ResizeObserver;
     mutationObserver?: MutationObserver;
     contentResizeObserver?: ResizeObserver;
+    contentMutationObserver?: MutationObserver;
     pointerDownListener?: (ev: PointerEvent) => void;
     pointerUpListener?: (ev: PointerEvent) => void;
     pointerStart?: { id: number | null; x: number; y: number } | null;
@@ -105,6 +106,21 @@ export class OverlayManagerService {
         const blocked = performance.now() < entry.closeBlockUntil;
         if (!blocked) entry.closeBlockUntil = undefined; // clear once elapsed
         return blocked;
+    }
+
+    private isInsideChildOverlay(entry: ManagedEntry, targetNode: Node): boolean {
+        const overlayEl = entry.overlayRef.overlayElement;
+        if (!overlayEl) return false;
+        for (const candidate of this.managed.values()) {
+            if (candidate === entry) continue;
+            const candidateOverlayEl = candidate.overlayRef.overlayElement;
+            const candidateTriggerEl = candidate.triggerElement;
+            if (!candidateOverlayEl || !candidateTriggerEl) continue;
+            if (candidateOverlayEl.contains(targetNode) && overlayEl.contains(candidateTriggerEl)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     constructor() {
@@ -185,6 +201,20 @@ export class OverlayManagerService {
         const entry: ManagedEntry = { overlayRef, closed };
         if (anchorStrategy) entry.anchorPositionStrategy = anchorStrategy;
 
+        try {
+            const cro = new ResizeObserver(() => this.schedulePositionUpdate());
+            cro.observe(overlayRef.overlayElement);
+            entry.contentResizeObserver = cro;
+        } catch { /* ResizeObserver may not be available in some test envs */ }
+
+        if (opts?.anchorActiveSelector) {
+            try {
+                const cmo = new MutationObserver(() => this.schedulePositionUpdate());
+                cmo.observe(overlayRef.overlayElement, { childList: true, subtree: true, characterData: true });
+                entry.contentMutationObserver = cmo;
+            } catch { /* MutationObserver may not be available in some test envs */ }
+        }
+
         // Subscribe to detachments to clean up managed entry when overlay is closed externally
         // (e.g., by scroll strategy close)
         overlayRef.detachments().pipe(take(1)).subscribe(() => {
@@ -220,12 +250,6 @@ export class OverlayManagerService {
             // Run initial position after a microtask so the component has rendered
             Promise.resolve().then(() => {
                 this.updateAnchoredPosition(entry);
-                // Observe content size changes (e.g. expanding a details chevron)
-                try {
-                    const cro = new ResizeObserver(() => this.schedulePositionUpdate());
-                    cro.observe(overlayRef.overlayElement);
-                    entry.contentResizeObserver = cro;
-                } catch { /* ignore */ }
             });
         }
         
@@ -250,7 +274,7 @@ export class OverlayManagerService {
                         return;
                     }
                     // Ignore pointerdown that started inside the overlay or trigger element
-                    if (overlayEl?.contains(targetNode) || (triggerEl && triggerEl.contains && triggerEl.contains(targetNode))) {
+                    if (overlayEl?.contains(targetNode) || (triggerEl && triggerEl.contains && triggerEl.contains(targetNode)) || this.isInsideChildOverlay(entry, targetNode)) {
                         return;
                     }
                     // Close immediately on outside pointer-down
@@ -275,7 +299,7 @@ export class OverlayManagerService {
                 if (entry.closeAreaElement && !this.isInsideArea(ev, entry.closeAreaElement)) {
                     return;
                 }
-                if (overlayEl.contains(clicked) || (triggerEl && triggerEl.contains && triggerEl.contains(clicked))) {
+                    if (overlayEl.contains(clicked) || (triggerEl && triggerEl.contains && triggerEl.contains(clicked)) || this.isInsideChildOverlay(entry, clicked)) {
                     return;
                 }
                 // Stop the event from propagating to prevent triggering other UI elements
@@ -298,9 +322,13 @@ export class OverlayManagerService {
                         return;
                     }
                     // Ignore pointerdown that started inside the overlay or trigger element
-                    if (overlayEl?.contains(targetNode) || (triggerEl && triggerEl.contains && triggerEl.contains(targetNode))) {
+                    if (overlayEl?.contains(targetNode) || (triggerEl && triggerEl.contains && triggerEl.contains(targetNode)) || this.isInsideChildOverlay(entry, targetNode)) {
                         return;
                     }
+                    // Consume the pointerdown so underlying gesture handlers do not enter
+                    // pan/swipe mode before we decide whether this interaction is a click.
+                    ev.stopPropagation();
+                    ev.preventDefault();
                     // record start position and pointer id
                     entry.pointerStart = { id: ev.pointerId, x: ev.clientX, y: ev.clientY };
                 } catch { /* ignore */ }
@@ -321,7 +349,7 @@ export class OverlayManagerService {
                         // pointer up considered a click -> ensure it occurred outside overlay/trigger before closing
                         const overlayEl = overlayRef.overlayElement;
                         const targetNode = ev.target as Node;
-                        if (!overlayEl?.contains(targetNode) && !(triggerEl && triggerEl.contains && triggerEl.contains(targetNode))) {
+                        if (!overlayEl?.contains(targetNode) && !(triggerEl && triggerEl.contains && triggerEl.contains(targetNode)) && !this.isInsideChildOverlay(entry, targetNode)) {
                             // Stop the event from propagating to prevent triggering other UI elements
                             ev.stopPropagation();
                             ev.preventDefault();
@@ -351,7 +379,7 @@ export class OverlayManagerService {
                     return;
                 }
                 const clicked = ev.target as Node;
-                if (overlayEl.contains(clicked) || (triggerEl && triggerEl.contains && triggerEl.contains(clicked))) {
+                if (overlayEl.contains(clicked) || (triggerEl && triggerEl.contains && triggerEl.contains(clicked)) || this.isInsideChildOverlay(entry, clicked)) {
                     return;
                 }
                 // Stop the event from propagating to prevent triggering other UI elements
@@ -470,10 +498,25 @@ export class OverlayManagerService {
             ? (content.querySelector('[data-scroll-container]') as HTMLElement ?? content)
             : pane;
 
+        if (content) {
+            content.style.maxHeight = '';
+            content.style.height = '';
+        }
+        scrollContainer.style.maxHeight = '';
+
         const maxPanelH = viewportH - 2 * MARGIN;
-        const naturalH = scrollContainer.scrollHeight;
+        const chromeHeight = content && content !== scrollContainer
+            ? Math.max(0, content.offsetHeight - scrollContainer.offsetHeight)
+            : 0;
+        const maxScrollH = Math.max(0, maxPanelH - chromeHeight);
+        const naturalScrollH = scrollContainer.scrollHeight;
+        const naturalH = naturalScrollH + chromeHeight;
+        const visibleScrollH = Math.min(naturalScrollH, maxScrollH);
         const effectiveH = Math.min(naturalH, maxPanelH);
         const overflows = naturalH > maxPanelH;
+        const paneRect = pane.getBoundingClientRect();
+        const scrollContainerRect = scrollContainer.getBoundingClientRect();
+        const scrollContainerTopInPanel = scrollContainerRect.top - paneRect.top;
 
         // Find the active element inside the overlay
         const active = pane.querySelector(selector) as HTMLElement | null;
@@ -483,8 +526,7 @@ export class OverlayManagerService {
         let activeCenterInContent = 0;
         if (active) {
             const activeRect = active.getBoundingClientRect();
-            const containerRect = scrollContainer.getBoundingClientRect();
-            activeCenterInContent = activeRect.top - containerRect.top
+            activeCenterInContent = activeRect.top - scrollContainerRect.top
                 + scrollContainer.scrollTop + activeRect.height / 2;
         }
 
@@ -492,12 +534,12 @@ export class OverlayManagerService {
 
         if (!overflows) {
             // Content fits: position so the active item aligns with the trigger
-            top = triggerCenterY - activeCenterInContent;
+            top = triggerCenterY - scrollContainerTopInPanel - activeCenterInContent;
         } else {
             // Content overflows: panel will be viewport-sized.
             // Place it so the trigger center is vertically centred in the panel,
             // then use scrollTop to bring the active item to that position.
-            top = triggerCenterY - effectiveH / 2;
+            top = triggerCenterY - scrollContainerTopInPanel - visibleScrollH / 2;
         }
 
         // Clamp to viewport
@@ -513,9 +555,18 @@ export class OverlayManagerService {
         strategy.left(`${triggerRect.left}px`).top(`${top}px`);
         entry.overlayRef.updatePosition();
 
+        pane.style.maxHeight = `${maxPanelH}px`;
+        pane.style.boxSizing = 'border-box';
+
         // Constrain panel height
-        scrollContainer.style.maxHeight = `${maxPanelH}px`;
-        scrollContainer.style.overflowY = 'auto';
+        if (content) {
+            content.style.maxHeight = `${maxPanelH}px`;
+            content.style.height = `${effectiveH}px`;
+            content.style.boxSizing = 'border-box';
+            // content.style.overflow = 'hidden';
+        }
+        scrollContainer.style.maxHeight = `${maxScrollH}px`;
+        scrollContainer.style.overflowY = overflows ? 'auto' : 'hidden';
 
         // Scroll to centre the active item inside the panel
         // only on the FIRST successful positioning so subsequent user scrolling
@@ -528,8 +579,8 @@ export class OverlayManagerService {
             scrollContainer.offsetHeight;
             // Scroll so the active item sits at the vertical position
             // within the panel that lines up with the trigger's centre.
-            const targetOffsetInPanel = triggerCenterY - top;
-            const desiredScrollTop = activeCenterInContent - targetOffsetInPanel;
+            const targetOffsetInScrollContainer = triggerCenterY - top - scrollContainerTopInPanel;
+            const desiredScrollTop = activeCenterInContent - targetOffsetInScrollContainer;
             scrollContainer.scrollTop = Math.max(0, desiredScrollTop);
         }
     }
@@ -578,6 +629,7 @@ export class OverlayManagerService {
         // disconnect observers
         try { entry.resizeObserver?.disconnect(); } catch { /* ignore */ }
         try { entry.contentResizeObserver?.disconnect(); } catch { /* ignore */ }
+        try { entry.contentMutationObserver?.disconnect(); } catch { /* ignore */ }
         try { entry.mutationObserver?.disconnect(); } catch { /* ignore */ }
         entry.triggerElement = undefined;
         this.managed.delete(key);

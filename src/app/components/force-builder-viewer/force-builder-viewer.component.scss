@@ -172,10 +172,10 @@
     color: var(--text-color);
     cursor: pointer;
     transition: color 0.2s;
-    padding: 0 18px;
 }
 
-.force-faction-icon {
+.force-faction-icon,
+.force-era-icon {
     width: 1.2em;
     height: 1.2em;
     object-fit: contain;
@@ -237,6 +237,7 @@
     }
 }
 
+.force-name-area,
 .group-name-area {
     display: flex;
     align-items: center;

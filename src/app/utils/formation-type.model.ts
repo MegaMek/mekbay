@@ -31,8 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { GameSystem, Rulebook, RulesReference } from '../models/common.model';
-import { ForceUnit } from '../models/force-unit.model';
+import type { GameSystem, Rulebook, RulesReference } from '../models/common.model';
+import type { ForceUnit } from '../models/force-unit.model';
 
 /*
  * Author: Drake
@@ -83,15 +83,24 @@ export interface FormationEffectGroup {
     roleFilter?: string;
     /** Maximum abilities from this group a single unit can receive (default 1). */
     maxPerUnit?: number;
+    /** Whether the formation commander is excluded from this effect group's recipients. */
+    excludeCommander?: boolean;
 }
+
+export type FormationGameSystemText = string | ((gameSystem: GameSystem) => string);
 
 
 export interface FormationTypeDefinition {
     id: string;
     parent?: string;
     name: string;
+    /** Alternative formation names that should count as a whole-phrase match in custom group names. */
+    nameAliases?: string[];
     description: string;
-    effectDescription?: string;
+    /** Human-readable formation bonus text, optionally specialized per game system. */
+    effectDescription?: FormationGameSystemText;
+    /** Whether this formation explicitly inherits parent effect groups and parent requirement display. Defaults to false. */
+    inheritParentEffects?: boolean;
     /** Structured SPA distribution rules for this formation's bonus ability. */
     effectGroups?: FormationEffectGroup[];
     validator?: (units: ForceUnit[], gameSystem: GameSystem) => boolean;
@@ -104,7 +113,7 @@ export interface FormationTypeDefinition {
     techBase?: 'Inner Sphere' | 'Clan' | 'Special';
     minUnits: number;
     maxUnits?: number;
-    exclusiveFaction?: string;
+    exclusiveFaction?: string[];
     /** Multiple rulebook references (e.g. CO p.62, AS:CE p.117). */
     rulesRef?: RulesReference[];
 }
@@ -131,9 +140,57 @@ export const NO_FORMATION: FormationTypeDefinition = {
     description: 'Explicitly opt out of any formation assignment.',
 };
 
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeFormationNameMatchText(value: string): string {
+    return value.trim().replace(/\s+/g, ' ');
+}
+
+export function getFormationNameMatchStrings(definition: FormationTypeDefinition): string[] {
+    return [...new Set([
+        definition.name,
+        ...(definition.nameAliases ?? []),
+    ].map(normalizeFormationNameMatchText).filter(Boolean))];
+}
+
+export function getFormationDropdownDisplayName(definition: FormationTypeDefinition): string {
+    return definition.id.endsWith('-squadron')
+        ? `${definition.name} [Aero]`
+        : definition.name;
+}
+
+export function formationNameMatchesGroupName(definition: FormationTypeDefinition, groupName: string): boolean {
+    const normalizedGroupName = normalizeFormationNameMatchText(groupName);
+    if (!normalizedGroupName) return false;
+
+    return getFormationNameMatchStrings(definition).some((matchString) => {
+        const matcher = new RegExp(
+            `(^|[^A-Za-z0-9])${escapeRegExp(matchString)}(?=$|[^A-Za-z0-9])`,
+            'i',
+        );
+        return matcher.test(normalizedGroupName);
+    });
+}
+
 /** Returns `true` when the given definition is the "No Formation" sentinel. */
 export function isNoFormation(def: FormationTypeDefinition | null | undefined): boolean {
     return def?.id === NO_FORMATION_ID;
+}
+
+/** Returns `true` when this formation explicitly opts into inheriting parent effects. */
+export function formationInheritsParentEffects(def: FormationTypeDefinition | null | undefined): boolean {
+    return def?.inheritParentEffects === true;
+}
+
+export function resolveFormationGameSystemText(
+    text: FormationGameSystemText | null | undefined,
+    gameSystem: GameSystem,
+): string | null {
+    if (!text) return null;
+    const resolvedText = typeof text === 'function' ? text(gameSystem) : text;
+    return resolvedText || null;
 }
 
 /**
@@ -142,8 +199,10 @@ export function isNoFormation(def: FormationTypeDefinition | null | undefined): 
 export interface FormationMatch {
     definition: FormationTypeDefinition;
     /**
-     * `true` when this formation matched only after filtering out Infantry
-     * units (Nova rule). Formation effects apply to Meks only, not Infantry.
+     * `true` when this formation matched only after ignoring configured child
+     * groups from the resolved organization while checking requirements.
      */
-    novaFiltered: boolean;
+    requirementsFiltered: boolean;
+    requirementsFilterCompositionName?: string;
+    requirementsFilterNotice?: string;
 }

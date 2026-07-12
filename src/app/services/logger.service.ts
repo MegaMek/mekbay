@@ -50,12 +50,13 @@ export class LoggerService {
 
     private log(type: LogType, message: string) {
         const timestamp = new Date();
-        const currentLogs = this.logs();
-        currentLogs.push({ timestamp, type, message });
-        if (currentLogs.length > this.MAX_LOGS) {
-            currentLogs.splice(0, currentLogs.length - this.MAX_LOGS);
-        }
-        this.logs.set(currentLogs);
+        this.logs.update(currentLogs => {
+            const nextLogs = [...currentLogs, { timestamp, type, message }];
+            if (nextLogs.length > this.MAX_LOGS) {
+                return nextLogs.slice(nextLogs.length - this.MAX_LOGS);
+            }
+            return nextLogs;
+        });
         const timestampStr = '[' + timestamp.toISOString() + ']';
         if (type === 'INFO') console.log(timestampStr, message);
         else if (type === 'WARN') console.warn(timestampStr, message);

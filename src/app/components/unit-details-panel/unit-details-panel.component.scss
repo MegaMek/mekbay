@@ -38,8 +38,6 @@
     width: 100%;
     background-color: #222;
     overflow: hidden;
-    container-type: inline-size;
-    container-name: details-panel;
     padding: 2px;
     box-sizing: border-box;
 }
@@ -92,6 +90,18 @@
     font-weight: bold;
     letter-spacing: 0.05em;
     margin-right: 8px;
+}
+
+.header-chassis-group {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+
+    .header-chassis {
+        margin-right: 0;
+    }
 }
 
 .header-details {
@@ -161,39 +171,22 @@
     z-index: 0;
 }
 
-/* Footer */
-.footer {
-    display: flex;
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-}
-
-.add-btn {
+.add-split-button .split-main {
     padding: 8px 24px;
-    font-size: 1em;
 }
 
-/* Navigation arrows */
-.nav-arrow {
-    background: none;
-    border: none;
-    color: var(--text-color-secondary);
-    font-size: 1.5em;
-    padding: 4px 12px;
-    cursor: pointer;
-    transition: color 0.2s;
-    outline: none;
+.add-split-button .split-extra {
+    padding: 8px 10px;
 }
 
-.nav-arrow:hover {
-    color: var(--text-color);
-}
+@container (max-width: 600px) {
+    .add-split-button .split-main {
+        padding: 8px 16px;
+    }
 
-.nav-arrow.hidden {
-    visibility: hidden;
+    .add-split-button .split-extra {
+        padding: 8px 8px;
+    }
 }
 
 /* Empty State */

@@ -32,7 +32,7 @@
  * affiliated with Microsoft.
  */
 
-import { Pipe, PipeTransform } from "@angular/core";
+import { Pipe, type PipeTransform } from "@angular/core";
 import { PVCalculatorUtil } from "../utils/pv-calculator.util";
 
 /*

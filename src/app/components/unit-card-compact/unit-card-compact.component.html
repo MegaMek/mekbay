@@ -22,6 +22,9 @@
                 @if (isOriginal()) {
                     <span class="original-star" title="Original unit">★</span>
                 }
+                @if (u.serverHost) {
+                    <span class="custom-unit-badge" title="Custom unit from {{ u.serverHost }}">Custom</span>
+                }
             </div>
         </div>
         <div class="third-info">

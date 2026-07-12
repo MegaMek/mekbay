@@ -32,9 +32,9 @@
  * affiliated with Microsoft.
  */
 
-import { Pipe, PipeTransform } from "@angular/core";
+import { Pipe, type PipeTransform } from "@angular/core";
 import { BVCalculatorUtil } from "../utils/bv-calculator.util";
-import { Unit } from "../models/units.model";
+import type { Unit } from "../models/units.model";
 
 /*
  * Author: Drake

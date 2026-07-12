@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Pipe, PipeTransform } from '@angular/core';
+import { Pipe, type PipeTransform } from '@angular/core';
 
 @Pipe({
     name: 'cleanModelString',
@@ -41,6 +41,8 @@ import { Pipe, PipeTransform } from '@angular/core';
 export class CleanModelStringPipe implements PipeTransform {
     transform(model: string | undefined): string {
         if (!model) return '';
-        return model.replace(/\s*\(.*?\)\s*/g, '').trim();
+        const cleanedModel = model.replace(/\s*\(.*?\)\s*/g, '').trim();
+        if (cleanedModel.length === 0) return model;
+        return cleanedModel;
     }
 }

@@ -31,15 +31,16 @@
  * affiliated with Microsoft.
  */
 
-import { Injector } from '@angular/core';
-import { DataService } from '../services/data.service';
-import { Unit } from "./units.model";
-import { UnitInitializerService } from '../services/unit-initializer.service';
-import { ASSerializedUnit, ASSerializedForce, AS_SERIALIZED_FORCE_SCHEMA, SerializedForce } from './force-serialization';
+import type { Injector } from '@angular/core';
+import type { DataService } from '../services/data.service';
+import type { Unit } from "./units.model";
+import type { UnitInitializerService } from '../services/unit-initializer.service';
+import { type ASSerializedUnit, type ASSerializedForce, AS_SERIALIZED_FORCE_SCHEMA, type SerializedForce } from './force-serialization';
 import { GameSystem } from './common.model';
 import { Force } from './force.model';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { ASForceUnit } from './as-force-unit.model';
+import { FormationAbilityAssignmentUtil } from '../utils/formation-ability-assignment.util';
 
 /*
  * Author: Drake
@@ -68,10 +69,12 @@ export class ASForce extends Force<ASForceUnit> {
             toUnit.setPilotName(pilotName);
         }
         toUnit.setPilotSkill(fromUnit.pilotSkill());
-        const abilities = fromUnit.pilotAbilities();
+        const abilities = fromUnit.manualPilotAbilities();
         if (abilities && abilities.length > 0) {
             toUnit.setPilotAbilities([...abilities]);
         }
+        toUnit.setFormationAbilities([...fromUnit.formationAbilities()]);
+        toUnit.setFormationCommander(fromUnit.commander());
     }
 
     protected override deserializeForceUnit(data: ASSerializedUnit): ASForceUnit {
@@ -91,7 +94,13 @@ export class ASForce extends Force<ASForceUnit> {
     ): ASForce {
         const force = new ASForce(data.name ?? 'Unnamed Force', dataService, unitInitializer, injector);
         force.populateFromSerialized(data);
+        force.groups().forEach((group) => FormationAbilityAssignmentUtil.reconcileGroupFormationAssignments(group, { markModified: false }));
         return force;
+    }
+
+    public override update(data: SerializedForce): void {
+        super.update(data);
+        this.groups().forEach((group) => FormationAbilityAssignmentUtil.reconcileGroupFormationAssignments(group, { markModified: false }));
     }
 
     protected override deserializeFrom(serialized: SerializedForce): ASForce {

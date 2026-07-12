@@ -12,6 +12,18 @@
         [class.pending-effects]="hasPendingEffects()"
         ></div>
     }
+    @if (isCommander()) {
+        <div class="group-commander-indicator" aria-hidden="true">
+            <svg class="group-commander-icon" width="42.08" height="51.88" viewBox="0 0 21.04 25.94" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" focusable="false">
+                <g transform="translate(-.02)">
+                    <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
+                        <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
+                        <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
+                    </g>
+                </g>
+            </svg>
+        </div>
+    }
     <div class="unit-content">
         <unit-icon [unit]="unit()" [size]="24"></unit-icon>
         @if (unitDisplayName === 'chassisModel'
@@ -23,8 +35,18 @@
         @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
         <div class="unit-alias">{{ fu?.alias() }}</div>
         }
-        <div class="pilot-info info-slot numeric slim">
-            <span class="value">{{ fu?.getPilotStats() }}</span>
+        <div class="pilot-info-list">
+            @if (isAlphaStrike()) {
+            <div class="pilot-info info-slot numeric slim interactive" (click)="editPilot($event)" title="Edit Pilot">
+                <span class="value">{{ alphaStrikePilotSkill() }}</span>
+            </div>
+            } @else {
+            @for (crewMember of crewMembers(); track crewMember.getId()) {
+            <div class="pilot-info info-slot numeric slim interactive" (click)="editPilot($event, crewMember)" title="Edit Pilot">
+                <span class="value">{{ getCrewMemberPilotStats(crewMember) }}</span>
+            </div>
+            }
+            }
         </div>
     </div>
 </div>
@@ -39,6 +61,18 @@
         [class.heat]="phase === 'H'"
         [class.pending-effects]="hasPendingEffects()"
         ></div>
+    }
+    @if (isCommander()) {
+        <div class="group-commander-indicator" aria-hidden="true">
+            <svg class="group-commander-icon" width="42.08" height="51.88" viewBox="0 0 21.04 25.94" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" focusable="false">
+                <g transform="translate(-.02)">
+                    <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
+                        <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
+                        <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
+                    </g>
+                </g>
+            </svg>
+        </div>
     }
 
     <div class="unit-content">
@@ -139,33 +173,35 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
             <div class="third-info">
                 <div class="info-area">
                     @if (isAlphaStrike()) {
-                        <div class="info-slot centered slim">
+                        <div class="info-slot slim centered">
                             <span class="value">PV: {{ fu?.getBv() | formatNumber:true }}</span>
                         </div>
                         @if (showTMM()) {
-                            <div class="info-slot centered slim">
+                            <div class="info-slot slim centered">
                                 <span class="value">TMM: {{ getEffectiveTmm() }}</span>
                             </div>
                         }
-                        <div class="info-slot centered slim">
+                        <div class="info-slot slim centered">
                             <span class="value">MV: <span [innerHTML]="getEffectiveMovement()"></span></span>
                         </div>
-                        <div class="info-slot centered slim pilot-info interactive" (click)="editPilot($event)" title="Edit Pilot">
-                            <span class="value">{{ fu?.getPilotStats() }}</span>
+                        <div class="info-slot slim centered pilot-info interactive" (click)="editPilot($event)" title="Edit Pilot">
+                            <span class="value">{{ alphaStrikePilotSkill() }}</span>
                             <img src="/images/helmet.svg" class="icon" alt="Pilot">
                         </div>
                     } @else {
-                        <div class="info-slot numeric" [tooltip]="bvTooltip()">
+                        <div class="info-slot slim numeric" [tooltip]="bvTooltip()">
                             <span class="value">BV: {{ fu?.getBv() | formatNumber:true }}</span>
                         </div>
-                        <div class="info-slot numeric">
+                        <div class="info-slot slim numeric">
                             <span class="value">{{ unit()?.tons | formatTons }}</span>
                             <img src="/images/weight.svg" class="icon" alt="Tonnage">
                         </div>
-                        <div class="info-slot numeric pilot-info interactive" (click)="editPilot($event)" title="Edit Pilot">
-                            <span class="value">{{ fu?.getPilotStats() }}</span>
+                        @for (crewMember of crewMembers(); track crewMember.getId()) {
+                        <div class="info-slot slim numeric pilot-info interactive" (click)="editPilot($event, crewMember)" title="Edit Pilot">
+                            <span class="value">{{ getCrewMemberPilotStats(crewMember) }}</span>
                             <img src="/images/helmet.svg" class="icon" alt="Pilot">
                         </div>
+                        }
                     }
                     @for (c3Item of c3NetworkItems(); track c3Item.networkType) {
                     <div class="info-slot slim c3link interactive"
@@ -181,9 +217,19 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
                         </svg>
                     </div>
                     }
+                    @if (getTAGLabel(); as tagLabel) {
+                    <div class="info-slot slim tag">
+                        <span>{{ tagLabel }}</span>
+                    </div>
+                    }
                     @if (hasECM()) {
                     <div class="info-slot slim ecm {{ getECMMode() }}" [class.destroyed]="getECMStatus() === false">
                         <span>{{ getECMMode() | uppercase }}</span>
+                    </div>
+                    }
+                    @for (condition of activeConditions(); track condition.key) {
+                    <div class="info-slot slim condition" [style.--condition-color]="condition.color">
+                        <span>{{ condition.label }}</span>
                     </div>
                     }
                 </div>

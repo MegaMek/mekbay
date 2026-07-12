@@ -1,0 +1,94 @@
+:host {
+    display: contents;
+}
+
+.page-wrapper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    box-sizing: border-box;
+    background-color: transparent;
+    transition: background-color 1.6s, outline 0.6s;
+}
+
+.page-wrapper.is-empty {
+    outline: 1px solid var(--border-color);
+    outline-offset: -1px;
+}
+
+.page-wrapper.has-svg {
+    background-color: #fff;
+}
+
+.page-wrapper.dimmed {
+    opacity: 0.1;
+}
+
+.page-wrapper.leaving-page {
+    opacity: 0.1;
+}
+
+:host-context(.swiping) .page-wrapper {
+    transition: none;
+}
+
+@media screen {
+    :host-context(.night-mode) .page-wrapper.has-svg {
+        background-color: unset;
+    }
+}
+
+@media print {
+    .page-wrapper {
+        position: relative;
+        outline: none;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: white !important;
+        width: 100% !important;
+        height: 100% !important;
+        padding: 0 !important;
+        margin: 0 auto !important;
+        box-sizing: border-box;
+        page-break-after: always;
+        break-after: page;
+        overflow: hidden;
+        transform: none !important;
+    }
+
+    .page-wrapper:not(.selected) {
+        display: none;
+    }
+
+    .page-wrapper.selected {
+        left: 0 !important;
+        top: 0 !important;
+        justify-content: flex-start !important;
+        align-items: flex-start !important;
+        min-width: 100% !important;
+        min-height: 100% !important;
+
+        ::ng-deep svg.mekbay-sheet {
+            display: block;
+            box-sizing: border-box;
+            padding: 0 !important;
+            margin: 0 !important;
+            transform: none !important;
+            top: 0 !important;
+            left: 0 !important;
+            height: 100%;
+            width: auto;
+            max-width: 100%;
+            min-width: 0;
+            max-height: 100%;
+            page-break-inside: avoid !important;
+            page-break-after: auto !important;
+            break-after: auto !important;
+        }
+
+        ::ng-deep svg {
+            transform: none !important;
+        }
+    }
+}

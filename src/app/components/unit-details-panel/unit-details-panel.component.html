@@ -24,7 +24,12 @@
                     </div>
                 </div>
                 <div class="header-row">
-                    <div class="header-chassis allow-select">{{ currentUnit.chassis }}</div>
+                    <div class="header-chassis-group">
+                        <div class="header-chassis allow-select">{{ currentUnit.chassis }}</div>
+                        @if (currentUnit.serverHost) {
+                            <span class="custom-unit-badge" title="Custom unit from {{ currentUnit.serverHost }}">Custom</span>
+                        }
+                    </div>
                     <unit-tags class="header-tags" [unit]="currentUnit" [mode]="'full'" (tagClick)="onTagClick($event)"></unit-tags>
                 </div>
             </div>
@@ -89,30 +94,38 @@
         </div>
 
         <!-- Footer -->
-        <div panel-footer class="footer">
-            <button 
-                type="button"
-                class="nav-arrow nav-arrow-left"
-                [class.hidden]="!hasPrev()"
-                (click)="prev.emit()"
-                aria-label="Previous Unit">
-                &#10094;
-            </button>
-            <button 
-                [disabled]="forceBuilderService.currentForce()?.readOnly()" 
-                class="bt-button add-btn" 
-                (click)="onAdd()">
-                ADD TO FORCE
-            </button>
-            <button 
-                type="button"
-                class="nav-arrow nav-arrow-right"
-                [class.hidden]="!hasNext()"
-                (click)="next.emit()"
-                aria-label="Next Unit">
-                &#10095;
-            </button>
-        </div>
+        <unit-details-footer panel-footer
+                [activeTab]="activeTab()"
+                [prevUnit]="prevUnit()"
+                [nextUnit]="nextUnit()"
+                [hasPrev]="hasPrev()"
+                [hasNext]="hasNext()"
+                [sheetTab]="sheetTabRef()"
+                [variantsTabState]="variantsTabState()"
+                [gameSystem]="currentGameSystem()"
+                (prev)="prev.emit()"
+                (next)="next.emit()"
+                (variantsTabStateChange)="variantsTabState.set($event)">
+                <ng-container unit-details-footer-actions>
+                <div class="bt-split-button add-split-button" [class.disabled]="forceBuilderService.currentForce()?.readOnly()">
+                    <button
+                        type="button"
+                        class="bt-split-part split-main"
+                        [disabled]="forceBuilderService.currentForce()?.readOnly()"
+                        (click)="onAdd()">
+                        ADD TO FORCE
+                    </button>
+                    <button
+                        type="button"
+                        class="bt-split-part split-extra"
+                        [disabled]="forceBuilderService.currentForce()?.readOnly()"
+                        (click)="onAddMultiple()"
+                        title="Add multiple copies">
+                        +
+                    </button>
+                </div>
+                </ng-container>
+        </unit-details-footer>
     </base-panel>
 } @else {
     <div class="panel-empty">

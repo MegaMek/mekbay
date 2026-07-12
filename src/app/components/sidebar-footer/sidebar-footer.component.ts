@@ -1,21 +1,25 @@
 
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, computed, input, signal, effect, ElementRef, viewChildren } from '@angular/core';
-import { Subscription, firstValueFrom } from 'rxjs';
+import { type Subscription, firstValueFrom } from 'rxjs';
 import { LayoutService } from '../../services/layout.service';
 import { OptionsDialogComponent } from '../options-dialog/options-dialog.component';
 import { ToastService } from '../../services/toast.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { DataService } from '../../services/data.service';
-import { ForceAlignment } from '../../models/force-slot.model';
+import type { ForceAlignment } from '../../models/force-slot.model';
 import { CdkMenuModule, CdkMenuTrigger, MenuTracker } from '@angular/cdk/menu';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { C3NetworkUtil } from '../../utils/c3-network.util';
 import { CommonModule } from '@angular/common';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
-import { ForceSlot } from '../../models/force-slot.model';
-import { LoadOrganizationEntry } from '../../models/organization.model';
-import { AlignmentPickerDialogComponent, AlignmentPickerResult } from '../alignment-picker-dialog/alignment-picker-dialog.component';
+import type { ForceSlot } from '../../models/force-slot.model';
+import type { LoadOrganizationEntry } from '../../models/organization.model';
+import { AlignmentPickerDialogComponent, type AlignmentPickerResult } from '../alignment-picker-dialog/alignment-picker-dialog.component';
+import { AddExternalForceDialogComponent } from '../add-external-force-dialog/add-external-force-dialog.component';
+import { getFactionImg } from '../../models/factions.model';
+import { GameSystem } from '../../models/common.model';
+import { AppUpdateService } from '../../services/app-update.service';
 
 /*
  * Sidebar footer component
@@ -36,6 +40,7 @@ export class SidebarFooterComponent {
     forceBuilderService = inject(ForceBuilderService);
     dialogsService = inject(DialogsService);
     dataService = inject(DataService);
+    appUpdateService = inject(AppUpdateService);
     compactModeService = inject(CompactModeService);
     menuTriggers = viewChildren<CdkMenuTrigger>(CdkMenuTrigger);
 
@@ -86,6 +91,20 @@ export class SidebarFooterComponent {
     alignmentFilterBlink = signal(false);
     private blinkTimeout: ReturnType<typeof setTimeout> | null = null;
     private remoteUpdateSub: Subscription | null = null;
+
+    optimizeBudgetLabel = computed(() => (
+        this.forceBuilderService.smartCurrentForce()?.gameSystem === GameSystem.ALPHA_STRIKE ? 'Optimize PV...' : 'Optimize BV...'
+    ));
+
+    canOpenForceGeneratorWithCurrentForce = computed(() => {
+        const force = this.forceBuilderService.smartCurrentForce();
+        return !!force && force.units().length > 0;
+    });
+
+    canOptimizeBudget = computed(() => {
+        const force = this.forceBuilderService.smartCurrentForce();
+        return !!force && force.units().length > 0 && !force.readOnly();
+    });
 
     constructor() {
         const destroyRef = inject(DestroyRef);
@@ -142,6 +161,21 @@ export class SidebarFooterComponent {
         this.dialogsService.createDialog(OptionsDialogComponent);
     }
 
+    async showBudgetOptimizerDialog(): Promise<void> {
+        const force = this.forceBuilderService.smartCurrentForce();
+        if (!force || force.readOnly() || force.units().length === 0) { return; }
+        const { ForceBudgetOptimizerDialogComponent } = await import('../force-budget-optimizer-dialog/force-budget-optimizer-dialog.component');
+        this.dialogsService.createDialog(ForceBudgetOptimizerDialogComponent, {
+            data: { force },
+        });
+    }
+
+    async showCurrentForceInGeneratorDialog(): Promise<void> {
+        const force = this.forceBuilderService.smartCurrentForce();
+        if (!force || force.units().length === 0) { return; }
+        await this.forceBuilderService.showSearchForceGeneratorDialog({ importCurrentForce: true });
+    }
+
     showForceOverview(): void {
         const force = this.forceBuilderService.currentForce();
         if (!force) { return; }
@@ -194,7 +228,7 @@ export class SidebarFooterComponent {
         for (const org of orgs) {
             if (org.factionId != null) {
                 const faction = this.dataService.getFactionById(org.factionId);
-                factionImages.set(org.organizationId, faction?.img || undefined);
+                factionImages.set(org.organizationId, faction ? getFactionImg(faction) : undefined);
             }
         }
 
@@ -219,13 +253,11 @@ export class SidebarFooterComponent {
     }
 
     async addExternalForce(): Promise<void> {
-        const input = await this.dialogsService.prompt(
-            'Enter the Force Instance ID or a MekBay URL:',
-            'Add Force',
-            '',
-            'You can paste an Instance ID or a full MekBay URL containing one. To directly add one of your own forces, use the ADD button in the Load dialog instead.'
-        );
-        if (!input) return;
+        const inputDialogRef = this.dialogsService.createDialog<string | null>(AddExternalForceDialogComponent, {
+            disableClose: true,
+        });
+        const input = await firstValueFrom(inputDialogRef.closed);
+        if (!input?.trim()) return;
 
         const instanceId = this.extractInstanceId(input.trim());
 
@@ -242,10 +274,10 @@ export class SidebarFooterComponent {
         }
 
         // Show alignment picker with force preview
-        const ref = this.dialogsService.createDialog<AlignmentPickerResult | null>(AlignmentPickerDialogComponent, {
+        const alignmentDialogRef = this.dialogsService.createDialog<AlignmentPickerResult | null>(AlignmentPickerDialogComponent, {
             data: { force }
         });
-        const result = await firstValueFrom(ref.closed);
+        const result = await firstValueFrom(alignmentDialogRef.closed);
         if (!result) return;
 
         let forceToAdd = force;

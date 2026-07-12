@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -31,9 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy, input } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Unit } from '../../../models/units.model';
+import type { Unit } from '../../../models/units.model';
 import { SvgViewerLiteComponent } from '../../svg-viewer-lite/svg-viewer-lite.component';
 
 @Component({
@@ -45,4 +45,42 @@ import { SvgViewerLiteComponent } from '../../svg-viewer-lite/svg-viewer-lite.co
 })
 export class UnitDetailsSheetTabComponent {
     unit = input.required<Unit>();
+
+    private viewer = viewChild<SvgViewerLiteComponent>(SvgViewerLiteComponent);
+
+    get minZoomPercent(): number {
+        return this.viewer()?.minZoomPercent ?? 100;
+    }
+
+    get maxZoomPercent(): number {
+        return this.viewer()?.maxZoomPercent ?? 300;
+    }
+
+    zoomPercent(): number {
+        return this.viewer()?.zoomPercent() ?? this.minZoomPercent;
+    }
+
+    isZoomPanActive(): boolean {
+        return this.viewer()?.isZoomPanActive() ?? false;
+    }
+
+    setZoomPercent(value: number): void {
+        this.viewer()?.setZoomPercent(value);
+    }
+
+    resetZoom(): void {
+        this.viewer()?.resetZoom();
+    }
+
+    downloadPng(): Promise<void> {
+        return this.viewer()?.downloadPng() ?? Promise.resolve();
+    }
+
+    openPng(): Promise<void> {
+        return this.viewer()?.openPng() ?? Promise.resolve();
+    }
+
+    copyPngToClipboard(): Promise<void> {
+        return this.viewer()?.copyPngToClipboard() ?? Promise.resolve();
+    }
 }

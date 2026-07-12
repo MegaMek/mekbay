@@ -35,19 +35,19 @@
  * Author: Drake
  */
 
-export const FACTION_EXTINCT = 3;
-export const FACTION_MERCENARY = 34;
+import { MULFaction } from "./mulfactions.model";
 
-export interface Faction {
-    id: number; // MUL id (unique)
-    name: string; // Faction name
-    group: string; // Inner Sphere, Clan, etc.
-    img: string; // Logo URL for the faction
-    eras: { [key: number]: Set<number> }; // Indexed by era ID, value is a list of unit IDs
+export type FactionId = number;
+export type Faction = MULFaction;
+
+export function getFactionAffinity(faction: Faction): string {
+    return faction.group;
 }
 
-export interface Factions {
-    version: string;
-    etag: string;
-    factions: Faction[];
+export function getFactionImg(faction: Faction): string | undefined {
+    return faction.img ?? undefined;
+}
+
+export function getFactionName(faction: Faction): string {
+    return faction.name;
 }

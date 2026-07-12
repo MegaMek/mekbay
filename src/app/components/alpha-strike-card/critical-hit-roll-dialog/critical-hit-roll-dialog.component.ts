@@ -31,11 +31,11 @@
  * affiliated with Microsoft.
  */
 
-import { ChangeDetectionStrategy, Component, inject, signal, viewChild, AfterViewInit, computed } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal, viewChild, type AfterViewInit, computed } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
-import { ASForceUnit } from '../../../models/as-force-unit.model';
-import { ASUnitTypeCode } from '../../../models/units.model';
+import type { ASForceUnit } from '../../../models/as-force-unit.model';
+import type { ASUnitTypeCode } from '../../../models/units.model';
 import { OptionsService } from '../../../services/options.service';
 
 /*
@@ -214,6 +214,17 @@ const CRIT_TABLE_DROPSHIP: Record<number, CritTableEntry> = {
                 (click)="reroll()"
             />
             </div>
+
+            @if (rollModifierComments().length > 0) {
+                <div class="roll-modifier-comments">
+                    @for (comment of rollModifierComments(); track $index) {
+                        <div class="roll-modifier-comment">
+                            <span class="roll-modifier-value">{{ formatRollModifier(comment.modifier) }}</span>
+                            <span>{{ comment.comment }}</span>
+                        </div>
+                    }
+                </div>
+            }
             
             @if (result()) {
                 <div class="result-container">
@@ -325,6 +336,33 @@ const CRIT_TABLE_DROPSHIP: Record<number, CritTableEntry> = {
             background: rgba(0, 0, 0, 0.3);
         }
 
+        .roll-modifier-comments {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 280px;
+            max-width: 520px;
+            text-align: left;
+        }
+
+        .roll-modifier-comment {
+            display: flex;
+            gap: 8px;
+            align-items: baseline;
+            padding: 8px 10px;
+            background: rgba(255, 204, 0, 0.12);
+            border: 1px solid rgba(255, 204, 0, 0.35);
+            color: #ddd;
+            font-size: 0.9em;
+        }
+
+        .roll-modifier-value {
+            min-width: 2.5em;
+            text-align: right;
+            color: #ffcc00;
+            font-weight: bold;
+        }
+
         .mitigation-message {
             padding: 12px 16px;
             font-size: 1.1em;
@@ -396,15 +434,10 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
     readonly randomColumn = signal<string | null>(null);
     readonly currentEntry = signal<CritTableEntry | null>(null);
 
-    /** Modifier to the critical hit roll (e.g., -2 for CR special) */
-    readonly rollModifier = computed(() => {
-        if (!this.forceUnit) return 0;
-        const specials = this.forceUnit.getUnit().as.specials;
-        if (!specials) return 0;
-        // CR (Critical-Resistant) special reduces crit roll by 2
-        if (specials.includes('CR')) return -2;
-        return 0;
-    });
+    /** Modifier to the critical hit roll from active unit ability effects. */
+    readonly rollModifier = computed(() => this.forceUnit?.criticalHitRollModifier('criticalHit', 0) ?? 0);
+
+    readonly rollModifierComments = computed(() => this.forceUnit?.criticalHitRollModifierComments('criticalHit', 0) ?? []);
 
     /** Ammo hit mitigation status based on unit specials */
     readonly ammoHitMitigation = computed<'none' | 'case' | 'immune'>(() => {
@@ -509,6 +542,10 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
         return !!this.cannotApplyReason() && !!this.forceUnit;
     });
 
+    formatRollModifier(modifier: number): string {
+        return `${modifier >= 0 ? '+' : ''}${modifier}`;
+    }
+
     ngAfterViewInit(): void {
         // Auto-roll when dialog opens
         setTimeout(() => {
@@ -543,7 +580,8 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
             return;
         }
         
-        const entry = this.critTable[roll];
+        const resolution = this.forceUnit?.criticalHitRollResolution('criticalHit', roll);
+        const entry = resolution ? this.getEntryForResolution(resolution) : this.critTable[roll];
         if (entry) {
             // Check if this crit type has maxHits and is already at the limit
             if (entry.maxHits && entry.pipKey && this.forceUnit) {
@@ -584,6 +622,17 @@ export class CriticalHitRollDialogComponent implements AfterViewInit {
 
         const colIndex = Math.floor(Math.random() * this.weaponColumns.length);
         this.randomColumn.set(this.weaponColumns[colIndex]);
+    }
+
+    private getEntryForResolution(resolution: 'engineHit'): CritTableEntry {
+        switch (resolution) {
+            case 'engineHit':
+                return Object.values(this.critTable ?? {}).find(entry => entry.pipKey === 'engine') ?? {
+                    critType: 'Engine Hit',
+                    description: 'Impact Resistant Armor treats modified critical hit rolls over 12 as an Engine Hit critical.',
+                    pipKey: 'engine',
+                };
+        }
     }
 
     reroll(): void {

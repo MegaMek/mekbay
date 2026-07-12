@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -31,38 +31,39 @@
  * affiliated with Microsoft.
  */
 
-import { Component, inject, ElementRef, signal, ChangeDetectionStrategy, output, viewChild, effect, computed, Signal, isSignal } from '@angular/core';
+import { Component, inject, ElementRef, signal, ChangeDetectionStrategy, output, viewChild, effect, computed, type Signal, isSignal, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
-import { Unit } from '../../models/units.model';
+import type { Unit } from '../../models/units.model';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { firstValueFrom, takeUntil } from 'rxjs';
-import { outputToObservable } from '@angular/core/rxjs-interop';
+import { firstValueFrom } from 'rxjs';
 import { ToastService } from '../../services/toast.service';
 import { ForceUnit } from '../../models/force-unit.model';
 import { ForceBuilderService } from '../../services/force-builder.service';
-import { copyTextToClipboard } from '../../utils/clipboard.util';
+import { shareUrlWithClipboardFallback } from '../../utils/clipboard.util';
 import { FloatingOverlayService } from '../../services/floating-overlay.service';
-import { SwipeDirective, SwipeEndEvent, SwipeMoveEvent, SwipeStartEvent } from '../../directives/swipe.directive';
+import { SwipeDirective, type SwipeEndEvent, type SwipeMoveEvent, type SwipeStartEvent } from '../../directives/swipe.directive';
 import { LongPressDirective } from '../../directives/long-press.directive';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
-import { REMOTE_HOST, GameSystem } from '../../models/common.model';
+import { GameSystem, getUnitServerHost } from '../../models/common.model';
 import { UnitDetailsGeneralTabComponent } from './tabs/unit-details-general-tab.component';
 import { UnitDetailsIntelTabComponent } from './tabs/unit-details-intel-tab.component';
 import { UnitDetailsFactionTabComponent } from './tabs/unit-details-factions-tab.component';
 import { UnitDetailsSheetTabComponent } from './tabs/unit-details-sheet-tab.component';
-import { UnitDetailsVariantsTabComponent, VariantsTabState, DEFAULT_VARIANTS_TAB_STATE } from './tabs/unit-details-variants-tab.component';
+import { UnitDetailsVariantsTabComponent, type VariantsTabState, DEFAULT_VARIANTS_TAB_STATE } from './tabs/unit-details-variants-tab.component';
 import { GameService } from '../../services/game.service';
 import { UnitDetailsCardTabComponent } from './tabs/unit-details-card-tab.component';
-import { UnitTagsComponent, TagClickEvent } from '../unit-tags/unit-tags.component';
+import { UnitTagsComponent, type TagClickEvent } from '../unit-tags/unit-tags.component';
 import { TaggingService } from '../../services/tagging.service';
-import { UrlStateService } from '../../services/url-state.service';
+import { UrlService } from '../../services/url.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { LayoutService } from '../../services/layout.service';
 import { buildUnitShareLinks } from '../../utils/force-url.util';
-import { ConfirmDialogComponent, ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
+import { ConfirmDialogComponent, type ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
+import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
+import { UnitDetailsFooterComponent } from '../unit-details-footer/unit-details-footer.component';
 
 /*
  * Author: Drake
@@ -75,22 +76,28 @@ export interface UnitDetailsDialogData {
     hideAddButton?: boolean;
     /** When true, ADD only emits the unit without adding to force */
     selectMode?: boolean;
-    /** When set, show CHANGE button that replaces the original unit with the selected variant */
-    originalForceUnit?: ForceUnit;
+    changeAction?: UnitDetailsChangeAction;
+    showChangeButton?: boolean;
     /** Override game system (used when the unit list has no ForceUnit context). */
     gameSystem?: GameSystem;
+}
+
+export interface UnitDetailsChangeAction {
+    originalUnit: Unit;
+    apply: (unit: Unit) => boolean | void | Promise<boolean | void>;
+    disabled?: () => boolean;
+    closeParentOnChange?: boolean;
 }
 
 @Component({
     selector: 'unit-details-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, SwipeDirective, LongPressDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent, UnitDetailsVariantsTabComponent, UnitTagsComponent],
+    imports: [CommonModule, BaseDialogComponent, SwipeDirective, LongPressDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent, UnitDetailsVariantsTabComponent, UnitTagsComponent, UnitDetailsFooterComponent],
     templateUrl: './unit-details-dialog.component.html',
     styleUrls: ['./unit-details-dialog.component.css'],
     host: {
         '[class.fluff-background]': 'hostHasFluff',
-        '[style.--fluff-bg]': 'hostFluffBg',
-        '(window:keydown)': 'onWindowKeyDown($event)'
+        '[style.--fluff-bg]': 'hostFluffBg'
     }
 })
 export class UnitDetailsDialogComponent {
@@ -102,25 +109,28 @@ export class UnitDetailsDialogComponent {
     layoutService = inject(LayoutService);
     floatingOverlayService = inject(FloatingOverlayService);
     private taggingService = inject(TaggingService);
-    private urlStateService = inject(UrlStateService);
+    private urlService = inject(UrlService);
     private dialogsService = inject(DialogsService);
+    private keyboardShortcutService = inject(KeyboardShortcutService);
+    private destroyRef = inject(DestroyRef);
     add = output<Unit>();
     select = output<Unit>();
     change = output<{ oldUnit: ForceUnit; newUnit: Unit }>();
     indexChange = output<number>();
     baseDialogRef = viewChild('baseDialog', { read: ElementRef });
-    incomingPanelRef = viewChild<ElementRef>('incomingPanel');
+    sheetTabRef = viewChild<UnitDetailsSheetTabComponent>(UnitDetailsSheetTabComponent);
+    currentPanelRef = viewChild<ElementRef<HTMLElement>>('currentPanel');
+    incomingPanelRef = viewChild<ElementRef<HTMLElement>>('incomingPanel');
     shareButtonInActions = computed(() => this.layoutService.windowWidth() > 600);
 
     /** Computed property to determine if we're in change mode */
     isChangeMode = computed(() => {
-        return !!this.data.originalForceUnit;
+        return !!this.activeChangeAction();
     });
 
     isChangeDisabled = computed(() => {
-        return !this.data.originalForceUnit 
-            || this.data.originalForceUnit.readOnly()
-            || this.data.originalForceUnit.getUnit().name === this.unit.name;
+        const action = this.activeChangeAction();
+        return !action || action.disabled?.() === true || action.originalUnit.name === this.unit.name;
     });
 
     tabs = computed<string[]>(() => {
@@ -133,7 +143,14 @@ export class UnitDetailsDialogComponent {
         return isSignal(input) ? input() : input;
     });
     unitIndex = signal(this.data.unitIndex);
-
+    prevUnit = computed<Unit | null>(() => {
+        if (!this.hasPrev) return null;
+        return this.getUnitAtIndex(this.unitIndex() - 1);
+    });
+    nextUnit = computed<Unit | null>(() => {
+        if (!this.hasNext) return null;
+        return this.getUnitAtIndex(this.unitIndex() + 1);
+    });
     /** Derives game system from the current unit's force (when ForceUnit), otherwise falls back to global. */
     currentGameSystem = computed<GameSystem>(() => {
         const list = this.unitList();
@@ -175,6 +192,7 @@ export class UnitDetailsDialogComponent {
     // Real-time swipe following state
     isSwiping = signal(false);
     swipeDeltaX = signal(0); // Raw swipe delta for header calculation
+    incomingPanelScrollTop = signal(0);
 
     // CSS custom properties for panel positions
     currentPanelOffset = signal('0');
@@ -182,7 +200,6 @@ export class UnitDetailsDialogComponent {
 
     /** View mode for variants tab (persisted while dialog is open) */
     variantsTabState = signal<VariantsTabState>({ ...DEFAULT_VARIANTS_TAB_STATE });
-
     // Header unit - shows the most visible unit during swipe
     headerUnit = computed(() => {
         const incoming = this.incomingUnit();
@@ -207,7 +224,7 @@ export class UnitDetailsDialogComponent {
         const unit = this.headerUnit();
         if (!unit?.fluff?.img) return null;
         if (unit.fluff.img.endsWith('hud.png')) return null; // Ignore HUD images
-        return `${REMOTE_HOST}/images/fluff/${unit.fluff.img}`;
+        return `${getUnitServerHost(unit)}/images/fluff/${unit.fluff.img}`;
     });
 
     get unit(): Unit {
@@ -242,13 +259,18 @@ export class UnitDetailsDialogComponent {
     }
 
     constructor() {
+        this.keyboardShortcutService.register({
+            id: 'unit-details-dialog',
+            dialogRef: this.dialogRef,
+            handle: (event) => this.handleShortcutKeyDown(event),
+        }, this.destroyRef);
+
         effect(() => {
             this.unit;
-            this.activeTab()
-            // Use centralized URL state service to avoid race conditions
-            this.urlStateService.setParams({
+            const activeTab = this.activeTab();
+            this.urlService.setQueryParams({
                 shareUnit: this.unit.name,
-                tab: this.activeTab(),
+                tab: activeTab,
             });
         });
         
@@ -264,37 +286,29 @@ export class UnitDetailsDialogComponent {
         
         // Clean up URL params when dialog closes
         firstValueFrom(this.dialogRef.closed).then(() => {
-            this.urlStateService.setParams({
+            this.urlService.setQueryParams({
                 shareUnit: null,
                 tab: null,
             });
         });
     }
 
-    // Keyboard navigation (Left/Right)
-    onWindowKeyDown(event: KeyboardEvent) {
-        // Ignore if typing in an input/textarea/contentEditable
-        const target = event.target as HTMLElement | null;
-        if (target) {
-            const tag = target.tagName;
-            if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) {
-                return;
-            }
-        }
-        // Ignore with modifiers
-        if (event.ctrlKey || event.altKey || event.metaKey) return;
+    private handleShortcutKeyDown(event: KeyboardEvent): boolean {
+        if (event.ctrlKey || event.altKey || event.metaKey) return false;
 
         if (event.key === 'ArrowLeft') {
             if (this.hasPrev) {
                 this.onPrev();
-                event.preventDefault();
             }
+            return true;
         } else if (event.key === 'ArrowRight') {
             if (this.hasNext) {
                 this.onNext();
-                event.preventDefault();
             }
+            return true;
         }
+
+        return false;
     }
 
     get hasPrev(): boolean {
@@ -318,7 +332,7 @@ export class UnitDetailsDialogComponent {
             // Emulate RIGHT swipe: current goes right, prev comes from left
             // this.navigateToUnit(this.unitIndex() - 1, 'right');
             this.floatingOverlayService.hide();
-            this.unitIndex.set(this.unitIndex() - 1);
+            this.unitIndex.update(v => v - 1);
         }
     }
 
@@ -327,7 +341,7 @@ export class UnitDetailsDialogComponent {
             // Emulate LEFT swipe: current goes left, next comes from right
             // this.navigateToUnit(this.unitIndex() + 1, 'left');
             this.floatingOverlayService.hide();
-            this.unitIndex.set(this.unitIndex() + 1);
+            this.unitIndex.update(v => v + 1);
         }
     }
 
@@ -340,8 +354,7 @@ export class UnitDetailsDialogComponent {
     private navigateToUnit(newIndex: number, swipeDirection: 'left' | 'right') {
         this.floatingOverlayService.hide();
 
-        // Set incoming unit
-        this.incomingUnit.set(this.getUnitAtIndex(newIndex));
+        this.prepareIncomingUnit(this.getUnitAtIndex(newIndex));
         this.isSwiping.set(false);
 
         // Set initial positions for animation
@@ -369,7 +382,7 @@ export class UnitDetailsDialogComponent {
 
             await this.waitForTransitionEnd();
             // After animation completes, update the actual unit
-            this.unitIndex.set(newIndex);
+            this.commitSwipeToIndex(newIndex);
             this.isSwipeAnimating.set(false);
             this.currentPanelOffset.set('0');
             this.incomingPanelOffset.set('100%');
@@ -393,8 +406,42 @@ export class UnitDetailsDialogComponent {
         this._addUnit(true);
     }
 
+    /**
+     * When adding the first unit, if the active tab doesn't match the current game system,
+     * ask the user which game system to use for the new force.
+     * Returns the chosen GameSystem, or `null` if the user cancelled.
+     */
+    private async resolveGameSystemForFirstUnit(): Promise<GameSystem | undefined | null> {
+        // Only relevant when no force exists yet (first unit creates the force)
+        if (this.forceBuilderService.smartCurrentForce()) return undefined;
+
+        const tab = this.activeTab();
+        const gameSystem = this.gameService.currentGameSystem();
+        const isMismatch =
+            (tab === 'Sheet' && gameSystem === GameSystem.ALPHA_STRIKE) ||
+            (tab === 'Card' && gameSystem === GameSystem.CLASSIC);
+        if (!isMismatch) return undefined;
+
+        const ref = this.dialogsService.createDialog<GameSystem | undefined>(ConfirmDialogComponent, {
+            data: <ConfirmDialogData<GameSystem>>{
+                title: 'Game System',
+                message: 'Which game system should the new force use?',
+                buttons: [
+                    { label: 'Classic BattleTech', value: GameSystem.CLASSIC },
+                    { label: 'Alpha Strike', value: GameSystem.ALPHA_STRIKE },
+                ]
+            }
+        });
+        const chosen = await firstValueFrom(ref.closed);
+        return chosen ?? null; // null = cancelled
+    }
+
     private async _addUnit(keepOpen: boolean) {
         if (this.data.selectMode) return;
+
+        const gameSystemOverride = await this.resolveGameSystemForFirstUnit();
+        if (gameSystemOverride === null) return; // user cancelled
+
         const selectedUnit = (this.unit instanceof ForceUnit) ? this.unit.getUnit() : this.unit;
         let gunnery;
         let piloting;
@@ -411,7 +458,9 @@ export class UnitDetailsDialogComponent {
         const addedUnit = await this.forceBuilderService.addUnit(
             selectedUnit,
             gunnery,
-            piloting
+            piloting,
+            undefined,
+            gameSystemOverride
         );
         if (addedUnit) {
             this.toastService.showToast(`${selectedUnit.chassis} ${selectedUnit.model} added to the force.`, 'success');
@@ -424,6 +473,10 @@ export class UnitDetailsDialogComponent {
 
     async onAddMultiple() {
         if (this.data.selectMode) return;
+
+        const gameSystemOverride = await this.resolveGameSystemForFirstUnit();
+        if (gameSystemOverride === null) return; // user cancelled
+
         const ref = this.dialogsService.createDialog<number | undefined>(ConfirmDialogComponent, {
             data: <ConfirmDialogData<number>>{
                 title: 'Add Multiple',
@@ -434,6 +487,7 @@ export class UnitDetailsDialogComponent {
                     { label: '3', value: 3, class: 'square' },
                     { label: '4', value: 4, class: 'square' },
                     { label: '5', value: 5, class: 'square' },
+                    { label: '6', value: 6, class: 'square' },
                 ]
             }
         });
@@ -457,7 +511,7 @@ export class UnitDetailsDialogComponent {
 
         let addedCount = 0;
         for (let i = 0; i < count; i++) {
-            const added = await this.forceBuilderService.addUnit(selectedUnit, gunnery, piloting);
+            const added = await this.forceBuilderService.addUnit(selectedUnit, gunnery, piloting, undefined, gameSystemOverride);
             if (added) addedCount++;
         }
         if (addedCount > 0) {
@@ -469,22 +523,13 @@ export class UnitDetailsDialogComponent {
     }
 
     async onChange() {
-        const originalUnit = this.data.originalForceUnit;
-        if (!originalUnit) return;
-        
-        const selectedUnit = (this.unit instanceof ForceUnit) ? this.unit.getUnit() : this.unit;
-        
-        // Call the service to replace the unit (includes confirmation dialog)
-        const result = await this.forceBuilderService.replaceUnit(originalUnit, selectedUnit);
-        
-        if (result) {
-            this.toastService.showToast(
-                `Changed ${originalUnit.getUnit().chassis} ${originalUnit.getUnit().model} to ${selectedUnit.chassis} ${selectedUnit.model}.`,
-                'success'
-            );
-            this.change.emit({ oldUnit: originalUnit, newUnit: selectedUnit });
-            this.onClose();
-        }
+        const action = this.activeChangeAction();
+        if (!action) return;
+
+        const result = await action.apply(this.unit);
+        if (result === false) return;
+
+        this.onClose();
     }
 
     onClose() {
@@ -496,8 +541,8 @@ export class UnitDetailsDialogComponent {
         return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     }
 
-    onShare() {
-        const { httpsUrl, appUrl } = buildUnitShareLinks(
+    async onShare() {
+        const { httpsUrl } = buildUnitShareLinks(
             window.location.origin,
             window.location.pathname,
             this.currentGameSystem(),
@@ -505,17 +550,8 @@ export class UnitDetailsDialogComponent {
             this.activeTab(),
         );
         const shareTitle = `${this.unit.chassis} ${this.unit.model}`;
-        if (navigator.share) {
-            navigator.share({
-                title: shareTitle,
-                url: httpsUrl,
-            }).catch(() => {
-                // fallback if user cancels or error
-                copyTextToClipboard(httpsUrl);
-                this.toastService.showToast('Unit links copied to clipboard.', 'success');
-            });
-        } else {
-            copyTextToClipboard(httpsUrl);
+        const result = await shareUrlWithClipboardFallback({ title: shareTitle, url: httpsUrl });
+        if (result === 'copied') {
             this.toastService.showToast('Unit links copied to clipboard.', 'success');
         }
     }
@@ -529,16 +565,10 @@ export class UnitDetailsDialogComponent {
     /** Handle variant card click - opens a new dialog for that variant */
     onVariantClick(event: { variant: Unit; variants: Unit[] }): void {
         if (this.data.selectMode) return;
-        
-        // Determine if we should enable change mode:
-        let originalForceUnit: ForceUnit | undefined;
-        // Check if current unit is a ForceUnit (user is browsing force units)
-        const currentItem = this.unitList()[this.unitIndex()];
-        if (currentItem instanceof ForceUnit) {
-            originalForceUnit = currentItem;
-        }
+
+        const changeAction = this.wrapParentClose(this.variantChangeAction());
     
-        const ref = this.dialogsService.createDialog(UnitDetailsDialogComponent, {
+        this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
                 unitList: event.variants,
                 unitIndex: event.variants.indexOf(event.variant),
@@ -546,26 +576,72 @@ export class UnitDetailsDialogComponent {
                 pilotingSkill: this.pilotingSkill(),
                 hideAddButton: this.data.hideAddButton,
                 selectMode: this.data.selectMode,
-                originalForceUnit
+                changeAction,
+                showChangeButton: !!changeAction,
             }
         });
-        
-        // When a unit change occurs in the variant dialog, navigate to the newly selected unit.
-        outputToObservable(ref.componentInstance.change).pipe(takeUntil(ref.closed)).subscribe(() => {
-            // Navigate to the newly selected unit (replaceUnit selects the new unit)
-            const selectedUnit = this.forceBuilderService.selectedUnit();
-            if (selectedUnit) {
-                const newIndex = this.unitList().findIndex(u => u.id === selectedUnit.id);
+    }
+
+    private activeChangeAction(): UnitDetailsChangeAction | null {
+        return this.data.showChangeButton === true ? this.data.changeAction ?? null : null;
+    }
+
+    private variantChangeAction(): UnitDetailsChangeAction | undefined {
+        const currentItem = this.unitList()[this.unitIndex()];
+        if (currentItem instanceof ForceUnit) {
+            return this.forceUnitChangeAction(currentItem);
+        }
+
+        return this.data.showChangeButton === true ? undefined : this.data.changeAction;
+    }
+
+    private forceUnitChangeAction(originalForceUnit: ForceUnit): UnitDetailsChangeAction {
+        return {
+            originalUnit: originalForceUnit.getUnit(),
+            disabled: () => originalForceUnit.readOnly(),
+            closeParentOnChange: true,
+            apply: async (selectedUnit: Unit) => {
+                const result = await this.forceBuilderService.replaceUnit(originalForceUnit, selectedUnit);
+                if (!result) return false;
+
+                this.toastService.showToast(
+                    `Changed ${originalForceUnit.getUnit().chassis} ${originalForceUnit.getUnit().model} to ${selectedUnit.chassis} ${selectedUnit.model}.`,
+                    'success'
+                );
+                this.change.emit({ oldUnit: originalForceUnit, newUnit: selectedUnit });
+
+                const newIndex = this.unitList().findIndex((unit) => unit instanceof ForceUnit && unit.id === result.id);
                 if (newIndex >= 0) {
                     this.unitIndex.set(newIndex);
                 }
-            }
-        });
+                return true;
+            },
+        };
+    }
+
+    private wrapParentClose(action: UnitDetailsChangeAction | undefined): UnitDetailsChangeAction | undefined {
+        if (!action?.closeParentOnChange) {
+            return action;
+        }
+
+        return {
+            ...action,
+            closeParentOnChange: false,
+            apply: async (unit: Unit) => {
+                const result = await action.apply(unit);
+                if (result === false) return false;
+
+                this.onClose();
+                return true;
+            },
+        };
     }
 
     public shouldBlockSwipe = (): boolean => {
         // Don't block if already swiping - only block before swipe starts
         if (this.isSwiping()) return false;
+
+        if (this.activeTab() === 'Sheet' && this.isSheetSwipeBlocked()) return true;
 
         // Block if animation is in progress
         if (this.isSwipeAnimating()) return true;
@@ -575,11 +651,16 @@ export class UnitDetailsDialogComponent {
         return (index === 0 && !this.hasNext) || (index === this.unitList().length - 1 && !this.hasPrev);
     };
 
+    private isSheetSwipeBlocked(): boolean {
+        return this.sheetTabRef()?.isZoomPanActive() ?? false;
+    }
+
     public onSwipeStart(event: SwipeStartEvent): void {
         if (this.isSwipeAnimating()) return;
         this.floatingOverlayService.hide();
         this.isSwiping.set(true);
         this.swipeDeltaX.set(0);
+        this.incomingPanelScrollTop.set(this.getIncomingPanelInitialScrollTop());
         this.currentPanelOffset.set('0');
         this.incomingUnit.set(null);
     }
@@ -597,7 +678,7 @@ export class UnitDetailsDialogComponent {
             // Swiping right - show previous unit coming from the left
             const prevUnit = this.getUnitAtIndex(this.unitIndex() - 1);
             if (this.incomingUnit() !== prevUnit) {
-                this.incomingUnit.set(prevUnit);
+                this.prepareIncomingUnit(prevUnit);
             }
             // Current panel moves right by deltaX
             this.currentPanelOffset.set(`${deltaX}px`);
@@ -607,7 +688,7 @@ export class UnitDetailsDialogComponent {
             // Swiping left - show next unit coming from the right
             const nextUnit = this.getUnitAtIndex(this.unitIndex() + 1);
             if (this.incomingUnit() !== nextUnit) {
-                this.incomingUnit.set(nextUnit);
+                this.prepareIncomingUnit(nextUnit);
             }
             // Current panel moves left by deltaX (negative)
             this.currentPanelOffset.set(`${deltaX}px`);
@@ -724,8 +805,62 @@ export class UnitDetailsDialogComponent {
         await this.waitForTransitionEnd();
 
         // Now update the index - this triggers re-render of current panel with new unit
-        this.unitIndex.set(newIndex);
+        this.commitSwipeToIndex(newIndex);
         setTimeout(() => this.resetSwipeState(), 100);
+    }
+
+    private prepareIncomingUnit(unit: Unit): void {
+        this.incomingPanelScrollTop.set(this.getIncomingPanelInitialScrollTop());
+        this.incomingUnit.set(unit);
+        requestAnimationFrame(() => this.syncIncomingPanelScrollTop());
+    }
+
+    private getIncomingPanelInitialScrollTop(): number {
+        return this.shouldPreserveSwipeScroll() ? this.currentPanelScrollTop() : 0;
+    }
+
+    private shouldPreserveSwipeScroll(): boolean {
+        return this.activeTab() === 'General';
+    }
+
+    private currentPanelScrollTop(): number {
+        return this.currentPanelRef()?.nativeElement.scrollTop ?? 0;
+    }
+
+    private syncIncomingPanelScrollTop(): void {
+        const panel = this.incomingPanelRef()?.nativeElement;
+        if (!panel) return;
+
+        panel.scrollTop = Math.max(0, Math.min(this.incomingPanelScrollTop(), panel.scrollHeight - panel.clientHeight));
+        this.incomingPanelScrollTop.set(panel.scrollTop);
+    }
+
+    private commitSwipeToIndex(newIndex: number): void {
+        const shouldPreserveScroll = this.shouldPreserveSwipeScroll();
+        if (shouldPreserveScroll) {
+            this.syncIncomingPanelScrollTop();
+        } else {
+            this.incomingPanelScrollTop.set(0);
+        }
+
+        const scrollTop = shouldPreserveScroll ? this.incomingPanelScrollTop() : 0;
+        this.unitIndex.set(newIndex);
+        this.setPanelScrollTop(this.currentPanelRef()?.nativeElement, scrollTop, !shouldPreserveScroll);
+        requestAnimationFrame(() => {
+            this.setPanelScrollTop(this.currentPanelRef()?.nativeElement, scrollTop, !shouldPreserveScroll);
+        });
+    }
+
+    private setPanelScrollTop(panel: HTMLElement | undefined, scrollTop: number, includeDescendants = false): void {
+        if (!panel) return;
+
+        panel.scrollTop = scrollTop;
+
+        if (!includeDescendants) return;
+
+        for (const element of panel.querySelectorAll<HTMLElement>('*')) {
+            element.scrollTop = scrollTop;
+        }
     }
 
     private resetSwipeState(): void {

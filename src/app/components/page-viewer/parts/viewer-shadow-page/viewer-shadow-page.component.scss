@@ -1,0 +1,46 @@
+:host {
+    display: contents;
+}
+
+.page-wrapper.shadow-page {
+    position: absolute;
+    top: 0;
+    left: 0;
+    box-sizing: border-box;
+    background-color: transparent;
+    transition: background-color 1.6s, outline 0.6s;
+    cursor: pointer;
+}
+
+.page-wrapper.shadow-page.has-svg {
+    background-color: #fff;
+}
+
+.page-wrapper.shadow-page.dimmed {
+    opacity: 0.1;
+}
+
+.page-wrapper.shadow-page.promoted-shadow-page {
+    opacity: 1;
+    cursor: default;
+}
+
+.page-wrapper.shadow-page ::ng-deep svg {
+    pointer-events: none;
+}
+
+:host-context(.swiping) .page-wrapper.shadow-page {
+    transition: none;
+}
+
+@media screen {
+    :host-context(.night-mode) .page-wrapper.shadow-page.has-svg {
+        background-color: unset;
+    }
+}
+
+@media print {
+    .page-wrapper.shadow-page {
+        display: none;
+    }
+}

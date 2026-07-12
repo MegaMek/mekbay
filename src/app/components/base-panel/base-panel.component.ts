@@ -32,12 +32,12 @@
  */
 
 import {
-    AfterViewInit,
+    type AfterViewInit,
     ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
-    ElementRef,
+    type ElementRef,
     inject,
     Injector,
     input,

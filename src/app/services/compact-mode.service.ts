@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Injectable, WritableSignal, signal } from '@angular/core';
+import { Injectable, type WritableSignal, signal } from '@angular/core';
 
 @Injectable({ providedIn: 'root' })
 export class CompactModeService {

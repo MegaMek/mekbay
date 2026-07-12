@@ -58,15 +58,22 @@
     stroke-width: 2;
     cursor: pointer;
     transition: fill 0.15s;
-    fill: #000A;
+    fill: var(--picker-choice-normal-color, #000A);
     pointer-events: auto;
 }
 .radial-sector.disabled {
     cursor: not-allowed;
     opacity: 0.5;
+    fill: var(--picker-choice-disabled-color, #000A);
 }
 .radial-sector.selected {
     fill: var(--bt-yellow-background-bright-transparent);
+}
+.radial-sector.active:not(.disabled) {
+    fill: var(--picker-choice-selected-color, var(--bt-yellow-background-bright-transparent));
+}
+.radial-sector.active.muted-active:not(.disabled) {
+    fill: var(--picker-choice-muted-selected-color, var(--bt-yellow-background-transparent));
 }
 .radial-sector.highlight:not(.disabled),
 :host-context(.night-mode) .radial-sector.highlight:not(.disabled) {
@@ -76,14 +83,20 @@
     font-family: 'Roboto', sans-serif;
     font-size: 0.9em;
     pointer-events: none;
-    fill: #fff;
+    fill: var(--picker-choice-normal-text-color, #fff);
     font-weight: 500;
     text-shadow: 0 1px 2px #111;
     transition: fill 0.15s;
 }
 .radial-label.disabled {
     opacity: 0.5;
-    fill: #666;
+    fill: var(--picker-choice-disabled-text-color, #666);
+}
+.radial-label.active:not(.disabled) {
+    fill: var(--picker-choice-selected-text-color, #fff);
+}
+.radial-label.active.muted-active:not(.disabled) {
+    fill: var(--picker-choice-muted-selected-text-color, var(--picker-choice-selected-text-color, #fff));
 }
 .radial-label.selected {
     font-weight: bold;
@@ -108,17 +121,23 @@
     color: #000;
 }
 .light-theme .radial-sector {
-    fill: #FFFC;
+    fill: var(--picker-choice-normal-color, #FFFC);
 }
 .light-theme .radial-sector.selected {
     fill: #AAAC;
 }
+.light-theme .radial-sector.active:not(.disabled) {
+    fill: var(--picker-choice-selected-color, #AAAC);
+}
+.light-theme .radial-sector.active.muted-active:not(.disabled) {
+    fill: var(--picker-choice-muted-selected-color, #CCCA);
+}
 .light-theme .radial-label.selected {
-    fill: #FFF;
+    fill: var(--picker-choice-selected-text-color, #FFF);
     text-shadow: 0 1px 2px #111;
 }
 .light-theme .radial-label {
-    fill: #000;
+    fill: var(--picker-choice-normal-text-color, #000);
     text-shadow: none;
 }
 .light-theme .radial-label.highlight {

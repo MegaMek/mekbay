@@ -10,7 +10,10 @@
                 @if (isNextBuild) { <span class="next-badge" (click)="showNextDialog(); $event.stopPropagation()">NEXT</span> }
             }
             </div>
-            <div class="searchPortal" [cdkPortalOutlet]="unitSearchPortal()"></div>
+            <div class="header-status-stack">
+                <connection-status-badge placement="sidebar"></connection-status-badge>
+                <div class="searchPortal" [cdkPortalOutlet]="unitSearchPortal()"></div>
+            </div>
         </div>
 
         <force-builder-viewer #forceBuilderViewer [miniMode]="tinyMode()"></force-builder-viewer>

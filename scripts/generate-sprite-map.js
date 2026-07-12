@@ -34,37 +34,15 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { setFileContentTimestamp, writeFileWithContentTimestamp } = require('./lib/deterministic-output.js');
+const { loadOptionalEnvFile, resolveMmDataRoot } = require('./lib/script-paths.js');
 
 const root = path.resolve(__dirname, '..');
 
-// Load .env file if it exists
-const envPath = path.join(root, '.env');
-if (fs.existsSync(envPath)) {
-  try {
-    const envContent = fs.readFileSync(envPath, 'utf8');
-    envContent.split(/\r?\n/).forEach(line => {
-      line = line.trim();
-      if (!line || line.startsWith('#')) return;
-      const parts = line.split('=');
-      if (parts.length >= 2) {
-        const key = parts[0].trim();
-        let value = parts.slice(1).join('=').trim();
-        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-          value = value.slice(1, -1);
-        }
-        if (!process.env[key]) {
-          process.env[key] = value;
-        }
-      }
-    });
-    console.log(`[SpriteMap] Loaded configuration from ${envPath}`);
-  } catch (e) {
-    console.warn('[SpriteMap] Failed to parse .env file:', e.message);
-  }
-}
+loadOptionalEnvFile(root, { logPrefix: 'SpriteMap' });
 
-const mmDataPath = process.env.MM_DATA_PATH || '../mm-data';
-const unitIconsDir = path.resolve(root, mmDataPath, 'data/images/units');
+const mmDataRoot = resolveMmDataRoot(root, { allowMissing: true });
+const unitIconsDir = path.join(mmDataRoot, 'data/images/units');
 const outputDir = path.join(root, 'public', 'sprites');
 
 // Sprite configuration
@@ -74,6 +52,45 @@ const ICON_SCALE = 1.0; // Scale factor (0.5 = half size, 2.0 = double size)
 const ICON_WIDTH = Math.round(ICON_BASE_WIDTH * ICON_SCALE);
 const ICON_HEIGHT = Math.round(ICON_BASE_HEIGHT * ICON_SCALE);
 const PADDING = 0;
+// Bump only when intentionally forcing every client to refresh stored sprite sheets.
+const SPRITE_CACHE_VERSION = '1';
+const SPRITE_HASH_LENGTH = 16;
+
+function getFileHash(filePath) {
+  return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+}
+
+function getSpriteHash(filePath) {
+  return getFileHash(filePath).slice(0, SPRITE_HASH_LENGTH);
+}
+
+function buildSpriteTempFileName(unitType) {
+  return `${unitType}.${SPRITE_CACHE_VERSION}.tmp.webp`;
+}
+
+function buildSpriteFileName(unitType, spriteHash) {
+  return `${unitType}.${SPRITE_CACHE_VERSION}.${spriteHash}.webp`;
+}
+
+function buildSpriteUrl(unitType, spriteHash) {
+  return `sprites/${buildSpriteFileName(unitType, spriteHash)}`;
+}
+
+function cleanGeneratedSpriteFiles() {
+  if (!fs.existsSync(outputDir)) return 0;
+
+  let removed = 0;
+  for (const file of fs.readdirSync(outputDir)) {
+    if (!file.toLowerCase().endsWith('.webp')) {
+      continue;
+    }
+
+    fs.unlinkSync(path.join(outputDir, file));
+    removed += 1;
+  }
+
+  return removed;
+}
 
 /**
  * Calculate optimal columns for a roughly square sprite sheet.
@@ -92,6 +109,7 @@ function calculateOptimalColumns(iconCount) {
   return Math.max(1, Math.min(optimalCols, iconCount));
 }
 
+console.log(`[SpriteMap] Using MM data from: ${mmDataRoot}`);
 console.log(`[SpriteMap] Using unit icons from: ${unitIconsDir}`);
 console.log(`[SpriteMap] Icon size: ${ICON_WIDTH}x${ICON_HEIGHT} (scale: ${ICON_SCALE})`);
 
@@ -190,7 +208,7 @@ async function generateSpriteForType(sharp, unitType, images, spriteData) {
   }
 
   // Create the sprite sheet for this type
-  const spriteImagePath = path.join(outputDir, `${unitType}.webp`);
+  const spriteTempPath = path.join(outputDir, buildSpriteTempFileName(unitType));
   
   await sharp({
     create: {
@@ -202,12 +220,20 @@ async function generateSpriteForType(sharp, unitType, images, spriteData) {
   })
   .composite(compositeOps)
     .webp({ lossless: true, effort: 6 })
-    .toFile(spriteImagePath);
+    .toFile(spriteTempPath);
+
+  const spriteHash = getSpriteHash(spriteTempPath);
+  const spriteImagePath = path.join(outputDir, buildSpriteFileName(unitType, spriteHash));
+  if (fs.existsSync(spriteImagePath)) {
+    fs.unlinkSync(spriteImagePath);
+  }
+  fs.renameSync(spriteTempPath, spriteImagePath);
+  setFileContentTimestamp(spriteImagePath);
 
   const spriteSize = (fs.statSync(spriteImagePath).size / 1024).toFixed(2);
   console.log(`[SpriteMap] Created ${spriteImagePath} (${spriteSize} KB)`);
 
-  return { width: spriteWidth, height: spriteHeight };
+  return { width: spriteWidth, height: spriteHeight, hash: spriteHash };
 }
 
 async function generateSprites() {
@@ -220,6 +246,11 @@ async function generateSprites() {
   // Ensure output directory exists
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
+  }
+
+  const removedSprites = cleanGeneratedSpriteFiles();
+  if (removedSprites > 0) {
+    console.log(`[SpriteMap] Removed ${removedSprites} stale generated sprite sheets.`);
   }
 
   console.log('[SpriteMap] Collecting images by unit type...');
@@ -241,34 +272,39 @@ async function generateSprites() {
   sharp.concurrency(2);
 
   const spriteData = {};
-  const spriteSizes = {};
+  const spriteTypes = {};
 
   // Process each unit type
   for (const [unitType, images] of imagesByType) {
-    const size = await generateSpriteForType(sharp, unitType, images, spriteData);
-    spriteSizes[unitType] = size;
+    const typeInfo = await generateSpriteForType(sharp, unitType, images, spriteData);
+    spriteTypes[unitType] = typeInfo;
   }
 
   // Write combined JSON mapping file
   const spriteJsonPath = path.join(outputDir, 'unit-icons.json');
   const manifest = {
     types: Object.fromEntries(
-      [...imagesByType.keys()].map(type => [type, {
-        url: `sprites/${type}.webp`,
-        ...spriteSizes[type]
-      }])
+      [...imagesByType.keys()].map(type => {
+        const { width, height, hash } = spriteTypes[type];
+        return [type, {
+          url: buildSpriteUrl(type, hash),
+          width,
+          height
+        }];
+      })
     ),
     icons: spriteData
   };
-  fs.writeFileSync(spriteJsonPath, JSON.stringify(manifest));
+  const manifestJson = JSON.stringify(manifest);
+  writeFileWithContentTimestamp(spriteJsonPath, manifestJson);
 
   // Generate combined hash
   const hashSum = crypto.createHash('sha256');
-  hashSum.update(JSON.stringify(manifest));
+  hashSum.update(manifestJson);
   const hash = hashSum.digest('hex');
   
   const hashFilePath = path.join(outputDir, 'unit-icons.hash');
-  fs.writeFileSync(hashFilePath, hash);
+  writeFileWithContentTimestamp(hashFilePath, hash);
 
   const jsonSize = (fs.statSync(spriteJsonPath).size / 1024).toFixed(2);
 

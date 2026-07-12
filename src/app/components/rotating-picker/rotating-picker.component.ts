@@ -31,8 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ElementRef, AfterViewInit, signal, output, computed, effect, untracked, input, ChangeDetectionStrategy, viewChild, DestroyRef, inject } from '@angular/core';
-import { NumericPickerComponent, NumericPickerResult, PickerPosition } from '../picker/picker.interface';
+import { Component, type ElementRef, type AfterViewInit, signal, output, computed, effect, untracked, input, ChangeDetectionStrategy, viewChild, DestroyRef, inject } from '@angular/core';
+import type { NumericPickerComponent, NumericPickerResult, PickerPosition } from '../picker/picker.interface';
 import { vibrate } from '../../utils/vibrate.util';
 import { LayoutService } from '../../services/layout.service';
 

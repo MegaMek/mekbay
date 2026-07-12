@@ -34,7 +34,7 @@
 import { effect, inject, Injectable, signal } from '@angular/core';
 import { UserStateService } from './userState.service';
 import { LoggerService } from './logger.service';
-import { SerializedForce } from '../models/force-serialization';
+import type { SerializedForce } from '../models/force-serialization';
 
 /*
  * Author: Drake
@@ -55,6 +55,8 @@ export function generateUUID(): string {
 
 /** Client protocol version - increment when breaking changes are made */
 export const PROTOCOL_VERSION = 2;
+
+export type ConnectionStatusPhase = 'hidden' | 'offline' | 'online';
 
 @Injectable({
     providedIn: 'root'
@@ -77,11 +79,19 @@ export class WsService {
     private readonly baseReconnectDelay = 1000;
     private readonly maxReconnectDelay = 15000;
     private readonly connectionTimeout = 3000;
+    private readonly connectionStatusHideDelay = 3500;
+    private connectionStatusHideTimeoutId: number | null = null;
+    private connectionStatusHasFailed = false;
+    public readonly connectionStatusPhase = signal<ConnectionStatusPhase>('hidden');
 
     public wsConnected = signal<boolean>(false);
     private userStateService = inject(UserStateService);
     private globalErrorHandler: ((message: string) => void) | null = null;
     private lastRegisteredUuid = '';
+
+    private getCurrentUuid(): string {
+        return this.userStateService.uuid().trim();
+    }
 
     constructor() {
         this.initializeService();
@@ -107,9 +117,13 @@ export class WsService {
      */
     private setupUserStateHandler(): void {
         this.registerMessageHandler('userState', (msg) => {
-            if (msg.publicId) {
-                this.userStateService.setPublicId(msg.publicId);
-            }
+            void this.userStateService.applyServerState({
+                publicId: msg.publicId ?? null,
+                hasOAuth: msg.hasOAuth,
+                oauthProviderCount: msg.oauthProviderCount,
+                oauthProviders: Array.isArray(msg.oauthProviders) ? msg.oauthProviders : undefined,
+                availableAuthProviders: Array.isArray(msg.availableAuthProviders) ? msg.availableAuthProviders : undefined,
+            });
         });
     }
 
@@ -140,7 +154,7 @@ export class WsService {
     private handleNetworkOnline(): void {
         this.shouldReconnect = true;
         this.reconnectAttempt = 0; // Reset backoff when network returns
-        if (!this.wsConnected() && !this.isConnecting) {
+        if (!this.wsConnected() && !this.isConnecting && this.getCurrentUuid()) {
             this.clearReconnectTimer();
             this.scheduleReconnect();
         }
@@ -152,13 +166,14 @@ export class WsService {
     private handleNetworkOffline(): void {
         this.wsConnected.set(false);
         this.clearReconnectTimer();
+        this.showDisconnectedBadge();
     }
 
     /**
      * Connect to WebSocket server
      */
     private connect(): void {
-        if (!this.wsUrl || this.isConnecting || (this.ws && this.ws.readyState === WebSocket.CONNECTING)) {
+        if (!this.wsUrl || !this.getCurrentUuid() || this.isConnecting || (this.ws && this.ws.readyState === WebSocket.CONNECTING)) {
             return;
         }
 
@@ -177,6 +192,7 @@ export class WsService {
         } catch (error) {
             this.logger.error(`Failed to create WebSocket: ${error}`);
             this.isConnecting = false;
+            this.showDisconnectedBadge();
             this.scheduleReconnect();
         }
     }
@@ -206,10 +222,20 @@ export class WsService {
      * Handle WebSocket open event
      */
     private handleOpen(): void {
+        const uuid = this.getCurrentUuid();
+        if (!uuid) {
+            this.logger.warn('WebSocket opened before uuid was available; closing and waiting for user state.');
+            this.isConnecting = false;
+            this.wsConnected.set(false);
+            this.closeWebSocket(false);
+            return;
+        }
+
         this.logger.info('WebSocket connected');
         this.isConnecting = false;
         this.reconnectAttempt = 0; // Reset backoff on successful connection
         this.wsConnected.set(true);
+        this.showReconnectedBadge();
         this.resolveConnectionPromise();
         this.registerSession();
     }
@@ -221,9 +247,10 @@ export class WsService {
         this.logger.error(`WebSocket closed: ${event.code}, ${event.reason}`);
         this.isConnecting = false;
         this.wsConnected.set(false);
+        this.showDisconnectedBadge();
 
         // Only attempt reconnection if we should reconnect and network is online
-        if (this.shouldReconnect && navigator.onLine) {
+        if (this.shouldReconnect && navigator.onLine && this.getCurrentUuid()) {
             this.scheduleReconnect();
         }
     }
@@ -235,6 +262,7 @@ export class WsService {
         this.logger.error('WebSocket error occurred');
         this.isConnecting = false;
         this.wsConnected.set(false);
+        this.showDisconnectedBadge();
     }
 
     /**
@@ -285,7 +313,11 @@ export class WsService {
      * Register this session with the server
      */
     private registerSession(): void {
-        const uuid = this.userStateService.uuid();
+        const uuid = this.getCurrentUuid();
+        if (!uuid) {
+            this.logger.warn('Skipping WebSocket registration because uuid is not available.');
+            return;
+        }
         this.lastRegisteredUuid = uuid;
         try {
             this.send({ action: 'register', sessionId: this.wsSessionId, uuid, version: PROTOCOL_VERSION });
@@ -312,6 +344,10 @@ export class WsService {
      * Schedule a reconnection attempt
      */
     private scheduleReconnect(): void {
+        if (!this.getCurrentUuid()) {
+            this.logger.info('Skipping reconnect scheduling because uuid is not available yet.');
+            return;
+        }
         this.clearReconnectTimer();
         const delay = this.getReconnectDelay();
         this.reconnectAttempt++;
@@ -329,6 +365,39 @@ export class WsService {
             clearTimeout(this.reconnectTimeoutId);
             this.reconnectTimeoutId = null;
         }
+    }
+
+    private showDisconnectedBadge(): void {
+        this.connectionStatusHasFailed = true;
+        this.clearConnectionStatusHideTimer();
+        this.connectionStatusPhase.set('offline');
+    }
+
+    private showReconnectedBadge(): void {
+        if (!this.connectionStatusHasFailed) {
+            return;
+        }
+
+        this.clearConnectionStatusHideTimer();
+        this.connectionStatusPhase.set('online');
+        this.connectionStatusHideTimeoutId = window.setTimeout(() => {
+            this.connectionStatusHideTimeoutId = null;
+            if (this.wsConnected()) {
+                this.connectionStatusPhase.set('hidden');
+            }
+        }, this.connectionStatusHideDelay);
+    }
+
+    private clearConnectionStatusHideTimer(): void {
+        if (this.connectionStatusHideTimeoutId !== null) {
+            clearTimeout(this.connectionStatusHideTimeoutId);
+            this.connectionStatusHideTimeoutId = null;
+        }
+    }
+
+    private hideConnectionStatusBadge(): void {
+        this.clearConnectionStatusHideTimer();
+        this.connectionStatusPhase.set('hidden');
     }
 
     /**
@@ -413,6 +482,12 @@ export class WsService {
         return this.wsSessionId;
     }
 
+    public getHttpBaseUrl(): string {
+        const parsedUrl = new URL(this.wsUrl);
+        parsedUrl.protocol = parsedUrl.protocol === 'wss:' ? 'https:' : 'http:';
+        return parsedUrl.origin;
+    }
+
     /**
      * Get connection ready promise
      */
@@ -427,6 +502,7 @@ export class WsService {
         this.closeWebSocket(true);
         this.wsConnected.set(false);
         this.wsReady = Promise.resolve();
+        this.hideConnectionStatusBadge();
     }
 
     /**
@@ -455,7 +531,7 @@ export class WsService {
      */
     public async sendAndWaitForResponse(payload: object, timeout: number = 5000): Promise<any | null> {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            console.warn('Cannot send: WebSocket not connected');
+            this.logger.warn('Cannot send: WebSocket not connected');
             return null;
         }
 
@@ -512,7 +588,7 @@ export class WsService {
      */
     public async subscribeToForceUpdates(instanceId: string, onRemoteUpdate: (data: SerializedForce) => void): Promise<void> {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            console.warn('Cannot subscribe: WebSocket not connected');
+            this.logger.warn('Cannot subscribe: WebSocket not connected');
             return;
         }
 

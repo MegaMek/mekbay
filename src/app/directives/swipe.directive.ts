@@ -86,7 +86,6 @@ export class SwipeDirective {
     // state
     readonly swiping = signal<boolean>(false);
 
-
     // Internal state
     private activePointerId: number | null = null;
     private startX = 0;
@@ -102,6 +101,10 @@ export class SwipeDirective {
     private unlistenMove?: () => void;
     private unlistenUp?: () => void;
     private unlistenCancel?: () => void;
+
+    private readonly onWindowPointerMove = (event: PointerEvent): void => this.onPointerMove(event);
+    private readonly onWindowPointerUp = (event: PointerEvent): void => this.onPointerUp(event);
+    private readonly onWindowPointerCancel = (event: PointerEvent): void => this.onPointerCancel(event);
 
     constructor() {
         // Set up pointer down listener
@@ -126,7 +129,7 @@ export class SwipeDirective {
             } catch {
                 // Ignore release errors
             }
-            this.pointerCaptured = false; 
+            this.pointerCaptured = false;
         }
 
         this.unlistenMove?.();
@@ -181,18 +184,17 @@ export class SwipeDirective {
         this.pointerCaptured = false;
         this.swipeAxis = null;
 
-        // Set up global listeners for move/up/cancel
-        this.unlistenMove = this.renderer.listen('window', 'pointermove', (e: PointerEvent) =>
-            this.onPointerMove(e)
-        );
-        this.unlistenUp = this.renderer.listen('window', 'pointerup', (e: PointerEvent) =>
-            this.onPointerUp(e)
-        );
-        this.unlistenCancel = this.renderer.listen('window', 'pointercancel', (e: PointerEvent) =>
-            this.onPointerCancel(e)
-        );
+        // Capture-phase listeners still run when child controls stop propagation.
+        this.unlistenMove = this.listenWindowPointer('pointermove', this.onWindowPointerMove);
+        this.unlistenUp = this.listenWindowPointer('pointerup', this.onWindowPointerUp);
+        this.unlistenCancel = this.listenWindowPointer('pointercancel', this.onWindowPointerCancel);
 
         return true;
+    }
+
+    private listenWindowPointer(type: 'pointermove' | 'pointerup' | 'pointercancel', listener: (event: PointerEvent) => void): () => void {
+        window.addEventListener(type, listener as EventListener, true);
+        return () => window.removeEventListener(type, listener as EventListener, true);
     }
 
     private onPointerDown(event: PointerEvent): void {

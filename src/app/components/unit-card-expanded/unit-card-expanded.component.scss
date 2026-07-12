@@ -71,6 +71,11 @@
         font-weight: normal;
         margin-left: 4px;
     }
+
+    .custom-unit-badge {
+        margin-left: 8px;
+        vertical-align: middle;
+    }
 }
 
 .expanded-alias {
@@ -172,7 +177,6 @@
     height: 1em;
     width: 1em;
     vertical-align: middle;
-    margin-left: 4px;
 }
 
 /* Stats (CBT) */
@@ -243,6 +247,16 @@
     color: var(--text-color-secondary);
 }
 
+.components-inline {
+    display: flex;
+    flex-direction: column;
+    gap: 4px 0px;
+}
+
+.expanded-components {
+    min-width: 0;
+}
+
 .components-pills,
 .specials-pills {
     display: flex;
@@ -268,8 +282,22 @@
 }
 
 .ammo-list {
-    margin-top: 4px;
     font-size: 0.85em;
+    line-height: 1.5;
+}
+
+.ammo-entry {
+    display: inline-block;
+    white-space: nowrap;
+    vertical-align: baseline;
+    margin-right: 0.3em;
+}
+
+.case-bracket {
+    color: #e8a64a;
+    font-size: 1.4em;
+    line-height: 0.8em;
+    vertical-align: -2px;
 }
 
 /* Search highlight */
@@ -297,6 +325,25 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+    }
+
+    .chassis {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+
+        > span:first-child {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
+        }
+
+        .custom-unit-badge {
+            flex: 0 0 auto;
+        }
     }
 
     .pilot-info {
@@ -379,46 +426,6 @@
     padding: 4px 8px 4px 4px;
     cursor: pointer;
     flex-shrink: 0;
-
-    input[type="checkbox"] {
-        opacity: 0;
-        width: 0;
-        height: 0;
-        position: absolute;
-    }
-
-    .custom-checkbox {
-        position: relative;
-        display: inline-block;
-        width: 16px;
-        height: 16px;
-        background-color: transparent;
-        border: 1px solid silver;
-        border-radius: 2px;
-        flex-shrink: 0;
-        transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
-        text-align: center;
-        font-size: 1em;
-        line-height: 16px;
-
-        &.checked {
-            background-color: var(--bt-yellow);
-            border-color: var(--bt-yellow);
-            color: #fff;
-        }
-    }
-
-    .checkbox-mark {
-        position: absolute;
-        left: 2px;
-        top: 0px;
-        width: 12px;
-        height: 16px;
-        font-size: 1em;
-        line-height: 16px;
-        text-align: center;
-        pointer-events: none;
-    }
 }
 
 /* =============================================
@@ -467,6 +474,16 @@
     .expanded-right:last-child {
         grid-column: span 2;
     }
+
+    .components-inline {
+        flex-direction: row;
+        align-items: baseline;
+        gap: 8px;
+    }
+
+    .components-inline .expanded-components {
+        flex: 1 1 auto;
+    }
 }
 
 @container (min-width: 1200px) {
@@ -477,4 +494,42 @@
     .expanded-right:last-child {
         grid-column: span 1;
     }
+
+    .components-inline {
+        flex-direction: column;
+        gap: 4px 0px;
+    }
+
+    .components-inline .expanded-components {
+        flex: initial;
+    }
+}
+
+.mega-mek-availability-icons {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.mega-mek-availability-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.mega-mek-availability-unknown {
+    font-size: 0.95rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.mega-mek-availability-icons .faction-megamek-availability-icon {
+    width: 1rem;
+    height: 1rem;
+    flex: 0 0 auto;
+    line-height: 0;
+    position: relative;
+    top: 0.18em;
 }

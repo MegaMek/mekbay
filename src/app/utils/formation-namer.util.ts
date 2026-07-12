@@ -31,12 +31,12 @@
  * affiliated with Microsoft.
  */
 
-import { ForceUnit } from '../models/force-unit.model';
-import { Faction } from '../models/factions.model';
-import { GameSystem } from '../models/common.model';
-import { FormationTypeDefinition, FormationMatch } from './formation-type.model';
+import type { ForceUnit } from '../models/force-unit.model';
+import type { Faction } from '../models/factions.model';
+import type { GameSystem } from '../models/common.model';
+import type { FormationTypeDefinition, FormationMatch } from './formation-type.model';
 import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
-import { UnitGroup } from '../models/force.model';
+import type { UnitGroup } from '../models/force.model';
 
 /*
  * Author: Drake
@@ -54,35 +54,32 @@ export class FormationNamerUtil {
 
     /**
      * Returns the list of valid formation definitions for a group of units.
-     * Each result includes whether it was matched via the Nova rule.
+     * Each result includes whether organization-level filtering was needed.
      */
     public static getAvailableFormationDefinitions(group: UnitGroup): FormationMatch[] {
-         const targetForce = group.force;
-         if (!targetForce) return [];
-        const factionName = targetForce.faction()?.name ?? 'Mercenary';
-        const isNova = group.sizeName()?.toLowerCase().includes('nova') ?? false;
-        return LanceTypeIdentifierUtil.identifyFormations(group.units(), targetForce.techBase(), factionName, targetForce.gameSystem, isNova);
+        return LanceTypeIdentifierUtil.identifyFormationsForGroup(group);
     }
 
     // ===== Utility methods =====
 
     /**
      * Composes the display name for a formation definition given the group context.
-     * When `novaFiltered` is true, appends a `*` to indicate the Nova rule was applied.
+     * When `requirementsFiltered` is true, appends a `*` to indicate that
+     * organization-level units were ignored while checking requirements.
      */
     public static composeFormationDisplayName(
         definition: FormationTypeDefinition,
         group: UnitGroup,
-        novaFiltered: boolean = false,
+        requirementsFiltered: boolean = false,
     ): string {
-        const sizeName = group.sizeName();
-        const suffix = novaFiltered ? ' *' : '';
-        if (sizeName && definition.name.includes(sizeName)) {
+        const organizationalName = group.organizationalName();
+        const suffix = requirementsFiltered ? ' *' : '';
+        if (organizationalName && definition.name.includes(organizationalName)) {
             return definition.name + suffix;
         }
-        if (sizeName?.includes('Level')) {
-            return sizeName + ' - ' + definition.name + suffix;
+        if (organizationalName?.includes('Level')) {
+            return organizationalName + ' - ' + definition.name + suffix;
         }
-        return definition.name + ' ' + sizeName + suffix;
+        return definition.name + ' ' + organizationalName + suffix;
     }
 }

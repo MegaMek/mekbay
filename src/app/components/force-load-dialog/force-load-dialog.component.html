@@ -10,55 +10,91 @@
                     #searchInput
                     class="bt-input search-input"
                     type="text"
-                    placeholder="Search forces, models, chassis, pilots..."
+                    placeholder="Search forces, notes, tags, models, chassis, pilots..."
                     [value]="searchText()"
                     (input)="onSearch($any($event.target).value)" />
             </div>
         }
         @if (activeTab() === 'Hangar') {
             <div class="filter-bar">
-                <button class="filter-btn" 
-                    [class.active]="gameTypeFilter() === 'all'" 
-                    (click)="onGameTypeFilter('all')">All</button>
-                <button class="filter-btn" 
-                    [class.active]="gameTypeFilter() === GameSystem.CLASSIC" 
-                    (click)="onGameTypeFilter(GameSystem.CLASSIC)">Battletech</button>
-                <button class="filter-btn" 
-                    [class.active]="gameTypeFilter() === GameSystem.ALPHA_STRIKE" 
-                    (click)="onGameTypeFilter(GameSystem.ALPHA_STRIKE)">Alpha Strike</button>
+                <button class="filter-btn"
+                    [class.active]="hangarTagFilter() === hangarAllFilter"
+                    (click)="setHangarTagFilter(hangarAllFilter)">
+                    <span class="filter-label">All</span>
+                    <span class="filter-count">{{ getHangarGameTypeCount('all') }}</span>
+                </button>
+                <button class="filter-btn"
+                    [class.active]="hangarTagFilter() === hangarClassicFilter"
+                    (click)="toggleHangarTagFilter(hangarClassicFilter)">
+                    <span class="filter-label">Battletech</span>
+                    <span class="filter-count">{{ getHangarGameTypeCount(GameSystem.CLASSIC) }}</span>
+                </button>
+                <button class="filter-btn"
+                    [class.active]="hangarTagFilter() === hangarAlphaStrikeFilter"
+                    (click)="toggleHangarTagFilter(hangarAlphaStrikeFilter)">
+                    <span class="filter-label">Alpha Strike</span>
+                    <span class="filter-count">{{ getHangarGameTypeCount(GameSystem.ALPHA_STRIKE) }}</span>
+                </button>
+                @if (getHangarTagCount(hangarUnfiledFilter) > 0) {
+                    <button type="button"
+                        class="filter-btn folder-filter-btn"
+                        [class.active]="hangarTagFilter() === hangarUnfiledFilter"
+                        (click)="toggleHangarTagFilter(hangarUnfiledFilter)">
+                        <span class="filter-label">Untagged</span>
+                        <span class="filter-count">{{ getHangarTagCount(hangarUnfiledFilter) }}</span>
+                    </button>
+                }
+                @for (tag of hangarTags(); track tag.id) {
+                    @if (tag.count > 0) {
+                    <button type="button"
+                        class="filter-btn folder-filter-btn"
+                        [class.active]="hangarTagFilter() === tag.id"
+                        (click)="toggleHangarTagFilter(tag.id)">
+                        <span class="filter-label">{{ tag.label }}</span>
+                        <span class="filter-count">{{ tag.count }}</span>
+                    </button>
+                    }
+                }
             </div>
             @if (loading()) {
-                <div class="loading-spinner">Loading forces...</div>
+                <loading-spinner class="loading-spinner" message="Loading forces..." ariaLabel="Loading forces"></loading-spinner>
             } @else if (filteredForces().length === 0) {
-                <div class="empty-state">No saved forces found.</div>
+                <div class="empty-state">{{ getHangarEmptyStateMessage() }}</div>
             } @else {
-                <div class="force-list">
-                    @for (force of filteredForces(); let i = $index; track force.instanceId) {
-                    @defer (on viewport) {
+                <cdk-virtual-scroll-viewport
+                    #hangarViewport
+                    class="force-list virtual-hangar-list"
+                    [itemSize]="hangarItemSize()"
+                    [style.--hangar-item-size.px]="hangarItemSize()"
+                    [minBufferPx]="hangarMinBufferPx"
+                    [maxBufferPx]="hangarMaxBufferPx"
+                    tabindex="0">
+                    <div class="virtual-hangar-item"
+                        *cdkVirtualFor="let force of filteredForces(); let i = index; trackBy: trackForce"
+                        [attr.data-force-key]="getForceVirtualKey(i, force)">
                     <div class="force-entry" [class.selected]="selectedForce() === force" (click)="selectForce(force)"
                         tabindex="0">
                         <div class="force-header">
-                            <div class="faction-name-wrapper">
-                                @if (force.factionId | factionImg; as factionImgUrl) {
-                                    <img [src]="factionImgUrl" class="faction-icon" />
-                                }
-                                <div class="force-name">{{ force.name }}</div>
-                            </div>
-                            <div class="force-info">                                
-                                <span class="force-timestamp">
-                                    <span class="game-type-badge" [class.as]="force.type === 'as'">{{ getGameTypeLabel(force.type) }}</span>
-                                        @if (force.local) {
-                                            <img
-                                        src="/images/floppy.svg"
-                                        class="save-state-icon" alt="Saved locally"
-                                        title="Stored locally" />
+                            <div class="force-header-main">
+                                <div class="faction-name-wrapper">
+                                    @if (force.faction) {
+                                        <img [src]="force.faction.img" class="faction-icon" />
                                     }
-                                        <img
-                                        [src]="force.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'"
-                                        class="save-state-icon" alt="Cloud status"
-                                        title="{{ force.cloud ? 'Stored online' : 'Not stored online' }}" />
-                                        
-                                        {{ force.timestamp | formatTimestamp }}</span>
+                                    @if (force.era; as era) {
+                                        @if (era.img || era.icon; as eraImg) {
+                                            <img [src]="eraImg" class="era-icon" [alt]="era.name || 'Era'" [title]="era.name || 'Era'" />
+                                        }
+                                    }
+                                    <div class="force-name">{{ force.name }}</div>
+                                </div>
+                            </div>
+                            <div class="force-info">
+                                <span class="game-type-badge" [class.as]="force.type === 'as'">{{ getGameTypeLabel(force.type) }}</span>
+                                @if (force.local) {
+                                    <img src="/images/floppy.svg" class="save-state-icon" alt="Saved locally" title="Stored locally" />
+                                }
+                                <img [src]="force.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'" class="save-state-icon" alt="Cloud status"
+                                    title="{{ force.cloud ? 'Stored online' : 'Not stored online' }}" />
                                 @if (force.type === 'as') {
                                     @if (force.pv && force.pv > 0) {
                                         <span class="force-bv">PV: {{ force.pv | number }}</span>
@@ -68,8 +104,44 @@
                                         <span class="force-bv">BV: {{ force.bv | number }}</span>
                                     }
                                 }
+                                <span class="timestamp">{{ force.timestamp | formatTimestamp }}</span>
                             </div>
+                            <force-tags
+                                class="force-entry-tags"
+                                [force]="force"
+                                [mode]="'full'"
+                                [editable]="!!force.instanceId && force.owned"
+                                [tagsVersion]="forceTagsVersion()"
+                                (tagClick)="onForceTagClick($event)">
+                            </force-tags>
                         </div>
+                        @if (hasVisibleNote(force.note)) {
+                            @let noteIsExpandable = isForceNoteExpandable(force);
+                            <div class="force-note-shell">
+                                @if (noteIsExpandable) {
+                                <button class="force-note-toggle" type="button" [attr.aria-expanded]="isForceNoteExpanded(force)" (click)="toggleForceNote(force, $event)">
+                                    <svg class="chevron" width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!isForceNoteExpanded(force)">
+                                        <path d="M0 2l5 6 5-6z"/>
+                                    </svg>
+                                    <span
+                                        class="force-note-summary"
+                                        [class.clamped]="!isForceNoteExpanded(force)"
+                                        [measureClampOverflow]="force.note ?? ''"
+                                        [measureClampOverflowLines]="notePreviewLineCount"
+                                        (measureClampOverflowChange)="onForceNoteOverflowChange(force, $event)">{{ force.note }}</span>
+                                </button>
+                                } @else {
+                                    <div class="force-note-static">
+                                        <span
+                                            class="force-note-summary"
+                                            [class.clamped]="true"
+                                            [measureClampOverflow]="force.note ?? ''"
+                                            [measureClampOverflowLines]="notePreviewLineCount"
+                                            (measureClampOverflowChange)="onForceNoteOverflowChange(force, $event)">{{ force.note }}</span>
+                                    </div>
+                                }
+                            </div>
+                        }
                         <div class="unit-scroll">
                             @for (group of force.groups; let gi = $index; track gi) {
                             <div class="unit-group">
@@ -81,6 +153,18 @@
                                 <div class="units">
                                     @for (unitEntry of group.units; let i = $index; track i) {
                                     <div class="unit-square compact-mode" [class.destroyed]="unitEntry.destroyed" [class.missing]="!unitEntry.unit">
+                                        @if (unitEntry.commander) {
+                                            <div class="group-commander-indicator" aria-hidden="true">
+                                                <svg class="group-commander-icon" width="42.08" height="51.88" viewBox="0 0 21.04 25.94" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" focusable="false">
+                                                    <g transform="translate(-.02)">
+                                                        <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
+                                                            <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
+                                                            <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
+                                                        </g>
+                                                    </g>
+                                                </svg>
+                                            </div>
+                                        }
                                         <unit-icon [unit]="unitEntry.unit" [size]="32"></unit-icon>
                                         @if (unitDisplayName === 'chassisModel' 
                                             || unitDisplayName === 'both'
@@ -92,6 +176,9 @@
                                         <div class="unit-alias" 
                                             [class.thin]="unitDisplayName === 'both'">{{ unitEntry.alias }}</div>
                                         }
+                                        <div class="pilot-info info-slot numeric slim">
+                                            <span class="value">{{ getUnitPilotStats(unitEntry, force.type) }}</span>
+                                        </div>
                                     </div>
                                     }
                                 </div>
@@ -99,46 +186,9 @@
                             }
                         </div>
                     </div>
-                    } @placeholder {
-                    <div class="force-entry-placeholder"></div>
-                    }
-                    }
-                </div>
+                    </div>
+                </cdk-virtual-scroll-viewport>
             }
-            <div class="tab-footer glass">
-                <div class="sort-controls">
-                    <select class="bt-input sort-select"
-                        (change)="setSortOrder($any($event.target).value)">
-                        @for (opt of activeSortOptions(); let i = $index; track i) {
-                            <option [value]="opt.key" [selected]="opt.key === activeSort()">{{ opt.label }}</option>
-                        }
-                    </select>
-                    <button type="button" class="bt-button sort-direction-btn"
-                        (click)="setSortDirection(activeSortDirection() === 'asc' ? 'desc' : 'asc')"
-                        [title]="activeSortDirection() === 'asc' ? 'Ascending' : 'Descending'"
-                        [attr.aria-label]="activeSortDirection() === 'asc' ? 'Ascending' : 'Descending'">
-                        @if (activeSortDirection() === 'asc') {
-                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                                aria-hidden="true" role="img">
-                                <path d="M4 16L13 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M6 11H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M8 6L13 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M17 4L17 20L20 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                                    stroke-linejoin="round" />
-                            </svg>
-                        } @else {
-                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                                aria-hidden="true" role="img">
-                                <path d="M4 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M6 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M8 18H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M17 20V4L20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                                    stroke-linejoin="round" />
-                            </svg>
-                        }
-                    </button>
-                </div>
-            </div>
         }
         @if (activeTab() === 'Force Packs') {
             @if (filteredPacks().length === 0) {
@@ -183,43 +233,9 @@
                     }
                 </div>
             }
-            <div class="tab-footer glass">
-                <div class="sort-controls">
-                    <select class="bt-input sort-select"
-                        (change)="setSortOrder($any($event.target).value)">
-                        @for (opt of activeSortOptions(); let i = $index; track i) {
-                            <option [value]="opt.key" [selected]="opt.key === activeSort()">{{ opt.label }}</option>
-                        }
-                    </select>
-                    <button type="button" class="bt-button sort-direction-btn"
-                        (click)="setSortDirection(activeSortDirection() === 'asc' ? 'desc' : 'asc')"
-                        [title]="activeSortDirection() === 'asc' ? 'Ascending' : 'Descending'"
-                        [attr.aria-label]="activeSortDirection() === 'asc' ? 'Ascending' : 'Descending'">
-                        @if (activeSortDirection() === 'asc') {
-                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                                aria-hidden="true" role="img">
-                                <path d="M4 16L13 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M6 11H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M8 6L13 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M17 4L17 20L20 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                                    stroke-linejoin="round" />
-                            </svg>
-                        } @else {
-                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
-                                aria-hidden="true" role="img">
-                                <path d="M4 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M6 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M8 18H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                <path d="M17 20V4L20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                                    stroke-linejoin="round" />
-                            </svg>
-                        }
-                    </button>
-                </div>
-            </div>
         }
         @if (activeTab() === 'Operations') {
-            <div class="filter-bar">
+            <div class="filter-bar" role="group" aria-label="Operation game type filter">
                 <button class="filter-btn" 
                     [class.active]="gameTypeFilter() === 'all'" 
                     (click)="onGameTypeFilter('all')">All</button>
@@ -231,7 +247,7 @@
                     (click)="onGameTypeFilter(GameSystem.ALPHA_STRIKE)">Alpha Strike</button>
             </div>
             @if (operationsLoading()) {
-                <div class="loading-spinner">Loading operations...</div>
+                <loading-spinner class="loading-spinner" message="Loading operations..." ariaLabel="Loading operations"></loading-spinner>
             } @else if (filteredOperations().length === 0) {
                 <div class="empty-state">No saved operations found.</div>
             } @else {
@@ -246,21 +262,43 @@
                                     </button>
                                 </span>
                             </div>
-                            <div class="operation-meta">
+                            <div class="toe-info">
                                 @for (gt of op.gameTypes; track gt) {
                                     <span class="game-type-badge" [class.as]="gt === 'as'">{{ gt === 'as' ? 'AS' : 'CBT' }}</span>
                                 }
-                                <span class="operation-timestamp">
-                                    @if (op.local) {
-                                        <img src="/images/floppy.svg" class="save-state-icon" alt="Saved locally" title="Stored locally" />
-                                    }
-                                    <img [src]="op.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'" class="save-state-icon" alt="Cloud status" [title]="op.cloud ? 'Stored online' : 'Not stored online'" />
-                                    {{ op.timestamp | formatTimestamp }}
-                                </span>
+                                @if (op.local) {
+                                    <img src="/images/floppy.svg" class="save-state-icon" alt="Saved locally" title="Stored locally" />
+                                }
+                                <img [src]="op.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'" class="save-state-icon" alt="Cloud status" [title]="op.cloud ? 'Stored online' : 'Not stored online'" />
+                                <span class="timestamp">{{ op.timestamp | formatTimestamp }}</span>
                             </div>
                         </div>
-                        @if (op.note) {
-                            <span class="operation-note">{{ op.note }}</span>
+                        @if (hasVisibleNote(op.note)) {
+                            @let noteIsExpandable = isOperationNoteExpandable(op);
+                            <div class="operation-note-shell">
+                                @if (noteIsExpandable) {
+                                <button class="operation-note-toggle" type="button" [attr.aria-expanded]="isOperationNoteExpanded(op)" (click)="toggleOperationNote(op, $event)">
+                                    <svg class="chevron" width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!isOperationNoteExpanded(op)">
+                                        <path d="M0 2l5 6 5-6z"/>
+                                    </svg>
+                                    <span
+                                        class="operation-note-summary"
+                                        [class.clamped]="!isOperationNoteExpanded(op)"
+                                        [measureClampOverflow]="op.note ?? ''"
+                                        [measureClampOverflowLines]="notePreviewLineCount"
+                                        (measureClampOverflowChange)="onOperationNoteOverflowChange(op, $event)">{{ op.note }}</span>
+                                </button>
+                                } @else {
+                                    <div class="operation-note-static">
+                                        <span
+                                            class="operation-note-summary"
+                                            [class.clamped]="true"
+                                            [measureClampOverflow]="op.note ?? ''"
+                                            [measureClampOverflowLines]="notePreviewLineCount"
+                                            (measureClampOverflowChange)="onOperationNoteOverflowChange(op, $event)">{{ op.note }}</span>
+                                    </div>
+                                }
+                            </div>
                         }
                         <div class="operation-sides">
                             <op-preview [forces]="op.forces"></op-preview>
@@ -272,9 +310,9 @@
         }
         @if (activeTab() === 'TO&E') {
             @if (organizationsLoading()) {
-                <div class="loading-spinner">Loading organizations...</div>
+                <loading-spinner class="loading-spinner" message="Loading organizations..." ariaLabel="Loading organizations"></loading-spinner>
             } @else if (filteredOrganizations().length === 0) {
-                <div class="empty-state">No saved organizations found.</div>
+                <div class="empty-state">{{ getOrganizationEmptyStateMessage() }}</div>
             } @else {
                 <div class="force-list">
                     @for (org of filteredOrganizations(); track org.organizationId) {
@@ -286,12 +324,12 @@
                                 }
                                 <div class="force-name">{{ org.name || 'Unnamed Organization' }}</div>
                             </div>
-                            <div class="force-info">
-                                <span class="force-timestamp">
-                                    @if (org.local) {
-                                        <img src="/images/floppy.svg" class="save-state-icon" alt="Saved locally" title="Stored locally" />
-                                    }
-                                    <img [src]="org.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'" class="save-state-icon" alt="Cloud status" [title]="org.cloud ? 'Stored online' : 'Not stored online'" />
+                            <div class="org-info">
+                                @if (org.local) {
+                                    <img src="/images/floppy.svg" class="save-state-icon" alt="Saved locally" title="Stored locally" />
+                                }
+                                <img [src]="org.cloud ? '/images/cloud-check.svg' : '/images/cloud-slash.svg'" class="save-state-icon" alt="Cloud status" [title]="org.cloud ? 'Stored online' : 'Not stored online'" />
+                                <span class="timestamp">
                                     {{ org.timestamp | formatTimestamp }}
                                 </span>
                             </div>
@@ -305,18 +343,88 @@
                 </div>
             }
         }
+        <div class="tab-footer">
+            @if (activeTab() === 'Hangar') {
+            <input #mulFileInput type="file" accept=".mul,application/xml,text/xml" class="hidden-file-input" (change)="onMulFileSelected($event)" />
+            <button type="button" class="bt-button mul-load-btn" (click)="openMulFilePicker()">Load from MUL...</button>
+            <div class="spanner"></div>
+            <div class="footer-filter-controls">
+                <compact-filter-menu
+                    [options]="hangarFactionOptions()"
+                    [selectedId]="hangarFactionFilter()"
+                    allLabel="All factions"
+                    ariaLabel="Filter by faction"
+                    fallbackLabel="F"
+                    (selectedIdChange)="setHangarFactionFilter($event)">
+                </compact-filter-menu>
+                <compact-filter-menu
+                    [options]="hangarEraOptions()"
+                    [selectedId]="hangarEraFilter()"
+                    allLabel="All eras"
+                    ariaLabel="Filter by era"
+                    fallbackLabel="E"
+                    (selectedIdChange)="setHangarEraFilter($event)">
+                </compact-filter-menu>
+            </div>
+            } @else if (activeTab() === 'TO&E') {
+            <div class="footer-filter-controls">
+                <compact-filter-menu
+                    [options]="organizationFactionOptions()"
+                    [selectedId]="organizationFactionFilter()"
+                    allLabel="All factions"
+                    ariaLabel="Filter by faction"
+                    fallbackLabel="F"
+                    (selectedIdChange)="setOrganizationFactionFilter($event)">
+                </compact-filter-menu>
+            </div>
+            }
+            <div class="sort-controls">
+                <select class="bt-input sort-select"
+                    (change)="setSortOrder($any($event.target).value)">
+                    @for (opt of activeSortOptions(); let i = $index; track i) {
+                        <option [value]="opt.key" [selected]="opt.key === activeSort()">{{ opt.label }}</option>
+                    }
+                </select>
+                <button type="button" class="bt-button sort-direction-btn"
+                    (click)="setSortDirection(activeSortDirection() === 'asc' ? 'desc' : 'asc')"
+                    [title]="activeSortDirection() === 'asc' ? 'Ascending' : 'Descending'"
+                    [attr.aria-label]="activeSortDirection() === 'asc' ? 'Ascending' : 'Descending'">
+                    @if (activeSortDirection() === 'asc') {
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
+                            aria-hidden="true" role="img">
+                            <path d="M4 16L13 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                            <path d="M6 11H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                            <path d="M8 6L13 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                            <path d="M17 4L17 20L20 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                stroke-linejoin="round" />
+                        </svg>
+                    } @else {
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false"
+                            aria-hidden="true" role="img">
+                            <path d="M4 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                            <path d="M6 13H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                            <path d="M8 18H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                            <path d="M17 20V4L20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                stroke-linejoin="round" />
+                        </svg>
+                    }
+                </button>
+            </div>
+        </div>
     </div>
     <div dialog-footer class="footer">
         @if (activeTab() === 'TO&E') {
-            <button class="modal-btn bt-button" (click)="onNewOrganization();">NEW</button>
             <button class="modal-btn bt-button" (click)="onOpenOrganization();" [disabled]="!selectedOrganization()">OPEN</button>
+            <button class="modal-btn bt-button" (click)="onNewOrganization();">NEW</button>
             <button class="modal-btn bt-button danger" (click)="onDeleteOrganization();" [disabled]="!selectedOrganization()">DELETE</button>
             <button class="modal-btn bt-button" (click)="onClose();">DISMISS</button>
+        } @else if (activeTab() === 'Operations') {
+            <button class="modal-btn bt-button" (click)="onLoad();" [disabled]="!selectedOperation()">DEPLOY</button>
+            <button class="modal-btn bt-button" (click)="onNewOperation();" [disabled]="!canCreateOperation()" [title]="newOperationTitle()" [attr.aria-label]="newOperationTitle()">{{ operationCreateBusy() ? 'SAVING...' : 'NEW' }}</button>
+            <button class="modal-btn bt-button danger" (click)="onDelete();" [disabled]="!selectedOperation()">DELETE</button>
+            <button class="modal-btn bt-button" (click)="onClose();">DISMISS</button>
         } @else {
-            <button class="modal-btn bt-button" (click)="onLoad();" [disabled]="activeTab() === 'Operations' ? !selectedOperation() : (!selectedForce() && !selectedPack())">LOAD</button>
-            @if (forceBuilderService.loadedForces().length > 0 && activeTab() !== 'Operations') {
-                <button class="modal-btn bt-button" (click)="onAdd();" [disabled]="(!selectedForce() && !selectedPack()) || isSelectedForceLoaded()">ADD</button>
-            }
+            <button class="modal-btn bt-button" (click)="onLoad();" [disabled]="activeTab() === 'Operations' ? !selectedOperation() : (!selectedForce() && !selectedPack())">DEPLOY</button>
             <button class="modal-btn bt-button danger" (click)="onDelete();" [disabled]="activeTab() === 'Operations' ? !selectedOperation() : !selectedForce()">DELETE</button>
             <button class="modal-btn bt-button" (click)="onClose();">DISMISS</button>
         }

@@ -31,9 +31,9 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentInteractionHandler, HandlerContext } from '../../services/equipment-interaction-registry.service';
-import { MountedEquipment } from '../../models/force-serialization';
-import { PickerChoice, PickerValue } from '../../components/picker/picker.interface';
+import { EquipmentInteractionHandler, type HandlerContext } from '../../services/equipment-interaction-registry.service';
+import type { MountedEquipment } from '../../models/force-serialization';
+import type { PickerChoice, PickerValue } from '../../components/picker/picker.interface';
 
 /**
  * Base handler for equipment with multiple modes
@@ -49,7 +49,7 @@ export abstract class MultiModeHandler extends EquipmentInteractionHandler {
             label: mode.label,
             shortLabel: mode.shortLabel,
             value: mode.value,
-            disabled: equipment.destroyed,
+            disabled: equipment.isUnavailable(),
             active: currentState === mode.value
         }));
     }

@@ -45,12 +45,13 @@ import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { LayoutService } from '../../services/layout.service';
 import { TaggingService } from '../../services/tagging.service';
 import { UnitCardCompactComponent } from '../unit-card-compact/unit-card-compact.component';
-import { UnitDetailsDialogComponent, UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
+import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { VariantDropdownPanelComponent } from './variant-dropdown-panel.component';
-import { Unit } from '../../models/units.model';
-import { PackUnitEntry, ResolvedPack } from '../../utils/force-pack.util';
+import type { Unit } from '../../models/units.model';
+import { type PackUnitEntry, type ResolvedPack } from '../../utils/force-pack.util';
+import { isSameVariantGroup } from '../../utils/unit-variant.util';
 import { compareUnitsByName } from '../../utils/sort.util';
-import { TagClickEvent } from '../unit-tags/unit-tags.component';
+import type { TagClickEvent } from '../unit-tags/unit-tags.component';
 import { GameSystem } from '../../models/common.model';
 import { GameService } from '../../services/game.service';
 
@@ -114,12 +115,8 @@ export class CustomizeForcePackDialogComponent {
         
         const unit = this.customizableUnits()[idx];
         if (!unit?.unit) return [];
-        
-        const targetType = unit.unit.type;
-        const targetChassis = unit.unit.chassis;
-        
-        return this.dataService.getUnits()
-            .filter(u => u.type === targetType && u.chassis === targetChassis)
+
+        return this.getVariantsForUnit(unit.unit)
             .sort((a, b) => {
                 // Sort by year first, then by name
                 const yearDiff = (a.year ?? 0) - (b.year ?? 0);
@@ -174,10 +171,7 @@ export class CustomizeForcePackDialogComponent {
         }
 
         // Phone mode: use centered overlay
-        const targetType = unit.unit.type;
-        const targetChassis = unit.unit.chassis;
-        const variants = this.dataService.getUnits()
-            .filter(u => u.type === targetType && u.chassis === targetChassis)
+        const variants = this.getVariantsForUnit(unit.unit)
             .sort(compareUnitsByName);
 
         if (variants.length === 0) return;
@@ -219,6 +213,11 @@ export class CustomizeForcePackDialogComponent {
         });
 
         this.openDropdownIndex.set(index);
+    }
+
+    private getVariantsForUnit(unit: Unit): Unit[] {
+        return this.dataService.getUnits()
+            .filter(candidate => isSameVariantGroup(candidate, unit));
     }
 
     private closeDropdown(): void {

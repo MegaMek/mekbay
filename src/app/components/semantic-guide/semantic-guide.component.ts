@@ -34,8 +34,9 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { GameService } from '../../services/game.service';
-import { ADVANCED_FILTERS, AdvFilterType, UnitSearchFiltersService } from '../../services/unit-search-filters.service';
+import { ADVANCED_FILTERS, AdvFilterType } from '../../services/unit-search-filters.model';
 import { GameSystem } from '../../models/common.model';
+import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 
 /*
  * Author: Drake
@@ -44,7 +45,7 @@ import { GameSystem } from '../../models/common.model';
 interface FilterInfo {
     key: string;
     label: string;
-    type: 'dropdown' | 'range' | 'semantic';
+    type: 'dropdown' | 'range' | 'boolean' | 'semantic';
     multistate?: boolean;
     countable?: boolean;
 }
@@ -76,7 +77,7 @@ export class SemanticGuideComponent {
     appendToSearch(filterText: string): void {
         const current = this.filtersService.searchText().trim();
         const newText = current ? `${current} ${filterText}` : filterText;
-        this.filtersService.searchText.set(newText);
+        this.filtersService.setSearchText(newText);
     }
 
     /** Get filters for a specific game system */
@@ -84,9 +85,11 @@ export class SemanticGuideComponent {
         return ADVANCED_FILTERS
             .filter(f => !f.game || f.game === gs)
             .map(f => {
-                let type: 'dropdown' | 'range' | 'semantic';
+                let type: FilterInfo['type'];
                 if (f.type === AdvFilterType.RANGE) {
                     type = 'range';
+                } else if (f.type === AdvFilterType.BOOLEAN) {
+                    type = 'boolean';
                 } else if (f.type === AdvFilterType.SEMANTIC) {
                     type = 'semantic';
                 } else {
@@ -105,11 +108,13 @@ export class SemanticGuideComponent {
 
     /** Filters available for Classic BattleTech */
     cbtFilters = computed<FilterInfo[]>(() => this.getFiltersForSystem(GameSystem.CLASSIC));
+    cbtBooleanFilters = computed(() => this.cbtFilters().filter(f => f.type === 'boolean'));
     cbtDropdownFilters = computed(() => this.cbtFilters().filter(f => f.type === 'dropdown'));
     cbtRangeFilters = computed(() => this.cbtFilters().filter(f => f.type === 'range'));
 
     /** Filters available for Alpha Strike */
     asFilters = computed<FilterInfo[]>(() => this.getFiltersForSystem(GameSystem.ALPHA_STRIKE));
+    asBooleanFilters = computed(() => this.asFilters().filter(f => f.type === 'boolean'));
     asDropdownFilters = computed(() => this.asFilters().filter(f => f.type === 'dropdown'));
     asRangeFilters = computed(() => {
         const ranges = this.asFilters().filter(f => f.type === 'range');

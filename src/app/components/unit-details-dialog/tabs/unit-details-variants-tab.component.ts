@@ -33,13 +33,15 @@
 
 import { Component, ChangeDetectionStrategy, input, inject, computed, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Unit } from '../../../models/units.model';
+import type { Unit } from '../../../models/units.model';
 import { DataService } from '../../../services/data.service';
-import { compareUnitsByName } from '../../../utils/sort.util';
+import { compareUnitsByName, naturalCompare } from '../../../utils/sort.util';
 import { UnitCardExpandedComponent } from '../../unit-card-expanded/unit-card-expanded.component';
-import { TagClickEvent } from '../../unit-tags/unit-tags.component';
-import { SORT_OPTIONS } from '../../../services/unit-search-filters.service';
+import type { TagClickEvent } from '../../unit-tags/unit-tags.component';
+import { isMegaMekRaritySortKey, SORT_OPTIONS } from '../../../services/unit-search-filters.model';
 import { GameService } from '../../../services/game.service';
+import { OptionsService } from '../../../services/options.service';
+import { isSameVariantGroup } from '../../../utils/unit-variant.util';
 
 /**
  * State for the variants tab that can be persisted by parent components.
@@ -71,9 +73,10 @@ export const DEFAULT_VARIANTS_TAB_STATE: VariantsTabState = {
 export class UnitDetailsVariantsTabComponent {
     private dataService = inject(DataService);
     private gameService = inject(GameService);
+    private optionsService = inject(OptionsService);
 
     /** Sort options available for the current game system (excluding Relevance) */
-    readonly SORT_OPTIONS = SORT_OPTIONS.filter(opt => opt.key !== '');
+    readonly SORT_OPTIONS = SORT_OPTIONS.filter(opt => opt.key !== '' && !isMegaMekRaritySortKey(opt.key));
 
     /** The current unit to find variants for */
     unit = input.required<Unit>();
@@ -103,6 +106,7 @@ export class UnitDetailsVariantsTabComponent {
     viewMode = computed(() => this.state().viewMode);
     selectedSort = computed(() => this.state().sortKey);
     selectedSortDirection = computed(() => this.state().sortDirection);
+    readonly useHex = computed<boolean>(() => this.optionsService.options().ASUseHex);
 
     /** Get the label for the currently selected sort option */
     selectedSortLabel = computed(() => {
@@ -130,18 +134,16 @@ export class UnitDetailsVariantsTabComponent {
     /** Get the current game system for filtering sort options */
     gameSystem = computed(() => this.gameService.currentGameSystem());
 
-    /** All variants of the same chassis (same type and chassis name) */
+    /** All variants of the same chassis (same type, subtype and chassis name) */
     variants = computed<Unit[]>(() => {
         const currentUnit = this.unit();
         if (!currentUnit) return [];
 
-        const targetType = currentUnit.type;
-        const targetChassis = currentUnit.chassis;
         const sortKey = this.selectedSort();
         const sortDir = this.selectedSortDirection();
 
         const filtered = this.dataService.getUnits()
-            .filter(u => u.type === targetType && u.chassis === targetChassis);
+            .filter(u => isSameVariantGroup(u, currentUnit));
 
         // Sort based on selected key
         return filtered.sort((a, b) => {
@@ -151,9 +153,9 @@ export class UnitDetailsVariantsTabComponent {
             if (typeof valA === 'number' && typeof valB === 'number') {
                 result = valA - valB;
             } else if (typeof valA === 'string' && typeof valB === 'string') {
-                result = valA.localeCompare(valB);
+                result = naturalCompare(valA, valB);
             } else {
-                result = String(valA ?? '').localeCompare(String(valB ?? ''));
+                result = naturalCompare(String(valA ?? ''), String(valB ?? ''));
             }
             if (result == 0) {
                 // Tiebreaker: sort by name

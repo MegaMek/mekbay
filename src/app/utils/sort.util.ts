@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Unit } from "../models/units.model";
+import type { Unit } from "../models/units.model";
 import { escapeRegExp, removeAccents } from './string.util';
 
 /*

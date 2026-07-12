@@ -31,15 +31,16 @@
  * affiliated with Microsoft.
  */
 
-import { signal, computed, Injector, Signal, WritableSignal } from '@angular/core';
-import { DataService } from '../services/data.service';
-import { Unit } from "./units.model";
-import { UnitInitializerService } from '../services/unit-initializer.service';
+import { signal, computed, type Injector, type Signal, type WritableSignal } from '@angular/core';
+import type { DataService } from '../services/data.service';
+import type { Unit } from "./units.model";
+import type { UnitInitializerService } from '../services/unit-initializer.service';
 import { generateUUID } from '../services/ws.service';
-import { SerializedUnit } from './force-serialization';
-import { Force, UnitGroup } from './force.model';
-import { ForceUnitState } from './force-unit-state.model';
-import { CrewMember } from './crew-member.model';
+import type { SerializedUnit } from './force-serialization';
+import type { Force, UnitGroup } from './force.model';
+import type { ForceUnitState } from './force-unit-state.model';
+import type { ConditionData } from './force-unit-state.model';
+import type { CrewMember } from './crew-member.model';
 
 /*
  * Author: Drake
@@ -47,6 +48,7 @@ import { CrewMember } from './crew-member.model';
 export abstract class ForceUnit {
     protected unit: Unit; // Original unit data
     private _forceRef = signal<Force>(null!);
+    protected readonly _formationCommander = signal<boolean>(false);
     id: string;
     updatedTs: number = 0;
     initialized = false;
@@ -70,6 +72,7 @@ export abstract class ForceUnit {
     protected abstract state: ForceUnitState;
 
     readOnly = computed(() => this.force.owned() === false);
+    readonly commander = this._formationCommander.asReadonly();
 
     abstract readonly alias: Signal<string | undefined>;
 
@@ -117,11 +120,32 @@ export abstract class ForceUnit {
     }
 
     get shutdown(): boolean {
-        return this.state.shutdown();
+        return this.state.hasCondition('shutdown');
     }
 
-    setShutdown(shutdown: boolean) {
-        this.state.shutdown.set(shutdown);
+    get conditions(): ReadonlyMap<string, ConditionData | undefined> {
+        return this.state.conditions();
+    }
+
+    getConditions(): ReadonlyMap<string, ConditionData | undefined> {
+        return this.state.conditions();
+    }
+
+    getCondition(condition: string): boolean {
+        return this.state.hasCondition(condition);
+    }
+
+    isComputedCondition(_condition: string): boolean {
+        return false;
+    }
+
+    hasComputedCondition(_condition: string): boolean {
+        return false;
+    }
+
+    setCondition(condition: string, active: boolean) {
+        if (!this.state.setCondition(condition, active)) return;
+        this.setModified();
     }
 
     /** Get/set the C3 visual editor position for this unit */
@@ -131,6 +155,17 @@ export abstract class ForceUnit {
 
     setC3Position(pos: { x: number; y: number } | null) {
         this.state.c3Position.set(pos);
+    }
+
+    setFormationCommander(value: boolean, markModified: boolean = true): void {
+        if (this._formationCommander() === value) {
+            return;
+        }
+
+        this._formationCommander.set(value);
+        if (markModified) {
+            this.setModified();
+        }
     }
 
     getUnit(): Unit {
