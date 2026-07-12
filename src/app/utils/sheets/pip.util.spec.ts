@@ -129,6 +129,30 @@ describe('Pip renderers', () => {
         expect(centerDistance).toBeCloseTo(2 * radius + strokeWidth + options.pipGap, 6);
     });
 
+    it('interleaves generic rows when a staggered layout packs better', () => {
+        const pips = GenericPipRenderer.createPips(8, 20, 20, {
+            minPipRadius: 0,
+            pipGap: 1,
+            pipRadius: 100,
+            strokeWidthRatio: 0,
+        });
+
+        const rows = Array.from(pips?.querySelectorAll('circle') ?? [])
+            .reduce((counts, circle) => {
+                const y = circle.getAttribute('cy') ?? '';
+                counts.set(y, (counts.get(y) ?? 0) + 1);
+                return counts;
+            }, new Map<string, number>());
+        const rowCounts = Array.from(rows.values());
+        expect(rowCounts).toEqual([3, 2, 3]);
+
+        const rowCenters = Array.from(rows.keys());
+        const firstRow = Array.from(pips?.querySelectorAll(`circle[cy="${rowCenters[0]}"]`) ?? [], circle => Number(circle.getAttribute('cx')));
+        const middleRow = Array.from(pips?.querySelectorAll(`circle[cy="${rowCenters[1]}"]`) ?? [], circle => Number(circle.getAttribute('cx')));
+        expect(middleRow[0]).toBeGreaterThan(firstRow[0]);
+        expect(middleRow[0]).toBeLessThan(firstRow[1]);
+    });
+
     it('uses baked canon radii when explicitly requested', () => {
         const options = {
             useCanonPipRadius: true,
