@@ -78,7 +78,7 @@ const DEFAULT_SOURCE_DIRECTORY = path.join(
     'recordsheets',
     'templates_us',
 );
-const DEFAULT_OUTPUT_DIRECTORY = path.join(APP_ROOT, 'public', 'images', 'raw');
+const DEFAULT_OUTPUT_DIRECTORY = path.join(APP_ROOT, 'public', 'images', 'paperdolls' , 'raw');
 const OUTPUT_DECIMAL_PLACES = 3;
 const PLACEHOLDER_STROKE = '#e11d48';
 const PLACEHOLDER_STROKE_WIDTH = '1.25';
