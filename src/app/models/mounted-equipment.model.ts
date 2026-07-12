@@ -44,7 +44,6 @@ export interface MountedEquipmentInit {
     name: string;
     locations?: Set<string>;
     equipment?: Equipment;
-    baseHitMod?: string;
     hitModVariation?: null | number;
     physical?: boolean;
     linkedWith?: null | MountedEquipment[];
@@ -68,7 +67,6 @@ export class MountedEquipment {
     name: string;
     locations?: Set<string>;
     equipment?: Equipment;
-    baseHitMod?: string;
     hitModVariation?: null | number;
     physical?: boolean;
     linkedWith?: null | MountedEquipment[];
@@ -101,7 +99,6 @@ export class MountedEquipment {
         this.name = data.name;
         this.locations = data.locations;
         this.equipment = data.equipment;
-        this.baseHitMod = data.baseHitMod;
         this.hitModVariation = data.hitModVariation;
         this.physical = data.physical;
         this.linkedWith = data.linkedWith;

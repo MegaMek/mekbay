@@ -70,6 +70,7 @@ export interface MountedEquipmentRuleState {
     isDamaged: boolean;
     isDisabled: boolean;
     hitMod: number;
+    weakenedHitMod: boolean;
 }
 
 export const ENTRY_DISABLED_STATE_KEY = 'disabled';
@@ -400,11 +401,39 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     }
 
     computeEntryState(entry: MountedEquipment): MountedEquipmentRuleState {
+        const targetingComputer = this.getMountedTargetingComputerModifier(entry);
         return {
             isDamaged: entry.committedDestroyed() || this.entryCriticalSlots(entry).some(slot => !!slot.destroyed),
             isDisabled: this.isEntryStateDisabled(entry),
-            hitMod: 0
+            hitMod: targetingComputer.modifier,
+            weakenedHitMod: targetingComputer.weakened
         };
+    }
+
+    protected getMountedTargetingComputerModifier(entry: MountedEquipment): { modifier: number; weakened: boolean } {
+        const equipment = entry.parent?.equipment ?? entry.equipment;
+        if (!this.isTargetingComputerEligible(equipment)) {
+            return { modifier: 0, weakened: false };
+        }
+
+        const targetingComputers = this.unit.getInventory()
+            .filter(candidate => candidate.equipment?.flags.has('F_TARGETING_COMPUTER'));
+        if (targetingComputers.length === 0) return { modifier: 0, weakened: false };
+
+        const hasFunctionalTargetingComputer = targetingComputers.some(candidate =>
+            !candidate.committedDestroyed()
+            && !this.isEntryStateDisabled(candidate)
+            && !this.entryCriticalSlots(candidate).some(slot => !!slot.destroyed)
+        );
+        return hasFunctionalTargetingComputer
+            ? { modifier: -1, weakened: false }
+            : { modifier: 0, weakened: true };
+    }
+
+    protected isTargetingComputerEligible(equipment: MountedEquipment['equipment']): boolean {
+        return equipment?.flags.has('F_DIRECT_FIRE') === true
+            && !equipment.flags.has('F_CWS')
+            && !equipment.flags.has('F_TASER');
     }
 
     protected isEntryStateDisabled(entry: MountedEquipment): boolean {

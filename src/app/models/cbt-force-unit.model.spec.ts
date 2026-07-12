@@ -364,6 +364,10 @@ class ExposedUnitSvgService extends UnitSvgService {
         this.updateInventory();
     }
 
+    renderHitModifier(entry: MountedEquipment, hitModifier: number, forceWeakened = false): void {
+        this.renderHitModEntry(entry, hitModifier, undefined, forceWeakened);
+    }
+
     refreshArmor(): void {
         this.updateArmorDisplay();
     }
@@ -1027,8 +1031,8 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const laserHitText = laser.el!.querySelector(':scope > .hitMod-text') as SVGTextElement;
         const moduleHitText = module.el!.querySelector(':scope > .hitMod-text') as SVGTextElement;
         spyOn(forceUnit.rules, 'computeAllEntryStates').and.returnValue(new Map([
-            [laser, { isDamaged: false, isDisabled: false, hitMod: 0 }],
-            [module, { isDamaged: false, isDisabled: false, hitMod: 1 }],
+            [laser, { isDamaged: false, isDisabled: false, hitMod: 0, weakenedHitMod: false }],
+            [module, { isDamaged: false, isDisabled: false, hitMod: 1, weakenedHitMod: false }],
         ]));
         const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgVehicleService(forceUnit, unitInitializer));
 
@@ -1305,7 +1309,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(weaponEntry.el!.classList.contains('selected-range-extreme')).toBeFalse();
     });
 
-    it('renders wildcard vehicle stabilizer hit modifiers until movement mode is selected', () => {
+    it('renders vehicle stabilizer hit modifiers without using the range wildcard', () => {
         const forceUnit = createForceUnit(createVehicleUnit(equipment));
         initialize(forceUnit);
         const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
@@ -1315,13 +1319,52 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         forceUnit.setCritLoc({ id: 'stabilizer_hit_front', destroyed: 10, destroying: 10 });
         svgService.refreshInventory();
-        expect(hitModText.textContent).toBe('*');
-        expect(hitModRect.getAttribute('display')).toBe('block');
-        expect(weaponEntry.el!.classList.contains('weakenedHitMod')).toBeTrue();
+        expect(hitModRect.getAttribute('display')).toBe('none');
+        expect(weaponEntry.el!.classList.contains('weakenedHitMod')).toBeFalse();
 
         forceUnit.turnState().moveMode.set('run');
         svgService.refreshInventory();
         expect(hitModText.textContent).toBe('+2');
+    });
+
+    it('shows explicit zero hit modifiers only when changed from the equipment modifier', () => {
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
+        initialize(forceUnit);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+        const entryElement = forceUnit.svg()!.querySelector('.inventoryEntry') as SVGElement;
+        const hitModRect = entryElement.querySelector(':scope > .hitMod-rect') as SVGRectElement;
+        const hitModText = entryElement.querySelector(':scope > .hitMod-text') as SVGTextElement;
+        const createEntry = (toHitModifier: number) => new MountedEquipment({
+            owner: forceUnit,
+            id: `weapon-${toHitModifier}`,
+            name: 'Weapon',
+            equipment: new WeaponEquipment({
+                id: `Weapon${toHitModifier}`,
+                name: 'Weapon',
+                type: 'weapon',
+                stats: { toHitModifier },
+                weapon: { ammoType: 'NA', ranges: [1, 2, 3, 4] },
+            }),
+            el: entryElement,
+        });
+
+        svgService.renderHitModifier(createEntry(0), 0);
+        expect(hitModRect.getAttribute('display')).toBe('none');
+
+        svgService.renderHitModifier(createEntry(0), 0, true);
+        expect(hitModRect.getAttribute('display')).toBe('block');
+        expect(hitModText.textContent).toBe('+0');
+        expect(entryElement.classList.contains('weakenedHitMod')).toBeTrue();
+
+        svgService.renderHitModifier(createEntry(1), 0);
+        expect(hitModRect.getAttribute('display')).toBe('block');
+        expect(hitModText.textContent).toBe('+0');
+        expect(entryElement.classList.contains('weakenedHitMod')).toBeFalse();
+
+        svgService.renderHitModifier(createEntry(-1), 0);
+        expect(hitModRect.getAttribute('display')).toBe('block');
+        expect(hitModText.textContent).toBe('+0');
+        expect(entryElement.classList.contains('weakenedHitMod')).toBeTrue();
     });
 
     it('renders VTOL rotor committed and pending hit counts separately', () => {

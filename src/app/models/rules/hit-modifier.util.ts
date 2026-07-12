@@ -46,18 +46,41 @@ import type { InventoryControlRuntimeRangeKey } from '../inventory-control-runti
 
 export type LinkedEquipmentHitModifierResolver = (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => number;
 export type EntryBaseHitModifierResolver = (entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null) => number | null;
+export type HitModifier = number | 'Vs' | '*' | null;
 
-export function getEquipmentBaseHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | null {
-    if (!(entry.equipment instanceof WeaponEquipment)) return null;
+const PHYSICAL_BASE_HIT_MODIFIERS: Readonly<Record<string, number | 'Vs'>> = {
+    punch: 0,
+    kick: -2,
+    'kick [talons]': -2,
+    club: -1,
+    push: -1,
+    frenzy: 0,
+    charge: 'Vs',
+    'death from above': 'Vs',
+    'dfa [talons]': 'Vs',
+    'airmech ram': 'Vs',
+};
 
-    const modifier = entry.equipment.getToHitModifier(range);
-    return modifier === 0 ? null : modifier;
+export function getEntryBaseHitModifier(
+    entry: MountedEquipment,
+    range?: InventoryControlRuntimeRangeKey | null
+): HitModifier {
+    if (entry.physical) return PHYSICAL_BASE_HIT_MODIFIERS[entry.name.toLowerCase()] ?? null;
+    const equipment = entry.equipment;
+    if (!equipment) return null;
+    const supportsHitModifier = equipment instanceof WeaponEquipment
+        || equipment.flags.has('F_CLUB')
+        || equipment.flags.has('F_HAND_WEAPON');
+    if (!supportsHitModifier) return null;
+
+    if (!range && equipment.getToHitModifiers().length > 1) return '*';
+    return equipment.getToHitModifier(range);
 }
 
 /**
  * Resolve the final hit modifier for an inventory entry.
  * Returns `null` if the entry is not eligible for hit modifiers
- * (no equipment, weapon enhancement, no-range weapon, invalid baseHitMod).
+ * (no equipment, unsupported physical attack, weapon enhancement, or no-range weapon).
  *
  * @param entry             - the mounted equipment entry
  * @param additionalModifiers - non-linked modifiers to add (global fire mod, damage mods, etc.)
@@ -69,18 +92,11 @@ export function resolveHitModifier(
     selectedAmmo?: AmmoEquipment | null,
     resolveLinkedModifiers?: LinkedEquipmentHitModifierResolver,
     resolveBaseModifier?: EntryBaseHitModifierResolver
-): number | 'Vs' | '*' | null {
+): HitModifier {
     const linkedModifiers = resolveLinkedModifiers?.(entry, selectedAmmo) ?? 0;
-    const baseModifier = resolveBaseModifier?.(entry, range) ?? getEquipmentBaseHitModifier(entry, range);
-    if (entry.baseHitMod === 'Vs') {
-        return entry.baseHitMod;
-    }
-    if (entry.baseHitMod === '*') {
-        if (baseModifier !== null) {
-            return baseModifier + additionalModifiers + linkedModifiers;
-        }
-        return entry.baseHitMod;
-    }
+    const resolvedBaseModifier = resolveBaseModifier?.(entry, range);
+    const baseModifier = resolvedBaseModifier ?? getEntryBaseHitModifier(entry, range);
+    if (baseModifier === 'Vs' || baseModifier === '*') return baseModifier;
     if (!entry.equipment && !entry.physical) {
         return null;
     }
@@ -96,9 +112,6 @@ export function resolveHitModifier(
             }
         }
     }
-    const baseHitModValue = baseModifier ?? parseInt(entry.baseHitMod || '0');
-    if (isNaN(baseHitModValue)) {
-        return null;
-    }
-    return baseHitModValue + additionalModifiers + linkedModifiers;
+    if (baseModifier === null) return null;
+    return baseModifier + additionalModifiers + linkedModifiers;
 }

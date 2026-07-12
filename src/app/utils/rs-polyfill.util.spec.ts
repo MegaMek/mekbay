@@ -167,6 +167,8 @@ describe('RsPolyfillUtil', () => {
         expect(targetTnText).not.toBeNull();
         expect(targetTnText.getAttribute('display')).toBe('none');
         expect(targetTnText.textContent).toBe('');
+        expect((entry.querySelector('.hitMod-rect') as SVGRectElement).getAttribute('display')).toBe('none');
+        expect((entry.querySelector('.hitMod-text') as SVGTextElement).textContent).toBe('');
         expect(entry.querySelector('.targetAimedShotWarning-text')).toBeNull();
         expect(entry.querySelectorAll('.hitMod-rect').length).toBe(1);
         expect(entry.querySelectorAll('.hitMod-text').length).toBe(1);

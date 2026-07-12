@@ -342,9 +342,13 @@ export class VehicleRules extends UnitTypeRulesBase {
         const isDamaged = this.entryCriticalSlots(entry).some(slot => slot.destroyed) || entry.committedDestroyed();
         let isDisabled = this.isEntryStateDisabled(entry);
         let hitMod = 0;
+        let weakenedHitMod = false;
         const isPhysical = this.isPhysicalEntry(entry);
 
         if (!isPhysical) {
+            const targetingComputer = this.getMountedTargetingComputerModifier(entry);
+            hitMod += targetingComputer.modifier;
+            weakenedHitMod = targetingComputer.weakened;
             if (status.engineHit && entry.equipment?.flags.has('F_ENERGY')) {
                 isDisabled = true;
             }
@@ -353,7 +357,7 @@ export class VehicleRules extends UnitTypeRulesBase {
             }
             hitMod += this.stabilizerHitModifier(entry, status);
         }
-        return { isDamaged, isDisabled, hitMod };
+        return { isDamaged, isDisabled, hitMod, weakenedHitMod };
     }
 
     hasDamagedStabilizerAffectingEntry(entry: MountedEquipment): boolean {
