@@ -1,6 +1,6 @@
 import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, ViewChild } from '@angular/core';
 import { BipedPaperdollUtil, type BipedArmorLocation, type BipedPaperdollPipLayout, type BipedShieldLocation, type BipedStructureLocation, type BipedStructureTonnage } from '../utils/sheets/biped-paperdoll.util';
-import { PipUtil } from '../utils/sheets/pip.util';
+import { CanonPipRenderer } from '../utils/sheets/canon-pip-renderer';
 import { SvgFrameUtil } from '../utils/sheets/svg-frame.util';
 
 @Component({
@@ -27,8 +27,9 @@ import { SvgFrameUtil } from '../utils/sheets/svg-frame.util';
                         </select>
                     </label>
                 </section>
-                <hr/>
-                <section class="control-section" aria-labelledby="armor-controls-title">
+                <div class="sidebar-scroll-content">
+                    <hr/>
+                    <section class="control-section" aria-labelledby="armor-controls-title">
                     <div class="section-heading">
                         <h2 id="armor-controls-title">Armor counts</h2>
                         <output aria-live="polite">{{ totalArmorCount }} pips</output>
@@ -51,9 +52,9 @@ import { SvgFrameUtil } from '../utils/sheets/svg-frame.util';
                             </label>
                         }
                     </div>
-                </section>
-                <hr/>
-                <section class="control-section" aria-labelledby="shield-controls-title">
+                    </section>
+                    <hr/>
+                    <section class="control-section" aria-labelledby="shield-controls-title">
                     <div class="section-heading">
                         <h2 id="shield-controls-title">Shields</h2>
                         <output aria-live="polite">{{ totalShieldCount }} pips</output>
@@ -90,9 +91,9 @@ import { SvgFrameUtil } from '../utils/sheets/svg-frame.util';
                             </label>
                         }
                     </div>
-                </section>
-                <hr/>
-                <section class="control-section" aria-labelledby="structure-controls-title">
+                    </section>
+                    <hr/>
+                    <section class="control-section" aria-labelledby="structure-controls-title">
                     <div class="section-heading">
                         <h2 id="structure-controls-title">Structure</h2>
                         <output aria-live="polite">{{ totalStructureCount }} pips</output>
@@ -144,7 +145,8 @@ import { SvgFrameUtil } from '../utils/sheets/svg-frame.util';
                             </div>
                         }
                     </div>
-                </section>
+                    </section>
+                </div>
             </aside>
 
             <div class="svg-frame-stage">
@@ -212,7 +214,9 @@ import { SvgFrameUtil } from '../utils/sheets/svg-frame.util';
             z-index: 1001;
             width: min(280px, calc(100vw - 48px));
             max-height: calc(100vh - 96px);
-            overflow: auto;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
             box-sizing: border-box;
             padding: 20px;
             border: 1px solid #344148;
@@ -224,6 +228,12 @@ import { SvgFrameUtil } from '../utils/sheets/svg-frame.util';
             transform: translateX(calc(-100% - 32px));
             transition: opacity 160ms ease, transform 160ms ease, visibility 160ms ease;
             visibility: hidden;
+        }
+
+        .sidebar-scroll-content {
+            min-height: 0;
+            overflow-y: auto;
+            overscroll-behavior: contain;
         }
 
         .svg-frame-demo-sidebar.is-open {
@@ -502,6 +512,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
         'distributed',
         'rail',
         'fill',
+        'generic',
     ];
 
     protected get totalArmorCount(): number {
@@ -534,7 +545,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
     }
 
     protected getStructureCount(location: BipedStructureLocation): number {
-        return PipUtil.getCanonStructurePipCount(this.getStructureTonnage(location), location);
+        return CanonPipRenderer.getStructurePipCount(this.getStructureTonnage(location), location);
     }
 
     protected updateArmorCount(location: BipedArmorLocation, event: Event): void {

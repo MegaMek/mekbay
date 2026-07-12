@@ -1,4 +1,8 @@
-import { PipUtil } from '../sheets/pip.util';
+import { CanonPipRenderer } from './canon-pip-renderer';
+import { DistributedPipRenderer } from './distributed-pip-renderer';
+import { FillPipRenderer } from './fill-pip-renderer';
+import { GenericPipRenderer } from './generic-pip-renderer';
+import { RailPipRenderer } from './rail-pip-renderer';
 import {
     BIPED_ARMOR_PIP_LAYOUTS,
     BIPED_STRUCTURE_PIP_LAYOUTS,
@@ -6,7 +10,7 @@ import {
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
-describe('PipUtil', () => {
+describe('Pip renderers', () => {
     const svgRoots: SVGSVGElement[] = [];
 
     afterEach(() => {
@@ -16,7 +20,7 @@ describe('PipUtil', () => {
 
     it('places a single pip near the weighted center of a fill area', () => {
         const path = createPath('M 0 0 H 100 V 60 H 0 Z', 110, 70);
-        const pips = PipUtil.createFillPips(path, 1);
+        const pips = FillPipRenderer.createPips(path, 1);
 
         expect(pips).not.toBeNull();
         if (!pips) {
@@ -34,25 +38,25 @@ describe('PipUtil', () => {
 
     it('uses the default radius for a sparse fill area', () => {
         const path = createPath('M 0 0 H 100 V 60 H 0 Z', 110, 70);
-        const pips = PipUtil.createFillPips(path, 1);
+        const pips = FillPipRenderer.createPips(path, 1);
 
         expect(pips?.querySelector('circle')?.getAttribute('r')).toBe('3');
     });
 
     it('uses one pip radius override for fill and rail layouts', () => {
         const path = createPath('M 0 0 H 100 V 60 H 0 Z', 110, 70);
-        const fillPips = PipUtil.createFillPips(path, 1, { pipRadius: 4 });
+        const fillPips = FillPipRenderer.createPips(path, 1, { pipRadius: 4 });
         const rail = document.createElementNS(SVG_NAMESPACE, 'path');
         rail.setAttribute('d', 'M 0 0 L 100 0');
-        const railPips = PipUtil.createRailPips(rail, 1, { pipRadius: 4 }, 'armor', 'CT', 5);
+        const railPips = RailPipRenderer.createPips(rail, 1, { pipRadius: 4 }, 'armor', 'CT', 5);
 
         expect(Number(fillPips?.querySelector('circle')?.getAttribute('r'))).toBe(4);
         expect(Number(railPips?.querySelector('circle')?.getAttribute('r'))).toBe(4);
     });
 
     it('keeps the rendered canon radius stable as a location gains pips', () => {
-        const onePip = PipUtil.createCanonArmorPips('CT', 1, 29.063, 85.873, { inset: 1.8 });
-        const threePips = PipUtil.createCanonArmorPips('CT', 3, 29.063, 85.873, { inset: 1.8 });
+        const onePip = CanonPipRenderer.createArmorPips('CT', 1, 29.063, 85.873, { inset: 1.8 });
+        const threePips = CanonPipRenderer.createArmorPips('CT', 3, 29.063, 85.873, { inset: 1.8 });
 
         const getRenderedRadius = (group: SVGGElement | null): number => {
             const scale = Number(/scale\(([^)]+)\)/u.exec(group?.getAttribute('transform') ?? '')?.[1]);
@@ -69,11 +73,11 @@ describe('PipUtil', () => {
             const scale = Number(/scale\(([^)]+)\)/u.exec(group?.getAttribute('transform') ?? '')?.[1]);
             return Number(group?.querySelector('circle')?.getAttribute('r')) * scale;
         };
-        const defaultMinimum = PipUtil.createCanonArmorPips('CT', 3, 29.063, 85.873, {
+        const defaultMinimum = CanonPipRenderer.createArmorPips('CT', 3, 29.063, 85.873, {
             inset: 1.8,
             minPipRadius: 0,
         });
-        const oversizedMinimum = PipUtil.createCanonArmorPips('CT', 3, 29.063, 85.873, {
+        const oversizedMinimum = CanonPipRenderer.createArmorPips('CT', 3, 29.063, 85.873, {
             inset: 1.8,
             minPipRadius: 100,
         });
@@ -86,13 +90,13 @@ describe('PipUtil', () => {
             const scale = Number(/scale\(([^)]+)\)/u.exec(group?.getAttribute('transform') ?? '')?.[1]);
             return Number(group?.querySelector('circle')?.getAttribute('r')) * scale;
         };
-        const noGap = PipUtil.createCanonArmorPips('HD', 9, 17.088, 21.553, {
+        const noGap = CanonPipRenderer.createArmorPips('HD', 9, 17.088, 21.553, {
             inset: 1.8,
             pipGap: 0,
             minPipRadius: 0,
             pipRadius: 3,
         });
-        const withGap = PipUtil.createCanonArmorPips('HD', 9, 17.088, 21.553, {
+        const withGap = CanonPipRenderer.createArmorPips('HD', 9, 17.088, 21.553, {
             inset: 1.8,
             pipGap: 1,
             minPipRadius: 0,
@@ -102,14 +106,37 @@ describe('PipUtil', () => {
         expect(getRenderedRadius(withGap)).toBeLessThan(getRenderedRadius(noGap));
     });
 
+    it('scales generic pips to fit their cells and pipGap', () => {
+        const options = {
+            minPipRadius: 0,
+            pipGap: 2,
+            pipRadius: 100,
+            strokeWidthRatio: 0.2,
+        };
+        const pips = GenericPipRenderer.createPips(4, 20, 20, options);
+
+        expect(pips).not.toBeNull();
+        const circles = Array.from(pips?.querySelectorAll('circle') ?? []);
+        expect(circles.length).toBe(4);
+        const radius = Number(circles[0]?.getAttribute('r'));
+        const strokeWidth = Number(circles[0]?.getAttribute('stroke-width'));
+        const centerDistance = Math.hypot(
+            Number(circles[0]?.getAttribute('cx')) - Number(circles[1]?.getAttribute('cx')),
+            Number(circles[0]?.getAttribute('cy')) - Number(circles[1]?.getAttribute('cy')),
+        );
+
+        expect(radius).toBeCloseTo((10 - options.pipGap) / (2 * (1 + options.strokeWidthRatio / 2)), 6);
+        expect(centerDistance).toBeCloseTo(2 * radius + strokeWidth + options.pipGap, 6);
+    });
+
     it('uses baked canon radii when explicitly requested', () => {
         const options = {
             useCanonPipRadius: true,
             pipRadius: 100,
             minPipRadius: 100,
         };
-        const armorPips = PipUtil.createCanonArmorPips('CT', 3, 29.063, 85.873, options);
-        const structurePips = PipUtil.createCanonStructurePips(15, 'CT', 29.063, 85.873, options);
+        const armorPips = CanonPipRenderer.createArmorPips('CT', 3, 29.063, 85.873, options);
+        const structurePips = CanonPipRenderer.createStructurePips(15, 'CT', 29.063, 85.873, options);
         const armorLayout = BIPED_ARMOR_PIP_LAYOUTS['CT'].amount[3];
         const structureLayout = BIPED_STRUCTURE_PIP_LAYOUTS['CT'].amount[15];
 
@@ -124,11 +151,11 @@ describe('PipUtil', () => {
     });
 
     it('does not apply pipGap to baked canon pips', () => {
-        const noGap = PipUtil.createCanonArmorPips('HD', 9, 17.088, 21.553, {
+        const noGap = CanonPipRenderer.createArmorPips('HD', 9, 17.088, 21.553, {
             useCanonPipRadius: true,
             pipGap: 0,
         });
-        const withGap = PipUtil.createCanonArmorPips('HD', 9, 17.088, 21.553, {
+        const withGap = CanonPipRenderer.createArmorPips('HD', 9, 17.088, 21.553, {
             useCanonPipRadius: true,
             pipGap: 1,
         });
@@ -146,7 +173,7 @@ describe('PipUtil', () => {
     });
 
     it('uses the baked canon radius without collision resizing', () => {
-        const pips = PipUtil.createCanonArmorPips('HD', 9, 17.088, 21.553, {
+        const pips = CanonPipRenderer.createArmorPips('HD', 9, 17.088, 21.553, {
             useCanonPipRadius: true,
             pipGap: 100,
             minPipRadius: 0,
@@ -160,14 +187,14 @@ describe('PipUtil', () => {
     });
 
     it('uses one shared normalized box for all amounts in a canon location', () => {
-        const onePip = PipUtil.createCanonArmorPips(
+        const onePip = CanonPipRenderer.createArmorPips(
             'CT',
             1,
             29.063,
             85.873,
             { useCanonPipRadius: true },
         );
-        const threePips = PipUtil.createCanonArmorPips(
+        const threePips = CanonPipRenderer.createArmorPips(
             'CT',
             3,
             29.063,
@@ -181,11 +208,11 @@ describe('PipUtil', () => {
 
     it('applies inset to fill boundaries but not rail sizing', () => {
         const path = createPath('M 0 0 H 100 V 40 H 0 Z', 110, 50);
-        const insetPips = PipUtil.createFillPips(path, 1, { inset: 15, pipRadius: 8 });
+        const insetPips = FillPipRenderer.createPips(path, 1, { inset: 15, pipRadius: 8 });
         const rail = document.createElementNS(SVG_NAMESPACE, 'path');
         rail.setAttribute('d', 'M 0 0 L 100 0');
-        const railPips = PipUtil.createRailPips(rail, 1, { inset: 8 });
-        const defaultRailPips = PipUtil.createRailPips(rail, 1);
+        const railPips = RailPipRenderer.createPips(rail, 1, { inset: 8 });
+        const defaultRailPips = RailPipRenderer.createPips(rail, 1);
 
         expect(insetPips).not.toBeNull();
         expect(Number(insetPips?.querySelector('circle')?.getAttribute('r'))).toBeLessThan(8);
@@ -195,7 +222,7 @@ describe('PipUtil', () => {
 
     it('shrinks all fill pips together when the requested radius collides', () => {
         const path = createPath('M 0 0 H 100 V 60 H 0 Z', 110, 70);
-        const pips = PipUtil.createFillPips(path, 2, {
+        const pips = FillPipRenderer.createPips(path, 2, {
             minPipRadius: 2,
             pipGap: 1,
             pipRadius: 25,
@@ -212,14 +239,14 @@ describe('PipUtil', () => {
 
     it('chooses a larger distributed layout when zero gap fits another row arrangement', () => {
         const options = { inset: 1.8, minPipRadius: 0, pipGap: 0, pipRadius: 3 };
-        const zeroGapPips = PipUtil.createDistributedPips(
+        const zeroGapPips = DistributedPipRenderer.createPips(
             [{ x: 0, y: 0, width: 17.088, height: 21.553 }],
             5,
             options,
             'armor',
             'HD',
         );
-        const positiveGapPips = PipUtil.createDistributedPips(
+        const positiveGapPips = DistributedPipRenderer.createPips(
             [{ x: 0, y: 0, width: 17.088, height: 21.553 }],
             5,
             { ...options, pipGap: 1 },
@@ -249,14 +276,14 @@ describe('PipUtil', () => {
 
     it('uses pipGap when sizing rail pips', () => {
         const options = { pipRadius: 100 };
-        const noGapRadius = PipUtil.getRailPipRadius(100, 5, { ...options, pipGap: 0 });
-        const positiveGapRadius = PipUtil.getRailPipRadius(100, 5, { ...options, pipGap: 10 });
+        const noGapRadius = RailPipRenderer.getPipRadius(100, 5, { ...options, pipGap: 0 });
+        const positiveGapRadius = RailPipRenderer.getPipRadius(100, 5, { ...options, pipGap: 10 });
 
         expect(positiveGapRadius).toBeLessThan(noGapRadius);
     });
 
     it('hard-caps collision shrinkage at the minimum pip radius', () => {
-        const radius = PipUtil.getRailPipRadius(1, 1, {
+        const radius = RailPipRenderer.getPipRadius(1, 1, {
             pipRadius: 100,
             pipGap: 100,
         });
@@ -266,7 +293,7 @@ describe('PipUtil', () => {
 
     it('keeps fill pips at the minimum radius when the gap cannot fit', () => {
         const path = createPath('M 0 0 H 10 V 10 H 0 Z', 20, 20);
-        const pips = PipUtil.createFillPips(path, 2, {
+        const pips = FillPipRenderer.createPips(path, 2, {
             minPipRadius: 2,
             pipGap: 100,
             pipRadius: 25,
@@ -279,7 +306,7 @@ describe('PipUtil', () => {
     });
 
     it('balances many distributed pips across more rows', () => {
-        const pips = PipUtil.createDistributedPips(
+        const pips = DistributedPipRenderer.createPips(
             [{ x: 0, y: 0, width: 17.088, height: 21.553 }],
             18,
             { inset: 1.8, pipGap: 0, pipRadius: 3 },
@@ -303,7 +330,7 @@ describe('PipUtil', () => {
 
     it('balances two pips into two regions of one area', () => {
         const path = createPath('M 0 0 H 100 V 60 H 0 Z', 110, 70);
-        const pips = PipUtil.createFillPips(path, 2);
+        const pips = FillPipRenderer.createPips(path, 2);
 
         expect(pips).not.toBeNull();
         if (!pips) {
@@ -319,7 +346,7 @@ describe('PipUtil', () => {
 
     it('keeps every pip footprint inside a concave fill area', () => {
         const path = createPath('M 0 0 H 100 V 40 H 40 V 100 H 0 Z', 110, 110);
-        const pips = PipUtil.createFillPips(path, 6, { strokeWidthRatio: 0.2 });
+        const pips = FillPipRenderer.createPips(path, 6, { strokeWidthRatio: 0.2 });
 
         expect(pips).not.toBeNull();
         if (!pips) {
@@ -352,7 +379,7 @@ describe('PipUtil', () => {
         smallArea.setAttribute('d', 'M 120 0 H 170 V 50 H 120 Z');
         largeArea.parentElement?.appendChild(smallArea);
 
-        const pips = PipUtil.createFillPips([largeArea, smallArea], 6);
+        const pips = FillPipRenderer.createPips([largeArea, smallArea], 6);
 
         expect(pips).not.toBeNull();
         if (!pips) {

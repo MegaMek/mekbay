@@ -1,4 +1,9 @@
-import { PipUtil, type PipRenderOptions, type PipRow } from './pip.util';
+import { CanonPipRenderer } from './canon-pip-renderer';
+import { DistributedPipRenderer } from './distributed-pip-renderer';
+import { FillPipRenderer } from './fill-pip-renderer';
+import { GenericPipRenderer } from './generic-pip-renderer';
+import { RailPipRenderer } from './rail-pip-renderer';
+import type { PipRenderOptions, PipRow } from './pip-renderer.types';
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 const ARMOR_ASSET_URL = '/images/paperdolls/biped-armor.svg';
@@ -14,7 +19,7 @@ export type BipedStructureLocation = typeof STRUCTURE_LOCATIONS[number];
 export type BipedShieldLocation = typeof SHIELD_LOCATIONS[number];
 export type BipedArmorValues = Readonly<Partial<Record<BipedArmorLocation, number>>>;
 export type BipedStructureTonnage = number | Readonly<Record<BipedStructureLocation, number>>;
-export type BipedPaperdollPipLayout = 'canon' | 'distributed' | 'rail' | 'fill';
+export type BipedPaperdollPipLayout = 'canon' | 'distributed' | 'rail' | 'fill' | 'generic';
 
 export interface BipedShieldLocationValues {
     readonly dc?: number;
@@ -516,7 +521,7 @@ export class BipedPaperdollUtil {
                             }
                             : {}),
                     };
-                    const pips = PipUtil.createFillPips(
+                    const pips = FillPipRenderer.createPips(
                         group.areas.map(area => area.geometry),
                         count,
                         pipOptions,
@@ -538,38 +543,53 @@ export class BipedPaperdollUtil {
             group.elements.forEach(element => element.remove());
         }
 
-        const shieldsUseDistributedLayout = selectedPipLayout === 'canon'
-            || selectedPipLayout === 'distributed'
-            || options.fallbackPipLayout === 'distributed';
+        const shieldPipLayout = selectedPipLayout === 'canon' ? 'distributed' : selectedPipLayout;
         for (const group of shieldGroups) {
             const key = this.getPlaceholderKey(group.type, group.location);
             if (railKeys.has(key) || fillKeys.has(key)) {
                 group.elements.forEach(element => element.remove());
                 continue;
             }
-            if (!shieldsUseDistributedLayout) {
+            if (shieldPipLayout !== 'distributed' && shieldPipLayout !== 'generic') {
                 group.elements.forEach(element => element.remove());
                 continue;
             }
             const shieldValues = options.shieldValues?.[group.location as BipedShieldLocation];
             const count = group.type === 'shield-dc' ? shieldValues?.dc : shieldValues?.da;
             if (typeof count === 'number') {
-                const pips = PipUtil.createDistributedPips(
-                    group.rows,
-                    count,
-                    {
-                        ...options.pipOptions,
-                        fill: options.pipOptions?.fill ?? '#fff',
-                        shape: group.type === 'shield-da' ? 'diamond' : 'circle',
-                    },
-                    group.type,
-                    group.location,
-                );
+                const pipOptions: PipRenderOptions = {
+                    ...options.pipOptions,
+                    fill: options.pipOptions?.fill ?? '#fff',
+                    shape: group.type === 'shield-da' ? 'diamond' : 'circle',
+                };
+                const shieldBounds = shieldPipLayout === 'generic' ? this.getPipRowBounds(group.rows) : null;
+                const pips = shieldPipLayout === 'generic'
+                    ? shieldBounds
+                        ? GenericPipRenderer.createPips(
+                            count,
+                            shieldBounds.maxX - shieldBounds.minX,
+                            shieldBounds.maxY - shieldBounds.minY,
+                            pipOptions,
+                            group.type,
+                            group.location,
+                        )
+                        : null
+                    : DistributedPipRenderer.createPips(
+                        group.rows,
+                        count,
+                        pipOptions,
+                        group.type,
+                        group.location,
+                    );
                 if (pips) {
                     const zone = document.createElementNS(SVG_NAMESPACE, 'g');
                     zone.setAttribute('class', `biped-paperdoll-zone biped-paperdoll-zone-${group.location} biped-paperdoll-zone-${group.type}`);
                     zone.setAttribute('data-location', group.location);
                     zone.setAttribute('data-zone-type', group.type);
+                    if (shieldBounds) {
+                        zone.setAttribute('transform', `translate(${shieldBounds.minX} ${shieldBounds.minY})`);
+                        zone.setAttribute('data-layout', 'generic');
+                    }
                     zone.appendChild(pips);
                     group.parent.appendChild(zone);
                 }
@@ -660,7 +680,7 @@ export class BipedPaperdollUtil {
 
         const railRadius = Math.min(...assignedRails.map(({ rail, capacity }) => {
             try {
-                return PipUtil.getRailPipRadius(
+                return RailPipRenderer.getPipRadius(
                     rail.geometry.getTotalLength(),
                     capacity,
                     pipOptions,
@@ -679,7 +699,7 @@ export class BipedPaperdollUtil {
         const rendered: Array<{ parent: SVGElement; transform: string | null; pips: SVGGElement }> = [];
         for (const assignment of assignedRails) {
             const { rail, capacity, count: railCount } = assignment;
-            const pips = PipUtil.createRailPips(
+            const pips = RailPipRenderer.createPips(
                 rail.geometry,
                 railCount,
                 railPipOptions,
@@ -722,7 +742,7 @@ export class BipedPaperdollUtil {
         if (placeholderType === 'structure') {
             const locationTonnage = this.getStructureTonnage(structureTonnage, location);
             return typeof locationTonnage === 'number'
-                ? PipUtil.getCanonStructurePipCount(locationTonnage, location)
+                ? CanonPipRenderer.getStructurePipCount(locationTonnage, location)
                 : undefined;
         }
         const shieldValues = options.shieldValues?.[location as BipedShieldLocation];
@@ -808,6 +828,19 @@ export class BipedPaperdollUtil {
         return maxX > minX && maxY > minY
             ? [{ x: minX, y: minY, width: maxX - minX, height: maxY - minY }]
             : [];
+    }
+
+    private static getPipRowBounds(rows: readonly PipRow[]): PlaceholderBounds | null {
+        const validRows = rows.filter(row => row.width > 0 && row.height > 0);
+        if (validRows.length === 0) {
+            return null;
+        }
+        return {
+            minX: Math.min(...validRows.map(row => row.x)),
+            minY: Math.min(...validRows.map(row => row.y)),
+            maxX: Math.max(...validRows.map(row => row.x + row.width)),
+            maxY: Math.max(...validRows.map(row => row.y + row.height)),
+        };
     }
 
     private static isRailGeometry(element: SVGElement): element is SVGGeometryElement {
@@ -912,6 +945,12 @@ export class BipedPaperdollUtil {
     ): SVGGElement | null {
         const width = group.bounds.maxX - group.bounds.minX;
         const height = group.bounds.maxY - group.bounds.minY;
+        if (pipLayout === 'generic') {
+            const count = this.readPlaceholderPipCount(group.type, group.location, armor, structureTonnage, options);
+            return typeof count === 'number'
+                ? GenericPipRenderer.createPips(count, width, height, options.pipOptions, group.type, group.location)
+                : null;
+        }
         if (pipLayout === 'distributed') {
             const count = this.readPlaceholderPipCount(group.type, group.location, armor, structureTonnage, options);
             return typeof count === 'number'
@@ -923,12 +962,12 @@ export class BipedPaperdollUtil {
         }
         if (group.type === 'armor' && armor && typeof armor[group.location as BipedArmorLocation] === 'number') {
             const count = armor[group.location as BipedArmorLocation] as number;
-            return PipUtil.createCanonArmorPips(group.location, count, width, height, options.pipOptions);
+            return CanonPipRenderer.createArmorPips(group.location, count, width, height, options.pipOptions);
         }
         const locationTonnage = this.getStructureTonnage(structureTonnage, group.location);
         if (group.type === 'structure' && typeof locationTonnage === 'number') {
-            const count = PipUtil.getCanonStructurePipCount(locationTonnage, group.location);
-            return PipUtil.createCanonStructurePips(locationTonnage, group.location, width, height, options.pipOptions);
+            const count = CanonPipRenderer.getStructurePipCount(locationTonnage, group.location);
+            return CanonPipRenderer.createStructurePips(locationTonnage, group.location, width, height, options.pipOptions);
         }
         return null;
     }
@@ -940,7 +979,7 @@ export class BipedPaperdollUtil {
     ): SVGGElement | null {
         const width = group.bounds.maxX - group.bounds.minX;
         const height = group.bounds.maxY - group.bounds.minY;
-        return PipUtil.createDistributedPips(
+        return DistributedPipRenderer.createPips(
             [{ x: 0, y: 0, width, height }],
             count,
             options.pipOptions,

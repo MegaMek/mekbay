@@ -1,5 +1,6 @@
 import { BipedPaperdollUtil } from './biped-paperdoll.util';
-import { PipUtil } from './pip.util';
+import { CanonPipRenderer } from './canon-pip-renderer';
+import { RailPipRenderer } from './rail-pip-renderer';
 
 describe('BipedPaperdollUtil', () => {
     it('renders armor and structure silhouettes with location pip layers', async () => {
@@ -186,8 +187,8 @@ describe('BipedPaperdollUtil', () => {
 
         const headZone = structureLayer.querySelector('[data-location="HD"][data-zone-type="structure"]');
         const centerTorsoZone = structureLayer.querySelector('[data-location="CT"][data-zone-type="structure"]');
-        expect(headZone?.querySelectorAll('circle').length).toBe(PipUtil.getCanonStructurePipCount(10, 'HD'));
-        expect(centerTorsoZone?.querySelectorAll('circle').length).toBe(PipUtil.getCanonStructurePipCount(20, 'CT'));
+        expect(headZone?.querySelectorAll('circle').length).toBe(CanonPipRenderer.getStructurePipCount(10, 'HD'));
+        expect(centerTorsoZone?.querySelectorAll('circle').length).toBe(CanonPipRenderer.getStructurePipCount(20, 'CT'));
     });
 
     it('does not fall back when a canon amount is unavailable by default', async () => {
@@ -366,7 +367,7 @@ describe('BipedPaperdollUtil', () => {
         const rail = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         rail.setAttribute('d', 'M 0 0 C 10 0 20 20 30 20');
 
-        const pips = PipUtil.createRailPips(rail, 5, { shape: 'diamond' }, 'shield-da', 'RA', 5);
+        const pips = RailPipRenderer.createPips(rail, 5, { shape: 'diamond' }, 'shield-da', 'RA', 5);
 
         expect(pips).not.toBeNull();
         expect(pips?.querySelectorAll('polygon').length).toBe(5);
@@ -377,7 +378,7 @@ describe('BipedPaperdollUtil', () => {
         const rail = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         rail.setAttribute('d', 'M 0 0 L 100 0');
 
-        const pips = PipUtil.createRailPips(rail, 2, {}, 'armor', 'CT', 5);
+        const pips = RailPipRenderer.createPips(rail, 2, {}, 'armor', 'CT', 5);
         const circles = pips?.querySelectorAll('circle');
 
         expect(circles?.length).toBe(2);
