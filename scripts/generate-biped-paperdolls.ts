@@ -29,7 +29,8 @@ interface Matrix {
 }
 
 type PaperdollType = 'armor' | 'structure';
-type PaperdollElementTag = 'path' | 'polygon' | 'rect' | 'text';
+type PaperdollSide = 'front' | 'back';
+type PaperdollElementTag = 'line' | 'path' | 'polygon' | 'polyline' | 'rect' | 'text';
 type PaperdollElementCategory = 'armor' | 'structure' | 'shield';
 type PlaceholderType = 'armor' | 'structure' | 'shield-dc' | 'shield-da';
 
@@ -40,15 +41,24 @@ interface PaperdollElement {
     style?: string;
     location?: string;
     category: PaperdollElementCategory;
+    rear: boolean;
     placeholder?: PlaceholderType;
     content?: string;
 }
 
 interface PaperdollAsset {
     type: PaperdollType;
+    name: string;
+    side: PaperdollSide;
     elements: PaperdollElement[];
     zones: Record<string, Bounds>;
     bounds: Bounds;
+}
+
+interface PaperdollGroup {
+    type: PaperdollType;
+    name: string;
+    group: Record<string, unknown>;
 }
 
 interface LocatedGroup {
@@ -61,15 +71,14 @@ type PathToken =
     | { kind: 'number'; value: number };
 
 const APP_ROOT = path.resolve(__dirname, '..');
-const DEFAULT_SOURCE_FILE = path.join(
+const DEFAULT_SOURCE_DIRECTORY = path.join(
     resolveMmDataRoot(APP_ROOT),
     'data',
     'images',
     'recordsheets',
-    'templates_iso',
-    'mek_biped_default.svg',
+    'templates_us',
 );
-const DEFAULT_OUTPUT_DIRECTORY = path.join(APP_ROOT, 'public', 'images', 'paperdolls');
+const DEFAULT_OUTPUT_DIRECTORY = path.join(APP_ROOT, 'public', 'images', 'raw');
 const OUTPUT_DECIMAL_PLACES = 3;
 const PLACEHOLDER_STROKE = '#e11d48';
 const PLACEHOLDER_STROKE_WIDTH = '1.25';
@@ -90,12 +99,28 @@ const PRESENTATION_ATTRIBUTES = [
     'stroke-opacity',
     'stroke-width',
 ];
-const ARMOR_LOCATION_ORDER = ['HD', 'CT', 'LT', 'RT', 'LA', 'RA', 'LL', 'RL', 'CT_R', 'LT_R', 'RT_R'];
+const ARMOR_FRONT_LOCATION_ORDER = ['HD', 'CT', 'LT', 'RT', 'LA', 'RA', 'LL', 'RL'];
+const ARMOR_REAR_LOCATION_ORDER = ['CT_R', 'LT_R', 'RT_R'];
 const STRUCTURE_LOCATION_ORDER = ['HD', 'CT', 'LT', 'RT', 'LA', 'RA', 'LL', 'RL'];
+const REAR_COMPANION_IDS = new Set([
+    'path56103',
+    'path56621',
+    'path56625',
+    'path56629',
+    'path3644',
+    'path3648',
+    'path4476',
+    'path4480',
+    'path4484',
+    'path4107',
+    'path4115',
+    'path4123',
+]);
 const SHIELD_GROUPS = [
     { id: 'shieldRA', location: 'RA' },
     { id: 'shieldLA', location: 'LA' },
 ] as const;
+const PAPERDOLL_GROUP_PATTERN = /^(armor|internal)_diagram_(.+)$/u;
 
 const xmlParser = new XMLParser({
     ignoreAttributes: false,
@@ -128,33 +153,35 @@ function getString(value: Record<string, unknown>, key: string): string | undefi
     return typeof value[key] === 'string' ? value[key] : undefined;
 }
 
-function findById(value: unknown, id: string): Record<string, unknown> | undefined {
+function findPaperdollGroups(
+    value: unknown,
+    result: PaperdollGroup[] = [],
+): PaperdollGroup[] {
     if (Array.isArray(value)) {
         for (const child of value) {
-            const result = findById(child, id);
-            if (result) {
-                return result;
-            }
+            findPaperdollGroups(child, result);
         }
-        return undefined;
+        return result;
     }
 
     if (!isRecord(value)) {
-        return undefined;
+        return result;
     }
 
-    if (getString(value, 'id') === id) {
-        return value;
+    const id = getString(value, 'id');
+    const match = id ? PAPERDOLL_GROUP_PATTERN.exec(id) : undefined;
+    if (match) {
+        result.push({
+            type: match[1] === 'armor' ? 'armor' : 'structure',
+            name: match[2],
+            group: value,
+        });
     }
 
     for (const child of Object.values(value)) {
-        const result = findById(child, id);
-        if (result) {
-            return result;
-        }
+        findPaperdollGroups(child, result);
     }
-
-    return undefined;
+    return result;
 }
 
 function findByIdWithTransforms(
@@ -504,8 +531,31 @@ function sanitizeIdPart(value: string): string {
     return sanitized || 'element';
 }
 
+function getTurretVariant(sourceFile: string): 'turret' | 'dualturret' | undefined {
+    const sourceName = path.basename(sourceFile, path.extname(sourceFile));
+    if (/(^|_)dualturret(_|$)/u.test(sourceName)) {
+        return 'dualturret';
+    }
+    if (/(^|_)turret(_|$)/u.test(sourceName)) {
+        return 'turret';
+    }
+    return undefined;
+}
+
+function getPaperdollName(group: PaperdollGroup, sourceFile: string): string {
+    const turretVariant = getTurretVariant(sourceFile);
+    const name = turretVariant && group.name.includes('noturret')
+        ? group.name.replace('noturret', turretVariant)
+        : group.name;
+    return sanitizeIdPart(name).replaceAll('_', '-');
+}
+
 function createArtworkId(type: PaperdollType, location: string, sourceId: string | undefined, index: number): string {
     return `paperdoll-art-${type}-${location}-${sanitizeIdPart(sourceId ?? `element-${index}`)}`;
+}
+
+function isRearContext(id: string | undefined): boolean {
+    return id === 'rearArmor' || (id !== undefined && REAR_COMPANION_IDS.has(id));
 }
 
 function createPlaceholderId(type: PlaceholderType, location: string, rowIndex?: number): string {
@@ -531,10 +581,11 @@ function collectElements(
     result: PaperdollElement[],
     includeHidden: boolean,
     inheritedPlaceholder: { type: 'shield-dc' | 'shield-da'; location: 'LA' | 'RA' } | undefined,
+    elementTag: PaperdollElementTag | undefined,
 ): void {
     if (Array.isArray(value)) {
         for (const child of value) {
-            collectElements(child, transforms, inheritedHidden, inheritedStyle, inheritedAttributes, inheritedLocation, inheritedUnitLocation, inheritedRear, category, result, includeHidden, inheritedPlaceholder);
+            collectElements(child, transforms, inheritedHidden, inheritedStyle, inheritedAttributes, inheritedLocation, inheritedUnitLocation, inheritedRear, category, result, includeHidden, inheritedPlaceholder, elementTag);
         }
         return;
     }
@@ -555,7 +606,7 @@ function collectElements(
     const className = getString(value, 'class') ?? '';
     const nextLocation = getString(value, 'loc') ?? getString(value, 'lod') ?? inheritedLocation;
     const nextUnitLocation = inheritedUnitLocation || className.split(/\s+/u).includes('unitLocation');
-    const nextRear = inheritedRear || getString(value, 'rear') === '1';
+    const nextRear = inheritedRear || getString(value, 'rear') === '1' || isRearContext(getString(value, 'id'));
     const nextPlaceholder = getShieldPlaceholder(getString(value, 'id')) ?? inheritedPlaceholder;
     const nextAttributes: Record<string, string> = { ...inheritedAttributes };
     for (const attribute of PRESENTATION_ATTRIBUTES) {
@@ -579,9 +630,11 @@ function collectElements(
     const textContent = getString(value, '#text');
     const pathData = getString(value, 'd');
     const polygonPoints = getString(value, 'points');
+    const isLine = elementTag === 'line'
+        && ['x1', 'y1', 'x2', 'y2'].every(attribute => getString(value, attribute) !== undefined);
     const isRect = ['x', 'y', 'width', 'height'].every(attribute => getString(value, attribute) !== undefined);
     const isShieldText = category === 'shield' && textContent !== undefined;
-    if (pathData !== undefined || polygonPoints !== undefined || (isRect && nextPlaceholder) || isShieldText) {
+    if (pathData !== undefined || polygonPoints !== undefined || isLine || isRect || isShieldText) {
         const placeholder = isRect && nextPlaceholder ? nextPlaceholder.type : undefined;
         const location = placeholder ? nextPlaceholder?.location : sourceLocation;
         if (isShieldText) {
@@ -595,6 +648,13 @@ function collectElements(
             sourceAttributes.d = pathData;
         } else if (polygonPoints !== undefined) {
             sourceAttributes.points = polygonPoints;
+        } else if (isLine) {
+            for (const attribute of ['x1', 'y1', 'x2', 'y2']) {
+                const attributeValue = getString(value, attribute);
+                if (attributeValue !== undefined) {
+                    sourceAttributes[attribute] = attributeValue;
+                }
+            }
         } else {
             for (const attribute of ['x', 'y', 'width', 'height', 'rx', 'ry']) {
                 const attributeValue = getString(value, attribute);
@@ -614,20 +674,30 @@ function collectElements(
             sourceAttributes['stroke-opacity'] = '0.9';
         }
         result.push({
-            tag: isShieldText ? 'text' : pathData !== undefined ? 'path' : polygonPoints !== undefined ? 'polygon' : 'rect',
+            tag: isShieldText
+                ? 'text'
+                : pathData !== undefined
+                    ? 'path'
+                    : polygonPoints !== undefined
+                        ? elementTag === 'polyline' ? 'polyline' : 'polygon'
+                        : isLine ? 'line' : 'rect',
             attributes: sourceAttributes,
             transforms: [...nextTransforms],
             style: nextStyle,
             location,
             category,
+            rear: nextRear,
             placeholder,
             content: isShieldText ? textContent : undefined,
         });
         return;
     }
 
-    for (const child of Object.values(value)) {
-        collectElements(child, nextTransforms, includeHidden ? false : hidden, nextStyle, nextAttributes, nextLocation, nextUnitLocation, nextRear, category, result, includeHidden, nextPlaceholder);
+    for (const [key, child] of Object.entries(value)) {
+        const childElementTag = ['line', 'path', 'polygon', 'polyline', 'rect', 'text'].includes(key)
+            ? key as PaperdollElementTag
+            : undefined;
+        collectElements(child, nextTransforms, includeHidden ? false : hidden, nextStyle, nextAttributes, nextLocation, nextUnitLocation, nextRear, category, result, includeHidden, nextPlaceholder, childElementTag);
     }
 }
 
@@ -635,8 +705,20 @@ function getLocalBounds(element: PaperdollElement): Bounds {
     if (element.tag === 'path') {
         return parsePathBounds(element.attributes.d);
     }
-    if (element.tag === 'polygon') {
+    if (element.tag === 'polygon' || element.tag === 'polyline') {
         return parsePointsBounds(element.attributes.points);
+    }
+    if (element.tag === 'line') {
+        const x1 = Number(element.attributes.x1);
+        const y1 = Number(element.attributes.y1);
+        const x2 = Number(element.attributes.x2);
+        const y2 = Number(element.attributes.y2);
+        return {
+            minX: Math.min(x1, x2),
+            minY: Math.min(y1, y2),
+            maxX: Math.max(x1, x2),
+            maxY: Math.max(y1, y2),
+        };
     }
     if (element.tag === 'text') {
         const x = Number(element.attributes.x ?? 0);
@@ -668,23 +750,33 @@ function createPlaceholder(location: string, bounds: Bounds, type: 'armor' | 'st
         transforms: [],
         location,
         category: type,
+        rear: location.endsWith('_R'),
         placeholder: type,
     };
 }
 
 function createAsset(
     type: PaperdollType,
+    name: string,
+    side: PaperdollSide,
     sourceGroup: Record<string, unknown>,
     shieldGroups: readonly LocatedGroup[],
-): PaperdollAsset {
+): PaperdollAsset | undefined {
     const elements: PaperdollElement[] = [];
-    collectElements(sourceGroup, [], false, undefined, {}, undefined, false, false, type, elements, false, undefined);
-    for (const shieldGroup of shieldGroups) {
-        collectElements(shieldGroup.group, shieldGroup.transforms, false, undefined, {}, undefined, false, false, 'shield', elements, true, undefined);
+    collectElements(sourceGroup, [], false, undefined, {}, undefined, false, false, type, elements, false, undefined, undefined);
+    if (side === 'front') {
+        for (const shieldGroup of shieldGroups) {
+            collectElements(shieldGroup.group, shieldGroup.transforms, false, undefined, {}, undefined, false, false, 'shield', elements, true, undefined, undefined);
+        }
+    }
+
+    const sideElements = elements.filter(element => side === 'back' ? element.rear : !element.rear);
+    if (sideElements.length === 0) {
+        return undefined;
     }
 
     const shieldRowCounts = new Map<string, number>();
-    elements.forEach((element, index) => {
+    sideElements.forEach((element, index) => {
         if (element.category === type && element.location && !element.placeholder) {
             element.attributes.id = createArtworkId(type, element.location, element.attributes.id, index);
         }
@@ -701,7 +793,7 @@ function createAsset(
 
     const locationBounds = new Map<string, Bounds>();
     let bounds: Bounds | undefined;
-    for (const element of elements) {
+    for (const element of sideElements) {
         const elementBounds = getElementBounds(element);
         bounds = mergeBounds(bounds, elementBounds);
         if (element.category === type && element.location && !element.placeholder) {
@@ -713,7 +805,9 @@ function createAsset(
         throw new Error(`Unable to determine bounds for ${type} paperdoll`);
     }
 
-    const locationOrder = type === 'armor' ? ARMOR_LOCATION_ORDER : STRUCTURE_LOCATION_ORDER;
+    const locationOrder = type === 'armor'
+        ? side === 'back' ? ARMOR_REAR_LOCATION_ORDER : ARMOR_FRONT_LOCATION_ORDER
+        : STRUCTURE_LOCATION_ORDER;
     const zones = Object.fromEntries(locationOrder
         .filter(location => locationBounds.has(location))
         .map(location => [location, locationBounds.get(location) as Bounds]));
@@ -721,14 +815,16 @@ function createAsset(
     for (const location of locationOrder) {
         const zone = zones[location];
         if (zone) {
-            elements.push(createPlaceholder(location, zone, type));
+            sideElements.push(createPlaceholder(location, zone, type));
             bounds = mergeBounds(bounds, zone);
         }
     }
 
     return {
         type,
-        elements,
+        name,
+        side,
+        elements: sideElements,
         zones,
         bounds,
     };
@@ -752,20 +848,36 @@ function serializeElement(element: PaperdollElement): string {
         ? `<path${attributes} d="${escapeAttribute(element.attributes.d)}"${element.style ? ` style="${escapeAttribute(element.style)}"` : ''} />`
         : element.tag === 'polygon'
             ? `<polygon${attributes} points="${escapeAttribute(element.attributes.points)}"${element.style ? ` style="${escapeAttribute(element.style)}"` : ''} />`
-            : element.tag === 'rect'
-                ? `<rect${attributes}${element.style ? ` style="${escapeAttribute(element.style)}"` : ''} />`
-                : `<text${attributes}${element.style ? ` style="${escapeAttribute(element.style)}"` : ''}>${escapeAttribute(element.content ?? '')}</text>`;
+            : element.tag === 'polyline'
+                ? `<polyline${attributes} points="${escapeAttribute(element.attributes.points)}"${element.style ? ` style="${escapeAttribute(element.style)}"` : ''} />`
+                : element.tag === 'line'
+                    ? `<line${attributes}${element.style ? ` style="${escapeAttribute(element.style)}"` : ''} />`
+                    : element.tag === 'rect'
+                        ? `<rect${attributes}${element.style ? ` style="${escapeAttribute(element.style)}"` : ''} />`
+                        : `<text${attributes}${element.style ? ` style="${escapeAttribute(element.style)}"` : ''}>${escapeAttribute(element.content ?? '')}</text>`;
 
     return element.transforms.reduceRight((child, transform) => `<g transform="${escapeAttribute(transform.replaceAll(/\s+/gu, ' ').trim())}">${child}</g>`, content);
+}
+
+function getAssetSignature(asset: PaperdollAsset): string {
+    const bounds = asset.bounds;
+    const viewBox = `${round(bounds.minX)} ${round(bounds.minY)} ${round(bounds.maxX - bounds.minX)} ${round(bounds.maxY - bounds.minY)}`;
+    const elements = asset.elements.map(element => {
+        const attributes = { ...element.attributes };
+        delete attributes.id;
+        return serializeElement({ ...element, attributes });
+    }).join('\n');
+    return `${asset.type}|${asset.side}|${viewBox}|${elements}`;
 }
 
 function serializeAsset(asset: PaperdollAsset): string {
     const bounds = asset.bounds;
     const viewBox = `${round(bounds.minX)} ${round(bounds.minY)} ${round(bounds.maxX - bounds.minX)} ${round(bounds.maxY - bounds.minY)}`;
     const elements = asset.elements.map(serializeElement).join('\n    ');
+    const sideLabel = asset.side === 'back' ? ' back' : '';
     return `<?xml version="1.0" encoding="UTF-8"?>
-<!-- Editable MekBay biped ${asset.type} paperdoll. Pink dashed rectangles mark pip areas and are removed at runtime. -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" role="img" aria-label="Biped ${asset.type} paperdoll">
+<!-- Editable MekBay ${escapeAttribute(asset.name)}${sideLabel} ${asset.type} paperdoll. Pink dashed rectangles mark pip areas and are removed at runtime. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" role="img" aria-label="${escapeAttribute(asset.name)}${sideLabel} ${asset.type} paperdoll">
     <g id="paperdoll-art-${asset.type}">
     ${elements}
     </g>
@@ -773,29 +885,97 @@ function serializeAsset(asset: PaperdollAsset): string {
 `;
 }
 
+function getSourceFiles(sourceDirectory: string): string[] {
+    return fs.readdirSync(sourceDirectory, { withFileTypes: true })
+        .filter(entry => entry.isFile() && entry.name.toLowerCase().endsWith('.svg'))
+        .map(entry => path.join(sourceDirectory, entry.name))
+        .sort((left, right) => left.localeCompare(right));
+}
+
 function main(): void {
-    const sourceFile = path.resolve(getOption('--source') ?? DEFAULT_SOURCE_FILE);
+    const sourceFileOption = getOption('--source');
+    const sourceDirectory = path.resolve(getOption('--source-dir') ?? DEFAULT_SOURCE_DIRECTORY);
+    const sourceFiles = sourceFileOption
+        ? [path.resolve(sourceFileOption)]
+        : getSourceFiles(sourceDirectory);
     const outputDirectory = path.resolve(getOption('--output-dir') ?? DEFAULT_OUTPUT_DIRECTORY);
-    const source = fs.readFileSync(sourceFile, 'utf8');
-    const parsed = xmlParser.parse(source) as unknown;
-    const armorGroup = findById(parsed, 'armor_diagram_biped');
-    const structureGroup = findById(parsed, 'internal_diagram_biped');
-    if (!armorGroup || !structureGroup) {
-        throw new Error('The source SVG does not contain both biped diagram groups');
+    const signatures = new Set<string>();
+    const assets: Array<{ asset: PaperdollAsset; group: PaperdollGroup; sourceFile: string }> = [];
+    let candidateCount = 0;
+    let duplicateCount = 0;
+
+    for (const sourceFile of sourceFiles) {
+        const source = fs.readFileSync(sourceFile, 'utf8');
+        const parsed = xmlParser.parse(source) as unknown;
+        for (const paperdollGroup of findPaperdollGroups(parsed)) {
+            candidateCount += 1;
+            const paperdollName = getPaperdollName(paperdollGroup, sourceFile);
+            const shieldGroups = paperdollGroup.type === 'armor'
+                ? SHIELD_GROUPS
+                    .map(({ id }) => findByIdWithTransforms(paperdollGroup.group, id))
+                    .filter((group): group is LocatedGroup => !!group)
+                : [];
+            const sides: readonly PaperdollSide[] = paperdollGroup.type === 'armor'
+                ? ['front', 'back']
+                : ['front'];
+            for (const side of sides) {
+                const asset = createAsset(
+                    paperdollGroup.type,
+                    paperdollName,
+                    side,
+                    paperdollGroup.group,
+                    shieldGroups,
+                );
+                if (!asset) {
+                    continue;
+                }
+
+                const signature = getAssetSignature(asset);
+                if (signatures.has(signature)) {
+                    duplicateCount += 1;
+                    continue;
+                }
+
+                signatures.add(signature);
+                assets.push({ asset, group: paperdollGroup, sourceFile });
+            }
+        }
     }
 
-    const shieldGroups = SHIELD_GROUPS
-        .map(({ id }) => findByIdWithTransforms(armorGroup, id))
-        .filter((group): group is LocatedGroup => !!group);
-    const armor = createAsset('armor', armorGroup, shieldGroups);
-    const structure = createAsset('structure', structureGroup, []);
+    if (assets.length === 0) {
+        throw new Error(`No paperdoll groups found in ${sourceFileOption ?? sourceDirectory}`);
+    }
+
     fs.mkdirSync(outputDirectory, { recursive: true });
-    const armorFile = path.join(outputDirectory, 'biped-armor.svg');
-    const structureFile = path.join(outputDirectory, 'biped-structure.svg');
-    fs.writeFileSync(armorFile, serializeAsset(armor), 'utf8');
-    fs.writeFileSync(structureFile, serializeAsset(structure), 'utf8');
-    console.log(`Generated ${armor.elements.length} armor/shield elements and ${structure.elements.length} structure elements at ${path.relative(APP_ROOT, armorFile)} and ${path.relative(APP_ROOT, structureFile)}`);
-    console.log(`Armor placeholders: ${armor.elements.filter(element => !!element.placeholder).length}; structure placeholders: ${structure.elements.filter(element => !!element.placeholder).length}`);
+    const nameCounts = new Map<string, number>();
+    for (const { asset, group, sourceFile } of assets) {
+        const key = `${getPaperdollName(group, sourceFile)}-${asset.type}-${asset.side}`;
+        nameCounts.set(key, (nameCounts.get(key) ?? 0) + 1);
+    }
+
+    const nameIndexes = new Map<string, number>();
+    const outputNames = new Set<string>();
+    for (const { asset, group, sourceFile } of assets) {
+        const key = `${getPaperdollName(group, sourceFile)}-${asset.type}-${asset.side}`;
+        const nameIndex = nameIndexes.get(key) ?? 0;
+        nameIndexes.set(key, nameIndex + 1);
+        const groupName = getPaperdollName(group, sourceFile);
+        const sourceName = sanitizeIdPart(path.basename(sourceFile, path.extname(sourceFile))).replaceAll('_', '-');
+        const variantSuffix = nameCounts.get(key) === 1 || nameIndex === 0 ? '' : `-${sourceName}`;
+        const sideSuffix = asset.side === 'back' ? '-back' : '';
+        let outputName = `${groupName}-${asset.type}${sideSuffix}${variantSuffix}.svg`;
+        let collisionIndex = 2;
+        while (outputNames.has(outputName)) {
+            outputName = `${groupName}-${asset.type}${variantSuffix}-${collisionIndex}.svg`;
+            collisionIndex += 1;
+        }
+        outputNames.add(outputName);
+        const outputFile = path.join(outputDirectory, outputName);
+        fs.writeFileSync(outputFile, serializeAsset(asset), 'utf8');
+    }
+
+    console.log(`Generated ${assets.length} distinct paperdolls from ${candidateCount} groups at ${path.relative(APP_ROOT, outputDirectory)}`);
+    console.log(`Skipped ${duplicateCount} duplicate paperdolls`);
 }
 
 main();

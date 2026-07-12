@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Editable MekBay quad back armor paperdoll. Pink dashed rectangles mark pip areas and are removed at runtime. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="35.442 274.147 101.307 54.76" role="img" aria-label="quad back armor paperdoll">
+    <g id="paperdoll-art-armor">
+    <g transform="matrix(0.99999752,0,0,-1,-399.38017,738.24098)"><g transform="translate(458.0967,461.3546)"><path class="armor unitLocation" id="paperdoll-art-armor-LT_R-armorLTR" loc="LT" rear="1" d="m 0,0 -23.273,-24.641 v -1.232 l 13.416,-19.715 v -3.696 H 11.637 V 0 Z" style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:none" /></g></g>
+    <g transform="matrix(0.99999752,0,0,-1,-399.38017,738.24098)"><g transform="translate(458.0967,461.3546)"><path id="path4107" d="m 0,0 -23.273,-24.641 v -1.232 l 13.416,-19.715 v -3.696 H 11.637 V 0 Z" style="fill:none;stroke:#000000;stroke-width:1.449;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" /></g></g>
+    <g transform="matrix(0.99999752,0,0,-1,-399.38017,738.24098)"><g transform="translate(512.8574,461.3556)"><path class="armor unitLocation" id="paperdoll-art-armor-RT_R-armorRTR" loc="RT" rear="1" d="M 0,0 H -11.637 V -49.285 H 9.857 v 3.696 l 13.417,19.715 v 1.232 z" style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:none" /></g></g>
+    <g transform="matrix(0.99999752,0,0,-1,-399.38017,738.24098)"><g transform="translate(512.8574,461.3556)"><path id="path4115" d="M 0,0 H -11.637 V -49.285 H 9.857 v 3.696 l 13.417,19.715 v 1.232 z" style="fill:none;stroke:#000000;stroke-width:1.449;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" /></g></g>
+    <g transform="matrix(0.99999752,0,0,-1,-399.38017,738.24098)"><g transform="translate(469.7339,464.0925)"><path class="armor unitLocation" id="paperdoll-art-armor-CT_R-armorCTR" loc="CT" rear="1" d="M 0,0 V -54.759 H 31.487 V 10e-4 Z" style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:none" /></g></g>
+    <g transform="matrix(0.99999752,0,0,-1,-399.38017,738.24098)"><g transform="translate(469.7339,464.0925)"><path id="path4123" d="M 0,0 V -54.759 H 31.487 V 10e-4 Z" style="fill:none;stroke:#000000;stroke-width:1.449;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" /></g></g>
+    <rect fill="none" height="54.76" id="placeholder-canon-armor-CT_R" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="31.487" x="70.353" y="274.147" />
+    <rect fill="none" height="49.284" id="placeholder-canon-armor-LT_R" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="34.91" x="35.442" y="276.886" />
+    <rect fill="none" height="49.285" id="placeholder-canon-armor-RT_R" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="34.911" x="101.839" y="276.885" />
+    </g>
+</svg>
