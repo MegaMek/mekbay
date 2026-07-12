@@ -37,8 +37,9 @@ import type { UnitComponent } from '../../models/units.model';
 import { DataService } from '../../services/data.service';
 import type { Unit } from '../../models/units.model';
 import { AmmoEquipment, type Equipment, WeaponEquipment } from '../../models/equipment.model';
-import { TechDate, TechDates, techDateYear, formatTechDate } from '../../models/entity';
+import { TechDate, TechAdvancementDates, techDateYear, formatTechDate } from '../../models/entity';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
+import { parseTechDate } from '../../models/entity/types/tech';
 
 /*
  * Author: Drake
@@ -166,11 +167,6 @@ export class FloatingCompInfoComponent {
         const eq = this.equipment();
         if (!eq) return [];
 
-        // Helper to pick earliest date from two options
-        const earliest = (a?: string, b?: string): string | undefined => {
-            const aY = parseAdvancementYear(a), bY = parseAdvancementYear(b);
-            if (aY === null) return b;
-            if (bY === null) return a;
         // Helper to pick earliest TechDate from two options
         const earliest = (a: TechDate, b: TechDate): TechDate => {
             const aY = techDateYear(a), bY = techDateYear(b);
@@ -179,11 +175,6 @@ export class FloatingCompInfoComponent {
             return aY <= bY ? a : b;
         };
 
-        // Helper to pick latest date from two options
-        const latest = (a?: string, b?: string): string | undefined => {
-            const aY = parseAdvancementYear(a), bY = parseAdvancementYear(b);
-            if (aY === null) return b;
-            if (bY === null) return a;
         // Helper to pick latest TechDate from two options
         const latest = (a: TechDate, b: TechDate): TechDate => {
             const aY = techDateYear(a), bY = techDateYear(b);
@@ -192,7 +183,7 @@ export class FloatingCompInfoComponent {
             return aY >= bY ? a : b;
         };
 
-        let dates: TechDates;
+        let dates: TechAdvancementDates;
         switch (unit.techBase) {
             case 'Clan':
                 dates = eq.tech.advancement?.clan ?? {};

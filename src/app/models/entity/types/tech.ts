@@ -56,12 +56,12 @@ export type AvailabilityCode = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'X';
  * Matches MegaMek `SimpleTechLevel`.
  */
 export type ComponentTechLevel =
-  | 'Introductory'
-  | 'Standard'
-  | 'Advanced'
-  | 'Experimental'
-  | 'Unofficial';
-  
+    | 'Introductory'
+    | 'Standard'
+    | 'Advanced'
+    | 'Experimental'
+    | 'Unofficial';
+
 // ============================================================================
 // Date sentinels  (matching MegaMek ITechnology)
 // ============================================================================
@@ -79,8 +79,8 @@ export const DATE_ES = 2100;
 
 /** A tech date that is explicitly approximate (~year). */
 export interface ApproxDate {
-  readonly year: number;
-  readonly approximate: true;
+    readonly year: number;
+    readonly approximate: true;
 }
 
 /**
@@ -99,18 +99,18 @@ export const APPROXIMATE_MARGIN = 5;
 
 /** Mark a tech year as approximate. */
 export function approx(year: number): ApproxDate {
-  return { year, approximate: true };
+    return { year, approximate: true };
 }
 
 /** Extract the numeric year from a `TechDate` (returns `undefined` for DATE_NONE). */
 export function techDateYear(date: TechDate): number | undefined {
-  if (date == null) return undefined;
-  return typeof date === 'number' ? date : date.year;
+    if (date == null) return undefined;
+    return typeof date === 'number' ? date : date.year;
 }
 
 /** Whether a `TechDate` is approximate. */
 export function isTechDateApprox(date: TechDate): boolean {
-  return date != null && typeof date !== 'number';
+    return date != null && typeof date !== 'number';
 }
 
 /**
@@ -118,14 +118,14 @@ export function isTechDateApprox(date: TechDate): boolean {
  * for approximate dates (or adds it for extinction dates via `extinct` flag).
  */
 export function effectiveTechDateYear(
-  date: TechDate,
-  extinct = false,
+    date: TechDate,
+    extinct = false,
 ): number | undefined {
-  if (date == null) return undefined;
-  if (typeof date === 'number') return date;
-  return extinct
-    ? date.year + APPROXIMATE_MARGIN
-    : date.year - APPROXIMATE_MARGIN;
+    if (date == null) return undefined;
+    if (typeof date === 'number') return date;
+    return extinct
+        ? date.year + APPROXIMATE_MARGIN
+        : date.year - APPROXIMATE_MARGIN;
 }
 
 /**
@@ -133,9 +133,9 @@ export function effectiveTechDateYear(
  * Returns `undefined` for DATE_NONE.
  */
 export function formatTechDate(date: TechDate): string | undefined {
-  if (date == null) return undefined;
-  if (typeof date === 'number') return String(date);
-  return `~${date.year}`;
+    if (date == null) return undefined;
+    if (typeof date === 'number') return String(date);
+    return `~${date.year}`;
 }
 
 /**
@@ -144,10 +144,17 @@ export function formatTechDate(date: TechDate): string | undefined {
  * - `"~2430"` => `{ year: 2430, approximate: true }` (approximate)
  * - `undefined` / empty => `undefined` (DATE_NONE)
  */
-export function parseTechDate(value: string | undefined): TechDate {
-  if (!value) return undefined;
-  if (value.startsWith('~')) return approx(parseInt(value.slice(1), 10));
-  return parseInt(value, 10);
+export function parseTechDate(value: string | undefined, noApproximation: boolean = false): TechDate {
+    if (!value) return undefined;
+    if (!noApproximation && value.startsWith('~')) {
+        let v = value.slice(1);
+        if (v === 'ES') return approx(1950);
+        if (v === 'PS') return approx(2100);
+        return approx(parseInt(v, 10));
+    }
+    if (value === 'ES') return 1950;
+    if (value === 'PS') return 2100;
+    return parseInt(value, 10);
 }
 
 // ============================================================================
@@ -158,12 +165,12 @@ export function parseTechDate(value: string | undefined): TechDate {
  * Technology advancement dates for one tech variant.
  * Each date is a `TechDate`: a plain year, `approx(year)`, or `undefined`.
  */
-export interface TechDates {
-  readonly prototype?: TechDate;
-  readonly production?: TechDate;
-  readonly common?: TechDate;
-  readonly extinct?: TechDate;
-  readonly reintroduced?: TechDate;
+export interface TechAdvancementDates {
+    readonly prototype?: TechDate;
+    readonly production?: TechDate;
+    readonly common?: TechDate;
+    readonly extinct?: TechDate;
+    readonly reintroduced?: TechDate;
 }
 
 /**
@@ -174,29 +181,29 @@ export interface TechDates {
  * `clanAdvancement` separately.
  */
 export interface SplitTechDates {
-  readonly is?: TechDates;
-  readonly clan?: TechDates;
+    readonly is?: TechAdvancementDates;
+    readonly clan?: TechAdvancementDates;
 }
 
 /** Type guard: is the dates value a per-tech-base split? */
-export function isSplitTechDates(dates: TechDates | SplitTechDates): dates is SplitTechDates {
-  return 'is' in dates;
+export function isSplitTechDates(dates: TechAdvancementDates | SplitTechDates): dates is SplitTechDates {
+    return 'is' in dates;
 }
 
 /**
- * Resolve `TechDates` for a specific tech base.
+ * Resolve `TechAdvancementDates` for a specific tech base.
  *
  * If the dates are per-tech-base (`SplitTechDates`), returns the dates
- * for the requested tech base.  Otherwise returns the unified `TechDates`.
+ * for the requested tech base.  Otherwise returns the unified `TechAdvancementDates`.
  */
 export function resolveTechDates(
-  dates: TechDates | SplitTechDates,
-  techBase: EquipmentTechBase = 'IS',
-): TechDates | undefined {
-  if (isSplitTechDates(dates)) {
-    return techBase === 'Clan' ? dates['clan'] : dates['is'];
-  }
-  return dates;
+    dates: TechAdvancementDates | SplitTechDates,
+    techBase: EquipmentTechBase = 'IS',
+): TechAdvancementDates | undefined {
+    if (isSplitTechDates(dates)) {
+        return techBase === 'Clan' ? dates['clan'] : dates['is'];
+    }
+    return dates;
 }
 
 /**
@@ -207,44 +214,44 @@ export function resolveTechDates(
  * `techBase` is defined and ≤ `year`.
  */
 export function isTechAvailableForBase(
-  dates: TechDates | SplitTechDates,
-  techBase: EquipmentTechBase,
-  year: number,
+    dates: TechAdvancementDates | SplitTechDates,
+    techBase: EquipmentTechBase,
+    year: number,
 ): boolean {
-  const resolved = resolveTechDates(dates, techBase);
-  if (!resolved) {
-    throw new Error(`Invalid tech dates: ${JSON.stringify(dates)}`);
-  }
-
-  // Must have at least prototype, production, or common date ≤ year to be available
-  const protoYear = effectiveTechDateYear(resolved.prototype);
-  const prodYear = effectiveTechDateYear(resolved.production);
-  const commonYear = effectiveTechDateYear(resolved.common);
-  const introduced = (protoYear != null && year >= protoYear)
-                  || (prodYear != null && year >= prodYear)
-                  || (commonYear != null && year >= commonYear);
-  if (!introduced) return false;
-
-  // Check extinction: if extinct date exists and year >= extinct, tech is gone
-  // (approximate extinction dates are shifted forward by APPROXIMATE_MARGIN)
-  const extinctYear = effectiveTechDateYear(resolved.extinct, true);
-  if (extinctYear != null && year >= extinctYear) {
-    // Unless reintroduced after the extinction
-    const reintroYear = effectiveTechDateYear(resolved.reintroduced);
-    if (reintroYear != null && reintroYear > extinctYear && year >= reintroYear) {
-      return true;
+    const resolved = resolveTechDates(dates, techBase);
+    if (!resolved) {
+        throw new Error(`Invalid tech dates: ${JSON.stringify(dates)}`);
     }
-    return false;
-  }
 
-  return true;
+    // Must have at least prototype, production, or common date ≤ year to be available
+    const protoYear = effectiveTechDateYear(resolved.prototype);
+    const prodYear = effectiveTechDateYear(resolved.production);
+    const commonYear = effectiveTechDateYear(resolved.common);
+    const introduced = (protoYear != null && year >= protoYear)
+        || (prodYear != null && year >= prodYear)
+        || (commonYear != null && year >= commonYear);
+    if (!introduced) return false;
+
+    // Check extinction: if extinct date exists and year >= extinct, tech is gone
+    // (approximate extinction dates are shifted forward by APPROXIMATE_MARGIN)
+    const extinctYear = effectiveTechDateYear(resolved.extinct, true);
+    if (extinctYear != null && year >= extinctYear) {
+        // Unless reintroduced after the extinction
+        const reintroYear = effectiveTechDateYear(resolved.reintroduced);
+        if (reintroYear != null && reintroYear > extinctYear && year >= reintroYear) {
+            return true;
+        }
+        return false;
+    }
+
+    return true;
 }
 
 /** Faction codes for tech-advancement milestones. */
 export interface TechFactions {
-  readonly prototype?: readonly string[];
-  readonly production?: readonly string[];
-  readonly reintroduction?: readonly string[];
+    readonly prototype?: readonly string[];
+    readonly production?: readonly string[];
+    readonly reintroduction?: readonly string[];
 }
 
 /**
@@ -253,16 +260,16 @@ export interface TechFactions {
  * Availability eras (tuple indices): [Star League, Succession Wars, Clan Invasion, Dark Age].
  *
  * The `dates` field can be either:
- * - `TechDates` — single set of dates (used when IS & Clan share the same timeline,
+ * - `TechAdvancementDates` — single set of dates (used when IS & Clan share the same timeline,
  *   or when `techBase` is IS-only / Clan-only)
  * - `SplitTechDates` — per-tech-base dates (used when IS & Clan have different
  *   availability timelines, e.g. Small Cockpit)
  */
 export interface TechAdvancement {
-  readonly techBase: EquipmentTechBase;
-  readonly rating: TechRating;
-  readonly availability: readonly [AvailabilityCode, AvailabilityCode, AvailabilityCode, AvailabilityCode];
-  readonly level: ComponentTechLevel;
-  readonly dates: TechDates | SplitTechDates;
-  readonly factions?: TechFactions;
+    readonly techBase: EquipmentTechBase;
+    readonly rating: TechRating;
+    readonly availability: readonly [AvailabilityCode, AvailabilityCode, AvailabilityCode, AvailabilityCode];
+    readonly level: ComponentTechLevel;
+    readonly dates: TechAdvancementDates | SplitTechDates;
+    readonly factions?: TechFactions;
 }

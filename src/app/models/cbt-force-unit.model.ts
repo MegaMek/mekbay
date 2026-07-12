@@ -965,7 +965,7 @@ export class CBTForceUnit extends ForceUnit {
                 for (const item of inventory) {
                     if (item.equipment instanceof AmmoEquipment 
                     && (item.equipment.hasMunitionType('M_SEMIGUIDED') || item.equipment.hasMunitionType('M_HOMING'))) {
-                        totalSemiGuidedBV += item.equipment.bv;
+                        totalSemiGuidedBV += item.getBV();
                     }
                 }
             }

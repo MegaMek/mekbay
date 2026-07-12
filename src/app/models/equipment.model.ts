@@ -30,7 +30,7 @@
  * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
  * affiliated with Microsoft.
  */
-import { BaseEntity, ComponentTechLevel, EquipmentTechBase, SplitTechDates, TechDates, parseTechDate } from './entity';
+import { BaseEntity, ComponentTechLevel, EquipmentTechBase, SplitTechDates, TechAdvancementDates, parseTechDate } from './entity';
 import { getNumCriticalSlots } from './entity/utils/equipment-helpers';
 import { TechBaseAvailability } from './tech.model';
 import type { MountedEquipment } from './mounted-equipment.model';
@@ -457,8 +457,8 @@ function merge<T extends object>(defaults: T, partial?: Partial<T>): T {
     return result;
 }
 
-/** Convert wire-format `RawTechDates` → effective `TechDates`. */
-function parseRawTechDates(raw: RawTechDates | undefined): TechDates | undefined {
+/** Convert wire-format `RawTechDates` → effective `TechAdvancementDates`. */
+function parseRawTechDates(raw: RawTechDates | undefined): TechAdvancementDates | undefined {
     if (!raw) return undefined;
     return {
         prototype:    parseTechDate(raw.prototype),

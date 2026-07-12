@@ -214,7 +214,6 @@ export class MekRules extends UnitTypeRulesBase {
     evaluateDestroyed(): void {
         // Build set of destroyed internal locations, including linked
         const locationsToDestroy = new Set<string>();
-        const topology = getTopologyFor(this.unit.locations?.internal?.keys() ?? []);
         this.unit.locations?.internal?.forEach((_value, loc) => {
             if (this.unit.isInternalLocStructurallyDestroyed(loc)) {
                 locationsToDestroy.add(loc);
@@ -757,7 +756,6 @@ export class MekRules extends UnitTypeRulesBase {
         let undamagedLegs = true;
         // Calculate pre-existing leg destruction modifiers. If a leg is gone, is gone.
         this.unit.locations?.internal?.forEach((_value, loc) => {
-            if (!isMekLocation(loc)) return;
             if (!LEG_LOCATIONS.has(loc)) return; // Only consider leg locations
             if (!isFourLegged && FOUR_LEGGED_LOCATIONS.has(loc)) {
                 isFourLegged = true;

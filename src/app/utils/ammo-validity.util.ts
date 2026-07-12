@@ -1,8 +1,8 @@
-import type { AmmoEquipment, AmmoType, TechAdvancementDates, WeaponEquipment } from '../models/equipment.model';
+import { effectiveTechDateYear, TechAdvancementDates } from '../models/entity/types/tech';
+import type { AmmoEquipment, AmmoType, WeaponEquipment } from '../models/equipment.model';
 import type { Era } from '../models/eras.model';
 import type { MountedEquipment } from '../models/force-serialization';
 import type { Unit, UnitType } from '../models/units.model';
-import { getEffectiveAdvancementYear } from './tech-advancement-date.util';
 
 export interface AmmoValidityContext {
     unitType?: UnitType;
@@ -199,15 +199,15 @@ export class AmmoValidityUtil {
         const eraStartYear = era.years.from ?? Number.NEGATIVE_INFINITY;
         const eraEndYear = era.years.to ?? Number.POSITIVE_INFINITY;
         const nonExtinctionYears = [dates.prototype, dates.production, dates.common, dates.reintroduced]
-            .map(value => getEffectiveAdvancementYear(value, 'availability'))
-            .filter((year): year is number => year !== null);
+            .map(value => effectiveTechDateYear(value))
+            .filter((year): year is number => year !== undefined);
 
         if (nonExtinctionYears.length > 0 && eraEndYear < Math.min(...nonExtinctionYears)) {
             return 'not-yet-existing-in-era';
         }
 
-        const extinctYear = getEffectiveAdvancementYear(dates.extinct, 'extinct');
-        if (extinctYear === null || eraStartYear < extinctYear) return null;
+        const extinctYear = effectiveTechDateYear(dates.extinct, true);
+        if (extinctYear === undefined || eraStartYear < extinctYear) return null;
 
         const nextAfterExtinction = nonExtinctionYears
             .filter(year => year > extinctYear)

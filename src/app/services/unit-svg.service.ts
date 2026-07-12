@@ -837,8 +837,6 @@ export class UnitSvgService {
             }
         });
 
-        const topology = getTopologyFor(this.unit.locations?.internal?.keys() ?? []);
-
         this.unit.locations?.internal.forEach(entry => {
             const el = svg.querySelector(`.unitLocation.structure[loc="${entry.loc}"]`);
             if (!el) return;

@@ -32,12 +32,12 @@
  */
 
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import type { Equipment, TechAdvancementDates } from '../../models/equipment.model';
-import { parseAdvancementYear } from '../../utils/tech-advancement-date.util';
+import type { Equipment } from '../../models/equipment.model';
+import { parseTechDate, TechAdvancementDates } from '../../models/entity/types/tech';
 
 export interface AdvancementTimelineItem {
     label: string;
-    value: string | number;
+    value: string;
 }
 
 export interface AdvancementTimelineSlotLabel {
@@ -427,7 +427,7 @@ function getShortTimelineLabel(label: string): string {
     }
 }
 
-function getTimelineSlotKey(value: string | number): string {
+function getTimelineSlotKey(value: string): string {
     const year = parseTimelineYear(value);
     return year === null ? `text:${value}` : `year:${year}`;
 }
@@ -441,7 +441,7 @@ function compareTimelineSlotKeys(a: string, b: string): number {
     return aYear - bYear;
 }
 
-function compareTimelineValues(a: string | number, b: string | number): number {
+function compareTimelineValues(a: string, b: string): number {
     const aYear = parseTimelineYear(a);
     const bYear = parseTimelineYear(b);
     if (aYear === null && bYear === null) return String(a).localeCompare(String(b));
@@ -450,6 +450,8 @@ function compareTimelineValues(a: string | number, b: string | number): number {
     return aYear - bYear;
 }
 
-function parseTimelineYear(value: string | number): number | null {
-    return parseAdvancementYear(value);
+function parseTimelineYear(value: string): number | null {
+    const date = parseTechDate(value);
+    if (date === undefined) return null;
+    return typeof date === 'number' ? date : date.year;
 }

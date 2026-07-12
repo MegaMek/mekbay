@@ -298,7 +298,6 @@ export interface Unit {
     _nameTags: UnitTagEntry[]; // Quantity-aware tags assigned to this specific unit name
     _chassisTags: UnitTagEntry[]; // Quantity-aware tags assigned to the chassis (applies to all variants)
     _publicTags?: PublicTagInfo[]; // Tags from other users (temporary or subscribed)
-    unitFile: string;
 }
 
 /** Information about a public tag from another user */

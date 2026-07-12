@@ -75,7 +75,6 @@ export class TurnState {
         let isFourLegged = false;
         // Calculate pre-existing leg destruction modifiers. If a leg is gone, is gone.
         unit.locations?.internal?.forEach((_value, loc) => {
-            if (!isMekLocation(loc)) return;
             if (!LEG_LOCATIONS.has(loc)) return; // Only consider leg locations
             if (!isFourLegged && FOUR_LEGGED_LOCATIONS.has(loc)) {
                 isFourLegged = true;
