@@ -33,7 +33,7 @@
 
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import type { Equipment } from '../../models/equipment.model';
-import { parseTechDate, TechAdvancementDates } from '../../models/entity/types/tech';
+import { formatTechDate, parseTechDate, TechAdvancementDates, type TechDate } from '../../models/entity/types/tech';
 
 export interface AdvancementTimelineItem {
     label: string;
@@ -405,15 +405,16 @@ function getEquipmentRawAdvancementItems(equipment: Equipment): Array<{ label: s
 
 function getEquipmentAdvancementDateItems(dates: TechAdvancementDates | undefined): AdvancementTimelineItem[] {
     if (!dates) return [];
-    return [
+    const entries: Array<[string, TechDate]> = [
         ['Prototype', dates.prototype],
         ['Production', dates.production],
         ['Common', dates.common],
         ['Extinction', dates.extinct],
         ['Reintroduction', dates.reintroduced],
-    ]
-        .filter((entry): entry is [string, string] => entry[1] !== undefined && entry[1] !== null && entry[1] !== '' && entry[1] !== '-')
-        .map(([label, value]) => ({ label, value }))
+    ];
+    return entries
+        .filter((entry): entry is [string, Exclude<TechDate, undefined>] => entry[1] !== undefined)
+        .map(([label, value]) => ({ label, value: formatTechDate(value)! }))
         .sort((a, b) => compareTimelineValues(a.value, b.value));
 }
 
@@ -433,12 +434,18 @@ function getTimelineSlotKey(value: string): string {
 }
 
 function compareTimelineSlotKeys(a: string, b: string): number {
-    const aYear = parseTimelineYear(a);
-    const bYear = parseTimelineYear(b);
+    const aYear = parseTimelineSlotYear(a);
+    const bYear = parseTimelineSlotYear(b);
     if (aYear === null && bYear === null) return a.localeCompare(b);
     if (aYear === null) return 1;
     if (bYear === null) return -1;
     return aYear - bYear;
+}
+
+function parseTimelineSlotYear(key: string): number | null {
+    if (!key.startsWith('year:')) return null;
+    const year = Number(key.slice('year:'.length));
+    return Number.isFinite(year) ? year : null;
 }
 
 function compareTimelineValues(a: string, b: string): number {

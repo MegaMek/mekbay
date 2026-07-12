@@ -1,4 +1,4 @@
-import { AmmoEquipment, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
+import { AmmoEquipment, MiscEquipment, type RawSplitTechDates, WeaponEquipment } from '../models/equipment.model';
 import type { Era } from '../models/eras.model';
 import type { MountedEquipment } from '../models/force-serialization';
 import { AmmoValidityUtil } from './ammo-validity.util';
@@ -13,7 +13,7 @@ function createEra(from: number | undefined, to: number | undefined): Era {
     };
 }
 
-function createAmmo(id: string, advancement: AmmoEquipment['tech']['advancement']): AmmoEquipment {
+function createAmmo(id: string, advancement: RawSplitTechDates): AmmoEquipment {
     return new AmmoEquipment({
         id,
         name: id,
@@ -86,7 +86,11 @@ describe('AmmoValidityUtil', () => {
 
     it('marks ammo with a selection issue while every advancement branch is extinct for the selected era', () => {
         const ammo = createAmmo('Extinct Ammo', {
-            is: { prototype: '~2375', production: '2377', common: '3058', extinct: '2790', reintroduced: '3054' },
+            is: { prototype: '~2375'
+                , production: '2377'
+                , common: '3058'
+                , extinct: '2790'
+                , reintroduced: '3054' },
         });
 
         expect(issueReasons(ammo, { era: createEra(3025, 3049) })).toEqual(['extinct-in-era']);
