@@ -22,20 +22,31 @@ describe('BipedPaperdollUtil', () => {
             },
             pipOptions: { inset: 1.8, stroke: '#b4492f' },
         });
+        const rearArmorLayer = await BipedPaperdollUtil.createArmorRearPaperdoll(84.68, 238, {
+            CT_R: 10,
+            LT_R: 8,
+            RT_R: 8,
+        }, {
+            pipOptions: { inset: 1.8, stroke: '#b4492f' },
+        });
         const structureLayer = await BipedPaperdollUtil.createStructurePaperdoll(55.32, 238, 50, {
             pipOptions: { inset: 1.8, stroke: '#356a8a' },
         });
         armorLayer.setAttribute('transform', 'translate(2 2)');
+        rearArmorLayer.setAttribute('transform', 'translate(2 2)');
         structureLayer.setAttribute('transform', 'translate(96.68 2)');
         const paperdoll = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        paperdoll.append(armorLayer, structureLayer);
+        paperdoll.append(armorLayer, rearArmorLayer, structureLayer);
 
             expect(paperdoll.querySelector('#paperdoll-art-armor')).not.toBeNull();
             expect(paperdoll.querySelector('#paperdoll-art-structure')).not.toBeNull();
-        expect(paperdoll.querySelectorAll('[data-type="armor"]').length).toBe(1);
+        expect(paperdoll.querySelectorAll('[data-type="armor"]').length).toBe(2);
         expect(paperdoll.querySelectorAll('[data-type="structure"]').length).toBe(1);
         expect(armorLayer.getAttribute('transform')).toBe('translate(2 2)');
         expect(structureLayer.getAttribute('transform')).toBe('translate(96.68 2)');
+        expect(armorLayer.querySelector('[data-location="CT_R"]')).toBeNull();
+        expect(armorLayer.querySelector('[data-location="LT_R"]')).toBeNull();
+        expect(armorLayer.querySelector('[data-location="RT_R"]')).toBeNull();
         expect(paperdoll.querySelectorAll('.biped-paperdoll-zone').length).toBe(23);
         expect(paperdoll.querySelectorAll('[data-location="CT_R"]').length).toBeGreaterThan(0);
         expect(paperdoll.querySelectorAll('[data-pip-type="shield-dc"] circle').length).toBe(16);
@@ -58,6 +69,41 @@ describe('BipedPaperdollUtil', () => {
         expect(paperdoll.getAttribute('data-height')).toBe('120');
         expect(fitGroup.getAttribute('transform')).toContain('translate(');
         expect(scaleGroup.getAttribute('transform')).toContain('scale(');
+    });
+
+    it('fits layers at the top-left by default and can center them', async () => {
+        const source = encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
+                <g id="paperdoll-art-armor">
+                    <path d="M 0 0 H 100 V 20 H 0 Z" />
+                </g>
+            </svg>
+        `);
+        const topLeftLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 40, {}, {
+            assetUrl: `data:image/svg+xml,${source}`,
+        });
+        const centeredLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 40, {}, {
+            assetUrl: `data:image/svg+xml,${source}`,
+            centered: true,
+        });
+
+        expect((topLeftLayer.firstElementChild as SVGGElement).getAttribute('transform')).toBe('translate(0 0)');
+        expect((centeredLayer.firstElementChild as SVGGElement).getAttribute('transform')).toBe('translate(0 10)');
+    });
+
+    it('renders rear armor from the dedicated rear asset', async () => {
+        const paperdoll = await BipedPaperdollUtil.createArmorRearPaperdoll(84.68, 238, {
+            CT_R: 10,
+            LT_R: 8,
+            RT_R: 8,
+        });
+
+        expect(paperdoll.getAttribute('data-source')).toBe('/images/paperdolls/biped-armor-back.svg');
+        expect(paperdoll.querySelector('[data-location="CT_R"][data-zone-type="armor"]')).not.toBeNull();
+        expect(paperdoll.querySelector('[data-location="LT_R"][data-zone-type="armor"]')).not.toBeNull();
+        expect(paperdoll.querySelector('[data-location="RT_R"][data-zone-type="armor"]')).not.toBeNull();
+        expect(paperdoll.querySelector('[data-location="CT"][data-zone-type="armor"]')).toBeNull();
+        expect(paperdoll.querySelectorAll('rect').length).toBe(0);
     });
 
     it('renders independent structure tonnage for each location', async () => {

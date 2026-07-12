@@ -1,5 +1,5 @@
 import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, ViewChild } from '@angular/core';
-import { BipedPaperdollUtil, type BipedArmorLocation, type BipedStructureLocation, type BipedStructureTonnage } from '../utils/biped-paperdoll.util';
+import { BipedPaperdollUtil, type BipedArmorLocation, type BipedPaperdollPipLayout, type BipedStructureLocation, type BipedStructureTonnage } from '../utils/biped-paperdoll.util';
 import { PipUtil } from '../utils/pip.util';
 import { SvgFrameUtil } from '../utils/svg-frame.util';
 
@@ -17,6 +17,17 @@ import { SvgFrameUtil } from '../utils/svg-frame.util';
             </button>
 
             <aside id="paperdoll-controls" class="svg-frame-demo-sidebar" [class.is-open]="sidebarOpen" aria-label="Paperdoll controls">
+                <section class="control-section" aria-labelledby="paperdoll-mode-title">
+                    <label class="mode-control" for="paperdoll-mode">
+                        <span id="paperdoll-mode-title">Mode</span>
+                        <select id="paperdoll-mode" [value]="pipLayout" (change)="updatePipLayout($event)">
+                            @for (layout of pipLayouts; track layout) {
+                                <option [value]="layout">{{ layout }}</option>
+                            }
+                        </select>
+                    </label>
+                </section>
+                <hr/>
                 <section class="control-section" aria-labelledby="armor-controls-title">
                     <div class="section-heading">
                         <h2 id="armor-controls-title">Armor counts</h2>
@@ -205,6 +216,29 @@ import { SvgFrameUtil } from '../utils/svg-frame.util';
             font-size: 0.76rem;
             font-variant-numeric: tabular-nums;
             white-space: nowrap;
+        }
+
+        .mode-control {
+            display: grid;
+            gap: 5px;
+            color: #b9c4c1;
+            font-size: 0.77rem;
+            font-weight: 700;
+        }
+
+        .mode-control select {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 7px 8px;
+            border: 1px solid #4a5a60;
+            color: #fff;
+            background: #26353a;
+            font: inherit;
+            cursor: pointer;
+        }
+
+        .mode-control select:focus {
+            border-color: #e0ad2a;
         }
 
         .count-grid {
@@ -404,6 +438,14 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
     private paperdollRenderRoot?: SVGGElement;
     private paperdollRenderVersion = 0;
 
+    protected pipLayout: BipedPaperdollPipLayout = 'canon';
+    protected readonly pipLayouts: readonly BipedPaperdollPipLayout[] = [
+        'canon',
+        'distributed',
+        'rail',
+        'fill',
+    ];
+
     protected get totalArmorCount(): number {
         return Object.values(this.armorCounts).reduce((total, count) => total + count, 0);
     }
@@ -414,6 +456,15 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
 
     protected toggleSidebar(): void {
         this.sidebarOpen = !this.sidebarOpen;
+    }
+
+    protected updatePipLayout(event: Event): void {
+        const layout = (event.target as HTMLSelectElement).value;
+        if (!this.isPipLayout(layout)) {
+            return;
+        }
+        this.pipLayout = layout;
+        void this.updatePaperdolls();
     }
 
     protected formatLocation(location: BipedArmorLocation | BipedStructureLocation): string {
@@ -514,60 +565,49 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
     private async createBipedPipDemoFrame(): Promise<SVGGElement> {
         const frame = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         frame.setAttribute('id', 'bipedPipDemoFrame');
-        frame.setAttribute('transform', `translate(400 0)`);
+        frame.setAttribute('transform', `translate(390 0)`);
         const armorCounts = this.armorCounts;
         const structureTonnage: BipedStructureTonnage = this.structureLinked
             ? this.globalStructureTonnage
             : { ...this.structureTonnageByLocation };
-        const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(84.68, 238, armorCounts, {
-            className: 'biped-paperdoll-armor',
-            shieldValues: {
-                LA: { dc: 8, da: 1 },
-                RA: { dc: 8, da: 1 },
-            },
-            pipOptions: {
-                inset: 1.8,
-                stroke: '#b4492f',
-            },
-        });
-        armorLayer.setAttribute('transform', 'translate(2 2)');
-
-        const structureLayer = await BipedPaperdollUtil.createStructurePaperdoll(55.32, 238, structureTonnage, {
-            className: 'biped-paperdoll-structure',
-            pipOptions: {
-                inset: 1.8,
-                stroke: '#356a8a',
-            },
-        });
-        structureLayer.setAttribute('transform', 'translate(20 120)');
-
-        const railShieldValues = {
+        const shieldValues = {
             LA: { dc: 8, da: 1 },
             RA: { dc: 8, da: 1 },
         } as const;
-        const railArmorLayer = await BipedPaperdollUtil.createArmorPaperdoll(84.68, 238, armorCounts, {
-            className: 'biped-placeholder-rail-armor',
-            pipLayout: 'rail',
-            railPipsPerPath: 5,
-            shieldValues: railShieldValues,
-            pipOptions: {
-                inset: 1.8,
-                stroke: '#a63d83',
-            },
-        });
-        railArmorLayer.setAttribute('transform', 'translate(94 2)');
-
-        const fillArmorLayer = await BipedPaperdollUtil.createArmorPaperdoll(84.68, 238, armorCounts, {
-            className: 'biped-placeholder-fill-armor',
-            pipLayout: 'fill',
-            pipOptions: {
-                inset: 1.8,
-                stroke: '#2f8f83',
-            },
-        });
-        fillArmorLayer.setAttribute('transform', 'translate(94 150)');
-        frame.append(armorLayer, structureLayer, railArmorLayer, fillArmorLayer);
-
+        const [armorFrontLayer, armorRearLayer, structureLayer] = await Promise.all([
+            BipedPaperdollUtil.createArmorPaperdoll(210, 400, armorCounts, {
+                className: 'biped-paperdoll-armor-front',
+                pipLayout: this.pipLayout,
+                railPipsPerPath: 5,
+                shieldValues,
+                pipOptions: {
+                    inset: 1.8,
+                    stroke: '#b4492f',
+                },
+            }),
+            BipedPaperdollUtil.createArmorRearPaperdoll(84.68, 238, armorCounts, {
+                className: 'biped-paperdoll-armor-rear',
+                pipLayout: this.pipLayout,
+                railPipsPerPath: 5,
+                pipOptions: {
+                    inset: 1.8,
+                    stroke: '#a63d83',
+                },
+            }),
+            BipedPaperdollUtil.createStructurePaperdoll(55.32, 238, structureTonnage, {
+                className: 'biped-paperdoll-structure',
+                pipLayout: this.pipLayout,
+                railPipsPerPath: 5,
+                pipOptions: {
+                    inset: 1.8,
+                    stroke: '#356a8a',
+                },
+            }),
+        ]);
+        armorFrontLayer.setAttribute('transform', 'translate(2 2)');
+        armorRearLayer.setAttribute('transform', 'translate(94 2)');
+        structureLayer.setAttribute('transform', 'translate(78.34 150)');
+        frame.append(armorFrontLayer, armorRearLayer, structureLayer);
         return frame;
     }
 
@@ -607,6 +647,10 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
             return 0;
         }
         return Math.min(Math.max(Math.floor(value), 0), maximum);
+    }
+
+    private isPipLayout(value: string): value is BipedPaperdollPipLayout {
+        return this.pipLayouts.includes(value as BipedPaperdollPipLayout);
     }
 
     private createFrameGroup(

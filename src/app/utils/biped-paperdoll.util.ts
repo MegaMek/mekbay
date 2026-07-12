@@ -2,6 +2,7 @@ import { PipUtil, type PipRenderOptions, type PipRow } from './pip.util';
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 const ARMOR_ASSET_URL = '/images/paperdolls/biped-armor.svg';
+const ARMOR_REAR_ASSET_URL = '/images/paperdolls/biped-armor-back.svg';
 const STRUCTURE_ASSET_URL = '/images/paperdolls/biped-structure.svg';
 const ARMOR_LOCATIONS = ['HD', 'CT', 'LT', 'RT', 'LA', 'RA', 'LL', 'RL', 'CT_R', 'LT_R', 'RT_R'] as const;
 const STRUCTURE_LOCATIONS = ['HD', 'CT', 'LT', 'RT', 'LA', 'RA', 'LL', 'RL'] as const;
@@ -25,6 +26,7 @@ export type BipedShieldValues = Readonly<Partial<Record<BipedShieldLocation, Bip
 export interface BipedPaperdollLayerOptions {
     assetUrl?: string;
     className?: string;
+    centered?: boolean;
     pipLayout?: BipedPaperdollPipLayout;
     pipOptions?: PipRenderOptions;
     railPipsPerPath?: number;
@@ -122,6 +124,15 @@ export class BipedPaperdollUtil {
         return this.createLayer(options.assetUrl ?? ARMOR_ASSET_URL, 'armor', width, height, armor, undefined, options);
     }
 
+    public static createArmorRearPaperdoll(
+        width: number,
+        height: number,
+        armor: BipedArmorValues,
+        options: BipedPaperdollLayerOptions = {},
+    ): Promise<SVGGElement> {
+        return this.createLayer(options.assetUrl ?? ARMOR_REAR_ASSET_URL, 'armor', width, height, armor, undefined, options);
+    }
+
     public static createStructurePaperdoll(
         width: number,
         height: number,
@@ -155,8 +166,8 @@ export class BipedPaperdollUtil {
         const scale = Math.min(availableWidth / viewBox.width, availableHeight / viewBox.height);
         const renderedWidth = viewBox.width * scale;
         const renderedHeight = viewBox.height * scale;
-        const offsetX = inset + (availableWidth - renderedWidth) / 2;
-        const offsetY = inset + (availableHeight - renderedHeight) / 2;
+        const offsetX = inset + (options.centered ? (availableWidth - renderedWidth) / 2 : 0);
+        const offsetY = inset + (options.centered ? (availableHeight - renderedHeight) / 2 : 0);
 
         const fitGroup = document.createElementNS(SVG_NAMESPACE, 'g');
         fitGroup.setAttribute('transform', `translate(${offsetX} ${offsetY})`);
