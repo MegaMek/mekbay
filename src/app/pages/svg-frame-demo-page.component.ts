@@ -465,8 +465,8 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
         RT_R: 8,
     };
     protected shieldValues: Record<BipedShieldLocation, { dc: number; da: number }> = {
-        LA: { dc: 8, da: 1 },
-        RA: { dc: 8, da: 1 },
+        LA: { dc: 25, da: 7 },
+        RA: { dc: 25, da: 7 },
     };
     protected structureTonnageByLocation: Record<BipedStructureLocation, number> = {
         HD: 50,
@@ -645,8 +645,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 railPipsPerPath: 5,
                 shieldValues: this.shieldValues,
                 pipOptions: {
-                    inset: 1.8,
-                    pipGap: 1,
+                    pipGap: 2,
                     stroke: '#b4492f',
                 },
             }),
@@ -658,8 +657,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 pipLayout: this.pipLayout,
                 railPipsPerPath: 5,
                 pipOptions: {
-                    inset: 1.8,
-                    pipGap: 0,
+                    pipGap: 0.5,
                     stroke: '#a63d83',
                 },
             }),
@@ -671,8 +669,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 pipLayout: this.pipLayout,
                 railPipsPerPath: 5,
                 pipOptions: {
-                    inset: 1.8,
-                    pipGap: 0,
+                    pipGap: 0.5,
                     stroke: '#356a8a',
                 },
             }),

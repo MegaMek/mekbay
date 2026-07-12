@@ -1,12 +1,5 @@
-<?xml version="1.0" encoding="utf-8"?>
-<svg viewBox="1.112 0.725 181.801 280.747" version="1.1" xmlns="http://www.w3.org/2000/svg" style="fill-rule:evenodd;clip-rule:evenodd;" height="100%" xmlns:bx="https://boxy-svg.com">
-  <defs>
-    <bx:export>
-      <bx:file format="svg" href="#paperdoll-art-armor"/>
-      <bx:file format="svg" path="Untitled 2.svg"/>
-    </bx:export>
-  </defs>
-  <g id="paperdoll-art-armor" transform="matrix(0.964505, 0, 0, 1, 0.039471, 0)">
+<svg width="100%" height="100%" viewBox="0 0 190 283" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;">
+  <g id="paperdoll-art-armor">
     <path id="polygon771" d="M15.741,118.641L16.872,118.74L16.921,118.175L15.272,117.46L15.374,116.33L17.12,115.912L17.169,115.347L16.038,115.247L15.055,113.452L17.182,89.133L20.139,67.235L29.225,56.481L40.087,48.774L44.212,50.399L44.212,62.961L45.128,69.352L47.552,68.642L48.573,90.761L44.527,89.246L44.229,92.64L42.483,93.056L40.505,115.679L39.225,117.276L38.095,117.178L38.044,117.743L39.693,118.457L39.593,119.587L37.846,120.004L37.796,120.571L38.929,120.669L39.911,122.465L37.288,152.439L35.445,153.988L15.083,152.207L8.989,143.695L13.895,120.189L15.741,118.641Z" style="fill:rgb(199,199,199);fill-rule:nonzero;"/>
     <path id="path773" d="M3.11,118.611C2.981,118.611 2.852,118.577 2.736,118.51C2.503,118.375 2.359,118.123 2.359,117.862L2.359,55.718L4.437,4.364C4.456,3.986 4.752,3.671 5.139,3.644L29.889,1.979C29.91,1.977 29.93,1.976 29.952,1.976C30.138,1.976 30.318,2.047 30.447,2.177C30.6,2.312 30.69,2.51 30.69,2.717L31.005,33.443L34.955,33.488C35.343,33.488 35.657,33.785 35.694,34.172L36.864,46.925C36.889,47.204 36.756,47.474 36.512,47.627L27.7,53.234L16.991,65.735L11.347,113.696C11.32,113.93 11.176,114.146 10.969,114.263L3.482,118.511C3.366,118.578 3.238,118.611 3.11,118.611" style="fill:rgb(199,199,199);fill-rule:nonzero;"/>
     <path id="path749" d="M188.859,118.611C188.73,118.611 188.601,118.577 188.489,118.51L180.992,114.262L181.361,113.605L182.108,113.515L181.361,113.605L180.992,114.262C180.785,114.145 180.65,113.929 180.623,113.695L174.98,65.734L164.27,53.233L155.45,47.626C155.217,47.473 155.081,47.203 155.108,46.924L156.269,34.171C156.305,33.784 156.62,33.487 157.007,33.487L160.957,33.442L161.272,2.716C161.272,2.509 161.362,2.311 161.515,2.176C161.652,2.046 161.826,1.975 162.01,1.975C162.031,1.975 162.052,1.976 162.073,1.978L186.832,3.643C187.211,3.67 187.517,3.985 187.525,4.363L189.604,55.717L189.604,117.862C189.604,118.123 189.46,118.375 189.235,118.51C189.118,118.578 188.988,118.611 188.859,118.611" style="fill:rgb(199,199,199);fill-rule:nonzero;"/>
@@ -95,6 +88,96 @@
     <path id="polygon747" d="M178.35,118.641L177.219,118.74L177.169,118.175L178.818,117.46L178.716,116.33L176.971,115.912L176.921,115.347L178.053,115.247L179.035,113.452L176.907,89.133L173.95,67.235L164.864,56.481L154.002,48.774L149.877,50.399L149.877,62.961L148.962,69.352L146.538,68.642L145.518,90.761L149.564,89.246L149.862,92.64L151.607,93.056L153.585,115.679L154.864,117.276L155.995,117.178L156.045,117.743L154.399,118.457L154.497,119.587L156.244,120.004L156.293,120.571L155.161,120.669L154.179,122.465L156.801,152.439L158.647,153.988L179.006,152.207L185.101,143.695L180.195,120.189L178.35,118.641Z" style="fill:rgb(199,199,199);fill-rule:nonzero;"/>
     <path id="polygon751" d="M179.364,111.607L186.854,115.859L186.854,53.747L184.781,2.394L160.025,0.725L159.704,32.185L155.016,32.237L153.851,44.993L162.764,50.662L173.695,63.418L179.364,111.607Z" style="fill:white;fill-rule:nonzero;stroke:black;stroke-width:1.45px;stroke-linejoin:round;"/>
     <path id="polygon753" d="M175.254,116.153L174.123,116.252L174.073,115.687L175.722,114.972L175.62,113.842L173.875,113.424L173.825,112.859L174.957,112.759L175.94,110.964L173.812,86.645L170.855,64.747L161.769,53.993L150.906,46.286L146.781,47.911L146.781,60.474L145.866,66.864L143.443,66.154L142.422,88.273L146.468,86.758L146.766,90.152L148.511,90.568L150.489,113.191L151.769,114.788L152.9,114.69L152.949,115.255L151.303,115.969L151.402,117.1L153.149,117.517L153.197,118.083L152.066,118.182L151.083,119.977L153.705,149.951L155.551,151.5L175.91,149.719L182.005,141.207L177.099,117.701L175.254,116.153Z" style="fill:white;fill-rule:nonzero;stroke:black;stroke-width:1.45px;stroke-linejoin:round;"/>
+    <text id="text755" x="167.398px" y="8.702px" style="font-family:&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;apos;ArialMT&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;apos;, &amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;apos;Arial&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;apos;, sans-serif;font-size:7.727px;">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DC
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    </text>
+    <text id="text757" x="175.075px" y="65.319px" style="font-family:&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;apos;ArialMT&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;apos;, &amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;apos;Arial&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;apos;, sans-serif;font-size:7.727px;">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DA
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    </text>
     <rect id="placeholder-canon-shield-dc-RA-00" x="161.612" y="10.03" width="23.3" height="6.152" style="fill:none;stroke:rgb(225,29,72);stroke-opacity:0.9;stroke-width:1.25px;stroke-dasharray:3,1.5;"/>
     <rect id="placeholder-canon-shield-dc-RA-01" x="161.612" y="15.357" width="23.3" height="6.152" style="fill:none;stroke:rgb(225,29,72);stroke-opacity:0.9;stroke-width:1.25px;stroke-dasharray:3,1.5;"/>
     <rect id="placeholder-canon-shield-dc-RA-02" x="161.612" y="20.684" width="23.3" height="6.152" style="fill:none;stroke:rgb(225,29,72);stroke-opacity:0.9;stroke-width:1.25px;stroke-dasharray:3,1.5;"/>
@@ -106,6 +189,96 @@
     <path id="placeholder-canon-shield-da-RA-00" d="M185.426,109.956L179.287,110.348L176.482,66.437L182.621,66.045L185.426,109.956Z" style="fill:none;stroke:rgb(225,29,72);stroke-opacity:0.9;stroke-width:1.25px;stroke-dasharray:3,1.5;"/>
     <path id="polygon775" d="M8.603,111.607L1.112,115.859L1.112,53.747L3.186,2.394L27.942,0.725L28.262,32.185L32.949,32.237L34.114,44.993L25.201,50.662L14.272,63.418L8.603,111.607Z" style="fill:white;fill-rule:nonzero;stroke:black;stroke-width:1.45px;stroke-linejoin:round;"/>
     <path id="polygon777" d="M12.646,116.153L13.777,116.252L13.825,115.687L12.176,114.972L12.279,113.842L14.025,113.424L14.073,112.859L12.943,112.759L11.959,110.964L14.086,86.645L17.043,64.747L26.129,53.993L36.991,46.286L41.116,47.911L41.116,60.474L42.032,66.864L44.456,66.154L45.478,88.273L41.431,86.758L41.133,90.152L39.387,90.568L37.409,113.191L36.129,114.788L34.999,114.69L34.948,115.255L36.597,115.969L36.497,117.1L34.75,117.517L34.7,118.083L35.833,118.182L36.816,119.977L34.193,149.951L32.349,151.5L11.988,149.719L5.894,141.207L10.799,117.701L12.646,116.153Z" style="fill:white;fill-rule:nonzero;stroke:black;stroke-width:1.45px;stroke-linejoin:round;"/>
+    <text id="text779" x="10.112px" y="8.702px" style="font-family:&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;apos;ArialMT&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;apos;, &amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;apos;Arial&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;apos;, sans-serif;font-size:7.727px;">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DC
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    </text>
+    <text id="text781" x="2.193px" y="65.319px" style="font-family:&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;apos;ArialMT&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;apos;, &amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;apos;Arial&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;apos;, sans-serif;font-size:7.727px;">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DA
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    </text>
     <rect id="placeholder-canon-shield-dc-LA-00" x="3.759" y="10.03" width="23.3" height="6.152" style="fill:none;stroke:rgb(225,29,72);stroke-opacity:0.9;stroke-width:1.25px;stroke-dasharray:3,1.5;"/>
     <path id="placeholder-fill-armor-LT-00" d="M47.256,65.939L73.834,64.99L74.512,101.737C74.512,101.737 75.665,125.874 76.58,127.772C77.495,129.67 76.58,149.887 76.58,149.887L53.494,149.887L54.172,135.366L68.224,132.098C68.224,132.098 59.869,115.006 61.774,101.381L48.07,99.703L47.256,65.939Z" style="fill:none;stroke:rgb(0,59,255);stroke-width:1.2px;stroke-dasharray:2.88,1.44,0,0,0,0;"/>
     <path id="placeholder-rail-armor-RT-05-capacity-5" d="M113.234,134.684L113.234,146.493L131.939,146.493" style="fill:none;stroke:rgb(255,0,0);stroke-width:1px;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;"/>
@@ -124,13 +297,13 @@
     <g fill="none" id="shieldDALA" loc="DALA" class="shield unitLocation" transform="translate(4.5 66) rotate(3)">
       <rect x="0" width="6" y="0" stroke="red" height="44" id="placeholder-canon-shield-da-LA-00"/>
     </g>
-    <rect id="placeholder-canon-armor-HD" x="85.252" y="46.714" width="17.088" height="24.279" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.2px; stroke-dasharray: 2.88, 1.44;"/>
-    <rect id="placeholder-canon-armor-CT" x="80.618" y="80.02" width="26.448" height="85.873" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.03px; stroke-dasharray: 2.473, 1.237;"/>
-    <rect id="placeholder-canon-armor-LT" x="48.002" y="64.284" width="28.578" height="84.385" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.18px; stroke-dasharray: 2.832, 1.416;"/>
-    <rect id="placeholder-canon-armor-RT" x="111.127" y="64.419" width="28.595" height="84.521" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.18px; stroke-dasharray: 2.832, 1.416;"/>
-    <rect id="placeholder-canon-armor-LA" x="13.749" y="57.619" width="30.477" height="90.67" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.05px; stroke-dasharray: 2.511, 1.256;"/>
-    <rect id="placeholder-canon-armor-RA" x="143.536" y="56.702" width="32.703" height="91.587" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.05px; stroke-dasharray: 2.527, 1.263;"/>
-    <rect id="placeholder-canon-armor-LL" x="26.226" y="154.595" width="58.893" height="121.954" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.19px; stroke-dasharray: 2.855, 1.428;"/>
-    <rect id="placeholder-canon-armor-RL" x="101.826" y="154.595" width="58.209" height="121.954" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.19px; stroke-dasharray: 2.861, 1.43;"/>
+    <rect id="placeholder-canon-armor-HD" x="85.252" y="49.44" width="17.088" height="21.553" style="fill:none;stroke:rgb(225,29,72);stroke-opacity:0.9;stroke-width:1.2px;stroke-dasharray:2.88,1.44;"/>
+    <rect id="placeholder-canon-armor-CT" x="79.322" y="80.02" width="29.063" height="85.873" style="fill:none;stroke:rgb(225,29,72);stroke-opacity:0.9;stroke-width:1.03px;stroke-dasharray:2.473,1.237;"/>
+    <rect id="placeholder-canon-armor-LT" x="44.226" y="63.066" width="32.354" height="86.821" style="fill:none;stroke:rgb(225,29,72);stroke-opacity:0.9;stroke-width:1.18px;stroke-dasharray:2.832,1.416;"/>
+    <rect id="placeholder-canon-armor-RT" x="111.127" y="63.066" width="32.353" height="86.821" style="fill:none;stroke:rgb(225,29,72);stroke-opacity:0.9;stroke-width:1.18px;stroke-dasharray:2.832,1.416;"/>
+    <rect id="placeholder-canon-armor-LA" x="6.211" y="53.95" width="38.015" height="94.339" style="fill:none;stroke:rgb(225,29,72);stroke-opacity:0.9;stroke-width:1.05px;stroke-dasharray:2.511,1.256;"/>
+    <rect id="placeholder-canon-armor-RA" x="140.112" y="53.95" width="38.482" height="94.339" style="fill:none;stroke:rgb(225,29,72);stroke-opacity:0.9;stroke-width:1.05px;stroke-dasharray:2.527,1.263;"/>
+    <rect id="placeholder-canon-armor-LL" x="18.807" y="154.595" width="67.644" height="121.954" style="fill:none;stroke:rgb(225,29,72);stroke-opacity:0.9;stroke-width:1.19px;stroke-dasharray:2.855,1.428;"/>
+    <rect id="placeholder-canon-armor-RL" x="101.255" y="154.595" width="67.911" height="121.954" style="fill:none;stroke:rgb(225,29,72);stroke-opacity:0.9;stroke-width:1.19px;stroke-dasharray:2.861,1.43;"/>
   </g>
 </svg>

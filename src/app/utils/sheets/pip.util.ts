@@ -8,6 +8,7 @@ const DEFAULT_STROKE_WIDTH_RATIO = 0.21;
 const DEFAULT_PIP_RADIUS = 3;
 const DEFAULT_MIN_PIP_RADIUS = 2.29;
 const DEFAULT_PIP_GAP = 1;
+const DEFAULT_INSET = 0;
 const DEFAULT_USE_ORIGINAL_PIP_RADIUS = false;
 
 export interface PipRenderOptions {
@@ -199,8 +200,8 @@ export class PipUtil {
             return null;
         }
         const maximumRadius = Math.min(...areaSamples.map(sample => sample.maxRadius));
-        const minimumRadius = Math.min(this.getMinimumPipRadius(options), maximumRadius);
-        let radius = Math.max(minimumRadius, Math.min(requestedRadius, maximumRadius));
+        const minimumRadius = Math.min(this.getMinimumPipRadius(options), requestedRadius);
+        const radius = Math.min(requestedRadius, Math.max(minimumRadius, maximumRadius));
         if (radius <= 0) {
             return null;
         }
@@ -208,8 +209,8 @@ export class PipUtil {
         const pipGap = this.getPipGap(options);
 
         try {
-            for (let attempt = 0; attempt < 10; attempt++) {
-                const footprintRadius = this.getPipFootprintRadius(radius, strokeWidthRatio);
+            const findCenters = (candidateRadius: number): FillPipPlacement[] | null => {
+                const footprintRadius = this.getPipFootprintRadius(candidateRadius, strokeWidthRatio);
                 const candidates = areaSamples.map(sample => sample.points.filter(point => this.isFillPointUsable(
                     sample.geometry,
                     point,
@@ -217,20 +218,60 @@ export class PipUtil {
                     footprintRadius,
                     inset,
                 )));
-                const centers = this.findFillPipCenters(
+                return this.findFillPipCenters(
                     areaSamples,
                     candidates,
                     pipCount,
                     footprintRadius * 2 + pipGap,
                 );
+            };
+
+            const initialCenters = findCenters(radius);
+            if (initialCenters) {
+                return this.createFillPipGroup(initialCenters, radius, options, type, location, pipCount, strokeWidthRatio);
+            }
+
+            let bestCenters: FillPipPlacement[] | null = null;
+            let bestRadius = minimumRadius;
+            const minimumCenters = findCenters(minimumRadius);
+            if (minimumCenters) {
+                bestCenters = minimumCenters;
+            }
+
+            let lowerRadius = minimumRadius;
+            let upperRadius = radius;
+            for (let attempt = 0; attempt < 16 && upperRadius > lowerRadius; attempt++) {
+                const candidateRadius = (lowerRadius + upperRadius) / 2;
+                const centers = findCenters(candidateRadius);
                 if (centers) {
-                    return this.createFillPipGroup(centers, radius, options, type, location, pipCount, strokeWidthRatio);
+                    bestCenters = centers;
+                    bestRadius = candidateRadius;
+                    lowerRadius = candidateRadius;
+                } else {
+                    upperRadius = candidateRadius;
                 }
-                const nextRadius = Math.max(minimumRadius, radius * 0.82);
-                if (nextRadius === radius) {
-                    break;
-                }
-                radius = nextRadius;
+            }
+
+            if (bestCenters) {
+                return this.createFillPipGroup(bestCenters, bestRadius, options, type, location, pipCount, strokeWidthRatio);
+            }
+
+            const fallbackCenters = this.findFillPipCenters(
+                areaSamples,
+                areaSamples.map(sample => sample.points),
+                pipCount,
+                0,
+            );
+            if (fallbackCenters) {
+                return this.createFillPipGroup(
+                    fallbackCenters,
+                    minimumRadius,
+                    options,
+                    type,
+                    location,
+                    pipCount,
+                    strokeWidthRatio,
+                );
             }
         } finally {
             areaSamples.forEach(sample => sample.samplingRoot.remove());
@@ -1077,11 +1118,13 @@ export class PipUtil {
         options: PipRenderOptions,
         maximumRadius: number,
     ): number {
-        if (requestedRadius <= 0 || maximumRadius <= 0) {
+        if (requestedRadius <= 0) {
             return 0;
         }
-        const minimumRadius = Math.min(this.getMinimumPipRadius(options), maximumRadius);
-        return Math.max(minimumRadius, Math.min(requestedRadius, maximumRadius));
+        return Math.min(
+            requestedRadius,
+            Math.max(this.getMinimumPipRadius(options), maximumRadius),
+        );
     }
 
     private static getMaximumRadiusForPoints(
@@ -1136,7 +1179,7 @@ export class PipUtil {
     private static getInset(options: PipRenderOptions): number {
         return Number.isFinite(options.inset)
             ? Math.max(options.inset ?? 0, 0)
-            : 0;
+            : DEFAULT_INSET;
     }
 
     private static getStrokeWidthRatio(options: PipRenderOptions): number {

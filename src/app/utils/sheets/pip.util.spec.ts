@@ -176,7 +176,7 @@ describe('PipUtil', () => {
     });
 
     it('chooses a larger distributed layout when zero gap fits another row arrangement', () => {
-        const options = { inset: 1.8, pipGap: 0, pipRadius: 3 };
+        const options = { inset: 1.8, minPipRadius: 0, pipGap: 0, pipRadius: 3 };
         const zeroGapPips = PipUtil.createDistributedPips(
             [{ x: 0, y: 0, width: 17.088, height: 21.553 }],
             5,
@@ -218,6 +218,29 @@ describe('PipUtil', () => {
         const positiveGapRadius = PipUtil.getRailPipRadius(100, 5, { ...options, pipGap: 10 });
 
         expect(positiveGapRadius).toBeLessThan(noGapRadius);
+    });
+
+    it('hard-caps collision shrinkage at the minimum pip radius', () => {
+        const radius = PipUtil.getRailPipRadius(1, 1, {
+            pipRadius: 100,
+            pipGap: 100,
+        });
+
+        expect(radius).toBeCloseTo(2.29, 6);
+    });
+
+    it('keeps fill pips at the minimum radius when the gap cannot fit', () => {
+        const path = createPath('M 0 0 H 10 V 10 H 0 Z', 20, 20);
+        const pips = PipUtil.createFillPips(path, 2, {
+            minPipRadius: 2,
+            pipGap: 100,
+            pipRadius: 25,
+        });
+
+        expect(pips).not.toBeNull();
+        expect(Array.from(pips?.querySelectorAll('circle') ?? [])
+            .map(circle => Number(circle.getAttribute('r'))))
+            .toEqual([2, 2]);
     });
 
     it('balances many distributed pips across more rows', () => {
