@@ -35,6 +35,7 @@ import { HandheldWeaponEntity } from '../entities/misc/handheld-weapon-entity';
 import {
   BuildingBlockWriter,
   writeArmorBlocks,
+  writeBlkPreamble,
   writeFluffBlocks,
   writeInternalType,
   writeSource,
@@ -52,18 +53,8 @@ import { encodeEquipmentLine } from './equipment-encoder';
 export function writeBlkHandheld(entity: HandheldWeaponEntity): string {
   const w = new BuildingBlockWriter();
 
-  // ── Header ──
-  w.addBlock('UnitType', 'HandheldWeapon');
-
-  // ── Identity ──
-  w.addBlock('Name', entity.chassis());
-  w.addBlock('Model', entity.model());
-  if (entity.mulId() >= 0) w.addBlock('mul id:', entity.mulId());
-
-  // ── Year / Tech / Meta ──
-  w.addBlock('year', entity.year());
-  if (entity.originalBuildYear() >= 0) w.addBlock('originalBuildYear', entity.originalBuildYear());
-  if (entity.techLevel()) w.addBlock('type', entity.techLevel());
+  // ── Identity / Year / Tech / Meta ──
+  writeBlkPreamble(w, entity, 'HandheldWeapon');
 
   // ── Armor ──
   writeArmorBlocks(w, entity);

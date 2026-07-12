@@ -110,22 +110,25 @@ export abstract class BaseEntity {
   // ═══════════════════════════════════════════════════════════════════════════
 
   // ── Identity ──
-  chassis = signal<string>('');
-  model = signal<string>('');
-  clanName = signal<string>('');
-  mulId = signal<number>(-1);
-  role = signal<string>('');
-  omni = signal<boolean>(false);
+  readonly chassis = signal<string>('');
+  readonly model = signal<string>('');
+  readonly clanName = signal<string>('');
+  readonly mulId = signal<number>(-1);
+  readonly role = signal<string>('');
+  readonly omni = signal<boolean>(false);
 
   // ── Tech ──
-  year = signal<number>(3145);
-  originalBuildYear = signal<number>(-1);
-  techBase = signal<EntityTechBase>('IS');
-  techLevel = signal<string>('');
-  rulesLevel = signal<number>(2);
+  readonly year = signal<number>(3145);
+  readonly originalBuildYear = signal<number>(-1);
+  readonly techBase = signal<EntityTechBase>('IS');
+  /** Whether the entity uses mixed technology. */
+  readonly mixedTech = signal<boolean>(false);
+  readonly techLevel = signal<string>('');
+  readonly rulesLevel = signal<number>(2);
 
   // ── Meta ──
-  source = signal<string>('');
+  readonly source = signal<string>('');
+  readonly published = signal<string>('');
   generator?: string; // software who created the file
 
   /** Tech faction code (e.g. "DC", "FW", "TH"). 'None' = unset. */
@@ -228,14 +231,7 @@ export abstract class BaseEntity {
     return resolveWeightClass(this.tonnage(), MEK_WEIGHT_LIMITS);
   }
 
-  /** Full mixed-tech result including diagnostic reasons. */
-  private mixedTechResult = computed<MixedTechResult>(() => this.computeMixedTech());
-
-  /** Whether the entity uses mixed (IS + Clan) technology. */
-  mixedTech = computed<boolean>(() => this.mixedTechResult().mixed);
-
-  /** Diagnostic reasons explaining why mixed tech was detected (empty when not mixed). */
-  mixedTechReasons = computed<readonly string[]>(() => this.mixedTechResult().reasons);
+  computedMixedTechResult = computed<MixedTechResult>(() => this.computeMixedTech());
 
   /**
    * Core mixed-tech detection: engine tech base, engine advancement dates,
@@ -332,6 +328,13 @@ export abstract class BaseEntity {
     this.equipment().filter(e => e.equipment?.hasFlag?.('F_JUMP_JET')).length
   );
 
+  /** Effective tonnage per location. */
+  structureTonnages = computed<Map<string, number>>(() => this.computeStructureTonnages());
+
+  /** Effective structure type per location; subclasses may provide location-specific types. */
+  structureTypes = computed<Map<string, StructureType>>(() => this.computeStructureTypes());
+
+  /** Internal structure points per location, derived from the effective structure configuration. */
   structureValues = computed<Map<string, number>>(() =>
     this.computeStructureValues(this.tonnage(), this.structureType())
   );
@@ -446,6 +449,23 @@ export abstract class BaseEntity {
   abstract hasRearArmor(loc: string): boolean;
 
   protected abstract computeStructureValues(tonnage: number, structureType: StructureType): Map<string, number>;
+
+  protected computeStructureTonnages(): Map<string, number> {
+    return new Map(this.locationOrder.map(location => [location, this.tonnage()]));
+  }
+
+  protected computeStructureTypes(): Map<string, StructureType> {
+    return new Map(this.locationOrder.map(location => [location, this.structureType()]));
+  }
+
+  getStructureTonnageAtLocation(location: string): number {
+    return this.structureTonnages().get(location) ?? this.tonnage();
+  }
+
+  getStructureTypeAtLocation(location: string): StructureType {
+    return this.structureTypes().get(location) ?? this.structureType();
+  }
+
   protected abstract computeMaxArmor(structureValues: Map<string, number>): Map<string, number>;
   protected abstract computeExpectedEngineRating(): number | null;
 

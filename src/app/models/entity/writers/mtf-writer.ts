@@ -42,6 +42,7 @@ import {
   EntityMountedEquipment,
   EquipmentTechBase,
   MEK_SLOTS_PER_LOCATION,
+  MekLocation,
 
 } from '../types';
 import { WeaponEquipment } from '../../equipment.model';
@@ -59,11 +60,11 @@ const LOC_DISPLAY_NAMES: Record<string, string> = {
 };
 
 /** MTF crit-section output order: biped */
-const CRIT_ORDER_BIPED = ['LA', 'RA', 'LT', 'RT', 'CT', 'HD', 'LL', 'RL'];
+const CRIT_ORDER_BIPED: MekLocation[] = ['LA', 'RA', 'LT', 'RT', 'CT', 'HD', 'LL', 'RL'];
 /** MTF crit-section output order: quad */
-const CRIT_ORDER_QUAD = ['FLL', 'FRL', 'LT', 'RT', 'CT', 'HD', 'RLL', 'RRL'];
+const CRIT_ORDER_QUAD: MekLocation[] = ['FLL', 'FRL', 'LT', 'RT', 'CT', 'HD', 'RLL', 'RRL'];
 /** MTF crit-section output order: tripod */
-const CRIT_ORDER_TRIPOD = ['LA', 'RA', 'LT', 'RT', 'CT', 'HD', 'LL', 'RL', 'CL'];
+const CRIT_ORDER_TRIPOD: MekLocation[] = ['LA', 'RA', 'LT', 'RT', 'CT', 'HD', 'LL', 'RL', 'CL'];
 
 // ============================================================================
 // Armor output order
@@ -165,7 +166,9 @@ function writeConfig(entity: MekEntity, lines: string[]): void {
   lines.push(`Config:${getConfigString(entity)}`);
   lines.push(`techbase:${formatTechBase(entity)}`);
   lines.push(`era:${entity.year()}`);
+  if (entity.originalBuildYear() > 0) lines.push(`original era:${entity.originalBuildYear()}`);
   if (entity.source()) lines.push(`source:${entity.source()}`);
+  if (entity.published()) lines.push(`published:${entity.published()}`);
   lines.push(`rules level:${entity.rulesLevel()}`);
   if (entity.role()) lines.push(`role:${entity.role()}`);
   if (entity.faction() !== 'None') lines.push(`faction:${entity.faction()}`);
@@ -176,6 +179,17 @@ function writePhysical(entity: MekEntity, lines: string[]): void {
   lines.push(`mass:${entity.tonnage()}`);
   lines.push(`engine:${formatEngineLine(entity)}`);
   lines.push(`structure:${getStructureString(entity)}`);
+  if (entity.isFrankenMek()) {
+    const locations = entity.frankenMekLocations();
+    const order = entity instanceof TripodMekEntity ? CRIT_ORDER_TRIPOD
+      : entity instanceof QuadMekEntity ? CRIT_ORDER_QUAD : CRIT_ORDER_BIPED;
+    for (const location of order) {
+      const data = locations.get(location);
+      if (!data) continue;
+      const structurePrefix = data.structureName ? `${data.structureName}:` : '';
+      lines.push(`${location} structure:${structurePrefix}${data.tonnage}`);
+    }
+  }
   lines.push(`myomer:${entity.myomerType()}`);
 
   if (entity instanceof LamEntity && entity.lamType()) {
@@ -193,6 +207,10 @@ function writePhysical(entity: MekEntity, lines: string[]): void {
   }
   if (entity.ejectionType()) lines.push(`ejection:${entity.ejectionType()}`);
   if (entity.heatSinkKit()) lines.push(`heat sink kit:${entity.heatSinkKit()}`);
+  const clanCaseOptOut = entity.clanCaseOptOutLocations();
+  if (clanCaseOptOut.size > 0) {
+    lines.push(`clancaseoptedoutlocs:${[...clanCaseOptOut].join(',')}`);
+  }
   lines.push('');
 }
 
@@ -312,6 +330,11 @@ function writeCriticals(
         lines.push(formatEquipmentSlot(slot, mountMap));
       }
     }
+    const frankenData = entity.frankenMekLocations().get(loc);
+    if (entity.isFrankenMek() && frankenData?.donor) {
+      lines.push(`donor: ${frankenData.donor}`);
+      if (frankenData.donorType) lines.push(`donor type: ${frankenData.donorType}`);
+    }
     lines.push('');
   }
 }
@@ -330,13 +353,17 @@ function writeQuirks(entity: MekEntity, lines: string[]): void {
 
 function writeFluff(entity: MekEntity, lines: string[]): void {
   const fluff = entity.fluff();
-  if (fluff.overview) lines.push(`overview:${fluff.overview}`);
-  if (fluff.capabilities) lines.push(`capabilities:${fluff.capabilities}`);
-  if (fluff.deployment) lines.push(`deployment:${fluff.deployment}`);
-  if (fluff.history) lines.push(`history:${fluff.history}`);
-  if (fluff.manufacturer) lines.push(`manufacturer:${fluff.manufacturer}`);
-  if (fluff.primaryFactory) lines.push(`primaryfactory:${fluff.primaryFactory}`);
-  if (fluff.notes) lines.push(`notes:${fluff.notes}`);
+  const writeField = (key: string, value: string | undefined): void => {
+    if (value) lines.push(`${key}:${value}`, '');
+  };
+  writeField('overview', fluff.overview);
+  writeField('capabilities', fluff.capabilities);
+  writeField('deployment', fluff.deployment);
+  writeField('history', fluff.history);
+  writeField('manufacturer', fluff.manufacturer);
+  writeField('primaryfactory', fluff.primaryFactory);
+  writeField('notes', fluff.notes);
+  writeField('fluffdate', fluff.fluffDate);
 
   // Interleave systemmanufacturer and systemmodel per system key
   // MegaMek iterates System enum: CHASSIS, ENGINE, ARMOR, JUMP_JET, COMMUNICATIONS, TARGETING
@@ -351,12 +378,6 @@ function writeFluff(entity: MekEntity, lines: string[]): void {
   }
 
   if (entity.manualBV() > 0) lines.push(`bv:${entity.manualBV()}`);
-
-  // ── Clan CASE opt-out ──
-  const clanCaseOptOut = entity.clanCaseOptOutLocations();
-  if (clanCaseOptOut.size > 0) {
-    lines.push(`clancaseoptedoutlocs:${[...clanCaseOptOut].join(',')}`);
-  }
 }
 
 // ============================================================================
@@ -399,6 +420,7 @@ function getConfigString(entity: MekEntity): string {
   else if (entity instanceof TripodMekEntity) base = 'Tripod';
   else base = 'Biped';
   if (entity.omni()) base += ' OmniMek';
+  if (entity.isFrankenMek()) base += ' FrankenMek';
   return base;
 }
 

@@ -33,7 +33,7 @@
 
 import { BipedMekEntity } from '../entities/mek/biped-mek-entity';
 import { LamEntity } from '../entities/mek/lam-entity';
-import { MekEntity, MekWithArmsEntity } from '../entities/mek/mek-entity';
+import { FrankenMekLocationData, MekEntity, MekWithArmsEntity } from '../entities/mek/mek-entity';
 import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import { QuadVeeEntity } from '../entities/mek/quad-vee-entity';
 import { TripodMekEntity } from '../entities/mek/tripod-mek-entity';
@@ -49,6 +49,7 @@ import {
   FactionCode,
   HeatSinkType,
   LocationArmor,
+  MekLocation,
   MekSystemType,
   MotiveType,
   factionFromAbbr,
@@ -68,7 +69,7 @@ import { ParseContext } from './parse-context';
 // Location normalization - raw MTF strings → canonical location IDs
 // ============================================================================
 
-const BIPED_LOCATION_MAP: Record<string, string> = {
+const BIPED_LOCATION_MAP: Record<string, MekLocation> = {
   'Left Arm:':       'LA',
   'Right Arm:':      'RA',
   'Left Torso:':     'LT',
@@ -80,7 +81,7 @@ const BIPED_LOCATION_MAP: Record<string, string> = {
   'Center Leg:':     'CL',
 };
 
-const QUAD_LOCATION_MAP: Record<string, string> = {
+const QUAD_LOCATION_MAP: Record<string, MekLocation> = {
   'Front Left Leg:':  'FLL',
   'Front Right Leg:': 'FRL',
   'Left Torso:':      'LT',
@@ -89,6 +90,16 @@ const QUAD_LOCATION_MAP: Record<string, string> = {
   'Head:':            'HD',
   'Rear Left Leg:':   'RLL',
   'Rear Right Leg:':  'RRL',
+};
+
+const STRUCTURE_LOCATION_MAP: Record<string, MekLocation> = {
+  'la structure': 'LA', 'fll structure': 'FLL',
+  'ra structure': 'RA', 'frl structure': 'FRL',
+  'lt structure': 'LT', 'rt structure': 'RT', 'ct structure': 'CT',
+  'hd structure': 'HD',
+  'll structure': 'LL', 'rll structure': 'RLL',
+  'rl structure': 'RL', 'rrl structure': 'RRL',
+  'cl structure': 'CL',
 };
 
 /**
@@ -172,12 +183,17 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   entity.model.set(header.model);
   entity.mulId.set(header.mulId);
   entity.year.set(header.era);
+  entity.originalBuildYear.set(header.originalEra);
   entity.source.set(header.source);
+  entity.published.set(header.published);
   entity.rulesLevel.set(header.rulesLevel);
   entity.role.set(header.role);
   entity.omni.set(header.isOmni);
+  entity.isFrankenMek.set(header.isFrankenMek);
+  entity.frankenMekLocations.set(header.frankenMekLocations);
 
   entity.techBase.set(header.techBase);
+  entity.mixedTech.set(header.mixedTech);
   entity.techLevel.set(header.techBaseRaw);
   if (header.clanName) entity.clanName.set(header.clanName);
 
@@ -469,12 +485,16 @@ interface MtfHeader {
   mulId: number;
   config: string;
   techBase: EntityTechBase;
+  mixedTech: boolean;
   techBaseRaw: string;
   era: number;
+  originalEra: number;
   source: string;
+  published: string;
   rulesLevel: number;
   role: string;
   isOmni: boolean;
+  isFrankenMek: boolean;
   mass: number;
   engine: string;
   structure: string;
@@ -504,13 +524,15 @@ interface MtfHeader {
   lamType: string;
   motiveType: MotiveType;
   rawHeatSinks: string;
+  frankenMekLocations: Map<MekLocation, FrankenMekLocationData>;
 }
 
 function parseHeader(lines: string[]): MtfHeader {
   const h: MtfHeader = {
     chassis: '', model: '', mulId: -1, config: 'Biped',
-    techBase: 'IS', techBaseRaw: 'IS',
-    era: 3025, source: '', rulesLevel: 2, role: '', isOmni: false,
+    techBase: 'IS', mixedTech: false, techBaseRaw: 'IS',
+    era: 3025, originalEra: -1, source: '', published: '', rulesLevel: 2, role: '',
+    isOmni: false, isFrankenMek: false,
     mass: 0, engine: '', structure: 'Standard', myomer: 'Standard',
     gyro: '', cockpit: '', ejection: '', heatSinkKit: '',
     heatSinks: '', baseChassisHeatSinks: -1, walkMP: 0, jumpMP: 0,
@@ -520,6 +542,7 @@ function parseHeader(lines: string[]): MtfHeader {
     faction: 'None', clanCaseOptOut: '',
     fluff: {}, manualBV: 0, generator: undefined,
     clanName: '', lamType: '', motiveType: 'None' as MotiveType, rawHeatSinks: '',
+    frankenMekLocations: new Map(),
   };
 
   let currentLocHeader: string | null = null;
@@ -549,6 +572,19 @@ function parseHeader(lines: string[]): MtfHeader {
 
     // Inside location section
     if (currentLocHeader) {
+      const location = (currentLocHeader in QUAD_LOCATION_MAP ? QUAD_LOCATION_MAP : BIPED_LOCATION_MAP)[currentLocHeader];
+      if (line.toLowerCase().startsWith('donor:')) {
+        updateFrankenMekLocation(h.frankenMekLocations, location, {
+          donor: line.substring(line.indexOf(':') + 1).trim(),
+        });
+        continue;
+      }
+      if (line.toLowerCase().startsWith('donor type:')) {
+        updateFrankenMekLocation(h.frankenMekLocations, location, {
+          donorType: line.substring(line.indexOf(':') + 1).trim(),
+        });
+        continue;
+      }
       if (line.includes(':') && !line.startsWith('-') && !line.startsWith('IS ') &&
           !line.startsWith('CL') && !line.startsWith('Clan ') && !isSlotLine(line)) {
         h.locationSlots.set(currentLocHeader, currentLocSlots);
@@ -574,14 +610,21 @@ function parseHeader(lines: string[]): MtfHeader {
       case 'chassis':   h.chassis = value; break;
       case 'model':     h.model = value; break;
       case 'mul id':    h.mulId = parseInt(value, 10) || -1; break;
-      case 'config':    h.config = value; h.isOmni = value.toLowerCase().includes('omnimek'); break;
+      case 'config':
+        h.config = value;
+        h.isOmni = value.toLowerCase().includes('omnimek');
+        h.isFrankenMek = value.toLowerCase().includes('frankenmek');
+        break;
       case 'techbase':
         h.techBaseRaw = value;
+        h.mixedTech = value.toLowerCase().startsWith('mixed');
         if (value.toLowerCase().includes('clan'))       h.techBase = 'Clan';
         else                                            h.techBase = 'IS';
         break;
       case 'era':                     h.era = parseInt(value, 10) || 3025; break;
+      case 'original era':            h.originalEra = parseInt(value, 10) || -1; break;
       case 'source':                  h.source = value; break;
+      case 'published':               h.published = value; break;
       case 'rules level':            h.rulesLevel = parseInt(value, 10) || 2; break;
       case 'role':                    h.role = value; break;
       case 'mass':                    h.mass = parseInt(value, 10) || 0; break;
@@ -655,6 +698,7 @@ function parseHeader(lines: string[]): MtfHeader {
       case 'manufacturer':  h.fluff.manufacturer = value; break;
       case 'primaryfactory': h.fluff.primaryFactory = value; break;
       case 'notes':         h.fluff.notes = value; break;
+      case 'fluffdate':     h.fluff.fluffDate = value; break;
       case 'systemmanufacturer': {
         const i = value.indexOf(':');
         if (i > 0) {
@@ -680,12 +724,35 @@ function parseHeader(lines: string[]): MtfHeader {
       case 'motive':   h.motiveType = parseMotiveType(value); break;
       case 'faction':  h.faction = factionFromAbbr(value); break;
       case 'clancaseoptedoutlocs': h.clanCaseOptOut = value; break;
-      default: break;
+      default: {
+        const structureLocation = STRUCTURE_LOCATION_MAP[key];
+        if (structureLocation) {
+          const lastColon = value.lastIndexOf(':');
+          const hasStructureName = lastColon > 0;
+          const tonnageText = hasStructureName ? value.substring(lastColon + 1).trim() : value;
+          updateFrankenMekLocation(h.frankenMekLocations, structureLocation, {
+            tonnage: parseInt(tonnageText, 10) || 0,
+            structureName: hasStructureName ? value.substring(0, lastColon).trim() : undefined,
+            structureType: hasStructureName
+              ? cleanStructureType(value.substring(0, lastColon).trim())
+              : undefined,
+          });
+        }
+        break;
+      }
     }
   }
 
   if (currentLocHeader) h.locationSlots.set(currentLocHeader, currentLocSlots);
   return h;
+}
+
+function updateFrankenMekLocation(
+  locations: Map<MekLocation, FrankenMekLocationData>,
+  location: MekLocation,
+  update: Partial<FrankenMekLocationData>,
+): void {
+  locations.set(location, { tonnage: 0, ...locations.get(location), ...update });
 }
 
 // ============================================================================

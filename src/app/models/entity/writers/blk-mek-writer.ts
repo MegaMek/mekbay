@@ -41,7 +41,7 @@ import {
   HeatSinkType,
   structureTypeToCode,
 } from '../types';
-import { BuildingBlockWriter } from './building-block-writer';
+import { BuildingBlockWriter, writeSource } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 import {
   BLK_ARMOR_BIPED,
@@ -78,7 +78,7 @@ export function writeBlkMek(entity: MekEntity): string {
   // ── Year / Source / Tech ──
   w.addBlock('year', entity.year());
   if (entity.originalBuildYear() >= 0) w.addBlock('originalBuildYear', entity.originalBuildYear());
-  if (entity.source()) w.addBlock('source', entity.source());
+  writeSource(w, entity);
 
   const techCode = entity.techBase() === 'Clan' ? 1 : entity.mixedTech() ? 3 : 2;
   w.addBlock('tonnage', entity.tonnage());

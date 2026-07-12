@@ -101,6 +101,7 @@ export function parseBaseBlk(
     ctx.validateEnum('type', techStr, VALID_TECH_BASE_STRINGS, 'tech level string');
     const parsed = parseTechLevel(techStr);
     entity.techBase.set(parsed.techBase);
+    entity.mixedTech.set(parsed.mixedTech);
     entity.techLevel.set(techStr);
     entity.rulesLevel.set(parsed.rulesLevel);
   }
@@ -111,6 +112,9 @@ export function parseBaseBlk(
   }
   if (bb.exists('source')) {
     entity.source.set(bb.getFirstString('source'));
+  }
+  if (bb.exists('published')) {
+    entity.published.set(bb.getFirstString('published'));
   }
   if (bb.exists('omni')) {
     entity.omni.set(bb.getFirstString('omni').toLowerCase() === 'true' || bb.getFirstInt('omni') === 1);
@@ -211,6 +215,7 @@ export function parseBaseBlk(
   if (bb.exists('manufacturer')) fluff.manufacturer = bb.getDataAsString('manufacturer').join('\n');
   if (bb.exists('primaryFactory')) fluff.primaryFactory = bb.getFirstString('primaryFactory');
   if (bb.exists('notes')) fluff.notes = bb.getDataAsString('notes').join('\n');
+  if (bb.exists('fluffDate')) fluff.fluffDate = bb.getFirstString('fluffDate');
   if (bb.exists('use')) fluff.use = bb.getFirstString('use');
   if (bb.exists('length')) fluff.length = bb.getFirstString('length');
   if (bb.exists('width')) fluff.width = bb.getFirstString('width');

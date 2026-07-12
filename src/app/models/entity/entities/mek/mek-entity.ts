@@ -55,6 +55,7 @@ import {
   MEK_REAR_ARMOR_LOCATIONS,
   MEK_SLOTS_PER_LOCATION,
   MekConfig,
+  MekLocation,
   MekSystemType,
   StructureType,
 } from '../../types';
@@ -62,6 +63,14 @@ import {
 // ============================================================================
 // MekEntity - abstract base for all Mek-type entities
 // ============================================================================
+
+export interface FrankenMekLocationData {
+  tonnage: number;
+  structureName?: string;
+  structureType?: StructureType;
+  donor?: string;
+  donorType?: string;
+}
 
 export abstract class MekEntity extends BaseEntity {
   override readonly entityType: EntityType = 'Mek';
@@ -77,6 +86,8 @@ export abstract class MekEntity extends BaseEntity {
   myomerType = signal<string>('Standard');
   ejectionType = signal<string>('');
   heatSinkKit = signal<string>('');
+  isFrankenMek = signal<boolean>(false);
+  frankenMekLocations = signal<Map<MekLocation, FrankenMekLocationData>>(new Map());
 
   /**
    * Set of armored system slot keys: "LOC:INDEX" (e.g. "HD:0", "CT:3").
@@ -291,19 +302,36 @@ export abstract class MekEntity extends BaseEntity {
 
   protected override computeStructureValues(tonnage: number, _structureType: StructureType): Map<string, number> {
     const values = new Map<string, number>();
-    const entry = MEK_INTERNAL_STRUCTURE[tonnage];
-    if (!entry) return values;
-    const [head, ct, sideTorso, arm, leg] = entry;
     for (const loc of this.locationOrder) {
-      switch (loc) {
-        case 'HD':  values.set(loc, head); break;
-        case 'CT':  values.set(loc, ct); break;
-        case 'LT': case 'RT':  values.set(loc, sideTorso); break;
-        case 'LA': case 'RA': case 'FLL': case 'FRL':  values.set(loc, arm); break;
-        default:  values.set(loc, leg); break;   // LL, RL, RLL, RRL, CL
-      }
+      const location = loc as MekLocation;
+      const structureTonnage = this.structureTonnages().get(location) ?? tonnage;
+      values.set(location, getInternalForTonnage(structureTonnage, location));
     }
     return values;
+  }
+
+  protected override computeStructureTonnages(): Map<string, number> {
+    const tonnages = new Map<string, number>();
+    for (const loc of this.locationOrder) {
+      const location = loc as MekLocation;
+      const tonnage = this.isFrankenMek()
+        ? this.frankenMekLocations().get(location)?.tonnage ?? this.tonnage()
+        : this.tonnage();
+      tonnages.set(location, tonnage);
+    }
+    return tonnages;
+  }
+
+  protected override computeStructureTypes(): Map<string, StructureType> {
+    const types = new Map<string, StructureType>();
+    for (const loc of this.locationOrder) {
+      const location = loc as MekLocation;
+      const type = this.isFrankenMek()
+        ? this.frankenMekLocations().get(location)?.structureType ?? this.structureType()
+        : this.structureType();
+      types.set(location, type);
+    }
+    return types;
   }
 
   protected override computeMaxArmor(structureValues: Map<string, number>): Map<string, number> {
@@ -457,4 +485,16 @@ const EMPTY_SLOT: CriticalSlotView = Object.freeze({
 
 function sys(systemType: MekSystemType): CriticalSlotView {
   return { type: 'system', systemType, armored: false, omniPod: false };
+}
+
+function getInternalForTonnage(tonnage: number, location: MekLocation): number {
+  const nearestTonnage = Math.max(10, Math.min(200, Math.floor((tonnage + 4) / 5) * 5));
+  const [head, centerTorso, sideTorso, arm, leg] = MEK_INTERNAL_STRUCTURE[nearestTonnage];
+  switch (location) {
+    case 'HD': return head;
+    case 'CT': return centerTorso;
+    case 'LT': case 'RT': return sideTorso;
+    case 'LA': case 'RA': case 'FLL': case 'FRL': return arm;
+    default: return leg;
+  }
 }

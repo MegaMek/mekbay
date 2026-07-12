@@ -267,6 +267,7 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
   } else {
     equipTags = VEHICLE_EQUIP_TAGS;
   }
+  equipTags = [...equipTags, ['slotless_equipment', 'None']];
 
   parseBlkEquipment(bb, entity, ctx, equipTags, {
     computeTurretMounted: loc => loc === 'Turret' || loc === 'Front Turret' || loc === 'Rear Turret',

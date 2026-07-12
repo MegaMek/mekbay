@@ -60,6 +60,7 @@ export interface EntityFluff {
   systemManufacturers?: Record<string, string>;
   systemModels?: Record<string, string>;
   notes?: string;
+  fluffDate?: string;
   /** Spacecraft-specific fluff fields */
   use?: string;
   length?: string;

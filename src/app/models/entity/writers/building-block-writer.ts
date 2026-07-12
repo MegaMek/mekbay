@@ -334,17 +334,17 @@ export function writeFluffBlocks(w: BuildingBlockWriter, fluff: EntityFluff): vo
   }
 
   if (fluff.notes)         w.addBlock('notes', fluff.notes);
+  if (fluff.fluffDate)     w.addBlock('fluffDate', fluff.fluffDate);
   if (fluff.use)           w.addBlock('use', fluff.use);
   if (fluff.length)        w.addBlock('length', fluff.length);
   if (fluff.width)         w.addBlock('width', fluff.width);
   if (fluff.height)        w.addBlock('height', fluff.height);
 }
 
-/**
- * Write source block.
- */
+/** Write source and publication blocks. */
 export function writeSource(w: BuildingBlockWriter, entity: BaseEntity): void {
   if (entity.source()) w.addBlock('source', entity.source());
+  if (entity.published()) w.addBlock('published', entity.published());
 }
 
 /**

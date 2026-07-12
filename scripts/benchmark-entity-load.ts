@@ -41,7 +41,7 @@
  *   npx tsx scripts/benchmark-entity-load.ts [--input PATH] [--type TYPE] [--verbose]
  *
  * Options:
- *   --input  PATH   Root directory of unit files (default: C:\Projects\megamek\svgexport\unitfiles)
+ *   --input  PATH   Root directory of unit files (default: C:\Projects\megamek\sourceUnits)
  *   --type   TYPE   Filter by entity type: meks|fighters|vehicles|battlearmor|infantry|protomeks|dropships|smallcraft|jumpships|warship|spacestation|ge|handheld|convfighter
  *   --verbose        Print every file result, not just failures
  */
@@ -77,7 +77,7 @@ function getArg(name: string, defaultValue: string): string {
 }
 const hasFlag = (name: string) => args.includes(`--${name}`);
 
-const INPUT_DIR = path.resolve(getArg('input', String.raw`C:\Projects\megamek\svgexport\unitfiles`));
+const INPUT_DIR = path.resolve(getArg('input', String.raw`C:\Projects\megamek\sourceUnits`));
 const TYPE_FILTER = getArg('type', '');
 const VERBOSE = hasFlag('verbose');
 
