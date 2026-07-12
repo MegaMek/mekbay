@@ -26,7 +26,10 @@ export type BipedShieldValues = Readonly<Partial<Record<BipedShieldLocation, Bip
 export interface BipedPaperdollLayerOptions {
     assetUrl?: string;
     className?: string;
-    centered?: boolean;
+    centeredHorizontally?: boolean;
+    centeredVertically?: boolean;
+    outline?: boolean;
+    scale?: boolean;
     pipLayout?: BipedPaperdollPipLayout;
     pipOptions?: PipRenderOptions;
     railPipsPerPath?: number;
@@ -163,24 +166,43 @@ export class BipedPaperdollUtil {
         const inset = Math.max(options.pipOptions?.inset ?? 0, 0);
         const availableWidth = Math.max(width - inset * 2, 0);
         const availableHeight = Math.max(height - inset * 2, 0);
-        const scale = Math.min(availableWidth / viewBox.width, availableHeight / viewBox.height);
+        const shouldScale = options.scale !== false;
+        const scale = shouldScale
+            ? Math.min(availableWidth / viewBox.width, availableHeight / viewBox.height)
+            : 1;
         const renderedWidth = viewBox.width * scale;
         const renderedHeight = viewBox.height * scale;
-        const offsetX = inset + (options.centered ? (availableWidth - renderedWidth) / 2 : 0);
-        const offsetY = inset + (options.centered ? (availableHeight - renderedHeight) / 2 : 0);
+        const offsetX = inset + (options.centeredHorizontally ? (availableWidth - renderedWidth) / 2 : 0);
+        const offsetY = inset + (options.centeredVertically ? (availableHeight - renderedHeight) / 2 : 0);
 
         const fitGroup = document.createElementNS(SVG_NAMESPACE, 'g');
         fitGroup.setAttribute('transform', `translate(${offsetX} ${offsetY})`);
         layer.appendChild(fitGroup);
 
         const scaleGroup = document.createElementNS(SVG_NAMESPACE, 'g');
-        scaleGroup.setAttribute('transform', `scale(${scale})`);
+        if (shouldScale) {
+            scaleGroup.setAttribute('transform', `scale(${scale})`);
+        }
         fitGroup.appendChild(scaleGroup);
 
         const art = this.findArtRoot(source, type);
         const sourceGroup = document.createElementNS(SVG_NAMESPACE, 'g');
         sourceGroup.setAttribute('transform', `translate(${-viewBox.minX} ${-viewBox.minY})`);
-        let importedArt = document.importNode(art, true) as SVGElement;
+        let importedArt: SVGElement;
+        if (art === source) {
+            const importedGroup = document.createElementNS(SVG_NAMESPACE, 'g');
+            importedGroup.setAttribute('id', `paperdoll-art-${type}`);
+            const sourceStyle = source.getAttribute('style');
+            if (sourceStyle) {
+                importedGroup.setAttribute('style', sourceStyle);
+            }
+            for (const child of Array.from(source.childNodes)) {
+                importedGroup.appendChild(document.importNode(child, true));
+            }
+            importedArt = importedGroup;
+        } else {
+            importedArt = document.importNode(art, true) as SVGElement;
+        }
         if (!importedArt.getAttribute('id')) {
             importedArt.setAttribute('id', `paperdoll-art-${type}`);
         }
@@ -204,6 +226,19 @@ export class BipedPaperdollUtil {
 
         this.applySilhouetteStyles(sourceGroup, type, options);
         this.replacePlaceholders(sourceGroup, type, armor, structureTonnage, options);
+        if (options.outline) {
+            const frame = document.createElementNS(SVG_NAMESPACE, 'rect');
+            frame.setAttribute('class', 'biped-paperdoll-frame');
+            frame.setAttribute('x', '0');
+            frame.setAttribute('y', '0');
+            frame.setAttribute('width', width.toString());
+            frame.setAttribute('height', height.toString());
+            frame.setAttribute('fill', 'none');
+            frame.setAttribute('stroke', '#00a8ff');
+            frame.setAttribute('stroke-width', '1');
+            frame.setAttribute('vector-effect', 'non-scaling-stroke');
+            layer.appendChild(frame);
+        }
         return layer;
     }
 

@@ -71,7 +71,29 @@ describe('BipedPaperdollUtil', () => {
         expect(scaleGroup.getAttribute('transform')).toContain('scale(');
     });
 
-    it('fits layers at the top-left by default and can center them', async () => {
+    it('scales by default and can render paperdoll geometry at native size', async () => {
+        const source = encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
+                <g id="paperdoll-art-armor">
+                    <path d="M 0 0 H 100 V 20 H 0 Z" />
+                </g>
+            </svg>
+        `);
+        const scaledLayer = await BipedPaperdollUtil.createArmorPaperdoll(50, 40, {}, {
+            assetUrl: `data:image/svg+xml,${source}`,
+        });
+        const nativeLayer = await BipedPaperdollUtil.createArmorPaperdoll(50, 40, {}, {
+            assetUrl: `data:image/svg+xml,${source}`,
+            scale: false,
+        });
+
+        const scaledGroup = scaledLayer.firstElementChild?.firstElementChild as SVGGElement;
+        const nativeGroup = nativeLayer.firstElementChild?.firstElementChild as SVGGElement;
+        expect(scaledGroup.getAttribute('transform')).toBe('scale(0.5)');
+        expect(nativeGroup.getAttribute('transform')).toBeNull();
+    });
+
+    it('fits layers at the top-left by default and centers each axis independently', async () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
                 <g id="paperdoll-art-armor">
@@ -82,13 +104,53 @@ describe('BipedPaperdollUtil', () => {
         const topLeftLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 40, {}, {
             assetUrl: `data:image/svg+xml,${source}`,
         });
-        const centeredLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 40, {}, {
+        const verticallyCenteredLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 40, {}, {
             assetUrl: `data:image/svg+xml,${source}`,
-            centered: true,
+            centeredVertically: true,
         });
 
         expect((topLeftLayer.firstElementChild as SVGGElement).getAttribute('transform')).toBe('translate(0 0)');
-        expect((centeredLayer.firstElementChild as SVGGElement).getAttribute('transform')).toBe('translate(0 10)');
+        expect((verticallyCenteredLayer.firstElementChild as SVGGElement).getAttribute('transform')).toBe('translate(0 10)');
+
+        const horizontalSource = encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 100">
+                <g id="paperdoll-art-armor">
+                    <path d="M 0 0 H 20 V 100 H 0 Z" />
+                </g>
+            </svg>
+        `);
+        const horizontallyCenteredLayer = await BipedPaperdollUtil.createArmorPaperdoll(40, 100, {}, {
+            assetUrl: `data:image/svg+xml,${horizontalSource}`,
+            centeredHorizontally: true,
+        });
+
+        expect((horizontallyCenteredLayer.firstElementChild as SVGGElement).getAttribute('transform')).toBe('translate(10 0)');
+    });
+
+    it('adds an optional outline around the requested layer dimensions', async () => {
+        const source = encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
+                <g id="paperdoll-art-armor">
+                    <path d="M 0 0 H 100 V 20 H 0 Z" />
+                </g>
+            </svg>
+        `);
+        const unframedLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 40, {}, {
+            assetUrl: `data:image/svg+xml,${source}`,
+        });
+        const framedLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 40, {}, {
+            assetUrl: `data:image/svg+xml,${source}`,
+            outline: true,
+        });
+
+        expect(unframedLayer.querySelector('.biped-paperdoll-frame')).toBeNull();
+        const frame = framedLayer.querySelector<SVGRectElement>('.biped-paperdoll-frame');
+        expect(frame).not.toBeNull();
+        expect(frame?.getAttribute('x')).toBe('0');
+        expect(frame?.getAttribute('y')).toBe('0');
+        expect(frame?.getAttribute('width')).toBe('100');
+        expect(frame?.getAttribute('height')).toBe('40');
+        expect(frame?.getAttribute('fill')).toBe('none');
     });
 
     it('renders rear armor from the dedicated rear asset', async () => {
@@ -99,6 +161,8 @@ describe('BipedPaperdollUtil', () => {
         });
 
         expect(paperdoll.getAttribute('data-source')).toBe('/images/paperdolls/biped-armor-back.svg');
+        expect(paperdoll.querySelector('svg#paperdoll-art-armor')).toBeNull();
+        expect(paperdoll.querySelector('g#paperdoll-art-armor')).not.toBeNull();
         expect(paperdoll.querySelector('[data-location="CT_R"][data-zone-type="armor"]')).not.toBeNull();
         expect(paperdoll.querySelector('[data-location="LT_R"][data-zone-type="armor"]')).not.toBeNull();
         expect(paperdoll.querySelector('[data-location="RT_R"][data-zone-type="armor"]')).not.toBeNull();

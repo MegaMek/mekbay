@@ -575,7 +575,10 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
             RA: { dc: 8, da: 1 },
         } as const;
         const [armorFrontLayer, armorRearLayer, structureLayer] = await Promise.all([
-            BipedPaperdollUtil.createArmorPaperdoll(210, 400, armorCounts, {
+            BipedPaperdollUtil.createArmorPaperdoll(210, 320, armorCounts, {
+                centeredHorizontally: true,
+                outline: true,
+                scale: false,
                 className: 'biped-paperdoll-armor-front',
                 pipLayout: this.pipLayout,
                 railPipsPerPath: 5,
@@ -585,7 +588,10 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                     stroke: '#b4492f',
                 },
             }),
-            BipedPaperdollUtil.createArmorRearPaperdoll(84.68, 238, armorCounts, {
+            BipedPaperdollUtil.createArmorRearPaperdoll(210, 110, armorCounts, {
+                centeredHorizontally: true,
+                outline: true,
+                scale: false,
                 className: 'biped-paperdoll-armor-rear',
                 pipLayout: this.pipLayout,
                 railPipsPerPath: 5,
@@ -595,6 +601,9 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 },
             }),
             BipedPaperdollUtil.createStructurePaperdoll(55.32, 238, structureTonnage, {
+                centeredHorizontally: true,
+                outline: true,
+                scale: false,
                 className: 'biped-paperdoll-structure',
                 pipLayout: this.pipLayout,
                 railPipsPerPath: 5,
@@ -605,8 +614,8 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
             }),
         ]);
         armorFrontLayer.setAttribute('transform', 'translate(2 2)');
-        armorRearLayer.setAttribute('transform', 'translate(94 2)');
-        structureLayer.setAttribute('transform', 'translate(78.34 150)');
+        armorRearLayer.setAttribute('transform', 'translate(2 260)');
+        structureLayer.setAttribute('transform', 'translate(90 400)');
         frame.append(armorFrontLayer, armorRearLayer, structureLayer);
         return frame;
     }
