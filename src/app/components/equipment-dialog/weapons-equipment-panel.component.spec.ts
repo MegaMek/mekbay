@@ -779,6 +779,30 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(unit.isEquipmentUnavailable(module)).toBeFalse();
     });
 
+    it('shows the full range hit modifiers for multi-range weapons', () => {
+        const vsp = entry({
+            id: 'vsp',
+            baseHitMod: '*',
+            equipment: new WeaponEquipment({
+                id: 'VSP',
+                name: 'Variable Speed Pulse Laser',
+                type: 'weapon',
+                stats: { toHitModifier: [-3, -2, -1] },
+                weapon: { ammoType: 'NA', ranges: [1, 2, 3, 4] }
+            }),
+            el: svgEntry('<g><g class="name"><text>Variable Speed Pulse Laser</text></g><text class="range_short">1</text><text class="range_medium">2</text><text class="range_long">3</text></g>')
+        });
+        const { component, fixture } = createComponent([vsp]);
+        let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        expect(row.display.hit).toBe('-3/-2/-1');
+
+        component.selectRange(row, 'medium');
+        fixture.detectChanges();
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(row.display.hit).toBe('-2');
+    });
+
     it('persists mode and sort order but keeps selection transient', async () => {
         const first = entry({ id: 'first', equipment: weapon('first'), el: svgEntry('<g><g class="name"><text>First</text></g></g>') });
         const second = entry({ id: 'second', equipment: weapon('second'), el: svgEntry('<g><g class="name"><text>Second</text></g></g>') });

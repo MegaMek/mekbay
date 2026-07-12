@@ -107,8 +107,15 @@ export class FloatingCompInfoComponent {
     }
 
     get toHitModifier(): string | null {
-        const modifier = (this.equipment() ?? this.comp()?.eq)?.stats.toHitModifier ?? 0;
-        if (modifier === 0) return null;
+        const equipment = this.equipment() ?? this.comp()?.eq;
+        if (!equipment) return null;
+
+        const modifierValues = equipment.getToHitModifiers();
+        if (modifierValues.every(value => value === 0)) return null;
+        return modifierValues.map(value => this.formatToHitModifier(value)).join('/');
+    }
+
+    private formatToHitModifier(modifier: number): string {
         return modifier > 0 ? `+${modifier}` : String(modifier);
     }
 

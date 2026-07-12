@@ -138,7 +138,7 @@ export function inventoryTargetNumberBreakdown(
     const skillModifierBreakdown = physical ? input.pilotingModifierBreakdown ?? [] : input.gunneryModifierBreakdown ?? [];
     const rangeModifier = inventoryTargetRangeModifier(rangeSelection.range);
     const minimumRangeModifier = rangeSelection.minimumRangeModifier;
-    const ammoToHitModifier = physical ? 0 : (input.selectedAmmo?.stats.toHitModifier ?? 0);
+    const ammoToHitModifier = physical ? 0 : (input.selectedAmmo?.getToHitModifier(rangeSelection.range) ?? 0);
     const heatFireModifier = physical ? 0 : input.heatFireModifier ?? 0;
     const terms: TooltipLine[] = [
         { label: skillLabel, value: skill.toString() }

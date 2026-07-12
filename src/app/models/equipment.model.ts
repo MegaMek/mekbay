@@ -253,7 +253,7 @@ export interface EquipmentStats {
     explosive: boolean;
     omniFixedOnly: boolean;
     instantModeSwitch: boolean;
-    toHitModifier: number;
+    toHitModifier: number | number[];
 }
 
 export interface WeaponData {
@@ -434,6 +434,13 @@ const RAW_TECH_DEFAULTS: RawTechData = {
     base: 'IS', rating: 'C', level: 'Standard', availability: {}, advancement: {}
 };
 
+const TO_HIT_MODIFIER_RANGE_INDEX: Record<RangeBrackets, number> = {
+    short: 0,
+    medium: 1,
+    long: 2,
+    extreme: 2
+};
+
 // ============================================================================
 // Utility Functions
 // ============================================================================
@@ -529,6 +536,20 @@ export class Equipment {
     get rating(): string { return this.tech.rating; }
     get availability(): String { return [this.tech.availability.sl??'X', this.tech.availability.sw??'X', this.tech.availability.clan??'X', this.tech.availability.da??'X'].join('-'); }
     get isSpreadable(): boolean { return this.stats.spreadable; }
+
+    getToHitModifier(range?: RangeBrackets | null): number {
+        const modifier = this.stats.toHitModifier;
+        if (typeof modifier === 'number') return modifier;
+        if (modifier.length === 0) return 0;
+
+        const rangeIndex = range ? TO_HIT_MODIFIER_RANGE_INDEX[range] : 0;
+        return modifier[Math.min(rangeIndex, modifier.length - 1)] ?? 0;
+    }
+
+    getToHitModifiers(): number[] {
+        const modifier = this.stats.toHitModifier;
+        return Array.isArray(modifier) ? [...modifier] : [modifier];
+    }
 
     hasFlag(flag: string): boolean { return this.flags.has(flag); }
     hasAnyFlag(flags: string[]): boolean { return flags.some(f => this.flags.has(f)); }

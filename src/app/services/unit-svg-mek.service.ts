@@ -263,6 +263,9 @@ export class UnitSvgMekService extends UnitSvgService {
 
     protected override resolveInventoryControlHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {
         const state = this.currentEntryStates?.get(entry) ?? this.mekRules.computeEntryState(entry);
+        const svgBaseHitModifier = this.getSvgBaseHitModifier(entry, range);
+        if (svgBaseHitModifier !== null) return svgBaseHitModifier;
+
         return resolveHitModifier(
             entry,
             state.hitMod,
