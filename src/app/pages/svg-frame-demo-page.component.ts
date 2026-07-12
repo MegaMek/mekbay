@@ -647,6 +647,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 pipOptions: {
                     pipGap: 2,
                     stroke: '#b4492f',
+                    useCanonPipRadius: true,
                 },
             }),
             BipedPaperdollUtil.createArmorRearPaperdoll(210, 110, armorCounts, {
@@ -659,6 +660,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 pipOptions: {
                     pipGap: 0.5,
                     stroke: '#a63d83',
+                    useCanonPipRadius: true,
                 },
             }),
             BipedPaperdollUtil.createStructurePaperdoll(120, 175, structureTonnage, {
@@ -671,6 +673,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 pipOptions: {
                     pipGap: 0.5,
                     stroke: '#356a8a',
+                    useCanonPipRadius: true,
                 },
             }),
         ]);

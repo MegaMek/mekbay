@@ -9,7 +9,7 @@ const DEFAULT_PIP_RADIUS = 3;
 const DEFAULT_MIN_PIP_RADIUS = 2.29;
 const DEFAULT_PIP_GAP = 1;
 const DEFAULT_INSET = 0;
-const DEFAULT_USE_ORIGINAL_PIP_RADIUS = false;
+const DEFAULT_USE_CANON_PIP_RADIUS = false;
 
 export interface PipRenderOptions {
     className?: string;
@@ -18,7 +18,7 @@ export interface PipRenderOptions {
     minPipRadius?: number;
     pipGap?: number;
     pipRadius?: number;
-    useOriginalPipRadius?: boolean;
+    useCanonPipRadius?: boolean;
     stroke?: string;
     strokeWidthRatio?: number;
     shape?: 'circle' | 'diamond';
@@ -602,10 +602,10 @@ export class PipUtil {
         const availableHeight = Math.max(containerHeight - inset * 2, 0);
         const initialScale = Math.min(availableWidth / layout.width, availableHeight / layout.height);
         const strokeWidthRatio = this.getStrokeWidthRatio(options);
-        const useOriginalPipRadius = (options.useOriginalPipRadius ?? DEFAULT_USE_ORIGINAL_PIP_RADIUS)
+        const useCanonPipRadius = (options.useCanonPipRadius ?? DEFAULT_USE_CANON_PIP_RADIUS)
             && Number.isFinite(layout.radius)
             && Number.isFinite(layout.stroke);
-        const scale = useOriginalPipRadius
+        const scale = useCanonPipRadius
             ? initialScale
             : this.getCanonScale(
                 layout,
@@ -630,22 +630,8 @@ export class PipUtil {
         const bakedStrokeRatio = bakedRadius > 0
             ? (layout.stroke ?? 0) / bakedRadius
             : strokeWidthRatio;
-        const localRadius = useOriginalPipRadius
-            ? (() => {
-                const maximumRadius = this.getMaximumRadiusForPoints(
-                    renderedPoints,
-                    {
-                        left: 0,
-                        top: 0,
-                        right: containerWidth,
-                        bottom: containerHeight,
-                    },
-                    bakedStrokeRatio,
-                    inset,
-                    this.getPipGap(options),
-                );
-                return scale > 0 ? Math.min(bakedRadius, maximumRadius / scale) : 0;
-            })()
+        const localRadius = useCanonPipRadius
+            ? bakedRadius
             : (() => {
                 const maximumRadius = this.getMaximumRadiusForPoints(
                     renderedPoints,
@@ -659,14 +645,13 @@ export class PipUtil {
                     inset,
                     this.getPipGap(options),
                 );
-                const radius = this.getPipRadiusWithinBounds(
-                    this.getRequestedPipRadius(options),
-                    options,
-                    maximumRadius,
+                const radius = Math.max(
+                    0,
+                    Math.min(this.getRequestedPipRadius(options), maximumRadius),
                 );
                 return scale > 0 ? radius / scale : 0;
             })();
-        const strokeWidth = useOriginalPipRadius
+        const strokeWidth = useCanonPipRadius
             ? localRadius * bakedStrokeRatio
             : localRadius * strokeWidthRatio;
         for (const [x, y] of layout.points) {

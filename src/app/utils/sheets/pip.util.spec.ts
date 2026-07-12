@@ -64,6 +64,23 @@ describe('PipUtil', () => {
         expect(getRenderedRadius(threePips)).toBeCloseTo(3, 6);
     });
 
+    it('does not apply minimum radius clamping to default canon pips', () => {
+        const getRenderedRadius = (group: SVGGElement | null): number => {
+            const scale = Number(/scale\(([^)]+)\)/u.exec(group?.getAttribute('transform') ?? '')?.[1]);
+            return Number(group?.querySelector('circle')?.getAttribute('r')) * scale;
+        };
+        const defaultMinimum = PipUtil.createCanonArmorPips('CT', 3, 29.063, 85.873, {
+            inset: 1.8,
+            minPipRadius: 0,
+        });
+        const oversizedMinimum = PipUtil.createCanonArmorPips('CT', 3, 29.063, 85.873, {
+            inset: 1.8,
+            minPipRadius: 100,
+        });
+
+        expect(getRenderedRadius(oversizedMinimum)).toBeCloseTo(getRenderedRadius(defaultMinimum), 6);
+    });
+
     it('applies pipGap to canon pip spacing', () => {
         const getRenderedRadius = (group: SVGGElement | null): number => {
             const scale = Number(/scale\(([^)]+)\)/u.exec(group?.getAttribute('transform') ?? '')?.[1]);
@@ -87,7 +104,7 @@ describe('PipUtil', () => {
 
     it('uses baked canon radii when explicitly requested', () => {
         const options = {
-            useOriginalPipRadius: true,
+            useCanonPipRadius: true,
             pipRadius: 100,
             minPipRadius: 100,
         };
@@ -106,13 +123,13 @@ describe('PipUtil', () => {
             .toEqual(new Set([structureLayout.stroke]));
     });
 
-    it('applies pipGap when baked canon pips are too close', () => {
+    it('does not apply pipGap to baked canon pips', () => {
         const noGap = PipUtil.createCanonArmorPips('HD', 9, 17.088, 21.553, {
-            useOriginalPipRadius: true,
+            useCanonPipRadius: true,
             pipGap: 0,
         });
         const withGap = PipUtil.createCanonArmorPips('HD', 9, 17.088, 21.553, {
-            useOriginalPipRadius: true,
+            useCanonPipRadius: true,
             pipGap: 1,
         });
 
@@ -121,7 +138,25 @@ describe('PipUtil', () => {
             return Number(group?.querySelector('circle')?.getAttribute('r')) * scale;
         };
 
-        expect(getRenderedRadius(withGap)).toBeLessThan(getRenderedRadius(noGap));
+        expect(getRenderedRadius(withGap)).toBeCloseTo(getRenderedRadius(noGap), 6);
+        expect(Array.from(withGap?.querySelectorAll('circle') ?? [])
+            .map(circle => Number(circle.getAttribute('r'))))
+            .toEqual(Array.from(noGap?.querySelectorAll('circle') ?? [])
+                .map(circle => Number(circle.getAttribute('r'))));
+    });
+
+    it('uses the baked canon radius without collision resizing', () => {
+        const pips = PipUtil.createCanonArmorPips('HD', 9, 17.088, 21.553, {
+            useCanonPipRadius: true,
+            pipGap: 100,
+            minPipRadius: 0,
+            pipRadius: 0,
+        });
+        const bakedRadius = BIPED_ARMOR_PIP_LAYOUTS['HD'].amount[9].radius;
+
+        expect(Array.from(pips?.querySelectorAll('circle') ?? [])
+            .map(circle => Number(circle.getAttribute('r'))))
+            .toEqual(Array(9).fill(bakedRadius));
     });
 
     it('uses one shared normalized box for all amounts in a canon location', () => {
@@ -130,14 +165,14 @@ describe('PipUtil', () => {
             1,
             29.063,
             85.873,
-            { useOriginalPipRadius: true },
+            { useCanonPipRadius: true },
         );
         const threePips = PipUtil.createCanonArmorPips(
             'CT',
             3,
             29.063,
             85.873,
-            { useOriginalPipRadius: true },
+            { useCanonPipRadius: true },
         );
 
         expect(onePip?.getAttribute('transform')).toBe(threePips?.getAttribute('transform'));
