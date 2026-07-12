@@ -64,6 +64,27 @@ describe('PipUtil', () => {
         expect(getRenderedRadius(threePips)).toBeCloseTo(3, 6);
     });
 
+    it('applies pipGap to canon pip spacing', () => {
+        const getRenderedRadius = (group: SVGGElement | null): number => {
+            const scale = Number(/scale\(([^)]+)\)/u.exec(group?.getAttribute('transform') ?? '')?.[1]);
+            return Number(group?.querySelector('circle')?.getAttribute('r')) * scale;
+        };
+        const noGap = PipUtil.createCanonArmorPips('HD', 9, 17.088, 21.553, {
+            inset: 1.8,
+            pipGap: 0,
+            minPipRadius: 0,
+            pipRadius: 3,
+        });
+        const withGap = PipUtil.createCanonArmorPips('HD', 9, 17.088, 21.553, {
+            inset: 1.8,
+            pipGap: 1,
+            minPipRadius: 0,
+            pipRadius: 3,
+        });
+
+        expect(getRenderedRadius(withGap)).toBeLessThan(getRenderedRadius(noGap));
+    });
+
     it('uses baked canon radii when explicitly requested', () => {
         const options = {
             useOriginalPipRadius: true,
@@ -83,6 +104,24 @@ describe('PipUtil', () => {
             .toEqual(new Set([structureLayout.radius]));
         expect(new Set(Array.from(structurePips?.querySelectorAll('circle') ?? [], circle => Number(circle.getAttribute('stroke-width')))))
             .toEqual(new Set([structureLayout.stroke]));
+    });
+
+    it('applies pipGap when baked canon pips are too close', () => {
+        const noGap = PipUtil.createCanonArmorPips('HD', 9, 17.088, 21.553, {
+            useOriginalPipRadius: true,
+            pipGap: 0,
+        });
+        const withGap = PipUtil.createCanonArmorPips('HD', 9, 17.088, 21.553, {
+            useOriginalPipRadius: true,
+            pipGap: 1,
+        });
+
+        const getRenderedRadius = (group: SVGGElement | null): number => {
+            const scale = Number(/scale\(([^)]+)\)/u.exec(group?.getAttribute('transform') ?? '')?.[1]);
+            return Number(group?.querySelector('circle')?.getAttribute('r')) * scale;
+        };
+
+        expect(getRenderedRadius(withGap)).toBeLessThan(getRenderedRadius(noGap));
     });
 
     it('uses one shared normalized box for all amounts in a canon location', () => {
@@ -134,6 +173,74 @@ describe('PipUtil', () => {
         expect(radii[0]).toBeLessThan(25);
         expect(radii[0]).toBeGreaterThanOrEqual(2);
         expect(radii[1]).toBe(radii[0]);
+    });
+
+    it('chooses a larger distributed layout when zero gap fits another row arrangement', () => {
+        const options = { inset: 1.8, pipGap: 0, pipRadius: 3 };
+        const zeroGapPips = PipUtil.createDistributedPips(
+            [{ x: 0, y: 0, width: 17.088, height: 21.553 }],
+            5,
+            options,
+            'armor',
+            'HD',
+        );
+        const positiveGapPips = PipUtil.createDistributedPips(
+            [{ x: 0, y: 0, width: 17.088, height: 21.553 }],
+            5,
+            { ...options, pipGap: 1 },
+            'armor',
+            'HD',
+        );
+
+        expect(zeroGapPips?.querySelectorAll('circle').length).toBe(5);
+        const zeroGapRadius = Number(zeroGapPips?.querySelector('circle')?.getAttribute('r'));
+        const positiveGapRadius = Number(positiveGapPips?.querySelector('circle')?.getAttribute('r'));
+        expect(zeroGapRadius).toBeGreaterThan(2);
+        expect(positiveGapRadius).toBeLessThan(zeroGapRadius);
+
+        const getMinimumCenterDistance = (group: SVGGElement | null): number => {
+            const circles = Array.from(group?.querySelectorAll('circle') ?? []);
+            return Math.min(...circles.flatMap((first, firstIndex) =>
+                circles.slice(firstIndex + 1).map(second => Math.hypot(
+                Number(first.getAttribute('cx')) - Number(second.getAttribute('cx')),
+                Number(first.getAttribute('cy')) - Number(second.getAttribute('cy')),
+                ))));
+        };
+        const zeroGapStrokeWidth = Number(zeroGapPips?.querySelector('circle')?.getAttribute('stroke-width'));
+        const positiveGapStrokeWidth = Number(positiveGapPips?.querySelector('circle')?.getAttribute('stroke-width'));
+        expect(getMinimumCenterDistance(zeroGapPips)).toBeCloseTo(2 * zeroGapRadius + zeroGapStrokeWidth, 6);
+        expect(getMinimumCenterDistance(positiveGapPips)).toBeCloseTo(2 * positiveGapRadius + positiveGapStrokeWidth + 1, 6);
+    });
+
+    it('uses pipGap when sizing rail pips', () => {
+        const options = { pipRadius: 100 };
+        const noGapRadius = PipUtil.getRailPipRadius(100, 5, { ...options, pipGap: 0 });
+        const positiveGapRadius = PipUtil.getRailPipRadius(100, 5, { ...options, pipGap: 10 });
+
+        expect(positiveGapRadius).toBeLessThan(noGapRadius);
+    });
+
+    it('balances many distributed pips across more rows', () => {
+        const pips = PipUtil.createDistributedPips(
+            [{ x: 0, y: 0, width: 17.088, height: 21.553 }],
+            18,
+            { inset: 1.8, pipGap: 0, pipRadius: 3 },
+            'armor',
+            'HD',
+        );
+        const circles = Array.from(pips?.querySelectorAll('circle') ?? []);
+        const rowCounts = Array.from(
+            circles.reduce((counts, circle) => {
+                const y = circle.getAttribute('cy') ?? '';
+                counts.set(y, (counts.get(y) ?? 0) + 1);
+                return counts;
+            }, new Map<string, number>()).values(),
+        );
+
+        expect(rowCounts.length).toBe(5);
+        expect(Math.min(...rowCounts)).toBe(3);
+        expect(Math.max(...rowCounts)).toBe(4);
+        expect(Number(circles[0]?.getAttribute('r'))).toBeGreaterThan(1.4);
     });
 
     it('balances two pips into two regions of one area', () => {

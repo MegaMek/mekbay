@@ -20,6 +20,7 @@ describe('BipedPaperdollUtil', () => {
                 LA: { dc: 8, da: 1 },
                 RA: { dc: 8, da: 1 },
             },
+            pipLayout: 'canon',
             pipOptions: { inset: 1.8, stroke: '#b4492f' },
         });
         const rearArmorLayer = await BipedPaperdollUtil.createArmorRearPaperdoll(84.68, 238, {
@@ -189,7 +190,7 @@ describe('BipedPaperdollUtil', () => {
         expect(centerTorsoZone?.querySelectorAll('circle').length).toBe(PipUtil.getCanonStructurePipCount(20, 'CT'));
     });
 
-    it('falls back to distributed placement when a canon amount is unavailable', async () => {
+    it('does not fall back when a canon amount is unavailable by default', async () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
                 <g id="paperdoll-art-armor">
@@ -201,10 +202,53 @@ describe('BipedPaperdollUtil', () => {
             assetUrl: `data:image/svg+xml,${source}`,
         });
 
+        expect(armorLayer.querySelector('[data-location="HD"][data-zone-type="armor"]')).toBeNull();
+    });
+
+    it('uses the explicitly selected fallback when a canon amount is unavailable', async () => {
+        const source = encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
+                <g id="paperdoll-art-armor">
+                    <rect id="placeholder-canon-armor-HD" x="0" y="0" width="100" height="20" />
+                </g>
+            </svg>
+        `);
+        const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 20, { HD: 10 }, {
+            assetUrl: `data:image/svg+xml,${source}`,
+            fallbackPipLayout: 'distributed',
+        });
+
         const zone = armorLayer.querySelector('[data-location="HD"][data-zone-type="armor"]');
         expect(zone?.getAttribute('data-layout')).toBeNull();
         expect(zone?.querySelector('g')?.getAttribute('data-pip-layout')).toBe('distributed');
         expect(zone?.querySelectorAll('circle').length).toBe(10);
+    });
+
+    it('does not implicitly use canon for rail or fill modes', async () => {
+        const source = encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
+                <g id="paperdoll-art-armor">
+                    <rect id="placeholder-canon-armor-HD" x="0" y="0" width="100" height="20" />
+                </g>
+            </svg>
+        `);
+        const railLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 20, { HD: 1 }, {
+            assetUrl: `data:image/svg+xml,${source}`,
+            pipLayout: 'rail',
+        });
+        const fillLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 20, { HD: 1 }, {
+            assetUrl: `data:image/svg+xml,${source}`,
+            pipLayout: 'fill',
+        });
+        const fallbackLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 20, { HD: 1 }, {
+            assetUrl: `data:image/svg+xml,${source}`,
+            pipLayout: 'rail',
+            fallbackPipLayout: 'canon',
+        });
+
+        expect(railLayer.querySelector('[data-location="HD"][data-zone-type="armor"]')).toBeNull();
+        expect(fillLayer.querySelector('[data-location="HD"][data-zone-type="armor"]')).toBeNull();
+        expect(fallbackLayer.querySelector('[data-pip-layout="canon"]')).not.toBeNull();
     });
 
     it('supports distributed placement as an explicit paperdoll mode', async () => {

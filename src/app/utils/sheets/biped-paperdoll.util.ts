@@ -31,6 +31,7 @@ export interface BipedPaperdollLayerOptions {
     outline?: boolean;
     scale?: boolean;
     pipLayout?: BipedPaperdollPipLayout;
+    fallbackPipLayout?: BipedPaperdollPipLayout;
     pipOptions?: PipRenderOptions;
     railPipsPerPath?: number;
     shieldValues?: BipedShieldValues;
@@ -484,10 +485,11 @@ export class BipedPaperdollUtil {
             group.elements.push(...rectangles);
         }
 
+        const selectedPipLayout = options.pipLayout ?? 'canon';
         const railKeys = new Set<string>();
         for (const group of railGroups) {
             const count = this.readPlaceholderPipCount(group.type, group.location, armor, structureTonnage, options);
-            if (options.pipLayout === 'rail'
+            if (selectedPipLayout === 'rail'
                 && typeof count === 'number'
                 && this.appendRailPips(group, count, options)) {
                 railKeys.add(this.getPlaceholderKey(group.type, group.location));
@@ -502,7 +504,7 @@ export class BipedPaperdollUtil {
                 group.elements.forEach(element => element.remove());
                 continue;
             }
-            if (options.pipLayout === 'fill') {
+            if (selectedPipLayout === 'fill') {
                 const count = this.readPlaceholderPipCount(group.type, group.location, armor, structureTonnage, options);
                 if (typeof count === 'number') {
                     const pipOptions: PipRenderOptions = {
@@ -536,9 +538,16 @@ export class BipedPaperdollUtil {
             group.elements.forEach(element => element.remove());
         }
 
+        const shieldsUseDistributedLayout = selectedPipLayout === 'canon'
+            || selectedPipLayout === 'distributed'
+            || options.fallbackPipLayout === 'distributed';
         for (const group of shieldGroups) {
             const key = this.getPlaceholderKey(group.type, group.location);
             if (railKeys.has(key) || fillKeys.has(key)) {
+                group.elements.forEach(element => element.remove());
+                continue;
+            }
+            if (!shieldsUseDistributedLayout) {
                 group.elements.forEach(element => element.remove());
                 continue;
             }
@@ -874,26 +883,52 @@ export class BipedPaperdollUtil {
         structureTonnage: BipedStructureTonnage | undefined,
         options: BipedPaperdollLayerOptions,
     ): SVGGElement | null {
+        const selectedPipLayout = options.pipLayout ?? 'canon';
+        const primaryPips = this.createPlaceholderPipsForLayout(
+            group,
+            selectedPipLayout,
+            armor,
+            structureTonnage,
+            options,
+        );
+        if (primaryPips || !options.fallbackPipLayout || options.fallbackPipLayout === selectedPipLayout) {
+            return primaryPips;
+        }
+        return this.createPlaceholderPipsForLayout(
+            group,
+            options.fallbackPipLayout,
+            armor,
+            structureTonnage,
+            options,
+        );
+    }
+
+    private static createPlaceholderPipsForLayout(
+        group: PlaceholderGroup,
+        pipLayout: BipedPaperdollPipLayout,
+        armor: BipedArmorValues | undefined,
+        structureTonnage: BipedStructureTonnage | undefined,
+        options: BipedPaperdollLayerOptions,
+    ): SVGGElement | null {
         const width = group.bounds.maxX - group.bounds.minX;
         const height = group.bounds.maxY - group.bounds.minY;
+        if (pipLayout === 'distributed') {
+            const count = this.readPlaceholderPipCount(group.type, group.location, armor, structureTonnage, options);
+            return typeof count === 'number'
+                ? this.createDistributedPlaceholderPips(group, count, options)
+                : null;
+        }
+        if (pipLayout !== 'canon') {
+            return null;
+        }
         if (group.type === 'armor' && armor && typeof armor[group.location as BipedArmorLocation] === 'number') {
             const count = armor[group.location as BipedArmorLocation] as number;
-            if (options.pipLayout === 'distributed') {
-                return this.createDistributedPlaceholderPips(group, count, options);
-            }
-            return PipUtil.createCanonArmorPips(group.location, count, width, height, options.pipOptions)
-                ?? this.createDistributedPlaceholderPips(group, count, options);
+            return PipUtil.createCanonArmorPips(group.location, count, width, height, options.pipOptions);
         }
         const locationTonnage = this.getStructureTonnage(structureTonnage, group.location);
         if (group.type === 'structure' && typeof locationTonnage === 'number') {
             const count = PipUtil.getCanonStructurePipCount(locationTonnage, group.location);
-            if (options.pipLayout === 'distributed') {
-                return count > 0
-                    ? this.createDistributedPlaceholderPips(group, count, options)
-                    : null;
-            }
-            return PipUtil.createCanonStructurePips(locationTonnage, group.location, width, height, options.pipOptions)
-                ?? (count > 0 ? this.createDistributedPlaceholderPips(group, count, options) : null);
+            return PipUtil.createCanonStructurePips(locationTonnage, group.location, width, height, options.pipOptions);
         }
         return null;
     }

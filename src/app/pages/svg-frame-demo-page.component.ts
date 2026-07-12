@@ -1,5 +1,5 @@
 import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, ViewChild } from '@angular/core';
-import { BipedPaperdollUtil, type BipedArmorLocation, type BipedPaperdollPipLayout, type BipedStructureLocation, type BipedStructureTonnage } from '../utils/sheets/biped-paperdoll.util';
+import { BipedPaperdollUtil, type BipedArmorLocation, type BipedPaperdollPipLayout, type BipedShieldLocation, type BipedStructureLocation, type BipedStructureTonnage } from '../utils/sheets/biped-paperdoll.util';
 import { PipUtil } from '../utils/sheets/pip.util';
 import { SvgFrameUtil } from '../utils/sheets/svg-frame.util';
 
@@ -48,6 +48,45 @@ import { SvgFrameUtil } from '../utils/sheets/svg-frame.util';
                                     [attr.aria-label]="'Armor count for ' + formatLocation(location)"
                                     [value]="armorCounts[location]"
                                     (input)="updateArmorCount(location, $event)" />
+                            </label>
+                        }
+                    </div>
+                </section>
+                <hr/>
+                <section class="control-section" aria-labelledby="shield-controls-title">
+                    <div class="section-heading">
+                        <h2 id="shield-controls-title">Shields</h2>
+                        <output aria-live="polite">{{ totalShieldCount }} pips</output>
+                    </div>
+                    <div class="slider-list">
+                        @for (location of shieldLocations; track location) {
+                            <label class="slider-control">
+                                <div class="slider-control-heading">
+                                    <span>{{ formatLocation(location) }} DC</span>
+                                    <output>{{ shieldValues[location].dc }}</output>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    [attr.max]="shieldDCMaximum"
+                                    step="1"
+                                    [attr.aria-label]="'DC for ' + formatLocation(location)"
+                                    [value]="shieldValues[location].dc"
+                                    (input)="updateShieldValue(location, 'dc', $event)" />
+                            </label>
+                            <label class="slider-control">
+                                <div class="slider-control-heading">
+                                    <span>{{ formatLocation(location) }} DA</span>
+                                    <output>{{ shieldValues[location].da }}</output>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    [attr.max]="shieldDAMaximum"
+                                    step="1"
+                                    [attr.aria-label]="'DA for ' + formatLocation(location)"
+                                    [value]="shieldValues[location].da"
+                                    (input)="updateShieldValue(location, 'da', $event)" />
                             </label>
                         }
                     </div>
@@ -400,6 +439,8 @@ import { SvgFrameUtil } from '../utils/sheets/svg-frame.util';
 export class SvgFrameDemoPageComponent implements AfterViewInit {
     protected readonly currentYear = new Date().getFullYear();
     protected readonly armorCountMaximum = 40;
+    protected readonly shieldDCMaximum = 25;
+    protected readonly shieldDAMaximum = 7;
     protected sidebarOpen = true;
     protected structureLinked = true;
     protected globalStructureTonnage = 50;
@@ -409,6 +450,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
     protected readonly structureLocations: readonly BipedStructureLocation[] = [
         'HD', 'CT', 'LT', 'RT', 'LA', 'RA', 'LL', 'RL',
     ];
+    protected readonly shieldLocations: readonly BipedShieldLocation[] = ['LA', 'RA'];
     protected armorCounts: Record<BipedArmorLocation, number> = {
         HD: 5,
         CT: 15,
@@ -421,6 +463,10 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
         CT_R: 10,
         LT_R: 8,
         RT_R: 8,
+    };
+    protected shieldValues: Record<BipedShieldLocation, { dc: number; da: number }> = {
+        LA: { dc: 8, da: 1 },
+        RA: { dc: 8, da: 1 },
     };
     protected structureTonnageByLocation: Record<BipedStructureLocation, number> = {
         HD: 50,
@@ -435,6 +481,18 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
 
     @ViewChild('frameCanvas', { static: true })
     private readonly frameCanvas!: ElementRef<SVGSVGElement>;
+
+    private readonly mechDataFrameWidth = 225;
+    private readonly mechDataFrameHeight = 302;
+    private readonly warriorDataFrameHeight = 140;
+    private readonly warriorDataFrameWidth = 150;
+    private readonly criticalTableFrameY = this.mechDataFrameHeight - 2;
+    private readonly criticalTableFrameWidth = this.mechDataFrameWidth + 7 + this.warriorDataFrameWidth;
+    private readonly criticalTableFrameHeight = 397;
+    private readonly heatDataFrameHeight = 200;
+    private readonly heatDataFrameY = this.criticalTableFrameY + (this.criticalTableFrameHeight - this.heatDataFrameHeight);
+    private readonly paperdollX = this.criticalTableFrameWidth;
+    private readonly paperdollY = -50;
     private paperdollRenderRoot?: SVGGElement;
     private paperdollRenderVersion = 0;
 
@@ -452,6 +510,10 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
 
     protected get totalStructureCount(): number {
         return this.structureLocations.reduce((total, location) => total + this.getStructureCount(location), 0);
+    }
+
+    protected get totalShieldCount(): number {
+        return this.shieldLocations.reduce((total, location) => total + this.getShieldPipCount(location), 0);
     }
 
     protected toggleSidebar(): void {
@@ -479,6 +541,18 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
         this.armorCounts = {
             ...this.armorCounts,
             [location]: this.readIntegerInput(event, this.armorCountMaximum),
+        };
+        void this.updatePaperdolls();
+    }
+
+    protected updateShieldValue(location: BipedShieldLocation, value: 'dc' | 'da', event: Event): void {
+        const maximum = value === 'dc' ? this.shieldDCMaximum : this.shieldDAMaximum;
+        this.shieldValues = {
+            ...this.shieldValues,
+            [location]: {
+                ...this.shieldValues[location],
+                [value]: this.readIntegerInput(event, maximum),
+            },
         };
         void this.updatePaperdolls();
     }
@@ -511,17 +585,8 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
         if (!this.paperdollRenderRoot) {
             return;
         }
-        const mechDataFrameWidth = 225;
-        const mechDataFrameHeight = 302;
-        const warriorDataFrameHeight = 140;
-        const warriorDataFrameWidth = 150;
-        const criticalTableFrameY = mechDataFrameHeight - 2;
-        const criticalTableFrameWidth = mechDataFrameWidth + 7 + warriorDataFrameWidth;
-        const criticalTableFrameHeight = 397;
-        const heatDataFrameHeight = 200;
-        const heatDataFrameY = criticalTableFrameY + (criticalTableFrameHeight - heatDataFrameHeight);
         this.paperdollRenderRoot.replaceChildren(
-            this.createFrameGroup('\'MECH DATA', 0, 0, mechDataFrameWidth, 302, {
+            this.createFrameGroup('\'MECH DATA', 0, 0, this.mechDataFrameWidth, 302, {
                 id: 'mechDataFrame',
                 bottomLeftNotchWidth: 100,
                 cornerAngleDegrees: {
@@ -529,7 +594,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                     bottomLeft: 45
                 }
             }),
-            this.createFrameGroup('WARRIOR DATA', mechDataFrameWidth + 7, 0, warriorDataFrameWidth, warriorDataFrameHeight, {
+            this.createFrameGroup('WARRIOR DATA', this.mechDataFrameWidth + 7, 0, this.warriorDataFrameWidth, this.warriorDataFrameHeight, {
                 id: 'warriorDataFrame',
                 cornerAngleDegrees: {
                     topRight: 0,
@@ -537,12 +602,12 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                     bottomRight: 45
                 },
             }),
-            this.createFrameGroup('HIT LOCATION AND CLUSTER TABLE', mechDataFrameWidth + 7, warriorDataFrameHeight + 7, warriorDataFrameWidth, 155, {
+            this.createFrameGroup('HIT LOCATION AND CLUSTER TABLE', this.mechDataFrameWidth + 7, this.warriorDataFrameHeight + 7, this.warriorDataFrameWidth, 155, {
                 id: 'hitFrame',
                 fullWidthHeader: true,
                 // headerFontSize: 8
             }),
-            this.createFrameGroup('CRITICAL TABLE', 0, criticalTableFrameY, criticalTableFrameWidth, criticalTableFrameHeight, {
+            this.createFrameGroup('CRITICAL TABLE', 0, this.criticalTableFrameY, this.criticalTableFrameWidth, this.criticalTableFrameHeight, {
                 id: 'critTableFrame',
                 cornerAngleDegrees: {
                     topRight: 45,
@@ -550,7 +615,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                     bottomRight: 45
                 }
             }),
-            this.createFrameGroup('HEAT DATA', criticalTableFrameWidth + 7, heatDataFrameY, 180, heatDataFrameHeight, {
+            this.createFrameGroup('HEAT DATA', this.criticalTableFrameWidth + 7, this.heatDataFrameY, 180, this.heatDataFrameHeight, {
                 id: 'heatDataFrame',
                 cornerAngleDegrees: {
                     topRight: 45,
@@ -570,10 +635,6 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
         const structureTonnage: BipedStructureTonnage = this.structureLinked
             ? this.globalStructureTonnage
             : { ...this.structureTonnageByLocation };
-        const shieldValues = {
-            LA: { dc: 8, da: 1 },
-            RA: { dc: 8, da: 1 },
-        } as const;
         const [armorFrontLayer, armorRearLayer, structureLayer] = await Promise.all([
             BipedPaperdollUtil.createArmorPaperdoll(210, 320, armorCounts, {
                 centeredHorizontally: true,
@@ -582,9 +643,10 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 className: 'biped-paperdoll-armor-front',
                 pipLayout: this.pipLayout,
                 railPipsPerPath: 5,
-                shieldValues,
+                shieldValues: this.shieldValues,
                 pipOptions: {
                     inset: 1.8,
+                    pipGap: 1,
                     stroke: '#b4492f',
                 },
             }),
@@ -597,10 +659,11 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 railPipsPerPath: 5,
                 pipOptions: {
                     inset: 1.8,
+                    pipGap: 0,
                     stroke: '#a63d83',
                 },
             }),
-            BipedPaperdollUtil.createStructurePaperdoll(55.32, 238, structureTonnage, {
+            BipedPaperdollUtil.createStructurePaperdoll(120, 175, structureTonnage, {
                 centeredHorizontally: true,
                 outline: true,
                 scale: false,
@@ -609,15 +672,21 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 railPipsPerPath: 5,
                 pipOptions: {
                     inset: 1.8,
+                    pipGap: 0,
                     stroke: '#356a8a',
                 },
             }),
         ]);
         armorFrontLayer.setAttribute('transform', 'translate(2 2)');
         armorRearLayer.setAttribute('transform', 'translate(2 260)');
-        structureLayer.setAttribute('transform', 'translate(90 400)');
+        structureLayer.setAttribute('transform', 'translate(35 372)');
         frame.append(armorFrontLayer, armorRearLayer, structureLayer);
         return frame;
+    }
+
+    private getShieldPipCount(location: BipedShieldLocation): number {
+        const shield = this.shieldValues[location];
+        return shield.dc + shield.da;
     }
 
     private getStructureTonnage(location: BipedStructureLocation): number {
@@ -637,6 +706,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
     private async updatePaperdolls(): Promise<void> {
         const renderVersion = ++this.paperdollRenderVersion;
         const frame = await this.createBipedPipDemoFrame();
+        frame.setAttribute('transform', `translate(${this.paperdollX} ${this.paperdollY})`);
         if (renderVersion !== this.paperdollRenderVersion || !this.paperdollRenderRoot) {
             return;
         }

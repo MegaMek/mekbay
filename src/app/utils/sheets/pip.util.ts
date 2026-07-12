@@ -71,6 +71,11 @@ interface PipGroupLayout {
     readonly points: readonly (readonly [number, number])[];
 }
 
+interface DistributedPipLayout {
+    readonly points: readonly FillPoint[];
+    readonly maximumRadius: number;
+}
+
 export class PipUtil {
 
     /** Renders only generated canon armor layouts. */
@@ -267,121 +272,30 @@ export class PipUtil {
             return null;
         }
 
-        let rowCount = Math.max(1, Math.min(pipCount, Math.round(Math.sqrt(pipCount * boundsHeight / boundsWidth))));
-        let columnCount = Math.max(1, Math.min(
-            Math.floor(pipCount / rowCount),
-            Math.floor(averageWidth / averageHeight),
-        ));
-        while (columnCount * rowCount < pipCount && rowCount <= pipCount) {
-            if (averageWidth / columnCount > boundsHeight / rowCount) {
-                columnCount++;
-            } else {
-                rowCount++;
-            }
-        }
-
         const requestedRadius = this.getRequestedPipRadius(options);
-        let spacing = Math.min(averageHeight, boundsHeight / rowCount);
-        spacing = Math.sqrt(spacing * rowCount / boundsHeight) * boundsHeight / rowCount;
-
-        const layoutRows: Array<{ left: number; top: number; right: number; count: number }> = [];
-        let yPosition = Math.max(
-            minY,
-            minY + (boundsHeight - spacing * rowCount) / 2 + spacing * 0.5,
-        );
-        let shift = 0;
-        const parity = columnCount % 2;
-        for (let index = 0; index < rowCount; index++) {
-            let upperIndex = 0;
-            for (let rowIndex = 0; rowIndex < sortedRows.length; rowIndex++) {
-                if (sortedRows[rowIndex].y <= yPosition) {
-                    upperIndex = rowIndex;
-                }
-            }
-            const lowerIndex = sortedRows.findIndex(row => row.y >= yPosition);
-            const upper = sortedRows[upperIndex];
-            const lower = sortedRows[lowerIndex === -1 ? upperIndex : lowerIndex];
-            const left = Math.max(upper.x, lower.x);
-            const right = Math.min(upper.x + upper.width, lower.x + lower.width);
-            let currentCount = Math.max(0, Math.floor(columnCount * Math.max(right - left, 0) / averageWidth));
-            if (currentCount % 2 !== parity) {
-                if (shift <= 0 || currentCount === 0) {
-                    currentCount++;
-                    shift--;
-                } else {
-                    currentCount--;
-                    shift++;
-                }
-                if (currentCount * spacing * 2 > right - left && currentCount >= 2) {
-                    currentCount -= 2;
-                }
-            }
-            layoutRows.push({ left, top: yPosition, right, count: currentCount });
-            yPosition += spacing;
-        }
-
-        let allocated = layoutRows.reduce((sum, row) => sum + row.count, 0);
-        const rowOrder = layoutRows
-            .map((_row, index) => index)
-            .sort((left, right) => {
-                const leftRow = layoutRows[left];
-                const rightRow = layoutRows[right];
-                return leftRow.count / Math.max(leftRow.right - leftRow.left, 1)
-                    - rightRow.count / Math.max(rightRow.right - rightRow.left, 1);
-            });
-        let rowIndex = 0;
-        while (allocated < pipCount) {
-            const index = rowOrder[rowIndex % rowOrder.length];
-            layoutRows[index].count++;
-            allocated++;
-            rowIndex++;
-        }
-        rowIndex = 0;
-        while (allocated > pipCount && rowIndex < rowOrder.length * pipCount) {
-            const index = rowOrder[rowIndex % rowOrder.length];
-            if (layoutRows[index].count > 1) {
-                layoutRows[index].count--;
-                allocated--;
-            }
-            rowIndex++;
-        }
-
-        const density = layoutRows
-            .filter(row => row.count > 1 && row.right > row.left)
-            .reduce((maximum, row) => Math.max(maximum, spacing * row.count / (row.right - row.left)), 0);
-        const xSpacing = density > 1 ? spacing / density : density > 0 ? spacing / Math.sqrt(density) : spacing;
         const strokeWidthRatio = this.getStrokeWidthRatio(options);
         const pipGap = this.getPipGap(options);
-        const footprintFactor = 1 + strokeWidthRatio;
-        let maximumRadius = Infinity;
-        if (layoutRows.some(row => row.count > 1)) {
-            maximumRadius = Math.min(
-                maximumRadius,
-                (xSpacing - pipGap) / (2 * footprintFactor),
-            );
-        }
-        for (const row of layoutRows) {
-            if (row.count > 0 && row.right > row.left) {
-                maximumRadius = Math.min(
-                    maximumRadius,
-                    ((row.right - row.left) * 0.5 - this.getInset(options)) / footprintFactor,
-                );
-            }
-        }
-        if (layoutRows.length > 0) {
-            const verticalEdgeDistance = Math.min(
-                layoutRows[0].top - minY,
-                maxY - layoutRows[layoutRows.length - 1].top,
-            );
-            maximumRadius = Math.min(
-                maximumRadius,
-                (verticalEdgeDistance - this.getInset(options)) / footprintFactor,
-            );
+        const layout = this.getBestDistributedPipLayout(
+            sortedRows,
+            pipCount,
+            minX,
+            minY,
+            maxX,
+            maxY,
+            boundsHeight,
+            averageHeight,
+            averageWidth,
+            this.getInset(options),
+            pipGap,
+            strokeWidthRatio,
+        );
+        if (!layout) {
+            return null;
         }
         const radius = this.getPipRadiusWithinBounds(
             requestedRadius,
             options,
-            Math.max(maximumRadius, 0),
+            layout.maximumRadius,
         );
 
         const group = document.createElementNS(SVG_NAMESPACE, 'g');
@@ -395,36 +309,155 @@ export class PipUtil {
         group.setAttribute('data-pip-layout', 'distributed');
 
         const strokeWidth = radius * strokeWidthRatio;
-        let centerX = (layoutRows[0].left + layoutRows[0].right) / 2;
-        for (const row of layoutRows) {
-            if (row.count <= 0 || row.right <= row.left) {
-                continue;
-            }
-            const xPadding = xSpacing * 0.5 - radius;
-            let xPosition = centerX - xSpacing * (row.count / 2) + xPadding;
-            while (xPosition < row.left) {
-                xPosition += xSpacing;
-            }
-            while (xPosition + xSpacing * row.count > row.right) {
-                xPosition -= xSpacing;
-            }
-            if (xPosition < row.left || row.count === 1) {
-                centerX = (row.left + row.right) / 2;
-                xPosition = centerX - xSpacing * (row.count / 2) + xPadding;
-            }
-            for (let index = 0; index < row.count; index++) {
-                const centerY = row.top;
-                group.appendChild(this.createPipElement(
-                    { x: xPosition + radius, y: centerY },
-                    radius,
-                    options,
-                    strokeWidth,
-                ));
-                xPosition += xSpacing;
-            }
+        for (const point of layout.points) {
+            group.appendChild(this.createPipElement(
+                point,
+                radius,
+                options,
+                strokeWidth,
+            ));
         }
 
         return group;
+    }
+
+    private static getBestDistributedPipLayout(
+        sortedRows: readonly PipRow[],
+        pipCount: number,
+        minX: number,
+        minY: number,
+        maxX: number,
+        maxY: number,
+        boundsHeight: number,
+        averageHeight: number,
+        averageWidth: number,
+        inset: number,
+        pipGap: number,
+        strokeWidthRatio: number,
+    ): DistributedPipLayout | null {
+        const availableHeight = boundsHeight - inset * 2;
+        const availableAverageWidth = averageWidth - inset * 2;
+        if (availableHeight <= 0 || availableAverageWidth <= 0) {
+            return null;
+        }
+        const availableMinY = minY + inset;
+        let bestLayout: DistributedPipLayout | null = null;
+        for (let rowCount = 1; rowCount <= pipCount; rowCount++) {
+            const columnCount = Math.max(1, Math.ceil(pipCount / rowCount));
+            let spacing = Math.min(averageHeight, availableHeight / rowCount);
+            spacing = Math.sqrt(spacing * rowCount / availableHeight) * availableHeight / rowCount;
+
+            const layoutRows: Array<{ left: number; top: number; right: number; count: number }> = [];
+            let yPosition = Math.max(
+                availableMinY,
+                availableMinY + (availableHeight - spacing * rowCount) / 2 + spacing * 0.5,
+            );
+            let shift = 0;
+            const parity = columnCount % 2;
+            for (let index = 0; index < rowCount; index++) {
+                let upperIndex = 0;
+                for (let rowIndex = 0; rowIndex < sortedRows.length; rowIndex++) {
+                    if (sortedRows[rowIndex].y <= yPosition) {
+                        upperIndex = rowIndex;
+                    }
+                }
+                const lowerIndex = sortedRows.findIndex(row => row.y >= yPosition);
+                const upper = sortedRows[upperIndex];
+                const lower = sortedRows[lowerIndex === -1 ? upperIndex : lowerIndex];
+                const left = Math.max(upper.x, lower.x) + inset;
+                const right = Math.min(upper.x + upper.width, lower.x + lower.width) - inset;
+                let currentCount = Math.max(0, Math.floor(columnCount * Math.max(right - left, 0) / availableAverageWidth));
+                if (currentCount % 2 !== parity) {
+                    if (shift <= 0 || currentCount === 0) {
+                        currentCount++;
+                        shift--;
+                    } else {
+                        currentCount--;
+                        shift++;
+                    }
+                    if (currentCount * spacing * 2 > right - left && currentCount >= 2) {
+                        currentCount -= 2;
+                    }
+                }
+                layoutRows.push({ left, top: yPosition, right, count: currentCount });
+                yPosition += spacing;
+            }
+
+            let allocated = layoutRows.reduce((sum, row) => sum + row.count, 0);
+            const rowOrder = layoutRows
+                .map((_row, index) => index)
+                .sort((left, right) => {
+                    const leftRow = layoutRows[left];
+                    const rightRow = layoutRows[right];
+                    return leftRow.count / Math.max(leftRow.right - leftRow.left, 1)
+                        - rightRow.count / Math.max(rightRow.right - rightRow.left, 1);
+                });
+            let rowIndex = 0;
+            while (allocated < pipCount) {
+                const index = rowOrder[rowIndex % rowOrder.length];
+                layoutRows[index].count++;
+                allocated++;
+                rowIndex++;
+            }
+            rowIndex = 0;
+            while (allocated > pipCount && rowIndex < rowOrder.length * pipCount) {
+                const index = rowOrder[rowIndex % rowOrder.length];
+                if (layoutRows[index].count > 1) {
+                    layoutRows[index].count--;
+                    allocated--;
+                }
+                rowIndex++;
+            }
+
+            const density = layoutRows
+                .filter(row => row.count > 1 && row.right > row.left)
+                .reduce((maximum, row) => Math.max(maximum, spacing * row.count / (row.right - row.left)), 0);
+            const xSpacing = density > 1 ? spacing / density : density > 0 ? spacing / Math.sqrt(density) : spacing;
+            const points = this.getDistributedPipCenters(layoutRows, xSpacing);
+            const maximumRadius = this.getMaximumRadiusForPoints(
+                points,
+                {
+                    left: minX,
+                    top: minY,
+                    right: maxX,
+                    bottom: maxY,
+                },
+                strokeWidthRatio,
+                inset,
+                pipGap,
+            );
+            const candidate: DistributedPipLayout = {
+                points,
+                maximumRadius,
+            };
+            if (!bestLayout
+                || candidate.maximumRadius > bestLayout.maximumRadius
+                || candidate.maximumRadius === bestLayout.maximumRadius) {
+                bestLayout = candidate;
+            }
+        }
+        return bestLayout;
+    }
+
+    private static getDistributedPipCenters(
+        rows: readonly { left: number; top: number; right: number; count: number }[],
+        xSpacing: number,
+    ): FillPoint[] {
+        const points: FillPoint[] = [];
+        for (const row of rows) {
+            if (row.count <= 0 || row.right <= row.left) {
+                continue;
+            }
+            const centerX = (row.left + row.right) / 2;
+            const firstX = centerX - xSpacing * (row.count - 1) / 2;
+            for (let index = 0; index < row.count; index++) {
+                points.push({
+                    x: firstX + xSpacing * index,
+                    y: row.top,
+                });
+            }
+        }
+        return points;
     }
 
     public static createRailPips(
@@ -498,7 +531,8 @@ export class PipUtil {
         strokeWidthRatio = this.getStrokeWidthRatio(options),
     ): number {
         const spacing = length / Math.floor(capacity);
-        const maximumRadius = (spacing - this.getPipGap(options)) / (2 * (1 + strokeWidthRatio));
+        const maximumRadius = (spacing - this.getPipGap(options))
+            / (2 * this.getPipFootprintFactor(strokeWidthRatio));
         return this.getPipRadiusWithinBounds(
             this.getRequestedPipRadius(options),
             options,
@@ -547,13 +581,31 @@ export class PipUtil {
         const offsetY = inset + (availableHeight - renderedHeight) / 2;
         group.setAttribute('transform', `translate(${offsetX} ${offsetY}) scale(${scale})`);
 
+        const renderedPoints = layout.points.map(([x, y]) => ({
+            x: offsetX + x * scale,
+            y: offsetY + y * scale,
+        }));
+        const bakedRadius = layout.radius ?? 0;
+        const bakedStrokeRatio = bakedRadius > 0
+            ? (layout.stroke ?? 0) / bakedRadius
+            : strokeWidthRatio;
         const localRadius = useOriginalPipRadius
-            ? layout.radius ?? 0
+            ? (() => {
+                const maximumRadius = this.getMaximumRadiusForPoints(
+                    renderedPoints,
+                    {
+                        left: 0,
+                        top: 0,
+                        right: containerWidth,
+                        bottom: containerHeight,
+                    },
+                    bakedStrokeRatio,
+                    inset,
+                    this.getPipGap(options),
+                );
+                return scale > 0 ? Math.min(bakedRadius, maximumRadius / scale) : 0;
+            })()
             : (() => {
-                const renderedPoints = layout.points.map(([x, y]) => ({
-                    x: offsetX + x * scale,
-                    y: offsetY + y * scale,
-                }));
                 const maximumRadius = this.getMaximumRadiusForPoints(
                     renderedPoints,
                     {
@@ -574,7 +626,7 @@ export class PipUtil {
                 return scale > 0 ? radius / scale : 0;
             })();
         const strokeWidth = useOriginalPipRadius
-            ? layout.stroke ?? 0
+            ? localRadius * bakedStrokeRatio
             : localRadius * strokeWidthRatio;
         for (const [x, y] of layout.points) {
             group.appendChild(this.createPipElement(
@@ -1039,7 +1091,7 @@ export class PipUtil {
         inset: number,
         pipGap: number,
     ): number {
-        const footprintFactor = 1 + strokeWidthRatio;
+        const footprintFactor = this.getPipFootprintFactor(strokeWidthRatio);
         let maximumRadius = Infinity;
         for (const point of points) {
             maximumRadius = Math.min(
@@ -1094,7 +1146,11 @@ export class PipUtil {
     }
 
     private static getPipFootprintRadius(radius: number, strokeWidthRatio: number): number {
-        return radius * (1 + strokeWidthRatio);
+        return radius * this.getPipFootprintFactor(strokeWidthRatio);
+    }
+
+    private static getPipFootprintFactor(strokeWidthRatio: number): number {
+        return 1 + strokeWidthRatio / 2;
     }
 
     private static getDistance(first: FillPoint, second: FillPoint): number {
