@@ -218,7 +218,6 @@ import { SvgFrameUtil } from '../utils/sheets/svg-frame.util';
             flex-direction: column;
             overflow: hidden;
             box-sizing: border-box;
-            padding: 20px;
             border: 1px solid #344148;
             color: #edf2ef;
             background: #1e2a2e;
@@ -228,6 +227,10 @@ import { SvgFrameUtil } from '../utils/sheets/svg-frame.util';
             transform: translateX(calc(-100% - 32px));
             transition: opacity 160ms ease, transform 160ms ease, visibility 160ms ease;
             visibility: hidden;
+        }
+
+        .control-section {
+            padding: 8px;
         }
 
         .sidebar-scroll-content {
