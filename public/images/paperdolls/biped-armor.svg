@@ -4,7 +4,7 @@
     <bx:export>
       <bx:file format="svg" href="#paperdoll-art-armor"/>
     </bx:export>
-    <bx:guide x="29.285" y="149.804" angle="90"/>
+    <bx:guide x="30.477" y="110.971" angle="90"/>
   </defs>
   <g id="paperdoll-art-armor" transform="matrix(0.964505, 0, 0, 1, 0.039471, 0)">
     <path id="polygon747" d="M178.35,118.641L177.219,118.74L177.169,118.175L178.818,117.46L178.716,116.33L176.971,115.912L176.921,115.347L178.053,115.247L179.035,113.452L176.907,89.133L173.95,67.235L164.864,56.481L154.002,48.774L149.877,50.399L149.877,62.961L148.962,69.352L146.538,68.642L145.518,90.761L149.564,89.246L149.862,92.64L151.607,93.056L153.585,115.679L154.864,117.276L155.995,117.178L156.045,117.743L154.399,118.457L154.497,119.587L156.244,120.004L156.293,120.571L155.161,120.669L154.179,122.465L156.801,152.439L158.647,153.988L179.006,152.207L185.101,143.695L180.195,120.189L178.35,118.641Z" style="fill:rgb(199,199,199);fill-rule:nonzero;"/>
@@ -114,8 +114,8 @@
     <rect x="10.859" y="36.666" width="21.2" height="6.152" style="fill:none;stroke:rgb(225,29,72);stroke-opacity:0.9;stroke-width:1.25px;stroke-dasharray:3,1.5;" data-location="LA" data-fill="shield-dc"/>
     <rect x="8.709" y="41.993" width="19.8" height="6.152" style="fill:none;stroke:rgb(225,29,72);stroke-opacity:0.9;stroke-width:1.25px;stroke-dasharray:3,1.5;" data-location="LA" data-fill="shield-dc"/>
     <rect x="6.689" y="47.32" width="15.7" height="6.152" style="fill:none;stroke:rgb(225,29,72);stroke-opacity:0.9;stroke-width:1.25px;stroke-dasharray:3,1.5;" data-location="LA" data-fill="shield-dc"/>
-    <g fill="none" id="shieldDALA" data-location="DALA" class="shield unitLocation" transform="translate(4.5 66) rotate(3)">
-      <rect width="5.383" stroke="red" height="44" data-fill="shield-da" data-location="LA" style=""/>
+    <g fill="none" id="shieldDALA" data-location="DALA" class="shield unitLocation" transform="matrix(-0.051814, 0.998657, -0.99922, -0.040963, 50.174935, 65.950959)">
+      <rect width="46.159" stroke="red" height="5.441" data-fill="shield-da" data-location="LA" style="transform-box: fill-box; transform-origin: 50% 50%;" y="40.128" x="0.568"/>
     </g>
     <rect x="85.252" y="46.714" width="17.088" height="24.279" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.2px; stroke-dasharray: 2.88, 1.44;" data-fill="HD" data-location="HD" data-canon="armor"/>
     <rect x="80.618" y="81.623" width="26.448" height="84.27" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.03px; stroke-dasharray: 2.473, 1.237;" data-fill="armor" data-location="CT" data-canon="armor"/>
@@ -125,9 +125,6 @@
     <rect x="144.074" y="56" width="32.141" height="91" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.05px; stroke-dasharray: 2.527, 1.263;" data-location="RA" data-canon="armor"/>
     <rect x="26.226" y="154.595" width="58.893" height="121.954" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.19px; stroke-dasharray: 2.855, 1.428;" data-location="LL" data-canon="armor"/>
     <rect x="101.826" y="154.595" width="58.209" height="121.954" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.19px; stroke-dasharray: 2.861, 1.43;" data-location="RL" data-canon="armor"/>
-    <g fill="none" id="shieldDARA" data-location="DARA" class="shield unitLocation" transform="translate(177.5 66) rotate(-3)">
-      <rect x="0.607" width="5.393" stroke="red" height="44" data-location="RA" data-fill="shield-da" style=""/>
-    </g>
     <g data-location="RT" data-rail="armor" transform="">
       <path d="M 125.932 67.303 L 126.088 96.902" style="fill: none; stroke-width: 1px; stroke-linecap: round; stroke-linejoin: round; stroke-miterlimit: 1.5; stroke: rgb(0, 255, 0); stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="1"/>
       <path d="M 135.991 67.303 L 135.913 96.526" style="fill: none; stroke-width: 1px; stroke-linecap: round; stroke-linejoin: round; stroke-miterlimit: 1.5; stroke: rgb(0, 255, 0); stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="2"/>
@@ -151,6 +148,9 @@
       <path d="M 56.47 70.451 L 56.311 99.698" style="fill: none; stroke-width: 1; stroke-linecap: round; stroke-linejoin: round; stroke-miterlimit: 1.5; stroke: rgb(0, 255, 0); stroke-dasharray: 2; transform-origin: 56.391px 85.074px;" data-rail-capacity="5" data-rail-index="9"/>
     </g>
     <path d="M 140.491 64.962 L 113.845 64.962 L 113.216 101.654 C 113.216 101.654 112.063 125.791 111.148 127.689 C 110.233 129.587 111.148 149.804 111.148 149.804 L 134.234 149.804 L 133.556 135.283 L 124.109 132.017 C 124.109 132.017 126.534 115.299 126.811 101.223 L 139.658 99.62 L 140.491 64.962 Z" style="fill: none; stroke: rgb(0, 59, 255); stroke-width: 1.2; stroke-dasharray: 2.88, 1.44, 0, 0, 0, 0; transform-origin: 125.616px 107.383px;" data-fill="armor" data-location="RT"/>
+    <g fill="none" id="group-1" class="shield unitLocation" transform="matrix(0.051814, 0.998657, 0.99922, -0.040963, 137.745957, 65.950516)" style="" data-location="DARA">
+      <rect width="46.159" stroke="red" height="5.441" data-fill="shield-da" data-location="RA" style="transform-box: fill-box; transform-origin: 50% 50%;" y="40.128" x="0.568"/>
+    </g>
   </g>
   <rect x="29.384" y="191.485" width="18.945" height="115.741" style="fill: none; stroke: rgb(0, 0, 255); stroke-dasharray: 2; transform-box: fill-box; transform-origin: 50% 50%;" transform="matrix(0.974593, 0.223983, -0.223983, 0.974593, 14.056866, -32.599451)" data-fill="armor" data-location="LL"/>
   <rect x="-29.384" y="-191.49" width="18.945" height="115.741" style="stroke-width: 1; fill: none; stroke: rgb(0, 0, 255); stroke-dasharray: 2; transform-origin: -19.911px -133.615px;" transform="matrix(-0.974593, 0.223983, 0.223983, 0.974593, 148.099317, 350.375575)" data-fill="armor" data-location="RL"/>
