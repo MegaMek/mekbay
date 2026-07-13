@@ -39,7 +39,7 @@ export class PipRowGenerator {
             rectangle.setAttribute('width', row.width.toString());
             rectangle.setAttribute('height', row.height.toString());
             rectangle.setAttribute('fill', 'none');
-            rectangle.setAttribute('stroke', '#ff006e');
+            rectangle.setAttribute('stroke', '#0f0');
             rectangle.setAttribute('stroke-width', '0.5');
             rectangle.setAttribute('vector-effect', 'non-scaling-stroke');
             rectangle.setAttribute('pointer-events', 'none');
