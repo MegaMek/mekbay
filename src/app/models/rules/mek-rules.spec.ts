@@ -296,6 +296,28 @@ describe('MekRules', () => {
         }
     });
 
+    it('keeps spikes working when flooded but not when structurally destroyed or blown off', () => {
+        const createSpikeUnit = () => createForceUnitHarness({
+            internalLocations: ['LL'],
+            critSlots: [{ ...crit('Spikes', false), loc: 'LL' }],
+        });
+
+        const flooded = createSpikeUnit();
+        flooded.setLocationCondition('LL', 'flooded', true);
+        flooded.endPhase();
+        expect((flooded.rules as MekRules).physicalCombat()?.spikeBonus).toEqual({ total: 1, working: 1 });
+
+        const blownOff = createSpikeUnit();
+        blownOff.setLocationCondition('LL', 'blown-off', true);
+        blownOff.endPhase();
+        expect((blownOff.rules as MekRules).physicalCombat()?.spikeBonus).toEqual({ total: 1, working: 0 });
+
+        const structurallyDestroyed = createSpikeUnit();
+        structurallyDestroyed.addInternalHits('LL', structurallyDestroyed.getInternalPoints('LL'));
+        structurallyDestroyed.endPhase();
+        expect((structurallyDestroyed.rules as MekRules).physicalCombat()?.spikeBonus).toEqual({ total: 1, working: 0 });
+    });
+
     it('uses active MASC state for effective Mek run MP without changing potential max run MP', () => {
         const forceUnit = createForceUnitHarness({ walk: 5, critSlots: [crit('MASC', false)] });
         const masc = miscEntry(forceUnit, miscEquipment('MASC', 'MASC', ['F_MASC']));
@@ -792,7 +814,7 @@ describe('MekRules', () => {
         expect(rules.computeEntryState(entry)).toEqual(jasmine.objectContaining({ isDamaged: false, isDisabled: false }));
     });
 
-    it('disables blown-off location inventory without marking it damaged or destroyed', () => {
+    it('marks blown-off location inventory as damaged and disabled without destroying it', () => {
         const forceUnit = createForceUnitHarness({ internalLocations: ['LL'] });
         const rules = forceUnit.rules as MekRules;
         const critSlot = { id: 'test-weapon', name: 'Test Weapon', loc: 'LL', slot: 0 } as CriticalSlot;
@@ -808,7 +830,7 @@ describe('MekRules', () => {
         expect(forceUnit.isInternalLocCommittedPhysicallyDestroyed('LL')).toBeTrue();
         expect(forceUnit.getCritSlots().every(slot => !slot.destroying && !slot.destroyed)).toBeTrue();
         expect(storedEntry.committedDestroyed()).toBeFalse();
-        expect(rules.computeEntryState(storedEntry)).toEqual(jasmine.objectContaining({ isDamaged: false, isDisabled: true }));
+        expect(rules.computeEntryState(storedEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
     });
 
     it('marks inventory in structurally destroyed locations as damaged and disabled', () => {
@@ -830,7 +852,7 @@ describe('MekRules', () => {
         expect(rules.computeEntryState(storedEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
     });
 
-    it('disables linked locations blown off by parent structural destruction without marking inventory damaged', () => {
+    it('marks linked locations blown off by parent structural destruction as damaged and disabled', () => {
         const forceUnit = createForceUnitHarness({ internalLocations: ['RT', 'RA'] });
         const rules = forceUnit.rules as MekRules;
         const parentCrit = { id: 'parent-weapon', name: 'Parent Weapon', loc: 'RT', slot: 0 } as CriticalSlot;
@@ -852,9 +874,9 @@ describe('MekRules', () => {
         expect(storedParentEntry.committedDestroyed()).toBeFalse();
         expect(storedLinkedEntry.committedDestroyed()).toBeFalse();
         expect(entryStates.get(storedParentEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
-        expect(entryStates.get(storedLinkedEntry)).toEqual(jasmine.objectContaining({ isDamaged: false, isDisabled: true }));
+        expect(entryStates.get(storedLinkedEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
         expect(rules.computeEntryState(storedParentEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
-        expect(rules.computeEntryState(storedLinkedEntry)).toEqual(jasmine.objectContaining({ isDamaged: false, isDisabled: true }));
+        expect(rules.computeEntryState(storedLinkedEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
     });
 
     it('disables linked-location inventory from flooded torsos without marking it damaged', () => {

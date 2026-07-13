@@ -202,7 +202,8 @@ export class MekRules extends UnitTypeRulesBase {
     }
 
     private isCritStructurallyDestroyed(slot: CriticalSlot): boolean {
-        return !!slot.destroyed || this.locationPhysicallyDestroyed(slot.loc);
+        return !!slot.destroyed || this.locationPhysicallyDestroyed(slot.loc) ||
+            (!!slot.loc && this.unit.isInternalLocCommittedPhysicallyDestroyed(slot.loc));
     }
 
     // ── Destruction ──────────────────────────────────────────────────────────
@@ -1329,9 +1330,10 @@ export class MekRules extends UnitTypeRulesBase {
         // Spike bonus for charge attacks
         const critSlots = this.unit.getCritSlots();
         const totalSpikes = critSlots.filter(slot => this.isNamedCrit(slot, 'Spikes')).length;
+        // Spikes works even when flooded
         const spikeBonus = totalSpikes > 0 ? {
             total: totalSpikes,
-            working: critSlots.filter(slot => this.isNamedCrit(slot, 'Spikes') && !this.isCritUnavailable(slot)).length,
+            working: critSlots.filter(slot => this.isNamedCrit(slot, 'Spikes') && !this.isCritStructurallyDestroyed(slot)).length,
         } : null;
 
         return {
