@@ -890,6 +890,7 @@ export class BipedPaperdollUtil {
                     options,
                     type,
                     location,
+                    generated?.rows,
                 );
                 if (pips) {
                     const transforms = sourceTransform ? [
@@ -971,6 +972,7 @@ export class BipedPaperdollUtil {
                     pipOptions,
                     group.type,
                     group.location,
+                    group.rows,
                 );
             }
             default:

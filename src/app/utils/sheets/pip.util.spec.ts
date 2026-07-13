@@ -195,6 +195,105 @@ describe('Pip renderers', () => {
         expect(middleRow[0]).toBeLessThan(firstRow[1]);
     });
 
+    it('uses synthetic rows as weighted generic boundaries', () => {
+        const rows = [
+            { x: 0, y: 0, width: 30, height: 6 },
+            { x: 8, y: 5, width: 14, height: 6 },
+            { x: 0, y: 10, width: 30, height: 6 },
+        ];
+        const pips = GenericPipRenderer.createPips(
+            8,
+            30,
+            16,
+            { minPipRadius: 0, pipGap: 0, pipRadius: 100, strokeWidthRatio: 0 },
+            'armor',
+            'CT',
+            rows,
+        );
+        const rectanglePips = GenericPipRenderer.createPips(
+            8,
+            30,
+            16,
+            { minPipRadius: 0, pipGap: 0, pipRadius: 100, strokeWidthRatio: 0 },
+        );
+        const circles = Array.from(pips?.querySelectorAll('circle') ?? []);
+
+        expect(circles.length).toBe(8);
+        expect(Number(circles[0]?.getAttribute('r')))
+            .toBeCloseTo(Number(rectanglePips?.querySelector('circle')?.getAttribute('r')), 6);
+        expect(circles.every(circle => {
+            const x = Number(circle.getAttribute('cx'));
+            const y = Number(circle.getAttribute('cy'));
+            return rows.some(row =>
+                x >= row.x
+                && x <= row.x + row.width
+                && y >= row.y
+                && y <= row.y + row.height);
+        })).toBeTrue();
+    });
+
+    it('preserves generic alternating offsets across synthetic rows', () => {
+        const options = {
+            minPipRadius: 0,
+            pipGap: 0,
+            pipRadius: 100,
+            strokeWidthRatio: 0,
+        };
+        const withRows = GenericPipRenderer.createPips(
+            7,
+            30,
+            20,
+            options,
+            'armor',
+            'CT',
+            [
+                { x: 0, y: 0, width: 30, height: 10 },
+                { x: 0, y: 10, width: 30, height: 10 },
+            ],
+        );
+        const withoutRows = GenericPipRenderer.createPips(7, 30, 20, options);
+        const getPoints = (group: SVGGElement | null): number[][] =>
+            Array.from(group?.querySelectorAll('circle') ?? [], circle => [
+                Number(circle.getAttribute('cx')),
+                Number(circle.getAttribute('cy')),
+            ]);
+        const withRowsPoints = getPoints(withRows);
+        const withoutRowsPoints = getPoints(withoutRows);
+
+        expect(withRowsPoints).toEqual(withoutRowsPoints);
+        expect(withRowsPoints[4][0]).toBeGreaterThan(withRowsPoints[0][0]);
+        expect(withRowsPoints[4][0]).toBeLessThan(withRowsPoints[1][0]);
+    });
+
+    it('moves full-radius pips inside offset synthetic row boundaries', () => {
+        const radius = 3;
+        const rows = [
+            { x: 0, y: 0, width: 24, height: 10 },
+            { x: 6, y: 10, width: 24, height: 10 },
+        ];
+        const pips = GenericPipRenderer.createPips(
+            4,
+            30,
+            20,
+            { minPipRadius: 0, pipGap: 0, pipRadius: radius, strokeWidthRatio: 0 },
+            'armor',
+            'CT',
+            rows,
+        );
+        const circles = Array.from(pips?.querySelectorAll('circle') ?? []);
+
+        expect(Number(circles[0]?.getAttribute('r'))).toBeCloseTo(radius, 6);
+        expect(circles.every(circle => {
+            const x = Number(circle.getAttribute('cx'));
+            const y = Number(circle.getAttribute('cy'));
+            return rows.some(row =>
+                y >= row.y
+                && y <= row.y + row.height
+                && x - radius >= row.x
+                && x + radius <= row.x + row.width);
+        })).toBeTrue();
+    });
+
     it('uses baked canon radii when explicitly requested', () => {
         const options = {
             useCanonPipRadius: true,
