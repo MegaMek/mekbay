@@ -202,9 +202,9 @@
     <g transform="matrix(0.98,0,0,-0.98,-390.38017,718.24098)"><g transform="matrix(1,0,0,-1,0,765)"><g transform="matrix(-1,0,0,1,469.34,306.08)"><rect fill="none" height="6.1515198" id="armorLTRRow05" width="17.129999" x="0" y="26.636" /></g></g></g>
     <g transform="matrix(0.98,0,0,-0.98,-390.38017,718.24098)"><g transform="matrix(1,0,0,-1,0,765)"><g transform="matrix(-1,0,0,1,469.34,306.08)"><rect fill="none" height="6.1515198" id="armorLTRRow06" width="12.5" x="0" y="31.9632" /></g></g></g>
     <g transform="matrix(0.98,0,0,-0.98,-390.38017,718.24098)"><g transform="matrix(1,0,0,-1,0,765)"><g transform="matrix(-1,0,0,1,469.34,306.08)"><rect fill="none" height="6.1515198" id="armorLTRRow07" width="12.5" x="0" y="37.290501" /></g></g></g>
-    <rect fill="none" height="24.14" id="placeholder-canon-armor-HD" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="39.592" x="68.264" y="17.585" />
-    <rect fill="none" height="78.002" id="placeholder-canon-armor-CT" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="59.198" x="58.164" y="25.465" />
-    <rect fill="none" height="84.119" id="placeholder-canon-armor-LT" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="68.239" x="9.491" y="19.348" />
-    <rect fill="none" height="84.119" id="placeholder-canon-armor-RT" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="68.238" x="98.03" y="19.348" />
+    <rect data-location="HD" data-placeholder="armor" fill="none" height="24.14" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="39.592" x="68.264" y="17.585" />
+    <rect data-location="CT" data-placeholder="armor" fill="none" height="78.002" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="59.198" x="58.164" y="25.465" />
+    <rect data-location="LT" data-placeholder="armor" fill="none" height="84.119" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="68.239" x="9.491" y="19.348" />
+    <rect data-location="RT" data-placeholder="armor" fill="none" height="84.119" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="68.238" x="98.03" y="19.348" />
     </g>
 </svg>

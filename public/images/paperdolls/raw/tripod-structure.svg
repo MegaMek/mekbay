@@ -176,13 +176,13 @@
     <g transform="matrix(1,0,0,-1,-390.22409,379.2819)"><g transform="matrix(1,0,0,-1,0,767.9713)"><g transform="matrix(-0.0697565,-0.997564,-0.997564,0.0697565,453,467)"><rect fill="none" height="4.5" id="rect595" width="12" x="0.5" y="9" /></g></g></g>
     <g transform="matrix(1,0,0,-1,-390.22409,379.2819)"><g transform="matrix(1,0,0,-1,0,767.9713)"><g transform="matrix(-0.0697565,-0.997564,-0.997564,0.0697565,453,467)"><rect fill="none" height="4.5" id="rect596" width="30" x="31.5" y="9.0010004" /></g></g></g>
     <g transform="matrix(1,0,0,-1,-390.22409,379.2819)"><g transform="matrix(1,0,0,-1,0,767.9713)"><g transform="matrix(-0.0697565,-0.997564,-0.997564,0.0697565,453,467)"><rect fill="none" height="4.5" id="rect597" width="10" x="47" y="13.5" /></g></g></g>
-    <rect fill="none" height="23.153" id="placeholder-canon-structure-HD" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="35.623" x="56.86" y="5.232" />
-    <rect fill="none" height="75.85" id="placeholder-canon-structure-CT" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="26.49" x="61.427" y="11.807" />
-    <rect fill="none" height="63.151" id="placeholder-canon-structure-LT" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="24.9" x="39.664" y="16.022" />
-    <rect fill="none" height="63.151" id="placeholder-canon-structure-RT" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="24.9" x="85.102" y="15.901" />
-    <rect fill="none" height="77.339" id="placeholder-canon-structure-LA" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="22.276" x="19.262" y="15.772" />
-    <rect fill="none" height="77.339" id="placeholder-canon-structure-RA" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="22.276" x="108.256" y="15.772" />
-    <rect fill="none" height="96.539" id="placeholder-canon-structure-LL" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="58.879" x="15.276" y="67.64" />
-    <rect fill="none" height="96.539" id="placeholder-canon-structure-RL" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="58.879" x="75.391" y="67.64" />
+    <rect data-location="HD" data-placeholder="structure" fill="none" height="23.153" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="35.623" x="56.86" y="5.232" />
+    <rect data-location="CT" data-placeholder="structure" fill="none" height="75.85" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="26.49" x="61.427" y="11.807" />
+    <rect data-location="LT" data-placeholder="structure" fill="none" height="63.151" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="24.9" x="39.664" y="16.022" />
+    <rect data-location="RT" data-placeholder="structure" fill="none" height="63.151" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="24.9" x="85.102" y="15.901" />
+    <rect data-location="LA" data-placeholder="structure" fill="none" height="77.339" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="22.276" x="19.262" y="15.772" />
+    <rect data-location="RA" data-placeholder="structure" fill="none" height="77.339" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="22.276" x="108.256" y="15.772" />
+    <rect data-location="LL" data-placeholder="structure" fill="none" height="96.539" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="58.879" x="15.276" y="67.64" />
+    <rect data-location="RL" data-placeholder="structure" fill="none" height="96.539" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="58.879" x="75.391" y="67.64" />
     </g>
 </svg>

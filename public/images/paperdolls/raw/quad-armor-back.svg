@@ -8,8 +8,8 @@
     <g transform="matrix(0.99999752,0,0,-1,-399.38017,738.24098)"><g transform="translate(512.8574,461.3556)"><path id="path4115" d="M 0,0 H -11.637 V -49.285 H 9.857 v 3.696 l 13.417,19.715 v 1.232 z" style="fill:none;stroke:#000000;stroke-width:1.449;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" /></g></g>
     <g transform="matrix(0.99999752,0,0,-1,-399.38017,738.24098)"><g transform="translate(469.7339,464.0925)"><path class="armor unitLocation" id="paperdoll-art-armor-CT_R-armorCTR" loc="CT" rear="1" d="M 0,0 V -54.759 H 31.487 V 10e-4 Z" style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:none" /></g></g>
     <g transform="matrix(0.99999752,0,0,-1,-399.38017,738.24098)"><g transform="translate(469.7339,464.0925)"><path id="path4123" d="M 0,0 V -54.759 H 31.487 V 10e-4 Z" style="fill:none;stroke:#000000;stroke-width:1.449;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" /></g></g>
-    <rect fill="none" height="54.76" id="placeholder-canon-armor-CT_R" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="31.487" x="70.353" y="274.147" />
-    <rect fill="none" height="49.284" id="placeholder-canon-armor-LT_R" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="34.91" x="35.442" y="276.886" />
-    <rect fill="none" height="49.285" id="placeholder-canon-armor-RT_R" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="34.911" x="101.839" y="276.885" />
+    <rect data-location="CT_R" data-placeholder="armor" fill="none" height="54.76" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="31.487" x="70.353" y="274.147" />
+    <rect data-location="LT_R" data-placeholder="armor" fill="none" height="49.284" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="34.91" x="35.442" y="276.886" />
+    <rect data-location="RT_R" data-placeholder="armor" fill="none" height="49.285" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="34.911" x="101.839" y="276.885" />
     </g>
 </svg>

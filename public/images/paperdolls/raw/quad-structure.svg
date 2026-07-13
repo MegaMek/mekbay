@@ -140,9 +140,9 @@
     <g transform="matrix(1,0,0,-1,-395.32308,374.1915)"><g transform="matrix(1,0,0,-1,0,765)"><g transform="rotate(-90,515,28)"><rect fill="none" height="4.5" id="rect792" width="80.5" x="0" y="4.5" /></g></g></g>
     <g transform="matrix(1,0,0,-1,-395.32308,374.1915)"><g transform="matrix(1,0,0,-1,0,765)"><g transform="matrix(0,-1,-1,0,457,543)"><rect fill="none" height="4.5" id="rect793" width="89.5" x="0" y="0" /></g></g></g>
     <g transform="matrix(1,0,0,-1,-395.32308,374.1915)"><g transform="matrix(1,0,0,-1,0,765)"><g transform="matrix(0,-1,-1,0,457,543)"><rect fill="none" height="4.5" id="rect794" width="80.5" x="0" y="4.5" /></g></g></g>
-    <rect fill="none" height="23.41" id="placeholder-canon-structure-HD" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="24.399" x="64.195" y="11.13" />
-    <rect fill="none" height="79.334" id="placeholder-canon-structure-CT" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="31.212" x="60.927" y="5.928" />
-    <rect fill="none" height="55.924" id="placeholder-canon-structure-LT" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="32.514" x="28.413" y="5.928" />
-    <rect fill="none" height="55.924" id="placeholder-canon-structure-RT" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="32.515" x="92.139" y="5.928" />
+    <rect data-location="HD" data-placeholder="structure" fill="none" height="23.41" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="24.399" x="64.195" y="11.13" />
+    <rect data-location="CT" data-placeholder="structure" fill="none" height="79.334" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="31.212" x="60.927" y="5.928" />
+    <rect data-location="LT" data-placeholder="structure" fill="none" height="55.924" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="32.514" x="28.413" y="5.928" />
+    <rect data-location="RT" data-placeholder="structure" fill="none" height="55.924" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="32.515" x="92.139" y="5.928" />
     </g>
 </svg>

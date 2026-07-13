@@ -264,40 +264,10 @@ export class BipedPaperdollUtil {
                 throw new Error(`Unable to parse biped paperdoll SVG: ${url}`);
             }
             const asset = parsed.documentElement as unknown as SVGSVGElement;
-            this.normalizePlaceholderMetadata(asset);
             return asset;
         });
         this.assetCache.set(url, load);
         return load;
-    }
-
-    private static normalizePlaceholderMetadata(source: SVGSVGElement): void {
-        const elements = Array.from(source.querySelectorAll<SVGElement>('[id]'));
-        for (const element of elements) {
-            const idContext = this.readPlaceholderIdContext(element);
-            if (!idContext) {
-                continue;
-            }
-
-            if (!element.hasAttribute('data-rail')
-                && !element.hasAttribute('data-fill')
-                && !element.hasAttribute('data-placeholder')) {
-                element.setAttribute(
-                    idContext.rail ? 'data-rail' : idContext.fill ? 'data-fill' : 'data-placeholder',
-                    idContext.type,
-                );
-            }
-            if (!element.hasAttribute('data-location')) {
-                element.setAttribute('data-location', idContext.location);
-            }
-            if (idContext.index !== undefined && !element.hasAttribute('data-rail-index')) {
-                element.setAttribute('data-rail-index', idContext.index.toString());
-            }
-            if (idContext.capacity !== undefined
-                && !element.hasAttribute('data-rail-capacity')) {
-                element.setAttribute('data-rail-capacity', idContext.capacity.toString());
-            }
-        }
     }
 
     private static readViewBox(source: SVGSVGElement): ViewBox {
@@ -871,21 +841,6 @@ export class BipedPaperdollUtil {
             fill: fillType !== null,
             capacity: this.parsePositiveInteger(capacity),
             index: this.parseNonNegativeInteger(element.getAttribute('data-rail-index')),
-        };
-    }
-
-    private static readPlaceholderIdContext(element: SVGElement): PlaceholderContext | null {
-        const idMatch = /^placeholder-(canon|rail|fill)-(armor|structure|shield-dc|shield-da)-([A-Za-z_]+)(?:-(\d+))?(?:-(?:capacity|cap)-(\d+))?$/u.exec(element.getAttribute('id') ?? '');
-        if (!idMatch) {
-            return null;
-        }
-        return {
-            type: idMatch[2] as PaperdollPlaceholderType,
-            location: idMatch[3].toUpperCase(),
-            rail: idMatch[1] === 'rail',
-            fill: idMatch[1] === 'fill',
-            index: this.parseNonNegativeInteger(idMatch[4] ?? null),
-            capacity: this.parsePositiveInteger(idMatch[5] ?? null),
         };
     }
 

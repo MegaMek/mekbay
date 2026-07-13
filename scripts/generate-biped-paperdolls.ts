@@ -558,16 +558,6 @@ function isRearContext(id: string | undefined): boolean {
     return id === 'rearArmor' || (id !== undefined && REAR_COMPANION_IDS.has(id));
 }
 
-function createPlaceholderId(type: PlaceholderType, location: string, rowIndex?: number): string {
-    const rowSuffix = rowIndex === undefined ? '' : `-${rowIndex.toString().padStart(2, '0')}`;
-    return `placeholder-canon-${type}-${location}${rowSuffix}`;
-}
-
-function getShieldRowIndex(id: string | undefined): number | undefined {
-    const match = /Row(\d+)$/u.exec(id ?? '');
-    return match ? Number(match[1]) : undefined;
-}
-
 function collectElements(
     value: unknown,
     transforms: readonly string[],
@@ -665,7 +655,9 @@ function collectElements(
         }
         if (placeholder) {
             if (location) {
-                sourceAttributes.id = createPlaceholderId(placeholder, location);
+                sourceAttributes['data-placeholder'] = placeholder;
+                sourceAttributes['data-location'] = location;
+                delete sourceAttributes.id;
             }
             sourceAttributes.fill = 'none';
             sourceAttributes.stroke = PLACEHOLDER_STROKE;
@@ -745,7 +737,8 @@ function createPlaceholder(location: string, bounds: Bounds, type: 'armor' | 'st
             'stroke-width': PLACEHOLDER_STROKE_WIDTH,
             'stroke-dasharray': PLACEHOLDER_STROKE_DASHARRAY,
             'stroke-opacity': '0.9',
-            id: createPlaceholderId(type, location),
+            'data-placeholder': type,
+            'data-location': location,
         },
         transforms: [],
         location,
@@ -775,20 +768,10 @@ function createAsset(
         return undefined;
     }
 
-    const shieldRowCounts = new Map<string, number>();
     sideElements.forEach((element, index) => {
         if (element.category === type && element.location && !element.placeholder) {
             element.attributes.id = createArtworkId(type, element.location, element.attributes.id, index);
         }
-        if (!element.location || (element.placeholder !== 'shield-dc' && element.placeholder !== 'shield-da')) {
-            return;
-        }
-
-        const key = `${element.placeholder}-${element.location}`;
-        const nextIndex = shieldRowCounts.get(key) ?? 0;
-        const rowIndex = getShieldRowIndex(element.attributes.id) ?? nextIndex;
-        shieldRowCounts.set(key, Math.max(nextIndex + 1, rowIndex + 1));
-        element.attributes.id = createPlaceholderId(element.placeholder, element.location, rowIndex);
     });
 
     const locationBounds = new Map<string, Bounds>();
@@ -887,7 +870,9 @@ function serializeAsset(asset: PaperdollAsset): string {
 
 function getSourceFiles(sourceDirectory: string): string[] {
     return fs.readdirSync(sourceDirectory, { withFileTypes: true })
-        .filter(entry => entry.isFile() && entry.name.toLowerCase().endsWith('.svg'))
+        .filter(entry => entry.isFile()
+            && entry.name.toLowerCase().endsWith('.svg')
+            && !entry.name.toLowerCase().endsWith('_toheat.svg'))
         .map(entry => path.join(sourceDirectory, entry.name))
         .sort((left, right) => left.localeCompare(right));
 }

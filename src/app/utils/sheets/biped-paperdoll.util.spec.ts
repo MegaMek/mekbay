@@ -57,7 +57,6 @@ describe('BipedPaperdollUtil', () => {
         expect(paperdoll.querySelectorAll('.shield').length).toBeGreaterThan(0);
         expect(paperdoll.querySelectorAll('path').length).toBeGreaterThan(0);
         expect(paperdoll.querySelectorAll('circle').length).toBeGreaterThan(0);
-        expect(paperdoll.querySelectorAll('[id^="placeholder-rail-"]').length).toBe(0);
         expect(paperdoll.querySelectorAll('[data-placeholder]').length).toBe(0);
         expect(paperdoll.querySelectorAll('rect').length).toBe(0);
     });
@@ -195,7 +194,7 @@ describe('BipedPaperdollUtil', () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
                 <g id="paperdoll-art-armor">
-                    <rect id="placeholder-canon-armor-HD" x="0" y="0" width="100" height="20" />
+                    <rect data-placeholder="armor" data-location="HD" x="0" y="0" width="100" height="20" />
                 </g>
             </svg>
         `);
@@ -210,7 +209,7 @@ describe('BipedPaperdollUtil', () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
                 <g id="paperdoll-art-armor">
-                    <rect id="placeholder-canon-armor-HD" x="0" y="0" width="100" height="20" />
+                    <rect data-placeholder="armor" data-location="HD" x="0" y="0" width="100" height="20" />
                 </g>
             </svg>
         `);
@@ -229,7 +228,7 @@ describe('BipedPaperdollUtil', () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
                 <g id="paperdoll-art-armor">
-                    <rect id="placeholder-canon-armor-HD" x="0" y="0" width="100" height="20" />
+                    <rect data-placeholder="armor" data-location="HD" x="0" y="0" width="100" height="20" />
                 </g>
             </svg>
         `);
@@ -256,7 +255,7 @@ describe('BipedPaperdollUtil', () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
                 <g id="paperdoll-art-armor">
-                    <rect id="placeholder-canon-armor-HD" x="0" y="0" width="100" height="20" />
+                    <rect data-placeholder="armor" data-location="HD" x="0" y="0" width="100" height="20" />
                 </g>
             </svg>
         `);
@@ -273,8 +272,8 @@ describe('BipedPaperdollUtil', () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
                 <g id="paperdoll-art-armor">
-                    <path id="placeholder-rail-armor-CT-01-capacity-1" d="M 0 16 L 30 16" />
-                    <path id="placeholder-rail-armor-CT-00-capacity-1" data-rail-capacity="3" d="M 0 4 L 30 4" />
+                    <path data-rail="armor" data-location="CT" data-rail-index="1" data-rail-capacity="1" d="M 0 16 L 30 16" />
+                    <path data-rail="armor" data-location="CT" data-rail-index="0" data-rail-capacity="3" d="M 0 4 L 30 4" />
                 </g>
             </svg>
         `);
@@ -294,9 +293,9 @@ describe('BipedPaperdollUtil', () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
                 <g id="paperdoll-art-armor">
-                    <path id="placeholder-rail-armor-CT-00-capacity-5" d="M 0 10 L 100 10" />
-                    <path id="placeholder-rail-armor-CT-01-capacity-5" d="M 0 4 L 2 4" />
-                    <path id="placeholder-rail-armor-CT-02-capacity-5" d="M 0 16 L 2 16" />
+                    <path data-rail="armor" data-location="CT" data-rail-index="0" data-rail-capacity="5" d="M 0 10 L 100 10" />
+                    <path data-rail="armor" data-location="CT" data-rail-index="1" data-rail-capacity="5" d="M 0 4 L 2 4" />
+                    <path data-rail="armor" data-location="CT" data-rail-index="2" data-rail-capacity="5" d="M 0 16 L 2 16" />
                 </g>
             </svg>
         `);
@@ -316,7 +315,7 @@ describe('BipedPaperdollUtil', () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60">
                 <g id="paperdoll-art-armor">
-                    <path id="placeholder-fill-armor-CT-00" d="M 0 0 H 100 V 60 H 0 Z" />
+                    <path data-fill="armor" data-location="CT" d="M 0 0 H 100 V 60 H 0 Z" />
                 </g>
             </svg>
         `);
@@ -346,8 +345,8 @@ describe('BipedPaperdollUtil', () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 50">
                 <g id="paperdoll-art-armor">
-                    <path id="placeholder-fill-armor-CT-00" d="M 0 0 H 80 V 50 H 0 Z" />
-                    <path id="placeholder-fill-armor-CT-01" d="M 80 0 H 120 V 50 H 80 Z" />
+                    <path data-fill="armor" data-location="CT" d="M 0 0 H 80 V 50 H 0 Z" />
+                    <path data-fill="armor" data-location="CT" d="M 80 0 H 120 V 50 H 80 Z" />
                 </g>
             </svg>
         `);
@@ -386,22 +385,24 @@ describe('BipedPaperdollUtil', () => {
         expect(Number(circles?.[1].getAttribute('cx'))).toBeCloseTo(30);
     });
 
-    it('keeps editable SVG metadata in stable IDs', async () => {
+    it('keeps editable SVG metadata in explicit attributes', async () => {
         const assets = await Promise.all([
             fetch('/images/paperdolls/biped-armor.svg').then(response => response.text()),
             fetch('/images/paperdolls/biped-structure.svg').then(response => response.text()),
         ]);
         const [armor, structure] = assets.map(source => new DOMParser().parseFromString(source, 'image/svg+xml'));
 
-        expect(armor.querySelectorAll('[data-art], [data-location], [data-placeholder]').length).toBe(0);
-        expect(structure.querySelectorAll('[data-art], [data-location], [data-placeholder]').length).toBe(0);
+        expect(armor.querySelectorAll('[data-location], [data-placeholder]').length).toBeGreaterThan(0);
+        expect(structure.querySelectorAll('[data-location], [data-placeholder]').length).toBeGreaterThan(0);
         expect(armor.querySelector('#paperdoll-art-armor')).not.toBeNull();
         expect(structure.querySelector('#paperdoll-art-structure')).not.toBeNull();
         expect(armor.querySelector('#paperdoll-art-armor-RT-armorRT')).not.toBeNull();
         expect(structure.querySelector('#paperdoll-art-structure-RT-isRT')).not.toBeNull();
-        expect(armor.querySelector('#placeholder-canon-armor-RT')).not.toBeNull();
-        expect(structure.querySelector('#placeholder-canon-structure-RT')).not.toBeNull();
-        expect(armor.querySelector('#placeholder-canon-shield-dc-RA-00')).not.toBeNull();
-        expect(armor.querySelector('#placeholder-canon-shield-da-LA-00')).not.toBeNull();
+        expect(armor.querySelector('[data-placeholder="armor"][data-location="RT"]')).not.toBeNull();
+        expect(structure.querySelector('[data-placeholder="structure"][data-location="RT"]')).not.toBeNull();
+        expect(armor.querySelectorAll('[data-placeholder="shield-dc"][data-location="RA"]')).toHaveSize(8);
+        expect(armor.querySelector('[data-placeholder="shield-da"][data-location="LA"]')).not.toBeNull();
+        expect(armor.querySelectorAll('[id^="placeholder-"]')).toHaveSize(0);
+        expect(structure.querySelectorAll('[id^="placeholder-"]')).toHaveSize(0);
     });
 });

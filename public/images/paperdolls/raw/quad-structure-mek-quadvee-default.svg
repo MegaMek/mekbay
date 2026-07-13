@@ -139,9 +139,9 @@
     <g transform="matrix(1,0,0,-1,-395.32308,374.1915)"><g transform="matrix(1,0,0,-1,0,765)"><g transform="translate(300,400)"><g transform="rotate(89.000001,62.940936,128.67709)"><rect fill="none" height="5" id="rect437" width="80" x="-3.5" y="-5" /></g></g></g></g>
     <g transform="matrix(1,0,0,-1,-395.32308,374.1915)"><g transform="matrix(1,0,0,-1,0,765)"><g transform="translate(300,400)"><g transform="matrix(-0.0174524,0.999848,0.999848,0.0174524,152,63.5)"><rect fill="none" height="5" id="rect438" width="76" x="0" y="0" /></g></g></g></g>
     <g transform="matrix(1,0,0,-1,-395.32308,374.1915)"><g transform="matrix(1,0,0,-1,0,765)"><g transform="translate(300,400)"><g transform="matrix(-0.0174524,0.999848,0.999848,0.0174524,152,63.5)"><rect fill="none" height="5" id="rect439" width="80" x="-3.5" y="-5" /></g></g></g></g>
-    <rect fill="none" height="16.93" id="placeholder-canon-structure-HD" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="27.766" x="62.208" y="8.16" />
-    <rect fill="none" height="54.703" id="placeholder-canon-structure-CT" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="41.513" x="55.127" y="13.687" />
-    <rect fill="none" height="58.994" id="placeholder-canon-structure-LT" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="47.857" x="20.991" y="9.397" />
-    <rect fill="none" height="58.994" id="placeholder-canon-structure-RT" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="47.856" x="83.083" y="9.397" />
+    <rect data-location="HD" data-placeholder="structure" fill="none" height="16.93" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="27.766" x="62.208" y="8.16" />
+    <rect data-location="CT" data-placeholder="structure" fill="none" height="54.703" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="41.513" x="55.127" y="13.687" />
+    <rect data-location="LT" data-placeholder="structure" fill="none" height="58.994" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="47.857" x="20.991" y="9.397" />
+    <rect data-location="RT" data-placeholder="structure" fill="none" height="58.994" stroke="#e11d48" stroke-dasharray="3 1.5" stroke-opacity="0.9" stroke-width="1.25" width="47.856" x="83.083" y="9.397" />
     </g>
 </svg>
