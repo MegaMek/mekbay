@@ -1,7 +1,5 @@
-import type { PipPoint, PipRenderOptions, PipRow } from './pip-renderer.types';
+import type { PipPoint, PipRenderOptions } from './pip-renderer.types';
 import { PipRendererShared } from './pip-renderer.shared';
-import { DistributedPipRenderer } from './distributed-pip-renderer';
-import { PipRowGenerator } from './pip-row-generator';
 
 interface GenericPipLayout {
     readonly points: readonly PipPoint[];
@@ -9,63 +7,16 @@ interface GenericPipLayout {
     readonly rowCount: number;
 }
 
-function isPipRows(value: SVGGeometryElement | readonly PipRow[]): value is readonly PipRow[] {
-    return Array.isArray(value);
-}
-
 export class GenericPipRenderer {
-
-    public static createPips(
-        shape: SVGGeometryElement | readonly PipRow[],
-        count: number,
-        options?: PipRenderOptions,
-        type?: string,
-        location?: string,
-    ): SVGGElement | null;
 
     public static createPips(
         count: number,
         containerWidth: number,
         containerHeight: number,
-        options?: PipRenderOptions,
-        type?: string,
-        location?: string,
-    ): SVGGElement | null;
-
-    public static createPips(
-        countOrShape: number | SVGGeometryElement | readonly PipRow[],
-        containerWidthOrCount: number,
-        containerHeightOrOptions: number | PipRenderOptions = {},
-        optionsOrType: PipRenderOptions | string = {},
-        typeOrLocation = '',
+        options: PipRenderOptions = {},
+        type = 'generic',
         location = '',
     ): SVGGElement | null {
-        if (typeof countOrShape !== 'number') {
-            const options = typeof containerHeightOrOptions === 'number' ? {} : containerHeightOrOptions;
-            const type = typeof optionsOrType === 'string' ? optionsOrType : 'generic';
-            const location = typeof optionsOrType === 'string' ? typeOrLocation : '';
-            if (isPipRows(countOrShape)) {
-                return this.createRowPips(countOrShape, containerWidthOrCount, options, type, location);
-            }
-            const generated = PipRowGenerator.createRows(countOrShape, options.rowHeight);
-            if (!generated) {
-                return null;
-            }
-            const group = this.createRowPips(generated.rows, containerWidthOrCount, options, type, location);
-            if (group && generated.transform) {
-                group.setAttribute('transform', generated.transform);
-            }
-            return group;
-        }
-        const count = countOrShape;
-        const containerWidth = containerWidthOrCount;
-        const containerHeight = typeof containerHeightOrOptions === 'number'
-            ? containerHeightOrOptions
-            : 0;
-        const options = typeof optionsOrType === 'string' ? {} : optionsOrType;
-        const type = typeof typeOrLocation === 'string' && typeOrLocation.length > 0
-            ? typeOrLocation
-            : 'generic';
         if (!Number.isFinite(count) || count <= 0 || containerWidth <= 0 || containerHeight <= 0) {
             return null;
         }
@@ -102,18 +53,6 @@ export class GenericPipRenderer {
                 strokeWidth,
             ));
         }
-        return group;
-    }
-
-    private static createRowPips(
-        rows: readonly PipRow[],
-        count: number,
-        options: PipRenderOptions = {},
-        type = 'generic',
-        location = '',
-    ): SVGGElement | null {
-        const group = DistributedPipRenderer.createPips(rows, count, options, type, location);
-        group?.setAttribute('data-pip-layout', 'generic');
         return group;
     }
 

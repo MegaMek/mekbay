@@ -1,11 +1,9 @@
 import type {
-    PipBounds,
     PipPoint,
     PipRenderOptions,
     PipRow,
 } from './pip-renderer.types';
 import { PipRendererShared } from './pip-renderer.shared';
-import { PipRowGenerator } from './pip-row-generator';
 
 interface DistributedPipLayout {
     readonly points: readonly PipPoint[];
@@ -22,40 +20,12 @@ interface DistributedPipRow {
 export class DistributedPipRenderer {
 
     public static createPips(
-        shape: SVGGeometryElement,
-        count: number,
-        options?: PipRenderOptions,
-        type?: string,
-        location?: string,
-    ): SVGGElement | null;
-
-    public static createPips(
         rows: readonly PipRow[],
-        count: number,
-        options?: PipRenderOptions,
-        type?: string,
-        location?: string,
-    ): SVGGElement | null;
-
-    public static createPips(
-        shapeOrRows: SVGGeometryElement | readonly PipRow[],
         count: number,
         options: PipRenderOptions = {},
         type = 'shield',
         location = '',
     ): SVGGElement | null {
-        if (!Array.isArray(shapeOrRows)) {
-            const generated = PipRowGenerator.createRows(shapeOrRows as SVGGeometryElement, options.rowHeight);
-            if (!generated) {
-                return null;
-            }
-            const group = this.createPips(generated.rows, count, options, type, location);
-            if (group && generated.transform) {
-                group.setAttribute('transform', generated.transform);
-            }
-            return group;
-        }
-        const rows = shapeOrRows;
         if (!Number.isFinite(count) || count <= 0 || rows.length === 0) {
             return null;
         }
