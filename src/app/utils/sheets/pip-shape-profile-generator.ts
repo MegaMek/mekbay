@@ -3,6 +3,7 @@ import { SVG_NAMESPACE } from './pip-renderer.shared';
 import { PipShapeProfile } from './pip-shape-profile';
 
 export const DEFAULT_PIP_ROW_HEIGHT = 6.1515198;
+export const MIN_PIP_SHAPE_SIZE = 2;
 
 const DEFAULT_PIP_ROW_STEP = 5.3271999;
 const ROW_STEP_RATIO = DEFAULT_PIP_ROW_STEP / DEFAULT_PIP_ROW_HEIGHT;
@@ -139,7 +140,8 @@ export class PipShapeProfileGenerator {
         const rowStep = Math.min(rowHeight, rowHeight * ROW_STEP_RATIO);
         for (let top = bounds.y; top < bounds.y + bounds.height; top += rowStep) {
             const height = Math.min(rowHeight, bounds.y + bounds.height - top);
-            if (height > 0 && bounds.width >= height) {
+            if (height >= MIN_PIP_SHAPE_SIZE
+                && bounds.width >= Math.max(height, MIN_PIP_SHAPE_SIZE)) {
                 rows.push({ x: bounds.x, y: top, width: bounds.width, height });
             }
         }
@@ -255,7 +257,7 @@ export class PipShapeProfileGenerator {
         height: number,
     ): void {
         const width = right - left;
-        if (width <= 0) {
+        if (width < MIN_PIP_SHAPE_SIZE || height < MIN_PIP_SHAPE_SIZE) {
             return;
         }
         const safeHeight = Math.min(height, width);

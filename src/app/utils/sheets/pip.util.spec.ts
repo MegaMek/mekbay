@@ -2,7 +2,7 @@ import { CanonPipRenderer } from './canon-pip-renderer';
 import { DistributedPipRenderer } from './distributed-pip-renderer';
 import { GenericPipRenderer } from './generic-pip-renderer';
 import { PipRendererShared } from './pip-renderer.shared';
-import { PipShapeProfileGenerator } from './pip-shape-profile-generator';
+import { MIN_PIP_SHAPE_SIZE, PipShapeProfileGenerator } from './pip-shape-profile-generator';
 import { PipShapeProfile } from './pip-shape-profile';
 import type { PipShapeSpan } from './pip-renderer.types';
 import { RailPipRenderer } from './rail-pip-renderer';
@@ -110,6 +110,14 @@ describe('Pip renderers', () => {
         expect(generated).not.toBeNull();
         expect(generated?.profile.spans.length).toBeGreaterThan(1);
         expect(generated?.profile.spans.every(span => span.width >= span.height)).toBeTrue();
+    });
+
+    it('does not generate shapes below the minimum size', () => {
+        const rectangle = document.createElementNS(SVG_NAMESPACE, 'rect');
+        rectangle.setAttribute('width', (MIN_PIP_SHAPE_SIZE / 2).toString());
+        rectangle.setAttribute('height', (MIN_PIP_SHAPE_SIZE / 2).toString());
+
+        expect(PipShapeProfileGenerator.createProfile(rectangle)).toBeNull();
     });
 
     it('precomputes validated shape profile bounds and normalized spans', () => {
