@@ -5,6 +5,10 @@ import { GenericPipRenderer } from './generic-pip-renderer';
 import { RailPipRenderer } from './rail-pip-renderer';
 import type { PipRenderOptions, PipRow } from './pip-renderer.types';
 
+import { DistributedPipRenderer as DistributedPipRendererLegacy } from './distributed-pip-renderer-legacy';
+import { FillPipRenderer as FillPipRendererLegacy } from './fill-pip-renderer-legacy';
+import { GenericPipRenderer as GenericPipRendererLegacy } from './generic-pip-renderer-legacy';
+
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 const ARMOR_ASSET_URL = '/images/paperdolls/biped-armor.svg';
 const ARMOR_REAR_ASSET_URL = '/images/paperdolls/biped-armor-back.svg';
@@ -19,7 +23,7 @@ export type BipedStructureLocation = typeof STRUCTURE_LOCATIONS[number];
 export type BipedShieldLocation = typeof SHIELD_LOCATIONS[number];
 export type BipedArmorValues = Readonly<Partial<Record<BipedArmorLocation, number>>>;
 export type BipedStructureTonnage = number | Readonly<Record<BipedStructureLocation, number>>;
-export type BipedPaperdollPipLayout = 'canon' | 'distributed' | 'rail' | 'fill' | 'generic';
+export type BipedPaperdollPipLayout = 'canon' | 'distributed' | 'rail' | 'fill' | 'generic' | 'distributed-legacy' | 'fill-legacy' | 'generic-legacy';
 
 export interface BipedShieldLocationValues {
     readonly dc?: number;
@@ -76,6 +80,14 @@ interface PlaceholderGroup {
     elements: SVGElement[];
 }
 
+interface PlaceholderCollection {
+    placeholders: SVGElement[];
+    bounds: PlaceholderGroup[];
+    shields: ShieldPlaceholderGroup[];
+    rails: RailGroup[];
+    fills: FillPlaceholderGroup[];
+}
+
 interface ShieldPlaceholderGroup {
     parent: SVGElement;
     type: 'shield-dc' | 'shield-da';
@@ -119,6 +131,12 @@ interface FillPlaceholderGroup {
     }>;
     parent: SVGElement;
     elements: SVGElement[];
+}
+
+interface PlaceholderRenderContext {
+    armor: BipedArmorValues | undefined;
+    structureTonnage: BipedStructureTonnage | undefined;
+    options: BipedPaperdollLayerOptions;
 }
 
 export class BipedPaperdollUtil {
@@ -231,7 +249,7 @@ export class BipedPaperdollUtil {
         scaleGroup.appendChild(sourceGroup);
 
         this.applySilhouetteStyles(sourceGroup, type, options);
-        this.replacePlaceholders(sourceGroup, type, armor, structureTonnage, options);
+        this.replacePlaceholders(sourceGroup, armor, structureTonnage, options);
         if (options.outline) {
             const frame = document.createElementNS(SVG_NAMESPACE, 'rect');
             frame.setAttribute('class', 'biped-paperdoll-frame');
@@ -314,286 +332,615 @@ export class BipedPaperdollUtil {
 
     private static replacePlaceholders(
         sourceGroup: SVGGElement,
-        type: 'armor' | 'structure',
         armor: BipedArmorValues | undefined,
         structureTonnage: BipedStructureTonnage | undefined,
         options: BipedPaperdollLayerOptions,
     ): void {
-        const placeholders = Array.from(sourceGroup.querySelectorAll<SVGElement>(
-            '[data-placeholder], [data-rail], [data-fill]',
-        ));
-        const groups: PlaceholderGroup[] = [];
-        const shieldGroups: ShieldPlaceholderGroup[] = [];
-        const railGroups: RailGroup[] = [];
-        const fillGroups: FillPlaceholderGroup[] = [];
+        const collection = this.collectPlaceholderGroups(sourceGroup);
+        const context: PlaceholderRenderContext = { armor, structureTonnage, options };
+        const requestedLayout = options.pipLayout ?? 'canon';
+        const blockedKeys = new Set<string>();
+
+        this.renderRailGroups(collection.rails, requestedLayout, context, blockedKeys);
+        this.renderFillGroups(collection.fills, requestedLayout, context, blockedKeys);
+        this.renderShieldGroups(collection.shields, this.getShieldPipLayout(requestedLayout), context, blockedKeys);
+        this.renderBoundsGroups(collection.bounds, requestedLayout, context, blockedKeys);
+        this.cleanupPlaceholders(collection);
+    }
+
+    private static collectPlaceholderGroups(sourceGroup: SVGGElement): PlaceholderCollection {
+        const collection: PlaceholderCollection = {
+            placeholders: Array.from(sourceGroup.querySelectorAll<SVGElement>(
+                '[data-placeholder], [data-rail], [data-fill]',
+            )),
+            bounds: [],
+            shields: [],
+            rails: [],
+            fills: [],
+        };
         const seenRails = new Set<SVGGeometryElement>();
-        for (const element of placeholders) {
-            const context = this.readPlaceholderContext(element);
-            if (!context) {
-                continue;
-            }
-            if (context.fill) {
-                const geometry = this.readFillGeometry(element);
-                const parent = geometry?.parentElement instanceof SVGElement
-                    ? geometry.parentElement
-                    : null;
-                if (!geometry || !parent) {
-                    continue;
-                }
-                let group = fillGroups.find(candidate =>
-                    candidate.type === context.type && candidate.location === context.location);
-                if (!group) {
-                    const createdGroup: FillPlaceholderGroup = {
-                        type: context.type,
-                        location: context.location,
-                        areas: [{
-                            geometry,
-                            parent,
-                            transform: geometry.getAttribute('transform'),
-                        }],
-                        parent,
-                        elements: [],
-                    };
-                    fillGroups.push(createdGroup);
-                    group = createdGroup;
-                } else {
-                    group.areas.push({
-                        geometry,
-                        parent,
-                        transform: geometry.getAttribute('transform'),
-                    });
-                }
-                group.elements.push(element);
-                continue;
-            }
-            const rectangles = element instanceof SVGRectElement
-                ? [element]
-                : Array.from(element.querySelectorAll<SVGRectElement>('rect'));
-            const geometries = context.rail
-                ? this.readRailGeometries(element).filter(geometry => {
-                if (seenRails.has(geometry)) {
-                    return false;
-                }
-                seenRails.add(geometry);
-                return true;
-                })
-                : [];
-            const { type: placeholderType, location } = context;
+        for (const element of collection.placeholders) {
+            this.collectPlaceholder(element, collection, seenRails);
+        }
+        return collection;
+    }
 
-            if (geometries.length > 0) {
-                let group = railGroups.find(candidate => candidate.type === placeholderType && candidate.location === location);
-                if (!group) {
-                    const createdGroup: RailGroup = {
-                        type: placeholderType,
-                        location,
-                        rails: [],
-                        elements: [],
-                    };
-                    railGroups.push(createdGroup);
-                    group = createdGroup;
-                }
-                for (const geometry of geometries) {
-                    const parent = geometry.parentElement instanceof SVGElement ? geometry.parentElement : null;
-                    if (!parent) {
-                        continue;
-                    }
-                    const geometryContext = this.readPlaceholderContext(geometry);
-                    group.rails.push({
-                        geometry,
-                        parent,
-                        transform: geometry.getAttribute('transform'),
-                        capacity: geometryContext?.capacity ?? context.capacity,
-                        index: geometryContext?.index ?? context.index,
-                        order: group.rails.length,
-                    });
-                    group.elements.push(geometry);
-                }
-            }
+    private static collectPlaceholder(
+        element: SVGElement,
+        collection: PlaceholderCollection,
+        seenRails: Set<SVGGeometryElement>,
+    ): void {
+        const context = this.readPlaceholderContext(element);
+        if (!context) {
+            return;
+        }
+        if (context.fill) {
+            this.addFillPlaceholder(element, context, collection.fills);
+            return;
+        }
 
-            const shieldRows = placeholderType === 'shield-dc' || placeholderType === 'shield-da'
-                ? this.readShieldRows(element, rectangles)
-                : [];
-            if (rectangles.length === 0 && shieldRows.length === 0) {
-                continue;
-            }
+        const rectangles = this.readPlaceholderRectangles(element);
+        if (context.rail) {
+            this.addRailPlaceholder(element, context, collection.rails, seenRails);
+        }
 
-            const parent = rectangles.length > 0
-                ? element instanceof SVGRectElement
-                    ? element.parentNode instanceof SVGElement ? element.parentNode : null
-                    : element
-                : element.parentNode instanceof SVGElement ? element.parentNode : null;
+        const shieldRows = this.isShieldPlaceholderType(context.type)
+            ? this.readShieldRows(element, rectangles)
+            : [];
+        if (rectangles.length === 0 && shieldRows.length === 0) {
+            return;
+        }
+
+        const parent = this.getPlaceholderParent(element, rectangles);
+        if (!parent) {
+            return;
+        }
+        if (this.isShieldPlaceholderType(context.type)) {
+            this.addShieldPlaceholder(
+                element,
+                context.type,
+                context.location,
+                parent,
+                rectangles,
+                shieldRows,
+                collection.shields,
+            );
+            return;
+        }
+        this.addBoundsPlaceholder(context, parent, rectangles, collection.bounds);
+    }
+
+    private static addFillPlaceholder(
+        element: SVGElement,
+        context: PlaceholderContext,
+        groups: FillPlaceholderGroup[],
+    ): void {
+        const geometry = this.readFillGeometry(element);
+        const parent = geometry?.parentElement instanceof SVGElement
+            ? geometry.parentElement
+            : null;
+        if (!geometry || !parent) {
+            return;
+        }
+
+        let group = groups.find(candidate =>
+            candidate.type === context.type && candidate.location === context.location);
+        if (!group) {
+            const createdGroup: FillPlaceholderGroup = {
+                type: context.type,
+                location: context.location,
+                areas: [],
+                parent,
+                elements: [],
+            };
+            groups.push(createdGroup);
+            group = createdGroup;
+        }
+        group.areas.push({
+            geometry,
+            parent,
+            transform: geometry.getAttribute('transform'),
+        });
+        group.elements.push(geometry);
+    }
+
+    private static addRailPlaceholder(
+        element: SVGElement,
+        context: PlaceholderContext,
+        groups: RailGroup[],
+        seenRails: Set<SVGGeometryElement>,
+    ): void {
+        const geometries = this.readRailGeometries(element).filter(geometry => {
+            if (seenRails.has(geometry)) {
+                return false;
+            }
+            seenRails.add(geometry);
+            return true;
+        });
+        if (geometries.length === 0) {
+            return;
+        }
+
+        let group = groups.find(candidate =>
+            candidate.type === context.type && candidate.location === context.location);
+        if (!group) {
+            const createdGroup: RailGroup = {
+                type: context.type,
+                location: context.location,
+                rails: [],
+                elements: [],
+            };
+            groups.push(createdGroup);
+            group = createdGroup;
+        }
+        for (const geometry of geometries) {
+            const parent = geometry.parentElement instanceof SVGElement
+                ? geometry.parentElement
+                : null;
             if (!parent) {
                 continue;
             }
+            const geometryContext = this.readPlaceholderContext(geometry);
+            group.rails.push({
+                geometry,
+                parent,
+                transform: geometry.getAttribute('transform'),
+                capacity: geometryContext?.capacity ?? context.capacity,
+                index: geometryContext?.index ?? context.index,
+                order: group.rails.length,
+            });
+            group.elements.push(geometry);
+        }
+    }
 
-            if (placeholderType === 'shield-dc' || placeholderType === 'shield-da') {
-                let group = shieldGroups.find(candidate => candidate.type === placeholderType && candidate.location === location);
-                if (!group) {
-                    const createdGroup: ShieldPlaceholderGroup = {
-                        parent,
-                        type: placeholderType,
-                        location,
-                        rows: [],
-                        elements: [],
-                    };
-                    shieldGroups.push(createdGroup);
-                    group = createdGroup;
-                }
-                group.rows.push(...shieldRows);
-                group.elements.push(...(rectangles.length > 0 ? rectangles : [element]));
-                continue;
-            }
+    private static addShieldPlaceholder(
+        element: SVGElement,
+        type: 'shield-dc' | 'shield-da',
+        location: string,
+        parent: SVGElement,
+        rectangles: SVGRectElement[],
+        rows: PipRow[],
+        groups: ShieldPlaceholderGroup[],
+    ): void {
+        let group = groups.find(candidate =>
+            candidate.type === type && candidate.location === location);
+        if (!group) {
+            const createdGroup: ShieldPlaceholderGroup = {
+                parent,
+                type,
+                location,
+                rows: [],
+                elements: [],
+            };
+            groups.push(createdGroup);
+            group = createdGroup;
+        }
+        group.rows.push(...rows);
+        group.elements.push(...(rectangles.length > 0 ? rectangles : [element]));
+    }
 
-            let bounds = this.readRectBounds(rectangles[0]);
-            for (const rectangle of rectangles.slice(1)) {
-                bounds = this.mergeBounds(bounds, this.readRectBounds(rectangle));
-            }
-
-            let group = groups.find(candidate => candidate.parent === parent && candidate.type === placeholderType && candidate.location === location);
-            if (!group) {
-                const createdGroup: PlaceholderGroup = { parent, type: placeholderType, location, bounds, elements: [] };
-                groups.push(createdGroup);
-                group = createdGroup;
-            } else {
-                group.bounds = this.mergeBounds(group.bounds, bounds);
-            }
-            group.elements.push(...rectangles);
+    private static addBoundsPlaceholder(
+        context: PlaceholderContext,
+        parent: SVGElement,
+        rectangles: SVGRectElement[],
+        groups: PlaceholderGroup[],
+    ): void {
+        let bounds = this.readRectBounds(rectangles[0]);
+        for (const rectangle of rectangles.slice(1)) {
+            bounds = this.mergeBounds(bounds, this.readRectBounds(rectangle));
         }
 
-        const selectedPipLayout = options.pipLayout ?? 'canon';
-        const railKeys = new Set<string>();
-        for (const group of railGroups) {
-            const count = this.readPlaceholderPipCount(group.type, group.location, armor, structureTonnage, options);
-            if (selectedPipLayout === 'rail'
-                && typeof count === 'number'
-                && this.appendRailPips(group, count, options)) {
-                railKeys.add(this.getPlaceholderKey(group.type, group.location));
-            }
-            group.elements.forEach(element => element.remove());
+        let group = groups.find(candidate =>
+            candidate.parent === parent
+            && candidate.type === context.type
+            && candidate.location === context.location);
+        if (!group) {
+            const createdGroup: PlaceholderGroup = {
+                parent,
+                type: context.type,
+                location: context.location,
+                bounds,
+                elements: [],
+            };
+            groups.push(createdGroup);
+            group = createdGroup;
+        } else {
+            group.bounds = this.mergeBounds(group.bounds, bounds);
         }
+        group.elements.push(...rectangles);
+    }
 
-        const fillKeys = new Set<string>();
-        for (const group of fillGroups) {
-            const key = this.getPlaceholderKey(group.type, group.location);
-            if (railKeys.has(key)) {
-                group.elements.forEach(element => element.remove());
-                continue;
-            }
-            if (selectedPipLayout === 'fill') {
-                const count = this.readPlaceholderPipCount(group.type, group.location, armor, structureTonnage, options);
-                if (typeof count === 'number') {
-                    const pipOptions: PipRenderOptions = {
-                        ...options.pipOptions,
-                        ...(group.type === 'shield-dc' || group.type === 'shield-da'
-                            ? {
-                                fill: options.pipOptions?.fill ?? '#fff',
-                                shape: group.type === 'shield-da' ? 'diamond' : 'circle',
-                            }
-                            : {}),
-                    };
-                    const pips = FillPipRenderer.createPips(
-                        group.areas.map(area => area.geometry),
-                        count,
-                        pipOptions,
-                        group.type,
-                        group.location,
-                    );
-                    if (pips) {
-                        const zone = document.createElementNS(SVG_NAMESPACE, 'g');
-                        zone.setAttribute('class', `biped-paperdoll-zone biped-paperdoll-zone-${group.location} biped-paperdoll-zone-${group.type}`);
-                        zone.setAttribute('data-location', group.location);
-                        zone.setAttribute('data-zone-type', group.type);
-                        zone.setAttribute('data-layout', 'fill');
-                        zone.appendChild(pips);
-                        group.parent.appendChild(zone);
-                        fillKeys.add(key);
-                    }
-                }
-            }
-            group.elements.forEach(element => element.remove());
+    private static readPlaceholderRectangles(element: SVGElement): SVGRectElement[] {
+        return element instanceof SVGRectElement
+            ? [element]
+            : Array.from(element.querySelectorAll<SVGRectElement>('rect'));
+    }
+
+    private static getPlaceholderParent(
+        element: SVGElement,
+        rectangles: readonly SVGRectElement[],
+    ): SVGElement | null {
+        if (rectangles.length > 0) {
+            return element instanceof SVGRectElement
+                ? element.parentNode instanceof SVGElement ? element.parentNode : null
+                : element;
         }
+        return element.parentNode instanceof SVGElement ? element.parentNode : null;
+    }
 
-        const shieldPipLayout = selectedPipLayout === 'canon' ? 'distributed' : selectedPipLayout;
-        for (const group of shieldGroups) {
-            const key = this.getPlaceholderKey(group.type, group.location);
-            if (railKeys.has(key) || fillKeys.has(key)) {
-                group.elements.forEach(element => element.remove());
-                continue;
-            }
-            if (shieldPipLayout !== 'distributed' && shieldPipLayout !== 'generic') {
-                group.elements.forEach(element => element.remove());
-                continue;
-            }
-            const shieldValues = options.shieldValues?.[group.location as BipedShieldLocation];
-            const count = group.type === 'shield-dc' ? shieldValues?.dc : shieldValues?.da;
-            if (typeof count === 'number') {
-                const pipOptions: PipRenderOptions = {
-                    ...options.pipOptions,
-                    fill: options.pipOptions?.fill ?? '#fff',
-                    shape: group.type === 'shield-da' ? 'diamond' : 'circle',
-                };
-                const shieldBounds = shieldPipLayout === 'generic' ? this.getPipRowBounds(group.rows) : null;
-                const pips = shieldPipLayout === 'generic'
-                    ? shieldBounds
-                        ? GenericPipRenderer.createPips(
-                            count,
-                            shieldBounds.maxX - shieldBounds.minX,
-                            shieldBounds.maxY - shieldBounds.minY,
-                            pipOptions,
-                            group.type,
-                            group.location,
-                        )
-                        : null
-                    : DistributedPipRenderer.createPips(
-                        group.rows,
-                        count,
-                        pipOptions,
-                        group.type,
-                        group.location,
-                    );
-                if (pips) {
-                    const zone = document.createElementNS(SVG_NAMESPACE, 'g');
-                    zone.setAttribute('class', `biped-paperdoll-zone biped-paperdoll-zone-${group.location} biped-paperdoll-zone-${group.type}`);
-                    zone.setAttribute('data-location', group.location);
-                    zone.setAttribute('data-zone-type', group.type);
-                    if (shieldBounds) {
-                        zone.setAttribute('transform', `translate(${shieldBounds.minX} ${shieldBounds.minY})`);
-                        zone.setAttribute('data-layout', 'generic');
-                    }
-                    zone.appendChild(pips);
-                    group.parent.appendChild(zone);
-                }
-            }
-            group.elements.forEach(element => element.remove());
+    private static renderRailGroups(
+        groups: readonly RailGroup[],
+        requestedLayout: BipedPaperdollPipLayout,
+        context: PlaceholderRenderContext,
+        blockedKeys: Set<string>,
+    ): void {
+        if (requestedLayout !== 'rail') {
+            return;
         }
-
         for (const group of groups) {
             const key = this.getPlaceholderKey(group.type, group.location);
-            if (railKeys.has(key) || fillKeys.has(key)) {
-                group.elements.forEach(element => element.remove());
+            if (blockedKeys.has(key)) {
                 continue;
             }
-            const pips = this.createPlaceholderPips(group, type, armor, structureTonnage, options);
-            if (pips) {
-                const zone = document.createElementNS(SVG_NAMESPACE, 'g');
-                zone.setAttribute('class', `biped-paperdoll-zone biped-paperdoll-zone-${group.location} biped-paperdoll-zone-${group.type}`);
-                zone.setAttribute('data-location', group.location);
-                zone.setAttribute('data-zone-type', group.type);
-                zone.setAttribute('transform', `translate(${group.bounds.minX} ${group.bounds.minY})`);
-                zone.appendChild(pips);
-                group.parent.appendChild(zone);
+            const count = this.readPlaceholderPipCount(
+                group.type,
+                group.location,
+                context.armor,
+                context.structureTonnage,
+                context.options,
+            );
+            if (typeof count === 'number' && this.appendRailPips(group, count, context.options)) {
+                blockedKeys.add(key);
             }
-            group.elements.forEach(element => element.remove());
+        }
+    }
+
+    private static renderFillGroups(
+        groups: readonly FillPlaceholderGroup[],
+        requestedLayout: BipedPaperdollPipLayout,
+        context: PlaceholderRenderContext,
+        blockedKeys: Set<string>,
+    ): void {
+        if (requestedLayout !== 'fill' && requestedLayout !== 'fill-legacy') {
+            return;
+        }
+        for (const group of groups) {
+            const key = this.getPlaceholderKey(group.type, group.location);
+            if (blockedKeys.has(key)) {
+                continue;
+            }
+            const count = this.readPlaceholderPipCount(
+                group.type,
+                group.location,
+                context.armor,
+                context.structureTonnage,
+                context.options,
+            );
+            const pips = typeof count === 'number'
+                ? this.createFillPlaceholderPips(group, count, requestedLayout, context.options)
+                : null;
+            if (!pips) {
+                continue;
+            }
+            this.appendPipZone(group.parent, group.type, group.location, pips, null, 'fill');
+            blockedKeys.add(key);
+        }
+    }
+
+    private static renderShieldGroups(
+        groups: readonly ShieldPlaceholderGroup[],
+        requestedLayout: BipedPaperdollPipLayout,
+        context: PlaceholderRenderContext,
+        blockedKeys: Set<string>,
+    ): void {
+        for (const group of groups) {
+            const key = this.getPlaceholderKey(group.type, group.location);
+            if (blockedKeys.has(key)) {
+                continue;
+            }
+            const pips = this.createShieldPlaceholderPips(group, requestedLayout, context);
+            if (!pips) {
+                continue;
+            }
+            const bounds = this.isGenericPipLayout(requestedLayout)
+                ? this.getPipRowBounds(group.rows)
+                : null;
+            this.appendPipZone(
+                group.parent,
+                group.type,
+                group.location,
+                pips,
+                bounds ? `translate(${bounds.minX} ${bounds.minY})` : null,
+                bounds ? 'generic' : null,
+            );
+        }
+    }
+
+    private static renderBoundsGroups(
+        groups: readonly PlaceholderGroup[],
+        requestedLayout: BipedPaperdollPipLayout,
+        context: PlaceholderRenderContext,
+        blockedKeys: Set<string>,
+    ): void {
+        for (const group of groups) {
+            const key = this.getPlaceholderKey(group.type, group.location);
+            if (blockedKeys.has(key)) {
+                continue;
+            }
+            const pips = this.createBoundsPlaceholderPips(group, requestedLayout, context);
+            if (!pips) {
+                continue;
+            }
+            this.appendPipZone(
+                group.parent,
+                group.type,
+                group.location,
+                pips,
+                `translate(${group.bounds.minX} ${group.bounds.minY})`,
+                null,
+            );
+        }
+    }
+
+    private static createBoundsPlaceholderPips(
+        group: PlaceholderGroup,
+        requestedLayout: BipedPaperdollPipLayout,
+        context: PlaceholderRenderContext,
+    ): SVGGElement | null {
+        const primaryPips = this.createBoundsPlaceholderPipsForLayout(group, requestedLayout, context);
+        const fallbackLayout = context.options.fallbackPipLayout;
+        return primaryPips || !fallbackLayout || fallbackLayout === requestedLayout
+            ? primaryPips
+            : this.createBoundsPlaceholderPipsForLayout(group, fallbackLayout, context);
+    }
+
+    private static createBoundsPlaceholderPipsForLayout(
+        group: PlaceholderGroup,
+        layout: BipedPaperdollPipLayout,
+        context: PlaceholderRenderContext,
+    ): SVGGElement | null {
+        const width = group.bounds.maxX - group.bounds.minX;
+        const height = group.bounds.maxY - group.bounds.minY;
+        if (layout === 'canon') {
+            return this.createCanonicalPlaceholderPips(group, width, height, context);
         }
 
-        placeholders.forEach(element => {
-            element.removeAttribute('data-placeholder');
-            element.removeAttribute('data-rail');
-            element.removeAttribute('data-fill');
-            element.removeAttribute('data-location');
-            element.removeAttribute('data-rail-index');
-            element.removeAttribute('data-rail-capacity');
-        });
+        const count = this.readPlaceholderPipCount(
+            group.type,
+            group.location,
+            context.armor,
+            context.structureTonnage,
+            context.options,
+        );
+        if (typeof count !== 'number') {
+            return null;
+        }
+        const pipOptions = this.getPlaceholderPipOptions(group.type, context.options);
+        switch (layout) {
+            case 'distributed':
+                return this.createDistributedTargetPips(group, count, pipOptions, false);
+            case 'distributed-legacy':
+                return this.createDistributedTargetPips(group, count, pipOptions, true);
+            case 'generic':
+                return this.createGenericTargetPips(group, count, pipOptions, false);
+            case 'generic-legacy':
+                return this.createGenericTargetPips(group, count, pipOptions, true);
+            default:
+                return null;
+        }
+    }
+
+    private static createCanonicalPlaceholderPips(
+        group: PlaceholderGroup,
+        width: number,
+        height: number,
+        context: PlaceholderRenderContext,
+    ): SVGGElement | null {
+        if (group.type === 'armor') {
+            const count = context.armor?.[group.location as BipedArmorLocation];
+            return typeof count === 'number'
+                ? CanonPipRenderer.createArmorPips(group.location, count, width, height, context.options.pipOptions)
+                : null;
+        }
+        if (group.type === 'structure') {
+            const tonnage = this.getStructureTonnage(context.structureTonnage, group.location);
+            return typeof tonnage === 'number'
+                ? CanonPipRenderer.createStructurePips(tonnage, group.location, width, height, context.options.pipOptions)
+                : null;
+        }
+        return null;
+    }
+
+    private static createDistributedTargetPips(
+        group: PlaceholderGroup,
+        count: number,
+        options: PipRenderOptions,
+        legacy: boolean,
+    ): SVGGElement | null {
+        const width = group.bounds.maxX - group.bounds.minX;
+        const height = group.bounds.maxY - group.bounds.minY;
+        const rows = [{ x: 0, y: 0, width, height }];
+        return legacy
+            ? DistributedPipRendererLegacy.createPips(rows, count, options, group.type, group.location)
+            : DistributedPipRenderer.createPips(rows, count, options, group.type, group.location);
+    }
+
+    private static createGenericTargetPips(
+        group: PlaceholderGroup,
+        count: number,
+        options: PipRenderOptions,
+        legacy: boolean,
+    ): SVGGElement | null {
+        const width = group.bounds.maxX - group.bounds.minX;
+        const height = group.bounds.maxY - group.bounds.minY;
+        return legacy
+            ? GenericPipRendererLegacy.createPips(count, width, height, options, group.type, group.location)
+            : GenericPipRenderer.createPips(count, width, height, options, group.type, group.location);
+    }
+
+    private static createFillPlaceholderPips(
+        group: FillPlaceholderGroup,
+        count: number,
+        layout: BipedPaperdollPipLayout,
+        options: BipedPaperdollLayerOptions,
+    ): SVGGElement | null {
+        const pipOptions = this.getPlaceholderPipOptions(group.type, options);
+        return layout === 'fill'
+            ? FillPipRenderer.createPips(
+                group.areas.map(area => area.geometry),
+                count,
+                pipOptions,
+                group.type,
+                group.location,
+            )
+            : FillPipRendererLegacy.createPips(
+                group.areas.map(area => area.geometry),
+                count,
+                pipOptions,
+                group.type,
+                group.location,
+            );
+    }
+
+    private static createShieldPlaceholderPips(
+        group: ShieldPlaceholderGroup,
+        layout: BipedPaperdollPipLayout,
+        context: PlaceholderRenderContext,
+    ): SVGGElement | null {
+        const count = this.readPlaceholderPipCount(
+            group.type,
+            group.location,
+            context.armor,
+            context.structureTonnage,
+            context.options,
+        );
+        if (typeof count !== 'number') {
+            return null;
+        }
+        const pipOptions = this.getPlaceholderPipOptions(group.type, context.options);
+        if (layout === 'distributed') {
+            return DistributedPipRenderer.createPips(group.rows, count, pipOptions, group.type, group.location);
+        }
+        if (layout === 'distributed-legacy') {
+            return DistributedPipRendererLegacy.createPips(group.rows, count, pipOptions, group.type, group.location);
+        }
+        if (this.isGenericPipLayout(layout)) {
+            const bounds = this.getPipRowBounds(group.rows);
+            if (!bounds) {
+                return null;
+            }
+            return layout === 'generic'
+                ? GenericPipRenderer.createPips(
+                    count,
+                    bounds.maxX - bounds.minX,
+                    bounds.maxY - bounds.minY,
+                    pipOptions,
+                    group.type,
+                    group.location,
+                )
+                : GenericPipRendererLegacy.createPips(
+                    count,
+                    bounds.maxX - bounds.minX,
+                    bounds.maxY - bounds.minY,
+                    pipOptions,
+                    group.type,
+                    group.location,
+                );
+        }
+        return null;
+    }
+
+    private static appendPipZone(
+        parent: SVGElement,
+        type: PaperdollPlaceholderType,
+        location: string,
+        pips: SVGGElement,
+        transform: string | null,
+        layout: string | null,
+    ): void {
+        const zone = document.createElementNS(SVG_NAMESPACE, 'g');
+        zone.setAttribute('class', `biped-paperdoll-zone biped-paperdoll-zone-${location} biped-paperdoll-zone-${type}`);
+        zone.setAttribute('data-location', location);
+        zone.setAttribute('data-zone-type', type);
+        if (transform) {
+            zone.setAttribute('transform', transform);
+        }
+        if (layout) {
+            zone.setAttribute('data-layout', layout);
+        }
+        zone.appendChild(pips);
+        parent.appendChild(zone);
+    }
+
+    private static cleanupPlaceholders(collection: PlaceholderCollection): void {
+        const groups = [
+            ...collection.bounds,
+            ...collection.shields,
+            ...collection.rails,
+            ...collection.fills,
+        ];
+        const removable = new Set<SVGElement>();
+        const preservedParents = new Set<SVGElement>();
+        for (const group of groups) {
+            group.elements.forEach(element => removable.add(element));
+        }
+        for (const group of [...collection.bounds, ...collection.shields, ...collection.fills]) {
+            preservedParents.add(group.parent);
+        }
+        for (const group of collection.rails) {
+            group.rails.forEach(rail => preservedParents.add(rail.parent));
+        }
+        removable.forEach(element => element.remove());
+
+        for (const placeholder of collection.placeholders) {
+            if (this.isPlaceholderGraphic(placeholder) || !preservedParents.has(placeholder)) {
+                placeholder.remove();
+                continue;
+            }
+            this.clearPlaceholderAttributes(placeholder);
+        }
+    }
+
+    private static clearPlaceholderAttributes(element: SVGElement): void {
+        element.removeAttribute('data-placeholder');
+        element.removeAttribute('data-rail');
+        element.removeAttribute('data-fill');
+        element.removeAttribute('data-location');
+        element.removeAttribute('data-rail-index');
+        element.removeAttribute('data-rail-capacity');
+    }
+
+    private static isPlaceholderGraphic(element: SVGElement): boolean {
+        return element instanceof SVGRectElement || this.isRailGeometry(element);
+    }
+
+    private static getShieldPipLayout(layout: BipedPaperdollPipLayout): BipedPaperdollPipLayout {
+        return layout === 'canon' ? 'distributed' : layout;
+    }
+
+    private static isGenericPipLayout(layout: BipedPaperdollPipLayout): boolean {
+        return layout === 'generic' || layout === 'generic-legacy';
+    }
+
+    private static isShieldPlaceholderType(
+        type: PaperdollPlaceholderType,
+    ): type is 'shield-dc' | 'shield-da' {
+        return type === 'shield-dc' || type === 'shield-da';
+    }
+
+    private static getPlaceholderPipOptions(
+        type: PaperdollPlaceholderType,
+        options: BipedPaperdollLayerOptions,
+    ): PipRenderOptions {
+        const pipOptions = options.pipOptions ?? {};
+        if (!this.isShieldPlaceholderType(type)) {
+            return pipOptions;
+        }
+        return {
+            ...pipOptions,
+            fill: pipOptions.fill ?? '#fff',
+            shape: type === 'shield-da' ? 'diamond' : 'circle',
+        };
     }
 
     private static appendRailPips(
@@ -624,15 +971,7 @@ export class BipedPaperdollUtil {
             return false;
         }
 
-        const pipOptions: PipRenderOptions = {
-            ...options.pipOptions,
-            ...(group.type === 'shield-dc' || group.type === 'shield-da'
-                ? {
-                    fill: options.pipOptions?.fill ?? '#fff',
-                    shape: group.type === 'shield-da' ? 'diamond' as const : 'circle' as const,
-                }
-                : {}),
-        };
+        const pipOptions = this.getPlaceholderPipOptions(group.type, options);
         const assignedRails: Array<{ rail: RailDefinition; capacity: number; count: number }> = [];
         let remaining = count;
         for (const rail of rails) {
@@ -684,16 +1023,14 @@ export class BipedPaperdollUtil {
         }
 
         for (const item of rendered) {
-            const zone = document.createElementNS(SVG_NAMESPACE, 'g');
-            zone.setAttribute('class', `biped-paperdoll-zone biped-paperdoll-zone-${group.location} biped-paperdoll-zone-${group.type}`);
-            zone.setAttribute('data-location', group.location);
-            zone.setAttribute('data-zone-type', group.type);
-            zone.setAttribute('data-layout', 'rail');
-            if (item.transform) {
-                zone.setAttribute('transform', item.transform);
-            }
-            zone.appendChild(item.pips);
-            item.parent.appendChild(zone);
+            this.appendPipZone(
+                item.parent,
+                group.type,
+                group.location,
+                item.pips,
+                item.transform,
+                'rail',
+            );
         }
         return true;
     }
@@ -862,85 +1199,6 @@ export class BipedPaperdollUtil {
 
     private static isPlaceholderType(value: string | null | undefined): value is PaperdollPlaceholderType {
         return value === 'armor' || value === 'structure' || value === 'shield-dc' || value === 'shield-da';
-    }
-
-    private static createPlaceholderPips(
-        group: PlaceholderGroup,
-        type: 'armor' | 'structure',
-        armor: BipedArmorValues | undefined,
-        structureTonnage: BipedStructureTonnage | undefined,
-        options: BipedPaperdollLayerOptions,
-    ): SVGGElement | null {
-        const selectedPipLayout = options.pipLayout ?? 'canon';
-        const primaryPips = this.createPlaceholderPipsForLayout(
-            group,
-            selectedPipLayout,
-            armor,
-            structureTonnage,
-            options,
-        );
-        if (primaryPips || !options.fallbackPipLayout || options.fallbackPipLayout === selectedPipLayout) {
-            return primaryPips;
-        }
-        return this.createPlaceholderPipsForLayout(
-            group,
-            options.fallbackPipLayout,
-            armor,
-            structureTonnage,
-            options,
-        );
-    }
-
-    private static createPlaceholderPipsForLayout(
-        group: PlaceholderGroup,
-        pipLayout: BipedPaperdollPipLayout,
-        armor: BipedArmorValues | undefined,
-        structureTonnage: BipedStructureTonnage | undefined,
-        options: BipedPaperdollLayerOptions,
-    ): SVGGElement | null {
-        const width = group.bounds.maxX - group.bounds.minX;
-        const height = group.bounds.maxY - group.bounds.minY;
-        if (pipLayout === 'generic') {
-            const count = this.readPlaceholderPipCount(group.type, group.location, armor, structureTonnage, options);
-            return typeof count === 'number'
-                ? GenericPipRenderer.createPips(count, width, height, options.pipOptions, group.type, group.location)
-                : null;
-        }
-        if (pipLayout === 'distributed') {
-            const count = this.readPlaceholderPipCount(group.type, group.location, armor, structureTonnage, options);
-            return typeof count === 'number'
-                ? this.createDistributedPlaceholderPips(group, count, options)
-                : null;
-        }
-        if (pipLayout !== 'canon') {
-            return null;
-        }
-        if (group.type === 'armor' && armor && typeof armor[group.location as BipedArmorLocation] === 'number') {
-            const count = armor[group.location as BipedArmorLocation] as number;
-            return CanonPipRenderer.createArmorPips(group.location, count, width, height, options.pipOptions);
-        }
-        const locationTonnage = this.getStructureTonnage(structureTonnage, group.location);
-        if (group.type === 'structure' && typeof locationTonnage === 'number') {
-            const count = CanonPipRenderer.getStructurePipCount(locationTonnage, group.location);
-            return CanonPipRenderer.createStructurePips(locationTonnage, group.location, width, height, options.pipOptions);
-        }
-        return null;
-    }
-
-    private static createDistributedPlaceholderPips(
-        group: PlaceholderGroup,
-        count: number,
-        options: BipedPaperdollLayerOptions,
-    ): SVGGElement | null {
-        const width = group.bounds.maxX - group.bounds.minX;
-        const height = group.bounds.maxY - group.bounds.minY;
-        return DistributedPipRenderer.createPips(
-            [{ x: 0, y: 0, width, height }],
-            count,
-            options.pipOptions,
-            group.type,
-            group.location,
-        );
     }
 
     private static readRectBounds(element: SVGElement): PlaceholderBounds {
