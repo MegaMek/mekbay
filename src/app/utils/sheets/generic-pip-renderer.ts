@@ -1,10 +1,16 @@
-import type { PipPoint, PipRenderOptions, PipRow } from './pip-renderer.types';
+import type { PipPoint, PipRenderOptions, PipShapeSpan } from './pip-renderer.types';
 import { PipRendererShared } from './pip-renderer.shared';
+import type { PipShapeProfile } from './pip-shape-profile';
 
 interface GenericPipLayout {
     readonly points: readonly PipPoint[];
     readonly maximumRadius: number;
     readonly rowCount: number;
+}
+
+interface GenericLayoutCandidate {
+    readonly rowCount: number;
+    readonly maximumRadiusUpperBound: number;
 }
 
 export class GenericPipRenderer {
@@ -16,7 +22,7 @@ export class GenericPipRenderer {
         options: PipRenderOptions = {},
         type = 'generic',
         location = '',
-        rows: readonly PipRow[] = [],
+        shapeProfile?: PipShapeProfile,
     ): SVGGElement | null {
         if (!Number.isFinite(count) || count <= 0 || containerWidth <= 0 || containerHeight <= 0) {
             return null;
@@ -36,7 +42,7 @@ export class GenericPipRenderer {
             PipRendererShared.getPipGap(options),
             strokeWidthRatio,
             requestedRadius,
-            this.normalizeRows(rows),
+            shapeProfile?.normalizedSpans ?? [],
         );
         if (!layout) {
             return null;
@@ -68,7 +74,7 @@ export class GenericPipRenderer {
         pipGap: number,
         strokeWidthRatio: number,
         requestedRadius: number,
-        rows: readonly PipRow[],
+        rows: readonly PipShapeSpan[],
     ): GenericPipLayout | null {
         const availableWidth = containerWidth - inset * 2;
         const availableHeight = containerHeight - inset * 2;
@@ -108,7 +114,27 @@ export class GenericPipRenderer {
         }
 
         let bestLayout: GenericPipLayout | null = null;
-        for (let rowCount = 1; rowCount <= pipCount; rowCount++) {
+        const candidates = Array.from({ length: pipCount }, (_value, index) => {
+            const rowCount = index + 1;
+            return {
+                rowCount,
+                maximumRadiusUpperBound: this.getUnrestrictedRadiusUpperBound(
+                    pipCount,
+                    rowCount,
+                    availableWidth,
+                    availableHeight,
+                    strokeWidthRatio,
+                    pipGap,
+                ),
+            };
+        }).sort((left, right) =>
+            right.maximumRadiusUpperBound - left.maximumRadiusUpperBound
+            || right.rowCount - left.rowCount);
+        for (const candidate of candidates) {
+            if (!this.canImproveLayout(candidate, bestLayout, containerWidth, containerHeight)) {
+                continue;
+            }
+            const rowCount = candidate.rowCount;
             const rowPipCounts = this.getInterleavedRowCounts(pipCount, rowCount);
             const maximumRowPipCount = Math.max(...rowPipCounts);
             const horizontalSpacing = availableWidth / maximumRowPipCount;
@@ -148,6 +174,48 @@ export class GenericPipRenderer {
         return bestLayout;
     }
 
+    private static getUnrestrictedRadiusUpperBound(
+        pipCount: number,
+        rowCount: number,
+        availableWidth: number,
+        availableHeight: number,
+        strokeWidthRatio: number,
+        pipGap: number,
+    ): number {
+        const maximumRowPipCount = Math.ceil(pipCount / rowCount);
+        const horizontalSpacing = availableWidth / maximumRowPipCount;
+        const verticalSpacing = availableHeight / rowCount;
+        const footprintFactor = PipRendererShared.getPipFootprintFactor(strokeWidthRatio);
+        let upperBound = Math.min(horizontalSpacing, verticalSpacing) / (2 * footprintFactor);
+        if (maximumRowPipCount > 1) {
+            upperBound = Math.min(
+                upperBound,
+                (horizontalSpacing - pipGap) / (2 * footprintFactor),
+            );
+        }
+        if (rowCount > 1) {
+            upperBound = Math.min(
+                upperBound,
+                (Math.hypot(verticalSpacing, horizontalSpacing / 2) - pipGap)
+                    / (2 * footprintFactor),
+            );
+        }
+        return Math.max(upperBound, 0);
+    }
+
+    private static canImproveLayout(
+        candidate: GenericLayoutCandidate,
+        bestLayout: GenericPipLayout | null,
+        containerWidth: number,
+        containerHeight: number,
+    ): boolean {
+        if (!bestLayout) {
+            return true;
+        }
+        const tolerance = Number.EPSILON * Math.max(containerWidth, containerHeight, 1) * 16;
+        return candidate.maximumRadiusUpperBound + tolerance >= bestLayout.maximumRadius;
+    }
+
     private static getBestRowLayout(
         pipCount: number,
         containerWidth: number,
@@ -156,7 +224,7 @@ export class GenericPipRenderer {
         pipGap: number,
         strokeWidthRatio: number,
         requestedRadius: number,
-        rows: readonly PipRow[],
+        rows: readonly PipShapeSpan[],
     ): GenericPipLayout | null {
         const usableRows = rows.filter(row =>
             row.width > inset * 2 && row.height > 0)
@@ -183,6 +251,21 @@ export class GenericPipRenderer {
             );
             if (!Number.isFinite(horizontalSpacing) || horizontalSpacing <= 0) {
                 continue;
+            }
+            if (rowPipCounts.some(count => count > 1)) {
+                const maximumRadiusUpperBound = Math.max(
+                    (horizontalSpacing - pipGap)
+                        / (2 * PipRendererShared.getPipFootprintFactor(strokeWidthRatio)),
+                    0,
+                );
+                if (!this.canImproveLayout(
+                    { rowCount, maximumRadiusUpperBound },
+                    bestLayout,
+                    containerWidth,
+                    containerHeight,
+                )) {
+                    continue;
+                }
             }
             const points: PipPoint[] = [];
             for (let rowIndex = 0; rowIndex < selectedRows.length; rowIndex++) {
@@ -239,7 +322,7 @@ export class GenericPipRenderer {
     }
 
     private static getSharedHorizontalSpacing(
-        rows: readonly PipRow[],
+        rows: readonly PipShapeSpan[],
         rowPipCounts: readonly number[],
         inset: number,
         footprintMargin: number,
@@ -259,7 +342,7 @@ export class GenericPipRenderer {
     }
 
     private static getRowPointX(
-        row: PipRow,
+        row: PipShapeSpan,
         rowCount: number,
         rowPipCount: number,
         column: number,
@@ -284,7 +367,7 @@ export class GenericPipRenderer {
     }
 
     private static getRowPointY(
-        row: PipRow,
+        row: PipShapeSpan,
         rowIndex: number,
         rowCount: number,
         containerHeight: number,
@@ -297,33 +380,12 @@ export class GenericPipRenderer {
             : row.y + row.height / 2;
     }
 
-    private static normalizeRows(rows: readonly PipRow[]): PipRow[] {
-        const validRows = rows.filter(row =>
-            Number.isFinite(row.x)
-            && Number.isFinite(row.y)
-            && Number.isFinite(row.width)
-            && Number.isFinite(row.height)
-            && row.width > 0
-            && row.height > 0);
-        if (validRows.length === 0) {
-            return [];
-        }
-        const minX = Math.min(...validRows.map(row => row.x));
-        const minY = Math.min(...validRows.map(row => row.y));
-        return validRows.map(row => ({
-            x: row.x - minX,
-            y: row.y - minY,
-            width: row.width,
-            height: row.height,
-        }));
-    }
-
     private static selectRows(
-        rows: readonly PipRow[],
+        rows: readonly PipShapeSpan[],
         rowCount: number,
         containerHeight: number,
         inset: number,
-    ): PipRow[] {
+    ): PipShapeSpan[] {
         const usedRows = rowCount <= rows.length ? new Set<number>() : null;
         return Array.from({ length: rowCount }, (_value, index) => {
             const targetY = inset
@@ -356,7 +418,7 @@ export class GenericPipRenderer {
     }
 
     private static getWeightedRowCounts(
-        rows: readonly PipRow[],
+        rows: readonly PipShapeSpan[],
         pipCount: number,
         inset: number,
     ): number[] {

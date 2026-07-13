@@ -1,5 +1,6 @@
-import type { PipRow } from './pip-renderer.types';
+import type { PipShapeSpan } from './pip-renderer.types';
 import { SVG_NAMESPACE } from './pip-renderer.shared';
+import { PipShapeProfile } from './pip-shape-profile';
 
 export const DEFAULT_PIP_ROW_HEIGHT = 6.1515198;
 
@@ -8,18 +9,18 @@ const ROW_STEP_RATIO = DEFAULT_PIP_ROW_STEP / DEFAULT_PIP_ROW_HEIGHT;
 const BOUNDARY_SEARCH_ITERATIONS = 12;
 const MAX_SCAN_COLUMNS = 512;
 
-export interface GeneratedPipRows {
-    readonly rows: readonly PipRow[];
+export interface GeneratedPipShapeProfile {
+    readonly profile: PipShapeProfile;
     readonly transform: string | null;
 }
 
-export class PipRowGenerator {
+export class PipShapeProfileGenerator {
 
     public static createDebugRows(
         geometry: SVGGeometryElement,
         requestedRowHeight = DEFAULT_PIP_ROW_HEIGHT,
     ): SVGGElement | null {
-        const generated = this.createRows(geometry, requestedRowHeight);
+        const generated = this.createProfile(geometry, requestedRowHeight);
         if (!generated) {
             return null;
         }
@@ -30,14 +31,14 @@ export class PipRowGenerator {
         if (generated.transform) {
             group.setAttribute('transform', generated.transform);
         }
-        for (const row of generated.rows) {
+        for (const span of generated.profile.spans) {
             const rectangle = document.createElementNS(SVG_NAMESPACE, 'rect');
             rectangle.setAttribute('class', 'biped-paperdoll-fill-placeholder-row');
             rectangle.setAttribute('data-fill-placeholder-row', 'true');
-            rectangle.setAttribute('x', row.x.toString());
-            rectangle.setAttribute('y', row.y.toString());
-            rectangle.setAttribute('width', row.width.toString());
-            rectangle.setAttribute('height', row.height.toString());
+            rectangle.setAttribute('x', span.x.toString());
+            rectangle.setAttribute('y', span.y.toString());
+            rectangle.setAttribute('width', span.width.toString());
+            rectangle.setAttribute('height', span.height.toString());
             rectangle.setAttribute('fill', 'none');
             rectangle.setAttribute('stroke', '#0f0');
             rectangle.setAttribute('stroke-width', '0.5');
@@ -53,10 +54,10 @@ export class PipRowGenerator {
             this.readEffectiveTransform(samplingGeometry));
     }
 
-    public static createRows(
+    public static createProfile(
         geometry: SVGGeometryElement,
         requestedRowHeight = DEFAULT_PIP_ROW_HEIGHT,
-    ): GeneratedPipRows | null {
+    ): GeneratedPipShapeProfile | null {
         return this.withSamplingGeometry(geometry, samplingGeometry => {
             const transform = this.readEffectiveTransform(samplingGeometry);
             samplingGeometry.removeAttribute('transform');
@@ -76,10 +77,11 @@ export class PipRowGenerator {
                     this.normalizeRowHeight(requestedRowHeight),
                     bounds.width,
                 );
-                const rows = this.isPlainRectangle(samplingGeometry)
+                const spans = this.isPlainRectangle(samplingGeometry)
                     ? this.createRectangleRows(bounds, rowHeight)
                     : this.createGeometryRows(samplingGeometry, bounds, rowHeight);
-                return rows.length > 0 ? { rows, transform } : null;
+                const profile = PipShapeProfile.create(spans);
+                return profile ? { profile, transform } : null;
             } catch {
                 return null;
             }
@@ -132,8 +134,8 @@ export class PipRowGenerator {
             && (!geometry.getAttribute('ry') || geometry.getAttribute('ry') === '0');
     }
 
-    private static createRectangleRows(bounds: DOMRect, rowHeight: number): PipRow[] {
-        const rows: PipRow[] = [];
+    private static createRectangleRows(bounds: DOMRect, rowHeight: number): PipShapeSpan[] {
+        const rows: PipShapeSpan[] = [];
         const rowStep = Math.min(rowHeight, rowHeight * ROW_STEP_RATIO);
         for (let top = bounds.y; top < bounds.y + bounds.height; top += rowStep) {
             const height = Math.min(rowHeight, bounds.y + bounds.height - top);
@@ -148,10 +150,10 @@ export class PipRowGenerator {
         geometry: SVGGeometryElement,
         bounds: DOMRect,
         rowHeight: number,
-    ): PipRow[] {
+    ): PipShapeSpan[] {
         const contains = this.createFillTester(geometry);
 
-        const rows: PipRow[] = [];
+        const rows: PipShapeSpan[] = [];
         const rowStep = Math.min(rowHeight, rowHeight * ROW_STEP_RATIO);
         const right = bounds.x + bounds.width;
         const bottom = bounds.y + bounds.height;
@@ -246,7 +248,7 @@ export class PipRowGenerator {
     }
 
     private static addRow(
-        rows: PipRow[],
+        rows: PipShapeSpan[],
         left: number,
         right: number,
         top: number,

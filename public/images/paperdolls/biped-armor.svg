@@ -6,6 +6,7 @@
     </bx:export>
     <bx:guide x="44.021" y="148.449" angle="90"/>
     <bx:guide x="84.433" y="276.666" angle="90"/>
+    <bx:guide x="63.503" y="61.308" angle="90"/>
   </defs>
   <g id="paperdoll-art-armor" transform="matrix(0.964505, 0, 0, 1, 0.039471, 0)">
     <path id="polygon747" d="M178.35,118.641L177.219,118.74L177.169,118.175L178.818,117.46L178.716,116.33L176.971,115.912L176.921,115.347L178.053,115.247L179.035,113.452L176.907,89.133L173.95,67.235L164.864,56.481L154.002,48.774L149.877,50.399L149.877,62.961L148.962,69.352L146.538,68.642L145.518,90.761L149.564,89.246L149.862,92.64L151.607,93.056L153.585,115.679L154.864,117.276L155.995,117.178L156.045,117.743L154.399,118.457L154.497,119.587L156.244,120.004L156.293,120.571L155.161,120.669L154.179,122.465L156.801,152.439L158.647,153.988L179.006,152.207L185.101,143.695L180.195,120.189L178.35,118.641Z" style="fill:rgb(199,199,199);fill-rule:nonzero;"/>
@@ -122,8 +123,8 @@
     <rect x="80.618" y="81.623" width="26.448" height="84.27" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.03px; stroke-dasharray: 2.473, 1.237;" data-canon="armor" data-location="CT"/>
     <rect x="48.002" y="64.284" width="28.578" height="84.385" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.18px; stroke-dasharray: 2.832, 1.416;" data-location="LT" data-canon="armor"/>
     <rect x="111.127" y="64.419" width="28.595" height="84.521" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.18px; stroke-dasharray: 2.832, 1.416;" data-location="RT" data-canon="armor"/>
-    <rect x="13.749" y="56" width="32.141" height="91" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.05px; stroke-dasharray: 2.511, 1.256;" data-location="LA" data-canon="armor"/>
-    <rect x="144.074" y="56" width="32.141" height="91" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.05px; stroke-dasharray: 2.527, 1.263;" data-location="RA" data-canon="armor"/>
+    <rect x="13.749" y="61.308" width="32.141" height="85.692" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.05px; stroke-dasharray: 2.511, 1.256;" data-location="LA" data-canon="armor"/>
+    <rect x="144.074" y="61.308" width="32.141" height="85.692" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.05px; stroke-dasharray: 2.527, 1.263;" data-location="RA" data-canon="armor"/>
     <rect x="26.226" y="154.595" width="58.893" height="121.954" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.19px; stroke-dasharray: 2.855, 1.428;" data-location="LL" data-canon="armor"/>
     <rect x="101.826" y="154.595" width="58.209" height="121.954" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.19px; stroke-dasharray: 2.861, 1.43;" data-location="RL" data-canon="armor"/>
     <g data-location="RT" data-rail="armor" transform="">

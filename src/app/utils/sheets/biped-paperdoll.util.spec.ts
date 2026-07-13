@@ -1,6 +1,6 @@
 import { BipedPaperdollUtil } from './biped-paperdoll.util';
 import { CanonPipRenderer } from './canon-pip-renderer';
-import { PipRowGenerator } from './pip-row-generator';
+import { PipShapeProfileGenerator } from './pip-shape-profile-generator';
 import { RailPipRenderer } from './rail-pip-renderer';
 
 describe('BipedPaperdollUtil', () => {
@@ -373,7 +373,7 @@ describe('BipedPaperdollUtil', () => {
                 </g>
             </svg>
         `);
-        const createRows = spyOn(PipRowGenerator, 'createRows').and.callThrough();
+        const createProfile = spyOn(PipShapeProfileGenerator, 'createProfile').and.callThrough();
         const options = {
             assetUrl: `data:image/svg+xml,${source}`,
             pipLayout: 'distributed' as const,
@@ -382,15 +382,15 @@ describe('BipedPaperdollUtil', () => {
 
         const generatedLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 80, { CT: 8 }, options);
         expect(generatedLayer.querySelector('[data-pip-layout="distributed"]')).not.toBeNull();
-        expect(createRows).toHaveBeenCalled();
+        expect(createProfile).toHaveBeenCalled();
 
-        createRows.calls.reset();
+        createProfile.calls.reset();
         const directLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 80, { CT: 8 }, {
             ...options,
             generateFillRows: false,
         });
         expect(directLayer.querySelector('[data-pip-layout="distributed"]')).not.toBeNull();
-        expect(createRows).not.toHaveBeenCalled();
+        expect(createProfile).not.toHaveBeenCalled();
     });
 
     it('prefers rail capacity attributes and falls back to durable SVG IDs', async () => {

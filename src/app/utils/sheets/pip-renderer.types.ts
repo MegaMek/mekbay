@@ -12,7 +12,7 @@ export interface PipRenderOptions {
     rowHeight?: number;
 }
 
-export interface PipRow {
+export interface PipShapeSpan {
     readonly x: number;
     readonly y: number;
     readonly width: number;

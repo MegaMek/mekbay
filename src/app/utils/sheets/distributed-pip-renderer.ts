@@ -1,9 +1,10 @@
 import type {
     PipPoint,
     PipRenderOptions,
-    PipRow,
+    PipShapeSpan,
 } from './pip-renderer.types';
 import { PipRendererShared } from './pip-renderer.shared';
+import type { PipShapeProfile } from './pip-shape-profile';
 
 interface DistributedPipLayout {
     readonly points: readonly PipPoint[];
@@ -24,33 +25,32 @@ const DISTRIBUTED_PIP_SPLIT_ALIGNMENT: DistributedPipSplitAlignment = 'top';
 export class DistributedPipRenderer {
 
     public static createPips(
-        rows: readonly PipRow[],
+        shapeProfile: PipShapeProfile,
         count: number,
         options: PipRenderOptions = {},
         type = 'shield',
         location = '',
     ): SVGGElement | null {
-        if (!Number.isFinite(count) || count <= 0 || rows.length === 0) {
+        if (!Number.isFinite(count) || count <= 0) {
             return null;
         }
 
         const pipCount = Math.floor(count);
-        const sortedRows = rows
-            .filter(row => row.width > 0 && row.height > 0)
-            .slice()
-            .sort((left, right) => left.y - right.y);
-        if (pipCount <= 0 || sortedRows.length === 0) {
+        if (pipCount <= 0) {
             return null;
         }
 
-        const minX = Math.min(...sortedRows.map(row => row.x));
-        const minY = Math.min(...sortedRows.map(row => row.y));
-        const maxX = Math.max(...sortedRows.map(row => row.x + row.width));
-        const maxY = Math.max(...sortedRows.map(row => row.y + row.height));
+        const sortedRows = shapeProfile.spans;
+        const {
+            left: minX,
+            top: minY,
+            right: maxX,
+            bottom: maxY,
+        } = shapeProfile.bounds;
         const boundsWidth = maxX - minX;
         const boundsHeight = maxY - minY;
-        const averageHeight = sortedRows.reduce((sum, row) => sum + row.height, 0) / sortedRows.length;
-        const averageWidth = sortedRows.reduce((sum, row) => sum + row.width, 0) / sortedRows.length;
+        const averageHeight = shapeProfile.averageSpanHeight;
+        const averageWidth = shapeProfile.averageSpanWidth;
         if (boundsWidth <= 0 || boundsHeight <= 0 || averageHeight <= 0 || averageWidth <= 0) {
             return null;
         }
@@ -95,7 +95,7 @@ export class DistributedPipRenderer {
     }
 
     private static getBestLayout(
-        sortedRows: readonly PipRow[],
+        sortedRows: readonly PipShapeSpan[],
         pipCount: number,
         minX: number,
         minY: number,

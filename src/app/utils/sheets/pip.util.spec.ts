@@ -1,7 +1,10 @@
 import { CanonPipRenderer } from './canon-pip-renderer';
 import { DistributedPipRenderer } from './distributed-pip-renderer';
 import { GenericPipRenderer } from './generic-pip-renderer';
-import { PipRowGenerator } from './pip-row-generator';
+import { PipRendererShared } from './pip-renderer.shared';
+import { PipShapeProfileGenerator } from './pip-shape-profile-generator';
+import { PipShapeProfile } from './pip-shape-profile';
+import type { PipShapeSpan } from './pip-renderer.types';
 import { RailPipRenderer } from './rail-pip-renderer';
 import {
     BIPED_ARMOR_PIP_LAYOUTS,
@@ -12,6 +15,8 @@ const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
 describe('Pip renderers', () => {
     const svgRoots: SVGSVGElement[] = [];
+    const createProfile = (spans: readonly PipShapeSpan[]): PipShapeProfile =>
+        PipShapeProfile.create(spans) as PipShapeProfile;
 
     afterEach(() => {
         svgRoots.forEach(root => root.remove());
@@ -100,18 +105,32 @@ describe('Pip renderers', () => {
         rectangle.setAttribute('width', '30');
         rectangle.setAttribute('height', '90');
 
-        const generated = PipRowGenerator.createRows(rectangle);
+        const generated = PipShapeProfileGenerator.createProfile(rectangle);
 
         expect(generated).not.toBeNull();
-        expect(generated?.rows.length).toBeGreaterThan(1);
-        expect(generated?.rows.every(row => row.width >= row.height)).toBeTrue();
+        expect(generated?.profile.spans.length).toBeGreaterThan(1);
+        expect(generated?.profile.spans.every(span => span.width >= span.height)).toBeTrue();
+    });
+
+    it('precomputes validated shape profile bounds and normalized spans', () => {
+        const profile = PipShapeProfile.create([
+            { x: 14, y: 20, width: 8, height: 4 },
+            { x: 10, y: 12, width: 5, height: 3 },
+            { x: 0, y: 0, width: 0, height: 1 },
+        ]);
+
+        expect(profile?.bounds).toEqual({ left: 10, top: 12, right: 22, bottom: 24 });
+        expect(profile?.spans.map(span => [span.x, span.y])).toEqual([[10, 12], [14, 20]]);
+        expect(profile?.normalizedSpans.map(span => [span.x, span.y])).toEqual([[0, 0], [4, 8]]);
+        expect(profile?.averageSpanWidth).toBe(6.5);
+        expect(profile?.averageSpanHeight).toBe(3.5);
     });
 
     it('samples each geometry row within its own vertical band', () => {
         const path = createPath('M 0 0 H 30 V 10 H 10 V 30 H 0 Z', 30, 30);
 
-        const generated = PipRowGenerator.createRows(path);
-        const upperRow = generated?.rows[0];
+        const generated = PipShapeProfileGenerator.createProfile(path);
+        const upperRow = generated?.profile.spans[0];
 
         expect(upperRow).toBeDefined();
         expect(upperRow?.x).toBeCloseTo(0, 3);
@@ -126,8 +145,8 @@ describe('Pip renderers', () => {
         );
         path.setAttribute('fill-rule', 'evenodd');
 
-        const generated = PipRowGenerator.createRows(path);
-        const firstBand = generated?.rows.filter(row => row.y < 1) ?? [];
+        const generated = PipShapeProfileGenerator.createProfile(path);
+        const firstBand = generated?.profile.spans.filter(span => span.y < 1) ?? [];
 
         expect(firstBand.length).toBe(2);
         expect(firstBand[0].x + firstBand[0].width).toBeLessThanOrEqual(10.01);
@@ -138,16 +157,16 @@ describe('Pip renderers', () => {
         const path = createPath('M 0 0 H 40 V 30 H 0 Z', 50, 40);
         path.setAttribute('transform', 'translate(12 4)');
 
-        const generated = PipRowGenerator.createRows(path, 3);
+        const generated = PipShapeProfileGenerator.createProfile(path, 3);
         const pips = generated
-            ? DistributedPipRenderer.createPips(generated.rows, 3, { rowHeight: 3 })
+            ? DistributedPipRenderer.createPips(generated.profile, 3, { rowHeight: 3 })
             : null;
         if (pips && generated?.transform) {
             pips.setAttribute('transform', generated.transform);
         }
 
         expect(generated?.transform).toBe('matrix(1 0 0 1 12 4)');
-        expect(generated?.rows.every(row => row.height <= 3 && row.width >= row.height)).toBeTrue();
+        expect(generated?.profile.spans.every(span => span.height <= 3 && span.width >= span.height)).toBeTrue();
         expect(pips?.getAttribute('transform')).toBe('matrix(1 0 0 1 12 4)');
     });
 
@@ -167,9 +186,9 @@ describe('Pip renderers', () => {
         document.body.appendChild(svg);
         svgRoots.push(svg);
 
-        const generated = PipRowGenerator.createRows(rectangle, 6);
+        const generated = PipShapeProfileGenerator.createProfile(rectangle, 6);
         const pips = generated
-            ? DistributedPipRenderer.createPips(generated.rows, 3, { rowHeight: 6 })
+            ? DistributedPipRenderer.createPips(generated.profile, 3, { rowHeight: 6 })
             : null;
         if (pips && generated?.transform) {
             pips.setAttribute('transform', generated.transform);
@@ -224,7 +243,7 @@ describe('Pip renderers', () => {
             { minPipRadius: 0, pipGap: 0, pipRadius: 100, strokeWidthRatio: 0 },
             'armor',
             'CT',
-            rows,
+            createProfile(rows),
         );
         const rectanglePips = GenericPipRenderer.createPips(
             8,
@@ -262,10 +281,10 @@ describe('Pip renderers', () => {
             options,
             'armor',
             'CT',
-            [
+            createProfile([
                 { x: 0, y: 0, width: 30, height: 10 },
                 { x: 0, y: 10, width: 30, height: 10 },
-            ],
+            ]),
         );
         const withoutRows = GenericPipRenderer.createPips(7, 30, 20, options);
         const getPoints = (group: SVGGElement | null): number[][] =>
@@ -297,7 +316,7 @@ describe('Pip renderers', () => {
             { minPipRadius: 0, pipGap: 0, pipRadius: 100, strokeWidthRatio: 0.2 },
             'armor',
             'CT',
-            rows,
+            createProfile(rows),
         );
         const circles = Array.from(pips?.querySelectorAll('circle') ?? []);
         const rowCenters = new Set(circles.map(circle => circle.getAttribute('cy')));
@@ -305,6 +324,19 @@ describe('Pip renderers', () => {
         expect(circles.length).toBe(120);
         expect(rowCenters.size).toBeGreaterThan(rows.length);
         expect(Number(circles[0]?.getAttribute('r'))).toBeGreaterThan(1.8);
+    });
+
+    it('prunes expensive generic candidate evaluation for dense layouts', () => {
+        const evaluate = spyOn(PipRendererShared, 'getMaximumRadiusForPoints').and.callThrough();
+        const pips = GenericPipRenderer.createPips(
+            120,
+            26.448,
+            84.27,
+            { inset: 1.8, minPipRadius: 0, pipGap: 0, pipRadius: 100, strokeWidthRatio: 0.2 },
+        );
+
+        expect(pips?.querySelectorAll('circle').length).toBe(120);
+        expect(evaluate.calls.count()).toBeLessThan(10);
     });
 
     it('moves full-radius pips inside offset synthetic row boundaries', () => {
@@ -320,7 +352,7 @@ describe('Pip renderers', () => {
             { minPipRadius: 0, pipGap: 0, pipRadius: radius, strokeWidthRatio: 0 },
             'armor',
             'CT',
-            rows,
+            createProfile(rows),
         );
         const circles = Array.from(pips?.querySelectorAll('circle') ?? []);
 
@@ -422,7 +454,7 @@ describe('Pip renderers', () => {
             height: 6,
         }));
         const pips = DistributedPipRenderer.createPips(
-            rows,
+            createProfile(rows),
             3,
             { minPipRadius: 0, pipGap: 0, pipRadius: 100, strokeWidthRatio: 0 },
         );
@@ -440,14 +472,14 @@ describe('Pip renderers', () => {
     it('chooses a larger distributed layout when zero gap fits another row arrangement', () => {
         const options = { inset: 1.8, minPipRadius: 0, pipGap: 0, pipRadius: 3 };
         const zeroGapPips = DistributedPipRenderer.createPips(
-            [{ x: 0, y: 0, width: 17.088, height: 21.553 }],
+            createProfile([{ x: 0, y: 0, width: 17.088, height: 21.553 }]),
             5,
             options,
             'armor',
             'HD',
         );
         const positiveGapPips = DistributedPipRenderer.createPips(
-            [{ x: 0, y: 0, width: 17.088, height: 21.553 }],
+            createProfile([{ x: 0, y: 0, width: 17.088, height: 21.553 }]),
             5,
             { ...options, pipGap: 1 },
             'armor',
@@ -495,7 +527,7 @@ describe('Pip renderers', () => {
 
     it('balances many distributed pips across more rows', () => {
         const pips = DistributedPipRenderer.createPips(
-            [{ x: 0, y: 0, width: 17.088, height: 21.553 }],
+            createProfile([{ x: 0, y: 0, width: 17.088, height: 21.553 }]),
             18,
             { inset: 1.8, pipGap: 0, pipRadius: 3 },
             'armor',
@@ -518,7 +550,7 @@ describe('Pip renderers', () => {
 
     it('alternates row parity for dense distributed layouts', () => {
         const pips = DistributedPipRenderer.createPips(
-            [{ x: 0, y: 0, width: 40, height: 20 }],
+            createProfile([{ x: 0, y: 0, width: 40, height: 20 }]),
             9,
             { minPipRadius: 0, pipGap: 1, pipRadius: 100, strokeWidthRatio: 0 },
             'armor',
