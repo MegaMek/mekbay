@@ -365,7 +365,7 @@ describe('BipedPaperdollUtil', () => {
         expect(distributedLayer.querySelector('[data-location="CT"] [data-pip-layout="distributed"]')).not.toBeNull();
     });
 
-    it('generates fill rows only when requested', async () => {
+    it('generates fill rows by default unless disabled', async () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 80">
                 <g id="paperdoll-art-armor">
@@ -380,16 +380,17 @@ describe('BipedPaperdollUtil', () => {
             pipOptions: { inset: 1, minPipRadius: 0, pipGap: 0 },
         };
 
-        const directLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 80, { CT: 8 }, options);
-        expect(directLayer.querySelector('[data-pip-layout="distributed"]')).not.toBeNull();
-        expect(createRows).not.toHaveBeenCalled();
-
-        const generatedLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 80, { CT: 8 }, {
-            ...options,
-            generateFillRows: true,
-        });
+        const generatedLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 80, { CT: 8 }, options);
         expect(generatedLayer.querySelector('[data-pip-layout="distributed"]')).not.toBeNull();
         expect(createRows).toHaveBeenCalled();
+
+        createRows.calls.reset();
+        const directLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 80, { CT: 8 }, {
+            ...options,
+            generateFillRows: false,
+        });
+        expect(directLayer.querySelector('[data-pip-layout="distributed"]')).not.toBeNull();
+        expect(createRows).not.toHaveBeenCalled();
     });
 
     it('prefers rail capacity attributes and falls back to durable SVG IDs', async () => {
@@ -449,7 +450,6 @@ describe('BipedPaperdollUtil', () => {
             assetUrl: `data:image/svg+xml,${source}`,
             pipLayout: 'distributed' as const,
             pipOptions: { rowHeight: 5 },
-            generateFillRows: true,
             showFillPlaceholders: true,
         };
         const debugLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 60, { CT: 4 }, options);

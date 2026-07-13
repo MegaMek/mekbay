@@ -105,8 +105,11 @@ export class PipRendererShared {
         if (points.length < 2) {
             return Infinity;
         }
-        const pointsByY = [...points].sort((left, right) =>
-            left.y - right.y || left.x - right.x);
+        const pointsByY = points.every((point, index) => index === 0
+            || point.y > points[index - 1].y
+            || point.y === points[index - 1].y && point.x >= points[index - 1].x)
+            ? points
+            : [...points].sort((left, right) => left.y - right.y || left.x - right.x);
         let minimumDistanceSquared = Infinity;
         for (let firstIndex = 0; firstIndex < pointsByY.length; firstIndex++) {
             for (let secondIndex = firstIndex + 1; secondIndex < pointsByY.length; secondIndex++) {

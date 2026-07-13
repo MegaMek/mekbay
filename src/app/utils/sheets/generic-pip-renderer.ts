@@ -168,6 +168,10 @@ export class GenericPipRenderer {
 
         let bestLayout: GenericPipLayout | null = null;
         const maximumRowCount = pipCount;
+        const footprintMargin = PipRendererShared.getPipFootprintRadius(
+            requestedRadius,
+            strokeWidthRatio,
+        );
         for (let rowCount = 1; rowCount <= maximumRowCount; rowCount++) {
             const selectedRows = this.selectRows(usableRows, rowCount, containerHeight, inset);
             const rowPipCounts = this.getWeightedRowCounts(selectedRows, pipCount, inset);
@@ -175,19 +179,12 @@ export class GenericPipRenderer {
                 selectedRows,
                 rowPipCounts,
                 inset,
-                PipRendererShared.getPipFootprintRadius(
-                    requestedRadius,
-                    strokeWidthRatio,
-                ),
+                footprintMargin,
             );
             if (!Number.isFinite(horizontalSpacing) || horizontalSpacing <= 0) {
                 continue;
             }
             const points: PipPoint[] = [];
-            const footprintMargin = PipRendererShared.getPipFootprintRadius(
-                requestedRadius,
-                strokeWidthRatio,
-            );
             for (let rowIndex = 0; rowIndex < selectedRows.length; rowIndex++) {
                 const row = selectedRows[rowIndex];
                 const rowPipCount = rowPipCounts[rowIndex];
@@ -332,21 +329,22 @@ export class GenericPipRenderer {
             const targetY = inset
                 + (index + 0.5) * (containerHeight - inset * 2) / rowCount;
             let selectedIndex = -1;
-            let selectedScore: readonly [number, number, number] | undefined;
+            let selectedContainmentScore = Infinity;
+            let selectedDistance = Infinity;
             for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
                 if (usedRows?.has(rowIndex)) {
                     continue;
                 }
                 const row = rows[rowIndex];
                 const containsTarget = targetY >= row.y && targetY <= row.y + row.height;
-                const score: readonly [number, number, number] = [
-                    containsTarget ? 0 : 1,
-                    Math.abs(targetY - (row.y + row.height / 2)),
-                    rowIndex,
-                ];
-                if (!selectedScore || this.compareRowScores(score, selectedScore) < 0) {
+                const containmentScore = containsTarget ? 0 : 1;
+                const distance = Math.abs(targetY - (row.y + row.height / 2));
+                if (containmentScore < selectedContainmentScore
+                    || containmentScore === selectedContainmentScore
+                        && distance < selectedDistance) {
                     selectedIndex = rowIndex;
-                    selectedScore = score;
+                    selectedContainmentScore = containmentScore;
+                    selectedDistance = distance;
                 }
             }
             if (selectedIndex < 0) {
@@ -355,13 +353,6 @@ export class GenericPipRenderer {
             usedRows?.add(selectedIndex);
             return rows[selectedIndex];
         });
-    }
-
-    private static compareRowScores(
-        left: readonly [number, number, number],
-        right: readonly [number, number, number],
-    ): number {
-        return left[0] - right[0] || left[1] - right[1] || left[2] - right[2];
     }
 
     private static getWeightedRowCounts(
@@ -377,16 +368,15 @@ export class GenericPipRenderer {
         }
 
         const counts = Array.from({ length: rows.length }, () => 0);
+        let rowIndex = 0;
+        let accumulatedWeight = weights[0];
         for (let index = 0; index < pipCount; index++) {
             const target = (index + 0.5) * totalWeight / pipCount;
-            let accumulatedWeight = 0;
-            for (let rowIndex = 0; rowIndex < weights.length; rowIndex++) {
+            while (target > accumulatedWeight && rowIndex < weights.length - 1) {
+                rowIndex++;
                 accumulatedWeight += weights[rowIndex];
-                if (target <= accumulatedWeight || rowIndex === weights.length - 1) {
-                    counts[rowIndex]++;
-                    break;
-                }
             }
+            counts[rowIndex]++;
         }
         return counts;
     }
@@ -395,12 +385,12 @@ export class GenericPipRenderer {
         const basePipCount = Math.floor(pipCount / rowCount);
         const remainder = pipCount % rowCount;
         const rowPipCounts = Array.from({ length: rowCount }, () => basePipCount);
-        const rowOrder = [
-            ...Array.from({ length: rowCount }, (_value, index) => index).filter(index => index % 2 === 0),
-            ...Array.from({ length: rowCount }, (_value, index) => index).filter(index => index % 2 !== 0),
-        ];
+        const evenRowCount = Math.ceil(rowCount / 2);
         for (let index = 0; index < remainder; index++) {
-            rowPipCounts[rowOrder[index]]++;
+            const rowIndex = index < evenRowCount
+                ? index * 2
+                : (index - evenRowCount) * 2 + 1;
+            rowPipCounts[rowIndex]++;
         }
         return rowPipCounts;
     }

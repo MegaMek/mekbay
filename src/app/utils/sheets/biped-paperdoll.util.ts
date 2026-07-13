@@ -345,7 +345,7 @@ export class BipedPaperdollUtil {
 
         this.renderRailGroups(collection.rails, requestedLayout, context, blockedKeys);
         this.renderFillGroups(collection.fills, requestedLayout, context, blockedKeys);
-        if (options.showFillPlaceholders && options.generateFillRows) {
+        if (options.showFillPlaceholders && options.generateFillRows !== false) {
             this.renderFillPlaceholderRows(collection.fills, options);
         }
         this.renderShieldGroups(collection.shields, requestedLayout, context, blockedKeys);
@@ -855,7 +855,7 @@ export class BipedPaperdollUtil {
         location: string,
     ): SVGGElement | null {
         const options = this.getPlaceholderPipOptions(type, layerOptions);
-        const generated = layerOptions.generateFillRows
+        const generated = layerOptions.generateFillRows !== false
             ? PipRowGenerator.createRows(geometry, options.rowHeight)
             : null;
         const bounds = generated
