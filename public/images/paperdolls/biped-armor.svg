@@ -115,7 +115,7 @@
     <rect x="8.709" y="41.993" width="19.8" height="6.152" style="fill:none;stroke:rgb(225,29,72);stroke-opacity:0.9;stroke-width:1.25px;stroke-dasharray:3,1.5;" data-location="LA" data-fill="shield-dc"/>
     <rect x="6.689" y="47.32" width="15.7" height="6.152" style="fill:none;stroke:rgb(225,29,72);stroke-opacity:0.9;stroke-width:1.25px;stroke-dasharray:3,1.5;" data-location="LA" data-fill="shield-dc"/>
     <g fill="none" id="shieldDALA" data-location="DALA" class="shield unitLocation" transform="translate(4.5 66) rotate(3)">
-      <rect x="0" width="6" y="0" stroke="red" height="44" data-fill="shield-da" data-location="LA"/>
+      <rect width="5.383" stroke="red" height="44" data-fill="shield-da" data-location="LA" style=""/>
     </g>
     <rect x="85.252" y="46.714" width="17.088" height="24.279" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.2px; stroke-dasharray: 2.88, 1.44;" data-fill="HD" data-location="HD" data-canon="armor"/>
     <rect x="80.618" y="81.623" width="26.448" height="84.27" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.03px; stroke-dasharray: 2.473, 1.237;" data-fill="armor" data-location="CT" data-canon="armor"/>
@@ -126,7 +126,7 @@
     <rect x="26.226" y="154.595" width="58.893" height="121.954" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.19px; stroke-dasharray: 2.855, 1.428;" data-location="LL" data-canon="armor"/>
     <rect x="101.826" y="154.595" width="58.209" height="121.954" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.19px; stroke-dasharray: 2.861, 1.43;" data-location="RL" data-canon="armor"/>
     <g fill="none" id="shieldDARA" data-location="DARA" class="shield unitLocation" transform="translate(177.5 66) rotate(-3)">
-      <rect x="0" width="6" y="0" stroke="red" height="44" data-location="RA" data-fill="shield-da"/>
+      <rect x="0.607" width="5.393" stroke="red" height="44" data-location="RA" data-fill="shield-da" style=""/>
     </g>
     <g data-location="RT" data-rail="armor" transform="">
       <path d="M 125.932 67.303 L 126.088 96.902" style="fill: none; stroke-width: 1px; stroke-linecap: round; stroke-linejoin: round; stroke-miterlimit: 1.5; stroke: rgb(0, 255, 0); stroke-dasharray: 2;" data-rail-capacity="5" data-rail-index="1"/>
