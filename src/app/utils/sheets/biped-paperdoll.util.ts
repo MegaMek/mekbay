@@ -892,10 +892,10 @@ export class BipedPaperdollUtil {
                     location,
                 );
                 if (pips) {
-                    const transforms = [`translate(${bounds.minX} ${bounds.minY})`];
-                    if (sourceTransform) {
-                        transforms.push(sourceTransform);
-                    }
+                    const transforms = sourceTransform ? [
+                        sourceTransform,
+                        `translate(${bounds.minX} ${bounds.minY})`,
+                    ] : [`translate(${bounds.minX} ${bounds.minY})`];
                     pips.setAttribute('transform', transforms.join(' '));
                 }
                 return pips;
