@@ -397,6 +397,30 @@ describe('Pip renderers', () => {
         expect(BIPED_ARMOR_PIP_LAYOUTS['CT'].info).toEqual({ width: 0.299, height: 1 });
     });
 
+    it('uses the available height when distributing sparse pips across rows', () => {
+        const height = 86;
+        const rows = Array.from({ length: 17 }, (_value, index) => ({
+            x: 0,
+            y: index * 5,
+            width: 20,
+            height: 6,
+        }));
+        const pips = DistributedPipRenderer.createPips(
+            rows,
+            3,
+            { minPipRadius: 0, pipGap: 0, pipRadius: 100, strokeWidthRatio: 0 },
+        );
+        const yValues = [...new Set(Array.from(
+            pips?.querySelectorAll('circle') ?? [],
+            circle => Number(circle.getAttribute('cy')),
+        ))];
+
+        expect(yValues.length).toBe(3);
+        expect(yValues[0]).toBeCloseTo(height / 6, 6);
+        expect(yValues[1]).toBeCloseTo(height / 2, 6);
+        expect(yValues[2]).toBeCloseTo(height * 5 / 6, 6);
+    });
+
     it('chooses a larger distributed layout when zero gap fits another row arrangement', () => {
         const options = { inset: 1.8, minPipRadius: 0, pipGap: 0, pipRadius: 3 };
         const zeroGapPips = DistributedPipRenderer.createPips(
@@ -495,6 +519,7 @@ describe('Pip renderers', () => {
         expect(pips).not.toBeNull();
         const counts = Array.from(rowCounts.values());
         expect(counts.length).toBe(2);
+        expect(counts).toEqual([5, 4]);
         expect(counts.reduce((sum, count) => sum + count, 0)).toBe(9);
         expect(counts[0] % 2).not.toBe(counts[1] % 2);
         expect(Number(pips?.querySelector('circle')?.getAttribute('r'))).toBeCloseTo(3.5, 6);

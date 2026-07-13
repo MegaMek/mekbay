@@ -17,6 +17,10 @@ interface DistributedPipRow {
     count: number;
 }
 
+type DistributedPipSplitAlignment = 'top' | 'bottom' | 'center';
+
+const DISTRIBUTED_PIP_SPLIT_ALIGNMENT: DistributedPipSplitAlignment = 'top';
+
 export class DistributedPipRenderer {
 
     public static createPips(
@@ -113,10 +117,8 @@ export class DistributedPipRenderer {
         let bestLayout: DistributedPipLayout | null = null;
         for (let rowCount = 1; rowCount <= pipCount; rowCount++) {
             const columnCount = Math.max(1, Math.ceil(pipCount / rowCount));
-            const initialSpacing = Math.min(averageHeight, availableHeight / rowCount);
-            const staggered = initialSpacing < averageHeight;
-            let spacing = initialSpacing;
-            spacing = Math.sqrt(spacing * rowCount / availableHeight) * availableHeight / rowCount;
+            let spacing = availableHeight / rowCount;
+            const staggered = spacing < averageHeight;
 
             const layoutRows: DistributedPipRow[] = [];
             let yPosition = Math.max(
@@ -214,18 +216,33 @@ export class DistributedPipRenderer {
             return spacing;
         }
 
-        const rowOrder = rows
+        const adding = pipCount > allocated;
+        const eligibleRows = rows
             .map((_row, index) => index)
-            .filter(index => rows[index].right > rows[index].left)
-            .sort((left, right) => {
-                const leftRow = rows[left];
-                const rightRow = rows[right];
-                return leftRow.count / Math.max(leftRow.right - leftRow.left, 1)
-                    - rightRow.count / Math.max(rightRow.right - rightRow.left, 1);
-            });
-        if (rowOrder.length === 0) {
+            .filter(index => rows[index].right > rows[index].left);
+        const rowOrder = eligibleRows.slice().sort((left, right) => {
+            const leftRow = rows[left];
+            const rightRow = rows[right];
+            return leftRow.count / Math.max(leftRow.right - leftRow.left, 1)
+            - rightRow.count / Math.max(rightRow.right - rightRow.left, 1);
+        });
+        if (eligibleRows.length === 0) {
             return spacing;
         }
+
+        rowOrder.sort((left, right) => {
+            const leftRow = rows[left];
+            const rightRow = rows[right];
+            const densityDifference = leftRow.count / Math.max(leftRow.right - leftRow.left, 1)
+                - rightRow.count / Math.max(rightRow.right - rightRow.left, 1);
+            if (densityDifference !== 0) {
+                return densityDifference;
+            }
+            const leftPriority = this.getSplitAlignmentPriority(left, rows.length);
+            const rightPriority = this.getSplitAlignmentPriority(right, rows.length);
+            return (adding ? leftPriority - rightPriority : rightPriority - leftPriority)
+                || left - right;
+        });
 
         const rowDelta = staggered ? 2 : 1;
         let rowIndex = 0;
@@ -270,6 +287,18 @@ export class DistributedPipRenderer {
             }
         } while (skipped === rowOrder.length);
         return spacing;
+    }
+
+    private static getSplitAlignmentPriority(index: number, rowCount: number): number {
+        switch (DISTRIBUTED_PIP_SPLIT_ALIGNMENT) {
+            case 'bottom':
+                return rowCount - index - 1;
+            case 'center':
+                return Math.abs(index - (rowCount - 1) / 2);
+            case 'top':
+            default:
+                return index;
+        }
     }
 
     private static getCenters(
