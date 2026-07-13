@@ -8,8 +8,8 @@ export const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
 const DEFAULT_STROKE_WIDTH_RATIO = 0.21;
 const DEFAULT_PIP_RADIUS = 3;
-const DEFAULT_MIN_PIP_RADIUS = 2.29;
-const DEFAULT_PIP_GAP = 1;
+const DEFAULT_MIN_PIP_RADIUS = 1.5;
+const DEFAULT_PIP_GAP = 0.2;
 const DEFAULT_INSET = 0;
 
 export class PipRendererShared {

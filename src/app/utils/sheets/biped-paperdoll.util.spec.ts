@@ -1,5 +1,7 @@
 import { BipedPaperdollUtil } from './biped-paperdoll.util';
 import { CanonPipRenderer } from './canon-pip-renderer';
+import { DistributedPipRenderer } from './distributed-pip-renderer';
+import { GenericPipRenderer } from './generic-pip-renderer';
 import { RailPipRenderer } from './rail-pip-renderer';
 
 describe('BipedPaperdollUtil', () => {
@@ -40,8 +42,8 @@ describe('BipedPaperdollUtil', () => {
         const paperdoll = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         paperdoll.append(armorLayer, rearArmorLayer, structureLayer);
 
-            expect(paperdoll.querySelector('#paperdoll-art-armor')).not.toBeNull();
-            expect(paperdoll.querySelector('#paperdoll-art-structure')).not.toBeNull();
+        expect(paperdoll.querySelector('#paperdoll-art-armor')).not.toBeNull();
+        expect(paperdoll.querySelector('#paperdoll-art-structure')).not.toBeNull();
         expect(paperdoll.querySelectorAll('[data-type="armor"]').length).toBe(2);
         expect(paperdoll.querySelectorAll('[data-type="structure"]').length).toBe(1);
         expect(armorLayer.getAttribute('transform')).toBe('translate(2 2)');
@@ -57,7 +59,7 @@ describe('BipedPaperdollUtil', () => {
         expect(paperdoll.querySelectorAll('.shield').length).toBeGreaterThan(0);
         expect(paperdoll.querySelectorAll('path').length).toBeGreaterThan(0);
         expect(paperdoll.querySelectorAll('circle').length).toBeGreaterThan(0);
-        expect(paperdoll.querySelectorAll('[data-placeholder]').length).toBe(0);
+        expect(paperdoll.querySelectorAll('[data-canon]').length).toBe(0);
         expect(paperdoll.querySelectorAll('rect').length).toBe(0);
     });
 
@@ -194,7 +196,7 @@ describe('BipedPaperdollUtil', () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
                 <g id="paperdoll-art-armor">
-                    <rect data-placeholder="armor" data-location="HD" x="0" y="0" width="100" height="20" />
+                    <rect data-canon="armor" data-location="HD" x="0" y="0" width="100" height="20" />
                 </g>
             </svg>
         `);
@@ -209,7 +211,7 @@ describe('BipedPaperdollUtil', () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
                 <g id="paperdoll-art-armor">
-                    <rect data-placeholder="armor" data-location="HD" x="0" y="0" width="100" height="20" />
+                    <rect data-canon="armor" data-location="HD" x="0" y="0" width="100" height="20" />
                 </g>
             </svg>
         `);
@@ -224,21 +226,17 @@ describe('BipedPaperdollUtil', () => {
         expect(zone?.querySelectorAll('circle').length).toBe(10);
     });
 
-    it('does not implicitly use canon for rail or fill modes', async () => {
+    it('does not implicitly use canon for rail mode', async () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
                 <g id="paperdoll-art-armor">
-                    <rect data-placeholder="armor" data-location="HD" x="0" y="0" width="100" height="20" />
+                    <rect data-canon="armor" data-location="HD" x="0" y="0" width="100" height="20" />
                 </g>
             </svg>
         `);
         const railLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 20, { HD: 1 }, {
             assetUrl: `data:image/svg+xml,${source}`,
             pipLayout: 'rail',
-        });
-        const fillLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 20, { HD: 1 }, {
-            assetUrl: `data:image/svg+xml,${source}`,
-            pipLayout: 'fill',
         });
         const fallbackLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 20, { HD: 1 }, {
             assetUrl: `data:image/svg+xml,${source}`,
@@ -247,7 +245,6 @@ describe('BipedPaperdollUtil', () => {
         });
 
         expect(railLayer.querySelector('[data-location="HD"][data-zone-type="armor"]')).toBeNull();
-        expect(fillLayer.querySelector('[data-location="HD"][data-zone-type="armor"]')).toBeNull();
         expect(fallbackLayer.querySelector('[data-pip-layout="canon"]')).not.toBeNull();
     });
 
@@ -255,7 +252,7 @@ describe('BipedPaperdollUtil', () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
                 <g id="paperdoll-art-armor">
-                    <rect data-placeholder="armor" data-location="HD" x="0" y="0" width="100" height="20" />
+                    <rect data-fill="armor" data-canon="armor" data-location="HD" x="0" y="0" width="100" height="20" />
                 </g>
             </svg>
         `);
@@ -268,12 +265,141 @@ describe('BipedPaperdollUtil', () => {
         expect(armorLayer.querySelector('[data-pip-layout="distributed"]')).not.toBeNull();
     });
 
+    it('routes data-fill geometry through distributed and generic layouts', async () => {
+        const source = encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60">
+                <g id="paperdoll-art-armor">
+                    <path data-fill="armor" data-location="LT" d="M 0 0 H 80 V 50 H 0 Z" />
+                </g>
+            </svg>
+        `);
+
+        for (const pipLayout of ['distributed', 'generic'] as const) {
+            const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 60, {
+                LT: 4,
+            }, {
+                assetUrl: `data:image/svg+xml,${source}`,
+                pipLayout,
+            });
+
+            const zone = armorLayer.querySelector('[data-location="LT"][data-zone-type="armor"]');
+            expect(zone?.querySelector(`[data-pip-layout="${pipLayout}"]`)).not.toBeNull();
+            expect(zone?.getAttribute('data-layout')).not.toBe('fill');
+            expect(zone?.querySelectorAll('circle').length).toBe(4);
+        }
+    });
+
+    it('keeps multiple standalone fill areas in active shape layouts', async () => {
+        const source = encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 50">
+                <g id="paperdoll-art-armor">
+                    <path data-fill="armor" data-location="CT" d="M 0 0 H 80 V 50 H 0 Z" />
+                    <path data-fill="armor" data-location="CT" d="M 80 0 H 120 V 50 H 80 Z" />
+                </g>
+            </svg>
+        `);
+
+        for (const pipLayout of ['distributed', 'generic'] as const) {
+            const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(120, 50, {
+                CT: 6,
+            }, {
+                assetUrl: `data:image/svg+xml,${source}`,
+                pipLayout,
+            });
+
+            const zone = armorLayer.querySelector('[data-location="CT"][data-zone-type="armor"]');
+            expect(zone?.querySelector(`[data-pip-layout="${pipLayout}"]`)).not.toBeNull();
+            expect(zone?.querySelectorAll('circle').length).toBe(6);
+        }
+    });
+
+    it('renders production limb fill shapes in active shape layouts', async () => {
+        const locations = ['LT', 'RT', 'LA', 'RA', 'LL', 'RL'] as const;
+        const values = Object.fromEntries(locations.map(location => [location, 12]));
+
+        for (const pipLayout of ['distributed', 'generic'] as const) {
+            const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(84.68, 238, values, {
+                pipLayout,
+            });
+
+            for (const location of locations) {
+                const zone = armorLayer.querySelector(
+                    `[data-location="${location}"][data-zone-type="armor"]`,
+                );
+                expect(zone?.querySelector(`[data-pip-layout="${pipLayout}"]`)).not.toBeNull();
+                expect(zone?.querySelectorAll('circle').length).toBe(12);
+            }
+        }
+    });
+
+    it('routes canon and fill markers independently and supports overlapping markers', async () => {
+        const source = encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60">
+                <g id="paperdoll-art-armor">
+                    <rect data-canon="armor" data-location="HD" x="0" y="0" width="30" height="20" />
+                    <rect data-fill="armor" data-canon="armor" data-location="CT" x="35" y="0" width="60" height="50" />
+                    <rect data-fill="shield-dc" data-location="RA" x="0" y="30" width="30" height="6" />
+                    <rect data-fill="shield-dc" data-location="RA" x="0" y="38" width="30" height="6" />
+                </g>
+            </svg>
+        `);
+        const canonLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 60, {
+            HD: 2,
+            CT: 4,
+        }, {
+            assetUrl: `data:image/svg+xml,${source}`,
+            shieldValues: { RA: { dc: 2 } },
+            pipLayout: 'canon',
+        });
+        const distributedLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 60, {
+            HD: 2,
+            CT: 4,
+        }, {
+            assetUrl: `data:image/svg+xml,${source}`,
+            shieldValues: { RA: { dc: 2 } },
+            pipLayout: 'distributed',
+        });
+        expect(canonLayer.querySelector('[data-location="HD"] [data-pip-layout="canon"]')).not.toBeNull();
+        expect(canonLayer.querySelector('[data-location="CT"] [data-pip-layout="canon"]')).not.toBeNull();
+        expect(canonLayer.querySelector('[data-pip-type="shield-dc"]')?.querySelectorAll('circle').length).toBe(2);
+        expect(distributedLayer.querySelector('[data-location="HD"][data-zone-type="armor"]')).toBeNull();
+        expect(distributedLayer.querySelector('[data-location="CT"] [data-pip-layout="distributed"]')).not.toBeNull();
+    });
+
+    it('places active renderers on aligned grid points inside non-rectangular geometry', () => {
+        const shape = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        shape.setAttribute('d', 'M 0 0 H 100 V 80 H 60 V 30 H 0 Z');
+        const options = {
+            inset: 1,
+            minPipRadius: 0,
+            pipGap: 0,
+        };
+        const renderers = [
+            GenericPipRenderer.createPips(shape, 8, options, 'armor', 'CT'),
+            DistributedPipRenderer.createPips(shape, 8, options, 'armor', 'CT'),
+        ];
+
+        for (const pips of renderers) {
+            expect(pips).not.toBeNull();
+            const circles = Array.from(pips?.querySelectorAll('circle') ?? []);
+            expect(circles.length).toBe(8);
+            expect(new Set(circles.map(circle => circle.getAttribute('cy'))).size).toBeGreaterThan(1);
+            for (const circle of circles) {
+                const x = Number(circle.getAttribute('cx'));
+                const y = Number(circle.getAttribute('cy'));
+                expect(x < 60 && y > 30).toBeFalse();
+            }
+        }
+    });
+
     it('prefers rail capacity attributes and falls back to durable SVG IDs', async () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
                 <g id="paperdoll-art-armor">
-                    <path data-rail="armor" data-location="CT" data-rail-index="1" data-rail-capacity="1" d="M 0 16 L 30 16" />
-                    <path data-rail="armor" data-location="CT" data-rail-index="0" data-rail-capacity="3" d="M 0 4 L 30 4" />
+                    <g data-rail="armor" data-location="CT">
+                        <path data-rail-index="1" data-rail-capacity="1" d="M 0 16 L 30 16" />
+                        <path data-rail-index="0" data-rail-capacity="3" d="M 0 4 L 30 4" />
+                    </g>
                 </g>
             </svg>
         `);
@@ -311,55 +437,38 @@ describe('BipedPaperdollUtil', () => {
         expect(circles[0].getAttribute('r')).toBe('3');
     });
 
-    it('renders fill placeholders from a detached paperdoll layer', async () => {
+    it('shows generated fill rows as outlined placeholders when requested', async () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60">
                 <g id="paperdoll-art-armor">
-                    <path data-fill="armor" data-location="CT" d="M 0 0 H 100 V 60 H 0 Z" />
+                    <path data-fill="armor" data-location="CT" transform="translate(4 3)" d="M 0 0 H 100 V 60 H 0 Z" />
                 </g>
             </svg>
         `);
-        const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 60, { CT: 4 }, {
+        const options = {
             assetUrl: `data:image/svg+xml,${source}`,
-            pipLayout: 'fill',
-        });
+            pipLayout: 'distributed' as const,
+            pipOptions: { rowHeight: 5 },
+            showFillPlaceholders: true,
+        };
+        const debugLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 60, { CT: 4 }, options);
+        const rows = Array.from(debugLayer.querySelectorAll<SVGRectElement>('[data-fill-placeholder-row="true"]'));
+        const placeholderGroup = debugLayer.querySelector('[data-fill-placeholder="true"]');
 
-        const zone = armorLayer.querySelector('[data-layout="fill"]');
-        expect(zone).not.toBeNull();
-        expect(zone?.querySelectorAll('circle').length).toBe(4);
-    });
+        expect(placeholderGroup).not.toBeNull();
+        expect(placeholderGroup?.getAttribute('data-fill-location')).toBe('CT');
+        expect(placeholderGroup?.getAttribute('transform')).toBe('translate(4 3)');
+        expect(rows.length).toBeGreaterThan(1);
+        expect(rows.every(row => Number(row.getAttribute('width')) > Number(row.getAttribute('height')))).toBeTrue();
+        expect(rows.every(row => Number(row.getAttribute('height')) <= 5)).toBeTrue();
+        expect(rows.every(row => row.getAttribute('fill') === 'none')).toBeTrue();
+        expect(rows.every(row => row.getAttribute('stroke'))).toBeTrue();
 
-    it('renders the real armor fill placeholder', async () => {
-        const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(84.68, 238, {
-            LT: 12,
-        }, {
-            pipLayout: 'fill',
-        });
-
-        const zone = armorLayer.querySelector('[data-location="LT"][data-layout="fill"]');
-        expect(zone).not.toBeNull();
-        expect(zone?.querySelectorAll('circle').length).toBe(12);
-    });
-
-    it('balances numbered fill areas for one location by area', async () => {
-        const source = encodeURIComponent(`
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 50">
-                <g id="paperdoll-art-armor">
-                    <path data-fill="armor" data-location="CT" d="M 0 0 H 80 V 50 H 0 Z" />
-                    <path data-fill="armor" data-location="CT" d="M 80 0 H 120 V 50 H 80 Z" />
-                </g>
-            </svg>
-        `);
-        const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(120, 50, { CT: 6 }, {
+        const defaultLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 60, { CT: 4 }, {
             assetUrl: `data:image/svg+xml,${source}`,
-            pipLayout: 'fill',
+            pipLayout: 'distributed',
         });
-
-        const zone = armorLayer.querySelector('[data-location="CT"][data-layout="fill"]');
-        const circles = Array.from(zone?.querySelectorAll('circle') ?? []);
-        expect(circles.length).toBe(6);
-        expect(circles.filter(circle => Number(circle.getAttribute('cx')) < 80).length).toBe(4);
-        expect(circles.filter(circle => Number(circle.getAttribute('cx')) > 80).length).toBe(2);
+        expect(defaultLayer.querySelector('[data-fill-placeholder]')).toBeNull();
     });
 
     it('places rail diamonds along curved SVG geometry', () => {
@@ -392,16 +501,17 @@ describe('BipedPaperdollUtil', () => {
         ]);
         const [armor, structure] = assets.map(source => new DOMParser().parseFromString(source, 'image/svg+xml'));
 
-        expect(armor.querySelectorAll('[data-location], [data-placeholder]').length).toBeGreaterThan(0);
-        expect(structure.querySelectorAll('[data-location], [data-placeholder]').length).toBeGreaterThan(0);
+        expect(armor.querySelectorAll('[data-canon], [data-fill]').length).toBeGreaterThan(0);
+        expect(structure.querySelectorAll('[data-canon], [data-fill]').length).toBeGreaterThan(0);
         expect(armor.querySelector('#paperdoll-art-armor')).not.toBeNull();
         expect(structure.querySelector('#paperdoll-art-structure')).not.toBeNull();
         expect(armor.querySelector('#paperdoll-art-armor-RT-armorRT')).not.toBeNull();
         expect(structure.querySelector('#paperdoll-art-structure-RT-isRT')).not.toBeNull();
-        expect(armor.querySelector('[data-placeholder="armor"][data-location="RT"]')).not.toBeNull();
-        expect(structure.querySelector('[data-placeholder="structure"][data-location="RT"]')).not.toBeNull();
-        expect(armor.querySelectorAll('[data-placeholder="shield-dc"][data-location="RA"]')).toHaveSize(8);
-        expect(armor.querySelector('[data-placeholder="shield-da"][data-location="LA"]')).not.toBeNull();
+        expect(armor.querySelector('[data-canon="armor"][data-location="RT"]')).not.toBeNull();
+        expect(structure.querySelector('[data-canon="structure"][data-location="RT"]')).not.toBeNull();
+        expect(armor.querySelectorAll('[data-fill="shield-dc"][data-location="RA"]')).toHaveSize(8);
+        expect(armor.querySelector('[data-fill="shield-da"][data-location="LA"]')).not.toBeNull();
+        expect(armor.querySelector('[data-fill="armor"][data-canon="armor"][data-location="CT"]')).not.toBeNull();
         expect(armor.querySelectorAll('[id^="placeholder-"]')).toHaveSize(0);
         expect(structure.querySelectorAll('[id^="placeholder-"]')).toHaveSize(0);
     });

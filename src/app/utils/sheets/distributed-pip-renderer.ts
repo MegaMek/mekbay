@@ -5,21 +5,57 @@ import type {
     PipRow,
 } from './pip-renderer.types';
 import { PipRendererShared } from './pip-renderer.shared';
+import { PipRowGenerator } from './pip-row-generator';
 
 interface DistributedPipLayout {
     readonly points: readonly PipPoint[];
     readonly maximumRadius: number;
 }
 
+interface DistributedPipRow {
+    left: number;
+    top: number;
+    right: number;
+    count: number;
+}
+
 export class DistributedPipRenderer {
 
     public static createPips(
+        shape: SVGGeometryElement,
+        count: number,
+        options?: PipRenderOptions,
+        type?: string,
+        location?: string,
+    ): SVGGElement | null;
+
+    public static createPips(
         rows: readonly PipRow[],
+        count: number,
+        options?: PipRenderOptions,
+        type?: string,
+        location?: string,
+    ): SVGGElement | null;
+
+    public static createPips(
+        shapeOrRows: SVGGeometryElement | readonly PipRow[],
         count: number,
         options: PipRenderOptions = {},
         type = 'shield',
         location = '',
     ): SVGGElement | null {
+        if (!Array.isArray(shapeOrRows)) {
+            const generated = PipRowGenerator.createRows(shapeOrRows as SVGGeometryElement, options.rowHeight);
+            if (!generated) {
+                return null;
+            }
+            const group = this.createPips(generated.rows, count, options, type, location);
+            if (group && generated.transform) {
+                group.setAttribute('transform', generated.transform);
+            }
+            return group;
+        }
+        const rows = shapeOrRows;
         if (!Number.isFinite(count) || count <= 0 || rows.length === 0) {
             return null;
         }
@@ -107,16 +143,18 @@ export class DistributedPipRenderer {
         let bestLayout: DistributedPipLayout | null = null;
         for (let rowCount = 1; rowCount <= pipCount; rowCount++) {
             const columnCount = Math.max(1, Math.ceil(pipCount / rowCount));
-            let spacing = Math.min(averageHeight, availableHeight / rowCount);
+            const initialSpacing = Math.min(averageHeight, availableHeight / rowCount);
+            const staggered = initialSpacing < averageHeight;
+            let spacing = initialSpacing;
             spacing = Math.sqrt(spacing * rowCount / availableHeight) * availableHeight / rowCount;
 
-            const layoutRows: Array<{ left: number; top: number; right: number; count: number }> = [];
+            const layoutRows: DistributedPipRow[] = [];
             let yPosition = Math.max(
                 availableMinY,
                 availableMinY + (availableHeight - spacing * rowCount) / 2 + spacing * 0.5,
             );
             let shift = 0;
-            const parity = columnCount % 2;
+            let parity = columnCount % 2;
             for (let index = 0; index < rowCount; index++) {
                 let upperIndex = 0;
                 for (let rowIndex = 0; rowIndex < sortedRows.length; rowIndex++) {
@@ -129,8 +167,11 @@ export class DistributedPipRenderer {
                 const lower = sortedRows[lowerIndex === -1 ? upperIndex : lowerIndex];
                 const left = Math.max(upper.x, lower.x) + inset;
                 const right = Math.min(upper.x + upper.width, lower.x + lower.width) - inset;
-                let currentCount = Math.max(0, Math.floor(columnCount * Math.max(right - left, 0) / availableAverageWidth));
-                if (currentCount % 2 !== parity) {
+                const rowWidth = Math.max(right - left, 0);
+                let currentCount = staggered
+                    ? Math.floor(columnCount * rowWidth / availableAverageWidth * 0.5)
+                    : Math.floor(columnCount * rowWidth / availableAverageWidth);
+                if (rowWidth > 0 && currentCount % 2 !== parity) {
                     if (shift <= 0 || currentCount === 0) {
                         currentCount++;
                         shift--;
@@ -144,39 +185,26 @@ export class DistributedPipRenderer {
                 }
                 layoutRows.push({ left, top: yPosition, right, count: currentCount });
                 yPosition += spacing;
-            }
-
-            let allocated = layoutRows.reduce((sum, row) => sum + row.count, 0);
-            const rowOrder = layoutRows
-                .map((_row, index) => index)
-                .sort((left, right) => {
-                    const leftRow = layoutRows[left];
-                    const rightRow = layoutRows[right];
-                    return leftRow.count / Math.max(leftRow.right - leftRow.left, 1)
-                        - rightRow.count / Math.max(rightRow.right - rightRow.left, 1);
-                });
-            let rowIndex = 0;
-            while (allocated < pipCount) {
-                const index = rowOrder[rowIndex % rowOrder.length];
-                layoutRows[index].count++;
-                allocated++;
-                rowIndex++;
-            }
-            rowIndex = 0;
-            while (allocated > pipCount && rowIndex < rowOrder.length * pipCount) {
-                const index = rowOrder[rowIndex % rowOrder.length];
-                if (layoutRows[index].count > 1) {
-                    layoutRows[index].count--;
-                    allocated--;
+                if (staggered) {
+                    parity = 1 - parity;
                 }
-                rowIndex++;
             }
 
+            spacing = this.adjustCount(pipCount, layoutRows, staggered, spacing);
+
+            const horizontalSpacing = staggered ? spacing * 2 : spacing;
             const density = layoutRows
                 .filter(row => row.count > 1 && row.right > row.left)
-                .reduce((maximum, row) => Math.max(maximum, spacing * row.count / (row.right - row.left)), 0);
-            const xSpacing = density > 1 ? spacing / density : density > 0 ? spacing / Math.sqrt(density) : spacing;
+                .reduce((maximum, row) => Math.max(maximum, horizontalSpacing * row.count / (row.right - row.left)), 0);
+            const xSpacing = density > 1
+                ? horizontalSpacing / density
+                : density > 0
+                    ? horizontalSpacing / Math.sqrt(density)
+                    : horizontalSpacing;
             const points = this.getCenters(layoutRows, xSpacing);
+            if (points.length !== pipCount) {
+                continue;
+            }
             const maximumRadius = PipRendererShared.getMaximumRadiusForPoints(
                 points,
                 {
@@ -189,6 +217,9 @@ export class DistributedPipRenderer {
                 inset,
                 pipGap,
             );
+            if (!Number.isFinite(maximumRadius)) {
+                continue;
+            }
             const candidate: DistributedPipLayout = {
                 points,
                 maximumRadius,
@@ -202,8 +233,77 @@ export class DistributedPipRenderer {
         return bestLayout;
     }
 
+    private static adjustCount(
+        pipCount: number,
+        rows: DistributedPipRow[],
+        staggered: boolean,
+        spacing: number,
+    ): number {
+        let allocated = rows.reduce((sum, row) => sum + row.count, 0);
+        if (allocated === pipCount) {
+            return spacing;
+        }
+
+        const rowOrder = rows
+            .map((_row, index) => index)
+            .filter(index => rows[index].right > rows[index].left)
+            .sort((left, right) => {
+                const leftRow = rows[left];
+                const rightRow = rows[right];
+                return leftRow.count / Math.max(leftRow.right - leftRow.left, 1)
+                    - rightRow.count / Math.max(rightRow.right - rightRow.left, 1);
+            });
+        if (rowOrder.length === 0) {
+            return spacing;
+        }
+
+        const rowDelta = staggered ? 2 : 1;
+        let rowIndex = 0;
+        let minimum = true;
+        let skipped: number;
+        do {
+            skipped = 0;
+            while (allocated !== pipCount && skipped < rowOrder.length) {
+                const index = rowOrder[rowIndex % rowOrder.length];
+                const row = rows[index];
+                const availableWidth = row.right - row.left;
+                if (pipCount > allocated) {
+                    const change = pipCount - allocated === 1 ? 1 : rowDelta;
+                    if (spacing * (row.count + change) <= availableWidth) {
+                        row.count += change;
+                        allocated += change;
+                    } else {
+                        skipped++;
+                    }
+                } else {
+                    let change = allocated - pipCount === 1 ? 1 : rowDelta;
+                    if (minimum && row.count - change <= 0) {
+                        change = 0;
+                    } else {
+                        change = Math.min(change, row.count);
+                    }
+                    if (change > 0) {
+                        row.count -= change;
+                        allocated -= change;
+                    } else {
+                        skipped++;
+                    }
+                }
+                rowIndex++;
+            }
+            if (skipped === rowOrder.length) {
+                if (allocated < pipCount) {
+                    spacing *= 0.95;
+                } else {
+                    minimum = false;
+                }
+            }
+        } while (skipped === rowOrder.length);
+        return spacing;
+    }
+
     private static getCenters(
-        rows: readonly { left: number; top: number; right: number; count: number }[],
+        rows: readonly DistributedPipRow[],
         xSpacing: number,
     ): PipPoint[] {
         const points: PipPoint[] = [];

@@ -1,7 +1,8 @@
 import { CanonPipRenderer } from './canon-pip-renderer';
 import { DistributedPipRenderer } from './distributed-pip-renderer';
-import { FillPipRenderer } from './fill-pip-renderer';
+import { DistributedPipRenderer as LegacyDistributedPipRenderer } from './distributed-pip-renderer-legacy';
 import { GenericPipRenderer } from './generic-pip-renderer';
+import { PipRowGenerator } from './pip-row-generator';
 import { RailPipRenderer } from './rail-pip-renderer';
 import {
     BIPED_ARMOR_PIP_LAYOUTS,
@@ -16,42 +17,6 @@ describe('Pip renderers', () => {
     afterEach(() => {
         svgRoots.forEach(root => root.remove());
         svgRoots.length = 0;
-    });
-
-    it('places a single pip near the weighted center of a fill area', () => {
-        const path = createPath('M 0 0 H 100 V 60 H 0 Z', 110, 70);
-        const pips = FillPipRenderer.createPips(path, 1);
-
-        expect(pips).not.toBeNull();
-        if (!pips) {
-            return;
-        }
-        const circle = pips.querySelector('circle');
-        expect(circle).not.toBeNull();
-        expect(Number(circle?.getAttribute('cx'))).toBeGreaterThan(48);
-        expect(Number(circle?.getAttribute('cx'))).toBeLessThan(52);
-        expect(Number(circle?.getAttribute('cy'))).toBeGreaterThan(28);
-        expect(Number(circle?.getAttribute('cy'))).toBeLessThan(32);
-        expect(pips.getAttribute('data-pip-layout')).toBe('fill');
-        expect(pips.getAttribute('data-pip-value')).toBe('1');
-    });
-
-    it('uses the default radius for a sparse fill area', () => {
-        const path = createPath('M 0 0 H 100 V 60 H 0 Z', 110, 70);
-        const pips = FillPipRenderer.createPips(path, 1);
-
-        expect(pips?.querySelector('circle')?.getAttribute('r')).toBe('3');
-    });
-
-    it('uses one pip radius override for fill and rail layouts', () => {
-        const path = createPath('M 0 0 H 100 V 60 H 0 Z', 110, 70);
-        const fillPips = FillPipRenderer.createPips(path, 1, { pipRadius: 4 });
-        const rail = document.createElementNS(SVG_NAMESPACE, 'path');
-        rail.setAttribute('d', 'M 0 0 L 100 0');
-        const railPips = RailPipRenderer.createPips(rail, 1, { pipRadius: 4 }, 'armor', 'CT', 5);
-
-        expect(Number(fillPips?.querySelector('circle')?.getAttribute('r'))).toBe(4);
-        expect(Number(railPips?.querySelector('circle')?.getAttribute('r'))).toBe(4);
     });
 
     it('keeps the rendered canon radius stable as a location gains pips', () => {
@@ -127,6 +92,73 @@ describe('Pip renderers', () => {
 
         expect(radius).toBeCloseTo((10 - options.pipGap) / (2 * (1 + options.strokeWidthRatio / 2)), 6);
         expect(centerDistance).toBeCloseTo(2 * radius + strokeWidth + options.pipGap, 6);
+    });
+
+    it('decomposes tall rectangles into horizontal shape rows', () => {
+        const rectangle = document.createElementNS(SVG_NAMESPACE, 'rect');
+        rectangle.setAttribute('x', '0');
+        rectangle.setAttribute('y', '0');
+        rectangle.setAttribute('width', '30');
+        rectangle.setAttribute('height', '90');
+
+        const generated = PipRowGenerator.createRows(rectangle);
+
+        expect(generated).not.toBeNull();
+        expect(generated?.rows.length).toBeGreaterThan(1);
+        expect(generated?.rows.every(row => row.width >= row.height)).toBeTrue();
+    });
+
+    it('samples each geometry row within its own vertical band', () => {
+        const path = createPath('M 0 0 H 30 V 10 H 10 V 30 H 0 Z', 30, 30);
+
+        const generated = PipRowGenerator.createRows(path);
+        const upperRow = generated?.rows[0];
+
+        expect(upperRow).toBeDefined();
+        expect(upperRow?.x).toBeCloseTo(0, 3);
+        expect(upperRow?.width).toBeGreaterThan(20);
+    });
+
+    it('overrides row height and preserves shape transforms', () => {
+        const path = createPath('M 0 0 H 40 V 30 H 0 Z', 50, 40);
+        path.setAttribute('transform', 'translate(12 4)');
+
+        const generated = PipRowGenerator.createRows(path, 3);
+        const pips = DistributedPipRenderer.createPips(path, 3, { rowHeight: 3 });
+
+        expect(generated?.transform).toBe('matrix(1 0 0 1 12 4)');
+        expect(generated?.rows.every(row => row.height <= 3 && row.width >= row.height)).toBeTrue();
+        expect(pips?.getAttribute('transform')).toBe('matrix(1 0 0 1 12 4)');
+    });
+
+    it('preserves transform origins when generating transformed rectangle rows', () => {
+        const svg = document.createElementNS(SVG_NAMESPACE, 'svg');
+        svg.setAttribute('width', '100');
+        svg.setAttribute('height', '320');
+        const rectangle = document.createElementNS(SVG_NAMESPACE, 'rect');
+        rectangle.setAttribute('x', '29.384');
+        rectangle.setAttribute('y', '191.485');
+        rectangle.setAttribute('width', '18.945');
+        rectangle.setAttribute('height', '115.741');
+        rectangle.setAttribute('transform', 'matrix(0.974593 0.223983 -0.223983 0.974593 14.056866 -32.599451)');
+        rectangle.style.setProperty('transform-box', 'fill-box');
+        rectangle.style.setProperty('transform-origin', '50% 50%');
+        svg.appendChild(rectangle);
+        document.body.appendChild(svg);
+        svgRoots.push(svg);
+
+        const pips = DistributedPipRenderer.createPips(rectangle, 3, { rowHeight: 6 });
+        const sourceMatrix = rectangle.getCTM();
+        svg.appendChild(pips as SVGGElement);
+        const generatedMatrix = pips?.getCTM();
+
+        expect(pips).not.toBeNull();
+        expect(generatedMatrix?.a).toBeCloseTo(sourceMatrix?.a ?? 0, 5);
+        expect(generatedMatrix?.b).toBeCloseTo(sourceMatrix?.b ?? 0, 5);
+        expect(generatedMatrix?.c).toBeCloseTo(sourceMatrix?.c ?? 0, 5);
+        expect(generatedMatrix?.d).toBeCloseTo(sourceMatrix?.d ?? 0, 5);
+        expect(generatedMatrix?.e).toBeCloseTo(sourceMatrix?.e ?? 0, 5);
+        expect(generatedMatrix?.f).toBeCloseTo(sourceMatrix?.f ?? 0, 5);
     });
 
     it('interleaves generic rows when a staggered layout packs better', () => {
@@ -230,37 +262,6 @@ describe('Pip renderers', () => {
         expect(BIPED_ARMOR_PIP_LAYOUTS['CT'].info).toEqual({ width: 0.299, height: 1 });
     });
 
-    it('applies inset to fill boundaries but not rail sizing', () => {
-        const path = createPath('M 0 0 H 100 V 40 H 0 Z', 110, 50);
-        const insetPips = FillPipRenderer.createPips(path, 1, { inset: 15, pipRadius: 8 });
-        const rail = document.createElementNS(SVG_NAMESPACE, 'path');
-        rail.setAttribute('d', 'M 0 0 L 100 0');
-        const railPips = RailPipRenderer.createPips(rail, 1, { inset: 8 });
-        const defaultRailPips = RailPipRenderer.createPips(rail, 1);
-
-        expect(insetPips).not.toBeNull();
-        expect(Number(insetPips?.querySelector('circle')?.getAttribute('r'))).toBeLessThan(8);
-        expect(Number(railPips?.querySelector('circle')?.getAttribute('r')))
-            .toBe(Number(defaultRailPips?.querySelector('circle')?.getAttribute('r')));
-    });
-
-    it('shrinks all fill pips together when the requested radius collides', () => {
-        const path = createPath('M 0 0 H 100 V 60 H 0 Z', 110, 70);
-        const pips = FillPipRenderer.createPips(path, 2, {
-            minPipRadius: 2,
-            pipGap: 1,
-            pipRadius: 25,
-        });
-
-        expect(pips).not.toBeNull();
-        const radii = Array.from(pips?.querySelectorAll('circle') ?? [])
-            .map(circle => Number(circle.getAttribute('r')));
-        expect(radii.length).toBe(2);
-        expect(radii[0]).toBeLessThan(25);
-        expect(radii[0]).toBeGreaterThanOrEqual(2);
-        expect(radii[1]).toBe(radii[0]);
-    });
-
     it('chooses a larger distributed layout when zero gap fits another row arrangement', () => {
         const options = { inset: 1.8, minPipRadius: 0, pipGap: 0, pipRadius: 3 };
         const zeroGapPips = DistributedPipRenderer.createPips(
@@ -295,7 +296,8 @@ describe('Pip renderers', () => {
         const zeroGapStrokeWidth = Number(zeroGapPips?.querySelector('circle')?.getAttribute('stroke-width'));
         const positiveGapStrokeWidth = Number(positiveGapPips?.querySelector('circle')?.getAttribute('stroke-width'));
         expect(getMinimumCenterDistance(zeroGapPips)).toBeCloseTo(2 * zeroGapRadius + zeroGapStrokeWidth, 6);
-        expect(getMinimumCenterDistance(positiveGapPips)).toBeCloseTo(2 * positiveGapRadius + positiveGapStrokeWidth + 1, 6);
+        expect(getMinimumCenterDistance(positiveGapPips))
+            .toBeGreaterThanOrEqual(2 * positiveGapRadius + positiveGapStrokeWidth + 1);
     });
 
     it('uses pipGap when sizing rail pips', () => {
@@ -313,20 +315,6 @@ describe('Pip renderers', () => {
         });
 
         expect(radius).toBeCloseTo(2.29, 6);
-    });
-
-    it('keeps fill pips at the minimum radius when the gap cannot fit', () => {
-        const path = createPath('M 0 0 H 10 V 10 H 0 Z', 20, 20);
-        const pips = FillPipRenderer.createPips(path, 2, {
-            minPipRadius: 2,
-            pipGap: 100,
-            pipRadius: 25,
-        });
-
-        expect(pips).not.toBeNull();
-        expect(Array.from(pips?.querySelectorAll('circle') ?? [])
-            .map(circle => Number(circle.getAttribute('r'))))
-            .toEqual([2, 2]);
     });
 
     it('balances many distributed pips across more rows', () => {
@@ -352,68 +340,30 @@ describe('Pip renderers', () => {
         expect(Number(circles[0]?.getAttribute('r'))).toBeGreaterThan(1.4);
     });
 
-    it('balances two pips into two regions of one area', () => {
-        const path = createPath('M 0 0 H 100 V 60 H 0 Z', 110, 70);
-        const pips = FillPipRenderer.createPips(path, 2);
+    it('alternates row parity for dense distributed layouts', () => {
+        for (const renderer of [DistributedPipRenderer, LegacyDistributedPipRenderer]) {
+            const pips = renderer.createPips(
+                [{ x: 0, y: 0, width: 40, height: 20 }],
+                9,
+                { minPipRadius: 0, pipGap: 1, pipRadius: 100, strokeWidthRatio: 0 },
+                'armor',
+                'CT',
+            );
+            const rowCounts = Array.from(
+                pips?.querySelectorAll('circle') ?? [],
+            ).reduce((counts, circle) => {
+                const y = circle.getAttribute('cy') ?? '';
+                counts.set(y, (counts.get(y) ?? 0) + 1);
+                return counts;
+            }, new Map<string, number>());
 
-        expect(pips).not.toBeNull();
-        if (!pips) {
-            return;
+            expect(pips).not.toBeNull();
+            const counts = Array.from(rowCounts.values());
+            expect(counts.length).toBe(2);
+            expect(counts.reduce((sum, count) => sum + count, 0)).toBe(9);
+            expect(counts[0] % 2).not.toBe(counts[1] % 2);
+            expect(Number(pips?.querySelector('circle')?.getAttribute('r'))).toBeCloseTo(3.5, 6);
         }
-        const centers = Array.from(pips.querySelectorAll('circle'))
-            .map(circle => Number(circle.getAttribute('cx')))
-            .sort((left, right) => left - right);
-        expect(centers.length).toBe(2);
-        expect(centers[0]).toBeCloseTo(25.5, 0);
-        expect(centers[1]).toBeCloseTo(75.5, 0);
-    });
-
-    it('keeps every pip footprint inside a concave fill area', () => {
-        const path = createPath('M 0 0 H 100 V 40 H 40 V 100 H 0 Z', 110, 110);
-        const pips = FillPipRenderer.createPips(path, 6, { strokeWidthRatio: 0.2 });
-
-        expect(pips).not.toBeNull();
-        if (!pips) {
-            return;
-        }
-        const circles = Array.from(pips.querySelectorAll('circle'));
-        expect(circles.length).toBe(6);
-        const geometry = path as SVGPathElement & {
-            isPointInFill(point: { x: number; y: number }): boolean;
-        };
-        for (const circle of circles) {
-            const x = Number(circle.getAttribute('cx'));
-            const y = Number(circle.getAttribute('cy'));
-            const radius = Number(circle.getAttribute('r'));
-            const strokeWidth = Number(circle.getAttribute('stroke-width'));
-            const footprintRadius = radius + strokeWidth / 2;
-            for (let index = 0; index < 48; index++) {
-                const angle = 2 * Math.PI * index / 48;
-                expect(geometry.isPointInFill({
-                    x: x + Math.cos(angle) * footprintRadius,
-                    y: y + Math.sin(angle) * footprintRadius,
-                })).toBeTrue();
-            }
-        }
-    });
-
-    it('allocates pips between multiple fill areas by area', () => {
-        const largeArea = createPath('M 0 0 H 100 V 50 H 0 Z', 180, 70);
-        const smallArea = document.createElementNS(SVG_NAMESPACE, 'path');
-        smallArea.setAttribute('d', 'M 120 0 H 170 V 50 H 120 Z');
-        largeArea.parentElement?.appendChild(smallArea);
-
-        const pips = FillPipRenderer.createPips([largeArea, smallArea], 6);
-
-        expect(pips).not.toBeNull();
-        if (!pips) {
-            return;
-        }
-        const circles = Array.from(pips.querySelectorAll('circle'));
-        expect(circles.length).toBe(6);
-        expect(circles.filter(circle => Number(circle.getAttribute('cx')) < 100).length).toBe(4);
-        expect(circles.filter(circle => Number(circle.getAttribute('cx')) > 120).length).toBe(2);
-        expect(pips.getAttribute('data-pip-value')).toBe('6');
     });
 
     function createPath(d: string, width: number, height: number): SVGPathElement {

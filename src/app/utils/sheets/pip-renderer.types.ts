@@ -9,6 +9,7 @@ export interface PipRenderOptions {
     stroke?: string;
     strokeWidthRatio?: number;
     shape?: 'circle' | 'diamond';
+    rowHeight?: number;
 }
 
 export interface PipRow {

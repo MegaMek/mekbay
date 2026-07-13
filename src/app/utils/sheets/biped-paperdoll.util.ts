@@ -1,12 +1,12 @@
 import { CanonPipRenderer } from './canon-pip-renderer';
 import { DistributedPipRenderer } from './distributed-pip-renderer';
-import { FillPipRenderer } from './fill-pip-renderer';
 import { GenericPipRenderer } from './generic-pip-renderer';
+import { PipRendererShared } from './pip-renderer.shared';
+import { PipRowGenerator } from './pip-row-generator';
 import { RailPipRenderer } from './rail-pip-renderer';
 import type { PipRenderOptions, PipRow } from './pip-renderer.types';
 
 import { DistributedPipRenderer as DistributedPipRendererLegacy } from './distributed-pip-renderer-legacy';
-import { FillPipRenderer as FillPipRendererLegacy } from './fill-pip-renderer-legacy';
 import { GenericPipRenderer as GenericPipRendererLegacy } from './generic-pip-renderer-legacy';
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
@@ -23,7 +23,7 @@ export type BipedStructureLocation = typeof STRUCTURE_LOCATIONS[number];
 export type BipedShieldLocation = typeof SHIELD_LOCATIONS[number];
 export type BipedArmorValues = Readonly<Partial<Record<BipedArmorLocation, number>>>;
 export type BipedStructureTonnage = number | Readonly<Record<BipedStructureLocation, number>>;
-export type BipedPaperdollPipLayout = 'canon' | 'distributed' | 'rail' | 'fill' | 'generic' | 'distributed-legacy' | 'fill-legacy' | 'generic-legacy';
+export type BipedPaperdollPipLayout = 'canon' | 'distributed' | 'rail' | 'generic' | 'distributed-legacy' | 'generic-legacy';
 
 export interface BipedShieldLocationValues {
     readonly dc?: number;
@@ -42,6 +42,7 @@ export interface BipedPaperdollLayerOptions {
     pipLayout?: BipedPaperdollPipLayout;
     fallbackPipLayout?: BipedPaperdollPipLayout;
     pipOptions?: PipRenderOptions;
+    showFillPlaceholders?: boolean;
     railPipsPerPath?: number;
     shieldValues?: BipedShieldValues;
     silhouetteFill?: string;
@@ -77,6 +78,8 @@ interface PlaceholderGroup {
     type: PaperdollPlaceholderType;
     location: string;
     bounds: PlaceholderBounds;
+    canon: boolean;
+    fill: boolean;
     elements: SVGElement[];
 }
 
@@ -101,6 +104,7 @@ interface PlaceholderContext {
     location: string;
     rail: boolean;
     fill: boolean;
+    canon: boolean;
     capacity?: number;
     index?: number;
 }
@@ -246,6 +250,13 @@ export class BipedPaperdollUtil {
             importedArt = wrapper;
         }
         sourceGroup.appendChild(importedArt);
+        if (art !== source) {
+            for (const child of Array.from(source.children)) {
+                if (child !== art && this.containsPlaceholderMarker(child)) {
+                    sourceGroup.appendChild(document.importNode(child, true));
+                }
+            }
+        }
         scaleGroup.appendChild(sourceGroup);
 
         this.applySilhouetteStyles(sourceGroup, type, options);
@@ -315,7 +326,9 @@ export class BipedPaperdollUtil {
         const elements = new Set<SVGGraphicsElement>([
             ...sourceGroup.querySelectorAll<SVGGraphicsElement>(`[id^="paperdoll-art-${type}-"]`),
             ...sourceGroup.querySelectorAll<SVGGraphicsElement>(type === 'armor' ? '[id^="armor"]' : '[id^="is"]'),
-            ...sourceGroup.querySelectorAll<SVGGraphicsElement>('[data-location]:not([data-placeholder])'),
+            ...sourceGroup.querySelectorAll<SVGGraphicsElement>(
+                '[data-location]:not([data-canon]):not([data-fill]):not([data-rail])',
+            ),
         ]);
         elements.forEach(element => {
             if (options.silhouetteFill) {
@@ -343,6 +356,9 @@ export class BipedPaperdollUtil {
 
         this.renderRailGroups(collection.rails, requestedLayout, context, blockedKeys);
         this.renderFillGroups(collection.fills, requestedLayout, context, blockedKeys);
+        if (options.showFillPlaceholders) {
+            this.renderFillPlaceholderRows(collection.fills, options);
+        }
         this.renderShieldGroups(collection.shields, this.getShieldPipLayout(requestedLayout), context, blockedKeys);
         this.renderBoundsGroups(collection.bounds, requestedLayout, context, blockedKeys);
         this.cleanupPlaceholders(collection);
@@ -351,7 +367,7 @@ export class BipedPaperdollUtil {
     private static collectPlaceholderGroups(sourceGroup: SVGGElement): PlaceholderCollection {
         const collection: PlaceholderCollection = {
             placeholders: Array.from(sourceGroup.querySelectorAll<SVGElement>(
-                '[data-placeholder], [data-rail], [data-fill]',
+                '[data-canon], [data-rail], [data-fill]',
             )),
             bounds: [],
             shields: [],
@@ -374,11 +390,6 @@ export class BipedPaperdollUtil {
         if (!context) {
             return;
         }
-        if (context.fill) {
-            this.addFillPlaceholder(element, context, collection.fills);
-            return;
-        }
-
         const rectangles = this.readPlaceholderRectangles(element);
         if (context.rail) {
             this.addRailPlaceholder(element, context, collection.rails, seenRails);
@@ -387,6 +398,9 @@ export class BipedPaperdollUtil {
         const shieldRows = this.isShieldPlaceholderType(context.type)
             ? this.readShieldRows(element, rectangles)
             : [];
+        if (context.fill && !this.isShieldPlaceholderType(context.type)) {
+            this.addFillPlaceholder(element, context, collection.fills);
+        }
         if (rectangles.length === 0 && shieldRows.length === 0) {
             return;
         }
@@ -395,7 +409,9 @@ export class BipedPaperdollUtil {
         if (!parent) {
             return;
         }
-        if (this.isShieldPlaceholderType(context.type)) {
+        if (this.isShieldPlaceholderType(context.type)
+            && shieldRows.length > 0
+            && (context.fill || context.canon)) {
             this.addShieldPlaceholder(
                 element,
                 context.type,
@@ -407,7 +423,9 @@ export class BipedPaperdollUtil {
             );
             return;
         }
-        this.addBoundsPlaceholder(context, parent, rectangles, collection.bounds);
+        if (context.canon && rectangles.length > 0) {
+            this.addBoundsPlaceholder(context, parent, rectangles, collection.bounds);
+        }
     }
 
     private static addFillPlaceholder(
@@ -480,13 +498,14 @@ export class BipedPaperdollUtil {
             if (!parent) {
                 continue;
             }
-            const geometryContext = this.readPlaceholderContext(geometry);
             group.rails.push({
                 geometry,
                 parent,
                 transform: geometry.getAttribute('transform'),
-                capacity: geometryContext?.capacity ?? context.capacity,
-                index: geometryContext?.index ?? context.index,
+                capacity: this.parsePositiveInteger(geometry.getAttribute('data-rail-capacity'))
+                    ?? context.capacity,
+                index: this.parseNonNegativeInteger(geometry.getAttribute('data-rail-index'))
+                    ?? context.index,
                 order: group.rails.length,
             });
             group.elements.push(geometry);
@@ -540,12 +559,16 @@ export class BipedPaperdollUtil {
                 type: context.type,
                 location: context.location,
                 bounds,
+                canon: context.canon,
+                fill: context.fill,
                 elements: [],
             };
             groups.push(createdGroup);
             group = createdGroup;
         } else {
             group.bounds = this.mergeBounds(group.bounds, bounds);
+            group.canon ||= context.canon;
+            group.fill ||= context.fill;
         }
         group.elements.push(...rectangles);
     }
@@ -601,7 +624,8 @@ export class BipedPaperdollUtil {
         context: PlaceholderRenderContext,
         blockedKeys: Set<string>,
     ): void {
-        if (requestedLayout !== 'fill' && requestedLayout !== 'fill-legacy') {
+        if (requestedLayout !== 'distributed'
+            && requestedLayout !== 'generic') {
             return;
         }
         for (const group of groups) {
@@ -622,8 +646,25 @@ export class BipedPaperdollUtil {
             if (!pips) {
                 continue;
             }
-            this.appendPipZone(group.parent, group.type, group.location, pips, null, 'fill');
+            this.appendPipZone(group.parent, group.type, group.location, pips, null, null);
             blockedKeys.add(key);
+        }
+    }
+
+    private static renderFillPlaceholderRows(
+        groups: readonly FillPlaceholderGroup[],
+        options: BipedPaperdollLayerOptions,
+    ): void {
+        for (const group of groups) {
+            for (const area of group.areas) {
+                const rows = PipRowGenerator.createDebugRows(area.geometry, options.pipOptions?.rowHeight);
+                if (!rows) {
+                    continue;
+                }
+                rows.setAttribute('data-fill-type', group.type);
+                rows.setAttribute('data-fill-location', group.location);
+                area.parent.appendChild(rows);
+            }
         }
     }
 
@@ -687,11 +728,20 @@ export class BipedPaperdollUtil {
         requestedLayout: BipedPaperdollPipLayout,
         context: PlaceholderRenderContext,
     ): SVGGElement | null {
-        const primaryPips = this.createBoundsPlaceholderPipsForLayout(group, requestedLayout, context);
+        const primaryPips = this.isBoundsLayoutAllowed(group, requestedLayout)
+            ? this.createBoundsPlaceholderPipsForLayout(group, requestedLayout, context)
+            : null;
         const fallbackLayout = context.options.fallbackPipLayout;
         return primaryPips || !fallbackLayout || fallbackLayout === requestedLayout
             ? primaryPips
             : this.createBoundsPlaceholderPipsForLayout(group, fallbackLayout, context);
+    }
+
+    private static isBoundsLayoutAllowed(
+        group: PlaceholderGroup,
+        layout: BipedPaperdollPipLayout,
+    ): boolean {
+        return layout === 'canon' ? group.canon : group.fill;
     }
 
     private static createBoundsPlaceholderPipsForLayout(
@@ -785,21 +835,114 @@ export class BipedPaperdollUtil {
         options: BipedPaperdollLayerOptions,
     ): SVGGElement | null {
         const pipOptions = this.getPlaceholderPipOptions(group.type, options);
-        return layout === 'fill'
-            ? FillPipRenderer.createPips(
-                group.areas.map(area => area.geometry),
+        if (group.areas.length === 1) {
+            return this.createActiveFillPlaceholderPips(
+                group.areas[0].geometry,
                 count,
-                pipOptions,
-                group.type,
-                group.location,
-            )
-            : FillPipRendererLegacy.createPips(
-                group.areas.map(area => area.geometry),
-                count,
+                layout,
                 pipOptions,
                 group.type,
                 group.location,
             );
+        }
+
+        const allocations = this.allocateFillAreaPips(group, count);
+        const rendered: SVGGElement[] = [];
+        for (let index = 0; index < group.areas.length; index++) {
+            const areaCount = allocations[index];
+            if (areaCount <= 0) {
+                continue;
+            }
+            const pips = this.createActiveFillPlaceholderPips(
+                group.areas[index].geometry,
+                areaCount,
+                layout,
+                pipOptions,
+                group.type,
+                group.location,
+            );
+            if (!pips) {
+                return null;
+            }
+            rendered.push(pips);
+        }
+        if (rendered.length === 0) {
+            return null;
+        }
+
+        const combined = PipRendererShared.createGroup(
+            pipOptions,
+            group.type,
+            group.location,
+            Math.floor(count),
+            layout,
+        );
+        rendered.forEach(pips => combined.appendChild(pips));
+        return combined;
+    }
+
+    private static createActiveFillPlaceholderPips(
+        geometry: SVGGeometryElement,
+        count: number,
+        layout: BipedPaperdollPipLayout,
+        options: PipRenderOptions,
+        type: PaperdollPlaceholderType,
+        location: string,
+    ): SVGGElement | null {
+        if (layout === 'distributed') {
+            return DistributedPipRenderer.createPips(
+                geometry,
+                count,
+                options,
+                type,
+                location,
+            );
+        }
+        if (layout === 'generic') {
+            return GenericPipRenderer.createPips(
+                geometry,
+                count,
+                options,
+                type,
+                location,
+            );
+        }
+        return null;
+    }
+
+    private static allocateFillAreaPips(
+        group: FillPlaceholderGroup,
+        count: number,
+    ): number[] {
+        const pipCount = Math.floor(count);
+        const areas = group.areas.map(area => {
+            try {
+                const bounds = area.geometry.getBBox();
+                return bounds.width > 0 && bounds.height > 0
+                    ? bounds.width * bounds.height
+                    : 0;
+            } catch {
+                return 0;
+            }
+        });
+        const totalArea = areas.reduce((sum, area) => sum + area, 0);
+        const weights = totalArea > 0 ? areas : areas.map(() => 1);
+        const weightTotal = weights.reduce((sum, area) => sum + area, 0);
+        const allocations = weights.map(area => Math.floor(pipCount * area / weightTotal));
+        let allocated = allocations.reduce((sum, allocation) => sum + allocation, 0);
+        const remainderOrder = weights
+            .map((area, index) => ({
+                index,
+                remainder: pipCount * area / weightTotal - allocations[index],
+            }))
+            .sort((left, right) => right.remainder - left.remainder || left.index - right.index);
+        let remainderIndex = 0;
+        while (allocated < pipCount) {
+            allocations[remainderOrder[remainderIndex % remainderOrder.length].index]++;
+            allocated++;
+            remainderIndex++;
+        }
+        return allocations;
     }
 
     private static createShieldPlaceholderPips(
@@ -902,7 +1045,7 @@ export class BipedPaperdollUtil {
     }
 
     private static clearPlaceholderAttributes(element: SVGElement): void {
-        element.removeAttribute('data-placeholder');
+        element.removeAttribute('data-canon');
         element.removeAttribute('data-rail');
         element.removeAttribute('data-fill');
         element.removeAttribute('data-location');
@@ -911,7 +1054,12 @@ export class BipedPaperdollUtil {
     }
 
     private static isPlaceholderGraphic(element: SVGElement): boolean {
-        return element instanceof SVGRectElement || this.isRailGeometry(element);
+        return this.isFillGeometry(element) || this.isRailGeometry(element);
+    }
+
+    private static containsPlaceholderMarker(element: Element): boolean {
+        return element.matches('[data-canon], [data-fill], [data-rail]')
+            || element.querySelector('[data-canon], [data-fill], [data-rail]') !== null;
     }
 
     private static getShieldPipLayout(layout: BipedPaperdollPipLayout): BipedPaperdollPipLayout {
@@ -1073,12 +1221,17 @@ export class BipedPaperdollUtil {
         if (this.isFillGeometry(element)) {
             return element;
         }
-        return element.querySelector<SVGGeometryElement>('path, polygon, polyline');
+        return element.querySelector<SVGGeometryElement>('path, polygon, polyline, rect, circle, ellipse');
     }
 
     private static isFillGeometry(element: SVGElement): element is SVGGeometryElement {
         const tagName = element.tagName.toLowerCase();
-        return tagName === 'path' || tagName === 'polygon' || tagName === 'polyline';
+        return tagName === 'path'
+            || tagName === 'polygon'
+            || tagName === 'polyline'
+            || tagName === 'rect'
+            || tagName === 'circle'
+            || tagName === 'ellipse';
     }
 
     private static readRailGeometries(element: SVGElement): SVGGeometryElement[] {
@@ -1164,8 +1317,9 @@ export class BipedPaperdollUtil {
     private static readPlaceholderContext(element: SVGElement): PlaceholderContext | null {
         const railType = element.getAttribute('data-rail');
         const fillType = element.getAttribute('data-fill');
-        const placeholderType = element.getAttribute('data-placeholder');
-        const type = railType ?? fillType ?? placeholderType;
+        const canonType = element.getAttribute('data-canon');
+        const type = [railType, canonType, fillType]
+            .find(candidate => this.isPlaceholderType(candidate));
         const location = element.getAttribute('data-location');
         if (!this.isPlaceholderType(type) || !location) {
             return null;
@@ -1176,6 +1330,7 @@ export class BipedPaperdollUtil {
             location: location.toUpperCase(),
             rail: railType !== null,
             fill: fillType !== null,
+            canon: canonType !== null,
             capacity: this.parsePositiveInteger(capacity),
             index: this.parseNonNegativeInteger(element.getAttribute('data-rail-index')),
         };
