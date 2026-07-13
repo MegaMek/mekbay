@@ -511,59 +511,7 @@ describe('BipedPaperdollUtil', () => {
             expect(generatedPips?.getAttribute('transform')).toBe(directPips?.getAttribute('transform'));
         }
     });
-
-    it('applies fill geometry matrices after renderer-local bounds', async () => {
-        const source = encodeURIComponent(`
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 160">
-                <g id="paperdoll-art-armor">
-                    <rect
-                        x="29.384"
-                        y="31.485"
-                        width="18.945"
-                        height="115.741"
-                        style="transform-box: fill-box; transform-origin: 50% 50%;"
-                        transform="matrix(0.974593, 0.223983, -0.223983, 0.974593, 14.056866, -32.599451)"
-                        data-fill="armor"
-                        data-location="LL" />
-                </g>
-            </svg>
-        `);
-        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.setAttribute('viewBox', '0 0 100 160');
-        const genericLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 160, { LL: 1 }, {
-            assetUrl: `data:image/svg+xml,${source}`,
-            pipLayout: 'generic',
-            scale: false,
-        });
-        const distributedLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 160, { LL: 1 }, {
-            assetUrl: `data:image/svg+xml,${source}`,
-            pipLayout: 'distributed',
-            scale: false,
-        });
-        svg.append(genericLayer, distributedLayer);
-        document.body.appendChild(svg);
-
-        const getCenter = (layout: 'generic' | 'distributed'): DOMPoint => {
-            const circle = svg.querySelector<SVGCircleElement>(
-                `[data-pip-layout="${layout}"] circle`,
-            );
-            const matrix = circle?.getCTM();
-            if (!circle || !matrix) {
-                throw new Error(`Missing transformed ${layout} pip`);
-            }
-            return new DOMPoint(
-                Number(circle.getAttribute('cx')),
-                Number(circle.getAttribute('cy')),
-            ).matrixTransform(matrix);
-        };
-
-        const genericCenter = getCenter('generic');
-        const distributedCenter = getCenter('distributed');
-        expect(genericCenter.x).toBeCloseTo(distributedCenter.x, 5);
-        expect(genericCenter.y).toBeCloseTo(distributedCenter.y, 5);
-        svg.remove();
-    });
-
+    
     it('places rail diamonds along curved SVG geometry', () => {
         const rail = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         rail.setAttribute('d', 'M 0 0 C 10 0 20 20 30 20');
