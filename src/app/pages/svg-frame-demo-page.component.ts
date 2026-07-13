@@ -513,9 +513,12 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
     protected readonly pipLayouts: readonly BipedPaperdollPipLayout[] = [
         'canon',
         'distributed',
+        'distributed-legacy',
         'rail',
         'fill',
+        'fill-legacy',
         'generic',
+        'generic-legacy',
     ];
 
     protected get totalArmorCount(): number {
@@ -658,6 +661,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 pipLayout: this.pipLayout,
                 railPipsPerPath: 5,
                 shieldValues: this.shieldValues,
+                showFillPlaceholders: true,
                 pipOptions: {
                     pipGap: 2,
                     stroke: '#b4492f',
@@ -671,6 +675,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 className: 'biped-paperdoll-armor-rear',
                 pipLayout: this.pipLayout,
                 railPipsPerPath: 5,
+                showFillPlaceholders: true,
                 pipOptions: {
                     pipGap: 0.5,
                     stroke: '#a63d83',
@@ -684,6 +689,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 className: 'biped-paperdoll-structure',
                 pipLayout: this.pipLayout,
                 railPipsPerPath: 5,
+                showFillPlaceholders: true,
                 pipOptions: {
                     pipGap: 0.5,
                     stroke: '#356a8a',
