@@ -4,7 +4,7 @@
     <bx:export>
       <bx:file format="svg" href="#paperdoll-art-armor"/>
     </bx:export>
-    <bx:guide x="-16.812" y="145.725" angle="90"/>
+    <bx:guide x="29.384" y="147.619" angle="90"/>
   </defs>
   <g id="paperdoll-art-armor" transform="matrix(0.964505, 0, 0, 1, 0.039471, 0)">
     <path id="polygon747" d="M178.35,118.641L177.219,118.74L177.169,118.175L178.818,117.46L178.716,116.33L176.971,115.912L176.921,115.347L178.053,115.247L179.035,113.452L176.907,89.133L173.95,67.235L164.864,56.481L154.002,48.774L149.877,50.399L149.877,62.961L148.962,69.352L146.538,68.642L145.518,90.761L149.564,89.246L149.862,92.64L151.607,93.056L153.585,115.679L154.864,117.276L155.995,117.178L156.045,117.743L154.399,118.457L154.497,119.587L156.244,120.004L156.293,120.571L155.161,120.669L154.179,122.465L156.801,152.439L158.647,153.988L179.006,152.207L185.101,143.695L180.195,120.189L178.35,118.641Z" style="fill:rgb(199,199,199);fill-rule:nonzero;"/>
@@ -152,8 +152,8 @@
       <path d="M 56.47 70.451 L 56.311 99.698" style="fill: none; stroke-width: 1; stroke-linecap: round; stroke-linejoin: round; stroke-miterlimit: 1.5; stroke: rgb(0, 255, 0); stroke-dasharray: 2; transform-origin: 56.391px 85.074px;" data-rail-capacity="5" data-rail-index="9"/>
     </g>
   </g>
-  <path d="M 53.542 159.288 L 75.39 158.904 L 50.088 274.786 L 28.24 275.169 L 53.542 159.288 Z" style="fill: none; stroke: rgb(255, 221, 0); stroke-dasharray: 4;" data-fill="armor" data-location="LL"/>
-  <path d="M 127.044 159.288 L 105.196 158.904 L 130.498 274.786 L 152.346 275.169 L 127.044 159.288 Z" style="fill: none; stroke: rgb(255, 221, 0); stroke-dasharray: 4; stroke-width: 1;" data-fill="armor" data-location="RL"/>
-  <path d="M 19.589 63.749 L 37.695 63.432 L 30.09 146.538 L 11.983 146.856 L 19.589 63.749 Z" style="fill: none; stroke: rgb(255, 221, 0); stroke-dasharray: 4; stroke-width: 1;" data-fill="armor" data-location="LA"/>
-  <path d="M 161.855 63.785 L 143.749 63.467 L 151.354 146.573 L 169.461 146.891 L 161.855 63.785 Z" style="fill: none; stroke: rgb(255, 221, 0); stroke-dasharray: 4; stroke-width: 1;" data-fill="armor" data-location="RA"/>
+  <rect x="29.384" y="191.485" width="18.945" height="115.741" style="fill: none; stroke: rgb(0, 0, 255); stroke-dasharray: 2; transform-box: fill-box; transform-origin: 50% 50%;" transform="matrix(0.974593, 0.223983, -0.223983, 0.974593, 14.056866, -32.599451)" data-fill="armor" data-location="LL"/>
+  <rect x="-29.384" y="-191.49" width="18.945" height="115.741" style="stroke-width: 1; fill: none; stroke: rgb(0, 0, 255); stroke-dasharray: 2; transform-origin: -19.911px -133.615px;" transform="matrix(-0.974593, 0.223983, 0.223983, 0.974593, 148.099317, 350.375575)" data-fill="armor" data-location="RL"/>
+  <rect x="29.384" y="138.925" width="18.945" height="83.972" style="stroke-width: 1; fill: none; stroke: rgb(0, 0, 255); stroke-dasharray: 2; transform-origin: 38.857px 180.91px;" transform="matrix(0.9941, 0.108465, -0.108465, 0.9941, -14.534499, -76.057939)" data-fill="armor" data-location="LA"/>
+  <rect x="-29.384" y="-138.93" width="18.945" height="83.972" style="stroke-width: 1; fill: none; stroke: rgb(0, 0, 255); stroke-dasharray: 2; transform-origin: -19.911px -96.94px;" transform="matrix(-0.9941, 0.108465, 0.108465, 0.9941, 176.225046, 201.797291)" data-fill="armor" data-location="RA"/>
 </svg>
