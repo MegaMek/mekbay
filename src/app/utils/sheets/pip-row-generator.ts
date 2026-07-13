@@ -48,10 +48,48 @@ export class PipRowGenerator {
         return group;
     }
 
+    public static getEffectiveTransform(geometry: SVGGeometryElement): string | null {
+        return this.withSamplingGeometry(geometry, samplingGeometry =>
+            this.readEffectiveTransform(samplingGeometry));
+    }
+
     public static createRows(
         geometry: SVGGeometryElement,
         requestedRowHeight = DEFAULT_PIP_ROW_HEIGHT,
     ): GeneratedPipRows | null {
+        return this.withSamplingGeometry(geometry, samplingGeometry => {
+            const transform = this.readEffectiveTransform(samplingGeometry);
+            samplingGeometry.removeAttribute('transform');
+
+            try {
+                const bounds = samplingGeometry.getBBox();
+                if (!Number.isFinite(bounds.x)
+                    || !Number.isFinite(bounds.y)
+                    || !Number.isFinite(bounds.width)
+                    || !Number.isFinite(bounds.height)
+                    || bounds.width <= 0
+                    || bounds.height <= 0) {
+                    return null;
+                }
+
+                const rowHeight = Math.min(
+                    this.normalizeRowHeight(requestedRowHeight),
+                    bounds.width,
+                );
+                const rows = this.isPlainRectangle(samplingGeometry)
+                    ? this.createRectangleRows(bounds, rowHeight)
+                    : this.createGeometryRows(samplingGeometry, bounds, rowHeight);
+                return rows.length > 0 ? { rows, transform } : null;
+            } catch {
+                return null;
+            }
+        });
+    }
+
+    private static withSamplingGeometry<T>(
+        geometry: SVGGeometryElement,
+        callback: (samplingGeometry: SVGGeometryElement) => T,
+    ): T {
         const samplingRoot = document.createElementNS(SVG_NAMESPACE, 'svg');
         const samplingGeometry = geometry.cloneNode(true) as SVGGeometryElement;
         samplingRoot.setAttribute('width', '1');
@@ -63,30 +101,8 @@ export class PipRowGenerator {
         samplingRoot.style.setProperty('pointer-events', 'none');
         samplingRoot.appendChild(samplingGeometry);
         document.body.appendChild(samplingRoot);
-        const transform = this.readEffectiveTransform(samplingGeometry);
-        samplingGeometry.removeAttribute('transform');
-
         try {
-            const bounds = samplingGeometry.getBBox();
-            if (!Number.isFinite(bounds.x)
-                || !Number.isFinite(bounds.y)
-                || !Number.isFinite(bounds.width)
-                || !Number.isFinite(bounds.height)
-                || bounds.width <= 0
-                || bounds.height <= 0) {
-                return null;
-            }
-
-            const rowHeight = Math.min(
-                this.normalizeRowHeight(requestedRowHeight),
-                bounds.width,
-            );
-            const rows = this.isPlainRectangle(samplingGeometry)
-                ? this.createRectangleRows(bounds, rowHeight)
-                : this.createGeometryRows(samplingGeometry, bounds, rowHeight);
-            return rows.length > 0 ? { rows, transform } : null;
-        } catch {
-            return null;
+            return callback(samplingGeometry);
         } finally {
             samplingRoot.remove();
         }

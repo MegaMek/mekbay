@@ -29,6 +29,13 @@ import { SvgFrameUtil } from '../utils/sheets/svg-frame.util';
                     <label class="structure-link-control">
                         <input
                             type="checkbox"
+                            [checked]="generateFillRows"
+                            (change)="updateGenerateFillRows($event)" />
+                        <span>Generate fill rows</span>
+                    </label>
+                    <label class="structure-link-control">
+                        <input
+                            type="checkbox"
                             [checked]="showFillPlaceholders"
                             (change)="updateShowFillPlaceholders($event)" />
                         <span>Show fill placeholders</span>
@@ -517,14 +524,13 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
     private paperdollRenderVersion = 0;
 
     protected pipLayout: BipedPaperdollPipLayout = 'canon';
+    protected generateFillRows = true;
     protected showFillPlaceholders = true;
     protected readonly pipLayouts: readonly BipedPaperdollPipLayout[] = [
         'canon',
         'distributed',
-        'distributed-legacy',
         'rail',
         'generic',
-        'generic-legacy',
     ];
 
     protected get totalArmorCount(): number {
@@ -549,6 +555,11 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
             return;
         }
         this.pipLayout = layout;
+        void this.updatePaperdolls();
+    }
+
+    protected updateGenerateFillRows(event: Event): void {
+        this.generateFillRows = (event.target as HTMLInputElement).checked;
         void this.updatePaperdolls();
     }
 
@@ -672,6 +683,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 pipLayout: this.pipLayout,
                 railPipsPerPath: 5,
                 shieldValues: this.shieldValues,
+                generateFillRows: this.generateFillRows,
                 showFillPlaceholders: this.showFillPlaceholders,
                 pipOptions: {
                     stroke: '#b4492f',
@@ -685,6 +697,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 className: 'biped-paperdoll-armor-rear',
                 pipLayout: this.pipLayout,
                 railPipsPerPath: 5,
+                generateFillRows: this.generateFillRows,
                 showFillPlaceholders: this.showFillPlaceholders,
                 pipOptions: {
                     stroke: '#a63d83',
@@ -698,6 +711,7 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 className: 'biped-paperdoll-structure',
                 pipLayout: this.pipLayout,
                 railPipsPerPath: 5,
+                generateFillRows: this.generateFillRows,
                 showFillPlaceholders: this.showFillPlaceholders,
                 pipOptions: {
                     stroke: '#356a8a',

@@ -1,6 +1,5 @@
 import { CanonPipRenderer } from './canon-pip-renderer';
 import { DistributedPipRenderer } from './distributed-pip-renderer';
-import { DistributedPipRenderer as LegacyDistributedPipRenderer } from './distributed-pip-renderer-legacy';
 import { GenericPipRenderer } from './generic-pip-renderer';
 import { PipRowGenerator } from './pip-row-generator';
 import { RailPipRenderer } from './rail-pip-renderer';
@@ -124,7 +123,12 @@ describe('Pip renderers', () => {
         path.setAttribute('transform', 'translate(12 4)');
 
         const generated = PipRowGenerator.createRows(path, 3);
-        const pips = DistributedPipRenderer.createPips(path, 3, { rowHeight: 3 });
+        const pips = generated
+            ? DistributedPipRenderer.createPips(generated.rows, 3, { rowHeight: 3 })
+            : null;
+        if (pips && generated?.transform) {
+            pips.setAttribute('transform', generated.transform);
+        }
 
         expect(generated?.transform).toBe('matrix(1 0 0 1 12 4)');
         expect(generated?.rows.every(row => row.height <= 3 && row.width >= row.height)).toBeTrue();
@@ -147,7 +151,13 @@ describe('Pip renderers', () => {
         document.body.appendChild(svg);
         svgRoots.push(svg);
 
-        const pips = DistributedPipRenderer.createPips(rectangle, 3, { rowHeight: 6 });
+        const generated = PipRowGenerator.createRows(rectangle, 6);
+        const pips = generated
+            ? DistributedPipRenderer.createPips(generated.rows, 3, { rowHeight: 6 })
+            : null;
+        if (pips && generated?.transform) {
+            pips.setAttribute('transform', generated.transform);
+        }
         const sourceMatrix = rectangle.getCTM();
         svg.appendChild(pips as SVGGElement);
         const generatedMatrix = pips?.getCTM();
@@ -341,29 +351,27 @@ describe('Pip renderers', () => {
     });
 
     it('alternates row parity for dense distributed layouts', () => {
-        for (const renderer of [DistributedPipRenderer, LegacyDistributedPipRenderer]) {
-            const pips = renderer.createPips(
-                [{ x: 0, y: 0, width: 40, height: 20 }],
-                9,
-                { minPipRadius: 0, pipGap: 1, pipRadius: 100, strokeWidthRatio: 0 },
-                'armor',
-                'CT',
-            );
-            const rowCounts = Array.from(
-                pips?.querySelectorAll('circle') ?? [],
-            ).reduce((counts, circle) => {
-                const y = circle.getAttribute('cy') ?? '';
-                counts.set(y, (counts.get(y) ?? 0) + 1);
-                return counts;
-            }, new Map<string, number>());
+        const pips = DistributedPipRenderer.createPips(
+            [{ x: 0, y: 0, width: 40, height: 20 }],
+            9,
+            { minPipRadius: 0, pipGap: 1, pipRadius: 100, strokeWidthRatio: 0 },
+            'armor',
+            'CT',
+        );
+        const rowCounts = Array.from(
+            pips?.querySelectorAll('circle') ?? [],
+        ).reduce((counts, circle) => {
+            const y = circle.getAttribute('cy') ?? '';
+            counts.set(y, (counts.get(y) ?? 0) + 1);
+            return counts;
+        }, new Map<string, number>());
 
-            expect(pips).not.toBeNull();
-            const counts = Array.from(rowCounts.values());
-            expect(counts.length).toBe(2);
-            expect(counts.reduce((sum, count) => sum + count, 0)).toBe(9);
-            expect(counts[0] % 2).not.toBe(counts[1] % 2);
-            expect(Number(pips?.querySelector('circle')?.getAttribute('r'))).toBeCloseTo(3.5, 6);
-        }
+        expect(pips).not.toBeNull();
+        const counts = Array.from(rowCounts.values());
+        expect(counts.length).toBe(2);
+        expect(counts.reduce((sum, count) => sum + count, 0)).toBe(9);
+        expect(counts[0] % 2).not.toBe(counts[1] % 2);
+        expect(Number(pips?.querySelector('circle')?.getAttribute('r'))).toBeCloseTo(3.5, 6);
     });
 
     function createPath(d: string, width: number, height: number): SVGPathElement {
