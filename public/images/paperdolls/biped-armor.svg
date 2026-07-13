@@ -152,8 +152,8 @@
       <path d="M 56.47 70.451 L 56.311 99.698" style="fill: none; stroke-width: 1; stroke-linecap: round; stroke-linejoin: round; stroke-miterlimit: 1.5; stroke: rgb(0, 255, 0); stroke-dasharray: 2; transform-origin: 56.391px 85.074px;" data-rail-capacity="5" data-rail-index="9"/>
     </g>
   </g>
-  <rect x="39.599" y="167.632" width="21.851" height="115.42" style="fill: none; stroke: rgb(255, 221, 0); stroke-dasharray: 4;" transform="matrix(0.999846, -0.017534, -0.219215, 1.003998, 50.696747, -8.320334)" data-fill="armor" data-location="LL"/>
-  <path d="M -39.599 -167.63 H -17.748 V -52.21 H -39.599 V -167.63 Z" style="fill: none; stroke: rgb(255, 221, 0); stroke-dasharray: 4; stroke-width: 1;" transform="matrix(-0.999846, -0.017534, 0.219215, 1.003998, 124.198073, 326.893405)" data-fill="armor" data-location="RL"/>
-  <rect x="32.817" y="120.489" width="18.109" height="82.96" style="fill: none; stroke: rgb(255, 221, 0); stroke-dasharray: 4; stroke-width: 1;" transform="matrix(0.999846, -0.017534, -0.091675, 1.001761, -2.177286, -56.376297)" data-fill="armor" data-location="LA"/>
-  <rect x="-32.817" y="-120.49" width="18.109" height="82.96" style="fill: none; stroke: rgb(255, 221, 0); stroke-dasharray: 4; stroke-width: 1;" transform="matrix(-0.999846, -0.017534, 0.091675, 1.001761, 140.089162, 183.911682)" data-fill="armor" data-location="RA"/>
+  <path d="M 53.542 159.288 L 75.39 158.904 L 50.088 274.786 L 28.24 275.169 L 53.542 159.288 Z" style="fill: none; stroke: rgb(255, 221, 0); stroke-dasharray: 4;" data-fill="armor" data-location="LL"/>
+  <path d="M 127.044 159.288 L 105.196 158.904 L 130.498 274.786 L 152.346 275.169 L 127.044 159.288 Z" style="fill: none; stroke: rgb(255, 221, 0); stroke-dasharray: 4; stroke-width: 1;" data-fill="armor" data-location="RL"/>
+  <path d="M 19.589 63.749 L 37.695 63.432 L 30.09 146.538 L 11.983 146.856 L 19.589 63.749 Z" style="fill: none; stroke: rgb(255, 221, 0); stroke-dasharray: 4; stroke-width: 1;" data-fill="armor" data-location="LA"/>
+  <path d="M 161.855 63.785 L 143.749 63.467 L 151.354 146.573 L 169.461 146.891 L 161.855 63.785 Z" style="fill: none; stroke: rgb(255, 221, 0); stroke-dasharray: 4; stroke-width: 1;" data-fill="armor" data-location="RA"/>
 </svg>
