@@ -655,7 +655,7 @@ function collectElements(
         }
         if (placeholder) {
             if (location) {
-                sourceAttributes['data-placeholder'] = placeholder;
+                sourceAttributes['data-canon'] = placeholder;
                 sourceAttributes['data-location'] = location;
                 delete sourceAttributes.id;
             }
@@ -737,7 +737,7 @@ function createPlaceholder(location: string, bounds: Bounds, type: 'armor' | 'st
             'stroke-width': PLACEHOLDER_STROKE_WIDTH,
             'stroke-dasharray': PLACEHOLDER_STROKE_DASHARRAY,
             'stroke-opacity': '0.9',
-            'data-placeholder': type,
+            'data-canon': type,
             'data-location': location,
         },
         transforms: [],
