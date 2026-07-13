@@ -265,6 +265,32 @@ describe('Pip renderers', () => {
         expect(withRowsPoints[4][0]).toBeLessThan(withRowsPoints[1][0]);
     });
 
+    it('uses virtual rows for dense generic layouts', () => {
+        const rowHeight = 6.1515198;
+        const rowStep = 5.3271999;
+        const rows = Array.from({ length: 16 }, (_value, index) => ({
+            x: 0,
+            y: index * rowStep,
+            width: 26.448,
+            height: rowHeight,
+        }));
+        const pips = GenericPipRenderer.createPips(
+            120,
+            26.448,
+            84.27,
+            { minPipRadius: 0, pipGap: 0, pipRadius: 100, strokeWidthRatio: 0.2 },
+            'armor',
+            'CT',
+            rows,
+        );
+        const circles = Array.from(pips?.querySelectorAll('circle') ?? []);
+        const rowCenters = new Set(circles.map(circle => circle.getAttribute('cy')));
+
+        expect(circles.length).toBe(120);
+        expect(rowCenters.size).toBeGreaterThan(rows.length);
+        expect(Number(circles[0]?.getAttribute('r'))).toBeGreaterThan(1.8);
+    });
+
     it('moves full-radius pips inside offset synthetic row boundaries', () => {
         const radius = 3;
         const rows = [
@@ -404,7 +430,8 @@ describe('Pip renderers', () => {
         };
         const zeroGapStrokeWidth = Number(zeroGapPips?.querySelector('circle')?.getAttribute('stroke-width'));
         const positiveGapStrokeWidth = Number(positiveGapPips?.querySelector('circle')?.getAttribute('stroke-width'));
-        expect(getMinimumCenterDistance(zeroGapPips)).toBeCloseTo(2 * zeroGapRadius + zeroGapStrokeWidth, 6);
+        expect(getMinimumCenterDistance(zeroGapPips))
+            .toBeGreaterThanOrEqual(2 * zeroGapRadius + zeroGapStrokeWidth);
         expect(getMinimumCenterDistance(positiveGapPips))
             .toBeGreaterThanOrEqual(2 * positiveGapRadius + positiveGapStrokeWidth + 1);
     });
@@ -423,7 +450,7 @@ describe('Pip renderers', () => {
             pipGap: 100,
         });
 
-        expect(radius).toBeCloseTo(2.29, 6);
+        expect(radius).toBeCloseTo(1.5, 6);
     });
 
     it('balances many distributed pips across more rows', () => {

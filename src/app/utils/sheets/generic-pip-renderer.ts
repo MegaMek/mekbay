@@ -167,7 +167,7 @@ export class GenericPipRenderer {
         }
 
         let bestLayout: GenericPipLayout | null = null;
-        const maximumRowCount = Math.min(pipCount, usableRows.length);
+        const maximumRowCount = pipCount;
         for (let rowCount = 1; rowCount <= maximumRowCount; rowCount++) {
             const selectedRows = this.selectRows(usableRows, rowCount, containerHeight, inset);
             const rowPipCounts = this.getWeightedRowCounts(selectedRows, pipCount, inset);
@@ -327,14 +327,14 @@ export class GenericPipRenderer {
         containerHeight: number,
         inset: number,
     ): PipRow[] {
-        const usedRows = new Set<number>();
+        const usedRows = rowCount <= rows.length ? new Set<number>() : null;
         return Array.from({ length: rowCount }, (_value, index) => {
             const targetY = inset
                 + (index + 0.5) * (containerHeight - inset * 2) / rowCount;
             let selectedIndex = -1;
             let selectedScore: readonly [number, number, number] | undefined;
             for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
-                if (usedRows.has(rowIndex)) {
+                if (usedRows?.has(rowIndex)) {
                     continue;
                 }
                 const row = rows[rowIndex];
@@ -352,7 +352,7 @@ export class GenericPipRenderer {
             if (selectedIndex < 0) {
                 return rows[Math.min(index, rows.length - 1)];
             }
-            usedRows.add(selectedIndex);
+            usedRows?.add(selectedIndex);
             return rows[selectedIndex];
         });
     }
