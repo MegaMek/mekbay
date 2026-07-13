@@ -91,16 +91,36 @@ export class PipRendererShared {
                 (bounds.bottom - point.y - inset) / footprintFactor,
             );
         }
-        for (let firstIndex = 0; firstIndex < points.length; firstIndex++) {
-            for (let secondIndex = firstIndex + 1; secondIndex < points.length; secondIndex++) {
-                maximumRadius = Math.min(
-                    maximumRadius,
-                    (this.getDistance(points[firstIndex], points[secondIndex]) - pipGap)
-                        / (2 * footprintFactor),
+        const minimumDistanceSquared = this.getMinimumDistanceSquared(points);
+        if (Number.isFinite(minimumDistanceSquared)) {
+            maximumRadius = Math.min(
+                maximumRadius,
+                (Math.sqrt(minimumDistanceSquared) - pipGap) / (2 * footprintFactor),
+            );
+        }
+        return Math.max(maximumRadius, 0);
+    }
+
+    private static getMinimumDistanceSquared(points: readonly PipPoint[]): number {
+        if (points.length < 2) {
+            return Infinity;
+        }
+        const pointsByY = [...points].sort((left, right) =>
+            left.y - right.y || left.x - right.x);
+        let minimumDistanceSquared = Infinity;
+        for (let firstIndex = 0; firstIndex < pointsByY.length; firstIndex++) {
+            for (let secondIndex = firstIndex + 1; secondIndex < pointsByY.length; secondIndex++) {
+                const yDistance = pointsByY[secondIndex].y - pointsByY[firstIndex].y;
+                if (yDistance * yDistance >= minimumDistanceSquared) {
+                    break;
+                }
+                minimumDistanceSquared = Math.min(
+                    minimumDistanceSquared,
+                    this.getDistanceSquared(pointsByY[firstIndex], pointsByY[secondIndex]),
                 );
             }
         }
-        return Math.max(maximumRadius, 0);
+        return minimumDistanceSquared;
     }
 
     public static getRequestedPipRadius(options: PipRenderOptions): number {

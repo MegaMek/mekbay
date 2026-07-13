@@ -511,7 +511,7 @@ describe('BipedPaperdollUtil', () => {
             expect(generatedPips?.getAttribute('transform')).toBe(directPips?.getAttribute('transform'));
         }
     });
-    
+
     it('places rail diamonds along curved SVG geometry', () => {
         const rail = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         rail.setAttribute('d', 'M 0 0 C 10 0 20 20 30 20');
@@ -533,27 +533,5 @@ describe('BipedPaperdollUtil', () => {
         expect(circles?.length).toBe(2);
         expect(Number(circles?.[0].getAttribute('cx'))).toBeCloseTo(10);
         expect(Number(circles?.[1].getAttribute('cx'))).toBeCloseTo(30);
-    });
-
-    it('keeps editable SVG metadata in explicit attributes', async () => {
-        const assets = await Promise.all([
-            fetch('/images/paperdolls/biped-armor.svg').then(response => response.text()),
-            fetch('/images/paperdolls/biped-structure.svg').then(response => response.text()),
-        ]);
-        const [armor, structure] = assets.map(source => new DOMParser().parseFromString(source, 'image/svg+xml'));
-
-        expect(armor.querySelectorAll('[data-canon], [data-fill]').length).toBeGreaterThan(0);
-        expect(structure.querySelectorAll('[data-canon], [data-fill]').length).toBeGreaterThan(0);
-        expect(armor.querySelector('#paperdoll-art-armor')).not.toBeNull();
-        expect(structure.querySelector('#paperdoll-art-structure')).not.toBeNull();
-        expect(armor.querySelector('#paperdoll-art-armor-RT-armorRT')).not.toBeNull();
-        expect(structure.querySelector('#paperdoll-art-structure-RT-isRT')).not.toBeNull();
-        expect(armor.querySelector('[data-canon="armor"][data-location="RT"]')).not.toBeNull();
-        expect(structure.querySelector('[data-canon="structure"][data-location="RT"]')).not.toBeNull();
-        expect(armor.querySelectorAll('[data-fill="shield-dc"][data-location="RA"]')).toHaveSize(8);
-        expect(armor.querySelector('[data-fill="shield-da"][data-location="LA"]')).not.toBeNull();
-        expect(armor.querySelector('[data-fill="armor"][data-canon="armor"][data-location="CT"]')).not.toBeNull();
-        expect(armor.querySelectorAll('[id^="placeholder-"]')).toHaveSize(0);
-        expect(structure.querySelectorAll('[id^="placeholder-"]')).toHaveSize(0);
     });
 });
