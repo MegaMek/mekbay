@@ -26,6 +26,13 @@ import { SvgFrameUtil } from '../utils/sheets/svg-frame.util';
                             }
                         </select>
                     </label>
+                    <label class="structure-link-control">
+                        <input
+                            type="checkbox"
+                            [checked]="showFillPlaceholders"
+                            (change)="updateShowFillPlaceholders($event)" />
+                        <span>Show fill placeholders</span>
+                    </label>
                 </section>
                 <div class="sidebar-scroll-content">
                     <hr/>
@@ -431,7 +438,7 @@ import { SvgFrameUtil } from '../utils/sheets/svg-frame.util';
             background: #fff;
         }
 
-        @media (max-width: 940px) {
+        @media (max-width: 440px) {
             .svg-frame-demo-page {
                 width: min(612px, calc(100vw - 32px));
             }
@@ -451,7 +458,7 @@ import { SvgFrameUtil } from '../utils/sheets/svg-frame.util';
 })
 export class SvgFrameDemoPageComponent implements AfterViewInit {
     protected readonly currentYear = new Date().getFullYear();
-    protected readonly armorCountMaximum = 40;
+    protected readonly armorCountMaximum = 120;
     protected readonly shieldDCMaximum = 25;
     protected readonly shieldDAMaximum = 7;
     protected sidebarOpen = true;
@@ -510,13 +517,12 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
     private paperdollRenderVersion = 0;
 
     protected pipLayout: BipedPaperdollPipLayout = 'canon';
+    protected showFillPlaceholders = true;
     protected readonly pipLayouts: readonly BipedPaperdollPipLayout[] = [
         'canon',
         'distributed',
         'distributed-legacy',
         'rail',
-        'fill',
-        'fill-legacy',
         'generic',
         'generic-legacy',
     ];
@@ -543,6 +549,11 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
             return;
         }
         this.pipLayout = layout;
+        void this.updatePaperdolls();
+    }
+
+    protected updateShowFillPlaceholders(event: Event): void {
+        this.showFillPlaceholders = (event.target as HTMLInputElement).checked;
         void this.updatePaperdolls();
     }
 
@@ -661,9 +672,8 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 pipLayout: this.pipLayout,
                 railPipsPerPath: 5,
                 shieldValues: this.shieldValues,
-                showFillPlaceholders: true,
+                showFillPlaceholders: this.showFillPlaceholders,
                 pipOptions: {
-                    pipGap: 2,
                     stroke: '#b4492f',
                     useCanonPipRadius: true,
                 },
@@ -675,9 +685,8 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 className: 'biped-paperdoll-armor-rear',
                 pipLayout: this.pipLayout,
                 railPipsPerPath: 5,
-                showFillPlaceholders: true,
+                showFillPlaceholders: this.showFillPlaceholders,
                 pipOptions: {
-                    pipGap: 0.5,
                     stroke: '#a63d83',
                     useCanonPipRadius: true,
                 },
@@ -689,9 +698,8 @@ export class SvgFrameDemoPageComponent implements AfterViewInit {
                 className: 'biped-paperdoll-structure',
                 pipLayout: this.pipLayout,
                 railPipsPerPath: 5,
-                showFillPlaceholders: true,
+                showFillPlaceholders: this.showFillPlaceholders,
                 pipOptions: {
-                    pipGap: 0.5,
                     stroke: '#356a8a',
                     useCanonPipRadius: true,
                 },
