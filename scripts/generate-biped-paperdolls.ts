@@ -655,7 +655,7 @@ function collectElements(
         }
         if (placeholder) {
             if (location) {
-                sourceAttributes['data-canon'] = placeholder;
+                sourceAttributes[category === 'shield' ? 'data-fill' : 'data-canon'] = placeholder;
                 sourceAttributes['data-location'] = location;
                 delete sourceAttributes.id;
             }
