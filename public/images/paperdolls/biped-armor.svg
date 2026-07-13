@@ -118,7 +118,7 @@
       <rect x="0" width="6" y="0" stroke="red" height="44" data-fill="shield-da" data-location="LA"/>
     </g>
     <rect x="85.252" y="46.714" width="17.088" height="24.279" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.2px; stroke-dasharray: 2.88, 1.44;" data-fill="HD" data-location="HD" data-canon="armor"/>
-    <rect x="80.618" y="80.02" width="26.448" height="85.873" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.03px; stroke-dasharray: 2.473, 1.237;" data-fill="armor" data-location="CT" data-canon="armor"/>
+    <rect x="80.618" y="81.623" width="26.448" height="84.27" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.03px; stroke-dasharray: 2.473, 1.237;" data-fill="armor" data-location="CT" data-canon="armor"/>
     <rect x="48.002" y="64.284" width="28.578" height="84.385" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.18px; stroke-dasharray: 2.832, 1.416;" data-location="LT" data-canon="armor"/>
     <rect x="111.127" y="64.419" width="28.595" height="84.521" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.18px; stroke-dasharray: 2.832, 1.416;" data-location="RT" data-canon="armor"/>
     <rect x="13.749" y="56" width="32.141" height="91" style="fill: none; stroke: rgb(225, 29, 72); stroke-opacity: 0.9; stroke-width: 1.05px; stroke-dasharray: 2.511, 1.256;" data-location="LA" data-canon="armor"/>
