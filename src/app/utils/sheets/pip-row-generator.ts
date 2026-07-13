@@ -149,19 +149,7 @@ export class PipRowGenerator {
         bounds: DOMRect,
         rowHeight: number,
     ): PipRow[] {
-        const contains = (x: number, y: number): boolean => {
-            const fillGeometry = geometry as SVGGeometryElement & {
-                isPointInFill?: (point: { x: number; y: number }) => boolean;
-            };
-            if (typeof fillGeometry.isPointInFill !== 'function') {
-                return false;
-            }
-            try {
-                return fillGeometry.isPointInFill({ x, y });
-            } catch {
-                return false;
-            }
-        };
+        const contains = this.createFillTester(geometry);
 
         const rows: PipRow[] = [];
         const rowStep = Math.min(rowHeight, rowHeight * ROW_STEP_RATIO);
@@ -202,6 +190,41 @@ export class PipRowGenerator {
             }
         }
         return rows;
+    }
+
+    private static createFillTester(
+        geometry: SVGGeometryElement,
+    ): (x: number, y: number) => boolean {
+        if (geometry instanceof SVGPathElement) {
+            try {
+                const context = document.createElement('canvas').getContext('2d');
+                const path = new Path2D(geometry.getAttribute('d') ?? '');
+                if (context) {
+                    const fillRule = getComputedStyle(geometry).fillRule === 'evenodd'
+                        ? 'evenodd'
+                        : 'nonzero';
+                    return (x, y) => context.isPointInPath(path, x, y, fillRule);
+                }
+            } catch {
+            }
+        }
+
+        const fillGeometry = geometry as SVGGeometryElement & {
+            isPointInFill?: (point: { x: number; y: number }) => boolean;
+        };
+        if (typeof fillGeometry.isPointInFill !== 'function') {
+            return () => false;
+        }
+        const point = { x: 0, y: 0 };
+        return (x, y) => {
+            point.x = x;
+            point.y = y;
+            try {
+                return fillGeometry.isPointInFill?.(point) ?? false;
+            } catch {
+                return false;
+            }
+        };
     }
 
     private static findBoundary(

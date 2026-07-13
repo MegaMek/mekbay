@@ -118,6 +118,22 @@ describe('Pip renderers', () => {
         expect(upperRow?.width).toBeGreaterThan(20);
     });
 
+    it('preserves even-odd holes when sampling path rows', () => {
+        const path = createPath(
+            'M 0 0 H 30 V 30 H 0 Z M 10 0 H 20 V 30 H 10 Z',
+            30,
+            30,
+        );
+        path.setAttribute('fill-rule', 'evenodd');
+
+        const generated = PipRowGenerator.createRows(path);
+        const firstBand = generated?.rows.filter(row => row.y < 1) ?? [];
+
+        expect(firstBand.length).toBe(2);
+        expect(firstBand[0].x + firstBand[0].width).toBeLessThanOrEqual(10.01);
+        expect(firstBand[1].x).toBeGreaterThanOrEqual(19.99);
+    });
+
     it('overrides row height and preserves shape transforms', () => {
         const path = createPath('M 0 0 H 40 V 30 H 0 Z', 50, 40);
         path.setAttribute('transform', 'translate(12 4)');

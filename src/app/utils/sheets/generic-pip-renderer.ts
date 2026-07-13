@@ -368,15 +368,16 @@ export class GenericPipRenderer {
         }
 
         const counts = Array.from({ length: rows.length }, () => 0);
-        let rowIndex = 0;
-        let accumulatedWeight = weights[0];
-        for (let index = 0; index < pipCount; index++) {
-            const target = (index + 0.5) * totalWeight / pipCount;
-            while (target > accumulatedWeight && rowIndex < weights.length - 1) {
-                rowIndex++;
-                accumulatedWeight += weights[rowIndex];
-            }
-            counts[rowIndex]++;
+        let accumulatedWeight = 0;
+        let allocated = 0;
+        for (let index = 0; index < weights.length; index++) {
+            accumulatedWeight += weights[index];
+            const cumulativeAllocation = Math.min(
+                pipCount,
+                Math.floor(accumulatedWeight * pipCount / totalWeight + 0.5),
+            );
+            counts[index] = cumulativeAllocation - allocated;
+            allocated = cumulativeAllocation;
         }
         return counts;
     }

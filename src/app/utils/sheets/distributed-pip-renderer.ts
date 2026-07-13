@@ -220,17 +220,11 @@ export class DistributedPipRenderer {
         const eligibleRows = rows
             .map((_row, index) => index)
             .filter(index => rows[index].right > rows[index].left);
-        const rowOrder = eligibleRows.slice().sort((left, right) => {
-            const leftRow = rows[left];
-            const rightRow = rows[right];
-            return leftRow.count / Math.max(leftRow.right - leftRow.left, 1)
-            - rightRow.count / Math.max(rightRow.right - rightRow.left, 1);
-        });
         if (eligibleRows.length === 0) {
             return spacing;
         }
 
-        rowOrder.sort((left, right) => {
+        const rowOrder = eligibleRows.sort((left, right) => {
             const leftRow = rows[left];
             const rightRow = rows[right];
             const densityDifference = leftRow.count / Math.max(leftRow.right - leftRow.left, 1)
