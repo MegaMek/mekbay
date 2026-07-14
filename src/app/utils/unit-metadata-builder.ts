@@ -71,8 +71,8 @@ export class UnitMetadataBuilder {
 
       // ── Phase 0: Direct signals ────────────────────────────────────
       techBase: this.buildTechBase(entity),
-      engine: me?.type() || null as any,
-      engineRating: me?.rating || null as any,
+      engine: this.buildEngineName(entity),
+      engineRating: this.exportsEngine(entity) ? me.rating : 0,
       armorType: this.buildArmorType(entity),
       structureType: entity.structureType(),
       armor: entity.totalArmor(),
@@ -194,7 +194,20 @@ export class UnitMetadataBuilder {
   /** TechBase: 'Inner Sphere', 'Clan', or 'Mixed'. */
   private buildTechBase(entity: BaseEntity): any {
     if (entity.mixedTech()) return 'Mixed';
-    return entity.techBase();
+    return entity.techBase() === 'IS' ? 'Inner Sphere' : 'Clan';
+  }
+
+  private buildEngineName(entity: BaseEntity): any {
+    if (!this.exportsEngine(entity)) return null;
+
+    const engine = entity.mountedEngine();
+    const type = engine.type();
+    return type === 'XL' || type === 'XXL' ? `${type} (${engine.techBase})` : type;
+  }
+
+  private exportsEngine(entity: BaseEntity): boolean {
+    if (!entity.mountedEngine().installed) return false;
+    return !ENGINELESS_EXPORT_TYPES.has(entity.entityType);
   }
 
   /** Armor type string as it appears in units.json. */
@@ -208,6 +221,10 @@ export class UnitMetadataBuilder {
 // ═══════════════════════════════════════════════════════════════════════════
 // Static data
 // ═══════════════════════════════════════════════════════════════════════════
+
+const ENGINELESS_EXPORT_TYPES: ReadonlySet<EntityType> = new Set([
+  'SmallCraft', 'DropShip', 'JumpShip', 'WarShip', 'SpaceStation',
+]);
 
 /**
  * Map internal ArmorType codes to display names used in units.json.

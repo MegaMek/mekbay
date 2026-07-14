@@ -77,7 +77,7 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
   if (bb.exists('motion_type'))  entity.motiveType.set(parseMotiveType(bb.getFirstString('motion_type')));
 
   // ── Engine ──
-  parseBlkAeroEngine(bb, entity);
+  parseBlkAeroEngine(bb, entity, { rating: getAeroEngineRating(bb, entity) });
 
   // ── Cockpit ──
   if (bb.exists('cockpit_type')) {
@@ -132,4 +132,18 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
   }
 
   return entity;
+}
+
+function getAeroEngineRating(bb: BuildingBlock, entity: AeroEntity): number {
+  if (entity instanceof FixedWingSupportEntity) return 1;
+
+  const tonnage = Math.trunc(entity.tonnage());
+  if (entity instanceof ConvFighterEntity) return entity.safeThrust() * tonnage;
+
+  let rating = (entity.safeThrust() - 2) * tonnage;
+  if (bb.getFirstInt('armor_type') === 39) {
+    rating = Math.round(rating * 1.2);
+    rating = Math.ceil(rating / 5) * 5;
+  }
+  return rating;
 }

@@ -63,6 +63,15 @@ export class ProtoMekEntity extends BaseEntity {
   isQuad = signal<boolean>(false);
   hasMainGun = signal<boolean>(false);
 
+  calculatedEngineRating = computed(() => {
+    let moveFactor = Math.ceil(this.walkMP() * 1.5);
+    if (this.isQuad() || this.isGlider()) moveFactor -= 2;
+
+    let rating = Math.max(1, Math.min(400, Math.trunc(moveFactor * this.tonnage())));
+    if (rating > 40) rating = Math.ceil(rating / 5) * 5;
+    return rating;
+  });
+
   // ═══════════════════════════════════════════════════════════════════════════
   //  LOCATION OVERRIDES
   // ═══════════════════════════════════════════════════════════════════════════
@@ -90,7 +99,7 @@ export class ProtoMekEntity extends BaseEntity {
   // ═══════════════════════════════════════════════════════════════════════════
 
   protected override computeExpectedEngineRating(): number | null {
-    return this.walkMP() * this.tonnage();
+    return this.calculatedEngineRating();
   }
 
   /**

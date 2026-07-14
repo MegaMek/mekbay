@@ -160,7 +160,7 @@ export abstract class BaseEntity {
 
   // ── Engine ──
   mountedEngine = signal<MountedEngine>(
-    new MountedEngine({ type: 'Fusion', rating: 0, techBase: 'IS' }),
+    new MountedEngine({ type: 'None', rating: 0, techBase: 'IS', installed: false }),
   );
 
   // ── Armor ──

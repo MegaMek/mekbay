@@ -84,6 +84,7 @@ export interface MountedEngineInit {
   readonly type: EngineType;
   readonly rating: number;
   readonly techBase: EntityTechBase;
+  readonly installed?: boolean;
   readonly isSuperHeavy?: boolean;
   readonly heatSinkType?: HeatSinkType;
   readonly totalHeatSinks?: number;
@@ -102,6 +103,7 @@ export class MountedEngine {
   type: WritableSignal<EngineType>;
   readonly rating: number;
   readonly techBase: EntityTechBase;
+  readonly installed: boolean;
   readonly isSuperHeavy: boolean;
 
   // -- Heat-sink configuration --
@@ -127,6 +129,7 @@ export class MountedEngine {
     this.type = signal<EngineType>(init.type);
     this.rating = init.rating;
     this.techBase = init.techBase;
+    this.installed = init.installed ?? true;
     this.isSuperHeavy = init.isSuperHeavy ?? false;
 
     this.heatSinkType = signal<HeatSinkType>(init.heatSinkType ?? 'Single');

@@ -45,6 +45,14 @@ import { SupportTankEntity } from './support-tank-entity';
 export class LargeSupportTankEntity extends SupportTankEntity {
   override readonly entityType: EntityType = 'LargeSupportTank';
 
+  protected override get minimumEngineRating(): number | null {
+    return null;
+  }
+
+  protected override get zeroCruiseUsesEngineType(): boolean {
+    return false;
+  }
+
   override get locationOrder(): readonly string[] {
     return this.hasTurret()
       ? LARGE_SUPPORT_TANK_LOCATIONS_WITH_TURRET

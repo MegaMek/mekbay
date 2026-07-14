@@ -35,6 +35,7 @@ import { Signal, computed, signal } from '@angular/core';
 import { BaseEntity } from '../../base-entity';
 import {
   EngineFlag,
+  EngineType,
   EntityValidationMessage,
   MotiveType,
   SUSPENSION_FACTOR_TABLE,
@@ -95,6 +96,26 @@ export abstract class VehicleEntity extends BaseEntity {
     return fn ? fn(this.tonnage()) : 0;
   });
 
+  calculatedEngineRating = computed(() => this.calculateEngineRating(this.mountedEngine().type()));
+
+  calculateEngineRating(engineType: EngineType): number {
+    let rating = (this.cruiseMP() * Math.trunc(this.tonnage())) - this.suspensionFactor();
+    if (this.minimumEngineRating !== null) rating = Math.max(this.minimumEngineRating, rating);
+    if (this.zeroCruiseUsesEngineType && this.cruiseMP() === 0) {
+      rating = engineType === 'None' ? 0 : 10;
+    }
+    if (rating % 5 > 0) rating += 5 - (rating % 5);
+    return rating;
+  }
+
+  protected get minimumEngineRating(): number | null {
+    return 10;
+  }
+
+  protected get zeroCruiseUsesEngineType(): boolean {
+    return true;
+  }
+
   override engineFlags = computed<Set<EngineFlag>>(() => {
     const flags = new Set<EngineFlag>();
     if (this.techBase() === 'Clan' && !this.mixedTech()) flags.add('clan');
@@ -135,7 +156,7 @@ export abstract class VehicleEntity extends BaseEntity {
   // ═══════════════════════════════════════════════════════════════════════════
 
   protected override computeExpectedEngineRating(): number | null {
-    return this.walkMP() * this.tonnage();
+    return this.calculatedEngineRating();
   }
 
   protected override computeStructureValues(

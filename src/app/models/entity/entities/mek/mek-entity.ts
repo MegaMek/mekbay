@@ -148,6 +148,21 @@ export abstract class MekEntity extends BaseEntity {
     }, 0)
   );
 
+  override jumpMP = computed(() => {
+    const equipment = this.equipment();
+    const jumpJets = equipment.filter(mount => mount.equipment?.hasFlag('F_JUMP_JET')).length;
+    if (jumpJets === 0 || equipment.some(mount => mount.equipment?.hasFlag('S_SHIELD_LARGE'))) {
+      return 0;
+    }
+
+    const partialWingBonus = equipment.some(mount => mount.equipment?.hasFlag('F_PARTIAL_WING'))
+      ? (this.weightClass() === 'Ultra Light' || this.weightClass() === 'Light' || this.weightClass() === 'Medium' ? 2 : 1)
+      : 0;
+    const mediumShields = equipment.filter(mount => mount.equipment?.hasFlag('S_SHIELD_MEDIUM')).length;
+    const modularArmorPenalty = equipment.some(mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR')) ? 1 : 0;
+    return Math.max(0, jumpJets + partialWingBonus - mediumShields - modularArmorPenalty);
+  });
+
   override engineFlags = computed<Set<EngineFlag>>(() => {
     const flags = new Set<EngineFlag>();
     if (this.techBase() === 'Clan' && !this.mixedTech()) flags.add('clan');

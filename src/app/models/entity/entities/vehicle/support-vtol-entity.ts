@@ -44,6 +44,14 @@ export class SupportVtolEntity extends VtolEntity {
   fuel = signal<number>(0);
   baseChassisFireConWeight = signal<number>(0);
 
+  protected override get minimumEngineRating(): number | null {
+    return null;
+  }
+
+  protected override get zeroCruiseUsesEngineType(): boolean {
+    return false;
+  }
+
   protected override computeWeightClass(): WeightClass {
     return resolveWeightClass(this.tonnage(), SUPPORT_VEHICLE_WEIGHT_LIMITS['VTOL']);
   }

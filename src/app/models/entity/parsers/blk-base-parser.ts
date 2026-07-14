@@ -382,6 +382,9 @@ export interface BlkEngineOpts {
   /** Mark the engine as super-heavy (tonnage > 100).  Default: `false`. */
   isSuperHeavy?: boolean;
 
+  /** Entity-family-specific derived engine rating. Default: walk MP x tonnage. */
+  rating?: number;
+
   /**
    * When `true` (the default), heat-sink fields (`sink_type`, `heatsinks`,
    * `base chassis heat sinks`) are read from the BLK and forwarded to
@@ -429,6 +432,7 @@ export function parseBlkEngine(
 ): BlkEngineResult | undefined {
   const {
     isSuperHeavy = false,
+    rating = entity.walkMP() * entity.tonnage(),
     includeHeatSinks = true,
     defaultTotalHeatSinks = 10,
     engineTypeRequired = false,
@@ -439,9 +443,6 @@ export function parseBlkEngine(
   const engineType = bb.exists('engine_type')
     ? engineTypeFromCode(bb.getFirstInt('engine_type'))
     : 'Fusion' as const;
-
-  // ── Rating (always walkMP x tonnage - callers must set walkMP first) ──
-  const rating = entity.walkMP() * entity.tonnage();
 
   // ── Clan flag (respects clan_engine override for mixed-tech) ──
   const engineTechBase = getBlkEngineIsClan(bb);

@@ -115,6 +115,7 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
     const result = parseBlkEngine(bb, entity, {
       engineTypeRequired: true,
       includeHeatSinks: false,
+      rating: entity.calculateEngineRating(ENGINE_TYPE_FROM_CODE[code]),
     });
     if (result) entity.mountedEngine.set(result.mountedEngine);
   }

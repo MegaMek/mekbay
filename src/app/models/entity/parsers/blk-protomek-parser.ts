@@ -59,20 +59,16 @@ export function parseBlkProtoMek(bb: BuildingBlock, ctx: ParseContext): ProtoMek
   const techBase = getBlkTechBase(bb);
 
   // ── Motive type ──
-  if (bb.exists('motion_type')) entity.motiveType.set(parseMotiveType(bb.getFirstString('motion_type')));
+  if (bb.exists('motion_type')) {
+    const motiveType = parseMotiveType(bb.getFirstString('motion_type'));
+    entity.motiveType.set(motiveType);
+    entity.isQuad.set(motiveType === 'Quad');
+    entity.isGlider.set(motiveType === 'WiGE');
+  }
 
   // ── Movement ──
   if (bb.exists('cruiseMP'))  entity.walkMP.set(bb.getFirstInt('cruiseMP'));
   if (bb.exists('jumpingMP')) entity.jumpingMP.set(bb.getFirstInt('jumpingMP'));
-
-  // ── Engine ──
-  {
-    const result = parseBlkEngine(bb, entity, {
-      engineTypeRequired: true,
-      includeHeatSinks: false,
-    });
-    if (result) entity.mountedEngine.set(result.mountedEngine);
-  }
 
   // ── ProtoMek-specific flags ──
   if (bb.exists('interface_cockpit')) {
@@ -81,6 +77,16 @@ export function parseBlkProtoMek(bb: BuildingBlock, ctx: ParseContext): ProtoMek
   }
   if (bb.exists('isQuad'))   entity.isQuad.set(bb.getFirstInt('isQuad') === 1);
   if (bb.exists('isGlider')) entity.isGlider.set(bb.getFirstInt('isGlider') === 1);
+
+  // ── Engine ──
+  {
+    const result = parseBlkEngine(bb, entity, {
+      engineTypeRequired: true,
+      includeHeatSinks: false,
+      rating: entity.calculatedEngineRating(),
+    });
+    if (result) entity.mountedEngine.set(result.mountedEngine);
+  }
 
   // ── Armor ──
   parseBlkArmor(bb, entity, ctx);
