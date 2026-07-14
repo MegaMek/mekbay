@@ -49,6 +49,7 @@ import {
   EngineFlag,
   EntityType,
   EntityValidationMessage,
+  getMekLegLocations,
   HeatSinkType,
   isTechAvailableForBase,
   MEK_INTERNAL_STRUCTURE,
@@ -148,6 +149,23 @@ export abstract class MekEntity extends BaseEntity {
     }, 0)
   );
 
+  override walkMP = computed(() => {
+    const equipment = this.equipment();
+    const shieldPenalty = this.chassisConfig === 'Quad' || this.chassisConfig === 'QuadVee'
+      ? 0
+      : equipment.filter(mount =>
+        mount.equipment?.hasFlag('S_SHIELD_LARGE')
+        || mount.equipment?.hasFlag('S_SHIELD_MEDIUM')
+      ).length;
+    const modularArmorPenalty = equipment.some(
+      mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR'),
+    ) ? 1 : 0;
+    const chainDrapePenalty = equipment.some(
+      mount => mount.equipment?.hasFlag('F_CHAIN_DRAPE'),
+    ) ? 1 : 0;
+    return Math.max(0, this.originalWalkMP() - shieldPenalty - modularArmorPenalty - chainDrapePenalty);
+  });
+
   override jumpMP = computed(() => {
     const equipment = this.equipment();
     const jumpJets = equipment.filter(mount => mount.equipment?.hasFlag('F_JUMP_JET')).length;
@@ -162,6 +180,21 @@ export abstract class MekEntity extends BaseEntity {
     const modularArmorPenalty = equipment.some(mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR')) ? 1 : 0;
     return Math.max(0, jumpJets + partialWingBonus - mediumShields - modularArmorPenalty);
   });
+
+  override runMP = computed(() => {
+    const runMP = Math.ceil(this.walkMP() * 1.5);
+    return this.hasMPReducingHardenedArmor() ? Math.max(0, runMP - 1) : runMP;
+  });
+
+  private hasMPReducingHardenedArmor(): boolean {
+    const armor = this.mountedArmor();
+    if (armor.type === 'HARDENED') return true;
+    if (armor.type !== 'PATCHWORK' || !armor.patchwork) return false;
+
+    return getMekLegLocations(this.chassisConfig).some(location =>
+      armor.patchwork?.types.get(location)?.startsWith('Hardened')
+    );
+  }
 
   override engineFlags = computed<Set<EngineFlag>>(() => {
     const flags = new Set<EngineFlag>();

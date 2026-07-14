@@ -74,6 +74,13 @@ export abstract class AeroEntity extends BaseEntity {
   //  COMPUTED
   // ═══════════════════════════════════════════════════════════════════════════
 
+  override walkMP = computed(() => {
+    const modularArmorPenalty = this.equipment().some(
+      mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR'),
+    ) ? 1 : 0;
+    return Math.max(0, this.originalWalkMP() - modularArmorPenalty);
+  });
+
   maxThrust = computed(() => Math.ceil(this.walkMP() * 1.5));
 
   protected override computeWeightClass(): WeightClass {

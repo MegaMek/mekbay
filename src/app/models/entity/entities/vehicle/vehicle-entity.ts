@@ -76,6 +76,17 @@ export abstract class VehicleEntity extends BaseEntity {
   //  COMPUTED
   // ═══════════════════════════════════════════════════════════════════════════
 
+  override walkMP = computed(() => {
+    const equipment = this.equipment();
+    let walkMP = this.originalWalkMP();
+    if (equipment.some(mount => mount.equipment?.hasFlag('F_HYDROFOIL'))) {
+      walkMP = Math.round(walkMP * 1.25);
+    }
+    if (equipment.some(mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR'))) walkMP--;
+    if (equipment.some(mount => mount.equipment?.hasFlag('F_DUNE_BUGGY'))) walkMP--;
+    return Math.max(0, walkMP);
+  });
+
   isSuperHeavy = computed(() => {
     const t = this.tonnage();
     switch (this.motiveType()) {

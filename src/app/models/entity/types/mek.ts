@@ -154,15 +154,45 @@ export const QUAD_TOPOLOGY: Readonly<Record<MekLocation, LocTopology>> = {
   CL:  { transfersTo: 'CT',   dependents: [] },
 };
 
-/** Set of all leg-type location codes (biped + quad + tripod) */
-export const LEG_LOCATIONS: ReadonlySet<MekLocation> = new Set<MekLocation>(
-  ['LL', 'RL', 'CL', 'FRL', 'FLL', 'RRL', 'RLL'],
-);
+export const BIPED_LEG_LOCATIONS = ['LL', 'RL'] as const satisfies readonly MekLocation[];
+export const TRIPOD_LEG_LOCATIONS = ['LL', 'RL', 'CL'] as const satisfies readonly MekLocation[];
+export const QUAD_LEG_LOCATIONS = ['FLL', 'FRL', 'RLL', 'RRL'] as const satisfies readonly MekLocation[];
 
-/** Set of quad-only leg location codes */
-export const FOUR_LEGGED_LOCATIONS: ReadonlySet<MekLocation> = new Set<MekLocation>(
-  ['FRL', 'FLL', 'RRL', 'RLL'],
-);
+export const LEG_LOCATIONS: ReadonlySet<string> = new Set([
+  ...TRIPOD_LEG_LOCATIONS,
+  ...QUAD_LEG_LOCATIONS,
+]);
+
+const ARM_LOCATIONS = ['LA', 'RA'] as const satisfies readonly MekLocation[];
+const QUAD_LEG_LOCATION_SET: ReadonlySet<string> = new Set(QUAD_LEG_LOCATIONS);
+
+export function isQuadMekConfig(config: MekConfig): boolean {
+  return config === 'Quad' || config === 'QuadVee';
+}
+
+export function getMekLegLocations(config: MekConfig): readonly MekLocation[] {
+  if (isQuadMekConfig(config)) return QUAD_LEG_LOCATIONS;
+  if (config === 'Tripod') return TRIPOD_LEG_LOCATIONS;
+  return BIPED_LEG_LOCATIONS;
+}
+
+export function isMekLegLocation(config: MekConfig, location: string): location is MekLocation {
+  return getMekLegLocations(config).some(leg => leg === location);
+}
+
+export function getMekLimbLocations(config: MekConfig): readonly MekLocation[] {
+  const legs = getMekLegLocations(config);
+  return isQuadMekConfig(config) ? legs : [...legs, ...ARM_LOCATIONS];
+}
+
+export function inferMekConfigFromLocations(locations: Iterable<string>): 'Biped' | 'Quad' | 'Tripod' {
+  let hasCenterLeg = false;
+  for (const location of locations) {
+    if (QUAD_LEG_LOCATION_SET.has(location)) return 'Quad';
+    if (location === 'CL') hasCenterLeg = true;
+  }
+  return hasCenterLeg ? 'Tripod' : 'Biped';
+}
 
 /**
  * The complete set of all canonical MekLocation values.
@@ -182,10 +212,7 @@ export function isMekLocation(s: string): s is MekLocation {
 export function getTopologyFor(
   locationKeys: Iterable<string>,
 ): Readonly<Record<MekLocation, LocTopology>> {
-  for (const key of locationKeys) {
-    if (isMekLocation(key) && FOUR_LEGGED_LOCATIONS.has(key)) return QUAD_TOPOLOGY;
-  }
-  return BIPED_TOPOLOGY;
+  return inferMekConfigFromLocations(locationKeys) === 'Quad' ? QUAD_TOPOLOGY : BIPED_TOPOLOGY;
 }
 
 // ============================================================================
