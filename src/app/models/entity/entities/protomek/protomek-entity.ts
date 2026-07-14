@@ -63,6 +63,19 @@ export class ProtoMekEntity extends BaseEntity {
   isQuad = signal<boolean>(false);
   hasMainGun = signal<boolean>(false);
 
+  override jumpMP = computed(() => {
+    const partialWingBonus = this.equipment().some(
+      mount => mount.equipment?.hasFlag('F_PARTIAL_WING'),
+    ) ? 2 : 0;
+    return this.jumpingMP() + partialWingBonus;
+  });
+
+  override runMP = computed(() =>
+    this.equipment().some(mount => mount.equipment?.hasFlag('F_MASC'))
+      ? this.walkMP() * 2
+      : Math.ceil(this.walkMP() * 1.5)
+  );
+
   calculatedEngineRating = computed(() => {
     let moveFactor = Math.ceil(this.walkMP() * 1.5);
     if (this.isQuad() || this.isGlider()) moveFactor -= 2;
