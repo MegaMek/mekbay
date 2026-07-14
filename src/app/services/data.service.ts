@@ -41,7 +41,7 @@ import { PublicTagsService } from './public-tags.service';
 
 import { type Equipment, type EquipmentMap } from '../models/equipment.model';
 import type { Quirk } from '../models/quirks.model';
-import { generateUUID, WsService } from './ws.service';
+import { WsService } from './ws.service';
 import type { ForceUnit } from '../models/force-unit.model';
 import type { Force }    from '../models/force.model';
 import { sanitizeForceTags, type ASSerializedForce, type CBTSerializedForce, type SerializedForce } from '../models/force-serialization';
@@ -86,6 +86,7 @@ import { CatalogDownloadTrackerService } from './catalogs/catalog-base.service';
 import { MULFACTION_EXTINCT, MULFACTION_NONE } from '../models/mulfactions.model';
 import { naturalCompare } from '../utils/sort.util';
 import { getUnitVariantGroupKey } from '../utils/unit-variant.util';
+import { uuidv7 } from '../utils/uuid.util';
 
 /*
  * Author: Drake
@@ -818,7 +819,7 @@ export class DataService {
             return;
         }
         if (!force.instanceId()) {
-            force.instanceId.set(generateUUID());
+            force.instanceId.set(uuidv7());
         }
         await this.dbService.saveForce(force.serialize());
         if (!localOnly) {
@@ -1288,7 +1289,7 @@ export class DataService {
                 const conflictOp = localOnlyOps.find(op => op.operationId === operationId);
                 if (!conflictOp) continue;
 
-                const newOperationId = generateUUID();
+                const newOperationId = uuidv7();
                 this.logger.warn(
                     `Operation "${conflictOp.name}" (${operationId}) is owned by another account. ` +
                     `Re-assigning to new ID: ${newOperationId}`

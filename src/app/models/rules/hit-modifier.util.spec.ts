@@ -1,5 +1,5 @@
 import { MountedEquipment } from '../force-serialization';
-import { WeaponEquipment, type AmmoEquipment, type Equipment } from '../equipment.model';
+import { MiscEquipment, WeaponEquipment, type AmmoEquipment, type Equipment } from '../equipment.model';
 import { resolveHitModifier } from './hit-modifier.util';
 
 let entryId = 0;
@@ -25,13 +25,18 @@ function entry(flags: string[] = [], destroyed = false): MountedEquipment {
     });
 }
 
-function weapon(linkedWith: MountedEquipment[], baseHitMod = '-1'): MountedEquipment {
+function weapon(linkedWith: MountedEquipment[]): MountedEquipment {
     return new MountedEquipment({
         owner: owner(),
         id: `weapon-${entryId++}`,
         name: 'Weapon',
-        baseHitMod,
-        equipment: { flags: new Set<string>() } as Equipment,
+        equipment: new WeaponEquipment({
+            id: 'LinkedWeapon',
+            name: 'Linked weapon',
+            type: 'weapon',
+            stats: { toHitModifier: -1 },
+            weapon: { ammoType: 'NA', ranges: [1, 2, 3, 4] }
+        }),
         linkedWith
     });
 }
@@ -42,12 +47,11 @@ function ammo(munitionTypes: string[] = []): AmmoEquipment {
     } as AmmoEquipment;
 }
 
-function serializedWeapon(toHitModifier: number | number[], baseHitMod = '-4'): MountedEquipment {
+function serializedWeapon(toHitModifier: number | number[]): MountedEquipment {
     return new MountedEquipment({
         owner: owner(),
         id: `serialized-weapon-${entryId++}`,
         name: 'Serialized weapon',
-        baseHitMod,
         equipment: new WeaponEquipment({
             id: 'SerializedWeapon',
             name: 'Serialized weapon',
@@ -73,9 +77,9 @@ describe('hit modifier utilities', () => {
     });
 
     it('resolves wildcard weapons from equipment data by range', () => {
-        const weapon = serializedWeapon([-3, -2, -1], '*');
+        const weapon = serializedWeapon([-3, -2, -1]);
 
-        expect(resolveHitModifier(weapon, 0)).toBe(-3);
+        expect(resolveHitModifier(weapon, 0)).toBe('*');
         expect(resolveHitModifier(weapon, 0, 'short')).toBe(-3);
         expect(resolveHitModifier(weapon, 0, 'medium')).toBe(-2);
         expect(resolveHitModifier(weapon, 0, 'long')).toBe(-1);
@@ -86,6 +90,41 @@ describe('hit modifier utilities', () => {
 
         expect(resolveHitModifier(weapon, 0, null, null, undefined, () => null)).toBe(-2);
         expect(resolveHitModifier(weapon, 0, null, null, undefined, () => 0)).toBe(0);
+    });
+
+    it('resolves base physical attack modifiers without SVG data', () => {
+        const physical = (name: string) => new MountedEquipment({
+            owner: owner(),
+            id: name,
+            name,
+            physical: true,
+        });
+
+        expect(resolveHitModifier(physical('punch'), 0)).toBe(0);
+        expect(resolveHitModifier(physical('Punch'), 0)).toBe(0);
+        expect(resolveHitModifier(physical('kick'), 0)).toBe(-2);
+        expect(resolveHitModifier(physical('club'), 0)).toBe(-1);
+        expect(resolveHitModifier(physical('push'), 0)).toBe(-1);
+        expect(resolveHitModifier(physical('charge'), 0)).toBe('Vs');
+        expect(resolveHitModifier(physical('death from above'), 0)).toBe('Vs');
+        expect(resolveHitModifier(physical('frenzy'), 0)).toBe(0);
+    });
+
+    it('uses equipment data for mounted physical weapon modifiers', () => {
+        const sword = new MountedEquipment({
+            owner: owner(),
+            id: 'sword',
+            name: 'Sword',
+            equipment: new MiscEquipment({
+                id: 'Sword',
+                name: 'Sword',
+                type: 'misc',
+                flags: ['F_HAND_WEAPON'],
+                stats: { toHitModifier: -2 },
+            }),
+        });
+
+        expect(resolveHitModifier(sword, 0)).toBe(-2);
     });
 
     it('resolves scalar and range-specific modifiers through the equipment model', () => {

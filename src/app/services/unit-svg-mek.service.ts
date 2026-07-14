@@ -39,8 +39,7 @@ import { MekRules } from "../models/rules/mek-rules";
 import { resolveHitModifier } from "../models/rules/hit-modifier.util";
 import type { InventoryControlRuntimeRangeKey } from "../models/inventory-control-runtime-state.model";
 import { getCriticalSlotAmmoProfileKey } from "../utils/ammo-interaction.util";
-
-type MekEntryState = { isDamaged: boolean; isDisabled: boolean; hitMod: number };
+import type { MountedEquipmentRuleState } from "../models/rules/unit-type-rules";
 
 /*
  * Author: Drake
@@ -48,7 +47,7 @@ type MekEntryState = { isDamaged: boolean; isDisabled: boolean; hitMod: number }
 export class UnitSvgMekService extends UnitSvgService {
     // Mek-specific SVG handling logic goes here
     private get mekRules(): MekRules { return this.unit.rules as MekRules; }
-    private currentEntryStates: Map<MountedEquipment, MekEntryState> | null = null;
+    private currentEntryStates: Map<MountedEquipment, MountedEquipmentRuleState> | null = null;
 
     protected override updateAllDisplays() {
         if (!this.unit.svg()) return;
@@ -263,9 +262,6 @@ export class UnitSvgMekService extends UnitSvgService {
 
     protected override resolveInventoryControlHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {
         const state = this.currentEntryStates?.get(entry) ?? this.mekRules.computeEntryState(entry);
-        const svgBaseHitModifier = this.getSvgBaseHitModifier(entry, range);
-        if (svgBaseHitModifier !== null) return svgBaseHitModifier;
-
         return resolveHitModifier(
             entry,
             state.hitMod,
@@ -274,6 +270,15 @@ export class UnitSvgMekService extends UnitSvgService {
             (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo),
             (candidate, candidateRange?: InventoryControlRuntimeRangeKey | null) => this.unit.getInventoryControlBaseHitModifier(candidate, candidateRange)
         );
+    }
+
+    protected override renderHitModEntry(
+        entry: MountedEquipment,
+        hitModifier: number | 'Vs' | '*' | null,
+        range?: InventoryControlRuntimeRangeKey | null
+    ) {
+        const state = this.currentEntryStates?.get(entry) ?? this.mekRules.computeEntryState(entry);
+        super.renderHitModEntry(entry, hitModifier, range, !!state.weakenedHitMod);
     }
 
     override inventoryTargetHeatFireModifier(entry: MountedEquipment): number {

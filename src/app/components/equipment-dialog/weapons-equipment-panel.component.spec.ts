@@ -94,11 +94,12 @@ function addRuntimeSelection(unit: CBTForceUnit): CBTForceUnit {
     return unit;
 }
 
-function weapon(id: string, ammoType: 'NA' | 'AC' | 'ATM' | 'MML' | 'AC_ULTRA' | 'NARC' = 'NA', rackSize = 0, ranges: number[] = [1, 2, 3, 4]): WeaponEquipment {
+function weapon(id: string, ammoType: 'NA' | 'AC' | 'ATM' | 'MML' | 'AC_ULTRA' | 'NARC' = 'NA', rackSize = 0, ranges: number[] = [1, 2, 3, 4], toHitModifier = 0): WeaponEquipment {
     return new WeaponEquipment({
         id,
         name: id,
         type: 'weapon',
+        stats: { toHitModifier },
         weapon: { ammoType, rackSize, ranges }
     });
 }
@@ -136,7 +137,6 @@ function entry(params: {
     id: string;
     equipment?: WeaponEquipment | MiscEquipment | AmmoEquipment;
     physical?: boolean;
-    baseHitMod?: string;
     destroyed?: boolean;
     el?: SVGElement;
     states?: Map<string, string>;
@@ -162,7 +162,6 @@ function entry(params: {
         name: params.id,
         equipment: params.equipment,
         physical: params.physical ?? false,
-        baseHitMod: params.baseHitMod,
         destroyed: params.destroyed ?? false,
         states: params.states ?? new Map<string, string>(),
         el: params.el,
@@ -782,7 +781,6 @@ describe('WeaponsEquipmentPanelComponent', () => {
     it('shows the full range hit modifiers for multi-range weapons', () => {
         const vsp = entry({
             id: 'vsp',
-            baseHitMod: '*',
             equipment: new WeaponEquipment({
                 id: 'VSP',
                 name: 'Variable Speed Pulse Laser',
@@ -854,11 +852,11 @@ describe('WeaponsEquipmentPanelComponent', () => {
     it('uses selected range for variable damage arrays', () => {
         const variableDamageLaser = entry({
             id: 'variable-damage-laser',
-            baseHitMod: '-4',
             equipment: new WeaponEquipment({
                 id: 'VariableDamageLaser',
                 name: 'Variable Damage Laser',
                 type: 'weapon',
+                stats: { toHitModifier: -4 },
                 weapon: { ammoType: 'NA', heat: 7, damage: [9, 7, 5], ranges: [2, 5, 9, 13] }
             }),
             el: svgEntry('<g><g class="name"><text>Variable Damage Laser</text></g><g class="damage"><text>9/7/5 [Variable]</text></g><text class="range_short">2</text><text class="range_medium">5</text><text class="range_long">9</text></g>')
@@ -899,11 +897,11 @@ describe('WeaponsEquipmentPanelComponent', () => {
     it('uses actual target distance for variable damage arrays when C3 range is shorter', () => {
         const variableDamageLaser = entry({
             id: 'variable-damage-laser',
-            baseHitMod: '-4',
             equipment: new WeaponEquipment({
                 id: 'VariableDamageLaser',
                 name: 'Variable Damage Laser',
                 type: 'weapon',
+                stats: { toHitModifier: -4 },
                 weapon: { ammoType: 'NA', heat: 7, damage: [9, 7, 5], ranges: [2, 5, 9, 13] }
             }),
             el: svgEntry('<g><g class="name"><text>Variable Damage Laser</text></g><g class="damage"><text>9/7/5 [Variable]</text></g><text class="range_short">2</text><text class="range_medium">5</text><text class="range_long">9</text></g>')
@@ -1327,8 +1325,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         });
         const launcher = entry({
             id: 'launcher',
-            baseHitMod: '-1',
-            equipment: weapon('Narc Launcher', 'NARC', 4),
+            equipment: weapon('Narc Launcher', 'NARC', 4, [1, 2, 3, 4], -1),
             linkedWith: [artemisV],
             el: svgEntry('<g><g class="name"><text>Narc Launcher</text></g><text class="range_short">3</text><text class="range_medium">6</text><text class="range_long">9</text></g>')
         });

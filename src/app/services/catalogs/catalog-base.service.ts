@@ -36,7 +36,7 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { LoggerService } from '../logger.service';
-import { generateUUID } from '../ws.service';
+import { uuidv7 } from '../../utils/uuid.util';
 
 type CatalogDataSource = 'cache' | 'remote';
 
@@ -154,7 +154,7 @@ export abstract class CatalogBaseService<THydrateInput, TStored extends THydrate
                 throw new Error(`No body received for ${this.catalogKey}`);
             }
 
-            const etag = response.headers.get('ETag') || generateUUID();
+            const etag = response.headers.get('ETag') || uuidv7();
             const wrappedData = this.normalizeFetchedData(body, etag);
 
             try {

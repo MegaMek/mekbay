@@ -46,7 +46,7 @@ import { RenameForceDialogComponent, type RenameForceDialogData, type RenameForc
 import { RenameGroupDialogComponent, type RenameGroupDialogData, type RenameGroupDialogResult } from '../components/rename-group-dialog/rename-group-dialog.component';
 import { UnitInitializerService } from './unit-initializer.service';
 import { DialogsService, type DialogRef } from './dialogs.service';
-import { generateUUID, WsService } from './ws.service';
+import { WsService } from './ws.service';
 import { ToastService } from './toast.service';
 import { LoggerService } from './logger.service';
 import { OptionsService } from './options.service';
@@ -89,6 +89,7 @@ import type { OpPreviewForce } from '../components/op-preview/op-preview.compone
 import { ForceLoadingOverlayComponent, type ForceLoadingOverlayData, type ForceLoadingProgress } from '../components/force-loading-overlay/force-loading-overlay.component';
 import type { PrintAllOptions } from '../models/print-options.model';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
+import { uuidv7 } from '../utils/uuid.util';
 
 /*
  * Author: Drake
@@ -1187,7 +1188,7 @@ export class ForceBuilderService {
             }
 
             // Set a new instance ID and save
-            newForce.instanceId.set(generateUUID());
+            newForce.instanceId.set(uuidv7());
         } finally {
             newForce.loading = false;
         }
@@ -2457,7 +2458,7 @@ export class ForceBuilderService {
         }));
 
         const op: SerializedOperation = {
-            operationId: generateUUID(),
+            operationId: uuidv7(),
             name: result.name,
             note: result.note,
             timestamp: Date.now(),

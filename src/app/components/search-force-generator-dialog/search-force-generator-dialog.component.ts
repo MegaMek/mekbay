@@ -73,7 +73,7 @@ import {
 import { GameService } from '../../services/game.service';
 import { OptionsService } from '../../services/options.service';
 import { DialogsService } from '../../services/dialogs.service';
-import { generateUUID, WsService } from '../../services/ws.service';
+import { WsService } from '../../services/ws.service';
 import type { AdvFilterOptions, DropdownFilterOptions } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { resolveDropdownNamesFromFilter } from '../../utils/filter-name-resolution.util';
@@ -89,6 +89,7 @@ import { EditPilotDialogComponent, type EditPilotDialogData, type EditPilotResul
 import { EditASPilotDialogComponent, type EditASPilotDialogData, type EditASPilotResult } from '../edit-as-pilot-dialog/edit-as-pilot-dialog.component';
 import { getUnitVariantGroupKey } from '../../utils/unit-variant.util';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
+import { uuidv7 } from '../../utils/uuid.util';
 
 export interface SearchForceGeneratorDialogConfig {
     gameSystem: GameSystem;
@@ -2043,7 +2044,7 @@ export class SearchForceGeneratorDialogComponent {
             EditASPilotDialogComponent,
             {
                 data: {
-                    unitId: unitEntry.lockKey ?? generateUUID(),
+                    unitId: unitEntry.lockKey ?? uuidv7(),
                     name: unitEntry.alias ?? '',
                     skill: unitEntry.skill ?? unitEntry.gunnery ?? this.gunnerySkillRange()[0],
                     abilities: [],
@@ -2178,7 +2179,7 @@ export class SearchForceGeneratorDialogComponent {
             piloting,
             alias: unitEntry.alias,
             commander: unitEntry.commander,
-            lockKey: unitEntry.lockKey ?? generateUUID(),
+            lockKey: unitEntry.lockKey ?? uuidv7(),
             variantGroupKey,
         };
     }

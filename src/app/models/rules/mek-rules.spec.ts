@@ -162,6 +162,22 @@ function miscEntry(forceUnit: CBTForceUnit, equipment: Equipment): MountedEquipm
     });
 }
 
+function directFireWeaponEntry(forceUnit: CBTForceUnit, flags: string[] = []): MountedEquipment {
+    const equipment = new WeaponEquipment({
+        id: 'DirectFireWeapon',
+        name: 'Direct Fire Weapon',
+        type: 'weapon',
+        flags: ['F_DIRECT_FIRE', ...flags],
+        weapon: { damage: 10, ranges: [5, 10, 15, 20], ammoType: 'NA' },
+    });
+    return new MountedEquipment({
+        owner: forceUnit,
+        id: equipment.id,
+        name: equipment.name,
+        equipment,
+    });
+}
+
 describe('MekRules', () => {
     beforeEach(() => {
         dataService = jasmine.createSpyObj<DataService>('DataService', ['getUnitByName']);
@@ -182,6 +198,124 @@ describe('MekRules', () => {
 
         expect(rules.hasComputedCondition('immobile')).toBeFalse();
         expect(rules.hasComputedCondition('abandoned')).toBeFalse();
+    });
+
+    it('applies a functional targeting computer only to eligible direct-fire weapons', () => {
+        const activeForceUnit = createForceUnitHarness({ critSlots: [crit('Targeting Computer', false)] });
+        const destroyedForceUnit = createForceUnitHarness({ critSlots: [crit('Targeting Computer')] });
+
+        expect(activeForceUnit.rules.computeEntryState(directFireWeaponEntry(activeForceUnit))).toEqual(jasmine.objectContaining({ hitMod: -1, isDamaged: false, weakenedHitMod: false }));
+        expect(destroyedForceUnit.rules.computeEntryState(directFireWeaponEntry(destroyedForceUnit))).toEqual(jasmine.objectContaining({ hitMod: 0, isDamaged: false, weakenedHitMod: true }));
+        expect(destroyedForceUnit.rules.computeEntryState(directFireWeaponEntry(destroyedForceUnit, ['F_CWS']))).toEqual(jasmine.objectContaining({ hitMod: 0, isDamaged: false, weakenedHitMod: false }));
+        expect(destroyedForceUnit.rules.computeEntryState(directFireWeaponEntry(destroyedForceUnit, ['F_TASER']))).toEqual(jasmine.objectContaining({ hitMod: 0, isDamaged: false, weakenedHitMod: false }));
+    });
+
+    it('marks intrinsic and weapon hit modifiers as weakened when their arm AES is destroyed', () => {
+        const activeForceUnit = createForceUnitHarness({
+            critSlots: [{ ...crit('AES', false), loc: 'LA' }],
+            internalLocations: ['LA', 'RA'],
+        });
+        const destroyedForceUnit = createForceUnitHarness({
+            critSlots: [{ ...crit('AES'), loc: 'LA' }],
+            internalLocations: ['LA', 'RA'],
+        });
+        const punch = (forceUnit: CBTForceUnit) => new MountedEquipment({
+            owner: forceUnit,
+            id: 'punch@LA',
+            name: 'punch',
+            locations: new Set(['LA']),
+            physical: true,
+        });
+        const sword = (forceUnit: CBTForceUnit) => new MountedEquipment({
+            owner: forceUnit,
+            id: 'sword@LA',
+            name: 'Sword',
+            equipment: miscEquipment('Sword', 'Sword', ['F_HAND_WEAPON']),
+            locations: new Set(['LA']),
+        });
+
+        expect(activeForceUnit.rules.computeEntryState(punch(activeForceUnit))).toEqual(jasmine.objectContaining({ hitMod: -1, weakenedHitMod: false }));
+        expect(destroyedForceUnit.rules.computeEntryState(punch(destroyedForceUnit))).toEqual(jasmine.objectContaining({ hitMod: 0, weakenedHitMod: true }));
+        expect(activeForceUnit.rules.computeEntryState(sword(activeForceUnit))).toEqual(jasmine.objectContaining({ hitMod: -1, weakenedHitMod: false }));
+        expect(destroyedForceUnit.rules.computeEntryState(sword(destroyedForceUnit))).toEqual(jasmine.objectContaining({ hitMod: 0, weakenedHitMod: true }));
+    });
+
+    it('marks paired-arm AES modifiers as weakened when damage removes their attack bonus', () => {
+        const scenarios = [
+            { label: 'one functional', slots: [{ loc: 'LA', destroyed: false }], club: { hitMod: -1, weakenedHitMod: false }, push: { hitMod: 0, weakenedHitMod: false } },
+            { label: 'one unavailable', slots: [{ loc: 'LA', destroyed: true }], club: { hitMod: 0, weakenedHitMod: true }, push: { hitMod: 0, weakenedHitMod: false } },
+            { label: 'both functional', slots: [{ loc: 'LA', destroyed: false }, { loc: 'RA', destroyed: false }], club: { hitMod: -1, weakenedHitMod: false }, push: { hitMod: -1, weakenedHitMod: false } },
+            { label: 'one of two unavailable', slots: [{ loc: 'LA', destroyed: true }, { loc: 'RA', destroyed: false }], club: { hitMod: -1, weakenedHitMod: false }, push: { hitMod: 0, weakenedHitMod: true } },
+            { label: 'both unavailable', slots: [{ loc: 'LA', destroyed: true }, { loc: 'RA', destroyed: true }], club: { hitMod: 0, weakenedHitMod: true }, push: { hitMod: 0, weakenedHitMod: true } },
+        ];
+
+        for (const scenario of scenarios) {
+            const forceUnit = createForceUnitHarness({
+                critSlots: scenario.slots.map(({ loc, destroyed }) => ({ ...crit(`AES ${loc}`, destroyed), name: 'AES', loc })),
+                internalLocations: ['LA', 'RA'],
+            });
+            const physical = (name: 'club' | 'push') => new MountedEquipment({
+                owner: forceUnit,
+                id: name,
+                name,
+                physical: true,
+            });
+
+            expect(forceUnit.rules.computeEntryState(physical('club')))
+                .withContext(`${scenario.label} arm AES for club`)
+                .toEqual(jasmine.objectContaining(scenario.club));
+            expect(forceUnit.rules.computeEntryState(physical('push')))
+                .withContext(`${scenario.label} arm AES for push`)
+                .toEqual(jasmine.objectContaining(scenario.push));
+        }
+    });
+
+    it('marks leg AES modifiers as weakened only when a complete installation is damaged', () => {
+        const scenarios = [
+            { label: 'all functional', slots: [{ loc: 'LL', destroyed: false }, { loc: 'RL', destroyed: false }], expected: { hitMod: -1, weakenedHitMod: false } },
+            { label: 'all installed with one unavailable', slots: [{ loc: 'LL', destroyed: true }, { loc: 'RL', destroyed: false }], expected: { hitMod: 0, weakenedHitMod: true } },
+            { label: 'partial functional installation', slots: [{ loc: 'LL', destroyed: false }], expected: { hitMod: 0, weakenedHitMod: false } },
+            { label: 'partial unavailable installation', slots: [{ loc: 'LL', destroyed: true }], expected: { hitMod: 0, weakenedHitMod: false } },
+        ];
+
+        for (const scenario of scenarios) {
+            const forceUnit = createForceUnitHarness({
+                critSlots: scenario.slots.map(({ loc, destroyed }) => ({ ...crit(`AES ${loc}`, destroyed), name: 'AES', loc })),
+                internalLocations: ['LL', 'RL'],
+            });
+            const kick = new MountedEquipment({
+                owner: forceUnit,
+                id: 'kick',
+                name: 'kick',
+                physical: true,
+            });
+
+            expect(forceUnit.rules.computeEntryState(kick))
+                .withContext(`${scenario.label} leg AES`)
+                .toEqual(jasmine.objectContaining(scenario.expected));
+        }
+    });
+
+    it('keeps spikes working when flooded but not when structurally destroyed or blown off', () => {
+        const createSpikeUnit = () => createForceUnitHarness({
+            internalLocations: ['LL'],
+            critSlots: [{ ...crit('Spikes', false), loc: 'LL' }],
+        });
+
+        const flooded = createSpikeUnit();
+        flooded.setLocationCondition('LL', 'flooded', true);
+        flooded.endPhase();
+        expect((flooded.rules as MekRules).physicalCombat()?.spikeBonus).toEqual({ total: 1, working: 1 });
+
+        const blownOff = createSpikeUnit();
+        blownOff.setLocationCondition('LL', 'blown-off', true);
+        blownOff.endPhase();
+        expect((blownOff.rules as MekRules).physicalCombat()?.spikeBonus).toEqual({ total: 1, working: 0 });
+
+        const structurallyDestroyed = createSpikeUnit();
+        structurallyDestroyed.addInternalHits('LL', structurallyDestroyed.getInternalPoints('LL'));
+        structurallyDestroyed.endPhase();
+        expect((structurallyDestroyed.rules as MekRules).physicalCombat()?.spikeBonus).toEqual({ total: 1, working: 0 });
     });
 
     it('uses active MASC state for effective Mek run MP without changing potential max run MP', () => {
@@ -680,7 +814,7 @@ describe('MekRules', () => {
         expect(rules.computeEntryState(entry)).toEqual(jasmine.objectContaining({ isDamaged: false, isDisabled: false }));
     });
 
-    it('disables blown-off location inventory without marking it damaged or destroyed', () => {
+    it('marks blown-off location inventory as damaged and disabled without destroying it', () => {
         const forceUnit = createForceUnitHarness({ internalLocations: ['LL'] });
         const rules = forceUnit.rules as MekRules;
         const critSlot = { id: 'test-weapon', name: 'Test Weapon', loc: 'LL', slot: 0 } as CriticalSlot;
@@ -696,7 +830,7 @@ describe('MekRules', () => {
         expect(forceUnit.isInternalLocCommittedPhysicallyDestroyed('LL')).toBeTrue();
         expect(forceUnit.getCritSlots().every(slot => !slot.destroying && !slot.destroyed)).toBeTrue();
         expect(storedEntry.committedDestroyed()).toBeFalse();
-        expect(rules.computeEntryState(storedEntry)).toEqual(jasmine.objectContaining({ isDamaged: false, isDisabled: true }));
+        expect(rules.computeEntryState(storedEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
     });
 
     it('marks inventory in structurally destroyed locations as damaged and disabled', () => {
@@ -718,7 +852,7 @@ describe('MekRules', () => {
         expect(rules.computeEntryState(storedEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
     });
 
-    it('disables linked locations blown off by parent structural destruction without marking inventory damaged', () => {
+    it('marks linked locations blown off by parent structural destruction as damaged and disabled', () => {
         const forceUnit = createForceUnitHarness({ internalLocations: ['RT', 'RA'] });
         const rules = forceUnit.rules as MekRules;
         const parentCrit = { id: 'parent-weapon', name: 'Parent Weapon', loc: 'RT', slot: 0 } as CriticalSlot;
@@ -740,9 +874,9 @@ describe('MekRules', () => {
         expect(storedParentEntry.committedDestroyed()).toBeFalse();
         expect(storedLinkedEntry.committedDestroyed()).toBeFalse();
         expect(entryStates.get(storedParentEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
-        expect(entryStates.get(storedLinkedEntry)).toEqual(jasmine.objectContaining({ isDamaged: false, isDisabled: true }));
+        expect(entryStates.get(storedLinkedEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
         expect(rules.computeEntryState(storedParentEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
-        expect(rules.computeEntryState(storedLinkedEntry)).toEqual(jasmine.objectContaining({ isDamaged: false, isDisabled: true }));
+        expect(rules.computeEntryState(storedLinkedEntry)).toEqual(jasmine.objectContaining({ isDamaged: true, isDisabled: true }));
     });
 
     it('disables linked-location inventory from flooded torsos without marking it damaged', () => {

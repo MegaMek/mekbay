@@ -118,6 +118,23 @@ describe('VehicleRules', () => {
         expect(rules.getAttackMovementModifier('jump')).toBe(3);
     });
 
+    it('applies a mounted targeting computer to eligible direct-fire weapons', () => {
+        const directFire = entry({ equipment: weapon('DirectFire', ['F_DIRECT_FIRE']) });
+        const targetingComputer = entry({ equipment: equipment('TargetingComputer', ['F_TARGETING_COMPUTER']) });
+        const activeRules = createRulesHarness({ inventory: [directFire, targetingComputer] });
+
+        expect(activeRules.computeEntryState(directFire)).toEqual(jasmine.objectContaining({ hitMod: -1, weakenedHitMod: false }));
+
+        const destroyedDirectFire = entry({ equipment: weapon('DestroyedDirectFire', ['F_DIRECT_FIRE']) });
+        const destroyedTargetingComputer = entry({
+            equipment: equipment('DestroyedTargetingComputer', ['F_TARGETING_COMPUTER']),
+            destroyed: true,
+        });
+        const destroyedRules = createRulesHarness({ inventory: [destroyedDirectFire, destroyedTargetingComputer] });
+
+        expect(destroyedRules.computeEntryState(destroyedDirectFire)).toEqual(jasmine.objectContaining({ hitMod: 0, weakenedHitMod: true }));
+    });
+
     it('applies ordered motive movement damage by timestamp', () => {
         const rules = createRulesHarness({
             crits: [

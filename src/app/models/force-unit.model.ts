@@ -35,12 +35,12 @@ import { signal, computed, type Injector, type Signal, type WritableSignal } fro
 import type { DataService } from '../services/data.service';
 import type { Unit } from "./units.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
-import { generateUUID } from '../services/ws.service';
 import type { SerializedUnit } from './force-serialization';
 import type { Force, UnitGroup } from './force.model';
 import type { ForceUnitState } from './force-unit-state.model';
 import type { ConditionData } from './force-unit-state.model';
 import type { CrewMember } from './crew-member.model';
+import { uuidv7 } from '../utils/uuid.util';
 
 /*
  * Author: Drake
@@ -82,7 +82,7 @@ export abstract class ForceUnit {
         unitInitializer: UnitInitializerService,
         injector: Injector
     ) {
-        this.id = generateUUID();
+        this.id = uuidv7();
         this.force = force;
         this.unit = unit;
 

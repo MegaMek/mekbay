@@ -36,7 +36,6 @@ import { Subject } from 'rxjs';
 import type { DataService } from '../services/data.service';
 import type { Unit } from "./units.model";
 import type { UnitInitializerService } from '../services/unit-initializer.service';
-import { generateUUID } from '../services/ws.service';
 import { type SerializedForce, type SerializedUnit, type SerializedGroup, type SerializedC3NetworkGroup, C3_NETWORK_GROUP_SCHEMA, FORCE_NOTE_MAX_LENGTH, sanitizeForceTags } from './force-serialization';
 import type { ForceUnit } from './force-unit.model';
 import { GameSystem } from './common.model';
@@ -53,6 +52,7 @@ import { getOrgFromForce, getOrgFromGroup } from '../utils/org/org-namer.util';
 import { getUnitsAverageTechBase, TechBase } from './tech.model';
 import { MULFACTION_EXTINCT } from './mulfactions.model';
 import { createMulForceAvailabilityContext, type ForceAvailabilityContext } from '../utils/force-availability.util';
+import { uuidv7 } from '../utils/uuid.util';
 
 /*
  * Author: Drake
@@ -224,7 +224,7 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     get force(): Force { return this._forceRef(); }
     set force(value: Force) { this._forceRef.set(value); }
 
-    id: string = generateUUID();
+    id: string = uuidv7();
     name = signal<string | undefined>(undefined);
     color?: string;
     formation = signal<FormationTypeDefinition | null>(null);
@@ -238,7 +238,7 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
 
     constructor(force: Force) {
         this.force = force;
-        this.id = generateUUID();
+        this.id = uuidv7();
     }
 
     setName(name: string | undefined, emitChange: boolean = true) {
@@ -676,13 +676,13 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         const seenUnitIds = new Set<string>();
         for (const group of this.groups()) {
             if (seenGroupIds.has(group.id)) {
-                group.id = generateUUID();
+                group.id = uuidv7();
                 fixed = true;
             }
             seenGroupIds.add(group.id);
             for (const unit of group.units()) {
                 if (seenUnitIds.has(unit.id)) {
-                    unit.id = generateUUID();
+                    unit.id = uuidv7();
                     fixed = true;
                 }
                 seenUnitIds.add(unit.id);
@@ -785,7 +785,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     public serialize(): SerializedForce {
         let instanceId = this.instanceId();
         if (!instanceId) {
-            instanceId = generateUUID();
+            instanceId = uuidv7();
             this.instanceId.set(instanceId);
         }
         const serializedGroups: SerializedGroup[] = this.groups().filter(g => g.units().length > 0).map(g => {
@@ -1084,12 +1084,12 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
 
         // Build old→new unit ID map
         const unitIdMap = new Map<string, string>();
-        serialized.instanceId = generateUUID();
+        serialized.instanceId = uuidv7();
         if (serialized.groups) {
             for (const group of serialized.groups) {
-                group.id = generateUUID();
+                group.id = uuidv7();
                 for (const unit of group.units) {
-                    const newId = generateUUID();
+                    const newId = uuidv7();
                     unitIdMap.set(unit.id, newId);
                     unit.id = newId;
                 }
@@ -1108,7 +1108,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                 return id;
             };
             for (const network of serialized.c3Networks) {
-                network.id = generateUUID();
+                network.id = uuidv7();
                 if (network.peerIds) {
                     network.peerIds = network.peerIds.map(remapId);
                 }

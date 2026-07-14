@@ -55,7 +55,7 @@ import {
 } from '../models/c3-network.model';
 import type { SerializedC3NetworkGroup } from '../models/force-serialization';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
-import { generateUUID } from '../services/ws.service';
+import { uuidv7 } from './uuid.util';
 
 /** Result of a network mutation operation */
 export interface NetworkMutationResult {
@@ -830,7 +830,7 @@ export class C3NetworkUtil {
         removeFromNetwork(node1.unit.id, net1);
         removeFromNetwork(node2.unit.id, net2);
         networks.push({
-            id: generateUUID(),
+            id: uuidv7(),
             type: networkType,
             color: ctx.getNextColor(),
             peerIds: [node1.unit.id, node2.unit.id]
@@ -888,7 +888,7 @@ export class C3NetworkUtil {
             const pinKey = `${masterNode.unit.id}:${masterCompIdx}`;
             const color = ctx.masterPinColors?.get(pinKey) ?? ctx.getNextColor();
             network = {
-                id: generateUUID(),
+                id: uuidv7(),
                 type: masterComp.networkType,
                 color,
                 masterId: masterNode.unit.id,
