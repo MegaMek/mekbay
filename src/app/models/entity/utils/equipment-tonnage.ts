@@ -1,8 +1,11 @@
 import type { BaseEntity } from '../base-entity';
+import { MekEntity } from '../entities/mek/mek-entity';
 import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import type { EntityMountedEquipment } from '../types/equipment';
 import { getFireControlWeaponWeight } from './fire-control';
+import { getCasparIITonnage, getCasparTonnage, getSrcsTonnage } from './large-craft-control-tonnage';
 import { getTargetingComputerRelevantWeight } from './targeting-computer';
+import { getMekTurretEquipmentWeight, getPintleTurretTonnage, getSponsonTurretTonnage } from './turret-tonnage';
 
 export function getEquipmentTonnage(
     entity: BaseEntity,
@@ -13,7 +16,25 @@ export function getEquipmentTonnage(
     if (equipment.tonnage !== 'variable') return equipment.tonnage;
 
     const tonnage = entity.tonnage();
-    if (equipment.hasFlag('F_PARTIAL_WING') && equipment.hasFlag('F_MEK_EQUIPMENT')) {
+    if (equipment.hasFlag('F_JUMP_JET') || equipment.hasFlag('F_UMU')) {
+        let unitTonnage = tonnage;
+        if (entity instanceof MekEntity && entity.isFrankenMek()) {
+            unitTonnage = Math.min(
+                entity.getStructureTonnageAtLocation(mount.location),
+                entity.getStructureTonnageAtLocation('CT'),
+            );
+        }
+        let multiplier = equipment.hasFlag('S_IMPROVED') ? 2 : 1;
+        if (equipment.hasFlag('S_PROTOTYPE') && equipment.hasFlag('S_IMPROVED')) multiplier = 1;
+        if (equipment.hasFlag('F_PROTOMEK_EQUIPMENT')) {
+            if (unitTonnage < 6) return 0.05 * multiplier;
+            if (unitTonnage < 10) return 0.1 * multiplier;
+            return 0.15 * multiplier;
+        }
+        if (unitTonnage <= 55) return 0.5 * multiplier;
+        if (unitTonnage <= 85) return multiplier;
+        return 2 * multiplier;
+    } else if (equipment.hasFlag('F_PARTIAL_WING') && equipment.hasFlag('F_MEK_EQUIPMENT')) {
         return standardRound(tonnage * (equipment.techBase === 'Clan' ? 0.05 : 0.07), entity);
     } else if (equipment.hasFlag('F_PARTIAL_WING') && equipment.hasFlag('F_PROTOMEK_EQUIPMENT')) {
         return nearestKg(tonnage / 5);
@@ -36,6 +57,13 @@ export function getEquipmentTonnage(
         return relevantWeight === undefined
             ? undefined
             : Math.ceil(relevantWeight / (equipment.techBase === 'Clan' ? 5 : 4));
+    } else if (equipment.hasAnyFlag(['F_QUAD_TURRET', 'F_SHOULDER_TURRET', 'F_HEAD_TURRET'])) {
+        const equipmentWeight = getMekTurretEquipmentWeight(entity, mount);
+        return equipmentWeight === undefined ? undefined : standardRound(equipmentWeight / 10, entity);
+    } else if (equipment.hasFlag('F_SPONSON_TURRET')) {
+        return getSponsonTurretTonnage(entity, value => standardRound(value, entity));
+    } else if (equipment.hasFlag('F_PINTLE_TURRET')) {
+        return getPintleTurretTonnage(entity, mount, value => standardRound(value, entity));
     } else if (equipment.hasFlag('F_ARMORED_MOTIVE_SYSTEM')) {
         return standardRound(tonnage * (equipment.techBase === 'Clan' ? 0.1 : 0.15), entity);
     } else if (equipment.hasFlag('F_CLUB') && equipment.hasFlag('S_HATCHET')) {
@@ -94,6 +122,12 @@ export function getEquipmentTonnage(
         return tonnage / 100;
     } else if (equipment.hasFlag('F_NAVAL_C3')) {
         return tonnage * 0.01;
+    } else if (equipment.hasFlag('F_SRCS') || equipment.hasFlag('F_SASRCS')) {
+        return getSrcsTonnage(entity, mount);
+    } else if (equipment.hasFlag('F_CASPAR')) {
+        return getCasparTonnage(entity, equipment.hasFlag('S_IMPROVED'));
+    } else if (equipment.hasFlag('F_CASPAR_II')) {
+        return getCasparIITonnage(entity, equipment.hasFlag('S_IMPROVED'));
     } else if (equipment.hasFlag('F_ATAC')) {
         return Math.min(standardRound(tonnage * 0.02, entity), 50000) + ((mount.size ?? 1) * 150);
     } else if (equipment.hasFlag('F_DTAC')) {
@@ -104,6 +138,11 @@ export function getEquipmentTonnage(
         if (tonnage < 6) return 0.25;
         if (tonnage < 10) return 0.5;
         return 1;
+    } else if (equipment.hasFlag('F_FUEL')) {
+        const usesTankEngine = entity.entityType === 'Tank'
+            || entity.entityType === 'Naval'
+            || entity.entityType === 'VTOL';
+        return standardRound(entity.mountedEngine().getWeight({ tank: usesTankEngine }) * 0.1, entity);
     } else if (equipment.hasFlag('F_DRONE_CARRIER_CONTROL')) {
         return 2 + ((mount.size ?? 1) * 0.5);
     } else if (equipment.hasFlag('F_MASH')) {
@@ -118,6 +157,8 @@ export function getEquipmentTonnage(
         return nearestKg((mount.size ?? 1) / 1000);
     } else if (equipment.hasFlag('F_RAM_PLATE')) {
         return Math.ceil(tonnage / 10);
+    } else if (equipment.hasFlag('F_POWER_GENERATOR') || equipment.hasFlag('F_DUMPER')) {
+        return 1;
     }
 
     return undefined;

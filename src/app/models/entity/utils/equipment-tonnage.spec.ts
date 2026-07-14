@@ -5,6 +5,9 @@ import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import { ProtoMekEntity } from '../entities/protomek/protomek-entity';
 import { SupportTankEntity } from '../entities/vehicle/support-tank-entity';
 import { TankEntity } from '../entities/vehicle/tank-entity';
+import { DropShipEntity } from '../entities/aero/dropship-entity';
+import { JumpShipEntity } from '../entities/largecraft/jumpship-entity';
+import { WarShipEntity } from '../entities/largecraft/warship-entity';
 import { EntityMountedEquipment } from '../types';
 import { MountedEngine } from '../components';
 
@@ -123,12 +126,116 @@ describe('EntityMountedEquipment.getTonnage', () => {
         expect(basic.getTonnage(supportTank)).toBe(3);
     });
 
+    it('resolves Mek turret weight from turret-mounted equipment', () => {
+        const headTurret = mount(variableEquipment('head turret', ['F_HEAD_TURRET']));
+        entity.equipment.set([
+            headTurret,
+            weaponMount('head weapon', 10, []).clone({ location: 'HD', turretMounted: true }),
+            weaponMount('other weapon', 20, []).clone({ location: 'RA', turretMounted: true }),
+        ]);
+
+        expect(headTurret.getTonnage(entity)).toBe(1);
+    });
+
+    it('resolves and splits sponson turret weight', () => {
+        const tank = new TankEntity();
+        const rightTurret = mount(variableEquipment('right sponson', ['F_SPONSON_TURRET']));
+        const leftTurret = mount(variableEquipment('left sponson', ['F_SPONSON_TURRET']));
+        tank.equipment.set([
+            rightTurret,
+            leftTurret,
+            weaponMount('right weapon', 5, []).clone({ turretType: 'sponson' }),
+            weaponMount('left weapon', 5, []).clone({ turretType: 'sponson' }),
+        ]);
+
+        expect(rightTurret.getTonnage(tank)).toBe(0.5);
+
+        tank.omni.set(true);
+        tank.baseChassisSponsonPintleWeight.set(4);
+        expect(rightTurret.getTonnage(tank)).toBe(2);
+    });
+
+    it('resolves pintle turret weight from weapons in the same location', () => {
+        const supportTank = new SupportTankEntity();
+        supportTank.tonnage.set(75);
+        const pintle = mount(variableEquipment('pintle', ['F_PINTLE_TURRET']));
+        supportTank.equipment.set([
+            pintle,
+            weaponMount('pintle weapon', 5, []).clone({ location: 'RA', turretType: 'pintle' }),
+            weaponMount('other pintle weapon', 20, []).clone({ location: 'LA', turretType: 'pintle' }),
+        ]);
+
+        expect(pintle.getTonnage(supportTank)).toBe(0.5);
+    });
+
+    it('resolves SRCS and CASPAR tonnage by large-craft type', () => {
+        const dropShip = new DropShipEntity();
+        dropShip.tonnage.set(1000);
+        const jumpShip = new JumpShipEntity();
+        jumpShip.tonnage.set(100000);
+        const warShip = new WarShipEntity();
+        warShip.tonnage.set(100000);
+        warShip.kfCore.set(1);
+
+        expect(mount(variableEquipment('SRCS', ['F_SRCS'])).getTonnage(dropShip)).toBe(70);
+        expect(mount(variableEquipment('improved SRCS', ['F_SRCS', 'S_IMPROVED'])).getTonnage(jumpShip)).toBe(600);
+        expect(mount(variableEquipment('CASPAR', ['F_CASPAR'])).getTonnage(warShip)).toBe(6000);
+        expect(mount(variableEquipment('improved CASPAR II', ['F_CASPAR_II', 'S_IMPROVED']))
+            .getTonnage(dropShip)).toBe(120);
+    });
+
+    it('resolves extended fuel tanks from engine weight', () => {
+        entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 300, techBase: 'IS' }));
+        expect(mount(variableEquipment('extended fuel tank', ['F_FUEL'])).getTonnage(entity)).toBe(2);
+    });
+
+    it('matches Java variable-tonnage fallback for power generators and dumpers', () => {
+        expect(mount(variableEquipment('power generator', ['F_POWER_GENERATOR'])).getTonnage(entity)).toBe(1);
+        expect(mount(variableEquipment('dumper', ['F_DUMPER'])).getTonnage(entity)).toBe(1);
+    });
+
     it('uses kilogram rounding for ProtoMek partial wings', () => {
         const protoMek = new ProtoMekEntity();
         protoMek.tonnage.set(6.003);
         const wing = variableEquipment('ProtoMek partial wing', ['F_PARTIAL_WING', 'F_PROTOMEK_EQUIPMENT'], 'Clan');
 
         expect(mount(wing).getTonnage(protoMek)).toBe(1.201);
+    });
+
+    it('resolves standard, improved, and prototype-improved jump jets', () => {
+        const standard = mount(variableEquipment('jump jet', ['F_JUMP_JET']));
+        const improved = mount(variableEquipment('improved jump jet', ['F_JUMP_JET', 'S_IMPROVED']));
+        const prototypeImproved = mount(variableEquipment(
+            'prototype improved jump jet', ['F_JUMP_JET', 'S_IMPROVED', 'S_PROTOTYPE']));
+
+        expect(standard.getTonnage(entity)).toBe(1);
+        expect(improved.getTonnage(entity)).toBe(2);
+        expect(prototypeImproved.getTonnage(entity)).toBe(1);
+    });
+
+    it('uses ProtoMek jump-jet thresholds', () => {
+        const protoMek = new ProtoMekEntity();
+        const jumpJet = mount(variableEquipment('ProtoMek jump jet',
+            ['F_JUMP_JET', 'F_PROTOMEK_EQUIPMENT'], 'Clan'));
+
+        protoMek.tonnage.set(5.999);
+        expect(jumpJet.getTonnage(protoMek)).toBe(0.05);
+        protoMek.tonnage.set(6);
+        expect(jumpJet.getTonnage(protoMek)).toBe(0.1);
+        protoMek.tonnage.set(10);
+        expect(jumpJet.getTonnage(protoMek)).toBe(0.15);
+    });
+
+    it('uses FrankenMek location tonnage capped by the center torso', () => {
+        const frankenMek = new BipedMekEntity();
+        frankenMek.tonnage.set(100);
+        frankenMek.isFrankenMek.set(true);
+        frankenMek.frankenMekLocations.set(new Map([
+            ['CT', { tonnage: 60 }],
+            ['RA', { tonnage: 40 }],
+        ]));
+
+        expect(mount(variableEquipment('jump jet', ['F_JUMP_JET'])).getTonnage(frankenMek)).toBe(0.5);
     });
 
     it('resolves IS and Clan MASC tonnage', () => {
