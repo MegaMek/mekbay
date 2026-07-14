@@ -50,6 +50,7 @@ export type EntityType =
   | 'Naval'
   | 'VTOL'
   | 'SupportTank'
+  | 'SupportNaval'
   | 'SupportVTOL'
   | 'LargeSupportTank'
   | 'GunEmplacement'

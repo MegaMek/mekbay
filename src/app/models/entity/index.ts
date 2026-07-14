@@ -100,6 +100,7 @@ export { TankEntity } from './entities/vehicle/tank-entity';
 export { NavalEntity } from './entities/vehicle/naval-entity';
 export { VtolEntity } from './entities/vehicle/vtol-entity';
 export { SupportTankEntity } from './entities/vehicle/support-tank-entity';
+export { SupportNavalEntity } from './entities/vehicle/support-naval-entity';
 export { SupportVtolEntity } from './entities/vehicle/support-vtol-entity';
 export { LargeSupportTankEntity } from './entities/vehicle/large-support-tank-entity';
 export { GunEmplacementEntity } from './entities/vehicle/gun-emplacement-entity';

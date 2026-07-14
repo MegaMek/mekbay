@@ -32,25 +32,23 @@
  */
 
 import { signal } from '@angular/core';
-import { AERO_LOCATIONS, EntityType, FIXED_WING_EQUIP_LOCATIONS, SUPPORT_VEHICLE_WEIGHT_LIMITS, WeightClass, resolveWeightClass } from '../../types';
+import { SupportVehicleData, type SupportVehicle } from '../support-vehicle';
+import { AERO_LOCATIONS, EntityType, FIXED_WING_EQUIP_LOCATIONS, WeightClass } from '../../types';
 import { AeroEntity } from './aero-entity';
 
 /** Fixed Wing Support vehicle - uses BAR rating and tech ratings. */
-export class FixedWingSupportEntity extends AeroEntity {
+export class FixedWingSupportEntity extends AeroEntity implements SupportVehicle {
   override readonly entityType: EntityType = 'FixedWingSupport';
 
   /** VSTOL (Vertical/Short Take-Off and Landing) capability */
   vstol = signal<boolean>(false);
-
-  /** Battle Armor Rating */
-  barRating = signal<number>(10);
-
-  /** Tech ratings for support vehicle construction */
-  structuralTechRating = signal<number>(0);
-  engineTechRating = signal<number>(0);
+  readonly supportVehicle = new SupportVehicleData(10);
+  readonly barRating = this.supportVehicle.barRating;
+  readonly structuralTechRating = this.supportVehicle.structuralTechRating;
+  readonly engineTechRating = this.supportVehicle.engineTechRating;
 
   protected override computeWeightClass(): WeightClass {
-    return resolveWeightClass(this.tonnage(), SUPPORT_VEHICLE_WEIGHT_LIMITS['Aerodyne']);
+    return this.supportVehicle.resolveWeightClass(this.tonnage(), 'Aerodyne');
   }
 
   get locationOrder(): readonly string[] {

@@ -1,15 +1,13 @@
 import type { BaseEntity } from '../base-entity';
+import { isSupportVehicle, type SupportVehicle } from '../entities/support-vehicle';
 import { FixedWingSupportEntity } from '../entities/aero/fixed-wing-support-entity';
-import { SupportTankEntity } from '../entities/vehicle/support-tank-entity';
 import { SupportVtolEntity } from '../entities/vehicle/support-vtol-entity';
 import type { TechRating } from '../types';
 
 const TECH_RATINGS: readonly TechRating[] = ['A', 'B', 'C', 'D', 'E', 'F'];
 
 export function getEquipmentEngineWeight(entity: BaseEntity): number {
-    if (entity instanceof SupportTankEntity
-        || entity instanceof SupportVtolEntity
-        || entity instanceof FixedWingSupportEntity) {
+    if (isSupportVehicle(entity)) {
         return getSupportVehicleEngineWeight(entity);
     }
 
@@ -24,7 +22,7 @@ export function getEquipmentEngineWeight(entity: BaseEntity): number {
 }
 
 function getSupportVehicleEngineWeight(
-    entity: SupportTankEntity | SupportVtolEntity | FixedWingSupportEntity,
+    entity: BaseEntity & SupportVehicle,
 ): number {
     let movementPoints = entity.originalWalkMP();
     if (entity.motiveType() === 'Rail' || entity.motiveType() === 'MagLev') {
@@ -52,7 +50,7 @@ function getSupportVehicleEngineWeight(
 }
 
 function getBaseEngineValue(
-    entity: SupportTankEntity | SupportVtolEntity | FixedWingSupportEntity,
+    entity: BaseEntity & SupportVehicle,
 ): number {
     const tonnage = entity.tonnage();
     if (entity instanceof SupportVtolEntity) {

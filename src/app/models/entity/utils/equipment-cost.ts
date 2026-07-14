@@ -1,5 +1,6 @@
 import type { BaseEntity } from '../base-entity';
 import type { EntityMountedEquipment } from '../types/equipment';
+import { isSupportVehicle } from '../entities/support-vehicle';
 import { getFireControlWeaponCost } from './fire-control';
 import { getTargetingComputerRelevantWeight } from './targeting-computer';
 
@@ -23,11 +24,7 @@ export function getEquipmentCost(
     } else if (equipment.hasFlag('F_JET_BOOSTER')) {
         cost = undefined;
     } else if (equipment.hasFlag('S_SUPERCHARGER')) {
-        const supportVehicle = entity.entityType === 'SupportTank'
-            || entity.entityType === 'SupportVTOL'
-            || entity.entityType === 'LargeSupportTank'
-            || entity.entityType === 'FixedWingSupport';
-        cost = supportVehicle ? undefined : entity.mountedEngine().rating * 10000;
+        cost = isSupportVehicle(entity) ? undefined : entity.mountedEngine().rating * 10000;
     } else if (equipment.hasFlag('F_MASC') && entity.entityType === 'ProtoMek') {
         cost = Math.round(entity.mountedEngine().rating * 1000 * tonnage * 0.025);
     } else if (equipment.hasFlag('F_MASC')) {

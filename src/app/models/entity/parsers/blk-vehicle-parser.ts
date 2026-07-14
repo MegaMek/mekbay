@@ -36,6 +36,8 @@ import { TankEntity } from '../entities/vehicle/tank-entity';
 import { NavalEntity } from '../entities/vehicle/naval-entity';
 import { VtolEntity } from '../entities/vehicle/vtol-entity';
 import { SupportTankEntity } from '../entities/vehicle/support-tank-entity';
+import { SupportNavalEntity } from '../entities/vehicle/support-naval-entity';
+import { isSupportVehicle } from '../entities/support-vehicle';
 import { SupportVtolEntity } from '../entities/vehicle/support-vtol-entity';
 import { LargeSupportTankEntity } from '../entities/vehicle/large-support-tank-entity';
 import { GunEmplacementEntity } from '../entities/vehicle/gun-emplacement-entity';
@@ -78,16 +80,19 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
   const NAVAL_MOTIVE_TYPES = new Set(['Naval', 'Submarine', 'Hydrofoil']);
   const unitType = bb.getFirstString('UnitType').trim();
   const rawMotiveType = bb.exists('motion_type') ? bb.getFirstString('motion_type') : '';
+  const motiveType = parseMotiveType(rawMotiveType);
   let entity: VehicleEntity;
 
   switch (unitType) {
     case 'VTOL':              entity = new VtolEntity(); break;
-    case 'SupportTank':       entity = new SupportTankEntity(); break;
+    case 'SupportTank':
+      entity = NAVAL_MOTIVE_TYPES.has(motiveType) ? new SupportNavalEntity() : new SupportTankEntity();
+      break;
     case 'SupportVTOL':       entity = new SupportVtolEntity(); break;
     case 'LargeSupportTank':  entity = new LargeSupportTankEntity(); break;
     case 'GunEmplacement':    entity = new GunEmplacementEntity(); break;
     default:
-      entity = NAVAL_MOTIVE_TYPES.has(rawMotiveType) ? new NavalEntity() : new TankEntity();
+      entity = NAVAL_MOTIVE_TYPES.has(motiveType) ? new NavalEntity() : new TankEntity();
       break;
   }
 
@@ -98,7 +103,7 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
   // ── Motive type ──
   if (rawMotiveType) {
     ctx.validateEnum('motion_type', rawMotiveType, VALID_VEHICLE_MOTIVE_TYPES, 'vehicle motive type');
-    entity.motiveType.set(parseMotiveType(rawMotiveType));
+    entity.motiveType.set(motiveType);
   }
 
   // ── Movement ──
@@ -144,8 +149,8 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
   if (bb.exists('baseChassisSponsonPintleWeight')) {
     entity.baseChassisSponsonPintleWeight.set(bb.getFirstDouble('baseChassisSponsonPintleWeight'));
   }
-  if ((entity instanceof SupportTankEntity || entity instanceof SupportVtolEntity) && bb.exists('baseChassisFireConWeight')) {
-    (entity as SupportTankEntity | SupportVtolEntity).baseChassisFireConWeight.set(bb.getFirstDouble('baseChassisFireConWeight'));
+  if (isSupportVehicle(entity) && bb.exists('baseChassisFireConWeight')) {
+    entity.baseChassisFireConWeight.set(bb.getFirstDouble('baseChassisFireConWeight'));
   }
 
   // ── Fuel ──
@@ -238,16 +243,13 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
   }
 
   // ── Support vehicle BAR rating ──
-  if (entity instanceof SupportTankEntity && bb.exists('barrating')) {
-    entity.barRating.set(bb.getFirstInt('barrating'));
-  }
-  if (entity instanceof SupportVtolEntity && bb.exists('barrating')) {
+  if (isSupportVehicle(entity) && bb.exists('barrating')) {
     entity.barRating.set(bb.getFirstInt('barrating'));
   }
 
   // ── Support vehicle tech ratings and fuel ──
-  if (entity instanceof SupportTankEntity || entity instanceof SupportVtolEntity) {
-    const sv = entity as SupportTankEntity | SupportVtolEntity;
+  if (isSupportVehicle(entity)) {
+    const sv = entity;
     if (bb.exists('structural_tech_rating')) {
       sv.structuralTechRating.set(bb.getFirstInt('structural_tech_rating'));
     }

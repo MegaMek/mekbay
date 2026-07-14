@@ -1,4 +1,5 @@
 import type { BaseEntity } from '../base-entity';
+import { VtolEntity } from '../entities/vehicle/vtol-entity';
 import type { EntityMountedEquipment } from '../types/equipment';
 
 export function getEquipmentBV(entity: BaseEntity, mount: EntityMountedEquipment): number {
@@ -7,7 +8,7 @@ export function getEquipmentBV(entity: BaseEntity, mount: EntityMountedEquipment
     if (equipment.bv !== 'variable') {
         const hasRotorMastMount = entity.equipment().some(candidate =>
             candidate.location === 'Rotor' && candidate.equipment?.hasFlag('F_MAST_MOUNT'));
-        const receivesMastMountBonus = (entity.entityType === 'VTOL' || entity.entityType === 'SupportVTOL')
+        const receivesMastMountBonus = entity instanceof VtolEntity
             && mount.location === 'Rotor'
             && hasRotorMastMount
             && equipment.hasAnyFlag(['F_ECM', 'F_BAP', 'F_C3S', 'F_C3SBS', 'F_C3I']);

@@ -4,8 +4,7 @@ import type { BaseEntity } from "../base-entity";
 import { AeroEntity } from "../entities/aero/aero-entity";
 import { MekEntity } from "../entities/mek/mek-entity";
 import { QuadMekEntity } from "../entities/mek/quad-mek-entity";
-import { SupportTankEntity } from "../entities/vehicle/support-tank-entity";
-import { SupportVtolEntity } from "../entities/vehicle/support-vtol-entity";
+import { isSupportVehicle } from "../entities/support-vehicle";
 import { VehicleEntity } from "../entities/vehicle/vehicle-entity";
 import { getTargetingComputerRelevantWeight } from "./targeting-computer";
 
@@ -23,7 +22,7 @@ import { getTargetingComputerRelevantWeight } from "./targeting-computer";
  */
 export function getNumCriticalSlots(entity: BaseEntity, eq: Equipment, size: number = 1): number | undefined {
     if (eq.stats.svSlots !== undefined && eq.stats.svSlots >= 0
-    && (entity instanceof SupportTankEntity || entity instanceof SupportVtolEntity)) {
+    && isSupportVehicle(entity)) {
         return eq.stats.svSlots;
     }
     if (eq.stats.tankSlots !== undefined && eq.stats.tankSlots >= 0 

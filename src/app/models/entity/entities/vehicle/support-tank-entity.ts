@@ -32,19 +32,20 @@
  */
 
 import { signal } from '@angular/core';
-import { EntityType, SUPPORT_VEHICLE_WEIGHT_LIMITS, WeightClass, resolveWeightClass } from '../../types';
-import { VehicleEntity } from './vehicle-entity';
+import { EntityType, WeightClass } from '../../types';
+import { SupportVehicleData, type SupportVehicle } from '../support-vehicle';
+import { TankEntity } from './tank-entity';
 
 /** Support Tank - adds BAR rating and support vehicle tech ratings. */
-export class SupportTankEntity extends VehicleEntity {
+export class SupportTankEntity extends TankEntity implements SupportVehicle {
   override readonly entityType: EntityType = 'SupportTank';
-  barRating = signal<number>(-1);
-  structuralTechRating = signal<number>(0);
-  engineTechRating = signal<number>(0);
-  fuel = signal<number>(0);
+  readonly supportVehicle = new SupportVehicleData(-1);
+  readonly barRating = this.supportVehicle.barRating;
+  readonly structuralTechRating = this.supportVehicle.structuralTechRating;
+  readonly engineTechRating = this.supportVehicle.engineTechRating;
+  readonly fuel = signal<number>(0);
 
   protected override computeWeightClass(): WeightClass {
-    const limits = SUPPORT_VEHICLE_WEIGHT_LIMITS[this.motiveType()] ?? SUPPORT_VEHICLE_WEIGHT_LIMITS['Tracked'];
-    return resolveWeightClass(this.tonnage(), limits);
+    return this.supportVehicle.resolveWeightClass(this.tonnage(), this.motiveType());
   }
 }

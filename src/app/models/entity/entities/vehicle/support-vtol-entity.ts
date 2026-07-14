@@ -32,16 +32,18 @@
  */
 
 import { signal } from '@angular/core';
-import { EntityType, SUPPORT_VEHICLE_WEIGHT_LIMITS, WeightClass, resolveWeightClass } from '../../types';
+import { EntityType, WeightClass } from '../../types';
+import { SupportVehicleData, type SupportVehicle } from '../support-vehicle';
 import { VtolEntity } from './vtol-entity';
 
 /** Support VTOL - adds BAR rating and support vehicle tech ratings. */
-export class SupportVtolEntity extends VtolEntity {
+export class SupportVtolEntity extends VtolEntity implements SupportVehicle {
   override readonly entityType: EntityType = 'SupportVTOL';
-  barRating = signal<number>(-1);
-  structuralTechRating = signal<number>(0);
-  engineTechRating = signal<number>(0);
-  fuel = signal<number>(0);
+  readonly supportVehicle = new SupportVehicleData(-1);
+  readonly barRating = this.supportVehicle.barRating;
+  readonly structuralTechRating = this.supportVehicle.structuralTechRating;
+  readonly engineTechRating = this.supportVehicle.engineTechRating;
+  readonly fuel = signal<number>(0);
 
   protected override get minimumEngineRating(): number | null {
     return null;
@@ -52,6 +54,6 @@ export class SupportVtolEntity extends VtolEntity {
   }
 
   protected override computeWeightClass(): WeightClass {
-    return resolveWeightClass(this.tonnage(), SUPPORT_VEHICLE_WEIGHT_LIMITS['VTOL']);
+    return this.supportVehicle.resolveWeightClass(this.tonnage(), 'VTOL');
   }
 }

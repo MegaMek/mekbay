@@ -1,4 +1,5 @@
 import type { BaseEntity } from '../base-entity';
+import { isSupportVehicle } from '../entities/support-vehicle';
 import { MekEntity } from '../entities/mek/mek-entity';
 import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import type { EntityMountedEquipment } from '../types/equipment';
@@ -183,9 +184,3 @@ function usesKilogramStandard(entity: BaseEntity): boolean {
         || entity.weightClass() === 'Small Support';
 }
 
-function isSupportVehicle(entity: BaseEntity): boolean {
-    return entity.entityType === 'SupportTank'
-        || entity.entityType === 'SupportVTOL'
-        || entity.entityType === 'LargeSupportTank'
-        || entity.entityType === 'FixedWingSupport';
-}
