@@ -67,7 +67,7 @@ export function parseBlkProtoMek(bb: BuildingBlock, ctx: ParseContext): ProtoMek
   }
 
   // ── Movement ──
-  if (bb.exists('cruiseMP'))  entity.walkMP.set(bb.getFirstInt('cruiseMP'));
+  if (bb.exists('cruiseMP'))  entity.originalWalkMP.set(bb.getFirstInt('cruiseMP'));
   if (bb.exists('jumpingMP')) entity.jumpingMP.set(bb.getFirstInt('jumpingMP'));
 
   // ── ProtoMek-specific flags ──

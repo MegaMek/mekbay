@@ -88,7 +88,7 @@ export function writeBlkMek(entity: MekEntity): string {
   w.addBlock('chassis_type', chassisType);
   const me = entity.mountedEngine();
   w.addBlock('engine_type', me?.descriptor().code ?? 0);
-  w.addBlock('walkingMP', entity.walkMP());
+  w.addBlock('walkingMP', entity.originalWalkMP());
 
   // ── Structure / Gyro / Cockpit ──
   w.addBlock('internal_type', structureTypeToCode(entity.structureType()));

@@ -89,7 +89,7 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
   writeTransporters(w, entity);
 
   // 5. Movement: cruiseMP
-  w.addBlock('cruiseMP', entity.walkMP());
+  w.addBlock('cruiseMP', entity.originalWalkMP());
 
   // 6. Engine: engine_type, clan_engine
   writeEngine(w, entity);

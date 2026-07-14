@@ -70,7 +70,7 @@ export function writeBlkProtoMek(entity: ProtoMekEntity): string {
   writeTransporters(w, entity);
 
   // ── Section 5: Movement ──
-  w.addBlock('cruiseMP', entity.walkMP());
+  w.addBlock('cruiseMP', entity.originalWalkMP());
   // ProtoMeks always write jumpingMP (even 0)
   w.addBlock('jumpingMP', entity.jumpingMP());
   // ProtoMeks always write interface_cockpit as string

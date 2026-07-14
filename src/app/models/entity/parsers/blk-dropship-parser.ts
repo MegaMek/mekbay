@@ -57,7 +57,7 @@ export function parseBlkDropShip(bb: BuildingBlock, ctx: ParseContext): DropShip
   const techBase = getBlkTechBase(bb);
 
   // ── Movement ──
-  if (bb.exists('SafeThrust'))   entity.walkMP.set(bb.getFirstInt('SafeThrust'));
+  if (bb.exists('SafeThrust'))   entity.originalWalkMP.set(bb.getFirstInt('SafeThrust'));
   if (bb.exists('fuel'))         entity.fuel.set(bb.getFirstInt('fuel'));
   if (bb.exists('motion_type'))  entity.motiveType.set(parseMotiveType(bb.getFirstString('motion_type')));
 

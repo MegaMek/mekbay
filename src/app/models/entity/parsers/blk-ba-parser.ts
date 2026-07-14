@@ -83,7 +83,7 @@ export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEnt
   if (bb.exists('motion_type'))    entity.motiveType.set(parseMotiveType(bb.getFirstString('motion_type')));
 
   // cruiseMP → walkMP (BA movement)
-  if (bb.exists('cruiseMP'))       entity.walkMP.set(bb.getFirstInt('cruiseMP'));
+  if (bb.exists('cruiseMP'))       entity.originalWalkMP.set(bb.getFirstInt('cruiseMP'));
 
   // ── Armor ──
   {
@@ -116,8 +116,37 @@ export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEnt
 
   // ── Squad / Trooper Equipment ──
   parseBaEquipment(bb, entity, techBase, ctx);
+  // Fallback from BLKBattleArmorFile.java:168 to add slotless equipment for movement
+  addMissingMovementEquipment(entity, ctx);
 
   return entity;
+}
+
+// Fallback from BLKBattleArmorFile.java:168 to add slotless equipment for movement
+function addMissingMovementEquipment(entity: BattleArmorEntity, ctx: ParseContext): void {
+  const equipmentId = new Map([
+    ['Jump', 'BAJumpJet'],
+    ['VTOL', 'BAVTOL'],
+    ['UMU', 'BAUMU'],
+  ]).get(entity.motiveType());
+  if (!equipmentId) return;
+
+  const resolved = ctx.resolveEquipment(equipmentId, 'motion_type');
+  const alreadyPresent = entity.equipment().some(mount =>
+    mount.equipmentId === equipmentId || mount.equipment === resolved
+  );
+  if (alreadyPresent) return;
+
+  entity.addEquipment({
+    mountId: generateMountId(),
+    equipmentId,
+    equipment: resolved ?? undefined,
+    location: 'None',
+    rearMounted: false,
+    turretMounted: false,
+    omniPodMounted: false,
+    armored: false,
+  });
 }
 
 /**

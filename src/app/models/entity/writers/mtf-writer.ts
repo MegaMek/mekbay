@@ -236,7 +236,7 @@ function writeMovement(entity: MekEntity, lines: string[]): void {
   for (const m of nocritMounts) {
     lines.push(`nocrit:${m.equipmentId}:${m.location}`);
   }
-  lines.push(`walk mp:${entity.walkMP()}`);
+  lines.push(`walk mp:${entity.originalWalkMP()}`);
   const jumpVal = entity.declaredJumpMP() >= 0 ? entity.declaredJumpMP() : entity.jumpMP();
   lines.push(`jump mp:${jumpVal}`);
   lines.push('');

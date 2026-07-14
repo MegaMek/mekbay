@@ -71,7 +71,7 @@ export function writeBlkDropShip(entity: DropShipEntity): string {
   writeTransporters(w, entity);
 
   // 5. SafeThrust
-  w.addBlock('SafeThrust', entity.walkMP());
+  w.addBlock('SafeThrust', entity.originalWalkMP());
 
   // 5a. Collar type (if present)
   if (entity.collarType() >= 0) {

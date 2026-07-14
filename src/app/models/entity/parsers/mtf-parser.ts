@@ -232,7 +232,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   if (header.ejection) entity.ejectionType.set(header.ejection);
   if (header.heatSinkKit) entity.heatSinkKit.set(header.heatSinkKit);
 
-  entity.walkMP.set(header.walkMP);
+  entity.originalWalkMP.set(header.walkMP);
   if (header.jumpMP >= 0) entity.declaredJumpMP.set(header.jumpMP);
 
   // ── Armor (structured { front, rear }) ──

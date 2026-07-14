@@ -105,7 +105,7 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
   if (bb.exists('cruiseMP')) {
     const mp = bb.getFirstInt('cruiseMP');
     ctx.validateNonNegativeInt('cruiseMP', mp);
-    entity.walkMP.set(mp);
+    entity.originalWalkMP.set(mp);
   }
 
   // ── Engine ──

@@ -72,7 +72,7 @@ export function writeBlkSmallCraft(entity: SmallCraftEntity): string {
   writeTransporters(w, entity);
 
   // 5. SafeThrust
-  w.addBlock('SafeThrust', entity.walkMP());
+  w.addBlock('SafeThrust', entity.originalWalkMP());
 
   // 6. Heat sinks / Fuel
   w.addBlock('heatsinks', entity.heatSinkCount());

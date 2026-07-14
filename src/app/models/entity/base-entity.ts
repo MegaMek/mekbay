@@ -141,7 +141,7 @@ export abstract class BaseEntity {
 
   // ── Movement ──
   motiveType = signal<MotiveType>('None');
-  walkMP = signal<number>(0);
+  originalWalkMP = signal<number>(0);
   /** TODO: Raw jump MP from the source file (for round-trip fidelity). -1 means not set. */
   declaredJumpMP = signal<number>(-1);
 
@@ -323,6 +323,8 @@ export abstract class BaseEntity {
     if (this.mountedEngine().rating > 400) flags.add('large');
     return flags;
   });
+
+  walkMP = computed(() => this.originalWalkMP());
 
   runMP = computed(() => Math.ceil(this.walkMP() * 1.5));
 

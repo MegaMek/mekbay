@@ -77,7 +77,7 @@ export function writeBlkAero(entity: AeroEntity): string {
   writeTransporters(w, entity);
 
   // 5. SafeThrust
-  w.addBlock('SafeThrust', entity.walkMP());
+  w.addBlock('SafeThrust', entity.originalWalkMP());
 
   // 6. Cockpit / vstol
   {

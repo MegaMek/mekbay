@@ -61,7 +61,7 @@ export function writeBlkBA(entity: BattleArmorEntity): string {
   // ── Section 1: Identity ──
   writeBlkPreamble(w, entity, 'BattleArmor');
 
-  w.addBlock('cruiseMP', entity.walkMP());
+  w.addBlock('cruiseMP', entity.originalWalkMP());
 
   // ── Section 4: Armor type (BA always writes both blocks) ──
   const armor = entity.mountedArmor();

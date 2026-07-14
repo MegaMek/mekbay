@@ -83,7 +83,7 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
   const techBase = getBlkTechBase(bb);
 
   // ── Movement (must precede engine - rating = walkMP x tonnage) ──
-  if (bb.exists('walkingMP')) entity.walkMP.set(bb.getFirstInt('walkingMP'));
+  if (bb.exists('walkingMP')) entity.originalWalkMP.set(bb.getFirstInt('walkingMP'));
 
   // ── Engine ──
   {
