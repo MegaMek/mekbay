@@ -400,7 +400,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
         const mountId = generateMountId();
         const resolved = ctx.resolveEquipment(parsed.name, locCode);
 
-        const mount: EntityMountedEquipment = {
+        const mount = new EntityMountedEquipment({
           mountId,
           equipmentId: parsed.name,
           equipment: resolved ?? undefined,
@@ -418,7 +418,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
           secondEquipment: parsed.secondEquipmentName
             ? ctx.resolveEquipment(parsed.secondEquipmentName, locCode) ?? undefined
             : undefined,
-        };
+        });
 
         mountedEquipment.push(mount);
         multiCritMap.set(dedupKey, mountId);

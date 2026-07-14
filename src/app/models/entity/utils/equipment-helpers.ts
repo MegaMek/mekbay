@@ -7,6 +7,7 @@ import { QuadMekEntity } from "../entities/mek/quad-mek-entity";
 import { SupportTankEntity } from "../entities/vehicle/support-tank-entity";
 import { SupportVtolEntity } from "../entities/vehicle/support-vtol-entity";
 import { VehicleEntity } from "../entities/vehicle/vehicle-entity";
+import { getTargetingComputerRelevantWeight } from "./targeting-computer";
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  VARIABLE CRIT-SLOT RESOLUTION
@@ -72,8 +73,13 @@ export function getNumCriticalSlots(entity: BaseEntity, eq: Equipment, size: num
         return 0;
     }
 
-    // ── Targeting Computer (needs weapon list — cannot resolve here) ─
-    if (eq.hasFlag('F_TARGETING_COMPUTER')) return undefined;
+    // ── Targeting Computer ──────────────────────────────────────────
+    if (eq.hasFlag('F_TARGETING_COMPUTER')) {
+        const relevantWeight = getTargetingComputerRelevantWeight(entity);
+        return relevantWeight === undefined
+            ? undefined
+            : Math.ceil(relevantWeight / (eq.techBase === 'Clan' ? 5 : 4));
+    }
 
     // ── Ferro-Fibrous / Reactive ────────────────────────────────────
     if (eq.hasFlag('F_FERRO_FIBROUS') || eq.hasFlag('F_REACTIVE')) {

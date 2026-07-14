@@ -17,7 +17,7 @@ describe('AeroEntity movement', () => {
 });
 
 function mountWithFlag(flag: string): EntityMountedEquipment {
-  return {
+  return new EntityMountedEquipment({
     mountId: flag,
     equipmentId: flag,
     equipment: { hasFlag: (candidate: string) => candidate === flag } as Equipment,
@@ -26,5 +26,5 @@ function mountWithFlag(flag: string): EntityMountedEquipment {
     turretMounted: false,
     omniPodMounted: false,
     armored: false,
-  };
+  });
 }

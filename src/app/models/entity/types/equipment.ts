@@ -32,6 +32,10 @@
  */
 
 import { Equipment } from '../../equipment.model';
+import type { BaseEntity } from '../base-entity';
+import { getEquipmentBV } from '../utils/equipment-bv';
+import { getEquipmentCost } from '../utils/equipment-cost';
+import { getEquipmentTonnage } from '../utils/equipment-tonnage';
 
 // ============================================================================
 // Mount Placement - Mek crit slot positions
@@ -55,7 +59,7 @@ export interface MountPlacement {
 // from this list; they are never independently editable.
 // ============================================================================
 
-export interface EntityMountedEquipment {
+export interface EntityMountedEquipmentInit {
   /** Stable unique identifier within this entity */
   readonly mountId: string;
 
@@ -129,4 +133,62 @@ export interface EntityMountedEquipment {
   /** Combined slot - second equipment in same slot (superheavy Mek) */
   secondEquipmentId?: string;
   secondEquipment?: Equipment;
+}
+
+export class EntityMountedEquipment implements EntityMountedEquipmentInit {
+  readonly mountId: string;
+  equipmentId: string;
+  equipment?: Equipment;
+  location: string;
+  placements?: readonly MountPlacement[];
+  criticalSlots?: number;
+  rearMounted: boolean;
+  turretMounted: boolean;
+  turretType?: 'standard' | 'sponson' | 'pintle';
+  omniPodMounted: boolean;
+  armored: boolean;
+  facing?: number;
+  size?: number;
+  isSplit?: boolean;
+  baMountLocation?: 'Body' | 'LA' | 'RA' | 'Turret';
+  isDWP?: boolean;
+  isSSWM?: boolean;
+  isAPM?: boolean;
+  shotsLeft?: number;
+  bayWeapons?: number[];
+  bayAmmo?: number[];
+  isNewBay?: boolean;
+  secondEquipmentId?: string;
+  secondEquipment?: Equipment;
+
+  constructor(data: EntityMountedEquipmentInit) {
+    Object.assign(this, data);
+    this.mountId = data.mountId;
+    this.equipmentId = data.equipmentId;
+    this.location = data.location;
+    this.rearMounted = data.rearMounted;
+    this.turretMounted = data.turretMounted;
+    this.omniPodMounted = data.omniPodMounted;
+    this.armored = data.armored;
+  }
+
+  static from(mount: EntityMountedEquipment | EntityMountedEquipmentInit): EntityMountedEquipment {
+    return mount instanceof EntityMountedEquipment ? mount : new EntityMountedEquipment(mount);
+  }
+
+  clone(overrides: Partial<EntityMountedEquipmentInit> = {}): EntityMountedEquipment {
+    return new EntityMountedEquipment({ ...this, ...overrides });
+  }
+
+  getBV(entity: BaseEntity): number {
+    return getEquipmentBV(entity, this);
+  }
+
+  getTonnage(entity: BaseEntity): number | undefined {
+    return getEquipmentTonnage(entity, this);
+  }
+
+  getCost(entity: BaseEntity): number | undefined {
+    return getEquipmentCost(entity, this);
+  }
 }

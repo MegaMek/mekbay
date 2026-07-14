@@ -48,6 +48,7 @@ import {
   WeightClass,
   EntityFluff,
   EntityMountedEquipment,
+  EntityMountedEquipmentInit,
   EntityQuirk,
   EntityTechBase,
   EntityTransporter,
@@ -488,10 +489,10 @@ export abstract class BaseEntity {
   }
 
   /** Append a new equipment mount (auto-generates mountId if missing) */
-  addEquipment(equip: EntityMountedEquipment): void {
-    const mount: EntityMountedEquipment = equip.mountId
+  addEquipment(equip: EntityMountedEquipment | EntityMountedEquipmentInit): void {
+    const mount = EntityMountedEquipment.from(equip.mountId
       ? equip
-      : { ...equip, mountId: generateMountId() };
+      : { ...equip, mountId: generateMountId() });
     this.equipment.update(list => [...list, mount]);
   }
 
@@ -504,7 +505,7 @@ export abstract class BaseEntity {
   moveEquipment(mountId: string, newLocation: string, newPlacements?: readonly MountPlacement[]): void {
     this.equipment.update(list => list.map(m => {
       if (m.mountId !== mountId) return m;
-      return { ...m, location: newLocation, placements: newPlacements ?? m.placements };
+      return m.clone({ location: newLocation, placements: newPlacements ?? m.placements });
     }));
   }
 

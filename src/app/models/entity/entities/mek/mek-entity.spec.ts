@@ -75,7 +75,7 @@ function mountsWithFlag(flag: string, count: number): EntityMountedEquipment[] {
 
 function mountWithFlag(flag: string): EntityMountedEquipment {
   const mountId = `${flag}-${nextMountId++}`;
-  return {
+  return new EntityMountedEquipment({
     mountId,
     equipmentId: flag,
     equipment: { hasFlag: (candidate: string) => candidate === flag } as Equipment,
@@ -84,7 +84,7 @@ function mountWithFlag(flag: string): EntityMountedEquipment {
     turretMounted: false,
     omniPodMounted: false,
     armored: false,
-  };
+  });
 }
 
 let nextMountId = 0;

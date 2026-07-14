@@ -160,7 +160,7 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
       }
 
       const idx = equipmentList.length;
-      equipmentList.push({
+      equipmentList.push(new EntityMountedEquipment({
         mountId: generateMountId(),
         equipmentId: parsed.name,
         equipment: resolved ?? undefined,
@@ -173,7 +173,7 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
         armored: false,
         size: parsed.size,
         facing: parsed.facing,
-      });
+      }));
 
       if (resolved?.isSpreadable) spreadableMap.set(parsed.name, idx);
     }
