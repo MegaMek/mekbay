@@ -1,6 +1,7 @@
 import { MiscEquipment, WeaponEquipment } from '../../equipment.model';
 import { BattleArmorEntity } from '../entities/infantry/battle-armor-entity';
 import { BipedMekEntity } from '../entities/mek/biped-mek-entity';
+import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import { ProtoMekEntity } from '../entities/protomek/protomek-entity';
 import { SupportTankEntity } from '../entities/vehicle/support-tank-entity';
 import { TankEntity } from '../entities/vehicle/tank-entity';
@@ -54,6 +55,13 @@ describe('EntityMountedEquipment.getTonnage', () => {
         ['fully amphibious', ['F_FULLY_AMPHIBIOUS'], 7.5],
         ['booby trap', ['F_BOOBY_TRAP'], 7.5],
         ['drone operating system', ['F_DRONE_OPERATING_SYSTEM'], 8],
+        ['IS armored motive system', ['F_ARMORED_MOTIVE_SYSTEM'], 11.5],
+        ['actuator enhancement system', ['F_ACTUATOR_ENHANCEMENT_SYSTEM'], 2.5],
+        ['naval tug adaptor', ['F_NAVAL_TUG_ADAPTOR'], 107.5],
+        ['light sail', ['F_LIGHT_SAIL'], 7.5],
+        ['lithium-fusion battery', ['F_LF_STORAGE_BATTERY'], 0.75],
+        ['naval C3', ['F_NAVAL_C3'], 0.75],
+        ['SDS destruct system', ['F_SDS_DESTRUCT'], 8],
     ];
 
     for (const [name, flags, expectedTonnage] of chassisCases) {
@@ -66,6 +74,53 @@ describe('EntityMountedEquipment.getTonnage', () => {
         const clanWing = variableEquipment('Clan partial wing', ['F_PARTIAL_WING', 'F_MEK_EQUIPMENT'], 'Clan');
 
         expect(mount(clanWing).getTonnage(entity)).toBe(4);
+    });
+
+    it('uses equipment tech base for armored motive systems', () => {
+        const clanSystem = variableEquipment('renamed Clan armored motive system',
+            ['F_ARMORED_MOTIVE_SYSTEM'], 'Clan');
+
+        expect(mount(clanSystem).getTonnage(entity)).toBe(7.5);
+    });
+
+    it('uses the Quad AES divisor', () => {
+        const quad = new QuadMekEntity();
+        quad.tonnage.set(75);
+
+        expect(mount(variableEquipment('AES', ['F_ACTUATOR_ENHANCEMENT_SYSTEM'])).getTonnage(quad)).toBe(1.5);
+    });
+
+    it('uses ProtoMek magnetic-clamp weight thresholds', () => {
+        const protoMek = new ProtoMekEntity();
+        const clamp = mount(variableEquipment('renamed ProtoMek magnetic clamp',
+            ['F_MAGNETIC_CLAMP', 'F_PROTOMEK_EQUIPMENT'], 'Clan'));
+
+        protoMek.tonnage.set(5.999);
+        expect(clamp.getTonnage(protoMek)).toBe(0.25);
+        protoMek.tonnage.set(6);
+        expect(clamp.getTonnage(protoMek)).toBe(0.5);
+        protoMek.tonnage.set(10);
+        expect(clamp.getTonnage(protoMek)).toBe(1);
+    });
+
+    it('resolves fire-control weight with weapon exclusions and chassis override', () => {
+        const basic = mount(variableEquipment('basic fire control', ['F_BASIC_FIRE_CONTROL']));
+        const advanced = mount(variableEquipment('advanced fire control', ['F_ADVANCED_FIRE_CONTROL']));
+        entity.equipment.set([
+            weaponMount('weapon', 10, []),
+            weaponMount('AMS', 5, ['F_AMS']),
+            weaponMount('light infantry', 1, ['F_INFANTRY']),
+            weaponMount('infantry support', 2, ['F_INFANTRY', 'F_INF_SUPPORT']),
+            basic,
+            advanced,
+        ]);
+
+        expect(basic.getTonnage(entity)).toBe(1);
+        expect(advanced.getTonnage(entity)).toBe(1.5);
+
+        const supportTank = new SupportTankEntity();
+        supportTank.baseChassisFireConWeight.set(3);
+        expect(basic.getTonnage(supportTank)).toBe(3);
     });
 
     it('uses kilogram rounding for ProtoMek partial wings', () => {
@@ -130,6 +185,8 @@ describe('EntityMountedEquipment.getTonnage', () => {
         ['communications', ['F_COMMUNICATIONS'], 2.2, 2.5],
         ['ladder', ['F_LADDER'], 20, 0.1],
         ['BA mission storage', ['F_BA_MISSION_EQUIPMENT'], 200, 0.2],
+        ['ATAC', ['F_ATAC'], 4, 601.5],
+        ['DTAC', ['F_DTAC'], 4, 602.5],
     ];
 
     for (const [name, flags, size, expectedTonnage] of variableSizeCases) {

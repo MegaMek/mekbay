@@ -48,7 +48,6 @@ export class FixedWingSupportEntity extends AeroEntity {
   /** Tech ratings for support vehicle construction */
   structuralTechRating = signal<number>(0);
   engineTechRating = signal<number>(0);
-  baseChassisFireConWeight = signal<number>(0);
 
   protected override computeWeightClass(): WeightClass {
     return resolveWeightClass(this.tonnage(), SUPPORT_VEHICLE_WEIGHT_LIMITS['Aerodyne']);

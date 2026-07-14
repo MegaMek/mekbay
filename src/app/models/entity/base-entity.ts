@@ -139,6 +139,7 @@ export abstract class BaseEntity {
 
   // ── Weight ──
   tonnage = signal<number>(0);
+  baseChassisFireConWeight = signal<number>(0);
 
   // ── Movement ──
   motiveType = signal<MotiveType>('None');
@@ -452,6 +453,10 @@ export abstract class BaseEntity {
 
   /** Whether a given location supports rear armor */
   abstract hasRearArmor(loc: string): boolean;
+
+  locationIsLeg(_loc: string): boolean {
+    return false;
+  }
 
   protected abstract computeStructureValues(tonnage: number, structureType: StructureType): Map<string, number>;
 

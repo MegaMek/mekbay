@@ -1,5 +1,6 @@
 import type { BaseEntity } from '../base-entity';
 import type { EntityMountedEquipment } from '../types/equipment';
+import { getFireControlWeaponCost } from './fire-control';
 import { getTargetingComputerRelevantWeight } from './targeting-computer';
 
 export function getEquipmentCost(
@@ -36,6 +37,9 @@ export function getEquipmentCost(
         const relevantWeight = getTargetingComputerRelevantWeight(entity);
         const divider = equipment.techBase === 'IS' ? 4 : 5;
         cost = relevantWeight === undefined ? undefined : 10000 * Math.ceil(relevantWeight / divider);
+    } else if (equipment.hasFlag('F_ARMORED_MOTIVE_SYSTEM')) {
+        const equipmentTonnage = mount.getTonnage(entity);
+        cost = equipmentTonnage === undefined ? undefined : equipmentTonnage * 100000;
     } else if (equipment.hasFlag('F_ENVIRONMENTAL_SEALING')) {
         cost = entity.entityType === 'Mek' ? 225 * tonnage : 0;
     } else if (equipment.hasFlag('F_LIMITED_AMPHIBIOUS') || equipment.hasFlag('F_FULLY_AMPHIBIOUS')) {
@@ -64,6 +68,8 @@ export function getEquipmentCost(
     } else if (equipment.hasFlag('F_PARTIAL_WING')) {
         const equipmentTonnage = mount.getTonnage(entity);
         cost = equipmentTonnage === undefined ? undefined : Math.ceil(equipmentTonnage * 50000);
+    } else if (equipment.hasFlag('F_ACTUATOR_ENHANCEMENT_SYSTEM')) {
+        cost = Math.ceil(tonnage * (entity.locationIsLeg(mount.location) ? 700 : 500));
     } else if (equipment.hasFlag('F_HAND_WEAPON') && equipment.hasFlag('S_CLAW')) {
         cost = Math.ceil(tonnage * 200);
     } else if (equipment.hasFlag('F_CLUB') && equipment.hasFlag('S_LANCE')) {
@@ -77,6 +83,23 @@ export function getEquipmentCost(
         cost = (mount.size ?? 1) * 5;
     } else if (equipment.hasFlag('F_COMMUNICATIONS')) {
         cost = (mount.size ?? 1) * 10000;
+    } else if (equipment.hasFlag('F_BASIC_FIRE_CONTROL') || equipment.hasFlag('F_ADVANCED_FIRE_CONTROL')) {
+        const weaponCost = getFireControlWeaponCost(entity);
+        cost = weaponCost === undefined
+            ? undefined
+            : weaponCost * (equipment.hasFlag('F_BASIC_FIRE_CONTROL') ? 0.05 : 0.1);
+    } else if (equipment.hasFlag('F_LIGHT_SAIL')) {
+        const equipmentTonnage = mount.getTonnage(entity);
+        cost = equipmentTonnage === undefined ? undefined : equipmentTonnage * 10000;
+    } else if (equipment.hasFlag('F_NAVAL_C3')) {
+        const equipmentTonnage = mount.getTonnage(entity);
+        cost = equipmentTonnage === undefined ? undefined : equipmentTonnage * 100000;
+    } else if (equipment.hasFlag('F_ATAC')) {
+        const equipmentTonnage = mount.getTonnage(entity);
+        cost = equipmentTonnage === undefined ? undefined : equipmentTonnage * 100000;
+    } else if (equipment.hasFlag('F_DTAC')) {
+        const equipmentTonnage = mount.getTonnage(entity);
+        cost = equipmentTonnage === undefined ? undefined : equipmentTonnage * 50000;
     } else if (equipment.hasFlag('F_RAM_PLATE')) {
         const equipmentTonnage = mount.getTonnage(entity);
         cost = equipmentTonnage === undefined ? undefined : equipmentTonnage * 10000;

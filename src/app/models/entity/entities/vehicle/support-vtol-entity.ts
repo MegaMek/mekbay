@@ -42,7 +42,6 @@ export class SupportVtolEntity extends VtolEntity {
   structuralTechRating = signal<number>(0);
   engineTechRating = signal<number>(0);
   fuel = signal<number>(0);
-  baseChassisFireConWeight = signal<number>(0);
 
   protected override get minimumEngineRating(): number | null {
     return null;

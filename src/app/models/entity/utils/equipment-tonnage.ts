@@ -1,5 +1,7 @@
 import type { BaseEntity } from '../base-entity';
+import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import type { EntityMountedEquipment } from '../types/equipment';
+import { getFireControlWeaponWeight } from './fire-control';
 import { getTargetingComputerRelevantWeight } from './targeting-computer';
 
 export function getEquipmentTonnage(
@@ -34,6 +36,8 @@ export function getEquipmentTonnage(
         return relevantWeight === undefined
             ? undefined
             : Math.ceil(relevantWeight / (equipment.techBase === 'Clan' ? 5 : 4));
+    } else if (equipment.hasFlag('F_ARMORED_MOTIVE_SYSTEM')) {
+        return standardRound(tonnage * (equipment.techBase === 'Clan' ? 0.1 : 0.15), entity);
     } else if (equipment.hasFlag('F_CLUB') && equipment.hasFlag('S_HATCHET')) {
         return Math.ceil(tonnage / 15);
     } else if (equipment.hasFlag('F_CLUB') && equipment.hasFlag('S_LANCE')) {
@@ -47,6 +51,8 @@ export function getEquipmentTonnage(
     } else if ((equipment.hasFlag('F_HAND_WEAPON') && equipment.hasFlag('S_CLAW'))
         || equipment.hasFlag('F_TALON')) {
         return Math.ceil(tonnage / 15);
+    } else if (equipment.hasFlag('F_ACTUATOR_ENHANCEMENT_SYSTEM')) {
+        return standardRound(tonnage / (entity instanceof QuadMekEntity ? 50 : 35), entity);
     } else if (equipment.hasFlag('F_INDUSTRIAL_STRUCTURE') || equipment.hasFlag('F_REINFORCED')) {
         return standardRound(tonnage * 0.2, entity);
     } else if (equipment.hasAnyFlag(['F_ENDO_STEEL', 'F_ENDO_STEEL_PROTO', 'F_COMPOSITE'])) {
@@ -71,8 +77,33 @@ export function getEquipmentTonnage(
         return standardRound(tonnage / 25, entity);
     } else if (equipment.hasFlag('F_FULLY_AMPHIBIOUS') || equipment.hasFlag('F_BOOBY_TRAP')) {
         return standardRound(tonnage / 10, entity);
+    } else if (equipment.hasFlag('F_BASIC_FIRE_CONTROL') || equipment.hasFlag('F_ADVANCED_FIRE_CONTROL')) {
+        const baseChassisWeight = entity.baseChassisFireConWeight();
+        if (baseChassisWeight > 0) return baseChassisWeight;
+        const weaponWeight = getFireControlWeaponWeight(entity);
+        return weaponWeight === undefined
+            ? undefined
+            : standardRound(weaponWeight / (equipment.hasFlag('F_BASIC_FIRE_CONTROL') ? 20 : 10), entity);
     } else if (equipment.hasFlag('F_DRONE_OPERATING_SYSTEM')) {
         return (tonnage / 10) + 0.5;
+    } else if (equipment.hasFlag('F_NAVAL_TUG_ADAPTOR')) {
+        return 100 + (tonnage * 0.1);
+    } else if (equipment.hasFlag('F_LIGHT_SAIL')) {
+        return tonnage / 10;
+    } else if (equipment.hasFlag('F_LF_STORAGE_BATTERY')) {
+        return tonnage / 100;
+    } else if (equipment.hasFlag('F_NAVAL_C3')) {
+        return tonnage * 0.01;
+    } else if (equipment.hasFlag('F_ATAC')) {
+        return Math.min(standardRound(tonnage * 0.02, entity), 50000) + ((mount.size ?? 1) * 150);
+    } else if (equipment.hasFlag('F_DTAC')) {
+        return standardRound(tonnage * 0.03, entity) + ((mount.size ?? 1) * 150);
+    } else if (equipment.hasFlag('F_SDS_DESTRUCT')) {
+        return Math.min(Math.ceil(tonnage * 0.1), 10000);
+    } else if (equipment.hasFlag('F_MAGNETIC_CLAMP') && equipment.hasFlag('F_PROTOMEK_EQUIPMENT')) {
+        if (tonnage < 6) return 0.25;
+        if (tonnage < 10) return 0.5;
+        return 1;
     } else if (equipment.hasFlag('F_DRONE_CARRIER_CONTROL')) {
         return 2 + ((mount.size ?? 1) * 0.5);
     } else if (equipment.hasFlag('F_MASH')) {

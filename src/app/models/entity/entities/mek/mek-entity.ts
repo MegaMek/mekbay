@@ -51,6 +51,7 @@ import {
   EntityValidationMessage,
   getMekLegLocations,
   HeatSinkType,
+  isMekLegLocation,
   isTechAvailableForBase,
   MEK_INTERNAL_STRUCTURE,
   MEK_REAR_ARMOR_LOCATIONS,
@@ -75,6 +76,10 @@ export interface FrankenMekLocationData {
 
 export abstract class MekEntity extends BaseEntity {
   override readonly entityType: EntityType = 'Mek';
+
+  override locationIsLeg(location: string): boolean {
+    return isMekLegLocation(this.chassisConfig, location);
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  SIGNALS - user / parser inputs

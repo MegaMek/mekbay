@@ -42,7 +42,6 @@ export class SupportTankEntity extends VehicleEntity {
   structuralTechRating = signal<number>(0);
   engineTechRating = signal<number>(0);
   fuel = signal<number>(0);
-  baseChassisFireConWeight = signal<number>(0);
 
   protected override computeWeightClass(): WeightClass {
     const limits = SUPPORT_VEHICLE_WEIGHT_LIMITS[this.motiveType()] ?? SUPPORT_VEHICLE_WEIGHT_LIMITS['Tracked'];

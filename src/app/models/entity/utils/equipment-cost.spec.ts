@@ -2,6 +2,7 @@ import { MiscEquipment, WeaponEquipment } from '../../equipment.model';
 import { MountedEngine } from '../components';
 import { BattleArmorEntity } from '../entities/infantry/battle-armor-entity';
 import { BipedMekEntity } from '../entities/mek/biped-mek-entity';
+import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import { ProtoMekEntity } from '../entities/protomek/protomek-entity';
 import { SupportTankEntity } from '../entities/vehicle/support-tank-entity';
 import { EntityMountedEquipment } from '../types';
@@ -56,6 +57,10 @@ describe('EntityMountedEquipment.getCost', () => {
         ['spikes', ['F_SPIKES'], 3750],
         ['mechanical jump booster', ['F_MECHANICAL_JUMP_BOOSTER'], 150000],
         ['drone operating system', ['F_DRONE_OPERATING_SYSTEM'], 85000],
+        ['IS armored motive system', ['F_ARMORED_MOTIVE_SYSTEM'], 1150000],
+        ['actuator enhancement system', ['F_ACTUATOR_ENHANCEMENT_SYSTEM'], 37500],
+        ['light sail', ['F_LIGHT_SAIL'], 75000],
+        ['naval C3', ['F_NAVAL_C3'], 75000],
     ];
 
     for (const [name, flags, expectedCost] of chassisCases) {
@@ -69,6 +74,38 @@ describe('EntityMountedEquipment.getCost', () => {
         supportTank.tonnage.set(75);
 
         expect(mount(variableEquipment('sealing', ['F_ENVIRONMENTAL_SEALING'])).getCost(supportTank)).toBe(0);
+    });
+
+    it('uses equipment tech base for armored motive-system cost', () => {
+        const clanSystem = variableEquipment('renamed Clan armored motive system',
+            ['F_ARMORED_MOTIVE_SYSTEM'], 'Clan');
+
+        expect(mount(clanSystem).getCost(entity)).toBe(750000);
+    });
+
+    it('uses the AES leg-location cost multiplier', () => {
+        const aes = mount(variableEquipment('AES', ['F_ACTUATOR_ENHANCEMENT_SYSTEM']));
+        const quad = new QuadMekEntity();
+        quad.tonnage.set(75);
+
+        expect(aes.clone({ location: 'RL' }).getCost(entity)).toBe(52500);
+        expect(aes.clone({ location: 'FLL' }).getCost(quad)).toBe(52500);
+    });
+
+    it('resolves basic and advanced fire-control cost from all weapons', () => {
+        const basic = mount(variableEquipment('basic fire control', ['F_BASIC_FIRE_CONTROL']));
+        const advanced = mount(variableEquipment('advanced fire control', ['F_ADVANCED_FIRE_CONTROL']));
+        entity.equipment.set([
+            weaponMount('weapon', 10, [], 100000),
+            weaponMount('AMS', 5, ['F_AMS'], 50000),
+            weaponMount('light infantry', 1, ['F_INFANTRY'], 10000),
+            weaponMount('infantry support', 2, ['F_INFANTRY', 'F_INF_SUPPORT'], 20000),
+            basic,
+            advanced,
+        ]);
+
+        expect(basic.getCost(entity)).toBe(9000);
+        expect(advanced.getCost(entity)).toBe(18000);
     });
 
     it('resolves IS and Clan MASC cost', () => {
@@ -112,6 +149,8 @@ describe('EntityMountedEquipment.getCost', () => {
         ['MASH', ['F_MASH'], 4, 65000],
         ['communications', ['F_COMMUNICATIONS'], 2.2, 22000],
         ['ladder', ['F_LADDER'], 20, 100],
+        ['ATAC', ['F_ATAC'], 4, 60150000],
+        ['DTAC', ['F_DTAC'], 4, 30125000],
     ];
 
     for (const [name, flags, size, expectedCost] of variableSizeCases) {
@@ -168,7 +207,7 @@ function mount(equipment: MiscEquipment, armored = false, size?: number): Entity
     });
 }
 
-function weaponMount(name: string, tonnage: number, flags: string[]): EntityMountedEquipment {
+function weaponMount(name: string, tonnage: number, flags: string[], cost = 0): EntityMountedEquipment {
     return new EntityMountedEquipment({
         mountId: name,
         equipmentId: name,
@@ -177,7 +216,7 @@ function weaponMount(name: string, tonnage: number, flags: string[]): EntityMoun
             name,
             type: 'weapon',
             flags,
-            stats: { tonnage },
+            stats: { tonnage, cost },
         }),
         location: 'RA',
         rearMounted: false,
