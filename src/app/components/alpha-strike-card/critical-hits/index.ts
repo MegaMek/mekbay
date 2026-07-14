@@ -38,4 +38,3 @@ export { AsCriticalHitsDropship1Component } from './critical-hits-dropship-1.com
 export { AsCriticalHitsProtomekComponent } from './critical-hits-protomek.component';
 export { AsCriticalHitsEmplacementComponent } from './critical-hits-emplacement.component';
 export { AsCriticalHitsAerofighterComponent } from './critical-hits-aerofighter';
-export { AsCritPipsComponent } from './crit-pips.component';

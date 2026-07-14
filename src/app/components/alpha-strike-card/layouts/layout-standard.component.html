@@ -1,267 +1,366 @@
-<!-- Unit Image -->
-@if (imageUrl() && !imageLoadFailed()) {
-<div class="fluff-image-container"
-    [class.center-vertical]="verticallyCenterImage()"
-    [class.reduced-height]="reducedHeightImage()">
-    <img class="fluff-image" [src]="imageUrl()" alt="Unit image" (error)="onImageError()" />
-</div>
-}
-<!-- Right side: Era Icons -->
-<div class="era-icons">
-    @for (item of eraAvailability(); track item.era.id) {
-        @if (item.era.icon) {
-            <img class="era-icon" 
-                 [src]="item.era.icon" 
-                 [alt]="item.era.name"
-                 [title]="item.era.name"
-                 [class.unavailable]="!item.isAvailable" />
-        }
-    }
-</div>
-
-<!-- Header Section -->
-<div class="header-section">
-    <div class="unit-name commander-nameplate">
-        @if (isCommander()) {
-            <div class="group-commander-indicator" aria-hidden="true">
-                <svg class="group-commander-icon" width="42.08" height="51.88" viewBox="0 0 21.04 25.94" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" focusable="false">
-                    <g transform="translate(-.02)">
-                        <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
-                            <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
-                            <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
-                        </g>
-                    </g>
-                </svg>
+<svg class="standard-layout-svg" viewBox="0 0 1120 800" preserveAspectRatio="none" font-family="Roboto, sans-serif">
+    <!-- Unit Image -->
+    @if (imageUrl() && !imageLoadFailed()) {
+        <foreignObject class="fluff-image-container"
+            [attr.x]="640"
+            [attr.y]="verticallyCenterImage() ? 144 : 112"
+            width="409"
+            [attr.height]="reducedHeightImage() ? 280 : 470">
+            <div xmlns="http://www.w3.org/1999/xhtml" class="fluff-image-foreign">
+                <img class="fluff-image" [src]="imageUrl()" alt="Unit image" (error)="onImageError()" />
             </div>
+        </foreignObject>
+    }
+
+    <!-- Right side: Era Icons -->
+    <g class="era-icons" transform="translate(1040 130)">
+        @for (item of eraAvailability(); track item.era.id) {
+            @if (item.era.icon) {
+                <image class="era-icon"
+                    title="Era availability"
+                    x="-15"
+                    [attr.y]="$index * 30"
+                    width="30"
+                    height="30"
+                    [attr.href]="item.era.icon"
+                    [attr.title]="item.era.name"
+                    [attr.opacity]="item.isAvailable ? 1 : 0.3">
+                    <title>{{ item.era.name }}</title>
+                </image>
+            }
+        }
+    </g>
+
+    <!-- Header Section -->
+    <g class="header-section">
+        <g class="unit-name commander-nameplate" transform="translate(28 35)" fill="#000">
+        @if (isCommander()) {
+            <svg class="group-commander-indicator" aria-hidden="true" x="-84" y="-20" width="84" height="104" viewBox="0 0 21.04 25.94" preserveAspectRatio="xMidYMid meet" fill="#000" opacity="0.3" pointer-events="none">
+                <g transform="translate(-.02)">
+                    <g transform="matrix(.265 0 0 .265 -21.1 0)">
+                        <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
+                        <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
+                    </g>
+                </g>
+            </svg>
         }
         @let alias = forceUnit()?.alias();
         @if (alias) {
             @let longChassis = alias.length > 20;
-            <div class="model-text" [class.small]="chassisSmall()">{{ chassis() | uppercase }} {{ model() | uppercase }}</div>
-            <div class="chassis-text alphastrike-text stroked" [class.long-chassis]="longChassis" [class.small]="chassisSmall()">{{ alias }}</div>
+            <text x="0" y="38" class="model-text" [class.small]="chassisSmall()" [attr.font-size]="chassisSmall() ? 37 : 45" font-weight="400">{{ chassis() | uppercase }} {{ model() | uppercase }}</text>
+            <text x="0" y="110" class="chassis-text alphastrike-text stroked" [class.long-chassis]="longChassis" [class.small]="chassisSmall()" [attr.font-size]="chassisSmall() ? 56 : (longChassis ? 67 : 78)" font-weight="900">{{ alias }}</text>
         } @else {
             @let longChassis = chassis().length > 20;
-            <div class="model-text" [class.small]="chassisSmall()">{{ model() | uppercase}}</div>
-            <div class="chassis-text alphastrike-text stroked" [class.long-chassis]="longChassis" [class.small]="chassisSmall()">{{ chassis() | uppercase }}</div>
+            <text x="0" y="38" class="model-text" [class.small]="chassisSmall()" [attr.font-size]="chassisSmall() ? 37 : 45" font-weight="400">{{ model() | uppercase}}</text>
+            <text x="0" y="110" class="chassis-text alphastrike-text stroked" [class.long-chassis]="longChassis" [class.small]="chassisSmall()" [attr.font-size]="chassisSmall() ? 56 : (longChassis ? 67 : 78)" font-weight="900">{{ chassis() | uppercase }}</text>
         }
-    </div>
+        </g>
 
     <!-- PV Box -->
-    <div class="pv-box-background"></div>
-    <div class="pv-box">
-        <div class="pv-text">{{ adjustedPV() }}</div>
+        <g class="pv-box" transform="translate(882 19)">
+            <polygon class="pv-box-background-shape" points="0,0 220,0 220,78 40,78" fill="#000"></polygon>
+            <text x="126" y="58" class="pv-text" text-anchor="middle" fill="#fff" font-size="60" font-weight="900" letter-spacing="1">{{ adjustedPV() }}</text>
         @if (basePV() != adjustedPV()) {
-        <div class="base-pv-text">Base PV: {{ basePV() }}</div>
+            <text x="126" y="104" class="base-pv-text" text-anchor="middle" fill="#000" stroke="#fff" stroke-width="4" paint-order="stroke fill" font-size="24" font-weight="700">Base PV: {{ basePV() }}</text>
         }
-    </div>
-</div>
+        </g>
+    </g>
 
-<div class="stats-container" #statsContainer>
-    <div class="stats-container-row">
-        <div class="stats-container-column stats-left">
+    <g class="stats-container" #statsContainer transform="translate(8 208)">
+        <g class="stats-container-row">
+            <g class="stats-container-column stats-left" transform="translate(20 0)">
             <!-- Stats Box 1 - Type, Size, TMM, Movement -->
-            <div class="stats-box frame">
-                <div class="frame-background"></div>
-
-                <div class="frame-content">
-                    <div class="stats-row wrappable" #wrappableRow>
-                        <span class="stat-item"><span class="as-caption">TP:</span>&nbsp;<span class="as-value">{{ asStats().TP }}</span></span>
-                        <span class="stat-item"><span class="as-caption">SZ:</span>&nbsp;<span class="as-value">{{ asStats().SZ }}</span></span>
+                <g class="stats-box" [attr.transform]="'translate(0 ' + statsBoxY() + ')'">
+                    <rect x="1.5" y="1.5" width="609" height="109" rx="12" ry="12" [attr.fill]="armorBoxFill()" stroke="#221F20" stroke-width="2.4"></rect>
+                    <text x="18" y="49" class="stat-line-svg" font-family="Roboto Condensed, sans-serif">
+                        <tspan class="as-caption" fill="#000" font-size="36" font-weight="500">TP:</tspan><tspan class="as-value" [attr.fill]="asValueFill()" font-size="36" font-weight="900"> {{ asStats().TP }}</tspan>
+                        <tspan dx="43" class="as-caption" fill="#000" font-size="36" font-weight="500">SZ:</tspan><tspan class="as-value" [attr.fill]="asValueFill()" font-size="36" font-weight="900"> {{ asStats().SZ }}</tspan>
                         @if (!isAerospace()) {
-                        <span class="stat-item"><span class="as-caption">TMM:</span>&nbsp;<span class="as-value">{{ tmmDisplay() }}</span></span>
+                            <tspan dx="43" class="as-caption" fill="#000" font-size="36" font-weight="500">TMM:</tspan><tspan class="as-value" [attr.fill]="asValueFill()" font-size="36" font-weight="900"> {{ tmmDisplay() }}</tspan>
                         }
-                        <div class="right-column">
-                            <span class="stat-item"><span class="as-caption">{{ isAerospace() ? 'THR' : 'MV' }}:</span>&nbsp;<span class="as-value" [innerHTML]="movementDisplay()"></span></span>
+                    </text>
+                    <text x="596" y="49" text-anchor="end" class="stat-line-svg" font-family="Roboto Condensed, sans-serif">
+                        <tspan class="as-caption" fill="#000" font-size="36" font-weight="500">{{ isAerospace() ? 'THR' : 'MV' }}:</tspan><tspan class="as-value" [attr.fill]="asValueFill()" font-size="36" font-weight="900" [innerHTML]="movementDisplay()"></tspan>
+                    </text>
                             @if (sprintMove()) {
-                            <span class="sprint-text">Sprint: <span [innerHTML]="sprintMove()"></span></span>
+                        <text x="596" y="81" text-anchor="end" class="sprint-text" fill="#000" font-family="Roboto Condensed, sans-serif" font-size="26" font-weight="700">Sprint: <tspan [innerHTML]="sprintMove()"></tspan></text>
                             }
-                        </div>
-                    </div>
-                    <div class="stats-row">
-                        <span class="stat-item"><span class="as-caption">ROLE:</span>&nbsp;<span class="as-value">{{ unit().role }}</span></span>
-                        <span class="stat-item" [class.clickable]="interactive()" (click)="interactive() && onEditPilotClick()"><span class="as-caption">SKILL:</span>&nbsp;<span class="as-value">{{ skill() }}</span></span>
-                    </div>
-                </div>
-            </div>
+                    <text x="18" y="99" class="stat-line-svg" font-family="Roboto Condensed, sans-serif"><tspan class="as-caption" fill="#000" font-size="36" font-weight="500">ROLE:</tspan><tspan class="as-value" [attr.fill]="asValueFill()" font-size="36" font-weight="900"> {{ unit().role }}</tspan></text>
+                    <text x="596" y="99" text-anchor="end" class="stat-line-svg clickable" font-family="Roboto Condensed, sans-serif" [class.clickable]="interactive()" (click)="interactive() && onEditPilotClick()"><tspan class="as-caption" fill="#000" font-size="36" font-weight="500">SKILL:</tspan><tspan class="as-value" [attr.fill]="asValueFill()" font-size="36" font-weight="900"> {{ skill() }}</tspan></text>
+                </g>
 
             <!-- Damage Box -->
-            <div class="damage-box frame">
-                <div class="frame-background"></div>
-                <div class="frame-content">
-                    <div class="damage-label as-value">DAMAGE</div>
-                    <div class="damage-ranges">
-                        <!-- Short Range -->
-                        <div class="damage-range">
-                            <div class="range-header range-header-background left" [class.thin]="hasExtremeRange()">S (0 | {{ toHitShort() }}+)</div>
-                            <div class="range-value as-value" [class.reduced]="weaponHits() > 0">{{ effectiveDamageS() }}</div>
-                            <div class="range-distance">{{ rangeShort() }}</div>
-                        </div>
+                <g class="damage-box" [attr.transform]="'translate(0 ' + damageBoxY() + ')'">
+                        <defs>
+                            @if (!isMonochrome()) {
+                                @for (range of damageRanges(); track range.key) {
+                                    <linearGradient [attr.id]="damageHeaderGradientId(range.key)" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop [attr.offset]="range.headerGradient.startOffset" stop-color="#5B504E" stop-opacity="0"></stop>
+                                        <stop [attr.offset]="range.headerGradient.solidStartOffset" stop-color="#5B504E" stop-opacity="1"></stop>
+                                        <stop [attr.offset]="range.headerGradient.solidEndOffset" stop-color="#5B504E" stop-opacity="1"></stop>
+                                        <stop [attr.offset]="range.headerGradient.endOffset" stop-color="#5B504E" stop-opacity="0"></stop>
+                                    </linearGradient>
+                                }
+                            }
+                        </defs>
+                        <rect x="1.5" y="1.5" [attr.width]="damageBoxViewBoxWidth() - 3" height="115" rx="12" ry="12" [attr.fill]="armorBoxFill()" stroke="#221F20" stroke-width="2.4"></rect>
 
-                        <!-- Medium Range -->
-                        <div class="damage-range">
-                            <div class="range-header range-header-background">M (+2 | {{ toHitMedium() }}+)</div>
-                            <div class="range-value as-value" [class.reduced]="weaponHits() > 0">{{ effectiveDamageM() }}</div>
-                            <div class="range-distance">{{ rangeMedium() }}</div>
-                        </div>
+                        <g transform="translate(32 62) rotate(-90)">
+                            <text x="0" y="0" text-anchor="middle" dominant-baseline="middle" class="damage-label-text-svg" fill="#7b0000" font-family="Roboto Condensed, sans-serif" font-size="26" font-weight="900" letter-spacing="0.4">DAMAGE</text>
+                        </g>
 
-                        <!-- Long Range -->
-                        <div class="damage-range">
-                            <div class="range-header range-header-background" [class.right]="!hasExtremeRange()">L (+4 | {{ toHitLong() }}+)</div>
-                            <div class="range-value as-value" [class.reduced]="weaponHits() > 0">{{ effectiveDamageL() }}</div>
-                            <div class="range-distance">{{ rangeLong() }}</div>
-                        </div>
-
-                        @if (hasExtremeRange()) {
-                            <!-- Extreme Range -->
-                            <div class="damage-range">
-                                <div class="range-header range-header-background right thin">E (+6 | {{ toHitExtreme() }}+)</div>
-                                <div class="range-value as-value" [class.reduced]="weaponHits() > 0">{{ effectiveDamageE() }}</div>
-                                <div class="range-distance">{{ rangeExtreme() }}</div>
-                            </div>
+                        @for (range of damageRanges(); track range.key) {
+                            <g [attr.transform]="'translate(' + range.centerX + ',0)'">
+                                @if (!isMonochrome()) {
+                                    <rect [attr.x]="-range.headerWidth / 2" y="11" [attr.width]="range.headerWidth" height="23" [attr.fill]="'url(#' + damageHeaderGradientId(range.key) + ')'" aria-hidden="true"></rect>
+                                }
+                                <text x="0" y="29" text-anchor="middle" class="damage-range-header-svg" font-family="Roboto Condensed, sans-serif" font-size="23" font-weight="700" [attr.fill]="isMonochrome() ? '#000' : '#fff'">{{ range.header }}</text>
+                                <text x="0" y="76" text-anchor="middle" class="damage-range-value-svg" fill="#7b0000" font-family="Roboto Condensed, sans-serif" [attr.font-size]="weaponHits() > 0 ? 45 : 50" font-weight="900" [class.reduced]="weaponHits() > 0">{{ range.value }}</text>
+                                <text x="0" y="104" text-anchor="middle" class="damage-range-distance-svg" fill="#000" font-family="Roboto Condensed, sans-serif" font-size="23" font-weight="500">{{ range.distance }}</text>
+                            </g>
                         }
-                    </div>
-                </div>
-            </div>
+                </g>
 
             <!-- Heat/OV Box -->
             @if (asStats().usesOV) {
-            <div class="heat-box frame">
-                <div class="frame-background"></div>
+                <g class="heat-box" [attr.transform]="'translate(0 ' + heatBoxY() + ')'">
+                        <defs>
+                            @if (!isMonochrome()) {
+                                <linearGradient [attr.id]="heatTitleGradientId()" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" stop-color="#5B504E" stop-opacity="0"></stop>
+                                    <stop offset="6.25%" stop-color="#5B504E" stop-opacity="1"></stop>
+                                    <stop offset="93.75%" stop-color="#5B504E" stop-opacity="1"></stop>
+                                    <stop offset="100%" stop-color="#5B504E" stop-opacity="0"></stop>
+                                </linearGradient>
+                            }
+                        </defs>
+                        <rect x="1.5" y="1.5" [attr.width]="heatBoxViewBoxWidth() - 3" [attr.height]="heatBoxViewBoxHeight() - 3" rx="12" ry="12" [attr.fill]="armorBoxFill()" stroke="#221F20" stroke-width="2.4"></rect>
 
-                <div class="frame-content">
-                    <div class="ov-value">
-                        <div class="as-caption">OV:&nbsp;</div>
-                        <div class="as-value">{{ asStats().OV }}</div>
-                    </div>
-                    <div class="frame-title-background heat-label">HEAT SCALE</div>
-                    <div class="heat-track">
-                        @let pendingHeatDelta = pendingHeat();
-                        @let committedHeat = heatLevel();
-                        @let previewHeat = committedHeat + pendingHeatDelta;
-                        @let extendedHeatTrack = hasExtendedHeatTrack();
-                        @let shutdownThreshold = shutdownHeatThreshold();
-                        @for (level of heatTrackLevels(); track level) {
-                                                        <div class="heat-level"
-                                                                 [attr.data-heat]="level"
-                                 [class.extended-heat]="extendedHeatTrack"
-                                 [class.active]="committedHeat === level"
-                                 [class.pending]="pendingHeatDelta !== 0 && previewHeat === level">
-                                <span>{{ level }}</span>
-                            </div>
+                        <text x="16" y="49" class="heat-ov-caption-svg" fill="#000" font-family="Roboto Condensed, sans-serif" font-size="34" font-weight="700">OV:</text>
+                        <text x="96" y="49" class="heat-ov-value-svg" fill="#7b0000" font-family="Roboto Condensed, sans-serif" font-size="50" font-weight="900">{{ asStats().OV }}</text>
+
+                        @if (!isMonochrome()) {
+                            <rect
+                                [attr.x]="heatTitleBandX()"
+                                [attr.y]="heatTitleBandY()"
+                                [attr.width]="heatTitleBandWidth()"
+                                [attr.height]="heatTitleBandHeight()"
+                                [attr.fill]="'url(#' + heatTitleGradientId() + ')'"
+                                aria-hidden="true">
+                            </rect>
                         }
-                            <div class="heat-level heat-s"
-                                [attr.data-heat]="shutdownThreshold"
-                             [class.extended-heat]="extendedHeatTrack"
-                             [class.active]="committedHeat >= shutdownThreshold"
-                             [class.pending]="pendingHeatDelta !== 0 && previewHeat >= shutdownThreshold">
-                            <span>S</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
+                        <text [attr.x]="heatTitleCenterX()" [attr.y]="heatTitleTextY()" text-anchor="middle" dominant-baseline="middle" class="heat-label-svg" font-family="Roboto, sans-serif" font-size="29" font-weight="700" letter-spacing="0.2" [attr.fill]="isMonochrome() ? '#000' : '#fff'">HEAT SCALE</text>
+
+                        <g class="heat-track" [attr.transform]="'translate(' + heatTrackStartX() + ',' + heatTrackStartY() + ')'">
+                            <rect x="0" y="0" [attr.width]="heatTrackTotalWidth()" [attr.height]="heatTrackHeight()" rx="8" ry="8" class="heat-track-background-svg" fill="#888" stroke="#000" stroke-width="2.25"></rect>
+                            @let extendedHeatTrack = hasExtendedHeatTrack();
+                            @for (level of heatTrackSegments(); track level.key) {
+                                <g
+                                    class="heat-level"
+                                    [attr.data-heat]="level.heatValue"
+                                    [class.extended-heat]="extendedHeatTrack"
+                                    [class.active]="level.active"
+                                    [class.pending]="level.pending"
+                                    [class.heat-0]="level.key === '0'"
+                                    [class.heat-1]="level.key === '1'"
+                                    [class.heat-2]="level.key === '2'"
+                                    [class.heat-3]="level.key === '3'"
+                                    [class.heat-4]="level.heatValue >= 4 && level.key !== 'S'"
+                                    [class.heat-s]="level.key === 'S'"
+                                    [attr.transform]="'translate(' + level.x + ',0)'">
+                                    <path [attr.d]="heatLevelPath(level.width, level.roundLeft, level.roundRight)" class="heat-level-cell-svg" [attr.fill]="heatLevelFill(level)"></path>
+                                    @if (!level.roundRight) {
+                                        <line [attr.x1]="level.width" y1="0" [attr.x2]="level.width" [attr.y2]="heatTrackHeight()" class="heat-level-divider-svg" stroke="#000" stroke-width="1.5"></line>
+                                    }
+                                    <text [attr.x]="level.width / 2" [attr.y]="heatTrackHeight() / 2" text-anchor="middle" dominant-baseline="middle" class="heat-level-text-svg" fill="#fff" font-family="Roboto Condensed, sans-serif" font-size="31" font-weight="700">{{ level.label }}</text>
+                                </g>
+                            }
+                        </g>
+                </g>
             }
 
             <!-- Armor/Structure Box -->
-            <div class="armor-box frame">
-                <div class="frame-background"></div>
-                <div class="frame-content">
-                    <div class="pips-wrapper">
-                        <!-- Armor Pips -->
-                        <div class="pip-row" data-damage-type="armor">
-                            <span class="as-caption armor-caption">A:</span>
-                            <div class="pips">
-                                @for (pipState of armorPipStates(); track pipState.index) {
-                                <svg class="pip" 
-                                     [class.damaged]="pipState.isDamaged"
-                                     [class.pending-damage]="pipState.isPendingDamage"
-                                     [class.pending-heal]="pipState.isPendingHeal"
-                                     viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
-                                }
-                            </div>
-                        </div>
+                <g class="armor-box pips-wrapper" [attr.transform]="'translate(0 ' + armorBoxY() + ')'">
+                    <rect x="1.5" y="1.5" [attr.width]="armorBoxViewBoxWidth() - 3" [attr.height]="armorBoxViewBoxHeight() - 3" rx="12" ry="12" [attr.fill]="armorBoxFill()" stroke="#221F20" stroke-width="2.4"></rect>
 
-                        <!-- Structure Pips -->
-                        <div class="pip-row" data-damage-type="structure">
-                            <span class="as-caption armor-caption">S:</span>
-                            <div class="pips">
-                                @for (pipState of structurePipStates(); track pipState.index) {
-                                <svg class="pip structure" 
-                                     [class.damaged]="pipState.isDamaged"
-                                     [class.pending-damage]="pipState.isPendingDamage"
-                                     [class.pending-heal]="pipState.isPendingHeal"
-                                     viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
+                        <g data-damage-type="armor">
+                            <rect
+                                x="5"
+                                [attr.y]="damageTypeHitAreaY(armorPipRows())"
+                                [attr.width]="damageTypeHitAreaWidth(armorPipRows())"
+                                [attr.height]="damageTypeHitAreaHeight(armorPipRows())"
+                                class="armor-row-hit-area-svg" fill="transparent" pointer-events="visiblePainted">
+                            </rect>
+                            @for (row of armorPipRows(); track row.centerY) {
+                                @if ($first) {
+                                    <text x="9" [attr.y]="row.captionY" class="armor-box-caption-svg" fill="#000" font-family="Roboto Condensed, sans-serif" font-size="34" font-weight="700">A:</text>
                                 }
-                            </div>
-                        </div>
-                    </div>
+                                @for (pipState of row.pips; track pipState.index) {
+                                    <circle
+                                        [attr.cx]="armorStructurePipX($index)"
+                                        [attr.cy]="row.centerY"
+                                        [attr.r]="armorPipRadius()"
+                                        class="armor-pip-circle"
+                                        fill="#fff"
+                                        stroke="#000"
+                                        stroke-width="2"
+                                        [class.damaged]="pipState.isDamaged"
+                                        [class.pending-damage]="pipState.isPendingDamage"
+                                        [class.pending-heal]="pipState.isPendingHeal">
+                                    </circle>
+                                }
+                            }
+                        </g>
 
-                    <!-- Thrust (for aerospace units) -->
-                    @if (asStats().usesTh) {
-                    <div class="thrust-display">
-                        <span class="as-caption">TH:</span>
-                        <span class="as-value">{{ asStats().Th }}</span>
-                    </div>
-                    }
-                </div>
-            </div>
-        </div>
-        <div class="stats-container-column stats-right">
+                        <g data-damage-type="structure">
+                            <rect
+                                x="5"
+                                [attr.y]="damageTypeHitAreaY(structurePipRows())"
+                                [attr.width]="damageTypeHitAreaWidth(structurePipRows())"
+                                [attr.height]="damageTypeHitAreaHeight(structurePipRows())"
+                                class="armor-row-hit-area-svg" fill="transparent" pointer-events="visiblePainted">
+                            </rect>
+                            @for (row of structurePipRows(); track row.centerY) {
+                                @if ($first) {
+                                    <text x="9" [attr.y]="row.captionY" class="armor-box-caption-svg" fill="#000" font-family="Roboto Condensed, sans-serif" font-size="34" font-weight="700">S:</text>
+                                }
+                                @for (pipState of row.pips; track pipState.index) {
+                                    <circle
+                                        [attr.cx]="armorStructurePipX($index)"
+                                        [attr.cy]="row.centerY"
+                                        [attr.r]="armorPipRadius()"
+                                        class="armor-pip-circle structure"
+                                        fill="#bbb"
+                                        stroke="#000"
+                                        stroke-width="2"
+                                        [class.damaged]="pipState.isDamaged"
+                                        [class.pending-damage]="pipState.isPendingDamage"
+                                        [class.pending-heal]="pipState.isPendingHeal">
+                                    </circle>
+                                }
+                            }
+                        </g>
+
+                        @if (asStats().usesTh) {
+                            <g class="thrust-display-svg">
+                                <text [attr.x]="armorBoxThrustLabelX()" [attr.y]="armorBoxThrustLabelY()" class="armor-box-caption-svg thrust-caption-svg" text-anchor="start" fill="#000" font-family="Roboto Condensed, sans-serif" font-size="34" font-weight="700">TH:</text>
+                                <text [attr.x]="armorBoxThrustValueX()" [attr.y]="armorBoxThrustValueY()" class="armor-box-thrust-value-svg" text-anchor="middle" fill="#7b0000" font-family="Roboto Condensed, sans-serif" font-size="50" font-weight="900">{{ asStats().Th }}</text>
+                            </g>
+                        }
+                </g>
+            </g>
+            <g class="stats-container-column stats-right" [attr.transform]="'translate(626 ' + criticalTableY() + ')'">
             
             @let abilities = pilotAbilities();
             @if (abilities.length > 0) {
-                <div class="stats-container-row">
-                    <div class="pilot-abilities">
+                <g class="pilot-abilities" transform="translate(5 -20)">
                         @for (ability of abilities; track formatPilotAbility(ability)) {
-                            <div class="pilot-ability" (click)="onPilotAbilityClick(ability)">{{ formatPilotAbility(ability) }}</div>
+                    <text class="pilot-ability" [attr.x]="($index % 4) * 115" [attr.y]="pilotAbilityY($index)" fill="#000" stroke="#fff" stroke-width="6" paint-order="stroke fill" font-family="Roboto Condensed, sans-serif" font-size="26" font-weight="700" (click)="onPilotAbilityClick(ability)">{{ formatPilotAbility(ability) }}</text>
                         }
-                    </div>
-                </div>
+                </g>
             }
-            <!-- Critical Hits Box - Rendered based on unit type -->
-            @switch (criticalHitsVariant()) {
-                @case ('mek') {
-                    <as-critical-hits-mek [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" [interactive]="interactive()" (rollCritical)="onRollCriticalClick()" />
-                }
-                @case ('vehicle') {
-                    <as-critical-hits-vehicle [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" [interactive]="interactive()" (rollCritical)="onRollCriticalClick()" />
-                }
-                @case ('protomek') {
-                    <as-critical-hits-protomek [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" [interactive]="interactive()" (rollCritical)="onRollCriticalClick()" />
-                }
-                @case ('aerofighter') {
-                    <as-critical-hits-aerofighter [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" [interactive]="interactive()" (rollCritical)="onRollCriticalClick()" />
-                }
-                @case ('emplacement') {
-                    <as-critical-hits-emplacement [forceUnit]="forceUnit()" [cardStyle]="cardStyle()" [useHex]="useHex()" [interactive]="interactive()" (rollCritical)="onRollCriticalClick()" />
-                }
+            <!-- Critical Hits Box -->
+            @if (criticalRows().length > 0) {
+                <g class="critical-hits-table" font-family="Roboto Condensed, sans-serif">
+                    <rect [attr.x]="critical(1.5)" [attr.y]="critical(1.5)" [attr.width]="critical(259)" [attr.height]="criticalTableHeight()" rx="12.6" ry="12.6" [attr.fill]="criticalHitsFill()" stroke="#221F20" stroke-width="2.7"></rect>
+                    @if (showCriticalTitleBar()) {
+                        <rect [attr.x]="critical(50)" [attr.y]="critical(6)" [attr.width]="critical(162)" [attr.height]="critical(22)" fill="url(#critical-hits-title-gradient)" aria-hidden="true"></rect>
+                    }
+                    <text [attr.x]="critical(131)" [attr.y]="critical(24)" text-anchor="middle" class="critical-title-svg" font-family="Roboto, sans-serif" font-size="36" font-weight="700" letter-spacing="0.2" [attr.fill]="criticalTitleFill()">CRITICAL HITS</text>
+
+                    @for (row of criticalRows(); track row.key) {
+                        <g class="critical-row-svg" [attr.data-crit]="row.key">
+                            <text [attr.x]="critical(68)" [attr.y]="critical(row.y + 13)" text-anchor="end" class="critical-name-svg" font-size="21.6" font-weight="900" letter-spacing="-0.2" [attr.fill]="criticalNameFill()">{{ row.name }}</text>
+
+                            @if (showCriticalNumeric(row.key, row.maxPips)) {
+                                <text [attr.x]="critical(81)" [attr.y]="critical(row.y + 14)" class="critical-count-svg" font-size="27" font-weight="700" [attr.fill]="criticalPipCountFill(row.key)">{{ committedCriticalHits(row.key) }}@if (pendingCriticalChange(row.key) !== 0) {<tspan [attr.fill]="criticalPendingDeltaFill(row.key)">{{ criticalPendingDelta(row.key) }}</tspan>}</text>
+                                <circle [attr.cx]="critical(115)" [attr.cy]="critical(row.y + 8)" [attr.r]="critical(6.35)" class="critical-pip-circle pip damaged" fill="#fff" stroke="#000" stroke-width="2.5"></circle>
+                            } @else {
+                                @for (pipIndex of criticalPipIndices(row.maxPips); track pipIndex) {
+                                    <circle
+                                        [attr.cx]="critical(85 + (pipIndex * 16))"
+                                        [attr.cy]="critical(row.y + 8)"
+                                        [attr.r]="critical(6.35)"
+                                        class="critical-pip-circle pip"
+                                        fill="#fff"
+                                        stroke="#000"
+                                        stroke-width="2.5"
+                                        [class.damaged]="isCriticalDamaged(row.key, pipIndex)"
+                                        [class.pending-damage]="isCriticalPendingDamage(row.key, pipIndex)"
+                                        [class.pending-heal]="isCriticalPendingHeal(row.key, pipIndex)">
+                                    </circle>
+                                }
+                            }
+
+                            <text [attr.x]="criticalDescX(row.key, row.maxPips)" [attr.y]="critical(row.y + 13)" class="critical-desc-svg" fill="#000" font-size="24.3" font-weight="600" letter-spacing="-0.2">{{ row.description }}</text>
+                        </g>
+                    }
+
+                    @if (criticalHitsVariant() === 'vehicle') {
+                        <g class="critical-row-svg" data-crit="motive">
+                            <text [attr.x]="critical(68)" [attr.y]="critical(112)" text-anchor="end" class="critical-name-svg" font-size="21.6" font-weight="900" letter-spacing="-0.2" [attr.fill]="criticalNameFill()">MOTIVE</text>
+
+                            @for (row of vehicleMotiveRows; track row.key) {
+                                <g [attr.data-crit]="row.key">
+                                    @if (showCriticalNumeric(row.key, row.maxPips)) {
+                                        <text [attr.x]="critical(row.x)" [attr.y]="critical(113)" class="critical-count-svg" font-size="27" font-weight="700" [attr.fill]="criticalPipCountFill(row.key)">{{ committedCriticalHits(row.key) }}@if (pendingCriticalChange(row.key) !== 0) {<tspan [attr.fill]="criticalPendingDeltaFill(row.key)">{{ criticalPendingDelta(row.key) }}</tspan>}</text>
+                                        <circle [attr.cx]="critical(row.x + row.numericCircleX)" [attr.cy]="critical(107)" [attr.r]="critical(6.35)" class="critical-pip-circle pip damaged" fill="#fff" stroke="#000" stroke-width="2.5"></circle>
+                                        <text [attr.x]="critical(row.x + row.numericDescX)" [attr.y]="critical(112)" class="critical-desc-svg critical-motive-desc-svg" fill="#000" font-size="24.3" font-weight="600" letter-spacing="-0.2">{{ motiveDescription(row.key) }}</text>
+                                    } @else {
+                                        @for (pipIndex of criticalPipIndices(row.maxPips); track pipIndex) {
+                                            <circle
+                                                [attr.cx]="critical(row.x + row.firstPipX + (pipIndex * 16))"
+                                                [attr.cy]="critical(107)"
+                                                [attr.r]="critical(6.35)"
+                                                class="critical-pip-circle pip"
+                                                fill="#fff"
+                                                stroke="#000"
+                                                stroke-width="2.5"
+                                                [class.damaged]="isCriticalDamaged(row.key, pipIndex)"
+                                                [class.pending-damage]="isCriticalPendingDamage(row.key, pipIndex)"
+                                                [class.pending-heal]="isCriticalPendingHeal(row.key, pipIndex)">
+                                            </circle>
+                                        }
+                                        <text [attr.x]="critical(row.x + row.descX)" [attr.y]="critical(111.5)" class="critical-desc-svg critical-motive-desc-svg" fill="#000" font-size="24.3" font-weight="600" letter-spacing="-0.2">{{ motiveDescription(row.key) }}</text>
+                                    }
+                                </g>
+                            }
+                        </g>
+                    }
+                </g>
             }
-        </div>
-    </div>
+            </g>
+        </g>
 
 
     <!-- Specials Box -->
     @if (effectiveSpecials().length > 0) {
-    <div class="stats-container-row">
-        <div class="specials-box frame">
-            <div class="frame-background"></div>
-            <div class="frame-content">
-                <span class="as-caption">SPECIAL:&nbsp;</span>
-                @for (item of effectiveSpecials(); track item.original; let isLast = $last) {
-                <span class="special-ability as-value" 
-                      [attr.data-original]="item.original" 
-                      [class.exhausted]="item.isExhausted || (item.maxCount && (item.consumedCount ?? 0) >= item.maxCount)"
-                      [class.has-consumed]="item.consumedCount"
-                      (click)="onSpecialClick(item, $event)">{{ item.effective }}@if (item.maxCount && item.consumedCount) {<span class="consumed-indicator">[{{ item.maxCount - item.consumedCount }}]</span>}@if (!isLast) {<span class="special-separator">,</span>}</span>&nbsp;
-                }
-            </div>
-        </div>
-    </div>
+        <g class="specials-box">
+            <rect x="21.5" [attr.y]="specialsBoxY() + 1.5" width="1063" [attr.height]="specialsBoxHeight() - 3" rx="12" ry="12" [attr.fill]="armorBoxFill()" stroke="#221F20" stroke-width="2.4"></rect>
+            <text x="36" [attr.y]="specialsBoxY() + 37" class="specials-box-content" font-family="Roboto Condensed, sans-serif" fill="#000" font-size="36" font-weight="500">SPECIAL:</text>
+            @for (run of specialTextRuns(); track run.item.original) {
+                <text class="special-ability as-value"
+                      [attr.x]="run.x"
+                      [attr.y]="run.y"
+                      [attr.data-original]="run.item.original"
+                      [attr.fill]="isSpecialExhausted(run.item) ? '#cd0000' : asValueFill()"
+                      font-family="Roboto Condensed, sans-serif"
+                      font-size="36"
+                      font-weight="900"
+                      [attr.text-decoration]="isSpecialExhausted(run.item) ? 'line-through' : null"
+                      [class.exhausted]="isSpecialExhausted(run.item)"
+                      [class.has-consumed]="run.item.consumedCount"
+                      (click)="onSpecialClick(run.item, $event)">{{ run.text }}</text>
+            }
+        </g>
     }
-</div>
+    </g>
 
 <!-- Destroyed Overlay -->
 @if (isDestroyed()) {
-<div class="destroyed-overlay">
-    <span class="destroyed-text">DESTROYED</span>
-</div>
+    <g class="destroyed-overlay" pointer-events="none">
+        <rect x="0" y="0" width="1120" height="800" class="destroyed-overlay-tint" fill="rgba(128, 0, 0, 0.3)"></rect>
+        <text x="1080" y="300" text-anchor="end" class="destroyed-text" fill="#a00" stroke="#111" stroke-width="14" paint-order="stroke fill" font-family="Roboto Condensed, sans-serif" font-size="78" font-weight="900" letter-spacing="8" transform="rotate(-15 1080 300)">DESTROYED</text>
+    </g>
 }
+</svg>

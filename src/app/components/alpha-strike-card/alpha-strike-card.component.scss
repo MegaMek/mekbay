@@ -1,6 +1,11 @@
 :host {
     display: block;
+    position: relative;
     container-type: inline-size;
+
+    &.export-mode {
+        max-width: none !important;
+    }
 
     @media screen {
         max-width: min(100%, 100vw, calc(100vh * 1120 / 800));
@@ -12,9 +17,9 @@
 }
 
 .card-container {
-    position: relative;
     width: 100%;
     aspect-ratio: 1120 / 800;
+    display: block;
     font-family: 'Roboto', sans-serif;
     font-size: 1cqw;
     page-break-inside: avoid;
@@ -26,92 +31,99 @@
     }
 }
 
-// Background styles
-.card-background {
+.crit-roll-button-overlay,
+.commit-button {
     position: absolute;
-    width: 100%;
-    height: 100%;
-    background: #000;
-    border: 1.43em solid #000;
-    box-sizing: border-box;
-}
+    z-index: 10;
+    pointer-events: auto;
 
-@media screen {
-    :host(.selected) .card-background-image,
-    :host(.selected) .card-background {
-        border-color: var(--bt-yellow);
+    @media print {
+        display: none;
     }
 }
 
-.alphastrike-footer-background {
-    position: absolute;
-    inset: 0;
-    background: #000;
-    clip-path: polygon(0 3%, 48% 3%, 53% 100%, 0 100%);
-}
-
-.card-background-image {
-    position: absolute;
-    inset: 1.8em;
-    background-color: #242424;
-    // background-image: url('/images/as/ascard_background1.jpg');
-    // background-size: cover;
-    // background-position: center;
-    // clip-path: polygon(0 0, 100% 0, 100% 100%, 7.5em 100%, 0 calc(100% - 7.5em));
-
-    // &.secondary-card {
-    //     background-image: url('/images/ascard_background2.jpg');
-        
-    // }
-
-    :host(.monochrome) & {
-        background-color: #fff;
-    }
-}
-
-
-// Footer Section
-.footer-section {
-    position: absolute;
-    bottom: 2.5%;
-    left: 1.43em;
-    right: 1.43em;
-    height: 9%;
-    display: flex;
-    align-items: center;
-    font-size: 1em;
-    overflow: hidden;
-}
-
-
-.alphastrike-logo {
-    position: absolute;
-    left: 8.1%;
-    bottom: 0%;
-    width: 36em;
+.crit-roll-button-overlay {
+    top: 51.5%;
+    right: 3.2%;
+    width: 5.2%;
+    aspect-ratio: 1 / 1;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
 
     svg {
+        display: block;
         width: 100%;
         height: 100%;
+    }
 
+    path {
+        fill: #000;
+    }
+
+    :hover {
+        filter: invert(.4);
+    }
+}
+
+.commit-button {
+    bottom: 3%;
+    left: 53%;
+    transform: translateX(-50%);
+    min-height: 0;
+    padding: 0.45em 1.2em;
+    font-size: 0.8em;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.card-shell {
+    width: 100%;
+    height: 100%;
+}
+
+.card-layout-layer {
+    transform-box: fill-box;
+}
+
+// Background styles
+.card-shell-background {
+    background: #000;
+    fill: #000;
+}
+
+.card-shell-inner {
+    &.secondary-card {
+        opacity: 1;
+    }
+}
+
+@media print {
+    .selection-border {
+        display: none;
+        stroke: none;
+    }
+}
+
+.alphastrike-logo {
+    overflow: visible;
+
+    g {
+        filter: none !important;
+    }
+
+    path {
+        fill: #fff !important;
+        stroke-width: 0 !important;
+    }
+
+    :host(.monochrome) & {
         g {
             filter: none !important;
         }
-        
+
         path {
-            fill: #fff !important;
-            stroke-width: 0 !important;
-        }
-    }
-
-    :host(.monochrome) & {
-        // bottom: -15%;
-
-        svg g {
-            filter: none !important;
-        }
-
-        svg path {
             fill: #fff !important;
             stroke-width: 0 !important;
         }
@@ -119,27 +131,12 @@
 }
 
 .battletech-logo {
-    position: absolute;
-    right: 2.68%;
-    bottom: 20%;
-    width: 30em;
     .logo-text {
-            fill: #fff;
-    }
-    svg {
-        width: 100%;
-        height: 100%;
-    }
-
-    :host(.monochrome) & {
-        // bottom: 15%;
-        .logo-text {
-            fill: #000;
-        }
+        paint-order: stroke fill;
     }
 
     @media print {
-        svg path {
+        path {
             fill: #000 !important;
             stroke-width: 0 !important;
         }
@@ -149,24 +146,3 @@
     }
 }
 
-// Commit button overlay
-.commit-overlay {
-    position: absolute;
-    bottom: 3%;
-    left: 53%;
-    transform: translateX(-50%);
-    z-index: 10;
-    pointer-events: auto;
-
-    @media print {
-        display: none;
-    }
-}
-
-.commit-button {
-    min-height: auto;
-    padding: 0.45em 1.2em;
-    font-size: 2.4em;
-    font-weight: bold;
-    cursor: pointer;
-}

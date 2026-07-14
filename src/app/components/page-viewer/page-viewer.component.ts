@@ -496,6 +496,10 @@ export class PageViewerComponent implements AfterViewInit {
         }, { injector: this.injector });
 
         effect(() => {
+            this.zoomPanService.setDoubleTapZoomResetMode(this.optionsService.options().recordSheetDoubleTapZoomReset);
+        }, { injector: this.injector });
+
+        effect(() => {
             const performanceMode = this.performanceMode();
 
             if (!this.viewInitialized() || this.isSwiping) {

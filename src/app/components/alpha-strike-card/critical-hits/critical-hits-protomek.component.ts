@@ -31,9 +31,19 @@
  * affiliated with Microsoft.
  */
 
-import { Component, ChangeDetectionStrategy } from '@angular/core';
-import { AsCriticalHitsBase } from './critical-hits-base';
-import { AsCritPipsComponent } from './crit-pips.component';
+import { Component, ChangeDetectionStrategy, NO_ERRORS_SCHEMA } from '@angular/core';
+import { AsCriticalHitsBase, CRITICAL_HITS_SHARED_STYLES } from './critical-hits-base';
+
+const PROTOMEK_CRITICAL_HITS_STYLES = `
+    :host {
+        --crit-viewbox-height: 105;
+        --crit-roll-width: 32;
+        --critical-name-font-size: 12px;
+        --critical-desc-font-size: 13.5px;
+    }
+
+    ${CRITICAL_HITS_SHARED_STYLES}
+`;
 
 /*
  * Author: Drake
@@ -42,47 +52,51 @@ import { AsCritPipsComponent } from './crit-pips.component';
  */
 
 @Component({
-    selector: 'as-critical-hits-protomek',
+    selector: 'g[as-critical-hits-protomek]',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [AsCritPipsComponent],
     host: {
         '[class.monochrome]': 'cardStyle() === "monochrome"',
     },
+    schemas: [NO_ERRORS_SCHEMA],
     template: `
-        <div class="critical-hits-box frame">
-            <div class="frame-background"></div>
-            @if (interactive()) {
-                <button class="crit-roll-button" (click)="onRollCriticalClick($event)" aria-label="Roll critical hit"></button>
-            }
-            <div class="frame-content">
-                <div class="critical-title frame-title-background">CRITICAL HITS</div>
+                <rect x="1.5" y="1.5" width="259" height="102" rx="7" ry="7" [attr.fill]="criticalHitsFill()" stroke="#221F20" stroke-width="1.5"></rect>
+                @if (showCriticalTitleBar()) {
+                    <rect x="50" y="6" width="162" height="22" [attr.fill]="titleGradientUrl" aria-hidden="true"></rect>
+                }
+                <text x="131" y="24" text-anchor="middle" class="critical-title-svg" [attr.fill]="criticalTitleFill()">CRITICAL HITS</text>
 
-                <div class="critical-row" data-crit="fire-control">
-                    <span class="critical-name">FIRE CONTROL</span>
-                    <div class="critical-pips">
-                        <as-crit-pips [forceUnit]="forceUnit()" critKey="fire-control" [maxPips]="4" />
-                    </div>
-                    <span class="critical-desc">+2 To-Hit Each</span>
-                </div>
+                @for (row of rows; track row.key) {
+                    <g class="critical-row-svg" [attr.data-crit]="row.key" [attr.transform]="'translate(11,' + row.y + ')'">
+                        <text x="68" y="13" text-anchor="end" class="critical-name-svg" [attr.fill]="criticalNameFill()">{{ row.name }}</text>
 
-                <div class="critical-row" data-crit="mp">
-                    <span class="critical-name">MP</span>
-                    <div class="critical-pips">
-                        <as-crit-pips [forceUnit]="forceUnit()" critKey="mp" [maxPips]="4" />
-                    </div>
-                    <span class="critical-desc">½ MV Each</span>
-                </div>
+                        @if (showNumeric(row.key, row.maxPips)) {
+                            <text x="81" y="14" class="critical-count-svg" [attr.fill]="pipCountFill(row.key)">{{ committedHits(row.key) }}@if (pendingChange(row.key) !== 0) {<tspan [attr.fill]="pendingDeltaFill(row.key)">{{ pendingDelta(row.key) }}</tspan>}</text>
+                            <circle cx="115" cy="8" r="6.35" class="critical-pip-circle pip damaged"></circle>
+                        } @else {
+                            @for (pipIndex of pipIndices(row.maxPips); track pipIndex) {
+                                <circle
+                                    [attr.cx]="85 + (pipIndex * 16)"
+                                    cy="8"
+                                    r="6.35"
+                                    class="critical-pip-circle pip"
+                                    [class.damaged]="isDamaged(row.key, pipIndex)"
+                                    [class.pending-damage]="isPendingDamage(row.key, pipIndex)"
+                                    [class.pending-heal]="isPendingHeal(row.key, pipIndex)">
+                                </circle>
+                            }
+                        }
 
-                <div class="critical-row" data-crit="weapons">
-                    <span class="critical-name">WEAPONS</span>
-                    <div class="critical-pips">
-                        <as-crit-pips [forceUnit]="forceUnit()" critKey="weapons" [maxPips]="4" />
-                    </div>
-                    <span class="critical-desc">-1 Damage Each</span>
-                </div>
-            </div>
-        </div>
+                        <text [attr.x]="descX(row.key, row.maxPips)" y="13" class="critical-desc-svg">{{ row.description }}</text>
+                    </g>
+                }
     `,
-    styleUrl: './../common.scss'
+    styles: [PROTOMEK_CRITICAL_HITS_STYLES]
 })
-export class AsCriticalHitsProtomekComponent extends AsCriticalHitsBase {}
+export class AsCriticalHitsProtomekComponent extends AsCriticalHitsBase {
+    protected readonly rows = [
+        { key: 'fire-control', name: 'FIRE CONTROL', description: '+2 To-Hit Each', maxPips: 4, y: 37 },
+        { key: 'mp', name: 'MP', description: '½ MV Each', maxPips: 4, y: 58 },
+        { key: 'weapons', name: 'WEAPONS', description: '-1 Damage Each', maxPips: 4, y: 79 },
+    ] as const;
+
+}

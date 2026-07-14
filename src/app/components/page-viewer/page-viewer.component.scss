@@ -158,6 +158,11 @@
             transform: none !important;
         }
     }
+
+    &.promoted-shadow-page {
+        opacity: 1;
+        cursor: default;
+    }
 }
 
 

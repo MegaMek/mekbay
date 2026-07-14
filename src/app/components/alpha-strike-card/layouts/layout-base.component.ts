@@ -75,6 +75,13 @@ export interface SpecialAbilityClickEvent {
     event: MouseEvent;
 }
 
+export interface PositionedTextRun<T> {
+    item: T;
+    text: string;
+    x: number;
+    y: number;
+}
+
 @Directive()
 export abstract class AsLayoutBaseComponent {
     protected readonly dataService = inject(DataService);
@@ -458,6 +465,40 @@ export abstract class AsLayoutBaseComponent {
             return specialAbilityState;
         });
     });
+
+    protected specialDisplayText(state: SpecialAbilityState, isLast: boolean): string {
+        const remaining = state.maxCount && state.consumedCount ? `[${state.maxCount - state.consumedCount}]` : '';
+        return `${state.effective}${remaining}${isLast ? '' : ','}`;
+    }
+
+    protected layoutTextRuns<T>(
+        items: ReadonlyArray<T>,
+        startX: number,
+        startY: number,
+        rightX: number,
+        lineHeight: number,
+        charWidth: number,
+        gap: number,
+        wrapX: number = startX,
+    ): PositionedTextRun<T>[] {
+        const result: PositionedTextRun<T>[] = [];
+        let x = startX;
+        let y = startY;
+
+        for (const item of items) {
+            const text = typeof item === 'string' ? item : (item as { text: string }).text;
+            const estimatedWidth = Math.max(24, text.length * charWidth);
+            if (x + estimatedWidth > rightX) {
+                x = wrapX;
+                y += lineHeight;
+            }
+
+            result.push({ item, text, x, y });
+            x += estimatedWidth + gap;
+        }
+
+        return result;
+    }
 
     getMovementEntries(mvm: Record<string, number> | undefined): Array<[string, number]> {
         if (!mvm) return [];
