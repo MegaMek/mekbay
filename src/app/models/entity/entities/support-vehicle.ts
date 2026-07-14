@@ -1,9 +1,7 @@
 import { signal, type WritableSignal } from '@angular/core';
-import type { BaseEntity } from '../base-entity';
 import { SUPPORT_VEHICLE_WEIGHT_LIMITS, type MotiveType, type WeightClass, resolveWeightClass } from '../types';
 
 export class SupportVehicleData {
-  readonly isSupportVehicle = true as const;
   readonly barRating: WritableSignal<number>;
   readonly structuralTechRating = signal<number>(0);
   readonly engineTechRating = signal<number>(0);
@@ -24,9 +22,5 @@ export interface SupportVehicle {
   readonly structuralTechRating: WritableSignal<number>;
   readonly engineTechRating: WritableSignal<number>;
   readonly fuel: WritableSignal<number>;
-}
-
-export function isSupportVehicle(entity: BaseEntity): entity is BaseEntity & SupportVehicle {
-  return 'supportVehicle' in entity
-    && (entity as BaseEntity & Partial<SupportVehicle>).supportVehicle?.isSupportVehicle === true;
+  isSupportVehicle(): this is this & SupportVehicle;
 }

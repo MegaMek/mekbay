@@ -12,6 +12,10 @@ export class SupportNavalEntity extends NavalEntity implements SupportVehicle {
   readonly engineTechRating = this.supportVehicle.engineTechRating;
   readonly fuel = signal<number>(0);
 
+  override isSupportVehicle(): this is this & SupportVehicle {
+    return true;
+  }
+
   protected override computeWeightClass(): WeightClass {
     return this.supportVehicle.resolveWeightClass(this.tonnage(), this.motiveType());
   }

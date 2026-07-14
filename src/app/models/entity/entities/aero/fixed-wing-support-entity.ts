@@ -47,6 +47,10 @@ export class FixedWingSupportEntity extends AeroEntity implements SupportVehicle
   readonly structuralTechRating = this.supportVehicle.structuralTechRating;
   readonly engineTechRating = this.supportVehicle.engineTechRating;
 
+  override isSupportVehicle(): this is this & SupportVehicle {
+    return true;
+  }
+
   protected override computeWeightClass(): WeightClass {
     return this.supportVehicle.resolveWeightClass(this.tonnage(), 'Aerodyne');
   }

@@ -36,7 +36,6 @@ import { NavalEntity } from '../entities/vehicle/naval-entity';
 import { VtolEntity } from '../entities/vehicle/vtol-entity';
 import { LargeSupportTankEntity } from '../entities/vehicle/large-support-tank-entity';
 import { GunEmplacementEntity } from '../entities/vehicle/gun-emplacement-entity';
-import { isSupportVehicle } from '../entities/support-vehicle';
 
 import {
   BuildingBlockWriter,
@@ -77,7 +76,7 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
   let unitType: string;
   if (entity instanceof GunEmplacementEntity)        unitType = 'GunEmplacement';
   else if (entity instanceof LargeSupportTankEntity)  unitType = 'LargeSupportTank';
-  else if (isSupportVehicle(entity))                  unitType = entity instanceof VtolEntity ? 'SupportVTOL' : 'SupportTank';
+  else if (entity.isSupportVehicle())                 unitType = entity instanceof VtolEntity ? 'SupportVTOL' : 'SupportTank';
   else if (entity instanceof VtolEntity)              unitType = 'VTOL';
   else if (entity instanceof NavalEntity)             unitType = 'Tank';
   else                                                unitType = 'Tank';
@@ -202,12 +201,12 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
   writeEquipmentByLocation(w, entity, equipTags, encodeEquipmentLine, true);
 
   // 12. BAR rating (for support vehicles, only when explicitly set in original)
-  if (isSupportVehicle(entity) && entity.barRating() >= 0) {
+  if (entity.isSupportVehicle() && entity.barRating() >= 0) {
     w.addBlock('barrating', entity.barRating());
   }
 
   // 13. Support vehicle tech ratings
-  if (isSupportVehicle(entity)) {
+  if (entity.isSupportVehicle()) {
     w.addBlock('structural_tech_rating', entity.structuralTechRating());
     w.addBlock('engine_tech_rating', entity.engineTechRating());
   }
@@ -237,13 +236,13 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
   }
 
   // 18c. Fire control weight (support omni vehicles)
-  if (isSupportVehicle(entity) && entity.omni()) {
+  if (entity.isSupportVehicle() && entity.omni()) {
     const fcw = entity.baseChassisFireConWeight();
     w.addBlock('baseChassisFireConWeight', Number.isInteger(fcw) ? fcw.toFixed(1) : String(fcw));
   }
 
   // 19. Fuel (support vehicles) / fuelType / controls / trailer / extra seats
-  if (isSupportVehicle(entity)) {
+  if (entity.isSupportVehicle()) {
     const fuelVal = entity.fuel();
     w.addBlock('fuel', Number.isInteger(fuelVal) ? fuelVal.toFixed(1) : String(fuelVal));
   }

@@ -1,5 +1,4 @@
 import type { BaseEntity } from '../base-entity';
-import { isSupportVehicle } from '../entities/support-vehicle';
 import { MekEntity } from '../entities/mek/mek-entity';
 import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import type { EntityMountedEquipment } from '../types/equipment';
@@ -88,7 +87,7 @@ export function getEquipmentTonnage(
     } else if (equipment.hasFlag('F_DUNE_BUGGY')) {
         return tonnage / 10;
     } else if (equipment.hasFlag('F_ENVIRONMENTAL_SEALING')) {
-        return isSupportVehicle(entity) ? 0 : standardRound(tonnage / 10, entity);
+        return entity.isSupportVehicle() ? 0 : standardRound(tonnage / 10, entity);
     } else if (equipment.hasFlag('F_MECHANICAL_JUMP_BOOSTER')) {
         if (entity.weightClass() === 'Ultra Light' || entity.weightClass() === 'Light') return 0.05;
         if (entity.weightClass() === 'Medium') return 0.1;

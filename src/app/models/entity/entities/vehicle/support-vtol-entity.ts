@@ -45,6 +45,10 @@ export class SupportVtolEntity extends VtolEntity implements SupportVehicle {
   readonly engineTechRating = this.supportVehicle.engineTechRating;
   readonly fuel = signal<number>(0);
 
+  override isSupportVehicle(): this is this & SupportVehicle {
+    return true;
+  }
+
   protected override get minimumEngineRating(): number | null {
     return null;
   }

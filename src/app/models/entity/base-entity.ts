@@ -63,6 +63,7 @@ import {
 } from './types';
 import { generateMountId, removeMountById, updateMap } from './utils/signal-helpers';
 import { uuidv7 } from '../../utils/uuid.util';
+import type { SupportVehicle } from './entities/support-vehicle';
 
 /**
  * Set to `true` to make `computeMixedTech` collect ALL mixed-tech reasons
@@ -106,6 +107,10 @@ export interface MixedTechResult {
 export abstract class BaseEntity {
   // ── Identity (immutable after construction) ─────────────────────────────
   abstract readonly entityType: EntityType;
+
+  isSupportVehicle(): this is this & SupportVehicle {
+    return false;
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  SIGNALS

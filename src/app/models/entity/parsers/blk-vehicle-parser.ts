@@ -37,7 +37,6 @@ import { NavalEntity } from '../entities/vehicle/naval-entity';
 import { VtolEntity } from '../entities/vehicle/vtol-entity';
 import { SupportTankEntity } from '../entities/vehicle/support-tank-entity';
 import { SupportNavalEntity } from '../entities/vehicle/support-naval-entity';
-import { isSupportVehicle } from '../entities/support-vehicle';
 import { SupportVtolEntity } from '../entities/vehicle/support-vtol-entity';
 import { LargeSupportTankEntity } from '../entities/vehicle/large-support-tank-entity';
 import { GunEmplacementEntity } from '../entities/vehicle/gun-emplacement-entity';
@@ -149,7 +148,7 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
   if (bb.exists('baseChassisSponsonPintleWeight')) {
     entity.baseChassisSponsonPintleWeight.set(bb.getFirstDouble('baseChassisSponsonPintleWeight'));
   }
-  if (isSupportVehicle(entity) && bb.exists('baseChassisFireConWeight')) {
+  if (entity.isSupportVehicle() && bb.exists('baseChassisFireConWeight')) {
     entity.baseChassisFireConWeight.set(bb.getFirstDouble('baseChassisFireConWeight'));
   }
 
@@ -243,12 +242,12 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
   }
 
   // ── Support vehicle BAR rating ──
-  if (isSupportVehicle(entity) && bb.exists('barrating')) {
+  if (entity.isSupportVehicle() && bb.exists('barrating')) {
     entity.barRating.set(bb.getFirstInt('barrating'));
   }
 
   // ── Support vehicle tech ratings and fuel ──
-  if (isSupportVehicle(entity)) {
+  if (entity.isSupportVehicle()) {
     const sv = entity;
     if (bb.exists('structural_tech_rating')) {
       sv.structuralTechRating.set(bb.getFirstInt('structural_tech_rating'));

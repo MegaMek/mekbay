@@ -1,5 +1,5 @@
 import type { BaseEntity } from '../base-entity';
-import { isSupportVehicle, type SupportVehicle } from '../entities/support-vehicle';
+import type { SupportVehicle } from '../entities/support-vehicle';
 import { FixedWingSupportEntity } from '../entities/aero/fixed-wing-support-entity';
 import { SupportVtolEntity } from '../entities/vehicle/support-vtol-entity';
 import type { TechRating } from '../types';
@@ -7,7 +7,7 @@ import type { TechRating } from '../types';
 const TECH_RATINGS: readonly TechRating[] = ['A', 'B', 'C', 'D', 'E', 'F'];
 
 export function getEquipmentEngineWeight(entity: BaseEntity): number {
-    if (isSupportVehicle(entity)) {
+    if (entity.isSupportVehicle()) {
         return getSupportVehicleEngineWeight(entity);
     }
 
