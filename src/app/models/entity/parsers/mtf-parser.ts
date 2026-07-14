@@ -480,6 +480,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
 // ============================================================================
 
 interface MtfHeader {
+  uuid: string;
   chassis: string;
   model: string;
   mulId: number;
@@ -529,6 +530,7 @@ interface MtfHeader {
 
 function parseHeader(lines: string[]): MtfHeader {
   const h: MtfHeader = {
+    uuid: '',
     chassis: '', model: '', mulId: -1, config: 'Biped',
     techBase: 'IS', mixedTech: false, techBaseRaw: 'IS',
     era: 3025, originalEra: -1, source: '', published: '', rulesLevel: 2, role: '',
@@ -606,6 +608,7 @@ function parseHeader(lines: string[]): MtfHeader {
     const value = line.substring(colonIdx + 1).trim();
 
     switch (key) {
+      case 'uuid':      h.uuid = value; break;
       case 'generator': h.generator = value; break;
       case 'chassis':   h.chassis = value; break;
       case 'model':     h.model = value; break;

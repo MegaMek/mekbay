@@ -154,6 +154,7 @@ export function writeMtf(entity: MekEntity): string {
 // ============================================================================
 
 function writeIdentity(entity: MekEntity, lines: string[]): void {
+  lines.push(`uuid:${entity.uuid()}`);
   lines.push(`generator:MekBay ${APP_VERSION_STRING}`);
   lines.push(`chassis:${entity.chassis()}`);
   if (entity.clanName()) lines.push(`clanname:${entity.clanName()}`);

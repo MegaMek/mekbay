@@ -113,6 +113,7 @@ export class BuildingBlockWriter {
  *   UnitType, Name, Model, mul id
  */
 export function writeIdentity(w: BuildingBlockWriter, entity: BaseEntity, unitType: string): void {
+  w.addBlock('UUID', entity.uuid());
   w.addBlock('UnitType', unitType);
   w.addBlock('Name', entity.chassis());
   w.addBlock('Model', entity.model());

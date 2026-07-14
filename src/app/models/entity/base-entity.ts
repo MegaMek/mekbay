@@ -61,6 +61,7 @@ import {
   MountPlacement,
 } from './types';
 import { generateMountId, removeMountById, updateMap } from './utils/signal-helpers';
+import { uuidv7 } from '../../utils/uuid.util';
 
 /**
  * Set to `true` to make `computeMixedTech` collect ALL mixed-tech reasons
@@ -110,6 +111,7 @@ export abstract class BaseEntity {
   // ═══════════════════════════════════════════════════════════════════════════
 
   // ── Identity ──
+  readonly uuid = signal<string>(uuidv7());
   readonly chassis = signal<string>('');
   readonly model = signal<string>('');
   readonly clanName = signal<string>('');
