@@ -2,6 +2,7 @@ import type { BaseEntity } from '../base-entity';
 import { MekEntity } from '../entities/mek/mek-entity';
 import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import type { EntityMountedEquipment } from '../types/equipment';
+import { getEquipmentEngineWeight } from './equipment-engine-weight';
 import { getFireControlWeaponWeight } from './fire-control';
 import { getCasparIITonnage, getCasparTonnage, getSrcsTonnage } from './large-craft-control-tonnage';
 import { getTargetingComputerRelevantWeight } from './targeting-computer';
@@ -41,13 +42,9 @@ export function getEquipmentTonnage(
     } else if (equipment.hasFlag('F_CHAIN_DRAPE')) {
         return nextHalfTon(tonnage / 10);
     } else if (equipment.hasFlag('F_JET_BOOSTER')) {
-        return undefined;
+        return standardRound(getEquipmentEngineWeight(entity) / 10, entity);
     } else if (equipment.hasFlag('S_SUPERCHARGER')) {
-        if (isSupportVehicle(entity) || entity.motiveType() === 'Hover') return undefined;
-        const usesTankEngine = entity.entityType === 'Tank'
-            || entity.entityType === 'Naval'
-            || entity.entityType === 'VTOL';
-        return standardRound(entity.mountedEngine().getWeight({ tank: usesTankEngine }) / 10, entity);
+        return standardRound(getEquipmentEngineWeight(entity) / 10, entity);
     } else if (equipment.hasFlag('F_MASC')) {
         if (entity.entityType === 'ProtoMek') return nearestKg(tonnage * 0.025);
         if (entity.entityType === 'BattleArmor') return 0.25 / 3;

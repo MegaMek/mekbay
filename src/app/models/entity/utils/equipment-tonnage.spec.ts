@@ -4,6 +4,7 @@ import { BipedMekEntity } from '../entities/mek/biped-mek-entity';
 import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import { ProtoMekEntity } from '../entities/protomek/protomek-entity';
 import { SupportTankEntity } from '../entities/vehicle/support-tank-entity';
+import { SupportVtolEntity } from '../entities/vehicle/support-vtol-entity';
 import { TankEntity } from '../entities/vehicle/tank-entity';
 import { DropShipEntity } from '../entities/aero/dropship-entity';
 import { JumpShipEntity } from '../entities/largecraft/jumpship-entity';
@@ -263,12 +264,31 @@ describe('EntityMountedEquipment.getTonnage', () => {
         expect(supercharger.getTonnage(tank)).toBe(3);
     });
 
-    it('defers support and VTOL jet-booster engine-weight variants', () => {
+    it('resolves support vehicle supercharger and jet-booster tonnage', () => {
         const supportTank = new SupportTankEntity();
+        supportTank.tonnage.set(20);
+        supportTank.originalWalkMP.set(4);
+        supportTank.engineTechRating.set(3);
+        supportTank.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 80, techBase: 'IS' }));
+        const supportVtol = new SupportVtolEntity();
+        supportVtol.tonnage.set(4);
+        supportVtol.originalWalkMP.set(3);
+        supportVtol.engineTechRating.set(3);
+        supportVtol.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 20, techBase: 'IS' }));
+
         expect(mount(variableEquipment('supercharger', ['F_MASC', 'S_SUPERCHARGER'])).getTonnage(supportTank))
-            .toBeUndefined();
-        expect(mount(variableEquipment('jet booster', ['F_MASC', 'F_JET_BOOSTER'])).getTonnage(entity))
-            .toBeUndefined();
+            .toBe(0.5);
+        expect(mount(variableEquipment('jet booster', ['F_MASC', 'F_JET_BOOSTER'])).getTonnage(supportVtol))
+            .toBe(0.025);
+    });
+
+    it('includes the Java hovercraft engine-weight minimum for superchargers', () => {
+        const hover = new TankEntity();
+        hover.tonnage.set(50);
+        hover.motiveType.set('Hover');
+        hover.mountedEngine.set(new MountedEngine({ type: 'ICE', rating: 10, techBase: 'IS' }));
+
+        expect(mount(variableEquipment('supercharger', ['F_MASC', 'S_SUPERCHARGER'])).getTonnage(hover)).toBe(1);
     });
 
     it('uses weight class for mechanical jump boosters', () => {
