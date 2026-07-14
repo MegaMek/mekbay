@@ -32,10 +32,10 @@
  */
 
 import { computed, inject, Injectable, signal } from '@angular/core';
-import { generateUUID } from './ws.service';
 import { DbService, type UserData } from './db.service';
 import { LoggerService } from './logger.service';
 import type { AvailableAuthProvider, LinkedOAuthProvider, UserStateSnapshot } from '../models/account-auth.model';
+import { uuidv7 } from '../utils/uuid.util';
 
 /*
  * Author: Drake
@@ -91,13 +91,13 @@ export class UserStateService {
     }
 
     public async createNewUUID(): Promise<UserData> {
-        const uuid = generateUUID();
+        const uuid = uuidv7();
         await this.setUuid(uuid);
         return this.userData();
     }
 
     public async createFreshSession(): Promise<UserData> {
-        const nextUserData: UserData = { uuid: generateUUID() };
+        const nextUserData: UserData = { uuid: uuidv7() };
         this.availableAuthProvidersState.set([]);
         await this.persistUserData(nextUserData);
         return this.userData();

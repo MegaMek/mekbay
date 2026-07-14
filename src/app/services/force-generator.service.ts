@@ -80,7 +80,7 @@ import { OptionsService } from './options.service';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 import { TagsService } from './tags.service';
-import { generateUUID } from './ws.service';
+import { uuidv7 } from '../utils/uuid.util';
 
 /**
  * Author: Drake
@@ -3637,7 +3637,7 @@ export class ForceGeneratorService implements OnDestroy {
             skill,
             gunnery,
             piloting,
-            lockKey: lockedUnit.lockKey ?? generateUUID(),
+            lockKey: lockedUnit.lockKey ?? uuidv7(),
         };
     }
 
@@ -5162,7 +5162,7 @@ export class ForceGeneratorService implements OnDestroy {
             piloting: candidate.piloting,
             alias: candidate.alias,
             commander: candidate.commander,
-            lockKey: candidate.lockKey ?? generateUUID(),
+            lockKey: candidate.lockKey ?? uuidv7(),
             variantGroupKey: candidate.variantGroupKey,
         };
     }

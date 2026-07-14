@@ -35,23 +35,11 @@ import { effect, inject, Injectable, signal } from '@angular/core';
 import { UserStateService } from './userState.service';
 import { LoggerService } from './logger.service';
 import type { SerializedForce } from '../models/force-serialization';
+import { uuidv7 } from '../utils/uuid.util';
 
 /*
  * Author: Drake
  */
-
-export function generateUUID(): string {
-    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-        return crypto.randomUUID();
-    }
-
-    // Fallback for non-secure contexts
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-        const r = Math.random() * 16 | 0;
-        const v = c === 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-    });
-}
 
 /** Client protocol version - increment when breaking changes are made */
 export const PROTOCOL_VERSION = 2;
@@ -67,7 +55,7 @@ export class WsService {
     private readonly wsUrl = 'wss://mekbay.com/ws';
     private wsReady?: Promise<void>;
     private wsReadyResolver: (() => void) | null = null;
-    private readonly wsSessionId = generateUUID();
+    private readonly wsSessionId = uuidv7();
     private subscriptions = new Map<string, (event: MessageEvent) => void>();
     private actionHandlers = new Map<string, Set<(msg: any, event: MessageEvent) => void>>();
     
@@ -517,7 +505,7 @@ export class WsService {
         const message = {
             ...payload,
             sessionId: this.wsSessionId,
-            requestId: generateUUID()
+            requestId: uuidv7()
         };
         try {
             this.ws.send(JSON.stringify(message));
@@ -535,7 +523,7 @@ export class WsService {
             return null;
         }
 
-        const requestId = generateUUID();
+        const requestId = uuidv7();
         const message = {
             ...payload,
             sessionId: this.wsSessionId,

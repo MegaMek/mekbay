@@ -75,7 +75,6 @@ import { AbilityInfoDialogComponent, type AbilityInfoDialogData } from '../abili
 import { SyntaxInputComponent } from '../syntax-input/syntax-input.component';
 import { formatASDamageValue, isASDamageFilterKey } from '../../utils/as-damage.util';
 import { SavedSearchesService } from '../../services/saved-searches.service';
-import { generateUUID } from '../../services/ws.service';
 import { GameSystem } from '../../models/common.model';
 import { AS_TYPE_DISPLAY_NAMES, DROPDOWN_FILTERS, RANGE_FILTERS } from '../../services/unit-search-filters.model';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
@@ -89,6 +88,7 @@ import { DataTableComponent, type DataTableCellContext, type DataTableColumn, ty
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { getUnitVariantGroupIdentity, getUnitVariantGroupKey, type UnitVariantGroupIdentity, unitMatchesVariantGroup } from '../../utils/unit-variant.util';
 import { DropdownPointerActivationGuard, type DropdownPointerHoverEvent } from '../../utils/dropdown-interaction.utils';
+import { uuidv7 } from '../../utils/uuid.util';
 
 /** Grouped chassis entry for compact view */
 export interface ChassisGroup extends UnitVariantGroupIdentity {
@@ -2765,7 +2765,7 @@ export class UnitSearchComponent {
 
             const gameSystem = this.gameService.currentGameSystem();
             const gsKey = gameSystem === GameSystem.ALPHA_STRIKE ? 'as' : 'cbt';
-            const id = generateUUID();
+            const id = uuidv7();
             const filter = this.filtersService.serializeCurrentSearchFilter(id, trimmed, gsKey);
 
             await this.savedSearchesService.saveSearch(filter);
