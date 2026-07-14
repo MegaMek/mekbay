@@ -198,7 +198,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   if (header.clanName) entity.clanName.set(header.clanName);
 
   // ── Physical properties ──
-  entity.tonnage.set(header.mass);
+  entity.setTonnage(header.mass);
 
   // ── Engine + Heat Sinks → MountedEngine ──
   {

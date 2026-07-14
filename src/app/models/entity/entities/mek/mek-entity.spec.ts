@@ -6,7 +6,7 @@ import { QuadMekEntity } from './quad-mek-entity';
 describe('MekEntity jumpMP', () => {
   it('reacts to jump jets, partial wings, and shields', () => {
     const entity = new BipedMekEntity();
-    entity.tonnage.set(55);
+    entity.setTonnage(55);
     entity.equipment.set([
       ...mountsWithFlag('F_JUMP_JET', 6),
       mountWithFlag('F_PARTIAL_WING'),
@@ -26,7 +26,7 @@ describe('MekEntity jumpMP', () => {
 
   it('uses the smaller partial-wing bonus for heavy Meks', () => {
     const entity = new BipedMekEntity();
-    entity.tonnage.set(75);
+    entity.setTonnage(75);
     entity.equipment.set([
       ...mountsWithFlag('F_JUMP_JET', 4),
       mountWithFlag('F_PARTIAL_WING'),

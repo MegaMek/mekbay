@@ -129,7 +129,7 @@ export function parseBaseBlk(
     if (!Number.isFinite(tonnage) || tonnage <= 0) {
       ctx.warn('tonnage', `Invalid tonnage: ${tonnage}`);
     }
-    entity.tonnage.set(tonnage);
+    entity.setTonnage(tonnage);
   }
 
   // ── Internal structure type ──

@@ -8,7 +8,7 @@ describe('getEquipmentBV', () => {
 
     beforeEach(() => {
         entity = new BipedMekEntity();
-        entity.tonnage.set(75);
+        entity.setTonnage(75);
         entity.originalWalkMP.set(3);
     });
 

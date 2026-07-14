@@ -14,7 +14,7 @@ import { MountedEngine } from '../components';
 
 describe('EntityMountedEquipment.getTonnage', () => {
     const entity = new BipedMekEntity();
-    entity.tonnage.set(75);
+    entity.setTonnage(75);
 
     const cases: Array<[string, string[], number]> = [
         ['hatchet', ['F_CLUB', 'S_HATCHET'], 5],
@@ -89,7 +89,7 @@ describe('EntityMountedEquipment.getTonnage', () => {
 
     it('uses the Quad AES divisor', () => {
         const quad = new QuadMekEntity();
-        quad.tonnage.set(75);
+        quad.setTonnage(75);
 
         expect(mount(variableEquipment('AES', ['F_ACTUATOR_ENHANCEMENT_SYSTEM'])).getTonnage(quad)).toBe(1.5);
     });
@@ -99,11 +99,11 @@ describe('EntityMountedEquipment.getTonnage', () => {
         const clamp = mount(variableEquipment('renamed ProtoMek magnetic clamp',
             ['F_MAGNETIC_CLAMP', 'F_PROTOMEK_EQUIPMENT'], 'Clan'));
 
-        protoMek.tonnage.set(5.999);
+        protoMek.setTonnage(5.999);
         expect(clamp.getTonnage(protoMek)).toBe(0.25);
-        protoMek.tonnage.set(6);
+        protoMek.setTonnage(6);
         expect(clamp.getTonnage(protoMek)).toBe(0.5);
-        protoMek.tonnage.set(10);
+        protoMek.setTonnage(10);
         expect(clamp.getTonnage(protoMek)).toBe(1);
     });
 
@@ -158,7 +158,7 @@ describe('EntityMountedEquipment.getTonnage', () => {
 
     it('resolves pintle turret weight from weapons in the same location', () => {
         const supportTank = new SupportTankEntity();
-        supportTank.tonnage.set(75);
+        supportTank.setTonnage(75);
         const pintle = mount(variableEquipment('pintle', ['F_PINTLE_TURRET']));
         supportTank.equipment.set([
             pintle,
@@ -171,11 +171,11 @@ describe('EntityMountedEquipment.getTonnage', () => {
 
     it('resolves SRCS and CASPAR tonnage by large-craft type', () => {
         const dropShip = new DropShipEntity();
-        dropShip.tonnage.set(1000);
+        dropShip.setTonnage(1000);
         const jumpShip = new JumpShipEntity();
-        jumpShip.tonnage.set(100000);
+        jumpShip.setTonnage(100000);
         const warShip = new WarShipEntity();
-        warShip.tonnage.set(100000);
+        warShip.setTonnage(100000);
         warShip.kfCore.set(1);
 
         expect(mount(variableEquipment('SRCS', ['F_SRCS'])).getTonnage(dropShip)).toBe(70);
@@ -197,7 +197,7 @@ describe('EntityMountedEquipment.getTonnage', () => {
 
     it('uses kilogram rounding for ProtoMek partial wings', () => {
         const protoMek = new ProtoMekEntity();
-        protoMek.tonnage.set(6.003);
+        protoMek.setTonnage(6.003);
         const wing = variableEquipment('ProtoMek partial wing', ['F_PARTIAL_WING', 'F_PROTOMEK_EQUIPMENT'], 'Clan');
 
         expect(mount(wing).getTonnage(protoMek)).toBe(1.201);
@@ -219,17 +219,17 @@ describe('EntityMountedEquipment.getTonnage', () => {
         const jumpJet = mount(variableEquipment('ProtoMek jump jet',
             ['F_JUMP_JET', 'F_PROTOMEK_EQUIPMENT'], 'Clan'));
 
-        protoMek.tonnage.set(5.999);
+        protoMek.setTonnage(5.999);
         expect(jumpJet.getTonnage(protoMek)).toBe(0.05);
-        protoMek.tonnage.set(6);
+        protoMek.setTonnage(6);
         expect(jumpJet.getTonnage(protoMek)).toBe(0.1);
-        protoMek.tonnage.set(10);
+        protoMek.setTonnage(10);
         expect(jumpJet.getTonnage(protoMek)).toBe(0.15);
     });
 
     it('uses FrankenMek location tonnage capped by the center torso', () => {
         const frankenMek = new BipedMekEntity();
-        frankenMek.tonnage.set(100);
+        frankenMek.setTonnage(100);
         frankenMek.isFrankenMek.set(true);
         frankenMek.frankenMekLocations.set(new Map([
             ['CT', { tonnage: 60 }],
@@ -246,7 +246,7 @@ describe('EntityMountedEquipment.getTonnage', () => {
 
     it('resolves ProtoMek and Battle Armor myomer-booster tonnage', () => {
         const protoMek = new ProtoMekEntity();
-        protoMek.tonnage.set(6);
+        protoMek.setTonnage(6);
         const battleArmor = new BattleArmorEntity();
 
         expect(mount(variableEquipment('proto booster', ['F_MASC'], 'Clan')).getTonnage(protoMek)).toBe(0.15);
@@ -266,12 +266,12 @@ describe('EntityMountedEquipment.getTonnage', () => {
 
     it('resolves support vehicle supercharger and jet-booster tonnage', () => {
         const supportTank = new SupportTankEntity();
-        supportTank.tonnage.set(20);
+        supportTank.setTonnage(20);
         supportTank.originalWalkMP.set(4);
         supportTank.engineTechRating.set(3);
         supportTank.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 80, techBase: 'IS' }));
         const supportVtol = new SupportVtolEntity();
-        supportVtol.tonnage.set(4);
+        supportVtol.setTonnage(4);
         supportVtol.originalWalkMP.set(3);
         supportVtol.engineTechRating.set(3);
         supportVtol.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 20, techBase: 'IS' }));
@@ -284,7 +284,7 @@ describe('EntityMountedEquipment.getTonnage', () => {
 
     it('includes the Java hovercraft engine-weight minimum for superchargers', () => {
         const hover = new TankEntity();
-        hover.tonnage.set(50);
+        hover.setTonnage(50);
         hover.motiveType.set('Hover');
         hover.mountedEngine.set(new MountedEngine({ type: 'ICE', rating: 10, techBase: 'IS' }));
 
@@ -298,7 +298,7 @@ describe('EntityMountedEquipment.getTonnage', () => {
     it('does not charge support vehicles for environmental sealing tonnage', () => {
         const sealing = mount(variableEquipment('sealing', ['F_ENVIRONMENTAL_SEALING']));
         const supportTank = new SupportTankEntity();
-        supportTank.tonnage.set(75);
+        supportTank.setTonnage(75);
 
         expect(sealing.getTonnage(entity)).toBe(7.5);
         expect(sealing.getTonnage(supportTank)).toBe(0);

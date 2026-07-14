@@ -43,6 +43,7 @@ import {
   WeightClass,
 } from '../../types';
 import { InfantryBaseEntity } from './infantry-base-entity';
+import { getInfantryTonnage } from '../../utils/infantry-tonnage';
 
 // ============================================================================
 // InfantryEntity - conventional infantry platoons
@@ -64,7 +65,6 @@ export class InfantryEntity extends InfantryBaseEntity {
   armorDivisor = signal<number>(1);
   armorKit = signal<string>('');
   override motiveType = signal<MotiveType>('Leg');
-  antimek = signal<boolean>(false);
 
   // Infantry motive modifiers - these flag VTOL/SCUBA sub-variants
   isMicrolite = signal<boolean>(false);
@@ -94,6 +94,10 @@ export class InfantryEntity extends InfantryBaseEntity {
 
   specializations = signal<Set<InfantrySpecialization>>(new Set());
   originalJumpMP = signal<number>(0);
+
+  protected override computeTonnage(): number {
+    return getInfantryTonnage(this);
+  }
 
   override walkMP = computed(() => {
     const mount = this.mount();
@@ -134,6 +138,10 @@ export class InfantryEntity extends InfantryBaseEntity {
       && mount.equipment instanceof WeaponEquipment
       && getAmmoCategory(mount.equipment.ammoType) === 'Artillery'
     );
+  }
+
+  hasAntiMekGear(): boolean {
+    return this.equipment().some(mounted => mounted.equipment?.hasFlag('F_ANTI_MEK_GEAR'));
   }
 
   /**

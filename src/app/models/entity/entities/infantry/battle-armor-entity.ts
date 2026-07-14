@@ -75,6 +75,10 @@ export class BattleArmorEntity extends InfantryBaseEntity {
     return this.declaredWeightClass();
   }
 
+  protected override computeTonnage(): number {
+    return this.trooperCount();
+  }
+
   /** BA writes plain MotiveType (VTOL, UMU, etc.) - no infantry compound logic. */
   override getMotiveTypeAsString(): string | null {
     const m = this.motiveType();

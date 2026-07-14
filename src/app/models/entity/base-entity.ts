@@ -143,7 +143,8 @@ export abstract class BaseEntity {
   faction = signal<FactionCode>('None');
 
   // ── Weight ──
-  tonnage = signal<number>(0);
+  private readonly storedTonnage = signal<number>(0);
+  readonly tonnage = computed(() => this.computeTonnage());
   baseChassisFireConWeight = signal<number>(0);
 
   // ── Movement ──
@@ -238,6 +239,14 @@ export abstract class BaseEntity {
    */
   protected computeWeightClass(): WeightClass {
     return resolveWeightClass(this.tonnage(), MEK_WEIGHT_LIMITS);
+  }
+
+  setTonnage(tonnage: number): void {
+    this.storedTonnage.set(tonnage);
+  }
+
+  protected computeTonnage(): number {
+    return this.storedTonnage();
   }
 
   computedMixedTechResult = computed<MixedTechResult>(() => this.computeMixedTech());

@@ -9,7 +9,7 @@ import { EntityMountedEquipment } from '../types';
 
 describe('EntityMountedEquipment.getCost', () => {
     const entity = new BipedMekEntity();
-    entity.tonnage.set(75);
+    entity.setTonnage(75);
     entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 300, techBase: 'IS' }));
 
     const cases: Array<[string, string[], number]> = [
@@ -71,7 +71,7 @@ describe('EntityMountedEquipment.getCost', () => {
 
     it('returns zero for support-vehicle environmental sealing', () => {
         const supportTank = new SupportTankEntity();
-        supportTank.tonnage.set(75);
+        supportTank.setTonnage(75);
 
         expect(mount(variableEquipment('sealing', ['F_ENVIRONMENTAL_SEALING'])).getCost(supportTank)).toBe(0);
     });
@@ -86,7 +86,7 @@ describe('EntityMountedEquipment.getCost', () => {
     it('uses the AES leg-location cost multiplier', () => {
         const aes = mount(variableEquipment('AES', ['F_ACTUATOR_ENHANCEMENT_SYSTEM']));
         const quad = new QuadMekEntity();
-        quad.tonnage.set(75);
+        quad.setTonnage(75);
 
         expect(aes.clone({ location: 'RL' }).getCost(entity)).toBe(52500);
         expect(aes.clone({ location: 'FLL' }).getCost(quad)).toBe(52500);
@@ -115,7 +115,7 @@ describe('EntityMountedEquipment.getCost', () => {
 
     it('resolves ProtoMek myomer-booster cost', () => {
         const protoMek = new ProtoMekEntity();
-        protoMek.tonnage.set(6);
+        protoMek.setTonnage(6);
         protoMek.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 100, techBase: 'Clan' }));
 
         expect(mount(variableEquipment('CLMyomerBooster', ['F_MASC', 'F_PROTOMEK_EQUIPMENT'])).getCost(protoMek))
