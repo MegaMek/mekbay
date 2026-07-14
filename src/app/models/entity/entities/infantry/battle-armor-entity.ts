@@ -118,6 +118,11 @@ export class BattleArmorEntity extends InfantryBaseEntity {
     return jumpMP;
   });
 
+  override totalArmorPoints = computed(() => {
+    const armorPerTrooper = this.armorValues().get('Squad');
+    return (armorPerTrooper?.front ?? 0) * this.trooperCount();
+  });
+
   // ═══════════════════════════════════════════════════════════════════════════
   //  LOCATION OVERRIDES
   // ═══════════════════════════════════════════════════════════════════════════

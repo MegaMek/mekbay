@@ -354,7 +354,7 @@ export abstract class BaseEntity {
     this.computeMaxArmor(this.structureValues())
   );
 
-  totalArmor = computed(() => {
+  totalArmorPoints = computed(() => {
     let sum = 0;
     for (const la of this.armorValues().values()) {
       sum += la.front + la.rear;

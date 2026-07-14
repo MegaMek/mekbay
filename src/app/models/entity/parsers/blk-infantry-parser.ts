@@ -252,7 +252,7 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
 
   // ── Anti-mek ──
   if (bb.exists('antimek')) {
-    entity.antimek.set(bb.getFirstInt('antimek') === 1 || bb.getFirstString('antimek').toLowerCase() === 'true');
+    entity.antimek.set(bb.getFirstInt('antimek') !== 8);
   }
 
   // ── Specializations (bitmap) ──
