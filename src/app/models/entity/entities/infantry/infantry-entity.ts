@@ -32,7 +32,7 @@
  */
 
 import { Signal, computed, signal } from '@angular/core';
-import { BaseEntity } from '../../base-entity';
+import { Equipment, getAmmoCategory, WeaponEquipment } from '../../../equipment.model';
 import {
   EntityType,
   EntityValidationMessage,
@@ -42,12 +42,13 @@ import {
   StructureType,
   WeightClass,
 } from '../../types';
+import { InfantryBaseEntity } from './infantry-base-entity';
 
 // ============================================================================
 // InfantryEntity - conventional infantry platoons
 // ============================================================================
 
-export class InfantryEntity extends BaseEntity {
+export class InfantryEntity extends InfantryBaseEntity {
   override readonly entityType: EntityType = 'Infantry';
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -58,6 +59,7 @@ export class InfantryEntity extends BaseEntity {
   squadCount = signal<number>(0);
   primaryWeapon = signal<string>('');
   secondaryWeapon = signal<string>('');
+  secondaryWeaponEquipment = signal<Equipment | null>(null);
   secondaryCount = signal<number>(0);
   armorDivisor = signal<number>(1);
   armorKit = signal<string>('');
@@ -91,6 +93,47 @@ export class InfantryEntity extends BaseEntity {
   extraneousPair2 = signal<string>('');
 
   specializations = signal<Set<InfantrySpecialization>>(new Set());
+  originalJumpMP = signal<number>(0);
+
+  override walkMP = computed(() => {
+    const mount = this.mount();
+    if (mount) {
+      return mount.movementMode === 'Leg' ? mount.movementPoints : mount.secondaryGroundMP;
+    }
+
+    let walkMP = this.originalWalkMP();
+    if (this.encumberingArmor()) walkMP = Math.max(walkMP - 1, 1);
+    if (this.hasSupportWeaponPenalty() && this.motiveType() !== 'Tracked' && this.motiveType() !== 'Jump') {
+      walkMP = Math.max(walkMP - 1, 0);
+    }
+    if (this.hasFieldArtillery()) walkMP = Math.min(walkMP, 1);
+    return walkMP;
+  });
+
+  override jumpMP = computed(() => {
+    const mount = this.mount();
+    if (mount) return mount.movementMode === 'VTOL' ? mount.movementPoints : 0;
+    if (this.motiveType() === 'UMU' || this.motiveType() === 'Submarine') return 0;
+
+    let jumpMP = this.originalJumpMP();
+    if (this.hasSupportWeaponPenalty()) jumpMP = Math.max(jumpMP - 1, 0);
+    else if (this.motiveType() === 'VTOL' && this.secondaryCount() > 0) jumpMP = Math.max(jumpMP - 1, 0);
+    return jumpMP;
+  });
+
+  private hasSupportWeaponPenalty(): boolean {
+    return this.secondaryCount() > 1
+      && !this.augmentations().some(augmentation => augmentation === 'tsm_implant' || augmentation === 'dermal_armor')
+      && !!this.secondaryWeaponEquipment()?.hasFlag('F_INF_SUPPORT');
+  }
+
+  private hasFieldArtillery(): boolean {
+    return this.equipment().some(mount =>
+      mount.location === 'Field Guns'
+      && mount.equipment instanceof WeaponEquipment
+      && getAmmoCategory(mount.equipment.ammoType) === 'Artillery'
+    );
+  }
 
   /**
    * Overrides base-entity to handle compound infantry motive strings:
@@ -142,10 +185,6 @@ export class InfantryEntity extends BaseEntity {
     return new Set(['Infantry', 'Field Guns']);
   }
 
-  override hasRearArmor(_loc: string): boolean {
-    return false;
-  }
-
   protected override computeWeightClass(): WeightClass {
     return 'Light';
   }
@@ -153,10 +192,6 @@ export class InfantryEntity extends BaseEntity {
   // ═══════════════════════════════════════════════════════════════════════════
   //  ABSTRACT IMPLEMENTATIONS
   // ═══════════════════════════════════════════════════════════════════════════
-
-  protected override computeExpectedEngineRating(): number | null {
-    return null; // Infantry have no engine
-  }
 
   protected override computeStructureValues(
     _tonnage: number, _structureType: StructureType,

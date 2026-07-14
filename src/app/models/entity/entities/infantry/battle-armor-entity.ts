@@ -38,13 +38,13 @@ import {
   StructureType,
   WeightClass,
 } from '../../types';
-import { InfantryEntity } from './infantry-entity';
+import { InfantryBaseEntity } from './infantry-base-entity';
 
 // ============================================================================
 // BattleArmorEntity - powered-armor squads (Elemental, etc.)
 // ============================================================================
 
-export class BattleArmorEntity extends InfantryEntity {
+export class BattleArmorEntity extends InfantryBaseEntity {
   override readonly entityType: EntityType = 'BattleArmor';
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -100,8 +100,6 @@ export class BattleArmorEntity extends InfantryEntity {
 
     return walkMP;
   });
-
-  override runMP = computed(() => this.walkMP());
 
   override jumpMP = computed(() => {
     const equipment = this.equipment();

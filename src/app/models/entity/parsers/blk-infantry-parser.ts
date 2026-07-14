@@ -169,6 +169,7 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
   // ── Motive type ──
   if (bb.exists('motion_type')) {
     parseInfantryMotionType(bb.getFirstString('motion_type'), entity, ctx);
+    setInfantryMovementDefaults(entity);
   }
 
   // ── Troopers Equipment (armor kits, etc. - stored in 'Infantry' location) ──
@@ -227,7 +228,11 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
 
   // ── Weapons ──
   if (bb.exists('Primary'))      entity.primaryWeapon.set(bb.getFirstString('Primary'));
-  if (bb.exists('Secondary'))    entity.secondaryWeapon.set(bb.getFirstString('Secondary'));
+  if (bb.exists('Secondary')) {
+    const secondaryWeapon = bb.getFirstString('Secondary');
+    entity.secondaryWeapon.set(secondaryWeapon);
+    entity.secondaryWeaponEquipment.set(ctx.resolveEquipment(secondaryWeapon, 'Secondary'));
+  }
   if (bb.exists('secondn'))      entity.secondaryCount.set(bb.getFirstInt('secondn'));
 
   // ── Armor ──
@@ -295,4 +300,45 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
   }
 
   return entity;
+}
+
+function setInfantryMovementDefaults(entity: InfantryEntity): void {
+  const mount = entity.mount();
+  if (mount) {
+    entity.originalWalkMP.set(mount.movementMode === 'Leg' ? mount.movementPoints : mount.secondaryGroundMP);
+    entity.originalJumpMP.set(mount.movementMode === 'Leg' ? 0 : mount.movementPoints);
+    return;
+  }
+
+  entity.originalJumpMP.set(0);
+  switch (entity.motiveType()) {
+    case 'Motorized':
+    case 'Tracked':
+      entity.originalWalkMP.set(3);
+      break;
+    case 'Hover':
+      entity.originalWalkMP.set(5);
+      break;
+    case 'Wheeled':
+      entity.originalWalkMP.set(4);
+      break;
+    case 'Submarine':
+      entity.originalWalkMP.set(0);
+      entity.originalJumpMP.set(3);
+      break;
+    case 'VTOL':
+      entity.originalWalkMP.set(1);
+      entity.originalJumpMP.set(entity.isMicrolite() ? 6 : 5);
+      break;
+    case 'UMU':
+      entity.originalWalkMP.set(1);
+      entity.originalJumpMP.set(entity.isMotorizedScuba() ? 2 : 1);
+      break;
+    case 'Jump':
+      entity.originalWalkMP.set(1);
+      entity.originalJumpMP.set(3);
+      break;
+    default:
+      entity.originalWalkMP.set(1);
+  }
 }
