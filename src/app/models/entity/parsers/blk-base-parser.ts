@@ -115,10 +115,10 @@ export function parseBaseBlk(
     entity.role.set(bb.getFirstString('role'));
   }
   if (bb.exists('source')) {
-    entity.source.set(bb.getFirstString('source'));
+    entity.source.set(parseMetadataList(bb.getDataAsString('source')));
   }
   if (bb.exists('published')) {
-    entity.published.set(bb.getFirstString('published'));
+    entity.published.set(parseMetadataList(bb.getDataAsString('published')));
   }
   if (bb.exists('omni')) {
     entity.omni.set(bb.getFirstString('omni').toLowerCase() === 'true' || bb.getFirstInt('omni') === 1);
@@ -298,6 +298,10 @@ export function resolveBlkStructure(
   const structure = getStructureByTypeId(typeId, entity.techBase(), ctx.equipmentDb);
   entity.mountedStructure.set(structure);
   return structure !== null;
+}
+
+function parseMetadataList(values: readonly string[]): string[] {
+  return values.flatMap(value => value.split(',').map(item => item.trim()).filter(Boolean));
 }
 
 /**

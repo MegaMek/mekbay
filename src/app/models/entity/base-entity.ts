@@ -135,8 +135,8 @@ export abstract class BaseEntity {
   readonly rulesLevel = signal<number>(2);
 
   // ── Meta ──
-  readonly source = signal<string>('');
-  readonly published = signal<string>('');
+  readonly source = signal<string[]>([]);
+  readonly published = signal<string[]>([]);
   generator?: string; // software who created the file
 
   /** Tech faction code (e.g. "DC", "FW", "TH"). 'None' = unset. */

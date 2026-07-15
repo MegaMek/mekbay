@@ -495,8 +495,8 @@ interface MtfHeader {
   techBaseRaw: string;
   era: number;
   originalEra: number;
-  source: string;
-  published: string;
+  source: string[];
+  published: string[];
   rulesLevel: number;
   role: string;
   isOmni: boolean;
@@ -538,7 +538,7 @@ function parseHeader(lines: string[]): MtfHeader {
     uuid: '',
     chassis: '', model: '', mulId: -1, config: 'Biped',
     techBase: 'IS', mixedTech: false, techBaseRaw: 'IS',
-    era: 3025, originalEra: -1, source: '', published: '', rulesLevel: 2, role: '',
+    era: 3025, originalEra: -1, source: [], published: [], rulesLevel: 2, role: '',
     isOmni: false, isFrankenMek: false,
     mass: 0, engine: '', structure: 'Standard', myomer: 'Standard',
     gyro: '', cockpit: '', ejection: '', heatSinkKit: '',
@@ -631,9 +631,9 @@ function parseHeader(lines: string[]): MtfHeader {
         break;
       case 'era':                     h.era = parseInt(value, 10) || 3025; break;
       case 'original era':            h.originalEra = parseInt(value, 10) || -1; break;
-      case 'source':                  h.source = value; break;
-      case 'published':               h.published = value; break;
-      case 'rules level':            h.rulesLevel = parseInt(value, 10) || 2; break;
+      case 'source':                  h.source = parseMetadataList(value); break;
+      case 'published':               h.published = parseMetadataList(value); break;
+      case 'rules level':             h.rulesLevel = parseInt(value, 10) || 2; break;
       case 'role':                    h.role = value; break;
       case 'mass':                    h.mass = parseInt(value, 10) || 0; break;
       case 'engine':                  h.engine = value; break;
@@ -642,11 +642,11 @@ function parseHeader(lines: string[]): MtfHeader {
       case 'gyro':                    h.gyro = value; break;
       case 'cockpit':                 h.cockpit = value; break;
       case 'ejection':                h.ejection = value; break;
-      case 'heat sink kit':          h.heatSinkKit = value; break;
-      case 'heat sinks':             h.heatSinks = value; h.rawHeatSinks = value; break;
+      case 'heat sink kit':           h.heatSinkKit = value; break;
+      case 'heat sinks':              h.heatSinks = value; h.rawHeatSinks = value; break;
       case 'base chassis heat sinks': h.baseChassisHeatSinks = parseInt(value, 10) || -1; break;
-      case 'walk mp':                h.walkMP = parseInt(value, 10) || 0; break;
-      case 'jump mp':                h.jumpMP = parseInt(value, 10) || 0; break;
+      case 'walk mp':                 h.walkMP = parseInt(value, 10) || 0; break;
+      case 'jump mp':                 h.jumpMP = parseInt(value, 10) || 0; break;
       case 'armor':                   h.armorType = value; break;
       case 'nocrit': {
         // Format: "EquipmentName:LocationAbbr" (e.g. "SmartRoboticControlSystem:None")
@@ -865,6 +865,10 @@ function parseHeatSinkLine(hsLine: string): { count: number; type: HeatSinkType;
 
 function cleanStructureName(raw: string): string {
   return raw.replace(/^IS\s+/i, '').replace(/^Clan\s+/i, '').trim() || 'Standard';
+}
+
+function parseMetadataList(value: string): string[] {
+  return value.split(',').map(item => item.trim()).filter(Boolean);
 }
 
 /**
