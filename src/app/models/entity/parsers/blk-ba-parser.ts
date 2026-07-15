@@ -94,7 +94,7 @@ export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEnt
       rawTechCode = bb.getFirstInt('armor_tech');
       if (rawTechCode >= 5 && rawTechCode <= 8) techBase = 'Clan';
     }
-    const armor = resolveArmorEquipment(type, techBase === 'Clan', ctx.equipmentDb);
+    const armor = resolveArmorEquipment(type, techBase === 'Clan', ctx.equipmentRegistry);
     const existing = entity.mountedArmor();
     entity.mountedArmor.set(createMountedArmor({ ...existing, type, techBase, armor, rawTechCode }));
   }

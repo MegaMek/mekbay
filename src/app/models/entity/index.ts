@@ -39,7 +39,7 @@ export { BaseEntity } from './base-entity';
 
 // ── Parsers ──
 export { BuildingBlock } from './parsers/building-block';
-export { resolveEquipment, parseEquipmentLine } from './parsers/equipment-resolver';
+export { parseEquipmentLine } from './parsers/equipment-resolver';
 export type { EquipmentLineModifiers } from './parsers/equipment-resolver';
 
 // ── Writers ──

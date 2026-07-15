@@ -31,10 +31,10 @@
  * affiliated with Microsoft.
  */
 
-import { Equipment, EquipmentAliasMap, EquipmentMap } from '../../equipment.model';
+import { EquipmentRegistry } from '../../equipment-lookup';
+import { Equipment, EquipmentMap } from '../../equipment.model';
 import { Sourcebook, SourcebookReference } from '../../sourcebook.model';
 import { EntityTechBase } from '../types';
-import { resolveEquipment } from './equipment-resolver';
 
 // Re-export validation sets so parsers can import from parse-context OR types
 export {
@@ -84,6 +84,11 @@ export type EquipmentFallbackFn = (
 
 export type SourcebookResolverFn = (abbrev: string) => Sourcebook | undefined;
 
+export interface ParseContextOptions {
+  equipmentFallback?: EquipmentFallbackFn | null;
+  sourcebookResolver?: SourcebookResolverFn | null;
+}
+
 // ============================================================================
 // ParseContext
 // ============================================================================
@@ -105,8 +110,8 @@ export class ParseContext {
   /** Equipment database for name resolution */
   readonly equipmentDb: EquipmentMap;
 
-  /** Pre-built alias → Equipment index for O(1) alias lookups */
-  readonly aliasMap: EquipmentAliasMap | undefined;
+  /** Canonical equipment collection and lookup index */
+  readonly equipmentRegistry: EquipmentRegistry;
 
   /** Optional fallback for custom/remote equipment lookup */
   readonly equipmentFallback: EquipmentFallbackFn | null;
@@ -118,16 +123,14 @@ export class ParseContext {
 
   constructor(
     fileName: string,
-    equipmentDb: EquipmentMap,
-    equipmentFallback?: EquipmentFallbackFn | null,
-    aliasMap?: EquipmentAliasMap,
-    sourcebookResolver?: SourcebookResolverFn | null,
+    equipmentRegistry: EquipmentRegistry,
+    options: ParseContextOptions = {},
   ) {
     this.fileName = fileName;
-    this.equipmentDb = equipmentDb;
-    this.aliasMap = aliasMap;
-    this.equipmentFallback = equipmentFallback ?? null;
-    this.sourcebookResolver = sourcebookResolver ?? null;
+    this.equipmentRegistry = equipmentRegistry;
+    this.equipmentDb = equipmentRegistry.equipment;
+    this.equipmentFallback = options.equipmentFallback ?? null;
+    this.sourcebookResolver = options.sourcebookResolver ?? null;
   }
 
   resolveSourcebook(abbrev: string): SourcebookReference {
@@ -228,8 +231,8 @@ export class ParseContext {
   ): Equipment | null {
     if (!name || name === '-Empty-') return null;
 
-    // 1. Try local DB (uses alias index when available)
-    const local = resolveEquipment(name, this.equipmentDb, this.aliasMap);
+    // 1. Try the local DB and its derived lookup index
+    const local = this.equipmentRegistry.find(name);
     if (local) return local;
 
     // 2. Try fallback (future: remote/UUID lookup)

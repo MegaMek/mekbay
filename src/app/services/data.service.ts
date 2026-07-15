@@ -40,6 +40,7 @@ import { TagsService } from './tags.service';
 import { PublicTagsService } from './public-tags.service';
 
 import { type Equipment, type EquipmentMap } from '../models/equipment.model';
+import type { EquipmentRegistry } from '../models/equipment-lookup';
 import type { Quirk } from '../models/quirks.model';
 import { WsService } from './ws.service';
 import type { ForceUnit } from '../models/force-unit.model';
@@ -340,8 +341,16 @@ export class DataService {
         return this.equipmentCatalog.getEquipments();
     }
 
+    public getEquipmentRegistry(): EquipmentRegistry {
+        return this.equipmentCatalog.getEquipmentRegistry();
+    }
+
     public getEquipmentByName(internalName: string): Equipment | undefined {
         return this.equipmentCatalog.getEquipmentByName(internalName);
+    }
+
+    public findEquipment(name: string): Equipment | undefined {
+        return this.equipmentCatalog.findEquipment(name);
     }
 
     public getFactions(): Faction[] {

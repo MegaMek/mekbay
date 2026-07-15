@@ -1,10 +1,11 @@
+import { EMPTY_EQUIPMENT_REGISTRY } from '../../equipment-lookup';
 import { ParseContext } from './parse-context';
 import { parseTransporterLines, serializeTransporterLines } from './transporter-codec';
 import type { EntityTechBase } from '../types';
 import { projectRecordSheetBays } from '../bays/record-sheet-bay-projection';
 
 function parse(lines: string[], techBase: EntityTechBase = 'IS') {
-  return parseTransporterLines(lines, techBase, new ParseContext('test.blk', {}));
+  return parseTransporterLines(lines, techBase, new ParseContext('test.blk', EMPTY_EQUIPMENT_REGISTRY));
 }
 
 describe('transporter codec', () => {
@@ -43,7 +44,7 @@ describe('transporter codec', () => {
   });
 
   it('allocates unique numbers and preserves unsupported lines', () => {
-    const context = new ParseContext('test.blk', {});
+    const context = new ParseContext('test.blk', EMPTY_EQUIPMENT_REGISTRY);
     const transporters = parseTransporterLines([
       'cargobay:1:1:2',
       'mekbay:1:1:2',

@@ -56,7 +56,7 @@ import {
   locationArmor,
   normalizeSystemManufacturerKey,
   parseMotiveType,
-  resolveArmorByName,
+  resolveMtfArmorEquipment,
 } from '../types';
 import { parseMtfArmor } from '../utils/armor-type-parser';
 import { parseMtfEngine } from '../utils/engine-type-parser';
@@ -253,7 +253,11 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       if (armorInfo.patchwork) {
         armorType = 'PATCHWORK';
       } else {
-        const eq = resolveArmorByName(armorInfo.type, armorInfo.clanTech, ctx.equipmentDb);
+        const eq = resolveMtfArmorEquipment(
+          armorInfo.type,
+          armorInfo.clanTech,
+          ctx.equipmentRegistry,
+        );
         if (eq) {
           armorType = eq.armorType as ArmorType;
           armorEquipment = eq;

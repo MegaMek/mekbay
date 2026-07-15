@@ -512,7 +512,7 @@ export function parseBlkArmor(
   const techLevel  = bb.exists('armor_tech_level')  ? bb.getFirstInt('armor_tech_level')  : -1;
 
   // ── Resolve armor from DB ──
-  const armor = resolveArmorEquipment(type, techBase === 'Clan', ctx.equipmentDb);
+  const armor = resolveArmorEquipment(type, techBase === 'Clan', ctx.equipmentRegistry);
 
   entity.mountedArmor.set(createMountedArmor({
     type, techBase, armor, patchwork, techRating, techLevel,

@@ -31,10 +31,10 @@
  * affiliated with Microsoft.
  */
 
-import { EquipmentAliasMap, EquipmentMap } from '../equipment.model';
+import { EquipmentRegistry } from '../equipment-lookup';
 import { BaseEntity } from './base-entity';
 import { BuildingBlock } from './parsers/building-block';
-import { EquipmentFallbackFn, ParseContext, ParseDiagnostic, SourcebookResolverFn } from './parsers/parse-context';
+import { ParseContext, ParseContextOptions, ParseDiagnostic } from './parsers/parse-context';
 import { parseMtf } from './parsers/mtf-parser';
 import { parseBlkMek } from './parsers/blk-mek-parser';
 import { parseBlkAero } from './parsers/blk-aero-parser';
@@ -61,20 +61,18 @@ export interface ParseResult {
  *
  * @param content  Raw file content as a string
  * @param fileName File name (used to determine format by extension)
- * @param equipmentDb Equipment lookup map for name resolution
- * @param equipmentFallback Optional callback for custom/remote equipment lookup
+ * @param equipmentRegistry Canonical equipment collection and lookup index
+ * @param options Optional parsing dependencies
  * @returns Parsed entity and accumulated diagnostics
  * @throws Error if the file format or unit type is unsupported
  */
 export function parseEntity(
   content: string,
   fileName: string,
-  equipmentDb: EquipmentMap,
-  equipmentFallback?: EquipmentFallbackFn | null,
-  aliasMap?: EquipmentAliasMap,
-  sourcebookResolver?: SourcebookResolverFn | null,
+  equipmentRegistry: EquipmentRegistry,
+  options: ParseContextOptions = {},
 ): ParseResult {
-  const ctx = new ParseContext(fileName, equipmentDb, equipmentFallback, aliasMap, sourcebookResolver);
+  const ctx = new ParseContext(fileName, equipmentRegistry, options);
   const lowerName = fileName.toLowerCase();
 
   let entity: BaseEntity;

@@ -1,4 +1,5 @@
 import { signal } from '@angular/core';
+import { EMPTY_EQUIPMENT_REGISTRY } from '../../equipment-lookup';
 import type { BaseEntity } from '../base-entity';
 import type { EntityTransporter } from '../types';
 import { parseBaseBlk, parseLegacyDockingCollars } from './blk-base-parser';
@@ -10,7 +11,7 @@ describe('BLK base parser', () => {
     const uuid = '019f6767-0dcb-7bb8-992f-aef08202f5e1';
     const entity = identityEntity();
 
-    parseBaseBlk(new BuildingBlock(`<UUID>\n${uuid}\n</UUID>`), entity, new ParseContext('test.blk', {}));
+    parseBaseBlk(new BuildingBlock(`<UUID>\n${uuid}\n</UUID>`), entity, new ParseContext('test.blk', EMPTY_EQUIPMENT_REGISTRY));
 
     expect(entity.uuid()).toBe(uuid);
   });
@@ -19,7 +20,7 @@ describe('BLK base parser', () => {
     const entity = identityEntity();
     const generatedUuid = entity.uuid();
 
-    parseBaseBlk(new BuildingBlock(''), entity, new ParseContext('test.blk', {}));
+    parseBaseBlk(new BuildingBlock(''), entity, new ParseContext('test.blk', EMPTY_EQUIPMENT_REGISTRY));
 
     expect(entity.uuid()).toBe(generatedUuid);
   });

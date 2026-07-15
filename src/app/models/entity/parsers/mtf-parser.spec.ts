@@ -1,16 +1,17 @@
+import { EMPTY_EQUIPMENT_REGISTRY } from '../../equipment-lookup';
 import { ParseContext } from './parse-context';
 import { parseMtf } from './mtf-parser';
 
 describe('MTF parser identity', () => {
   it('preserves an existing UUID', () => {
     const uuid = '019f6767-0dcb-7bb8-992f-aef08202f5e1';
-    const entity = parseMtf(minimalMtf(`uuid:${uuid}\n`), new ParseContext('test.mtf', {}));
+    const entity = parseMtf(minimalMtf(`uuid:${uuid}\n`), new ParseContext('test.mtf', EMPTY_EQUIPMENT_REGISTRY));
 
     expect(entity.uuid()).toBe(uuid);
   });
 
   it('generates a UUID when the file does not provide one', () => {
-    const entity = parseMtf(minimalMtf(), new ParseContext('test.mtf', {}));
+    const entity = parseMtf(minimalMtf(), new ParseContext('test.mtf', EMPTY_EQUIPMENT_REGISTRY));
 
     expect(entity.uuid()).toBeTruthy();
   });

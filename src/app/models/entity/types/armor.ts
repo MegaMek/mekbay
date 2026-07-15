@@ -31,7 +31,8 @@
  * affiliated with Microsoft.
  */
 
-import { ArmorEquipment, EquipmentMap } from '../../equipment.model';
+import { EquipmentRegistry } from '../../equipment-lookup';
+import { ArmorEquipment } from '../../equipment.model';
 import { ComponentTechLevel } from './tech';
 
 // ============================================================================
@@ -200,21 +201,19 @@ export function compoundTechLevel(level: ComponentTechLevel | undefined, isClan:
 
 // ── Armor equipment resolution ──────────────────────────────────────────────
 
-/** Lazily built index: ArmorType → { is?: ArmorEquipment, clan?: ArmorEquipment } */
-let _armorIndex: Map<string, { is?: ArmorEquipment; clan?: ArmorEquipment }> | null = null;
-let _armorIndexDb: EquipmentMap | null = null;
+type ArmorIndex = Map<string, { is?: ArmorEquipment; clan?: ArmorEquipment }>;
+const armorIndexes = new WeakMap<EquipmentRegistry, ArmorIndex>();
 
 /**
  * Build (or return cached) index mapping ArmorType enum → ArmorEquipment,
- * split by tech base.  Rebuilt when the underlying equipment DB changes.
+ * split by tech base. Each immutable registry owns one cached index.
  */
-export function getArmorIndex(
-  equipmentDb: EquipmentMap,
-): Map<string, { is?: ArmorEquipment; clan?: ArmorEquipment }> {
-  if (_armorIndex && _armorIndexDb === equipmentDb) return _armorIndex;
+function getArmorIndex(equipmentRegistry: EquipmentRegistry): ArmorIndex {
+  const cached = armorIndexes.get(equipmentRegistry);
+  if (cached) return cached;
 
-  const idx = new Map<string, { is?: ArmorEquipment; clan?: ArmorEquipment }>();
-  for (const eq of Object.values(equipmentDb)) {
+  const idx: ArmorIndex = new Map();
+  for (const eq of Object.values(equipmentRegistry.equipment)) {
     if (!(eq instanceof ArmorEquipment)) continue;
     const aType = eq.armorType; // e.g. 'ALUM', 'STANDARD'
     if (!aType) continue;
@@ -224,8 +223,7 @@ export function getArmorIndex(
     idx.set(aType, entry);
   }
 
-  _armorIndex = idx;
-  _armorIndexDb = equipmentDb;
+  armorIndexes.set(equipmentRegistry, idx);
   return idx;
 }
 
@@ -236,9 +234,9 @@ export function getArmorIndex(
 export function resolveArmorEquipment(
   armorType: ArmorType,
   isClan: boolean,
-  equipmentDb: EquipmentMap,
+  equipmentRegistry: EquipmentRegistry,
 ): ArmorEquipment | null {
-  const idx = getArmorIndex(equipmentDb);
+  const idx = getArmorIndex(equipmentRegistry);
   const entry = idx.get(armorType);
   if (!entry) return null;
   if (isClan) return entry.clan ?? entry.is ?? null;
@@ -246,25 +244,21 @@ export function resolveArmorEquipment(
 }
 
 /**
- * Resolve ArmorEquipment by display name (e.g. "Ferro-Fibrous" from MTF).
- * Searches the equipment DB for an ArmorEquipment with a matching `name`.
+ * Resolve an MTF armor display name using MegaMek's tech-prefixed aliases.
  */
-export function resolveArmorByName(
+export function resolveMtfArmorEquipment(
   displayName: string,
   isClan: boolean,
-  equipmentDb: EquipmentMap,
+  equipmentRegistry: EquipmentRegistry,
 ): ArmorEquipment | null {
-  const normalizedName = displayName.trim();
-  let best: ArmorEquipment | null = null;
-  for (const eq of Object.values(equipmentDb)) {
-    if (!(eq instanceof ArmorEquipment)) continue;
-    if (eq.name.trim() !== normalizedName) continue;
-    // Prefer matching tech base
-    if (isClan && eq.techBase === 'Clan') return eq;
-    if (!isClan && eq.techBase !== 'Clan') return eq;
-    best = eq; // fallback to any match
+  let lookupName = displayName.trim();
+  if (!/^(?:Clan|IS)\s/i.test(lookupName)) {
+    lookupName = `${isClan ? 'Clan' : 'IS'} ${lookupName}`;
   }
-  return best;
+  if (!/\sArmor$/i.test(lookupName)) lookupName += ' Armor';
+
+  const equipment = equipmentRegistry.find(lookupName);
+  return equipment instanceof ArmorEquipment ? equipment : null;
 }
 
 // ============================================================================

@@ -31,47 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { Equipment, EquipmentAliasMap, EquipmentMap } from '../../equipment.model';
 import { EntityTechBase } from '../types';
-
-/**
- * Resolves equipment names from MTF/BLK files against the equipment database.
- *
- * Resolution strategy mirrors Java's `EquipmentType.get()`:
- * 1. Exact match on internal name
- * 2. Tech-prefix variants (IS/Clan)
- * 3. Opposite tech base
- * 4. Alias lookup (O(1) via pre-built alias index)
- */
-export function resolveEquipment(
-  name: string,
-  equipmentDb: EquipmentMap,
-  aliasMap?: EquipmentAliasMap,
-): Equipment | null {
-  if (!name || name === '-Empty-') {
-    return null;
-  }
-
-  // 1. Exact match
-  if (equipmentDb[name]) {
-    return equipmentDb[name];
-  }
-
-  // 4. Try alias lookup - O(1) when alias index is available
-  if (aliasMap) {
-    const aliased = aliasMap.get(name);
-    if (aliased) return aliased;
-  } else {
-    // Fallback: linear scan (slow, used only when no alias index is provided)
-    for (const eq of Object.values(equipmentDb)) {
-      if (eq.aliases?.includes(name)) {
-        return eq;
-      }
-    }
-  }
-
-  return null;
-}
 
 /**
  * Strip equipment name suffixes that are mount modifiers, not part of the
