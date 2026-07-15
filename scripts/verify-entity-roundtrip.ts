@@ -91,6 +91,7 @@ const TYPE_FILTER = getArg('type', '');
 const FAIL_FAST = hasFlag('fail-fast');
 const PROFILE = hasFlag('profile');
 const VERBOSE = hasFlag('verbose');
+const READ_BATCH_SIZE = 16;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Equipment database loading
@@ -228,12 +229,10 @@ interface VerifyTimings {
   normalise: number;
 }
 
-function verifyFile(filePath: string, equipmentRegistry: EquipmentRegistry): VerifyResult {
+function verifyFile(filePath: string, content: string, equipmentRegistry: EquipmentRegistry): VerifyResult {
   const timings: VerifyTimings = { read: 0, parse1: 0, write1: 0, parse2: 0, write2: 0, normalise: 0 };
   let phaseStart = performance.now();
   const fileName = path.basename(filePath);
-  const content = fs.readFileSync(filePath, 'utf-8');
-  timings.read = performance.now() - phaseStart;
   const ext = path.extname(fileName).toLowerCase();
 
   // Determine write format
@@ -330,7 +329,7 @@ function writeDiffFiles(result: VerifyResult): void {
 // Main
 // ═══════════════════════════════════════════════════════════════════════════
 
-function main(): void {
+async function main(): Promise<void> {
   console.log('═══════════════════════════════════════════════════════════════');
   console.log('  Entity System – Round-trip Verification');
   console.log('═══════════════════════════════════════════════════════════════');
@@ -373,71 +372,81 @@ function main(): void {
 
   const startTime = Date.now();
 
-  for (const file of files) {
-    stats.total++;
+  let stoppedEarly = false;
+  for (let offset = 0; offset < files.length && !stoppedEarly; offset += READ_BATCH_SIZE) {
+    const batchFiles = files.slice(offset, offset + READ_BATCH_SIZE);
+    const readStart = performance.now();
+    const batchContents = await Promise.all(batchFiles.map(file => fs.promises.readFile(file, 'utf-8')));
+    profileTotals.read += performance.now() - readStart;
 
-    // ── Skip unsupported UnitTypes before parsing ──
-    if (file.toLowerCase().endsWith('.blk')) {
-      const raw = fs.readFileSync(file, 'utf-8');
-      const unitType = peekBlkUnitType(raw);
-      if (unitType && SKIPPED_UNIT_TYPES.has(unitType)) {
-        stats.skipped++;
-        if (VERBOSE) {
-          console.log(`  ⊘ SKIP   ${path.relative(INPUT_DIR, file)} (${unitType})`);
+    for (let batchIndex = 0; batchIndex < batchFiles.length; batchIndex++) {
+      const file = batchFiles[batchIndex];
+      const content = batchContents[batchIndex];
+      stats.total++;
+
+      // ── Skip unsupported UnitTypes before parsing ──
+      if (file.toLowerCase().endsWith('.blk')) {
+        const unitType = peekBlkUnitType(content);
+        if (unitType && SKIPPED_UNIT_TYPES.has(unitType)) {
+          stats.skipped++;
+          if (VERBOSE) {
+            console.log(`  ⊘ SKIP   ${path.relative(INPUT_DIR, file)} (${unitType})`);
+          }
+          continue;
         }
-        continue;
       }
-    }
 
-    const result = verifyFile(file, equipmentRegistry);
-    if (result.timings) {
-      for (const phase of Object.keys(profileTotals) as (keyof VerifyTimings)[]) {
-        profileTotals[phase] += result.timings[phase];
-      }
-    }
-
-    const typeKey = result.entityType ?? 'unknown';
-    if (!byType.has(typeKey)) byType.set(typeKey, { pass: 0, fail: 0 });
-
-    switch (result.status) {
-      case 'pass':
-        stats.pass++;
-        byType.get(typeKey)!.pass++;
-        if (VERBOSE) {
-          console.log(`  ✓ ${path.relative(INPUT_DIR, file)}`);
+      const result = verifyFile(file, content, equipmentRegistry);
+      if (result.timings) {
+        for (const phase of Object.keys(profileTotals) as (keyof VerifyTimings)[]) {
+          profileTotals[phase] += result.timings[phase];
         }
-        break;
-      case 'parse-error':
-        stats.parseError++;
-        byType.get(typeKey)!.fail++;
-        failures.push(result);
-        console.log(`  ✗ PARSE  ${path.relative(INPUT_DIR, file)}: ${result.error}`);
-        writeDiffFiles(result);
-        break;
-      case 'write-error':
-        stats.writeError++;
-        byType.get(typeKey)!.fail++;
-        failures.push(result);
-        console.log(`  ✗ WRITE  ${path.relative(INPUT_DIR, file)}: ${result.error}`);
-        writeDiffFiles(result);
-        break;
-      case 'diff':
-        stats.diff++;
-        byType.get(typeKey)!.fail++;
-        failures.push(result);
-        console.log(`  ✗ DIFF   ${path.relative(INPUT_DIR, file)}`);
-        writeDiffFiles(result);
-        break;
-    }
+      }
 
-    if (FAIL_FAST && result.status !== 'pass') {
-      console.log('\n--fail-fast: stopping at first failure');
-      break;
-    }
+      const typeKey = result.entityType ?? 'unknown';
+      if (!byType.has(typeKey)) byType.set(typeKey, { pass: 0, fail: 0 });
 
-    // Progress indicator every 500 files
-    if (stats.total % 500 === 0) {
-      console.log(`  ... ${stats.total} / ${files.length} processed`);
+      switch (result.status) {
+        case 'pass':
+          stats.pass++;
+          byType.get(typeKey)!.pass++;
+          if (VERBOSE) {
+            console.log(`  ✓ ${path.relative(INPUT_DIR, file)}`);
+          }
+          break;
+        case 'parse-error':
+          stats.parseError++;
+          byType.get(typeKey)!.fail++;
+          failures.push(result);
+          console.log(`  ✗ PARSE  ${path.relative(INPUT_DIR, file)}: ${result.error}`);
+          writeDiffFiles(result);
+          break;
+        case 'write-error':
+          stats.writeError++;
+          byType.get(typeKey)!.fail++;
+          failures.push(result);
+          console.log(`  ✗ WRITE  ${path.relative(INPUT_DIR, file)}: ${result.error}`);
+          writeDiffFiles(result);
+          break;
+        case 'diff':
+          stats.diff++;
+          byType.get(typeKey)!.fail++;
+          failures.push(result);
+          console.log(`  ✗ DIFF   ${path.relative(INPUT_DIR, file)}`);
+          writeDiffFiles(result);
+          break;
+      }
+
+      if (FAIL_FAST && result.status !== 'pass') {
+        console.log('\n--fail-fast: stopping at first failure');
+        stoppedEarly = true;
+        break;
+      }
+
+      // Progress indicator every 500 files
+      if (stats.total % 500 === 0) {
+        console.log(`  ... ${stats.total} / ${files.length} processed`);
+      }
     }
   }
 
@@ -488,4 +497,7 @@ function main(): void {
   }
 }
 
-main();
+main().catch(error => {
+  console.error(error);
+  process.exit(1);
+});
