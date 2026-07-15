@@ -585,13 +585,14 @@ function parseHeader(lines: string[]): MtfHeader {
     // Inside location section
     if (currentLocHeader) {
       const location = (currentLocHeader in QUAD_LOCATION_MAP ? QUAD_LOCATION_MAP : BIPED_LOCATION_MAP)[currentLocHeader];
-      if (line.toLowerCase().startsWith('donor:')) {
+      const lowerLine = line.toLowerCase();
+      if (lowerLine.startsWith('donor:')) {
         updateFrankenMekLocation(h.frankenMekLocations, location, {
           donor: line.substring(line.indexOf(':') + 1).trim(),
         });
         continue;
       }
-      if (line.toLowerCase().startsWith('donor type:')) {
+      if (lowerLine.startsWith('donor type:')) {
         updateFrankenMekLocation(h.frankenMekLocations, location, {
           donorType: line.substring(line.indexOf(':') + 1).trim(),
         });
@@ -623,17 +624,21 @@ function parseHeader(lines: string[]): MtfHeader {
       case 'chassis':   h.chassis = value; break;
       case 'model':     h.model = value; break;
       case 'mul id':    h.mulId = parseInt(value, 10) || -1; break;
-      case 'config':
+      case 'config': {
+        const lowerValue = value.toLowerCase();
         h.config = value;
-        h.isOmni = value.toLowerCase().includes('omnimek');
-        h.isFrankenMek = value.toLowerCase().includes('frankenmek');
+        h.isOmni = lowerValue.includes('omnimek');
+        h.isFrankenMek = lowerValue.includes('frankenmek');
         break;
-      case 'techbase':
+      }
+      case 'techbase': {
+        const lowerValue = value.toLowerCase();
         h.techBaseRaw = value;
-        h.mixedTech = value.toLowerCase().startsWith('mixed');
-        if (value.toLowerCase().includes('clan'))       h.techBase = 'Clan';
+        h.mixedTech = lowerValue.startsWith('mixed');
+        if (lowerValue.includes('clan'))                h.techBase = 'Clan';
         else                                            h.techBase = 'IS';
         break;
+      }
       case 'era':                     h.era = parseInt(value, 10) || 3025; break;
       case 'original era':            h.originalEra = parseInt(value, 10) || -1; break;
       case 'source':                  h.source = parseMetadataList(value); break;
