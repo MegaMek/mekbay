@@ -168,8 +168,8 @@ function writeConfig(entity: MekEntity, lines: string[]): void {
   lines.push(`techbase:${formatTechBase(entity)}`);
   lines.push(`era:${entity.year()}`);
   if (entity.originalBuildYear() > 0) lines.push(`original era:${entity.originalBuildYear()}`);
-  if (entity.source().length > 0) lines.push(`source:${entity.source().join(',')}`);
-  if (entity.published().length > 0) lines.push(`published:${entity.published().join(',')}`);
+  if (entity.source().length > 0) lines.push(`source:${entity.source().map(source => source.abbrev).join(',')}`);
+  if (entity.published().length > 0) lines.push(`published:${entity.published().map(source => source.abbrev).join(',')}`);
   lines.push(`rules level:${entity.rulesLevel()}`);
   if (entity.role()) lines.push(`role:${entity.role()}`);
   if (entity.faction() !== 'None') lines.push(`faction:${entity.faction()}`);

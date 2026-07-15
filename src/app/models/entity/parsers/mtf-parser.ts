@@ -182,8 +182,8 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   entity.mulId.set(header.mulId);
   entity.year.set(header.era);
   entity.originalBuildYear.set(header.originalEra);
-  entity.source.set(header.source);
-  entity.published.set(header.published);
+  entity.source.set(header.source.map(source => ctx.resolveSourcebook(source)));
+  entity.published.set(header.published.map(source => ctx.resolveSourcebook(source)));
   entity.rulesLevel.set(header.rulesLevel);
   entity.role.set(header.role);
   entity.omni.set(header.isOmni);

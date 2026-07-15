@@ -115,10 +115,10 @@ export function parseBaseBlk(
     entity.role.set(bb.getFirstString('role'));
   }
   if (bb.exists('source')) {
-    entity.source.set(parseMetadataList(bb.getDataAsString('source')));
+    entity.source.set(parseMetadataList(bb.getDataAsString('source')).map(source => ctx.resolveSourcebook(source)));
   }
   if (bb.exists('published')) {
-    entity.published.set(parseMetadataList(bb.getDataAsString('published')));
+    entity.published.set(parseMetadataList(bb.getDataAsString('published')).map(source => ctx.resolveSourcebook(source)));
   }
   if (bb.exists('omni')) {
     entity.omni.set(bb.getFirstString('omni').toLowerCase() === 'true' || bb.getFirstInt('omni') === 1);

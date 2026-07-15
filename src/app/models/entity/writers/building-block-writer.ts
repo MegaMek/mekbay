@@ -341,8 +341,8 @@ export function writeFluffBlocks(w: BuildingBlockWriter, fluff: EntityFluff): vo
 
 /** Write source and publication blocks. */
 export function writeSource(w: BuildingBlockWriter, entity: BaseEntity): void {
-  if (entity.source().length > 0) w.addBlock('source', entity.source().join(','));
-  if (entity.published().length > 0) w.addBlock('published', entity.published().join(','));
+  if (entity.source().length > 0) w.addBlock('source', entity.source().map(source => source.abbrev).join(','));
+  if (entity.published().length > 0) w.addBlock('published', entity.published().map(source => source.abbrev).join(','));
 }
 
 /**

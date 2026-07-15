@@ -34,7 +34,7 @@
 import { EquipmentAliasMap, EquipmentMap } from '../equipment.model';
 import { BaseEntity } from './base-entity';
 import { BuildingBlock } from './parsers/building-block';
-import { EquipmentFallbackFn, ParseContext, ParseDiagnostic } from './parsers/parse-context';
+import { EquipmentFallbackFn, ParseContext, ParseDiagnostic, SourcebookResolverFn } from './parsers/parse-context';
 import { parseMtf } from './parsers/mtf-parser';
 import { parseBlkMek } from './parsers/blk-mek-parser';
 import { parseBlkAero } from './parsers/blk-aero-parser';
@@ -72,8 +72,9 @@ export function parseEntity(
   equipmentDb: EquipmentMap,
   equipmentFallback?: EquipmentFallbackFn | null,
   aliasMap?: EquipmentAliasMap,
+  sourcebookResolver?: SourcebookResolverFn | null,
 ): ParseResult {
-  const ctx = new ParseContext(fileName, equipmentDb, equipmentFallback, aliasMap);
+  const ctx = new ParseContext(fileName, equipmentDb, equipmentFallback, aliasMap, sourcebookResolver);
   const lowerName = fileName.toLowerCase();
 
   let entity: BaseEntity;

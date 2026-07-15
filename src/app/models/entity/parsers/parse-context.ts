@@ -32,6 +32,7 @@
  */
 
 import { Equipment, EquipmentAliasMap, EquipmentMap } from '../../equipment.model';
+import { Sourcebook, SourcebookReference } from '../../sourcebook.model';
 import { EntityTechBase } from '../types';
 import { resolveEquipment } from './equipment-resolver';
 
@@ -81,6 +82,8 @@ export type EquipmentFallbackFn = (
   internalName: string,
 ) => Equipment | null;
 
+export type SourcebookResolverFn = (abbrev: string) => Sourcebook | undefined;
+
 // ============================================================================
 // ParseContext
 // ============================================================================
@@ -108,6 +111,8 @@ export class ParseContext {
   /** Optional fallback for custom/remote equipment lookup */
   readonly equipmentFallback: EquipmentFallbackFn | null;
 
+  readonly sourcebookResolver: SourcebookResolverFn | null;
+
   /** Accumulated diagnostics */
   readonly diagnostics: ParseDiagnostic[] = [];
 
@@ -116,11 +121,17 @@ export class ParseContext {
     equipmentDb: EquipmentMap,
     equipmentFallback?: EquipmentFallbackFn | null,
     aliasMap?: EquipmentAliasMap,
+    sourcebookResolver?: SourcebookResolverFn | null,
   ) {
     this.fileName = fileName;
     this.equipmentDb = equipmentDb;
     this.aliasMap = aliasMap;
     this.equipmentFallback = equipmentFallback ?? null;
+    this.sourcebookResolver = sourcebookResolver ?? null;
+  }
+
+  resolveSourcebook(abbrev: string): SourcebookReference {
+    return this.sourcebookResolver?.(abbrev) ?? { abbrev, canon: false, unresolved: true };
   }
 
   // ── Diagnostic helpers ──

@@ -38,6 +38,7 @@ import {
   MountedArmor,
 } from './components';
 import { StructureEquipment } from '../equipment.model';
+import { SourcebookReference } from '../sourcebook.model';
 import {
   ArmorFace,
   C3SystemType,
@@ -210,8 +211,9 @@ export abstract class BaseEntity {
   readonly rulesLevel = signal<number>(2);
 
   // ── Meta ──
-  readonly source = signal<string[]>([]);
-  readonly published = signal<string[]>([]);
+  readonly source = signal<SourcebookReference[]>([]);
+  readonly published = signal<SourcebookReference[]>([]);
+  readonly canon = computed(() => [...this.source(), ...this.published()].some(source => source.canon));
   generator?: string; // software who created the file
 
   /** Tech faction code (e.g. "DC", "FW", "TH"). 'None' = unset. */
