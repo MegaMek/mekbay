@@ -39,19 +39,21 @@
  * If they match, the round-trip is lossless.
  *
  * Usage:
- *   npx tsx scripts/verify-entity-roundtrip.ts [--input PATH] [--output PATH] [--type TYPE] [--fail-fast] [--verbose]
+ *   npx tsx scripts/verify-entity-roundtrip.ts [--input PATH] [--output PATH] [--type TYPE] [--fail-fast] [--profile] [--verbose]
  *
  * Options:
- *   --input  PATH   Root directory of unit files (default: C:\Projects\megamek\sourceUnits)
+ *   --input  PATH   Unit file or root directory (default: C:\Projects\megamek\sourceUnits)
  *   --output PATH   Directory to write diff files for failures (default: ./tmp/roundtrip)
  *   --type   TYPE   Filter by entity type: meks|fighters|vehicles|battlearmor|infantry|protomeks|dropships|smallcraft|jumpships|warship|spacestation|ge|handheld|convfighter
  *   --fail-fast      Stop on the first failure
+ *   --profile        Print cumulative timing by verification phase
  *   --verbose        Print every file result, not just failures
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { createEquipment, buildEquipmentAliasMap, type EquipmentAliasMap, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
+import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
+import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { writeEntity } from '../src/app/models/entity/write-entity';
 import { resetMountIdCounter } from '../src/app/models/entity/utils/signal-helpers';
@@ -87,13 +89,14 @@ const INPUT_DIR = path.resolve(getArg('input', path.join(__dirname, '..', '..', 
 const OUTPUT_DIR = path.resolve(getArg('output', path.join(__dirname, '..', '..', 'tmp', 'roundtrip')));
 const TYPE_FILTER = getArg('type', '');
 const FAIL_FAST = hasFlag('fail-fast');
+const PROFILE = hasFlag('profile');
 const VERBOSE = hasFlag('verbose');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Equipment database loading
 // ═══════════════════════════════════════════════════════════════════════════
 
-function loadEquipmentDb(): { equipmentDb: EquipmentMap; aliasMap: EquipmentAliasMap } {
+function loadEquipmentRegistry(): EquipmentRegistry {
   const fixturesPath = path.join(__dirname, 'fixtures', 'equipment2.json');
   if (!fs.existsSync(fixturesPath)) {
     console.error(`Equipment file not found: ${fixturesPath}`);
@@ -115,9 +118,9 @@ function loadEquipmentDb(): { equipmentDb: EquipmentMap; aliasMap: EquipmentAlia
     }
   }
 
-  const aliasMap = buildEquipmentAliasMap(equipmentDb);
-  console.log(`Equipment DB: ${loaded} loaded, ${failed} failed, ${aliasMap.size} aliases\n`);
-  return { equipmentDb, aliasMap };
+  const registry = new EquipmentRegistry(equipmentDb);
+  console.log(`Equipment DB: ${loaded} loaded, ${failed} failed, ${registry.lookupKeyCount} lookup keys\n`);
+  return registry;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -125,6 +128,11 @@ function loadEquipmentDb(): { equipmentDb: EquipmentMap; aliasMap: EquipmentAlia
 // ═══════════════════════════════════════════════════════════════════════════
 
 function findUnitFiles(dir: string): string[] {
+  if (fs.existsSync(dir) && fs.statSync(dir).isFile()) {
+    const ext = path.extname(dir).toLowerCase();
+    return ext === '.mtf' || ext === '.blk' ? [dir] : [];
+  }
+
   const results: string[] = [];
 
   function walk(d: string) {
@@ -208,11 +216,24 @@ interface VerifyResult {
   error?: string;
   write1?: string;
   write2?: string;
+  timings?: VerifyTimings;
 }
 
-function verifyFile(filePath: string, equipmentDb: EquipmentMap, aliasMap: EquipmentAliasMap): VerifyResult {
+interface VerifyTimings {
+  read: number;
+  parse1: number;
+  write1: number;
+  parse2: number;
+  write2: number;
+  normalise: number;
+}
+
+function verifyFile(filePath: string, equipmentRegistry: EquipmentRegistry): VerifyResult {
+  const timings: VerifyTimings = { read: 0, parse1: 0, write1: 0, parse2: 0, write2: 0, normalise: 0 };
+  let phaseStart = performance.now();
   const fileName = path.basename(filePath);
   const content = fs.readFileSync(filePath, 'utf-8');
+  timings.read = performance.now() - phaseStart;
   const ext = path.extname(fileName).toLowerCase();
 
   // Determine write format
@@ -221,60 +242,70 @@ function verifyFile(filePath: string, equipmentDb: EquipmentMap, aliasMap: Equip
   // ── Pass 1: Parse original ──
   let entity1;
   try {
+    phaseStart = performance.now();
     resetMountIdCounter();
-    entity1 = parseEntity(content, fileName, equipmentDb, null, aliasMap).entity;
+    entity1 = parseEntity(content, fileName, equipmentRegistry).entity;
+    timings.parse1 = performance.now() - phaseStart;
   } catch (e: any) {
-    return { file: filePath, status: 'parse-error', error: `Pass1 parse: ${e.message}` };
+    return { file: filePath, status: 'parse-error', error: `Pass1 parse: ${e.message}`, timings };
   }
 
   // ── Pass 1: Write ──
   let written1: string;
   try {
+    phaseStart = performance.now();
     const format = isMtf && entity1 instanceof MekEntity ? 'mtf' : 'blk';
     written1 = writeEntity(entity1, format);
+    timings.write1 = performance.now() - phaseStart;
   } catch (e: any) {
     return {
       file: filePath, status: 'write-error', entityType: entity1.entityType,
-      error: `Pass1 write: ${e.message}`,
+      error: `Pass1 write: ${e.message}`, timings,
     };
   }
 
   // ── Pass 2: Parse the written output ──
   let entity2;
   try {
+    phaseStart = performance.now();
     resetMountIdCounter();
     const pass2Name = isMtf && entity1 instanceof MekEntity ? fileName : fileName.replace(/\.mtf$/i, '.blk');
-    entity2 = parseEntity(written1, pass2Name, equipmentDb, null, aliasMap).entity;
+    entity2 = parseEntity(written1, pass2Name, equipmentRegistry).entity;
+    timings.parse2 = performance.now() - phaseStart;
   } catch (e: any) {
     return {
       file: filePath, status: 'parse-error', entityType: entity1.entityType,
-      error: `Pass2 parse: ${e.message}`, write1: written1,
+      error: `Pass2 parse: ${e.message}`, write1: written1, timings,
     };
   }
 
   // ── Pass 2: Write again ──
   let written2: string;
   try {
+    phaseStart = performance.now();
     const format = isMtf && entity2 instanceof MekEntity ? 'mtf' : 'blk';
     written2 = writeEntity(entity2, format);
+    timings.write2 = performance.now() - phaseStart;
   } catch (e: any) {
     return {
       file: filePath, status: 'write-error', entityType: entity2.entityType,
-      error: `Pass2 write: ${e.message}`, write1: written1,
+      error: `Pass2 write: ${e.message}`, write1: written1, timings,
     };
   }
 
   // ── Compare ──
+  phaseStart = performance.now();
   const norm1 = normalise(written1);
   const norm2 = normalise(written2);
+  timings.normalise = performance.now() - phaseStart;
 
   if (norm1 === norm2) {
-    return { file: filePath, status: 'pass', entityType: entity1.entityType };
+    return { file: filePath, status: 'pass', entityType: entity1.entityType, timings };
   }
 
   return {
     file: filePath, status: 'diff', entityType: entity1.entityType,
-    write1: written1, write2: written2,
+    write1: written1, write2: written2, timings,
   };
 }
 
@@ -309,7 +340,7 @@ function main(): void {
   console.log('');
 
   // Load equipment
-  const { equipmentDb, aliasMap } = loadEquipmentDb();
+  const equipmentRegistry = loadEquipmentRegistry();
 
   // Find files
   let files = findUnitFiles(INPUT_DIR);
@@ -338,6 +369,7 @@ function main(): void {
 
   const byType = new Map<string, { pass: number; fail: number }>();
   const failures: VerifyResult[] = [];
+  const profileTotals: VerifyTimings = { read: 0, parse1: 0, write1: 0, parse2: 0, write2: 0, normalise: 0 };
 
   const startTime = Date.now();
 
@@ -357,7 +389,12 @@ function main(): void {
       }
     }
 
-    const result = verifyFile(file, equipmentDb, aliasMap);
+    const result = verifyFile(file, equipmentRegistry);
+    if (result.timings) {
+      for (const phase of Object.keys(profileTotals) as (keyof VerifyTimings)[]) {
+        profileTotals[phase] += result.timings[phase];
+      }
+    }
 
     const typeKey = result.entityType ?? 'unknown';
     if (!byType.has(typeKey)) byType.set(typeKey, { pass: 0, fail: 0 });
@@ -428,6 +465,15 @@ function main(): void {
     const pct = total > 0 ? ((counts.pass / total) * 100).toFixed(1) : '0.0';
     const icon = counts.fail === 0 ? '✓' : '✗';
     console.log(`    ${icon} ${type.padEnd(20)} ${counts.pass}/${total} (${pct}%)`);
+  }
+
+  if (PROFILE) {
+    const measured = Object.values(profileTotals).reduce((sum, duration) => sum + duration, 0);
+    console.log('\n  Profile:');
+    for (const [phase, duration] of Object.entries(profileTotals)) {
+      const percent = measured > 0 ? duration / measured * 100 : 0;
+      console.log(`    ${phase.padEnd(12)} ${(duration / 1000).toFixed(2).padStart(7)}s  ${percent.toFixed(1).padStart(5)}%`);
+    }
   }
 
   console.log('');

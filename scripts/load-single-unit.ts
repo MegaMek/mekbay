@@ -13,7 +13,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { createEquipment, buildEquipmentAliasMap, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
+import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
+import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { resetMountIdCounter } from '../src/app/models/entity/utils/signal-helpers';
 import { MekEntity } from '../src/app/models/entity/entities/mek/mek-entity';
@@ -58,9 +59,9 @@ function loadEquipmentDb() {
     }
   }
 
-  const aliasMap = buildEquipmentAliasMap(equipmentDb);
-  console.log(`Equipment DB: ${loaded} loaded, ${failed} failed, ${aliasMap.size} aliases`);
-  return { equipmentDb, aliasMap };
+  const registry = new EquipmentRegistry(equipmentDb);
+  console.log(`Equipment DB: ${loaded} loaded, ${failed} failed, ${registry.lookupKeyCount} lookup keys`);
+  return registry;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -75,13 +76,13 @@ function main() {
 
   console.log(`Loading unit: ${INPUT_FILE}\n`);
 
-  const { equipmentDb, aliasMap } = loadEquipmentDb();
+  const equipmentRegistry = loadEquipmentDb();
 
   const fileName = path.basename(INPUT_FILE);
   const content = fs.readFileSync(INPUT_FILE, 'utf-8');
 
   resetMountIdCounter();
-  const { entity } = parseEntity(content, fileName, equipmentDb, null, aliasMap);
+  const { entity } = parseEntity(content, fileName, equipmentRegistry);
   if (entity instanceof MekEntity) {
     console.log(`\nParsed Mek: ${entity.displayName()}`);
     console.log(`Weight Class: ${entity.weightClass()}`);

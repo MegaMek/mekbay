@@ -57,7 +57,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { createEquipment, buildEquipmentAliasMap, type EquipmentAliasMap, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
+import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
+import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { resetMountIdCounter } from '../src/app/models/entity/utils/signal-helpers';
 import { UnitMetadataBuilder } from '../src/app/utils/unit-metadata-builder';
@@ -135,8 +136,8 @@ const CHECKED_FIELDS: FieldCheck[] = [
   { field: 'bv',             compare: 'numeric', tolerance: 1 },
   { field: 'c3',             compare: 'exact', active: true },
   { field: 'canon',          compare: 'exact', active: true },
-  { field: 'capital',        compare: 'exact' },
-  { field: 'cargo',          compare: 'exact' },
+  { field: 'capital',        compare: 'exact', active: true },
+  { field: 'cargo',          compare: 'exact', active: true },
   { field: 'comp',           compare: 'componentSet' },
   { field: 'cost',           compare: 'numeric', tolerance: 1 },
   { field: 'crewSize',       compare: 'exact' },
@@ -149,20 +150,20 @@ const CHECKED_FIELDS: FieldCheck[] = [
   { field: 'fluff',          compare: 'exact' },
   { field: 'heat',           compare: 'numeric', tolerance: 1 },
   { field: 'icon',           compare: 'exact' },
-  { field: 'internal',       compare: 'exact' },
+  { field: 'internal',       compare: 'exact', active: true },
   { field: 'level',          compare: 'exact' },
   { field: 'moveType',       compare: 'exact' },
   { field: 'offSpeedFactor', compare: 'exact' },
   { field: 'pv',             compare: 'exact' },
   { field: 'quirks',         compare: 'exact' },
   { field: 'sheets',         compare: 'exact' },
-  { field: 'squadSize',      compare: 'exact' },
-  { field: 'squads',         compare: 'exact' },
+  { field: 'squadSize',      compare: 'exact', active: true },
+  { field: 'squads',         compare: 'exact', active: true },
   { field: 'su',             compare: 'exact' },
   { field: 'subtype',        compare: 'exact' },
   { field: 'techRating',     compare: 'exact' },
   { field: 'umu',            compare: 'exact' },
-  { field: 'weightClass',    compare: 'exact' },
+  { field: 'weightClass',    compare: 'exact', active: true },
   { field: 'unitFile',       compare: 'exact' },
 
   // ── Phase 2: Alpha Strike ──────────────────────────────────────────
@@ -216,7 +217,7 @@ const FAIL_ON_MISMATCH = hasFlag('fail-on-mismatch');
 // Equipment database loading
 // ═══════════════════════════════════════════════════════════════════════════
 
-function loadEquipmentDb(): { equipmentDb: EquipmentMap; aliasMap: EquipmentAliasMap } {
+function loadEquipmentRegistry(): EquipmentRegistry {
   const fixturesPath = path.join(__dirname, 'fixtures', 'equipment2.json');
   if (!fs.existsSync(fixturesPath)) {
     console.error(`Equipment file not found: ${fixturesPath}`);
@@ -238,9 +239,9 @@ function loadEquipmentDb(): { equipmentDb: EquipmentMap; aliasMap: EquipmentAlia
     }
   }
 
-  const aliasMap = buildEquipmentAliasMap(equipmentDb);
-  console.log(`Equipment DB: ${loaded} loaded, ${failed} failed, ${aliasMap.size} aliases`);
-  return { equipmentDb, aliasMap };
+  const registry = new EquipmentRegistry(equipmentDb);
+  console.log(`Equipment DB: ${loaded} loaded, ${failed} failed, ${registry.lookupKeyCount} lookup keys`);
+  return registry;
 }
 
 function loadSourcebooks(): ReadonlyMap<string, Sourcebook> {
@@ -418,8 +419,7 @@ function getFieldValue(value: unknown, field: string): unknown {
 function processUnit(
   oracle: OracleEntry,
   checks: FieldCheck[],
-  equipmentDb: EquipmentMap,
-  aliasMap: EquipmentAliasMap,
+  equipmentRegistry: EquipmentRegistry,
   builder: UnitMetadataBuilder,
   sourcebooks: ReadonlyMap<string, Sourcebook>,
 ): CompareResult {
@@ -436,10 +436,9 @@ function processUnit(
     const content = fs.readFileSync(unitFilePath, 'utf-8');
     const fileName = path.basename(unitFilePath);
     resetMountIdCounter();
-    const { entity } = parseEntity(
-      content, fileName, equipmentDb, null, aliasMap,
-      source => sourcebooks.get(source),
-    );
+    const { entity } = parseEntity(content, fileName, equipmentRegistry, {
+      sourcebookResolver: source => sourcebooks.get(source),
+    });
 
     // Build metadata
     const metadata = builder.build(entity);
@@ -565,7 +564,7 @@ function main() {
   console.log('Unit Metadata Comparison Script\n');
 
   // Load dependencies
-  const { equipmentDb, aliasMap } = loadEquipmentDb();
+  const equipmentRegistry = loadEquipmentRegistry();
   const sourcebooks = loadSourcebooks();
   const builder = new UnitMetadataBuilder();
   const checks = getActiveChecks();
@@ -588,7 +587,7 @@ function main() {
   let processed = 0;
 
   for (const entry of entries) {
-    const result = processUnit(entry, checks, equipmentDb, aliasMap, builder, sourcebooks);
+    const result = processUnit(entry, checks, equipmentRegistry, builder, sourcebooks);
     results.push(result);
     processed++;
 

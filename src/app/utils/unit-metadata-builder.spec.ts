@@ -1,8 +1,12 @@
 import { FixedWingSupportEntity } from '../models/entity/entities/aero/fixed-wing-support-entity';
+import { ConvFighterEntity } from '../models/entity/entities/aero/conv-fighter-entity';
 import { DropShipEntity } from '../models/entity/entities/aero/dropship-entity';
 import { HandheldWeaponEntity } from '../models/entity/entities/misc/handheld-weapon-entity';
 import { BattleArmorEntity } from '../models/entity/entities/infantry/battle-armor-entity';
 import { InfantryEntity } from '../models/entity/entities/infantry/infantry-entity';
+import { JumpShipEntity } from '../models/entity/entities/largecraft/jumpship-entity';
+import { SpaceStationEntity } from '../models/entity/entities/largecraft/space-station-entity';
+import { WarShipEntity } from '../models/entity/entities/largecraft/warship-entity';
 import { locationArmor } from '../models/entity/types';
 import { SupportNavalEntity } from '../models/entity/entities/vehicle/support-naval-entity';
 import { SupportTankEntity } from '../models/entity/entities/vehicle/support-tank-entity';
@@ -40,6 +44,86 @@ describe('UnitMetadataBuilder', () => {
       }),
     );
     expect(builder.build(entity).structureType).toBe('Standard');
+  });
+
+  it('exports Java weight class display names without changing canonical categories', () => {
+    const conventionalFighter = new ConvFighterEntity();
+    conventionalFighter.setTonnage(50);
+    expect(conventionalFighter.weightClass()).toBe('Medium');
+    expect(builder.build(conventionalFighter).weightClass).toBe('Medium');
+
+    const supportVehicle = new SupportTankEntity();
+    supportVehicle.motiveType.set('Tracked');
+    supportVehicle.setTonnage(4);
+    expect(supportVehicle.weightClass()).toBe('Small Support');
+    expect(builder.build(supportVehicle).weightClass).toBe('Small Support Vehicle');
+
+    const dropShip = new DropShipEntity();
+    dropShip.setTonnage(5000);
+    expect(dropShip.weightClass()).toBe('Medium DropShip');
+    expect(builder.build(dropShip).weightClass).toBe('Medium Dropship');
+
+    const capitalShips = [
+      [new JumpShipEntity(), 'Small Jumpship'],
+      [new WarShipEntity(), 'Small Warship'],
+      [new SpaceStationEntity(), 'Small Space Station'],
+    ] as const;
+    for (const [entity, expected] of capitalShips) {
+      entity.setTonnage(500000);
+      expect(entity.weightClass()).toBe('Small Capital');
+      expect(builder.build(entity).weightClass).toBe(expected);
+    }
+  });
+
+  it('exports derived capital-ship data with WarShip integrity overrides', () => {
+    const jumpShip = new JumpShipEntity();
+    jumpShip.setTonnage(100000);
+    jumpShip.transporters.set([
+      { id: 'collar-1', kind: 'docking-collar', collarNumber: 1, omni: false },
+      { id: 'collar-2', kind: 'docking-collar', collarNumber: 2, omni: false },
+    ]);
+    jumpShip.escapePods.set(4);
+    jumpShip.lifeboats.set(6);
+    jumpShip.gravDecks.set([95, 55]);
+
+    expect(builder.build(jumpShip).capital).toEqual({
+      dropshipCapacity: 2,
+      escapePods: 4,
+      lifeBoats: 6,
+      gravDecks: [95, 55],
+      sailIntegrity: 4,
+      kfIntegrity: 3,
+    });
+    expect(jumpShip.dockingCollarCount()).toBe(2);
+
+    const warShip = new WarShipEntity();
+    warShip.setTonnage(100000);
+    expect(builder.build(warShip).capital?.sailIntegrity).toBe(3);
+    expect(builder.build(warShip).capital?.kfIntegrity).toBe(6);
+  });
+
+  it('zeros absent capital sail and drive integrity', () => {
+    const entity = new SpaceStationEntity();
+    entity.setTonnage(100000);
+
+    expect(entity.sail()).toBeFalse();
+    expect(entity.driveCoreType()).toBe('None');
+    expect(builder.build(entity).capital?.sailIntegrity).toBe(0);
+    expect(builder.build(entity).capital?.kfIntegrity).toBe(0);
+    expect(builder.build(new SupportTankEntity()).capital).toBeUndefined();
+  });
+
+  it('uses Java primitive jump-range drive weight defaults', () => {
+    const entity = new JumpShipEntity();
+    entity.setTonnage(100000);
+    entity.driveCoreType.set('Primitive');
+
+    expect(entity.jumpRange()).toBe(30);
+    expect(entity.jumpDriveWeight()).toBe(95000);
+    expect(entity.kfIntegrity()).toBe(3);
+
+    entity.jumpRange.set(20);
+    expect(entity.jumpDriveWeight()).toBe(65000);
   });
 
   it('exports Java role values for undetermined and explicit roles', () => {
@@ -94,6 +178,8 @@ describe('UnitMetadataBuilder', () => {
     entity.squadCount.set(4);
 
     expect(builder.build(entity).tons).toBe(2.5);
+    expect(builder.build(entity).squadSize).toBe(7);
+    expect(builder.build(entity).squads).toBe(4);
 
     entity.specializations.set(new Set(['bridge-engineers', 'paramedics']));
     entity.addEquipment({
@@ -104,6 +190,16 @@ describe('UnitMetadataBuilder', () => {
       } as EquipmentRawData),
     });
     expect(builder.build(entity).tons).toBe(7);
+  });
+
+  it('exports Battle Armor as one squad with one member per trooper', () => {
+    const entity = new BattleArmorEntity();
+    entity.trooperCount.set(5);
+
+    expect(entity.totalInternalPoints()).toBe(5);
+    expect(builder.build(entity).internal).toBe(5);
+    expect(builder.build(entity).squadSize).toBe(5);
+    expect(builder.build(entity).squads).toBe(1);
   });
 
   it('exports calculated beast-mounted infantry tonnage', () => {

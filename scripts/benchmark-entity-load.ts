@@ -48,7 +48,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { createEquipment, buildEquipmentAliasMap, type EquipmentAliasMap, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
+import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
+import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { resetMountIdCounter } from '../src/app/models/entity/utils/signal-helpers';
 
@@ -86,11 +87,10 @@ const VERBOSE = hasFlag('verbose');
 // ═══════════════════════════════════════════════════════════════════════════
 
 interface EquipmentLoadResult {
-  equipmentDb: EquipmentMap;
-  aliasMap: EquipmentAliasMap;
+  equipmentRegistry: EquipmentRegistry;
   loaded: number;
   failed: number;
-  aliases: number;
+  lookupKeys: number;
   timeMs: number;
 }
 
@@ -118,10 +118,10 @@ function loadEquipmentDb(): EquipmentLoadResult {
     }
   }
 
-  const aliasMap = buildEquipmentAliasMap(equipmentDb);
+  const equipmentRegistry = new EquipmentRegistry(equipmentDb);
   const timeMs = performance.now() - t0;
 
-  return { equipmentDb, aliasMap, loaded, failed, aliases: aliasMap.size, timeMs };
+  return { equipmentRegistry, loaded, failed, lookupKeys: equipmentRegistry.lookupKeyCount, timeMs };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -201,8 +201,7 @@ interface LoadResult {
 
 function loadFile(
   filePath: string,
-  equipmentDb: EquipmentMap,
-  aliasMap: EquipmentAliasMap,
+  equipmentRegistry: EquipmentRegistry,
 ): LoadResult {
   const fileName = path.basename(filePath);
   const content = fs.readFileSync(filePath, 'utf-8');
@@ -210,7 +209,7 @@ function loadFile(
   const t0 = performance.now();
   try {
     resetMountIdCounter();
-    const { entity } = parseEntity(content, fileName, equipmentDb, null, aliasMap);
+    const { entity } = parseEntity(content, fileName, equipmentRegistry);
     const timeMs = performance.now() - t0;
     return { file: filePath, status: 'ok', entityType: entity.entityType, timeMs };
   } catch (e: any) {
@@ -250,7 +249,7 @@ function main(): void {
   // ── Load equipment ──
   console.log('Loading equipment database...');
   const eqResult = loadEquipmentDb();
-  console.log(`  Equipment:  ${eqResult.loaded} loaded, ${eqResult.failed} failed, ${eqResult.aliases} aliases`);
+  console.log(`  Equipment:  ${eqResult.loaded} loaded, ${eqResult.failed} failed, ${eqResult.lookupKeys} lookup keys`);
   console.log(`  Time:       ${formatMs(eqResult.timeMs)}`);
   console.log('');
 
@@ -297,7 +296,7 @@ function main(): void {
       }
     }
 
-    const result = loadFile(file, eqResult.equipmentDb, eqResult.aliasMap);
+    const result = loadFile(file, eqResult.equipmentRegistry);
 
     const typeKey = result.entityType ?? 'unknown';
     if (!byType.has(typeKey)) {

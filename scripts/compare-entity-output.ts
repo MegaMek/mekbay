@@ -53,7 +53,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { createEquipment, buildEquipmentAliasMap, type EquipmentAliasMap, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
+import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
+import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { writeEntity } from '../src/app/models/entity/write-entity';
 import { resetMountIdCounter } from '../src/app/models/entity/utils/signal-helpers';
@@ -100,7 +101,7 @@ const VERBOSE = hasFlag('verbose');
 // Equipment database loading
 // ═══════════════════════════════════════════════════════════════════════════
 
-function loadEquipmentDb(): { equipmentDb: EquipmentMap; aliasMap: EquipmentAliasMap } {
+function loadEquipmentRegistry(): EquipmentRegistry {
   const fixturesPath = path.join(__dirname, 'fixtures', 'equipment2.json');
   if (!fs.existsSync(fixturesPath)) {
     console.error(`Equipment file not found: ${fixturesPath}`);
@@ -122,9 +123,9 @@ function loadEquipmentDb(): { equipmentDb: EquipmentMap; aliasMap: EquipmentAlia
     }
   }
 
-  const aliasMap = buildEquipmentAliasMap(equipmentDb);
-  console.log(`Equipment DB: ${loaded} loaded, ${failed} failed, ${aliasMap.size} aliases\n`);
-  return { equipmentDb, aliasMap };
+  const registry = new EquipmentRegistry(equipmentDb);
+  console.log(`Equipment DB: ${loaded} loaded, ${failed} failed, ${registry.lookupKeyCount} lookup keys\n`);
+  return registry;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -275,8 +276,7 @@ function matchesNameFilter(filePath: string): boolean {
 
 function processFile(
   filePath: string,
-  equipmentDb: EquipmentMap,
-  aliasMap: EquipmentAliasMap,
+  equipmentRegistry: EquipmentRegistry,
 ): CompareResult {
   const fileName = path.basename(filePath);
   const content = fs.readFileSync(filePath, 'utf-8');
@@ -287,7 +287,7 @@ function processFile(
   let entity;
   try {
     resetMountIdCounter();
-    entity = parseEntity(content, fileName, equipmentDb, null, aliasMap).entity;
+    entity = parseEntity(content, fileName, equipmentRegistry).entity;
   } catch (e: any) {
     return { file: filePath, status: 'parse-error', error: `Parse: ${e.message}` };
   }
@@ -359,7 +359,7 @@ function main(): void {
   console.log('');
 
   // Load equipment
-  const { equipmentDb, aliasMap } = loadEquipmentDb();
+  const equipmentRegistry = loadEquipmentRegistry();
 
   // Find files
   let files = findUnitFiles(INPUT_DIR);
@@ -410,7 +410,7 @@ function main(): void {
       }
     }
 
-    const result = processFile(file, equipmentDb, aliasMap);
+    const result = processFile(file, equipmentRegistry);
 
     const typeKey = result.entityType ?? 'unknown';
     if (!byType.has(typeKey)) byType.set(typeKey, { match: 0, diff: 0 });

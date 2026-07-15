@@ -33,10 +33,13 @@
 
 import { BaseEntity } from '../models/entity/base-entity';
 import { DropShipEntity } from '../models/entity/entities/aero/dropship-entity';
+import { InfantryBaseEntity } from '../models/entity/entities/infantry/infantry-base-entity';
 import { InfantryEntity } from '../models/entity/entities/infantry/infantry-entity';
+import { JumpShipEntity } from '../models/entity/entities/largecraft/jumpship-entity';
 import { MekEntity } from '../models/entity/entities/mek/mek-entity';
 import { ASUnitTypeCode, Unit } from '../models/units.model';
 import { EntityType } from '../models/entity/types';
+import { buildUnitCargoMetadata } from './unit-cargo-metadata-builder';
 
 /**
  * Builds a `Partial<Unit>` metadata object from a parsed entity.
@@ -79,10 +82,14 @@ export class UnitMetadataBuilder {
       armorType: this.buildArmorType(entity),
       structureType: entity.mountedStructure()?.name ?? null,
       armor: entity.totalArmorPoints(),
+      internal: entity.totalInternalPoints(),
       armorPer: entity.maximumArmorPoints() > 0
         ? Math.round(entity.totalArmorPoints() / entity.maximumArmorPoints() * 100)
         : 0,
       c3: entity.c3System(),
+      weightClass: this.buildWeightClass(entity),
+      capital: this.buildCapitalData(entity),
+      cargo: buildUnitCargoMetadata(entity.transporters()),
 
       // ── Phase 1: Movement (implement on entity first) ──────────────
       walk: entity.walkMP(),
@@ -91,6 +98,8 @@ export class UnitMetadataBuilder {
       run2: entity.maxRunMP(),
       jump: entity.jumpMP(),
       jump2: entity.maxJumpMP(),
+      squads: this.buildSquadCount(entity),
+      squadSize: this.buildSquadSize(entity),
     };
   }
 
@@ -215,6 +224,54 @@ export class UnitMetadataBuilder {
   private exportsEngine(entity: BaseEntity): boolean {
     if (!entity.mountedEngine().installed) return false;
     return !ENGINELESS_EXPORT_TYPES.has(entity.entityType);
+  }
+
+  private buildWeightClass(entity: BaseEntity): Unit['weightClass'] {
+    switch (entity.weightClass()) {
+      case 'Ultra Light': return 'Ultra Light/PA(L)/Exoskeleton';
+      case 'Light': return 'Light';
+      case 'Medium': return 'Medium';
+      case 'Heavy': return 'Heavy';
+      case 'Assault': return 'Assault';
+      case 'Super Heavy': return 'Colossal/Super-Heavy';
+      case 'Small Craft': return 'Small Craft';
+      case 'Small DropShip': return 'Small Dropship';
+      case 'Medium DropShip': return 'Medium Dropship';
+      case 'Large DropShip': return 'Large Dropship';
+      case 'Small Support': return 'Small Support Vehicle';
+      case 'Medium Support': return 'Medium Support Vehicle';
+      case 'Large Support': return 'Large Support Vehicle';
+      case 'Small Capital': return this.buildCapitalWeightClass(entity, 'Small');
+      case 'Large Capital': return this.buildCapitalWeightClass(entity, 'Large');
+    }
+  }
+
+  private buildCapitalWeightClass(entity: BaseEntity, size: 'Small' | 'Large'): Unit['weightClass'] {
+    switch (entity.entityType) {
+      case 'WarShip': return `${size} Warship`;
+      case 'SpaceStation': return `${size} Space Station`;
+      default: return `${size} Jumpship`;
+    }
+  }
+
+  private buildCapitalData(entity: BaseEntity): Unit['capital'] {
+    if (!(entity instanceof JumpShipEntity)) return undefined;
+    return {
+      dropshipCapacity: entity.dockingCollarCount(),
+      escapePods: entity.escapePods(),
+      lifeBoats: entity.lifeboats(),
+      gravDecks: entity.gravDecks(),
+      sailIntegrity: entity.sail() ? entity.sailIntegrity() : 0,
+      kfIntegrity: entity.driveCoreType() === 'None' ? 0 : entity.kfIntegrity(),
+    };
+  }
+
+  private buildSquadCount(entity: BaseEntity): number {
+    return entity instanceof InfantryBaseEntity ? entity.squadCount() : 0;
+  }
+
+  private buildSquadSize(entity: BaseEntity): number {
+    return entity instanceof InfantryBaseEntity ? entity.squadSize() : 0;
   }
 
   /** Armor type string as it appears in units.json. */
