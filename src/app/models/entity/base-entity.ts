@@ -40,6 +40,7 @@ import {
 import { StructureEquipment } from '../equipment.model';
 import {
   ArmorFace,
+  C3SystemType,
   EngineFlag,
   FactionCode,
   MEK_WEIGHT_LIMITS,
@@ -294,6 +295,23 @@ export abstract class BaseEntity {
     const c = this.fullChassis();
     const m = this.model();
     return m ? `${c} ${m}`.trim() : c;
+  });
+
+  c3System = computed<C3SystemType>(() => {
+    const equipment = this.equipment().map(mount => mount.equipment);
+    if (equipment.some(item => item?.type === 'weapon'
+      && item.hasAnyFlag(['F_C3M', 'F_C3MBS']))) {
+      return 'C3';
+    }
+
+    for (const item of equipment) {
+      if (item?.type !== 'misc') continue;
+      if (item.hasAnyFlag(['F_C3S', 'F_C3SBS', 'F_C3EM'])) return 'C3';
+      if (item.hasFlag('F_C3I')) return 'C3i';
+      if (item.hasFlag('F_NAVAL_C3')) return 'Naval C3';
+      if (item.hasFlag('F_NOVA')) return 'Nova CEWS';
+    }
+    return 'None';
   });
 
   /**

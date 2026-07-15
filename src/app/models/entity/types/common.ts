@@ -46,6 +46,8 @@ export interface EntityWeaponQuirk {
   slot: number;
 }
 
+export type C3SystemType = 'None' | 'C3' | 'C3i' | 'Naval C3' | 'Nova CEWS';
+
 // ============================================================================
 // Fluff
 // ============================================================================
