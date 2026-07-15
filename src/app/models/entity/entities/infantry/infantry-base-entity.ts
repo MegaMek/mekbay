@@ -31,9 +31,13 @@
  * affiliated with Microsoft.
  */
 
+import { signal } from '@angular/core';
 import { BaseEntity, MovementCalculationOptions } from '../../base-entity';
 
 export abstract class InfantryBaseEntity extends BaseEntity {
+  readonly squadSize = signal<number>(1);
+  readonly squadCount = signal<number>(1);
+
   override computeRunMP(options: MovementCalculationOptions): number {
     return this.computeWalkMP(options);
   }

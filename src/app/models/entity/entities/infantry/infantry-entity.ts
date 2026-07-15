@@ -56,8 +56,6 @@ export class InfantryEntity extends InfantryBaseEntity {
   //  SIGNALS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  squadSize = signal<number>(0);
-  squadCount = signal<number>(0);
   primaryWeapon = signal<string>('');
   secondaryWeapon = signal<string>('');
   secondaryWeaponEquipment = signal<Equipment | null>(null);

@@ -3,6 +3,16 @@ import { EntityMountedEquipment } from '../../types';
 import { BattleArmorEntity } from './battle-armor-entity';
 
 describe('BattleArmorEntity movement', () => {
+  it('uses one canonical signal for squad size and trooper count', () => {
+    const entity = new BattleArmorEntity();
+
+    expect(entity.squadCount()).toBe(1);
+    expect(entity.squadSize()).toBe(5);
+    expect(entity.squadSize).toBe(entity.trooperCount);
+    entity.trooperCount.set(6);
+    expect(entity.squadSize()).toBe(6);
+  });
+
   it('uses declared jump MP with slotless movement equipment', () => {
     const entity = new BattleArmorEntity();
     entity.originalWalkMP.set(1);

@@ -47,11 +47,17 @@ import { InfantryBaseEntity } from './infantry-base-entity';
 export class BattleArmorEntity extends InfantryBaseEntity {
   override readonly entityType: EntityType = 'BattleArmor';
 
+  constructor() {
+    super();
+    this.squadCount.set(1);
+    this.squadSize.set(5);
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   //  SIGNALS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  trooperCount = signal<number>(4);
+  readonly trooperCount = this.squadSize;
   declaredWeightClass = signal<WeightClass>('Medium');
   chassisType = signal<string>('Biped');
   jumpingMP = signal<number>(0);
