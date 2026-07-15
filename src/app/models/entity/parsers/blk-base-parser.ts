@@ -74,9 +74,8 @@ export function parseBaseBlk(
   ctx: ParseContext,
 ): void {
   // ── Identity ──
-  if (bb.exists('UUID')) {
-    entity.uuid.set(bb.getFirstString('UUID'));
-  }
+  const uuid = bb.getFirstString('UUID');
+  if (uuid) entity.uuid.set(uuid);
   entity.chassis.set(bb.getFirstString('Name'));
   entity.model.set(bb.getFirstString('Model'));
 
