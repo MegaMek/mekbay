@@ -37,6 +37,7 @@ import {
   createMountedArmor,
   MountedArmor,
 } from './components';
+import { StructureEquipment } from '../equipment.model';
 import {
   ArmorFace,
   EngineFlag,
@@ -44,7 +45,6 @@ import {
   MEK_WEIGHT_LIMITS,
   MotiveType,
   resolveWeightClass,
-  StructureType,
   WeightClass,
   EntityFluff,
   EntityMountedEquipment,
@@ -181,11 +181,7 @@ export abstract class BaseEntity {
   armorValues = signal<Map<string, LocationArmor>>(new Map());
 
   // ── Internal Structure ──
-  structureType = signal<StructureType>('Standard');
-  /** Raw MTF structure string for round-trip (e.g. "IS Standard", "Clan Endo Steel") */
-  rawStructure = signal<string>('');
-  /** Raw BLK internal_type code for round-trip fidelity (-1 = Unknown, 0 = Standard, etc.) */
-  rawInternalTypeCode = signal<number>(0);
+  readonly mountedStructure = signal<StructureEquipment | null>(null);
 
   // ── Equipment - SINGLE SOURCE OF TRUTH ──
   equipment = signal<EntityMountedEquipment[]>([]);
@@ -351,12 +347,9 @@ export abstract class BaseEntity {
   /** Effective tonnage per location. */
   structureTonnages = computed<Map<string, number>>(() => this.computeStructureTonnages());
 
-  /** Effective structure type per location; subclasses may provide location-specific types. */
-  structureTypes = computed<Map<string, StructureType>>(() => this.computeStructureTypes());
-
   /** Internal structure points per location, derived from the effective structure configuration. */
   structureValues = computed<Map<string, number>>(() =>
-    this.computeStructureValues(this.tonnage(), this.structureType())
+    this.computeStructureValues(this.tonnage())
   );
 
   maxArmorValues = computed<Map<string, number>>(() =>
@@ -472,22 +465,14 @@ export abstract class BaseEntity {
     return false;
   }
 
-  protected abstract computeStructureValues(tonnage: number, structureType: StructureType): Map<string, number>;
+  protected abstract computeStructureValues(tonnage: number): Map<string, number>;
 
   protected computeStructureTonnages(): Map<string, number> {
     return new Map(this.locationOrder.map(location => [location, this.tonnage()]));
   }
 
-  protected computeStructureTypes(): Map<string, StructureType> {
-    return new Map(this.locationOrder.map(location => [location, this.structureType()]));
-  }
-
   getStructureTonnageAtLocation(location: string): number {
     return this.structureTonnages().get(location) ?? this.tonnage();
-  }
-
-  getStructureTypeAtLocation(location: string): StructureType {
-    return this.structureTypes().get(location) ?? this.structureType();
   }
 
   protected abstract computeMaxArmor(structureValues: Map<string, number>): Map<string, number>;

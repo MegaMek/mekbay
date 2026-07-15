@@ -41,7 +41,6 @@ import {
   PROTO_LOCATIONS_WITH_MAIN_GUN,
   PROTOMEK_WEIGHT_LIMITS,
   resolveWeightClass,
-  StructureType,
   WeightClass,
 } from '../../types';
 
@@ -119,9 +118,7 @@ export class ProtoMekEntity extends BaseEntity {
    * ProtoMek internal structure table (simplified):
    * Head=1 for all, Torso/Legs scale with tonnage, Arms=1-2, Main Gun=1.
    */
-  protected override computeStructureValues(
-    tonnage: number, _structureType: StructureType,
-  ): Map<string, number> {
+  protected override computeStructureValues(tonnage: number): Map<string, number> {
     const values = new Map<string, number>();
     values.set('Head', 1 + Math.floor(tonnage / 5));
     values.set('Torso', 2 + Math.floor(tonnage / 3));

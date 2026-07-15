@@ -37,6 +37,7 @@ import {
   createMountedArmor,
   createPatchworkArmor,
   engineTypeFromCode,
+  getStructureByTypeId,
 } from '../components';
 import { AeroEntity } from '../entities/aero/aero-entity';
 import {
@@ -134,7 +135,12 @@ export function parseBaseBlk(
 
   // ── Internal structure type ──
   if (bb.exists('internal_type')) {
-    entity.rawInternalTypeCode.set(bb.getFirstInt('internal_type'));
+    const structureCode = bb.getFirstInt('internal_type');
+    if (structureCode < 0) {
+      entity.mountedStructure.set(null);
+    } else if (!resolveBlkStructure(entity, structureCode, ctx)) {
+      ctx.error('internal_type', `Invalid structure type ${structureCode} for ${entity.techBase()} technology`);
+    }
   }
 
   // ── Quirks ──
@@ -282,6 +288,16 @@ export function parseBaseBlk(
   if (bb.exists('fluffimage')) {
     entity.fluffImageEncoded.set(bb.getFirstString('fluffimage'));
   }
+}
+
+export function resolveBlkStructure(
+  entity: BaseEntity,
+  typeId: number,
+  ctx: ParseContext,
+): boolean {
+  const structure = getStructureByTypeId(typeId, entity.techBase(), ctx.equipmentDb);
+  entity.mountedStructure.set(structure);
+  return structure !== null;
 }
 
 /**

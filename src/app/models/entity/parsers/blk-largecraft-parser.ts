@@ -40,7 +40,7 @@ import {
 import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { JUMPSHIP_EQUIP_TAGS, WARSHIP_EXTRA_EQUIP_TAGS } from './blk-constants';
-import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkCrew, parseBlkEquipment } from './blk-base-parser';
+import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkCrew, parseBlkEquipment, resolveBlkStructure } from './blk-base-parser';
 import { ParseContext } from './parse-context';
 
 // ============================================================================
@@ -65,6 +65,7 @@ export function parseBlkLargeCraft(bb: BuildingBlock, ctx: ParseContext): JumpSh
 
   // ── Base parsing ──
   parseBaseBlk(bb, entity, ctx);
+  if (!bb.exists('internal_type')) resolveBlkStructure(entity, 0, ctx);
   const techBase = getBlkTechBase(bb);
 
   // ── Movement ──

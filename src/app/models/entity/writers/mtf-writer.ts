@@ -477,14 +477,11 @@ function getEngineTypePrefix(engineType: string): string {
 }
 
 function getStructureString(entity: MekEntity): string {
-  // Prefer the raw parsed string for perfect round-trip fidelity
-  const raw = entity.rawStructure();
-  if (raw) return raw;
-
-  // Fallback: compute from structured fields
-  const type = entity.structureType();
-  const prefix = entity.techBase() === 'Clan' ? 'Clan ' : 'IS ';
-  return `${prefix}${type}`;
+  const structure = entity.mountedStructure();
+  const name = structure?.name ?? 'Standard';
+  const techBase = structure?.techBase === 'All' ? entity.techBase() : structure?.techBase;
+  const prefix = techBase === 'Clan' ? 'Clan ' : 'IS ';
+  return `${prefix}${name}`;
 }
 
 function facingLabel(facing: number): string {

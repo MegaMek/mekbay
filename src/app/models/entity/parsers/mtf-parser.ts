@@ -37,7 +37,7 @@ import { FrankenMekLocationData, MekEntity, MekWithArmsEntity } from '../entitie
 import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import { QuadVeeEntity } from '../entities/mek/quad-vee-entity';
 import { TripodMekEntity } from '../entities/mek/tripod-mek-entity';
-import { MountedEngine, createMountedArmor, createPatchworkArmor, normalizeCockpitType, normalizeGyroType } from '../components';
+import { MountedEngine, createMountedArmor, createPatchworkArmor, getStructureByName, normalizeCockpitType, normalizeGyroType } from '../components';
 import { ArmorEquipment, WeaponEquipment } from '../../equipment.model';
 import {
   ArmorType,
@@ -57,8 +57,6 @@ import {
   normalizeSystemManufacturerKey,
   parseMotiveType,
   resolveArmorByName,
-  parseStructureType,
-  StructureType,
 } from '../types';
 import { parseMtfArmor } from '../utils/armor-type-parser';
 import { parseMtfEngine } from '../utils/engine-type-parser';
@@ -223,8 +221,15 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
     }));
   }
 
-  entity.structureType.set(cleanStructureType(header.structure));
-  entity.rawStructure.set(header.structure);
+  const structureName = cleanStructureName(header.structure);
+  const structureTechBase = /^Clan\s+/i.test(header.structure) ? 'Clan' : 'IS';
+  const structure = entity.isFrankenMek() && structureName.toLowerCase() === 'hybrid'
+    ? getStructureByName('Standard', structureTechBase, ctx.equipmentDb)
+    : getStructureByName(structureName, structureTechBase, ctx.equipmentDb);
+  entity.mountedStructure.set(structure);
+  if (!structure) {
+    ctx.error('Structure', `Invalid structure ${structureTechBase} ${structureName}`);
+  }
   entity.myomerType.set(header.myomer || 'Standard');
 
   if (header.gyro) entity.gyroType.set(normalizeGyroType(header.gyro));
@@ -736,9 +741,6 @@ function parseHeader(lines: string[]): MtfHeader {
           updateFrankenMekLocation(h.frankenMekLocations, structureLocation, {
             tonnage: parseInt(tonnageText, 10) || 0,
             structureName: hasStructureName ? value.substring(0, lastColon).trim() : undefined,
-            structureType: hasStructureName
-              ? cleanStructureType(value.substring(0, lastColon).trim())
-              : undefined,
           });
         }
         break;
@@ -861,9 +863,8 @@ function parseHeatSinkLine(hsLine: string): { count: number; type: HeatSinkType;
   return { count, type, typeLabel };
 }
 
-function cleanStructureType(raw: string): StructureType {
-  const displayName = raw.replace(/^IS\s+/i, '').replace(/^Clan\s+/i, '').trim() || 'Standard';
-  return parseStructureType(displayName);
+function cleanStructureName(raw: string): string {
+  return raw.replace(/^IS\s+/i, '').replace(/^Clan\s+/i, '').trim() || 'Standard';
 }
 
 /**

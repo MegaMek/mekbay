@@ -41,7 +41,6 @@ import {
   EntityMountedEquipment,
   LocationArmor,
   locationArmor,
-  structureTypeFromCode,
 } from '../types';
 import { cockpitTypeFromCode, gyroTypeFromCode } from '../components';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
@@ -52,7 +51,7 @@ import {
   BLK_CRIT_BIPED,
   BLK_CRIT_QUAD,
 } from './blk-constants';
-import { getBlkTechBase, parseBaseBlk, parseBlkArmor, parseBlkEngine } from './blk-base-parser';
+import { getBlkTechBase, parseBaseBlk, parseBlkArmor, parseBlkEngine, resolveBlkStructure } from './blk-base-parser';
 import { parseEquipmentLine } from './equipment-resolver';
 import { ParseContext } from './parse-context';
 
@@ -80,6 +79,7 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
 
   // ── Base parsing ──
   parseBaseBlk(bb, entity, ctx);
+  if (!bb.exists('internal_type')) resolveBlkStructure(entity, 0, ctx);
   const techBase = getBlkTechBase(bb);
 
   // ── Movement (must precede engine - rating = walkMP x tonnage) ──
@@ -94,8 +94,6 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
   }
 
   // ── Structure / Gyro / Cockpit ──
-  if (bb.exists('internal_type')) entity.structureType.set(structureTypeFromCode(bb.getFirstInt('internal_type')));
-
   if (bb.exists('gyro_type')) {
     const gyroCode = bb.getFirstInt('gyro_type');
     entity.gyroType.set(gyroTypeFromCode(gyroCode));

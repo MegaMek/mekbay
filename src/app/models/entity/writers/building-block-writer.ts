@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { EntityFluff, structureTypeToCode } from '../types';
+import { EntityFluff } from '../types';
 import { getArmorTypeCode, getEffectiveArmorTechRating, getEffectiveArmorTechLevel } from '../components';
 import { BaseEntity } from '../base-entity';
 import { APP_VERSION_STRING } from '../../../build-meta';
@@ -228,12 +228,9 @@ export function writeArmorBlocks(
  * Write internal_type block (only when NOT Standard, i.e. code != 0).
  */
 export function writeInternalType(w: BuildingBlockWriter, entity: BaseEntity): void {
-  // Use raw BLK code if available (supports round-trip of -1 = Unknown)
-  const rawCode = entity.rawInternalTypeCode();
-  if (rawCode !== 0) {
-    w.addBlock('internal_type', rawCode);
-  } else if (entity.structureType() !== 'Standard') {
-    w.addBlock('internal_type', structureTypeToCode(entity.structureType()));
+  const structureTypeId = entity.mountedStructure()?.structureTypeId;
+  if (structureTypeId !== undefined && structureTypeId > 0) {
+    w.addBlock('internal_type', structureTypeId);
   }
 }
 

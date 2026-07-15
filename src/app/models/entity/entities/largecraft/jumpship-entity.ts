@@ -39,7 +39,6 @@ import {
   EntityValidationMessage,
   LARGE_CRAFT_LOCATIONS,
   resolveWeightClass,
-  StructureType,
   WeightClass,
 } from '../../types';
 
@@ -113,9 +112,7 @@ export class JumpShipEntity extends AeroEntity {
     return null; // JumpShips use KF drives, not standard engines
   }
 
-  protected override computeStructureValues(
-    _tonnage: number, _structureType: StructureType,
-  ): Map<string, number> {
+  protected override computeStructureValues(_tonnage: number): Map<string, number> {
     const values = new Map<string, number>();
     const si = this.structuralIntegrity();
     for (const loc of this.locationOrder) {

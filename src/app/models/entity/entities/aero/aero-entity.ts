@@ -40,7 +40,6 @@ import {
   HeatSinkType,
   MotiveType,
   resolveWeightClass,
-  StructureType,
   WeightClass,
 } from '../../types';
 
@@ -108,9 +107,7 @@ export abstract class AeroEntity extends BaseEntity {
     return null;
   }
 
-  protected override computeStructureValues(
-    _tonnage: number, _structureType: StructureType,
-  ): Map<string, number> {
+  protected override computeStructureValues(_tonnage: number): Map<string, number> {
     // For aero, each location gets the structural integrity value
     const values = new Map<string, number>();
     const si = this.structuralIntegrity();

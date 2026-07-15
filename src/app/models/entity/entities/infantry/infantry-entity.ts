@@ -39,7 +39,6 @@ import {
   InfantryMount,
   InfantrySpecialization,
   MotiveType,
-  StructureType,
   WeightClass,
 } from '../../types';
 import { InfantryBaseEntity } from './infantry-base-entity';
@@ -202,9 +201,7 @@ export class InfantryEntity extends InfantryBaseEntity {
   //  ABSTRACT IMPLEMENTATIONS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  protected override computeStructureValues(
-    _tonnage: number, _structureType: StructureType,
-  ): Map<string, number> {
+  protected override computeStructureValues(_tonnage: number): Map<string, number> {
     const values = new Map<string, number>();
     values.set('Infantry', this.squadSize() * this.squadCount());
     return values;

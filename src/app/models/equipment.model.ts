@@ -45,7 +45,7 @@ import { AmmoValidityUtil } from '../utils/ammo-validity.util';
 // Type Definitions
 // ============================================================================
 
-export type EquipmentType = 'weapon' | 'ammo' | 'misc' | 'armor';
+export type EquipmentType = 'weapon' | 'ammo' | 'misc' | 'armor' | 'structure';
 export type RangeBrackets = 'short' | 'medium' | 'long' | 'extreme';
 
 // ============================================================================
@@ -303,6 +303,10 @@ export interface MiscData {
     industrial: boolean;
 }
 
+export interface StructureData {
+    typeId: number;
+}
+
 export interface ArmorData {
     type: string;
     typeId?: number;
@@ -335,6 +339,7 @@ export interface EquipmentRawData {
     infantry?: Partial<InfantryData>;
     ammo?: Partial<AmmoData>;
     misc?: Partial<MiscData>;
+    structure?: Partial<StructureData>;
     armor?: Partial<ArmorData>;
 }
 
@@ -394,6 +399,11 @@ const STATS_DEFAULTS: Record<EquipmentType, EquipmentStats> = {
         instantModeSwitch: false, toHitModifier: 0
     },
     misc: {
+        tonnage: 0, cost: 0, bv: 0, criticalSlots: 0, tankSlots: 1, svSlots: -1,
+        hittable: true, spreadable: false, explosive: false, omniFixedOnly: false,
+        instantModeSwitch: true, toHitModifier: 0
+    },
+    structure: {
         tonnage: 0, cost: 0, bv: 0, criticalSlots: 0, tankSlots: 1, svSlots: -1,
         hittable: true, spreadable: false, explosive: false, omniFixedOnly: false,
         instantModeSwitch: true, toHitModifier: 0
@@ -659,8 +669,8 @@ export class AmmoEquipment extends Equipment {
 export class MiscEquipment extends Equipment {
     readonly misc: MiscData;
 
-    constructor(data: EquipmentRawData) {
-        super({ ...data, type: 'misc' });
+    constructor(data: EquipmentRawData, equipmentType: 'misc' | 'structure' = 'misc') {
+        super({ ...data, type: equipmentType });
         this.misc = merge(MISC_DEFAULTS, data.misc);
     }
 
@@ -668,6 +678,15 @@ export class MiscEquipment extends Equipment {
     get baseDamageAbsorptionRate(): number { return this.misc.baseDamageAbsorptionRate; }
     get baseDamageCapacity(): number { return this.misc.baseDamageCapacity; }
     get industrial(): boolean { return this.misc.industrial; }
+}
+
+export class StructureEquipment extends MiscEquipment {
+    readonly structureTypeId: number;
+
+    constructor(data: EquipmentRawData) {
+        super(data, 'structure');
+        this.structureTypeId = data.structure?.typeId ?? -1;
+    }
 }
 
 // ============================================================================
@@ -707,7 +726,8 @@ const EQUIPMENT_CONSTRUCTORS: Record<EquipmentType, new (data: EquipmentRawData)
     weapon: WeaponEquipment,
     ammo: AmmoEquipment,
     misc: MiscEquipment,
-    armor: ArmorEquipment
+    armor: ArmorEquipment,
+    structure: StructureEquipment
 };
 
 /** Creates the appropriate Equipment subclass based on type */

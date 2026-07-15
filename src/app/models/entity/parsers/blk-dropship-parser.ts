@@ -38,7 +38,7 @@ import {
 import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { DS_ARMOR_LOCS, DS_EQUIP_TAGS } from './blk-constants';
-import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkCrew, parseBlkEquipment } from './blk-base-parser';
+import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkCrew, parseBlkEquipment, resolveBlkStructure } from './blk-base-parser';
 import { ParseContext } from './parse-context';
 
 // ============================================================================
@@ -55,6 +55,7 @@ export function parseBlkDropShip(bb: BuildingBlock, ctx: ParseContext): DropShip
   // ── Base parsing ──
   parseBaseBlk(bb, entity, ctx);
   const techBase = getBlkTechBase(bb);
+  if (!bb.exists('internal_type')) resolveBlkStructure(entity, 0, ctx);
 
   // ── Movement ──
   if (bb.exists('SafeThrust'))   entity.originalWalkMP.set(bb.getFirstInt('SafeThrust'));

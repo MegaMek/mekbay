@@ -47,7 +47,6 @@ import {
   VALID_VEHICLE_MOTIVE_TYPES,
   locationArmor,
   parseMotiveType,
-  structureTypeFromCode,
 } from '../types';
 import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
@@ -60,7 +59,7 @@ import {
   VEHICLE_EQUIP_TAGS,
   VTOL_ARMOR_LOCS,
 } from './blk-constants';
-import { getBlkTechBase, parseBaseBlk, parseBlkArmor, parseBlkEngine, parseBlkEquipment } from './blk-base-parser';
+import { getBlkTechBase, parseBaseBlk, parseBlkArmor, parseBlkEngine, parseBlkEquipment, resolveBlkStructure } from './blk-base-parser';
 import { ParseContext } from './parse-context';
 
 // ============================================================================
@@ -97,6 +96,7 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
 
   // ── Base parsing ──
   parseBaseBlk(bb, entity, ctx);
+  if (!bb.exists('internal_type')) resolveBlkStructure(entity, 0, ctx);
   const techBase = getBlkTechBase(bb);
 
   // ── Motive type ──
@@ -225,13 +225,6 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
     }
 
     entity.armorValues.set(armorMap);
-  }
-
-  // ── Internal Structure type ──
-  if (bb.exists('internal_type')) {
-    const isCode = bb.getFirstInt('internal_type');
-    entity.rawInternalTypeCode.set(isCode);
-    entity.structureType.set(structureTypeFromCode(isCode));
   }
 
   // ── Gun Emplacement specifics ──

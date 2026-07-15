@@ -59,7 +59,6 @@ import {
   MekConfig,
   MekLocation,
   MekSystemType,
-  StructureType,
 } from '../../types';
 
 // ============================================================================
@@ -69,7 +68,6 @@ import {
 export interface FrankenMekLocationData {
   tonnage: number;
   structureName?: string;
-  structureType?: StructureType;
   donor?: string;
   donorType?: string;
 }
@@ -135,10 +133,10 @@ export abstract class MekEntity extends BaseEntity {
 
   /**
    * Whether this Mek has an Industrial structure type.
-   * Mirrors Java's `Mek.isIndustrial()` which checks
-   * `getStructureType() == EquipmentType.T_STRUCTURE_INDUSTRIAL`.
    */
-  isIndustrial = computed(() => this.structureType() === 'Industrial');
+  isIndustrial = computed(
+    () => this.mountedStructure()?.hasFlag('F_INDUSTRIAL_STRUCTURE')
+  );
 
   heatSinkCount = computed(() =>
     this.equipment().reduce((sum, e) => {
@@ -353,7 +351,7 @@ export abstract class MekEntity extends BaseEntity {
     return this.walkMP() * this.tonnage();
   }
 
-  protected override computeStructureValues(tonnage: number, _structureType: StructureType): Map<string, number> {
+  protected override computeStructureValues(tonnage: number): Map<string, number> {
     const values = new Map<string, number>();
     for (const loc of this.locationOrder) {
       const location = loc as MekLocation;
@@ -373,18 +371,6 @@ export abstract class MekEntity extends BaseEntity {
       tonnages.set(location, tonnage);
     }
     return tonnages;
-  }
-
-  protected override computeStructureTypes(): Map<string, StructureType> {
-    const types = new Map<string, StructureType>();
-    for (const loc of this.locationOrder) {
-      const location = loc as MekLocation;
-      const type = this.isFrankenMek()
-        ? this.frankenMekLocations().get(location)?.structureType ?? this.structureType()
-        : this.structureType();
-      types.set(location, type);
-    }
-    return types;
   }
 
   protected override computeMaxArmor(structureValues: Map<string, number>): Map<string, number> {

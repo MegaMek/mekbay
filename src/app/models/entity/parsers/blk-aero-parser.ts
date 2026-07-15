@@ -44,7 +44,7 @@ import { createMountedArmor } from '../components';
 import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { FIGHTER_EQUIP_TAGS, FWS_EQUIP_TAGS } from './blk-constants';
-import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkEquipment } from './blk-base-parser';
+import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkEquipment, resolveBlkStructure } from './blk-base-parser';
 import { ParseContext } from './parse-context';
 
 // ============================================================================
@@ -69,6 +69,7 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
 
   // ── Base parsing (identity, year, source, transporters, role, etc.) ──
   parseBaseBlk(bb, entity, ctx);
+  if (!bb.exists('internal_type')) resolveBlkStructure(entity, 0, ctx);
   const techBase = getBlkTechBase(bb);
 
   // ── Movement ──
@@ -123,12 +124,6 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
       entity.mountedArmor.set(createMountedArmor({ ...armor, techRating: 0 }));
     }
     if (bb.exists('baseChassisFireConWeight')) entity.baseChassisFireConWeight.set(bb.getFirstDouble('baseChassisFireConWeight'));
-  }
-
-  // ── Internal type (round-trip) ──
-  if (bb.exists('internal_type')) {
-    const isCode = bb.getFirstInt('internal_type');
-    entity.rawInternalTypeCode.set(isCode);
   }
 
   return entity;

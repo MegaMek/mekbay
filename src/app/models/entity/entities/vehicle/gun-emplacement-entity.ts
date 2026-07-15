@@ -32,7 +32,7 @@
  */
 
 import { signal } from '@angular/core';
-import { EntityType, StructureType, GUN_EMPLACEMENT_WEIGHT_LIMITS, WeightClass, resolveWeightClass } from '../../types';
+import { EntityType, GUN_EMPLACEMENT_WEIGHT_LIMITS, WeightClass, resolveWeightClass } from '../../types';
 import { VehicleEntity } from './vehicle-entity';
 
 /**
@@ -54,9 +54,7 @@ export class GunEmplacementEntity extends VehicleEntity {
     return new Set(['Turret']);
   }
 
-  protected override computeStructureValues(
-    _tonnage: number, _structureType: StructureType,
-  ): Map<string, number> {
+  protected override computeStructureValues(_tonnage: number): Map<string, number> {
     const values = new Map<string, number>();
     values.set('Turret', this.buildingCF());
     return values;

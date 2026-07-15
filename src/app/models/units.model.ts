@@ -244,7 +244,7 @@ export interface Unit {
     canon: boolean; // True if the unit is canon, false if is not (e.g. alt-universe or april fools units)
     role: string;
     armorType: string;
-    structureType: string;
+    structureType: string | null;
     armor: number;
     armorPer: number; // Armor %
     internal: number;

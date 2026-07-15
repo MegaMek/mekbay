@@ -42,7 +42,6 @@ import {
   TANK_LOCATIONS,
   TANK_LOCATIONS_WITH_DUAL_TURRET,
   TANK_LOCATIONS_WITH_TURRET,
-  StructureType,
   VEHICLE_WEIGHT_LIMITS,
   WeightClass,
   resolveWeightClass,
@@ -170,9 +169,7 @@ export abstract class VehicleEntity extends BaseEntity {
     return this.calculatedEngineRating();
   }
 
-  protected override computeStructureValues(
-    tonnage: number, _structureType: StructureType,
-  ): Map<string, number> {
+  protected override computeStructureValues(tonnage: number): Map<string, number> {
     // Vehicles: each location gets IS = tonnage x 0.1 (simplified)
     const values = new Map<string, number>();
     const is = Math.ceil(tonnage * 0.1);

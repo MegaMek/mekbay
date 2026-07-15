@@ -39,7 +39,6 @@ import {
   EngineType,
   HEAT_SINK_TYPE_TO_CODE,
   HeatSinkType,
-  structureTypeToCode,
 } from '../types';
 import { BuildingBlockWriter, writeSource } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
@@ -91,7 +90,10 @@ export function writeBlkMek(entity: MekEntity): string {
   w.addBlock('walkingMP', entity.originalWalkMP());
 
   // ── Structure / Gyro / Cockpit ──
-  w.addBlock('internal_type', structureTypeToCode(entity.structureType()));
+  w.addBlock(
+    'internal_type',
+    entity.mountedStructure()?.structureTypeId ?? 0,
+  );
   if (entity.gyroType() !== 'Standard') {
     w.addBlock('gyro_type', entity.mountedGyro().code);
   }

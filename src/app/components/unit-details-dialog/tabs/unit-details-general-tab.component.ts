@@ -500,7 +500,7 @@ export class UnitDetailsGeneralTabComponent {
     }
 
     /** Format structure type - removes " Structure" suffix if present */
-    formatStructureType(structureType: string | undefined): string {
+    formatStructureType(structureType: string | null | undefined): string {
         if (!structureType) return '';
         return structureType.endsWith(' Structure') ? structureType.slice(0, -10) : structureType;
     }

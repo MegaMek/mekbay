@@ -35,9 +35,8 @@
  * System Components barrel export.
  *
  * System components are the fundamental structural elements of every entity
- * (Gyro, Cockpit, Engine, Structure).  They are NOT equipment from
- * equipment2.json — the only system element from the equipment database is
- * Armor, which is handled separately via ArmorEquipment.
+ * (Gyro, Cockpit, Engine, Structure). Armor and structure definitions are
+ * resolved from the equipment database.
  */
 
 export {
@@ -67,8 +66,8 @@ export {
 } from './cockpit';
 
 export {
-  type StructureComponent,
-  getStructure,
+  getStructureByName,
+  getStructureByTypeId,
 } from './structure';
 
 export {

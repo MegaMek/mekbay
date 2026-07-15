@@ -44,7 +44,6 @@ export * from './weight';
 export * from './engine';
 export * from './heat-sink';
 export * from './armor';
-export * from './structure';
 export * from './locations';
 export * from './mek';
 export * from './motive';

@@ -31,55 +31,83 @@
  * affiliated with Microsoft.
  */
 
-import { StructureType } from '../types';
+import { EquipmentMap, StructureEquipment } from '../../equipment.model';
+import { EntityTechBase } from '../types';
 
 /**
  * Internal Structure system component.
  *
- * Structures are fundamental structural elements of every Mek, with statically
- * known properties (crit slot count, weight multiplier, etc.) initialised at
- * runtime.  They are NOT equipment from equipment2.json.
+ * Structures are fundamental structural elements of every Mek. Their canonical
+ * definitions come from StructureEquipment records in the equipment database.
  */
 
 // ============================================================================
-// Structure Component
+// Resolution
 // ============================================================================
 
-export interface StructureComponent {
-  readonly type: StructureType;
-  /** Whether this is a Clan variant (affects crit slot count) */
-  readonly isClan: boolean;
-  /** Number of critical slots that structure occupies across all locations */
-  readonly criticalSlots: number;
+interface StructureVariants {
+  readonly IS?: StructureEquipment;
+  readonly Clan?: StructureEquipment;
+  readonly All?: StructureEquipment;
 }
 
-// ============================================================================
-// Factory
-// ============================================================================
+interface StructureIndex {
+  readonly byTypeId: ReadonlyMap<number, StructureVariants>;
+  readonly byName: ReadonlyMap<string, StructureVariants>;
+}
 
-/**
- * Resolve a StructureComponent from type and clan flag.
- * Critical slot counts are derived from the structure type and tech base.
- */
-export function getStructure(type: StructureType, isClan: boolean): StructureComponent {
-  let critSlots = 0;
-  switch (type) {
-    case 'Endo Steel':
-      critSlots = isClan ? 7 : 14;
-      break;
-    case 'Endo Steel Prototype':
-      critSlots = 16;
-      break;
-    case 'Endo-Composite':
-      critSlots = isClan ? 4 : 7;
-      break;
-    case 'Composite':
-    case 'Reinforced':
-    case 'Industrial':
-    case 'Standard':
-    default:
-      critSlots = 0;
-      break;
+let structureIndexDb: EquipmentMap | null = null;
+let structureIndex: StructureIndex | null = null;
+
+function getStructureIndex(
+  equipmentDb: EquipmentMap,
+): StructureIndex {
+  if (structureIndex && structureIndexDb === equipmentDb) return structureIndex;
+
+  const byTypeId = new Map<number, StructureVariants>();
+  const byName = new Map<string, StructureVariants>();
+  for (const equipment of Object.values(equipmentDb)) {
+    if (!(equipment instanceof StructureEquipment) || equipment.structureTypeId < 0) continue;
+
+    const typeVariants = byTypeId.get(equipment.structureTypeId) ?? {};
+    byTypeId.set(equipment.structureTypeId, {
+      ...typeVariants,
+      [equipment.techBase]: equipment,
+    });
+
+    const nameKey = equipment.name.trim().toLowerCase();
+    const nameVariants = byName.get(nameKey) ?? {};
+    byName.set(nameKey, {
+      ...nameVariants,
+      [equipment.techBase]: equipment,
+    });
   }
-  return { type, isClan, criticalSlots: critSlots };
+
+  structureIndexDb = equipmentDb;
+  structureIndex = { byTypeId, byName };
+  return structureIndex;
+}
+
+function selectVariant(
+  variants: StructureVariants | undefined,
+  techBase: EntityTechBase,
+): StructureEquipment | null {
+  return variants?.[techBase] ?? variants?.All ?? null;
+}
+
+export function getStructureByTypeId(
+  typeId: number,
+  techBase: EntityTechBase,
+  equipmentDb: EquipmentMap,
+): StructureEquipment | null {
+  return selectVariant(getStructureIndex(equipmentDb).byTypeId.get(typeId), techBase);
+}
+
+export function getStructureByName(
+  name: string,
+  techBase: EntityTechBase,
+  equipmentDb: EquipmentMap,
+): StructureEquipment | null {
+  const nameKey = name.trim().toLowerCase();
+  return selectVariant(getStructureIndex(equipmentDb).byName.get(nameKey), techBase);
 }
