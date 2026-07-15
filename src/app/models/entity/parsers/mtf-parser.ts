@@ -177,6 +177,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   const entity = createMekEntity(header.config);
 
   // ── Identity & tech ──
+  if (header.uuid) entity.uuid.set(header.uuid);
   entity.chassis.set(header.chassis);
   entity.model.set(header.model);
   entity.mulId.set(header.mulId);
