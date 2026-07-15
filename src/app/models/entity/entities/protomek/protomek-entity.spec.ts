@@ -18,6 +18,27 @@ describe('ProtoMekEntity jumpMP', () => {
   });
 });
 
+describe('ProtoMekEntity intrinsic weapons', () => {
+  it('exposes frenzy damage from chassis and melee equipment', () => {
+    const entity = new ProtoMekEntity();
+    entity.setTonnage(10);
+
+    expect(entity.intrinsicWeapons()[0].damage).toEqual({
+      kind: 'physical-fixed', primary: { damage: 3 },
+    });
+
+    entity.equipment.set([mountWithFlags(['F_PROTOMEK_MELEE'])]);
+    expect(entity.intrinsicWeapons()[0].damage).toEqual({
+      kind: 'physical-fixed', primary: { damage: 5 },
+    });
+
+    entity.equipment.set([mountWithFlags(['F_PROTOMEK_MELEE', 'S_PROTO_QMS'])]);
+    expect(entity.intrinsicWeapons()[0].damage).toEqual({
+      kind: 'physical-fixed', primary: { damage: 7 },
+    });
+  });
+});
+
 describe('ProtoMekEntity runMP', () => {
   it('doubles walk MP when a myomer booster is mounted', () => {
     const entity = new ProtoMekEntity();
@@ -31,10 +52,15 @@ describe('ProtoMekEntity runMP', () => {
 });
 
 function mountWithFlag(flag: string): EntityMountedEquipment {
+  return mountWithFlags([flag]);
+}
+
+function mountWithFlags(flags: readonly string[]): EntityMountedEquipment {
+  const flagSet = new Set(flags);
   return new EntityMountedEquipment({
-    mountId: flag,
-    equipmentId: flag,
-    equipment: { hasFlag: (candidate: string) => candidate === flag } as Equipment,
+    mountId: flags.join(':'),
+    equipmentId: flags.join(':'),
+    equipment: { hasFlag: (candidate: string) => flagSet.has(candidate) } as Equipment,
     location: 'Torso',
     rearMounted: false,
     turretMounted: false,

@@ -51,6 +51,7 @@ export * from './motive';
 export * from './vehicle';
 export * from './infantry';
 export * from './equipment';
+export * from './weapon';
 export * from './transport';
 export * from './common';
 export * from './validation-sets';

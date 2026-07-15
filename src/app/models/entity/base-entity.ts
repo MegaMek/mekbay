@@ -51,6 +51,8 @@ import {
   EntityFluff,
   EntityMountedEquipment,
   EntityMountedEquipmentInit,
+  EntityMountedWeapon,
+  EntityWeaponCapability,
   EntityQuirk,
   EntityTechBase,
   EntityTransporter,
@@ -58,7 +60,9 @@ import {
   EntityValidationMessage,
   EntityValidationResult,
   EntityWeaponQuirk,
+  IntrinsicWeapon,
   isTechAvailableForBase,
+  isEntityMountedWeapon,
   LocationArmor,
   locationArmor,
   MountPlacement,
@@ -262,6 +266,33 @@ export abstract class BaseEntity {
 
   // ── Equipment - SINGLE SOURCE OF TRUTH ──
   equipment = signal<EntityMountedEquipment[]>([]);
+  readonly mountedWeapons = computed<readonly EntityMountedWeapon[]>(() =>
+    this.equipment().filter(isEntityMountedWeapon)
+  );
+  readonly intrinsicWeapons = computed<readonly IntrinsicWeapon[]>(() =>
+    this.computeIntrinsicWeapons()
+  );
+  readonly weapons = computed<readonly EntityWeaponCapability[]>(() => [
+    ...this.mountedWeapons().map(mount => {
+      const characteristics = mount.equipment.characteristics;
+      return {
+        source: 'mounted' as const,
+        id: mount.mountId,
+        name: characteristics.name,
+        locations: mount.getOccupiedLocations(),
+        category: characteristics.category,
+        heat: characteristics.heat,
+        damage: characteristics.damage,
+        hitModifiers: characteristics.hitModifiers,
+        minimumRange: characteristics.minimumRange,
+        ranges: characteristics.ranges,
+        oneShotCount: characteristics.oneShotCount,
+        optional: false,
+        mount,
+      };
+    }),
+    ...this.intrinsicWeapons(),
+  ]);
 
   // ── Transporters / Bays ──
   transporters = signal<EntityTransporter[]>([]);
@@ -602,6 +633,10 @@ export abstract class BaseEntity {
 
   protected abstract computeMaxArmor(structureValues: Map<string, number>): Map<string, number>;
   protected abstract computeExpectedEngineRating(): number | null;
+
+  protected computeIntrinsicWeapons(): readonly IntrinsicWeapon[] {
+    return [];
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  METHODS - immutable equipment management

@@ -31,7 +31,12 @@
  * affiliated with Microsoft.
  */
 
-import { Equipment } from '../../equipment.model';
+import {
+  AmmoEquipment,
+  Equipment,
+  type WeaponCharacteristics,
+  WeaponEquipment,
+} from '../../equipment.model';
 import type { BaseEntity } from '../base-entity';
 import { getEquipmentBV } from '../utils/equipment-bv';
 import { getEquipmentCost } from '../utils/equipment-cost';
@@ -49,6 +54,10 @@ import { getEquipmentTonnage } from '../utils/equipment-tonnage';
 export interface MountPlacement {
   readonly location: string;
   readonly slotIndex: number;
+}
+
+export interface MountedWeaponCharacteristics extends WeaponCharacteristics {
+  readonly criticalSlots: number | 'variable' | undefined;
 }
 
 // ============================================================================
@@ -119,7 +128,7 @@ export interface EntityMountedEquipmentInit {
   isAPM?: boolean;
 
   /** Ammo: shot count */
-  shotsLeft?: number;
+  shotsCount?: number;
 
   /** Weapon bay members (large craft) */
   bayWeapons?: number[];
@@ -154,7 +163,7 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
   isDWP?: boolean;
   isSSWM?: boolean;
   isAPM?: boolean;
-  shotsLeft?: number;
+  shotsCount?: number;
   bayWeapons?: number[];
   bayAmmo?: number[];
   isNewBay?: boolean;
@@ -180,6 +189,29 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
     return new EntityMountedEquipment({ ...this, ...overrides });
   }
 
+  getOccupiedLocations(): readonly string[] {
+    return [...new Set(this.placements?.map(placement => placement.location) ?? [this.location])];
+  }
+
+  getCriticalSlotRequirement(entity: BaseEntity): number | 'variable' | undefined {
+    if (!this.equipment) return undefined;
+    if (this.equipment.critSlots === 'variable') return 'variable';
+    return this.equipment.getNumCriticalSlots(entity, this.size ?? 1);
+  }
+
+  getAmmoShots(): number | undefined {
+    if (!(this.equipment instanceof AmmoEquipment)) return undefined;
+    return this.shotsCount ?? this.equipment.shots;
+  }
+
+  getWeaponCharacteristics(entity: BaseEntity): MountedWeaponCharacteristics | undefined {
+    if (!(this.equipment instanceof WeaponEquipment)) return undefined;
+    return {
+      ...this.equipment.characteristics,
+      criticalSlots: this.getCriticalSlotRequirement(entity),
+    };
+  }
+
   getBV(entity: BaseEntity): number {
     return getEquipmentBV(entity, this);
   }
@@ -191,4 +223,10 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
   getCost(entity: BaseEntity): number | undefined {
     return getEquipmentCost(entity, this);
   }
+}
+
+export type EntityMountedWeapon = EntityMountedEquipment & { readonly equipment: WeaponEquipment };
+
+export function isEntityMountedWeapon(mount: EntityMountedEquipment): mount is EntityMountedWeapon {
+  return mount.equipment instanceof WeaponEquipment;
 }

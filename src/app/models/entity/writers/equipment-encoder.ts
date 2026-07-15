@@ -103,8 +103,8 @@ export function encodeEquipmentLine(mount: EntityMountedEquipment, options?: Enc
   }
 
   // Shot count (for BA/handheld ammo) or variable-size equipment (mutually exclusive)
-  if (mount.shotsLeft !== undefined) {
-    name += `:Shots${mount.shotsLeft}#`;
+  if (mount.shotsCount !== undefined) {
+    name += `:Shots${mount.shotsCount}#`;
   } else if (mount.size !== undefined) {
     const sizeVal = Number.isInteger(mount.size) ? mount.size.toFixed(1) : String(mount.size);
     name += `:SIZE:${sizeVal}`;

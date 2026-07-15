@@ -87,7 +87,7 @@ export function parseBlkHandheld(bb: BuildingBlock, ctx: ParseContext): Handheld
         omniPodMounted: false,
         armored: false,
         size: parsed.size,
-        shotsLeft: parsed.shots,
+        shotsCount: parsed.shots,
       });
     }
   }

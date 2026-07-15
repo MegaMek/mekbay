@@ -210,7 +210,7 @@ function parseLocationEquipment(
       isDWP: parsed.isDWP,
       isSSWM: parsed.isSSWM,
       isAPM: parsed.isAPM,
-      shotsLeft: parsed.shots,
+      shotsCount: parsed.shots,
     });
   }
 }

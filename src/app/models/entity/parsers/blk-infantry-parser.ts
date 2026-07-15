@@ -192,7 +192,7 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
         omniPodMounted: false,
         armored: false,
         size: parsed.size,
-        shotsLeft: parsed.shots,
+        shotsCount: parsed.shots,
       });
     }
   }
@@ -217,7 +217,7 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
         omniPodMounted: false,
         armored: false,
         size: parsed.size,
-        shotsLeft: parsed.shots,
+        shotsCount: parsed.shots,
       });
     }
   }

@@ -1,3 +1,4 @@
+import { MiscEquipment } from '../../equipment.model';
 import type { BaseEntity } from '../base-entity';
 import { VehicleEntity } from '../entities/vehicle/vehicle-entity';
 import type { EntityMountedEquipment } from '../types/equipment';
@@ -55,7 +56,7 @@ function sumEquipmentTonnage(
         const equipment = mount.equipment;
         if (!equipment || !predicate(mount)) continue;
         if (equipment.type === 'ammo' || equipment.type === 'armor') continue;
-        if (equipment.type === 'misc' && equipment.hasFlag('F_HEAT_SINK')) continue;
+        if (equipment instanceof MiscEquipment && equipment.isHeatSink) continue;
 
         const mountTonnage = mount.getTonnage(entity);
         if (mountTonnage === undefined) return undefined;

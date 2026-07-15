@@ -36,6 +36,7 @@ import { BaseEntity, MovementCalculationOptions } from '../../base-entity';
 import {
   EntityType,
   EntityValidationMessage,
+  IntrinsicWeapon,
   MotiveType,
   PROTO_LOCATIONS,
   PROTO_LOCATIONS_WITH_MAIN_GUN,
@@ -94,6 +95,36 @@ export class ProtoMekEntity extends BaseEntity {
     if (rating > 40) rating = Math.ceil(rating / 5) * 5;
     return rating;
   });
+
+  protected override computeIntrinsicWeapons(): readonly IntrinsicWeapon[] {
+    const tonnage = this.tonnage();
+    let damage = tonnage <= 5 ? 1 : tonnage <= 9 ? 2 : 3;
+    if (this.isGlider()) damage = Math.max(1, damage - 1);
+
+    const meleeEquipment = this.equipment()
+      .filter(mount => mount.equipment?.hasFlag('F_PROTOMEK_MELEE'))
+      .map(mount => mount.equipment);
+    if (meleeEquipment.some(equipment => equipment?.hasFlag('S_PROTO_QMS'))) {
+      damage += 2 * Math.ceil(tonnage / 5);
+    } else if (meleeEquipment.length > 0) {
+      damage += Math.ceil(tonnage / 5);
+    }
+
+    return [{
+      source: 'intrinsic',
+      id: 'intrinsic:frenzy',
+      kind: 'frenzy',
+      name: 'Frenzy',
+      locations: [],
+      category: 'physical',
+      heat: 0,
+      damage: { kind: 'physical-fixed', primary: { damage } },
+      hitModifiers: ['variable'],
+      minimumRange: 0,
+      ranges: [],
+      optional: false,
+    }];
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  LOCATION OVERRIDES
