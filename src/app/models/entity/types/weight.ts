@@ -35,165 +35,164 @@
 // Weight Class
 // ============================================================================
 
-/**
- * Weight-class categories for all entity types.
- *
- * Mirrors Java's `EntityWeightClass` constants as self-documenting strings.
- * Use {@link weightClassOrdinal} when numeric comparison is needed.
- */
-export type WeightClass =
-  // Generic (Mek, Vehicle, BA, ProtoMek, Aero, Infantry, GunEmplacement)
-  | 'Ultra Light'       // Java ordinal 0
-  | 'Light'             // 1
-  | 'Medium'            // 2
-  | 'Heavy'             // 3
-  | 'Assault'           // 4
-  | 'Super Heavy'       // 5
-  // Small Craft
-  | 'Small Craft'       // 6
-  // DropShip
-  | 'Small DropShip'    // 7
-  | 'Medium DropShip'   // 8
-  | 'Large DropShip'    // 9
-  // Capital ships (JumpShip, WarShip, SpaceStation)
-  | 'Small Capital'     // 10
-  | 'Large Capital'     // 11
-  // Support vehicles
-  | 'Small Support'     // 12
-  | 'Medium Support'    // 13
-  | 'Large Support';    // 14
+import type { MotiveType } from './motive';
 
-// ── Ordinal map (mirrors Java EntityWeightClass int constants) ────────────
+/** Weight-class codes in the order defined by Java's `EntityWeightClass`. */
+export const WEIGHT_CLASSES = [
+  'Ultra Light',
+  'Light',
+  'Medium',
+  'Heavy',
+  'Assault',
+  'Super Heavy',
+  'Small Craft',
+  'Small DropShip',
+  'Medium DropShip',
+  'Large DropShip',
+  'Small Capital',
+  'Large Capital',
+  'Small Support',
+  'Medium Support',
+  'Large Support',
+] as const;
 
-const WEIGHT_CLASS_ORDINAL: Readonly<Record<WeightClass, number>> = {
-  'Ultra Light': 0,
-  'Light': 1,
-  'Medium': 2,
-  'Heavy': 3,
-  'Assault': 4,
-  'Super Heavy': 5,
-  'Small Craft': 6,
-  'Small DropShip': 7,
-  'Medium DropShip': 8,
-  'Large DropShip': 9,
-  'Small Capital': 10,
-  'Large Capital': 11,
-  'Small Support': 12,
-  'Medium Support': 13,
-  'Large Support': 14,
-};
+export type WeightClass = typeof WEIGHT_CLASSES[number];
 
-/** Get the ordinal value for a weight class (matches Java int constants). */
-export function weightClassOrdinal(wc: WeightClass): number {
-  return WEIGHT_CLASS_ORDINAL[wc];
-}
-
-/** Returns `true` if `wc` is at least as heavy as `threshold`. */
-export function weightClassAtLeast(wc: WeightClass, threshold: WeightClass): boolean {
-  return WEIGHT_CLASS_ORDINAL[wc] >= WEIGHT_CLASS_ORDINAL[threshold];
-}
-
-/** Returns `true` if `wc` is strictly lighter than `threshold`. */
-export function weightClassBelow(wc: WeightClass, threshold: WeightClass): boolean {
-  return WEIGHT_CLASS_ORDINAL[wc] < WEIGHT_CLASS_ORDINAL[threshold];
+/** Get the numeric BLK/Java code for a weight class. */
+export function weightClassCode(weightClass: WeightClass): number {
+  return WEIGHT_CLASSES.indexOf(weightClass);
 }
 
 // ── Weight-class resolution tables ──────────────────────────────────────
 
-/** Tonnage upper limit → weight class.  Checked in order; first match wins. */
-export type WeightClassLimit = readonly [number, WeightClass];
-
-/** Resolve tonnage to a weight class using a limit table. */
-export function resolveWeightClass(
-  tonnage: number,
-  limits: readonly WeightClassLimit[],
-): WeightClass {
-  for (const [limit, wc] of limits) {
-    if (tonnage <= limit) return wc;
-  }
-  return limits[limits.length - 1][1];
+/** An inclusive tonnage upper bound and its resulting weight class. */
+export interface WeightBand<T extends WeightClass = WeightClass> {
+  readonly maxInclusive: number;
+  readonly weightClass: T;
 }
 
-export const MEK_WEIGHT_LIMITS: readonly WeightClassLimit[] = [
-  [15,  'Ultra Light'],
-  [35,  'Light'],
-  [55,  'Medium'],
-  [75,  'Heavy'],
-  [100, 'Assault'],
-  [135, 'Super Heavy'],
-];
+/** Ordered weight bands with an explicit class for values beyond every band. */
+export interface WeightClassTable<T extends WeightClass = WeightClass> {
+  readonly bands: readonly WeightBand<T>[];
+  readonly fallback: T;
+}
 
-export const VEHICLE_WEIGHT_LIMITS: readonly WeightClassLimit[] = [
-  [39,  'Light'],
-  [59,  'Medium'],
-  [79,  'Heavy'],
-  [100, 'Assault'],
-  [300, 'Super Heavy'],
-];
+/** Resolve tonnage using the first matching band. */
+export function resolveWeightClass<T extends WeightClass>(
+  tonnage: number,
+  table: WeightClassTable<T>,
+): T {
+  for (const band of table.bands) {
+    if (tonnage <= band.maxInclusive) return band.weightClass;
+  }
+  return table.fallback;
+}
 
-export const GUN_EMPLACEMENT_WEIGHT_LIMITS: readonly WeightClassLimit[] = [
-  [15,  'Light'],
-  [40,  'Medium'],
-  [90,  'Heavy'],
-  [150, 'Assault'],
-];
+export const MEK_WEIGHT_LIMITS = {
+  bands: [
+    { maxInclusive: 15, weightClass: 'Ultra Light' },
+    { maxInclusive: 35, weightClass: 'Light' },
+    { maxInclusive: 55, weightClass: 'Medium' },
+    { maxInclusive: 75, weightClass: 'Heavy' },
+    { maxInclusive: 100, weightClass: 'Assault' },
+  ],
+  fallback: 'Super Heavy',
+} as const satisfies WeightClassTable;
 
-export const ASF_WEIGHT_LIMITS: readonly WeightClassLimit[] = [
-  [45,  'Light'],
-  [70,  'Medium'],
-  [100, 'Heavy'],
-];
+export const VEHICLE_WEIGHT_LIMITS = {
+  bands: [
+    { maxInclusive: 39, weightClass: 'Light' },
+    { maxInclusive: 59, weightClass: 'Medium' },
+    { maxInclusive: 79, weightClass: 'Heavy' },
+    { maxInclusive: 100, weightClass: 'Assault' },
+  ],
+  fallback: 'Super Heavy',
+} as const satisfies WeightClassTable;
 
-export const DROPSHIP_WEIGHT_LIMITS: readonly WeightClassLimit[] = [
-  [2499,   'Small DropShip'],
-  [9999,   'Medium DropShip'],
-  [100000, 'Large DropShip'],
-];
+export const GUN_EMPLACEMENT_WEIGHT_LIMITS = {
+  bands: [
+    { maxInclusive: 15, weightClass: 'Light' },
+    { maxInclusive: 40, weightClass: 'Medium' },
+    { maxInclusive: 90, weightClass: 'Heavy' },
+  ],
+  fallback: 'Assault',
+} as const satisfies WeightClassTable;
 
-export const CAPITAL_SHIP_WEIGHT_LIMITS: readonly WeightClassLimit[] = [
-  [749999,  'Small Capital'],
-  [2500000, 'Large Capital'],
-];
+export const ASF_WEIGHT_LIMITS = {
+  bands: [
+    { maxInclusive: 45, weightClass: 'Light' },
+    { maxInclusive: 70, weightClass: 'Medium' },
+  ],
+  fallback: 'Heavy',
+} as const satisfies WeightClassTable;
 
-export const PROTOMEK_WEIGHT_LIMITS: readonly WeightClassLimit[] = [
-  [3,  'Light'],
-  [5,  'Medium'],
-  [7,  'Heavy'],
-  [9,  'Assault'],
-  [10, 'Super Heavy'],
-];
+export const DROPSHIP_WEIGHT_LIMITS = {
+  bands: [
+    { maxInclusive: 2499, weightClass: 'Small DropShip' },
+    { maxInclusive: 9999, weightClass: 'Medium DropShip' },
+  ],
+  fallback: 'Large DropShip',
+} as const satisfies WeightClassTable;
 
-export const BA_WEIGHT_LIMITS: readonly WeightClassLimit[] = [
-  [0.4,  'Ultra Light'],
-  [0.75, 'Light'],
-  [1,    'Medium'],
-  [1.5,  'Heavy'],
-  [2,    'Assault'],
-];
+export const CAPITAL_SHIP_WEIGHT_LIMITS = {
+  bands: [
+    { maxInclusive: 749999, weightClass: 'Small Capital' },
+  ],
+  fallback: 'Large Capital',
+} as const satisfies WeightClassTable;
+
+export const PROTOMEK_WEIGHT_LIMITS = {
+  bands: [
+    { maxInclusive: 3, weightClass: 'Light' },
+    { maxInclusive: 5, weightClass: 'Medium' },
+    { maxInclusive: 7, weightClass: 'Heavy' },
+    { maxInclusive: 9, weightClass: 'Assault' },
+  ],
+  fallback: 'Super Heavy',
+} as const satisfies WeightClassTable;
 
 // ── Support vehicle limits by motive type ────────────────────────────────
 
-const LESS_THAN_5 = 5 - Number.EPSILON;
+const SUPPORT_MEDIUM_WEIGHT_LIMITS: Partial<Readonly<Record<MotiveType, number>>> = {
+  'Wheeled': 80,
+  'Tracked': 100,
+  'Hover': 50,
+  'VTOL': 30,
+  'WiGE': 80,
+  'Naval': 300,
+  'Hydrofoil': 300,
+  'Submarine': 300,
+  'Rail': 300,
+  'MagLev': 300,
+  'Aerodyne': 100,
+  'Airship': 300,
+  'Station Keeping': 100,
+} as const;
 
-export const SUPPORT_VEHICLE_WEIGHT_LIMITS: Readonly<Record<string, readonly WeightClassLimit[]>> = {
-  'Wheeled':         [[LESS_THAN_5, 'Small Support'], [80,     'Medium Support'], [160,    'Large Support']],
-  'Tracked':         [[LESS_THAN_5, 'Small Support'], [100,    'Medium Support'], [200,    'Large Support']],
-  'Hover':           [[LESS_THAN_5, 'Small Support'], [50,     'Medium Support'], [100,    'Large Support']],
-  'VTOL':            [[LESS_THAN_5, 'Small Support'], [30,     'Medium Support'], [60,     'Large Support']],
-  'WiGE':            [[LESS_THAN_5, 'Small Support'], [80,     'Medium Support'], [160,    'Large Support']],
-  'Naval':           [[LESS_THAN_5, 'Small Support'], [300,    'Medium Support'], [100000, 'Large Support']],
-  'Hydrofoil':       [[LESS_THAN_5, 'Small Support'], [300,    'Medium Support'], [100000, 'Large Support']],
-  'Submarine':       [[LESS_THAN_5, 'Small Support'], [300,    'Medium Support'], [100000, 'Large Support']],
-  'Rail':            [[LESS_THAN_5, 'Small Support'], [300,    'Medium Support'], [600,    'Large Support']],
-  'MagLev':          [[LESS_THAN_5, 'Small Support'], [300,    'Medium Support'], [600,    'Large Support']],
-  'Aerodyne':        [[LESS_THAN_5, 'Small Support'], [100,    'Medium Support'], [200,    'Large Support']],
-  'Airship':         [[LESS_THAN_5, 'Small Support'], [300,    'Medium Support'], [1000,   'Large Support']],
-  'Station Keeping': [[LESS_THAN_5, 'Small Support'], [100,    'Medium Support'], [300,    'Large Support']],
-};
+/** Resolve support-vehicle classes, whose small class has an exclusive 5-ton limit. */
+export function resolveSupportVehicleWeightClass(
+  tonnage: number,
+  motiveType: MotiveType,
+): WeightClass {
+  const mediumLimit = SUPPORT_MEDIUM_WEIGHT_LIMITS[motiveType];
+  if (mediumLimit === undefined) return 'Medium Support';
+  if (tonnage < 5) return 'Small Support';
+  if (tonnage <= mediumLimit) return 'Medium Support';
+  return 'Large Support';
+}
 
 // ── BA BLK numeric code ↔ WeightClass mapping ───────────────────────────
 
-/** Maps BA BLK numeric codes (0–4) to WeightClass values. */
-export const BA_WEIGHT_CLASS_BY_CODE: readonly WeightClass[] = [
-  'Ultra Light', 'Light', 'Medium', 'Heavy', 'Assault',
-];
+export type BattleArmorWeightClass = Extract<
+  WeightClass,
+  'Ultra Light' | 'Light' | 'Medium' | 'Heavy' | 'Assault'
+>;
+
+/** Maps BA BLK numeric codes (0-4) to weight classes. */
+export const BA_WEIGHT_CLASS_BY_CODE = [
+  'Ultra Light',
+  'Light',
+  'Medium',
+  'Heavy',
+  'Assault',
+] as const satisfies readonly BattleArmorWeightClass[];

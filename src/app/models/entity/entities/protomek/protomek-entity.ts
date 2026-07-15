@@ -125,19 +125,39 @@ export class ProtoMekEntity extends BaseEntity {
     return this.calculatedEngineRating();
   }
 
-  /**
-   * ProtoMek internal structure table (simplified):
-   * Head=1 for all, Torso/Legs scale with tonnage, Arms=1-2, Main Gun=1.
-   */
   protected override computeStructureValues(tonnage: number): Map<string, number> {
+    const weight = Math.trunc(tonnage);
+    const head = weight <= 5 ? 1 : weight <= 9 ? 2 : weight <= 13 ? 3 : 4;
+    const leg = this.computeLegStructure(weight);
     const values = new Map<string, number>();
-    values.set('Head', 1 + Math.floor(tonnage / 5));
-    values.set('Torso', 2 + Math.floor(tonnage / 3));
-    values.set('Left Arm', 1 + Math.floor(tonnage / 7));
-    values.set('Right Arm', 1 + Math.floor(tonnage / 7));
-    values.set('Legs', 2 + Math.floor(tonnage / 4));
-    if (tonnage > 9) values.set('Main Gun', 1);
+    values.set('Head', head);
+    values.set('Torso', weight);
+    if (!this.isQuad()) {
+      values.set('Left Arm', head);
+      values.set('Right Arm', head);
+    }
+    values.set('Legs', leg);
+    if (this.hasMainGun()) values.set('Main Gun', weight > 9 ? 2 : 1);
     return values;
+  }
+
+  private computeLegStructure(weight: number): number {
+    if (this.isQuad()) {
+      if (weight <= 3) return 4;
+      if (weight <= 5) return 5;
+      if (weight <= 7) return 8;
+      if (weight <= 9) return 9;
+      if (weight <= 11) return 12;
+      if (weight <= 13) return 13;
+      return 14;
+    }
+    if (weight <= 3) return 2;
+    if (weight <= 5) return 3;
+    if (weight <= 7) return 4;
+    if (weight <= 9) return 5;
+    if (weight <= 11) return 6;
+    if (weight <= 13) return 7;
+    return 8;
   }
 
   protected override computeMaxArmor(

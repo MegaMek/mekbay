@@ -458,6 +458,16 @@ export abstract class BaseEntity {
     this.computeStructureValues(this.tonnage())
   );
 
+  totalInternalPoints = computed(() => this.computeTotalInternalPoints());
+
+  protected computeTotalInternalPoints(): number {
+    let total = 0;
+    for (const value of this.structureValues().values()) {
+      if (value > 0) total += value;
+    }
+    return total;
+  }
+
   maxArmorValues = computed<Map<string, number>>(() =>
     this.computeMaxArmor(this.structureValues())
   );

@@ -1,6 +1,8 @@
 import { Equipment } from '../../../equipment.model';
 import { EntityMountedEquipment } from '../../types';
+import { LargeSupportTankEntity } from './large-support-tank-entity';
 import { SupportTankEntity } from './support-tank-entity';
+import { TankEntity } from './tank-entity';
 
 describe('VehicleEntity movement', () => {
   it('applies hydrofoil, modular armor, and dune buggy modifiers', () => {
@@ -18,6 +20,26 @@ describe('VehicleEntity movement', () => {
 
     entity.equipment.set([mountWithFlag('F_DUNE_BUGGY')]);
     expect(entity.walkMP()).toBe(5);
+  });
+
+  it('uses six hull locations for large support tanks', () => {
+    const entity = new LargeSupportTankEntity();
+    entity.setTonnage(120);
+
+    expect(entity.locationOrder).toEqual([
+      'Front', 'Front Right', 'Front Left', 'Rear Right', 'Rear Left', 'Rear',
+    ]);
+    expect(entity.totalInternalPoints()).toBe(72);
+  });
+
+  it('uses expanded locations for ordinary superheavy tanks', () => {
+    const entity = new TankEntity();
+    entity.motiveType.set('Tracked');
+    entity.setTonnage(140);
+    entity.hasTurret.set(true);
+
+    expect(entity.locationOrder.length).toBe(7);
+    expect(entity.totalInternalPoints()).toBe(98);
   });
 });
 

@@ -175,6 +175,10 @@ export class BattleArmorEntity extends InfantryBaseEntity {
     return values;
   }
 
+  protected override computeTotalInternalPoints(): number {
+    return this.trooperCount();
+  }
+
   protected override computeMaxArmor(
     _structureValues: Map<string, number>,
   ): Map<string, number> {

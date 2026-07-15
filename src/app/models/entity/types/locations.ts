@@ -86,10 +86,13 @@ export const TANK_LOCATIONS_WITH_DUAL_TURRET = [...TANK_LOCATIONS, 'Front Turret
 export const VTOL_LOCATIONS_WITH_TURRET = ['Front', 'Right', 'Left', 'Rear', 'Turret', 'Rotor'] as const;
 export const LARGE_SUPPORT_TANK_LOCATIONS = [
   'Front', 'Front Right', 'Front Left',
-  'Right', 'Left',
-  'Rear', 'Rear Right', 'Rear Left',
+  'Rear Right', 'Rear Left', 'Rear',
 ] as const;
 export const LARGE_SUPPORT_TANK_LOCATIONS_WITH_TURRET = [...LARGE_SUPPORT_TANK_LOCATIONS, 'Turret'] as const;
+export const LARGE_SUPPORT_TANK_LOCATIONS_WITH_DUAL_TURRET = [
+  ...LARGE_SUPPORT_TANK_LOCATIONS,
+  'Rear Turret', 'Front Turret',
+] as const;
 
 export const BA_LOCATIONS = ['Squad'] as const;
 export const PROTO_LOCATIONS = ['Head', 'Torso', 'Right Arm', 'Left Arm', 'Legs'] as const;

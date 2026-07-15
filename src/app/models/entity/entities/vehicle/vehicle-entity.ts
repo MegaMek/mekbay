@@ -37,6 +37,9 @@ import {
   EngineFlag,
   EngineType,
   EntityValidationMessage,
+  LARGE_SUPPORT_TANK_LOCATIONS,
+  LARGE_SUPPORT_TANK_LOCATIONS_WITH_DUAL_TURRET,
+  LARGE_SUPPORT_TANK_LOCATIONS_WITH_TURRET,
   MotiveType,
   SUSPENSION_FACTOR_TABLE,
   TANK_LOCATIONS,
@@ -182,6 +185,11 @@ export abstract class VehicleEntity extends BaseEntity {
   // ═══════════════════════════════════════════════════════════════════════════
 
   get locationOrder(): readonly string[] {
+    if (this.isSuperHeavy()) {
+      if (this.hasDualTurret()) return LARGE_SUPPORT_TANK_LOCATIONS_WITH_DUAL_TURRET;
+      if (this.hasTurret()) return LARGE_SUPPORT_TANK_LOCATIONS_WITH_TURRET;
+      return LARGE_SUPPORT_TANK_LOCATIONS;
+    }
     if (this.hasDualTurret()) {
       return TANK_LOCATIONS_WITH_DUAL_TURRET;
     }

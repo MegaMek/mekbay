@@ -55,6 +55,10 @@ export class FixedWingSupportEntity extends AeroEntity implements SupportVehicle
     return this.supportVehicle.resolveWeightClass(this.tonnage(), 'Aerodyne');
   }
 
+  override autoSetStructuralIntegrity(): void {
+    this.structuralIntegrity.set(this.originalWalkMP());
+  }
+
   get locationOrder(): readonly string[] {
     return AERO_LOCATIONS;
   }

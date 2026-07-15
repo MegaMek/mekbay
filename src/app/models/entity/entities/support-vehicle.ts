@@ -1,5 +1,5 @@
 import { signal, type WritableSignal } from '@angular/core';
-import { SUPPORT_VEHICLE_WEIGHT_LIMITS, type MotiveType, type WeightClass, resolveWeightClass } from '../types';
+import { type MotiveType, type WeightClass, resolveSupportVehicleWeightClass } from '../types';
 
 export class SupportVehicleData {
   readonly barRating: WritableSignal<number>;
@@ -11,8 +11,7 @@ export class SupportVehicleData {
   }
 
   resolveWeightClass(tonnage: number, motiveType: MotiveType): WeightClass {
-    const limits = SUPPORT_VEHICLE_WEIGHT_LIMITS[motiveType] ?? SUPPORT_VEHICLE_WEIGHT_LIMITS['Tracked'];
-    return resolveWeightClass(tonnage, limits);
+    return resolveSupportVehicleWeightClass(tonnage, motiveType);
   }
 }
 

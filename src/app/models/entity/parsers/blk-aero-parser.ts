@@ -94,6 +94,8 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
   // ── Structural integrity ──
   if (bb.exists('structural_integrity')) {
     entity.structuralIntegrity.set(bb.getFirstInt('structural_integrity'));
+  } else {
+    entity.autoSetStructuralIntegrity();
   }
 
   // ── Armor ──

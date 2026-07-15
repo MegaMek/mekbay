@@ -34,6 +34,7 @@
 import {
   EntityType,
   LARGE_SUPPORT_TANK_LOCATIONS,
+  LARGE_SUPPORT_TANK_LOCATIONS_WITH_DUAL_TURRET,
   LARGE_SUPPORT_TANK_LOCATIONS_WITH_TURRET,
 } from '../../types';
 import { SupportTankEntity } from './support-tank-entity';
@@ -54,8 +55,8 @@ export class LargeSupportTankEntity extends SupportTankEntity {
   }
 
   override get locationOrder(): readonly string[] {
-    return this.hasTurret()
-      ? LARGE_SUPPORT_TANK_LOCATIONS_WITH_TURRET
-      : LARGE_SUPPORT_TANK_LOCATIONS;
+    if (this.hasDualTurret()) return LARGE_SUPPORT_TANK_LOCATIONS_WITH_DUAL_TURRET;
+    if (this.hasTurret()) return LARGE_SUPPORT_TANK_LOCATIONS_WITH_TURRET;
+    return LARGE_SUPPORT_TANK_LOCATIONS;
   }
 }

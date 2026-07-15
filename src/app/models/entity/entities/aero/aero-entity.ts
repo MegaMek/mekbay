@@ -90,6 +90,13 @@ export abstract class AeroEntity extends BaseEntity {
 
   maxThrust = computed(() => Math.ceil(this.walkMP() * 1.5));
 
+  autoSetStructuralIntegrity(): void {
+    this.structuralIntegrity.set(Math.max(
+      Math.floor(this.tonnage() / 10),
+      this.originalWalkMP(),
+    ));
+  }
+
   protected override computeWeightClass(): WeightClass {
     return resolveWeightClass(this.tonnage(), ASF_WEIGHT_LIMITS);
   }
@@ -123,6 +130,10 @@ export abstract class AeroEntity extends BaseEntity {
       values.set(loc, si);
     }
     return values;
+  }
+
+  protected override computeTotalInternalPoints(): number {
+    return this.structuralIntegrity();
   }
 
   protected override computeMaxArmor(
