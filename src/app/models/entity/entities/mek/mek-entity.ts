@@ -157,7 +157,7 @@ export abstract class MekEntity extends BaseEntity {
     }, 0)
   );
 
-  protected override computeWalkMP(options: MovementCalculationOptions): number {
+  override computeWalkMP(options: MovementCalculationOptions): number {
     const equipment = this.equipment();
     const shieldPenalty = this.chassisConfig === 'Quad' || this.chassisConfig === 'QuadVee'
       ? 0
@@ -180,7 +180,7 @@ export abstract class MekEntity extends BaseEntity {
     );
   }
 
-  protected override computeRunMP(options: MovementCalculationOptions): number {
+  override computeRunMP(options: MovementCalculationOptions): number {
     const walkMP = this.computeWalkMP(options);
     const installedBoosterCount = this.equipment().filter(
       mount => mount.equipment?.hasFlag('F_MASC'),
@@ -194,7 +194,7 @@ export abstract class MekEntity extends BaseEntity {
     return this.hasMPReducingHardenedArmor() ? Math.max(0, runMP - 1) : runMP;
   }
 
-  protected override computeJumpMP(options: MovementCalculationOptions): number {
+  override computeJumpMP(options: MovementCalculationOptions): number {
     const equipment = this.equipment();
     const jumpJets = equipment.filter(mount => mount.equipment?.hasFlag('F_JUMP_JET')).length;
     if (jumpJets === 0 || equipment.some(mount => mount.equipment?.hasFlag('S_SHIELD_LARGE'))) {
@@ -219,6 +219,12 @@ export abstract class MekEntity extends BaseEntity {
     return getMekLegLocations(this.chassisConfig).some(location =>
       armor.patchwork?.types.get(location)?.startsWith('Hardened')
     );
+  }
+
+  protected override computeMaximumArmorPoints(): number {
+    let totalInternal = 0;
+    for (const value of this.structureValues().values()) totalInternal += value;
+    return totalInternal * 2 + (this.weightClass() === 'Super Heavy' ? 4 : 3);
   }
 
   override engineFlags = computed<Set<EngineFlag>>(() => {
@@ -555,7 +561,7 @@ function getInternalForTonnage(tonnage: number, location: MekLocation): number {
     case 'HD': return head;
     case 'CT': return centerTorso;
     case 'LT': case 'RT': return sideTorso;
-    case 'LA': case 'RA': case 'FLL': case 'FRL': return arm;
+    case 'LA': case 'RA': return arm;
     default: return leg;
   }
 }

@@ -411,22 +411,22 @@ export abstract class BaseEntity {
   });
 
   walkMP = computed(() => this.computeWalkMP(STANDARD_MOVEMENT_CALCULATION));
-  runMP = computed(() => this.computeWalkMP(RUN_WITHOUT_MASC_CALCULATION));
-  jumpMP = computed(() => this.computeWalkMP(STANDARD_MOVEMENT_CALCULATION));
+  runMP = computed(() => this.computeRunMP(RUN_WITHOUT_MASC_CALCULATION));
+  jumpMP = computed(() => this.computeJumpMP(STANDARD_MOVEMENT_CALCULATION));
 
   maxWalkMP = computed(() => this.computeWalkMP(BV_MOVEMENT_CALCULATION));
-  maxRunMP = computed(() => this.computeWalkMP(BV_MOVEMENT_CALCULATION));
-  maxJumpMP = computed(() => this.computeWalkMP(BV_MOVEMENT_CALCULATION));
+  maxRunMP = computed(() => this.computeRunMP(BV_MOVEMENT_CALCULATION));
+  maxJumpMP = computed(() => this.computeJumpMP(BV_MOVEMENT_CALCULATION));
 
-  protected computeWalkMP(_options: MovementCalculationOptions): number {
+  computeWalkMP(_options: MovementCalculationOptions): number {
     return this.originalWalkMP();
   }
 
-  protected computeRunMP(options: MovementCalculationOptions): number {
+  computeRunMP(options: MovementCalculationOptions): number {
     return Math.ceil(this.computeWalkMP(options) * 1.5);
   }
 
-  protected computeJumpMP(_options: MovementCalculationOptions): number {
+  computeJumpMP(_options: MovementCalculationOptions): number {
     return this.equipment().filter(e => e.equipment?.hasFlag?.('F_JUMP_JET')).length;
   }
 
@@ -455,6 +455,12 @@ export abstract class BaseEntity {
     for (const v of this.maxArmorValues().values()) sum += v;
     return sum;
   });
+
+  maximumArmorPoints = computed(() => this.computeMaximumArmorPoints());
+
+  protected computeMaximumArmorPoints(): number {
+    return 0;
+  }
 
   // ── Derived indexes (reused across validators) ─────────────────────────
 
