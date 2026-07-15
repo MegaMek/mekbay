@@ -61,6 +61,7 @@ import { createEquipment, buildEquipmentAliasMap, type EquipmentAliasMap, type E
 import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { resetMountIdCounter } from '../src/app/models/entity/utils/signal-helpers';
 import { UnitMetadataBuilder } from '../src/app/utils/unit-metadata-builder';
+import type { Sourcebook } from '../src/app/models/sourcebook.model';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types
@@ -72,6 +73,7 @@ interface FieldCheck {
   field: string;
   compare: CompareType;
   tolerance?: number;
+  active?: boolean;
 }
 
 interface CompareResult {
@@ -94,42 +96,100 @@ interface FieldMismatch {
 /**
  * Fields that are currently checked against the oracle.
  * Add new entries here as each field is implemented and validated.
+ *
+ * Parity order is intentional:
+ *   1. Complete every non-`.as` property except `name`.
+ *   2. Implement Alpha Strike conversion and complete every property in `.as`.
+ *   3. Enable `name`, which is composite stripped metadata built from the
+ *      finalized Alpha Strike TP and the unit identity fields.
  */
 const CHECKED_FIELDS: FieldCheck[] = [
   // ── Phase 0: Identity ──────────────────────────────────────────────
-  { field: 'chassis',       compare: 'exact' },
-  { field: 'model',         compare: 'exact' },
-  { field: 'name',          compare: 'exact' },
-  { field: 'year',          compare: 'exact' },
-  { field: 'tons',          compare: 'exact' },
-  { field: 'omni',          compare: 'exact' },
-  { field: 'role',          compare: 'exact' },
-  { field: 'type',          compare: 'exact' },
-  { field: 'id',            compare: 'exact' },
-  { field: 'engine',        compare: 'exact' },
-  { field: 'engineRating',  compare: 'exact' },
-  { field: 'armorType',     compare: 'exact' },
-  { field: 'structureType', compare: 'exact' },
-  { field: 'armor',         compare: 'exact' },
-  { field: 'techBase',      compare: 'exact' },
+  { field: 'chassis',       compare: 'exact', active: true },
+  { field: 'model',         compare: 'exact', active: true },
+  { field: 'year',          compare: 'exact', active: true },
+  { field: 'tons',          compare: 'exact', active: true },
+  { field: 'omni',          compare: 'exact', active: true },
+  { field: 'role',          compare: 'exact', active: true },
+  { field: 'source',        compare: 'setCompare', active: true },
+  { field: 'published',     compare: 'setCompare', active: true },
+  { field: 'type',          compare: 'exact', active: true },
+  { field: 'id',            compare: 'exact', active: true },
+  { field: 'engine',        compare: 'exact', active: true },
+  { field: 'engineRating',  compare: 'exact', active: true },
+  { field: 'armorType',     compare: 'exact', active: true },
+  { field: 'structureType', compare: 'exact', active: true },
+  { field: 'armor',         compare: 'exact', active: true },
+  { field: 'techBase',      compare: 'exact', active: true },
 
   // ── Phase 1: Movement ──────────────────────────────────────────────
-  { field: 'walk',          compare: 'exact' },
-  { field: 'run',           compare: 'exact' },
-  { field: 'jump',          compare: 'exact' },
+  { field: 'walk',          compare: 'exact', active: true },
+  { field: 'run',           compare: 'exact', active: true },
+  { field: 'jump',          compare: 'exact', active: true },
+  { field: 'walk2',         compare: 'exact', active: true },
+  { field: 'run2',          compare: 'exact', active: true },
+  { field: 'jump2',         compare: 'exact', active: true },
 
-  // ── Future phases (uncomment as implemented) ───────────────────────
-  // { field: 'source',        compare: 'setCompare' },
-  // { field: 'walk2',         compare: 'exact' },
-  // { field: 'run2',          compare: 'exact' },
-  // { field: 'jump2',         compare: 'exact' },
-  // { field: 'umu',           compare: 'exact' },
-  // { field: 'heat',          compare: 'numeric', tolerance: 1 },
-  // { field: 'dissipation',   compare: 'numeric', tolerance: 1 },
-  // { field: 'comp',          compare: 'componentSet' },
-  // { field: 'dpt',           compare: 'numeric', tolerance: 0.5 },
-  // { field: 'bv',            compare: 'numeric', tolerance: 1 },
-  // { field: 'cost',          compare: 'numeric', tolerance: 1 },
+  // ── Remaining non-Alpha Strike fields ──────────────────────────────
+  { field: 'armorPer',       compare: 'exact', active: true },
+  { field: 'bv',             compare: 'numeric', tolerance: 1 },
+  { field: 'c3',             compare: 'exact', active: true },
+  { field: 'canon',          compare: 'exact', active: true },
+  { field: 'capital',        compare: 'exact' },
+  { field: 'cargo',          compare: 'exact' },
+  { field: 'comp',           compare: 'componentSet' },
+  { field: 'cost',           compare: 'numeric', tolerance: 1 },
+  { field: 'crewSize',       compare: 'exact' },
+  { field: 'diss',           compare: 'exact' },
+  { field: 'dissipation',    compare: 'numeric', tolerance: 1 },
+  { field: 'dpt',            compare: 'numeric', tolerance: 0.5 },
+  { field: 'engineHS',       compare: 'exact' },
+  { field: 'engineHSType',   compare: 'exact' },
+  { field: 'features',       compare: 'exact' },
+  { field: 'fluff',          compare: 'exact' },
+  { field: 'heat',           compare: 'numeric', tolerance: 1 },
+  { field: 'icon',           compare: 'exact' },
+  { field: 'internal',       compare: 'exact' },
+  { field: 'level',          compare: 'exact' },
+  { field: 'moveType',       compare: 'exact' },
+  { field: 'offSpeedFactor', compare: 'exact' },
+  { field: 'pv',             compare: 'exact' },
+  { field: 'quirks',         compare: 'exact' },
+  { field: 'sheets',         compare: 'exact' },
+  { field: 'squadSize',      compare: 'exact' },
+  { field: 'squads',         compare: 'exact' },
+  { field: 'su',             compare: 'exact' },
+  { field: 'subtype',        compare: 'exact' },
+  { field: 'techRating',     compare: 'exact' },
+  { field: 'umu',            compare: 'exact' },
+  { field: 'weightClass',    compare: 'exact' },
+  { field: 'unitFile',       compare: 'exact' },
+
+  // ── Phase 2: Alpha Strike ──────────────────────────────────────────
+  { field: 'as.Arm',       compare: 'exact' },
+  { field: 'as.MV',        compare: 'exact' },
+  { field: 'as.MVm',       compare: 'exact' },
+  { field: 'as.MVp',       compare: 'exact' },
+  { field: 'as.OV',        compare: 'exact' },
+  { field: 'as.PV',        compare: 'exact' },
+  { field: 'as.SZ',        compare: 'exact' },
+  { field: 'as.Str',       compare: 'exact' },
+  { field: 'as.TMM',       compare: 'exact' },
+  { field: 'as.TP',        compare: 'exact' },
+  { field: 'as.Th',        compare: 'exact' },
+  { field: 'as.dmg',       compare: 'exact' },
+  { field: 'as.frontArc',  compare: 'exact' },
+  { field: 'as.leftArc',   compare: 'exact' },
+  { field: 'as.rearArc',   compare: 'exact' },
+  { field: 'as.rightArc',  compare: 'exact' },
+  { field: 'as.specials',  compare: 'setCompare' },
+  { field: 'as.usesArcs',  compare: 'exact' },
+  { field: 'as.usesE',     compare: 'exact' },
+  { field: 'as.usesOV',    compare: 'exact' },
+  { field: 'as.usesTh',    compare: 'exact' },
+
+  // ── Phase 3: Composite name (only after complete `.as` parity) ─────
+  { field: 'name', compare: 'exact' },
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -181,6 +241,12 @@ function loadEquipmentDb(): { equipmentDb: EquipmentMap; aliasMap: EquipmentAlia
   const aliasMap = buildEquipmentAliasMap(equipmentDb);
   console.log(`Equipment DB: ${loaded} loaded, ${failed} failed, ${aliasMap.size} aliases`);
   return { equipmentDb, aliasMap };
+}
+
+function loadSourcebooks(): ReadonlyMap<string, Sourcebook> {
+  const sourcebooksPath = path.join(__dirname, '..', 'public', 'assets', 'sourcebooks.json');
+  const sourcebooks: Sourcebook[] = JSON.parse(fs.readFileSync(sourcebooksPath, 'utf-8'));
+  return new Map(sourcebooks.map(sourcebook => [sourcebook.abbrev, sourcebook]));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -246,7 +312,9 @@ function filterOracle(entries: OracleEntry[]): OracleEntry[] {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function getActiveChecks(): FieldCheck[] {
-  let checks = [...CHECKED_FIELDS];
+  let checks = FIELDS_FILTER
+    ? [...CHECKED_FIELDS]
+    : CHECKED_FIELDS.filter(check => check.active);
 
   // --fields filter: only check these specific fields
   if (FIELDS_FILTER) {
@@ -261,6 +329,24 @@ function getActiveChecks(): FieldCheck[] {
   }
 
   return checks;
+}
+
+function validateRegistry(entries: OracleEntry[]): void {
+  const oracleFields = new Set(entries.flatMap(entry => Object.keys(entry)));
+  const oracleAsFields = new Set(entries.flatMap(entry => Object.keys(entry.as ?? {})));
+  const registryFields = new Set(CHECKED_FIELDS.map(check => check.field));
+  const coveredTopLevel = new Set(
+    CHECKED_FIELDS.map(check => check.field.startsWith('as.') ? 'as' : check.field),
+  );
+
+  const missingTopLevel = [...oracleFields].filter(field => !coveredTopLevel.has(field));
+  const missingAs = [...oracleAsFields].filter(field => !registryFields.has(`as.${field}`));
+  if (missingTopLevel.length > 0 || missingAs.length > 0) {
+    throw new Error(
+      `CHECKED_FIELDS is incomplete. Missing top-level: ${missingTopLevel.join(', ') || 'none'}; `
+      + `missing as: ${missingAs.join(', ') || 'none'}`,
+    );
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -318,6 +404,13 @@ function deepEqual(a: any, b: any): boolean {
   return false;
 }
 
+function getFieldValue(value: unknown, field: string): unknown {
+  return field.split('.').reduce<unknown>((current, key) => {
+    if (current === null || typeof current !== 'object') return undefined;
+    return (current as Record<string, unknown>)[key];
+  }, value);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Single-unit processing
 // ═══════════════════════════════════════════════════════════════════════════
@@ -328,6 +421,7 @@ function processUnit(
   equipmentDb: EquipmentMap,
   aliasMap: EquipmentAliasMap,
   builder: UnitMetadataBuilder,
+  sourcebooks: ReadonlyMap<string, Sourcebook>,
 ): CompareResult {
   const unitName = `${oracle.chassis} ${oracle.model}`.trim();
 
@@ -342,7 +436,10 @@ function processUnit(
     const content = fs.readFileSync(unitFilePath, 'utf-8');
     const fileName = path.basename(unitFilePath);
     resetMountIdCounter();
-    const { entity } = parseEntity(content, fileName, equipmentDb, null, aliasMap);
+    const { entity } = parseEntity(
+      content, fileName, equipmentDb, null, aliasMap,
+      source => sourcebooks.get(source),
+    );
 
     // Build metadata
     const metadata = builder.build(entity);
@@ -350,8 +447,8 @@ function processUnit(
     // Compare fields
     const mismatches: FieldMismatch[] = [];
     for (const check of checks) {
-      const expected = oracle[check.field];
-      const actual = (metadata as any)[check.field];
+      const expected = getFieldValue(oracle, check.field);
+      const actual = getFieldValue(metadata, check.field);
 
       if (!compareField(check, expected, actual)) {
         mismatches.push({ field: check.field, expected, actual });
@@ -469,12 +566,14 @@ function main() {
 
   // Load dependencies
   const { equipmentDb, aliasMap } = loadEquipmentDb();
+  const sourcebooks = loadSourcebooks();
   const builder = new UnitMetadataBuilder();
   const checks = getActiveChecks();
   console.log(`Active checks: ${checks.map(c => c.field).join(', ')}\n`);
 
   // Load and filter oracle
   const allEntries = loadOracle();
+  validateRegistry(allEntries);
   const entries = filterOracle(allEntries);
 
   if (entries.length === 0) {
@@ -489,7 +588,7 @@ function main() {
   let processed = 0;
 
   for (const entry of entries) {
-    const result = processUnit(entry, checks, equipmentDb, aliasMap, builder);
+    const result = processUnit(entry, checks, equipmentDb, aliasMap, builder, sourcebooks);
     results.push(result);
     processed++;
 

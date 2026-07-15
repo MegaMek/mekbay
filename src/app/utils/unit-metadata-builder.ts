@@ -32,6 +32,8 @@
  */
 
 import { BaseEntity } from '../models/entity/base-entity';
+import { DropShipEntity } from '../models/entity/entities/aero/dropship-entity';
+import { InfantryEntity } from '../models/entity/entities/infantry/infantry-entity';
 import { MekEntity } from '../models/entity/entities/mek/mek-entity';
 import { ASUnitTypeCode, Unit } from '../models/units.model';
 import { EntityType } from '../models/entity/types';
@@ -47,7 +49,6 @@ import { EntityType } from '../models/entity/types';
  * interface is a metadata/export concern, not a game-mechanics concern.
  */
 export class UnitMetadataBuilder {
-
   /**
    * Build metadata for a single entity.
    *
@@ -64,23 +65,32 @@ export class UnitMetadataBuilder {
       year: entity.year(),
       tons: entity.tonnage(),
       omni: entity.omni() ? 1 : 0,
-      role: entity.role(),
-      source: this.buildSource(entity),
+      role: entity.role() || 'None',
+      source: entity.source().map(source => source.abbrev),
+      published: entity.published().map(source => source.abbrev),
       type: this.mapUnitType(entity),
       id: entity.mulId(),
+      canon: entity.canon(),
 
       // ── Phase 0: Direct signals ────────────────────────────────────
       techBase: this.buildTechBase(entity),
       engine: this.buildEngineName(entity),
       engineRating: this.exportsEngine(entity) ? me.rating : 0,
       armorType: this.buildArmorType(entity),
-      structureType: entity.structureType(),
-      armor: entity.totalArmor(),
+      structureType: entity.mountedStructure()?.name ?? null,
+      armor: entity.totalArmorPoints(),
+      armorPer: entity.maximumArmorPoints() > 0
+        ? Math.round(entity.totalArmorPoints() / entity.maximumArmorPoints() * 100)
+        : 0,
+      c3: entity.c3System(),
 
       // ── Phase 1: Movement (implement on entity first) ──────────────
       walk: entity.walkMP(),
+      walk2: entity.maxWalkMP(),
       run: entity.runMP(),
+      run2: entity.maxRunMP(),
       jump: entity.jumpMP(),
+      jump2: entity.maxJumpMP(),
     };
   }
 
@@ -129,6 +139,9 @@ export class UnitMetadataBuilder {
         return 'IM';
       }
     }
+    if (entity instanceof DropShipEntity) {
+      return entity.motiveType() === 'Spheroid' ? 'DS' : 'DA';
+    }
 
     const ENTITY_TO_AS_PREFIX: Partial<Record<EntityType, ASUnitTypeCode>> = {
       'Mek': 'BM',
@@ -136,6 +149,7 @@ export class UnitMetadataBuilder {
       'Naval': 'CV',
       'VTOL': 'CV',
       'SupportTank': 'SV',
+      'SupportNaval': 'SV',
       'SupportVTOL': 'SV',
       'LargeSupportTank': 'SV',
       'Infantry': 'CI',
@@ -145,11 +159,10 @@ export class UnitMetadataBuilder {
       'ConvFighter': 'CF',
       'FixedWingSupport': 'SV',
       'SmallCraft': 'SC',
-      'DropShip': 'DS',           // TODO: DA for aerodyne
+      'DropShip': 'DS',
       'JumpShip': 'JS',
       'WarShip': 'WS',
       'SpaceStation': 'SS',
-      'HandheldWeapon': 'BD',
     };
     return ENTITY_TO_AS_PREFIX[entity.entityType] ?? '';
   }
@@ -166,6 +179,7 @@ export class UnitMetadataBuilder {
       'Naval': 'Naval',
       'VTOL': 'VTOL',
       'SupportTank': 'Tank',
+      'SupportNaval': 'Naval',
       'SupportVTOL': 'VTOL',
       'LargeSupportTank': 'Tank',
       'Infantry': 'Infantry',
@@ -182,13 +196,6 @@ export class UnitMetadataBuilder {
       'HandheldWeapon': 'Handheld Weapon',
     };
     return mapping[entity.entityType] ?? entity.entityType;
-  }
-
-  /** Source is stored as a string signal but units.json has string[]. */
-  private buildSource(entity: BaseEntity): string[] {
-    const raw = entity.source();
-    if (!raw) return [];
-    return raw.split(',').map(s => s.trim()).filter(Boolean);
   }
 
   /** TechBase: 'Inner Sphere', 'Clan', or 'Mixed'. */
@@ -212,6 +219,24 @@ export class UnitMetadataBuilder {
 
   /** Armor type string as it appears in units.json. */
   private buildArmorType(entity: BaseEntity): string {
+    if (entity instanceof InfantryEntity) {
+      const armorKit = entity.equipment().find(mounted => mounted.equipment?.hasFlag('F_ARMOR_KIT'));
+      if (armorKit?.equipment) return armorKit.equipment.name;
+      if (entity.hasDEST()) return 'Custom DEST';
+
+      const sneakSystems = [
+        entity.sneakCamo() ? 'Camo' : '',
+        entity.sneakIR() ? 'IR' : '',
+        entity.sneakECM() ? 'ECM' : '',
+      ].filter(Boolean);
+      if (sneakSystems.length > 0) return `Custom Sneak(${sneakSystems.join('/')})`;
+      return entity.armorDivisor() !== 1 ? 'Custom' : '';
+    }
+
+    if (entity.isSupportVehicle() && entity.barRating() >= 0) {
+      return `BAR: ${entity.barRating()}`;
+    }
+
     // TODO: handle patchwork armor
     const armorType = entity.mountedArmor().type;
     return ARMOR_TYPE_DISPLAY_NAME[armorType] ?? armorType;
@@ -242,11 +267,11 @@ const ARMOR_TYPE_DISPLAY_NAME: Partial<Record<string, string>> = {
   'STEALTH': 'Stealth',
   'FERRO_FIBROUS_PROTO': 'Ferro-Fibrous Prototype',
   'COMMERCIAL': 'Commercial, BAR: 5',
-  'INDUSTRIAL': 'Industrial',
+  'INDUSTRIAL': 'Industrial ',
   'HEAVY_INDUSTRIAL': 'Heavy Industrial',
   'FERRO_LAMELLOR': 'Ferro-Lamellor',
   'PRIMITIVE': 'Primitive',
-  'EDP': 'Electric Discharge ProtoMek',
+  'EDP': 'Electric Discharge ProtoMech',
   'ANTI_PENETRATIVE_ABLATION': 'Anti-Penetrative Ablation',
   'HEAT_DISSIPATING': 'Heat-Dissipating',
   'IMPACT_RESISTANT': 'Impact-Resistant',
@@ -254,33 +279,33 @@ const ARMOR_TYPE_DISPLAY_NAME: Partial<Record<string, string>> = {
   'ALUM': 'Ferro-Aluminum',
   'HEAVY_ALUM': 'Heavy Ferro-Aluminum',
   'LIGHT_ALUM': 'Light Ferro-Aluminum',
-  'FERRO_ALUM_PROTO': 'Ferro-Aluminum Prototype',
-  'STEALTH_VEHICLE': 'Stealth Vehicle',
+  'FERRO_ALUM_PROTO': 'Prototype Ferro-Aluminum',
+  'STEALTH_VEHICLE': 'Vehicular Stealth',
   'LC_FERRO_CARBIDE': 'Ferro-Carbide',
   'LC_LAMELLOR_FERRO_CARBIDE': 'Lamellor Ferro-Carbide',
   'LC_FERRO_IMP': 'Improved Ferro-Aluminum',
-  'AEROSPACE': 'Standard Armor',
-  'STANDARD_PROTOMEK': 'Standard ProtoMek',
+  'AEROSPACE': 'Standard Aerospace',
+  'STANDARD_PROTOMEK': 'Standard ProtoMech',
   'PRIMITIVE_FIGHTER': 'Primitive Fighter',
-  'PRIMITIVE_AERO': 'Primitive Aero',
-  'BA_STANDARD': 'BA Standard',
+  'PRIMITIVE_AERO': 'Primitive Aerospace',
+  'BA_STANDARD': 'BA Standard (Basic)',
   'BA_STANDARD_PROTOTYPE': 'BA Standard (Prototype)',
   'BA_STANDARD_ADVANCED': 'BA Advanced',
   'BA_STEALTH_BASIC': 'BA Stealth (Basic)',
-  'BA_STEALTH': 'BA Stealth',
+  'BA_STEALTH': 'BA Stealth (Standard)',
   'BA_STEALTH_IMP': 'BA Stealth (Improved)',
   'BA_STEALTH_PROTOTYPE': 'BA Stealth (Prototype)',
   'BA_FIRE_RESIST': 'BA Fire Resistant',
   'BA_MIMETIC': 'BA Mimetic',
-  'BA_REFLECTIVE': 'BA Reflective (Blazer)',
-  'BA_REACTIVE': 'BA Reactive (Deflective)',
-  'SV_BAR_2': 'BAR 2',
-  'SV_BAR_3': 'BAR 3',
-  'SV_BAR_4': 'BAR 4',
-  'SV_BAR_5': 'BAR 5',
-  'SV_BAR_6': 'BAR 6',
-  'SV_BAR_7': 'BAR 7',
-  'SV_BAR_8': 'BAR 8',
-  'SV_BAR_9': 'BAR 9',
-  'SV_BAR_10': 'BAR 10',
+  'BA_REFLECTIVE': 'BA Laser Reflective (Reflec/Glazed)',
+  'BA_REACTIVE': 'BA Reactive (Blazer)',
+  'SV_BAR_2': 'BAR: 2',
+  'SV_BAR_3': 'BAR: 3',
+  'SV_BAR_4': 'BAR: 4',
+  'SV_BAR_5': 'BAR: 5',
+  'SV_BAR_6': 'BAR: 6',
+  'SV_BAR_7': 'BAR: 7',
+  'SV_BAR_8': 'BAR: 8',
+  'SV_BAR_9': 'BAR: 9',
+  'SV_BAR_10': 'BAR: 10',
 };
