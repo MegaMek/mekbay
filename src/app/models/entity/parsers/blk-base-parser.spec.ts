@@ -7,7 +7,7 @@ import { BuildingBlock } from './building-block';
 describe('BLK base parser', () => {
   it('normalizes legacy docking-collar counts into transporters', () => {
     const transporters = signal<EntityTransporter[]>([
-      { type: 'dockingcollar', capacity: 0, doors: 0, bayNumber: -1, bare: true },
+      { id: 'transporter-1', kind: 'docking-collar', collarNumber: 1, omni: false },
     ]);
     const entity = { transporters } as BaseEntity;
     const buildingBlock = new BuildingBlock(`
@@ -19,6 +19,6 @@ describe('BLK base parser', () => {
     parseLegacyDockingCollars(buildingBlock, entity);
 
     expect(transporters().length).toBe(3);
-    expect(transporters().every(transporter => transporter.type === 'dockingcollar')).toBeTrue();
+    expect(transporters().every(transporter => transporter.kind === 'docking-collar')).toBeTrue();
   });
 });

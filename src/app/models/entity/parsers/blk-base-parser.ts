@@ -45,7 +45,6 @@ import {
   EntityFluff,
   EntityQuirk,
   EntityTechBase,
-  EntityTransporter,
   EntityWeaponQuirk,
   HEAT_SINK_TYPE_FROM_CODE,
   HeatSinkType,
@@ -60,6 +59,7 @@ import { generateMountId } from '../utils/signal-helpers';
 import { parseTechLevel } from '../utils/tech-level-parser';
 import { BuildingBlock } from './building-block';
 import { parseEquipmentLine } from './equipment-resolver';
+import { parseTransporterLines } from './transporter-codec';
 import { ParseContext } from './parse-context';
 
 /**
@@ -176,43 +176,7 @@ export function parseBaseBlk(
 
   // ── Transporters ──
   if (bb.exists('transporters')) {
-    const tLines = bb.getDataAsString('transporters');
-    const transporters: EntityTransporter[] = [];
-    for (const line of tLines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-
-      // Format: baytype:size[:doors[:bayNumber[:platoonType[:facing[:bitmap]]]]][:omni]
-      let parts = trimmed.split(':');
-      // Check for :omni suffix
-      let isOmni = false;
-      if (parts[parts.length - 1].toLowerCase() === 'omni') {
-        isOmni = true;
-        parts = parts.slice(0, -1);
-      }
-      if (parts.length >= 2) {
-        transporters.push({
-          type: parts[0],
-          capacity: parseFloat(parts[1]),
-          doors: parts.length >= 3 ? parseInt(parts[2], 10) : 0,
-          bayNumber: parts.length >= 4 ? parseInt(parts[3], 10) : -1,
-          platoonType: parts[4] || undefined,
-          facing: parts[5] ? parseInt(parts[5], 10) : undefined,
-          bitmap: parts[6] ? parseInt(parts[6], 10) : undefined,
-          omni: isOmni || undefined,
-        });
-      } else if (parts.length === 1) {
-        // Bare transporter type (e.g., "dockingcollar") - no capacity/doors
-        transporters.push({
-          type: parts[0],
-          capacity: 0,
-          doors: 0,
-          bayNumber: -1,
-          bare: true,
-        });
-      }
-    }
-    entity.transporters.set(transporters);
+    entity.transporters.set(parseTransporterLines(bb.getDataAsString('transporters'), entity.techBase(), ctx));
   }
 
   // ── Fluff ──
@@ -650,12 +614,21 @@ export function parseLegacyDockingCollars(bb: BuildingBlock, entity: BaseEntity)
 
   const count = bb.getFirstInt('docking_collar');
   if (count <= 0) return;
-  const dockingCollars: EntityTransporter[] = Array.from({ length: count }, () => ({
-    type: 'dockingcollar',
-    capacity: 0,
-    doors: 0,
-    bayNumber: -1,
-    bare: true,
-  }));
-  entity.transporters.update(transporters => [...transporters, ...dockingCollars]);
+  entity.transporters.update(transporters => {
+    const usedCollarNumbers = new Set(transporters
+      .filter(transporter => transporter.kind === 'docking-collar')
+      .map(transporter => transporter.collarNumber));
+    const dockingCollars = Array.from({ length: count }, (_, index) => {
+      let collarNumber = 1;
+      while (usedCollarNumbers.has(collarNumber)) collarNumber++;
+      usedCollarNumbers.add(collarNumber);
+      return {
+        id: `transporter-${transporters.length + index + 1}`,
+        kind: 'docking-collar' as const,
+        collarNumber,
+        omni: false,
+      };
+    });
+    return [...transporters, ...dockingCollars];
+  });
 }

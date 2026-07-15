@@ -34,7 +34,7 @@
 import { EntityFluff } from '../types';
 import { getArmorTypeCode, getEffectiveArmorTechRating, getEffectiveArmorTechLevel } from '../components';
 import { BaseEntity } from '../base-entity';
-import { APP_VERSION_STRING } from '../../../build-meta';
+import { serializeTransporterLines } from '../parsers/transporter-codec';
 
 /**
  * Serialises BLK tag-based format.
@@ -162,33 +162,7 @@ export function writeMotiveType(w: BuildingBlockWriter, entity: BaseEntity): voi
 export function writeTransporters(w: BuildingBlockWriter, entity: BaseEntity): void {
   const transporters = entity.transporters();
   if (transporters.length > 0) {
-    const tLines = transporters.map(t => {
-      // Bare transporter type (e.g., "dockingcollar") - no capacity/doors
-      if (t.bare) return t.type;
-
-      // Format: type:capacity:doors[:bayNumber[:platoonType[:facing[:bitmap]]]]
-      // Must always write all positional fields up to the last non-default one
-      // to prevent re-parse from misinterpreting shifted values.
-      const hasBitmap = t.bitmap != null;
-      const hasFacing = t.facing != null || hasBitmap;
-      const hasPlatoon = t.platoonType != null || hasFacing;
-      const hasBayNum = hasPlatoon || t.bayNumber !== -1;
-
-      // TroopSpace uses simplified 2-part format: type:capacity
-      // Java uses double for TroopSpace/Bays (prints .0) but int for BattleArmorHandles (prints -1)
-      const cap = (Number.isInteger(t.capacity) && t.capacity >= 0) ? t.capacity.toFixed(1) : String(t.capacity);
-      const needsDoors = t.doors > 0 || hasBayNum;
-      let line = needsDoors
-        ? `${t.type}:${cap}:${t.doors}`
-        : `${t.type}:${cap}`;
-      if (hasBayNum) line += `:${t.bayNumber}`;
-      if (hasPlatoon) line += `:${t.platoonType ?? ''}`;
-      if (hasFacing) line += `:${t.facing ?? -1}`;
-      if (hasBitmap) line += `:${t.bitmap ?? 0}`;
-      if (t.omni) line += ':omni';
-      return line;
-    });
-    w.addBlock('transporters', ...tLines);
+    w.addBlock('transporters', ...serializeTransporterLines(transporters));
   }
 }
 

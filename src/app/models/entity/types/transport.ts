@@ -35,31 +35,97 @@
 // Transporters & Bays
 // ============================================================================
 
-export interface EntityTransporter {
-  type: string;
+export type InfantryTransportType = 'Foot' | 'Jump' | 'Motorized' | 'Mechanized';
+
+export const INFANTRY_TRANSPORT_WEIGHTS: Readonly<Record<InfantryTransportType, number>> = {
+  Foot: 5,
+  Jump: 6,
+  Motorized: 7,
+  Mechanized: 8,
+};
+
+export type StandardTransportBayType =
+  | 'generic'
+  | 'cargo'
+  | 'liquid-cargo'
+  | 'insulated-cargo'
+  | 'refrigerated-cargo'
+  | 'livestock-cargo'
+  | 'mek'
+  | 'light-vehicle'
+  | 'heavy-vehicle'
+  | 'super-heavy-vehicle'
+  | 'protomek'
+  | 'crew-quarters'
+  | 'steerage-quarters'
+  | 'second-class-quarters'
+  | 'first-class-quarters'
+  | 'pillion-seats'
+  | 'standard-seats'
+  | 'ejection-seats';
+
+export type TransportBayConfiguration =
+  | { type: StandardTransportBayType }
+  | { type: 'fighter' | 'small-craft'; arts: boolean }
+  | { type: 'infantry'; infantryType: InfantryTransportType }
+  | { type: 'battle-armor'; techBase: 'IS' | 'Clan'; comStar: boolean }
+  | { type: 'drop-shuttle'; facing: number }
+  | { type: 'naval-repair'; facing: number; pressurized: boolean; arts: boolean }
+  | { type: 'reinforced-repair'; facing: number };
+
+export interface EntityTransportBay {
+  id: string;
+  kind: 'bay';
+  configuration: TransportBayConfiguration;
+  /** Canonical Bay.getCapacity() value. Unit depends on bay type. */
   capacity: number;
+  /** Preserves construction tonnage when BLK size is weight rather than capacity. */
+  constructionWeight?: number;
   doors: number;
   bayNumber: number;
-  platoonType?: string;
-  facing?: number;
-  bitmap?: number;
-  omni?: boolean;
-  /** True for bare transporter lines like "dockingcollar" (no capacity/doors) */
-  bare?: boolean;
+  omni: boolean;
 }
+
+export interface TroopSpaceTransporter {
+  id: string;
+  kind: 'troop-space';
+  totalSpace: number;
+  omni: boolean;
+}
+
+export interface DockingCollarTransporter {
+  id: string;
+  kind: 'docking-collar';
+  collarNumber: number;
+  omni: boolean;
+}
+
+export interface BattleArmorHandlesTransporter {
+  id: string;
+  kind: 'battle-armor-handles';
+  troopers: number;
+  omni: boolean;
+}
+
+export interface UnknownTransporter {
+  id: string;
+  kind: 'unknown';
+  rawLine: string;
+  omni: boolean;
+}
+
+export type EntityTransporter =
+  | EntityTransportBay
+  | TroopSpaceTransporter
+  | DockingCollarTransporter
+  | BattleArmorHandlesTransporter
+  | UnknownTransporter;
 
 export interface EntityWeaponBay {
   weaponIndices: number[];
   ammoIndices: number[];
   location: string;
   bayType: string;
-}
-
-export interface EntityTransportBay {
-  type: string;
-  capacity: number;
-  doors: number;
-  bayNumber: number;
 }
 
 // ============================================================================
