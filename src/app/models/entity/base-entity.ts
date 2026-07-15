@@ -78,6 +78,80 @@ export interface MixedTechResult {
   readonly reasons: readonly string[];
 }
 
+export interface MovementCalculationOptions {
+  readonly ignoreGravity: boolean;
+  readonly ignoreHeat: boolean;
+  readonly ignoreModularArmor: boolean;
+  readonly ignoreChainDrape: boolean;
+  readonly ignoreMASC: boolean;
+  readonly ignoreMyomerBooster: boolean;
+  readonly ignoreDWP: boolean;
+  readonly ignoreBurden: boolean;
+  readonly ignoreCargo: boolean;
+  readonly ignoreWeather: boolean;
+  readonly singleMASC: boolean;
+  readonly ignoreSubmergedJumpJets: boolean;
+  readonly ignoreGrounded: boolean;
+  readonly ignoreOptionalRules: boolean;
+  readonly ignoreConversion: boolean;
+  readonly forceTSM: boolean;
+}
+
+export const STANDARD_MOVEMENT_CALCULATION: MovementCalculationOptions = {
+  ignoreGravity: false,
+  ignoreHeat: false,
+  ignoreModularArmor: false,
+  ignoreChainDrape: false,
+  ignoreMASC: false,
+  ignoreMyomerBooster: false,
+  ignoreDWP: false,
+  ignoreBurden: false,
+  ignoreCargo: false,
+  ignoreWeather: false,
+  singleMASC: false,
+  ignoreSubmergedJumpJets: true,
+  ignoreGrounded: false,
+  ignoreOptionalRules: false,
+  ignoreConversion: false,
+  forceTSM: false,
+};
+
+export const RUN_WITHOUT_MASC_CALCULATION: MovementCalculationOptions = {
+  ...STANDARD_MOVEMENT_CALCULATION,
+  ignoreMASC: true,
+};
+
+export const BV_MOVEMENT_CALCULATION: MovementCalculationOptions = {
+  ...STANDARD_MOVEMENT_CALCULATION,
+  ignoreGravity: true,
+  ignoreHeat: true,
+  ignoreModularArmor: true,
+  ignoreDWP: true,
+  ignoreBurden: true,
+  ignoreCargo: true,
+  ignoreWeather: true,
+  ignoreGrounded: true,
+  ignoreOptionalRules: true,
+  ignoreConversion: true,
+  forceTSM: true,
+};
+
+export const AS_MOVEMENT_CALCULATION: MovementCalculationOptions = {
+  ...STANDARD_MOVEMENT_CALCULATION,
+  ignoreGravity: true,
+  ignoreHeat: true,
+  ignoreModularArmor: true,
+  ignoreChainDrape: true,
+  ignoreMyomerBooster: true,
+  ignoreDWP: true,
+  ignoreBurden: true,
+  ignoreCargo: true,
+  ignoreWeather: true,
+  ignoreGrounded: true,
+  ignoreOptionalRules: true,
+  ignoreConversion: true,
+};
+
 /**
  * Abstract base class for all entity types.
  *
@@ -336,13 +410,25 @@ export abstract class BaseEntity {
     return flags;
   });
 
-  walkMP = computed(() => this.originalWalkMP());
+  walkMP = computed(() => this.computeWalkMP(STANDARD_MOVEMENT_CALCULATION));
+  runMP = computed(() => this.computeWalkMP(RUN_WITHOUT_MASC_CALCULATION));
+  jumpMP = computed(() => this.computeWalkMP(STANDARD_MOVEMENT_CALCULATION));
 
-  runMP = computed(() => Math.ceil(this.walkMP() * 1.5));
+  maxWalkMP = computed(() => this.computeWalkMP(BV_MOVEMENT_CALCULATION));
+  maxRunMP = computed(() => this.computeWalkMP(BV_MOVEMENT_CALCULATION));
+  maxJumpMP = computed(() => this.computeWalkMP(BV_MOVEMENT_CALCULATION));
 
-  jumpMP = computed(() =>
-    this.equipment().filter(e => e.equipment?.hasFlag?.('F_JUMP_JET')).length
-  );
+  protected computeWalkMP(_options: MovementCalculationOptions): number {
+    return this.originalWalkMP();
+  }
+
+  protected computeRunMP(options: MovementCalculationOptions): number {
+    return Math.ceil(this.computeWalkMP(options) * 1.5);
+  }
+
+  protected computeJumpMP(_options: MovementCalculationOptions): number {
+    return this.equipment().filter(e => e.equipment?.hasFlag?.('F_JUMP_JET')).length;
+  }
 
   /** Effective tonnage per location. */
   structureTonnages = computed<Map<string, number>>(() => this.computeStructureTonnages());

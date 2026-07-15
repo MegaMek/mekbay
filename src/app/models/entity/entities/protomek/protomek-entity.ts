@@ -32,7 +32,7 @@
  */
 
 import { Signal, computed, signal } from '@angular/core';
-import { BaseEntity } from '../../base-entity';
+import { BaseEntity, MovementCalculationOptions } from '../../base-entity';
 import {
   EntityType,
   EntityValidationMessage,
@@ -62,18 +62,22 @@ export class ProtoMekEntity extends BaseEntity {
   isQuad = signal<boolean>(false);
   hasMainGun = signal<boolean>(false);
 
-  override jumpMP = computed(() => {
-    const partialWingBonus = this.equipment().some(
+  protected override computeJumpMP(options: MovementCalculationOptions): number {
+    const partialWingBonus = !options.ignoreWeather && this.equipment().some(
       mount => mount.equipment?.hasFlag('F_PARTIAL_WING'),
     ) ? 2 : 0;
     return this.jumpingMP() + partialWingBonus;
-  });
+  }
 
-  override runMP = computed(() =>
-    this.equipment().some(mount => mount.equipment?.hasFlag('F_MASC'))
-      ? this.walkMP() * 2
-      : Math.ceil(this.walkMP() * 1.5)
-  );
+  protected override computeRunMP(options: MovementCalculationOptions): number {
+    const walkMP = this.computeWalkMP(options);
+    return (
+    !options.ignoreMyomerBooster
+      && this.equipment().some(mount => mount.equipment?.hasFlag('F_MASC'))
+      ? walkMP * 2
+      : Math.ceil(walkMP * 1.5)
+    );
+  }
 
   calculatedEngineRating = computed(() => {
     let moveFactor = Math.ceil(this.walkMP() * 1.5);

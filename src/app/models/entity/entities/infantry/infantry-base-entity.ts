@@ -31,11 +31,12 @@
  * affiliated with Microsoft.
  */
 
-import { computed } from '@angular/core';
-import { BaseEntity } from '../../base-entity';
+import { BaseEntity, MovementCalculationOptions } from '../../base-entity';
 
 export abstract class InfantryBaseEntity extends BaseEntity {
-  override runMP = computed(() => this.walkMP());
+  protected override computeRunMP(options: MovementCalculationOptions): number {
+    return this.computeWalkMP(options);
+  }
 
   override hasRearArmor(_loc: string): boolean {
     return false;

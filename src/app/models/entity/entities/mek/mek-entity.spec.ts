@@ -35,6 +35,17 @@ describe('MekEntity jumpMP', () => {
     expect(entity.jumpMP()).toBe(5);
   });
 
+  it('calculates maximum jump directly when modular armor reduces normal jump to zero', () => {
+    const entity = new BipedMekEntity();
+    entity.equipment.set([
+      mountWithFlag('F_JUMP_JET'),
+      mountWithFlag('F_MODULAR_ARMOR'),
+    ]);
+
+    expect(entity.jumpMP()).toBe(0);
+    expect(entity.maxJumpMP()).toBe(1);
+  });
+
   it('reduces run MP by one for hardened armor', () => {
     const entity = new BipedMekEntity();
     entity.originalWalkMP.set(5);
@@ -58,6 +69,19 @@ describe('MekEntity jumpMP', () => {
 
     expect(entity.walkMP()).toBe(4);
     expect(entity.runMP()).toBe(6);
+    expect(entity.maxWalkMP()).toBe(5);
+    expect(entity.maxRunMP()).toBe(8);
+  });
+
+  it('uses TSM and movement boosters for maximum movement', () => {
+    const entity = new BipedMekEntity();
+    entity.originalWalkMP.set(5);
+    entity.equipment.set([mountWithFlag('F_TSM'), mountWithFlag('F_MASC')]);
+
+    expect(entity.walkMP()).toBe(5);
+    expect(entity.runMP()).toBe(8);
+    expect(entity.maxWalkMP()).toBe(6);
+    expect(entity.maxRunMP()).toBe(12);
   });
 
   it('does not apply shield walk penalties to quad Meks', () => {

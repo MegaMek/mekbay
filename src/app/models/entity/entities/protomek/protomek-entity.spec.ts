@@ -11,6 +11,7 @@ describe('ProtoMekEntity jumpMP', () => {
 
     entity.equipment.set([mountWithFlag('F_PARTIAL_WING')]);
     expect(entity.jumpMP()).toBe(7);
+    expect(entity.maxJumpMP()).toBe(5);
 
     entity.equipment.set([]);
     expect(entity.jumpMP()).toBe(5);

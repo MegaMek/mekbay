@@ -32,7 +32,12 @@
  */
 
 import { Signal, computed, signal } from '@angular/core';
-import { BaseEntity, COLLECT_ALL_MIXED_TECH_REASONS, MixedTechResult } from '../../base-entity';
+import {
+  BaseEntity,
+  COLLECT_ALL_MIXED_TECH_REASONS,
+  MixedTechResult,
+  MovementCalculationOptions,
+} from '../../base-entity';
 import {
   buildCTSystemLayout,
   buildHeadSystemLayout,
@@ -152,7 +157,7 @@ export abstract class MekEntity extends BaseEntity {
     }, 0)
   );
 
-  override walkMP = computed(() => {
+  protected override computeWalkMP(options: MovementCalculationOptions): number {
     const equipment = this.equipment();
     const shieldPenalty = this.chassisConfig === 'Quad' || this.chassisConfig === 'QuadVee'
       ? 0
@@ -162,14 +167,34 @@ export abstract class MekEntity extends BaseEntity {
       ).length;
     const modularArmorPenalty = equipment.some(
       mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR'),
-    ) ? 1 : 0;
-    const chainDrapePenalty = equipment.some(
+    ) && !options.ignoreModularArmor ? 1 : 0;
+    const chainDrapePenalty = !options.ignoreChainDrape && equipment.some(
       mount => mount.equipment?.hasFlag('F_CHAIN_DRAPE'),
     ) ? 1 : 0;
-    return Math.max(0, this.originalWalkMP() - shieldPenalty - modularArmorPenalty - chainDrapePenalty);
-  });
+    const tsmBonus = options.forceTSM && equipment.some(mount =>
+      mount.equipment?.hasFlag('F_TSM') && !mount.equipment?.hasFlag('F_PROTOTYPE'),
+    ) ? 1 : 0;
+    return Math.max(
+      0,
+      this.originalWalkMP() - shieldPenalty - modularArmorPenalty - chainDrapePenalty + tsmBonus,
+    );
+  }
 
-  override jumpMP = computed(() => {
+  protected override computeRunMP(options: MovementCalculationOptions): number {
+    const walkMP = this.computeWalkMP(options);
+    const installedBoosterCount = this.equipment().filter(
+      mount => mount.equipment?.hasFlag('F_MASC'),
+    ).length;
+    const mascCount = options.ignoreMASC
+      ? 0
+      : options.singleMASC ? Math.min(installedBoosterCount, 1) : installedBoosterCount;
+    let runMP = Math.ceil(walkMP * 1.5);
+    if (mascCount > 1) runMP = Math.ceil(walkMP * 2.5);
+    else if (mascCount === 1) runMP = walkMP * 2;
+    return this.hasMPReducingHardenedArmor() ? Math.max(0, runMP - 1) : runMP;
+  }
+
+  protected override computeJumpMP(options: MovementCalculationOptions): number {
     const equipment = this.equipment();
     const jumpJets = equipment.filter(mount => mount.equipment?.hasFlag('F_JUMP_JET')).length;
     if (jumpJets === 0 || equipment.some(mount => mount.equipment?.hasFlag('S_SHIELD_LARGE'))) {
@@ -180,14 +205,11 @@ export abstract class MekEntity extends BaseEntity {
       ? (this.weightClass() === 'Ultra Light' || this.weightClass() === 'Light' || this.weightClass() === 'Medium' ? 2 : 1)
       : 0;
     const mediumShields = equipment.filter(mount => mount.equipment?.hasFlag('S_SHIELD_MEDIUM')).length;
-    const modularArmorPenalty = equipment.some(mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR')) ? 1 : 0;
+    const modularArmorPenalty = equipment.some(
+      mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR'),
+    ) && !options.ignoreModularArmor ? 1 : 0;
     return Math.max(0, jumpJets + partialWingBonus - mediumShields - modularArmorPenalty);
-  });
-
-  override runMP = computed(() => {
-    const runMP = Math.ceil(this.walkMP() * 1.5);
-    return this.hasMPReducingHardenedArmor() ? Math.max(0, runMP - 1) : runMP;
-  });
+  }
 
   private hasMPReducingHardenedArmor(): boolean {
     const armor = this.mountedArmor();

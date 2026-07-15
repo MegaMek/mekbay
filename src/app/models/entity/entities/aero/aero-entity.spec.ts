@@ -13,6 +13,8 @@ describe('AeroEntity movement', () => {
     entity.equipment.set([mountWithFlag('F_MODULAR_ARMOR')]);
     expect(entity.walkMP()).toBe(5);
     expect(entity.runMP()).toBe(8);
+    expect(entity.maxWalkMP()).toBe(6);
+    expect(entity.maxRunMP()).toBe(9);
   });
 });
 

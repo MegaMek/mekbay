@@ -32,7 +32,7 @@
  */
 
 import { Signal, computed, signal } from '@angular/core';
-import { BaseEntity } from '../../base-entity';
+import { BaseEntity, MovementCalculationOptions } from '../../base-entity';
 import {
   ASF_WEIGHT_LIMITS,
   EntityType,
@@ -73,12 +73,13 @@ export abstract class AeroEntity extends BaseEntity {
   //  COMPUTED
   // ═══════════════════════════════════════════════════════════════════════════
 
-  override walkMP = computed(() => {
-    const modularArmorPenalty = this.equipment().some(
-      mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR'),
-    ) ? 1 : 0;
+  protected override computeWalkMP(options: MovementCalculationOptions): number {
+    const modularArmorPenalty = !options.ignoreModularArmor
+      && this.equipment().some(
+        mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR'),
+      ) ? 1 : 0;
     return Math.max(0, this.originalWalkMP() - modularArmorPenalty);
-  });
+  }
 
   maxThrust = computed(() => Math.ceil(this.walkMP() * 1.5));
 

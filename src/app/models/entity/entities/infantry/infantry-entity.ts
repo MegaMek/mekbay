@@ -41,6 +41,7 @@ import {
   MotiveType,
   WeightClass,
 } from '../../types';
+import { MovementCalculationOptions } from '../../base-entity';
 import { InfantryBaseEntity } from './infantry-base-entity';
 import { getInfantryTonnage } from '../../utils/infantry-tonnage';
 
@@ -98,7 +99,7 @@ export class InfantryEntity extends InfantryBaseEntity {
     return getInfantryTonnage(this);
   }
 
-  override walkMP = computed(() => {
+  protected override computeWalkMP(_options: MovementCalculationOptions): number {
     const mount = this.mount();
     if (mount) {
       return mount.movementMode === 'Leg' ? mount.movementPoints : mount.secondaryGroundMP;
@@ -111,9 +112,9 @@ export class InfantryEntity extends InfantryBaseEntity {
     }
     if (this.hasFieldArtillery()) walkMP = Math.min(walkMP, 1);
     return walkMP;
-  });
+  }
 
-  override jumpMP = computed(() => {
+  protected override computeJumpMP(_options: MovementCalculationOptions): number {
     const mount = this.mount();
     if (mount) return mount.movementMode === 'VTOL' ? mount.movementPoints : 0;
     if (this.motiveType() === 'UMU' || this.motiveType() === 'Submarine') return 0;
@@ -122,7 +123,7 @@ export class InfantryEntity extends InfantryBaseEntity {
     if (this.hasSupportWeaponPenalty()) jumpMP = Math.max(jumpMP - 1, 0);
     else if (this.motiveType() === 'VTOL' && this.secondaryCount() > 0) jumpMP = Math.max(jumpMP - 1, 0);
     return jumpMP;
-  });
+  }
 
   private hasSupportWeaponPenalty(): boolean {
     return this.secondaryCount() > 1

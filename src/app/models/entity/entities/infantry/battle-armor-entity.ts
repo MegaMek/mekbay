@@ -37,6 +37,7 @@ import {
   EntityValidationMessage,
   WeightClass,
 } from '../../types';
+import { MovementCalculationOptions } from '../../base-entity';
 import { InfantryBaseEntity } from './infantry-base-entity';
 
 // ============================================================================
@@ -84,29 +85,31 @@ export class BattleArmorEntity extends InfantryBaseEntity {
     return m === 'None' ? null : m;
   }
 
-  override walkMP = computed(() => {
+  protected override computeWalkMP(options: MovementCalculationOptions): number {
     const equipment = this.equipment();
     const weightClass = this.weightClass();
     let walkMP = this.originalWalkMP();
+    const hasMyomerBooster = equipment.some(mount => mount.equipment?.hasFlag('F_MASC'));
 
-    if (equipment.some(mount => mount.equipment?.hasFlag('F_MASC'))) {
+    if (hasMyomerBooster && !options.ignoreMyomerBooster) {
       walkMP += weightClass === 'Heavy' || weightClass === 'Assault' ? 1 : 2;
-    } else if (equipment.some(mount => mount.equipment?.hasFlag('F_MECHANICAL_JUMP_BOOSTER'))) {
+    } else if (!hasMyomerBooster
+      && equipment.some(mount => mount.equipment?.hasFlag('F_MECHANICAL_JUMP_BOOSTER'))) {
       walkMP++;
     }
 
-    if (equipment.some(mount => mount.isDWP)) {
+    if (!options.ignoreDWP && equipment.some(mount => mount.isDWP)) {
       if (weightClass === 'Medium') walkMP -= 3;
       else if (weightClass === 'Heavy' || weightClass === 'Assault') walkMP -= 2;
       if (walkMP === 0) walkMP++;
     }
 
     return walkMP;
-  });
+  }
 
-  override jumpMP = computed(() => {
+  protected override computeJumpMP(options: MovementCalculationOptions): number {
     const equipment = this.equipment();
-    if (equipment.some(mount => mount.isDWP)) return 0;
+    if (!options.ignoreDWP && equipment.some(mount => mount.isDWP)) return 0;
 
     let jumpMP = this.motiveType() === 'UMU' ? 0 : this.jumpingMP();
     if (jumpMP === 0 && equipment.some(mount => mount.equipment?.hasFlag('F_MECHANICAL_JUMP_BOOSTER'))) {
@@ -119,7 +122,7 @@ export class BattleArmorEntity extends InfantryBaseEntity {
       jumpMP++;
     }
     return jumpMP;
-  });
+  }
 
   override totalArmorPoints = computed(() => {
     const armorPerTrooper = this.armorValues().get('Squad');

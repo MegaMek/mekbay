@@ -32,7 +32,7 @@
  */
 
 import { Signal, computed, signal } from '@angular/core';
-import { BaseEntity } from '../../base-entity';
+import { BaseEntity, MovementCalculationOptions } from '../../base-entity';
 import {
   EngineFlag,
   EngineType,
@@ -75,16 +75,25 @@ export abstract class VehicleEntity extends BaseEntity {
   //  COMPUTED
   // ═══════════════════════════════════════════════════════════════════════════
 
-  override walkMP = computed(() => {
+  protected override computeWalkMP(options: MovementCalculationOptions): number {
     const equipment = this.equipment();
     let walkMP = this.originalWalkMP();
     if (equipment.some(mount => mount.equipment?.hasFlag('F_HYDROFOIL'))) {
       walkMP = Math.round(walkMP * 1.25);
     }
-    if (equipment.some(mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR'))) walkMP--;
+    if (!options.ignoreModularArmor
+      && equipment.some(mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR'))) walkMP--;
     if (equipment.some(mount => mount.equipment?.hasFlag('F_DUNE_BUGGY'))) walkMP--;
     return Math.max(0, walkMP);
-  });
+  }
+
+  protected override computeRunMP(options: MovementCalculationOptions): number {
+    const walkMP = this.computeWalkMP(options);
+    return !options.ignoreMASC
+      && this.equipment().some(mount => mount.equipment?.hasFlag('F_MASC'))
+      ? walkMP * 2
+      : Math.ceil(walkMP * 1.5);
+  }
 
   isSuperHeavy = computed(() => {
     const t = this.tonnage();
