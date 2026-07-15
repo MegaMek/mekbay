@@ -86,6 +86,7 @@ export function createEmptyUnit(overrides: TestUnitOverrides = {}): Unit {
         run: 0,
         run2: 0,
         jump: 0,
+        jump2: 0,
         umu: 0,
         c3: '',
         dpt: 0,
