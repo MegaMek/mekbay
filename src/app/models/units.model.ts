@@ -87,6 +87,7 @@ export const CBT_WEIGHT_CLASSES = [
     'Medium Dropship',
     'Medium Support Vehicle',
     'Large Dropship',
+    'Large Jumpship',
     'Large Space Station',
     'Large Support Vehicle',
     'Large Warship',
