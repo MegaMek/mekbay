@@ -1,6 +1,5 @@
 import { signal } from '@angular/core';
 import type { BaseEntity } from '../base-entity';
-import { BipedMekEntity } from '../entities/mek/biped-mek-entity';
 import type { EntityTransporter } from '../types';
 import { parseBaseBlk, parseLegacyDockingCollars } from './blk-base-parser';
 import { BuildingBlock } from './building-block';
@@ -9,7 +8,7 @@ import { ParseContext } from './parse-context';
 describe('BLK base parser', () => {
   it('preserves an existing UUID', () => {
     const uuid = '019f6767-0dcb-7bb8-992f-aef08202f5e1';
-    const entity = new BipedMekEntity();
+    const entity = identityEntity();
 
     parseBaseBlk(new BuildingBlock(`<UUID>\n${uuid}\n</UUID>`), entity, new ParseContext('test.blk', {}));
 
@@ -17,7 +16,7 @@ describe('BLK base parser', () => {
   });
 
   it('keeps the generated UUID when the file does not provide one', () => {
-    const entity = new BipedMekEntity();
+    const entity = identityEntity();
     const generatedUuid = entity.uuid();
 
     parseBaseBlk(new BuildingBlock(''), entity, new ParseContext('test.blk', {}));
@@ -42,3 +41,11 @@ describe('BLK base parser', () => {
     expect(transporters().every(transporter => transporter.kind === 'docking-collar')).toBeTrue();
   });
 });
+
+function identityEntity(): BaseEntity {
+  return {
+    uuid: signal('generated-uuid'),
+    chassis: signal(''),
+    model: signal(''),
+  } as BaseEntity;
+}
