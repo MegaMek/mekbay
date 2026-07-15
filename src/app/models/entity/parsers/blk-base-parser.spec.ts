@@ -47,5 +47,6 @@ function identityEntity(): BaseEntity {
     uuid: signal('generated-uuid'),
     chassis: signal(''),
     model: signal(''),
+    fluff: signal({}),
   } as BaseEntity;
 }
