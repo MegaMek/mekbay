@@ -99,6 +99,8 @@ describe('UnitsCatalogService custom servers', () => {
         };
 
         const initializePromise = service.initialize();
+        const concurrentInitializePromise = service.initialize();
+        expect(concurrentInitializePromise).toBe(initializePromise);
         await settleMicrotasks();
 
         // Primary db.mekbay.com flow
@@ -109,7 +111,10 @@ describe('UnitsCatalogService custom servers', () => {
         await flush(`${CUSTOM_SERVER}/units.json`, 'HEAD', '', 'custom-etag');
         await flush(`${CUSTOM_SERVER}/units.json`, 'GET', customBody, 'custom-etag');
 
-        await initializePromise;
+        await Promise.all([initializePromise, concurrentInitializePromise]);
+        await service.initialize();
+        httpMock.expectNone(`${REMOTE_HOST}/units.json`);
+        httpMock.expectNone(`${CUSTOM_SERVER}/units.json`);
 
         const units = service.getUnits();
         const byName = new Map(units.map(u => [u.name, u]));

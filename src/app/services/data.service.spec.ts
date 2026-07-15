@@ -564,7 +564,45 @@ describe('DataService', () => {
         expect(service.isDataReady()).toBeTrue();
     });
 
-    it('initializes MegaMek availability on demand once without bumping the search corpus version', async () => {
+    it('waits for sourcebooks and quirks before initializing units', async () => {
+        let resolveSourcebooks!: () => void;
+        let resolveQuirks!: () => void;
+        sourcebooksCatalogMock.initialize.and.returnValue(new Promise<void>((resolve) => {
+            resolveSourcebooks = resolve;
+        }));
+        quirksCatalogMock.initialize.and.returnValue(new Promise<void>((resolve) => {
+            resolveQuirks = resolve;
+        }));
+
+        const initialization = service.initialize();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(sourcebooksCatalogMock.initialize).toHaveBeenCalledTimes(1);
+        expect(quirksCatalogMock.initialize).toHaveBeenCalledTimes(1);
+        expect(unitsCatalogMock.initialize).not.toHaveBeenCalled();
+
+        resolveSourcebooks();
+        await Promise.resolve();
+        expect(unitsCatalogMock.initialize).not.toHaveBeenCalled();
+
+        resolveQuirks();
+        await initialization;
+
+        expect(unitsCatalogMock.initialize).toHaveBeenCalledTimes(1);
+        expect(service.isDataReady()).toBeTrue();
+    });
+
+    it('does not initialize units when sourcebooks fail', async () => {
+        sourcebooksCatalogMock.initialize.and.rejectWith(new Error('sourcebooks unavailable'));
+
+        await service.initialize();
+
+        expect(unitsCatalogMock.initialize).not.toHaveBeenCalled();
+        expect(service.isDataReady()).toBeFalse();
+    });
+
+    it('does not bump versions repeatedly when ensuring MegaMek availability', async () => {
         expect(service.searchCorpusVersion()).toBe(0);
         expect(service.megaMekAvailabilityVersion()).toBe(0);
 
@@ -576,10 +614,10 @@ describe('DataService', () => {
         expect(await service.ensureMegaMekAvailabilityCatalogInitialized()).toBeTrue();
         expect(service.searchCorpusVersion()).toBe(0);
         expect(service.megaMekAvailabilityVersion()).toBe(1);
-        expect(megaMekAvailabilityCatalogMock.initialize).toHaveBeenCalledTimes(1);
+        expect(megaMekAvailabilityCatalogMock.initialize).toHaveBeenCalledTimes(2);
     });
 
-    it('logs the failing startup catalog name during initialize', async () => {
+    it('blocks unit initialization when the quirks catalog fails', async () => {
         quirksCatalogMock.initialize.and.rejectWith(
             new TypeError("Cannot read properties of undefined (reading 'length')"),
         );
@@ -590,8 +628,9 @@ describe('DataService', () => {
             'Failed to initialize catalog service "quirks": TypeError: Cannot read properties of undefined (reading \'length\')',
         ]);
         expect(loggerServiceMock.error.calls.allArgs()).toContain([
-            'Failed to initialize 1 catalog service: "quirks"',
+            'Failed to initialize data: Error: Cannot initialize units before required catalogs are ready: quirks.',
         ]);
-        expect(service.isDataReady()).toBeTrue();
+        expect(unitsCatalogMock.initialize).not.toHaveBeenCalled();
+        expect(service.isDataReady()).toBeFalse();
     });
 });
