@@ -85,7 +85,7 @@ export class BattleArmorEntity extends InfantryBaseEntity {
     return m === 'None' ? null : m;
   }
 
-  protected override computeWalkMP(options: MovementCalculationOptions): number {
+  override computeWalkMP(options: MovementCalculationOptions): number {
     const equipment = this.equipment();
     const weightClass = this.weightClass();
     let walkMP = this.originalWalkMP();
@@ -107,7 +107,7 @@ export class BattleArmorEntity extends InfantryBaseEntity {
     return walkMP;
   }
 
-  protected override computeJumpMP(options: MovementCalculationOptions): number {
+  override computeJumpMP(options: MovementCalculationOptions): number {
     const equipment = this.equipment();
     if (!options.ignoreDWP && equipment.some(mount => mount.isDWP)) return 0;
 
@@ -122,6 +122,17 @@ export class BattleArmorEntity extends InfantryBaseEntity {
       jumpMP++;
     }
     return jumpMP;
+  }
+
+  protected override computeMaximumArmorPoints(): number {
+    const maxPerTrooper: Partial<Record<WeightClass, number>> = {
+      'Ultra Light': 2,
+      'Light': 6,
+      'Medium': 10,
+      'Heavy': 14,
+      'Assault': 18,
+    };
+    return (maxPerTrooper[this.weightClass()] ?? 0) * this.trooperCount();
   }
 
   override totalArmorPoints = computed(() => {

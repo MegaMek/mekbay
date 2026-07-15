@@ -33,6 +33,7 @@
 
 import { SmallCraftEntity } from '../entities/aero/small-craft-entity';
 import {
+  AERO_DESIGN_TYPE_TO_CODE,
   HEAT_SINK_TYPE_TO_CODE,
   HeatSinkType,
   SMALL_CRAFT_ARMOR_LOCATIONS,
@@ -110,7 +111,7 @@ export function writeBlkSmallCraft(entity: SmallCraftEntity): string {
   writeManualBV(w, entity);
 
   // 18. SmallCraft crew block
-  w.addBlock('designtype', entity.designType() === 'Aerodyne' ? 1 : 0);
+  w.addBlock('designtype', AERO_DESIGN_TYPE_TO_CODE[entity.designType()]);
   writeBlkCrew(w, entity);
 
   return w.toString();

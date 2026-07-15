@@ -62,14 +62,14 @@ export class ProtoMekEntity extends BaseEntity {
   isQuad = signal<boolean>(false);
   hasMainGun = signal<boolean>(false);
 
-  protected override computeJumpMP(options: MovementCalculationOptions): number {
+  override computeJumpMP(options: MovementCalculationOptions): number {
     const partialWingBonus = !options.ignoreWeather && this.equipment().some(
       mount => mount.equipment?.hasFlag('F_PARTIAL_WING'),
     ) ? 2 : 0;
     return this.jumpingMP() + partialWingBonus;
   }
 
-  protected override computeRunMP(options: MovementCalculationOptions): number {
+  override computeRunMP(options: MovementCalculationOptions): number {
     const walkMP = this.computeWalkMP(options);
     return (
     !options.ignoreMyomerBooster
@@ -77,6 +77,13 @@ export class ProtoMekEntity extends BaseEntity {
       ? walkMP * 2
       : Math.ceil(walkMP * 1.5)
     );
+  }
+
+  protected override computeMaximumArmorPoints(): number {
+    const maxArmorByTonnage = [15, 17, 22, 24, 33, 35, 40, 42, 51, 53, 58, 60, 65, 67];
+    const weightIndex = Math.max(0, Math.floor(this.tonnage()) - 2);
+    const base = maxArmorByTonnage[Math.min(weightIndex, maxArmorByTonnage.length - 1)];
+    return base + (this.hasMainGun() ? (this.tonnage() > 9 ? 6 : 3) : 0);
   }
 
   calculatedEngineRating = computed(() => {

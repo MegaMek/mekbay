@@ -33,6 +33,7 @@
 
 import { signal } from '@angular/core';
 import {
+  AeroDesignType,
   EntityType,
   SMALL_CRAFT_ARMOR_LOCATIONS,
   SMALL_CRAFT_EQUIP_LOCATIONS,
@@ -52,7 +53,7 @@ export class SmallCraftEntity extends AeroEntity {
 
   // ── SmallCraft-specific signals ──
 
-  designType = signal<string>('Aerodyne');
+  designType = signal<AeroDesignType>('Civilian');
 
   /** Crew configuration */
   crew = signal<number>(0);
@@ -67,6 +68,19 @@ export class SmallCraftEntity extends AeroEntity {
 
   /** Structured crew data (alternative to individual signals) */
   crewConfig = signal<SmallCraftCrew>({});
+
+  protected override computeMaximumArmorPoints(): number {
+    const armor = this.mountedArmor().armor;
+    const isSpheroid = this.motiveType() === 'Spheroid';
+    const pointsPerTon = 16 * (armor?.pptMultiplier ?? 1);
+    const armorWeightFactor = isSpheroid ? 3.6 : 4.5;
+    const maximumArmorWeight = Math.floor(this.structuralIntegrity() * armorWeightFactor * 2) / 2;
+    const siBonus = 4 * this.structuralIntegrity();
+    const baseArmor = Math.floor(pointsPerTon * maximumArmorWeight + siBonus);
+    return this.mountedArmor().type === 'PRIMITIVE_AERO'
+      ? Math.floor(baseArmor * 0.66)
+      : baseArmor;
+  }
 
   /** Small Craft has a single weight class. */
   protected override computeWeightClass(): WeightClass {

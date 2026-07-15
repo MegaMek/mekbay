@@ -99,7 +99,7 @@ export class InfantryEntity extends InfantryBaseEntity {
     return getInfantryTonnage(this);
   }
 
-  protected override computeWalkMP(_options: MovementCalculationOptions): number {
+  override computeWalkMP(_options: MovementCalculationOptions): number {
     const mount = this.mount();
     if (mount) {
       return mount.movementMode === 'Leg' ? mount.movementPoints : mount.secondaryGroundMP;
@@ -114,7 +114,7 @@ export class InfantryEntity extends InfantryBaseEntity {
     return walkMP;
   }
 
-  protected override computeJumpMP(_options: MovementCalculationOptions): number {
+  override computeJumpMP(_options: MovementCalculationOptions): number {
     const mount = this.mount();
     if (mount) return mount.movementMode === 'VTOL' ? mount.movementPoints : 0;
     if (this.motiveType() === 'UMU' || this.motiveType() === 'Submarine') return 0;

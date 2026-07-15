@@ -33,6 +33,8 @@
 
 import { DropShipEntity } from '../entities/aero/dropship-entity';
 import {
+  aeroDesignTypeFromCode,
+  dropShipCollarTypeFromCode,
   parseMotiveType,
 } from '../types';
 import { resetMountIdCounter } from '../utils/signal-helpers';
@@ -72,7 +74,7 @@ export function parseBlkDropShip(bb: BuildingBlock, ctx: ParseContext): DropShip
 
   // ── Design type ──
   if (bb.exists('designtype')) {
-    entity.designType.set(bb.getFirstInt('designtype') === 1 ? 'Aerodyne' : 'Spheroid');
+    entity.designType.set(aeroDesignTypeFromCode(bb.getFirstInt('designtype')));
   }
 
   // ── Docking collars ──
@@ -80,7 +82,7 @@ export function parseBlkDropShip(bb: BuildingBlock, ctx: ParseContext): DropShip
     entity.dockingCollars.set(bb.getFirstInt('docking_collar'));
   }
   if (bb.exists('collartype')) {
-    entity.collarType.set(bb.getFirstInt('collartype'));
+    entity.collarType.set(dropShipCollarTypeFromCode(bb.getFirstInt('collartype')));
   }
   if (bb.exists('kf_boom')) {
     entity.kfBoomAttached.set(bb.getFirstInt('kf_boom') === 1);

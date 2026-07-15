@@ -524,7 +524,7 @@ export function parseBlkArmor(
     : 'STANDARD';
 
   // ── Armor-specific tech base ──
-  let techBase: EntityTechBase = 'IS';
+  let techBase: EntityTechBase = entity.techBase();
   if (bb.exists('armor_tech')) {
     const code = bb.getFirstInt('armor_tech');
     if (code === 1 || code === 2) techBase = 'Clan';

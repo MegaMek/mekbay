@@ -75,7 +75,7 @@ export abstract class VehicleEntity extends BaseEntity {
   //  COMPUTED
   // ═══════════════════════════════════════════════════════════════════════════
 
-  protected override computeWalkMP(options: MovementCalculationOptions): number {
+  override computeWalkMP(options: MovementCalculationOptions): number {
     const equipment = this.equipment();
     let walkMP = this.originalWalkMP();
     if (equipment.some(mount => mount.equipment?.hasFlag('F_HYDROFOIL'))) {
@@ -87,12 +87,41 @@ export abstract class VehicleEntity extends BaseEntity {
     return Math.max(0, walkMP);
   }
 
-  protected override computeRunMP(options: MovementCalculationOptions): number {
+  override computeRunMP(options: MovementCalculationOptions): number {
     const walkMP = this.computeWalkMP(options);
     return !options.ignoreMASC
       && this.equipment().some(mount => mount.equipment?.hasFlag('F_MASC'))
       ? walkMP * 2
       : Math.ceil(walkMP * 1.5);
+  }
+
+  protected override computeMaximumArmorPoints(): number {
+    if (!this.isSupportVehicle()) return Math.floor(this.tonnage() * 3.5 + 40);
+
+    let factor = 0;
+    switch (this.motiveType()) {
+      case 'Airship':
+      case 'Naval':
+      case 'Hydrofoil':
+      case 'Submarine':
+        factor = this.weightClass() === 'Large Support' ? 0.05 : 0.334;
+        break;
+      case 'WiGE':
+      case 'Rail':
+      case 'MagLev':
+      case 'Station Keeping':
+        factor = 0.5;
+        break;
+      case 'Hover':
+      case 'VTOL':
+        factor = 1;
+        break;
+      case 'Tracked':
+      case 'Wheeled':
+        factor = 2;
+        break;
+    }
+    return 4 + Math.floor(this.tonnage() * factor);
   }
 
   isSuperHeavy = computed(() => {

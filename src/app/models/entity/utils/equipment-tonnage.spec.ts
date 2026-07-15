@@ -176,7 +176,7 @@ describe('EntityMountedEquipment.getTonnage', () => {
         jumpShip.setTonnage(100000);
         const warShip = new WarShipEntity();
         warShip.setTonnage(100000);
-        warShip.kfCore.set(1);
+        warShip.driveCoreType.set('Compact');
 
         expect(mount(variableEquipment('SRCS', ['F_SRCS'])).getTonnage(dropShip)).toBe(70);
         expect(mount(variableEquipment('improved SRCS', ['F_SRCS', 'S_IMPROVED'])).getTonnage(jumpShip)).toBe(600);

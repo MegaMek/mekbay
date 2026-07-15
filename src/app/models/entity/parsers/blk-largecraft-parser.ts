@@ -35,6 +35,8 @@ import { JumpShipEntity } from '../entities/largecraft/jumpship-entity';
 import { WarShipEntity } from '../entities/largecraft/warship-entity';
 import { SpaceStationEntity } from '../entities/largecraft/space-station-entity';
 import {
+  aeroDesignTypeFromCode,
+  driveCoreTypeFromCode,
   LARGE_CRAFT_LOCATIONS,
 } from '../types';
 import { resetMountIdCounter } from '../utils/signal-helpers';
@@ -81,7 +83,8 @@ export function parseBlkLargeCraft(bb: BuildingBlock, ctx: ParseContext): JumpSh
   }
 
   // ── JumpShip specifics ──
-  if (bb.exists('designtype'))     entity.designType.set(bb.getFirstInt('designtype'));
+  if (bb.exists('designtype'))     entity.designType.set(aeroDesignTypeFromCode(bb.getFirstInt('designtype')));
+  if (bb.exists('kf_core'))        entity.driveCoreType.set(driveCoreTypeFromCode(bb.getFirstInt('kf_core')));
   if (bb.exists('sail'))           entity.sail.set(bb.getFirstInt('sail') === 1);
   if (bb.exists('docking_collar')) entity.dockingCollars.set(bb.getFirstInt('docking_collar'));
   if (bb.exists('lithium-fusion')) entity.lithiumFusion.set(bb.getFirstInt('lithium-fusion') === 1);
@@ -90,11 +93,6 @@ export function parseBlkLargeCraft(bb: BuildingBlock, ctx: ParseContext): JumpSh
 
   if (bb.exists('grav_decks')) {
     entity.gravDecks.set(bb.getDataAsInt('grav_decks'));
-  }
-
-  // ── WarShip specifics ──
-  if (entity instanceof WarShipEntity) {
-    if (bb.exists('kf_core')) entity.kfCore.set(bb.getFirstInt('kf_core'));
   }
 
   // ── Armor ──

@@ -31,7 +31,6 @@
  * affiliated with Microsoft.
  */
 
-import { signal } from '@angular/core';
 import {
   EntityType,
   LARGE_CRAFT_LOCATIONS,
@@ -52,9 +51,6 @@ const WARSHIP_EQUIP_LOCS = [
 
 export class WarShipEntity extends JumpShipEntity {
   override readonly entityType: EntityType = 'WarShip';
-
-  // ── WarShip specifics ──
-  kfCore = signal<number>(0);
 
   // ── Location overrides ──
 

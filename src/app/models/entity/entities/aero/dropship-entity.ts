@@ -33,6 +33,7 @@
 
 import { signal } from '@angular/core';
 import {
+  DropShipCollarType,
   DROPSHIP_LOCATIONS,
   DROPSHIP_WEIGHT_LIMITS,
   EntityType,
@@ -54,7 +55,7 @@ export class DropShipEntity extends SmallCraftEntity {
 
   // ── DropShip-specific signals ──
   dockingCollars = signal<number>(0);
-  collarType = signal<number>(-1);
+  collarType = signal<DropShipCollarType>('Unspecified');
   kfBoomAttached = signal<boolean>(false);
 
   protected override computeWeightClass(): WeightClass {

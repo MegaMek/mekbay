@@ -35,6 +35,8 @@ import { JumpShipEntity } from '../entities/largecraft/jumpship-entity';
 import { WarShipEntity } from '../entities/largecraft/warship-entity';
 import { SpaceStationEntity } from '../entities/largecraft/space-station-entity';
 import {
+  AERO_DESIGN_TYPE_TO_CODE,
+  DRIVE_CORE_TYPE_TO_CODE,
   HEAT_SINK_TYPE_TO_CODE,
   HeatSinkType,
   LARGE_CRAFT_LOCATIONS,
@@ -123,7 +125,8 @@ export function writeBlkLargeCraft(entity: JumpShipEntity): string {
 
   // 18. WarShip kf_core (between tonnage/bv and lithium-fusion)
   if (entity instanceof WarShipEntity) {
-    if (entity.kfCore() > 0) w.addBlock('kf_core', entity.kfCore());
+    const driveCoreCode = DRIVE_CORE_TYPE_TO_CODE[entity.driveCoreType()];
+    if (driveCoreCode > 0) w.addBlock('kf_core', driveCoreCode);
   }
 
   // 19. JumpShip-specific tail: lithium-fusion, jump_range, sail, grav_decks
@@ -136,7 +139,7 @@ export function writeBlkLargeCraft(entity: JumpShipEntity): string {
   }
 
   // 20. designtype + crew block
-  w.addBlock('designtype', entity.designType());
+  w.addBlock('designtype', AERO_DESIGN_TYPE_TO_CODE[entity.designType()]);
   writeBlkCrew(w, entity);
 
   return w.toString();

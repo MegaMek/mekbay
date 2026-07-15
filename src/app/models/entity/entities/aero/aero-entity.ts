@@ -73,12 +73,19 @@ export abstract class AeroEntity extends BaseEntity {
   //  COMPUTED
   // ═══════════════════════════════════════════════════════════════════════════
 
-  protected override computeWalkMP(options: MovementCalculationOptions): number {
+  override computeWalkMP(options: MovementCalculationOptions): number {
     const modularArmorPenalty = !options.ignoreModularArmor
       && this.equipment().some(
         mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR'),
       ) ? 1 : 0;
     return Math.max(0, this.originalWalkMP() - modularArmorPenalty);
+  }
+
+  protected override computeMaximumArmorPoints(): number {
+    if (this.entityType === 'ConvFighter') return Math.floor(this.tonnage());
+    if (this.entityType === 'Aero') return Math.floor(this.tonnage() * 8);
+    if (this.entityType === 'FixedWingSupport') return 4 + Math.floor(this.tonnage());
+    return 0;
   }
 
   maxThrust = computed(() => Math.ceil(this.walkMP() * 1.5));

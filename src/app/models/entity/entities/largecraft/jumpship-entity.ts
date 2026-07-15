@@ -34,7 +34,9 @@
 import { Signal, computed, signal } from '@angular/core';
 import { AeroEntity } from '../aero/aero-entity';
 import {
+  AeroDesignType,
   CAPITAL_SHIP_WEIGHT_LIMITS,
+  DriveCoreType,
   EntityType,
   EntityValidationMessage,
   LARGE_CRAFT_LOCATIONS,
@@ -62,7 +64,8 @@ export class JumpShipEntity extends AeroEntity {
   // ═══════════════════════════════════════════════════════════════════════════
 
   // ── JumpShip specifics ──
-  designType = signal<number>(0);
+  designType = signal<AeroDesignType>('Civilian');
+  driveCoreType = signal<DriveCoreType>('Standard');
   sail = signal<boolean>(true);
   jumpRange = signal<number>(-1);
   dockingCollars = signal<number>(0);
@@ -79,6 +82,27 @@ export class JumpShipEntity extends AeroEntity {
   battleArmor = signal<number>(0);
   lifeboats = signal<number>(0);
   escapePods = signal<number>(0);
+
+  protected override computeMaximumArmorPoints(): number {
+    const armor = this.mountedArmor().armor;
+    const pointsPerTon = 16 * (armor?.pptMultiplier ?? 1);
+
+    let maximumArmorWeight: number;
+    if (this.entityType === 'WarShip') {
+      maximumArmorWeight = this.structuralIntegrity() * this.tonnage() / 50000;
+    } else if (this.entityType === 'SpaceStation') {
+      maximumArmorWeight = this.structuralIntegrity() * this.tonnage() / 300 + 60;
+    } else {
+      maximumArmorWeight = this.structuralIntegrity() * this.tonnage() / 1800;
+    }
+    maximumArmorWeight = Math.floor(maximumArmorWeight * 2) / 2;
+
+    const siBonus = Math.round(this.structuralIntegrity() / 10) * 6;
+    const baseArmor = Math.floor(pointsPerTon * maximumArmorWeight + siBonus);
+    return this.driveCoreType() === 'Primitive'
+      ? Math.floor(baseArmor * 0.66)
+      : baseArmor;
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  LOCATION OVERRIDES

@@ -33,6 +33,8 @@
 
 import { DropShipEntity } from '../entities/aero/dropship-entity';
 import {
+  AERO_DESIGN_TYPE_TO_CODE,
+  DROPSHIP_COLLAR_TYPE_TO_CODE,
   HEAT_SINK_TYPE_TO_CODE,
   HeatSinkType,
 } from '../types';
@@ -74,8 +76,8 @@ export function writeBlkDropShip(entity: DropShipEntity): string {
   w.addBlock('SafeThrust', entity.originalWalkMP());
 
   // 5a. Collar type (if present)
-  if (entity.collarType() >= 0) {
-    w.addBlock('collartype', entity.collarType());
+  if (entity.collarType() !== 'Unspecified') {
+    w.addBlock('collartype', DROPSHIP_COLLAR_TYPE_TO_CODE[entity.collarType()]);
   }
 
   // 6. Heat sinks / Fuel
@@ -114,7 +116,7 @@ export function writeBlkDropShip(entity: DropShipEntity): string {
   writeManualBV(w, entity);
 
   // 18. SmallCraft crew block
-  w.addBlock('designtype', entity.designType() === 'Aerodyne' ? 1 : 0);
+  w.addBlock('designtype', AERO_DESIGN_TYPE_TO_CODE[entity.designType()]);
   writeBlkCrew(w, entity);
 
   return w.toString();
