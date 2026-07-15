@@ -265,6 +265,9 @@ export abstract class BaseEntity {
 
   // ── Transporters / Bays ──
   transporters = signal<EntityTransporter[]>([]);
+  dockingCollarCount = computed(() => this.transporters()
+    .filter(transporter => transporter.type.toLowerCase() === 'dockingcollar')
+    .length);
 
   // ── Quirks ──
   quirks = signal<EntityQuirk[]>([]);

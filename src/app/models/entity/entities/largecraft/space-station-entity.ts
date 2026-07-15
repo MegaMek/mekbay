@@ -39,4 +39,10 @@ import { JumpShipEntity } from './jumpship-entity';
  */
 export class SpaceStationEntity extends JumpShipEntity {
   override readonly entityType: EntityType = 'SpaceStation';
+
+  constructor() {
+    super();
+    this.driveCoreType.set('None');
+    this.sail.set(false);
+  }
 }

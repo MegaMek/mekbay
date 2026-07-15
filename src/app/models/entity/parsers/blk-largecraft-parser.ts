@@ -42,7 +42,7 @@ import {
 import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { JUMPSHIP_EQUIP_TAGS, WARSHIP_EXTRA_EQUIP_TAGS } from './blk-constants';
-import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkCrew, parseBlkEquipment, resolveBlkStructure } from './blk-base-parser';
+import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkCrew, parseBlkEquipment, parseLegacyDockingCollars, resolveBlkStructure } from './blk-base-parser';
 import { ParseContext } from './parse-context';
 
 // ============================================================================
@@ -86,7 +86,7 @@ export function parseBlkLargeCraft(bb: BuildingBlock, ctx: ParseContext): JumpSh
   if (bb.exists('designtype'))     entity.designType.set(aeroDesignTypeFromCode(bb.getFirstInt('designtype')));
   if (bb.exists('kf_core'))        entity.driveCoreType.set(driveCoreTypeFromCode(bb.getFirstInt('kf_core')));
   if (bb.exists('sail'))           entity.sail.set(bb.getFirstInt('sail') === 1);
-  if (bb.exists('docking_collar')) entity.dockingCollars.set(bb.getFirstInt('docking_collar'));
+  parseLegacyDockingCollars(bb, entity);
   if (bb.exists('lithium-fusion')) entity.lithiumFusion.set(bb.getFirstInt('lithium-fusion') === 1);
   if (bb.exists('hpg'))           entity.hpg.set(bb.getFirstInt('hpg') === 1);
   if (bb.exists('jump_range'))    entity.jumpRange.set(bb.getFirstInt('jump_range'));

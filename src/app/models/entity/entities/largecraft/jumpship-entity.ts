@@ -67,8 +67,7 @@ export class JumpShipEntity extends AeroEntity {
   designType = signal<AeroDesignType>('Civilian');
   driveCoreType = signal<DriveCoreType>('Standard');
   sail = signal<boolean>(true);
-  jumpRange = signal<number>(-1);
-  dockingCollars = signal<number>(0);
+  jumpRange = signal<number>(30);
   gravDecks = signal<number[]>([]);
   lithiumFusion = signal<boolean>(false);
   hpg = signal<boolean>(false);
@@ -82,6 +81,26 @@ export class JumpShipEntity extends AeroEntity {
   battleArmor = signal<number>(0);
   lifeboats = signal<number>(0);
   escapePods = signal<number>(0);
+
+  jumpDriveWeight = computed(() => {
+    const driveCorePercent: Readonly<Record<DriveCoreType, number>> = {
+      'Standard': 0.95,
+      'Compact': 0.4525,
+      'Subcompact': 0.5,
+      'None': 0,
+      'Primitive': 0.05 + 0.03 * this.jumpRange(),
+    };
+    return Math.ceil(this.tonnage() * driveCorePercent[this.driveCoreType()]);
+  });
+
+  sailIntegrity = computed(() => {
+    const tonnageDivisor = this.entityType === 'WarShip' ? 20000 : 7500;
+    return 1 + Math.ceil((30 + this.tonnage() / tonnageDivisor) / 20);
+  });
+
+  kfIntegrity = computed(() => this.entityType === 'WarShip'
+    ? Math.ceil(2 + this.jumpDriveWeight() / 25000)
+    : Math.ceil(1.2 + this.jumpDriveWeight() / 60000));
 
   protected override computeMaximumArmorPoints(): number {
     const armor = this.mountedArmor().armor;

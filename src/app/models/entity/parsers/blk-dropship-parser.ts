@@ -40,7 +40,7 @@ import {
 import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { DS_ARMOR_LOCS, DS_EQUIP_TAGS } from './blk-constants';
-import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkCrew, parseBlkEquipment, resolveBlkStructure } from './blk-base-parser';
+import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkCrew, parseBlkEquipment, parseLegacyDockingCollars, resolveBlkStructure } from './blk-base-parser';
 import { ParseContext } from './parse-context';
 
 // ============================================================================
@@ -78,9 +78,7 @@ export function parseBlkDropShip(bb: BuildingBlock, ctx: ParseContext): DropShip
   }
 
   // ── Docking collars ──
-  if (bb.exists('docking_collar')) {
-    entity.dockingCollars.set(bb.getFirstInt('docking_collar'));
-  }
+  parseLegacyDockingCollars(bb, entity);
   if (bb.exists('collartype')) {
     entity.collarType.set(dropShipCollarTypeFromCode(bb.getFirstInt('collartype')));
   }

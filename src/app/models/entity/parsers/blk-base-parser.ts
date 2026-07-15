@@ -643,3 +643,19 @@ export function parseBlkCrew(bb: BuildingBlock, entity: CrewEntity): void {
   if (bb.exists('life_boat'))       entity.lifeboats.set(bb.getFirstInt('life_boat'));
   if (bb.exists('escape_pod'))      entity.escapePods.set(bb.getFirstInt('escape_pod'));
 }
+
+/** Expand the legacy aggregate docking-collar block into canonical transporters. */
+export function parseLegacyDockingCollars(bb: BuildingBlock, entity: BaseEntity): void {
+  if (!bb.exists('docking_collar')) return;
+
+  const count = bb.getFirstInt('docking_collar');
+  if (count <= 0) return;
+  const dockingCollars: EntityTransporter[] = Array.from({ length: count }, () => ({
+    type: 'dockingcollar',
+    capacity: 0,
+    doors: 0,
+    bayNumber: -1,
+    bare: true,
+  }));
+  entity.transporters.update(transporters => [...transporters, ...dockingCollars]);
+}
