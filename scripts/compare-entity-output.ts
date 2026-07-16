@@ -87,7 +87,7 @@ function getArg(name: string, defaultValue: string): string {
 }
 const hasFlag = (name: string) => args.includes(`--${name}`);
 
-const INPUT_DIR = path.resolve(getArg('input', String.raw`C:\Projects\megamek\sourceUnits`));
+const INPUT_DIR = path.resolve(getArg('input', String.raw`C:\Projects\megamek\mm-data\data\mekfiles`));
 const OUTPUT_DIR = path.resolve(getArg('output', String.raw`C:\Projects\megamek\resavedUnits`));
 const TYPE_FILTER = getArg('type', '');
 const NAME_FILTER = getArg('name', '');
