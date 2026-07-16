@@ -77,6 +77,7 @@ export interface MountedEngineInit {
   readonly techBase: EntityTechBase;
   readonly installed?: boolean;
   readonly isSuperHeavy?: boolean;
+  readonly baseChassisHeatSinks?: number;
 }
 
 /**
@@ -92,6 +93,7 @@ export class MountedEngine {
   readonly techBase: EntityTechBase;
   readonly installed: boolean;
   readonly isSuperHeavy: boolean;
+  private baseChassisHeatSinks: number;
 
   constructor(init: MountedEngineInit) {
     this.type = signal<EngineType>(init.type);
@@ -99,6 +101,7 @@ export class MountedEngine {
     this.techBase = init.techBase;
     this.installed = init.installed ?? true;
     this.isSuperHeavy = init.isSuperHeavy ?? false;
+    this.baseChassisHeatSinks = init.baseChassisHeatSinks ?? -1;
 
   }
 
@@ -124,6 +127,14 @@ export class MountedEngine {
       return Math.floor(this.rating / 25) * 2;
     }
     return Math.floor(this.rating / 25);
+  }
+
+  setBaseChassisHeatSinks(amount: number): void {
+    this.baseChassisHeatSinks = amount;
+  }
+
+  getBaseChassisHeatSinks(compact: boolean): number {
+    return Math.min(this.integralHeatSinkCapacity(compact), this.baseChassisHeatSinks);
   }
 
   // ========================================================================

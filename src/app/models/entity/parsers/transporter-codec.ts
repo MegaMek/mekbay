@@ -138,13 +138,14 @@ export function parseTransporterLines(
     }
 
     const size = decodeBaySize(configuration, sourceSpace);
+    const bayNumber = allocateBayNumber(requestedBayNumber);
     const bay: EntityTransportBay = {
       id,
       kind: 'bay',
       configuration,
       ...size,
       doors,
-      bayNumber: allocateBayNumber(requestedBayNumber),
+      bayNumber,
       omni,
     };
     transporters.push(bay);

@@ -37,8 +37,8 @@ const STANDARD_BAY_DEFINITIONS: Readonly<Record<StandardTransportBayType, Standa
 
 const STANDARD_TYPE_BY_BLK = new Map<string, StandardTransportBayType>();
 for (const [type, definition] of Object.entries(STANDARD_BAY_DEFINITIONS) as [StandardTransportBayType, StandardBayDefinition][]) {
-  STANDARD_TYPE_BY_BLK.set(definition.blkType, type);
-  for (const alias of definition.aliases ?? []) STANDARD_TYPE_BY_BLK.set(alias, type);
+  STANDARD_TYPE_BY_BLK.set(definition.blkType.toLowerCase(), type);
+  for (const alias of definition.aliases ?? []) STANDARD_TYPE_BY_BLK.set(alias.toLowerCase(), type);
 }
 
 export function resolveStandardBayType(blkType: string): StandardTransportBayType | undefined {

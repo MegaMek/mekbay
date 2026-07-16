@@ -169,16 +169,14 @@ export abstract class MekEntity extends BaseEntity {
     return equipment ? { count, equipment } : null;
   });
 
+  /** Replace the Mek engine and rebalance its engine-allocated heat-sink mounts. */
   configureEngine(engine: MountedEngine): void {
     const equipment = this.heatSinkEquipment();
     const totalCount = this.heatSinkCount();
-    const baseChassisCount = this.omni()
-      ? this.integralHeatSinks()?.count ?? totalCount
-      : -1;
 
     this.mountedEngine.set(engine);
     if (equipment) {
-      this.rebalanceHeatSinkMounts(equipment, totalCount, baseChassisCount);
+      this.rebalanceHeatSinkMounts(equipment, totalCount);
     }
   }
 
@@ -189,23 +187,22 @@ export abstract class MekEntity extends BaseEntity {
    */
   configureHeatSinks(equipment: MiscEquipment, totalCount: number): void {
     this.validateHeatSinkConfiguration(equipment, totalCount);
-    const currentBaseChassisCount = this.integralHeatSinks()?.count;
-    const baseChassisCount = this.omni()
-      ? currentBaseChassisCount ?? totalCount
-      : -1;
+    if (this.omni() && this.mountedEngine().getBaseChassisHeatSinks(false) < 0) {
+      this.mountedEngine().setBaseChassisHeatSinks(totalCount);
+    }
 
     this.heatSinkEquipment.set(equipment);
-    this.rebalanceHeatSinkMounts(equipment, totalCount, baseChassisCount);
+    this.rebalanceHeatSinkMounts(equipment, totalCount);
   }
 
-  initializeParsedHeatSinkMounts(totalCount: number, baseChassisCount = -1): void {
+  initializeParsedHeatSinkMounts(totalCount: number, baseChassisCount?: number): void {
     const equipment = this.heatSinkEquipment();
     if (!equipment) return;
     this.validateHeatSinkConfiguration(equipment, totalCount);
-    const effectiveBaseCount = this.omni() && baseChassisCount < 10
-      ? totalCount
-      : baseChassisCount;
-    this.rebalanceHeatSinkMounts(equipment, totalCount, effectiveBaseCount, true);
+    if (this.omni() && baseChassisCount !== undefined) {
+      this.mountedEngine().setBaseChassisHeatSinks(baseChassisCount >= 10 ? baseChassisCount : totalCount);
+    }
+    this.rebalanceHeatSinkMounts(equipment, totalCount, true);
   }
 
   private validateHeatSinkConfiguration(equipment: MiscEquipment, totalCount: number): void {
@@ -221,7 +218,6 @@ export abstract class MekEntity extends BaseEntity {
   private rebalanceHeatSinkMounts(
     equipment: MiscEquipment,
     totalCount: number,
-    baseChassisCount = -1,
     preserveExternal = false,
   ): void {
     const current = this.equipment();
@@ -236,7 +232,10 @@ export abstract class MekEntity extends BaseEntity {
         ? mount.equipment.isCompactHeatSink
         : mount.equipment.id === equipment.id)));
     const capacity = this.integralHeatSinkCapacity(equipment);
-    const maximumIntegralCount = this.omni() ? Math.min(capacity, baseChassisCount) : capacity;
+    const configuredBaseCount = this.mountedEngine().getBaseChassisHeatSinks(equipment.isCompactHeatSink);
+    const maximumIntegralCount = this.omni() && configuredBaseCount >= 0
+      ? configuredBaseCount
+      : capacity;
     let preservedExternalUnits = 0;
     if (preserveExternal) {
       for (const mount of externalCandidates) {

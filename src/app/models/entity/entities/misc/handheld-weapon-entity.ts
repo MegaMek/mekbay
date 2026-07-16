@@ -33,6 +33,7 @@
 
 import { Signal, computed } from '@angular/core';
 import { BaseEntity } from '../../base-entity';
+import { createMountedArmor } from '../../components/armor';
 import {
   EntityType,
   EntityValidationMessage,
@@ -44,6 +45,11 @@ import {
 
 export class HandheldWeaponEntity extends BaseEntity {
   override readonly entityType: EntityType = 'HandheldWeapon';
+
+  constructor() {
+    super();
+    this.mountedArmor.set(createMountedArmor({ techLevel: 0 }));
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  LOCATION OVERRIDES

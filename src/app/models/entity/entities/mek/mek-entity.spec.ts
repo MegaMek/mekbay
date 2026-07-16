@@ -249,7 +249,7 @@ describe('MekEntity integral heat sinks', () => {
 
     entity.initializeParsedHeatSinkMounts(15, 12);
 
-    expect(entity.baseChassisHeatSinkCount()).toBe(12);
+    expect(entity.mountedEngine().getBaseChassisHeatSinks(false)).toBe(10);
     expect(entity.integralHeatSinks()).toEqual({ count: 10, equipment: doubleHeatSink });
     expect(entity.equipment().filter(mount => mount.allocation.kind === 'engine').length).toBe(10);
     expect(entity.equipment().filter(mount => mount.allocation.kind !== 'engine').length).toBe(5);
@@ -259,6 +259,42 @@ describe('MekEntity integral heat sinks', () => {
 
     expect(entity.integralHeatSinks()?.count).toBe(10);
     expect(entity.equipment().filter(mount => mount.allocation.kind !== 'engine').length).toBe(8);
+  });
+
+  it('normalizes legacy Omni base-chassis counts below ten to total sinks', () => {
+    const entity = new BipedMekEntity();
+    entity.omni.set(true);
+    entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 200, techBase: 'Clan' }));
+    const doubleHeatSink = new MiscEquipment({
+      id: 'CLDoubleHeatSink', name: 'Double Heat Sink', type: 'misc',
+      flags: ['F_DOUBLE_HEAT_SINK'],
+      stats: { criticalSlots: 2 },
+      tech: { base: 'Clan' },
+    });
+    entity.heatSinkEquipment.set(doubleHeatSink);
+
+    entity.initializeParsedHeatSinkMounts(10, 8);
+
+    expect(entity.mountedEngine().getBaseChassisHeatSinks(false)).toBe(8);
+    expect(entity.integralHeatSinks()).toEqual({ count: 8, equipment: doubleHeatSink });
+    expect(entity.equipment().filter(mount => mount.allocation.kind === 'unallocated').length).toBe(2);
+  });
+
+  it('limits Omni integral mounts to the configured engine base count', () => {
+    const entity = new BipedMekEntity();
+    entity.omni.set(true);
+    entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 300, techBase: 'Clan' }));
+    const doubleHeatSink = new MiscEquipment({
+      id: 'CLDoubleHeatSink', name: 'Double Heat Sink', type: 'misc',
+      flags: ['F_DOUBLE_HEAT_SINK'], tech: { base: 'Clan' },
+    });
+    entity.heatSinkEquipment.set(doubleHeatSink);
+
+    entity.initializeParsedHeatSinkMounts(15, 10);
+
+    expect(entity.mountedEngine().integralHeatSinkCapacity(false)).toBe(12);
+    expect(entity.integralHeatSinks()?.count).toBe(10);
+    expect(entity.equipment().filter(mount => mount.allocation.kind === 'unallocated').length).toBe(5);
   });
 
   it('rejects a compact two-pack as the selected integral sink definition', () => {

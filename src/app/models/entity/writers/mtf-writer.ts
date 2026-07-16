@@ -224,7 +224,7 @@ function writePhysical(entity: MekEntity, lines: string[]): void {
 function writeMovement(entity: MekEntity, lines: string[]): void {
   lines.push(`heat sinks:${entity.totalHeatSinks()} ${encodeMtfHeatSinkType(entity.heatSinkEquipment())}`);
   if (entity.omni()) {
-    lines.push(`base chassis heat sinks:${entity.baseChassisHeatSinkCount() ?? 0}`);
+    lines.push(`base chassis heat sinks:${entity.mountedEngine().getBaseChassisHeatSinks(entity.heatSinkType() === 'Compact')}`);
   }
   // Nocrit: misc equipment with 0 crit slots, excluding CASE, armor, and structure
   // (matches MegaMek's Mek.getMtf() nocrit logic)

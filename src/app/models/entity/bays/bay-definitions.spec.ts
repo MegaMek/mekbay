@@ -13,6 +13,8 @@ describe('bay definitions', () => {
     expect(resolveStandardBayType('mekbay')).toBe('mek');
     expect(resolveStandardBayType('MechBay')).toBe('mek');
     expect(resolveStandardBayType('refrigeratedcargobay')).toBe('refrigerated-cargo');
+    expect(resolveStandardBayType('LiquidCargoBay')).toBe('liquid-cargo');
+    expect(resolveStandardBayType('ProtoMekBay')).toBe('protomek');
   });
 
   it('separates quarter capacity from construction weight', () => {

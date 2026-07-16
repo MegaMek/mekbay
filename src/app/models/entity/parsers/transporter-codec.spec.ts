@@ -67,6 +67,13 @@ describe('transporter codec', () => {
     expect(parse(serializeTransporterLines(original))).toEqual(original);
   });
 
+  it('normalizes compact repair-bay facing syntax', () => {
+    const line = 'navalrepairpressurized:5000:1:5:f4';
+    expect(serializeTransporterLines(parse([line]))).toEqual([
+      'navalrepairpressurized:5000.0:1:5::4:0',
+    ]);
+  });
+
   it('preserves quarter construction weight while exposing person capacity', () => {
     const original = parse(['steeragequarters:26:0']);
     expect(original[0]).toEqual({

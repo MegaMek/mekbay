@@ -32,11 +32,13 @@
  */
 
 /**
- * Entity System Round-trip Verification Script
+ * Entity System Generated-output Idempotence Verification Script
  *
  * Walks the mm-data corpus, parses every .mtf / .blk file, writes it back,
  * re-parses the output, writes again, and compares the two serialised forms.
- * If they match, the round-trip is lossless.
+ * A match proves generated output is stable after the first normalization;
+ * it does not prove that the first write preserves every source-file detail.
+ * For that there is compare-entity-output.ts
  *
  * Usage:
  *   npx tsx scripts/verify-entity-roundtrip.ts [--input PATH] [--output PATH] [--type TYPE] [--fail-fast] [--profile] [--verbose]
@@ -207,7 +209,7 @@ function normalise(text: string): string {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Round-trip verification for a single file
+// Generated-output idempotence verification for a single file
 // ═══════════════════════════════════════════════════════════════════════════
 
 interface VerifyResult {
@@ -331,7 +333,7 @@ function writeDiffFiles(result: VerifyResult): void {
 
 async function main(): Promise<void> {
   console.log('═══════════════════════════════════════════════════════════════');
-  console.log('  Entity System – Round-trip Verification');
+  console.log('  Entity System – Generated-output Idempotence Verification');
   console.log('═══════════════════════════════════════════════════════════════');
   console.log(`Input:  ${INPUT_DIR}`);
   console.log(`Output: ${OUTPUT_DIR}`);
@@ -463,7 +465,7 @@ async function main(): Promise<void> {
   console.log(`  Pass:         ${stats.pass}`);
   console.log(`  Parse errors: ${stats.parseError}`);
   console.log(`  Write errors: ${stats.writeError}`);
-  console.log(`  Diff (lossy): ${stats.diff}`);
+  console.log(`  Diff (unstable): ${stats.diff}`);
   console.log(`  Time:         ${elapsed}s`);
   console.log(`  Pass rate:    ${tested > 0 ? ((stats.pass / tested) * 100).toFixed(1) : 0}%`);
 
@@ -493,7 +495,7 @@ async function main(): Promise<void> {
     console.log(`${totalFail} failure(s). Diff files written to: ${OUTPUT_DIR}`);
     process.exit(1);
   } else {
-    console.log('All files passed! ✓');
+    console.log('All generated outputs are stable after first normalization! ✓');
   }
 }
 
