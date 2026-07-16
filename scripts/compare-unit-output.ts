@@ -379,12 +379,32 @@ function compareField(check: FieldCheck, expected: any, actual: any): boolean {
     }
 
     case 'componentSet':
-      // TODO: implement component-level comparison
-      return true;
+      return deepEqual(normaliseComponentSet(expected), normaliseComponentSet(actual));
 
     default:
       return deepEqual(expected, actual);
   }
+}
+
+function normaliseComponentSet(value: unknown): unknown {
+  if (!Array.isArray(value)) return value;
+  return value
+    .map(component => normaliseComponent(component))
+    .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+}
+
+function normaliseComponent(value: unknown): unknown {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, fieldValue]) => fieldValue !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, fieldValue]) => [
+        key,
+        key === 'bay' ? normaliseComponentSet(fieldValue) : fieldValue,
+      ]),
+  );
 }
 
 function deepEqual(a: any, b: any): boolean {
