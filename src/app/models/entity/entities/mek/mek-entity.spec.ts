@@ -1,4 +1,5 @@
 import { Equipment, MiscEquipment, WeaponEquipment } from '../../../equipment.model';
+import { MountedEngine } from '../../components';
 import { EntityMountedEquipment } from '../../types';
 import { BipedMekEntity } from './biped-mek-entity';
 import { LamEntity } from './lam-entity';
@@ -172,6 +173,149 @@ describe('MekEntity weapons', () => {
   });
 });
 
+describe('MekEntity integral heat sinks', () => {
+  it('derives reactive intrinsic sink capabilities from total and mounted sinks', () => {
+    const entity = new BipedMekEntity();
+    entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 250, techBase: 'IS' }));
+    const singleHeatSink = new MiscEquipment({
+      id: 'Heat Sink', name: 'Heat Sink', type: 'misc', flags: ['F_HEAT_SINK'],
+      stats: { criticalSlots: 1 },
+    });
+    entity.configureHeatSinks(singleHeatSink, 10);
+
+    expect(entity.integralHeatSinks()).toEqual({
+      count: 10,
+      equipment: singleHeatSink,
+    });
+
+    const doubleHeatSink = new MiscEquipment({
+      id: 'ISDoubleHeatSink',
+      name: 'Double Heat Sink',
+      type: 'misc',
+      flags: ['F_DOUBLE_HEAT_SINK'],
+      stats: { criticalSlots: 3 },
+    });
+    entity.configureHeatSinks(doubleHeatSink, 12);
+
+    expect(entity.integralHeatSinks()).toEqual({
+      count: 10,
+      equipment: doubleHeatSink,
+    });
+    expect(entity.equipment().filter(mount => mount.allocation.kind !== 'engine').length).toBe(2);
+    expect(entity.totalHeatSinks()).toBe(12);
+  });
+
+  it('uses the single compact component as the selected integral sink type', () => {
+    const entity = new BipedMekEntity();
+    entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 125, techBase: 'IS' }));
+    const compactHeatSink = new MiscEquipment({
+      id: '1 Compact Heat Sink', name: '1 Compact Heat Sink', type: 'misc',
+      flags: ['F_HEAT_SINK', 'F_COMPACT_HEAT_SINK'],
+      stats: { criticalSlots: 1 },
+    });
+
+    entity.configureHeatSinks(compactHeatSink, 10);
+
+    expect(entity.heatSinkType()).toBe('Compact');
+    expect(entity.integralHeatSinks()).toEqual({ count: 10, equipment: compactHeatSink });
+  });
+
+  it('rebalances integral heat sinks when the engine changes', () => {
+    const entity = new BipedMekEntity();
+    entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 250, techBase: 'IS' }));
+    const singleHeatSink = new MiscEquipment({
+      id: 'Heat Sink', name: 'Heat Sink', type: 'misc', flags: ['F_HEAT_SINK'],
+    });
+    entity.configureHeatSinks(singleHeatSink, 10);
+
+    entity.configureEngine(new MountedEngine({ type: 'Fusion', rating: 125, techBase: 'IS' }));
+
+    expect(entity.integralHeatSinks()?.count).toBe(5);
+    expect(entity.equipment().filter(mount => mount.allocation.kind === 'unallocated').length).toBe(5);
+    expect(entity.totalHeatSinks()).toBe(10);
+  });
+
+  it('represents Omni base-chassis sinks as engine-integrated mounts', () => {
+    const entity = new BipedMekEntity();
+    entity.omni.set(true);
+    entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 250, techBase: 'Clan' }));
+    const doubleHeatSink = new MiscEquipment({
+      id: 'CLDoubleHeatSink', name: 'Double Heat Sink', type: 'misc',
+      flags: ['F_DOUBLE_HEAT_SINK'],
+      stats: { criticalSlots: 2 },
+      tech: { base: 'Clan' },
+    });
+    entity.heatSinkEquipment.set(doubleHeatSink);
+
+    entity.initializeParsedHeatSinkMounts(15, 12);
+
+    expect(entity.baseChassisHeatSinkCount()).toBe(12);
+    expect(entity.integralHeatSinks()).toEqual({ count: 10, equipment: doubleHeatSink });
+    expect(entity.equipment().filter(mount => mount.allocation.kind === 'engine').length).toBe(10);
+    expect(entity.equipment().filter(mount => mount.allocation.kind !== 'engine').length).toBe(5);
+    expect(entity.totalHeatSinks()).toBe(15);
+
+    entity.configureHeatSinks(doubleHeatSink, 18);
+
+    expect(entity.integralHeatSinks()?.count).toBe(10);
+    expect(entity.equipment().filter(mount => mount.allocation.kind !== 'engine').length).toBe(8);
+  });
+
+  it('rejects a compact two-pack as the selected integral sink definition', () => {
+    const entity = new BipedMekEntity();
+    const compactTwoPack = new MiscEquipment({
+      id: '2 Compact Heat Sinks', name: '2 Compact Heat Sinks', type: 'misc',
+      flags: ['F_DOUBLE_HEAT_SINK', 'F_COMPACT_HEAT_SINK'],
+    });
+
+    expect(() => entity.configureHeatSinks(compactTwoPack, 10))
+      .toThrowError('Compact heat-sink configuration must use the single-unit equipment definition');
+  });
+
+  it('preserves parsed compact two-packs before adding integral sinks', () => {
+    const entity = new BipedMekEntity();
+    entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 125, techBase: 'IS' }));
+    const compactHeatSink = new MiscEquipment({
+      id: '1 Compact Heat Sink', name: '1 Compact Heat Sink', type: 'misc',
+      flags: ['F_HEAT_SINK', 'F_COMPACT_HEAT_SINK'],
+    });
+    const compactTwoPack = new MiscEquipment({
+      id: '2 Compact Heat Sinks', name: '2 Compact Heat Sinks', type: 'misc',
+      flags: ['F_DOUBLE_HEAT_SINK', 'F_COMPACT_HEAT_SINK'],
+    });
+    const parsedMount = new EntityMountedEquipment({
+      mountId: 'parsed-compact-two-pack',
+      equipmentId: compactTwoPack.id,
+      equipment: compactTwoPack,
+      allocation: { kind: 'location', location: 'CT' },
+      rearMounted: false,
+      turretMounted: false,
+      omniPodMounted: false,
+      armored: false,
+    });
+    entity.heatSinkEquipment.set(compactHeatSink);
+    entity.equipment.set([parsedMount]);
+
+    entity.initializeParsedHeatSinkMounts(10);
+
+    expect(entity.equipment()).toContain(parsedMount);
+    expect(entity.integralHeatSinks()?.count).toBe(8);
+    expect(entity.totalHeatSinks()).toBe(10);
+  });
+
+  it('does not expose prototype double sinks as engine-integrated', () => {
+    const entity = new BipedMekEntity();
+    const prototype = new MiscEquipment({
+      id: 'ISDoubleHeatSinkPrototype', name: 'Double Heat Sink Prototype', type: 'misc',
+      flags: ['F_IS_DOUBLE_HEAT_SINK_PROTOTYPE'],
+    });
+
+    entity.configureHeatSinks(prototype, 10);
+
+    expect(entity.integralHeatSinks()).toBeNull();
+  });
+});
+
 function mountsWithFlag(flag: string, count: number): EntityMountedEquipment[] {
   return Array.from({ length: count }, () => mountWithFlag(flag));
 }
@@ -187,7 +331,7 @@ function mountWithFlags(flags: readonly string[], location = 'CT'): EntityMounte
     mountId,
     equipmentId: flags.join(':'),
     equipment: { hasFlag: (candidate: string) => flagSet.has(candidate) } as Equipment,
-    location,
+    allocation: { kind: 'location', location },
     rearMounted: false,
     turretMounted: false,
     omniPodMounted: false,
@@ -202,7 +346,7 @@ function mounted(equipment: Equipment): EntityMountedEquipment {
     mountId: `${equipment.id}-${nextMountId++}`,
     equipmentId: equipment.id,
     equipment,
-    location: 'CT',
+    allocation: { kind: 'location', location: 'CT' },
     rearMounted: false,
     turretMounted: false,
     omniPodMounted: false,

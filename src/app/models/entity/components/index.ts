@@ -48,8 +48,6 @@ export {
   getAllGyroTypes,
   normalizeGyroType,
   getGyroTechAdvancement,
-  GYRO_TYPE_FROM_CODE,
-  gyroTypeFromCode,
 } from './gyro';
 
 export {
@@ -60,8 +58,6 @@ export {
   getAllCockpitTypes,
   normalizeCockpitType,
   getCockpitTechAdvancement,
-  COCKPIT_TYPE_FROM_CODE,
-  cockpitTypeFromCode,
   buildHeadSystemLayout,
 } from './cockpit';
 
@@ -75,9 +71,6 @@ export {
   type MountedArmor,
   createMountedArmor,
   createPatchworkArmor,
-  getArmorTypeCode,
-  getEffectiveArmorTechRating,
-  getEffectiveArmorTechLevel,
 } from './armor';
 
 export {
@@ -87,10 +80,6 @@ export {
   type EngineMovementHeat,
   type EngineTypeDescriptor,
   ENGINE_DATA,
-  ENGINE_TYPE_FROM_CODE,
-  ENGINE_TYPE_TO_CODE,
-  engineTypeFromCode,
-  engineTypeToCode,
   getEngineTechAdvancement,
   getEngineBaseWeight,
   buildCTSystemLayout,

@@ -57,7 +57,7 @@ describe('getEquipmentBV', () => {
         vtol.equipment.set([mastMount, ecm]);
 
         expect(ecm.getBV(vtol)).toBe(30);
-        expect(ecm.clone({ location: 'Body' }).getBV(vtol)).toBe(20);
+        expect(ecm.clone({ allocation: { kind: 'location', location: 'Body' } }).getBV(vtol)).toBe(20);
     });
 
     it('returns zero for variable BV handled by specialized calculators', () => {
@@ -80,7 +80,7 @@ function mount(mountId: string, location: string, equipment: MiscEquipment): Ent
         mountId,
         equipmentId: equipment.id,
         equipment,
-        location,
+        allocation: { kind: 'location', location },
         rearMounted: false,
         turretMounted: false,
         omniPodMounted: false,

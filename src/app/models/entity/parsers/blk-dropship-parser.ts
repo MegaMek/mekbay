@@ -32,13 +32,10 @@
  */
 
 import { DropShipEntity } from '../entities/aero/dropship-entity';
-import {
-  aeroDesignTypeFromCode,
-  dropShipCollarTypeFromCode,
-  parseMotiveType,
-} from '../types';
+import { parseMotiveType } from '../types';
 import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
+import { decodeBlkAeroDesignType, decodeBlkDropShipCollarType } from './blk-codec';
 import { DS_ARMOR_LOCS, DS_EQUIP_TAGS } from './blk-constants';
 import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkCrew, parseBlkEquipment, parseLegacyDockingCollars, resolveBlkStructure } from './blk-base-parser';
 import { ParseContext } from './parse-context';
@@ -74,13 +71,13 @@ export function parseBlkDropShip(bb: BuildingBlock, ctx: ParseContext): DropShip
 
   // ── Design type ──
   if (bb.exists('designtype')) {
-    entity.designType.set(aeroDesignTypeFromCode(bb.getFirstInt('designtype')));
+    entity.designType.set(decodeBlkAeroDesignType(bb.getFirstInt('designtype')));
   }
 
   // ── Docking collars ──
   parseLegacyDockingCollars(bb, entity);
   if (bb.exists('collartype')) {
-    entity.collarType.set(dropShipCollarTypeFromCode(bb.getFirstInt('collartype')));
+    entity.collarType.set(decodeBlkDropShipCollarType(bb.getFirstInt('collartype')));
   }
   if (bb.exists('kf_boom')) {
     entity.kfBoomAttached.set(bb.getFirstInt('kf_boom') === 1);

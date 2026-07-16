@@ -36,7 +36,6 @@ import {
   MountedEngine,
   createMountedArmor,
   createPatchworkArmor,
-  engineTypeFromCode,
   getStructureByTypeId,
 } from '../components';
 import { AeroEntity } from '../entities/aero/aero-entity';
@@ -46,15 +45,14 @@ import {
   EntityQuirk,
   EntityTechBase,
   EntityWeaponQuirk,
-  HEAT_SINK_TYPE_FROM_CODE,
   HeatSinkType,
   LocationArmor,
   VALID_TECH_BASE_STRINGS,
-  armorTypeFromCode,
   locationArmor,
   normalizeSystemManufacturerKey,
   resolveArmorEquipment,
 } from '../types';
+import { decodeBlkArmorType, decodeBlkEngineType, decodeBlkHeatSinkType } from './blk-codec';
 import { generateMountId } from '../utils/signal-helpers';
 import { parseTechLevel } from '../utils/tech-level-parser';
 import { BuildingBlock } from './building-block';
@@ -311,7 +309,7 @@ export function parseBlkEquipment(
         mountId: generateMountId(),
         equipmentId: parsed.name,
         equipment: resolved ?? undefined,
-        location: locCode,
+        allocation: { kind: 'location', location: locCode },
         rearMounted: parsed.rearMounted,
         turretMounted: opts?.computeTurretMounted?.(locCode) ?? false,
         turretType: opts?.includeTurretType ? parsed.turretType : undefined,
@@ -424,7 +422,7 @@ export function parseBlkEngine(
   // ── Engine type ──
   if (engineTypeRequired && !bb.exists('engine_type')) return undefined;
   const engineType = bb.exists('engine_type')
-    ? engineTypeFromCode(bb.getFirstInt('engine_type'))
+    ? decodeBlkEngineType(bb.getFirstInt('engine_type'))
     : 'Fusion' as const;
 
   // ── Clan flag (respects clan_engine override for mixed-tech) ──
@@ -433,17 +431,13 @@ export function parseBlkEngine(
   // ── Heat sinks ──
   let heatSinkType: HeatSinkType = 'Single';
   let totalHeatSinks = defaultTotalHeatSinks;
-  let baseChassisHeatSinks = -1;
 
   if (includeHeatSinks) {
     if (bb.exists('sink_type')) {
-      heatSinkType = HEAT_SINK_TYPE_FROM_CODE[bb.getFirstInt('sink_type')] ?? 'Single';
+      heatSinkType = decodeBlkHeatSinkType(bb.getFirstInt('sink_type'));
     }
     if (bb.exists('heatsinks')) {
       totalHeatSinks = bb.getFirstInt('heatsinks');
-    }
-    if (bb.exists('base chassis heat sinks')) {
-      baseChassisHeatSinks = bb.getFirstInt('base chassis heat sinks');
     }
   }
 
@@ -452,12 +446,6 @@ export function parseBlkEngine(
     rating,
     techBase: engineTechBase,
     isSuperHeavy,
-    ...(includeHeatSinks ? {
-      heatSinkType,
-      totalHeatSinks,
-      rawHeatSinkLabel: heatSinkType,
-      baseChassisHeatSinks,
-    } : {}),
   });
 
   return { mountedEngine, heatSinkType, totalHeatSinks };
@@ -483,7 +471,7 @@ export function parseBlkArmor(
 ): void {
   // ── Armor type ──
   const type: ArmorType = bb.exists('armor_type')
-    ? armorTypeFromCode(bb.getFirstInt('armor_type'))
+    ? decodeBlkArmorType(bb.getFirstInt('armor_type'))
     : 'STANDARD';
 
   // ── Armor-specific tech base ──

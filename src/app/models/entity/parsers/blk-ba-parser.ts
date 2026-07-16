@@ -38,11 +38,11 @@ import {
   EntityTechBase,
   EquipmentTechBase,
   LocationArmor,
-  armorTypeFromCode,
   locationArmor,
   parseMotiveType,
   resolveArmorEquipment,
 } from '../types';
+import { decodeBlkArmorType } from './blk-codec';
 import { createMountedArmor } from '../components';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
@@ -87,7 +87,7 @@ export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEnt
 
   // ── Armor ──
   {
-    const type = bb.exists('armor_type') ? armorTypeFromCode(bb.getFirstInt('armor_type')) : 'STANDARD' as ArmorType;
+    const type = bb.exists('armor_type') ? decodeBlkArmorType(bb.getFirstInt('armor_type')) : 'STANDARD' as ArmorType;
     let techBase: EquipmentTechBase = 'IS';
     let rawTechCode = 0;
     if (bb.exists('armor_tech')) {
@@ -141,7 +141,7 @@ function addMissingMovementEquipment(entity: BattleArmorEntity, ctx: ParseContex
     mountId: generateMountId(),
     equipmentId,
     equipment: resolved ?? undefined,
-    location: 'None',
+    allocation: { kind: 'location', location: 'None' },
     rearMounted: false,
     turretMounted: false,
     omniPodMounted: false,
@@ -200,7 +200,7 @@ function parseLocationEquipment(
       mountId: generateMountId(),
       equipmentId: parsed.name,
       equipment: resolved ?? undefined,
-      location,
+      allocation: { kind: 'location', location },
       rearMounted: parsed.rearMounted,
       turretMounted: false,
       omniPodMounted: parsed.omniPod,

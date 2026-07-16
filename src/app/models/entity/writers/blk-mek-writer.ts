@@ -37,9 +37,13 @@ import {
   CriticalSlotView,
   EntityMountedEquipment,
   EngineType,
-  HEAT_SINK_TYPE_TO_CODE,
-  HeatSinkType,
 } from '../types';
+import {
+  encodeBlkCockpitType,
+  encodeBlkEngineType,
+  encodeBlkGyroType,
+  encodeBlkHeatSinkType,
+} from '../parsers/blk-codec';
 import { BuildingBlockWriter, writeSource } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 import {
@@ -86,7 +90,7 @@ export function writeBlkMek(entity: MekEntity): string {
   const chassisType = isQuad ? 'Quad' : 'Biped';
   w.addBlock('chassis_type', chassisType);
   const me = entity.mountedEngine();
-  w.addBlock('engine_type', me?.descriptor().code ?? 0);
+  w.addBlock('engine_type', me ? encodeBlkEngineType(me.type()) : 0);
   w.addBlock('walkingMP', entity.originalWalkMP());
 
   // ── Structure / Gyro / Cockpit ──
@@ -95,16 +99,17 @@ export function writeBlkMek(entity: MekEntity): string {
     entity.mountedStructure()?.structureTypeId ?? 0,
   );
   if (entity.gyroType() !== 'Standard') {
-    w.addBlock('gyro_type', entity.mountedGyro().code);
+    w.addBlock('gyro_type', encodeBlkGyroType(entity.gyroType()));
   }
   if (entity.cockpitType() !== 'Standard') {
-    w.addBlock('cockpit_type', entity.mountedCockpit().code);
+    w.addBlock('cockpit_type', encodeBlkCockpitType(entity.cockpitType()));
   }
 
   // ── Heat sinks ──
-  w.addBlock('sink_type', HEAT_SINK_TYPE_TO_CODE[entity.heatSinkType() as HeatSinkType] ?? 0);
-  if (entity.baseChassisHeatSinks() >= 0) {
-    w.addBlock('base chassis heat sinks', entity.baseChassisHeatSinks());
+  w.addBlock('heatsinks', entity.totalHeatSinks());
+  w.addBlock('sink_type', encodeBlkHeatSinkType(entity.heatSinkType()));
+  if (entity.omni()) {
+    w.addBlock('base chassis heat sinks', entity.baseChassisHeatSinkCount() ?? 0);
   }
 
   // ── Armor ──

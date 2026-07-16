@@ -82,8 +82,6 @@ export type CockpitHeadLayout = readonly (string | null)[];
 export interface CockpitTypeDescriptor {
   // ── Identity ──
 
-  /** Numeric type code matching MegaMek `Mek.COCKPIT_*` constants. */
-  readonly code: number;
   /** Full display name (e.g. "Standard Cockpit", "Small Cockpit"). */
   readonly fullName: string;
   /** Short display name (e.g. "Standard", "Small"). */
@@ -219,7 +217,6 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
   // 0 — Standard
   // ────────────────────────────────────────────────────────────────────────
   'Standard': {
-    code: 0,
     fullName: 'Standard Cockpit',
     shortName: 'Standard',
     weight: 3,
@@ -247,7 +244,6 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
   // 1 — Small
   // ────────────────────────────────────────────────────────────────────────
   'Small': {
-    code: 1,
     fullName: 'Small Cockpit',
     shortName: 'Small',
     weight: 2,
@@ -278,7 +274,6 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
   // 2 — Command Console
   // ────────────────────────────────────────────────────────────────────────
   'Command Console': {
-    code: 2,
     fullName: 'Command Console',
     shortName: 'Command Console',
     weight: 6,
@@ -309,7 +304,6 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
   // 3 — Torso-Mounted
   // ────────────────────────────────────────────────────────────────────────
   'Torso-Mounted': {
-    code: 3,
     fullName: 'Torso-Mounted Cockpit',
     shortName: 'Torso Mounted',
     weight: 4,
@@ -340,7 +334,6 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
   // 4 — Dual
   // ────────────────────────────────────────────────────────────────────────
   'Dual': {
-    code: 4,
     fullName: 'Dual Cockpit',
     shortName: 'Dual',
     weight: 4,
@@ -368,7 +361,6 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
   // 5 — Industrial
   // ────────────────────────────────────────────────────────────────────────
   'Industrial': {
-    code: 5,
     fullName: 'Industrial Cockpit',
     shortName: 'Industrial',
     weight: 3,
@@ -397,7 +389,6 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
   // 6 — Primitive
   // ────────────────────────────────────────────────────────────────────────
   'Primitive': {
-    code: 6,
     fullName: 'Primitive Cockpit',
     shortName: 'Primitive',
     weight: 5,
@@ -425,7 +416,6 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
   // 7 — Primitive Industrial
   // ────────────────────────────────────────────────────────────────────────
   'Primitive Industrial': {
-    code: 7,
     fullName: 'Primitive Industrial Cockpit',
     shortName: 'Primitive Industrial',
     weight: 5,
@@ -454,7 +444,6 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
   // 8 — Superheavy
   // ────────────────────────────────────────────────────────────────────────
   'Superheavy': {
-    code: 8,
     fullName: 'Superheavy Cockpit',
     shortName: 'Superheavy',
     weight: 4,
@@ -482,7 +471,6 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
   // 9 — Superheavy Tripod
   // ────────────────────────────────────────────────────────────────────────
   'Superheavy Tripod': {
-    code: 9,
     fullName: 'Superheavy Tripod Cockpit',
     shortName: 'Superheavy Tripod',
     weight: 5,
@@ -510,7 +498,6 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
   // 10 — Tripod
   // ────────────────────────────────────────────────────────────────────────
   'Tripod': {
-    code: 10,
     fullName: 'Tripod Cockpit',
     shortName: 'Tripod',
     weight: 4,
@@ -538,7 +525,6 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
   // 11 — Interface
   // ────────────────────────────────────────────────────────────────────────
   'Interface': {
-    code: 11,
     fullName: 'Interface Cockpit',
     shortName: 'Interface',
     weight: 4,
@@ -569,7 +555,6 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
   // 12 — Virtual Reality Piloting Pod (VRRP / VRPP)
   // ────────────────────────────────────────────────────────────────────────
   'Virtual Reality Piloting Pod': {
-    code: 12,
     fullName: 'Virtual Reality Piloting Pod',
     shortName: 'VRPP',
     weight: 3,
@@ -597,7 +582,6 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
   // 13 — QuadVee
   // ────────────────────────────────────────────────────────────────────────
   'QuadVee': {
-    code: 13,
     fullName: 'QuadVee Cockpit',
     shortName: 'QuadVee',
     weight: 4,
@@ -625,7 +609,6 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
   // 14 — Superheavy Industrial
   // ────────────────────────────────────────────────────────────────────────
   'Superheavy Industrial': {
-    code: 14,
     fullName: 'Superheavy Industrial Cockpit',
     shortName: 'Superheavy Industrial',
     weight: 4,
@@ -654,7 +637,6 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
   // 15 — Superheavy Command Console
   // ────────────────────────────────────────────────────────────────────────
   'Superheavy Command Console': {
-    code: 15,
     fullName: 'Superheavy Command Console',
     shortName: 'Superheavy Command',
     weight: 7,
@@ -682,7 +664,6 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
   // 16 — Small Command Console
   // ────────────────────────────────────────────────────────────────────────
   'Small Command Console': {
-    code: 16,
     fullName: 'Small Command Console',
     shortName: 'Small Command',
     weight: 5,
@@ -713,7 +694,6 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
   // 17 — Tripod Industrial
   // ────────────────────────────────────────────────────────────────────────
   'Tripod Industrial': {
-    code: 17,
     fullName: 'Tripod Industrial Cockpit',
     shortName: 'Tripod Industrial',
     weight: 4,
@@ -742,7 +722,6 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
   // 18 — Superheavy Tripod Industrial
   // ────────────────────────────────────────────────────────────────────────
   'Superheavy Tripod Industrial': {
-    code: 18,
     fullName: 'Superheavy Tripod Industrial Cockpit',
     shortName: 'Superheavy Tripod Industrial',
     weight: 4,
@@ -777,23 +756,4 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
  */
 export function getCockpitTechAdvancement(type: CockpitType): TechAdvancement {
   return COCKPIT_DATA[type].tech;
-}
-
-// ============================================================================
-// Derived code maps (built from COCKPIT_DATA at module load)
-// ============================================================================
-
-/**
- * Reverse lookup: numeric code → CockpitType string.
- * Derived from the `code` field on each `CockpitTypeDescriptor`.
- */
-export const COCKPIT_TYPE_FROM_CODE: Record<number, CockpitType> =
-  Object.fromEntries(
-    (Object.entries(COCKPIT_DATA) as [CockpitType, CockpitTypeDescriptor][])
-      .map(([name, desc]) => [desc.code, name]),
-  ) as Record<number, CockpitType>;
-
-/** Convert a numeric cockpit code (from BLK files) to a CockpitType string. */
-export function cockpitTypeFromCode(code: number): CockpitType {
-  return COCKPIT_TYPE_FROM_CODE[code] ?? 'Standard';
 }

@@ -81,7 +81,7 @@ export function parseBlkHandheld(bb: BuildingBlock, ctx: ParseContext): Handheld
         mountId: generateMountId(),
         equipmentId: parsed.name,
         equipment: resolved ?? undefined,
-        location: 'None',
+        allocation: { kind: 'location', location: 'None' },
         rearMounted: false,
         turretMounted: false,
         omniPodMounted: false,

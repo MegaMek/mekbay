@@ -40,7 +40,6 @@ import { SupportNavalEntity } from '../entities/vehicle/support-naval-entity';
 import { SupportVtolEntity } from '../entities/vehicle/support-vtol-entity';
 import { LargeSupportTankEntity } from '../entities/vehicle/large-support-tank-entity';
 import { GunEmplacementEntity } from '../entities/vehicle/gun-emplacement-entity';
-import { ENGINE_TYPE_FROM_CODE } from '../components';
 import {
   LocationArmor,
   VALID_FUEL_TYPES,
@@ -48,6 +47,7 @@ import {
   locationArmor,
   parseMotiveType,
 } from '../types';
+import { decodeBlkEngineType, ENGINE_TYPE_FROM_BLK_CODE } from './blk-codec';
 import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import {
@@ -115,11 +115,11 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
   // ── Engine ──
   if (bb.exists('engine_type')) {
     const code = bb.getFirstInt('engine_type');
-    ctx.validateCode('engine_type', code, ENGINE_TYPE_FROM_CODE);
+    ctx.validateCode('engine_type', code, ENGINE_TYPE_FROM_BLK_CODE);
     const result = parseBlkEngine(bb, entity, {
       engineTypeRequired: true,
       includeHeatSinks: false,
-      rating: entity.calculateEngineRating(ENGINE_TYPE_FROM_CODE[code]),
+      rating: entity.calculateEngineRating(decodeBlkEngineType(code)),
     });
     if (result) entity.mountedEngine.set(result.mountedEngine);
   }

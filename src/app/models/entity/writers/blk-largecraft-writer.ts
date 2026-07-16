@@ -35,12 +35,9 @@ import { JumpShipEntity } from '../entities/largecraft/jumpship-entity';
 import { WarShipEntity } from '../entities/largecraft/warship-entity';
 import { SpaceStationEntity } from '../entities/largecraft/space-station-entity';
 import {
-  AERO_DESIGN_TYPE_TO_CODE,
-  DRIVE_CORE_TYPE_TO_CODE,
-  HEAT_SINK_TYPE_TO_CODE,
-  HeatSinkType,
   LARGE_CRAFT_LOCATIONS,
 } from '../types';
+import { encodeBlkAeroDesignType, encodeBlkDriveCoreType, encodeBlkHeatSinkType } from '../parsers/blk-codec';
 import {
   BuildingBlockWriter,
   writeArmorBlocks,
@@ -86,7 +83,7 @@ export function writeBlkLargeCraft(entity: JumpShipEntity): string {
 
   // 6. Heat sinks / Fuel
   w.addBlock('heatsinks', entity.heatSinkCount());
-  w.addBlock('sink_type', HEAT_SINK_TYPE_TO_CODE[entity.heatSinkType() as HeatSinkType] ?? 0);
+  w.addBlock('sink_type', encodeBlkHeatSinkType(entity.heatSinkType()));
   w.addBlock('fuel', entity.fuel());
 
   // 7. Engine: engine_type, clan_engine
@@ -125,13 +122,13 @@ export function writeBlkLargeCraft(entity: JumpShipEntity): string {
 
   // 18. WarShip kf_core (between tonnage/bv and lithium-fusion)
   if (entity instanceof WarShipEntity) {
-    const driveCoreCode = DRIVE_CORE_TYPE_TO_CODE[entity.driveCoreType()];
+    const driveCoreCode = encodeBlkDriveCoreType(entity.driveCoreType());
     if (driveCoreCode > 0) w.addBlock('kf_core', driveCoreCode);
   }
 
   // 19. JumpShip-specific tail: lithium-fusion, jump_range, sail, grav_decks
   if (entity.lithiumFusion()) w.addBlock('lithium-fusion', 1);
-  if (entity.jumpRange() >= 0) w.addBlock('jump_range', entity.jumpRange());
+  if (entity.jumpRange() !== 30) w.addBlock('jump_range', entity.jumpRange());
   w.addBlock('sail', entity.sail() ? 1 : 0);
   const gravDecks = entity.gravDecks();
   if (gravDecks.length > 0) {
@@ -139,7 +136,7 @@ export function writeBlkLargeCraft(entity: JumpShipEntity): string {
   }
 
   // 20. designtype + crew block
-  w.addBlock('designtype', AERO_DESIGN_TYPE_TO_CODE[entity.designType()]);
+  w.addBlock('designtype', encodeBlkAeroDesignType(entity.designType()));
   writeBlkCrew(w, entity);
 
   return w.toString();

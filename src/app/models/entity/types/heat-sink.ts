@@ -31,16 +31,24 @@
  * affiliated with Microsoft.
  */
 
+import type { MiscEquipment } from '../../equipment.model';
+
 // ============================================================================
 // Heat Sink Types
 // ============================================================================
 
 export type HeatSinkType = 'Single' | 'Double' | 'Compact' | 'Laser';
 
-export const HEAT_SINK_TYPE_FROM_CODE: Record<number, HeatSinkType> = {
-  0: 'Single', 1: 'Double', 2: 'Compact', 3: 'Laser',
-};
+export interface IntegralHeatSinkCapability {
+  readonly count: number;
+  readonly equipment: MiscEquipment;
+}
 
-export const HEAT_SINK_TYPE_TO_CODE: Record<HeatSinkType, number> = {
-  'Single': 0, 'Double': 1, 'Compact': 2, 'Laser': 3,
-};
+export function getMekHeatSinkType(equipment: MiscEquipment | null): HeatSinkType {
+  if (!equipment) return 'Single';
+  if (equipment.isCompactHeatSink) return 'Compact';
+  if (equipment.hasFlag('F_LASER_HEAT_SINK')) return 'Laser';
+  return equipment.hasAnyFlag(['F_DOUBLE_HEAT_SINK', 'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE'])
+    ? 'Double'
+    : 'Single';
+}

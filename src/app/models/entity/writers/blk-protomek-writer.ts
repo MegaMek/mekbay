@@ -106,11 +106,7 @@ export function writeBlkProtoMek(entity: ProtoMekEntity): string {
     : PROTO_EQUIP_TAGS.filter(([tag]) => tag !== 'Main Gun Equipment');
   writeEquipmentByLocation(w, entity, equipTags, encodeEquipmentLine, true);
 
-  // ── Section 11: ProtoMek-specific flags ──
-  if (entity.isQuad())   w.addBlock('isQuad', 1);
-  if (entity.isGlider()) w.addBlock('isGlider', 1);
-
-  // ── Section 12-14: Fluff / Source / Tonnage ──
+  // ── Section 11-13: Fluff / Source / Tonnage ──
   writeFluffBlocks(w, entity.fluff());
   writeSource(w, entity);
   writeTonnage(w, entity);

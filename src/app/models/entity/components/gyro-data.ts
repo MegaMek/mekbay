@@ -65,8 +65,6 @@ export type GyroType =
 export interface GyroTypeDescriptor {
   // ── Identity ──
 
-  /** Numeric type code matching MegaMek `Mek.GYRO_*` constants. */
-  readonly code: number;
   /** Full display name (e.g. "Standard Gyro", "XL Gyro"). */
   readonly fullName: string;
   /** Short display name (e.g. "Standard", "XL"). */
@@ -140,7 +138,6 @@ export const GYRO_DATA: Readonly<Record<GyroType, GyroTypeDescriptor>> = {
   // 0 - Standard
   // ────────────────────────────────────────────────────────────────────────
   'Standard': {
-    code: 0,
     fullName: 'Standard Gyro',
     shortName: 'Standard',
     criticalSlots: 4,
@@ -159,7 +156,6 @@ export const GYRO_DATA: Readonly<Record<GyroType, GyroTypeDescriptor>> = {
   // 1 - XL
   // ────────────────────────────────────────────────────────────────────────
   'XL': {
-    code: 1,
     fullName: 'XL Gyro',
     shortName: 'XL',
     criticalSlots: 6,
@@ -178,7 +174,6 @@ export const GYRO_DATA: Readonly<Record<GyroType, GyroTypeDescriptor>> = {
   // 2 - Compact
   // ────────────────────────────────────────────────────────────────────────
   'Compact': {
-    code: 2,
     fullName: 'Compact Gyro',
     shortName: 'Compact',
     criticalSlots: 2,
@@ -197,7 +192,6 @@ export const GYRO_DATA: Readonly<Record<GyroType, GyroTypeDescriptor>> = {
   // 3 - Heavy Duty
   // ────────────────────────────────────────────────────────────────────────
   'Heavy Duty': {
-    code: 3,
     fullName: 'Heavy Duty Gyro',
     shortName: 'Heavy Duty',
     criticalSlots: 4,
@@ -216,7 +210,6 @@ export const GYRO_DATA: Readonly<Record<GyroType, GyroTypeDescriptor>> = {
   // 4 - None
   // ────────────────────────────────────────────────────────────────────────
   'None': {
-    code: 4,
     fullName: 'None',
     shortName: 'None',
     criticalSlots: 0,
@@ -235,7 +228,6 @@ export const GYRO_DATA: Readonly<Record<GyroType, GyroTypeDescriptor>> = {
   // 5 - Superheavy
   // ────────────────────────────────────────────────────────────────────────
   'Superheavy': {
-    code: 5,
     fullName: 'Superheavy Gyro',
     shortName: 'Superheavy',
     criticalSlots: 4,
@@ -260,23 +252,4 @@ export const GYRO_DATA: Readonly<Record<GyroType, GyroTypeDescriptor>> = {
  */
 export function getGyroTechAdvancement(type: GyroType): TechAdvancement {
   return GYRO_DATA[type].tech;
-}
-
-// ============================================================================
-// Derived code maps (built from GYRO_DATA at module load)
-// ============================================================================
-
-/**
- * Reverse lookup: numeric code => GyroType string.
- * Derived from the `code` field on each `GyroTypeDescriptor`.
- */
-export const GYRO_TYPE_FROM_CODE: Record<number, GyroType> =
-  Object.fromEntries(
-    (Object.entries(GYRO_DATA) as [GyroType, GyroTypeDescriptor][])
-      .map(([name, desc]) => [desc.code, name]),
-  ) as Record<number, GyroType>;
-
-/** Convert a numeric gyro code (from BLK files) to a GyroType string. */
-export function gyroTypeFromCode(code: number): GyroType {
-  return GYRO_TYPE_FROM_CODE[code] ?? 'Standard';
 }

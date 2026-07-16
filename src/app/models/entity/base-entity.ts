@@ -52,7 +52,7 @@ import {
   EntityMountedEquipment,
   EntityMountedEquipmentInit,
   EntityMountedWeapon,
-  EntityWeaponCapability,
+  EntityWeapon,
   EntityQuirk,
   EntityTechBase,
   EntityTransporter,
@@ -272,7 +272,7 @@ export abstract class BaseEntity {
   readonly intrinsicWeapons = computed<readonly IntrinsicWeapon[]>(() =>
     this.computeIntrinsicWeapons()
   );
-  readonly weapons = computed<readonly EntityWeaponCapability[]>(() => [
+  readonly weapons = computed<readonly EntityWeapon[]>(() => [
     ...this.mountedWeapons().map(mount => {
       const characteristics = mount.equipment.characteristics;
       return {
@@ -669,7 +669,13 @@ export abstract class BaseEntity {
   moveEquipment(mountId: string, newLocation: string, newPlacements?: readonly MountPlacement[]): void {
     this.equipment.update(list => list.map(m => {
       if (m.mountId !== mountId) return m;
-      return m.clone({ location: newLocation, placements: newPlacements ?? m.placements });
+      return m.clone({
+        allocation: {
+          kind: 'location',
+          location: newLocation,
+          placements: newPlacements ?? m.placements,
+        },
+      });
     }));
   }
 

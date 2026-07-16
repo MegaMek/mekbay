@@ -36,9 +36,8 @@ import { ConvFighterEntity } from '../entities/aero/conv-fighter-entity';
 import { FixedWingSupportEntity } from '../entities/aero/fixed-wing-support-entity';
 import {
   AERO_EQUIP_LOCATIONS,
-  HEAT_SINK_TYPE_TO_CODE,
-  HeatSinkType,
 } from '../types';
+import { encodeBlkHeatSinkType } from '../parsers/blk-codec';
 import {
   BuildingBlockWriter,
   writeArmorBlocks,
@@ -91,7 +90,7 @@ export function writeBlkAero(entity: AeroEntity): string {
 
   // 7. Heat sinks / Fuel
   w.addBlock('heatsinks', entity.heatSinkCount());
-  w.addBlock('sink_type', HEAT_SINK_TYPE_TO_CODE[entity.heatSinkType() as HeatSinkType] ?? 0);
+  w.addBlock('sink_type', encodeBlkHeatSinkType(entity.heatSinkType()));
   if (entity.omnipodHeatSinkCount() > 0) {
     w.addBlock('omnipodheatsinks', entity.omnipodHeatSinkCount());
   }
@@ -126,12 +125,7 @@ export function writeBlkAero(entity: AeroEntity): string {
     if (entity.engineTechRating())     w.addBlock('engine_tech_rating', entity.engineTechRating());
   }
 
-  // 15. Structural integrity (if > 0)
-  if (entity.structuralIntegrity() > 0) {
-    w.addBlock('structural_integrity', entity.structuralIntegrity());
-  }
-
-  // 16-19. Fluff / source / tonnage / Manual BV
+  // 15-18. Fluff / source / tonnage / Manual BV
     writeFluffBlocks(w, entity.fluff());
     writeSource(w, entity);
     writeTonnage(w, entity);

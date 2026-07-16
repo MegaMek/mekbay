@@ -51,9 +51,6 @@
 import { ArmorEquipment } from '../../equipment.model';
 import {
   ArmorType,
-  ARMOR_TYPE_TO_CODE,
-  TECH_RATING_TO_NUMBER,
-  compoundTechLevel,
   EquipmentTechBase,
 } from '../types';
 
@@ -144,7 +141,6 @@ export function createMountedArmor(
     rawTechCode: opts?.rawTechCode ?? 0,
   };
 }
-
 /**
  * Create empty PatchworkArmor data.
  */
@@ -157,36 +153,4 @@ export function createPatchworkArmor(
     ratings: opts?.ratings ?? new Map(),
     types: opts?.types ?? new Map(),
   };
-}
-
-// ============================================================================
-// MountedArmor - derived queries
-// ============================================================================
-
-/**
- * Get the BLK numeric armor type code for a mounted armor.
- * Replaces the former `armorTypeCode` computed on BaseEntity.
- */
-export function getArmorTypeCode(armor: MountedArmor): number {
-  return ARMOR_TYPE_TO_CODE[armor.type] ?? 0;
-}
-
-/**
- * Get the effective tech rating for BLK output.
- * If explicitly set (>= 0), uses the override; otherwise derives from equipment.
- */
-export function getEffectiveArmorTechRating(armor: MountedArmor): number {
-  if (armor.techRating >= 0) return armor.techRating;
-  if (armor.armor) return TECH_RATING_TO_NUMBER[armor.armor.rating] ?? 3;
-  return 0;
-}
-
-/**
- * Get the effective compound tech level for BLK output.
- * If explicitly set (>= 0), uses the override; otherwise derives from equipment.
- */
-export function getEffectiveArmorTechLevel(armor: MountedArmor, entityIsClan: boolean): number {
-  if (armor.techLevel >= 0) return armor.techLevel;
-  if (armor.armor) return compoundTechLevel(armor.armor.level, entityIsClan);
-  return 0;
 }

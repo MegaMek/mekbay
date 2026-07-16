@@ -40,12 +40,12 @@ import { LamEntity } from '../entities/mek/lam-entity';
 import {
   CriticalSlotView,
   EntityMountedEquipment,
-  EquipmentTechBase,
   MEK_SLOTS_PER_LOCATION,
   MekLocation,
 
 } from '../types';
 import { WeaponEquipment } from '../../equipment.model';
+import { encodeMtfArmor, encodeMtfEngine, encodeMtfHeatSinkType, encodeMtfStructure } from '../parsers/mtf-codec';
 
 // ============================================================================
 // Location → MTF display names & ordering
@@ -178,7 +178,13 @@ function writeConfig(entity: MekEntity, lines: string[]): void {
 
 function writePhysical(entity: MekEntity, lines: string[]): void {
   lines.push(`mass:${entity.tonnage()}`);
-  lines.push(`engine:${formatEngineLine(entity)}`);
+  const engine = entity.mountedEngine();
+  lines.push(`engine:${encodeMtfEngine(engine ? {
+    rating: engine.rating,
+    type: engine.type(),
+    techBase: engine.techBase,
+    mixedTech: entity.mixedTech(),
+  } : null)}`);
   lines.push(`structure:${getStructureString(entity)}`);
   if (entity.isFrankenMek()) {
     const locations = entity.frankenMekLocations();
@@ -216,10 +222,9 @@ function writePhysical(entity: MekEntity, lines: string[]): void {
 }
 
 function writeMovement(entity: MekEntity, lines: string[]): void {
-  const me = entity.mountedEngine();
-  lines.push(`heat sinks:${me.installedHeatSinksCount()} ${me.rawHeatSinkLabel}`);
-  if (me.baseChassisHeatSinks >= 0) {
-    lines.push(`base chassis heat sinks:${me.baseChassisHeatSinks}`);
+  lines.push(`heat sinks:${entity.totalHeatSinks()} ${encodeMtfHeatSinkType(entity.heatSinkEquipment())}`);
+  if (entity.omni()) {
+    lines.push(`base chassis heat sinks:${entity.baseChassisHeatSinkCount() ?? 0}`);
   }
   // Nocrit: misc equipment with 0 crit slots, excluding CASE, armor, and structure
   // (matches MegaMek's Mek.getMtf() nocrit logic)
@@ -248,11 +253,11 @@ function writeArmor(
 ): void {
   const mountedArmor = entity.mountedArmor();
   const armorDisplayName = mountedArmor.armor?.name ?? 'Standard';
-  if (mountedArmor.type === 'PATCHWORK') {
-    lines.push('armor:Patchwork');
-  } else {
-    lines.push(`armor:${armorDisplayName}(${formatTechBaseLabel(mountedArmor.techBase)})`);
-  }
+  lines.push(`armor:${encodeMtfArmor(
+    armorDisplayName,
+    mountedArmor.techBase,
+    mountedArmor.type === 'PATCHWORK',
+  )}`);
 
   const order = isTripod ? ARMOR_ORDER_TRIPOD : isQuad ? ARMOR_ORDER_QUAD : ARMOR_ORDER_BIPED;
   const armorMap = entity.armorValues();
@@ -433,55 +438,12 @@ function formatTechBase(entity: MekEntity): string {
   return tb === 'Clan' ? 'Clan' : 'Inner Sphere';
 }
 
-function formatTechBaseLabel(tb: EquipmentTechBase): string {
-  return tb === 'Clan' ? 'Clan' : 'Inner Sphere';
-}
-
-/**
- * Format the full MTF engine line value.
- *
- * Conventions observed in MegaMek Suite 0.50.12 output:
- * - Pure IS:  `<rating> <Type> Engine`           (no tech marker)
- * - Pure Clan: `<rating> <Type> (Clan) Engine`   (`(Clan)` between type and Engine)
- * - Mixed IS Chassis + IS engine: `<rating> <Type> Engine(IS)`
- * - Mixed + Clan engine: `<rating> <Type> (Clan) Engine`
- */
-function formatEngineLine(entity: MekEntity): string {
-  const me = entity.mountedEngine();
-  if (!me) return 'None';
-  const rating = me.rating;
-  const typeName = getEngineTypePrefix(me.type());
-  const isMixed = entity.mixedTech();
-  const large = rating > 400 ? 'Large ' : '';
-
-  if (me.techBase === 'Clan') {
-    return `${rating} ${large}${typeName} (Clan) Engine`;
-  } else if (isMixed) {
-    return `${rating} ${large}${typeName} Engine(IS)`;
-  } else {
-    return `${rating} ${large}${typeName} Engine`;
-  }
-}
-
-function getEngineTypePrefix(engineType: string): string {
-  switch (engineType) {
-    case 'XL':        return 'XL';
-    case 'XXL':       return 'XXL';
-    case 'Light':     return 'Light';
-    case 'Compact':   return 'Compact';
-    case 'ICE':       return 'ICE';
-    case 'Fuel Cell': return 'Fuel Cell';
-    case 'Fission':   return 'Fission';
-    default:          return 'Fusion';
-  }
-}
-
 function getStructureString(entity: MekEntity): string {
-  const structure = entity.mountedStructure();
-  const name = structure?.name ?? 'Standard';
-  const techBase = structure?.techBase === 'All' ? entity.techBase() : structure?.techBase;
-  const prefix = techBase === 'Clan' ? 'Clan ' : 'IS ';
-  return `${prefix}${name}`;
+  return encodeMtfStructure(
+    entity.mountedStructure()?.name ?? 'Standard',
+    entity.structureTechBase(),
+    entity.hybridStructure(),
+  );
 }
 
 function facingLabel(facing: number): string {

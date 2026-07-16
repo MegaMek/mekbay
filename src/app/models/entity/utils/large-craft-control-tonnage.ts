@@ -1,7 +1,6 @@
 import type { BaseEntity } from '../base-entity';
 import { JumpShipEntity } from '../entities/largecraft/jumpship-entity';
 import { SpaceStationEntity } from '../entities/largecraft/space-station-entity';
-import { DRIVE_CORE_TYPE_TO_CODE } from '../types';
 import type { EntityMountedEquipment } from '../types/equipment';
 
 export function getSrcsTonnage(entity: BaseEntity, mount: EntityMountedEquipment): number {
@@ -46,14 +45,15 @@ export function getCasparIITonnage(entity: BaseEntity, improved: boolean): numbe
 }
 
 function getJumpDriveWeight(entity: JumpShipEntity): number {
-    let coreType = 0;
-    if (entity instanceof SpaceStationEntity) coreType = 3;
-    else coreType = DRIVE_CORE_TYPE_TO_CODE[entity.driveCoreType()];
-
-    const percentages = [0.95, 0.4525, 0.5, 0, 0.95];
-    const percent = coreType === 4
+    const coreType = entity instanceof SpaceStationEntity ? 'None' : entity.driveCoreType();
+    const percent = coreType === 'Primitive'
         ? 0.05 + (0.03 * entity.jumpRange())
-        : percentages[coreType] ?? percentages[0];
+        : {
+            Standard: 0.95,
+            Compact: 0.4525,
+            Subcompact: 0.5,
+            None: 0,
+        }[coreType];
     return Math.ceil(entity.tonnage() * percent);
 }
 

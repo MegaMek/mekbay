@@ -35,12 +35,11 @@ import { JumpShipEntity } from '../entities/largecraft/jumpship-entity';
 import { WarShipEntity } from '../entities/largecraft/warship-entity';
 import { SpaceStationEntity } from '../entities/largecraft/space-station-entity';
 import {
-  aeroDesignTypeFromCode,
-  driveCoreTypeFromCode,
   LARGE_CRAFT_LOCATIONS,
 } from '../types';
 import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
+import { decodeBlkAeroDesignType, decodeBlkDriveCoreType } from './blk-codec';
 import { JUMPSHIP_EQUIP_TAGS, WARSHIP_EXTRA_EQUIP_TAGS } from './blk-constants';
 import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkCrew, parseBlkEquipment, parseLegacyDockingCollars, resolveBlkStructure } from './blk-base-parser';
 import { ParseContext } from './parse-context';
@@ -83,8 +82,8 @@ export function parseBlkLargeCraft(bb: BuildingBlock, ctx: ParseContext): JumpSh
   }
 
   // ── JumpShip specifics ──
-  if (bb.exists('designtype'))     entity.designType.set(aeroDesignTypeFromCode(bb.getFirstInt('designtype')));
-  if (bb.exists('kf_core'))        entity.driveCoreType.set(driveCoreTypeFromCode(bb.getFirstInt('kf_core')));
+  if (bb.exists('designtype'))     entity.designType.set(decodeBlkAeroDesignType(bb.getFirstInt('designtype')));
+  if (bb.exists('kf_core'))        entity.driveCoreType.set(decodeBlkDriveCoreType(bb.getFirstInt('kf_core')));
   if (bb.exists('sail'))           entity.sail.set(bb.getFirstInt('sail') === 1);
   parseLegacyDockingCollars(bb, entity);
   if (bb.exists('lithium-fusion')) entity.lithiumFusion.set(bb.getFirstInt('lithium-fusion') === 1);

@@ -63,3 +63,5 @@ export interface IntrinsicWeapon extends EntityWeaponCapability {
   readonly category: 'physical';
   readonly damage: IntrinsicWeaponDamageProfile;
 }
+
+export type EntityWeapon = MountedWeaponCapability | IntrinsicWeapon;

@@ -32,27 +32,23 @@
  */
 
 /**
- * MountedEngine - the single class for engine + heat-sink state.
+ * MountedEngine - the installed engine component.
  *
  * The engine is the most complex system component:
  * - It spans multiple locations (CT + side torsos for XL/XXL/Light)
  * - Its critical slot layout depends on the gyro type
- * - It integrates heat sinks (weight-free, crit-free up to a capacity)
+ * - It defines heat-sink integration capacity
  * - Its weight depends on the type, rating, and various flags
  *
  * **MountedEngine** combines the engine definition (type, rating, tech base)
- * with its heat-sink configuration and auto-resolves the descriptor from
- * `ENGINE_DATA` so that all engine-related data lives in one place.
+ * and auto-resolves the descriptor from `ENGINE_DATA`.
  *
- * In MegaMek, engine-integrated heat sinks are stored as "misc" equipment
- * with negative slot indices.  Here we track them as a count on the
- * MountedEngine, which is simpler and sufficient for round-trip fidelity.
- *
- * These are NOT equipment from equipment2.json.
+ * Heat sinks, including engine-integrated sinks, are real mounted equipment
+ * from equipment2.json on the owning entity.
  */
 
 import { signal, computed, WritableSignal } from '@angular/core';
-import type { EngineType, EntityTechBase, HeatSinkType, TechAdvancement } from '../types';
+import type { EngineType, EntityTechBase, TechAdvancement } from '../types';
 import { MEK_SLOTS_PER_LOCATION } from '../types';
 import { type GyroType, getGyro, normalizeGyroType } from './gyro';
 import {
@@ -66,10 +62,6 @@ import {
 // Re-export engine-data symbols for barrel convenience
 export { ENGINE_DATA, type EngineTypeDescriptor, type EnginePowerSource, type EngineMovementHeat } from './engine-data';
 export { getEngineTechAdvancement } from './engine-data';
-export {
-  ENGINE_TYPE_FROM_CODE, ENGINE_TYPE_TO_CODE,
-  engineTypeFromCode, engineTypeToCode,
-} from './engine-data';
 
 // ============================================================================
 // MountedEngine init & class
@@ -77,8 +69,7 @@ export {
 
 /**
  * Initialiser object for `new MountedEngine(...)`.
- * Only `type`, `rating`, and `techBase` are required; heat-sink
- * fields default to Single / 10 / -1 when omitted.
+ * Installed heat sinks are mounted equipment on the owning entity.
  */
 export interface MountedEngineInit {
   readonly type: EngineType;
@@ -86,17 +77,13 @@ export interface MountedEngineInit {
   readonly techBase: EntityTechBase;
   readonly installed?: boolean;
   readonly isSuperHeavy?: boolean;
-  readonly heatSinkType?: HeatSinkType;
-  readonly totalHeatSinks?: number;
-  readonly rawHeatSinkLabel?: string;
-  readonly baseChassisHeatSinks?: number;
 }
 
 /**
  * MountedEngine contains all engine-related data for an entity:
  * - The engine definition (type, rating, tech base, large/superheavy)
  * - A reference to the engine-type descriptor from `ENGINE_DATA`
- * - The heat-sink configuration (type, total count, integral vs. external)
+ * Heat-sink equipment and its allocation live on the owning entity.
  */
 export class MountedEngine {
   // -- Core identity --
@@ -106,25 +93,6 @@ export class MountedEngine {
   readonly installed: boolean;
   readonly isSuperHeavy: boolean;
 
-  // -- Heat-sink configuration --
-  /** Type of heat sinks installed (Single, Double, Compact, Laser). */
-  heatSinkType: WritableSignal<HeatSinkType>;
-  /**
-   * Total heat sink count as declared in the file (MTF `heat sinks:` line).
-   * Includes BOTH engine-integrated and externally mounted heat sinks.
-   */
-  installedHeatSinksCount: WritableSignal<number>;
-  /**
-   * Raw heat-sink type label from the file for round-trip fidelity.
-   * e.g. "Single", "IS Double", "Clan Double", "Compact", "Laser"
-   */
-  readonly rawHeatSinkLabel: string;
-  /**
-   * Base chassis heat sinks (from BLK/MTF `base chassis heat sinks:` line).
-   * -1 means not specified.
-   */
-  readonly baseChassisHeatSinks: number;
-
   constructor(init: MountedEngineInit) {
     this.type = signal<EngineType>(init.type);
     this.rating = init.rating;
@@ -132,10 +100,6 @@ export class MountedEngine {
     this.installed = init.installed ?? true;
     this.isSuperHeavy = init.isSuperHeavy ?? false;
 
-    this.heatSinkType = signal<HeatSinkType>(init.heatSinkType ?? 'Single');
-    this.installedHeatSinksCount = signal<number>(init.totalHeatSinks ?? 0);
-    this.rawHeatSinkLabel = init.rawHeatSinkLabel ?? this.heatSinkType();
-    this.baseChassisHeatSinks = init.baseChassisHeatSinks ?? -1;
   }
 
   descriptor = computed<EngineTypeDescriptor>(() => ENGINE_DATA[this.type()]);
@@ -155,12 +119,12 @@ export class MountedEngine {
    * (i.e. don't require critical slots).
    * Matches MegaMek Engine.integralHeatSinkCapacity().
    */
-  integralHeatSinkCapacity = computed<number>(() => {
-    if (this.heatSinkType() === 'Compact') {
+  integralHeatSinkCapacity(compact: boolean): number {
+    if (compact) {
       return Math.floor(this.rating / 25) * 2;
     }
     return Math.floor(this.rating / 25);
-  });
+  }
 
   // ========================================================================
   //  Weight

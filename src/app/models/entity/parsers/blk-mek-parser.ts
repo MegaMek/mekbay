@@ -37,14 +37,15 @@ import { MekEntity } from '../entities/mek/mek-entity';
 import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import { QuadVeeEntity } from '../entities/mek/quad-vee-entity';
 import { TripodMekEntity } from '../entities/mek/tripod-mek-entity';
+import { MiscEquipment } from '../../equipment.model';
 import {
   EntityMountedEquipment,
   LocationArmor,
   locationArmor,
 } from '../types';
-import { cockpitTypeFromCode, gyroTypeFromCode } from '../components';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
+import { decodeBlkCockpitType, decodeBlkGyroType, getBlkMekHeatSinkEquipmentId } from './blk-codec';
 import {
   BLK_ARMOR_BIPED,
   BLK_ARMOR_QUAD,
@@ -90,18 +91,27 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
     const result = parseBlkEngine(bb, entity, {
       isSuperHeavy: entity.tonnage() > 100,
     });
-    if (result) entity.mountedEngine.set(result.mountedEngine);
+    if (result) {
+      entity.configureEngine(result.mountedEngine);
+      const heatSinkEquipment = ctx.resolveEquipment(
+        getBlkMekHeatSinkEquipmentId(result.heatSinkType, techBase),
+        'sink_type',
+      );
+      if (heatSinkEquipment instanceof MiscEquipment) {
+        entity.heatSinkEquipment.set(heatSinkEquipment);
+      }
+    }
   }
 
   // ── Structure / Gyro / Cockpit ──
   if (bb.exists('gyro_type')) {
     const gyroCode = bb.getFirstInt('gyro_type');
-    entity.gyroType.set(gyroTypeFromCode(gyroCode));
+    entity.gyroType.set(decodeBlkGyroType(gyroCode));
   }
 
   if (bb.exists('cockpit_type')) {
     const cockpitCode = bb.getFirstInt('cockpit_type');
-    entity.cockpitType.set(cockpitTypeFromCode(cockpitCode));
+    entity.cockpitType.set(decodeBlkCockpitType(cockpitCode));
   }
 
   // ── Armor (structured) ──
@@ -149,9 +159,14 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
         if (existingIdx !== undefined) {
           const existing = equipmentList[existingIdx];
           const expectedCrits = existing.equipment?.getNumCriticalSlots(entity, existing.size ?? 0) ?? Infinity;
-          if ((existing.criticalSlots ?? 0) < expectedCrits) {
-            existing.placements = [...(existing.placements ?? []), { location: locCode, slotIndex: slotIdx }];
-            existing.criticalSlots = (existing.criticalSlots ?? 1) + 1;
+          if ((existing.placements?.length ?? 0) < expectedCrits) {
+            equipmentList[existingIdx] = existing.clone({
+              allocation: {
+                kind: 'location',
+                location: existing.location,
+                placements: [...(existing.placements ?? []), { location: locCode, slotIndex: slotIdx }],
+              },
+            });
             continue;
           }
         }
@@ -162,9 +177,11 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
         mountId: generateMountId(),
         equipmentId: parsed.name,
         equipment: resolved ?? undefined,
-        location: locCode,
-        placements: [{ location: locCode, slotIndex: slotIdx }],
-        criticalSlots: 1,
+        allocation: {
+          kind: 'location',
+          location: locCode,
+          placements: [{ location: locCode, slotIndex: slotIdx }],
+        },
         rearMounted: parsed.rearMounted,
         turretMounted: false,
         omniPodMounted: parsed.omniPod,
@@ -178,6 +195,11 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
   }
 
   entity.equipment.set(equipmentList);
+  const totalHeatSinks = bb.exists('heatsinks') ? bb.getFirstInt('heatsinks') : 10;
+  const baseChassisHeatSinks = bb.exists('base chassis heat sinks')
+    ? bb.getFirstInt('base chassis heat sinks')
+    : -1;
+  entity.initializeParsedHeatSinkMounts(totalHeatSinks, baseChassisHeatSinks);
   return entity;
 }
 

@@ -38,7 +38,7 @@ import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import { QuadVeeEntity } from '../entities/mek/quad-vee-entity';
 import { TripodMekEntity } from '../entities/mek/tripod-mek-entity';
 import { MountedEngine, createMountedArmor, createPatchworkArmor, getStructureByName, normalizeCockpitType, normalizeGyroType } from '../components';
-import { ArmorEquipment, WeaponEquipment } from '../../equipment.model';
+import { ArmorEquipment, MiscEquipment, WeaponEquipment } from '../../equipment.model';
 import {
   ArmorType,
   EntityFluff,
@@ -47,7 +47,6 @@ import {
   EntityTechBase,
   EntityWeaponQuirk,
   FactionCode,
-  HeatSinkType,
   LocationArmor,
   MekLocation,
   MekSystemType,
@@ -58,10 +57,9 @@ import {
   parseMotiveType,
   resolveMtfArmorEquipment,
 } from '../types';
-import { parseMtfArmor } from '../utils/armor-type-parser';
-import { parseMtfEngine } from '../utils/engine-type-parser';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { ParseContext } from './parse-context';
+import { decodeMtfArmor, decodeMtfEngine, decodeMtfHeatSinks, decodeMtfStructure } from './mtf-codec';
 
 // ============================================================================
 // Location normalization - raw MTF strings → canonical location IDs
@@ -199,37 +197,40 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   // ── Physical properties ──
   entity.setTonnage(header.mass);
 
+  const hsInfo = header.heatSinks
+    ? decodeMtfHeatSinks(header.heatSinks)
+    : decodeMtfHeatSinks('10 Single');
+
   // ── Engine + Heat Sinks → MountedEngine ──
   {
     const engineInfo = header.engine
-      ? parseMtfEngine(header.engine)
+      ? decodeMtfEngine(header.engine)
       : { rating: 0, type: 'Fusion' as const, techBase: 'IS' as const };
     const isSuperHeavy = header.mass > 100;
 
-    const hsInfo = header.heatSinks
-      ? parseHeatSinkLine(header.heatSinks)
-      : { count: 10, type: 'Single' as HeatSinkType, typeLabel: 'Single' };
-
-    entity.mountedEngine.set(new MountedEngine({
+    entity.configureEngine(new MountedEngine({
       type: engineInfo.type,
       rating: engineInfo.rating,
       techBase: engineInfo.techBase,
       isSuperHeavy,
-      heatSinkType: hsInfo.type,
-      totalHeatSinks: hsInfo.count,
-      rawHeatSinkLabel: hsInfo.typeLabel,
-      baseChassisHeatSinks: header.baseChassisHeatSinks,
     }));
+    const heatSinkEquipment = ctx.resolveEquipment(
+      hsInfo.equipmentId,
+      'heat sinks',
+    );
+    if (heatSinkEquipment instanceof MiscEquipment) {
+      entity.heatSinkEquipment.set(heatSinkEquipment);
+    }
   }
 
-  const structureName = cleanStructureName(header.structure);
-  const structureTechBase = /^Clan\s+/i.test(header.structure) ? 'Clan' : 'IS';
-  const structure = entity.isFrankenMek() && structureName.toLowerCase() === 'hybrid'
-    ? getStructureByName('Standard', structureTechBase, ctx.equipmentDb)
-    : getStructureByName(structureName, structureTechBase, ctx.equipmentDb);
+  const structureInfo = decodeMtfStructure(header.structure);
+  const structureTechBase = structureInfo.techBase ?? entity.techBase();
+  const structure = getStructureByName(structureInfo.name, structureTechBase, ctx.equipmentDb);
   entity.mountedStructure.set(structure);
+  entity.structureTechBase.set(structureInfo.techBase);
+  entity.hybridStructure.set(structureInfo.hybrid);
   if (!structure) {
-    ctx.error('Structure', `Invalid structure ${structureTechBase} ${structureName}`);
+    ctx.error('Structure', `Invalid structure ${structureTechBase} ${structureInfo.name}`);
   }
   entity.myomerType.set(header.myomer || 'Standard');
 
@@ -248,7 +249,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
     let armorEquipment: ArmorEquipment | null = null;
 
     if (header.armorType) {
-      const armorInfo = parseMtfArmor(header.armorType);
+      const armorInfo = decodeMtfArmor(header.armorType);
       if (armorInfo.clanTech) armorTechBase = 'Clan';
       if (armorInfo.patchwork) {
         armorType = 'PATCHWORK';
@@ -344,15 +345,21 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
 
       let addedToExisting = false;
       if (existingId) {
-        const mount = mountedEquipment.find(m => m.mountId === existingId);
-        if (mount) {
+        const mountIndex = mountedEquipment.findIndex(m => m.mountId === existingId);
+        if (mountIndex >= 0) {
+          const mount = mountedEquipment[mountIndex];
           // Resolve expected crit count via entity context
           const criticalSlots = mount.equipment?.getNumCriticalSlots(entity, mount.size ?? 0) ?? Infinity;
           const lastPlacement = mount.placements?.[mount.placements.length - 1];
           const isConsecutive = lastPlacement?.location === locCode && lastPlacement.slotIndex === slotIdx - 1;
-          if ((mount.criticalSlots ?? 0) < criticalSlots && isConsecutive) {
-            mount.placements = [...(mount.placements ?? []), { location: locCode, slotIndex: slotIdx }];
-            mount.criticalSlots = (mount.criticalSlots ?? 1) + 1;
+          if ((mount.placements?.length ?? 0) < criticalSlots && isConsecutive) {
+            mountedEquipment[mountIndex] = mount.clone({
+              allocation: {
+                kind: 'location',
+                location: mount.location,
+                placements: [...(mount.placements ?? []), { location: locCode, slotIndex: slotIdx }],
+              },
+            });
             addedToExisting = true;
           }
         }
@@ -363,16 +370,22 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       // (possibly non-adjacent) locations.  All crits merge into one mount
       // as long as it hasn't reached its expected crit count yet.
       if (!addedToExisting) {
-        const existingSpreadable = mountedEquipment.find(m => {
+        const existingSpreadableIndex = mountedEquipment.findIndex(m => {
           if (m.equipmentId !== parsed.name) return false;
           const eq = m.equipment;
           if (!eq?.isSpreadable) return false;
           const expectedCrits = eq.getNumCriticalSlots(entity, m.size ?? 0) ?? Infinity;
-          return (m.criticalSlots ?? 0) < expectedCrits;
+          return (m.placements?.length ?? 0) < expectedCrits;
         });
-        if (existingSpreadable) {
-          existingSpreadable.placements = [...(existingSpreadable.placements ?? []), { location: locCode, slotIndex: slotIdx }];
-          existingSpreadable.criticalSlots = (existingSpreadable.criticalSlots ?? 1) + 1;
+        if (existingSpreadableIndex >= 0) {
+          const existingSpreadable = mountedEquipment[existingSpreadableIndex];
+          mountedEquipment[existingSpreadableIndex] = existingSpreadable.clone({
+            allocation: {
+              kind: 'location',
+              location: existingSpreadable.location,
+              placements: [...(existingSpreadable.placements ?? []), { location: locCode, slotIndex: slotIdx }],
+            },
+          });
           addedToExisting = true;
         }
       }
@@ -380,27 +393,34 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       // Cross-location split: weapons with 8+ crit slots may be split between
       // two adjacent locations (e.g. AC/20: 8 crits in LA + 2 in LT).
       if (!addedToExisting) {
-        const incomplete = mountedEquipment.find(m => {
+        const incompleteIndex = mountedEquipment.findIndex(m => {
           if (m.equipmentId !== parsed.name) return false;
           if (!(m.equipment instanceof WeaponEquipment) || !m.equipment.canSplit()) return false;
           // Weapons always have fixed (numeric) critSlots
           const criticalSlots = m.equipment.getNumCriticalSlots(entity);
           if (criticalSlots == null) return false;
-          return (m.criticalSlots ?? 0) < criticalSlots
+          return (m.placements?.length ?? 0) < criticalSlots
             && m.location !== locCode
             && areLocationsAdjacent(m.location, locCode);
         });
-        if (incomplete) {
-          incomplete.placements = [...(incomplete.placements ?? []), { location: locCode, slotIndex: slotIdx }];
-          incomplete.criticalSlots = (incomplete.criticalSlots ?? 1) + 1;
-          incomplete.isSplit = true;
+        if (incompleteIndex >= 0) {
+          const incomplete = mountedEquipment[incompleteIndex];
           // Primary location is the more restrictive one (torso > arm)
-          incomplete.location = getSplitPrimaryLocation(incomplete.location, locCode);
+          const primaryLocation = getSplitPrimaryLocation(incomplete.location, locCode);
+          const updated = incomplete.clone({
+            allocation: {
+              kind: 'location',
+              location: primaryLocation,
+              placements: [...(incomplete.placements ?? []), { location: locCode, slotIndex: slotIdx }],
+            },
+            isSplit: true,
+          });
+          mountedEquipment[incompleteIndex] = updated;
           // Update multiCritMap so further crits in the new primary location
           // can find this mount (e.g. AC/20 split RT+CT: after merging the
           // first CT crit the location becomes CT, subsequent CT crits must
           // still de-duplicate to the same mount).
-          multiCritMap.set(`${incomplete.equipmentId}@${incomplete.location}`, incomplete.mountId);
+          multiCritMap.set(`${updated.equipmentId}@${updated.location}`, updated.mountId);
           addedToExisting = true;
         }
       }
@@ -414,9 +434,11 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
           mountId,
           equipmentId: parsed.name,
           equipment: resolved ?? undefined,
-          location: locCode,
-          placements: [{ location: locCode, slotIndex: slotIdx }],
-          criticalSlots: 1,
+          allocation: {
+            kind: 'location',
+            location: locCode,
+            placements: [{ location: locCode, slotIndex: slotIdx }],
+          },
           rearMounted: parsed.rearMounted,
           turretMounted: parsed.turretMounted,
           omniPodMounted: parsed.omniPod,
@@ -446,13 +468,14 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       mountId: generateMountId(),
       equipmentId: nocrit.name,
       equipment: resolved ?? undefined,
-      location: nocrit.location,
+      allocation: { kind: 'location', location: nocrit.location },
       rearMounted: false,
       turretMounted: false,
       omniPodMounted: false,
       armored: false,
     });
   }
+  entity.initializeParsedHeatSinkMounts(hsInfo.count, header.baseChassisHeatSinks);
 
   // ── Actuators (biped / tripod) ──
   if (entity instanceof MekWithArmsEntity) {
@@ -857,24 +880,6 @@ function createMekEntity(config: string): MekEntity {
   if (lower.includes('quad'))    return new QuadMekEntity();
   if (lower.includes('tripod'))  return new TripodMekEntity();
   return new BipedMekEntity();
-}
-
-function parseHeatSinkLine(hsLine: string): { count: number; type: HeatSinkType; typeLabel: string } {
-  const parts = hsLine.split(/\s+/);
-  const parsed = parseInt(parts[0], 10);
-  const count = Number.isNaN(parsed) ? 10 : parsed;
-  // The type label is everything after the leading count number
-  const typeLabel = parts.slice(1).join(' ') || 'Single';
-  const lower = hsLine.toLowerCase();
-  let type: HeatSinkType = 'Single';
-  if (lower.includes('double'))  type = 'Double';
-  else if (lower.includes('compact')) type = 'Compact';
-  else if (lower.includes('laser'))   type = 'Laser';
-  return { count, type, typeLabel };
-}
-
-function cleanStructureName(raw: string): string {
-  return raw.replace(/^IS\s+/i, '').replace(/^Clan\s+/i, '').trim() || 'Standard';
 }
 
 function parseMetadataList(value: string): string[] {

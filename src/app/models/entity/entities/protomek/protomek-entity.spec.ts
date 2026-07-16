@@ -61,7 +61,7 @@ function mountWithFlags(flags: readonly string[]): EntityMountedEquipment {
     mountId: flags.join(':'),
     equipmentId: flags.join(':'),
     equipment: { hasFlag: (candidate: string) => flagSet.has(candidate) } as Equipment,
-    location: 'Torso',
+    allocation: { kind: 'location', location: 'Torso' },
     rearMounted: false,
     turretMounted: false,
     omniPodMounted: false,

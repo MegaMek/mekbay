@@ -121,11 +121,6 @@ export type SVWeightMultipliers = Readonly<Record<TechRating, number>>;
  * `ENGINE_DATA[engine.type]`.
  */
 export interface EngineTypeDescriptor {
-  // ── Identity ──
-
-  /** Numeric type code matching MegaMek `Engine.ENGINE_*` constants. */
-  readonly code: number;
-
   // ── Classification ──
 
   /** Mutually exclusive power source category. */
@@ -209,7 +204,6 @@ export const ENGINE_DATA: Readonly<Record<EngineType, EngineTypeDescriptor>> = {
   // 0 — Fusion
   // ────────────────────────────────────────────────────────────────────────
   'Fusion': {
-    code: 0,
     powerSource: 'fusion',
     weightFreeHeatSinks: 10,
     movementHeat: STANDARD_HEAT,
@@ -245,7 +239,6 @@ export const ENGINE_DATA: Readonly<Record<EngineType, EngineTypeDescriptor>> = {
   // 1 — ICE  (Combustion)
   // ────────────────────────────────────────────────────────────────────────
   'ICE': {
-    code: 1,
     powerSource: 'combustion',
     weightFreeHeatSinks: 0,
     movementHeat: STANDARD_HEAT,      // TacOps: ICE Meks generate movement heat
@@ -284,7 +277,6 @@ export const ENGINE_DATA: Readonly<Record<EngineType, EngineTypeDescriptor>> = {
   // 2 — XL
   // ────────────────────────────────────────────────────────────────────────
   'XL': {
-    code: 2,
     powerSource: 'fusion',
     weightFreeHeatSinks: 10,
     movementHeat: STANDARD_HEAT,
@@ -333,7 +325,6 @@ export const ENGINE_DATA: Readonly<Record<EngineType, EngineTypeDescriptor>> = {
   // 3 — XXL
   // ────────────────────────────────────────────────────────────────────────
   'XXL': {
-    code: 3,
     powerSource: 'fusion',
     weightFreeHeatSinks: 10,
     movementHeat: XXL_HEAT,
@@ -394,7 +385,6 @@ export const ENGINE_DATA: Readonly<Record<EngineType, EngineTypeDescriptor>> = {
   // 4 — Light  (IS only)
   // ────────────────────────────────────────────────────────────────────────
   'Light': {
-    code: 4,
     powerSource: 'fusion',
     weightFreeHeatSinks: 10,
     movementHeat: STANDARD_HEAT,
@@ -426,7 +416,6 @@ export const ENGINE_DATA: Readonly<Record<EngineType, EngineTypeDescriptor>> = {
   // 5 — Compact  (IS only)
   // ────────────────────────────────────────────────────────────────────────
   'Compact': {
-    code: 5,
     powerSource: 'fusion',
     weightFreeHeatSinks: 10,
     movementHeat: STANDARD_HEAT,
@@ -453,7 +442,6 @@ export const ENGINE_DATA: Readonly<Record<EngineType, EngineTypeDescriptor>> = {
   // 6 — Fuel Cell
   // ────────────────────────────────────────────────────────────────────────
   'Fuel Cell': {
-    code: 6,
     powerSource: 'fuel-cell',
     weightFreeHeatSinks: 1,
     movementHeat: STANDARD_HEAT,      // TacOps: Fuel Cell Meks generate movement heat
@@ -483,7 +471,6 @@ export const ENGINE_DATA: Readonly<Record<EngineType, EngineTypeDescriptor>> = {
   // 7 — Fission
   // ────────────────────────────────────────────────────────────────────────
   'Fission': {
-    code: 7,
     powerSource: 'fission',
     weightFreeHeatSinks: 5,
     movementHeat: STANDARD_HEAT,
@@ -513,7 +500,6 @@ export const ENGINE_DATA: Readonly<Record<EngineType, EngineTypeDescriptor>> = {
   // 8 — None
   // ────────────────────────────────────────────────────────────────────────
   'None': {
-    code: 8,
     powerSource: 'none',
     weightFreeHeatSinks: 0,
     movementHeat: ZERO_HEAT,
@@ -536,7 +522,6 @@ export const ENGINE_DATA: Readonly<Record<EngineType, EngineTypeDescriptor>> = {
   // 9 — Maglev
   // ────────────────────────────────────────────────────────────────────────
   'Maglev': {
-    code: 9,
     powerSource: 'maglev',
     weightFreeHeatSinks: 0,
     movementHeat: ZERO_HEAT,
@@ -559,7 +544,6 @@ export const ENGINE_DATA: Readonly<Record<EngineType, EngineTypeDescriptor>> = {
   // 10 — Steam
   // ────────────────────────────────────────────────────────────────────────
   'Steam': {
-    code: 10,
     powerSource: 'steam',
     weightFreeHeatSinks: 0,
     movementHeat: ZERO_HEAT,
@@ -582,7 +566,6 @@ export const ENGINE_DATA: Readonly<Record<EngineType, EngineTypeDescriptor>> = {
   // 11 — Battery
   // ────────────────────────────────────────────────────────────────────────
   'Battery': {
-    code: 11,
     powerSource: 'battery',
     weightFreeHeatSinks: 0,
     movementHeat: ZERO_HEAT,
@@ -605,7 +588,6 @@ export const ENGINE_DATA: Readonly<Record<EngineType, EngineTypeDescriptor>> = {
   // 12 — Solar
   // ────────────────────────────────────────────────────────────────────────
   'Solar': {
-    code: 12,
     powerSource: 'solar',
     weightFreeHeatSinks: 0,
     movementHeat: ZERO_HEAT,
@@ -628,7 +610,6 @@ export const ENGINE_DATA: Readonly<Record<EngineType, EngineTypeDescriptor>> = {
   // 13 — External
   // ────────────────────────────────────────────────────────────────────────
   'External': {
-    code: 13,
     powerSource: 'external',
     weightFreeHeatSinks: 0,
     movementHeat: ZERO_HEAT,
@@ -674,38 +655,4 @@ export function getEngineTechAdvancement(
   if (flags.clan && desc.clanTech) return desc.clanTech;
 
   return desc.tech;
-}
-
-// ============================================================================
-// Derived code maps (built from ENGINE_DATA at module load)
-// ============================================================================
-
-/**
- * Reverse lookup: numeric code → EngineType string.
- * Derived from the `code` field on each `EngineTypeDescriptor`.
- */
-export const ENGINE_TYPE_FROM_CODE: Record<number, EngineType> =
-  Object.fromEntries(
-    (Object.entries(ENGINE_DATA) as [EngineType, EngineTypeDescriptor][])
-      .map(([name, desc]) => [desc.code, name]),
-  ) as Record<number, EngineType>;
-
-/**
- * Forward lookup: EngineType string → numeric code.
- * Derived from the `code` field on each `EngineTypeDescriptor`.
- */
-export const ENGINE_TYPE_TO_CODE: Record<EngineType, number> =
-  Object.fromEntries(
-    (Object.entries(ENGINE_DATA) as [EngineType, EngineTypeDescriptor][])
-      .map(([name, desc]) => [name, desc.code]),
-  ) as Record<EngineType, number>;
-
-/** Convert a numeric engine code (from BLK files) to an EngineType string. */
-export function engineTypeFromCode(code: number): EngineType {
-  return ENGINE_TYPE_FROM_CODE[code] ?? 'Fusion';
-}
-
-/** Convert an EngineType string to its numeric code (for BLK output). */
-export function engineTypeToCode(type: EngineType): number {
-  return ENGINE_TYPE_TO_CODE[type] ?? 0;
 }

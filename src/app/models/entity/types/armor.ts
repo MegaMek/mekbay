@@ -33,14 +33,12 @@
 
 import { EquipmentRegistry } from '../../equipment-lookup';
 import { ArmorEquipment } from '../../equipment.model';
-import { ComponentTechLevel } from './tech';
 
 // ============================================================================
 // Armor Types
 //
 // The ArmorType enum strings match the `armor.type` field in the equipment
-// JSON (which mirrors MegaMek's ArmorType enum names).  The BLK format only
-// stores a numeric code; the mapping below converts in both directions.
+// JSON (which mirrors MegaMek's ArmorType enum names).
 // ============================================================================
 
 /**
@@ -101,103 +99,6 @@ export type ArmorType =
   | 'SV_BAR_8'
   | 'SV_BAR_9'
   | 'SV_BAR_10';
-
-/** Map from BLK armor type code → ArmorType enum */
-export const ARMOR_TYPE_FROM_CODE: Record<number, ArmorType> = {
-  0:  'STANDARD',
-  1:  'FERRO_FIBROUS',
-  2:  'REACTIVE',
-  3:  'REFLECTIVE',
-  4:  'HARDENED',
-  5:  'LIGHT_FERRO',
-  6:  'HEAVY_FERRO',
-  7:  'PATCHWORK',
-  8:  'STEALTH',
-  9:  'FERRO_FIBROUS_PROTO',
-  10: 'COMMERCIAL',
-  11: 'LC_FERRO_CARBIDE',
-  12: 'LC_LAMELLOR_FERRO_CARBIDE',
-  13: 'LC_FERRO_IMP',
-  14: 'INDUSTRIAL',
-  15: 'HEAVY_INDUSTRIAL',
-  16: 'FERRO_LAMELLOR',
-  17: 'PRIMITIVE',
-  18: 'EDP',
-  19: 'ALUM',
-  20: 'HEAVY_ALUM',
-  21: 'LIGHT_ALUM',
-  22: 'STEALTH_VEHICLE',
-  23: 'ANTI_PENETRATIVE_ABLATION',
-  24: 'HEAT_DISSIPATING',
-  25: 'IMPACT_RESISTANT',
-  26: 'BALLISTIC_REINFORCED',
-  27: 'FERRO_ALUM_PROTO',
-  28: 'BA_STANDARD',
-  29: 'BA_STANDARD_PROTOTYPE',
-  30: 'BA_STANDARD_ADVANCED',
-  31: 'BA_STEALTH_BASIC',
-  32: 'BA_STEALTH',
-  33: 'BA_STEALTH_IMP',
-  34: 'BA_STEALTH_PROTOTYPE',
-  35: 'BA_FIRE_RESIST',
-  36: 'BA_MIMETIC',
-  37: 'BA_REFLECTIVE',
-  38: 'BA_REACTIVE',
-  39: 'PRIMITIVE_FIGHTER',
-  40: 'PRIMITIVE_AERO',
-  41: 'AEROSPACE',
-  42: 'STANDARD_PROTOMEK',
-  43: 'SV_BAR_2',
-  44: 'SV_BAR_3',
-  45: 'SV_BAR_4',
-  46: 'SV_BAR_5',
-  47: 'SV_BAR_6',
-  48: 'SV_BAR_7',
-  49: 'SV_BAR_8',
-  50: 'SV_BAR_9',
-  51: 'SV_BAR_10',
-};
-
-/** Reverse map from ArmorType enum → BLK numeric code */
-export const ARMOR_TYPE_TO_CODE: Record<string, number> = Object.fromEntries(
-  Object.entries(ARMOR_TYPE_FROM_CODE).map(([code, name]) => [name, parseInt(code, 10)])
-);
-
-export function armorTypeFromCode(code: number): ArmorType {
-  return ARMOR_TYPE_FROM_CODE[code] ?? 'STANDARD';
-}
-
-export function armorTypeToCode(type: ArmorType): number {
-  return ARMOR_TYPE_TO_CODE[type] ?? 0;
-}
-
-// ── Armor tech helpers (derive from ArmorEquipment data) ────────────────────
-
-/** Convert a tech rating letter (A–F) to its numeric index (0–5). */
-export const TECH_RATING_TO_NUMBER: Record<string, number> = {
-  A: 0, B: 1, C: 2, D: 3, E: 4, F: 5,
-};
-
-/**
- * Compound tech level as written to BLK `armor_tech_level`.
- * Mirrors `SimpleTechLevel.getCompoundTechLevel(isClan)` in MegaMek.
- *
- * | TechLevel      | IS | Clan |
- * |----------------|----|------|
- * | Introductory   |  0 |    0 |
- * | Standard       |  1 |    2 |
- * | Advanced       |  5 |    6 |
- * | Experimental   |  7 |    8 |
- */
-export function compoundTechLevel(level: ComponentTechLevel | undefined, isClan: boolean): number {
-  switch (level) {
-    case 'Introductory':  return 0;
-    case 'Standard':      return isClan ? 2 : 1;
-    case 'Advanced':      return isClan ? 6 : 5;
-    case 'Experimental':  return isClan ? 8 : 7;
-    default:              return isClan ? 2 : 1; // safe fallback
-  }
-}
 
 // ── Armor equipment resolution ──────────────────────────────────────────────
 

@@ -17,7 +17,7 @@ interface StandardBayDefinition {
 const STANDARD_BAY_DEFINITIONS: Readonly<Record<StandardTransportBayType, StandardBayDefinition>> = {
   generic: { blkType: 'bay', transporterType: 'Unknown' },
   cargo: { blkType: 'cargobay', transporterType: 'Cargo' },
-  'liquid-cargo': { blkType: 'liquidcargobay', transporterType: 'Liquid Cargo' },
+  'liquid-cargo': { blkType: 'LiquidCargoBay', transporterType: 'Liquid Cargo' },
   'insulated-cargo': { blkType: 'insulatedcargobay', transporterType: 'Insulated Cargo' },
   'refrigerated-cargo': { blkType: 'refrigeratedcargobay', transporterType: 'Reefer' },
   'livestock-cargo': { blkType: 'livestockcargobay', transporterType: 'Livestock Cargo' },
@@ -25,7 +25,7 @@ const STANDARD_BAY_DEFINITIONS: Readonly<Record<StandardTransportBayType, Standa
   'light-vehicle': { blkType: 'lightvehiclebay', transporterType: 'Light Vehicle' },
   'heavy-vehicle': { blkType: 'heavyvehiclebay', transporterType: 'Heavy Vehicle' },
   'super-heavy-vehicle': { blkType: 'superheavyvehiclebay', transporterType: 'Superheavy Vehicle' },
-  protomek: { blkType: 'protomekbay', transporterType: 'ProtoMek', recordSheetName: 'ProtoMech' },
+  protomek: { blkType: 'ProtoMekBay', transporterType: 'ProtoMek', recordSheetName: 'ProtoMech' },
   'crew-quarters': { blkType: 'crewquarters', transporterType: 'Crew Quarters', quarters: true, tonsPerPerson: 7 },
   'steerage-quarters': { blkType: 'steeragequarters', transporterType: 'Steerage Quarters', quarters: true, tonsPerPerson: 5 },
   'second-class-quarters': { blkType: '2ndclassquarters', transporterType: '2nd Class Quarters', quarters: true, tonsPerPerson: 7 },

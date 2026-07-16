@@ -56,6 +56,15 @@ export interface MountPlacement {
   readonly slotIndex: number;
 }
 
+export type EquipmentAllocation =
+  | { readonly kind: 'engine' }
+  | { readonly kind: 'unallocated' }
+  | {
+    readonly kind: 'location';
+    readonly location: string;
+    readonly placements?: readonly MountPlacement[];
+  };
+
 export interface MountedWeaponCharacteristics extends WeaponCharacteristics {
   readonly criticalSlots: number | 'variable' | undefined;
 }
@@ -78,18 +87,8 @@ export interface EntityMountedEquipmentInit {
   /** Resolved reference (set after parse / on equipment DB load) */
   equipment?: Equipment;
 
-  /** Primary location code (canonical ID) */
-  location: string;
-
-  /**
-   * Mek only: explicit crit-slot assignments for this mount.
-   * The array length equals the number of crits the equipment occupies.
-   * Non-Mek entity types leave this undefined.
-   */
-  placements?: readonly MountPlacement[];
-
-  /** Number of crits occupied (equals placements.length for Meks) */
-  criticalSlots?: number;
+  /** Canonical allocation state. */
+  readonly allocation: EquipmentAllocation;
 
   /** Rear-mounted */
   rearMounted: boolean;
@@ -148,9 +147,7 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
   readonly mountId: string;
   equipmentId: string;
   equipment?: Equipment;
-  location: string;
-  placements?: readonly MountPlacement[];
-  criticalSlots?: number;
+  allocation: EquipmentAllocation;
   rearMounted: boolean;
   turretMounted: boolean;
   turretType?: 'standard' | 'sponson' | 'pintle';
@@ -174,11 +171,27 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
     Object.assign(this, data);
     this.mountId = data.mountId;
     this.equipmentId = data.equipmentId;
-    this.location = data.location;
+    this.allocation = data.allocation;
     this.rearMounted = data.rearMounted;
     this.turretMounted = data.turretMounted;
     this.omniPodMounted = data.omniPodMounted;
     this.armored = data.armored;
+  }
+
+  get location(): string {
+    switch (this.allocation.kind) {
+      case 'engine': return 'Engine';
+      case 'unallocated': return 'Unallocated';
+      case 'location': return this.allocation.location;
+    }
+  }
+
+  get placements(): readonly MountPlacement[] | undefined {
+    return this.allocation.kind === 'location' ? this.allocation.placements : undefined;
+  }
+
+  withAllocation(allocation: EquipmentAllocation): EntityMountedEquipment {
+    return this.clone({ allocation });
   }
 
   static from(mount: EntityMountedEquipment | EntityMountedEquipmentInit): EntityMountedEquipment {

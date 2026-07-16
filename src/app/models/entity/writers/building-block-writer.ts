@@ -32,7 +32,12 @@
  */
 
 import { EntityFluff } from '../types';
-import { getArmorTypeCode, getEffectiveArmorTechRating, getEffectiveArmorTechLevel } from '../components';
+import {
+  encodeBlkArmorTechLevel,
+  encodeBlkArmorTechRating,
+  encodeBlkArmorType,
+  encodeBlkEngineType,
+} from '../parsers/blk-codec';
 import { BaseEntity } from '../base-entity';
 import { serializeTransporterLines } from '../parsers/transporter-codec';
 
@@ -181,7 +186,7 @@ export function writeArmorBlocks(
   patchworkLocs?: readonly string[],
 ): void {
   const armor = entity.mountedArmor();
-  w.addBlock('armor_type', getArmorTypeCode(armor));
+  w.addBlock('armor_type', encodeBlkArmorType(armor));
 
   // Patchwork armor: write per-location blocks instead of global tech rating/level
   if (armor.type === 'PATCHWORK' && patchworkLocs && armor.patchwork) {
@@ -194,8 +199,8 @@ export function writeArmorBlocks(
     return;
   }
 
-  w.addBlock('armor_tech_rating', getEffectiveArmorTechRating(armor));
-  w.addBlock('armor_tech_level', getEffectiveArmorTechLevel(armor, entity.techBase() === 'Clan'));
+  w.addBlock('armor_tech_rating', encodeBlkArmorTechRating(armor));
+  w.addBlock('armor_tech_level', encodeBlkArmorTechLevel(armor, entity.techBase() === 'Clan'));
 }
 
 /**
@@ -203,7 +208,9 @@ export function writeArmorBlocks(
  */
 export function writeInternalType(w: BuildingBlockWriter, entity: BaseEntity): void {
   const structureTypeId = entity.mountedStructure()?.structureTypeId;
-  if (structureTypeId !== undefined && structureTypeId > 0) {
+  if (entity.internalTypeExplicit()) {
+    w.addBlock('internal_type', structureTypeId ?? -1);
+  } else if (structureTypeId !== undefined && structureTypeId > 0) {
     w.addBlock('internal_type', structureTypeId);
   }
 }
@@ -227,7 +234,7 @@ export function writeEngine(
     w.addBlock('engine_type', 0); // "None" engine type code
     return;
   }
-  w.addBlock('engine_type', me.descriptor().code);
+  w.addBlock('engine_type', encodeBlkEngineType(me.type()));
   // clan_engine: written when engine's clan flag differs from what the parser
   // would infer from the type string alone.  The parser's getBlkEngineIsClan()
   // falls back to checking whether the type string contains "clan" (case-

@@ -48,15 +48,20 @@ import {
   GYRO_DATA,
   type CockpitTypeDescriptor,
   COCKPIT_DATA,
+  MountedEngine,
 } from '../../components';
 import {
   CockpitType,
   CriticalSlotView,
   EngineFlag,
+  EntityTechBase,
+  EntityMountedEquipment,
   EntityType,
   EntityValidationMessage,
   getMekLegLocations,
+  getMekHeatSinkType,
   HeatSinkType,
+  IntegralHeatSinkCapability,
   IntrinsicWeapon,
   isMekLegLocation,
   isTechAvailableForBase,
@@ -67,6 +72,7 @@ import {
   MekLocation,
   MekSystemType,
 } from '../../types';
+import { generateMountId } from '../../utils/signal-helpers';
 
 // ============================================================================
 // MekEntity - abstract base for all Mek-type entities
@@ -95,6 +101,8 @@ export abstract class MekEntity extends BaseEntity {
   cockpitType = signal<CockpitType>('Standard');
   mountedCockpit = computed<CockpitTypeDescriptor>(() =>  COCKPIT_DATA[this.cockpitType()] ?? COCKPIT_DATA['Standard']);
   myomerType = signal<string>('Standard');
+  structureTechBase = signal<EntityTechBase | null>(null);
+  hybridStructure = signal(false);
   ejectionType = signal<string>('');
   heatSinkKit = signal<string>('');
   isFrankenMek = signal<boolean>(false);
@@ -116,17 +124,12 @@ export abstract class MekEntity extends BaseEntity {
    */
   clanCaseOptOutLocations = signal<Set<string>>(new Set());
 
-  /** Convenience: heat sink type (delegates to mountedEngine) */
-  heatSinkType = computed<HeatSinkType>(() => this.mountedEngine().heatSinkType());
-  /** Base-chassis heat sinks from MTF/BLK (delegates to mountedEngine, -1 = unset) */
-  baseChassisHeatSinks = computed<number>(() => this.mountedEngine().baseChassisHeatSinks);
-  /** Raw heat-sink label from MTF for round-trip (e.g. "Clan Double", "IS Double") */
-  rawHeatSinkLabel = computed<string>(() => this.mountedEngine().rawHeatSinkLabel);
-  /**
-   * Total heat sink count as declared on the MTF/BLK `heat sinks:` line.
-   * This includes BOTH engine-integrated and externally mounted heat sinks.
-   */
-  totalHeatSinks = computed<number>(() => this.mountedEngine().installedHeatSinksCount());
+  /** Equipment definition selected for this Mek's heat-sink technology. */
+  heatSinkEquipment = signal<MiscEquipment | null>(null);
+  /** Heat-sink technology derived from the selected equipment definition. */
+  heatSinkType = computed<HeatSinkType>(() => getMekHeatSinkType(this.heatSinkEquipment()));
+  /** Total installed heat sinks, including engine-integrated mounts. */
+  totalHeatSinks = computed<number>(() => this.heatSinkCount());
 
   // NOTE: No `criticalSlots` signal!  The crit grid is DERIVED - see
   // `criticalSlotGrid` computed below.  Equipment `placements` on each
@@ -149,6 +152,141 @@ export abstract class MekEntity extends BaseEntity {
     this.equipment().reduce((sum, mount) =>
       sum + (mount.equipment instanceof MiscEquipment ? mount.equipment.heatSinkUnitsPerMount : 0), 0)
   );
+
+  integralHeatSinks = computed<IntegralHeatSinkCapability | null>(() => {
+    const integrated = this.equipment().filter(mount =>
+      mount.allocation.kind === 'engine'
+      && mount.equipment instanceof MiscEquipment
+      && mount.equipment.isHeatSink);
+    const count = integrated.reduce(
+      (total, mount) => total + (mount.equipment as MiscEquipment).heatSinkUnitsPerMount,
+      0,
+    );
+    if (count <= 0) return null;
+
+    const equipment = this.heatSinkEquipment();
+    if (equipment?.hasFlag('F_IS_DOUBLE_HEAT_SINK_PROTOTYPE')) return null;
+    return equipment ? { count, equipment } : null;
+  });
+
+  configureEngine(engine: MountedEngine): void {
+    const equipment = this.heatSinkEquipment();
+    const totalCount = this.heatSinkCount();
+    const baseChassisCount = this.omni()
+      ? this.integralHeatSinks()?.count ?? totalCount
+      : -1;
+
+    this.mountedEngine.set(engine);
+    if (equipment) {
+      this.rebalanceHeatSinkMounts(equipment, totalCount, baseChassisCount);
+    }
+  }
+
+  /**
+   * Change the installed heat-sink technology and total count atomically.
+   * Existing Omni base-chassis integration is preserved; a new configuration
+   * integrates as many sinks as the engine permits.
+   */
+  configureHeatSinks(equipment: MiscEquipment, totalCount: number): void {
+    this.validateHeatSinkConfiguration(equipment, totalCount);
+    const currentBaseChassisCount = this.integralHeatSinks()?.count;
+    const baseChassisCount = this.omni()
+      ? currentBaseChassisCount ?? totalCount
+      : -1;
+
+    this.heatSinkEquipment.set(equipment);
+    this.rebalanceHeatSinkMounts(equipment, totalCount, baseChassisCount);
+  }
+
+  initializeParsedHeatSinkMounts(totalCount: number, baseChassisCount = -1): void {
+    const equipment = this.heatSinkEquipment();
+    if (!equipment) return;
+    this.validateHeatSinkConfiguration(equipment, totalCount);
+    const effectiveBaseCount = this.omni() && baseChassisCount < 10
+      ? totalCount
+      : baseChassisCount;
+    this.rebalanceHeatSinkMounts(equipment, totalCount, effectiveBaseCount, true);
+  }
+
+  private validateHeatSinkConfiguration(equipment: MiscEquipment, totalCount: number): void {
+    if (!equipment.isHeatSink) throw new Error(`Equipment "${equipment.id}" is not a heat sink`);
+    if (equipment.isCompactHeatSink && equipment.heatSinkUnitsPerMount !== 1) {
+      throw new Error('Compact heat-sink configuration must use the single-unit equipment definition');
+    }
+    if (!Number.isInteger(totalCount) || totalCount < 0) {
+      throw new Error(`Heat sink count must be a non-negative integer, got ${totalCount}`);
+    }
+  }
+
+  private rebalanceHeatSinkMounts(
+    equipment: MiscEquipment,
+    totalCount: number,
+    baseChassisCount = -1,
+    preserveExternal = false,
+  ): void {
+    const current = this.equipment();
+    const nonHeatSinks = current.filter(mount =>
+      !(mount.equipment instanceof MiscEquipment) || !mount.equipment.isHeatSink);
+    const externalCandidates = current.filter(mount =>
+      mount.allocation.kind !== 'engine'
+      && mount.equipment instanceof MiscEquipment
+      && mount.equipment.isHeatSink
+      && (preserveExternal
+        || (equipment.isCompactHeatSink
+        ? mount.equipment.isCompactHeatSink
+        : mount.equipment.id === equipment.id)));
+    const capacity = this.integralHeatSinkCapacity(equipment);
+    const maximumIntegralCount = this.omni() ? Math.min(capacity, baseChassisCount) : capacity;
+    let preservedExternalUnits = 0;
+    if (preserveExternal) {
+      for (const mount of externalCandidates) {
+        const units = (mount.equipment as MiscEquipment).heatSinkUnitsPerMount;
+        if (preservedExternalUnits + units <= totalCount) preservedExternalUnits += units;
+      }
+    }
+    const integralCount = Math.min(totalCount - preservedExternalUnits, maximumIntegralCount);
+    let externalUnitsRemaining = totalCount - integralCount;
+    const externalMounts: EntityMountedEquipment[] = [];
+
+    for (const mount of externalCandidates) {
+      const units = (mount.equipment as MiscEquipment).heatSinkUnitsPerMount;
+      if (units > externalUnitsRemaining) continue;
+      externalMounts.push(mount);
+      externalUnitsRemaining -= units;
+    }
+
+    while (externalUnitsRemaining > 0) {
+      externalMounts.push(this.createHeatSinkMount(equipment, 'unallocated'));
+      externalUnitsRemaining--;
+    }
+
+    const integralMounts = Array.from(
+      { length: integralCount },
+      () => this.createHeatSinkMount(equipment, 'engine'),
+    );
+    this.equipment.set([...nonHeatSinks, ...externalMounts, ...integralMounts]);
+  }
+
+  private integralHeatSinkCapacity(equipment: MiscEquipment): number {
+    if (equipment.hasFlag('F_IS_DOUBLE_HEAT_SINK_PROTOTYPE')) return 0;
+    return this.mountedEngine().integralHeatSinkCapacity(equipment.isCompactHeatSink);
+  }
+
+  private createHeatSinkMount(
+    equipment: MiscEquipment,
+    allocationKind: 'engine' | 'unallocated',
+  ): EntityMountedEquipment {
+    return new EntityMountedEquipment({
+      mountId: generateMountId(),
+      equipmentId: equipment.id,
+      equipment,
+      allocation: { kind: allocationKind },
+      rearMounted: false,
+      turretMounted: false,
+      omniPodMounted: false,
+      armored: false,
+    });
+  }
 
   protected override computeIntrinsicWeapons(): readonly IntrinsicWeapon[] {
     const attacks: IntrinsicWeapon[] = [];
@@ -509,10 +647,10 @@ export abstract class MekEntity extends BaseEntity {
     const msgs: EntityValidationMessage[] = [];
 
     // Minimum 10 heat sinks
-    if (this.heatSinkCount() < 10) {
+    if (this.totalHeatSinks() < 10) {
       msgs.push({
         severity: 'error', category: 'heat', code: 'HEAT_SINKS_BELOW_MIN',
-        message: `Mek needs at least 10 heat sinks (has ${this.heatSinkCount()})`,
+        message: `Mek needs at least 10 heat sinks (has ${this.totalHeatSinks()})`,
       });
     }
 

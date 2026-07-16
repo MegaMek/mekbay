@@ -32,12 +32,7 @@
  */
 
 import { DropShipEntity } from '../entities/aero/dropship-entity';
-import {
-  AERO_DESIGN_TYPE_TO_CODE,
-  DROPSHIP_COLLAR_TYPE_TO_CODE,
-  HEAT_SINK_TYPE_TO_CODE,
-  HeatSinkType,
-} from '../types';
+import { encodeBlkAeroDesignType, encodeBlkDropShipCollarType, encodeBlkHeatSinkType } from '../parsers/blk-codec';
 import {
   BuildingBlockWriter,
   writeArmorBlocks,
@@ -77,12 +72,12 @@ export function writeBlkDropShip(entity: DropShipEntity): string {
 
   // 5a. Collar type (if present)
   if (entity.collarType() !== 'Unspecified') {
-    w.addBlock('collartype', DROPSHIP_COLLAR_TYPE_TO_CODE[entity.collarType()]);
+    w.addBlock('collartype', encodeBlkDropShipCollarType(entity.collarType()));
   }
 
   // 6. Heat sinks / Fuel
   w.addBlock('heatsinks', entity.heatSinkCount());
-  w.addBlock('sink_type', HEAT_SINK_TYPE_TO_CODE[entity.heatSinkType() as HeatSinkType] ?? 0);
+  w.addBlock('sink_type', encodeBlkHeatSinkType(entity.heatSinkType()));
   w.addBlock('fuel', entity.fuel());
 
   // 7. Engine: engine_type, clan_engine
@@ -116,7 +111,7 @@ export function writeBlkDropShip(entity: DropShipEntity): string {
   writeManualBV(w, entity);
 
   // 18. SmallCraft crew block
-  w.addBlock('designtype', AERO_DESIGN_TYPE_TO_CODE[entity.designType()]);
+  w.addBlock('designtype', encodeBlkAeroDesignType(entity.designType()));
   writeBlkCrew(w, entity);
 
   return w.toString();

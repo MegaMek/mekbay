@@ -47,8 +47,6 @@ export {
   type CockpitCrewType,
   type CockpitHeadLayout,
   getCockpitTechAdvancement,
-  COCKPIT_TYPE_FROM_CODE,
-  cockpitTypeFromCode,
 } from './cockpit-data';
 
 // ============================================================================

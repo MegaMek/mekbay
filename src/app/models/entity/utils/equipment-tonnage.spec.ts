@@ -131,8 +131,12 @@ describe('EntityMountedEquipment.getTonnage', () => {
         const headTurret = mount(variableEquipment('head turret', ['F_HEAD_TURRET']));
         entity.equipment.set([
             headTurret,
-            weaponMount('head weapon', 10, []).clone({ location: 'HD', turretMounted: true }),
-            weaponMount('other weapon', 20, []).clone({ location: 'RA', turretMounted: true }),
+            weaponMount('head weapon', 10, []).clone({
+                allocation: { kind: 'location', location: 'HD' }, turretMounted: true,
+            }),
+            weaponMount('other weapon', 20, []).clone({
+                allocation: { kind: 'location', location: 'RA' }, turretMounted: true,
+            }),
         ]);
 
         expect(headTurret.getTonnage(entity)).toBe(1);
@@ -162,8 +166,12 @@ describe('EntityMountedEquipment.getTonnage', () => {
         const pintle = mount(variableEquipment('pintle', ['F_PINTLE_TURRET']));
         supportTank.equipment.set([
             pintle,
-            weaponMount('pintle weapon', 5, []).clone({ location: 'RA', turretType: 'pintle' }),
-            weaponMount('other pintle weapon', 20, []).clone({ location: 'LA', turretType: 'pintle' }),
+            weaponMount('pintle weapon', 5, []).clone({
+                allocation: { kind: 'location', location: 'RA' }, turretType: 'pintle',
+            }),
+            weaponMount('other pintle weapon', 20, []).clone({
+                allocation: { kind: 'location', location: 'LA' }, turretType: 'pintle',
+            }),
         ]);
 
         expect(pintle.getTonnage(supportTank)).toBe(0.5);
@@ -365,7 +373,7 @@ function mount(equipment: MiscEquipment, size?: number): EntityMountedEquipment 
         mountId: equipment.id,
         equipmentId: equipment.id,
         equipment,
-        location: 'RA',
+        allocation: { kind: 'location', location: 'RA' },
         rearMounted: false,
         turretMounted: false,
         omniPodMounted: false,
@@ -385,7 +393,7 @@ function weaponMount(name: string, tonnage: number, flags: string[]): EntityMoun
             flags,
             stats: { tonnage },
         }),
-        location: 'RA',
+        allocation: { kind: 'location', location: 'RA' },
         rearMounted: false,
         turretMounted: false,
         omniPodMounted: false,

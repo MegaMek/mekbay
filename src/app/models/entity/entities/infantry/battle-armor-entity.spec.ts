@@ -49,7 +49,7 @@ function mountWithFlag(flag: string): EntityMountedEquipment {
     mountId: flag,
     equipmentId: flag,
     equipment: { hasFlag: (candidate: string) => candidate === flag } as Equipment,
-    location: 'None',
+    allocation: { kind: 'location', location: 'None' },
     rearMounted: false,
     turretMounted: false,
     omniPodMounted: false,

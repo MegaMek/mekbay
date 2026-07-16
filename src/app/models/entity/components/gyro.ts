@@ -49,8 +49,6 @@ export {
   type GyroType,
   type GyroTypeDescriptor,
   getGyroTechAdvancement,
-  GYRO_TYPE_FROM_CODE,
-  gyroTypeFromCode,
 } from './gyro-data';
 
 // ============================================================================

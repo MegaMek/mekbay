@@ -33,10 +33,10 @@
 
 import { SmallCraftEntity } from '../entities/aero/small-craft-entity';
 import {
-  aeroDesignTypeFromCode,
   SMALL_CRAFT_ARMOR_LOCATIONS,
   parseMotiveType,
 } from '../types';
+import { decodeBlkAeroDesignType } from './blk-codec';
 import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { SC_EQUIP_TAGS } from './blk-constants';
@@ -77,7 +77,7 @@ export function parseBlkSmallCraft(bb: BuildingBlock, ctx: ParseContext): SmallC
 
   // ── Design type (Aerodyne / Spheroid) ──
   if (bb.exists('designtype')) {
-    entity.designType.set(aeroDesignTypeFromCode(bb.getFirstInt('designtype')));
+    entity.designType.set(decodeBlkAeroDesignType(bb.getFirstInt('designtype')));
   }
 
   // ── Armor ──

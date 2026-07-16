@@ -88,8 +88,8 @@ describe('EntityMountedEquipment.getCost', () => {
         const quad = new QuadMekEntity();
         quad.setTonnage(75);
 
-        expect(aes.clone({ location: 'RL' }).getCost(entity)).toBe(52500);
-        expect(aes.clone({ location: 'FLL' }).getCost(quad)).toBe(52500);
+        expect(aes.clone({ allocation: { kind: 'location', location: 'RL' } }).getCost(entity)).toBe(52500);
+        expect(aes.clone({ allocation: { kind: 'location', location: 'FLL' } }).getCost(quad)).toBe(52500);
     });
 
     it('resolves basic and advanced fire-control cost from all weapons', () => {
@@ -198,7 +198,7 @@ function mount(equipment: MiscEquipment, armored = false, size?: number): Entity
         mountId: equipment.id,
         equipmentId: equipment.id,
         equipment,
-        location: 'RA',
+        allocation: { kind: 'location', location: 'RA' },
         rearMounted: false,
         turretMounted: false,
         omniPodMounted: false,
@@ -218,7 +218,7 @@ function weaponMount(name: string, tonnage: number, flags: string[], cost = 0): 
             flags,
             stats: { tonnage, cost },
         }),
-        location: 'RA',
+        allocation: { kind: 'location', location: 'RA' },
         rearMounted: false,
         turretMounted: false,
         omniPodMounted: false,

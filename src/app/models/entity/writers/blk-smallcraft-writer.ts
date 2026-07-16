@@ -33,11 +33,9 @@
 
 import { SmallCraftEntity } from '../entities/aero/small-craft-entity';
 import {
-  AERO_DESIGN_TYPE_TO_CODE,
-  HEAT_SINK_TYPE_TO_CODE,
-  HeatSinkType,
   SMALL_CRAFT_ARMOR_LOCATIONS,
 } from '../types';
+import { encodeBlkAeroDesignType, encodeBlkHeatSinkType } from '../parsers/blk-codec';
 import {
   BuildingBlockWriter,
   writeArmorBlocks,
@@ -77,7 +75,7 @@ export function writeBlkSmallCraft(entity: SmallCraftEntity): string {
 
   // 6. Heat sinks / Fuel
   w.addBlock('heatsinks', entity.heatSinkCount());
-  w.addBlock('sink_type', HEAT_SINK_TYPE_TO_CODE[entity.heatSinkType() as HeatSinkType] ?? 0);
+  w.addBlock('sink_type', encodeBlkHeatSinkType(entity.heatSinkType()));
   w.addBlock('fuel', entity.fuel());
 
   // 7. Engine: engine_type, clan_engine
@@ -111,7 +109,7 @@ export function writeBlkSmallCraft(entity: SmallCraftEntity): string {
   writeManualBV(w, entity);
 
   // 18. SmallCraft crew block
-  w.addBlock('designtype', AERO_DESIGN_TYPE_TO_CODE[entity.designType()]);
+  w.addBlock('designtype', encodeBlkAeroDesignType(entity.designType()));
   writeBlkCrew(w, entity);
 
   return w.toString();

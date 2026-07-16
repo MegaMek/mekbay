@@ -57,10 +57,20 @@ export {
 } from './utils/signal-helpers';
 export { parseTechLevel, encodeTechLevel } from './utils/tech-level-parser';
 export type { ParsedTechLevel } from './utils/tech-level-parser';
-export { engineTypeFromCode, engineTypeToCode, parseMtfEngine, formatMtfEngine } from './utils/engine-type-parser';
-export type { MtfEngineInfo } from './utils/engine-type-parser';
-export { parseMtfArmor, formatMtfArmor } from './utils/armor-type-parser';
-export type { MtfArmorInfo } from './utils/armor-type-parser';
+export {
+  decodeMtfArmor,
+  decodeMtfEngine,
+  decodeMtfHeatSinks,
+  encodeMtfArmor,
+  encodeMtfEngine,
+  encodeMtfHeatSinkType,
+} from './parsers/mtf-codec';
+export type {
+  MtfArmorInfo,
+  MtfEngineEncoding,
+  MtfEngineInfo,
+  MtfHeatSinkConfiguration,
+} from './parsers/mtf-codec';
 
 // ── Mek Entities ──
 export { MekEntity, MekWithArmsEntity } from './entities/mek/mek-entity';

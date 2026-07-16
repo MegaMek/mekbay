@@ -56,7 +56,6 @@ export function writeBlkHandheld(entity: HandheldWeaponEntity): string {
   // ── Identity / Year / Tech / Meta ──
   writeBlkPreamble(w, entity, 'HandheldWeapon');
 
-  // ── Armor ──
   writeArmorBlocks(w, entity);
   writeInternalType(w, entity);
 
