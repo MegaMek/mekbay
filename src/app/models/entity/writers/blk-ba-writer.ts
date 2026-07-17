@@ -107,7 +107,7 @@ export function writeBlkBA(entity: BattleArmorEntity): string {
   if (turretCfg) w.addBlock('turret', turretCfg);
   if (entity.isExoskeleton()) w.addBlock('exoskeleton', 'true');
 
-  w.addBlock('jumpingMP', entity.jumpingMP());
+  w.addBlock('jumpingMP', Math.max(entity.baseJumpMP(), entity.umuMP()));
 
   // Armor - single squad armor value (not per-trooper)
   const armorMap = entity.armorValues();

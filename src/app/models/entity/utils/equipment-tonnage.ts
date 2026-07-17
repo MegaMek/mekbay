@@ -1,8 +1,7 @@
 import type { BaseEntity } from '../base-entity';
-import { MekEntity } from '../entities/mek/mek-entity';
-import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import type { EntityMountedEquipment } from '../types/equipment';
 import { getEquipmentEngineWeight } from './equipment-engine-weight';
+import { isMekEntity } from './entity-type-guards';
 import { getFireControlWeaponWeight } from './fire-control';
 import { getCasparIITonnage, getCasparTonnage, getSrcsTonnage } from './large-craft-control-tonnage';
 import { getTargetingComputerRelevantWeight } from './targeting-computer';
@@ -19,7 +18,7 @@ export function getEquipmentTonnage(
     const tonnage = entity.tonnage();
     if (equipment.hasFlag('F_JUMP_JET') || equipment.hasFlag('F_UMU')) {
         let unitTonnage = tonnage;
-        if (entity instanceof MekEntity && entity.isFrankenMek()) {
+        if (isMekEntity(entity) && entity.isFrankenMek()) {
             unitTonnage = Math.min(
                 entity.getStructureTonnageAtLocation(mount.location),
                 entity.getStructureTonnageAtLocation('CT'),
@@ -77,7 +76,7 @@ export function getEquipmentTonnage(
         || equipment.hasFlag('F_TALON')) {
         return Math.ceil(tonnage / 15);
     } else if (equipment.hasFlag('F_ACTUATOR_ENHANCEMENT_SYSTEM')) {
-        return standardRound(tonnage / (entity instanceof QuadMekEntity ? 50 : 35), entity);
+        return standardRound(tonnage / (isMekEntity(entity) && entity.chassisConfig === 'Quad' ? 50 : 35), entity);
     } else if (equipment.hasFlag('F_INDUSTRIAL_STRUCTURE') || equipment.hasFlag('F_REINFORCED')) {
         return standardRound(tonnage * 0.2, entity);
     } else if (equipment.hasAnyFlag(['F_ENDO_STEEL', 'F_ENDO_STEEL_PROTO', 'F_COMPOSITE'])) {

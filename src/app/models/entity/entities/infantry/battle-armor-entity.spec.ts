@@ -13,18 +13,25 @@ describe('BattleArmorEntity movement', () => {
     expect(entity.squadSize()).toBe(6);
   });
 
-  it('uses declared jump MP with slotless movement equipment', () => {
+  it('derives jump and UMU movement from slotless propulsion equipment', () => {
     const entity = new BattleArmorEntity();
     entity.originalWalkMP.set(1);
-    entity.jumpingMP.set(3);
+    entity.propulsionMP.set(3);
     entity.motiveType.set('Jump');
     entity.equipment.set([mountWithFlag('F_JUMP_JET')]);
 
     expect(entity.walkMP()).toBe(1);
     expect(entity.runMP()).toBe(1);
     expect(entity.jumpMP()).toBe(3);
+    expect(entity.umuMP()).toBe(0);
     expect(entity.equipment()[0].location).toBe('None');
     expect(entity.equipment()[0].placements).toBeUndefined();
+
+    entity.motiveType.set('UMU');
+    entity.propulsionMP.set(2);
+    entity.equipment.set([mountWithFlag('F_UMU')]);
+    expect(entity.jumpMP()).toBe(0);
+    expect(entity.umuMP()).toBe(2);
   });
 
   it('reacts to BA movement modifiers without changing source walk MP', () => {
@@ -38,7 +45,6 @@ describe('BattleArmorEntity movement', () => {
     expect(entity.originalWalkMP()).toBe(5);
 
     entity.motiveType.set('UMU');
-    entity.jumpingMP.set(3);
     entity.equipment.set([mountWithFlag('F_MECHANICAL_JUMP_BOOSTER')]);
     expect(entity.jumpMP()).toBe(1);
   });

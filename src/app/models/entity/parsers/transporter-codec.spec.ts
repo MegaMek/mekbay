@@ -43,7 +43,7 @@ describe('transporter codec', () => {
     expect(groups[0].doors).toBe(2);
   });
 
-  it('allocates unique numbers and preserves unsupported lines', () => {
+  it('allocates unique numbers and reports unsupported lines', () => {
     const context = new ParseContext('test.blk', EMPTY_EQUIPMENT_REGISTRY);
     const transporters = parseTransporterLines([
       'cargobay:1:1:2',
@@ -51,8 +51,7 @@ describe('transporter codec', () => {
       'futuretransport:7:1',
       'dockingcollar',
     ], 'IS', context);
-    expect(transporters.map(transporter => transporter.kind === 'bay' ? transporter.bayNumber : transporter.kind === 'docking-collar' ? transporter.collarNumber : undefined)).toEqual([2, 1, undefined, 3]);
-    expect(transporters[2]).toEqual({ id: 'transporter-3', kind: 'unknown', rawLine: 'futuretransport:7:1', omni: false });
+    expect(transporters.map(transporter => transporter.kind === 'bay' ? transporter.bayNumber : transporter.kind === 'docking-collar' ? transporter.collarNumber : undefined)).toEqual([2, 1, 3]);
     expect(context.warnings.length).toBe(1);
   });
 

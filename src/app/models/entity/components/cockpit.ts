@@ -49,28 +49,9 @@ export {
   getCockpitTechAdvancement,
 } from './cockpit-data';
 
-// ============================================================================
-// Lookup helpers
-// ============================================================================
-
 /** All known cockpit types (keys of COCKPIT_DATA). */
 export function getAllCockpitTypes(): readonly CockpitType[] {
   return Object.keys(COCKPIT_DATA) as CockpitType[];
-}
-
-/**
- * Normalize a raw cockpit-type string (e.g. "Standard Cockpit") to the
- * canonical `CockpitType` key.
- */
-export function normalizeCockpitType(raw: string): CockpitType {
-  if (raw in COCKPIT_DATA) return raw as CockpitType;
-  // Strip trailing " Cockpit" suffix
-  const stripped = raw.replace(/\s+Cockpit$/i, '').trim();
-  if (stripped in COCKPIT_DATA) return stripped as CockpitType;
-  // Handle "Torso Mounted" → "Torso-Mounted"
-  const hyphenated = stripped.replace(/\s+/g, '-');
-  if (hyphenated in COCKPIT_DATA) return hyphenated as CockpitType;
-  return 'Standard';
 }
 
 // ============================================================================

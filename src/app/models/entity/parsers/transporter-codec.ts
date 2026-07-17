@@ -185,7 +185,6 @@ export function parseTransporterLines(
         transporters.push({ id, kind: 'troop-space', totalSpace, omni });
       } else {
         context.warn('transporters', `Invalid troop-space capacity in "${trimmed}"`);
-        transporters.push({ id, kind: 'unknown', rawLine: trimmed, omni });
       }
       continue;
     }
@@ -206,7 +205,6 @@ export function parseTransporterLines(
     const normalized = normalizeBayFields(fields, rawType === 'battlearmorbay' && entityTechBase === 'Clan');
     if (!normalized) {
       context.warn('transporters', `Invalid transporter fields in "${trimmed}"`);
-      transporters.push({ id, kind: 'unknown', rawLine: trimmed, omni });
       continue;
     }
 
@@ -225,14 +223,12 @@ export function parseTransporterLines(
       || bitmap === undefined
     ) {
       context.warn('transporters', `Unknown or invalid transporter "${trimmed}"`);
-      transporters.push({ id, kind: 'unknown', rawLine: trimmed, omni });
       continue;
     }
 
     const configuration = bayConfiguration(rawType, arts, platoonType, facing, bitmap);
     if (!configuration) {
       context.warn('transporters', `Unknown or invalid transporter "${trimmed}"`);
-      transporters.push({ id, kind: 'unknown', rawLine: trimmed, omni });
       continue;
     }
 
@@ -281,7 +277,6 @@ function serializeTransporter(transporter: EntityTransporter): string {
     // DockingCollar is not registered as an Omni pod by BLKFile.
     case 'docking-collar': return 'dockingcollar';
     case 'battle-armor-handles': return `BattleArmorHandles - troopers:${transporter.troopers}${omni}`;
-    case 'unknown': return transporter.rawLine;
     case 'bay': {
       const fields = serializeBayConfiguration(transporter);
       const bayNumber = serializedBayNumber(transporter);

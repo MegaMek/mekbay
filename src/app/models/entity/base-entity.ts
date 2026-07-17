@@ -229,9 +229,8 @@ export abstract class BaseEntity {
 
   // ── Movement ──
   motiveType = signal<MotiveType>('None');
+  /** Construction walk MP, corresponding to MegaMek's Entity.walkMP field.  */
   originalWalkMP = signal<number>(0);
-  /** TODO: Raw jump MP from the source file (for round-trip fidelity). -1 means not set. */
-  declaredJumpMP = signal<number>(-1);
 
   /**
    * The motive type as a BLK-compatible string, or `null` if the

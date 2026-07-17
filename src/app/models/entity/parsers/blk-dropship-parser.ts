@@ -32,7 +32,7 @@
  */
 
 import { DropShipEntity } from '../entities/aero/dropship-entity';
-import { parseMotiveType } from '../types';
+import { decodeMotiveType } from './motive-type-codec';
 import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { decodeBlkAeroDesignType, decodeBlkDropShipCollarType } from './blk-codec';
@@ -59,7 +59,7 @@ export function parseBlkDropShip(bb: BuildingBlock, ctx: ParseContext): DropShip
   // ── Movement ──
   if (bb.exists('SafeThrust'))   entity.originalWalkMP.set(bb.getFirstInt('SafeThrust'));
   if (bb.exists('fuel'))         entity.fuel.set(bb.getFirstInt('fuel'));
-  if (bb.exists('motion_type'))  entity.motiveType.set(parseMotiveType(bb.getFirstString('motion_type')));
+  if (bb.exists('motion_type'))  entity.motiveType.set(decodeMotiveType(bb.getFirstString('motion_type')));
 
   // ── Engine ──
   parseBlkAeroEngine(bb, entity);

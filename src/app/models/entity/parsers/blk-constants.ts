@@ -146,12 +146,6 @@ export const LST_EXTRA_EQUIP_TAGS: [string, string][] = [
   ['Rear Left Equipment',       'Rear Left'],
 ];
 
-/** Gun Emplacement uses a specific tag */
-export const GE_EQUIP_TAGS: [string, string][] = [
-  ['Guns Equipment',  'Turret'],
-  ['Body Equipment',  'Body'],
-];
-
 // ============================================================================
 // Mek - Armor array order
 // ============================================================================

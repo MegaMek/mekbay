@@ -1,10 +1,7 @@
 
 import type { Equipment } from "../../equipment.model";
 import type { BaseEntity } from "../base-entity";
-import { AeroEntity } from "../entities/aero/aero-entity";
-import { MekEntity } from "../entities/mek/mek-entity";
-import { QuadMekEntity } from "../entities/mek/quad-mek-entity";
-import { VehicleEntity } from "../entities/vehicle/vehicle-entity";
+import { isAeroEntity, isMekEntity, isVehicleEntity } from "./entity-type-guards";
 import { getTargetingComputerRelevantWeight } from "./targeting-computer";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -25,10 +22,10 @@ export function getNumCriticalSlots(entity: BaseEntity, eq: Equipment, size: num
         return eq.stats.svSlots;
     }
     if (eq.stats.tankSlots !== undefined && eq.stats.tankSlots >= 0 
-    && (entity instanceof VehicleEntity)) {
+    && isVehicleEntity(entity)) {
         return eq.stats.tankSlots;
     }
-    const isSuperHeavy = entity instanceof MekEntity && entity.isSuperHeavy();
+    const isSuperHeavy = isMekEntity(entity) && entity.isSuperHeavy();
 
     if (eq.stats.criticalSlots !== "variable") {
         const fixedSlots = eq.stats.criticalSlots as number;
@@ -40,8 +37,8 @@ export function getNumCriticalSlots(entity: BaseEntity, eq: Equipment, size: num
 
     const weight = entity.tonnage();
     const isClan = entity.techBase() === 'Clan';
-    const isQuad = entity instanceof QuadMekEntity;
-    const isAero = entity instanceof AeroEntity;
+    const isQuad = isMekEntity(entity) && entity.chassisConfig === 'Quad';
+    const isAero = isAeroEntity(entity);
 
     // ── Melee weapons (F_CLUB) ──────────────────────────────────────
     if (eq.hasFlag('F_CLUB')) {

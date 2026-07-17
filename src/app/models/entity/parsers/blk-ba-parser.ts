@@ -39,7 +39,6 @@ import {
   EquipmentTechBase,
   LocationArmor,
   locationArmor,
-  parseMotiveType,
   resolveArmorEquipment,
 } from '../types';
 import {
@@ -48,6 +47,7 @@ import {
   decodeBlkCompoundTechBase,
   decodeBlkCompoundTechLevel,
 } from './blk-codec';
+import { decodeMotiveType } from './motive-type-codec';
 import { createCompoundTechLevel } from '../types/tech';
 import { createMountedArmor } from '../components';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
@@ -85,8 +85,8 @@ export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEnt
   if (bb.exists('chassis'))        entity.chassisType.set(bb.getFirstString('chassis'));
   if (bb.exists('turret'))         entity.turretConfig.set(bb.getFirstString('turret'));
   if (bb.exists('exoskeleton'))    entity.isExoskeleton.set(bb.getFirstString('exoskeleton') === 'true');
-  if (bb.exists('jumpingMP'))      entity.jumpingMP.set(bb.getFirstInt('jumpingMP'));
-  if (bb.exists('motion_type'))    entity.motiveType.set(parseMotiveType(bb.getFirstString('motion_type')));
+  if (bb.exists('jumpingMP'))      entity.propulsionMP.set(bb.getFirstInt('jumpingMP'));
+  if (bb.exists('motion_type'))    entity.motiveType.set(decodeMotiveType(bb.getFirstString('motion_type')));
 
   // cruiseMP → walkMP (BA movement)
   if (bb.exists('cruiseMP'))       entity.originalWalkMP.set(bb.getFirstInt('cruiseMP'));

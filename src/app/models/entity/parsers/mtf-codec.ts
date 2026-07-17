@@ -1,6 +1,22 @@
 import type { MiscEquipment } from '../../equipment.model';
-import type { EngineType, EntityTechBase, EquipmentTechBase } from '../types';
+import type { CockpitType, EngineType, EntityTechBase, EquipmentTechBase } from '../types';
 import type { HeatSinkType } from '../types/heat-sink';
+import { COCKPIT_DATA } from '../components/cockpit-data';
+import { GYRO_DATA, type GyroType } from '../components/gyro-data';
+
+export function decodeMtfCockpitType(value: string): CockpitType {
+  if (value in COCKPIT_DATA) return value as CockpitType;
+  const stripped = value.replace(/\s+Cockpit$/i, '').trim();
+  if (stripped in COCKPIT_DATA) return stripped as CockpitType;
+  const hyphenated = stripped.replace(/\s+/g, '-');
+  return hyphenated in COCKPIT_DATA ? hyphenated as CockpitType : 'Standard';
+}
+
+export function decodeMtfGyroType(value: string): GyroType {
+  if (value in GYRO_DATA) return value as GyroType;
+  const stripped = value.replace(/\s+Gyro$/i, '').trim();
+  return stripped in GYRO_DATA ? stripped as GyroType : 'Standard';
+}
 
 export interface MtfEngineInfo {
   readonly rating: number;

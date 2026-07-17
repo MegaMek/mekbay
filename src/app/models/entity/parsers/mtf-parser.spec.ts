@@ -78,6 +78,17 @@ describe('MTF parser identity', () => {
 
     expect(writeMtf(entity)).toContain('\nstructure:IS Standard\n');
   });
+
+  it('derives construction jump MP from installed equipment', () => {
+    const entity = parseMtf(
+      minimalMtf().replace('jump mp:0', 'jump mp:5'),
+      new ParseContext('construction-jump-mp.mtf', EMPTY_EQUIPMENT_REGISTRY),
+    );
+
+    expect(entity.installedJumpJetMP()).toBe(0);
+    expect(entity.jumpMP()).toBe(0);
+    expect(writeMtf(entity)).toContain('\njump mp:0\n');
+  });
 });
 
 function minimalMtf(identity = ''): string {

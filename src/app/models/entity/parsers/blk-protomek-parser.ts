@@ -35,13 +35,13 @@ import { ProtoMekEntity } from '../entities/protomek/protomek-entity';
 import {
   LocationArmor,
   locationArmor,
-  parseMotiveType,
 } from '../types';
 import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { PROTO_EQUIP_TAGS } from './blk-constants';
 import { getBlkTechBase, parseBaseBlk, parseBlkArmor, parseBlkEngine, parseBlkEquipment } from './blk-base-parser';
 import { ParseContext } from './parse-context';
+import { decodeMotiveType } from './motive-type-codec';
 
 // ============================================================================
 // Public API
@@ -60,7 +60,7 @@ export function parseBlkProtoMek(bb: BuildingBlock, ctx: ParseContext): ProtoMek
 
   // ── Motive type ──
   if (bb.exists('motion_type')) {
-    const motiveType = parseMotiveType(bb.getFirstString('motion_type'));
+    const motiveType = decodeMotiveType(bb.getFirstString('motion_type'));
     entity.motiveType.set(motiveType);
     entity.isQuad.set(motiveType === 'Quad');
     entity.isGlider.set(motiveType === 'WiGE');
@@ -68,7 +68,6 @@ export function parseBlkProtoMek(bb: BuildingBlock, ctx: ParseContext): ProtoMek
 
   // ── Movement ──
   if (bb.exists('cruiseMP'))  entity.originalWalkMP.set(bb.getFirstInt('cruiseMP'));
-  if (bb.exists('jumpingMP')) entity.jumpingMP.set(bb.getFirstInt('jumpingMP'));
 
   // ── ProtoMek-specific flags ──
   if (bb.exists('interface_cockpit')) {

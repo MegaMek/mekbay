@@ -90,7 +90,8 @@ export class JumpShipEntity extends AeroEntity {
       'None': 0,
       'Primitive': 0.05 + 0.03 * this.jumpRange(),
     };
-    return Math.ceil(this.tonnage() * driveCorePercent[this.driveCoreType()]);
+    const coreType = this.entityType === 'SpaceStation' ? 'None' : this.driveCoreType();
+    return Math.ceil(this.tonnage() * driveCorePercent[coreType]);
   });
 
   sailIntegrity = computed(() => {

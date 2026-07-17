@@ -60,7 +60,7 @@ export class BattleArmorEntity extends InfantryBaseEntity {
   readonly trooperCount = this.squadSize;
   declaredWeightClass = signal<WeightClass>('Medium');
   chassisType = signal<string>('Biped');
-  jumpingMP = signal<number>(0);
+  propulsionMP = signal<number>(0);
   apMounts = signal<number>(0);
   dwpCapacity = signal<number>(0);
   sswmCapacity = signal<number>(0);
@@ -72,6 +72,9 @@ export class BattleArmorEntity extends InfantryBaseEntity {
   isExoskeleton = signal<boolean>(false);
   /** Squad equipment tag: 'Squad' (modern) or 'Point' (legacy) for BLK round-trip */
   squadEquipmentTag = signal<'Squad' | 'Point'>('Squad');
+
+  readonly baseJumpMP = computed(() => this.motiveType() === 'UMU' ? 0 : this.propulsionMP());
+  readonly umuMP = computed(() => this.motiveType() === 'UMU' ? this.propulsionMP() : 0);
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  OVERRIDES - BA uses canonical motive values (no compound infantry strings)
@@ -117,7 +120,7 @@ export class BattleArmorEntity extends InfantryBaseEntity {
     const equipment = this.equipment();
     if (!options.ignoreDWP && equipment.some(mount => mount.isDWP)) return 0;
 
-    let jumpMP = this.motiveType() === 'UMU' ? 0 : this.jumpingMP();
+    let jumpMP = this.baseJumpMP();
     if (jumpMP === 0 && equipment.some(mount => mount.equipment?.hasFlag('F_MECHANICAL_JUMP_BOOSTER'))) {
       jumpMP = 1;
     }

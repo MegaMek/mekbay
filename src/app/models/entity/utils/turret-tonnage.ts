@@ -1,7 +1,7 @@
 import { MiscEquipment } from '../../equipment.model';
 import type { BaseEntity } from '../base-entity';
-import { VehicleEntity } from '../entities/vehicle/vehicle-entity';
 import type { EntityMountedEquipment } from '../types/equipment';
+import { isVehicleEntity } from './entity-type-guards';
 
 export function getMekTurretEquipmentWeight(
     entity: BaseEntity,
@@ -17,8 +17,11 @@ export function getSponsonTurretTonnage(
 ): number | undefined {
     const turretCount = countEquipmentWithFlag(entity, 'F_SPONSON_TURRET');
     if (turretCount === 0) return undefined;
-    if (entity instanceof VehicleEntity && entity.omni() && entity.baseChassisSponsonPintleWeight() >= 0) {
-        return entity.baseChassisSponsonPintleWeight() / turretCount;
+    const baseChassisWeight = isVehicleEntity(entity)
+        ? entity.baseChassisSponsonPintleWeight()
+        : -1;
+    if (entity.omni() && baseChassisWeight >= 0) {
+        return baseChassisWeight / turretCount;
     }
 
     const equipmentWeight = sumEquipmentTonnage(entity, mount => mount.turretType === 'sponson');
@@ -32,8 +35,11 @@ export function getPintleTurretTonnage(
 ): number | undefined {
     const turretCount = countEquipmentWithFlag(entity, 'F_PINTLE_TURRET');
     if (turretCount === 0) return undefined;
-    if (entity instanceof VehicleEntity && entity.baseChassisSponsonPintleWeight() >= 0) {
-        return entity.baseChassisSponsonPintleWeight() / turretCount;
+    const baseChassisWeight = isVehicleEntity(entity)
+        ? entity.baseChassisSponsonPintleWeight()
+        : -1;
+    if (baseChassisWeight >= 0) {
+        return baseChassisWeight / turretCount;
     }
 
     const weaponWeight = sumEquipmentTonnage(entity, mount =>

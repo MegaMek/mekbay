@@ -53,7 +53,6 @@ export type EntityType =
   | 'SupportNaval'
   | 'SupportVTOL'
   | 'LargeSupportTank'
-  | 'GunEmplacement'
   | 'Infantry'
   | 'BattleArmor'
   | 'ProtoMek'

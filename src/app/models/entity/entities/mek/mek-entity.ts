@@ -85,6 +85,12 @@ export interface FrankenMekLocationData {
   donorType?: string;
 }
 
+function jumpJetTonnage(unitTonnage: number): number {
+  if (unitTonnage <= 55) return 0.5;
+  if (unitTonnage <= 85) return 1;
+  return 2;
+}
+
 export abstract class MekEntity extends BaseEntity {
   override readonly entityType: EntityType = 'Mek';
 
@@ -423,9 +429,36 @@ export abstract class MekEntity extends BaseEntity {
     return this.hasMPReducingHardenedArmor() ? Math.max(0, runMP - 1) : runMP;
   }
 
+  readonly installedJumpJetMP = computed(() => {
+    const jumpJets = this.equipment().filter(mount => mount.equipment?.hasFlag('F_JUMP_JET'));
+    if (!this.isFrankenMek()) return jumpJets.length;
+
+    const centerTorsoTonnage = this.getStructureTonnageAtLocation('CT');
+    if (centerTorsoTonnage <= 0) return 0;
+
+    const movement = jumpJets.reduce((total, mount) => {
+      if (mount.equipment?.tonnage !== 'variable') return total + 1;
+      const locationTonnage = Math.min(
+        this.getStructureTonnageAtLocation(mount.location),
+        centerTorsoTonnage,
+      );
+      return total + jumpJetTonnage(locationTonnage) / jumpJetTonnage(centerTorsoTonnage);
+    }, 0);
+    const improved = jumpJets[0]?.equipment?.hasFlag('S_IMPROVED') ?? false;
+    const movementCap = improved
+      ? Math.ceil(this.originalWalkMP() * 1.5)
+      : this.originalWalkMP();
+    return Math.min(Math.floor(movement), movementCap);
+  });
+
+  readonly installedUmuMP = computed(() => this.equipment().filter(
+    mount => mount.equipment?.hasFlag('F_UMU'),
+  ).length);
+  readonly umuMP = computed(() => this.installedUmuMP());
+
   override computeJumpMP(options: MovementCalculationOptions): number {
     const equipment = this.equipment();
-    const jumpJets = equipment.filter(mount => mount.equipment?.hasFlag('F_JUMP_JET')).length;
+    const jumpJets = this.installedJumpJetMP();
     if (jumpJets === 0 || equipment.some(mount => mount.equipment?.hasFlag('S_SHIELD_LARGE'))) {
       return 0;
     }

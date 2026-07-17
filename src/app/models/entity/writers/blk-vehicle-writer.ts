@@ -35,7 +35,6 @@ import { VehicleEntity } from '../entities/vehicle/vehicle-entity';
 import { NavalEntity } from '../entities/vehicle/naval-entity';
 import { VtolEntity } from '../entities/vehicle/vtol-entity';
 import { LargeSupportTankEntity } from '../entities/vehicle/large-support-tank-entity';
-import { GunEmplacementEntity } from '../entities/vehicle/gun-emplacement-entity';
 
 import {
   BuildingBlockWriter,
@@ -53,7 +52,6 @@ import {
 } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 import {
-  GE_EQUIP_TAGS,
   LST_ARMOR_LOCS,
   SUPERHEAVY_ARMOR_LOCS,
   VEHICLE_ARMOR_LOCS,
@@ -74,8 +72,7 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
 
   // ── Determine UnitType tag ──
   let unitType: string;
-  if (entity instanceof GunEmplacementEntity)        unitType = 'GunEmplacement';
-  else if (entity instanceof LargeSupportTankEntity)  unitType = 'LargeSupportTank';
+  if (entity instanceof LargeSupportTankEntity)       unitType = 'LargeSupportTank';
   else if (entity.isSupportVehicle())                 unitType = entity instanceof VtolEntity ? 'SupportVTOL' : 'SupportTank';
   else if (entity instanceof VtolEntity)              unitType = 'VTOL';
   else if (entity instanceof NavalEntity)             unitType = 'Tank';
@@ -92,9 +89,7 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
   writeEngine(w, entity);
 
   // 7. Armor: armor_type, armor_tech_rating, armor_tech_level
-  if (!(entity instanceof GunEmplacementEntity)) {
-    writeArmorBlocks(w, entity);
-  }
+  writeArmorBlocks(w, entity);
 
   // 8. internal_type (only if not Standard)
   writeInternalType(w, entity);
@@ -104,10 +99,7 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
 
   // 10. Armor values array
   const armorMap = entity.armorValues();
-  if (entity instanceof GunEmplacementEntity) {
-    const turretArmor = armorMap.get('Turret')?.front ?? 0;
-    w.addBlock('armor', turretArmor);
-  } else if (entity instanceof LargeSupportTankEntity) {
+  if (entity instanceof LargeSupportTankEntity) {
     // LST: Front, Front Right, Front Left, Rear Right, Rear Left, Rear[, Turret]
     const base: number[] = LST_ARMOR_LOCS.slice(0, 6).map(loc => armorMap.get(loc)?.front ?? 0);
     if (entity.hasTurret()) {
@@ -145,9 +137,7 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
 
   // 11. Equipment per location
   let equipTags: [string, string][];
-  if (entity instanceof GunEmplacementEntity) {
-    equipTags = GE_EQUIP_TAGS;
-  } else if (entity instanceof LargeSupportTankEntity) {
+  if (entity instanceof LargeSupportTankEntity) {
     // LargeSupportTank: Body, Front, Front Right, Front Left, Rear Right, Rear Left, Rear[, Turret]
     equipTags = [
       ['Body Equipment',         'Body'],

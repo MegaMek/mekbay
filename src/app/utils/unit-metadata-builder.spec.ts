@@ -112,6 +112,10 @@ describe('UnitMetadataBuilder', () => {
     expect(entity.driveCoreType()).toBe('None');
     expect(builder.build(entity).capital?.sailIntegrity).toBe(0);
     expect(builder.build(entity).capital?.kfIntegrity).toBe(0);
+
+    entity.driveCoreType.set('Standard');
+    expect(entity.jumpDriveWeight()).toBe(0);
+
     expect(builder.build(new SupportTankEntity()).capital).toBeUndefined();
   });
 

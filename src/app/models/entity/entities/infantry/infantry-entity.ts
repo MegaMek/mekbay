@@ -91,7 +91,6 @@ export class InfantryEntity extends InfantryBaseEntity {
   extraneousPair2 = signal<string>('');
 
   specializations = signal<Set<InfantrySpecialization>>(new Set());
-  originalJumpMP = signal<number>(0);
 
   protected override computeTonnage(): number {
     return getInfantryTonnage(this);
@@ -117,7 +116,9 @@ export class InfantryEntity extends InfantryBaseEntity {
     if (mount) return mount.movementMode === 'VTOL' ? mount.movementPoints : 0;
     if (this.motiveType() === 'UMU' || this.motiveType() === 'Submarine') return 0;
 
-    let jumpMP = this.originalJumpMP();
+    let jumpMP = this.motiveType() === 'Jump'
+      ? 3
+      : this.motiveType() === 'VTOL' ? (this.isMicrolite() ? 6 : 5) : 0;
     if (this.hasSupportWeaponPenalty()) jumpMP = Math.max(jumpMP - 1, 0);
     else if (this.motiveType() === 'VTOL' && this.secondaryCount() > 0) jumpMP = Math.max(jumpMP - 1, 0);
     return jumpMP;

@@ -39,19 +39,17 @@ import { SupportTankEntity } from '../entities/vehicle/support-tank-entity';
 import { SupportNavalEntity } from '../entities/vehicle/support-naval-entity';
 import { SupportVtolEntity } from '../entities/vehicle/support-vtol-entity';
 import { LargeSupportTankEntity } from '../entities/vehicle/large-support-tank-entity';
-import { GunEmplacementEntity } from '../entities/vehicle/gun-emplacement-entity';
 import {
   LocationArmor,
   VALID_FUEL_TYPES,
   VALID_VEHICLE_MOTIVE_TYPES,
   locationArmor,
-  parseMotiveType,
 } from '../types';
 import { decodeBlkEngineType, ENGINE_TYPE_FROM_BLK_CODE } from './blk-codec';
+import { decodeMotiveType } from './motive-type-codec';
 import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import {
-  GE_EQUIP_TAGS,
   LST_EXTRA_EQUIP_TAGS,
   LST_ARMOR_LOCS,
   SUPERHEAVY_ARMOR_LOCS,
@@ -68,7 +66,7 @@ import { ParseContext } from './parse-context';
 
 /**
  * Parse a BLK file for a Tank, Naval, VTOL, SupportTank, SupportVTOL,
- * LargeSupportTank, or GunEmplacement entity.
+ * or LargeSupportTank entity.
  */
 export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEntity {
   resetMountIdCounter();
@@ -78,7 +76,7 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
   const NAVAL_MOTIVE_TYPES = new Set(['Naval', 'Submarine', 'Hydrofoil']);
   const unitType = bb.getFirstString('UnitType').trim();
   const rawMotiveType = bb.exists('motion_type') ? bb.getFirstString('motion_type') : '';
-  const motiveType = parseMotiveType(rawMotiveType);
+  const motiveType = decodeMotiveType(rawMotiveType);
   let entity: VehicleEntity;
 
   switch (unitType) {
@@ -88,7 +86,6 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
       break;
     case 'SupportVTOL':       entity = new SupportVtolEntity(); break;
     case 'LargeSupportTank':  entity = new LargeSupportTankEntity(); break;
-    case 'GunEmplacement':    entity = new GunEmplacementEntity(); break;
     default:
       entity = NAVAL_MOTIVE_TYPES.has(motiveType) ? new NavalEntity() : new TankEntity();
       break;
@@ -179,10 +176,7 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
     const ints = bb.getDataAsInt('armor');
     const armorMap = new Map<string, LocationArmor>();
 
-    if (entity instanceof GunEmplacementEntity) {
-      // Gun emplacements: single Turret armor value
-      if (ints.length > 0) armorMap.set('Turret', locationArmor(ints[0]));
-    } else if (entity instanceof LargeSupportTankEntity) {
+    if (entity instanceof LargeSupportTankEntity) {
       // LST: Front, Front Right, Front Left, Rear Right, Rear Left, Rear[, Turret]
       for (let i = 0; i < LST_ARMOR_LOCS.length && i < ints.length; i++) {
         armorMap.set(LST_ARMOR_LOCS[i], locationArmor(ints[i]));
@@ -227,13 +221,6 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
     entity.armorValues.set(armorMap);
   }
 
-  // ── Gun Emplacement specifics ──
-  if (entity instanceof GunEmplacementEntity) {
-    if (bb.exists('buildingCF')) {
-      entity.buildingCF.set(bb.getFirstInt('buildingCF'));
-    }
-  }
-
   // ── Support vehicle BAR rating ──
   if (entity.isSupportVehicle() && bb.exists('barrating')) {
     entity.barRating.set(bb.getFirstInt('barrating'));
@@ -255,9 +242,7 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
 
   // ── Equipment per location ──
   let equipTags: [string, string][];
-  if (entity instanceof GunEmplacementEntity) {
-    equipTags = GE_EQUIP_TAGS;
-  } else if (entity instanceof LargeSupportTankEntity || (entity.isSuperHeavy() && !(entity instanceof VtolEntity))) {
+  if (entity instanceof LargeSupportTankEntity || (entity.isSuperHeavy() && !(entity instanceof VtolEntity))) {
     equipTags = [...VEHICLE_EQUIP_TAGS, ...LST_EXTRA_EQUIP_TAGS];
   } else {
     equipTags = VEHICLE_EQUIP_TAGS;

@@ -5,16 +5,25 @@ import { ProtoMekEntity } from './protomek-entity';
 describe('ProtoMekEntity jumpMP', () => {
   it('adds the standard-atmosphere partial-wing bonus', () => {
     const entity = new ProtoMekEntity();
-    entity.jumpingMP.set(5);
+    entity.equipment.set(Array.from({ length: 5 }, () => mountWithFlag('F_JUMP_JET')));
 
     expect(entity.jumpMP()).toBe(5);
 
-    entity.equipment.set([mountWithFlag('F_PARTIAL_WING')]);
+    entity.equipment.update(equipment => [...equipment, mountWithFlag('F_PARTIAL_WING')]);
     expect(entity.jumpMP()).toBe(7);
     expect(entity.maxJumpMP()).toBe(5);
 
     entity.equipment.set([]);
-    expect(entity.jumpMP()).toBe(5);
+    expect(entity.jumpMP()).toBe(0);
+  });
+
+  it('keeps UMU movement separate from jump movement', () => {
+    const entity = new ProtoMekEntity();
+    entity.equipment.set(Array.from({ length: 3 }, () => mountWithFlag('F_UMU')));
+
+    expect(entity.jumpMP()).toBe(0);
+    expect(entity.installedUmuMP()).toBe(3);
+    expect(entity.umuMP()).toBe(3);
   });
 });
 

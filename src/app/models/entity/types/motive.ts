@@ -108,29 +108,6 @@ export type MotiveType =
   | 'Wheel'
   | 'Beast';
 
-/**
- * Parse a raw motive-type string (from BLK `motion_type` or MTF headers)
- * to a canonical `MotiveType`.  Handles legacy aliases and case variations.
- *
- * Returns `'None'` for unrecognized strings.
- */
-export function parseMotiveType(raw: string): MotiveType {
-  const trimmed = raw.trim();
-  const lower = trimmed.toLowerCase();
-
-  // ── Direct canonical matches (case-insensitive) ─────────────────────
-  const canonical = MOTIVE_TYPE_BY_LOWERCASE.get(lower);
-  if (canonical) return canonical;
-
-  // ── Legacy aliases ──────────────────────────────────────────────────
-  const alias = MOTIVE_TYPE_ALIASES.get(lower);
-  if (alias) return alias;
-
-  return 'None';
-}
-
-// ── Lookup maps (built once) ────────────────────────────────────────────────
-
 /** All canonical MotiveType values */
 export const ALL_MOTIVE_TYPES: readonly MotiveType[] = [
   'None', 'Biped', 'Tripod', 'Quad',
@@ -141,39 +118,6 @@ export const ALL_MOTIVE_TYPES: readonly MotiveType[] = [
   'Airship', 'Station Keeping', 'Rail', 'MagLev',
   'Track', 'Wheel', 'Beast',
 ];
-
-/** Lowercase canonical name → MotiveType */
-const MOTIVE_TYPE_BY_LOWERCASE = new Map<string, MotiveType>(
-  ALL_MOTIVE_TYPES.map(mt => [mt.toLowerCase(), mt]),
-);
-
-/** Legacy/alternate string → canonical MotiveType */
-const MOTIVE_TYPE_ALIASES = new Map<string, MotiveType>([
-  // MegaMek parseFromString aliases
-  ['building',        'None'],
-  ['microcopter',     'VTOL'],
-  ['micro-copter',    'VTOL'],
-  ['microlite',       'VTOL'],
-  ['glider',          'WiGE'],
-  ['scuba',           'UMU'],
-  ['motorized scuba', 'UMU'],
-  ['foot',            'Leg'],
-  ['foot infantry',   'Leg'],
-  ['motorized infantry', 'Motorized'],
-  ['jump infantry',   'Jump'],
-  ['inf_leg',         'Leg'],
-  ['inf_motorized',   'Motorized'],
-  ['inf_jump',        'Jump'],
-  ['inf_umu',         'UMU'],
-  ['biped_swim',      'UMU'],
-  ['quad_swim',       'UMU'],
-  ['station',         'Station Keeping'],
-  ['station_keeping', 'Station Keeping'],
-  ['station-keeping', 'Station Keeping'],
-  ['satellite',       'Station Keeping'],
-  ['maglev',          'MagLev'],
-  ['wige',            'WiGE'],
-]);
 
 // ============================================================================
 // Motive Type Validation Sets

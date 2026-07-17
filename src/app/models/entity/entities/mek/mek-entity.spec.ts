@@ -15,15 +15,29 @@ describe('MekEntity jumpMP', () => {
     ]);
 
     expect(entity.jumpMP()).toBe(8);
+    expect(entity.installedJumpJetMP()).toBe(6);
 
     entity.equipment.update(equipment => [...equipment, mountWithFlag('S_SHIELD_MEDIUM')]);
     expect(entity.jumpMP()).toBe(7);
+    expect(entity.installedJumpJetMP()).toBe(6);
 
     entity.equipment.update(equipment => [...equipment, mountWithFlag('F_MODULAR_ARMOR')]);
     expect(entity.jumpMP()).toBe(6);
+    expect(entity.installedJumpJetMP()).toBe(6);
 
     entity.equipment.update(equipment => [...equipment, mountWithFlag('S_SHIELD_LARGE')]);
     expect(entity.jumpMP()).toBe(0);
+    expect(entity.installedJumpJetMP()).toBe(6);
+  });
+
+  it('does not treat UMUs as jump movement', () => {
+    const entity = new BipedMekEntity();
+    entity.equipment.set(mountsWithFlag('F_UMU', 4));
+
+    expect(entity.installedJumpJetMP()).toBe(0);
+    expect(entity.jumpMP()).toBe(0);
+    expect(entity.installedUmuMP()).toBe(4);
+    expect(entity.umuMP()).toBe(4);
   });
 
   it('uses the smaller partial-wing bonus for heavy Meks', () => {
@@ -35,6 +49,25 @@ describe('MekEntity jumpMP', () => {
     ]);
 
     expect(entity.jumpMP()).toBe(5);
+  });
+
+  it('weights FrankenMek jump jets by their donor location tonnage', () => {
+    const entity = new BipedMekEntity();
+    entity.setTonnage(100);
+    entity.originalWalkMP.set(4);
+    entity.isFrankenMek.set(true);
+    entity.frankenMekLocations.set(new Map([
+      ['CT', { tonnage: 100 }],
+      ['LT', { tonnage: 50 }],
+    ]));
+    const jumpJet = new MiscEquipment({
+      id: 'FrankenJumpJet', name: 'Jump Jet', type: 'misc',
+      stats: { tonnage: 'variable' }, flags: ['F_JUMP_JET'],
+    });
+    entity.equipment.set(Array.from({ length: 4 }, () => mountedAt(jumpJet, 'LT')));
+
+    expect(entity.installedJumpJetMP()).toBe(1);
+    expect(entity.jumpMP()).toBe(1);
   });
 
   it('calculates maximum jump directly when modular armor reduces normal jump to zero', () => {
@@ -378,11 +411,15 @@ function mountWithFlags(flags: readonly string[], location = 'CT'): EntityMounte
 let nextMountId = 0;
 
 function mounted(equipment: Equipment): EntityMountedEquipment {
+  return mountedAt(equipment, 'CT');
+}
+
+function mountedAt(equipment: Equipment, location: string): EntityMountedEquipment {
   return new EntityMountedEquipment({
     mountId: `${equipment.id}-${nextMountId++}`,
     equipmentId: equipment.id,
     equipment,
-    allocation: { kind: 'location', location: 'CT' },
+    allocation: { kind: 'location', location },
     rearMounted: false,
     turretMounted: false,
     omniPodMounted: false,

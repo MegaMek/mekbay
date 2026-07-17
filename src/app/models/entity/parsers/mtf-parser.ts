@@ -37,7 +37,7 @@ import { FrankenMekLocationData, MekEntity, MekWithArmsEntity } from '../entitie
 import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import { QuadVeeEntity } from '../entities/mek/quad-vee-entity';
 import { TripodMekEntity } from '../entities/mek/tripod-mek-entity';
-import { MountedEngine, createMountedArmor, createPatchworkArmor, getStructureByName, normalizeCockpitType, normalizeGyroType } from '../components';
+import { MountedEngine, createMountedArmor, createPatchworkArmor, getStructureByName } from '../components';
 import { ArmorEquipment, MiscEquipment, WeaponEquipment } from '../../equipment.model';
 import {
   ArmorType,
@@ -54,14 +54,14 @@ import {
   factionFromAbbr,
   locationArmor,
   normalizeSystemManufacturerKey,
-  parseMotiveType,
   resolveMtfArmorEquipment,
   createCompoundTechLevel,
 } from '../types';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { ParseContext } from './parse-context';
 import { componentTechLevelFromRulesLevel } from './blk-codec';
-import { decodeMtfArmor, decodeMtfEngine, decodeMtfHeatSinks, decodeMtfStructure } from './mtf-codec';
+import { decodeMtfArmor, decodeMtfCockpitType, decodeMtfEngine, decodeMtfGyroType, decodeMtfHeatSinks, decodeMtfStructure } from './mtf-codec';
+import { decodeMotiveType } from './motive-type-codec';
 
 // ============================================================================
 // Location normalization - raw MTF strings → canonical location IDs
@@ -235,13 +235,12 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   }
   entity.myomerType.set(header.myomer || 'Standard');
 
-  if (header.gyro) entity.gyroType.set(normalizeGyroType(header.gyro));
-  if (header.cockpit) entity.cockpitType.set(normalizeCockpitType(header.cockpit));
+  if (header.gyro) entity.gyroType.set(decodeMtfGyroType(header.gyro));
+  if (header.cockpit) entity.cockpitType.set(decodeMtfCockpitType(header.cockpit));
   if (header.ejection) entity.ejectionType.set(header.ejection);
   if (header.heatSinkKit) entity.heatSinkKit.set(header.heatSinkKit);
 
   entity.originalWalkMP.set(header.walkMP);
-  if (header.jumpMP >= 0) entity.declaredJumpMP.set(header.jumpMP);
 
   // ── Armor (structured { front, rear }) ──
   {
@@ -760,7 +759,7 @@ function parseHeader(lines: string[]): MtfHeader {
       case 'weapons':  inWeaponsSection = true; break;
       case 'clanname': h.clanName = value; break;
       case 'lam':      h.lamType = value; break;
-      case 'motive':   h.motiveType = parseMotiveType(value); break;
+      case 'motive':   h.motiveType = decodeMotiveType(value); break;
       case 'faction':  h.faction = factionFromAbbr(value); break;
       case 'clancaseoptedoutlocs': h.clanCaseOptOut = value; break;
       default: {

@@ -1,7 +1,6 @@
 import type { BaseEntity } from '../base-entity';
-import { JumpShipEntity } from '../entities/largecraft/jumpship-entity';
-import { SpaceStationEntity } from '../entities/largecraft/space-station-entity';
 import type { EntityMountedEquipment } from '../types/equipment';
+import { isJumpShipEntity } from './entity-type-guards';
 
 export function getSrcsTonnage(entity: BaseEntity, mount: EntityMountedEquipment): number {
     if (entity.tonnage() < 10) return mount.equipment?.hasFlag('S_IMPROVED') ? 1 : 0;
@@ -16,8 +15,8 @@ export function getSrcsTonnage(entity: BaseEntity, mount: EntityMountedEquipment
         percent += 0.03;
     }
 
-    if (entity instanceof JumpShipEntity && !(entity instanceof SpaceStationEntity)) {
-        return Math.ceil((entity.tonnage() - getJumpDriveWeight(entity)) * percent);
+    if (isJumpShipEntity(entity)) {
+        return Math.ceil((entity.tonnage() - entity.jumpDriveWeight()) * percent);
     }
     return standardRound(entity.tonnage() * percent);
 }
@@ -30,7 +29,9 @@ export function getCasparTonnage(entity: BaseEntity, improved: boolean): number 
 
     if (improved) percent = percent === 0.05 ? 0.07 : percent + 0.04;
     const weight = entity.tonnage() * percent;
-    return entity instanceof JumpShipEntity ? Math.ceil(weight) : standardRound(weight);
+    return entity.entityType === 'JumpShip' || entity.entityType === 'SpaceStation'
+        ? Math.ceil(weight)
+        : standardRound(weight);
 }
 
 export function getCasparIITonnage(entity: BaseEntity, improved: boolean): number {
@@ -41,20 +42,9 @@ export function getCasparIITonnage(entity: BaseEntity, improved: boolean): numbe
 
     if (improved) percent = percent === 0.06 ? 0.08 : percent + 0.04;
     const weight = entity.tonnage() * percent;
-    return entity instanceof JumpShipEntity ? Math.ceil(weight) : standardRound(weight);
-}
-
-function getJumpDriveWeight(entity: JumpShipEntity): number {
-    const coreType = entity instanceof SpaceStationEntity ? 'None' : entity.driveCoreType();
-    const percent = coreType === 'Primitive'
-        ? 0.05 + (0.03 * entity.jumpRange())
-        : {
-            Standard: 0.95,
-            Compact: 0.4525,
-            Subcompact: 0.5,
-            None: 0,
-        }[coreType];
-    return Math.ceil(entity.tonnage() * percent);
+    return entity.entityType === 'JumpShip' || entity.entityType === 'SpaceStation'
+        ? Math.ceil(weight)
+        : standardRound(weight);
 }
 
 function standardRound(tonnage: number): number {

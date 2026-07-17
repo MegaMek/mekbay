@@ -1,7 +1,5 @@
 import type { BaseEntity } from '../base-entity';
 import type { SupportVehicle } from '../entities/support-vehicle';
-import { FixedWingSupportEntity } from '../entities/aero/fixed-wing-support-entity';
-import { SupportVtolEntity } from '../entities/vehicle/support-vtol-entity';
 import type { TechRating } from '../types';
 
 const TECH_RATINGS: readonly TechRating[] = ['A', 'B', 'C', 'D', 'E', 'F'];
@@ -53,11 +51,11 @@ function getBaseEngineValue(
     entity: BaseEntity & SupportVehicle,
 ): number {
     const tonnage = entity.tonnage();
-    if (entity instanceof SupportVtolEntity) {
+    if (entity.entityType === 'SupportVTOL') {
         if (tonnage < 5) return 0.002;
         return entity.weightClass() === 'Large Support' ? 0.004 : 0.0025;
     }
-    if (entity instanceof FixedWingSupportEntity) {
+    if (entity.entityType === 'FixedWingSupport') {
         if (tonnage < 5) return 0.005;
         return tonnage <= 100 ? 0.01 : 0.015;
     }

@@ -57,17 +57,24 @@ export class ProtoMekEntity extends BaseEntity {
   // ═══════════════════════════════════════════════════════════════════════════
 
   override motiveType = signal<MotiveType>('Biped');
-  jumpingMP = signal<number>(0);
   interfaceCockpit = signal<boolean>(false);
   isGlider = signal<boolean>(false);
   isQuad = signal<boolean>(false);
   hasMainGun = signal<boolean>(false);
 
+  readonly installedJumpJetMP = computed(() => this.equipment().filter(
+    mount => mount.equipment?.hasFlag('F_JUMP_JET'),
+  ).length);
+  readonly installedUmuMP = computed(() => this.equipment().filter(
+    mount => mount.equipment?.hasFlag('F_UMU'),
+  ).length);
+  readonly umuMP = computed(() => this.installedUmuMP());
+
   override computeJumpMP(options: MovementCalculationOptions): number {
     const partialWingBonus = !options.ignoreWeather && this.equipment().some(
       mount => mount.equipment?.hasFlag('F_PARTIAL_WING'),
     ) ? 2 : 0;
-    return this.jumpingMP() + partialWingBonus;
+    return this.installedJumpJetMP() + partialWingBonus;
   }
 
   override computeRunMP(options: MovementCalculationOptions): number {

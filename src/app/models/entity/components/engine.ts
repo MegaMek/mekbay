@@ -50,7 +50,7 @@
 import { signal, computed, WritableSignal } from '@angular/core';
 import type { EngineType, EntityTechBase, TechAdvancement } from '../types';
 import { MEK_SLOTS_PER_LOCATION } from '../types';
-import { type GyroType, getGyro, normalizeGyroType } from './gyro';
+import { type GyroType, getGyro } from './gyro';
 import {
   ENGINE_DATA,
   type EngineTypeDescriptor,
@@ -230,7 +230,7 @@ export class MountedEngine {
    *
    * Returns an array of 0-based slot indices in the CT that the engine occupies.
    */
-  getCTSlots(gyroType: GyroType | string): number[] {
+  getCTSlots(gyroType: GyroType): number[] {
     return getEngineCTSlots(this, gyroType);
   }
 
@@ -251,31 +251,29 @@ export class MountedEngine {
  * Compute the CT critical slot indices occupied by the engine.
  * Mirrors MegaMek `Engine.getCenterTorsoCriticalSlots()`.
  */
-function getEngineCTSlots(engine: MountedEngine, gyroType: GyroType | string): number[] {
-  const normalizedGyro = normalizeGyroType(gyroType as string);
-
+function getEngineCTSlots(engine: MountedEngine, gyroType: GyroType): number[] {
   if (engine.type() === 'Compact') {
     return engine.isSuperHeavy ? [0, 1] : [0, 1, 2];
   }
 
   if (engine.isLarge) {
     if (engine.isSuperHeavy) {
-      if (normalizedGyro === 'None') return [0, 1, 2, 3];
+      if (gyroType === 'None') return [0, 1, 2, 3];
       return [0, 1, 2, 5];
     }
-    if (normalizedGyro === 'None') return [0, 1, 2, 3, 4, 5, 6, 7];
-    if (normalizedGyro === 'Compact') return [0, 1, 2, 5, 6, 7, 8, 9];
+    if (gyroType === 'None') return [0, 1, 2, 3, 4, 5, 6, 7];
+    if (gyroType === 'Compact') return [0, 1, 2, 5, 6, 7, 8, 9];
     return [0, 1, 2, 7, 8, 9, 10, 11];
   }
 
   // Normal-sized engine
-  if (normalizedGyro === 'None') {
+  if (gyroType === 'None') {
     return engine.isSuperHeavy ? [0, 1, 2] : [0, 1, 2, 3, 4, 5];
   }
-  if (normalizedGyro === 'Compact') {
+  if (gyroType === 'Compact') {
     return engine.isSuperHeavy ? [0, 1, 2] : [0, 1, 2, 5, 6, 7];
   }
-  if (normalizedGyro === 'XL') {
+  if (gyroType === 'XL') {
     return engine.isSuperHeavy ? [0, 1, 2] : [0, 1, 2, 9, 10, 11];
   }
   // Standard / Heavy Duty / Superheavy gyro
@@ -342,7 +340,7 @@ export function getEngineBaseWeight(rating: number): number {
  */
 export function buildCTSystemLayout(
   engine: MountedEngine,
-  gyroType: GyroType | string,
+  gyroType: GyroType,
 ): (string | null)[] {
   const layout: (string | null)[] = new Array(MEK_SLOTS_PER_LOCATION).fill(null);
   const engineSlots = engine.getCTSlots(gyroType);

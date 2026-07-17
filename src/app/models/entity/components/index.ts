@@ -46,7 +46,6 @@ export {
   GYRO_DATA,
   getGyro,
   getAllGyroTypes,
-  normalizeGyroType,
   getGyroTechAdvancement,
 } from './gyro';
 
@@ -56,7 +55,6 @@ export {
   type CockpitHeadLayout,
   COCKPIT_DATA,
   getAllCockpitTypes,
-  normalizeCockpitType,
   getCockpitTechAdvancement,
   buildHeadSystemLayout,
 } from './cockpit';

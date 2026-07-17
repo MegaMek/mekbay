@@ -37,13 +37,13 @@ import {
   InfantryMount,
   InfantrySpecialization,
   MotiveType,
-  parseMotiveType,
 } from '../types';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
 import { parseEquipmentLine } from './equipment-resolver';
 import { ParseContext } from './parse-context';
+import { decodeMotiveType } from './motive-type-codec';
 
 // ============================================================================
 // Predefined beast mounts (loaded from inline data matching infantry-mounts.json)
@@ -93,7 +93,7 @@ function parseInfantryMotionType(raw: string, entity: InfantryEntity, ctx: Parse
           size,
           weight: parseFloat(fields[2]) || 0,
           movementPoints: parseInt(fields[3], 10) || 0,
-          movementMode: parseMotiveType(fields[4]),
+          movementMode: decodeMotiveType(fields[4]),
           burstDamage: parseInt(fields[5], 10) || 0,
           vehicleDamage: parseInt(fields[6], 10) || 0,
           damageDivisor: parseFloat(fields[7]) || 1,
@@ -148,7 +148,7 @@ function parseInfantryMotionType(raw: string, entity: InfantryEntity, ctx: Parse
   }
 
   // ── Simple motive types ───────────────────────────────────────────
-  entity.motiveType.set(parseMotiveType(trimmed));
+  entity.motiveType.set(decodeMotiveType(trimmed));
 }
 
 // ============================================================================
@@ -315,11 +315,9 @@ function setInfantryMovementDefaults(entity: InfantryEntity): void {
   const mount = entity.mount();
   if (mount) {
     entity.originalWalkMP.set(mount.movementMode === 'Leg' ? mount.movementPoints : mount.secondaryGroundMP);
-    entity.originalJumpMP.set(mount.movementMode === 'Leg' ? 0 : mount.movementPoints);
     return;
   }
 
-  entity.originalJumpMP.set(0);
   switch (entity.motiveType()) {
     case 'Motorized':
     case 'Tracked':
@@ -333,19 +331,15 @@ function setInfantryMovementDefaults(entity: InfantryEntity): void {
       break;
     case 'Submarine':
       entity.originalWalkMP.set(0);
-      entity.originalJumpMP.set(3);
       break;
     case 'VTOL':
       entity.originalWalkMP.set(1);
-      entity.originalJumpMP.set(entity.isMicrolite() ? 6 : 5);
       break;
     case 'UMU':
       entity.originalWalkMP.set(1);
-      entity.originalJumpMP.set(entity.isMotorizedScuba() ? 2 : 1);
       break;
     case 'Jump':
       entity.originalWalkMP.set(1);
-      entity.originalJumpMP.set(3);
       break;
     default:
       entity.originalWalkMP.set(1);

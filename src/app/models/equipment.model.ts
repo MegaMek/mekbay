@@ -30,8 +30,8 @@
  * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
  * affiliated with Microsoft.
  */
+import type { BaseEntity } from './entity/base-entity';
 import {
-    BaseEntity,
     ComponentTechLevel,
     CompoundTechLevel,
     EntityTechBase,
@@ -42,7 +42,7 @@ import {
     calculateTechLevel,
     isTechnologyAvailable,
     parseTechDate,
-} from './entity';
+} from './entity/types/tech';
 import { getNumCriticalSlots } from './entity/utils/equipment-helpers';
 import { TechBaseAvailability } from './tech.model';
 import type { MountedEquipment } from './mounted-equipment.model';

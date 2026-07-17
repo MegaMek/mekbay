@@ -131,7 +131,6 @@ function parseBlk(bb: BuildingBlock, ctx: ParseContext): BaseEntity {
     case 'SupportTank':
     case 'SupportVTOL':
     case 'LargeSupportTank':
-    case 'GunEmplacement':
       return parseBlkVehicle(bb, ctx);
 
     // ── Infantry ──

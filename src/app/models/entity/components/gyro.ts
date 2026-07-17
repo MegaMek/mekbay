@@ -74,19 +74,8 @@ export function getAllGyroTypes(): readonly GyroType[] {
   return Object.keys(GYRO_DATA) as GyroType[];
 }
 
-/**
- * Normalize raw gyro type strings from MTF files.
- * MegaMek writes "XL Gyro", "Compact Gyro", etc. — we strip the " Gyro" suffix.
- */
-export function normalizeGyroType(raw: string): GyroType {
-  if (raw in GYRO_DATA) return raw as GyroType;
-  const stripped = raw.replace(/\s+Gyro$/i, '').trim();
-  if (stripped in GYRO_DATA) return stripped as GyroType;
-  return 'Standard';
-}
-
 /** Resolve a GyroComponent by type name. Falls back to Standard. */
-export function getGyro(type: string): GyroComponent {
-  const desc = GYRO_DATA[normalizeGyroType(type)];
+export function getGyro(type: GyroType): GyroComponent {
+  const desc = GYRO_DATA[type];
   return { type: desc.shortName as GyroType, criticalSlots: desc.criticalSlots };
 }

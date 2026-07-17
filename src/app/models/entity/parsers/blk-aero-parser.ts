@@ -38,7 +38,6 @@ import { FixedWingSupportEntity } from '../entities/aero/fixed-wing-support-enti
 import {
   AERO_EQUIP_LOCATIONS,
   AERO_LOCATIONS,
-  parseMotiveType,
 } from '../types';
 import { createMountedArmor } from '../components';
 import { resetMountIdCounter } from '../utils/signal-helpers';
@@ -46,6 +45,7 @@ import { BuildingBlock } from './building-block';
 import { FIGHTER_EQUIP_TAGS, FWS_EQUIP_TAGS } from './blk-constants';
 import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkEquipment, resolveBlkStructure } from './blk-base-parser';
 import { ParseContext } from './parse-context';
+import { decodeMotiveType } from './motive-type-codec';
 
 // ============================================================================
 // Public API
@@ -75,7 +75,7 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
   // ── Movement ──
   if (bb.exists('SafeThrust'))   entity.originalWalkMP.set(bb.getFirstInt('SafeThrust'));
   if (bb.exists('fuel'))         entity.fuel.set(bb.getFirstInt('fuel'));
-  if (bb.exists('motion_type'))  entity.motiveType.set(parseMotiveType(bb.getFirstString('motion_type')));
+  if (bb.exists('motion_type'))  entity.motiveType.set(decodeMotiveType(bb.getFirstString('motion_type')));
 
   // ── Engine ──
   parseBlkAeroEngine(bb, entity, { rating: getAeroEngineRating(bb, entity) });

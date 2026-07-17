@@ -119,19 +119,11 @@ export interface BattleArmorHandlesTransporter {
   omni: boolean;
 }
 
-export interface UnknownTransporter {
-  id: string;
-  kind: 'unknown';
-  rawLine: string;
-  omni: boolean;
-}
-
 export type EntityTransporter =
   | EntityTransportBay
   | TroopSpaceTransporter
   | DockingCollarTransporter
-  | BattleArmorHandlesTransporter
-  | UnknownTransporter;
+  | BattleArmorHandlesTransporter;
 
 export interface EntityWeaponBay {
   weaponIndices: number[];
