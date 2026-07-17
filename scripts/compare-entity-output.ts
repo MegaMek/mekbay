@@ -208,13 +208,40 @@ const FLUFF_PREFIXES = [
   'notes:', 'use:',
 ];
 
+interface ComparisonSkipRule {
+  readonly extensions: readonly string[];
+  readonly linePrefixes: readonly string[];
+  readonly maxFailuresBeforeNoSkip: number;
+}
+
+const COMPARISON_SKIP_RULES: readonly ComparisonSkipRule[] = [
+  {
+    extensions: ['.mtf'],
+    linePrefixes: ['jump mp:'],
+    maxFailuresBeforeNoSkip: 5,
+  },
+];
+
+interface NormalizedComparisonLine {
+  readonly text: string;
+  readonly skipRule?: ComparisonSkipRule;
+}
+
+function getComparisonSkipRule(line: string, extension: string): ComparisonSkipRule | undefined {
+  const normalizedLine = line.trimStart().toLowerCase();
+  return COMPARISON_SKIP_RULES.find(rule =>
+    rule.extensions.includes(extension)
+    && rule.linePrefixes.some(prefix => normalizedLine.startsWith(prefix))
+  );
+}
+
 /**
  * Strip comment lines (starting with #), the MTF generator: line,
  * trim fluff field values, and normalise whitespace for comparison.
  */
-function normalizeForComparison(text: string): string[] {
+function normalizeForComparison(text: string, extension: string): NormalizedComparisonLine[] {
   const lines = text.split(/\r?\n/);
-  const filtered: string[] = [];
+  const filtered: NormalizedComparisonLine[] = [];
 
   for (const line of lines) {
     const trimmed = line.trimStart();
@@ -231,28 +258,37 @@ function normalizeForComparison(text: string): string[] {
         const colonIdx = trimmed.indexOf(':');
         const key = trimmed.substring(0, colonIdx + 1);
         const value = trimmed.substring(colonIdx + 1).trim();
-        filtered.push(`${key}${value}`);
+        filtered.push({ text: `${key}${value}` });
         handled = true;
         break;
       }
     }
     if (!handled) {
       const normalizedLine = line.trimEnd();
-      if (normalizedLine === '' && filtered[filtered.length - 1] === '') continue;
-      filtered.push(normalizedLine);
+      if (normalizedLine === '' && filtered[filtered.length - 1]?.text === '') continue;
+      filtered.push({
+        text: normalizedLine,
+        skipRule: getComparisonSkipRule(trimmed, extension),
+      });
     }
   }
 
   let first = 0;
-  while (first < filtered.length && filtered[first] === '') first++;
+  while (first < filtered.length && filtered[first].text === '') first++;
 
   let last = filtered.length - 1;
-  while (last >= first && filtered[last] === '') last--;
+  while (last >= first && filtered[last].text === '') last--;
 
   if (first > last) return [];
 
-  filtered[first] = filtered[first].trimStart();
-  filtered[last] = filtered[last].trimEnd();
+  filtered[first] = {
+    ...filtered[first],
+    text: filtered[first].text.trimStart(),
+  };
+  filtered[last] = {
+    ...filtered[last],
+    text: filtered[last].text.trimEnd(),
+  };
   return filtered.slice(first, last + 1);
 }
 
@@ -274,6 +310,7 @@ interface CompareResult {
 }
 
 const createdOutputDirectories = new Set<string>();
+const comparisonSkipFailureCounts = new Map<ComparisonSkipRule, number>();
 
 /**
  * Check whether a file path matches all NAME_TOKENS (checked against the filename).
@@ -331,13 +368,21 @@ function processFile(
   fs.writeFileSync(outPath, written, 'utf-8');
 
   // ── Compare ignoring comments and generator block ──
-  const origLines = normalizeForComparison(content);
-  const writLines = normalizeForComparison(written);
+  const origLines = normalizeForComparison(content, ext);
+  const writLines = normalizeForComparison(written, ext);
   const maxLen = Math.max(origLines.length, writLines.length);
   for (let i = 0; i < maxLen; i++) {
-    const oLine = origLines[i] ?? '<EOF>';
-    const wLine = writLines[i] ?? '<EOF>';
+    const origLine = origLines[i];
+    const writLine = writLines[i];
+    const oLine = origLine?.text ?? '<EOF>';
+    const wLine = writLine?.text ?? '<EOF>';
     if (oLine !== wLine) {
+      const skipRule = origLine?.skipRule ?? writLine?.skipRule;
+      if (skipRule) {
+        const failureCount = (comparisonSkipFailureCounts.get(skipRule) ?? 0) + 1;
+        comparisonSkipFailureCounts.set(skipRule, failureCount);
+        if (failureCount <= skipRule.maxFailuresBeforeNoSkip) continue;
+      }
       return {
         file: filePath, status: 'diff', entityType: entity.entityType,
         firstDiffLine: i,
