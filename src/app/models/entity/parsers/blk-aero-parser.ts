@@ -46,6 +46,7 @@ import { FIGHTER_EQUIP_TAGS, FWS_EQUIP_TAGS } from './blk-constants';
 import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkEquipment, resolveBlkStructure } from './blk-base-parser';
 import { ParseContext } from './parse-context';
 import { decodeMotiveType } from './motive-type-codec';
+import { decodeBlkAeroCockpitType } from './blk-codec';
 
 // ============================================================================
 // Public API
@@ -82,8 +83,7 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
 
   // ── Cockpit ──
   if (bb.exists('cockpit_type')) {
-    const cpCode = bb.getFirstInt('cockpit_type');
-    entity.cockpitType.set(cpCode === 0 ? 'Standard' : `Type ${cpCode}`);
+    entity.cockpitType.set(decodeBlkAeroCockpitType(bb.getFirstInt('cockpit_type')));
   }
 
   // ── OmniPod heat sinks ──

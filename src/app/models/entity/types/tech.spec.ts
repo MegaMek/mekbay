@@ -14,6 +14,7 @@ import {
   isCompoundTechLevelLegal,
   isTechnologyAvailable,
   parseTechDate,
+  techEraIndexForYear,
   type TechLevelCalculation,
 } from './tech';
 import { createEquipment } from '../../equipment.model';
@@ -160,5 +161,44 @@ describe('technology level calculation', () => {
     expect(calculateCompositeTechRating([
       { techBase: 'Clan', rating: 'F', availability: ['X', 'F', 'E', 'D'] },
     ], { techBase: 'IS' })).toBe('F/X-X-F-E');
+  });
+
+  it('blocks Inner Sphere technology introduced during the Succession Wars for Clan use', () => {
+    expect(calculateCompositeTechRating([
+      {
+        techBase: 'All', rating: 'E', availability: ['X', 'E', 'E', 'D'],
+        dates: {
+          is: { common: 3052 },
+          clan: { prototype: 2854, production: 2856, common: 2864 },
+        },
+      },
+    ], { techBase: 'Clan', year: 2945 })).toBe('E/X-X-E-D');
+  });
+
+  it('masks availability before the entity introduction era', () => {
+    const sources = [
+      { techBase: 'All' as const, rating: 'E' as const,
+        availability: ['E', 'F', 'E', 'D'] as const },
+    ];
+
+    expect(calculateCompositeTechRating(sources, { techBase: 'IS', year: 3060 }))
+      .toBe('E/X-X-E-D');
+    expect(calculateCompositeTechRating(sources, { techBase: 'IS', year: 3140 }))
+      .toBe('E/X-X-X-D');
+  });
+
+  it('shows the harder Succession Wars rating when IS technology becomes extinct', () => {
+    expect(calculateCompositeTechRating([
+      {
+        techBase: 'IS', rating: 'E', availability: ['D', 'F', 'E', 'D'],
+        dates: { prototype: 2556, production: 2579, extinct: 2865, reintroduced: 3035 },
+      },
+    ], { techBase: 'IS', year: 2700 })).toBe('E/D-F(F*)-E-D');
+  });
+
+  it('maps years to technology availability eras at each boundary', () => {
+    expect([
+      2779, 2780, 3049, 3050, 3129, 3130,
+    ].map(techEraIndexForYear)).toEqual([0, 1, 1, 2, 2, 3]);
   });
 });

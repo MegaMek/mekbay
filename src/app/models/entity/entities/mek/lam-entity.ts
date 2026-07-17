@@ -33,6 +33,7 @@
 
 import { signal } from '@angular/core';
 import { CriticalSlotView, MekConfig, type TechRatingSource } from '../../types';
+import { LAM_CONSTRUCTION_TECH } from '../../components';
 import { BipedMekEntity } from './biped-mek-entity';
 
 /** Helper to create a system slot view. */
@@ -51,8 +52,8 @@ export class LamEntity extends BipedMekEntity {
 
   protected override constructionTechAdvancement(): TechRatingSource {
     return this.lamType().toLowerCase() === 'bimodal'
-      ? { techBase: 'IS', rating: 'E', availability: ['E', 'F', 'X', 'X'] }
-      : { techBase: 'IS', rating: 'D', availability: ['D', 'E', 'F', 'F'] };
+      ? LAM_CONSTRUCTION_TECH.Bimodal
+      : LAM_CONSTRUCTION_TECH.Standard;
   }
 
   protected override getSystemSlotsForLocation(loc: string): CriticalSlotView[] {

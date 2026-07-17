@@ -35,9 +35,11 @@ import { Signal, computed, signal } from '@angular/core';
 import {
   EntityType,
   EntityValidationMessage,
+  TechRatingSource,
   WeightClass,
 } from '../../types';
 import { MovementCalculationOptions } from '../../base-entity';
+import { getBattleArmorConstructionTech } from '../../components';
 import { InfantryBaseEntity } from './infantry-base-entity';
 import type { UnitSubtype } from '../../types';
 
@@ -50,6 +52,10 @@ export class BattleArmorEntity extends InfantryBaseEntity {
 
   override unitSubtype(): UnitSubtype {
     return this.withOmniSubtype('Battle Armor');
+  }
+
+  override entityTechAdvancements(): readonly TechRatingSource[] {
+    return [getBattleArmorConstructionTech(this.weightClass(), this.isExoskeleton())];
   }
 
   constructor() {

@@ -33,6 +33,7 @@
 
 import { signal } from '@angular/core';
 import { MekConfig, MotiveType, type TechRatingSource } from '../../types';
+import { QUADVEE_CONSTRUCTION_TECH } from '../../components';
 import { QuadMekEntity } from './quad-mek-entity';
 
 /** QuadVee - a Quad Mek with a vehicle motive type (Track or Wheel). */
@@ -41,7 +42,7 @@ export class QuadVeeEntity extends QuadMekEntity {
   override motiveType = signal<MotiveType>('Track');
 
   protected override constructionTechAdvancement(): TechRatingSource {
-    return { techBase: 'Clan', rating: 'F', availability: ['X', 'X', 'X', 'F'] };
+    return QUADVEE_CONSTRUCTION_TECH;
   }
 
   override get chassisConfig(): MekConfig {

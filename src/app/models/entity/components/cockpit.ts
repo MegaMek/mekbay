@@ -42,11 +42,13 @@ import {
 
 // Re-export cockpit-data symbols for barrel convenience
 export {
+  AERO_COCKPIT_TECH,
   COCKPIT_DATA,
   type CockpitTypeDescriptor,
   type CockpitCrewType,
   type CockpitHeadLayout,
   getCockpitTechAdvancement,
+  getAeroCockpitTechAdvancement,
 } from './cockpit-data';
 
 /** All known cockpit types (keys of COCKPIT_DATA). */

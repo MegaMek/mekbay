@@ -1,7 +1,7 @@
 import type { MountedArmor } from '../components/armor';
 import type { GyroType } from '../components/gyro-data';
 import type { ArmorType } from '../types/armor';
-import type { AeroDesignType, DriveCoreType, DropShipCollarType } from '../types/aero';
+import type { AeroCockpitType, AeroDesignType, DriveCoreType, DropShipCollarType } from '../types/aero';
 import type { EngineType } from '../types/engine';
 import type { CockpitType } from '../types/mek';
 import { createCompoundTechLevel, type ComponentTechLevel, type CompoundTechLevel, type EntityTechBase } from '../types/tech';
@@ -179,12 +179,19 @@ function invertCodeMap<T extends string>(
 
 export const ENGINE_TYPE_FROM_BLK_CODE = invertCodeMap(ENGINE_TYPE_TO_BLK_CODE);
 const COCKPIT_TYPE_FROM_BLK_CODE = invertCodeMap(COCKPIT_TYPE_TO_BLK_CODE);
+const AERO_COCKPIT_TYPE_FROM_BLK_CODE: Readonly<Record<number, AeroCockpitType>> = {
+  0: 'Standard', 1: 'Small', 2: 'Command Console', 3: 'Primitive',
+};
 const GYRO_TYPE_FROM_BLK_CODE = invertCodeMap(GYRO_TYPE_TO_BLK_CODE);
 const DRIVE_CORE_TYPE_FROM_BLK_CODE = invertCodeMap(DRIVE_CORE_TYPE_TO_BLK_CODE);
 const DROP_SHIP_COLLAR_TYPE_FROM_BLK_CODE = invertCodeMap(DROP_SHIP_COLLAR_TYPE_TO_BLK_CODE);
 
 export function decodeBlkHeatSinkType(code: number): HeatSinkType {
   return HEAT_SINK_TYPE_FROM_BLK_CODE[code] ?? 'Single';
+}
+
+export function decodeBlkAeroCockpitType(code: number): AeroCockpitType {
+  return AERO_COCKPIT_TYPE_FROM_BLK_CODE[code] ?? 'Standard';
 }
 
 export function encodeBlkHeatSinkType(type: HeatSinkType): number {

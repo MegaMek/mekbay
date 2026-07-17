@@ -307,9 +307,11 @@ describe('UnitMetadataBuilder', () => {
   it('includes entity-specific systems in the composite technology rating', () => {
     const entity = new BipedMekEntity();
     entity.setTonnage(50);
+    entity.year.set(2500);
 
     expect(entity.techRating()).toBe('D/C-E-D-C');
 
+    entity.year.set(3080);
     entity.cockpitType.set('Small');
 
     expect(entity.techRating()).toBe('E/X-X-E-D');
@@ -318,12 +320,43 @@ describe('UnitMetadataBuilder', () => {
   it('starts a Mek composite technology rating with its construction technology', () => {
     const entity = new BipedMekEntity();
     entity.setTonnage(50);
+    entity.year.set(2500);
 
     expect(entity.techRating()).toBe('D/C-E-D-C');
   });
 
   it('starts a combat vehicle rating with combat-vehicle construction technology', () => {
-    expect(new TankEntity().techRating()).toBe('D/C-C-C-B');
+    const vehicle = new TankEntity();
+    vehicle.year.set(2490);
+    expect(vehicle.techRating()).toBe('D/C-C-C-B');
+  });
+
+  it('starts Battle Armor ratings with weight-class construction technology', () => {
+    const battleArmor = new BattleArmorEntity();
+    battleArmor.year.set(3052);
+    expect(battleArmor.techRating()).toBe('E/X-X-D-D');
+
+    battleArmor.isExoskeleton.set(true);
+    battleArmor.year.set(2200);
+    expect(battleArmor.techRating()).toBe('C/B-B-B-B');
+  });
+
+  it('includes aerospace fighter construction and cockpit technology', () => {
+    const fighter = new AeroSpaceFighterEntity();
+    fighter.year.set(2490);
+    expect(fighter.techRating()).toBe('D/C-E-D-C');
+
+    fighter.year.set(3080);
+    fighter.cockpitType.set('Small');
+    expect(fighter.techRating()).toBe('E/X-X-E-D');
+
+    fighter.year.set(2300);
+    fighter.cockpitType.set('Primitive');
+    expect(fighter.techRating()).toBe('D/D-X-X-F');
+
+    const conventionalFighter = new ConvFighterEntity();
+    conventionalFighter.year.set(2490);
+    expect(conventionalFighter.techRating()).toBe('D/C-D-C-C');
   });
 
   it('exports calculated beast-mounted infantry tonnage', () => {

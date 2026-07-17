@@ -32,8 +32,9 @@
  */
 
 import { signal } from '@angular/core';
-import { AERO_EQUIP_LOCATIONS, AERO_LOCATIONS, EntityType } from '../../types';
+import { AERO_EQUIP_LOCATIONS, AERO_LOCATIONS, EntityType, type TechRatingSource } from '../../types';
 import { AeroEntity } from './aero-entity';
+import { CONVENTIONAL_FIGHTER_CONSTRUCTION_TECH } from '../../components';
 import type { UnitSubtype } from '../../types';
 
 /** Conventional Fighter - ICE-powered, limited tech, optional VSTOL. */
@@ -42,6 +43,13 @@ export class ConvFighterEntity extends AeroEntity {
 
   override unitSubtype(): UnitSubtype {
     return this.withOmniSubtype('Conventional Fighter');
+  }
+
+  override entityTechAdvancements(): readonly TechRatingSource[] {
+    return [
+      CONVENTIONAL_FIGHTER_CONSTRUCTION_TECH,
+      this.mountedCockpitTech(),
+    ];
   }
 
   /** VSTOL (Vertical/Short Take-Off and Landing) capability */

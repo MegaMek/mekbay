@@ -41,6 +41,17 @@
  * Data sourced from MegaMek Engine.java and BattleTech TM / TO rules.
  */
 
+import { TECH_ERA_DATA, TECH_ERAS, techEraIndexForYear, type TechEra } from './tech-era';
+
+export {
+    TECH_ERA_DATA,
+    TECH_ERAS,
+    techEraIndexForYear,
+    type TechEra,
+    type TechEraDescriptor,
+    type TechEraIndex,
+} from './tech-era';
+
 /** Tech base as stored in entity files */
 export type EntityTechBase = 'IS' | 'Clan';
 export type EquipmentTechBase = EntityTechBase | 'All';
@@ -53,9 +64,6 @@ export type AvailabilityCode = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'X';
 
 /** Availability after composite adjustments. F* is one step harder than F. */
 export type CompositeAvailabilityCode = AvailabilityCode | 'F*';
-
-export const TECH_ERAS = ['sl', 'sw', 'clan', 'da'] as const;
-export type TechEra = typeof TECH_ERAS[number];
 
 /** Era-keyed availability used by equipment JSON. */
 export interface TechAvailability {
@@ -79,10 +87,13 @@ export interface TechRatingSource {
     readonly base?: EquipmentTechBase;
     readonly rating: TechRating;
     readonly availability: TechAvailability | TechAvailabilityTuple;
+    readonly dates?: TechAdvancementDates | SplitTechDates;
+    readonly advancement?: SplitTechDates;
 }
 
 export interface CompositeTechRatingContext {
     readonly techBase: EntityTechBase;
+    readonly year?: number;
 }
 
 export type CompositeTechRating = `${TechRating}/${string}`;
@@ -117,14 +128,53 @@ function harderAvailability(value: CompositeAvailabilityCode): CompositeAvailabi
 function adjustedAvailability(
     value: CompositeAvailabilityCode,
     era: number,
-    sourceTechBase: EquipmentTechBase,
+    source: TechRatingSource,
     context: CompositeTechRatingContext,
 ): CompositeAvailabilityCode {
+    const sourceTechBase = source.techBase ?? source.base ?? 'All';
+    if (context.techBase === 'Clan'
+        && era === TECH_ERA_DATA.sw.index
+        && sourceTechBase !== 'Clan') {
+        const dates = sourceDates(source);
+        const resolved = dates && resolveTechDates(
+            dates,
+            sourceTechBase === 'All' ? context.techBase : sourceTechBase,
+        );
+        const introductionYears = [resolved?.prototype, resolved?.production, resolved?.common]
+            .map(date => effectiveTechDateYear(date))
+            .filter((year): year is number => year != null);
+        const introduction = introductionYears.length ? Math.min(...introductionYears) : undefined;
+        if (introduction != null
+            && introduction >= TECH_ERA_DATA.sw.startYear
+            && introduction < TECH_ERA_DATA.clan.startYear) return 'X';
+    }
     if (context.techBase === 'IS' && sourceTechBase === 'Clan') {
-        if (era === 1) return 'X';
-        if (era >= 2) return harderAvailability(value);
+        if (era === TECH_ERA_DATA.sw.index) return 'X';
+        if (era >= TECH_ERA_DATA.clan.index) return harderAvailability(value);
     }
     return value;
+}
+
+function sourceDates(source: TechRatingSource): TechAdvancementDates | SplitTechDates | undefined {
+    return source.dates ?? source.advancement;
+}
+
+function sourceExtinctionYear(
+    source: TechRatingSource,
+    context: CompositeTechRatingContext,
+): number | undefined {
+    const dates = sourceDates(source);
+    if (!dates) return undefined;
+    const sourceBase = source.techBase ?? source.base ?? context.techBase;
+    const resolved = resolveTechDates(
+        dates,
+        sourceBase === 'All' ? context.techBase : sourceBase,
+    );
+    const extinct = techDateYear(resolved?.extinct);
+    if (extinct == null) return undefined;
+    const reintroduced = techDateYear(resolved?.reintroduced);
+    if (context.year != null && reintroduced != null && reintroduced <= context.year) return undefined;
+    return Math.max(extinct, context.year ?? extinct);
 }
 
 /** Calculate MegaMek's composite tech rating and four-era availability string. */
@@ -134,6 +184,7 @@ export function calculateCompositeTechRating(
 ): CompositeTechRating {
     let rating: TechRating = 'A';
     const availability: CompositeAvailabilityCode[] = ['A', 'A', 'A', 'A'];
+    let firstExtinction: number | undefined;
 
     for (const source of sources) {
         if (TECH_RATING_ORDER.indexOf(source.rating) > TECH_RATING_ORDER.indexOf(rating)) {
@@ -143,7 +194,7 @@ export function calculateCompositeTechRating(
             const adjusted = adjustedAvailability(
                 value,
                 era,
-                source.techBase ?? source.base ?? 'All',
+                source,
                 context,
             );
             if (COMPOSITE_AVAILABILITY_ORDER.indexOf(adjusted)
@@ -151,9 +202,30 @@ export function calculateCompositeTechRating(
                 availability[era] = adjusted;
             }
         });
+        const extinction = sourceExtinctionYear(source, context);
+        if (extinction != null && (firstExtinction == null || extinction < firstExtinction)) {
+            firstExtinction = extinction;
+        }
     }
 
-    return `${rating}/${availability.join('-')}`;
+    if (context.year != null) {
+        const introductionEra = techEraIndexForYear(context.year);
+        for (let era = 0; era < introductionEra; era++) availability[era] = 'X';
+    }
+
+    const formattedAvailability = availability.map((value, era) => {
+        if (context.techBase === 'IS'
+            && era === TECH_ERA_DATA.sw.index
+            && (value === 'E' || value === 'F')
+            && firstExtinction != null
+            && firstExtinction >= TECH_ERA_DATA.sw.startYear
+            && firstExtinction < TECH_ERA_DATA.clan.startYear) {
+            return `${value}(${harderAvailability(value)})`;
+        }
+        return value;
+    });
+
+    return `${rating}/${formattedAvailability.join('-')}`;
 }
 
 /**

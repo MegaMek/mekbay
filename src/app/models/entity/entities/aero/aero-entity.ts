@@ -33,7 +33,9 @@
 
 import { Signal, computed, signal } from '@angular/core';
 import { BaseEntity, MovementCalculationOptions } from '../../base-entity';
+import { AERO_COCKPIT_TECH } from '../../components';
 import {
+  AeroCockpitType,
   ASF_WEIGHT_LIMITS,
   EntityType,
   EntityValidationMessage,
@@ -61,12 +63,17 @@ export abstract class AeroEntity extends BaseEntity {
 
   abstract override unitSubtype(): UnitSubtype;
 
+  protected isPrimitiveAero(): boolean {
+    return this.cockpitType() === 'Primitive';
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   //  SIGNALS - user / parser inputs
   // ═══════════════════════════════════════════════════════════════════════════
 
   fuel = signal<number>(0);
-  cockpitType = signal<string>('Standard');
+  cockpitType = signal<AeroCockpitType>('Standard');
+  mountedCockpitTech = computed(() => AERO_COCKPIT_TECH[this.cockpitType()]);
   heatSinkType = signal<HeatSinkType>('Single');
   heatSinkCount = signal<number>(0);
   omnipodHeatSinkCount = signal<number>(0);

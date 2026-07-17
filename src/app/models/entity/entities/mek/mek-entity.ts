@@ -48,6 +48,7 @@ import {
   GYRO_DATA,
   type CockpitTypeDescriptor,
   COCKPIT_DATA,
+  getMekConstructionTech,
   MountedEngine,
 } from '../../components';
 import {
@@ -110,44 +111,12 @@ export abstract class MekEntity extends BaseEntity {
   }
 
   protected constructionTechAdvancement(): TechRatingSource {
-    const isPrimitive = this.mountedCockpit().isPrimitive;
-    const isIndustrial = this.isIndustrial();
-    const weightClass = this.weightClass();
-    const isSuperHeavy = weightClass === 'Super Heavy';
-
-    if (this.motiveType() === 'Tripod') {
-      return {
-        techBase: 'IS',
-        rating: 'D',
-        availability: isSuperHeavy ? ['X', 'F', 'X', 'F'] : ['F', 'F', 'F', 'E'],
-      };
-    }
-
-    if (isPrimitive) {
-      return {
-        techBase: 'IS',
-        rating: isIndustrial ? 'D' : 'C',
-        availability: isIndustrial ? ['D', 'X', 'F', 'F'] : ['C', 'X', 'F', 'F'],
-      };
-    }
-
-    if (isIndustrial) {
-      return {
-        techBase: isSuperHeavy ? 'IS' : 'All',
-        rating: isSuperHeavy ? 'D' : 'C',
-        availability: isSuperHeavy ? ['X', 'F', 'X', 'F'] : ['C', 'C', 'C', 'B'],
-      };
-    }
-
-    if (weightClass === 'Ultra Light') {
-      return { techBase: 'All', rating: 'D', availability: ['E', 'F', 'E', 'E'] };
-    }
-
-    return {
-      techBase: isSuperHeavy ? 'IS' : 'All',
-      rating: 'D',
-      availability: isSuperHeavy ? ['X', 'F', 'F', 'F'] : ['C', 'E', 'D', 'C'],
-    };
+    return getMekConstructionTech({
+      primitive: this.mountedCockpit().isPrimitive,
+      industrial: !!this.isIndustrial(),
+      tripod: this.motiveType() === 'Tripod',
+      weightClass: this.weightClass(),
+    });
   }
 
   override entityTechAdvancements(): readonly TechRatingSource[] {

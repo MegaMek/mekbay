@@ -34,6 +34,10 @@
 import { Signal, computed, signal } from '@angular/core';
 import {
   MountedEngine,
+  MIXED_TECH,
+  OMNI_TECH,
+  OMNI_VEHICLE_TECH,
+  PATCHWORK_ARMOR_TECH,
   createMountedArmor,
   MountedArmor,
 } from './components';
@@ -242,6 +246,13 @@ export abstract class BaseEntity implements EntityTechnology {
     if (armor) sources.push(armor.tech);
     const structure = this.mountedStructure();
     if (structure) sources.push(structure.tech);
+    if (this.omni()) {
+      const type = this.unitType();
+      const vehicle = type === 'Tank' || type === 'VTOL' || type === 'Naval';
+      sources.push(vehicle ? OMNI_VEHICLE_TECH : OMNI_TECH);
+    }
+    if (this.mountedArmor().type === 'PATCHWORK') sources.push(PATCHWORK_ARMOR_TECH);
+    if (this.mixedTech()) sources.push(MIXED_TECH);
     sources.push(...this.entityTechAdvancements());
     return sources;
   }
@@ -321,7 +332,7 @@ export abstract class BaseEntity implements EntityTechnology {
   /** Composite technology rating and four-era availability code. */
   readonly techRating = computed(() => calculateCompositeTechRating(
     this.techRatingSources(),
-    { techBase: this.techBase() },
+    { techBase: this.techBase(), year: this.year() },
   ));
   readonly mountedWeapons = computed<readonly EntityMountedWeapon[]>(() =>
     this.equipment().filter(isEntityMountedWeapon)

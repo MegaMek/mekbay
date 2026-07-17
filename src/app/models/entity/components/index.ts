@@ -53,11 +53,31 @@ export {
   type CockpitTypeDescriptor,
   type CockpitCrewType,
   type CockpitHeadLayout,
+  AERO_COCKPIT_TECH,
   COCKPIT_DATA,
   getAllCockpitTypes,
   getCockpitTechAdvancement,
+  getAeroCockpitTechAdvancement,
   buildHeadSystemLayout,
 } from './cockpit';
+
+export {
+  AEROSPACE_FIGHTER_CONSTRUCTION_TECH,
+  COMBAT_VEHICLE_CONSTRUCTION_TECH,
+  CONVENTIONAL_FIGHTER_CONSTRUCTION_TECH,
+  LAM_CONSTRUCTION_TECH,
+  PRIMITIVE_AEROSPACE_FIGHTER_CONSTRUCTION_TECH,
+  QUADVEE_CONSTRUCTION_TECH,
+  getBattleArmorConstructionTech,
+  getMekConstructionTech,
+} from './construction-tech-data';
+
+export {
+  MIXED_TECH,
+  OMNI_TECH,
+  OMNI_VEHICLE_TECH,
+  PATCHWORK_ARMOR_TECH,
+} from './entity-system-tech-data';
 
 export {
   getStructureByName,

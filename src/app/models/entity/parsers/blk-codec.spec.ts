@@ -5,6 +5,7 @@ import type { AeroDesignType, DriveCoreType, DropShipCollarType, EngineType, Hea
 import type { CockpitType } from '../types/mek';
 import {
   decodeBlkAeroDesignType,
+  decodeBlkAeroCockpitType,
   decodeBlkArmorType,
   decodeBlkCockpitType,
   decodeBlkDriveCoreType,
@@ -60,6 +61,11 @@ describe('BLK codec', () => {
     for (const type of DESIGN_TYPES) expect(decodeBlkAeroDesignType(encodeBlkAeroDesignType(type))).toBe(type);
     for (const type of DRIVE_CORE_TYPES) expect(decodeBlkDriveCoreType(encodeBlkDriveCoreType(type))).toBe(type);
     for (const type of COLLAR_TYPES) expect(decodeBlkDropShipCollarType(encodeBlkDropShipCollarType(type))).toBe(type);
+  });
+
+  it('decodes aerospace cockpit codes independently of Mek cockpit codes', () => {
+    expect([0, 1, 2, 3].map(decodeBlkAeroCockpitType))
+      .toEqual(['Standard', 'Small', 'Command Console', 'Primitive']);
   });
 
   it('uses canonical defaults for unknown codes', () => {

@@ -42,7 +42,7 @@
  * MekBVCalculator.java, TestMek.java, and BattleTech TM / TO rules.
  */
 
-import { approx, DATE_NONE, type CockpitType, type TechAdvancement } from '../types';
+import { approx, DATE_ES, DATE_NONE, type AeroCockpitType, type CockpitType, type TechAdvancement } from '../types';
 
 // ============================================================================
 // Crew type classification
@@ -747,6 +747,29 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
   },
 };
 
+/** Aerospace cockpit technology, which differs from Mek cockpit progression. */
+export const AERO_COCKPIT_TECH: Readonly<Record<AeroCockpitType, TechAdvancement>> = {
+  Standard: {
+    ...COCKPIT_DATA.Standard.tech,
+    rating: 'C',
+    dates: { prototype: approx(2460), production: 2470, common: 2491 },
+  },
+  Small: {
+    ...COCKPIT_DATA.Small.tech,
+    techBase: 'IS',
+    dates: {
+      is: { prototype: approx(3065), production: 3070, common: 3080 },
+      clan: { common: 3080 },
+    },
+  },
+  'Command Console': COCKPIT_DATA['Command Console'].tech,
+  Primitive: {
+    ...COCKPIT_DATA.Primitive.tech,
+    rating: 'C',
+    dates: { prototype: DATE_ES, production: approx(2300), extinct: 2520 },
+  },
+};
+
 // ============================================================================
 // Descriptor lookup helpers
 // ============================================================================
@@ -756,4 +779,8 @@ export const COCKPIT_DATA: Readonly<Record<CockpitType, CockpitTypeDescriptor>> 
  */
 export function getCockpitTechAdvancement(type: CockpitType): TechAdvancement {
   return COCKPIT_DATA[type].tech;
+}
+
+export function getAeroCockpitTechAdvancement(type: AeroCockpitType): TechAdvancement {
+  return AERO_COCKPIT_TECH[type];
 }

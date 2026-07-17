@@ -33,6 +33,8 @@
 
 export type AeroDesignType = 'Civilian' | 'Military';
 
+export type AeroCockpitType = 'Standard' | 'Small' | 'Command Console' | 'Primitive';
+
 export type DriveCoreType = 'Standard' | 'Compact' | 'Subcompact' | 'None' | 'Primitive';
 
 export type DropShipCollarType = 'Unspecified' | 'Standard' | 'Prototype' | 'No Boom';

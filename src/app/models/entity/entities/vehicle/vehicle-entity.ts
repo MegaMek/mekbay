@@ -33,6 +33,7 @@
 
 import { Signal, computed, signal } from '@angular/core';
 import { BaseEntity, MovementCalculationOptions } from '../../base-entity';
+import { COMBAT_VEHICLE_CONSTRUCTION_TECH } from '../../components';
 import {
   EngineFlag,
   EngineType,
@@ -68,7 +69,7 @@ export abstract class VehicleEntity extends BaseEntity {
 
   override entityTechAdvancements(): readonly TechRatingSource[] {
     if (this.isSupportVehicle()) return [];
-    return [{ techBase: 'All', rating: 'D', availability: ['C', 'C', 'C', 'B'] }];
+    return [COMBAT_VEHICLE_CONSTRUCTION_TECH];
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
