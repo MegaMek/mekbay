@@ -73,6 +73,7 @@ import {
   MekSystemType,
 } from '../../types';
 import { generateMountId } from '../../utils/signal-helpers';
+import type { UnitSubtype, UnitType } from '../../types';
 
 // ============================================================================
 // MekEntity - abstract base for all Mek-type entities
@@ -93,6 +94,19 @@ function jumpJetTonnage(unitTonnage: number): number {
 
 export abstract class MekEntity extends BaseEntity {
   override readonly entityType: EntityType = 'Mek';
+
+  override unitType(): UnitType {
+    return 'Mek';
+  }
+
+  override unitSubtype(): UnitSubtype {
+    const form = this.chassisConfig === 'LAM' ? 'Land-Air '
+      : this.motiveType() === 'Tripod' ? 'Tripod '
+      : this.chassisConfig === 'QuadVee' ? 'QuadVee '
+      : this.motiveType() === 'Quad' ? 'Quad '
+      : '';
+    return this.withOmniSubtype(`${form}${this.isIndustrial() ? 'Industrial Mek' : 'BattleMek'}`);
+  }
 
   override locationIsLeg(location: string): boolean {
     return isMekLegLocation(this.chassisConfig, location);

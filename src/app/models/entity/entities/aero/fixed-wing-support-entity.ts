@@ -35,10 +35,15 @@ import { signal } from '@angular/core';
 import { SupportVehicleData, type SupportVehicle } from '../support-vehicle';
 import { AERO_LOCATIONS, EntityType, FIXED_WING_EQUIP_LOCATIONS, WeightClass } from '../../types';
 import { AeroEntity } from './aero-entity';
+import type { UnitSubtype } from '../../types';
 
 /** Fixed Wing Support vehicle - uses BAR rating and tech ratings. */
 export class FixedWingSupportEntity extends AeroEntity implements SupportVehicle {
   override readonly entityType: EntityType = 'FixedWingSupport';
+
+  override unitSubtype(): UnitSubtype {
+    return this.withOmniSubtype('Fixed Wing Support Vehicle');
+  }
 
   /** VSTOL (Vertical/Short Take-Off and Landing) capability */
   vstol = signal<boolean>(false);

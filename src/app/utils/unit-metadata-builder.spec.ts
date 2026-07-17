@@ -1,4 +1,5 @@
 import { FixedWingSupportEntity } from '../models/entity/entities/aero/fixed-wing-support-entity';
+import { BaseEntity } from '../models/entity/base-entity';
 import { ConvFighterEntity } from '../models/entity/entities/aero/conv-fighter-entity';
 import { DropShipEntity } from '../models/entity/entities/aero/dropship-entity';
 import { HandheldWeaponEntity } from '../models/entity/entities/misc/handheld-weapon-entity';
@@ -7,16 +8,25 @@ import { InfantryEntity } from '../models/entity/entities/infantry/infantry-enti
 import { BipedMekEntity } from '../models/entity/entities/mek/biped-mek-entity';
 import { ProtoMekEntity } from '../models/entity/entities/protomek/protomek-entity';
 import { MountedEngine } from '../models/entity/components';
+import { EntityMountedEquipment } from '../models/entity/types/equipment';
 import { JumpShipEntity } from '../models/entity/entities/largecraft/jumpship-entity';
 import { SpaceStationEntity } from '../models/entity/entities/largecraft/space-station-entity';
 import { WarShipEntity } from '../models/entity/entities/largecraft/warship-entity';
+import { SmallCraftEntity } from '../models/entity/entities/aero/small-craft-entity';
+import { AeroSpaceFighterEntity } from '../models/entity/entities/aero/aero-space-fighter-entity';
+import { QuadMekEntity } from '../models/entity/entities/mek/quad-mek-entity';
+import { TripodMekEntity } from '../models/entity/entities/mek/tripod-mek-entity';
+import { QuadVeeEntity } from '../models/entity/entities/mek/quad-vee-entity';
+import { LamEntity } from '../models/entity/entities/mek/lam-entity';
+import { TankEntity } from '../models/entity/entities/vehicle/tank-entity';
 import { locationArmor } from '../models/entity/types';
 import { SupportNavalEntity } from '../models/entity/entities/vehicle/support-naval-entity';
 import { SupportTankEntity } from '../models/entity/entities/vehicle/support-tank-entity';
 import { SupportVtolEntity } from '../models/entity/entities/vehicle/support-vtol-entity';
-import { Equipment, EquipmentRawData, MiscEquipment, StructureEquipment } from '../models/equipment.model';
+import { Equipment, EquipmentRawData, MiscEquipment, StructureEquipment, WeaponEquipment } from '../models/equipment.model';
 import { UnitMetadataBuilder } from './unit-metadata-builder';
 import type { Sourcebook } from '../models/sourcebook.model';
+import type { UnitSubtype } from '../models/entity/types';
 
 describe('UnitMetadataBuilder', () => {
   const builder = new UnitMetadataBuilder();
@@ -217,6 +227,75 @@ describe('UnitMetadataBuilder', () => {
     expect(builder.build(new BipedMekEntity()).su).toBe(0);
   });
 
+  it('exports the unit subtype, including form, motive, military, and Omni qualifiers', () => {
+    const omniMek = new BipedMekEntity();
+    omniMek.omni.set(true);
+
+    const industrialQuad = new QuadMekEntity();
+    industrialQuad.mountedStructure.set(new StructureEquipment({
+      id: 'Industrial',
+      name: 'Industrial',
+      type: 'structure',
+      flags: ['F_INDUSTRIAL_STRUCTURE'],
+      structure: { typeId: 1 },
+    }));
+
+    const hover = new TankEntity();
+    hover.motiveType.set('Hover');
+    hover.omni.set(true);
+
+    const spheroidSmallCraft = new SmallCraftEntity();
+    spheroidSmallCraft.motiveType.set('Spheroid');
+    spheroidSmallCraft.equipment.set([viableWeaponMount('small craft laser')]);
+
+    const militaryStation = new SpaceStationEntity();
+    militaryStation.equipment.set([viableWeaponMount('station laser')]);
+
+    const militaryDropShip = new DropShipEntity();
+    militaryDropShip.equipment.set([viableWeaponMount('dropship laser')]);
+
+    const mechanizedInfantry = new InfantryEntity();
+    mechanizedInfantry.motiveType.set('Tracked');
+
+    const cases: Array<[BaseEntity, UnitSubtype]> = [
+      [new BipedMekEntity(), 'BattleMek'],
+      [omniMek, 'BattleMek Omni'],
+      [industrialQuad, 'Quad Industrial Mek'],
+      [new TripodMekEntity(), 'Tripod BattleMek'],
+      [new QuadVeeEntity(), 'QuadVee BattleMek'],
+      [new LamEntity(), 'Land-Air BattleMek'],
+      [new ProtoMekEntity(), 'ProtoMek'],
+      [new BattleArmorEntity(), 'Battle Armor'],
+      [mechanizedInfantry, 'Mechanized Conventional Infantry'],
+      [hover, 'Hovercraft Omni'],
+      [new SupportTankEntity(), 'Support Vehicle'],
+      [new AeroSpaceFighterEntity(), 'Aerospace Fighter'],
+      [new ConvFighterEntity(), 'Conventional Fighter'],
+      [new SmallCraftEntity(), 'Civilian Aerodyne Small Craft'],
+      [spheroidSmallCraft, 'Spheroid Small Craft'],
+      [militaryDropShip, 'Aerodyne DropShip'],
+      [new JumpShipEntity(), 'JumpShip'],
+      [new WarShipEntity(), 'WarShip'],
+      [militaryStation, 'Military Space Station'],
+      [new HandheldWeaponEntity(), 'Handheld Weapon'],
+    ];
+
+    for (const [entity, expected] of cases) {
+      expect(entity.unitSubtype()).withContext(entity.constructor.name).toBe(expected);
+      expect(builder.build(entity).subtype).withContext(`${entity.constructor.name} metadata`).toBe(expected);
+    }
+  });
+
+  it('lets entities report their exported unit type directly', () => {
+    expect(new BipedMekEntity().unitType()).toBe('Mek');
+    expect(new BattleArmorEntity().unitType()).toBe('Infantry');
+    expect(new SupportTankEntity().unitType()).toBe('Tank');
+    expect(new SupportNavalEntity().unitType()).toBe('Naval');
+    expect(new SupportVtolEntity().unitType()).toBe('VTOL');
+    expect(new AeroSpaceFighterEntity().unitType()).toBe('Aero');
+    expect(new HandheldWeaponEntity().unitType()).toBe('Handheld Weapon');
+  });
+
   it('exports calculated beast-mounted infantry tonnage', () => {
     const entity = new InfantryEntity();
     entity.squadSize.set(4);
@@ -288,4 +367,22 @@ describe('UnitMetadataBuilder', () => {
 
 function sourcebook(abbrev: string, canon = true): Sourcebook {
   return { id: 0, sku: '', abbrev, title: abbrev, canon };
+}
+
+function viableWeaponMount(id: string): EntityMountedEquipment {
+  return new EntityMountedEquipment({
+    mountId: id,
+    equipmentId: id,
+    equipment: new WeaponEquipment({
+      id,
+      name: id,
+      type: 'weapon',
+      weapon: { damage: 5, ranges: [3, 6, 9, 12] },
+    }),
+    allocation: { kind: 'location', location: 'Nose' },
+    rearMounted: false,
+    turretMounted: false,
+    omniPodMounted: false,
+    armored: false,
+  });
 }

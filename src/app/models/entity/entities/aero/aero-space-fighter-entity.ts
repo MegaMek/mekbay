@@ -33,10 +33,15 @@
 
 import { AERO_EQUIP_LOCATIONS, AERO_LOCATIONS, EntityType } from '../../types';
 import { AeroEntity } from './aero-entity';
+import type { UnitSubtype } from '../../types';
 
 /** Standard AeroSpace Fighter (ASF). */
 export class AeroSpaceFighterEntity extends AeroEntity {
   override readonly entityType: EntityType = 'Aero';
+
+  override unitSubtype(): UnitSubtype {
+    return this.withOmniSubtype('Aerospace Fighter');
+  }
 
   get locationOrder(): readonly string[] {
     return AERO_LOCATIONS;

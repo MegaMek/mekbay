@@ -36,17 +36,10 @@
  */
 import type { Equipment } from "./equipment.model";
 import type { Era } from "./eras.model";
+import type { UnitSubtype, UnitType } from "./entity/types";
 import { TechBase } from "./tech.model";
 
-export type UnitType =
-    | 'Aero'
-    | 'Handheld Weapon'
-    | 'Infantry'
-    | 'Mek'
-    | 'Naval'
-    | 'ProtoMek'
-    | 'Tank'
-    | 'VTOL';
+export type { UnitSubtype, UnitType } from "./entity/types";
 
 export type MoveType =
     | 'Aerodyne'
@@ -98,51 +91,6 @@ export type WeightClass = typeof CBT_WEIGHT_CLASSES[number];
 export const CBT_WEIGHT_CLASS_ORDINALS = new Map<WeightClass, number>(
     CBT_WEIGHT_CLASSES.map((weightClass, index) => [weightClass, index] as const)
 );
-
-export type UnitSubtype =
-    | 'Aerodyne DropShip'
-    | 'Aerodyne Small Craft'
-    | 'Aerospace Fighter'
-    | 'Aerospace Fighter Omni'
-    | 'Battle Armor'
-    | 'BattleMek'
-    | 'BattleMek Omni'
-    | 'Civilian Aerodyne DropShip'
-    | 'Civilian Aerodyne Small Craft'
-    | 'Civilian Space Station'
-    | 'Civilian Spheroid DropShip'
-    | 'Combat Vehicle'
-    | 'Combat Vehicle Omni'
-    | 'Conventional Fighter'
-    | 'Conventional Infantry'
-    | 'Fixed Wing Support Vehicle'
-    | 'Fixed Wing Support Vehicle Omni'
-    | 'Handheld Weapon'
-    | 'Hovercraft'
-    | 'Hovercraft Omni'
-    | 'Industrial Mek'
-    | 'JumpShip'
-    | 'Land-Air BattleMek'
-    | 'Mechanized Conventional Infantry'
-    | 'Military Space Station'
-    | 'Motorized Conventional Infantry'
-    | 'Naval Vessel'
-    | 'ProtoMek'
-    | 'Quad BattleMek'
-    | 'Quad BattleMek Omni'
-    | 'Quad Industrial Mek'
-    | 'Quad ProtoMek'
-    | 'QuadVee BattleMek'
-    | 'QuadVee BattleMek Omni'
-    | 'Spheroid DropShip'
-    | 'Spheroid Small Craft'
-    | 'Submarine'
-    | 'Support Vehicle'
-    | 'Support Vehicle Omni'
-    | 'Tripod BattleMek'
-    | 'Tripod BattleMek Omni'
-    | 'WarShip'
-    | 'WiGE';
 
 // Weapon/component info for comp.w
 export interface UnitComponent {

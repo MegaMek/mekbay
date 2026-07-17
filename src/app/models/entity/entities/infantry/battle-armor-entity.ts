@@ -39,6 +39,7 @@ import {
 } from '../../types';
 import { MovementCalculationOptions } from '../../base-entity';
 import { InfantryBaseEntity } from './infantry-base-entity';
+import type { UnitSubtype } from '../../types';
 
 // ============================================================================
 // BattleArmorEntity - powered-armor squads (Elemental, etc.)
@@ -46,6 +47,10 @@ import { InfantryBaseEntity } from './infantry-base-entity';
 
 export class BattleArmorEntity extends InfantryBaseEntity {
   override readonly entityType: EntityType = 'BattleArmor';
+
+  override unitSubtype(): UnitSubtype {
+    return this.withOmniSubtype('Battle Armor');
+  }
 
   constructor() {
     super();

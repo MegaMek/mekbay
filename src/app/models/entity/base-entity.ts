@@ -70,6 +70,7 @@ import {
 import { generateMountId, removeMountById, updateMap } from './utils/signal-helpers';
 import { uuidv7 } from '../../utils/uuid.util';
 import type { SupportVehicle } from './entities/support-vehicle';
+import type { UnitSubtype, UnitType } from './types';
 
 /**
  * Set to `true` to make `computeMixedTech` collect ALL mixed-tech reasons
@@ -188,8 +189,39 @@ export abstract class BaseEntity {
   // ── Identity (immutable after construction) ─────────────────────────────
   abstract readonly entityType: EntityType;
 
+  /** Broad Classic BattleTech type used by exported unit metadata. */
+  abstract unitType(): UnitType;
+
+  /** Detailed Classic BattleTech subtype used by exported unit metadata. */
+  abstract unitSubtype(): UnitSubtype;
+
   isSupportVehicle(): this is this & SupportVehicle {
     return false;
+  }
+
+  protected withOmniSubtype(subtype: string): UnitSubtype {
+    return `${subtype}${this.omni() ? ' Omni' : ''}` as UnitSubtype;
+  }
+
+  /** Mirrors MegaMek Entity.initMilitary()/hasViableWeapons(). */
+  isMilitary(): boolean {
+    let totalDamage = 0;
+    let hasRangeSixPlus = false;
+
+    for (const mount of this.mountedWeapons()) {
+      const weapon = mount.equipment;
+      const damage = weapon.damage;
+      if (damage === 'variable' || damage === 'artillery' || damage === 'cluster') {
+        totalDamage += weapon.rackSize;
+      } else if (Array.isArray(damage)) {
+        totalDamage += Math.max(0, ...damage);
+      } else if (typeof damage === 'number' && damage >= 0) {
+        totalDamage += damage;
+      }
+      hasRangeSixPlus ||= (weapon.ranges[2] ?? 0) >= 6;
+    }
+
+    return totalDamage >= 5 || hasRangeSixPlus;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

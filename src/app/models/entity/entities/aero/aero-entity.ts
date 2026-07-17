@@ -42,6 +42,7 @@ import {
   resolveWeightClass,
   WeightClass,
 } from '../../types';
+import type { UnitSubtype, UnitType } from '../../types';
 
 // ============================================================================
 // AeroEntity - abstract base for all aero-type entities
@@ -53,6 +54,12 @@ import {
 
 export abstract class AeroEntity extends BaseEntity {
   override readonly entityType: EntityType = 'Aero';
+
+  override unitType(): UnitType {
+    return 'Aero';
+  }
+
+  abstract override unitSubtype(): UnitSubtype;
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  SIGNALS - user / parser inputs

@@ -49,12 +49,21 @@ import {
   WeightClass,
   resolveWeightClass,
 } from '../../types';
+import type { UnitSubtype, UnitType } from '../../types';
 
 // ============================================================================
 // VehicleEntity - abstract base for all combat-vehicle entities
 // ============================================================================
 
 export abstract class VehicleEntity extends BaseEntity {
+  abstract override unitType(): UnitType;
+
+  override unitSubtype(): UnitSubtype {
+    const subtype = this.isSupportVehicle()
+      ? 'Support Vehicle'
+      : COMBAT_VEHICLE_MOTIVE_SUBTYPES[this.motiveType()] ?? 'Combat Vehicle';
+    return this.withOmniSubtype(subtype);
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  SIGNALS
@@ -250,3 +259,12 @@ export abstract class VehicleEntity extends BaseEntity {
     return msgs;
   });
 }
+
+const COMBAT_VEHICLE_MOTIVE_SUBTYPES: Partial<Record<MotiveType, string>> = {
+  Submarine: 'Submarine',
+  Hover: 'Hovercraft',
+  Rail: 'Rail Vehicle',
+  Naval: 'Naval Vessel',
+  Hydrofoil: 'Naval Vessel',
+  WiGE: 'WiGE',
+};

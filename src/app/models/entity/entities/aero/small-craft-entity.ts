@@ -41,6 +41,7 @@ import {
   WeightClass,
 } from '../../types';
 import { AeroEntity } from './aero-entity';
+import type { UnitSubtype } from '../../types';
 
 /**
  * SmallCraft entity (100-200 tons).
@@ -50,6 +51,16 @@ import { AeroEntity } from './aero-entity';
  */
 export class SmallCraftEntity extends AeroEntity {
   override readonly entityType: EntityType = 'SmallCraft';
+
+  protected unitSubtypeKind(): 'Small Craft' | 'DropShip' {
+    return 'Small Craft';
+  }
+
+  override unitSubtype(): UnitSubtype {
+    const civilian = this.isMilitary() ? '' : 'Civilian ';
+    const form = this.motiveType() === 'Spheroid' ? 'Spheroid' : 'Aerodyne';
+    return this.withOmniSubtype(`${civilian}${form} ${this.unitSubtypeKind()}`);
+  }
 
   // ── SmallCraft-specific signals ──
 

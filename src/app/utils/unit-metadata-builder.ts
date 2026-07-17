@@ -73,7 +73,7 @@ export class UnitMetadataBuilder {
       role: entity.role() || 'None',
       source: entity.source().map(source => source.abbrev),
       published: entity.published().map(source => source.abbrev),
-      type: this.mapUnitType(entity),
+      type: entity.unitType(),
       id: entity.mulId(),
       canon: entity.canon(),
 
@@ -96,6 +96,7 @@ export class UnitMetadataBuilder {
       su: entity.entityType === 'BattleArmor'
         || entity.entityType === 'Infantry'
         || entity.entityType === 'ProtoMek' ? 1 : 0,
+      subtype: entity.unitSubtype(),
 
       // ── Phase 1: Movement (implement on entity first) ──────────────
       walk: entity.walkMP(),
@@ -180,37 +181,6 @@ export class UnitMetadataBuilder {
       'SpaceStation': 'SS',
     };
     return ENTITY_TO_AS_PREFIX[entity.entityType] ?? '';
-  }
-
-  /**
-   * Maps EntityType ('Mek', 'Tank', etc.) to the UnitType in units.json.
-   * EntityType has more granularity (DropShip, JumpShip, etc.) while UnitType
-   * collapses many into 'Aero'.
-   */
-  private mapUnitType(entity: BaseEntity): any {
-    const mapping: Partial<Record<EntityType, string>> = {
-      'Mek': 'Mek',
-      'Tank': 'Tank',
-      'Naval': 'Naval',
-      'VTOL': 'VTOL',
-      'SupportTank': 'Tank',
-      'SupportNaval': 'Naval',
-      'SupportVTOL': 'VTOL',
-      'LargeSupportTank': 'Tank',
-      'Infantry': 'Infantry',
-      'BattleArmor': 'Infantry',
-      'ProtoMek': 'ProtoMek',
-      'Aero': 'Aero',
-      'ConvFighter': 'Aero',
-      'FixedWingSupport': 'Aero',
-      'SmallCraft': 'Aero',
-      'DropShip': 'Aero',
-      'JumpShip': 'Aero',
-      'WarShip': 'Aero',
-      'SpaceStation': 'Aero',
-      'HandheldWeapon': 'Handheld Weapon',
-    };
-    return mapping[entity.entityType] ?? entity.entityType;
   }
 
   /** TechBase: 'Inner Sphere', 'Clan', or 'Mixed'. */

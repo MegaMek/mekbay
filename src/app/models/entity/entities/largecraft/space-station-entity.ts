@@ -33,12 +33,17 @@
 
 import { EntityType } from '../../types';
 import { JumpShipEntity } from './jumpship-entity';
+import type { UnitSubtype } from '../../types';
 
 /**
  * Space Station - a stationary JumpShip variant (no KF drive, no thrust).
  */
 export class SpaceStationEntity extends JumpShipEntity {
   override readonly entityType: EntityType = 'SpaceStation';
+
+  override unitSubtype(): UnitSubtype {
+    return this.withOmniSubtype(`${this.isMilitary() ? 'Military' : 'Civilian'} Space Station`);
+  }
 
   constructor() {
     super();

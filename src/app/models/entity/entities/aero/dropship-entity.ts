@@ -53,6 +53,10 @@ import { SmallCraftEntity } from './small-craft-entity';
 export class DropShipEntity extends SmallCraftEntity {
   override readonly entityType: EntityType = 'DropShip';
 
+  protected override unitSubtypeKind(): 'DropShip' {
+    return 'DropShip';
+  }
+
   // ── DropShip-specific signals ──
   collarType = signal<DropShipCollarType>('Unspecified');
   kfBoomAttached = signal<boolean>(false);

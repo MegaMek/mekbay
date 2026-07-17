@@ -33,10 +33,15 @@
 
 import { EntityType } from '../../types';
 import { VehicleEntity } from './vehicle-entity';
+import type { UnitType } from '../../types';
 
 /**
  * Tank - standard ground combat vehicle (Tracked, Wheeled, Hover, WiGE).
  */
 export class TankEntity extends VehicleEntity {
   override readonly entityType: EntityType = 'Tank';
+
+  override unitType(): UnitType {
+    return 'Tank';
+  }
 }

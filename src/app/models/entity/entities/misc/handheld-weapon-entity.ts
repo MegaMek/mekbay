@@ -33,6 +33,7 @@
 
 import { Signal, computed } from '@angular/core';
 import { BaseEntity } from '../../base-entity';
+import type { UnitSubtype, UnitType } from '../../types';
 import { createMountedArmor } from '../../components/armor';
 import {
   EntityType,
@@ -45,6 +46,14 @@ import {
 
 export class HandheldWeaponEntity extends BaseEntity {
   override readonly entityType: EntityType = 'HandheldWeapon';
+
+  override unitType(): UnitType {
+    return 'Handheld Weapon';
+  }
+
+  override unitSubtype(): UnitSubtype {
+    return this.withOmniSubtype('Handheld Weapon');
+  }
 
   constructor() {
     super();

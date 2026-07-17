@@ -33,8 +33,14 @@
 
 import { signal } from '@angular/core';
 import { BaseEntity, MovementCalculationOptions } from '../../base-entity';
+import type { UnitSubtype, UnitType } from '../../types';
 
 export abstract class InfantryBaseEntity extends BaseEntity {
+  override unitType(): UnitType {
+    return 'Infantry';
+  }
+
+  abstract override unitSubtype(): UnitSubtype;
   readonly squadSize = signal<number>(1);
   readonly squadCount = signal<number>(1);
 

@@ -33,10 +33,15 @@
 
 import { EntityType, VTOL_LOCATIONS, VTOL_LOCATIONS_WITH_TURRET } from '../../types';
 import { VehicleEntity } from './vehicle-entity';
+import type { UnitType } from '../../types';
 
 /** VTOL combat vehicle - adds Rotor location. */
 export class VtolEntity extends VehicleEntity {
   override readonly entityType: EntityType = 'VTOL';
+
+  override unitType(): UnitType {
+    return 'VTOL';
+  }
 
   override get locationOrder(): readonly string[] {
     if (this.hasTurret()) {

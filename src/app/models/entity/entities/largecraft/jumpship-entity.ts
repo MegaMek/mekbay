@@ -43,6 +43,7 @@ import {
   resolveWeightClass,
   WeightClass,
 } from '../../types';
+import type { UnitSubtype } from '../../types';
 
 // ============================================================================
 // JumpShip equipment location tags
@@ -58,6 +59,10 @@ const JUMPSHIP_EQUIP_LOCS = [
 
 export class JumpShipEntity extends AeroEntity {
   override readonly entityType: EntityType = 'JumpShip';
+
+  override unitSubtype(): UnitSubtype {
+    return this.withOmniSubtype('JumpShip');
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  SIGNALS

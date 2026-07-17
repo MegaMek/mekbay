@@ -44,6 +44,7 @@ import {
   resolveWeightClass,
   WeightClass,
 } from '../../types';
+import type { UnitSubtype, UnitType } from '../../types';
 
 // ============================================================================
 // ProtoMekEntity - ProtoMech units (2-15 tons)
@@ -51,6 +52,14 @@ import {
 
 export class ProtoMekEntity extends BaseEntity {
   override readonly entityType: EntityType = 'ProtoMek';
+
+  override unitType(): UnitType {
+    return 'ProtoMek';
+  }
+
+  override unitSubtype(): UnitSubtype {
+    return this.withOmniSubtype(`${this.motiveType() === 'Quad' ? 'Quad ' : ''}ProtoMek`);
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  SIGNALS

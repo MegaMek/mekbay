@@ -36,6 +36,7 @@ import {
   LARGE_CRAFT_LOCATIONS,
 } from '../../types';
 import { JumpShipEntity } from './jumpship-entity';
+import type { UnitSubtype } from '../../types';
 
 /**
  * Broadside locations used by WarShips (in addition to the standard 6).
@@ -51,6 +52,10 @@ const WARSHIP_EQUIP_LOCS = [
 
 export class WarShipEntity extends JumpShipEntity {
   override readonly entityType: EntityType = 'WarShip';
+
+  override unitSubtype(): UnitSubtype {
+    return this.withOmniSubtype('WarShip');
+  }
 
   // ── Location overrides ──
 

@@ -34,10 +34,15 @@
 import { signal } from '@angular/core';
 import { AERO_EQUIP_LOCATIONS, AERO_LOCATIONS, EntityType } from '../../types';
 import { AeroEntity } from './aero-entity';
+import type { UnitSubtype } from '../../types';
 
 /** Conventional Fighter - ICE-powered, limited tech, optional VSTOL. */
 export class ConvFighterEntity extends AeroEntity {
   override readonly entityType: EntityType = 'ConvFighter';
+
+  override unitSubtype(): UnitSubtype {
+    return this.withOmniSubtype('Conventional Fighter');
+  }
 
   /** VSTOL (Vertical/Short Take-Off and Landing) capability */
   vstol = signal<boolean>(false);

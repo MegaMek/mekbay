@@ -44,6 +44,7 @@ import {
 import { MovementCalculationOptions } from '../../base-entity';
 import { InfantryBaseEntity } from './infantry-base-entity';
 import { getInfantryTonnage } from '../../utils/infantry-tonnage';
+import type { UnitSubtype } from '../../types';
 
 // ============================================================================
 // InfantryEntity - conventional infantry platoons
@@ -51,6 +52,16 @@ import { getInfantryTonnage } from '../../utils/infantry-tonnage';
 
 export class InfantryEntity extends InfantryBaseEntity {
   override readonly entityType: EntityType = 'Infantry';
+
+  override unitSubtype(): UnitSubtype {
+    const infantryMotive = this.motiveType() === 'Beast'
+      ? this.mount()?.movementMode
+      : this.motiveType();
+    const qualifier = infantryMotive && MECHANIZED_INFANTRY_MOTIVE_TYPES.has(infantryMotive) ? 'Mechanized '
+      : this.motiveType() === 'Motorized' ? 'Motorized '
+      : '';
+    return this.withOmniSubtype(`${qualifier}Conventional Infantry`);
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  SIGNALS
@@ -234,3 +245,5 @@ export class InfantryEntity extends InfantryBaseEntity {
     return msgs;
   });
 }
+
+const MECHANIZED_INFANTRY_MOTIVE_TYPES = new Set(['Tracked', 'Wheeled', 'Hover', 'VTOL', 'Submarine']);
