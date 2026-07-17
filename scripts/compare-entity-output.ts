@@ -212,7 +212,7 @@ const FLUFF_PREFIXES = [
  * Strip comment lines (starting with #), the MTF generator: line,
  * trim fluff field values, and normalise whitespace for comparison.
  */
-function stripForComparison(text: string): string {
+function normalizeForComparison(text: string): string[] {
   const lines = text.split(/\r?\n/);
   const filtered: string[] = [];
 
@@ -237,14 +237,23 @@ function stripForComparison(text: string): string {
       }
     }
     if (!handled) {
-      filtered.push(line.trimEnd());
+      const normalizedLine = line.trimEnd();
+      if (normalizedLine === '' && filtered[filtered.length - 1] === '') continue;
+      filtered.push(normalizedLine);
     }
   }
 
-  return filtered
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  let first = 0;
+  while (first < filtered.length && filtered[first] === '') first++;
+
+  let last = filtered.length - 1;
+  while (last >= first && filtered[last] === '') last--;
+
+  if (first > last) return [];
+
+  filtered[first] = filtered[first].trimStart();
+  filtered[last] = filtered[last].trimEnd();
+  return filtered.slice(first, last + 1);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -322,16 +331,8 @@ function processFile(
   fs.writeFileSync(outPath, written, 'utf-8');
 
   // ── Compare ignoring comments and generator block ──
-  const originalStripped = stripForComparison(content);
-  const writtenStripped = stripForComparison(written);
-
-  if (originalStripped === writtenStripped) {
-    return { file: filePath, status: 'match', entityType: entity.entityType };
-  }
-
-  // Find first differing line for reporting
-  const origLines = originalStripped.split('\n');
-  const writLines = writtenStripped.split('\n');
+  const origLines = normalizeForComparison(content);
+  const writLines = normalizeForComparison(written);
   const maxLen = Math.max(origLines.length, writLines.length);
   for (let i = 0; i < maxLen; i++) {
     const oLine = origLines[i] ?? '<EOF>';
@@ -347,8 +348,7 @@ function processFile(
     }
   }
 
-  // Should not reach here, but just in case
-  return { file: filePath, status: 'diff', entityType: entity.entityType, entity };
+  return { file: filePath, status: 'match', entityType: entity.entityType };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
