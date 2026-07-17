@@ -5,6 +5,7 @@ import { HandheldWeaponEntity } from '../models/entity/entities/misc/handheld-we
 import { BattleArmorEntity } from '../models/entity/entities/infantry/battle-armor-entity';
 import { InfantryEntity } from '../models/entity/entities/infantry/infantry-entity';
 import { BipedMekEntity } from '../models/entity/entities/mek/biped-mek-entity';
+import { ProtoMekEntity } from '../models/entity/entities/protomek/protomek-entity';
 import { MountedEngine } from '../models/entity/components';
 import { JumpShipEntity } from '../models/entity/entities/largecraft/jumpship-entity';
 import { SpaceStationEntity } from '../models/entity/entities/largecraft/space-station-entity';
@@ -207,6 +208,13 @@ describe('UnitMetadataBuilder', () => {
     expect(builder.build(entity).internal).toBe(5);
     expect(builder.build(entity).squadSize).toBe(5);
     expect(builder.build(entity).squads).toBe(1);
+  });
+
+  it('marks infantry, Battle Armor, and ProtoMeks as small units', () => {
+    expect(builder.build(new InfantryEntity()).su).toBe(1);
+    expect(builder.build(new BattleArmorEntity()).su).toBe(1);
+    expect(builder.build(new ProtoMekEntity()).su).toBe(1);
+    expect(builder.build(new BipedMekEntity()).su).toBe(0);
   });
 
   it('exports calculated beast-mounted infantry tonnage', () => {

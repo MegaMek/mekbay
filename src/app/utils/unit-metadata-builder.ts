@@ -93,6 +93,9 @@ export class UnitMetadataBuilder {
       capital: this.buildCapitalData(entity),
       cargo: buildUnitCargoMetadata(entity.transporters()),
       comp: buildUnitComponentMetadata(entity),
+      su: entity.entityType === 'BattleArmor'
+        || entity.entityType === 'Infantry'
+        || entity.entityType === 'ProtoMek' ? 1 : 0,
 
       // ── Phase 1: Movement (implement on entity first) ──────────────
       walk: entity.walkMP(),
