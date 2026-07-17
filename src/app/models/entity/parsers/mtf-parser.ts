@@ -626,15 +626,8 @@ function parseHeader(lines: string[]): MtfHeader {
         });
         continue;
       }
-      if (line.includes(':') && !line.startsWith('-') && !line.startsWith('IS ') &&
-          !line.startsWith('CL') && !line.startsWith('Clan ') && !isSlotLine(line)) {
-        h.locationSlots.set(currentLocHeader, currentLocSlots);
-        currentLocHeader = null;
-        currentLocSlots = [];
-      } else {
-        currentLocSlots.push(line);
-        continue;
-      }
+      currentLocSlots.push(line);
+      continue;
     }
 
     if (inWeaponsSection) { h.weaponsList.push(line); continue; }
@@ -870,13 +863,6 @@ const KNOWN_LOC_HEADERS = new Set([
   'Head:', 'Left Leg:', 'Right Leg:', 'Center Leg:',
   'Front Left Leg:', 'Front Right Leg:', 'Rear Left Leg:', 'Rear Right Leg:',
 ]);
-
-function isSlotLine(line: string): boolean {
-  if (line === '-Empty-') return true;
-  if (SYSTEM_NAMES[line]) return true;
-  if (ENGINE_SLOT_NAMES.some(e => line.startsWith(e))) return true;
-  return true; // inside a location section, treat everything as a slot line
-}
 
 function createMekEntity(config: string): MekEntity {
   const lower = config.toLowerCase();

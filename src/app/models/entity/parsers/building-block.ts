@@ -83,7 +83,8 @@ export class BuildingBlock {
 
   /** Get first value as integer. Returns NaN if not found. */
   getFirstInt(key: string): number {
-    return this.getDataAsInt(key)[0] ?? NaN;
+    const value = this.getDataAsString(key)[0];
+    return value === undefined ? NaN : parseInt(value, 10);
   }
 
   /** Get values parsed as floating-point numbers. */
@@ -93,7 +94,8 @@ export class BuildingBlock {
 
   /** Get first value as double. Returns NaN if not found. */
   getFirstDouble(key: string): number {
-    return this.getDataAsDouble(key)[0] ?? NaN;
+    const value = this.getDataAsString(key)[0];
+    return value === undefined ? NaN : parseFloat(value);
   }
 
   /** Get all registered tag names (lowercase) */
@@ -117,17 +119,15 @@ export class BuildingBlock {
       }
 
       // Opening tag: <TagName>
-      const openMatch = line.match(/^<([^/][^>]*)>$/);
-      if (openMatch && !currentTag) {
-        currentTag = openMatch[1].toLowerCase();
+      if (!currentTag && line.length > 2 && line[0] === '<' && line[1] !== '/' && line.endsWith('>')) {
+        currentTag = line.slice(1, -1).toLowerCase();
         currentValues = [];
         continue;
       }
 
       // Closing tag: </TagName>
-      const closeMatch = line.match(/^<\/([^>]+)>$/);
-      if (closeMatch && currentTag) {
-        const closeName = closeMatch[1].toLowerCase();
+      if (currentTag && line.length > 3 && line.startsWith('</') && line.endsWith('>')) {
+        const closeName = line.slice(2, -1).toLowerCase();
         if (closeName === currentTag) {
           this.blocks.set(currentTag, currentValues);
           currentTag = null;
