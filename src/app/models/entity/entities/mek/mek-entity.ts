@@ -71,6 +71,7 @@ import {
   MekConfig,
   MekLocation,
   MekSystemType,
+  TechRatingSource,
 } from '../../types';
 import { generateMountId } from '../../utils/signal-helpers';
 import type { UnitSubtype, UnitType } from '../../types';
@@ -106,6 +107,51 @@ export abstract class MekEntity extends BaseEntity {
       : this.motiveType() === 'Quad' ? 'Quad '
       : '';
     return this.withOmniSubtype(`${form}${this.isIndustrial() ? 'Industrial Mek' : 'BattleMek'}`);
+  }
+
+  protected constructionTechAdvancement(): TechRatingSource {
+    const isPrimitive = this.mountedCockpit().isPrimitive;
+    const isIndustrial = this.isIndustrial();
+    const weightClass = this.weightClass();
+    const isSuperHeavy = weightClass === 'Super Heavy';
+
+    if (this.motiveType() === 'Tripod') {
+      return {
+        techBase: 'IS',
+        rating: 'D',
+        availability: isSuperHeavy ? ['X', 'F', 'X', 'F'] : ['F', 'F', 'F', 'E'],
+      };
+    }
+
+    if (isPrimitive) {
+      return {
+        techBase: 'IS',
+        rating: isIndustrial ? 'D' : 'C',
+        availability: isIndustrial ? ['D', 'X', 'F', 'F'] : ['C', 'X', 'F', 'F'],
+      };
+    }
+
+    if (isIndustrial) {
+      return {
+        techBase: isSuperHeavy ? 'IS' : 'All',
+        rating: isSuperHeavy ? 'D' : 'C',
+        availability: isSuperHeavy ? ['X', 'F', 'X', 'F'] : ['C', 'C', 'C', 'B'],
+      };
+    }
+
+    if (weightClass === 'Ultra Light') {
+      return { techBase: 'All', rating: 'D', availability: ['E', 'F', 'E', 'E'] };
+    }
+
+    return {
+      techBase: isSuperHeavy ? 'IS' : 'All',
+      rating: 'D',
+      availability: isSuperHeavy ? ['X', 'F', 'F', 'F'] : ['C', 'E', 'D', 'C'],
+    };
+  }
+
+  override entityTechAdvancements(): readonly TechRatingSource[] {
+    return [this.constructionTechAdvancement(), this.mountedCockpit().tech, this.mountedGyro().tech];
   }
 
   override locationIsLeg(location: string): boolean {

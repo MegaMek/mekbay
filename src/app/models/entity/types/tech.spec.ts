@@ -3,6 +3,7 @@ import {
   DATE_PS,
   approx,
   calculateTechLevel,
+  calculateCompositeTechRating,
   calculateCompoundTechLevel,
   compareTechLevels,
   findMinimumTechLevel,
@@ -146,5 +147,18 @@ describe('technology level calculation', () => {
     expect(equipment.getTechLevel(3010, 'IS')).toBe('Advanced');
     expect(equipment.getCompoundTechLevel(3020, 'IS')).toEqual({ level: 'Standard', scope: 'IS' });
     expect(equipment.isAvailableIn(2999, 'IS')).toBeFalse();
+  });
+
+  it('calculates a composite rating from tuple and era-keyed availability', () => {
+    expect(calculateCompositeTechRating([
+      { techBase: 'All', rating: 'D', availability: ['C', 'E', 'D', 'C'] },
+      { base: 'IS', rating: 'E', availability: { sl: 'X', sw: 'X', clan: 'E', da: 'D' } },
+    ], { techBase: 'IS' })).toBe('E/X-X-E-D');
+  });
+
+  it('adjusts Clan component availability on an Inner Sphere entity', () => {
+    expect(calculateCompositeTechRating([
+      { techBase: 'Clan', rating: 'F', availability: ['X', 'F', 'E', 'D'] },
+    ], { techBase: 'IS' })).toBe('F/X-X-F-E');
   });
 });

@@ -296,6 +296,36 @@ describe('UnitMetadataBuilder', () => {
     expect(new HandheldWeaponEntity().unitType()).toBe('Handheld Weapon');
   });
 
+  it('exports the entity composite technology rating', () => {
+    const entity = new BipedMekEntity();
+    entity.equipment.set([ratedWeaponMount('experimental laser')]);
+
+    expect(entity.techRating()).toBe('F/X-X-X-X');
+    expect(builder.build(entity).techRating).toBe('F/X-X-X-X');
+  });
+
+  it('includes entity-specific systems in the composite technology rating', () => {
+    const entity = new BipedMekEntity();
+    entity.setTonnage(50);
+
+    expect(entity.techRating()).toBe('D/C-E-D-C');
+
+    entity.cockpitType.set('Small');
+
+    expect(entity.techRating()).toBe('E/X-X-E-D');
+  });
+
+  it('starts a Mek composite technology rating with its construction technology', () => {
+    const entity = new BipedMekEntity();
+    entity.setTonnage(50);
+
+    expect(entity.techRating()).toBe('D/C-E-D-C');
+  });
+
+  it('starts a combat vehicle rating with combat-vehicle construction technology', () => {
+    expect(new TankEntity().techRating()).toBe('D/C-C-C-B');
+  });
+
   it('exports calculated beast-mounted infantry tonnage', () => {
     const entity = new InfantryEntity();
     entity.squadSize.set(4);
@@ -380,6 +410,31 @@ function viableWeaponMount(id: string): EntityMountedEquipment {
       weapon: { damage: 5, ranges: [3, 6, 9, 12] },
     }),
     allocation: { kind: 'location', location: 'Nose' },
+    rearMounted: false,
+    turretMounted: false,
+    omniPodMounted: false,
+    armored: false,
+  });
+}
+
+function ratedWeaponMount(id: string): EntityMountedEquipment {
+  return new EntityMountedEquipment({
+    mountId: id,
+    equipmentId: id,
+    equipment: new WeaponEquipment({
+      id,
+      name: id,
+      type: 'weapon',
+      tech: {
+        base: 'IS',
+        rating: 'F',
+        level: 'Experimental',
+        availability: { sl: 'X', sw: 'X', clan: 'X', da: 'X' },
+        advancement: {},
+      },
+      weapon: { damage: 5, ranges: [3, 6, 9, 12] },
+    }),
+    allocation: { kind: 'location', location: 'RA' },
     rearMounted: false,
     turretMounted: false,
     omniPodMounted: false,

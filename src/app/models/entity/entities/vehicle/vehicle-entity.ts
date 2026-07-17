@@ -47,6 +47,7 @@ import {
   TANK_LOCATIONS_WITH_TURRET,
   VEHICLE_WEIGHT_LIMITS,
   WeightClass,
+  TechRatingSource,
   resolveWeightClass,
 } from '../../types';
 import type { UnitSubtype, UnitType } from '../../types';
@@ -63,6 +64,11 @@ export abstract class VehicleEntity extends BaseEntity {
       ? 'Support Vehicle'
       : COMBAT_VEHICLE_MOTIVE_SUBTYPES[this.motiveType()] ?? 'Combat Vehicle';
     return this.withOmniSubtype(subtype);
+  }
+
+  override entityTechAdvancements(): readonly TechRatingSource[] {
+    if (this.isSupportVehicle()) return [];
+    return [{ techBase: 'All', rating: 'D', availability: ['C', 'C', 'C', 'B'] }];
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

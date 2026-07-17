@@ -1,9 +1,10 @@
 import { TestBed } from '@angular/core/testing';
-import { Equipment, type RawTechData } from '../../models/equipment.model';
+import { Equipment } from '../../models/equipment.model';
+import type { WireEquipmentTechData } from '../../models/equipment-tech-codec';
 import { AdvancementTimelineComponent, getEquipmentAdvancementTimeline } from './advancement-timeline.component';
 
 describe('AdvancementTimelineComponent', () => {
-    function createEquipment(id: string, tech: Partial<RawTechData>): Equipment {
+    function createEquipment(id: string, tech: Partial<WireEquipmentTechData>): Equipment {
         return new Equipment({
             id,
             name: id,

@@ -41,6 +41,7 @@ import { StructureEquipment } from '../equipment.model';
 import { SourcebookReference } from '../sourcebook.model';
 import {
   ArmorFace,
+  calculateCompositeTechRating,
   C3SystemType,
   EngineFlag,
   FactionCode,
@@ -56,6 +57,7 @@ import {
   EntityQuirk,
   EntityTechBase,
   EntityTransporter,
+  EntityTechnology,
   EntityType,
   EntityValidationMessage,
   EntityValidationResult,
@@ -66,6 +68,7 @@ import {
   LocationArmor,
   locationArmor,
   MountPlacement,
+  TechRatingSource,
 } from './types';
 import { generateMountId, removeMountById, updateMap } from './utils/signal-helpers';
 import { uuidv7 } from '../../utils/uuid.util';
@@ -185,7 +188,7 @@ export const AS_MOVEMENT_CALCULATION: MovementCalculationOptions = {
  *    (`MekLocation`, `TankLocation`, …).  Parsers normalise raw strings at
  *    ingress; all other code uses canonical IDs only.
  */
-export abstract class BaseEntity {
+export abstract class BaseEntity implements EntityTechnology {
   // ── Identity (immutable after construction) ─────────────────────────────
   abstract readonly entityType: EntityType;
 
@@ -222,6 +225,25 @@ export abstract class BaseEntity {
     }
 
     return totalDamage >= 5 || hasRangeSixPlus;
+  }
+
+  /** Entity systems that participate in the composite technology rating. */
+  entityTechAdvancements(): readonly TechRatingSource[] {
+    return [];
+  }
+
+  private techRatingSources(): TechRatingSource[] {
+    const sources: TechRatingSource[] = this.equipment()
+      .flatMap(mount => mount.equipment ? [mount.equipment.tech] : []);
+
+    const engine = this.mountedEngine();
+    if (engine.installed) sources.push(engine.getTechAdvancement());
+    const armor = this.mountedArmor().armor;
+    if (armor) sources.push(armor.tech);
+    const structure = this.mountedStructure();
+    if (structure) sources.push(structure.tech);
+    sources.push(...this.entityTechAdvancements());
+    return sources;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -296,6 +318,11 @@ export abstract class BaseEntity {
 
   // ── Equipment - SINGLE SOURCE OF TRUTH ──
   equipment = signal<EntityMountedEquipment[]>([]);
+  /** Composite technology rating and four-era availability code. */
+  readonly techRating = computed(() => calculateCompositeTechRating(
+    this.techRatingSources(),
+    { techBase: this.techBase() },
+  ));
   readonly mountedWeapons = computed<readonly EntityMountedWeapon[]>(() =>
     this.equipment().filter(isEntityMountedWeapon)
   );

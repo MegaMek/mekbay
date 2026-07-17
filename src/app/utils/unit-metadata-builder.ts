@@ -97,6 +97,7 @@ export class UnitMetadataBuilder {
         || entity.entityType === 'Infantry'
         || entity.entityType === 'ProtoMek' ? 1 : 0,
       subtype: entity.unitSubtype(),
+      techRating: entity.techRating(),
 
       // ── Phase 1: Movement (implement on entity first) ──────────────
       walk: entity.walkMP(),

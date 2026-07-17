@@ -30,21 +30,23 @@
  * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
  * affiliated with Microsoft.
  */
+
 import type { BaseEntity } from './entity/base-entity';
 import {
     ComponentTechLevel,
     CompoundTechLevel,
     EntityTechBase,
     EquipmentTechBase,
-    SplitTechDates,
-    TechAdvancementDates,
+    TechData,
     calculateCompoundTechLevel,
     calculateTechLevel,
     isTechnologyAvailable,
-    parseTechDate,
 } from './entity/types/tech';
+import {
+    decodeEquipmentTechData,
+    type WireEquipmentTechData,
+} from './equipment-tech-codec';
 import { getNumCriticalSlots } from './entity/utils/equipment-helpers';
-import { TechBaseAvailability } from './tech.model';
 import type { MountedEquipment } from './mounted-equipment.model';
 import type { Unit } from './units.model';
 import { AmmoValidityUtil } from '../utils/ammo-validity.util';
@@ -234,46 +236,6 @@ export function getAmmoCategory(type: AmmoType): AmmoCategory {
 // Interfaces
 // ============================================================================
 
-export interface TechAvailability {
-    sl?: string;      // Star League
-    sw?: string;      // Succession Wars
-    clan?: string;    // Clan Invasion
-    da?: string;      // Dark Age
-}
-
-/** Wire-format tech dates (strings from JSON: "2439" or "~2430"). */
-export interface RawTechDates {
-    readonly prototype?: string;
-    readonly production?: string;
-    readonly common?: string;
-    readonly extinct?: string;
-    readonly reintroduced?: string;
-}
-
-/** Wire-format split tech dates from equipment JSON. */
-export interface RawSplitTechDates {
-    readonly is?: RawTechDates;
-    readonly clan?: RawTechDates;
-}
-
-/** Wire-format tech data as it arrives from the equipment JSON. */
-export interface RawTechData {
-    base: EquipmentTechBase;
-    rating: string;
-    level: ComponentTechLevel;
-    availability: TechAvailability;
-    advancement: RawSplitTechDates;
-}
-
-/** Effective tech data with parsed `TechDate` values. */
-export interface TechData {
-    base: EquipmentTechBase;
-    rating: string;
-    level: ComponentTechLevel;
-    availability: TechAvailability;
-    advancement: SplitTechDates;
-}
-
 export interface EquipmentStats {
     tonnage: number | "variable";
     cost: number | "variable";
@@ -364,7 +326,7 @@ export interface EquipmentRawData {
     rulesRefs?: string;
     aliases?: string[];
     stats?: Partial<EquipmentStats>;
-    tech?: Partial<RawTechData>;
+    tech?: Partial<WireEquipmentTechData>;
     type: EquipmentType;
     flags?: string[];
     modes?: string[];
@@ -446,7 +408,7 @@ const ARMOR_DEFAULTS: ArmorData = {
     weightPerPointSV: {}
 };
 
-const RAW_TECH_DEFAULTS: RawTechData = {
+const WIRE_TECH_DEFAULTS: WireEquipmentTechData = {
     base: 'IS', rating: 'C', level: 'Standard', availability: {}, advancement: {}
 };
 
@@ -480,32 +442,6 @@ function merge<T extends object>(defaults: T, partial?: Partial<T>): T {
     return result;
 }
 
-/** Convert wire-format `RawTechDates` → effective `TechAdvancementDates`. */
-function parseRawTechDates(raw: RawTechDates | undefined): TechAdvancementDates | undefined {
-    if (!raw) return undefined;
-    return {
-        prototype:    parseTechDate(raw.prototype),
-        production:   parseTechDate(raw.production),
-        common:       parseTechDate(raw.common),
-        extinct:      parseTechDate(raw.extinct),
-        reintroduced: parseTechDate(raw.reintroduced),
-    };
-}
-
-/** Convert wire-format `RawTechData` → effective `TechData` with parsed dates. */
-function parseTechData(raw: RawTechData): TechData {
-    return {
-        base: raw.base,
-        rating: raw.rating,
-        level: raw.level,
-        availability: raw.availability,
-        advancement: {
-            is:   parseRawTechDates(raw.advancement.is),
-            clan: parseRawTechDates(raw.advancement.clan),
-        },
-    };
-}
-
 // ============================================================================
 // Base Equipment Class
 // ============================================================================
@@ -535,7 +471,7 @@ export class Equipment {
         this.type = data.type;
         this.modes = data.modes ?? [];
         this.stats = merge(STATS_DEFAULTS[data.type], data.stats);
-        this.tech = parseTechData(merge(RAW_TECH_DEFAULTS, data.tech));
+        this.tech = decodeEquipmentTechData(merge(WIRE_TECH_DEFAULTS, data.tech));
         this.flags = new Set(data.flags ?? []);
     }
 

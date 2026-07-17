@@ -51,6 +51,111 @@ export type TechRating = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
 /** Availability code per era.  X = not available. */
 export type AvailabilityCode = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'X';
 
+/** Availability after composite adjustments. F* is one step harder than F. */
+export type CompositeAvailabilityCode = AvailabilityCode | 'F*';
+
+export const TECH_ERAS = ['sl', 'sw', 'clan', 'da'] as const;
+export type TechEra = typeof TECH_ERAS[number];
+
+/** Era-keyed availability used by equipment JSON. */
+export interface TechAvailability {
+    readonly sl?: AvailabilityCode;
+    readonly sw?: AvailabilityCode;
+    readonly clan?: AvailabilityCode;
+    readonly da?: AvailabilityCode;
+}
+
+/** Canonical Star League, Succession Wars, Clan Invasion, and Dark Age tuple. */
+export type TechAvailabilityTuple = readonly [
+    AvailabilityCode,
+    AvailabilityCode,
+    AvailabilityCode,
+    AvailabilityCode,
+];
+
+/** Minimum technology data required by the composite-rating calculator. */
+export interface TechRatingSource {
+    readonly techBase?: EquipmentTechBase;
+    readonly base?: EquipmentTechBase;
+    readonly rating: TechRating;
+    readonly availability: TechAvailability | TechAvailabilityTuple;
+}
+
+export interface CompositeTechRatingContext {
+    readonly techBase: EntityTechBase;
+}
+
+export type CompositeTechRating = `${TechRating}/${string}`;
+
+/** Technology contract inherited by every entity implementation. */
+export interface EntityTechnology {
+    readonly techBase: () => EntityTechBase;
+    readonly mixedTech: () => boolean;
+    readonly techRating: () => CompositeTechRating;
+    entityTechAdvancements(): readonly TechRatingSource[];
+}
+
+const TECH_RATING_ORDER: readonly TechRating[] = ['A', 'B', 'C', 'D', 'E', 'F'];
+const COMPOSITE_AVAILABILITY_ORDER: readonly CompositeAvailabilityCode[] =
+    ['A', 'B', 'C', 'D', 'E', 'F', 'F*', 'X'];
+
+function availabilityTuple(source: TechRatingSource): TechAvailabilityTuple {
+    if (Array.isArray(source.availability)) {
+        return source.availability as TechAvailabilityTuple;
+    }
+    const availability = source.availability as TechAvailability;
+    return TECH_ERAS.map(era => availability[era] ?? 'X') as unknown as TechAvailabilityTuple;
+}
+
+function harderAvailability(value: CompositeAvailabilityCode): CompositeAvailabilityCode {
+    const index = COMPOSITE_AVAILABILITY_ORDER.indexOf(value);
+    return COMPOSITE_AVAILABILITY_ORDER[
+        Math.min(index + 1, COMPOSITE_AVAILABILITY_ORDER.length - 1)
+    ] ?? 'X';
+}
+
+function adjustedAvailability(
+    value: CompositeAvailabilityCode,
+    era: number,
+    sourceTechBase: EquipmentTechBase,
+    context: CompositeTechRatingContext,
+): CompositeAvailabilityCode {
+    if (context.techBase === 'IS' && sourceTechBase === 'Clan') {
+        if (era === 1) return 'X';
+        if (era >= 2) return harderAvailability(value);
+    }
+    return value;
+}
+
+/** Calculate MegaMek's composite tech rating and four-era availability string. */
+export function calculateCompositeTechRating(
+    sources: readonly TechRatingSource[],
+    context: CompositeTechRatingContext,
+): CompositeTechRating {
+    let rating: TechRating = 'A';
+    const availability: CompositeAvailabilityCode[] = ['A', 'A', 'A', 'A'];
+
+    for (const source of sources) {
+        if (TECH_RATING_ORDER.indexOf(source.rating) > TECH_RATING_ORDER.indexOf(rating)) {
+            rating = source.rating;
+        }
+        availabilityTuple(source).forEach((value, era) => {
+            const adjusted = adjustedAvailability(
+                value,
+                era,
+                source.techBase ?? source.base ?? 'All',
+                context,
+            );
+            if (COMPOSITE_AVAILABILITY_ORDER.indexOf(adjusted)
+                > COMPOSITE_AVAILABILITY_ORDER.indexOf(availability[era])) {
+                availability[era] = adjusted;
+            }
+        });
+    }
+
+    return `${rating}/${availability.join('-')}`;
+}
+
 /**
  * Construction-rules tech level.
  * Matches MegaMek `SimpleTechLevel`.
@@ -203,6 +308,15 @@ export interface SplitTechDates {
     readonly clan?: TechAdvancementDates;
 }
 
+/** Effective equipment technology data with parsed dates. */
+export interface TechData {
+    readonly base: EquipmentTechBase;
+    readonly rating: TechRating;
+    readonly level: ComponentTechLevel;
+    readonly availability: TechAvailability;
+    readonly advancement: SplitTechDates;
+}
+
 /** Type guard: is the dates value a per-tech-base split? */
 export function isSplitTechDates(dates: TechAdvancementDates | SplitTechDates): dates is SplitTechDates {
     return 'is' in dates;
@@ -287,7 +401,7 @@ export interface TechFactions {
 export interface TechAdvancement {
     readonly techBase: EquipmentTechBase;
     readonly rating: TechRating;
-    readonly availability: readonly [AvailabilityCode, AvailabilityCode, AvailabilityCode, AvailabilityCode];
+    readonly availability: TechAvailabilityTuple;
     readonly level: ComponentTechLevel;
     readonly dates: TechAdvancementDates | SplitTechDates;
     readonly factions?: TechFactions;
