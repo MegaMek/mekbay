@@ -44,6 +44,12 @@ export const INFANTRY_TRANSPORT_WEIGHTS: Readonly<Record<InfantryTransportType, 
   Mechanized: 8,
 };
 
+/** MegaMek's sentinel for a bay number that has not been assigned. */
+export const UNSET_TRANSPORT_BAY_NUMBER = -1;
+
+/** The inherited runtime bay number of bays whose constructors do not accept one. */
+export const DEFAULT_TRANSPORT_BAY_NUMBER = 0;
+
 export type StandardTransportBayType =
   | 'generic'
   | 'cargo'
@@ -82,6 +88,12 @@ export interface EntityTransportBay {
   /** Preserves construction tonnage when BLK size is weight rather than capacity. */
   constructionWeight?: number;
   doors: number;
+  /**
+   * Runtime Bay.getBayNumber().
+   *
+   * A few MegaMek bay implementations deliberately serialize the unset value
+   * even though their runtime number is assigned (or inherited as zero).
+   */
   bayNumber: number;
   omni: boolean;
 }

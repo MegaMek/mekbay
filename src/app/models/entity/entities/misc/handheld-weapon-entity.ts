@@ -48,7 +48,7 @@ export class HandheldWeaponEntity extends BaseEntity {
 
   constructor() {
     super();
-    this.mountedArmor.set(createMountedArmor({ techLevel: 0 }));
+    this.mountedArmor.set(createMountedArmor());
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

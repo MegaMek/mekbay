@@ -196,10 +196,7 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
 
   entity.equipment.set(equipmentList);
   const totalHeatSinks = bb.exists('heatsinks') ? bb.getFirstInt('heatsinks') : 10;
-  const baseChassisHeatSinks = bb.exists('base chassis heat sinks')
-    ? bb.getFirstInt('base chassis heat sinks')
-    : -1;
-  entity.initializeParsedHeatSinkMounts(totalHeatSinks, baseChassisHeatSinks);
+  entity.initializeParsedHeatSinkMounts(totalHeatSinks);
   return entity;
 }
 

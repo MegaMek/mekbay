@@ -44,7 +44,7 @@ import {
   encodeBlkGyroType,
   encodeBlkHeatSinkType,
 } from '../parsers/blk-codec';
-import { BuildingBlockWriter, writeSource } from './building-block-writer';
+import { BuildingBlockWriter, writeInternalType, writeSource } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
 import {
   BLK_ARMOR_BIPED,
@@ -94,10 +94,7 @@ export function writeBlkMek(entity: MekEntity): string {
   w.addBlock('walkingMP', entity.originalWalkMP());
 
   // ── Structure / Gyro / Cockpit ──
-  w.addBlock(
-    'internal_type',
-    entity.mountedStructure()?.structureTypeId ?? 0,
-  );
+  writeInternalType(w, entity);
   if (entity.gyroType() !== 'Standard') {
     w.addBlock('gyro_type', encodeBlkGyroType(entity.gyroType()));
   }
@@ -108,9 +105,6 @@ export function writeBlkMek(entity: MekEntity): string {
   // ── Heat sinks ──
   w.addBlock('heatsinks', entity.totalHeatSinks());
   w.addBlock('sink_type', encodeBlkHeatSinkType(entity.heatSinkType()));
-  if (entity.omni()) {
-    w.addBlock('base chassis heat sinks', entity.baseChassisHeatSinkCount() ?? 0);
-  }
 
   // ── Armor ──
   const armorLayout = isQuad ? BLK_ARMOR_QUAD : BLK_ARMOR_BIPED;

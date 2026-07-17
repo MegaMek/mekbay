@@ -32,7 +32,7 @@
  */
 
 import { BattleArmorEntity } from '../entities/infantry/battle-armor-entity';
-import { encodeBlkArmorType } from '../parsers/blk-codec';
+import { encodeBlkArmorTechLevel, encodeBlkArmorType } from '../parsers/blk-codec';
 import {
   BuildingBlockWriter,
   writeFluffBlocks,
@@ -66,7 +66,7 @@ export function writeBlkBA(entity: BattleArmorEntity): string {
   // ── Section 4: Armor type (BA always writes both blocks) ──
   const armor = entity.mountedArmor();
   w.addBlock('armor_type', encodeBlkArmorType(armor));
-  w.addBlock('armor_tech', armor.rawTechCode);
+  w.addBlock('armor_tech', encodeBlkArmorTechLevel(armor));
 
   // ── Section 5: Equipment per location ──
   const mountsByLoc = new Map<string, string[]>();

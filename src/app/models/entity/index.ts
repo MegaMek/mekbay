@@ -55,8 +55,8 @@ export {
   upsertMount,
   removeMountById,
 } from './utils/signal-helpers';
-export { parseTechLevel, encodeTechLevel } from './utils/tech-level-parser';
-export type { ParsedTechLevel } from './utils/tech-level-parser';
+export { parseBlkTechLevel, encodeBlkTechLevel } from './parsers/blk-codec';
+export type { BlkTechLevel } from './parsers/blk-codec';
 export {
   decodeMtfArmor,
   decodeMtfEngine,

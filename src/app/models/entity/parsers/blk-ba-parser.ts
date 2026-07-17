@@ -42,7 +42,13 @@ import {
   parseMotiveType,
   resolveArmorEquipment,
 } from '../types';
-import { decodeBlkArmorType } from './blk-codec';
+import {
+  componentTechLevelFromRulesLevel,
+  decodeBlkArmorType,
+  decodeBlkCompoundTechBase,
+  decodeBlkCompoundTechLevel,
+} from './blk-codec';
+import { createCompoundTechLevel } from '../types/tech';
 import { createMountedArmor } from '../components';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
@@ -88,15 +94,16 @@ export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEnt
   // ── Armor ──
   {
     const type = bb.exists('armor_type') ? decodeBlkArmorType(bb.getFirstInt('armor_type')) : 'STANDARD' as ArmorType;
-    let techBase: EquipmentTechBase = 'IS';
-    let rawTechCode = 0;
-    if (bb.exists('armor_tech')) {
-      rawTechCode = bb.getFirstInt('armor_tech');
-      if (rawTechCode >= 5 && rawTechCode <= 8) techBase = 'Clan';
-    }
+    const compoundCode = bb.exists('armor_tech') ? bb.getFirstInt('armor_tech') : null;
+    const techBase: EquipmentTechBase = compoundCode != null
+      ? decodeBlkCompoundTechBase(compoundCode, entity.techBase())
+      : entity.techBase();
     const armor = resolveArmorEquipment(type, techBase === 'Clan', ctx.equipmentRegistry);
+    const technology = compoundCode == null
+      ? createCompoundTechLevel(componentTechLevelFromRulesLevel(entity.rulesLevel()), techBase)
+      : decodeBlkCompoundTechLevel(compoundCode);
     const existing = entity.mountedArmor();
-    entity.mountedArmor.set(createMountedArmor({ ...existing, type, techBase, armor, rawTechCode }));
+    entity.mountedArmor.set(createMountedArmor({ ...existing, type, techBase, armor, technology }));
   }
 
   if (bb.exists('armor')) {

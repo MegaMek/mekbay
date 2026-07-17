@@ -39,6 +39,8 @@ import {
   getStructureByTypeId,
 } from '../components';
 import { AeroEntity } from '../entities/aero/aero-entity';
+import { MekEntity } from '../entities/mek/mek-entity';
+import { VehicleEntity } from '../entities/vehicle/vehicle-entity';
 import {
   ArmorType,
   EntityFluff,
@@ -52,9 +54,17 @@ import {
   normalizeSystemManufacturerKey,
   resolveArmorEquipment,
 } from '../types';
-import { decodeBlkArmorType, decodeBlkEngineType, decodeBlkHeatSinkType } from './blk-codec';
+import {
+  componentTechLevelFromRulesLevel,
+  decodeBlkArmorType,
+  decodeBlkCompoundTechBase,
+  decodeBlkCompoundTechLevel,
+  decodeBlkEngineType,
+  decodeBlkHeatSinkType,
+  parseBlkTechLevel,
+} from './blk-codec';
+import { createCompoundTechLevel } from '../types/tech';
 import { generateMountId } from '../utils/signal-helpers';
-import { parseTechLevel } from '../utils/tech-level-parser';
 import { BuildingBlock } from './building-block';
 import { parseEquipmentLine } from './equipment-resolver';
 import { parseTransporterLines } from './transporter-codec';
@@ -100,10 +110,9 @@ export function parseBaseBlk(
   if (bb.exists('type')) {
     const techStr = bb.getFirstString('type');
     ctx.validateEnum('type', techStr, VALID_TECH_BASE_STRINGS, 'tech level string');
-    const parsed = parseTechLevel(techStr);
+    const parsed = parseBlkTechLevel(techStr);
     entity.techBase.set(parsed.techBase);
     entity.mixedTech.set(parsed.mixedTech);
-    entity.techLevel.set(techStr);
     entity.rulesLevel.set(parsed.rulesLevel);
   }
 
@@ -174,6 +183,14 @@ export function parseBaseBlk(
   // ── Transporters ──
   if (bb.exists('transporters')) {
     entity.transporters.set(parseTransporterLines(bb.getDataAsString('transporters'), entity.techBase(), ctx));
+  }
+  if ((entity instanceof MekEntity || entity instanceof VehicleEntity) && entity.omni()) {
+    entity.transporters.update(transporters => [...transporters, {
+      id: `transporter-${transporters.length + 1}`,
+      kind: 'battle-armor-handles',
+      troopers: -1,
+      omni: false,
+    }]);
   }
 
   // ── Fluff ──
@@ -460,7 +477,7 @@ export function parseBlkEngine(
  * into a single MountedArmor and set it on the entity.
  *
  * Called by entity-specific BLK parsers after `parseBaseBlk()`.
- * **Not used by** BA (different tech-code thresholds + `rawTechCode`),
+ * **Not used by** BA (different compound tech encoding),
  * infantry (uses `armorDivisor` / `armorKit`), or handheld (no armor type).
  */
 export function parseBlkArmor(
@@ -475,11 +492,14 @@ export function parseBlkArmor(
     : 'STANDARD';
 
   // ── Armor-specific tech base ──
-  let techBase: EntityTechBase = entity.techBase();
-  if (bb.exists('armor_tech')) {
-    const code = bb.getFirstInt('armor_tech');
-    if (code === 1 || code === 2) techBase = 'Clan';
-  }
+  const compoundCode = bb.exists('armor_tech_level')
+    ? bb.getFirstInt('armor_tech_level')
+    : bb.exists('armor_tech')
+      ? bb.getFirstInt('armor_tech')
+      : null;
+  const techBase: EntityTechBase = compoundCode == null
+    ? entity.techBase()
+    : decodeBlkCompoundTechBase(compoundCode, entity.techBase());
 
   // ── Patchwork per-location data ──
   let patchwork = null;
@@ -495,15 +515,17 @@ export function parseBlkArmor(
     patchwork = createPatchworkArmor({ codes, techs, ratings });
   }
 
-  // ── Tech rating / level overrides (round-trip fidelity) ──
+  // ── Tech rating override ──
   const techRating = bb.exists('armor_tech_rating') ? bb.getFirstInt('armor_tech_rating') : -1;
-  const techLevel  = bb.exists('armor_tech_level')  ? bb.getFirstInt('armor_tech_level')  : -1;
 
   // ── Resolve armor from DB ──
   const armor = resolveArmorEquipment(type, techBase === 'Clan', ctx.equipmentRegistry);
+  const technology = compoundCode == null
+    ? createCompoundTechLevel(componentTechLevelFromRulesLevel(entity.rulesLevel()), techBase)
+    : decodeBlkCompoundTechLevel(compoundCode);
 
   entity.mountedArmor.set(createMountedArmor({
-    type, techBase, armor, patchwork, techRating, techLevel,
+    type, techBase, armor, technology, patchwork, techRating,
   }));
 }
 

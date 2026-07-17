@@ -30,7 +30,19 @@
  * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
  * affiliated with Microsoft.
  */
-import { BaseEntity, ComponentTechLevel, EquipmentTechBase, SplitTechDates, TechAdvancementDates, parseTechDate } from './entity';
+import {
+    BaseEntity,
+    ComponentTechLevel,
+    CompoundTechLevel,
+    EntityTechBase,
+    EquipmentTechBase,
+    SplitTechDates,
+    TechAdvancementDates,
+    calculateCompoundTechLevel,
+    calculateTechLevel,
+    isTechnologyAvailable,
+    parseTechDate,
+} from './entity';
 import { getNumCriticalSlots } from './entity/utils/equipment-helpers';
 import { TechBaseAvailability } from './tech.model';
 import type { MountedEquipment } from './mounted-equipment.model';
@@ -539,6 +551,24 @@ export class Equipment {
     get level(): ComponentTechLevel { return this.tech.level; }
     get rating(): string { return this.tech.rating; }
     get availability(): String { return [this.tech.availability.sl??'X', this.tech.availability.sw??'X', this.tech.availability.clan??'X', this.tech.availability.da??'X'].join('-'); }
+    getTechLevel(year: number, techBase: EntityTechBase, faction?: string): ComponentTechLevel {
+        return calculateTechLevel(
+            { level: this.level, dates: this.tech.advancement },
+            { year, techBase, faction },
+        );
+    }
+    getCompoundTechLevel(year: number, techBase: EntityTechBase, faction?: string): CompoundTechLevel {
+        return calculateCompoundTechLevel(
+            { level: this.level, dates: this.tech.advancement },
+            { year, techBase, faction },
+        );
+    }
+    isAvailableIn(year: number, techBase: EntityTechBase, faction?: string): boolean {
+        return isTechnologyAvailable(
+            { level: this.level, dates: this.tech.advancement },
+            { year, techBase, faction },
+        );
+    }
     get isSpreadable(): boolean { return this.stats.spreadable; }
     get isInternalRepresentation(): boolean { return this.hasFlag('INTERNAL_REPRESENTATION'); }
 

@@ -211,7 +211,6 @@ export abstract class BaseEntity {
   readonly techBase = signal<EntityTechBase>('IS');
   /** Whether the entity uses mixed technology. */
   readonly mixedTech = signal<boolean>(false);
-  readonly techLevel = signal<string>('');
   readonly rulesLevel = signal<number>(2);
 
   // ── Meta ──

@@ -70,7 +70,15 @@ describe('transporter codec', () => {
   it('normalizes compact repair-bay facing syntax', () => {
     const line = 'navalrepairpressurized:5000:1:5:f4';
     expect(serializeTransporterLines(parse([line]))).toEqual([
-      'navalrepairpressurized:5000.0:1:5::4:0',
+      'navalrepairpressurized:5000.0:1:5:f4',
+    ]);
+  });
+
+  it('matches MegaMek legacy five-field normalization', () => {
+    expect(serializeTransporterLines(parse([
+      'navalrepairpressurized:500:1:5:f4:0',
+    ]))).toEqual([
+      'navalrepairpressurized:500.0:1:5:f-1',
     ]);
   });
 
@@ -78,8 +86,51 @@ describe('transporter codec', () => {
     const original = parse(['steeragequarters:26:0']);
     expect(original[0]).toEqual({
       id: 'transporter-1', kind: 'bay', configuration: { type: 'steerage-quarters' },
-      capacity: 5, constructionWeight: 26, doors: 0, bayNumber: 1, omni: false,
+      capacity: 5, constructionWeight: 26, doors: 0, bayNumber: 0, omni: false,
     });
     expect(parse(serializeTransporterLines(original))).toEqual(original);
+  });
+
+  it('keeps MegaMek runtime bay numbers separate from serialized bay numbers', () => {
+    const transporters = parse([
+      'smallcraftbay:1:1:1',
+      'mekbay:1:1:-1',
+      'crewquarters:14:2:-1',
+      'standardseats:3:9:-1',
+      'cargobay:1:1:-1',
+    ]);
+
+    expect(transporters.map(transporter => transporter.kind === 'bay' ? [transporter.bayNumber, transporter.doors] : undefined)).toEqual([
+      [1, 1], [2, 1], [0, 2], [0, 0], [5, 1],
+    ]);
+    expect(serializeTransporterLines(transporters)).toEqual([
+      'smallcraftbay:1.0:1:1::-1:0',
+      'mekbay:1.0:1:-1::-1:0',
+      'crewquarters:14.0:2:-1::-1:0',
+      'standardseats:3.0:0:-1::-1:0',
+      'cargobay:1.0:1:5::-1:0',
+    ]);
+  });
+
+  it('does not register docking collars as Omni pods', () => {
+    const transporters = parse(['dockingcollar:omni']);
+    expect(transporters).toEqual([
+      { id: 'transporter-1', kind: 'docking-collar', collarNumber: 1, omni: false },
+    ]);
+    expect(serializeTransporterLines(transporters)).toEqual(['dockingcollar']);
+  });
+
+  it('ignores serialized BattleArmorHandles state', () => {
+    const context = new ParseContext('test.blk', EMPTY_EQUIPMENT_REGISTRY);
+    const transporters = parseTransporterLines([
+      'BattleArmorHandles - troopers:3:omni',
+      'BattleArmorHandles - troopers:not-a-number',
+      'cargobay:1:1:2',
+    ], 'IS', context);
+
+    expect(transporters).toEqual([
+      { id: 'transporter-1', kind: 'bay', configuration: { type: 'cargo' }, capacity: 1, doors: 1, bayNumber: 2, omni: false },
+    ]);
+    expect(context.warnings).toEqual([]);
   });
 });

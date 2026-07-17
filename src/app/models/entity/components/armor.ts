@@ -43,14 +43,14 @@
  * - The armor type (ArmorType enum)
  * - Armor-specific tech base (may differ from entity tech base in mixed-tech)
  * - Resolved ArmorEquipment from the equipment database
- * - Tech rating / tech level overrides for BLK round-trip fidelity
+ * - Tech rating override for BLK output
  * - Patchwork sub-data (per-location type codes, tech, ratings)
- * - Raw tech code for BA BLK round-trip (TechConstants encoding)
  */
 
 import { ArmorEquipment } from '../../equipment.model';
 import {
   ArmorType,
+  CompoundTechLevel,
   EquipmentTechBase,
 } from '../types';
 
@@ -96,28 +96,17 @@ export interface MountedArmor {
   /** Resolved ArmorEquipment from the equipment DB, or null for PATCHWORK / unknown */
   readonly armor: ArmorEquipment | null;
 
+  /** Effective armor technology stored independently of the equipment definition. */
+  readonly technology: CompoundTechLevel;
+
   /**
    * Explicit tech rating override (A=0 … F=5).
    * -1 means not explicitly set - writer derives from equipment.
    */
   readonly techRating: number;
 
-  /**
-   * Explicit compound tech level override for BLK output.
-   * -1 means not explicitly set - writer derives from equipment.
-   */
-  readonly techLevel: number;
-
   /** Patchwork armor data; null when armor type is not PATCHWORK */
   readonly patchwork: PatchworkArmor | null;
-
-  /**
-   * Raw `armor_tech` BLK code using TechConstants encoding.
-   * Only meaningful for BattleArmor (BA uses a different encoding
-   * where code >= 5 = Clan, code >= 9 = Mixed).
-   * 0 = not set / not applicable.
-   */
-  readonly rawTechCode: number;
 }
 
 // ============================================================================
@@ -135,10 +124,9 @@ export function createMountedArmor(
     type: opts?.type ?? 'STANDARD',
     techBase: opts?.techBase ?? 'IS',
     armor: opts?.armor ?? null,
+    technology: opts?.technology ?? { level: 'Introductory', scope: 'IS' },
     techRating: opts?.techRating ?? -1,
-    techLevel: opts?.techLevel ?? -1,
     patchwork: opts?.patchwork ?? null,
-    rawTechCode: opts?.rawTechCode ?? 0,
   };
 }
 /**

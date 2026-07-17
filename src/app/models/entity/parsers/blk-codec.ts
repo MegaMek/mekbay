@@ -4,24 +4,107 @@ import type { ArmorType } from '../types/armor';
 import type { AeroDesignType, DriveCoreType, DropShipCollarType } from '../types/aero';
 import type { EngineType } from '../types/engine';
 import type { CockpitType } from '../types/mek';
-import type { ComponentTechLevel, EntityTechBase } from '../types/tech';
+import { createCompoundTechLevel, type ComponentTechLevel, type CompoundTechLevel, type EntityTechBase } from '../types/tech';
 import type { HeatSinkType } from '../types/heat-sink';
+
+export interface BlkTechLevel {
+  readonly techBase: EntityTechBase;
+  readonly rulesLevel: number;
+  readonly mixedTech: boolean;
+}
 
 const TECH_RATING_TO_BLK_CODE: Readonly<Record<string, number>> = {
   A: 0, B: 1, C: 2, D: 3, E: 4, F: 5,
 };
 
-function encodeBlkCompoundTechLevel(
-  level: ComponentTechLevel | undefined,
-  isClan: boolean,
+export function encodeBlkCompoundTechLevel(
+  technology: CompoundTechLevel,
 ): number {
-  switch (level) {
-    case 'Introductory': return 0;
-    case 'Standard': return isClan ? 2 : 1;
-    case 'Advanced': return isClan ? 6 : 5;
-    case 'Experimental': return isClan ? 8 : 7;
-    default: return isClan ? 2 : 1;
+  if (technology.scope === 'Allowed All') return -2;
+  if (technology.scope === 'Unknown') return -1;
+  if (technology.scope === 'IS TW') return 3;
+  if (technology.scope === 'TW') return 4;
+  if (technology.scope === 'All IS') return 11;
+  if (technology.scope === 'All Clan') return 12;
+  if (technology.scope === 'All') return 13;
+  if (technology.level === 'Introductory') return 0;
+  const isClan = technology.scope === 'Clan';
+  if (technology.level === 'Advanced') return isClan ? 6 : 5;
+  if (technology.level === 'Experimental') return isClan ? 8 : 7;
+  if (technology.level === 'Unofficial') return isClan ? 10 : 9;
+  return isClan ? 2 : 1;
+}
+
+export function decodeBlkCompoundTechLevel(code: number): CompoundTechLevel {
+  switch (code) {
+    case -2: return { level: 'Standard', scope: 'Allowed All' };
+    case 0: return { level: 'Introductory', scope: 'IS' };
+    case 1: return { level: 'Standard', scope: 'IS' };
+    case 2: return { level: 'Standard', scope: 'Clan' };
+    case 3: return { level: 'Standard', scope: 'IS TW' };
+    case 4: return { level: 'Standard', scope: 'TW' };
+    case 5: return { level: 'Advanced', scope: 'IS' };
+    case 6: return { level: 'Advanced', scope: 'Clan' };
+    case 7: return { level: 'Experimental', scope: 'IS' };
+    case 8: return { level: 'Experimental', scope: 'Clan' };
+    case 9: return { level: 'Unofficial', scope: 'IS' };
+    case 10: return { level: 'Unofficial', scope: 'Clan' };
+    case 11: return { level: 'Standard', scope: 'All IS' };
+    case 12: return { level: 'Standard', scope: 'All Clan' };
+    case 13: return { level: 'Standard', scope: 'All' };
+    default: return { level: 'Standard', scope: 'Unknown' };
   }
+}
+
+export function decodeBlkCompoundTechBase(code: number, fallback: EntityTechBase): EntityTechBase {
+  const scope = decodeBlkCompoundTechLevel(code).scope;
+  if (scope === 'Clan' || scope === 'All Clan') return 'Clan';
+  if (scope === 'IS' || scope === 'IS TW' || scope === 'All IS') return 'IS';
+  return fallback;
+}
+
+export function componentTechLevelFromRulesLevel(rulesLevel: number): ComponentTechLevel {
+  switch (rulesLevel) {
+    case 1: return 'Introductory';
+    case 3: return 'Advanced';
+    case 4: return 'Experimental';
+    case 5: return 'Unofficial';
+    default: return 'Standard';
+  }
+}
+
+export function parseBlkTechLevel(value: string): BlkTechLevel {
+  const normalized = value.trim();
+  const mixedTech = /^mixed\b/i.test(normalized);
+  const techBase: EntityTechBase = /clan(?:\s+chassis)?/i.test(normalized) ? 'Clan' : 'IS';
+  const numericLevel = normalized.match(/\blevel\s+(\d+)\b/i)?.[1];
+  let rulesLevel = numericLevel ? Number(numericLevel) : 2;
+
+  if (/\bunofficial\b/i.test(normalized)) rulesLevel = 5;
+  else if (/\bexperimental\b/i.test(normalized)) rulesLevel = 4;
+  else if (/\badvanced\b/i.test(normalized)) rulesLevel = 3;
+
+  return { techBase, rulesLevel, mixedTech };
+}
+
+export function encodeBlkTechLevel(techLevel: BlkTechLevel): string {
+  if (techLevel.mixedTech) {
+    const chassis = techLevel.techBase === 'Clan' ? 'Clan Chassis' : 'IS Chassis';
+    const suffix = new Map<number, string>([
+      [3, 'Advanced'],
+      [4, 'Experimental'],
+      [5, 'Unofficial'],
+    ]).get(techLevel.rulesLevel);
+    return `Mixed (${chassis})${suffix ? ` ${suffix}` : ''}`;
+  }
+  return `${techLevel.techBase === 'Clan' ? 'Clan' : 'IS'} Level ${techLevel.rulesLevel}`;
+}
+
+export function encodeBlkRulesLevel(rulesLevel: number, isClan: boolean): number {
+  return encodeBlkCompoundTechLevel(createCompoundTechLevel(
+    componentTechLevelFromRulesLevel(rulesLevel),
+    isClan ? 'Clan' : 'IS',
+  ));
 }
 
 const HEAT_SINK_TYPE_FROM_BLK_CODE: Readonly<Record<number, HeatSinkType>> = {
@@ -182,8 +265,6 @@ export function encodeBlkArmorTechRating(armor: MountedArmor): number {
   return 0;
 }
 
-export function encodeBlkArmorTechLevel(armor: MountedArmor, entityIsClan: boolean): number {
-  if (armor.techLevel >= 0) return armor.techLevel;
-  if (armor.armor) return encodeBlkCompoundTechLevel(armor.armor.level, entityIsClan);
-  return 0;
+export function encodeBlkArmorTechLevel(armor: MountedArmor): number {
+  return encodeBlkCompoundTechLevel(armor.technology);
 }

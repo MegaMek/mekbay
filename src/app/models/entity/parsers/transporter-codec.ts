@@ -1,4 +1,8 @@
 import type { EntityTechBase } from '../types/tech';
+import {
+  DEFAULT_TRANSPORT_BAY_NUMBER,
+  UNSET_TRANSPORT_BAY_NUMBER,
+} from '../types/transport';
 import type {
   EntityTransportBay,
   EntityTransporter,
@@ -11,12 +15,34 @@ import type { ParseContext } from './parse-context';
 const COMSTAR_BIT = 1;
 const CLAN_BIT = 2;
 
-function infantryType(value: string): InfantryTransportType {
+function parseInteger(value: string): number | undefined {
+  if (!/^[+-]?\d+$/.test(value)) return undefined;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= -2147483648 && parsed <= 2147483647
+    ? parsed
+    : undefined;
+}
+
+function parseFiniteDouble(value: string): number | undefined {
+  if (value.trim() === '') return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function splitTransporterNumbers(numbers: string): string[] {
+  const fields = numbers.split(':');
+  while (fields.at(-1) === '') fields.pop();
+  return fields;
+}
+
+function infantryType(value: string): InfantryTransportType | undefined {
   switch (value.toLowerCase()) {
+    case '':
+    case 'foot': return 'Foot';
     case 'jump': return 'Jump';
     case 'motorized': return 'Motorized';
     case 'mechanized': return 'Mechanized';
-    default: return 'Foot';
+    default: return undefined;
   }
 }
 
@@ -27,8 +53,13 @@ function normalizeBayFields(fields: readonly string[], clanTechBase: boolean): s
   const normalized = [fields[0], fields[1], '-1', '', '-1', clanTechBase ? String(CLAN_BIT) : '0'];
   if (fields.length === 2) return normalized;
 
-  if (/^-?\d+$/.test(fields[2])) normalized[2] = fields[2];
-  const indicator = fields.length === 3 ? fields[2] : fields[3];
+  if (parseInteger(fields[2]) !== undefined) normalized[2] = fields[2];
+  const indicator = fields.length === 3
+    ? fields[2]
+    : fields.length === 4
+      ? fields[3]
+      : '';
+  if (fields.length === 4) normalized[2] = fields[2];
   if (indicator) {
     const normalizedIndicator = indicator.toLowerCase();
     if (normalizedIndicator === 'c*') {
@@ -46,16 +77,17 @@ function normalizeBayFields(fields: readonly string[], clanTechBase: boolean): s
 function bayConfiguration(
   type: string,
   arts: boolean,
-  platoonType: string,
+  platoonType: InfantryTransportType,
   facing: number,
   bitmap: number,
 ): TransportBayConfiguration | undefined {
   const standardType = resolveStandardBayType(type);
   if (standardType) return { type: standardType };
+
   switch (type) {
     case 'asfbay': return { type: 'fighter', arts };
     case 'smallcraftbay': return { type: 'small-craft', arts };
-    case 'infantrybay': return { type: 'infantry', infantryType: infantryType(platoonType) };
+    case 'infantrybay': return { type: 'infantry', infantryType: platoonType };
     case 'battlearmorbay':
       return { type: 'battle-armor', techBase: (bitmap & CLAN_BIT) !== 0 ? 'Clan' : 'IS', comStar: (bitmap & COMSTAR_BIT) !== 0 };
     case 'dropshuttlebay': return { type: 'drop-shuttle', facing };
@@ -63,6 +95,54 @@ function bayConfiguration(
     case 'navalrepairunpressurized': return { type: 'naval-repair', facing, pressurized: false, arts };
     case 'reinforcedrepairfacility': return { type: 'reinforced-repair', facing };
     default: return undefined;
+  }
+}
+
+function usesDefaultRuntimeBayNumber(configuration: TransportBayConfiguration): boolean {
+  switch (configuration.type) {
+    case 'crew-quarters':
+    case 'steerage-quarters':
+    case 'second-class-quarters':
+    case 'first-class-quarters':
+    case 'pillion-seats':
+    case 'standard-seats':
+    case 'ejection-seats':
+      return true;
+    default:
+      return false;
+  }
+}
+
+function runtimeBayNumber(configuration: TransportBayConfiguration, allocatedBayNumber: number): number {
+  return usesDefaultRuntimeBayNumber(configuration)
+    ? DEFAULT_TRANSPORT_BAY_NUMBER
+    : allocatedBayNumber;
+}
+
+function runtimeDoors(configuration: TransportBayConfiguration, parsedDoors: number): number {
+  switch (configuration.type) {
+    case 'pillion-seats':
+    case 'standard-seats':
+    case 'ejection-seats':
+      return 0;
+    default:
+      return parsedDoors;
+  }
+}
+
+function serializedBayNumber(bay: EntityTransportBay): number {
+  switch (bay.configuration.type) {
+    case 'mek':
+    case 'crew-quarters':
+    case 'steerage-quarters':
+    case 'second-class-quarters':
+    case 'first-class-quarters':
+    case 'pillion-seats':
+    case 'standard-seats':
+    case 'ejection-seats':
+      return UNSET_TRANSPORT_BAY_NUMBER;
+    default:
+      return bay.bayNumber;
   }
 }
 
@@ -75,7 +155,7 @@ export function parseTransporterLines(
   const usedBayNumbers = new Set<number>();
 
   const allocateBayNumber = (requested: number): number => {
-    if (requested !== -1 && !usedBayNumbers.has(requested)) {
+    if (requested !== UNSET_TRANSPORT_BAY_NUMBER && !usedBayNumbers.has(requested)) {
       usedBayNumbers.add(requested);
       return requested;
     }
@@ -89,17 +169,19 @@ export function parseTransporterLines(
     const trimmed = rawLine.trim();
     if (!trimmed) continue;
     const id = `transporter-${transporters.length + 1}`;
-    let fields = trimmed.split(':');
-    const omni = fields.at(-1)?.toLowerCase() === 'omni';
-    if (omni) fields = fields.slice(0, -1);
-
-    let rawType = fields[0].toLowerCase();
+    const normalizedLine = trimmed.toLowerCase();
+    const omni = normalizedLine.endsWith(':omni');
+    const transporter = normalizedLine.replace(/:omni/g, '');
+    const separator = transporter.indexOf(':');
+    let rawType = separator === -1 ? transporter : transporter.substring(0, separator);
+    const numbers = separator === -1 ? '' : transporter.substring(separator + 1);
+    const fields = splitTransporterNumbers(numbers);
     const arts = rawType.startsWith('arts');
     if (arts) rawType = rawType.substring(4);
 
     if (rawType === 'troopspace') {
-      const totalSpace = Number(fields[1]);
-      if (Number.isFinite(totalSpace)) {
+      const totalSpace = parseFiniteDouble(numbers);
+      if (totalSpace !== undefined) {
         transporters.push({ id, kind: 'troop-space', totalSpace, omni });
       } else {
         context.warn('transporters', `Invalid troop-space capacity in "${trimmed}"`);
@@ -108,54 +190,70 @@ export function parseTransporterLines(
       continue;
     }
 
+    // This is runtime carriage state emitted by MegaMek. BLKFile ignores it;
+    // OmniMeks and OmniVehicles get their handles during entity construction.
     if (rawType.startsWith('battlearmorhandles')) {
-      transporters.push({ id, kind: 'battle-armor-handles', troopers: Number(fields[1] ?? -1), omni });
       continue;
     }
 
     if (rawType === 'dockingcollar') {
-      transporters.push({ id, kind: 'docking-collar', collarNumber: allocateBayNumber(-1), omni });
+      // BLKFile gives a collar an implicit allocated number, but does not pass
+      // its pod flag to DockingCollar.
+      transporters.push({ id, kind: 'docking-collar', collarNumber: allocateBayNumber(UNSET_TRANSPORT_BAY_NUMBER), omni: false });
       continue;
     }
 
-    const normalized = normalizeBayFields(fields.slice(1), rawType === 'battlearmorbay' && entityTechBase === 'Clan');
+    const normalized = normalizeBayFields(fields, rawType === 'battlearmorbay' && entityTechBase === 'Clan');
     if (!normalized) {
       context.warn('transporters', `Invalid transporter fields in "${trimmed}"`);
       transporters.push({ id, kind: 'unknown', rawLine: trimmed, omni });
       continue;
     }
 
-    const sourceSpace = Number(normalized[0]);
-    const doors = Number(normalized[1]);
-    const requestedBayNumber = Number(normalized[2]);
-    const facing = Number(normalized[4]);
-    const bitmap = Number(normalized[5]);
-    const configuration = bayConfiguration(rawType, arts, normalized[3], facing, bitmap);
-    if (!configuration || ![sourceSpace, doors, requestedBayNumber, facing, bitmap].every(Number.isFinite)) {
+    const sourceSpace = parseFiniteDouble(normalized[0]);
+    const doors = parseInteger(normalized[1]);
+    const requestedBayNumber = parseInteger(normalized[2]);
+    const platoonType = infantryType(normalized[3]);
+    const facing = parseInteger(normalized[4]);
+    const bitmap = parseInteger(normalized[5]);
+    if (
+      sourceSpace === undefined
+      || doors === undefined
+      || requestedBayNumber === undefined
+      || platoonType === undefined
+      || facing === undefined
+      || bitmap === undefined
+    ) {
+      context.warn('transporters', `Unknown or invalid transporter "${trimmed}"`);
+      transporters.push({ id, kind: 'unknown', rawLine: trimmed, omni });
+      continue;
+    }
+
+    const configuration = bayConfiguration(rawType, arts, platoonType, facing, bitmap);
+    if (!configuration) {
       context.warn('transporters', `Unknown or invalid transporter "${trimmed}"`);
       transporters.push({ id, kind: 'unknown', rawLine: trimmed, omni });
       continue;
     }
 
     const size = decodeBaySize(configuration, sourceSpace);
-    const bayNumber = allocateBayNumber(requestedBayNumber);
-    const bay: EntityTransportBay = {
+    const allocatedBayNumber = allocateBayNumber(requestedBayNumber);
+    transporters.push({
       id,
       kind: 'bay',
       configuration,
       ...size,
-      doors,
-      bayNumber,
+      doors: runtimeDoors(configuration, doors),
+      bayNumber: runtimeBayNumber(configuration, allocatedBayNumber),
       omni,
-    };
-    transporters.push(bay);
+    });
   }
 
   return transporters;
 }
 
 function formatTransportSpace(value: number): string {
-  return Number.isInteger(value) && value >= 0 ? value.toFixed(1) : String(value);
+  return Number.isInteger(value) ? value.toFixed(1) : String(value);
 }
 
 function serializeBayConfiguration(bay: EntityTransportBay): { type: string; space: number; infantryType: string; facing: number; bitmap: number } {
@@ -180,12 +278,21 @@ function serializeTransporter(transporter: EntityTransporter): string {
   const omni = transporter.omni ? ':omni' : '';
   switch (transporter.kind) {
     case 'troop-space': return `troopspace:${formatTransportSpace(transporter.totalSpace)}${omni}`;
-    case 'docking-collar': return `dockingcollar${omni}`;
+    // DockingCollar is not registered as an Omni pod by BLKFile.
+    case 'docking-collar': return 'dockingcollar';
     case 'battle-armor-handles': return `BattleArmorHandles - troopers:${transporter.troopers}${omni}`;
     case 'unknown': return transporter.rawLine;
     case 'bay': {
       const fields = serializeBayConfiguration(transporter);
-      return `${fields.type}:${formatTransportSpace(fields.space)}:${transporter.doors}:${transporter.bayNumber}:${fields.infantryType}:${fields.facing}:${fields.bitmap}${omni}`;
+      const bayNumber = serializedBayNumber(transporter);
+      const doors = runtimeDoors(transporter.configuration, transporter.doors);
+      if (
+        transporter.configuration.type === 'naval-repair'
+        || transporter.configuration.type === 'reinforced-repair'
+      ) {
+        return `${fields.type}:${formatTransportSpace(fields.space)}:${doors}:${bayNumber}:f${fields.facing}${omni}`;
+      }
+      return `${fields.type}:${formatTransportSpace(fields.space)}:${doors}:${bayNumber}:${fields.infantryType}:${fields.facing}:${fields.bitmap}${omni}`;
     }
   }
 }

@@ -37,6 +37,7 @@ import {
   encodeBlkArmorTechRating,
   encodeBlkArmorType,
   encodeBlkEngineType,
+  encodeBlkTechLevel,
 } from '../parsers/blk-codec';
 import { BaseEntity } from '../base-entity';
 import { serializeTransporterLines } from '../parsers/transporter-codec';
@@ -132,7 +133,11 @@ export function writeIdentity(w: BuildingBlockWriter, entity: BaseEntity, unitTy
 export function writeYearTechMeta(w: BuildingBlockWriter, entity: BaseEntity): void {
   w.addBlock('year', entity.year());
   if (entity.originalBuildYear() >= 0) w.addBlock('originalBuildYear', entity.originalBuildYear());
-  if (entity.techLevel()) w.addBlock('type', entity.techLevel());
+  w.addBlock('type', encodeBlkTechLevel({
+    techBase: entity.techBase(),
+    rulesLevel: entity.rulesLevel(),
+    mixedTech: entity.mixedTech(),
+  }));
   if (entity.role()) w.addBlock('role', entity.role());
 
   // ── Quirks ──
@@ -176,9 +181,8 @@ export function writeTransporters(w: BuildingBlockWriter, entity: BaseEntity): v
  * MegaMek ALWAYS writes these for non-infantry, non-GE entities
  * (even code 0 for Standard).
  *
- * Values come from MountedArmor.  When techRating/techLevel are not
- * explicitly set (-1), we derive from ArmorEquipment exactly as
- * MegaMek does.
+ * Values come from MountedArmor. When tech rating is unresolved, derive it
+ * from ArmorEquipment.
  */
 export function writeArmorBlocks(
   w: BuildingBlockWriter,
@@ -200,17 +204,15 @@ export function writeArmorBlocks(
   }
 
   w.addBlock('armor_tech_rating', encodeBlkArmorTechRating(armor));
-  w.addBlock('armor_tech_level', encodeBlkArmorTechLevel(armor, entity.techBase() === 'Clan'));
+  w.addBlock('armor_tech_level', encodeBlkArmorTechLevel(armor));
 }
 
 /**
  * Write internal_type block (only when NOT Standard, i.e. code != 0).
  */
 export function writeInternalType(w: BuildingBlockWriter, entity: BaseEntity): void {
-  const structureTypeId = entity.mountedStructure()?.structureTypeId;
-  if (entity.internalTypeExplicit()) {
-    w.addBlock('internal_type', structureTypeId ?? -1);
-  } else if (structureTypeId !== undefined && structureTypeId > 0) {
+  const structureTypeId = entity.mountedStructure()?.structureTypeId ?? -1;
+  if (structureTypeId !== 0) {
     w.addBlock('internal_type', structureTypeId);
   }
 }
@@ -236,11 +238,8 @@ export function writeEngine(
   }
   w.addBlock('engine_type', encodeBlkEngineType(me.type()));
   // clan_engine: written when engine's clan flag differs from what the parser
-  // would infer from the type string alone.  The parser's getBlkEngineIsClan()
-  // falls back to checking whether the type string contains "clan" (case-
-  // insensitive), so the writer must use the same heuristic as its default.
-  const typeStr = (entity.techLevel() ?? '').toLowerCase();
-  const impliedClan = typeStr.includes('clan');
+  // would infer from the entity chassis tech base.
+  const impliedClan = entity.techBase() === 'Clan';
   if (me.techBase === 'Clan' !== impliedClan) {
     w.addBlock('clan_engine', me.techBase === 'Clan' ? 'true' : 'false');
   }

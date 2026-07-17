@@ -62,6 +62,24 @@ export type ComponentTechLevel =
     | 'Experimental'
     | 'Unofficial';
 
+/** Applicability encoded alongside a construction-rules tech level. */
+export type CompoundTechScope =
+    | 'IS'
+    | 'Clan'
+    | 'IS TW'
+    | 'TW'
+    | 'All IS'
+    | 'All Clan'
+    | 'All'
+    | 'Allowed All'
+    | 'Unknown';
+
+/** Structured form of MegaMek's compound technology classification. */
+export interface CompoundTechLevel {
+    readonly level: ComponentTechLevel;
+    readonly scope: CompoundTechScope;
+}
+
 // ============================================================================
 // Date sentinels  (matching MegaMek ITechnology)
 // ============================================================================
@@ -148,12 +166,12 @@ export function parseTechDate(value: string | undefined, noApproximation: boolea
     if (!value) return undefined;
     if (!noApproximation && value.startsWith('~')) {
         let v = value.slice(1);
-        if (v === 'ES') return approx(1950);
-        if (v === 'PS') return approx(2100);
+        if (v === 'PS') return approx(DATE_PS);
+        if (v === 'ES') return approx(DATE_ES);
         return approx(parseInt(v, 10));
     }
-    if (value === 'ES') return 1950;
-    if (value === 'PS') return 2100;
+    if (value === 'PS') return DATE_PS;
+    if (value === 'ES') return DATE_ES;
     return parseInt(value, 10);
 }
 
@@ -232,10 +250,10 @@ export function isTechAvailableForBase(
         || (commonYear != null && year >= commonYear);
     if (!introduced) return false;
 
-    // Check extinction: if extinct date exists and year >= extinct, tech is gone
-    // (approximate extinction dates are shifted forward by APPROXIMATE_MARGIN)
+    // MegaMek treats the stated extinction year as available; extinction begins the following year.
+    // Approximate extinction dates are shifted forward by APPROXIMATE_MARGIN.
     const extinctYear = effectiveTechDateYear(resolved.extinct, true);
-    if (extinctYear != null && year >= extinctYear) {
+    if (extinctYear != null && year > extinctYear) {
         // Unless reintroduced after the extinction
         const reintroYear = effectiveTechDateYear(resolved.reintroduced);
         if (reintroYear != null && reintroYear > extinctYear && year >= reintroYear) {
@@ -251,6 +269,7 @@ export function isTechAvailableForBase(
 export interface TechFactions {
     readonly prototype?: readonly string[];
     readonly production?: readonly string[];
+    readonly extinction?: readonly string[];
     readonly reintroduction?: readonly string[];
 }
 
@@ -272,4 +291,213 @@ export interface TechAdvancement {
     readonly level: ComponentTechLevel;
     readonly dates: TechAdvancementDates | SplitTechDates;
     readonly factions?: TechFactions;
+}
+
+export type TechMilestone = 'prototype' | 'production' | 'common' | 'extinct' | 'reintroduced';
+
+/** Minimum data required by the technology-level calculator. */
+export interface TechLevelCalculation {
+    readonly level: ComponentTechLevel;
+    readonly dates: TechAdvancementDates | SplitTechDates;
+    readonly factions?: TechFactions;
+}
+
+export interface TechLevelContext {
+    readonly year: number;
+    readonly techBase: EntityTechBase;
+    readonly faction?: string;
+}
+
+const PROTOTYPE_OTHER_FACTION_OFFSET = 8;
+const PRODUCTION_OTHER_FACTION_OFFSET = 10;
+const REINTRODUCTION_OTHER_FACTION_OFFSET = 10;
+
+function factionHasMilestoneAccess(
+    factions: readonly string[] | undefined,
+    faction: string | undefined,
+    techBase: EntityTechBase,
+): boolean {
+    if (!factions?.length || !faction) return true;
+    return factions.includes(faction)
+        || factions.includes(techBase === 'Clan' ? 'CLAN' : 'IS');
+}
+
+function resolvedMilestoneYear(
+    technology: TechLevelCalculation,
+    milestone: TechMilestone,
+    techBase: EntityTechBase,
+): number | undefined {
+    const dates = resolveTechDates(technology.dates, techBase);
+    return effectiveTechDateYear(dates?.[milestone], milestone === 'extinct');
+}
+
+/** MegaMek-compatible milestone date, including faction dissemination delays. */
+export function getTechMilestoneYear(
+    technology: TechLevelCalculation,
+    milestone: TechMilestone,
+    context: Pick<TechLevelContext, 'techBase' | 'faction'>,
+): number | undefined {
+    const baseYear = resolvedMilestoneYear(technology, milestone, context.techBase);
+    if (baseYear == null || milestone === 'common') return baseYear;
+
+    const factionKey: keyof TechFactions = milestone === 'reintroduced'
+        ? 'reintroduction'
+        : milestone === 'extinct'
+            ? 'extinction'
+            : milestone;
+    if (factionHasMilestoneAccess(technology.factions?.[factionKey], context.faction, context.techBase)) {
+        return baseYear;
+    }
+
+    if (milestone === 'extinct') return undefined;
+    if (milestone === 'prototype') {
+        const delayedYear = baseYear + PROTOTYPE_OTHER_FACTION_OFFSET;
+        const productionYear = resolvedMilestoneYear(technology, 'production', context.techBase);
+        const commonYear = resolvedMilestoneYear(technology, 'common', context.techBase);
+        if ((productionYear != null && productionYear < delayedYear)
+            || (commonYear != null && commonYear < delayedYear)
+            || isTechExtinct(technology, { year: delayedYear, techBase: context.techBase })) {
+            return undefined;
+        }
+        return delayedYear;
+    }
+    if (milestone === 'production') {
+        const delayedYear = baseYear + PRODUCTION_OTHER_FACTION_OFFSET;
+        const commonYear = resolvedMilestoneYear(technology, 'common', context.techBase);
+        if ((commonYear != null && commonYear <= delayedYear)
+            || isTechExtinct(technology, { year: delayedYear, techBase: context.techBase })) {
+            return undefined;
+        }
+        return delayedYear;
+    }
+
+    const productionYear = getTechMilestoneYear(technology, 'production', context);
+    const commonYear = resolvedMilestoneYear(technology, 'common', context.techBase);
+    if (productionYear != null && productionYear > baseYear) return productionYear;
+    if (commonYear != null && commonYear > baseYear) return commonYear;
+    return baseYear + REINTRODUCTION_OTHER_FACTION_OFFSET;
+}
+
+/** Effective construction-rules level at a year, matching ITechnology.getSimpleLevel(). */
+export function calculateTechLevel(
+    technology: TechLevelCalculation,
+    context: TechLevelContext,
+): ComponentTechLevel {
+    if (technology.level === 'Unofficial') return 'Unofficial';
+
+    const commonYear = getTechMilestoneYear(technology, 'common', context);
+    if (commonYear != null && context.year >= commonYear) {
+        return technology.level === 'Introductory' ? 'Introductory' : 'Standard';
+    }
+    const productionYear = getTechMilestoneYear(technology, 'production', context);
+    if (productionYear != null && context.year >= productionYear) return 'Advanced';
+    const prototypeYear = getTechMilestoneYear(technology, 'prototype', context);
+    if (prototypeYear != null && context.year >= prototypeYear) return 'Experimental';
+    return 'Unofficial';
+}
+
+export function createCompoundTechLevel(
+    level: ComponentTechLevel,
+    techBase: EntityTechBase,
+): CompoundTechLevel {
+    return { level, scope: techBase };
+}
+
+/** Effective compound classification at a year for normal IS/Clan usage. */
+export function calculateCompoundTechLevel(
+    technology: TechLevelCalculation,
+    context: TechLevelContext,
+): CompoundTechLevel {
+    return createCompoundTechLevel(calculateTechLevel(technology, context), context.techBase);
+}
+
+/** First prototype, production, or common year for the requested context. */
+export function getTechIntroductionYear(
+    technology: TechLevelCalculation,
+    context: Pick<TechLevelContext, 'techBase' | 'faction'>,
+): number | undefined {
+    const years = (['prototype', 'production', 'common'] as const)
+        .map(milestone => getTechMilestoneYear(technology, milestone, context))
+        .filter((year): year is number => year != null);
+    return years.length ? Math.min(...years) : undefined;
+}
+
+/** Whether technology has been introduced and is not currently extinct. */
+export function isTechnologyAvailable(
+    technology: TechLevelCalculation,
+    context: TechLevelContext,
+): boolean {
+    const introductionYear = getTechIntroductionYear(technology, context);
+    return introductionYear != null
+        && context.year >= introductionYear
+        && !isTechExtinct(technology, context);
+}
+
+const TECH_LEVEL_RANK: Readonly<Record<ComponentTechLevel, number>> = {
+    Introductory: 0,
+    Standard: 1,
+    Advanced: 2,
+    Experimental: 3,
+    Unofficial: 4,
+};
+
+export function compareTechLevels(left: ComponentTechLevel, right: ComponentTechLevel): number {
+    return TECH_LEVEL_RANK[left] - TECH_LEVEL_RANK[right];
+}
+
+function compoundScopeBases(scope: CompoundTechScope): readonly EntityTechBase[] {
+    if (scope === 'Clan' || scope === 'All Clan') return ['Clan'];
+    if (scope === 'IS' || scope === 'All IS') return ['IS'];
+    if (scope === 'Allowed All' || scope === 'All' || scope === 'TW' || scope === 'IS TW') {
+        return ['IS', 'Clan'];
+    }
+    return [];
+}
+
+/** Construction legality equivalent to TechConstants.isLegal() for compound classifications. */
+export function isCompoundTechLevelLegal(
+    equipment: CompoundTechLevel,
+    entity: CompoundTechLevel,
+): boolean {
+    if (equipment.scope === 'Allowed All' || equipment.scope === 'All') return true;
+    const equipmentBases = compoundScopeBases(equipment.scope);
+    const entityBases = compoundScopeBases(entity.scope);
+    const compatibleBase = equipmentBases.some(base => entityBases.includes(base));
+    if (equipment.scope === 'All IS' || equipment.scope === 'All Clan') return compatibleBase;
+    return compatibleBase
+        && compareTechLevels(equipment.level, entity.level) <= 0;
+}
+
+/** Lowest rules level supported by any milestone, matching ITechnology.findMinimumRulesLevel(). */
+export function findMinimumTechLevel(
+    technology: TechLevelCalculation,
+    techBase?: EntityTechBase,
+): ComponentTechLevel {
+    const bases: readonly EntityTechBase[] = techBase ? [techBase] : ['IS', 'Clan'];
+    const hasDate = (milestone: TechMilestone): boolean => bases.some(
+        base => resolvedMilestoneYear(technology, milestone, base) != null,
+    );
+    if (hasDate('common')) return technology.level === 'Introductory' ? 'Introductory' : 'Standard';
+    if (hasDate('production')) return 'Advanced';
+    if (hasDate('prototype')) return 'Experimental';
+    return 'Unofficial';
+}
+
+/** Whether technology is between extinction and reintroduction for this context. */
+export function isTechExtinct(
+    technology: TechLevelCalculation,
+    context: TechLevelContext,
+): boolean {
+    const reintroductionWithoutFaction = resolvedMilestoneYear(
+        technology,
+        'reintroduced',
+        context.techBase,
+    );
+    if (context.faction === 'CS' && context.techBase === 'IS' && reintroductionWithoutFaction != null) {
+        return false;
+    }
+    const extinctYear = getTechMilestoneYear(technology, 'extinct', context);
+    if (extinctYear == null || extinctYear >= context.year) return false;
+    const reintroducedYear = getTechMilestoneYear(technology, 'reintroduced', context);
+    return reintroducedYear == null || context.year < reintroducedYear;
 }

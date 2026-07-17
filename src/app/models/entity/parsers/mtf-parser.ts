@@ -56,9 +56,11 @@ import {
   normalizeSystemManufacturerKey,
   parseMotiveType,
   resolveMtfArmorEquipment,
+  createCompoundTechLevel,
 } from '../types';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { ParseContext } from './parse-context';
+import { componentTechLevelFromRulesLevel } from './blk-codec';
 import { decodeMtfArmor, decodeMtfEngine, decodeMtfHeatSinks, decodeMtfStructure } from './mtf-codec';
 
 // ============================================================================
@@ -191,7 +193,6 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
 
   entity.techBase.set(header.techBase);
   entity.mixedTech.set(header.mixedTech);
-  entity.techLevel.set(header.techBaseRaw);
   if (header.clanName) entity.clanName.set(header.clanName);
 
   // ── Physical properties ──
@@ -281,6 +282,10 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       type: armorType,
       techBase: armorTechBase,
       armor: armorEquipment,
+      technology: createCompoundTechLevel(
+        componentTechLevelFromRulesLevel(entity.rulesLevel()),
+        armorTechBase,
+      ),
       patchwork,
     }));
   }
