@@ -32,6 +32,7 @@
  */
 
 import { BaseEntity } from '../models/entity/base-entity';
+import { MiscEquipment } from '../models/equipment.model';
 import { DropShipEntity } from '../models/entity/entities/aero/dropship-entity';
 import { InfantryBaseEntity } from '../models/entity/entities/infantry/infantry-base-entity';
 import { InfantryEntity } from '../models/entity/entities/infantry/infantry-entity';
@@ -40,6 +41,7 @@ import { MekEntity } from '../models/entity/entities/mek/mek-entity';
 import { ASUnitTypeCode, Unit } from '../models/units.model';
 import { EntityType } from '../models/entity/types';
 import { buildUnitCargoMetadata } from './unit-cargo-metadata-builder';
+import { buildUnitComponentMetadata } from './unit-component-metadata-builder';
 
 /**
  * Builds a `Partial<Unit>` metadata object from a parsed entity.
@@ -90,6 +92,7 @@ export class UnitMetadataBuilder {
       weightClass: this.buildWeightClass(entity),
       capital: this.buildCapitalData(entity),
       cargo: buildUnitCargoMetadata(entity.transporters()),
+      comp: buildUnitComponentMetadata(entity),
 
       // ── Phase 1: Movement (implement on entity first) ──────────────
       walk: entity.walkMP(),
@@ -277,7 +280,9 @@ export class UnitMetadataBuilder {
   /** Armor type string as it appears in units.json. */
   private buildArmorType(entity: BaseEntity): string {
     if (entity instanceof InfantryEntity) {
-      const armorKit = entity.equipment().find(mounted => mounted.equipment?.hasFlag('F_ARMOR_KIT'));
+      const armorKit = entity.equipment().find(
+        mounted => mounted.equipment instanceof MiscEquipment && mounted.equipment.isArmorKit,
+      );
       if (armorKit?.equipment) return armorKit.equipment.name;
       if (entity.hasDEST()) return 'Custom DEST';
 

@@ -4,6 +4,8 @@ import { DropShipEntity } from '../models/entity/entities/aero/dropship-entity';
 import { HandheldWeaponEntity } from '../models/entity/entities/misc/handheld-weapon-entity';
 import { BattleArmorEntity } from '../models/entity/entities/infantry/battle-armor-entity';
 import { InfantryEntity } from '../models/entity/entities/infantry/infantry-entity';
+import { BipedMekEntity } from '../models/entity/entities/mek/biped-mek-entity';
+import { MountedEngine } from '../models/entity/components';
 import { JumpShipEntity } from '../models/entity/entities/largecraft/jumpship-entity';
 import { SpaceStationEntity } from '../models/entity/entities/largecraft/space-station-entity';
 import { WarShipEntity } from '../models/entity/entities/largecraft/warship-entity';
@@ -11,7 +13,7 @@ import { locationArmor } from '../models/entity/types';
 import { SupportNavalEntity } from '../models/entity/entities/vehicle/support-naval-entity';
 import { SupportTankEntity } from '../models/entity/entities/vehicle/support-tank-entity';
 import { SupportVtolEntity } from '../models/entity/entities/vehicle/support-vtol-entity';
-import { Equipment, EquipmentRawData, StructureEquipment } from '../models/equipment.model';
+import { Equipment, EquipmentRawData, MiscEquipment, StructureEquipment } from '../models/equipment.model';
 import { UnitMetadataBuilder } from './unit-metadata-builder';
 import type { Sourcebook } from '../models/sourcebook.model';
 
@@ -183,7 +185,8 @@ describe('UnitMetadataBuilder', () => {
 
     entity.specializations.set(new Set(['bridge-engineers', 'paramedics']));
     entity.addEquipment({
-      mountId: 'anti-mek-gear', equipmentId: 'AntiMekGear', location: 'Infantry',
+      mountId: 'anti-mek-gear', equipmentId: 'AntiMekGear',
+      allocation: { kind: 'location', location: 'Infantry' },
       rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false,
       equipment: new Equipment({
         id: 'AntiMekGear', name: 'Anti-Mek Gear', type: 'misc', flags: ['F_ANTI_MEK_GEAR'],
@@ -247,6 +250,27 @@ describe('UnitMetadataBuilder', () => {
     handheld.chassis.set('ER Medium Laser Weapon');
 
     expect(builder.buildName(handheld)).toBe('ERMediumLaserWeapon');
+  });
+
+  it('projects the Mek integral heat-sink capability into component metadata', () => {
+    const entity = new BipedMekEntity();
+    entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 250, techBase: 'Clan' }));
+    const heatSink = new MiscEquipment({
+      id: 'CLDoubleHeatSink', name: 'Double Heat Sink', type: 'misc',
+      flags: ['F_DOUBLE_HEAT_SINK'], stats: { criticalSlots: 2 },
+    });
+    entity.configureHeatSinks(heatSink, 10);
+
+    const heatSinkComponents = builder.build(entity).comp?.filter(component => component.id === heatSink.id);
+    expect(heatSinkComponents?.length).toBe(1);
+    expect(heatSinkComponents).toContain(jasmine.objectContaining({
+      id: 'CLDoubleHeatSink',
+      q: 10,
+      n: 'Double Heat Sink',
+      t: 'C',
+      p: -1,
+      c: '2',
+    }));
   });
 });
 

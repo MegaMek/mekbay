@@ -264,6 +264,8 @@ interface CompareResult {
   entity?: BaseEntity;
 }
 
+const createdOutputDirectories = new Set<string>();
+
 /**
  * Check whether a file path matches all NAME_TOKENS (checked against the filename).
  * Returns true when there is no name filter or all tokens are found.
@@ -277,9 +279,10 @@ function matchesNameFilter(filePath: string): boolean {
 function processFile(
   filePath: string,
   equipmentRegistry: EquipmentRegistry,
+  contentOverride?: string,
 ): CompareResult {
   const fileName = path.basename(filePath);
-  const content = fs.readFileSync(filePath, 'utf-8');
+  const content = contentOverride ?? fs.readFileSync(filePath, 'utf-8');
   const ext = path.extname(fileName).toLowerCase();
   const isMtf = ext === '.mtf';
 
@@ -311,7 +314,11 @@ function processFile(
     ? relPath.replace(/\.mtf$/i, '.blk')
     : relPath;
   const outPath = path.join(OUTPUT_DIR, outRelPath);
-  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  const outDir = path.dirname(outPath);
+  if (!createdOutputDirectories.has(outDir)) {
+    fs.mkdirSync(outDir, { recursive: true });
+    createdOutputDirectories.add(outDir);
+  }
   fs.writeFileSync(outPath, written, 'utf-8');
 
   // ── Compare ignoring comments and generator block ──
