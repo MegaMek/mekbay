@@ -45,6 +45,8 @@ import {
   WeightClass,
 } from '../../types';
 import type { UnitSubtype, UnitType } from '../../types';
+import { getProtoMekConstructionTech, getProtoMekInterfaceCockpitTech } from '../../components';
+import type { TechRatingSource } from '../../types';
 
 // ============================================================================
 // ProtoMekEntity - ProtoMech units (2-15 tons)
@@ -59,6 +61,21 @@ export class ProtoMekEntity extends BaseEntity {
 
   override unitSubtype(): UnitSubtype {
     return this.withOmniSubtype(`${this.motiveType() === 'Quad' ? 'Quad ' : ''}ProtoMek`);
+  }
+
+  override entityTechAdvancements(): readonly TechRatingSource[] {
+    const sources: TechRatingSource[] = [getProtoMekConstructionTech({
+      quad: this.isQuad(),
+      glider: this.isGlider(),
+      ultraheavy: this.tonnage() > 9,
+    })];
+    if (this.interfaceCockpit()) sources.push(getProtoMekInterfaceCockpitTech());
+    return sources;
+  }
+
+  /** MegaMek's ProtoMek override replaces, rather than extends, Entity's base systems. */
+  protected override baseSystemTechAdvancements(): readonly TechRatingSource[] {
+    return [];
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

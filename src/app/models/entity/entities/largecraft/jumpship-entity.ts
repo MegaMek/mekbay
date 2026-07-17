@@ -44,6 +44,8 @@ import {
   WeightClass,
 } from '../../types';
 import type { UnitSubtype } from '../../types';
+import type { TechRatingSource } from '../../types';
+import { getJumpshipConstructionTech } from '../../components';
 
 // ============================================================================
 // JumpShip equipment location tags
@@ -62,6 +64,14 @@ export class JumpShipEntity extends AeroEntity {
 
   override unitSubtype(): UnitSubtype {
     return this.withOmniSubtype('JumpShip');
+  }
+
+  override entityTechAdvancements(): readonly TechRatingSource[] {
+    return [getJumpshipConstructionTech(this.driveCoreType() === 'Primitive')];
+  }
+
+  protected override supportsWeaponBays(): boolean {
+    return true;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

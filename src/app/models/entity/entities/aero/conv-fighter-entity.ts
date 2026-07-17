@@ -34,7 +34,7 @@
 import { signal } from '@angular/core';
 import { AERO_EQUIP_LOCATIONS, AERO_LOCATIONS, EntityType, type TechRatingSource } from '../../types';
 import { AeroEntity } from './aero-entity';
-import { CONVENTIONAL_FIGHTER_CONSTRUCTION_TECH } from '../../components';
+import { getConventionalFighterConstructionTech } from '../../components';
 import type { UnitSubtype } from '../../types';
 
 /** Conventional Fighter - ICE-powered, limited tech, optional VSTOL. */
@@ -47,7 +47,7 @@ export class ConvFighterEntity extends AeroEntity {
 
   override entityTechAdvancements(): readonly TechRatingSource[] {
     return [
-      CONVENTIONAL_FIGHTER_CONSTRUCTION_TECH,
+      getConventionalFighterConstructionTech(),
       this.mountedCockpitTech(),
     ];
   }

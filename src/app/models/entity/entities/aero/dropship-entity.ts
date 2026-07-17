@@ -42,6 +42,8 @@ import {
   WeightClass,
 } from '../../types';
 import { SmallCraftEntity } from './small-craft-entity';
+import type { TechRatingSource } from '../../types';
+import { getDropshipConstructionTech } from '../../components';
 
 /**
  * DropShip entity (200+ tons, up to 100,000 tons).
@@ -55,6 +57,14 @@ export class DropShipEntity extends SmallCraftEntity {
 
   protected override unitSubtypeKind(): 'DropShip' {
     return 'DropShip';
+  }
+
+  override entityTechAdvancements(): readonly TechRatingSource[] {
+    return [getDropshipConstructionTech(this.mountedArmor().type === 'PRIMITIVE_AERO')];
+  }
+
+  protected override supportsWeaponBays(): boolean {
+    return true;
   }
 
   // ── DropShip-specific signals ──

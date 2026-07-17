@@ -37,8 +37,8 @@ import { FrankenMekLocationData, MekEntity, MekWithArmsEntity } from '../entitie
 import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import { QuadVeeEntity } from '../entities/mek/quad-vee-entity';
 import { TripodMekEntity } from '../entities/mek/tripod-mek-entity';
-import { MountedEngine, createMountedArmor, createPatchworkArmor, getStructureByName } from '../components';
-import { ArmorEquipment, MiscEquipment, WeaponEquipment } from '../../equipment.model';
+import { MountedEngine, createMountedArmor, createPatchworkArmor, createPatchworkMountedArmor, getStructureByName } from '../components';
+import { AmmoEquipment, ArmorEquipment, MiscEquipment, WeaponEquipment } from '../../equipment.model';
 import {
   ArmorType,
   EntityFluff,
@@ -54,13 +54,22 @@ import {
   factionFromAbbr,
   locationArmor,
   normalizeSystemManufacturerKey,
-  resolveMtfArmorEquipment,
   createCompoundTechLevel,
 } from '../types';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { ParseContext } from './parse-context';
 import { componentTechLevelFromRulesLevel } from './blk-codec';
-import { decodeMtfArmor, decodeMtfCockpitType, decodeMtfEngine, decodeMtfGyroType, decodeMtfHeatSinks, decodeMtfStructure } from './mtf-codec';
+import {
+  decodeMtfArmor,
+  decodeMtfCockpitType,
+  decodeMtfEngine,
+  decodeMtfFullHeadEjectionSystem,
+  decodeMtfGyroType,
+  decodeMtfHeatSinks,
+  decodeMtfRiscHeatSinkOverrideKit,
+  decodeMtfStructure,
+  resolveMtfArmorEquipment,
+} from './mtf-codec';
 import { decodeMotiveType } from './motive-type-codec';
 
 // ============================================================================
@@ -237,8 +246,8 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
 
   if (header.gyro) entity.gyroType.set(decodeMtfGyroType(header.gyro));
   if (header.cockpit) entity.cockpitType.set(decodeMtfCockpitType(header.cockpit));
-  if (header.ejection) entity.ejectionType.set(header.ejection);
-  if (header.heatSinkKit) entity.heatSinkKit.set(header.heatSinkKit);
+  entity.hasFullHeadEjectionSystem.set(decodeMtfFullHeadEjectionSystem(header.ejection));
+  entity.hasRiscHeatSinkOverrideKit.set(decodeMtfRiscHeatSinkOverrideKit(header.heatSinkKit));
 
   entity.originalWalkMP.set(header.walkMP);
 
@@ -269,24 +278,33 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
     // Patchwork per-location types
     let patchwork = null;
     if (header.patchworkTypes.size > 0) {
-      const types = new Map<string, string>();
+      const armors = new Map<string, ReturnType<typeof createMountedArmor>>();
       for (const [label, typeStr] of header.patchworkTypes) {
         const mapping = ARMOR_LABEL_MAP[label.toLowerCase()];
-        if (mapping) types.set(mapping.loc, typeStr);
+        if (mapping) {
+          const isClan = /(?:clan|\(clan\))/i.test(typeStr);
+          const locationArmor = resolveMtfArmorEquipment(
+            typeStr,
+            isClan,
+            ctx.equipmentRegistry,
+          );
+          if (locationArmor) armors.set(mapping.loc, createMountedArmor({
+            type: locationArmor.armorType as Exclude<ArmorType, 'PATCHWORK'>,
+            armor: locationArmor,
+            techBase: isClan ? 'Clan' : 'IS',
+          }));
+        }
       }
-      patchwork = createPatchworkArmor({ types });
+      patchwork = createPatchworkArmor(armors);
     }
 
-    entity.mountedArmor.set(createMountedArmor({
-      type: armorType,
-      techBase: armorTechBase,
-      armor: armorEquipment,
-      technology: createCompoundTechLevel(
-        componentTechLevelFromRulesLevel(entity.rulesLevel()),
-        armorTechBase,
-      ),
-      patchwork,
-    }));
+    entity.mountedArmor.set(armorType === 'PATCHWORK'
+      ? createPatchworkMountedArmor(patchwork ?? undefined)
+      : createMountedArmor({
+        type: armorType,
+        techBase: armorTechBase,
+        armor: armorEquipment,
+      }));
   }
 
   const armorMap = new Map<string, LocationArmor>();
@@ -432,7 +450,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       if (!addedToExisting) {
         // New mount
         const mountId = generateMountId();
-        const resolved = ctx.resolveEquipment(parsed.name, locCode);
+        const resolved = ctx.resolveEquipment(parsed.name, locCode, entity.techBase());
 
         const mount = new EntityMountedEquipment({
           mountId,
@@ -452,7 +470,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
           size: parsed.variableSize,
           secondEquipmentId: parsed.secondEquipmentName,
           secondEquipment: parsed.secondEquipmentName
-            ? ctx.resolveEquipment(parsed.secondEquipmentName, locCode) ?? undefined
+            ? ctx.resolveEquipment(parsed.secondEquipmentName, locCode, entity.techBase()) ?? undefined
             : undefined,
         });
 
@@ -464,6 +482,41 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
 
   entity.equipment.set(mountedEquipment);
   if (armoredSystemSlots.size > 0) entity.armoredSystemSlots.set(armoredSystemSlots);
+
+  // Clan CASE is integral and therefore absent from MTF critical-slot lines.
+  // Materialize it only for Clan units, in locations containing explosive ammo.
+  if (entity.techBase() === 'Clan') {
+    const caseEquipment = ctx.resolveEquipment('Clan CASE', 'Clan CASE', 'Clan');
+    if (!caseEquipment) return entity;
+
+    const optedOut = entity.clanCaseOptOutLocations();
+    const protectedLocations = new Set(
+      mountedEquipment
+        .filter(mount => mount.equipment?.hasAnyFlag(['F_CASE', 'F_CASE_II']))
+        .flatMap(mount => mount.getOccupiedLocations()),
+    );
+    const caseLocations = new Set(
+      mountedEquipment
+        .filter(mount =>
+          (mount.equipment instanceof AmmoEquipment && mount.equipment.stats.explosive)
+          || (mount.secondEquipment instanceof AmmoEquipment && mount.secondEquipment.stats.explosive)
+        )
+        .flatMap(mount => mount.getOccupiedLocations())
+        .filter(location => !optedOut.has(location) && !protectedLocations.has(location)),
+    );
+    for (const location of caseLocations) {
+      entity.addEquipment({
+        mountId: generateMountId(),
+        equipmentId: caseEquipment.id,
+        equipment: caseEquipment,
+        allocation: { kind: 'location', location },
+        rearMounted: false,
+        turretMounted: false,
+        omniPodMounted: false,
+        armored: false,
+      });
+    }
+  }
 
   // ── Nocrit equipment ──
   for (const nocrit of header.nocritEquipment) {

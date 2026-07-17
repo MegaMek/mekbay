@@ -38,7 +38,9 @@ import { createMountedArmor } from '../../components/armor';
 import {
   EntityType,
   EntityValidationMessage,
+  TechRatingSource,
 } from '../../types';
+import { getHandheldWeaponConstructionTech } from '../../components';
 
 // ============================================================================
 // HandheldWeaponEntity - standalone handheld weapons (for BA / Mek carry)
@@ -53,6 +55,10 @@ export class HandheldWeaponEntity extends BaseEntity {
 
   override unitSubtype(): UnitSubtype {
     return this.withOmniSubtype('Handheld Weapon');
+  }
+
+  override entityTechAdvancements(): readonly TechRatingSource[] {
+    return [getHandheldWeaponConstructionTech()];
   }
 
   constructor() {

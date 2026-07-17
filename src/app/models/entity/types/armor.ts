@@ -144,24 +144,6 @@ export function resolveArmorEquipment(
   return entry.is ?? entry.clan ?? null;
 }
 
-/**
- * Resolve an MTF armor display name using MegaMek's tech-prefixed aliases.
- */
-export function resolveMtfArmorEquipment(
-  displayName: string,
-  isClan: boolean,
-  equipmentRegistry: EquipmentRegistry,
-): ArmorEquipment | null {
-  let lookupName = displayName.trim();
-  if (!/^(?:Clan|IS)\s/i.test(lookupName)) {
-    lookupName = `${isClan ? 'Clan' : 'IS'} ${lookupName}`;
-  }
-  if (!/\sArmor$/i.test(lookupName)) lookupName += ' Armor';
-
-  const equipment = equipmentRegistry.find(lookupName);
-  return equipment instanceof ArmorEquipment ? equipment : null;
-}
-
 // ============================================================================
 // Armor structured face model
 // ============================================================================

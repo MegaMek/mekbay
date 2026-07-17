@@ -41,7 +41,7 @@ import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { decodeBlkAeroDesignType, decodeBlkDriveCoreType } from './blk-codec';
 import { JUMPSHIP_EQUIP_TAGS, WARSHIP_EXTRA_EQUIP_TAGS } from './blk-constants';
-import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkCrew, parseBlkEquipment, parseLegacyDockingCollars, resolveBlkStructure } from './blk-base-parser';
+import { parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkCrew, parseBlkEquipment, parseLegacyDockingCollars, resolveBlkStructure } from './blk-base-parser';
 import { ParseContext } from './parse-context';
 
 // ============================================================================
@@ -59,15 +59,14 @@ export function parseBlkLargeCraft(bb: BuildingBlock, ctx: ParseContext): JumpSh
   let entity: JumpShipEntity;
 
   switch (unitType.toLowerCase()) {
-    case 'warship':       entity = new WarShipEntity(); break;
-    case 'spacestation':  entity = new SpaceStationEntity(); break;
-    default:              entity = new JumpShipEntity(); break;
+    case 'warship':       entity = new WarShipEntity(ctx.equipmentRegistry); break;
+    case 'spacestation':  entity = new SpaceStationEntity(ctx.equipmentRegistry); break;
+    default:              entity = new JumpShipEntity(ctx.equipmentRegistry); break;
   }
 
   // ── Base parsing ──
   parseBaseBlk(bb, entity, ctx);
   if (!bb.exists('internal_type')) resolveBlkStructure(entity, 0, ctx);
-  const techBase = getBlkTechBase(bb);
 
   // ── Movement ──
   if (bb.exists('SafeThrust')) entity.originalWalkMP.set(bb.getFirstInt('SafeThrust'));
@@ -102,7 +101,7 @@ export function parseBlkLargeCraft(bb: BuildingBlock, ctx: ParseContext): JumpSh
   const equipTags = entity instanceof WarShipEntity
     ? [...JUMPSHIP_EQUIP_TAGS, ...WARSHIP_EXTRA_EQUIP_TAGS]
     : JUMPSHIP_EQUIP_TAGS;
-  parseBlkEquipment(bb, entity, ctx, equipTags);
+  parseBlkEquipment(bb, entity, ctx, equipTags, { equipmentLineProfile: 'large-craft' });
 
   // ── Crew ──
   parseBlkCrew(bb, entity);

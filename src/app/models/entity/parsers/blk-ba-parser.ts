@@ -102,8 +102,14 @@ export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEnt
     const technology = compoundCode == null
       ? createCompoundTechLevel(componentTechLevelFromRulesLevel(entity.rulesLevel()), techBase)
       : decodeBlkCompoundTechLevel(compoundCode);
-    const existing = entity.mountedArmor();
-    entity.mountedArmor.set(createMountedArmor({ ...existing, type, techBase, armor, technology }));
+    if (type !== 'PATCHWORK') {
+      entity.mountedArmor.set(createMountedArmor({
+        type,
+        techBase,
+        armor,
+        technology,
+      }));
+    }
   }
 
   if (bb.exists('armor')) {

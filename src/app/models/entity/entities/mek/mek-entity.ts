@@ -46,9 +46,10 @@ import {
   type GyroType,
   type GyroTypeDescriptor,
   GYRO_DATA,
-  type CockpitTypeDescriptor,
-  COCKPIT_DATA,
   getMekConstructionTech,
+  getIndustrialAdvancedFireControlTech,
+  getFullHeadEjectionTech,
+  getRiscHeatSinkOverrideKitTech,
   MountedEngine,
 } from '../../components';
 import {
@@ -76,6 +77,7 @@ import {
 } from '../../types';
 import { generateMountId } from '../../utils/signal-helpers';
 import type { UnitSubtype, UnitType } from '../../types';
+import { COCKPIT_DATA, CockpitTypeDescriptor } from '../../components/cockpit-data';
 
 // ============================================================================
 // MekEntity - abstract base for all Mek-type entities
@@ -120,7 +122,21 @@ export abstract class MekEntity extends BaseEntity {
   }
 
   override entityTechAdvancements(): readonly TechRatingSource[] {
-    return [this.constructionTechAdvancement(), this.mountedCockpit().tech, this.mountedGyro().tech];
+    const sources: TechRatingSource[] = [
+      this.constructionTechAdvancement(),
+      this.mountedCockpit().tech,
+      this.mountedGyro().tech,
+    ];
+    if (this.isIndustrial() && !this.mountedCockpit().isIndustrial) {
+      sources.push(getIndustrialAdvancedFireControlTech());
+    }
+    if (this.hasFullHeadEjectionSystem()) {
+      sources.push(getFullHeadEjectionTech());
+    }
+    if (this.hasRiscHeatSinkOverrideKit()) {
+      sources.push(getRiscHeatSinkOverrideKitTech());
+    }
+    return sources;
   }
 
   override locationIsLeg(location: string): boolean {
@@ -138,8 +154,8 @@ export abstract class MekEntity extends BaseEntity {
   myomerType = signal<string>('Standard');
   structureTechBase = signal<EntityTechBase | null>(null);
   hybridStructure = signal(false);
-  ejectionType = signal<string>('');
-  heatSinkKit = signal<string>('');
+  hasFullHeadEjectionSystem = signal(false);
+  hasRiscHeatSinkOverrideKit = signal(false);
   isFrankenMek = signal<boolean>(false);
   frankenMekLocations = signal<Map<MekLocation, FrankenMekLocationData>>(new Map());
 
@@ -508,7 +524,7 @@ export abstract class MekEntity extends BaseEntity {
     if (armor.type !== 'PATCHWORK' || !armor.patchwork) return false;
 
     return getMekLegLocations(this.chassisConfig).some(location =>
-      armor.patchwork?.types.get(location)?.startsWith('Hardened')
+      armor.patchwork?.get(location)?.type === 'HARDENED'
     );
   }
 

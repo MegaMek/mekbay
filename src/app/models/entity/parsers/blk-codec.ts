@@ -4,7 +4,7 @@ import type { ArmorType } from '../types/armor';
 import type { AeroCockpitType, AeroDesignType, DriveCoreType, DropShipCollarType } from '../types/aero';
 import type { EngineType } from '../types/engine';
 import type { CockpitType } from '../types/mek';
-import { createCompoundTechLevel, type ComponentTechLevel, type CompoundTechLevel, type EntityTechBase } from '../types/tech';
+import { createCompoundTechLevel, type ComponentTechLevel, type CompoundTechLevel, type EntityTechBase, type TechRating } from '../types/tech';
 import type { HeatSinkType } from '../types/heat-sink';
 
 export interface BlkTechLevel {
@@ -16,6 +16,12 @@ export interface BlkTechLevel {
 const TECH_RATING_TO_BLK_CODE: Readonly<Record<string, number>> = {
   A: 0, B: 1, C: 2, D: 3, E: 4, F: 5,
 };
+
+const TECH_RATING_FROM_BLK_CODE: readonly TechRating[] = ['A', 'B', 'C', 'D', 'E', 'F'];
+
+export function decodeBlkTechRating(code: number): TechRating {
+  return TECH_RATING_FROM_BLK_CODE[code] ?? 'C';
+}
 
 export function encodeBlkCompoundTechLevel(
   technology: CompoundTechLevel,
@@ -182,6 +188,9 @@ const COCKPIT_TYPE_FROM_BLK_CODE = invertCodeMap(COCKPIT_TYPE_TO_BLK_CODE);
 const AERO_COCKPIT_TYPE_FROM_BLK_CODE: Readonly<Record<number, AeroCockpitType>> = {
   0: 'Standard', 1: 'Small', 2: 'Command Console', 3: 'Primitive',
 };
+const AERO_COCKPIT_TYPE_TO_BLK_CODE: Readonly<Record<AeroCockpitType, number>> = {
+  Standard: 0, Small: 1, 'Command Console': 2, Primitive: 3,
+};
 const GYRO_TYPE_FROM_BLK_CODE = invertCodeMap(GYRO_TYPE_TO_BLK_CODE);
 const DRIVE_CORE_TYPE_FROM_BLK_CODE = invertCodeMap(DRIVE_CORE_TYPE_TO_BLK_CODE);
 const DROP_SHIP_COLLAR_TYPE_FROM_BLK_CODE = invertCodeMap(DROP_SHIP_COLLAR_TYPE_TO_BLK_CODE);
@@ -192,6 +201,10 @@ export function decodeBlkHeatSinkType(code: number): HeatSinkType {
 
 export function decodeBlkAeroCockpitType(code: number): AeroCockpitType {
   return AERO_COCKPIT_TYPE_FROM_BLK_CODE[code] ?? 'Standard';
+}
+
+export function encodeBlkAeroCockpitType(type: AeroCockpitType): number {
+  return AERO_COCKPIT_TYPE_TO_BLK_CODE[type] ?? 0;
 }
 
 export function encodeBlkHeatSinkType(type: HeatSinkType): number {
@@ -262,16 +275,24 @@ export function getBlkMekHeatSinkEquipmentId(
   }
 }
 
-export function encodeBlkArmorType(armor: MountedArmor): number {
-  return ARMOR_TYPE_TO_BLK_CODE[armor.type] ?? 0;
+export function encodeBlkArmorType(armor: MountedArmor | ArmorType): number {
+  const type = typeof armor === 'string' ? armor : armor.type;
+  return ARMOR_TYPE_TO_BLK_CODE[type] ?? 0;
+}
+
+export function encodeBlkTechRating(rating: string): number {
+  return TECH_RATING_TO_BLK_CODE[rating] ?? 3;
 }
 
 export function encodeBlkArmorTechRating(armor: MountedArmor): number {
-  if (armor.techRating >= 0) return armor.techRating;
-  if (armor.armor) return TECH_RATING_TO_BLK_CODE[armor.armor.rating] ?? 3;
+  if (armor.type !== 'PATCHWORK' && armor.techRating) {
+    return encodeBlkTechRating(armor.techRating);
+  }
+  if (armor.armor) return encodeBlkTechRating(armor.armor.rating);
   return 0;
 }
 
 export function encodeBlkArmorTechLevel(armor: MountedArmor): number {
+  if (armor.type === 'PATCHWORK') return 0;
   return encodeBlkCompoundTechLevel(armor.technology);
 }

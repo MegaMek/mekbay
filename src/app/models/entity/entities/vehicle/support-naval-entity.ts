@@ -2,6 +2,8 @@ import { signal } from '@angular/core';
 import { EntityType, WeightClass } from '../../types';
 import { SupportVehicleData, type SupportVehicle } from '../support-vehicle';
 import { NavalEntity } from './naval-entity';
+import type { TechRatingSource } from '../../types';
+import { getSupportTankConstructionTech } from '../../components';
 
 /** Support vehicle using Naval, Submarine, or Hydrofoil movement. */
 export class SupportNavalEntity extends NavalEntity implements SupportVehicle {
@@ -14,6 +16,10 @@ export class SupportNavalEntity extends NavalEntity implements SupportVehicle {
 
   override isSupportVehicle(): this is this & SupportVehicle {
     return true;
+  }
+
+  protected override vehicleConstructionTechAdvancement(): TechRatingSource {
+    return getSupportTankConstructionTech(this.motiveType(), this.weightClass());
   }
 
   protected override computeWeightClass(): WeightClass {

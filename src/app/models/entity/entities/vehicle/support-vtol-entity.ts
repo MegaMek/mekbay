@@ -35,6 +35,8 @@ import { signal } from '@angular/core';
 import { EntityType, WeightClass } from '../../types';
 import { SupportVehicleData, type SupportVehicle } from '../support-vehicle';
 import { VtolEntity } from './vtol-entity';
+import type { TechRatingSource } from '../../types';
+import { getSupportVtolConstructionTech } from '../../components';
 
 /** Support VTOL - adds BAR rating and support vehicle tech ratings. */
 export class SupportVtolEntity extends VtolEntity implements SupportVehicle {
@@ -47,6 +49,10 @@ export class SupportVtolEntity extends VtolEntity implements SupportVehicle {
 
   override isSupportVehicle(): this is this & SupportVehicle {
     return true;
+  }
+
+  protected override vehicleConstructionTechAdvancement(): TechRatingSource {
+    return getSupportVtolConstructionTech(this.weightClass());
   }
 
   protected override get minimumEngineRating(): number | null {

@@ -45,6 +45,12 @@ import { MovementCalculationOptions } from '../../base-entity';
 import { InfantryBaseEntity } from './infantry-base-entity';
 import { getInfantryTonnage } from '../../utils/infantry-tonnage';
 import type { UnitSubtype } from '../../types';
+import type { TechRatingSource } from '../../types';
+import {
+  getConventionalInfantryConstructionTech,
+  getInfantryMotiveTech,
+  getInfantrySpecializationTech,
+} from '../../components';
 
 // ============================================================================
 // InfantryEntity - conventional infantry platoons
@@ -63,16 +69,48 @@ export class InfantryEntity extends InfantryBaseEntity {
     return this.withOmniSubtype(`${qualifier}Conventional Infantry`);
   }
 
+  override entityTechAdvancements(): readonly TechRatingSource[] {
+    const hasFieldEquipment = this.equipment().some(
+      mount => mount.allocation.kind === 'location' && mount.allocation.location === 'Field Guns',
+    );
+    const mountedArmorKit = this.equipment()
+      .find(mount => mount.equipment?.hasFlag('F_ARMOR_KIT'))
+      ?.equipment ?? null;
+    const armorKit = this.armorKitEquipment() ?? mountedArmorKit;
+    const hasEncumberingArmor = this.encumberingArmor()
+      || armorKit?.hasFlag('S_ENCUMBERING') === true;
+    const sources: TechRatingSource[] = [
+      getConventionalInfantryConstructionTech(
+        this.motiveType(),
+        hasFieldEquipment,
+        hasEncumberingArmor,
+      ),
+      getInfantryMotiveTech(this.motiveType()),
+      ...getInfantrySpecializationTech(this.specializations()),
+    ];
+    // MegaMek represents the platoon's primary/secondary pair as one
+    // InfantryWeaponMounted and composes tech from its range weapon.
+    const rangeWeapon = this.secondaryCount() > 1
+      ? this.secondaryWeaponEquipment()
+      : this.primaryWeaponEquipment();
+    if (rangeWeapon) sources.push(rangeWeapon.tech);
+    const legacyArmorKit = this.armorKitEquipment();
+    if (legacyArmorKit) sources.push(legacyArmorKit.tech);
+    return sources;
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   //  SIGNALS
   // ═══════════════════════════════════════════════════════════════════════════
 
   primaryWeapon = signal<string>('');
+  primaryWeaponEquipment = signal<Equipment | null>(null);
   secondaryWeapon = signal<string>('');
   secondaryWeaponEquipment = signal<Equipment | null>(null);
   secondaryCount = signal<number>(0);
   armorDivisor = signal<number>(1);
   armorKit = signal<string>('');
+  armorKitEquipment = signal<Equipment | null>(null);
   override motiveType = signal<MotiveType>('Leg');
 
   // Infantry motive modifiers - these flag VTOL/SCUBA sub-variants

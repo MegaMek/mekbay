@@ -57,7 +57,7 @@ import {
   VEHICLE_EQUIP_TAGS,
   VTOL_ARMOR_LOCS,
 } from './blk-constants';
-import { getBlkTechBase, parseBaseBlk, parseBlkArmor, parseBlkEngine, parseBlkEquipment, resolveBlkStructure } from './blk-base-parser';
+import { parseBaseBlk, parseBlkArmor, parseBlkEngine, parseBlkEquipment, resolveBlkStructure } from './blk-base-parser';
 import { ParseContext } from './parse-context';
 
 // ============================================================================
@@ -80,21 +80,24 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
   let entity: VehicleEntity;
 
   switch (unitType) {
-    case 'VTOL':              entity = new VtolEntity(); break;
+    case 'VTOL':              entity = new VtolEntity(ctx.equipmentRegistry); break;
     case 'SupportTank':
-      entity = NAVAL_MOTIVE_TYPES.has(motiveType) ? new SupportNavalEntity() : new SupportTankEntity();
+      entity = NAVAL_MOTIVE_TYPES.has(motiveType)
+        ? new SupportNavalEntity(ctx.equipmentRegistry)
+        : new SupportTankEntity(ctx.equipmentRegistry);
       break;
-    case 'SupportVTOL':       entity = new SupportVtolEntity(); break;
-    case 'LargeSupportTank':  entity = new LargeSupportTankEntity(); break;
+    case 'SupportVTOL':       entity = new SupportVtolEntity(ctx.equipmentRegistry); break;
+    case 'LargeSupportTank':  entity = new LargeSupportTankEntity(ctx.equipmentRegistry); break;
     default:
-      entity = NAVAL_MOTIVE_TYPES.has(motiveType) ? new NavalEntity() : new TankEntity();
+      entity = NAVAL_MOTIVE_TYPES.has(motiveType)
+        ? new NavalEntity(ctx.equipmentRegistry)
+        : new TankEntity(ctx.equipmentRegistry);
       break;
   }
 
   // ── Base parsing ──
   parseBaseBlk(bb, entity, ctx);
   if (!bb.exists('internal_type')) resolveBlkStructure(entity, 0, ctx);
-  const techBase = getBlkTechBase(bb);
 
   // ── Motive type ──
   if (rawMotiveType) {

@@ -37,7 +37,7 @@ import { FixedWingSupportEntity } from '../entities/aero/fixed-wing-support-enti
 import {
   AERO_EQUIP_LOCATIONS,
 } from '../types';
-import { encodeBlkHeatSinkType } from '../parsers/blk-codec';
+import { encodeBlkAeroCockpitType, encodeBlkHeatSinkType } from '../parsers/blk-codec';
 import {
   BuildingBlockWriter,
   writeArmorBlocks,
@@ -79,11 +79,7 @@ export function writeBlkAero(entity: AeroEntity): string {
   w.addBlock('SafeThrust', entity.originalWalkMP());
 
   // 6. Cockpit / vstol
-  {
-    const cpType = entity.cockpitType();
-    const cpCode = cpType === 'Standard' ? 0 : parseInt(cpType.replace('Type ', ''), 10) || 0;
-    w.addBlock('cockpit_type', cpCode);
-  }
+  w.addBlock('cockpit_type', encodeBlkAeroCockpitType(entity.cockpitType()));
   if ((entity instanceof ConvFighterEntity || entity instanceof FixedWingSupportEntity) && entity.vstol()) {
     w.addBlock('vstol', 1);
   }

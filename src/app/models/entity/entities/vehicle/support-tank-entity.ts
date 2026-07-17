@@ -35,6 +35,8 @@ import { signal } from '@angular/core';
 import { EntityType, WeightClass } from '../../types';
 import { SupportVehicleData, type SupportVehicle } from '../support-vehicle';
 import { TankEntity } from './tank-entity';
+import type { TechRatingSource } from '../../types';
+import { getSupportTankConstructionTech } from '../../components';
 
 /** Support Tank - adds BAR rating and support vehicle tech ratings. */
 export class SupportTankEntity extends TankEntity implements SupportVehicle {
@@ -47,6 +49,10 @@ export class SupportTankEntity extends TankEntity implements SupportVehicle {
 
   override isSupportVehicle(): this is this & SupportVehicle {
     return true;
+  }
+
+  protected override vehicleConstructionTechAdvancement(): TechRatingSource {
+    return getSupportTankConstructionTech(this.motiveType(), this.weightClass());
   }
 
   protected override computeWeightClass(): WeightClass {

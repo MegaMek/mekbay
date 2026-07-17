@@ -1,8 +1,33 @@
 import type { MiscEquipment } from '../../equipment.model';
+import { EquipmentRegistry } from '../../equipment-lookup';
+import { ArmorEquipment } from '../../equipment.model';
 import type { CockpitType, EngineType, EntityTechBase, EquipmentTechBase } from '../types';
 import type { HeatSinkType } from '../types/heat-sink';
 import { COCKPIT_DATA } from '../components/cockpit-data';
 import { GYRO_DATA, type GyroType } from '../components/gyro-data';
+
+const FULL_HEAD_EJECTION_SYSTEM = 'Full Head Ejection System';
+const RISC_HEAT_SINK_OVERRIDE_KIT = 'RISC Heat Sink Override Kit';
+
+function matchesMtfValue(value: string, canonicalValue: string): boolean {
+  return value.trim().toLocaleLowerCase() === canonicalValue.toLocaleLowerCase();
+}
+
+export function decodeMtfFullHeadEjectionSystem(value: string): boolean {
+  return matchesMtfValue(value, FULL_HEAD_EJECTION_SYSTEM);
+}
+
+export function encodeMtfFullHeadEjectionSystem(installed: boolean): string | null {
+  return installed ? FULL_HEAD_EJECTION_SYSTEM : null;
+}
+
+export function decodeMtfRiscHeatSinkOverrideKit(value: string): boolean {
+  return matchesMtfValue(value, RISC_HEAT_SINK_OVERRIDE_KIT);
+}
+
+export function encodeMtfRiscHeatSinkOverrideKit(installed: boolean): string | null {
+  return installed ? RISC_HEAT_SINK_OVERRIDE_KIT : null;
+}
 
 export function decodeMtfCockpitType(value: string): CockpitType {
   if (value in COCKPIT_DATA) return value as CockpitType;
@@ -111,6 +136,26 @@ export function decodeMtfArmor(value: string): MtfArmorInfo {
     .replace(/\s*Armor$/i, '')
     .trim() || 'Standard';
   return { type, clanTech: trimmed.includes('(Clan)'), patchwork: false };
+}
+
+/**
+ * Resolve an MTF armor display name using MegaMek's tech-prefixed aliases.
+ */
+export function resolveMtfArmorEquipment(
+  displayName: string,
+  isClan: boolean,
+  equipmentRegistry: EquipmentRegistry,
+): ArmorEquipment | null {
+  let lookupName = displayName.trim()
+    .replace(/\s*\((?:Inner Sphere|IS|Clan)\)\s*$/i, '')
+    .trim();
+  if (!/^(?:Clan|IS)\s/i.test(lookupName)) {
+    lookupName = `${isClan ? 'Clan' : 'IS'} ${lookupName}`;
+  }
+  if (!/\sArmor$/i.test(lookupName)) lookupName += ' Armor';
+
+  const equipment = equipmentRegistry.find(lookupName);
+  return equipment instanceof ArmorEquipment ? equipment : null;
 }
 
 export function encodeMtfArmor(

@@ -45,7 +45,14 @@ import {
 
 } from '../types';
 import { WeaponEquipment } from '../../equipment.model';
-import { encodeMtfArmor, encodeMtfEngine, encodeMtfHeatSinkType, encodeMtfStructure } from '../parsers/mtf-codec';
+import {
+  encodeMtfArmor,
+  encodeMtfEngine,
+  encodeMtfFullHeadEjectionSystem,
+  encodeMtfHeatSinkType,
+  encodeMtfRiscHeatSinkOverrideKit,
+  encodeMtfStructure,
+} from '../parsers/mtf-codec';
 
 // ============================================================================
 // Location → MTF display names & ordering
@@ -212,8 +219,10 @@ function writePhysical(entity: MekEntity, lines: string[]): void {
     lines.push(`cockpit:${entity.mountedCockpit().fullName}`);
     lines.push(`gyro:${entity.mountedGyro().fullName}`);
   }
-  if (entity.ejectionType()) lines.push(`ejection:${entity.ejectionType()}`);
-  if (entity.heatSinkKit()) lines.push(`heat sink kit:${entity.heatSinkKit()}`);
+  const ejection = encodeMtfFullHeadEjectionSystem(entity.hasFullHeadEjectionSystem());
+  if (ejection) lines.push(`ejection:${ejection}`);
+  const heatSinkKit = encodeMtfRiscHeatSinkOverrideKit(entity.hasRiscHeatSinkOverrideKit());
+  if (heatSinkKit) lines.push(`heat sink kit:${heatSinkKit}`);
   const clanCaseOptOut = entity.clanCaseOptOutLocations();
   if (clanCaseOptOut.size > 0) {
     lines.push(`clancaseoptedoutlocs:${[...clanCaseOptOut].join(',')}`);
@@ -254,19 +263,23 @@ function writeArmor(
   const armorDisplayName = mountedArmor.armor?.name ?? 'Standard';
   lines.push(`armor:${encodeMtfArmor(
     armorDisplayName,
-    mountedArmor.techBase,
+    mountedArmor.type === 'PATCHWORK' ? entity.techBase() : mountedArmor.techBase,
     mountedArmor.type === 'PATCHWORK',
   )}`);
 
   const order = isTripod ? ARMOR_ORDER_TRIPOD : isQuad ? ARMOR_ORDER_QUAD : ARMOR_ORDER_BIPED;
   const armorMap = entity.armorValues();
-  const patchTypes = mountedArmor.type === 'PATCHWORK' ? mountedArmor.patchwork?.types : undefined;
+  const patchwork = mountedArmor.type === 'PATCHWORK' ? mountedArmor.patchwork : undefined;
   for (const entry of order) {
     const la = armorMap.get(entry.loc);
     const value = la ? la[entry.face] : 0;
     // For patchwork armor, front-facing entries include per-location armor type
-    if (patchTypes && entry.face === 'front') {
-      const locType = patchTypes.get(entry.loc) ?? 'Standard(IS/Clan)';
+    if (patchwork && entry.face === 'front') {
+      const armor = patchwork.get(entry.loc);
+      const locType = armor?.armor
+        ? `${armor.techBase === 'Clan' ? 'Clan' : 'IS'} ${armor.armor.name}`
+          + `(${armor.techBase === 'Clan' ? 'Clan' : 'Inner Sphere'})`
+        : 'Standard(IS/Clan)';
       lines.push(`${entry.label}:${locType}:${value}`);
     } else {
       lines.push(`${entry.label}:${value}`);

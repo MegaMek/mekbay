@@ -31,9 +31,10 @@
  * affiliated with Microsoft.
  */
 
+import { getCombatVehicleConstructionTech } from '../../components';
 import { EntityType } from '../../types';
 import { VehicleEntity } from './vehicle-entity';
-import type { UnitType } from '../../types';
+import type { TechRatingSource, UnitType } from '../../types';
 
 /**
  * Naval - combat vehicle with Naval, Submarine, or Hydrofoil motion type.
@@ -43,5 +44,9 @@ export class NavalEntity extends VehicleEntity {
 
   override unitType(): UnitType {
     return 'Naval';
+  }
+
+  protected override vehicleConstructionTechAdvancement(): TechRatingSource {
+    return getCombatVehicleConstructionTech();
   }
 }

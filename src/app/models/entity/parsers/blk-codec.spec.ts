@@ -4,6 +4,7 @@ import type { GyroType } from '../components/gyro-data';
 import type { AeroDesignType, DriveCoreType, DropShipCollarType, EngineType, HeatSinkType } from '../types';
 import type { CockpitType } from '../types/mek';
 import {
+  encodeBlkAeroCockpitType,
   decodeBlkAeroDesignType,
   decodeBlkAeroCockpitType,
   decodeBlkArmorType,
@@ -50,6 +51,13 @@ const DRIVE_CORE_TYPES: readonly DriveCoreType[] = ['Standard', 'Compact', 'Subc
 const COLLAR_TYPES: readonly DropShipCollarType[] = ['Unspecified', 'Standard', 'Prototype', 'No Boom'];
 
 describe('BLK codec', () => {
+  it('encodes semantic aero cockpit types to MegaMek BLK codes', () => {
+    expect(encodeBlkAeroCockpitType('Standard')).toBe(0);
+    expect(encodeBlkAeroCockpitType('Small')).toBe(1);
+    expect(encodeBlkAeroCockpitType('Command Console')).toBe(2);
+    expect(encodeBlkAeroCockpitType('Primitive')).toBe(3);
+  });
+
   it('round trips every engine, cockpit, gyro, and heat-sink code', () => {
     for (const type of ENGINE_TYPES) expect(decodeBlkEngineType(encodeBlkEngineType(type))).toBe(type);
     for (const type of COCKPIT_TYPES) expect(decodeBlkCockpitType(encodeBlkCockpitType(type))).toBe(type);
@@ -91,15 +99,15 @@ describe('BLK codec', () => {
       name: 'Ferro-Fibrous',
       type: 'armor',
       armor: { type: 'FERRO_FIBROUS' },
-      tech: { base: 'Clan', level: 'Experimental' },
+      tech: { base: 'Clan', level: 'Experimental', rating: 'E' },
     });
     expect(equipment instanceof ArmorEquipment).toBeTrue();
     const armor = createMountedArmor({
       type: 'FERRO_FIBROUS',
       techBase: 'Clan',
-      techRating: 4,
+      techRating: 'E',
       armor: equipment as ArmorEquipment,
-      technology: { level: equipment.level, scope: 'Clan' },
+      technology: { level: 'Experimental', scope: 'Clan' },
     });
     expect(encodeBlkArmorType(armor)).toBe(1);
     expect(encodeBlkArmorTechRating(armor)).toBe(4);

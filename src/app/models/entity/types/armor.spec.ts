@@ -1,6 +1,7 @@
 import { EquipmentRegistry } from '../../equipment-lookup';
 import { createEquipment, type EquipmentMap } from '../../equipment.model';
-import { resolveArmorEquipment, resolveMtfArmorEquipment } from './armor';
+import { resolveArmorEquipment } from './armor';
+import { resolveMtfArmorEquipment } from '../parsers/mtf-codec';
 
 describe('MTF armor equipment resolution', () => {
   const equipmentDb: EquipmentMap = {

@@ -36,6 +36,7 @@ import {
   MountedEngine,
   createMountedArmor,
   createPatchworkArmor,
+  createPatchworkMountedArmor,
   getStructureByTypeId,
 } from '../components';
 import { AeroEntity } from '../entities/aero/aero-entity';
@@ -59,6 +60,7 @@ import {
   decodeBlkArmorType,
   decodeBlkCompoundTechBase,
   decodeBlkCompoundTechLevel,
+  decodeBlkTechRating,
   decodeBlkEngineType,
   decodeBlkHeatSinkType,
   parseBlkTechLevel,
@@ -66,7 +68,7 @@ import {
 import { createCompoundTechLevel } from '../types/tech';
 import { generateMountId } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
-import { parseEquipmentLine } from './equipment-resolver';
+import { parseEquipmentLine, type EquipmentLineProfile } from './equipment-resolver';
 import { parseTransporterLines } from './transporter-codec';
 import { ParseContext } from './parse-context';
 
@@ -310,6 +312,7 @@ export function parseBlkEquipment(
   opts?: {
     computeTurretMounted?: (locCode: string) => boolean;
     includeTurretType?: boolean;
+    equipmentLineProfile?: EquipmentLineProfile;
   },
 ): void {
   for (const [blkTag, locCode] of equipTags) {
@@ -319,8 +322,13 @@ export function parseBlkEquipment(
       const line = raw.trim();
       if (!line) continue;
 
-      const parsed = parseEquipmentLine(line);
-      const resolved = ctx.resolveEquipment(parsed.name, blkTag);
+      const parsed = parseEquipmentLine(line, { profile: opts?.equipmentLineProfile });
+      if (parsed.omniPod) entity.omni.set(true);
+      const resolved = ctx.resolveEquipment(parsed.name, blkTag, entity.techBase());
+      const shotsCount = opts?.equipmentLineProfile === 'large-craft'
+        || opts?.equipmentLineProfile === 'dropship'
+        ? resolved?.type === 'ammo' ? parsed.shots : undefined
+        : parsed.shots;
 
       entity.addEquipment({
         mountId: generateMountId(),
@@ -335,6 +343,7 @@ export function parseBlkEquipment(
         armored: false,
         size: parsed.size,
         facing: parsed.facing,
+        shotsCount,
       });
     }
   }
@@ -504,29 +513,48 @@ export function parseBlkArmor(
   // ── Patchwork per-location data ──
   let patchwork = null;
   if (type === 'PATCHWORK' && opts?.patchworkLocs) {
-    const codes = new Map<string, number>();
-    const techs = new Map<string, string>();
-    const ratings = new Map<string, number>();
+    const armors = new Map<string, ReturnType<typeof createMountedArmor>>();
     for (const loc of opts.patchworkLocs) {
-      if (bb.exists(`${loc}_armor_type`))        codes.set(loc, bb.getFirstInt(`${loc}_armor_type`));
-      if (bb.exists(`${loc}_armor_tech`))         techs.set(loc, bb.getFirstString(`${loc}_armor_tech`));
-      if (bb.exists(`${loc}_armor_tech_rating`))  ratings.set(loc, bb.getFirstInt(`${loc}_armor_tech_rating`));
+      if (!bb.exists(`${loc}_armor_type`)) continue;
+      const code = bb.getFirstInt(`${loc}_armor_type`);
+      if (code < 0) continue;
+      const locationTech = bb.getFirstString(`${loc}_armor_tech`).toLowerCase();
+      const explicitClan = locationTech.includes('clan');
+      const explicitIs = locationTech.includes('inner sphere');
+      const isClan = explicitClan || (!explicitIs && entity.techBase() === 'Clan');
+      const locationArmor = resolveArmorEquipment(
+        decodeBlkArmorType(code),
+        isClan,
+        ctx.equipmentRegistry,
+      );
+      if (locationArmor) armors.set(loc, createMountedArmor({
+        type: locationArmor.armorType as Exclude<ArmorType, 'PATCHWORK'>,
+        armor: locationArmor,
+        techBase: explicitClan ? 'Clan' : explicitIs ? 'IS' : 'All',
+      }));
     }
-    patchwork = createPatchworkArmor({ codes, techs, ratings });
+    patchwork = createPatchworkArmor(armors);
   }
 
   // ── Tech rating override ──
-  const techRating = bb.exists('armor_tech_rating') ? bb.getFirstInt('armor_tech_rating') : -1;
-
   // ── Resolve armor from DB ──
   const armor = resolveArmorEquipment(type, techBase === 'Clan', ctx.equipmentRegistry);
   const technology = compoundCode == null
     ? createCompoundTechLevel(componentTechLevelFromRulesLevel(entity.rulesLevel()), techBase)
     : decodeBlkCompoundTechLevel(compoundCode);
+  const techRating = bb.exists('armor_tech_rating')
+    ? decodeBlkTechRating(bb.getFirstInt('armor_tech_rating'))
+    : null;
 
-  entity.mountedArmor.set(createMountedArmor({
-    type, techBase, armor, technology, patchwork, techRating,
-  }));
+  entity.mountedArmor.set(type === 'PATCHWORK'
+    ? createPatchworkMountedArmor(patchwork ?? undefined)
+    : createMountedArmor({
+      type,
+      techBase,
+      armor,
+      technology,
+      techRating,
+    }));
 }
 
 // ============================================================================

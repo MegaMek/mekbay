@@ -1,4 +1,5 @@
-import { Equipment } from '../../../equipment.model';
+import { createEquipment, Equipment } from '../../../equipment.model';
+import { EquipmentRegistry } from '../../../equipment-lookup';
 import { EntityMountedEquipment } from '../../types';
 import { LargeSupportTankEntity } from './large-support-tank-entity';
 import { SupportTankEntity } from './support-tank-entity';
@@ -40,6 +41,21 @@ describe('VehicleEntity movement', () => {
 
     expect(entity.locationOrder.length).toBe(7);
     expect(entity.totalInternalPoints()).toBe(98);
+  });
+
+  it('derives the sponson turret system from mounted equipment', () => {
+    const sponsonTurret = createEquipment({
+      id: 'SponsonTurret', name: 'Sponson Turret', type: 'misc', flags: ['F_SPONSON_TURRET'],
+    });
+    const entity = new TankEntity(new EquipmentRegistry({ SponsonTurret: sponsonTurret }));
+    const sponsonMount = mountWithFlag('F_ENERGY');
+    sponsonMount.turretType = 'sponson';
+
+    entity.equipment.set([sponsonMount]);
+    expect(entity.implicitSystemEquipment()).toEqual([sponsonTurret]);
+
+    entity.equipment.set([]);
+    expect(entity.implicitSystemEquipment()).toEqual([]);
   });
 });
 

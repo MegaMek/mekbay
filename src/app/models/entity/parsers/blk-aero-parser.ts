@@ -120,11 +120,6 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
     if (bb.exists('barrating'))               entity.barRating.set(bb.getFirstInt('barrating'));
     if (bb.exists('structural_tech_rating'))   entity.structuralTechRating.set(bb.getFirstInt('structural_tech_rating'));
     if (bb.exists('engine_tech_rating'))       entity.engineTechRating.set(bb.getFirstInt('engine_tech_rating'));
-    // FWS armor_tech_rating: default 0 for FWS (not the standard -1)
-    if (entity.mountedArmor().techRating < 0) {
-      const armor = entity.mountedArmor();
-      entity.mountedArmor.set(createMountedArmor({ ...armor, techRating: 0 }));
-    }
     if (bb.exists('baseChassisFireConWeight')) entity.baseChassisFireConWeight.set(bb.getFirstDouble('baseChassisFireConWeight'));
   }
 

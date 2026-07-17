@@ -40,17 +40,6 @@ import {
   type CockpitHeadLayout,
 } from './cockpit-data';
 
-// Re-export cockpit-data symbols for barrel convenience
-export {
-  AERO_COCKPIT_TECH,
-  COCKPIT_DATA,
-  type CockpitTypeDescriptor,
-  type CockpitCrewType,
-  type CockpitHeadLayout,
-  getCockpitTechAdvancement,
-  getAeroCockpitTechAdvancement,
-} from './cockpit-data';
-
 /** All known cockpit types (keys of COCKPIT_DATA). */
 export function getAllCockpitTypes(): readonly CockpitType[] {
   return Object.keys(COCKPIT_DATA) as CockpitType[];

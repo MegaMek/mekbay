@@ -31,9 +31,10 @@
  * affiliated with Microsoft.
  */
 
+import { getCombatVehicleConstructionTech } from '../../components';
 import { EntityType } from '../../types';
 import { VehicleEntity } from './vehicle-entity';
-import type { UnitType } from '../../types';
+import type { TechRatingSource, UnitType } from '../../types';
 
 /**
  * Tank - standard ground combat vehicle (Tracked, Wheeled, Hover, WiGE).
@@ -43,5 +44,9 @@ export class TankEntity extends VehicleEntity {
 
   override unitType(): UnitType {
     return 'Tank';
+  }
+
+  protected override vehicleConstructionTechAdvancement(): TechRatingSource {
+    return getCombatVehicleConstructionTech(this.isSuperHeavy());
   }
 }

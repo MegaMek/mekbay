@@ -34,6 +34,9 @@
 import { EntityType } from '../../types';
 import { JumpShipEntity } from './jumpship-entity';
 import type { UnitSubtype } from '../../types';
+import type { TechRatingSource } from '../../types';
+import { getSpaceStationConstructionTech } from '../../components';
+import { EquipmentRegistry } from '../../../equipment-lookup';
 
 /**
  * Space Station - a stationary JumpShip variant (no KF drive, no thrust).
@@ -45,8 +48,12 @@ export class SpaceStationEntity extends JumpShipEntity {
     return this.withOmniSubtype(`${this.isMilitary() ? 'Military' : 'Civilian'} Space Station`);
   }
 
-  constructor() {
-    super();
+  override entityTechAdvancements(): readonly TechRatingSource[] {
+    return [getSpaceStationConstructionTech()];
+  }
+
+  constructor(equipmentRegistry?: EquipmentRegistry) {
+    super(equipmentRegistry);
     this.driveCoreType.set('None');
     this.sail.set(false);
   }

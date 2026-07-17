@@ -39,7 +39,7 @@ import { decodeBlkAeroDesignType } from './blk-codec';
 import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { SC_EQUIP_TAGS } from './blk-constants';
-import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkCrew, parseBlkEquipment, resolveBlkStructure } from './blk-base-parser';
+import { parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkCrew, parseBlkEquipment, resolveBlkStructure } from './blk-base-parser';
 import { ParseContext } from './parse-context';
 import { decodeMotiveType } from './motive-type-codec';
 
@@ -55,11 +55,10 @@ import { decodeMotiveType } from './motive-type-codec';
  */
 export function parseBlkSmallCraft(bb: BuildingBlock, ctx: ParseContext): SmallCraftEntity {
   resetMountIdCounter();
-  const entity = new SmallCraftEntity();
+  const entity = new SmallCraftEntity(ctx.equipmentRegistry);
 
   // ── Base parsing ──
   parseBaseBlk(bb, entity, ctx);
-  const techBase = getBlkTechBase(bb);
   if (!bb.exists('internal_type')) resolveBlkStructure(entity, 0, ctx);
 
   // ── Movement ──

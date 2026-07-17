@@ -65,7 +65,10 @@ export function writeBlkHandheld(entity: HandheldWeaponEntity): string {
   w.addBlock('armor', armorVal);
 
   // ── Equipment ──
-  const equipLines = entity.equipment().map(m => encodeEquipmentLine(m, { blkMode: true }));
+  const equipLines = entity.equipment().map(m => encodeEquipmentLine(m, {
+    blkMode: true,
+    shotsFormat: 'ba-handheld',
+  }));
   if (equipLines.length > 0) {
     w.addBlock('Gun Equipment', ...equipLines);
   }

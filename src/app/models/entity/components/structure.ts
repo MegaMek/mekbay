@@ -32,7 +32,8 @@
  */
 
 import { EquipmentMap, StructureEquipment } from '../../equipment.model';
-import { EntityTechBase } from '../types';
+import { approx, EntityTechBase, type TechRatingSource } from '../types';
+import { TechAdvancement } from '../types/tech';
 
 /**
  * Internal Structure system component.
@@ -55,6 +56,15 @@ interface StructureIndex {
   readonly byTypeId: ReadonlyMap<number, StructureVariants>;
   readonly byName: ReadonlyMap<string, StructureVariants>;
 }
+
+/** Built-in standard structure used when a unit file does not declare another type. */
+const STANDARD_STRUCTURE_TECH = {
+  techBase: 'All',
+  rating: 'D',
+  availability: ['C', 'C', 'C', 'C'],
+  level: 'Introductory',
+  dates: { prototype: approx(2430), production: 2439, common: 2505 },
+} as const satisfies TechAdvancement;
 
 let structureIndexDb: EquipmentMap | null = null;
 let structureIndex: StructureIndex | null = null;
@@ -110,4 +120,10 @@ export function getStructureByName(
 ): StructureEquipment | null {
   const nameKey = name.trim().toLowerCase();
   return selectVariant(getStructureIndex(equipmentDb).byName.get(nameKey), techBase);
+}
+
+export function getStructureTechAdvancement(
+  structure: StructureEquipment | null,
+): TechRatingSource {
+  return !structure || structure.structureTypeId === 0 ? STANDARD_STRUCTURE_TECH : structure.tech;
 }

@@ -99,7 +99,10 @@ export function writeBlkDropShip(entity: DropShipEntity): string {
   w.addBlock('armor', ...armorInts);
 
   // 12. Equipment per location
-  writeEquipmentByLocation(w, entity, DS_EQUIP_TAGS, encodeEquipmentLine, true);
+  writeEquipmentByLocation(w, entity, DS_EQUIP_TAGS, encodeEquipmentLine, true, {
+    blkMode: true,
+    shotsFormat: 'large-craft',
+  });
 
   // 13. structural_integrity
   w.addBlock('structural_integrity', entity.structuralIntegrity());

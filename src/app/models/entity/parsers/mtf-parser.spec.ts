@@ -1,4 +1,4 @@
-import { MiscEquipment, StructureEquipment } from '../../equipment.model';
+import { AmmoEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../equipment.model';
 import { EMPTY_EQUIPMENT_REGISTRY, EquipmentRegistry } from '../../equipment-lookup';
 import { ParseContext } from './parse-context';
 import { parseMtf } from './mtf-parser';
@@ -16,6 +16,33 @@ describe('MTF parser identity', () => {
     const entity = parseMtf(minimalMtf(), new ParseContext('test.mtf', EMPTY_EQUIPMENT_REGISTRY));
 
     expect(entity.uuid()).toBeTruthy();
+  });
+
+  it('decodes optional Mek systems and writes their canonical MTF values', () => {
+    const entity = parseMtf(
+      minimalMtf(
+        'ejection:full head ejection system\n' +
+        'heat sink kit:risc heat sink override kit\n',
+      ),
+      new ParseContext('optional-systems.mtf', EMPTY_EQUIPMENT_REGISTRY),
+    );
+
+    expect(entity.hasFullHeadEjectionSystem()).toBe(true);
+    expect(entity.hasRiscHeatSinkOverrideKit()).toBe(true);
+    expect(writeMtf(entity)).toContain('\nejection:Full Head Ejection System\n');
+    expect(writeMtf(entity)).toContain('\nheat sink kit:RISC Heat Sink Override Kit\n');
+  });
+
+  it('does not retain unknown optional Mek system strings', () => {
+    const entity = parseMtf(
+      minimalMtf('ejection:Unknown\nheat sink kit:Unknown\n'),
+      new ParseContext('unknown-optional-systems.mtf', EMPTY_EQUIPMENT_REGISTRY),
+    );
+
+    expect(entity.hasFullHeadEjectionSystem()).toBe(false);
+    expect(entity.hasRiscHeatSinkOverrideKit()).toBe(false);
+    expect(writeMtf(entity)).not.toContain('\nejection:');
+    expect(writeMtf(entity)).not.toContain('\nheat sink kit:');
   });
 
   it('resolves the selected heat-sink technology to real equipment', () => {
@@ -89,6 +116,103 @@ describe('MTF parser identity', () => {
     expect(entity.jumpMP()).toBe(0);
     expect(writeMtf(entity)).toContain('\njump mp:0\n');
   });
+
+  it('does not add implicit Clan CASE where explicit CASE already protects the location', () => {
+    const clanCase = new MiscEquipment({
+      id: 'Clan CASE', name: 'CASE', type: 'misc', flags: ['F_CASE'],
+    });
+    const innerSphereCase = new MiscEquipment({
+      id: 'ISCASE', name: 'CASE', type: 'misc', flags: ['F_CASE'],
+    });
+    const ammo = new AmmoEquipment({ id: 'Test Ammo', name: 'Test Ammo', type: 'ammo' });
+    const registry = new EquipmentRegistry({
+      [clanCase.id]: clanCase,
+      [innerSphereCase.id]: innerSphereCase,
+      [ammo.id]: ammo,
+    });
+    const entity = parseMtf(
+      clanMtf('Left Torso:\nISCASE\nTest Ammo'),
+      new ParseContext('explicit-case.mtf', registry),
+    );
+
+    expect(entity.equipment().filter(mount => mount.equipment === clanCase)).toHaveSize(0);
+    expect(entity.equipment().filter(mount => mount.equipment === innerSphereCase)).toHaveSize(1);
+  });
+
+  it('respects Clan CASE opt-outs', () => {
+    const clanCase = new MiscEquipment({
+      id: 'Clan CASE', name: 'CASE', type: 'misc', flags: ['F_CASE'],
+    });
+    const ammo = new AmmoEquipment({ id: 'Test Ammo', name: 'Test Ammo', type: 'ammo' });
+    const registry = new EquipmentRegistry({ [clanCase.id]: clanCase, [ammo.id]: ammo });
+    const entity = parseMtf(
+      clanMtf('clancaseoptedoutlocs:LT\nLeft Torso:\nTest Ammo'),
+      new ParseContext('case-opt-out.mtf', registry),
+    );
+
+    expect(entity.equipment().filter(mount => mount.equipment === clanCase)).toHaveSize(0);
+  });
+
+  it('adds implicit Clan CASE to a Clan location containing explosive ammo', () => {
+    const clanCase = new MiscEquipment({
+      id: 'Clan CASE', name: 'CASE', type: 'misc', flags: ['F_CASE'],
+    });
+    const ammo = new AmmoEquipment({
+      id: 'Test Ammo', name: 'Test Ammo', type: 'ammo', stats: { explosive: true },
+    });
+    const registry = new EquipmentRegistry({ [clanCase.id]: clanCase, [ammo.id]: ammo });
+    const entity = parseMtf(
+      clanMtf('Right Torso:\nTest Ammo'),
+      new ParseContext('explosive-ammo.mtf', registry),
+    );
+
+    expect(entity.equipment().filter(mount => mount.equipment === clanCase).map(mount => mount.location))
+      .toEqual(['RT']);
+  });
+
+  it('does not add implicit Clan CASE for explosive non-ammunition equipment', () => {
+    const clanCase = new MiscEquipment({
+      id: 'Clan CASE', name: 'CASE', type: 'misc', flags: ['F_CASE'],
+    });
+    const explosiveWeapon = new WeaponEquipment({
+      id: 'Explosive Weapon', name: 'Explosive Weapon', type: 'weapon',
+      stats: { criticalSlots: 8, explosive: true },
+    });
+    const registry = new EquipmentRegistry({
+      [clanCase.id]: clanCase,
+      [explosiveWeapon.id]: explosiveWeapon,
+    });
+    const entity = parseMtf(
+      clanMtf(
+        'Right Arm:\nExplosive Weapon\nExplosive Weapon\nExplosive Weapon\nExplosive Weapon\n' +
+        'Right Torso:\nExplosive Weapon (Split)\nExplosive Weapon\nExplosive Weapon\nExplosive Weapon',
+      ),
+      new ParseContext('split-explosive.mtf', registry),
+    );
+
+    const caseLocations = entity.equipment()
+      .filter(mount => mount.equipment === clanCase)
+      .map(mount => mount.location)
+      .sort();
+    expect(caseLocations).toEqual([]);
+  });
+
+  it('does not propagate implicit Clan CASE on an Inner Sphere unit with explicit Clan CASE', () => {
+    const clanCase = new MiscEquipment({
+      id: 'Clan CASE', name: 'CASE', type: 'misc', tech: { base: 'Clan' }, flags: ['F_CASE'],
+    });
+    const ammo = new AmmoEquipment({
+      id: 'Test Ammo', name: 'Test Ammo', type: 'ammo', stats: { explosive: true },
+    });
+    const registry = new EquipmentRegistry({ [clanCase.id]: clanCase, [ammo.id]: ammo });
+    const entity = parseMtf(
+      minimalMtf().replace('armor:Standard(Inner Sphere)', 'armor:Standard(Inner Sphere)\nLeft Torso:\nClan CASE\nRight Torso:\nTest Ammo'),
+      new ParseContext('is-explicit-clan-case.mtf', registry),
+    );
+
+    expect(entity.equipment().filter(mount => mount.equipment === clanCase).map(mount => mount.location))
+      .toEqual(['LT']);
+  });
 });
 
 function minimalMtf(identity = ''): string {
@@ -102,4 +226,10 @@ walk mp:5
 jump mp:0
 armor:Standard(Inner Sphere)
 `;
+}
+
+function clanMtf(extra: string): string {
+  return minimalMtf()
+    .replace('Config:Biped', 'Config:Biped\ntechbase:Clan')
+    .replace('armor:Standard(Inner Sphere)', `armor:Standard(Clan)\n${extra}`);
 }

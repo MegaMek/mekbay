@@ -45,6 +45,7 @@ import {
   WeightClass,
 } from '../../types';
 import type { UnitSubtype, UnitType } from '../../types';
+import type { TechRatingSource } from '../../types';
 
 // ============================================================================
 // AeroEntity - abstract base for all aero-type entities
@@ -62,6 +63,12 @@ export abstract class AeroEntity extends BaseEntity {
   }
 
   abstract override unitSubtype(): UnitSubtype;
+
+  protected override omniTechAdvancement(): TechRatingSource | null {
+    // MegaMek includes the Omni system advancement for Inner Sphere
+    // OmniFighters, while Clan OmniFighter availability is equipment-derived.
+    return this.techBase() === 'IS' ? super.omniTechAdvancement() : null;
+  }
 
   protected isPrimitiveAero(): boolean {
     return this.cockpitType() === 'Primitive';

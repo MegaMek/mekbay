@@ -36,6 +36,8 @@ import { SupportVehicleData, type SupportVehicle } from '../support-vehicle';
 import { AERO_LOCATIONS, EntityType, FIXED_WING_EQUIP_LOCATIONS, WeightClass } from '../../types';
 import { AeroEntity } from './aero-entity';
 import type { UnitSubtype } from '../../types';
+import type { TechRatingSource } from '../../types';
+import { getFixedWingSupportConstructionTech } from '../../components';
 
 /** Fixed Wing Support vehicle - uses BAR rating and tech ratings. */
 export class FixedWingSupportEntity extends AeroEntity implements SupportVehicle {
@@ -54,6 +56,10 @@ export class FixedWingSupportEntity extends AeroEntity implements SupportVehicle
 
   override isSupportVehicle(): this is this & SupportVehicle {
     return true;
+  }
+
+  override entityTechAdvancements(): readonly TechRatingSource[] {
+    return [getFixedWingSupportConstructionTech(this.motiveType(), this.weightClass())];
   }
 
   protected override computeWeightClass(): WeightClass {

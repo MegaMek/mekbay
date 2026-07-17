@@ -50,26 +50,47 @@ export {
 } from './gyro';
 
 export {
-  type CockpitTypeDescriptor,
-  type CockpitCrewType,
-  type CockpitHeadLayout,
-  AERO_COCKPIT_TECH,
-  COCKPIT_DATA,
   getAllCockpitTypes,
-  getCockpitTechAdvancement,
-  getAeroCockpitTechAdvancement,
   buildHeadSystemLayout,
 } from './cockpit';
 
 export {
-  AEROSPACE_FIGHTER_CONSTRUCTION_TECH,
-  COMBAT_VEHICLE_CONSTRUCTION_TECH,
-  CONVENTIONAL_FIGHTER_CONSTRUCTION_TECH,
-  LAM_CONSTRUCTION_TECH,
-  PRIMITIVE_AEROSPACE_FIGHTER_CONSTRUCTION_TECH,
-  QUADVEE_CONSTRUCTION_TECH,
+  AERO_COCKPIT_TECH,
+  COCKPIT_DATA,
+  type CockpitCrewType,
+  type CockpitHeadLayout,
+  type CockpitTypeDescriptor,
+  getCockpitTechAdvancement,
+  getIndustrialAdvancedFireControlTech,
+  getAeroCockpitTechAdvancement,
+} from '../components/cockpit-data';
+
+export {
+  getFullHeadEjectionTech,
+  getRiscHeatSinkOverrideKitTech,
+} from './mek-system-tech-data';
+
+export {
+  getAerospaceFighterConstructionTech,
   getBattleArmorConstructionTech,
+  getCombatVehicleConstructionTech,
+  getConventionalFighterConstructionTech,
+  getDropshipConstructionTech,
+  getDualTurretTech,
+  getFixedWingSupportConstructionTech,
+  getHandheldWeaponConstructionTech,
+  getJumpshipConstructionTech,
+  getLamConstructionTech,
   getMekConstructionTech,
+  getProtoMekConstructionTech,
+  getProtoMekInterfaceCockpitTech,
+  getQuadVeeConstructionTech,
+  getSmallCraftConstructionTech,
+  getSpaceStationConstructionTech,
+  getSupportTankConstructionTech,
+  getSupportVtolConstructionTech,
+  getWarshipConstructionTech,
+  getVtolChinTurretTech,
 } from './construction-tech-data';
 
 export {
@@ -80,15 +101,25 @@ export {
 } from './entity-system-tech-data';
 
 export {
+  getConventionalInfantryConstructionTech,
+  getInfantryMotiveTech,
+  getInfantrySpecializationTech,
+} from './infantry-tech-data';
+
+export {
   getStructureByName,
   getStructureByTypeId,
+  getStructureTechAdvancement,
 } from './structure';
 
 export {
   type PatchworkArmor,
+  type UniformMountedArmor,
+  type PatchworkMountedArmor,
   type MountedArmor,
   createMountedArmor,
   createPatchworkArmor,
+  createPatchworkMountedArmor,
 } from './armor';
 
 export {

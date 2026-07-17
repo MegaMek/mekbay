@@ -221,18 +221,21 @@ export class ParseContext {
    * an error if the equipment cannot be found at all.
    *
    * @param name       Internal name from the file
-   * @param techBase   Entity's tech base for prefix resolution
    * @param field      Diagnostic field label (e.g. "Front Equipment")
+   * @param techBase   Entity's tech base for prefix resolution
    * @returns Resolved Equipment, or `null` if not found (error recorded)
    */
   resolveEquipment(
     name: string,
     field: string,
+    techBase?: EntityTechBase,
   ): Equipment | null {
     if (!name || name === '-Empty-') return null;
 
     // 1. Try the local DB and its derived lookup index
-    const local = this.equipmentRegistry.find(name);
+    const local = techBase
+      ? this.equipmentRegistry.findForTechBase(name, techBase)
+      : this.equipmentRegistry.find(name);
     if (local) return local;
 
     // 2. Try fallback (future: remote/UUID lookup)

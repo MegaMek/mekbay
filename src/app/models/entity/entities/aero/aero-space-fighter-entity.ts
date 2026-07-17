@@ -33,10 +33,7 @@
 
 import { AERO_EQUIP_LOCATIONS, AERO_LOCATIONS, EntityType, type TechRatingSource } from '../../types';
 import { AeroEntity } from './aero-entity';
-import {
-  AEROSPACE_FIGHTER_CONSTRUCTION_TECH,
-  PRIMITIVE_AEROSPACE_FIGHTER_CONSTRUCTION_TECH,
-} from '../../components';
+import { getAerospaceFighterConstructionTech } from '../../components';
 import type { UnitSubtype } from '../../types';
 
 /** Standard AeroSpace Fighter (ASF). */
@@ -48,10 +45,7 @@ export class AeroSpaceFighterEntity extends AeroEntity {
   }
 
   override entityTechAdvancements(): readonly TechRatingSource[] {
-    const construction: TechRatingSource = this.isPrimitiveAero()
-      ? PRIMITIVE_AEROSPACE_FIGHTER_CONSTRUCTION_TECH
-      : AEROSPACE_FIGHTER_CONSTRUCTION_TECH;
-    return [construction, this.mountedCockpitTech()];
+    return [getAerospaceFighterConstructionTech(this.isPrimitiveAero()), this.mountedCockpitTech()];
   }
 
   get locationOrder(): readonly string[] {

@@ -109,7 +109,10 @@ export function writeBlkLargeCraft(entity: JumpShipEntity): string {
   if (entity instanceof WarShipEntity) {
     equipTags = [...equipTags, ...WARSHIP_EXTRA_EQUIP_TAGS];
   }
-  writeEquipmentByLocation(w, entity, equipTags, encodeEquipmentLine, true);
+  writeEquipmentByLocation(w, entity, equipTags, encodeEquipmentLine, true, {
+    blkMode: true,
+    shotsFormat: 'large-craft',
+  });
 
   // 13. structural_integrity
   w.addBlock('structural_integrity', entity.structuralIntegrity());

@@ -73,7 +73,7 @@ export function writeBlkBA(entity: BattleArmorEntity): string {
   for (const m of entity.equipment()) {
     let lines = mountsByLoc.get(m.location);
     if (!lines) { lines = []; mountsByLoc.set(m.location, lines); }
-    const line = encodeEquipmentLine(m, { blkMode: true });
+    const line = encodeEquipmentLine(m, { blkMode: true, shotsFormat: 'ba-handheld' });
     lines.push(line);
   }
 

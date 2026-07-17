@@ -94,6 +94,8 @@ export interface TechRatingSource {
 export interface CompositeTechRatingContext {
     readonly techBase: EntityTechBase;
     readonly year?: number;
+    /** Obsolete/reintroduction year pairs from the unit's Obsolete quirk. */
+    readonly obsoleteYears?: readonly number[];
 }
 
 export type CompositeTechRating = `${TechRating}/${string}`;
@@ -136,6 +138,13 @@ function adjustedAvailability(
         && era === TECH_ERA_DATA.sw.index
         && sourceTechBase !== 'Clan') {
         const dates = sourceDates(source);
+        const clanCommonOnly = sourceTechBase === 'All'
+            && dates != null
+            && isSplitTechDates(dates)
+            && dates.clan?.common != null
+            && dates.clan.prototype == null
+            && dates.clan.production == null;
+        if (clanCommonOnly) return value;
         const resolved = dates && resolveTechDates(
             dates,
             sourceTechBase === 'All' ? context.techBase : sourceTechBase,
@@ -170,9 +179,9 @@ function sourceExtinctionYear(
         dates,
         sourceBase === 'All' ? context.techBase : sourceBase,
     );
-    const extinct = techDateYear(resolved?.extinct);
+    const extinct = effectiveTechDateYear(resolved?.extinct, true);
     if (extinct == null) return undefined;
-    const reintroduced = techDateYear(resolved?.reintroduced);
+    const reintroduced = effectiveTechDateYear(resolved?.reintroduced);
     if (context.year != null && reintroduced != null && reintroduced <= context.year) return undefined;
     return Math.max(extinct, context.year ?? extinct);
 }
@@ -184,7 +193,7 @@ export function calculateCompositeTechRating(
 ): CompositeTechRating {
     let rating: TechRating = 'A';
     const availability: CompositeAvailabilityCode[] = ['A', 'A', 'A', 'A'];
-    let firstExtinction: number | undefined;
+    let firstExtinction = firstObsoleteYear(context);
 
     for (const source of sources) {
         if (TECH_RATING_ORDER.indexOf(source.rating) > TECH_RATING_ORDER.indexOf(rating)) {
@@ -226,6 +235,21 @@ export function calculateCompositeTechRating(
     });
 
     return `${rating}/${formattedAvailability.join('-')}`;
+}
+
+function firstObsoleteYear(context: CompositeTechRatingContext): number | undefined {
+    const years = context.obsoleteYears ?? [];
+    let first: number | undefined;
+    for (let i = 0; i < years.length; i += 2) {
+        const obsolete = years[i];
+        const reintroduced = years[i + 1];
+        const extinctionEnd = reintroduced == null ? undefined : reintroduced - 1;
+        if (obsolete == null || obsolete <= 0) continue;
+        if (context.year != null && extinctionEnd != null && extinctionEnd <= context.year) continue;
+        const start = Math.max(obsolete, context.year ?? obsolete);
+        if (first == null || start < first) first = start;
+    }
+    return first;
 }
 
 /**

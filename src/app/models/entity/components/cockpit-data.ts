@@ -781,6 +781,11 @@ export function getCockpitTechAdvancement(type: CockpitType): TechAdvancement {
   return COCKPIT_DATA[type].tech;
 }
 
+/** Advanced fire-control technology used by Industrial Meks with a non-industrial cockpit. */
+export function getIndustrialAdvancedFireControlTech(): TechAdvancement {
+  return ADV_FIRE_CONTROL_TECH;
+}
+
 export function getAeroCockpitTechAdvancement(type: AeroCockpitType): TechAdvancement {
   return AERO_COCKPIT_TECH[type];
 }

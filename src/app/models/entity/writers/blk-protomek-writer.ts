@@ -104,7 +104,10 @@ export function writeBlkProtoMek(entity: ProtoMekEntity): string {
   const equipTags = entity.hasMainGun()
     ? PROTO_EQUIP_TAGS
     : PROTO_EQUIP_TAGS.filter(([tag]) => tag !== 'Main Gun Equipment');
-  writeEquipmentByLocation(w, entity, equipTags, encodeEquipmentLine, true);
+  writeEquipmentByLocation(w, entity, equipTags, encodeEquipmentLine, true, {
+    blkMode: true,
+    shotsFormat: 'protomek',
+  });
 
   // ── Section 11-13: Fluff / Source / Tonnage ──
   writeFluffBlocks(w, entity.fluff());

@@ -42,6 +42,9 @@ import {
 } from '../../types';
 import { AeroEntity } from './aero-entity';
 import type { UnitSubtype } from '../../types';
+import type { TechRatingSource } from '../../types';
+import { getSmallCraftConstructionTech } from '../../components';
+import type { Equipment } from '../../../equipment.model';
 
 /**
  * SmallCraft entity (100-200 tons).
@@ -60,6 +63,24 @@ export class SmallCraftEntity extends AeroEntity {
     const civilian = this.isMilitary() ? '' : 'Civilian ';
     const form = this.motiveType() === 'Spheroid' ? 'Spheroid' : 'Aerodyne';
     return this.withOmniSubtype(`${civilian}${form} ${this.unitSubtypeKind()}`);
+  }
+
+  override entityTechAdvancements(): readonly TechRatingSource[] {
+    return [getSmallCraftConstructionTech(this.mountedArmor().type === 'PRIMITIVE_AERO')];
+  }
+
+  protected override computeImplicitSystemEquipment(): readonly Equipment[] {
+    const implicit = [...super.computeImplicitSystemEquipment()];
+    if (this.entityType !== 'SmallCraft'
+      || !this.isMilitary()
+      || this.equipment().some(mount => mount.equipment?.hasFlag('F_ECM'))) {
+      return implicit;
+    }
+
+    const ecmId = this.techBase() === 'Clan' ? 'CLSingle-Hex ECM' : 'ISSingle-Hex ECM';
+    const automaticEcm = this.equipmentRegistry.findForTechBase(ecmId, this.techBase());
+    if (automaticEcm) implicit.push(automaticEcm);
+    return implicit;
   }
 
   // ── SmallCraft-specific signals ──

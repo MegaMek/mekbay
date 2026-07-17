@@ -37,6 +37,8 @@ import {
 } from '../../types';
 import { JumpShipEntity } from './jumpship-entity';
 import type { UnitSubtype } from '../../types';
+import type { TechRatingSource } from '../../types';
+import { getWarshipConstructionTech } from '../../components';
 
 /**
  * Broadside locations used by WarShips (in addition to the standard 6).
@@ -55,6 +57,10 @@ export class WarShipEntity extends JumpShipEntity {
 
   override unitSubtype(): UnitSubtype {
     return this.withOmniSubtype('WarShip');
+  }
+
+  override entityTechAdvancements(): readonly TechRatingSource[] {
+    return [getWarshipConstructionTech(this.driveCoreType() === 'Primitive')];
   }
 
   // ── Location overrides ──

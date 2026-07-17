@@ -42,6 +42,9 @@ export interface EncodeEquipmentOptions {
    * that are already conveyed by the BLK block structure.
    */
   blkMode?: boolean;
+
+  /** Entity-specific syntax for an explicit ammo quantity. */
+  shotsFormat?: 'none' | 'ba-handheld' | 'large-craft' | 'protomek';
 }
 
 /**
@@ -102,9 +105,13 @@ export function encodeEquipmentLine(mount: EntityMountedEquipment, options?: Enc
     name += `:${mount.baMountLocation === 'Turret' ? 'TU' : mount.baMountLocation}`;
   }
 
-  // Shot count (for BA/handheld ammo) or variable-size equipment (mutually exclusive)
+  // Explicit ammo quantity syntax depends on the owning entity's file grammar.
   if (mount.shotsCount !== undefined) {
-    name += `:Shots${mount.shotsCount}#`;
+    switch (options?.shotsFormat ?? 'none') {
+      case 'ba-handheld': name += `:Shots${mount.shotsCount}#`; break;
+      case 'large-craft': name += `:${mount.shotsCount}`; break;
+      case 'protomek': name += ` (${mount.shotsCount})`; break;
+    }
   } else if (mount.size !== undefined) {
     const sizeVal = Number.isInteger(mount.size) ? mount.size.toFixed(1) : String(mount.size);
     name += `:SIZE:${sizeVal}`;

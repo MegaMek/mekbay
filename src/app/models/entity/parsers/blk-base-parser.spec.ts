@@ -63,7 +63,7 @@ describe('BLK base parser', () => {
     }
   });
 
-  it('decodes explicit armor compound technology into structured state', () => {
+  it('decodes explicit armor compound technology into effective tech base', () => {
     const mountedArmor = signal<MountedArmor>(createMountedArmor());
     const entity = armorEntity(mountedArmor);
     const buildingBlock = new BuildingBlock(`
@@ -77,18 +77,19 @@ describe('BLK base parser', () => {
 
     parseBlkArmor(buildingBlock, entity, new ParseContext('test.blk', EMPTY_EQUIPMENT_REGISTRY));
 
-    expect(mountedArmor().technology).toEqual({ level: 'Standard', scope: 'All Clan' });
-    expect(mountedArmor().techBase).toBe('Clan');
+    const armor = mountedArmor();
+    expect(armor.type === 'PATCHWORK' ? null : armor.techBase).toBe('Clan');
   });
 
-  it('calculates armor technology from entity rules when no compound value exists', () => {
+  it('uses the entity tech base when no compound armor value exists', () => {
     const mountedArmor = signal<MountedArmor>(createMountedArmor());
     const entity = armorEntity(mountedArmor, 'IS', 4);
 
     parseBlkArmor(new BuildingBlock('<armor_type>\n0\n</armor_type>'), entity,
       new ParseContext('test.blk', EMPTY_EQUIPMENT_REGISTRY));
 
-    expect(mountedArmor().technology).toEqual({ level: 'Experimental', scope: 'IS' });
+    const armor = mountedArmor();
+    expect(armor.type === 'PATCHWORK' ? null : armor.techBase).toBe('IS');
   });
 });
 

@@ -62,6 +62,12 @@ export interface EquipmentLineModifiers {
   isNewBay: boolean;
 }
 
+export type EquipmentLineProfile = 'generic' | 'large-craft' | 'dropship';
+
+export interface EquipmentLineParseOptions {
+  readonly profile?: EquipmentLineProfile;
+}
+
 /** Facing suffix → numeric facing value */
 const FACING_MAP: Record<string, number> = {
   '(FL)': 0,
@@ -75,7 +81,10 @@ const FACING_MAP: Record<string, number> = {
 /**
  * Parse a BLK equipment line into a clean name and modifiers.
  */
-export function parseEquipmentLine(line: string): EquipmentLineModifiers {
+export function parseEquipmentLine(
+  line: string,
+  options: EquipmentLineParseOptions = {},
+): EquipmentLineModifiers {
   const result: EquipmentLineModifiers = {
     name: line,
     omniPod: false,
@@ -100,32 +109,12 @@ export function parseEquipmentLine(line: string): EquipmentLineModifiers {
     name = name.substring(3).trim();
   }
 
-  // Turret suffixes
-  if (name.endsWith('(ST)')) {
-    result.turretType = 'sponson';
-    name = name.slice(0, -4).trim();
-  } else if (name.endsWith('(PT)')) {
-    result.turretType = 'pintle';
-    name = name.slice(0, -4).trim();
-  } else if (name.endsWith('(T)')) {
-    result.turretType = 'standard';
-    name = name.slice(0, -3).trim();
-  }
-
-  // Facing suffixes
-  for (const [suffix, facing] of Object.entries(FACING_MAP)) {
-    if (name.endsWith(suffix)) {
-      result.facing = facing;
-      name = name.slice(0, -suffix.length).trim();
-      break;
-    }
-  }
-
   // Colon-separated suffixes
   const colonParts = name.split(':');
   const suffixesToRemove: number[] = [];
 
   for (let i = 1; i < colonParts.length; i++) {
+    if (suffixesToRemove.includes(i)) continue;
     const part = colonParts[i];
     if (part === 'OMNI') {
       result.omniPod = true;
@@ -152,20 +141,58 @@ export function parseEquipmentLine(line: string): EquipmentLineModifiers {
       result.baMountLocation = 'Turret';
       suffixesToRemove.push(i);
     } else if (part === 'SIZE' && i + 1 < colonParts.length) {
-      result.size = parseFloat(colonParts[i + 1]);
-      suffixesToRemove.push(i, i + 1);
+      const size = Number(colonParts[i + 1]);
+      if (Number.isFinite(size)) {
+        result.size = size;
+        suffixesToRemove.push(i, i + 1);
+        i++;
+      }
     } else if (part.startsWith('Shots')) {
       const shotMatch = part.match(/^Shots(\d+)#?$/);
       if (shotMatch) {
         result.shots = parseInt(shotMatch[1], 10);
         suffixesToRemove.push(i);
       }
+    } else if (i === colonParts.length - 1
+      && /^\d+$/.test(part)
+      && acceptsBayAmmoQuantity(colonParts.slice(0, i).join(':'), options.profile)) {
+      result.shots = parseInt(part, 10);
+      suffixesToRemove.push(i);
     }
   }
 
   // Rebuild name without recognised suffixes
   const remainingParts = colonParts.filter((_, i) => !suffixesToRemove.includes(i));
-  result.name = remainingParts.join(':').trim();
+  name = remainingParts.join(':').trim();
+
+  // Location modifiers precede colon modifiers in BLK files, for example
+  // `Light Gauss Rifle (PT):SIZE:1.0`. Strip them after rebuilding the name.
+  if (name.endsWith('(ST)')) {
+    result.turretType = 'sponson';
+    name = name.slice(0, -4).trim();
+  } else if (name.endsWith('(PT)')) {
+    result.turretType = 'pintle';
+    name = name.slice(0, -4).trim();
+  } else if (name.endsWith('(T)')) {
+    result.turretType = 'standard';
+    name = name.slice(0, -3).trim();
+  }
+
+  for (const [suffix, facing] of Object.entries(FACING_MAP)) {
+    if (name.endsWith(suffix)) {
+      result.facing = facing;
+      name = name.slice(0, -suffix.length).trim();
+      break;
+    }
+  }
+
+  result.name = name;
 
   return result;
+}
+
+function acceptsBayAmmoQuantity(name: string, profile: EquipmentLineProfile | undefined): boolean {
+  if (profile === 'large-craft') return name.includes('Ammo');
+  if (profile === 'dropship') return name.includes('Ammo') || name.includes('Pod');
+  return false;
 }

@@ -36,11 +36,13 @@ import {
   encodeBlkArmorTechLevel,
   encodeBlkArmorTechRating,
   encodeBlkArmorType,
+  encodeBlkTechRating,
   encodeBlkEngineType,
   encodeBlkTechLevel,
 } from '../parsers/blk-codec';
 import { BaseEntity } from '../base-entity';
 import { serializeTransporterLines } from '../parsers/transporter-codec';
+import type { EncodeEquipmentOptions } from './equipment-encoder';
 
 /**
  * Serialises BLK tag-based format.
@@ -194,11 +196,20 @@ export function writeArmorBlocks(
 
   // Patchwork armor: write per-location blocks instead of global tech rating/level
   if (armor.type === 'PATCHWORK' && patchworkLocs && armor.patchwork) {
-    const { codes, techs, ratings } = armor.patchwork;
     for (const loc of patchworkLocs) {
-      if (codes.has(loc)) w.addBlock(`${loc}_armor_type`, codes.get(loc)!);
-      if (techs.has(loc)) w.addBlock(`${loc}_armor_tech`, techs.get(loc)!);
-      if (ratings.has(loc)) w.addBlock(`${loc}_armor_tech_rating`, ratings.get(loc)!);
+      const locationArmor = armor.patchwork.get(loc);
+      if (locationArmor?.armor) {
+        w.addBlock(`${loc}_armor_type`, encodeBlkArmorType(locationArmor.type));
+        w.addBlock(`${loc}_armor_tech`, locationArmor.techBase === 'Clan'
+          ? 'Clan'
+          : locationArmor.techBase === 'IS' ? 'Inner Sphere' : '(Unknown Technology Base)');
+        w.addBlock(`${loc}_armor_tech_rating`, encodeBlkTechRating(locationArmor.armor.rating));
+      } else {
+        // MegaMek writes sentinel values for patchwork pseudo-locations without armor.
+        w.addBlock(`${loc}_armor_type`, -1);
+        w.addBlock(`${loc}_armor_tech`, '(Unknown Technology Base)');
+        w.addBlock(`${loc}_armor_tech_rating`, 2);
+      }
     }
     return;
   }
@@ -255,12 +266,13 @@ export function writeEquipmentByLocation(
   equipTags: [string, string][],
   encodeLineFn: (m: any, opts: any) => string,
   writeEmpty = false,
+  encodeOptions: EncodeEquipmentOptions = { blkMode: true },
 ): Map<string, string[]> {
   const mountsByLoc = new Map<string, string[]>();
   for (const m of entity.equipment()) {
     let lines = mountsByLoc.get(m.location);
     if (!lines) { lines = []; mountsByLoc.set(m.location, lines); }
-    lines.push(encodeLineFn(m, { blkMode: true }));
+    lines.push(encodeLineFn(m, encodeOptions));
   }
 
   for (const [blkTag, locCode] of equipTags) {

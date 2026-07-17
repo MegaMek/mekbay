@@ -161,7 +161,7 @@ const CHECKED_FIELDS: FieldCheck[] = [
   { field: 'squads',         compare: 'exact', active: true },
   { field: 'su',             compare: 'exact', active: true },
   { field: 'subtype',        compare: 'exact', active: true },
-  { field: 'techRating',     compare: 'exact' },
+  { field: 'techRating',     compare: 'exact', active: true },
   { field: 'umu',            compare: 'exact' },
   { field: 'weightClass',    compare: 'exact', active: true },
   { field: 'unitFile',       compare: 'exact' },

@@ -1,9 +1,73 @@
-import { Equipment, MiscEquipment, WeaponEquipment } from '../../../equipment.model';
-import { MountedEngine } from '../../components';
+import { ArmorEquipment, Equipment, MiscEquipment, WeaponEquipment } from '../../../equipment.model';
+import { createMountedArmor, MountedEngine } from '../../components';
 import { EntityMountedEquipment } from '../../types';
 import { BipedMekEntity } from './biped-mek-entity';
 import { LamEntity } from './lam-entity';
 import { QuadMekEntity } from './quad-mek-entity';
+
+describe('MekEntity optional systems', () => {
+  it('contributes technology only for installed optional systems', () => {
+    const entity = new BipedMekEntity();
+    const baseSourceCount = entity.entityTechAdvancements().length;
+
+    entity.hasFullHeadEjectionSystem.set(true);
+    expect(entity.entityTechAdvancements()).toHaveSize(baseSourceCount + 1);
+    expect(entity.entityTechAdvancements().at(-1)?.rating).toBe('D');
+
+    entity.hasRiscHeatSinkOverrideKit.set(true);
+    expect(entity.entityTechAdvancements()).toHaveSize(baseSourceCount + 2);
+    const riscTech = entity.entityTechAdvancements().at(-1);
+    expect(riscTech?.techBase).toBe('IS');
+    expect(riscTech?.dates).toEqual({ prototype: 3134 });
+  });
+});
+
+describe('MekEntity patchwork armor', () => {
+  it('supports assigning armor per location without parsing a unit file', () => {
+    const entity = new BipedMekEntity();
+    const reactive = new ArmorEquipment({
+      id: 'IS Reactive', name: 'Reactive', type: 'armor',
+      armor: { type: 'REACTIVE' },
+      tech: { base: 'IS', rating: 'E', availability: { sl: 'X', sw: 'X', clan: 'E', da: 'D' } },
+    });
+    const standard = new ArmorEquipment({
+      id: 'Standard Armor', name: 'Standard', type: 'armor',
+      armor: { type: 'STANDARD' },
+      tech: { base: 'All', rating: 'D', availability: { sl: 'C', sw: 'C', clan: 'C', da: 'C' } },
+    });
+
+    entity.setPatchworkArmor('LA', reactive);
+    entity.setPatchworkArmor('RA', standard, 'Clan');
+
+    expect(entity.mountedArmor().type).toBe('PATCHWORK');
+    expect(entity.getPatchworkArmor('LA')).toBe(reactive);
+    expect(entity.mountedArmor().patchwork?.get('RA')).toEqual({
+      type: 'STANDARD',
+      armor: standard,
+      techBase: 'Clan',
+      technology: { level: 'Standard', scope: 'Clan' },
+      techRating: null,
+      patchwork: null,
+    });
+    expect(entity.implicitSystemEquipment()).not.toContain(reactive);
+
+    entity.removePatchworkArmor('LA');
+    expect(entity.getPatchworkArmor('LA')).toBeUndefined();
+  });
+
+  it('rejects patchwork armor as a patchwork location', () => {
+    const entity = new BipedMekEntity();
+    const nested = new ArmorEquipment({
+      id: 'Patchwork Armor', name: 'Patchwork', type: 'armor',
+      armor: { type: 'PATCHWORK' },
+      tech: { base: 'All', rating: 'E', availability: { sl: 'X', sw: 'X', clan: 'E', da: 'E' } },
+    });
+
+    expect(() => entity.setPatchworkArmor('LA', nested)).toThrowError(
+      'Patchwork armor cannot contain patchwork armor',
+    );
+  });
+});
 
 describe('MekEntity jumpMP', () => {
   it('reacts to jump jets, partial wings, and shields', () => {
@@ -87,7 +151,7 @@ describe('MekEntity jumpMP', () => {
 
     expect(entity.runMP()).toBe(8);
 
-    entity.mountedArmor.update(armor => ({ ...armor, type: 'HARDENED' }));
+    entity.mountedArmor.set(createMountedArmor({ type: 'HARDENED' }));
     expect(entity.runMP()).toBe(7);
   });
 

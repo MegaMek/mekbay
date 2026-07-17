@@ -31,9 +31,13 @@
  * affiliated with Microsoft.
  */
 
+import {
+  getCombatVehicleConstructionTech,
+  getVtolChinTurretTech,
+} from '../../components';
 import { EntityType, VTOL_LOCATIONS, VTOL_LOCATIONS_WITH_TURRET } from '../../types';
 import { VehicleEntity } from './vehicle-entity';
-import type { UnitType } from '../../types';
+import type { TechRatingSource, UnitType } from '../../types';
 
 /** VTOL combat vehicle - adds Rotor location. */
 export class VtolEntity extends VehicleEntity {
@@ -41,6 +45,16 @@ export class VtolEntity extends VehicleEntity {
 
   override unitType(): UnitType {
     return 'VTOL';
+  }
+
+  override entityTechAdvancements(): readonly TechRatingSource[] {
+    const sources = [...super.entityTechAdvancements()];
+    if (this.hasTurret()) sources.push(getVtolChinTurretTech());
+    return sources;
+  }
+
+  protected override vehicleConstructionTechAdvancement(): TechRatingSource {
+    return getCombatVehicleConstructionTech();
   }
 
   override get locationOrder(): readonly string[] {

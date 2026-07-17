@@ -33,7 +33,10 @@
 
 import { Signal, computed, signal } from '@angular/core';
 import { BaseEntity, MovementCalculationOptions } from '../../base-entity';
-import { COMBAT_VEHICLE_CONSTRUCTION_TECH } from '../../components';
+import {
+  getDualTurretTech,
+  OMNI_VEHICLE_TECH,
+} from '../../components';
 import {
   EngineFlag,
   EngineType,
@@ -52,6 +55,7 @@ import {
   resolveWeightClass,
 } from '../../types';
 import type { UnitSubtype, UnitType } from '../../types';
+import type { Equipment } from '../../../equipment.model';
 
 // ============================================================================
 // VehicleEntity - abstract base for all combat-vehicle entities
@@ -68,8 +72,23 @@ export abstract class VehicleEntity extends BaseEntity {
   }
 
   override entityTechAdvancements(): readonly TechRatingSource[] {
-    if (this.isSupportVehicle()) return [];
-    return [COMBAT_VEHICLE_CONSTRUCTION_TECH];
+    const sources: TechRatingSource[] = [this.vehicleConstructionTechAdvancement()];
+    if (this.hasDualTurret()) sources.push(getDualTurretTech());
+    return sources;
+  }
+
+  protected abstract vehicleConstructionTechAdvancement(): TechRatingSource;
+
+  protected override omniTechAdvancement(): TechRatingSource {
+    return OMNI_VEHICLE_TECH;
+  }
+
+  protected override computeImplicitSystemEquipment(): readonly Equipment[] {
+    const implicit = [...super.computeImplicitSystemEquipment()];
+    if (!this.equipment().some(mount => mount.turretType === 'sponson')) return implicit;
+    const sponsonTurret = this.equipmentRegistry.findForTechBase('SponsonTurret', this.techBase());
+    if (sponsonTurret) implicit.push(sponsonTurret);
+    return implicit;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

@@ -227,7 +227,11 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
   if (bb.exists('squadn'))    entity.squadCount.set(bb.getFirstInt('squadn'));
 
   // ── Weapons ──
-  if (bb.exists('Primary'))      entity.primaryWeapon.set(bb.getFirstString('Primary'));
+  if (bb.exists('Primary')) {
+    const primaryWeapon = bb.getFirstString('Primary');
+    entity.primaryWeapon.set(primaryWeapon);
+    entity.primaryWeaponEquipment.set(ctx.resolveEquipment(primaryWeapon, 'Primary'));
+  }
   if (bb.exists('Secondary')) {
     const secondaryWeapon = bb.getFirstString('Secondary');
     entity.secondaryWeapon.set(secondaryWeapon);
@@ -240,7 +244,11 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
   if (bb.exists('armordivisor')) entity.armorDivisor.set(bb.getFirstDouble('armordivisor'));
   // legacy uppercase form
   else if (bb.exists('armorDivisor')) entity.armorDivisor.set(bb.getFirstDouble('armorDivisor'));
-  if (bb.exists('armorKit'))     entity.armorKit.set(bb.getFirstString('armorKit'));
+  if (bb.exists('armorKit')) {
+    const armorKit = bb.getFirstString('armorKit');
+    entity.armorKit.set(armorKit);
+    entity.armorKitEquipment.set(ctx.resolveEquipment(armorKit, 'armorKit'));
+  }
 
   // ── Infantry-specific boolean fields (Java uses existence check, value is "true") ──
   if (bb.exists('encumberingarmor')) entity.encumberingArmor.set(true);

@@ -36,15 +36,17 @@ import {
   MountedEngine,
   MIXED_TECH,
   OMNI_TECH,
-  OMNI_VEHICLE_TECH,
   PATCHWORK_ARMOR_TECH,
   createMountedArmor,
+  createPatchworkMountedArmor,
+  getStructureTechAdvancement,
   MountedArmor,
 } from './components';
-import { StructureEquipment } from '../equipment.model';
+import { ArmorEquipment, Equipment, StructureEquipment, WeaponEquipment } from '../equipment.model';
 import { SourcebookReference } from '../sourcebook.model';
 import {
   ArmorFace,
+  ArmorType,
   calculateCompositeTechRating,
   C3SystemType,
   EngineFlag,
@@ -78,6 +80,8 @@ import { generateMountId, removeMountById, updateMap } from './utils/signal-help
 import { uuidv7 } from '../../utils/uuid.util';
 import type { SupportVehicle } from './entities/support-vehicle';
 import type { UnitSubtype, UnitType } from './types';
+import { EMPTY_EQUIPMENT_REGISTRY, EquipmentRegistry } from '../equipment-lookup';
+import { CLAN_EXCEPTIONAL_BAY_IDS, weaponBayEquipmentId } from './utils/implicit-equipment';
 
 /**
  * Set to `true` to make `computeMixedTech` collect ALL mixed-tech reasons
@@ -193,6 +197,8 @@ export const AS_MOVEMENT_CALCULATION: MovementCalculationOptions = {
  *    ingress; all other code uses canonical IDs only.
  */
 export abstract class BaseEntity implements EntityTechnology {
+  constructor(protected readonly equipmentRegistry: EquipmentRegistry = EMPTY_EQUIPMENT_REGISTRY) {}
+
   // ── Identity (immutable after construction) ─────────────────────────────
   abstract readonly entityType: EntityType;
 
@@ -236,25 +242,53 @@ export abstract class BaseEntity implements EntityTechnology {
     return [];
   }
 
+  protected omniTechAdvancement(): TechRatingSource | null {
+    return OMNI_TECH;
+  }
+
+  /** Engine, armor, structure, and other systems added by Entity's base implementation. */
+  protected baseSystemTechAdvancements(): readonly TechRatingSource[] {
+    const sources: TechRatingSource[] = [];
+    const engine = this.mountedEngine();
+    if (engine.installed) {
+      sources.push(engine.getTechAdvancement({ supportVee: this.isSupportVehicle() }));
+    }
+    const mountedArmor = this.mountedArmor();
+    if (mountedArmor.armor) sources.push(mountedArmor.armor.tech);
+    if (mountedArmor.patchwork) {
+      sources.push(...[...mountedArmor.patchwork.values()].flatMap(armor => armor.armor ? [armor.armor.tech] : []));
+    }
+    const structure = this.mountedStructure();
+    if (structure) sources.push(getStructureTechAdvancement(structure));
+    const omniTech = this.omniTechAdvancement();
+    if (this.omni() && omniTech) sources.push(omniTech);
+    if (mountedArmor.type === 'PATCHWORK') sources.push(PATCHWORK_ARMOR_TECH);
+    if (this.mixedTech()) sources.push(MIXED_TECH);
+    return sources;
+  }
+
   private techRatingSources(): TechRatingSource[] {
     const sources: TechRatingSource[] = this.equipment()
-      .flatMap(mount => mount.equipment ? [mount.equipment.tech] : []);
+      .flatMap(mount => mount.equipment && this.mountedEquipmentContributesTech(mount.equipment)
+        ? [mount.equipment.tech]
+        : []);
+    sources.push(...this.implicitSystemEquipment().map(equipment => equipment.tech));
 
-    const engine = this.mountedEngine();
-    if (engine.installed) sources.push(engine.getTechAdvancement());
-    const armor = this.mountedArmor().armor;
-    if (armor) sources.push(armor.tech);
-    const structure = this.mountedStructure();
-    if (structure) sources.push(structure.tech);
-    if (this.omni()) {
-      const type = this.unitType();
-      const vehicle = type === 'Tank' || type === 'VTOL' || type === 'Naval';
-      sources.push(vehicle ? OMNI_VEHICLE_TECH : OMNI_TECH);
-    }
-    if (this.mountedArmor().type === 'PATCHWORK') sources.push(PATCHWORK_ARMOR_TECH);
-    if (this.mixedTech()) sources.push(MIXED_TECH);
+    sources.push(...this.baseSystemTechAdvancements());
     sources.push(...this.entityTechAdvancements());
     return sources;
+  }
+
+  /**
+   * Approximate CompositeTechLevel's blank IS-progression early return without
+   * suppressing universal-tech and infantry sources assembled differently by MegaMek.
+   */
+  private mountedEquipmentContributesTech(equipment: Equipment): boolean {
+    if (this.mixedTech() || this.techBase() !== 'IS' || equipment.techBase !== 'Clan'
+      || equipment.type === 'ammo') return true;
+    const dates = equipment.tech.advancement;
+    if (!dates || !('is' in dates || 'clan' in dates)) return true;
+    return dates.is != null;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -326,13 +360,49 @@ export abstract class BaseEntity implements EntityTechnology {
 
   // ── Internal Structure ──
   readonly mountedStructure = signal<StructureEquipment | null>(null);
+  /** Database-resolved systems derived from entity state but not serialized as mounts. */
+  readonly implicitSystemEquipment = computed<readonly Equipment[]>(() => {
+    const equipment = this.computeImplicitSystemEquipment();
+    return [...new Map(equipment.map(item => [item.id, item])).values()];
+  });
 
   // ── Equipment - SINGLE SOURCE OF TRUTH ──
   equipment = signal<EntityMountedEquipment[]>([]);
+
+  protected computeImplicitSystemEquipment(): readonly Equipment[] {
+    const implicit: Equipment[] = [];
+    if (!this.supportsWeaponBays()) return implicit;
+    for (const mount of this.equipment()) {
+      if (!mount.isNewBay || !(mount.equipment instanceof WeaponEquipment)) continue;
+      const bayId = weaponBayEquipmentId(mount.equipment);
+      if (this.techBase() === 'Clan' && CLAN_EXCEPTIONAL_BAY_IDS.has(bayId)) continue;
+      const bay = this.equipmentRegistry.findForTechBase(bayId, this.techBase());
+      if (bay) implicit.push(bay);
+    }
+    return implicit;
+  }
+
+  protected supportsWeaponBays(): boolean {
+    return false;
+  }
   /** Composite technology rating and four-era availability code. */
+  readonly obsoleteYears = computed<readonly number[]>(() => {
+    const obsolete = this.quirks().find(quirk => quirk.name.toLowerCase().startsWith('obsolete:'));
+    if (!obsolete) return [];
+    const value = obsolete.name.slice(obsolete.name.indexOf(':') + 1).trim();
+    if (!value || value.toLowerCase() === 'unknown') return [];
+    return value.split(',')
+      .map(part => Number.parseInt(part.trim(), 10))
+      .filter(Number.isFinite);
+  });
+
   readonly techRating = computed(() => calculateCompositeTechRating(
     this.techRatingSources(),
-    { techBase: this.techBase(), year: this.year() },
+    {
+      techBase: this.techBase(),
+      year: this.year(),
+      obsoleteYears: this.obsoleteYears(),
+    },
   ));
   readonly mountedWeapons = computed<readonly EntityMountedWeapon[]>(() =>
     this.equipment().filter(isEntityMountedWeapon)
@@ -759,5 +829,40 @@ export abstract class BaseEntity implements EntityTechnology {
   getArmorValue(loc: string, face: ArmorFace = 'front'): number {
     const la = this.armorValues().get(loc);
     return la ? la[face] : 0;
+  }
+
+  /** Assign an armor type to one location in the entity's patchwork composition. */
+  setPatchworkArmor(
+    loc: string,
+    armor: ArmorEquipment,
+    techBase = armor.techBase === 'All' ? this.techBase() : armor.techBase,
+  ): void {
+    if (armor.armorType === 'PATCHWORK') {
+      throw new Error('Patchwork armor cannot contain patchwork armor');
+    }
+    this.mountedArmor.update(current => {
+      const patchwork = new Map(current.patchwork ?? []);
+      patchwork.set(loc, createMountedArmor({
+        type: armor.armorType as Exclude<ArmorType, 'PATCHWORK'>,
+        armor,
+        techBase,
+      }));
+      return createPatchworkMountedArmor(patchwork);
+    });
+  }
+
+  /** Remove a location from the entity's patchwork composition. */
+  removePatchworkArmor(loc: string): void {
+    this.mountedArmor.update(current => {
+      if (!current.patchwork?.has(loc)) return current;
+      const patchwork = new Map(current.patchwork);
+      patchwork.delete(loc);
+      return { ...current, patchwork };
+    });
+  }
+
+  /** Return the armor installed at a patchwork location, if any. */
+  getPatchworkArmor(loc: string): ArmorEquipment | undefined {
+    return this.mountedArmor().patchwork?.get(loc)?.armor ?? undefined;
   }
 }

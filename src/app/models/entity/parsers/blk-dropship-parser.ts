@@ -37,7 +37,7 @@ import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { decodeBlkAeroDesignType, decodeBlkDropShipCollarType } from './blk-codec';
 import { DS_ARMOR_LOCS, DS_EQUIP_TAGS } from './blk-constants';
-import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkCrew, parseBlkEquipment, parseLegacyDockingCollars, resolveBlkStructure } from './blk-base-parser';
+import { parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkCrew, parseBlkEquipment, parseLegacyDockingCollars, resolveBlkStructure } from './blk-base-parser';
 import { ParseContext } from './parse-context';
 
 // ============================================================================
@@ -49,11 +49,10 @@ import { ParseContext } from './parse-context';
  */
 export function parseBlkDropShip(bb: BuildingBlock, ctx: ParseContext): DropShipEntity {
   resetMountIdCounter();
-  const entity = new DropShipEntity();
+  const entity = new DropShipEntity(ctx.equipmentRegistry);
 
   // ── Base parsing ──
   parseBaseBlk(bb, entity, ctx);
-  const techBase = getBlkTechBase(bb);
   if (!bb.exists('internal_type')) resolveBlkStructure(entity, 0, ctx);
 
   // ── Movement ──
@@ -88,7 +87,7 @@ export function parseBlkDropShip(bb: BuildingBlock, ctx: ParseContext): DropShip
   parseBlkArmorValues(bb, entity, DS_ARMOR_LOCS);
 
   // ── Equipment per location ──
-  parseBlkEquipment(bb, entity, ctx, DS_EQUIP_TAGS);
+  parseBlkEquipment(bb, entity, ctx, DS_EQUIP_TAGS, { equipmentLineProfile: 'dropship' });
 
   // ── Crew ──
   parseBlkCrew(bb, entity);
