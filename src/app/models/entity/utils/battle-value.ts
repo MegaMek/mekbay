@@ -34,10 +34,7 @@
 import type { BaseEntity } from '../base-entity';
 import type { MekEntity } from '../entities/mek/mek-entity';
 import { BV_MOVEMENT_CALCULATION } from '../types';
-
-function isMekBVMovementEntity(entity: BaseEntity): entity is MekEntity {
-  return entity.entityType === 'Mek';
-}
+import { isMekEntity } from './entity-type-guards';
 
 /**
  * MegaMek's TM p.316 offensive speed factor, rounded to two decimal places.
@@ -95,7 +92,7 @@ export function offensiveSpeedFactorMP(entity: BaseEntity): number {
     }
 
     default:
-      if (isMekBVMovementEntity(entity)) {
+      if (isMekEntity(entity)) {
         if (entity.isLandAirMek()) return run + Math.round(entity.airMekFlankMP() / 2);
       }
       return run + Math.round(Math.max(jump, entity.umuMP()) / 2);
