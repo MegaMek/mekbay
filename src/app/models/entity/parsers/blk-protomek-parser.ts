@@ -117,7 +117,9 @@ export function parseBlkProtoMek(bb: BuildingBlock, ctx: ParseContext): ProtoMek
   }
 
   // ── Equipment per location ──
-  parseBlkEquipment(bb, entity, ctx, PROTO_EQUIP_TAGS);
+  parseBlkEquipment(bb, entity, ctx, PROTO_EQUIP_TAGS, {
+    equipmentLineProfile: 'protomek',
+  });
 
   return entity;
 }

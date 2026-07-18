@@ -50,6 +50,30 @@ describe('parseEquipmentLine', () => {
     expect(parsed.shots).toBe(6);
   });
 
+  it('parses ProtoMek parenthesized ammo quantities contextually', () => {
+    const examples = [
+      ['Clan Ammo SRM-2 (10)', 'Clan Ammo SRM-2', 10],
+      ['CLAPGaussRifle Ammo (13)', 'CLAPGaussRifle Ammo', 13],
+      ['Clan Ammo ProtoMech LRM-3 (8)', 'Clan Ammo ProtoMech LRM-3', 8],
+      ['Clan Machine Gun Ammo - Proto (20)', 'Clan Machine Gun Ammo - Proto', 20],
+      ['CLMediumChemLaserAmmo (75)', 'CLMediumChemLaserAmmo', 75],
+      ['CLPlasmaCannonAmmo (10)', 'CLPlasmaCannonAmmo', 10],
+    ] as const;
+
+    for (const [line, name, shots] of examples) {
+      expect(parseEquipmentLine(line, { profile: 'protomek' })).toEqual(
+        jasmine.objectContaining({ name, shots }),
+      );
+    }
+  });
+
+  it('preserves parenthesized integers outside the ProtoMek grammar', () => {
+    const generic = parseEquipmentLine('Widget (10)');
+
+    expect(generic.name).toBe('Widget (10)');
+    expect(generic.shots).toBeUndefined();
+  });
+
   it('parses Java rear-mounted weapon-bay prefixes in their wire order', () => {
     const parsed = parseEquipmentLine('(R) (B) ISGaussRifle', {
       profile: 'dropship',

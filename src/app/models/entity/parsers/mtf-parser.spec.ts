@@ -206,6 +206,30 @@ describe('MTF parser identity', () => {
     expect(writeMtf(entity)).toContain('\njump mp:0\n');
   });
 
+  it('models QuadVee conversion gear as an intrinsic fixed system', () => {
+    const context = new ParseContext('quadvee.mtf', STANDARD_ARMOR_REGISTRY);
+    const entity = parseMtf(
+      minimalMtf()
+        .replace('Config:Biped', 'Config:QuadVee\nmotive:Track')
+        + quadVeeLegCriticals(),
+      context,
+    );
+
+    expect(entity.chassisConfig).toBe('QuadVee');
+    expect(context.errors.filter(error => error.message.includes('Conversion Gear'))).toEqual([]);
+    expect(entity.equipment().some(mount => mount.equipmentId === 'Conversion Gear')).toBeFalse();
+
+    for (const location of ['FLL', 'FRL', 'RLL', 'RRL']) {
+      expect(entity.criticalSlotGrid().get(location)?.[4]).toEqual(jasmine.objectContaining({
+        type: 'system',
+        systemType: 'Conversion Gear',
+      }));
+    }
+
+    const written = writeMtf(entity);
+    expect(written.match(/^Conversion Gear$/gm)?.length).toBe(4);
+  });
+
   it('does not add implicit Clan CASE where explicit CASE already protects the location', () => {
     const clanCase = new MiscEquipment({
       id: 'Clan CASE', name: 'CASE', type: 'misc', flags: ['F_CASE'],
@@ -315,6 +339,12 @@ walk mp:5
 jump mp:0
 armor:Standard(Inner Sphere)
 `;
+}
+
+function quadVeeLegCriticals(): string {
+  return ['Front Left Leg', 'Front Right Leg', 'Rear Left Leg', 'Rear Right Leg']
+    .map(location => `${location}:\nHip\nUpper Leg Actuator\nLower Leg Actuator\nFoot Actuator\nConversion Gear\n`)
+    .join('');
 }
 
 function clanMtf(extra: string): string {

@@ -62,7 +62,7 @@ export interface EquipmentLineModifiers {
   isNewBay: boolean;
 }
 
-export type EquipmentLineProfile = 'generic' | 'large-craft' | 'dropship';
+export type EquipmentLineProfile = 'generic' | 'large-craft' | 'dropship' | 'protomek';
 
 export interface EquipmentLineParseOptions {
   readonly profile?: EquipmentLineProfile;
@@ -167,6 +167,17 @@ export function parseEquipmentLine(
   // Rebuild name without recognised suffixes
   const remainingParts = colonParts.filter((_, i) => !suffixesToRemove.includes(i));
   name = remainingParts.join(':').trim();
+
+  // ProtoMek BLKs encode the number of shots in an ammo mount as a terminal
+  // parenthesized integer. Keep this grammar scoped to ProtoMeks because
+  // parentheses are otherwise valid equipment-name text.
+  if (options.profile === 'protomek') {
+    const shotMatch = name.match(/^(.*\S) \((\d+)\)$/);
+    if (shotMatch) {
+      name = shotMatch[1].trim();
+      result.shots = parseInt(shotMatch[2], 10);
+    }
+  }
 
   // Location modifiers precede colon modifiers in BLK files, for example
   // `Light Gauss Rifle (PT):SIZE:1.0`. Strip them after rebuilding the name.
