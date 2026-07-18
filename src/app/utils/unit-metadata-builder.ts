@@ -103,6 +103,7 @@ export class UnitMetadataBuilder {
         || entity.entityType === 'Infantry'
         || entity.entityType === 'ProtoMek' ? 1 : 0,
       subtype: entity.unitSubtype(),
+      level: entity.staticTechLevel(),
       techRating: entity.techRating(),
 
       walk: entity.walkMP(),
@@ -124,6 +125,7 @@ export class UnitMetadataBuilder {
       quirks: entity.quirks().map(({ quirk }) => quirk.name),
       crewSize: entity.crewSlotCount(),
       features: this.buildFeatures(entity),
+      cost: Math.round(entity.cost()),
     };
   }
 

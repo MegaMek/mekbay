@@ -39,6 +39,83 @@ describe('MekEntity optional systems', () => {
     expect(riscTech?.techBase).toBe('IS');
     expect(riscTech?.dates).toEqual({ prototype: 3134 });
   });
+
+  it('treats armored mounted equipment as Advanced static technology', () => {
+    const entity = new BipedMekEntity();
+    const laser = new WeaponEquipment({
+      id: 'armored laser',
+      name: 'Armored Laser',
+      type: 'weapon',
+      weapon: { damage: 5, ranges: [3, 6, 9, 12] },
+    });
+    const mount = mounted(laser);
+    mount.armored = true;
+    entity.equipment.set([mount]);
+
+    expect(entity.staticTechLevel()).toBe('Advanced');
+  });
+});
+
+describe('MekEntity technology', () => {
+  it('includes mounted equipment in its composite technology rating', () => {
+    const entity = new BipedMekEntity();
+    entity.equipment.set([ratedWeaponMount('experimental laser')]);
+
+    expect(entity.techRating()).toBe('F/X-X-X-X');
+  });
+
+  it('uses the highest static technology level in the entity composite', () => {
+    const entity = new BipedMekEntity();
+    expect(entity.staticTechLevel()).toBe('Advanced');
+
+    entity.equipment.set([ratedWeaponMount('experimental laser')]);
+    expect(entity.staticTechLevel()).toBe('Experimental');
+  });
+
+  it('classifies a hybrid-structure Mek as Experimental technology', () => {
+    const entity = new BipedMekEntity();
+    entity.setUniformStructure(standardStructure(60));
+    const conventionalLevel = entity.staticTechLevel();
+    const conventionalRating = entity.techRating();
+    entity.setStructureAt('LA', standardStructure(70));
+
+    expect(entity.hasHybridStructure()).toBeTrue();
+    expect(entity.staticTechLevel()).toBe('Experimental');
+    expect(entity.techRating()).toBe(conventionalRating);
+
+    entity.setStructureAt('LA', standardStructure(60));
+    expect(entity.hasHybridStructure()).toBeFalse();
+    expect(entity.staticTechLevel()).toBe(conventionalLevel);
+  });
+
+  it('classifies a non-fusion BattleMek as Experimental', () => {
+    const entity = new BipedMekEntity();
+    entity.setTonnage(50);
+    entity.mountedEngine.set(new MountedEngine({ type: 'ICE', rating: 100, techBase: 'IS' }));
+
+    expect(entity.staticTechLevel()).toBe('Experimental');
+  });
+
+  it('includes entity-specific systems in the composite technology rating', () => {
+    const entity = new BipedMekEntity();
+    entity.setTonnage(50);
+    entity.year.set(2500);
+
+    expect(entity.techRating()).toBe('D/C-E-D-C');
+
+    entity.year.set(3080);
+    entity.cockpitType.set('Small');
+
+    expect(entity.techRating()).toBe('E/X-X-E-D');
+  });
+
+  it('starts its composite technology rating with Mek construction technology', () => {
+    const entity = new BipedMekEntity();
+    entity.setTonnage(50);
+    entity.year.set(2500);
+
+    expect(entity.techRating()).toBe('D/C-E-D-C');
+  });
 });
 
 describe('MekEntity patchwork armor', () => {
@@ -602,4 +679,20 @@ function mountedAt(equipment: Equipment, location: string): EntityMountedEquipme
     omniPodMounted: false,
     armored: false,
   });
+}
+
+function ratedWeaponMount(id: string): EntityMountedEquipment {
+  return mountedAt(new WeaponEquipment({
+    id,
+    name: id,
+    type: 'weapon',
+    tech: {
+      base: 'IS',
+      rating: 'F',
+      level: 'Experimental',
+      availability: { sl: 'X', sw: 'X', clan: 'X', da: 'X' },
+      advancement: {},
+    },
+    weapon: { damage: 5, ranges: [3, 6, 9, 12] },
+  }), 'RA');
 }

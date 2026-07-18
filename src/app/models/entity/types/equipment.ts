@@ -39,7 +39,7 @@ import {
 } from '../../equipment.model';
 import type { BaseEntity } from '../base-entity';
 import { getEquipmentBV } from '../utils/equipment-bv';
-import { getEquipmentCost } from '../utils/equipment-cost';
+import { getEquipmentCost } from '../utils/cost';
 import { getEquipmentTonnage } from '../utils/equipment-tonnage';
 
 // ============================================================================

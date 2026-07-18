@@ -70,6 +70,10 @@ export abstract class AeroEntity extends BaseEntity {
     return this.techBase() === 'IS' ? super.omniTechAdvancement() : null;
   }
 
+  protected override usesLargeEngineTechnology(): boolean {
+    return false;
+  }
+
   protected isPrimitiveAero(): boolean {
     return this.cockpitType() === 'Primitive';
   }

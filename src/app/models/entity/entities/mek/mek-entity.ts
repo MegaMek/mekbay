@@ -145,6 +145,16 @@ export abstract class MekEntity extends BaseEntity {
     if (this.hasRiscHeatSinkOverrideKit()) {
       sources.push(getRiscHeatSinkOverrideKitTech());
     }
+    if (this.mountedEngine().installed && !this.isIndustrial() && !this.mountedEngine().isFusion) {
+      sources.push({
+        rating: 'A', level: 'Experimental', availability: ['A', 'A', 'A', 'A'],
+      });
+    }
+    if (this.hasHybridStructure()) { // FrankenMek Technology
+      sources.push({
+        rating: 'A', level: 'Experimental', availability: ['A', 'A', 'A', 'A'],
+      });
+    }
     return sources;
   }
 

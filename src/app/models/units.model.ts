@@ -36,7 +36,7 @@
  */
 import type { Equipment } from "./equipment.model";
 import type { Era } from "./eras.model";
-import type { MoveType, UnitSubtype, UnitType } from "./entity/types";
+import type { ComponentTechLevel, MoveType, UnitSubtype, UnitType } from "./entity/types";
 import { TechBase } from "./tech.model";
 
 export type { MoveType, UnitSubtype, UnitType } from "./entity/types";
@@ -155,7 +155,7 @@ export interface Unit {
     bv: number;
     pv: number;
     cost: number;
-    level: number;
+    level: ComponentTechLevel;
     techBase: TechBase;
     techRating: string;
     type: UnitType;

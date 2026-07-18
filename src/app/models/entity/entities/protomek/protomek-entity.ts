@@ -46,6 +46,7 @@ import {
 } from '../../types';
 import type { UnitSubtype, UnitType } from '../../types';
 import { getProtoMekConstructionTech, getProtoMekInterfaceCockpitTech } from '../../components';
+import type { Equipment } from '../../../equipment.model';
 import type { TechRatingSource } from '../../types';
 
 // ============================================================================
@@ -76,6 +77,12 @@ export class ProtoMekEntity extends BaseEntity {
   /** MegaMek's ProtoMek override replaces, rather than extends, Entity's base systems. */
   protected override baseSystemTechAdvancements(): readonly TechRatingSource[] {
     return [];
+  }
+
+  protected override mountedEquipmentContributesStaticTech(equipment: Equipment): boolean {
+    // MegaMek's context-free BLK load resets the built-in EI to Off. The
+    // separate interface-cockpit system advancement still contributes.
+    return !equipment.hasFlag('F_EI_INTERFACE');
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

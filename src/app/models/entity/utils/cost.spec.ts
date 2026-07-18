@@ -8,6 +8,47 @@ import {
     TestSupportTankEntity as SupportTankEntity,
 } from '../testing/test-entities';
 import { EntityMountedEquipment } from '../types';
+import { TestBipedMekEntity, TestHandheldWeaponEntity } from '../testing/test-entities';
+
+describe('entity cost', () => {
+  it('uses fixed prices from the equipment database', () => {
+    const entity = new TestBipedMekEntity();
+    entity.equipment.set([mount(new MiscEquipment({
+      id: 'ISMediumShield',
+      name: 'Shield (Medium)',
+      type: 'misc',
+      stats: { cost: 100000 },
+    }))]);
+
+    expect(entity.cost()).toBe(100000);
+  });
+
+  it('prices handheld equipment as structure and payload', () => {
+    const entity = new TestHandheldWeaponEntity();
+    entity.equipment.set([mount(new MiscEquipment({
+      id: 'test-equipment',
+      name: 'Test Equipment',
+      type: 'misc',
+      stats: { cost: 1250 },
+    }))]);
+
+    expect(entity.cost()).toBe(2500);
+  });
+});
+
+function mount(equipment: MiscEquipment, armored = false, size?: number): EntityMountedEquipment {
+    return new EntityMountedEquipment({
+        mountId: equipment.id,
+        equipmentId: equipment.id,
+        equipment,
+        allocation: { kind: 'location', location: 'RA' },
+        rearMounted: false,
+        turretMounted: false,
+        omniPodMounted: false,
+        armored,
+        size,
+    });
+}
 
 describe('EntityMountedEquipment.getCost', () => {
     const entity = new BipedMekEntity();
@@ -138,12 +179,38 @@ describe('EntityMountedEquipment.getCost', () => {
             .toBe(3000000);
     });
 
-    it('defers support and VTOL jet-booster engine-weight costs', () => {
+    it('resolves support and VTOL jet-booster engine-weight costs', () => {
         const supportTank = new SupportTankEntity();
         expect(mount(variableEquipment('supercharger', ['F_MASC', 'S_SUPERCHARGER'])).getCost(supportTank))
-            .toBeUndefined();
+            .toBe(0);
         expect(mount(variableEquipment('jet booster', ['F_MASC', 'F_JET_BOOSTER'])).getCost(entity))
-            .toBeUndefined();
+            .toBe(3000000);
+    });
+
+    it('resolves zero-cost chassis markers and anti-Mek gear', () => {
+        expect(mount(variableEquipment('flotation hull', ['F_FLOTATION_HULL'])).getCost(entity)).toBe(0);
+        expect(mount(variableEquipment('off-road chassis', ['F_OFF_ROAD'])).getCost(entity)).toBe(0);
+        expect(mount(variableEquipment('anti-Mek gear', ['F_ANTI_MEK_GEAR'])).getCost(entity)).toBe(0);
+    });
+
+    it('resolves large-craft control-system costs', () => {
+        const cases: Array<[string, string[], number]> = [
+            ['SRCS', ['F_SRCS'], 25000],
+            ['shielded SRCS', ['F_SASRCS'], 31250],
+            ['CASPAR', ['F_CASPAR'], 600000],
+            ['CASPAR II', ['F_CASPAR_II'], 90000],
+        ];
+        for (const [name, flags, expected] of cases) {
+            expect(mount(variableCostEquipment(name, flags, 2)).getCost(entity)).toBe(expected);
+        }
+    });
+
+    it('resolves turret and power-generator costs', () => {
+        expect(mount(variableCostEquipment('head turret', ['F_HEAD_TURRET'], 2)).getCost(entity)).toBe(20000);
+        expect(mount(variableCostEquipment('sponson turret', ['F_SPONSON_TURRET'], 2)).getCost(entity)).toBe(8000);
+        expect(mount(variableCostEquipment('pintle turret', ['F_PINTLE_TURRET'], 2)).getCost(entity)).toBe(2000);
+        expect(mount(variableEquipment('FUSION PowerGenerator', ['F_POWER_GENERATOR']), false, 3).getCost(entity))
+            .toBe(30000);
     });
 
     const variableSizeCases: Array<[string, string[], number, number]> = [
@@ -195,20 +262,6 @@ function variableEquipment(name: string, flags: string[], techBase: 'IS' | 'Clan
     });
 }
 
-function mount(equipment: MiscEquipment, armored = false, size?: number): EntityMountedEquipment {
-    return new EntityMountedEquipment({
-        mountId: equipment.id,
-        equipmentId: equipment.id,
-        equipment,
-        allocation: { kind: 'location', location: 'RA' },
-        rearMounted: false,
-        turretMounted: false,
-        omniPodMounted: false,
-        armored,
-        size,
-    });
-}
-
 function weaponMount(name: string, tonnage: number, flags: string[], cost = 0): EntityMountedEquipment {
     return new EntityMountedEquipment({
         mountId: name,
@@ -225,5 +278,15 @@ function weaponMount(name: string, tonnage: number, flags: string[], cost = 0): 
         turretMounted: false,
         omniPodMounted: false,
         armored: false,
+    });
+}
+
+function variableCostEquipment(name: string, flags: string[], tonnage: number): MiscEquipment {
+    return new MiscEquipment({
+        id: name,
+        name,
+        type: 'misc',
+        flags,
+        stats: { cost: 'variable', tonnage },
     });
 }

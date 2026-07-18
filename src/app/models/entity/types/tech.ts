@@ -86,6 +86,7 @@ export interface TechRatingSource {
     readonly techBase?: EquipmentTechBase;
     readonly base?: EquipmentTechBase;
     readonly rating: TechRating;
+    readonly level?: ComponentTechLevel;
     readonly availability: TechAvailability | TechAvailabilityTuple;
     readonly dates?: TechAdvancementDates | SplitTechDates;
     readonly advancement?: SplitTechDates;
@@ -653,6 +654,18 @@ const TECH_LEVEL_RANK: Readonly<Record<ComponentTechLevel, number>> = {
 
 export function compareTechLevels(left: ComponentTechLevel, right: ComponentTechLevel): number {
     return TECH_LEVEL_RANK[left] - TECH_LEVEL_RANK[right];
+}
+
+/** Highest static construction-rules level among the supplied technologies. */
+export function calculateCompositeStaticTechLevel(
+    sources: readonly TechRatingSource[],
+): ComponentTechLevel {
+    return sources.reduce<ComponentTechLevel>(
+        (level, source) => source.level != null && compareTechLevels(source.level, level) > 0
+            ? source.level
+            : level,
+        'Introductory',
+    );
 }
 
 function compoundScopeBases(scope: CompoundTechScope): readonly EntityTechBase[] {

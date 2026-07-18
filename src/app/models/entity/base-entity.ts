@@ -52,7 +52,7 @@ import { AmmoEquipment, ArmorEquipment, Equipment, MiscEquipment, WeaponEquipmen
 import { SourcebookReference } from '../sourcebook.model';
 import {
   ArmorFace,
-  ArmorType,
+  calculateCompositeStaticTechLevel,
   calculateCompositeTechRating,
   C3SystemType,
   EngineFlag,
@@ -89,6 +89,7 @@ import type { SupportVehicle } from './entities/support-vehicle';
 import type { UnitSubtype, UnitType } from './types';
 import { EquipmentRegistry } from '../equipment-lookup';
 import { CLAN_EXCEPTIONAL_BAY_IDS, weaponBayEquipmentId } from './utils/implicit-equipment';
+import { calculateEntityCost } from './utils/cost';
 
 /**
  * Set to `true` to make `computeMixedTech` collect ALL mixed-tech reasons
@@ -288,16 +289,45 @@ export abstract class BaseEntity implements EntityTechnology {
     return sources;
   }
 
-  private techRatingSources(): TechRatingSource[] {
+  /** Whether a rating above 400 selects MegaMek's Large Engine technology record. */
+  protected usesLargeEngineTechnology(): boolean {
+    return true;
+  }
+
+  /** Whether a mounted item contributes to the context-free static technology level. */
+  protected mountedEquipmentContributesStaticTech(_equipment: Equipment): boolean {
+    return true;
+  }
+
+  private staticTechLevelSources(): TechRatingSource[] {
     const sources: TechRatingSource[] = this.equipment()
-      .flatMap(mount => mount.equipment && this.mountedEquipmentContributesTech(mount.equipment)
+      .flatMap(mount => mount.equipment && this.mountedEquipmentContributesStaticTech(mount.equipment)
         ? [mount.equipment.tech]
         : []);
-    sources.push(...this.implicitSystemEquipment().map(equipment => equipment.tech));
-
-    sources.push(...this.baseSystemTechAdvancements());
+    const systemSources = [...this.baseSystemTechAdvancements()];
+    const engine = this.mountedEngine();
+    if (engine.installed && !this.usesLargeEngineTechnology()) {
+      systemSources[0] = engine.getTechAdvancement({
+        large: false,
+        supportVee: this.isSupportVehicle(),
+      });
+    }
+    sources.push(...systemSources);
     sources.push(...this.entityTechAdvancements());
     return sources;
+  }
+
+  private techRatingSources(): TechRatingSource[] {
+    const sources: TechRatingSource[] = this.equipment()
+      .flatMap(mount => mount.equipment ? [mount.equipment.tech] : []);
+    sources.push(...this.implicitSystemEquipment().map(equipment => equipment.tech));
+    sources.push(...this.baseSystemTechAdvancements());
+    sources.push(...this.entityTechAdvancements());
+    return sources.filter(source => {
+      if (!('advancement' in source)) return true;
+      const equipment = this.equipment().find(mount => mount.equipment?.tech === source)?.equipment;
+      return equipment == null || this.mountedEquipmentContributesTech(equipment);
+    });
   }
 
   /** Mirror CompositeTechLevel's blank-progression early return. */
@@ -430,6 +460,9 @@ export abstract class BaseEntity implements EntityTechnology {
   // ── Equipment - SINGLE SOURCE OF TRUTH ──
   equipment = signal<EntityMountedEquipment[]>([]);
 
+  /** Construction cost, including ammunition, derived from entity state. */
+  readonly cost = computed(() => calculateEntityCost(this, { ignoreAmmo: false }));
+
   protected computeImplicitSystemEquipment(): readonly Equipment[] {
     const implicit: Equipment[] = [];
     if (!this.supportsWeaponBays()) return implicit;
@@ -465,6 +498,15 @@ export abstract class BaseEntity implements EntityTechnology {
       obsoleteYears: this.obsoleteYears(),
     },
   ));
+  readonly staticTechLevel = computed(() => {
+    const componentLevel = calculateCompositeStaticTechLevel(this.staticTechLevelSources());
+    return this.equipment().some(mount => mount.armored)
+      ? calculateCompositeStaticTechLevel([
+        { rating: 'E', level: componentLevel, availability: ['X', 'X', 'X', 'X'] },
+        { rating: 'E', level: 'Advanced', availability: ['X', 'X', 'F', 'E'] },
+      ])
+      : componentLevel;
+  });
   readonly mountedWeapons = computed<readonly EntityMountedWeapon[]>(() =>
     this.equipment().filter(isEntityMountedWeapon)
   );
