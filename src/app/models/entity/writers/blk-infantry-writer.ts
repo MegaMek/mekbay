@@ -96,10 +96,14 @@ export function writeBlkInfantry(entity: InfantryEntity): string {
   // ── Section 7: Infantry-specific tail fields ──
   w.addBlock('squad_size', entity.squadSize());
   w.addBlock('squadn', entity.squadCount());
-  if (entity.secondaryCount() > 0) w.addBlock('secondn', entity.secondaryCount());
+  const primaryWeapon = entity.primaryWeapon();
+  const secondaryWeapon = entity.secondaryWeapon();
+  if (secondaryWeapon && entity.secondaryCount() > 0) {
+    w.addBlock('secondn', entity.secondaryCount());
+  }
 
-  if (entity.primaryWeapon())   w.addBlock('Primary', entity.primaryWeapon());
-  if (entity.secondaryWeapon()) w.addBlock('Secondary', entity.secondaryWeapon());
+  if (primaryWeapon)   w.addBlock('Primary', primaryWeapon.id);
+  if (secondaryWeapon) w.addBlock('Secondary', secondaryWeapon.id);
 
   // Armor divisor - Java uses Double.toString() which always writes ".0" for integers
   if (entity.armorDivisor() !== 1) {
@@ -108,12 +112,12 @@ export function writeBlkInfantry(entity: InfantryEntity): string {
   }
 
   // Boolean flags - only written when true, value is always "true"
-  if (entity.encumberingArmor()) w.addBlock('encumberingarmor', 'true');
-  if (entity.spaceSuit())        w.addBlock('spacesuit', 'true');
-  if (entity.hasDEST())          w.addBlock('dest', 'true');
-  if (entity.sneakCamo())        w.addBlock('sneakcamo', 'true');
-  if (entity.sneakIR())          w.addBlock('sneakir', 'true');
-  if (entity.sneakECM())         w.addBlock('sneakecm', 'true');
+  if (entity.effectiveEncumberingArmor()) w.addBlock('encumberingarmor', 'true');
+  if (entity.effectiveSpaceSuit())        w.addBlock('spacesuit', 'true');
+  if (entity.effectiveDEST())             w.addBlock('dest', 'true');
+  if (entity.effectiveSneakCamo())        w.addBlock('sneakcamo', 'true');
+  if (entity.effectiveSneakIR())          w.addBlock('sneakir', 'true');
+  if (entity.effectiveSneakECM())         w.addBlock('sneakecm', 'true');
 
   // Specializations (bitmap)
   const specs = entity.specializations();

@@ -64,6 +64,9 @@ import {
  * and armor from the structured `armorValues` (LocationArmor).
  */
 export function writeBlkMek(entity: MekEntity): string {
+  if (entity.hasHybridStructure()) {
+    throw new Error('Hybrid per-location structure cannot be represented in BLK format');
+  }
   const w = new BuildingBlockWriter();
   const isQuad = entity instanceof QuadMekEntity;
 

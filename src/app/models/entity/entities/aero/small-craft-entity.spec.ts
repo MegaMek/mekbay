@@ -1,7 +1,7 @@
-import { EquipmentRegistry } from '../../../equipment-lookup';
 import { createEquipment, Equipment, WeaponEquipment } from '../../../equipment.model';
 import { EntityMountedEquipment } from '../../types';
 import { SmallCraftEntity } from './small-craft-entity';
+import { createTestEquipmentRegistry } from '../../testing/test-equipment-registry';
 
 describe('SmallCraftEntity implicit equipment', () => {
   it('derives its automatic ECM from entity state', () => {
@@ -9,7 +9,7 @@ describe('SmallCraftEntity implicit equipment', () => {
       id: 'ISSingle-Hex ECM', name: 'Single-Hex ECM', type: 'misc', flags: ['F_ECM'],
     });
     const weapon = createWeapon('Large Laser', ['F_ENERGY']);
-    const entity = new SmallCraftEntity(new EquipmentRegistry({
+    const entity = new SmallCraftEntity(createTestEquipmentRegistry({
       [automaticEcm.id]: automaticEcm,
       [weapon.id]: weapon,
     }));
@@ -28,7 +28,7 @@ describe('SmallCraftEntity implicit equipment', () => {
       id: 'ISSingle-Hex ECM', name: 'Single-Hex ECM', type: 'misc', flags: ['F_ECM'],
     });
     const weapon = createWeapon('Large Laser', ['F_ENERGY']);
-    const entity = new SmallCraftEntity(new EquipmentRegistry({ [automaticEcm.id]: automaticEcm }));
+    const entity = new SmallCraftEntity(createTestEquipmentRegistry({ [automaticEcm.id]: automaticEcm }));
 
     entity.equipment.set([mount(weapon), mount(automaticEcm, 'ecm')]);
 

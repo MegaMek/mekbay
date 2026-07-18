@@ -32,7 +32,12 @@
  */
 
 import { Signal, computed, signal } from '@angular/core';
-import { Equipment, getAmmoCategory, WeaponEquipment } from '../../../equipment.model';
+import {
+  getAmmoCategory,
+  InfantryWeaponEquipment,
+  MiscEquipment,
+  WeaponEquipment,
+} from '../../../equipment.model';
 import {
   EntityType,
   EntityValidationMessage,
@@ -73,29 +78,19 @@ export class InfantryEntity extends InfantryBaseEntity {
     const hasFieldEquipment = this.equipment().some(
       mount => mount.allocation.kind === 'location' && mount.allocation.location === 'Field Guns',
     );
-    const mountedArmorKit = this.equipment()
-      .find(mount => mount.equipment?.hasFlag('F_ARMOR_KIT'))
-      ?.equipment ?? null;
-    const armorKit = this.armorKitEquipment() ?? mountedArmorKit;
-    const hasEncumberingArmor = this.encumberingArmor()
-      || armorKit?.hasFlag('S_ENCUMBERING') === true;
     const sources: TechRatingSource[] = [
       getConventionalInfantryConstructionTech(
         this.motiveType(),
         hasFieldEquipment,
-        hasEncumberingArmor,
+        this.effectiveEncumberingArmor(),
       ),
       getInfantryMotiveTech(this.motiveType()),
       ...getInfantrySpecializationTech(this.specializations()),
     ];
     // MegaMek represents the platoon's primary/secondary pair as one
     // InfantryWeaponMounted and composes tech from its range weapon.
-    const rangeWeapon = this.secondaryCount() > 1
-      ? this.secondaryWeaponEquipment()
-      : this.primaryWeaponEquipment();
+    const rangeWeapon = this.rangeWeapon();
     if (rangeWeapon) sources.push(rangeWeapon.tech);
-    const legacyArmorKit = this.armorKitEquipment();
-    if (legacyArmorKit) sources.push(legacyArmorKit.tech);
     return sources;
   }
 
@@ -103,14 +98,16 @@ export class InfantryEntity extends InfantryBaseEntity {
   //  SIGNALS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  primaryWeapon = signal<string>('');
-  primaryWeaponEquipment = signal<Equipment | null>(null);
-  secondaryWeapon = signal<string>('');
-  secondaryWeaponEquipment = signal<Equipment | null>(null);
-  secondaryCount = signal<number>(0);
-  armorDivisor = signal<number>(1);
-  armorKit = signal<string>('');
-  armorKitEquipment = signal<Equipment | null>(null);
+  readonly primaryWeapon = signal<InfantryWeaponEquipment | null>(null);
+  readonly secondaryWeapon = signal<InfantryWeaponEquipment | null>(null);
+  readonly secondaryCount = signal<number>(0);
+  readonly rangeWeapon = computed<InfantryWeaponEquipment | null>(() => {
+    const secondaryWeapon = this.secondaryWeapon();
+    return this.secondaryCount() > 1 && secondaryWeapon
+      ? secondaryWeapon
+      : this.primaryWeapon();
+  });
+  readonly armorDivisor = signal<number>(1);
   override motiveType = signal<MotiveType>('Leg');
 
   // Infantry motive modifiers - these flag VTOL/SCUBA sub-variants
@@ -127,6 +124,39 @@ export class InfantryEntity extends InfantryBaseEntity {
   sneakCamo = signal<boolean>(false);
   sneakIR = signal<boolean>(false);
   sneakECM = signal<boolean>(false);
+
+  /** The installed armor kit is derived from the canonical equipment list. */
+  readonly armorKit = computed<MiscEquipment | null>(() => {
+    for (const mount of this.equipment()) {
+      const equipment = mount.equipment;
+      if (equipment instanceof MiscEquipment && equipment.isArmorKit) return equipment;
+    }
+    return null;
+  });
+  readonly effectiveEncumberingArmor = computed(() => {
+    const armorKit = this.armorKit();
+    return armorKit ? armorKit.hasFlag('S_ENCUMBERING') : this.encumberingArmor();
+  });
+  readonly effectiveSpaceSuit = computed(() => {
+    const armorKit = this.armorKit();
+    return armorKit ? armorKit.hasFlag('S_SPACE_SUIT') : this.spaceSuit();
+  });
+  readonly effectiveDEST = computed(() => {
+    const armorKit = this.armorKit();
+    return armorKit ? armorKit.hasFlag('S_DEST') : this.hasDEST();
+  });
+  readonly effectiveSneakCamo = computed(() => {
+    const armorKit = this.armorKit();
+    return armorKit ? armorKit.hasFlag('S_SNEAK_CAMO') : this.sneakCamo();
+  });
+  readonly effectiveSneakIR = computed(() => {
+    const armorKit = this.armorKit();
+    return armorKit ? armorKit.hasFlag('S_SNEAK_IR') : this.sneakIR();
+  });
+  readonly effectiveSneakECM = computed(() => {
+    const armorKit = this.armorKit();
+    return armorKit ? armorKit.hasFlag('S_SNEAK_ECM') : this.sneakECM();
+  });
 
   // Manei Domini augmentations (pilot option names)
   augmentations = signal<string[]>([]);
@@ -152,7 +182,7 @@ export class InfantryEntity extends InfantryBaseEntity {
     }
 
     let walkMP = this.originalWalkMP();
-    if (this.encumberingArmor()) walkMP = Math.max(walkMP - 1, 1);
+    if (this.effectiveEncumberingArmor()) walkMP = Math.max(walkMP - 1, 1);
     if (this.hasSupportWeaponPenalty() && this.motiveType() !== 'Tracked' && this.motiveType() !== 'Jump') {
       walkMP = Math.max(walkMP - 1, 0);
     }
@@ -177,7 +207,7 @@ export class InfantryEntity extends InfantryBaseEntity {
     return this.secondaryCount() > 1
       && !this.augmentations().some(augmentation => augmentation === 'tsm_implant' || augmentation === 'dermal_armor')
       && !this.specializations().has('tag-troops')
-      && !!this.secondaryWeaponEquipment()?.hasFlag('F_INF_SUPPORT');
+      && !!this.secondaryWeapon()?.hasFlag('F_INF_SUPPORT');
   }
 
   private hasFieldArtillery(): boolean {
@@ -266,6 +296,24 @@ export class InfantryEntity extends InfantryBaseEntity {
 
   protected override typeSpecificValidation: Signal<EntityValidationMessage[]> = computed(() => {
     const msgs: EntityValidationMessage[] = [];
+
+    if (!this.primaryWeapon()) {
+      msgs.push({
+        severity: 'error', category: 'general', code: 'INF_NO_PRIMARY_WEAPON',
+        message: 'Infantry must have a primary infantry weapon',
+      });
+    }
+    if (!Number.isInteger(this.secondaryCount()) || this.secondaryCount() < 0) {
+      msgs.push({
+        severity: 'error', category: 'general', code: 'INF_INVALID_SECONDARY_COUNT',
+        message: 'Infantry secondary weapon count must be a non-negative integer',
+      });
+    } else if (this.secondaryCount() > 0 && !this.secondaryWeapon()) {
+      msgs.push({
+        severity: 'error', category: 'general', code: 'INF_NO_SECONDARY_WEAPON',
+        message: 'Infantry with secondary weapons must specify a secondary infantry weapon',
+      });
+    }
 
     if (this.squadSize() <= 0) {
       msgs.push({

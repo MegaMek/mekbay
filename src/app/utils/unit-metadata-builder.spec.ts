@@ -1,28 +1,30 @@
-import { FixedWingSupportEntity } from '../models/entity/entities/aero/fixed-wing-support-entity';
 import { BaseEntity } from '../models/entity/base-entity';
-import { ConvFighterEntity } from '../models/entity/entities/aero/conv-fighter-entity';
-import { DropShipEntity } from '../models/entity/entities/aero/dropship-entity';
-import { HandheldWeaponEntity } from '../models/entity/entities/misc/handheld-weapon-entity';
-import { BattleArmorEntity } from '../models/entity/entities/infantry/battle-armor-entity';
-import { InfantryEntity } from '../models/entity/entities/infantry/infantry-entity';
-import { BipedMekEntity } from '../models/entity/entities/mek/biped-mek-entity';
-import { ProtoMekEntity } from '../models/entity/entities/protomek/protomek-entity';
-import { MountedEngine } from '../models/entity/components';
+import { MountedEngine, MountedStructure, STANDARD_STRUCTURE_EQUIPMENT } from '../models/entity/components';
 import { EntityMountedEquipment } from '../models/entity/types/equipment';
-import { JumpShipEntity } from '../models/entity/entities/largecraft/jumpship-entity';
-import { SpaceStationEntity } from '../models/entity/entities/largecraft/space-station-entity';
-import { WarShipEntity } from '../models/entity/entities/largecraft/warship-entity';
-import { SmallCraftEntity } from '../models/entity/entities/aero/small-craft-entity';
-import { AeroSpaceFighterEntity } from '../models/entity/entities/aero/aero-space-fighter-entity';
-import { QuadMekEntity } from '../models/entity/entities/mek/quad-mek-entity';
-import { TripodMekEntity } from '../models/entity/entities/mek/tripod-mek-entity';
-import { QuadVeeEntity } from '../models/entity/entities/mek/quad-vee-entity';
-import { LamEntity } from '../models/entity/entities/mek/lam-entity';
-import { TankEntity } from '../models/entity/entities/vehicle/tank-entity';
 import { locationArmor } from '../models/entity/types';
-import { SupportNavalEntity } from '../models/entity/entities/vehicle/support-naval-entity';
-import { SupportTankEntity } from '../models/entity/entities/vehicle/support-tank-entity';
-import { SupportVtolEntity } from '../models/entity/entities/vehicle/support-vtol-entity';
+import {
+  TestAeroSpaceFighterEntity as AeroSpaceFighterEntity,
+  TestBattleArmorEntity as BattleArmorEntity,
+  TestBipedMekEntity as BipedMekEntity,
+  TestConvFighterEntity as ConvFighterEntity,
+  TestDropShipEntity as DropShipEntity,
+  TestFixedWingSupportEntity as FixedWingSupportEntity,
+  TestHandheldWeaponEntity as HandheldWeaponEntity,
+  TestInfantryEntity as InfantryEntity,
+  TestJumpShipEntity as JumpShipEntity,
+  TestLamEntity as LamEntity,
+  TestProtoMekEntity as ProtoMekEntity,
+  TestQuadMekEntity as QuadMekEntity,
+  TestQuadVeeEntity as QuadVeeEntity,
+  TestSmallCraftEntity as SmallCraftEntity,
+  TestSpaceStationEntity as SpaceStationEntity,
+  TestSupportNavalEntity as SupportNavalEntity,
+  TestSupportTankEntity as SupportTankEntity,
+  TestSupportVtolEntity as SupportVtolEntity,
+  TestTankEntity as TankEntity,
+  TestTripodMekEntity as TripodMekEntity,
+  TestWarShipEntity as WarShipEntity,
+} from '../models/entity/testing/test-entities';
 import { Equipment, EquipmentRawData, MiscEquipment, StructureEquipment, WeaponEquipment } from '../models/equipment.model';
 import { UnitMetadataBuilder } from './unit-metadata-builder';
 import type { Sourcebook } from '../models/sourcebook.model';
@@ -35,7 +37,8 @@ describe('UnitMetadataBuilder', () => {
     const entity = new SupportNavalEntity();
     entity.motiveType.set('Submarine');
 
-    expect(Object.getPrototypeOf(SupportNavalEntity.prototype).constructor.name).toBe('NavalEntity');
+    expect(Object.getPrototypeOf(Object.getPrototypeOf(SupportNavalEntity.prototype)).constructor.name)
+      .toBe('NavalEntity');
     expect(entity.isSupportVehicle()).toBeTrue();
     expect(entity.entityType).toBe('SupportNaval');
     expect(builder.build(entity).type).toBe('Naval');
@@ -48,15 +51,38 @@ describe('UnitMetadataBuilder', () => {
     expect(builder.build(entity).type).toBe('Tank');
     expect(builder.build(entity).structureType).toBeNull();
 
-    entity.mountedStructure.set(
-      new StructureEquipment({
+    const structure = new StructureEquipment({
         id: 'Standard',
         name: 'Standard',
         type: 'structure',
         structure: { typeId: 0 },
-      }),
-    );
+    });
+    entity.setUniformStructure(new MountedStructure({ tonnage: entity.tonnage(), structure }));
     expect(builder.build(entity).structureType).toBe('Standard');
+  });
+
+  it('exports every effective Mek structure material with the global mixed projection', () => {
+    const entity = new BipedMekEntity();
+    entity.setTonnage(60);
+    const endo = new StructureEquipment({
+      id: 'IS Endo Steel',
+      name: 'Endo Steel',
+      type: 'structure',
+      structure: { typeId: 1 },
+      tech: { base: 'IS' },
+    });
+    entity.setUniformStructure(new MountedStructure({
+      tonnage: 60,
+      structure: STANDARD_STRUCTURE_EQUIPMENT,
+    }));
+    entity.setStructureAt('LA', new MountedStructure({ tonnage: 60, structure: endo }));
+
+    const metadata = builder.build(entity);
+    expect(metadata.structureType).toBe('Standard');
+    expect(metadata.comp?.filter(component => component.t === 'S').map(component => component.id))
+      .toContain(STANDARD_STRUCTURE_EQUIPMENT.id);
+    expect(metadata.comp?.filter(component => component.t === 'S').map(component => component.id))
+      .toContain(endo.id);
   });
 
   it('exports Java weight class display names without changing canonical categories', () => {
@@ -232,12 +258,16 @@ describe('UnitMetadataBuilder', () => {
     omniMek.omni.set(true);
 
     const industrialQuad = new QuadMekEntity();
-    industrialQuad.mountedStructure.set(new StructureEquipment({
+    const industrialStructure = new StructureEquipment({
       id: 'Industrial',
       name: 'Industrial',
       type: 'structure',
       flags: ['F_INDUSTRIAL_STRUCTURE'],
       structure: { typeId: 1 },
+    });
+    industrialQuad.setUniformStructure(new MountedStructure({
+      tonnage: industrialQuad.tonnage(),
+      structure: industrialStructure,
     }));
 
     const hover = new TankEntity();
@@ -331,14 +361,14 @@ describe('UnitMetadataBuilder', () => {
     expect(vehicle.techRating()).toBe('D/C-C-C-B');
   });
 
-  it('starts Battle Armor ratings with weight-class construction technology', () => {
+  it('combines Battle Armor construction and default BA Standard armor technology', () => {
     const battleArmor = new BattleArmorEntity();
     battleArmor.year.set(3052);
-    expect(battleArmor.techRating()).toBe('E/X-X-D-D');
+    expect(battleArmor.techRating()).toBe('E/X-X-E-D');
 
     battleArmor.isExoskeleton.set(true);
     battleArmor.year.set(2200);
-    expect(battleArmor.techRating()).toBe('C/B-B-B-B');
+    expect(battleArmor.techRating()).toBe('E/F-F-E-D');
   });
 
   it('includes aerospace fighter construction and cockpit technology', () => {
@@ -383,7 +413,8 @@ describe('UnitMetadataBuilder', () => {
 
     for (const [EntityClass, physicalBase] of cases) {
       const entity = new EntityClass();
-      expect(Object.getPrototypeOf(EntityClass.prototype).constructor.name).toBe(physicalBase);
+      expect(Object.getPrototypeOf(Object.getPrototypeOf(EntityClass.prototype)).constructor.name)
+        .toBe(physicalBase);
       expect(entity.isSupportVehicle()).toBeTrue();
     }
   });

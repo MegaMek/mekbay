@@ -41,6 +41,8 @@ import {
   encodeBlkTechLevel,
 } from '../parsers/blk-codec';
 import { BaseEntity } from '../base-entity';
+import type { MountedArmor } from '../components';
+import type { SupportVehicle } from '../entities/support-vehicle';
 import { serializeTransporterLines } from '../parsers/transporter-codec';
 import type { EncodeEquipmentOptions } from './equipment-encoder';
 
@@ -190,20 +192,23 @@ export function writeArmorBlocks(
   w: BuildingBlockWriter,
   entity: BaseEntity,
   patchworkLocs?: readonly string[],
+  virtualPatchworkArmor?: ReadonlyMap<string, MountedArmor | null>,
 ): void {
-  const armor = entity.mountedArmor();
-  w.addBlock('armor_type', encodeBlkArmorType(armor));
+  const armor = entity.uniformArmor();
+  w.addBlock('armor_type', encodeBlkArmorType(armor ?? 'PATCHWORK'));
 
   // Patchwork armor: write per-location blocks instead of global tech rating/level
-  if (armor.type === 'PATCHWORK' && patchworkLocs && armor.patchwork) {
+  if (!armor && patchworkLocs) {
     for (const loc of patchworkLocs) {
-      const locationArmor = armor.patchwork.get(loc);
-      if (locationArmor?.armor) {
+      const locationArmor = entity.armorLocations.includes(loc)
+        ? entity.armorAt(loc)
+        : virtualPatchworkArmor?.get(loc);
+      if (locationArmor) {
         w.addBlock(`${loc}_armor_type`, encodeBlkArmorType(locationArmor.type));
         w.addBlock(`${loc}_armor_tech`, locationArmor.techBase === 'Clan'
           ? 'Clan'
           : locationArmor.techBase === 'IS' ? 'Inner Sphere' : '(Unknown Technology Base)');
-        w.addBlock(`${loc}_armor_tech_rating`, encodeBlkTechRating(locationArmor.armor.rating));
+        w.addBlock(`${loc}_armor_tech_rating`, encodeBlkArmorTechRating(locationArmor));
       } else {
         // MegaMek writes sentinel values for patchwork pseudo-locations without armor.
         w.addBlock(`${loc}_armor_type`, -1);
@@ -214,15 +219,28 @@ export function writeArmorBlocks(
     return;
   }
 
+  if (!armor) throw new Error(`Patchwork armor is not representable for ${entity.entityType}`);
   w.addBlock('armor_tech_rating', encodeBlkArmorTechRating(armor));
   w.addBlock('armor_tech_level', encodeBlkArmorTechLevel(armor));
+}
+
+/** Write BAR only when the installed armor is support-vehicle BAR armor. */
+export function writeSupportVehicleBarRating(
+  w: BuildingBlockWriter,
+  entity: BaseEntity & SupportVehicle,
+): void {
+  if (entity.uniformArmor()?.armor.hasFlag('F_SUPPORT_VEE_BAR_ARMOR')) {
+    w.addBlock('barrating', entity.barRating());
+  }
 }
 
 /**
  * Write internal_type block (only when NOT Standard, i.e. code != 0).
  */
 export function writeInternalType(w: BuildingBlockWriter, entity: BaseEntity): void {
-  const structureTypeId = entity.mountedStructure()?.structureTypeId ?? -1;
+  const uniformStructure = entity.uniformStructureMaterial();
+  const structureTypeId = uniformStructure?.structure.structureTypeId
+    ?? (entity.structureByLocation().size > 0 ? 0 : -1);
   if (structureTypeId !== 0) {
     w.addBlock('internal_type', structureTypeId);
   }

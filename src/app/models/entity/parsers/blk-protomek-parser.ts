@@ -52,7 +52,7 @@ import { decodeMotiveType } from './motive-type-codec';
  */
 export function parseBlkProtoMek(bb: BuildingBlock, ctx: ParseContext): ProtoMekEntity {
   resetMountIdCounter();
-  const entity = new ProtoMekEntity();
+  const entity = new ProtoMekEntity(ctx.equipmentRegistry);
 
   // ── Base parsing ──
   parseBaseBlk(bb, entity, ctx);
@@ -88,7 +88,7 @@ export function parseBlkProtoMek(bb: BuildingBlock, ctx: ParseContext): ProtoMek
   }
 
   // ── Armor ──
-  parseBlkArmor(bb, entity, ctx);
+  parseBlkArmor(bb, entity, ctx, { remapStandardTo: 'STANDARD_PROTOMEK' });
 
   if (bb.exists('armor')) {
     const ints = bb.getDataAsInt('armor');

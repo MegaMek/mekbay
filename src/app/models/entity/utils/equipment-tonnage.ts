@@ -18,10 +18,10 @@ export function getEquipmentTonnage(
     const tonnage = entity.tonnage();
     if (equipment.hasFlag('F_JUMP_JET') || equipment.hasFlag('F_UMU')) {
         let unitTonnage = tonnage;
-        if (isMekEntity(entity) && entity.isFrankenMek()) {
+        if (isMekEntity(entity) && entity.hasHybridStructure()) {
             unitTonnage = Math.min(
-                entity.getStructureTonnageAtLocation(mount.location),
-                entity.getStructureTonnageAtLocation('CT'),
+                entity.structureAt(mount.location).tonnage,
+                entity.tonnage(), // is CT location
             );
         }
         let multiplier = equipment.hasFlag('S_IMPROVED') ? 2 : 1;

@@ -1,6 +1,8 @@
 import { MiscEquipment } from '../../equipment.model';
-import { BipedMekEntity } from '../entities/mek/biped-mek-entity';
-import { VtolEntity } from '../entities/vehicle/vtol-entity';
+import {
+    TestBipedMekEntity as BipedMekEntity,
+    TestVtolEntity as VtolEntity,
+} from '../testing/test-entities';
 import { EntityMountedEquipment } from '../types';
 
 describe('getEquipmentBV', () => {

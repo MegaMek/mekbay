@@ -60,7 +60,7 @@ export class DropShipEntity extends SmallCraftEntity {
   }
 
   override entityTechAdvancements(): readonly TechRatingSource[] {
-    return [getDropshipConstructionTech(this.mountedArmor().type === 'PRIMITIVE_AERO')];
+    return [getDropshipConstructionTech(this.uniformArmor()?.type === 'PRIMITIVE_AERO')];
   }
 
   protected override supportsWeaponBays(): boolean {

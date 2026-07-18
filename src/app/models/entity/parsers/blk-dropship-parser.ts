@@ -83,7 +83,7 @@ export function parseBlkDropShip(bb: BuildingBlock, ctx: ParseContext): DropShip
   }
 
   // ── Armor ──
-  parseBlkArmor(bb, entity, ctx);
+  parseBlkArmor(bb, entity, ctx, { remapStandardTo: 'AEROSPACE' });
   parseBlkArmorValues(bb, entity, DS_ARMOR_LOCS);
 
   // ── Equipment per location ──

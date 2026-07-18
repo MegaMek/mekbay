@@ -66,7 +66,7 @@ export class SmallCraftEntity extends AeroEntity {
   }
 
   override entityTechAdvancements(): readonly TechRatingSource[] {
-    return [getSmallCraftConstructionTech(this.mountedArmor().type === 'PRIMITIVE_AERO')];
+    return [getSmallCraftConstructionTech(this.uniformArmor()?.type === 'PRIMITIVE_AERO')];
   }
 
   protected override computeImplicitSystemEquipment(): readonly Equipment[] {
@@ -102,14 +102,14 @@ export class SmallCraftEntity extends AeroEntity {
   crewConfig = signal<SmallCraftCrew>({});
 
   protected override computeMaximumArmorPoints(): number {
-    const armor = this.mountedArmor().armor;
+    const mountedArmor = this.uniformArmor();
     const isSpheroid = this.motiveType() === 'Spheroid';
-    const pointsPerTon = 16 * (armor?.pptMultiplier ?? 1);
+    const pointsPerTon = 16 * (mountedArmor?.armor.pptMultiplier ?? 1);
     const armorWeightFactor = isSpheroid ? 3.6 : 4.5;
     const maximumArmorWeight = Math.floor(this.structuralIntegrity() * armorWeightFactor * 2) / 2;
     const siBonus = 4 * this.structuralIntegrity();
     const baseArmor = Math.floor(pointsPerTon * maximumArmorWeight + siBonus);
-    return this.mountedArmor().type === 'PRIMITIVE_AERO'
+    return mountedArmor?.type === 'PRIMITIVE_AERO'
       ? Math.floor(baseArmor * 0.66)
       : baseArmor;
   }

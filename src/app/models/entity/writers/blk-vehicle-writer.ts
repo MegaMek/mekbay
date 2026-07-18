@@ -47,6 +47,7 @@ import {
   writeManualBV,
   writeOmni,
   writeSource,
+  writeSupportVehicleBarRating,
   writeTonnage,
   writeTransporters,
 } from './building-block-writer';
@@ -190,10 +191,8 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
 
   writeEquipmentByLocation(w, entity, equipTags, encodeEquipmentLine, true);
 
-  // 12. BAR rating (for support vehicles, only when explicitly set in original)
-  if (entity.isSupportVehicle() && entity.barRating() >= 0) {
-    w.addBlock('barrating', entity.barRating());
-  }
+  // 12. BAR rating (only when the installed material is support-vehicle BAR armor)
+  if (entity.isSupportVehicle()) writeSupportVehicleBarRating(w, entity);
 
   // 13. Support vehicle tech ratings
   if (entity.isSupportVehicle()) {

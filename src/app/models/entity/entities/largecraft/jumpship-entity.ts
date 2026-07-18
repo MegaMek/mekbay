@@ -119,8 +119,7 @@ export class JumpShipEntity extends AeroEntity {
     : Math.ceil(1.2 + this.jumpDriveWeight() / 60000));
 
   protected override computeMaximumArmorPoints(): number {
-    const armor = this.mountedArmor().armor;
-    const pointsPerTon = 16 * (armor?.pptMultiplier ?? 1);
+    const pointsPerTon = 16 * (this.uniformArmor()?.armor.pptMultiplier ?? 1);
 
     let maximumArmorWeight: number;
     if (this.entityType === 'WarShip') {

@@ -35,13 +35,18 @@ import { Signal, computed, signal } from '@angular/core';
 import {
   EntityType,
   EntityValidationMessage,
+  requireArmorEquipment,
   TechRatingSource,
   WeightClass,
 } from '../../types';
 import { MovementCalculationOptions } from '../../base-entity';
-import { getBattleArmorConstructionTech } from '../../components';
+import {
+  getBattleArmorConstructionTech,
+  MountedArmor,
+} from '../../components';
 import { InfantryBaseEntity } from './infantry-base-entity';
 import type { UnitSubtype } from '../../types';
+import { EquipmentRegistry } from '../../../equipment-lookup';
 
 // ============================================================================
 // BattleArmorEntity - powered-armor squads (Elemental, etc.)
@@ -58,8 +63,12 @@ export class BattleArmorEntity extends InfantryBaseEntity {
     return [getBattleArmorConstructionTech(this.weightClass(), this.isExoskeleton())];
   }
 
-  constructor() {
-    super();
+  constructor(equipmentRegistry: EquipmentRegistry) {
+    super(equipmentRegistry);
+    this.setUniformArmor(new MountedArmor({
+      armor: requireArmorEquipment('BA_STANDARD', false, equipmentRegistry),
+      techBase: 'IS',
+    }));
     this.squadCount.set(1);
     this.squadSize.set(5);
   }

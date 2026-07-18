@@ -1,9 +1,28 @@
-import { ArmorEquipment, Equipment, MiscEquipment, WeaponEquipment } from '../../../equipment.model';
-import { createMountedArmor, MountedEngine } from '../../components';
+import { ArmorEquipment, Equipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
+import {
+  MountedArmor,
+  MountedEngine,
+  MountedStructure,
+  STANDARD_STRUCTURE_EQUIPMENT,
+} from '../../components';
 import { EntityMountedEquipment } from '../../types';
-import { BipedMekEntity } from './biped-mek-entity';
-import { LamEntity } from './lam-entity';
-import { QuadMekEntity } from './quad-mek-entity';
+import {
+  TestBipedMekEntity as BipedMekEntity,
+  TestLamEntity as LamEntity,
+  TestQuadMekEntity as QuadMekEntity,
+} from '../../testing/test-entities';
+
+const TEST_IS_ENDO_STRUCTURE = new StructureEquipment({
+  id: 'IS Endo Steel',
+  name: 'Endo Steel',
+  type: 'structure',
+  tech: { base: 'IS' },
+  structure: { typeId: 1 },
+});
+
+function standardStructure(tonnage: number): MountedStructure {
+  return new MountedStructure({ tonnage, structure: STANDARD_STRUCTURE_EQUIPMENT });
+}
 
 describe('MekEntity optional systems', () => {
   it('contributes technology only for installed optional systems', () => {
@@ -36,23 +55,23 @@ describe('MekEntity patchwork armor', () => {
       tech: { base: 'All', rating: 'D', availability: { sl: 'C', sw: 'C', clan: 'C', da: 'C' } },
     });
 
-    entity.setPatchworkArmor('LA', reactive);
-    entity.setPatchworkArmor('RA', standard, 'Clan');
+    const uniform = new MountedArmor({ armor: standard, techBase: 'IS' });
+    entity.setUniformArmor(uniform);
+    entity.setArmorEquipmentAt('LA', reactive);
+    entity.setArmorEquipmentAt('RA', standard, 'Clan');
 
-    expect(entity.mountedArmor().type).toBe('PATCHWORK');
-    expect(entity.getPatchworkArmor('LA')).toBe(reactive);
-    expect(entity.mountedArmor().patchwork?.get('RA')).toEqual({
-      type: 'STANDARD',
-      armor: standard,
-      techBase: 'Clan',
-      technology: { level: 'Standard', scope: 'Clan' },
-      techRating: null,
-      patchwork: null,
-    });
+    expect(entity.hasPatchworkArmor()).toBeTrue();
+    expect(entity.armorAt('LA').armor).toBe(reactive);
+    expect(entity.armorAt('RA').armor).toBe(standard);
+    expect(entity.armorAt('RA').techBase).toBe('Clan');
+    expect(entity.armorAt('CT')).toBe(uniform);
     expect(entity.implicitSystemEquipment()).not.toContain(reactive);
 
-    entity.removePatchworkArmor('LA');
-    expect(entity.getPatchworkArmor('LA')).toBeUndefined();
+    entity.setArmorAt('LA', uniform);
+    expect(entity.armorAt('LA')).toBe(uniform);
+    expect(entity.hasPatchworkArmor()).toBeTrue();
+    entity.setArmorAt('RA', uniform);
+    expect(entity.hasPatchworkArmor()).toBeFalse();
   });
 
   it('rejects patchwork armor as a patchwork location', () => {
@@ -63,9 +82,94 @@ describe('MekEntity patchwork armor', () => {
       tech: { base: 'All', rating: 'E', availability: { sl: 'X', sw: 'X', clan: 'E', da: 'E' } },
     });
 
-    expect(() => entity.setPatchworkArmor('LA', nested)).toThrowError(
-      'Patchwork armor cannot contain patchwork armor',
+    expect(() => entity.setArmorEquipmentAt('LA', nested)).toThrowError(
+      'Patchwork is an entity layout, not an installable location armor',
     );
+  });
+});
+
+describe('MekEntity location structures', () => {
+  it('provides one effective uniform structure at every active location', () => {
+    const entity = new BipedMekEntity();
+    entity.setTonnage(55);
+    const standard = standardStructure(55);
+    entity.setUniformStructure(standard);
+
+    expect([...entity.structureByLocation().keys()]).toEqual(entity.locationOrder);
+    expect([...entity.structureByLocation().values()].every(structure => structure === standard)).toBeTrue();
+    expect(entity.tonnage()).toBe(55);
+    expect(entity.hasHybridStructure()).toBeFalse();
+  });
+
+  it('derives Mek tonnage from the center torso structure', () => {
+    const entity = new BipedMekEntity();
+    entity.setUniformStructure(standardStructure(60));
+    entity.setStructureAt('LA', standardStructure(70));
+
+    expect(entity.hasHybridStructure()).toBeTrue();
+    expect(entity.tonnage()).toBe(60);
+
+    entity.setStructureAt('CT', standardStructure(80));
+    expect(entity.tonnage()).toBe(80);
+  });
+
+  it('compares complete location structures by material and tonnage', () => {
+    const entity = new BipedMekEntity();
+    entity.setTonnage(60);
+    const standard = standardStructure(60);
+    const equivalentStandard = new StructureEquipment({
+      id: 'Standard', name: 'Standard', type: 'structure',
+      tech: { base: 'All' }, structure: { typeId: 0 },
+    });
+    const distinctStandard = new MountedStructure({ tonnage: 60, structure: equivalentStandard });
+    const heavierStandard = standardStructure(70);
+    const endo = new MountedStructure({ tonnage: 70, structure: TEST_IS_ENDO_STRUCTURE });
+    entity.setUniformStructure(standard);
+
+    entity.setStructureAt('LA', distinctStandard);
+    expect(entity.hasHybridStructure()).toBeFalse();
+    expect(entity.hasMixedStructureMaterials()).toBeFalse();
+
+    entity.setStructureAt('RA', heavierStandard);
+    expect(entity.hasHybridStructure()).toBeTrue();
+    expect(entity.hasMixedStructureMaterials()).toBeFalse();
+
+    entity.setStructureAt('RA', endo);
+    expect(entity.hasMixedStructureMaterials()).toBeTrue();
+    expect(entity.structureAt('RA')).toBe(endo);
+    expect(entity.structureAt('CT')).toBe(standard);
+
+    entity.setStructureAt('RA', standard);
+    expect(entity.hasHybridStructure()).toBeFalse();
+  });
+
+  it('retains donor metadata only while normalized location structure remains unchanged', () => {
+    const entity = new BipedMekEntity();
+    const standard = standardStructure(60);
+    entity.setUniformStructure(standard);
+    entity.setStructureAt('LA', standard.withTonnage(70));
+    entity.setStructureDonor('LA', { name: 'Donor', unitType: 'BattleMek' });
+
+    entity.setStructureAt('LA', standardStructure(70));
+    expect(entity.structureDonorAt('LA')).toEqual({ name: 'Donor', unitType: 'BattleMek' });
+
+    entity.setStructureAt('LA', standard.withTonnage(75));
+    expect(entity.structureDonorAt('LA')).toBeNull();
+  });
+
+  it('returns to non-Hybrid when the differing location is restored', () => {
+    const entity = new BipedMekEntity();
+    const standard = standardStructure(60);
+    entity.setUniformStructure(standard);
+    const endo = new MountedStructure({ tonnage: 70, structure: TEST_IS_ENDO_STRUCTURE });
+    entity.setStructureAt('LA', endo);
+    entity.setStructureDonor('LA', { name: 'Donor', unitType: null });
+
+    entity.setStructureAt('LA', standard);
+
+    expect(entity.hasHybridStructure()).toBeFalse();
+    expect(entity.structureDonorAt('LA')).toBeNull();
+    expect([...entity.structureByLocation().values()].every(structure => structure === standard)).toBeTrue();
   });
 });
 
@@ -119,11 +223,8 @@ describe('MekEntity jumpMP', () => {
     const entity = new BipedMekEntity();
     entity.setTonnage(100);
     entity.originalWalkMP.set(4);
-    entity.isFrankenMek.set(true);
-    entity.frankenMekLocations.set(new Map([
-      ['CT', { tonnage: 100 }],
-      ['LT', { tonnage: 50 }],
-    ]));
+    entity.setStructureAt('CT', standardStructure(100));
+    entity.setStructureAt('LT', standardStructure(50));
     const jumpJet = new MiscEquipment({
       id: 'FrankenJumpJet', name: 'Jump Jet', type: 'misc',
       stats: { tonnage: 'variable' }, flags: ['F_JUMP_JET'],
@@ -151,7 +252,15 @@ describe('MekEntity jumpMP', () => {
 
     expect(entity.runMP()).toBe(8);
 
-    entity.mountedArmor.set(createMountedArmor({ type: 'HARDENED' }));
+    entity.setUniformArmor(new MountedArmor({
+      armor: new ArmorEquipment({
+        id: 'Hardened Armor',
+        name: 'Hardened',
+        type: 'armor',
+        armor: { type: 'HARDENED' },
+      }),
+      techBase: 'IS',
+    }));
     expect(entity.runMP()).toBe(7);
   });
 

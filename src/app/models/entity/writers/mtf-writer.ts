@@ -193,15 +193,19 @@ function writePhysical(entity: MekEntity, lines: string[]): void {
     mixedTech: entity.mixedTech(),
   } : null)}`);
   lines.push(`structure:${getStructureString(entity)}`);
-  if (entity.isFrankenMek()) {
-    const locations = entity.frankenMekLocations();
+  if (entity.hasHybridStructure()) {
     const order = entity instanceof TripodMekEntity ? CRIT_ORDER_TRIPOD
       : entity instanceof QuadMekEntity ? CRIT_ORDER_QUAD : CRIT_ORDER_BIPED;
     for (const location of order) {
-      const data = locations.get(location);
-      if (!data) continue;
-      const structurePrefix = data.structureName ? `${data.structureName}:` : '';
-      lines.push(`${location} structure:${structurePrefix}${data.tonnage}`);
+      const structure = entity.structureAt(location);
+      const structurePrefix = entity.hasMixedStructureMaterials()
+        ? `${encodeMtfStructure(
+          structure.structure.name,
+          structure.techBase === 'All' ? null : structure.techBase,
+          false,
+        )}:`
+        : '';
+      lines.push(`${location} structure:${structurePrefix}${structure.tonnage}`);
     }
   }
   lines.push(`myomer:${entity.myomerType()}`);
@@ -259,27 +263,24 @@ function writeArmor(
   entity: MekEntity, lines: string[],
   isQuad: boolean, isTripod: boolean,
 ): void {
-  const mountedArmor = entity.mountedArmor();
-  const armorDisplayName = mountedArmor.armor?.name ?? 'Standard';
+  const uniformArmor = entity.uniformArmor();
+  const armorDisplayName = uniformArmor?.armor.name ?? 'Standard';
   lines.push(`armor:${encodeMtfArmor(
     armorDisplayName,
-    mountedArmor.type === 'PATCHWORK' ? entity.techBase() : mountedArmor.techBase,
-    mountedArmor.type === 'PATCHWORK',
+    uniformArmor?.techBase ?? entity.techBase(),
+    !uniformArmor,
   )}`);
 
   const order = isTripod ? ARMOR_ORDER_TRIPOD : isQuad ? ARMOR_ORDER_QUAD : ARMOR_ORDER_BIPED;
   const armorMap = entity.armorValues();
-  const patchwork = mountedArmor.type === 'PATCHWORK' ? mountedArmor.patchwork : undefined;
   for (const entry of order) {
     const la = armorMap.get(entry.loc);
     const value = la ? la[entry.face] : 0;
     // For patchwork armor, front-facing entries include per-location armor type
-    if (patchwork && entry.face === 'front') {
-      const armor = patchwork.get(entry.loc);
-      const locType = armor?.armor
-        ? `${armor.techBase === 'Clan' ? 'Clan' : 'IS'} ${armor.armor.name}`
-          + `(${armor.techBase === 'Clan' ? 'Clan' : 'Inner Sphere'})`
-        : 'Standard(IS/Clan)';
+    if (!uniformArmor && entry.face === 'front') {
+      const armor = entity.armorAt(entry.loc);
+      const locType = `${armor.techBase === 'Clan' ? 'Clan' : 'IS'} ${armor.armor.name}`
+        + `(${armor.techBase === 'Clan' ? 'Clan' : 'Inner Sphere'})`;
       lines.push(`${entry.label}:${locType}:${value}`);
     } else {
       lines.push(`${entry.label}:${value}`);
@@ -348,10 +349,10 @@ function writeCriticals(
         lines.push(formatEquipmentSlot(slot, mountMap));
       }
     }
-    const frankenData = entity.frankenMekLocations().get(loc);
-    if (entity.isFrankenMek() && frankenData?.donor) {
-      lines.push(`donor: ${frankenData.donor}`);
-      if (frankenData.donorType) lines.push(`donor type: ${frankenData.donorType}`);
+    const donor = entity.hasHybridStructure() ? entity.structureDonorAt(loc) : null;
+    if (donor) {
+      lines.push(`donor: ${donor.name}`);
+      if (donor.unitType) lines.push(`donor type: ${donor.unitType}`);
     }
     lines.push('');
   }
@@ -438,7 +439,7 @@ function getConfigString(entity: MekEntity): string {
   else if (entity instanceof TripodMekEntity) base = 'Tripod';
   else base = 'Biped';
   if (entity.omni()) base += ' OmniMek';
-  if (entity.isFrankenMek()) base += ' FrankenMek';
+  if (entity.hasHybridStructure()) base += ' FrankenMek';
   return base;
 }
 
@@ -451,10 +452,13 @@ function formatTechBase(entity: MekEntity): string {
 }
 
 function getStructureString(entity: MekEntity): string {
+  if (entity.hasMixedStructureMaterials()) return encodeMtfStructure('Standard', null, true);
+  const structure = entity.uniformStructureMaterial();
+  if (!structure) throw new Error('Cannot write an MTF Mek without an installed structure');
   return encodeMtfStructure(
-    entity.mountedStructure()?.name ?? 'Standard',
-    entity.structureTechBase(),
-    entity.hybridStructure(),
+    structure.structure.name,
+    structure.techBase === 'All' ? null : structure.techBase,
+    false,
   );
 }
 

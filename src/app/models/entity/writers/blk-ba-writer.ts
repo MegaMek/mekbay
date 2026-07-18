@@ -64,7 +64,8 @@ export function writeBlkBA(entity: BattleArmorEntity): string {
   w.addBlock('cruiseMP', entity.originalWalkMP());
 
   // ── Section 4: Armor type (BA always writes both blocks) ──
-  const armor = entity.mountedArmor();
+  const armor = entity.uniformArmor();
+  if (!armor) throw new Error('Battle armor cannot use patchwork armor');
   w.addBlock('armor_type', encodeBlkArmorType(armor));
   w.addBlock('armor_tech', encodeBlkArmorTechLevel(armor));
 

@@ -72,11 +72,11 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
   // Determine chassis type
   const chassisType = bb.getFirstString('chassis_type').toLowerCase();
   let entity: MekEntity;
-  if (chassisType.includes('lam'))          entity = new LamEntity();
-  else if (chassisType.includes('quadvee')) entity = new QuadVeeEntity();
-  else if (chassisType.includes('quad'))    entity = new QuadMekEntity();
-  else if (chassisType.includes('tripod'))  entity = new TripodMekEntity();
-  else                                      entity = new BipedMekEntity();
+  if (chassisType.includes('lam'))          entity = new LamEntity(ctx.equipmentRegistry);
+  else if (chassisType.includes('quadvee')) entity = new QuadVeeEntity(ctx.equipmentRegistry);
+  else if (chassisType.includes('quad'))    entity = new QuadMekEntity(ctx.equipmentRegistry);
+  else if (chassisType.includes('tripod'))  entity = new TripodMekEntity(ctx.equipmentRegistry);
+  else                                      entity = new BipedMekEntity(ctx.equipmentRegistry);
 
   // ── Base parsing ──
   parseBaseBlk(bb, entity, ctx);

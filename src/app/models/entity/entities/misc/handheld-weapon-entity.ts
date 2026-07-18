@@ -32,15 +32,19 @@
  */
 
 import { Signal, computed } from '@angular/core';
+import { EquipmentRegistry } from '../../../equipment-lookup';
 import { BaseEntity } from '../../base-entity';
 import type { UnitSubtype, UnitType } from '../../types';
-import { createMountedArmor } from '../../components/armor';
 import {
   EntityType,
   EntityValidationMessage,
+  requireArmorEquipment,
   TechRatingSource,
 } from '../../types';
-import { getHandheldWeaponConstructionTech } from '../../components';
+import {
+  getHandheldWeaponConstructionTech,
+  MountedArmor,
+} from '../../components';
 
 // ============================================================================
 // HandheldWeaponEntity - standalone handheld weapons (for BA / Mek carry)
@@ -48,6 +52,16 @@ import { getHandheldWeaponConstructionTech } from '../../components';
 
 export class HandheldWeaponEntity extends BaseEntity {
   override readonly entityType: EntityType = 'HandheldWeapon';
+
+  constructor(equipmentRegistry: EquipmentRegistry) {
+    super(equipmentRegistry);
+    this.setUniformArmor(new MountedArmor({
+      armor: requireArmorEquipment('STANDARD', false, equipmentRegistry),
+      techBase: 'IS',
+      technology: { level: 'Introductory', scope: 'IS' },
+      techRating: 'A',
+    }));
+  }
 
   override unitType(): UnitType {
     return 'Handheld Weapon';
@@ -61,21 +75,16 @@ export class HandheldWeaponEntity extends BaseEntity {
     return [getHandheldWeaponConstructionTech()];
   }
 
-  constructor() {
-    super();
-    this.mountedArmor.set(createMountedArmor());
-  }
-
   // ═══════════════════════════════════════════════════════════════════════════
   //  LOCATION OVERRIDES
   // ═══════════════════════════════════════════════════════════════════════════
 
   get locationOrder(): readonly string[] {
-    return ['None'];
+    return ['Gun'];
   }
 
   get validLocations(): ReadonlySet<string> {
-    return new Set(['None']);
+    return new Set(['Gun']);
   }
 
   override hasRearArmor(_loc: string): boolean {

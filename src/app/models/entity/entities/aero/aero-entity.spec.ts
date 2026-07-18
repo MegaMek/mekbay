@@ -1,7 +1,9 @@
 import { Equipment } from '../../../equipment.model';
 import { EntityMountedEquipment } from '../../types';
-import { ConvFighterEntity } from './conv-fighter-entity';
-import { FixedWingSupportEntity } from './fixed-wing-support-entity';
+import {
+  TestConvFighterEntity as ConvFighterEntity,
+  TestFixedWingSupportEntity as FixedWingSupportEntity,
+} from '../../testing/test-entities';
 
 describe('AeroEntity movement', () => {
   it('reduces safe thrust by one for modular armor', () => {

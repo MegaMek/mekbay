@@ -44,7 +44,9 @@
  * - Armor-specific tech base (may differ from entity tech base in mixed-tech)
  * - Resolved ArmorEquipment from the equipment database
  * - Tech rating override for BLK output
- * - Patchwork armor composition by location
+ *
+ * Patchwork is deliberately not represented here. It is derived from the
+ * effective armor installed at each entity location.
  */
 
 import { ArmorEquipment } from '../../equipment.model';
@@ -55,90 +57,48 @@ import {
   TechRating,
 } from '../types';
 
-// ============================================================================
-// Patchwork armor sub-data
-// ============================================================================
+export type MountedArmorType = Exclude<ArmorType, 'PATCHWORK'>;
 
-export type UniformArmorType = Exclude<ArmorType, 'PATCHWORK'>;
-
-/** A single armor definition installed uniformly or at one patchwork location. */
-export interface UniformMountedArmor {
-  readonly type: UniformArmorType;
-  readonly techBase: EquipmentTechBase;
-  readonly armor: ArmorEquipment | null;
+export interface MountedArmorOptions {
+  readonly armor: ArmorEquipment;
+  readonly techBase?: EquipmentTechBase;
   /** Effective rules technology of this installed armor. */
-  readonly technology: CompoundTechLevel;
+  readonly technology?: CompoundTechLevel;
   /** Explicit effective armor rating, or null when inherited by entity rules. */
+  readonly techRating?: TechRating | null;
+}
+
+/** Complete immutable armor definition installed at one entity location. */
+export class MountedArmor {
+  readonly armor: ArmorEquipment;
+  readonly techBase: EquipmentTechBase;
+  readonly technology: CompoundTechLevel;
   readonly techRating: TechRating | null;
-  readonly patchwork: null;
-}
 
-/** Canonical patchwork composition: entity location → non-patchwork mounted armor. */
-export type PatchworkArmor = ReadonlyMap<string, UniformMountedArmor>;
-
-export interface PatchworkMountedArmor {
-  readonly type: 'PATCHWORK';
-  readonly armor: null;
-  readonly patchwork: PatchworkArmor;
-}
-
-// ============================================================================
-// MountedArmor - interface
-// ============================================================================
-
-/**
- * MountedArmor wraps all armor-type configuration for an entity.
- *
- * This does NOT include per-location armor point values (`armorValues`),
- * which remain a separate signal on BaseEntity.
- */
-export type MountedArmor = UniformMountedArmor | PatchworkMountedArmor;
-
-// ============================================================================
-// MountedArmor - factory
-// ============================================================================
-
-/**
- * Create a MountedArmor with sensible defaults.
- * All fields can be overridden via the `opts` parameter.
- */
-export function createMountedArmor(
-  opts?: Partial<Omit<UniformMountedArmor, 'type' | 'patchwork'>> & { type?: UniformArmorType },
-): UniformMountedArmor {
-  if (opts?.armor?.armorType === 'PATCHWORK') {
-    throw new Error('Patchwork armor cannot be installed inside patchwork armor');
-  }
-  return {
-    type: opts?.type ?? 'STANDARD',
-    techBase: opts?.techBase ?? 'IS',
-    armor: opts?.armor ?? null,
-    technology: opts?.technology ?? {
-      level: opts?.armor?.level ?? 'Introductory',
-      scope: opts?.techBase === 'Clan' ? 'Clan' : 'IS',
-    },
-    techRating: opts?.techRating ?? null,
-    patchwork: null,
-  };
-}
-/**
- * Create patchwork armor composition from location/armor pairs.
- */
-export function createPatchworkArmor(
-  armors?: ReadonlyMap<string, UniformMountedArmor>
-    | Iterable<readonly [string, UniformMountedArmor]>,
-): PatchworkArmor {
-  const result = new Map(armors);
-  for (const armor of result.values()) {
-    if (armor.type === ('PATCHWORK' as ArmorType)) {
-      throw new Error('Patchwork armor cannot contain patchwork armor');
+  constructor(options: MountedArmorOptions) {
+    if (options.armor.armorType === 'PATCHWORK') {
+      throw new Error('Patchwork is an entity layout, not an installable location armor');
     }
+    this.armor = options.armor;
+    this.techBase = options.techBase ?? options.armor.techBase;
+    this.technology = options.technology ?? {
+      level: options.armor.level,
+      scope: this.techBase === 'Clan' ? 'Clan' : 'IS',
+    };
+    this.techRating = options.techRating ?? null;
+    Object.freeze(this);
   }
-  return result;
-}
 
-export function createPatchworkMountedArmor(
-  armors?: ReadonlyMap<string, UniformMountedArmor>
-    | Iterable<readonly [string, UniformMountedArmor]>,
-): PatchworkMountedArmor {
-  return { type: 'PATCHWORK', armor: null, patchwork: createPatchworkArmor(armors) };
+  get type(): MountedArmorType {
+    return this.armor.armorType as MountedArmorType;
+  }
+
+  /** Semantic equality for effective location armor; never rely on object identity. */
+  equals(other: MountedArmor): boolean {
+    return this.armor.id === other.armor.id
+      && this.techBase === other.techBase
+      && this.technology.level === other.technology.level
+      && this.technology.scope === other.technology.scope
+      && this.techRating === other.techRating;
+  }
 }

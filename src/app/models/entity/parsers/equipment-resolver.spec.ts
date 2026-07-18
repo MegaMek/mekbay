@@ -1,3 +1,5 @@
+import { encodeEquipmentLine } from '../writers/equipment-encoder';
+import { EntityMountedEquipment } from '../types/equipment';
 import { parseEquipmentLine } from './equipment-resolver';
 
 describe('parseEquipmentLine', () => {
@@ -46,5 +48,44 @@ describe('parseEquipmentLine', () => {
 
     expect(parsed.name).toBe('ISUltraAC2 Ammo');
     expect(parsed.shots).toBe(6);
+  });
+
+  it('parses Java rear-mounted weapon-bay prefixes in their wire order', () => {
+    const parsed = parseEquipmentLine('(R) (B) ISGaussRifle', {
+      profile: 'dropship',
+    });
+
+    expect(parsed.name).toBe('ISGaussRifle');
+    expect(parsed.rearMounted).toBeTrue();
+    expect(parsed.isNewBay).toBeTrue();
+  });
+
+  it('does not consume weapon-bay syntax for unsupported entity profiles', () => {
+    const parsed = parseEquipmentLine('(B) Medium Laser');
+
+    expect(parsed.name).toBe('(B) Medium Laser');
+    expect(parsed.isNewBay).toBeFalse();
+  });
+
+  it('round trips a rear-mounted bay boundary emitted by the writer', () => {
+    const line = encodeEquipmentLine(new EntityMountedEquipment({
+      mountId: 'bay-weapon',
+      equipmentId: 'ISGaussRifle',
+      allocation: { kind: 'location', location: 'Aft' },
+      rearMounted: true,
+      turretMounted: false,
+      omniPodMounted: false,
+      isNewBay: true,
+      armored: false,
+    }), { blkMode: true });
+
+    expect(line).toBe('(R) (B) ISGaussRifle');
+    expect(parseEquipmentLine(line, { profile: 'dropship' })).toEqual(
+      jasmine.objectContaining({
+        name: 'ISGaussRifle',
+        rearMounted: true,
+        isNewBay: true,
+      }),
+    );
   });
 });

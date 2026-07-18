@@ -52,7 +52,7 @@ export class SpaceStationEntity extends JumpShipEntity {
     return [getSpaceStationConstructionTech()];
   }
 
-  constructor(equipmentRegistry?: EquipmentRegistry) {
+  constructor(equipmentRegistry: EquipmentRegistry) {
     super(equipmentRegistry);
     this.driveCoreType.set('None');
     this.sail.set(false);

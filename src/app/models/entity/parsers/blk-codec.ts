@@ -285,14 +285,12 @@ export function encodeBlkTechRating(rating: string): number {
 }
 
 export function encodeBlkArmorTechRating(armor: MountedArmor): number {
-  if (armor.type !== 'PATCHWORK' && armor.techRating) {
+  if (armor.techRating) {
     return encodeBlkTechRating(armor.techRating);
   }
-  if (armor.armor) return encodeBlkTechRating(armor.armor.rating);
-  return 0;
+  return encodeBlkTechRating(armor.armor.rating);
 }
 
 export function encodeBlkArmorTechLevel(armor: MountedArmor): number {
-  if (armor.type === 'PATCHWORK') return 0;
   return encodeBlkCompoundTechLevel(armor.technology);
 }

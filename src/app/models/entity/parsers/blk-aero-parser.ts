@@ -39,11 +39,10 @@ import {
   AERO_EQUIP_LOCATIONS,
   AERO_LOCATIONS,
 } from '../types';
-import { createMountedArmor } from '../components';
 import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { FIGHTER_EQUIP_TAGS, FWS_EQUIP_TAGS } from './blk-constants';
-import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkEquipment, resolveBlkStructure } from './blk-base-parser';
+import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkEquipment, parseBlkSupportArmor, resolveBlkStructure } from './blk-base-parser';
 import { ParseContext } from './parse-context';
 import { decodeMotiveType } from './motive-type-codec';
 import { decodeBlkAeroCockpitType } from './blk-codec';
@@ -64,9 +63,9 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
   // ── Determine entity type ──
   const unitType = bb.getFirstString('UnitType').trim();
   let entity: AeroEntity;
-  if (unitType === 'ConvFighter')       entity = new ConvFighterEntity();
-  else if (unitType === 'FixedWingSupport') entity = new FixedWingSupportEntity();
-  else                                  entity = new AeroSpaceFighterEntity();
+  if (unitType === 'ConvFighter')       entity = new ConvFighterEntity(ctx.equipmentRegistry);
+  else if (unitType === 'FixedWingSupport') entity = new FixedWingSupportEntity(ctx.equipmentRegistry);
+  else                                  entity = new AeroSpaceFighterEntity(ctx.equipmentRegistry);
 
   // ── Base parsing (identity, year, source, transporters, role, etc.) ──
   parseBaseBlk(bb, entity, ctx);
@@ -99,9 +98,13 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
   }
 
   // ── Armor ──
-  parseBlkArmor(bb, entity, ctx, {
-    patchworkLocs: AERO_EQUIP_LOCATIONS,
-  });
+  if (entity instanceof FixedWingSupportEntity) {
+    parseBlkSupportArmor(bb, entity, ctx);
+  } else {
+    parseBlkArmor(bb, entity, ctx, {
+      patchworkLocs: AERO_EQUIP_LOCATIONS,
+    });
+  }
 
   parseBlkArmorValues(bb, entity, AERO_LOCATIONS);
 
@@ -117,7 +120,6 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
 
   if (entity instanceof FixedWingSupportEntity) {
     if (bb.exists('vstol')) entity.vstol.set(bb.getFirstInt('vstol') === 1);
-    if (bb.exists('barrating'))               entity.barRating.set(bb.getFirstInt('barrating'));
     if (bb.exists('structural_tech_rating'))   entity.structuralTechRating.set(bb.getFirstInt('structural_tech_rating'));
     if (bb.exists('engine_tech_rating'))       entity.engineTechRating.set(bb.getFirstInt('engine_tech_rating'));
     if (bb.exists('baseChassisFireConWeight')) entity.baseChassisFireConWeight.set(bb.getFirstDouble('baseChassisFireConWeight'));

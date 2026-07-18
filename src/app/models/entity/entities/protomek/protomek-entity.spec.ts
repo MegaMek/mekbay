@@ -1,6 +1,6 @@
 import { Equipment } from '../../../equipment.model';
 import { EntityMountedEquipment } from '../../types';
-import { ProtoMekEntity } from './protomek-entity';
+import { TestProtoMekEntity as ProtoMekEntity } from '../../testing/test-entities';
 
 describe('ProtoMekEntity jumpMP', () => {
   it('adds the standard-atmosphere partial-wing bonus', () => {

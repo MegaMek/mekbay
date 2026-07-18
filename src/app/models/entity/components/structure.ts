@@ -32,7 +32,7 @@
  */
 
 import { EquipmentMap, StructureEquipment } from '../../equipment.model';
-import { approx, EntityTechBase, type TechRatingSource } from '../types';
+import { approx, EntityTechBase, EquipmentTechBase, type TechRatingSource } from '../types';
 import { TechAdvancement } from '../types/tech';
 
 /**
@@ -41,6 +41,63 @@ import { TechAdvancement } from '../types/tech';
  * Structures are fundamental structural elements of every Mek. Their canonical
  * definitions come from StructureEquipment records in the equipment database.
  */
+
+// ============================================================================
+// Installed structure
+// ============================================================================
+
+/** Resolved Standard structure used when no equipment registry is available. */
+export const STANDARD_STRUCTURE_EQUIPMENT = new StructureEquipment({
+  id: 'Standard',
+  name: 'Standard',
+  type: 'structure',
+  aliases: ['Standard Structure', 'IS Standard Structure', 'Clan Standard Structure'],
+  tech: { base: 'All' },
+  structure: { typeId: 0 },
+});
+
+export interface MountedStructureOptions {
+  readonly tonnage: number;
+  readonly structure: StructureEquipment;
+  /** Technology used for this installation when the equipment supports both bases. */
+  readonly techBase?: EquipmentTechBase;
+}
+
+/** Complete immutable structure installed at one entity location. */
+export class MountedStructure {
+  readonly tonnage: number;
+  readonly structure: StructureEquipment;
+  readonly techBase: EquipmentTechBase;
+
+  constructor(options: MountedStructureOptions) {
+    if (!Number.isFinite(options.tonnage) || options.tonnage < 0) {
+      throw new Error(`Structure tonnage must be a non-negative finite number, got ${options.tonnage}`);
+    }
+    this.tonnage = options.tonnage;
+    this.structure = options.structure;
+    this.techBase = options.techBase ?? options.structure.techBase;
+    Object.freeze(this);
+  }
+
+  /** Complete effective equality: material and donor/chassis tonnage. */
+  equals(other: MountedStructure): boolean {
+    return this.tonnage === other.tonnage && this.hasSameMaterialAs(other);
+  }
+
+  /** Material-only equality used by formats that encode tonnage separately. */
+  hasSameMaterialAs(other: MountedStructure): boolean {
+    return this.structure.id === other.structure.id
+      && this.techBase === other.techBase;
+  }
+
+  withTonnage(tonnage: number): MountedStructure {
+    return tonnage === this.tonnage ? this : new MountedStructure({
+      tonnage,
+      structure: this.structure,
+      techBase: this.techBase,
+    });
+  }
+}
 
 // ============================================================================
 // Resolution
@@ -123,7 +180,7 @@ export function getStructureByName(
 }
 
 export function getStructureTechAdvancement(
-  structure: StructureEquipment | null,
+  structure: StructureEquipment,
 ): TechRatingSource {
-  return !structure || structure.structureTypeId === 0 ? STANDARD_STRUCTURE_TECH : structure.tech;
+  return structure.structureTypeId === 0 ? STANDARD_STRUCTURE_TECH : structure.tech;
 }

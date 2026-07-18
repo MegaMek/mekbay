@@ -32,7 +32,6 @@
  */
 
 import { BaseEntity } from '../models/entity/base-entity';
-import { MiscEquipment } from '../models/equipment.model';
 import { DropShipEntity } from '../models/entity/entities/aero/dropship-entity';
 import { InfantryBaseEntity } from '../models/entity/entities/infantry/infantry-base-entity';
 import { InfantryEntity } from '../models/entity/entities/infantry/infantry-entity';
@@ -82,7 +81,8 @@ export class UnitMetadataBuilder {
       engine: this.buildEngineName(entity),
       engineRating: this.exportsEngine(entity) ? me.rating : 0,
       armorType: this.buildArmorType(entity),
-      structureType: entity.mountedStructure()?.name ?? null,
+      structureType: entity.uniformStructureMaterial()?.structure.name
+        ?? (entity.structureByLocation().size > 0 ? 'Standard' : null),
       armor: entity.totalArmorPoints(),
       internal: entity.totalInternalPoints(),
       armorPer: entity.maximumArmorPoints() > 0
@@ -254,10 +254,8 @@ export class UnitMetadataBuilder {
   /** Armor type string as it appears in units.json. */
   private buildArmorType(entity: BaseEntity): string {
     if (entity instanceof InfantryEntity) {
-      const armorKit = entity.equipment().find(
-        mounted => mounted.equipment instanceof MiscEquipment && mounted.equipment.isArmorKit,
-      );
-      if (armorKit?.equipment) return armorKit.equipment.name;
+      const armorKit = entity.armorKit();
+      if (armorKit) return armorKit.name;
       if (entity.hasDEST()) return 'Custom DEST';
 
       const sneakSystems = [
@@ -269,12 +267,8 @@ export class UnitMetadataBuilder {
       return entity.armorDivisor() !== 1 ? 'Custom' : '';
     }
 
-    if (entity.isSupportVehicle() && entity.barRating() >= 0) {
-      return `BAR: ${entity.barRating()}`;
-    }
-
-    // TODO: handle patchwork armor
-    const armorType = entity.mountedArmor().type;
+    if (entity.hasPatchworkArmor()) return ARMOR_TYPE_DISPLAY_NAME['PATCHWORK'] ?? 'Patchwork';
+    const armorType = entity.uniformArmor()?.type ?? 'STANDARD';
     return ARMOR_TYPE_DISPLAY_NAME[armorType] ?? armorType;
   }
 }

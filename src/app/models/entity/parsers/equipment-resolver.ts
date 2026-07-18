@@ -97,15 +97,18 @@ export function parseEquipmentLine(
 
   let name = line.trim();
 
-  // (B) prefix - new weapon bay marker
-  if (name.startsWith('(B)')) {
-    result.isNewBay = true;
+  // Java writes rear bay members as `(R) (B) equipment` and consumes the
+  // rear marker before the bay marker when loading DropShips.
+  if (name.startsWith('(R)')) {
+    result.rearMounted = true;
     name = name.substring(3).trim();
   }
 
-  // (R) prefix - rear mounted (BLK format)
-  if (name.startsWith('(R)')) {
-    result.rearMounted = true;
+  // Weapon-bay boundaries are valid only for DropShip and large-craft BLKs.
+  if (options.profile !== undefined
+    && options.profile !== 'generic'
+    && name.startsWith('(B)')) {
+    result.isNewBay = true;
     name = name.substring(3).trim();
   }
 

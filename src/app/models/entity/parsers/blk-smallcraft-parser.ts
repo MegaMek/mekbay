@@ -80,7 +80,7 @@ export function parseBlkSmallCraft(bb: BuildingBlock, ctx: ParseContext): SmallC
   }
 
   // ── Armor ──
-  parseBlkArmor(bb, entity, ctx);
+  parseBlkArmor(bb, entity, ctx, { remapStandardTo: 'AEROSPACE' });
   parseBlkArmorValues(bb, entity, SMALL_CRAFT_ARMOR_LOCATIONS);
 
   // ── Equipment per location ──

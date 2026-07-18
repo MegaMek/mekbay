@@ -37,12 +37,18 @@ import {
   MIXED_TECH,
   OMNI_TECH,
   PATCHWORK_ARMOR_TECH,
-  createMountedArmor,
-  createPatchworkMountedArmor,
+  createLocationComponentLayout,
+  effectiveLocationComponents,
+  LocationComponentLayout,
+  locationComponentAt,
   getStructureTechAdvancement,
   MountedArmor,
+  MountedStructure,
+  uniformLocationComponent,
+  withLocationComponent,
+  withUniformLocationComponent,
 } from './components';
-import { ArmorEquipment, Equipment, StructureEquipment, WeaponEquipment } from '../equipment.model';
+import { ArmorEquipment, Equipment, WeaponEquipment } from '../equipment.model';
 import { SourcebookReference } from '../sourcebook.model';
 import {
   ArmorFace,
@@ -74,13 +80,14 @@ import {
   LocationArmor,
   locationArmor,
   MountPlacement,
+  requireArmorEquipment,
   TechRatingSource,
 } from './types';
 import { generateMountId, removeMountById, updateMap } from './utils/signal-helpers';
 import { uuidv7 } from '../../utils/uuid.util';
 import type { SupportVehicle } from './entities/support-vehicle';
 import type { UnitSubtype, UnitType } from './types';
-import { EMPTY_EQUIPMENT_REGISTRY, EquipmentRegistry } from '../equipment-lookup';
+import { EquipmentRegistry } from '../equipment-lookup';
 import { CLAN_EXCEPTIONAL_BAY_IDS, weaponBayEquipmentId } from './utils/implicit-equipment';
 
 /**
@@ -197,7 +204,12 @@ export const AS_MOVEMENT_CALCULATION: MovementCalculationOptions = {
  *    ingress; all other code uses canonical IDs only.
  */
 export abstract class BaseEntity implements EntityTechnology {
-  constructor(protected readonly equipmentRegistry: EquipmentRegistry = EMPTY_EQUIPMENT_REGISTRY) {}
+  constructor(protected readonly equipmentRegistry: EquipmentRegistry) {
+    this.setUniformArmor(new MountedArmor({
+      armor: requireArmorEquipment('STANDARD', false, equipmentRegistry),
+      techBase: 'IS',
+    }));
+  }
 
   // ── Identity (immutable after construction) ─────────────────────────────
   abstract readonly entityType: EntityType;
@@ -210,6 +222,10 @@ export abstract class BaseEntity implements EntityTechnology {
 
   isSupportVehicle(): this is this & SupportVehicle {
     return false;
+  }
+
+  getEquipmentRegistry(): EquipmentRegistry {
+    return this.equipmentRegistry;
   }
 
   protected withOmniSubtype(subtype: string): UnitSubtype {
@@ -253,16 +269,21 @@ export abstract class BaseEntity implements EntityTechnology {
     if (engine.installed) {
       sources.push(engine.getTechAdvancement({ supportVee: this.isSupportVehicle() }));
     }
-    const mountedArmor = this.mountedArmor();
-    if (mountedArmor.armor) sources.push(mountedArmor.armor.tech);
-    if (mountedArmor.patchwork) {
-      sources.push(...[...mountedArmor.patchwork.values()].flatMap(armor => armor.armor ? [armor.armor.tech] : []));
+    const armorEquipment = new Map<string, ArmorEquipment>();
+    for (const mountedArmor of this.armorByLocation().values()) {
+      armorEquipment.set(mountedArmor.armor.id, mountedArmor.armor);
     }
-    const structure = this.mountedStructure();
-    if (structure) sources.push(getStructureTechAdvancement(structure));
+    sources.push(...[...armorEquipment.values()].map(armor => armor.tech));
+    const structures = new Map<string, MountedStructure>();
+    for (const structure of this.structureByLocation().values()) {
+      structures.set(structure.structure.id, structure);
+    }
+    sources.push(...[...structures.values()].map(structure =>
+      getStructureTechAdvancement(structure.structure)
+    ));
     const omniTech = this.omniTechAdvancement();
     if (this.omni() && omniTech) sources.push(omniTech);
-    if (mountedArmor.type === 'PATCHWORK') sources.push(PATCHWORK_ARMOR_TECH);
+    if (this.hasPatchworkArmor()) sources.push(PATCHWORK_ARMOR_TECH);
     if (this.mixedTech()) sources.push(MIXED_TECH);
     return sources;
   }
@@ -350,7 +371,23 @@ export abstract class BaseEntity implements EntityTechnology {
   );
 
   // ── Armor ──
-  mountedArmor = signal<MountedArmor>(createMountedArmor());
+  private readonly armorLayout = signal<LocationComponentLayout<string, MountedArmor> | null>(null);
+  /** Total effective armor material/configuration for every armor-bearing location. */
+  readonly armorByLocation = computed<ReadonlyMap<string, MountedArmor>>(() => {
+    const layout = this.armorLayout();
+    return layout ? effectiveLocationComponents(layout, this.armorLocations) : new Map();
+  });
+  /** Common effective armor, or null when the entity uses patchwork armor. */
+  readonly uniformArmor = computed<MountedArmor | null>(() => {
+    const layout = this.armorLayout();
+    return layout
+      ? uniformLocationComponent(layout, this.armorLocations, (left, right) => left.equals(right))
+      : null;
+  });
+  /** Patchwork is derived from heterogeneous effective location armor. */
+  readonly hasPatchworkArmor = computed(() =>
+    this.armorLayout() !== null && this.uniformArmor() === null
+  );
   /**
    * Armor per location.  Keys are canonical location IDs ("CT", "LT", etc.).
    * Each value is `{ front, rear }`.  For locations without rear armour the
@@ -359,7 +396,30 @@ export abstract class BaseEntity implements EntityTechnology {
   armorValues = signal<Map<string, LocationArmor>>(new Map());
 
   // ── Internal Structure ──
-  readonly mountedStructure = signal<StructureEquipment | null>(null);
+  private readonly structureLayout = signal<LocationComponentLayout<string, MountedStructure> | null>(null);
+  /** Total effective structure material for every active entity location. */
+  readonly structureByLocation = computed<ReadonlyMap<string, MountedStructure>>(() => {
+    const layout = this.structureLayout();
+    return layout ? effectiveLocationComponents(layout, this.locationOrder) : new Map();
+  });
+  /** Common effective structure, or null when location structures differ. */
+  readonly uniformStructure = computed<MountedStructure | null>(() => {
+    const layout = this.structureLayout();
+    return layout
+      ? uniformLocationComponent(layout, this.locationOrder, (left, right) => left.equals(right))
+      : null;
+  });
+  /** Common structure material, ignoring location tonnage used by wire formats. */
+  readonly uniformStructureMaterial = computed<MountedStructure | null>(() => {
+    const layout = this.structureLayout();
+    return layout
+      ? uniformLocationComponent(
+        layout,
+        this.locationOrder,
+        (left, right) => left.hasSameMaterialAs(right),
+      )
+      : null;
+  });
   /** Database-resolved systems derived from entity state but not serialized as mounts. */
   readonly implicitSystemEquipment = computed<readonly Equipment[]>(() => {
     const equipment = this.computeImplicitSystemEquipment();
@@ -505,6 +565,19 @@ export abstract class BaseEntity implements EntityTechnology {
 
   setTonnage(tonnage: number): void {
     this.storedTonnage.set(tonnage);
+    this.onTonnageChanged(tonnage);
+  }
+
+  /** Keep ordinary entity structures synchronized with chassis tonnage. */
+  protected onTonnageChanged(tonnage: number): void {
+    const layout = this.structureLayout();
+    if (!layout) return;
+    this.structureLayout.set(createLocationComponentLayout(
+      layout.defaultComponent.withTonnage(tonnage),
+      [...layout.overrides].map(([location, structure]) =>
+        [location, structure.withTonnage(tonnage)] as const
+      ),
+    ));
   }
 
   protected computeTonnage(): number {
@@ -752,6 +825,11 @@ export abstract class BaseEntity implements EntityTechnology {
   abstract get locationOrder(): readonly string[];
   abstract get validLocations(): ReadonlySet<string>;
 
+  /** Locations that carry armor material. Override when locationOrder contains non-armor locations. */
+  get armorLocations(): readonly string[] {
+    return this.locationOrder;
+  }
+
   /** Whether a given location supports rear armor */
   abstract hasRearArmor(loc: string): boolean;
 
@@ -762,11 +840,37 @@ export abstract class BaseEntity implements EntityTechnology {
   protected abstract computeStructureValues(tonnage: number): Map<string, number>;
 
   protected computeStructureTonnages(): Map<string, number> {
-    return new Map(this.locationOrder.map(location => [location, this.tonnage()]));
+    return new Map([...this.structureByLocation()].map(([location, structure]) =>
+      [location, structure.tonnage]
+    ));
   }
 
-  getStructureTonnageAtLocation(location: string): number {
-    return this.structureTonnages().get(location) ?? this.tonnage();
+  /** Return the effective structure material installed at a location. */
+  structureAt(location: string): MountedStructure {
+    this.assertStructureLocation(location);
+    const layout = this.structureLayout();
+    if (!layout) throw new Error(`No structure installed for ${this.entityType}`);
+    return locationComponentAt(layout, location);
+  }
+
+  /** Install one effective structure definition at every active location. */
+  setUniformStructure(structure: MountedStructure): void {
+    this.structureLayout.set(withUniformLocationComponent(structure));
+  }
+
+  /** Install an effective structure definition at one active location. */
+  setStructureAt(location: string, structure: MountedStructure): void {
+    this.assertStructureLocation(location);
+    this.structureLayout.update(layout => {
+      if (!layout) throw new Error(`No structure installed for ${this.entityType}`);
+      return withLocationComponent(layout, location, structure, (left, right) => left.equals(right));
+    });
+  }
+
+  private assertStructureLocation(location: string): void {
+    if (!this.locationOrder.includes(location)) {
+      throw new Error(`Invalid structure location "${location}" for ${this.entityType}`);
+    }
   }
 
   protected abstract computeMaxArmor(structureValues: Map<string, number>): Map<string, number>;
@@ -831,38 +935,51 @@ export abstract class BaseEntity implements EntityTechnology {
     return la ? la[face] : 0;
   }
 
-  /** Assign an armor type to one location in the entity's patchwork composition. */
-  setPatchworkArmor(
-    loc: string,
+  /** Return the effective armor installed at a location. */
+  armorAt(location: string): MountedArmor {
+    this.assertArmorLocation(location);
+    const layout = this.armorLayout();
+    if (!layout) throw new Error(`No armor material installed for ${this.entityType}`);
+    return locationComponentAt(layout, location);
+  }
+
+  /** Install one effective armor definition at every armor-bearing location. */
+  setUniformArmor(armor: MountedArmor): void {
+    this.armorLayout.set(withUniformLocationComponent(armor));
+  }
+
+  /** Initialize entity families whose Java model has no location armor material. */
+  protected clearArmorMaterial(): void {
+    this.armorLayout.set(null);
+  }
+
+  /** Install armor at one location; patchwork status is derived automatically. */
+  setArmorAt(location: string, armor: MountedArmor): void {
+    this.assertArmorLocation(location);
+    this.armorLayout.update(layout => {
+      if (!layout) throw new Error(`No armor material installed for ${this.entityType}`);
+      return withLocationComponent(layout, location, armor, (left, right) => left.equals(right));
+    });
+  }
+
+  /** Convenience operation for resolved armor equipment selected by a designer. */
+  setArmorEquipmentAt(
+    location: string,
     armor: ArmorEquipment,
     techBase = armor.techBase === 'All' ? this.techBase() : armor.techBase,
   ): void {
     if (armor.armorType === 'PATCHWORK') {
-      throw new Error('Patchwork armor cannot contain patchwork armor');
+      throw new Error('Patchwork is an entity layout, not an installable location armor');
     }
-    this.mountedArmor.update(current => {
-      const patchwork = new Map(current.patchwork ?? []);
-      patchwork.set(loc, createMountedArmor({
-        type: armor.armorType as Exclude<ArmorType, 'PATCHWORK'>,
-        armor,
-        techBase,
-      }));
-      return createPatchworkMountedArmor(patchwork);
-    });
+    this.setArmorAt(location, new MountedArmor({
+      armor,
+      techBase,
+    }));
   }
 
-  /** Remove a location from the entity's patchwork composition. */
-  removePatchworkArmor(loc: string): void {
-    this.mountedArmor.update(current => {
-      if (!current.patchwork?.has(loc)) return current;
-      const patchwork = new Map(current.patchwork);
-      patchwork.delete(loc);
-      return { ...current, patchwork };
-    });
-  }
-
-  /** Return the armor installed at a patchwork location, if any. */
-  getPatchworkArmor(loc: string): ArmorEquipment | undefined {
-    return this.mountedArmor().patchwork?.get(loc)?.armor ?? undefined;
+  private assertArmorLocation(location: string): void {
+    if (!this.armorLocations.includes(location)) {
+      throw new Error(`Invalid armor location "${location}" for ${this.entityType}`);
+    }
   }
 }

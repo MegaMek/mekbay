@@ -1,6 +1,6 @@
 import type { Equipment } from '../../../equipment.model';
 import { EntityMountedEquipment } from '../../types';
-import { BattleArmorEntity } from './battle-armor-entity';
+import { TestBattleArmorEntity as BattleArmorEntity } from '../../testing/test-entities';
 
 describe('BattleArmorEntity movement', () => {
   it('uses one canonical signal for squad size and trooper count', () => {

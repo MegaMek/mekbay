@@ -144,6 +144,21 @@ export function resolveArmorEquipment(
   return entry.is ?? entry.clan ?? null;
 }
 
+/** Resolve mandatory catalog armor, failing when the equipment database is incomplete. */
+export function requireArmorEquipment(
+  armorType: ArmorType,
+  isClan: boolean,
+  equipmentRegistry: EquipmentRegistry,
+): ArmorEquipment {
+  const armor = resolveArmorEquipment(armorType, isClan, equipmentRegistry);
+  if (!armor) {
+    throw new Error(
+      `Required ${isClan ? 'Clan' : 'Inner Sphere'} ${armorType} armor is missing from the equipment database`,
+    );
+  }
+  return armor;
+}
+
 // ============================================================================
 // Armor structured face model
 // ============================================================================

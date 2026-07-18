@@ -1,5 +1,5 @@
 import { AmmoEquipment, WeaponEquipment } from '../../equipment.model';
-import { BipedMekEntity } from '../entities/mek/biped-mek-entity';
+import { TestBipedMekEntity as BipedMekEntity } from '../testing/test-entities';
 import { EntityMountedEquipment } from './equipment';
 
 describe('EntityMountedEquipment characteristics', () => {

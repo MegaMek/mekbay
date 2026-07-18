@@ -32,6 +32,7 @@
  */
 
 import { Signal, computed, signal } from '@angular/core';
+import { EquipmentRegistry } from '../../../equipment-lookup';
 import { MiscEquipment } from '../../../equipment.model';
 import {
   BaseEntity,
@@ -50,7 +51,9 @@ import {
   getIndustrialAdvancedFireControlTech,
   getFullHeadEjectionTech,
   getRiscHeatSinkOverrideKitTech,
+  MountedStructure,
   MountedEngine,
+  STANDARD_STRUCTURE_EQUIPMENT,
 } from '../../components';
 import {
   CockpitType,
@@ -83,11 +86,9 @@ import { COCKPIT_DATA, CockpitTypeDescriptor } from '../../components/cockpit-da
 // MekEntity - abstract base for all Mek-type entities
 // ============================================================================
 
-export interface FrankenMekLocationData {
-  tonnage: number;
-  structureName?: string;
-  donor?: string;
-  donorType?: string;
+export interface MekStructureDonor {
+  readonly name: string;
+  readonly unitType: string | null;
 }
 
 function jumpJetTonnage(unitTonnage: number): number {
@@ -97,6 +98,14 @@ function jumpJetTonnage(unitTonnage: number): number {
 }
 
 export abstract class MekEntity extends BaseEntity {
+  constructor(equipmentRegistry: EquipmentRegistry) {
+    super(equipmentRegistry);
+    super.setUniformStructure(new MountedStructure({
+      tonnage: 0,
+      structure: STANDARD_STRUCTURE_EQUIPMENT,
+    }));
+  }
+
   override readonly entityType: EntityType = 'Mek';
 
   override unitType(): UnitType {
@@ -152,12 +161,9 @@ export abstract class MekEntity extends BaseEntity {
   cockpitType = signal<CockpitType>('Standard');
   mountedCockpit = computed<CockpitTypeDescriptor>(() =>  COCKPIT_DATA[this.cockpitType()] ?? COCKPIT_DATA['Standard']);
   myomerType = signal<string>('Standard');
-  structureTechBase = signal<EntityTechBase | null>(null);
-  hybridStructure = signal(false);
   hasFullHeadEjectionSystem = signal(false);
   hasRiscHeatSinkOverrideKit = signal(false);
-  isFrankenMek = signal<boolean>(false);
-  frankenMekLocations = signal<Map<MekLocation, FrankenMekLocationData>>(new Map());
+  private readonly structureDonors = signal<ReadonlyMap<MekLocation, MekStructureDonor>>(new Map());
 
   /**
    * Set of armored system slot keys: "LOC:INDEX" (e.g. "HD:0", "CT:3").
@@ -192,12 +198,65 @@ export abstract class MekEntity extends BaseEntity {
 
   isSuperHeavy = computed(() => this.tonnage() > 100);
 
+  /** Hybrid is derived from effective material-or-tonnage differences. */
+  readonly hasHybridStructure = computed(() => this.uniformStructure() === null);
+  /** Material-only heterogeneity used by MTF's `structure:Hybrid` marker. */
+  readonly hasMixedStructureMaterials = computed(() => this.uniformStructureMaterial() === null);
+
   /**
    * Whether this Mek has an Industrial structure type.
    */
   isIndustrial = computed(
-    () => this.mountedStructure()?.hasFlag('F_INDUSTRIAL_STRUCTURE')
+    () => this.structureAt('CT').structure.hasFlag('F_INDUSTRIAL_STRUCTURE')
   );
+
+  override setUniformStructure(structure: MountedStructure): void {
+    super.setUniformStructure(structure);
+    this.structureDonors.set(new Map());
+  }
+
+  override setStructureAt(location: string, structure: MountedStructure): void {
+    const previous = this.structureAt(location);
+    super.setStructureAt(location, structure);
+    if (!previous.equals(structure)) this.structureDonors.update(current => {
+      const next = new Map(current);
+      next.delete(location as MekLocation);
+      return next;
+    });
+    if (!this.hasHybridStructure()) this.structureDonors.set(new Map());
+  }
+
+  setStructureDonor(location: MekLocation, donor: MekStructureDonor | null): void {
+    if (!this.hasHybridStructure()) throw new Error('Cannot assign a donor to a conventional Mek');
+    this.structureAt(location);
+    this.structureDonors.update(current => {
+      const next = new Map(current);
+      if (donor) next.set(location, donor);
+      else next.delete(location);
+      return next;
+    });
+  }
+
+  structureDonorAt(location: MekLocation): MekStructureDonor | null {
+    this.structureAt(location);
+    return this.structureDonors().get(location) ?? null;
+  }
+
+  protected override onTonnageChanged(tonnage: number): void {
+    const previous = this.structureByLocation();
+    super.onTonnageChanged(tonnage);
+    this.structureDonors.update(current => new Map(
+      [...current].filter(([location]) =>
+        previous.get(location)?.equals(this.structureAt(location))
+      ),
+    ));
+    if (!this.hasHybridStructure()) this.structureDonors.set(new Map());
+  }
+
+  /** A Mek's chassis tonnage is the effective center-torso structure tonnage. */
+  protected override computeTonnage(): number {
+    return this.structureAt('CT').tonnage;
+  }
 
   heatSinkCount = computed(() =>
     this.equipment().reduce((sum, mount) =>
@@ -476,18 +535,18 @@ export abstract class MekEntity extends BaseEntity {
 
   readonly installedJumpJetMP = computed(() => {
     const jumpJets = this.equipment().filter(mount => mount.equipment?.hasFlag('F_JUMP_JET'));
-    if (!this.isFrankenMek()) return jumpJets.length;
+    if (!this.hasHybridStructure()) return jumpJets.length;
 
-    const centerTorsoTonnage = this.getStructureTonnageAtLocation('CT');
-    if (centerTorsoTonnage <= 0) return 0;
+    const chassisTonnage = this.tonnage();
+    if (chassisTonnage <= 0) return 0;
 
     const movement = jumpJets.reduce((total, mount) => {
       if (mount.equipment?.tonnage !== 'variable') return total + 1;
       const locationTonnage = Math.min(
-        this.getStructureTonnageAtLocation(mount.location),
-        centerTorsoTonnage,
+        this.structureAt(mount.location).tonnage,
+        chassisTonnage,
       );
-      return total + jumpJetTonnage(locationTonnage) / jumpJetTonnage(centerTorsoTonnage);
+      return total + jumpJetTonnage(locationTonnage) / jumpJetTonnage(chassisTonnage);
     }, 0);
     const improved = jumpJets[0]?.equipment?.hasFlag('S_IMPROVED') ?? false;
     const movementCap = improved
@@ -519,12 +578,8 @@ export abstract class MekEntity extends BaseEntity {
   }
 
   private hasMPReducingHardenedArmor(): boolean {
-    const armor = this.mountedArmor();
-    if (armor.type === 'HARDENED') return true;
-    if (armor.type !== 'PATCHWORK' || !armor.patchwork) return false;
-
     return getMekLegLocations(this.chassisConfig).some(location =>
-      armor.patchwork?.get(location)?.type === 'HARDENED'
+      this.armorAt(location).type === 'HARDENED'
     );
   }
 
@@ -694,18 +749,6 @@ export abstract class MekEntity extends BaseEntity {
       values.set(location, getInternalForTonnage(structureTonnage, location));
     }
     return values;
-  }
-
-  protected override computeStructureTonnages(): Map<string, number> {
-    const tonnages = new Map<string, number>();
-    for (const loc of this.locationOrder) {
-      const location = loc as MekLocation;
-      const tonnage = this.isFrankenMek()
-        ? this.frankenMekLocations().get(location)?.tonnage ?? this.tonnage()
-        : this.tonnage();
-      tonnages.set(location, tonnage);
-    }
-    return tonnages;
   }
 
   protected override computeMaxArmor(structureValues: Map<string, number>): Map<string, number> {

@@ -33,9 +33,15 @@
 
 import { signal } from '@angular/core';
 import { BaseEntity, MovementCalculationOptions } from '../../base-entity';
+import { EquipmentRegistry } from '../../../equipment-lookup';
 import type { UnitSubtype, UnitType } from '../../types';
 
 export abstract class InfantryBaseEntity extends BaseEntity {
+  constructor(equipmentRegistry: EquipmentRegistry) {
+    super(equipmentRegistry);
+    this.clearArmorMaterial();
+  }
+
   override unitType(): UnitType {
     return 'Infantry';
   }

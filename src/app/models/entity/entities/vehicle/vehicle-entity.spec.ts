@@ -1,9 +1,12 @@
 import { createEquipment, Equipment } from '../../../equipment.model';
 import { EquipmentRegistry } from '../../../equipment-lookup';
 import { EntityMountedEquipment } from '../../types';
-import { LargeSupportTankEntity } from './large-support-tank-entity';
-import { SupportTankEntity } from './support-tank-entity';
-import { TankEntity } from './tank-entity';
+import {
+  TestLargeSupportTankEntity as LargeSupportTankEntity,
+  TestSupportTankEntity as SupportTankEntity,
+  TestTankEntity as TankEntity,
+} from '../../testing/test-entities';
+import { createTestEquipmentRegistry } from '../../testing/test-equipment-registry';
 
 describe('VehicleEntity movement', () => {
   it('applies hydrofoil, modular armor, and dune buggy modifiers', () => {
@@ -47,7 +50,7 @@ describe('VehicleEntity movement', () => {
     const sponsonTurret = createEquipment({
       id: 'SponsonTurret', name: 'Sponson Turret', type: 'misc', flags: ['F_SPONSON_TURRET'],
     });
-    const entity = new TankEntity(new EquipmentRegistry({ SponsonTurret: sponsonTurret }));
+    const entity = new TankEntity(createTestEquipmentRegistry({ SponsonTurret: sponsonTurret }));
     const sponsonMount = mountWithFlag('F_ENERGY');
     sponsonMount.turretType = 'sponson';
 

@@ -1,4 +1,4 @@
-import { createMountedArmor } from '../components/armor';
+import { MountedArmor } from '../components/armor';
 import { ArmorEquipment, createEquipment } from '../../equipment.model';
 import type { GyroType } from '../components/gyro-data';
 import type { AeroDesignType, DriveCoreType, DropShipCollarType, EngineType, HeatSinkType } from '../types';
@@ -102,8 +102,7 @@ describe('BLK codec', () => {
       tech: { base: 'Clan', level: 'Experimental', rating: 'E' },
     });
     expect(equipment instanceof ArmorEquipment).toBeTrue();
-    const armor = createMountedArmor({
-      type: 'FERRO_FIBROUS',
+    const armor = new MountedArmor({
       techBase: 'Clan',
       techRating: 'E',
       armor: equipment as ArmorEquipment,
@@ -114,8 +113,15 @@ describe('BLK codec', () => {
     expect(encodeBlkArmorTechLevel(armor)).toBe(8);
   });
 
-  it('uses structured armor technology for unresolved equipment', () => {
-    const armor = createMountedArmor();
+  it('uses structured armor technology for resolved Standard armor', () => {
+    const equipment = new ArmorEquipment({
+      id: 'Standard Armor',
+      name: 'Standard',
+      type: 'armor',
+      armor: { type: 'STANDARD' },
+      tech: { base: 'All', level: 'Introductory' },
+    });
+    const armor = new MountedArmor({ armor: equipment, techBase: 'IS' });
     expect(encodeBlkArmorTechLevel(armor)).toBe(0);
   });
 

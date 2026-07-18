@@ -33,11 +33,17 @@
 
 import { BipedMekEntity } from '../entities/mek/biped-mek-entity';
 import { LamEntity } from '../entities/mek/lam-entity';
-import { FrankenMekLocationData, MekEntity, MekWithArmsEntity } from '../entities/mek/mek-entity';
+import { MekEntity, MekWithArmsEntity } from '../entities/mek/mek-entity';
 import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import { QuadVeeEntity } from '../entities/mek/quad-vee-entity';
 import { TripodMekEntity } from '../entities/mek/tripod-mek-entity';
-import { MountedEngine, createMountedArmor, createPatchworkArmor, createPatchworkMountedArmor, getStructureByName } from '../components';
+import {
+  MountedArmor,
+  MountedEngine,
+  MountedStructure,
+  STANDARD_STRUCTURE_EQUIPMENT,
+  getStructureByName,
+} from '../components';
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, WeaponEquipment } from '../../equipment.model';
 import {
   ArmorType,
@@ -55,7 +61,9 @@ import {
   locationArmor,
   normalizeSystemManufacturerKey,
   createCompoundTechLevel,
+  requireArmorEquipment,
 } from '../types';
+import { EquipmentRegistry } from '../../equipment-lookup';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { ParseContext } from './parse-context';
 import { componentTechLevelFromRulesLevel } from './blk-codec';
@@ -108,6 +116,14 @@ const STRUCTURE_LOCATION_MAP: Record<string, MekLocation> = {
   'rl structure': 'RL', 'rrl structure': 'RRL',
   'cl structure': 'CL',
 };
+
+/** Raw MTF-only FrankenMek location fields collected before entity construction. */
+interface MtfFrankenMekLocationData {
+  tonnage?: number;
+  structureName?: string;
+  donor?: string;
+  donorType?: string;
+}
 
 /**
  * Armor label → { canonical location, face }.
@@ -182,8 +198,8 @@ const ENGINE_SLOT_NAMES = [
 export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   resetMountIdCounter();
   const lines = content.split(/\r?\n/);
-  const header = parseHeader(lines);
-  const entity = createMekEntity(header.config);
+  const header = parseHeader(lines, ctx);
+  const entity = createMekEntity(header.config, ctx.equipmentRegistry);
 
   // ── Identity & tech ──
   if (header.uuid) entity.uuid.set(header.uuid);
@@ -197,9 +213,6 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   entity.rulesLevel.set(header.rulesLevel);
   entity.role.set(header.role);
   entity.omni.set(header.isOmni);
-  entity.isFrankenMek.set(header.isFrankenMek);
-  entity.frankenMekLocations.set(header.frankenMekLocations);
-
   entity.techBase.set(header.techBase);
   entity.mixedTech.set(header.mixedTech);
   if (header.clanName) entity.clanName.set(header.clanName);
@@ -236,11 +249,58 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   const structureInfo = decodeMtfStructure(header.structure);
   const structureTechBase = structureInfo.techBase ?? entity.techBase();
   const structure = getStructureByName(structureInfo.name, structureTechBase, ctx.equipmentDb);
-  entity.mountedStructure.set(structure);
-  entity.structureTechBase.set(structureInfo.techBase);
-  entity.hybridStructure.set(structureInfo.hybrid);
   if (!structure) {
     ctx.error('Structure', `Invalid structure ${structureTechBase} ${structureInfo.name}`);
+  }
+  const resolvedGlobalStructure = structure
+    ?? getStructureByName('Standard', entity.techBase(), ctx.equipmentDb)
+    ?? STANDARD_STRUCTURE_EQUIPMENT;
+  const defaultStructureTonnage = header.isFrankenMek
+    ? Math.max(10, Math.ceil(header.mass))
+    : header.mass;
+  const globalStructure = new MountedStructure({
+    tonnage: defaultStructureTonnage,
+    structure: resolvedGlobalStructure,
+    techBase: structureInfo.techBase ?? resolvedGlobalStructure.techBase,
+  });
+  entity.setUniformStructure(globalStructure);
+  if (header.isFrankenMek) {
+    for (const rawLocation of entity.locationOrder) {
+      const location = rawLocation as MekLocation;
+      const locationData = header.frankenMekLocations.get(location);
+      // MegaMek ignores bare tonnage lines when the global marker is Hybrid.
+      const parsed = structureInfo.hybrid && !locationData?.structureName
+        ? undefined
+        : locationData;
+      const effectiveTonnage = Math.max(10, parsed?.tonnage ?? defaultStructureTonnage);
+      let mounted = globalStructure;
+      if (parsed?.structureName) {
+        const localInfo = decodeMtfStructure(parsed.structureName);
+        const localTechBase = localInfo.techBase ?? entity.techBase();
+        const localStructure = getStructureByName(localInfo.name, localTechBase, ctx.equipmentDb);
+        if (!localStructure) {
+          ctx.error(`${location} Structure`, `Invalid structure ${localTechBase} ${localInfo.name}`);
+        }
+        mounted = new MountedStructure({
+          tonnage: effectiveTonnage,
+          structure: localStructure ?? resolvedGlobalStructure,
+          techBase: localInfo.techBase
+            ?? localStructure?.techBase
+            ?? globalStructure.techBase,
+        });
+      }
+      entity.setStructureAt(location, mounted.withTonnage(effectiveTonnage));
+    }
+    if (entity.hasHybridStructure()) {
+      for (const [location, parsed] of header.frankenMekLocations) {
+        if (parsed.donor) {
+          entity.setStructureDonor(location, {
+            name: parsed.donor,
+            unitType: parsed.donorType ?? null,
+          });
+        }
+      }
+    }
   }
   entity.myomerType.set(header.myomer || 'Standard');
 
@@ -255,7 +315,11 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   {
     let armorType: ArmorType = 'STANDARD';
     let armorTechBase: EntityTechBase = 'IS';
-    let armorEquipment: ArmorEquipment | null = null;
+    let armorEquipment: ArmorEquipment = requireArmorEquipment(
+      'STANDARD',
+      false,
+      ctx.equipmentRegistry,
+    );
 
     if (header.armorType) {
       const armorInfo = decodeMtfArmor(header.armorType);
@@ -271,14 +335,19 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
         if (eq) {
           armorType = eq.armorType as ArmorType;
           armorEquipment = eq;
+        } else {
+          ctx.error('Armor', `Invalid armor ${armorTechBase} ${armorInfo.type}`);
         }
       }
     }
 
-    // Patchwork per-location types
-    let patchwork = null;
-    if (header.patchworkTypes.size > 0) {
-      const armors = new Map<string, ReturnType<typeof createMountedArmor>>();
+    entity.setUniformArmor(new MountedArmor({
+      techBase: armorTechBase,
+      armor: armorEquipment,
+    }));
+
+    // Patchwork is represented internally by effective per-location armor.
+    if (armorType === 'PATCHWORK' && header.patchworkTypes.size > 0) {
       for (const [label, typeStr] of header.patchworkTypes) {
         const mapping = ARMOR_LABEL_MAP[label.toLowerCase()];
         if (mapping) {
@@ -288,23 +357,20 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
             isClan,
             ctx.equipmentRegistry,
           );
-          if (locationArmor) armors.set(mapping.loc, createMountedArmor({
-            type: locationArmor.armorType as Exclude<ArmorType, 'PATCHWORK'>,
-            armor: locationArmor,
+          if (!locationArmor) {
+            ctx.error(`${mapping.loc} Armor`, `Invalid armor ${isClan ? 'Clan' : 'IS'} ${typeStr}`);
+          }
+          entity.setArmorAt(mapping.loc, new MountedArmor({
+            armor: locationArmor ?? requireArmorEquipment(
+              'STANDARD',
+              isClan,
+              ctx.equipmentRegistry,
+            ),
             techBase: isClan ? 'Clan' : 'IS',
           }));
         }
       }
-      patchwork = createPatchworkArmor(armors);
     }
-
-    entity.mountedArmor.set(armorType === 'PATCHWORK'
-      ? createPatchworkMountedArmor(patchwork ?? undefined)
-      : createMountedArmor({
-        type: armorType,
-        techBase: armorTechBase,
-        armor: armorEquipment,
-      }));
   }
 
   const armorMap = new Map<string, LocationArmor>();
@@ -615,10 +681,10 @@ interface MtfHeader {
   lamType: string;
   motiveType: MotiveType;
   rawHeatSinks: string;
-  frankenMekLocations: Map<MekLocation, FrankenMekLocationData>;
+  frankenMekLocations: Map<MekLocation, MtfFrankenMekLocationData>;
 }
 
-function parseHeader(lines: string[]): MtfHeader {
+function parseHeader(lines: string[], ctx: ParseContext): MtfHeader {
   const h: MtfHeader = {
     uuid: '',
     chassis: '', model: '', mulId: -1, config: 'Biped',
@@ -821,10 +887,21 @@ function parseHeader(lines: string[]): MtfHeader {
           const lastColon = value.lastIndexOf(':');
           const hasStructureName = lastColon > 0;
           const tonnageText = hasStructureName ? value.substring(lastColon + 1).trim() : value;
-          updateFrankenMekLocation(h.frankenMekLocations, structureLocation, {
-            tonnage: parseInt(tonnageText, 10) || 0,
-            structureName: hasStructureName ? value.substring(0, lastColon).trim() : undefined,
-          });
+          const update: Partial<MtfFrankenMekLocationData> = {};
+          if (tonnageText === '') {
+            break;
+          }
+          const tonnage = Number(tonnageText);
+          if (/^[+-]?\d+$/.test(tonnageText)
+              && Number.isInteger(tonnage)
+              && tonnage >= -2_147_483_648
+              && tonnage <= 2_147_483_647) {
+            update.tonnage = tonnage;
+          } else {
+            ctx.error(`${structureLocation} structure`, `Invalid structure tonnage "${tonnageText}"`);
+          }
+          if (hasStructureName) update.structureName = value.substring(0, lastColon).trim();
+          updateFrankenMekLocation(h.frankenMekLocations, structureLocation, update);
         }
         break;
       }
@@ -836,11 +913,11 @@ function parseHeader(lines: string[]): MtfHeader {
 }
 
 function updateFrankenMekLocation(
-  locations: Map<MekLocation, FrankenMekLocationData>,
+  locations: Map<MekLocation, MtfFrankenMekLocationData>,
   location: MekLocation,
-  update: Partial<FrankenMekLocationData>,
+  update: Partial<MtfFrankenMekLocationData>,
 ): void {
-  locations.set(location, { tonnage: 0, ...locations.get(location), ...update });
+  locations.set(location, { ...locations.get(location), ...update });
 }
 
 // ============================================================================
@@ -916,13 +993,13 @@ const KNOWN_LOC_HEADERS = new Set([
   'Front Left Leg:', 'Front Right Leg:', 'Rear Left Leg:', 'Rear Right Leg:',
 ]);
 
-function createMekEntity(config: string): MekEntity {
+function createMekEntity(config: string, equipmentRegistry: EquipmentRegistry): MekEntity {
   const lower = config.toLowerCase();
-  if (lower.includes('lam'))     return new LamEntity();
-  if (lower.includes('quadvee')) return new QuadVeeEntity();
-  if (lower.includes('quad'))    return new QuadMekEntity();
-  if (lower.includes('tripod'))  return new TripodMekEntity();
-  return new BipedMekEntity();
+  if (lower.includes('lam'))     return new LamEntity(equipmentRegistry);
+  if (lower.includes('quadvee')) return new QuadVeeEntity(equipmentRegistry);
+  if (lower.includes('quad'))    return new QuadMekEntity(equipmentRegistry);
+  if (lower.includes('tripod'))  return new TripodMekEntity(equipmentRegistry);
+  return new BipedMekEntity(equipmentRegistry);
 }
 
 function parseMetadataList(value: string): string[] {

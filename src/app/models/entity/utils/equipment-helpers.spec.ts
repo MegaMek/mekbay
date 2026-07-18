@@ -1,11 +1,13 @@
 import { ArmorEquipment, MiscEquipment } from '../../equipment.model';
-import { createMountedArmor, MountedEngine } from '../components';
-import { AeroSpaceFighterEntity } from '../entities/aero/aero-space-fighter-entity';
-import { BipedMekEntity } from '../entities/mek/biped-mek-entity';
-import { QuadVeeEntity } from '../entities/mek/quad-vee-entity';
-import { TripodMekEntity } from '../entities/mek/tripod-mek-entity';
-import { SupportTankEntity } from '../entities/vehicle/support-tank-entity';
-import { TankEntity } from '../entities/vehicle/tank-entity';
+import { MountedArmor, MountedEngine } from '../components';
+import {
+    TestAeroSpaceFighterEntity as AeroSpaceFighterEntity,
+    TestBipedMekEntity as BipedMekEntity,
+    TestQuadVeeEntity as QuadVeeEntity,
+    TestSupportTankEntity as SupportTankEntity,
+    TestTankEntity as TankEntity,
+    TestTripodMekEntity as TripodMekEntity,
+} from '../testing/test-entities';
 import type { ArmorType } from '../types';
 
 describe('Equipment.getNumCriticalSlots', () => {
@@ -45,8 +47,7 @@ describe('Equipment.getNumCriticalSlots', () => {
     it('uses installed uniform armor tech instead of entity tech', () => {
         const entity = new BipedMekEntity();
         entity.techBase.set('Clan');
-        entity.mountedArmor.set(createMountedArmor({
-            type: 'FERRO_FIBROUS',
+        entity.setUniformArmor(new MountedArmor({
             techBase: 'IS',
             armor: armorEquipment('IS Ferro-Fibrous', 'FERRO_FIBROUS', 'IS'),
         }));
@@ -60,9 +61,9 @@ describe('Equipment.getNumCriticalSlots', () => {
         const ferro = armorEquipment('Ferro-Fibrous', 'FERRO_FIBROUS', 'All');
         const reactive = armorEquipment('Reactive', 'REACTIVE', 'All');
         const standard = armorEquipment('Standard', 'STANDARD', 'All');
-        entity.setPatchworkArmor('LA', ferro, 'IS');
-        entity.setPatchworkArmor('RA', reactive, 'Clan');
-        entity.setPatchworkArmor('LT', standard, 'IS');
+        entity.setArmorEquipmentAt('LA', ferro, 'IS');
+        entity.setArmorEquipmentAt('RA', reactive, 'Clan');
+        entity.setArmorEquipmentAt('LT', standard, 'IS');
 
         expect(variableEquipment('Ferro-Fibrous', ['F_FERRO_FIBROUS'])
             .getNumCriticalSlots(entity)).toBe(3);
@@ -82,8 +83,8 @@ describe('Equipment.getNumCriticalSlots', () => {
         it(`resolves ${name} patchwork slots`, () => {
             const entity = new BipedMekEntity();
             const armor = armorEquipment(name, armorType, 'All');
-            entity.setPatchworkArmor('LA', armor, 'IS');
-            entity.setPatchworkArmor('RA', armor, 'Clan');
+            entity.setArmorEquipmentAt('LA', armor, 'IS');
+            entity.setArmorEquipmentAt('RA', armor, 'Clan');
 
             expect(variableEquipment(name, [flag]).getNumCriticalSlots(entity)).toBe(expectedSlots);
         });
@@ -93,9 +94,9 @@ describe('Equipment.getNumCriticalSlots', () => {
         const entity = new BipedMekEntity();
         entity.setTonnage(120);
         const armor = armorEquipment('Heavy Ferro-Fibrous', 'HEAVY_FERRO', 'IS');
-        entity.setPatchworkArmor('LA', armor);
-        entity.setPatchworkArmor('RA', armor);
-        entity.setPatchworkArmor('LT', armor);
+        entity.setArmorEquipmentAt('LA', armor);
+        entity.setArmorEquipmentAt('RA', armor);
+        entity.setArmorEquipmentAt('LT', armor);
 
         expect(variableEquipment('Heavy Ferro-Fibrous', ['F_HEAVY_FERRO'])
             .getNumCriticalSlots(entity)).toBe(5);

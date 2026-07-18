@@ -1,10 +1,12 @@
 import { MiscEquipment, WeaponEquipment } from '../../equipment.model';
 import { MountedEngine } from '../components';
-import { BattleArmorEntity } from '../entities/infantry/battle-armor-entity';
-import { BipedMekEntity } from '../entities/mek/biped-mek-entity';
-import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
-import { ProtoMekEntity } from '../entities/protomek/protomek-entity';
-import { SupportTankEntity } from '../entities/vehicle/support-tank-entity';
+import {
+    TestBattleArmorEntity as BattleArmorEntity,
+    TestBipedMekEntity as BipedMekEntity,
+    TestProtoMekEntity as ProtoMekEntity,
+    TestQuadMekEntity as QuadMekEntity,
+    TestSupportTankEntity as SupportTankEntity,
+} from '../testing/test-entities';
 import { EntityMountedEquipment } from '../types';
 
 describe('EntityMountedEquipment.getCost', () => {

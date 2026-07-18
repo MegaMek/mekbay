@@ -51,6 +51,7 @@
  *   npx tsx scripts/compare-unit-output.ts --unit "Atlas AS7-D"     # single unit
  *   npx tsx scripts/compare-unit-output.ts --unit "King*"           # glob match
  *   npx tsx scripts/compare-unit-output.ts --fields chassis,model   # check only these
+ *   npx tsx scripts/compare-unit-output.ts --all-non-as             # strict non-AS parity gate
  *   npx tsx scripts/compare-unit-output.ts --verbose                # show every mismatch
  *   npx tsx scripts/compare-unit-output.ts --fail-on-mismatch       # exit 1 on any failure
  */
@@ -69,25 +70,29 @@ import type { Sourcebook } from '../src/app/models/sourcebook.model';
 // ═══════════════════════════════════════════════════════════════════════════
 
 type CompareType = 'exact' | 'numeric' | 'setCompare' | 'componentSet' | 'skip';
+type ParityStatus = 'verified' | 'partial' | 'missing';
+type IssueKind = 'value-mismatch' | 'missing-output' | 'output-schema';
 
 interface FieldCheck {
   field: string;
   compare: CompareType;
   tolerance?: number;
-  active?: boolean;
+  parity: ParityStatus;
 }
 
 interface CompareResult {
   unitName: string;
-  status: 'match' | 'mismatch' | 'parse-error' | 'file-missing';
-  mismatches: FieldMismatch[];
+  status: 'match' | 'mismatch' | 'parse-error' | 'build-error' | 'file-missing';
+  issues: FieldIssue[];
   error?: string;
 }
 
-interface FieldMismatch {
+interface FieldIssue {
+  kind: IssueKind;
   field: string;
-  expected: any;
-  actual: any;
+  expected: unknown;
+  actual: unknown;
+  message?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -106,91 +111,91 @@ interface FieldMismatch {
  */
 const CHECKED_FIELDS: FieldCheck[] = [
   // ── Phase 0: Identity ──────────────────────────────────────────────
-  { field: 'chassis',       compare: 'exact', active: true },
-  { field: 'model',         compare: 'exact', active: true },
-  { field: 'year',          compare: 'exact', active: true },
-  { field: 'tons',          compare: 'exact', active: true },
-  { field: 'omni',          compare: 'exact', active: true },
-  { field: 'role',          compare: 'exact', active: true },
-  { field: 'source',        compare: 'setCompare', active: true },
-  { field: 'published',     compare: 'setCompare', active: true },
-  { field: 'type',          compare: 'exact', active: true },
-  { field: 'id',            compare: 'exact', active: true },
-  { field: 'engine',        compare: 'exact', active: true },
-  { field: 'engineRating',  compare: 'exact', active: true },
-  { field: 'armorType',     compare: 'exact', active: true },
-  { field: 'structureType', compare: 'exact', active: true },
-  { field: 'armor',         compare: 'exact', active: true },
-  { field: 'techBase',      compare: 'exact', active: true },
+  { field: 'chassis',       compare: 'exact', parity: 'verified' },
+  { field: 'model',         compare: 'exact', parity: 'verified' },
+  { field: 'year',          compare: 'exact', parity: 'verified' },
+  { field: 'tons',          compare: 'exact', parity: 'verified' },
+  { field: 'omni',          compare: 'exact', parity: 'verified' },
+  { field: 'role',          compare: 'exact', parity: 'verified' },
+  { field: 'source',        compare: 'setCompare', parity: 'verified' },
+  { field: 'published',     compare: 'setCompare', parity: 'verified' },
+  { field: 'type',          compare: 'exact', parity: 'verified' },
+  { field: 'id',            compare: 'exact', parity: 'verified' },
+  { field: 'engine',        compare: 'exact', parity: 'verified' },
+  { field: 'engineRating',  compare: 'exact', parity: 'verified' },
+  { field: 'armorType',     compare: 'exact', parity: 'verified' },
+  { field: 'structureType', compare: 'exact', parity: 'verified' },
+  { field: 'armor',         compare: 'exact', parity: 'verified' },
+  { field: 'techBase',      compare: 'exact', parity: 'verified' },
 
   // ── Phase 1: Movement ──────────────────────────────────────────────
-  { field: 'walk',          compare: 'exact', active: true },
-  { field: 'run',           compare: 'exact', active: true },
-  { field: 'jump',          compare: 'exact', active: true },
-  { field: 'walk2',         compare: 'exact', active: true },
-  { field: 'run2',          compare: 'exact', active: true },
-  { field: 'jump2',         compare: 'exact', active: true },
+  { field: 'walk',          compare: 'exact', parity: 'verified' },
+  { field: 'run',           compare: 'exact', parity: 'verified' },
+  { field: 'jump',          compare: 'exact', parity: 'verified' },
+  { field: 'walk2',         compare: 'exact', parity: 'verified' },
+  { field: 'run2',          compare: 'exact', parity: 'verified' },
+  { field: 'jump2',         compare: 'exact', parity: 'verified' },
 
   // ── Remaining non-Alpha Strike fields ──────────────────────────────
-  { field: 'armorPer',       compare: 'exact', active: true },
-  { field: 'bv',             compare: 'numeric', tolerance: 1 },
-  { field: 'c3',             compare: 'exact', active: true },
-  { field: 'canon',          compare: 'exact', active: true },
-  { field: 'capital',        compare: 'exact', active: true },
-  { field: 'cargo',          compare: 'exact', active: true },
-  { field: 'comp',           compare: 'componentSet' },
-  { field: 'cost',           compare: 'numeric', tolerance: 1 },
-  { field: 'crewSize',       compare: 'exact' },
-  { field: 'diss',           compare: 'exact' },
-  { field: 'dissipation',    compare: 'numeric', tolerance: 1 },
-  { field: 'dpt',            compare: 'numeric', tolerance: 0.5 },
-  { field: 'engineHS',       compare: 'exact' },
-  { field: 'engineHSType',   compare: 'exact' },
-  { field: 'features',       compare: 'exact' },
-  { field: 'fluff',          compare: 'exact' },
-  { field: 'heat',           compare: 'numeric', tolerance: 1 },
-  { field: 'icon',           compare: 'exact' },
-  { field: 'internal',       compare: 'exact', active: true },
-  { field: 'level',          compare: 'exact' },
-  { field: 'moveType',       compare: 'exact' },
-  { field: 'offSpeedFactor', compare: 'exact' },
-  { field: 'pv',             compare: 'exact' },
-  { field: 'quirks',         compare: 'exact' },
-  { field: 'sheets',         compare: 'exact' },
-  { field: 'squadSize',      compare: 'exact', active: true },
-  { field: 'squads',         compare: 'exact', active: true },
-  { field: 'su',             compare: 'exact', active: true },
-  { field: 'subtype',        compare: 'exact', active: true },
-  { field: 'techRating',     compare: 'exact', active: true },
-  { field: 'umu',            compare: 'exact' },
-  { field: 'weightClass',    compare: 'exact', active: true },
-  { field: 'unitFile',       compare: 'exact' },
+  { field: 'armorPer',       compare: 'exact', parity: 'verified' },
+  { field: 'bv',             compare: 'numeric', tolerance: 1, parity: 'missing' },
+  { field: 'c3',             compare: 'exact', parity: 'verified' },
+  { field: 'canon',          compare: 'exact', parity: 'verified' },
+  { field: 'capital',        compare: 'exact', parity: 'verified' },
+  { field: 'cargo',          compare: 'exact', parity: 'verified' },
+  { field: 'comp',           compare: 'componentSet', parity: 'partial' },
+  { field: 'cost',           compare: 'numeric', tolerance: 1, parity: 'missing' },
+  { field: 'crewSize',       compare: 'exact', parity: 'missing' },
+  { field: 'diss',           compare: 'exact', parity: 'missing' },
+  { field: 'dissipation',    compare: 'numeric', tolerance: 1, parity: 'missing' },
+  { field: 'dpt',            compare: 'numeric', tolerance: 0.5, parity: 'missing' },
+  { field: 'engineHS',       compare: 'exact', parity: 'missing' },
+  { field: 'engineHSType',   compare: 'exact', parity: 'missing' },
+  { field: 'features',       compare: 'exact', parity: 'missing' },
+  { field: 'fluff',          compare: 'exact', parity: 'missing' },
+  { field: 'heat',           compare: 'numeric', tolerance: 1, parity: 'missing' },
+  { field: 'icon',           compare: 'exact', parity: 'missing' },
+  { field: 'internal',       compare: 'exact', parity: 'verified' },
+  { field: 'level',          compare: 'exact', parity: 'missing' },
+  { field: 'moveType',       compare: 'exact', parity: 'missing' },
+  { field: 'offSpeedFactor', compare: 'exact', parity: 'missing' },
+  { field: 'pv',             compare: 'exact', parity: 'missing' },
+  { field: 'quirks',         compare: 'exact', parity: 'missing' },
+  { field: 'sheets',         compare: 'exact', parity: 'missing' },
+  { field: 'squadSize',      compare: 'exact', parity: 'verified' },
+  { field: 'squads',         compare: 'exact', parity: 'verified' },
+  { field: 'su',             compare: 'exact', parity: 'verified' },
+  { field: 'subtype',        compare: 'exact', parity: 'verified' },
+  { field: 'techRating',     compare: 'exact', parity: 'verified' },
+  { field: 'umu',            compare: 'exact', parity: 'missing' },
+  { field: 'weightClass',    compare: 'exact', parity: 'verified' },
+  { field: 'unitFile',       compare: 'exact', parity: 'missing' },
 
   // ── Phase 2: Alpha Strike ──────────────────────────────────────────
-  { field: 'as.Arm',       compare: 'exact' },
-  { field: 'as.MV',        compare: 'exact' },
-  { field: 'as.MVm',       compare: 'exact' },
-  { field: 'as.MVp',       compare: 'exact' },
-  { field: 'as.OV',        compare: 'exact' },
-  { field: 'as.PV',        compare: 'exact' },
-  { field: 'as.SZ',        compare: 'exact' },
-  { field: 'as.Str',       compare: 'exact' },
-  { field: 'as.TMM',       compare: 'exact' },
-  { field: 'as.TP',        compare: 'exact' },
-  { field: 'as.Th',        compare: 'exact' },
-  { field: 'as.dmg',       compare: 'exact' },
-  { field: 'as.frontArc',  compare: 'exact' },
-  { field: 'as.leftArc',   compare: 'exact' },
-  { field: 'as.rearArc',   compare: 'exact' },
-  { field: 'as.rightArc',  compare: 'exact' },
-  { field: 'as.specials',  compare: 'setCompare' },
-  { field: 'as.usesArcs',  compare: 'exact' },
-  { field: 'as.usesE',     compare: 'exact' },
-  { field: 'as.usesOV',    compare: 'exact' },
-  { field: 'as.usesTh',    compare: 'exact' },
+  { field: 'as.Arm',       compare: 'exact', parity: 'missing' },
+  { field: 'as.MV',        compare: 'exact', parity: 'missing' },
+  { field: 'as.MVm',       compare: 'exact', parity: 'missing' },
+  { field: 'as.MVp',       compare: 'exact', parity: 'missing' },
+  { field: 'as.OV',        compare: 'exact', parity: 'missing' },
+  { field: 'as.PV',        compare: 'exact', parity: 'missing' },
+  { field: 'as.SZ',        compare: 'exact', parity: 'missing' },
+  { field: 'as.Str',       compare: 'exact', parity: 'missing' },
+  { field: 'as.TMM',       compare: 'exact', parity: 'missing' },
+  { field: 'as.TP',        compare: 'exact', parity: 'missing' },
+  { field: 'as.Th',        compare: 'exact', parity: 'missing' },
+  { field: 'as.dmg',       compare: 'exact', parity: 'missing' },
+  { field: 'as.frontArc',  compare: 'exact', parity: 'missing' },
+  { field: 'as.leftArc',   compare: 'exact', parity: 'missing' },
+  { field: 'as.rearArc',   compare: 'exact', parity: 'missing' },
+  { field: 'as.rightArc',  compare: 'exact', parity: 'missing' },
+  { field: 'as.specials',  compare: 'setCompare', parity: 'missing' },
+  { field: 'as.usesArcs',  compare: 'exact', parity: 'missing' },
+  { field: 'as.usesE',     compare: 'exact', parity: 'missing' },
+  { field: 'as.usesOV',    compare: 'exact', parity: 'missing' },
+  { field: 'as.usesTh',    compare: 'exact', parity: 'missing' },
 
   // ── Phase 3: Composite name (only after complete `.as` parity) ─────
-  { field: 'name', compare: 'exact' },
+  { field: 'name', compare: 'exact', parity: 'partial' },
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -212,6 +217,34 @@ const FIELDS_FILTER = getArg('fields', '');
 const EXCLUDE_FIELDS = getArg('exclude-fields', '');
 const VERBOSE = hasFlag('verbose');
 const FAIL_ON_MISMATCH = hasFlag('fail-on-mismatch');
+const ALL_NON_AS = hasFlag('all-non-as');
+const STRICT = FAIL_ON_MISMATCH || ALL_NON_AS;
+
+const VALUE_OPTIONS = new Set(['oracle', 'unitfiles', 'type', 'unit', 'fields', 'exclude-fields']);
+const FLAG_OPTIONS = new Set(['verbose', 'fail-on-mismatch', 'all-non-as']);
+
+function validateArguments(): void {
+  for (let index = 0; index < args.length; index++) {
+    const argument = args[index];
+    if (!argument.startsWith('--')) {
+      throw new Error(`Unexpected argument: ${argument}`);
+    }
+
+    const name = argument.slice(2);
+    if (FLAG_OPTIONS.has(name)) continue;
+    if (!VALUE_OPTIONS.has(name)) throw new Error(`Unknown option: --${name}`);
+
+    const value = args[index + 1];
+    if (!value || value.startsWith('--')) {
+      throw new Error(`Option --${name} requires a value.`);
+    }
+    index++;
+  }
+
+  if (ALL_NON_AS && (FIELDS_FILTER || EXCLUDE_FIELDS)) {
+    throw new Error('--all-non-as cannot be combined with --fields or --exclude-fields.');
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Equipment database loading
@@ -255,7 +288,7 @@ function loadSourcebooks(): ReadonlyMap<string, Sourcebook> {
 // ═══════════════════════════════════════════════════════════════════════════
 
 interface OracleEntry {
-  [key: string]: any;
+  [key: string]: unknown;
   name: string;
   chassis: string;
   model: string;
@@ -263,15 +296,241 @@ interface OracleEntry {
   unitFile: string;
 }
 
+interface OracleDocument {
+  version: number;
+  units: OracleEntry[];
+}
+
+type PlainObject = Record<string, unknown>;
+
+const OPTIONAL_NON_AS_FIELDS = new Set(['capital', 'cargo', 'diss', 'fluff']);
+const STRING_FIELDS = new Set([
+  'armorType', 'c3', 'chassis', 'icon', 'level', 'model', 'moveType', 'name',
+  'role', 'subtype', 'techBase', 'techRating', 'type', 'unitFile', 'weightClass',
+]);
+const NULLABLE_STRING_FIELDS = new Set(['engine', 'engineHSType', 'structureType']);
+const NUMBER_FIELDS = new Set([
+  'armor', 'armorPer', 'bv', 'cost', 'crewSize', 'dissipation', 'dpt', 'engineHS',
+  'engineRating', 'heat', 'id', 'internal', 'jump', 'jump2', 'offSpeedFactor', 'omni',
+  'pv', 'run', 'run2', 'squadSize', 'squads', 'su', 'tons', 'umu', 'walk', 'walk2', 'year',
+]);
+const STRING_ARRAY_FIELDS = new Set(['features', 'published', 'quirks', 'sheets', 'source']);
+const COMPONENT_REQUIRED_FIELDS = new Set(['id', 'n', 'p', 'q', 't']);
+const COMPONENT_OPTIONAL_FIELDS = new Set([
+  'bay', 'c', 'cw', 'd', 'l', 'm', 'md', 'os', 'q2', 'r', 'rear',
+]);
+
+function isPlainObject(value: unknown): value is PlainObject {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function hasOwn(value: PlainObject, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function describeValue(value: unknown): string {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return 'array';
+  return typeof value;
+}
+
+function validateFiniteNumber(value: unknown): string | null {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? null
+    : `expected a finite number, received ${describeValue(value)}`;
+}
+
+function validateStringArray(value: unknown): string | null {
+  if (!Array.isArray(value)) return `expected an array, received ${describeValue(value)}`;
+  const invalidIndex = value.findIndex(item => typeof item !== 'string');
+  return invalidIndex < 0
+    ? null
+    : `expected a string at index ${invalidIndex}, received ${describeValue(value[invalidIndex])}`;
+}
+
+function validateNumberArray(value: unknown): string | null {
+  if (!Array.isArray(value)) return `expected an array, received ${describeValue(value)}`;
+  const invalidIndex = value.findIndex(item => typeof item !== 'number' || !Number.isFinite(item));
+  return invalidIndex < 0
+    ? null
+    : `expected a finite number at index ${invalidIndex}, received ${describeValue(value[invalidIndex])}`;
+}
+
+function validateKnownKeys(
+  value: PlainObject,
+  required: ReadonlySet<string>,
+  optional: ReadonlySet<string>,
+): string | null {
+  const missing = [...required].filter(key => !hasOwn(value, key));
+  if (missing.length > 0) return `missing required properties: ${missing.join(', ')}`;
+
+  const unknown = Object.keys(value).filter(key => !required.has(key) && !optional.has(key));
+  return unknown.length > 0 ? `unknown properties: ${unknown.join(', ')}` : null;
+}
+
+function validateComponent(value: unknown, location = 'component'): string | null {
+  if (!isPlainObject(value)) return `${location} must be an object, received ${describeValue(value)}`;
+
+  const keysError = validateKnownKeys(value, COMPONENT_REQUIRED_FIELDS, COMPONENT_OPTIONAL_FIELDS);
+  if (keysError) return `${location}: ${keysError}`;
+
+  for (const field of ['id', 'n', 't']) {
+    if (typeof value[field] !== 'string') {
+      return `${location}.${field} must be a string, received ${describeValue(value[field])}`;
+    }
+  }
+  for (const field of ['p', 'q', 'q2', 'os', 'cw']) {
+    if (hasOwn(value, field)) {
+      const error = validateFiniteNumber(value[field]);
+      if (error) return `${location}.${field}: ${error}`;
+    }
+  }
+  for (const field of ['c', 'd', 'l', 'm', 'md', 'r']) {
+    if (hasOwn(value, field) && typeof value[field] !== 'string') {
+      return `${location}.${field} must be a string, received ${describeValue(value[field])}`;
+    }
+  }
+  if (hasOwn(value, 'rear') && typeof value['rear'] !== 'boolean') {
+    return `${location}.rear must be a boolean, received ${describeValue(value['rear'])}`;
+  }
+  if (hasOwn(value, 'bay')) {
+    if (!Array.isArray(value['bay'])) return `${location}.bay must be an array`;
+    for (let index = 0; index < value['bay'].length; index++) {
+      const error = validateComponent(value['bay'][index], `${location}.bay[${index}]`);
+      if (error) return error;
+    }
+  }
+  return null;
+}
+
+function validateComponents(value: unknown): string | null {
+  if (!Array.isArray(value)) return `expected an array, received ${describeValue(value)}`;
+  for (let index = 0; index < value.length; index++) {
+    const error = validateComponent(value[index], `comp[${index}]`);
+    if (error) return error;
+  }
+  return null;
+}
+
+function validateCargo(value: unknown): string | null {
+  if (!Array.isArray(value)) return `expected an array, received ${describeValue(value)}`;
+  const required = new Set(['capacity', 'doors', 'n', 'type']);
+  for (let index = 0; index < value.length; index++) {
+    const cargo = value[index];
+    if (!isPlainObject(cargo)) return `cargo[${index}] must be an object`;
+    const keysError = validateKnownKeys(cargo, required, new Set());
+    if (keysError) return `cargo[${index}]: ${keysError}`;
+    if (typeof cargo['capacity'] !== 'string' || typeof cargo['type'] !== 'string') {
+      return `cargo[${index}].capacity and .type must be strings`;
+    }
+    for (const field of ['doors', 'n']) {
+      const error = validateFiniteNumber(cargo[field]);
+      if (error) return `cargo[${index}].${field}: ${error}`;
+    }
+  }
+  return null;
+}
+
+function validateCapital(value: unknown): string | null {
+  if (!isPlainObject(value)) return `expected an object, received ${describeValue(value)}`;
+  const fields = new Set([
+    'dropshipCapacity', 'escapePods', 'gravDecks', 'kfIntegrity', 'lifeBoats', 'sailIntegrity',
+  ]);
+  const keysError = validateKnownKeys(value, fields, new Set());
+  if (keysError) return keysError;
+  for (const field of fields) {
+    const error = field === 'gravDecks'
+      ? validateNumberArray(value[field])
+      : validateFiniteNumber(value[field]);
+    if (error) return `${field}: ${error}`;
+  }
+  return null;
+}
+
+function validateFluff(value: unknown): string | null {
+  if (!isPlainObject(value)) return `expected an object, received ${describeValue(value)}`;
+  const keysError = validateKnownKeys(value, new Set(['img']), new Set());
+  if (keysError) return keysError;
+  return typeof value['img'] === 'string'
+    ? null
+    : `img must be a string, received ${describeValue(value['img'])}`;
+}
+
+function validateNonAsField(field: string, value: unknown): string | null {
+  if (STRING_FIELDS.has(field)) {
+    if (typeof value !== 'string') return `expected a string, received ${describeValue(value)}`;
+    if (field === 'unitFile') {
+      if (value.length === 0 || path.isAbsolute(value)) return 'expected a nonempty relative path';
+      const relative = path.relative(UNIT_FILES_DIR, path.resolve(UNIT_FILES_DIR, value));
+      if (relative.startsWith('..') || path.isAbsolute(relative)) return 'path escapes the unit-files directory';
+    }
+    return null;
+  }
+  if (NULLABLE_STRING_FIELDS.has(field)) {
+    return value === null || typeof value === 'string'
+      ? null
+      : `expected a string or null, received ${describeValue(value)}`;
+  }
+  if (NUMBER_FIELDS.has(field)) return validateFiniteNumber(value);
+  if (STRING_ARRAY_FIELDS.has(field)) return validateStringArray(value);
+  if (field === 'canon') {
+    return typeof value === 'boolean' ? null : `expected a boolean, received ${describeValue(value)}`;
+  }
+  if (field === 'diss') return validateNumberArray(value);
+  if (field === 'comp') return validateComponents(value);
+  if (field === 'cargo') return validateCargo(value);
+  if (field === 'capital') return validateCapital(value);
+  if (field === 'fluff') return validateFluff(value);
+  return `no runtime schema is registered for ${field}`;
+}
+
+function validateOracleDocument(value: unknown): OracleDocument {
+  const errors: string[] = [];
+  if (!isPlainObject(value)) throw new Error('Oracle root must be an object.');
+  if (validateFiniteNumber(value['version'])) errors.push('version must be a finite number');
+  if (!Array.isArray(value['units'])) errors.push('units must be an array');
+  if (errors.length > 0) throw new Error(`Invalid oracle document: ${errors.join('; ')}`);
+
+  const units = value['units'] as unknown[];
+  const nonAsFields = CHECKED_FIELDS.filter(check => !check.field.startsWith('as.'));
+  for (let index = 0; index < units.length; index++) {
+    const unit = units[index];
+    if (!isPlainObject(unit)) {
+      errors.push(`units[${index}] must be an object`);
+      continue;
+    }
+
+    for (const check of nonAsFields) {
+      if (!hasOwn(unit, check.field)) {
+        if (!OPTIONAL_NON_AS_FIELDS.has(check.field)) {
+          errors.push(`units[${index}].${check.field} is required`);
+        }
+        continue;
+      }
+      const error = validateNonAsField(check.field, unit[check.field]);
+      if (error) errors.push(`units[${index}].${check.field}: ${error}`);
+    }
+
+    if (!hasOwn(unit, 'as') || !isPlainObject(unit['as'])) {
+      errors.push(`units[${index}].as must be an object`);
+    }
+    if (errors.length >= 20) break;
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Oracle schema validation failed:\n  ${errors.join('\n  ')}`);
+  }
+  return value as unknown as OracleDocument;
+}
+
 function loadOracle(): OracleEntry[] {
   if (!fs.existsSync(UNITS_JSON_PATH)) {
-    console.error(`units.json not found: ${UNITS_JSON_PATH}`);
-    process.exit(1);
+    throw new Error(`units.json not found: ${UNITS_JSON_PATH}`);
   }
 
   console.log(`Loading oracle: ${UNITS_JSON_PATH}`);
-  const data = JSON.parse(fs.readFileSync(UNITS_JSON_PATH, 'utf-8'));
-  const units: OracleEntry[] = data.units;
+  const data = validateOracleDocument(JSON.parse(fs.readFileSync(UNITS_JSON_PATH, 'utf-8')) as unknown);
+  const units = data.units;
   console.log(`Oracle contains ${units.length} units`);
   return units;
 }
@@ -313,22 +572,29 @@ function filterOracle(entries: OracleEntry[]): OracleEntry[] {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function getActiveChecks(): FieldCheck[] {
-  let checks = FIELDS_FILTER
-    ? [...CHECKED_FIELDS]
-    : CHECKED_FIELDS.filter(check => check.active);
+  let checks = ALL_NON_AS
+    ? CHECKED_FIELDS.filter(check => !check.field.startsWith('as.'))
+    : FIELDS_FILTER
+      ? [...CHECKED_FIELDS]
+      : CHECKED_FIELDS.filter(check => check.parity === 'verified');
 
   // --fields filter: only check these specific fields
   if (FIELDS_FILTER) {
     const allowed = new Set(FIELDS_FILTER.split(',').map(f => f.trim()));
+    const unknown = [...allowed].filter(field => !CHECKED_FIELDS.some(check => check.field === field));
+    if (unknown.length > 0) throw new Error(`Unknown fields: ${unknown.join(', ')}`);
     checks = checks.filter(c => allowed.has(c.field));
   }
 
   // --exclude-fields filter: check all except these
   if (EXCLUDE_FIELDS) {
     const excluded = new Set(EXCLUDE_FIELDS.split(',').map(f => f.trim()));
+    const unknown = [...excluded].filter(field => !CHECKED_FIELDS.some(check => check.field === field));
+    if (unknown.length > 0) throw new Error(`Unknown excluded fields: ${unknown.join(', ')}`);
     checks = checks.filter(c => !excluded.has(c.field));
   }
 
+  if (checks.length === 0) throw new Error('No fields were selected for comparison.');
   return checks;
 }
 
@@ -364,9 +630,8 @@ function compareField(check: FieldCheck, expected: any, actual: any): boolean {
 
     case 'numeric': {
       const tolerance = check.tolerance ?? 0;
-      if (expected == null && actual == null) return true;
-      if (expected == null || actual == null) return false;
-      return Math.abs(Number(expected) - Number(actual)) <= tolerance;
+      if (typeof expected !== 'number' || typeof actual !== 'number') return false;
+      return Math.abs(expected - actual) <= tolerance;
     }
 
     case 'setCompare': {
@@ -409,8 +674,7 @@ function normaliseComponent(value: unknown): unknown {
 
 function deepEqual(a: any, b: any): boolean {
   if (a === b) return true;
-  if (a == null && b == null) return true;
-  if (a == null || b == null) return false;
+  if (a === null || b === null || a === undefined || b === undefined) return false;
   if (typeof a !== typeof b) return false;
   if (Array.isArray(a) && Array.isArray(b)) {
     if (a.length !== b.length) return false;
@@ -432,6 +696,20 @@ function getFieldValue(value: unknown, field: string): unknown {
   }, value);
 }
 
+function hasOwnPath(value: unknown, field: string): boolean {
+  const keys = field.split('.');
+  let current = value;
+  for (const key of keys) {
+    if (!isPlainObject(current) || !hasOwn(current, key)) return false;
+    current = current[key];
+  }
+  return true;
+}
+
+function validateOutputField(check: FieldCheck, value: unknown): string | null {
+  return check.field.startsWith('as.') ? null : validateNonAsField(check.field, value);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Single-unit processing
 // ═══════════════════════════════════════════════════════════════════════════
@@ -448,42 +726,87 @@ function processUnit(
   // Resolve unit file path
   const unitFilePath = path.join(UNIT_FILES_DIR, oracle.unitFile);
   if (!fs.existsSync(unitFilePath)) {
-    return { unitName, status: 'file-missing', mismatches: [], error: `File not found: ${unitFilePath}` };
+    return { unitName, status: 'file-missing', issues: [], error: `File not found: ${unitFilePath}` };
   }
 
   // Parse entity
+  let entity;
   try {
     const content = fs.readFileSync(unitFilePath, 'utf-8');
     const fileName = path.basename(unitFilePath);
     resetMountIdCounter();
-    const { entity } = parseEntity(content, fileName, equipmentRegistry, {
+    const parsed = parseEntity(content, fileName, equipmentRegistry, {
       sourcebookResolver: source => sourcebooks.get(source),
     });
+    entity = parsed.entity;
+    const errors = parsed.diagnostics.filter(diagnostic => diagnostic.severity === 'error');
+    if (STRICT && errors.length > 0) {
+      return {
+        unitName,
+        status: 'parse-error',
+        issues: [],
+        error: errors.map(error => `${error.field}: ${error.message}`).join('; '),
+      };
+    }
+  } catch (err: any) {
+    return {
+      unitName,
+      status: 'parse-error',
+      issues: [],
+      error: err.message || String(err),
+    };
+  }
 
+  try {
     // Build metadata
     const metadata = builder.build(entity);
 
     // Compare fields
-    const mismatches: FieldMismatch[] = [];
+    const issues: FieldIssue[] = [];
     for (const check of checks) {
       const expected = getFieldValue(oracle, check.field);
       const actual = getFieldValue(metadata, check.field);
 
+      if (hasOwnPath(oracle, check.field) && (!hasOwnPath(metadata, check.field) || actual === undefined)) {
+        issues.push({
+          kind: 'missing-output',
+          field: check.field,
+          expected,
+          actual,
+          message: 'required oracle field is absent from generated metadata',
+        });
+        continue;
+      }
+
+      if (actual !== undefined) {
+        const schemaError = validateOutputField(check, actual);
+        if (schemaError) {
+          issues.push({
+            kind: 'output-schema',
+            field: check.field,
+            expected,
+            actual,
+            message: schemaError,
+          });
+          continue;
+        }
+      }
+
       if (!compareField(check, expected, actual)) {
-        mismatches.push({ field: check.field, expected, actual });
+        issues.push({ kind: 'value-mismatch', field: check.field, expected, actual });
       }
     }
 
     return {
       unitName,
-      status: mismatches.length > 0 ? 'mismatch' : 'match',
-      mismatches,
+      status: issues.length > 0 ? 'mismatch' : 'match',
+      issues,
     };
   } catch (err: any) {
     return {
       unitName,
-      status: 'parse-error',
-      mismatches: [],
+      status: 'build-error',
+      issues: [],
       error: err.message || String(err),
     };
   }
@@ -493,49 +816,76 @@ function processUnit(
 // Reporting
 // ═══════════════════════════════════════════════════════════════════════════
 
-function printResults(results: CompareResult[], checks: FieldCheck[]) {
+function printResults(
+  results: CompareResult[],
+  selectedChecks: FieldCheck[],
+  comparedChecks: FieldCheck[],
+): void {
   const matches = results.filter(r => r.status === 'match');
   const mismatches = results.filter(r => r.status === 'mismatch');
   const parseErrors = results.filter(r => r.status === 'parse-error');
+  const buildErrors = results.filter(r => r.status === 'build-error');
   const fileMissing = results.filter(r => r.status === 'file-missing');
+  const unimplemented = selectedChecks.filter(check => check.parity === 'missing');
+
+  if (unimplemented.length > 0) {
+    console.log(`\n═══ UNIMPLEMENTED FIELDS (${unimplemented.length}) ═══\n`);
+    console.log(`  ${unimplemented.map(check => check.field).join(', ')}`);
+  }
 
   // Print mismatches
   if (mismatches.length > 0) {
     console.log(`\n═══ MISMATCHES (${mismatches.length}) ═══\n`);
 
-    // Collect per-field mismatch counts
-    const fieldCounts = new Map<string, number>();
+    const issueCounts = new Map<string, number>();
     for (const r of mismatches) {
-      for (const m of r.mismatches) {
-        fieldCounts.set(m.field, (fieldCounts.get(m.field) ?? 0) + 1);
+      for (const issue of r.issues) {
+        const key = `${issue.kind}:${issue.field}`;
+        issueCounts.set(key, (issueCounts.get(key) ?? 0) + 1);
       }
     }
 
-    // Print field summary
-    console.log('  Per-field mismatch counts:');
-    for (const [field, count] of [...fieldCounts.entries()].sort((a, b) => b[1] - a[1])) {
-      console.log(`    ${field}: ${count}`);
+    console.log('  Per-field issue counts:');
+    for (const [issue, count] of [...issueCounts.entries()].sort((a, b) => b[1] - a[1])) {
+      console.log(`    ${issue}: ${count}`);
     }
 
     if (VERBOSE) {
       console.log('');
       for (const r of mismatches) {
         console.log(`  ${r.unitName}:`);
-        for (const m of r.mismatches) {
-          console.log(`    ${m.field}: expected=${JSON.stringify(m.expected)} actual=${JSON.stringify(m.actual)}`);
+        for (const issue of r.issues) {
+          const message = issue.message ? ` (${issue.message})` : '';
+          console.log(
+            `    ${issue.kind}:${issue.field}${message}: `
+            + `expected=${JSON.stringify(issue.expected)} actual=${JSON.stringify(issue.actual)}`,
+          );
         }
       }
     } else if (mismatches.length <= 20) {
-      // Show details for a small number of mismatches even without --verbose
       console.log('');
       for (const r of mismatches) {
         console.log(`  ${r.unitName}:`);
-        for (const m of r.mismatches) {
-          console.log(`    ${m.field}: expected=${JSON.stringify(m.expected)} actual=${JSON.stringify(m.actual)}`);
+        for (const issue of r.issues) {
+          const message = issue.message ? ` (${issue.message})` : '';
+          console.log(
+            `    ${issue.kind}:${issue.field}${message}: `
+            + `expected=${JSON.stringify(issue.expected)} actual=${JSON.stringify(issue.actual)}`,
+          );
         }
       }
     } else {
       console.log(`\n  Use --verbose to see all mismatch details.`);
+    }
+  }
+
+  if (buildErrors.length > 0) {
+    console.log(`\n═══ BUILD ERRORS (${buildErrors.length}) ═══\n`);
+    for (const r of buildErrors.slice(0, VERBOSE ? buildErrors.length : 10)) {
+      console.log(`  ${r.unitName}: ${r.error}`);
+    }
+    if (!VERBOSE && buildErrors.length > 10) {
+      console.log(`  ... and ${buildErrors.length - 10} more. Use --verbose to see all.`);
     }
   }
 
@@ -563,17 +913,20 @@ function printResults(results: CompareResult[], checks: FieldCheck[]) {
 
   // Summary
   console.log(`\n═══ SUMMARY ═══`);
-  console.log(`  Checked fields: ${checks.map(c => c.field).join(', ')}`);
-  console.log(`  Total:    ${results.length}`);
-  console.log(`  Match:    ${matches.length}`);
-  console.log(`  Mismatch: ${mismatches.length}`);
-  console.log(`  Errors:   ${parseErrors.length}`);
-  console.log(`  Missing:  ${fileMissing.length}`);
+  console.log(`  Selected fields: ${selectedChecks.length}`);
+  console.log(`  Compared fields: ${comparedChecks.length}`);
+  console.log(`  Unimplemented:   ${unimplemented.length}`);
+  console.log(`  Total units:     ${results.length}`);
+  console.log(`  Match:           ${matches.length}`);
+  console.log(`  Mismatch:        ${mismatches.length}`);
+  console.log(`  Parse errors:    ${parseErrors.length}`);
+  console.log(`  Build errors:    ${buildErrors.length}`);
+  console.log(`  Missing files:   ${fileMissing.length}`);
 
   const passRate = results.length > 0
-    ? ((matches.length / (results.length - fileMissing.length - parseErrors.length)) * 100).toFixed(1)
+    ? ((matches.length / results.length) * 100).toFixed(1)
     : '0.0';
-  console.log(`  Pass:     ${passRate}%`);
+  console.log(`  Unit pass:       ${passRate}%`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -582,13 +935,19 @@ function printResults(results: CompareResult[], checks: FieldCheck[]) {
 
 function main() {
   console.log('Unit Metadata Comparison Script\n');
+  validateArguments();
 
   // Load dependencies
   const equipmentRegistry = loadEquipmentRegistry();
   const sourcebooks = loadSourcebooks();
   const builder = new UnitMetadataBuilder();
-  const checks = getActiveChecks();
-  console.log(`Active checks: ${checks.map(c => c.field).join(', ')}\n`);
+  const selectedChecks = getActiveChecks();
+  const comparedChecks = selectedChecks.filter(check => check.parity !== 'missing');
+  console.log(`Selected checks: ${selectedChecks.map(c => c.field).join(', ')}`);
+  if (selectedChecks.length !== comparedChecks.length) {
+    console.log(`Implemented checks: ${comparedChecks.map(c => c.field).join(', ')}`);
+  }
+  console.log('');
 
   // Load and filter oracle
   const allEntries = loadOracle();
@@ -596,8 +955,7 @@ function main() {
   const entries = filterOracle(allEntries);
 
   if (entries.length === 0) {
-    console.log('No units matched the filter criteria.');
-    process.exit(0);
+    throw new Error('No units matched the filter criteria.');
   }
 
   console.log(`\nProcessing ${entries.length} units...\n`);
@@ -607,7 +965,7 @@ function main() {
   let processed = 0;
 
   for (const entry of entries) {
-    const result = processUnit(entry, checks, equipmentRegistry, builder, sourcebooks);
+    const result = processUnit(entry, comparedChecks, equipmentRegistry, builder, sourcebooks);
     results.push(result);
     processed++;
 
@@ -618,15 +976,19 @@ function main() {
   }
 
   // Report
-  printResults(results, checks);
+  printResults(results, selectedChecks, comparedChecks);
 
   // Exit code
-  if (FAIL_ON_MISMATCH) {
-    const failures = results.filter(r => r.status === 'mismatch');
-    if (failures.length > 0) {
-      process.exit(1);
-    }
+  if (STRICT) {
+    const hasUnimplemented = selectedChecks.some(check => check.parity === 'missing');
+    const hasFailures = results.some(result => result.status !== 'match');
+    if (hasUnimplemented || hasFailures) process.exitCode = 1;
   }
 }
 
-main();
+try {
+  main();
+} catch (error: unknown) {
+  console.error(`\nFatal: ${error instanceof Error ? error.message : String(error)}`);
+  process.exitCode = 1;
+}

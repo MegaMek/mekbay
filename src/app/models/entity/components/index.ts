@@ -107,20 +107,29 @@ export {
 } from './infantry-tech-data';
 
 export {
+  MountedStructure,
+  type MountedStructureOptions,
+  STANDARD_STRUCTURE_EQUIPMENT,
   getStructureByName,
   getStructureByTypeId,
   getStructureTechAdvancement,
 } from './structure';
 
 export {
-  type PatchworkArmor,
-  type UniformMountedArmor,
-  type PatchworkMountedArmor,
-  type MountedArmor,
-  createMountedArmor,
-  createPatchworkArmor,
-  createPatchworkMountedArmor,
+  type MountedArmorType,
+  MountedArmor,
+  type MountedArmorOptions,
 } from './armor';
+
+export {
+  type LocationComponentLayout,
+  createLocationComponentLayout,
+  locationComponentAt,
+  withLocationComponent,
+  withUniformLocationComponent,
+  effectiveLocationComponents,
+  uniformLocationComponent,
+} from './location-component-layout';
 
 export {
   MountedEngine,

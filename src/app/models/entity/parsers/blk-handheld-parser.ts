@@ -34,7 +34,7 @@
 import { HandheldWeaponEntity } from '../entities/misc/handheld-weapon-entity';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
-import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
+import { parseBaseBlk } from './blk-base-parser';
 import { parseEquipmentLine } from './equipment-resolver';
 import { ParseContext } from './parse-context';
 import { locationArmor } from '../types';
@@ -46,18 +46,18 @@ import { locationArmor } from '../types';
 /**
  * Parse a BLK file for a HandheldWeapon entity.
  *
- * HandheldWeapons have a single equipment location: `None`.
+ * HandheldWeapons have a single equipment location: `Gun`.
  * Equipment is listed under `Gun Equipment`.
  */
 export function parseBlkHandheld(bb: BuildingBlock, ctx: ParseContext): HandheldWeaponEntity {
   resetMountIdCounter();
-  const entity = new HandheldWeaponEntity();
+  const entity = new HandheldWeaponEntity(ctx.equipmentRegistry);
 
   // ── Base parsing ──
   parseBaseBlk(bb, entity, ctx);
-  const techBase = getBlkTechBase(bb);
 
-  // ── Armor ──
+  // Java's loader ignores armor material metadata and retains the constructor's
+  // fixed Standard / IS Introductory / rating A installation.
   if (bb.exists('armor')) {
     const ints = bb.getDataAsInt('armor');
     if (ints.length >= 1) {
@@ -81,7 +81,7 @@ export function parseBlkHandheld(bb: BuildingBlock, ctx: ParseContext): Handheld
         mountId: generateMountId(),
         equipmentId: parsed.name,
         equipment: resolved ?? undefined,
-        allocation: { kind: 'location', location: 'None' },
+        allocation: { kind: 'location', location: 'Gun' },
         rearMounted: false,
         turretMounted: false,
         omniPodMounted: false,

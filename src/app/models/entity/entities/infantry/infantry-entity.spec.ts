@@ -1,21 +1,15 @@
-import { WeaponEquipment } from '../../../equipment.model';
-import { InfantryEntity } from './infantry-entity';
+import { InfantryWeaponEquipment, WeaponEquipment } from '../../../equipment.model';
+import { TestInfantryEntity as InfantryEntity } from '../../testing/test-entities';
 
 describe('InfantryEntity movement', () => {
-  const supportWeapon = new WeaponEquipment({
-    id: 'InfantrySupportTest',
-    name: 'Infantry Support Test',
-    type: 'weapon',
-    flags: ['F_INF_SUPPORT'],
-    weapon: { ammoType: 'NA' },
-  });
+  const supportWeapon = infantryWeapon('InfantrySupportTest', ['F_INF_SUPPORT']);
 
   function createInfantry(): InfantryEntity {
     const infantry = new InfantryEntity();
     infantry.originalWalkMP.set(1);
     infantry.motiveType.set('Jump');
     infantry.secondaryCount.set(2);
-    infantry.secondaryWeaponEquipment.set(supportWeapon);
+    infantry.secondaryWeapon.set(supportWeapon);
     return infantry;
   }
 
@@ -34,3 +28,16 @@ describe('InfantryEntity movement', () => {
     expect(infantry.jumpMP()).toBe(3);
   });
 });
+
+function infantryWeapon(id: string, extraFlags: string[] = []): InfantryWeaponEquipment {
+  const weapon = new WeaponEquipment({
+    id,
+    name: id,
+    type: 'weapon',
+    flags: ['F_INFANTRY', ...extraFlags],
+    weapon: { ammoType: 'NA' },
+    infantry: {},
+  });
+  if (!weapon.isInfantryWeapon()) throw new Error(`${id} is not an infantry weapon`);
+  return weapon;
+}

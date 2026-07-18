@@ -39,6 +39,7 @@ import {
   EquipmentTechBase,
   LocationArmor,
   locationArmor,
+  requireArmorEquipment,
   resolveArmorEquipment,
 } from '../types';
 import {
@@ -49,7 +50,9 @@ import {
 } from './blk-codec';
 import { decodeMotiveType } from './motive-type-codec';
 import { createCompoundTechLevel } from '../types/tech';
-import { createMountedArmor } from '../components';
+import {
+  MountedArmor,
+} from '../components';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
@@ -70,7 +73,7 @@ import { ParseContext } from './parse-context';
  */
 export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEntity {
   resetMountIdCounter();
-  const entity = new BattleArmorEntity();
+  const entity = new BattleArmorEntity(ctx.equipmentRegistry);
 
   // ── Base parsing ──
   parseBaseBlk(bb, entity, ctx);
@@ -93,20 +96,28 @@ export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEnt
 
   // ── Armor ──
   {
-    const type = bb.exists('armor_type') ? decodeBlkArmorType(bb.getFirstInt('armor_type')) : 'STANDARD' as ArmorType;
+    const type: ArmorType = bb.exists('armor_type')
+      ? decodeBlkArmorType(bb.getFirstInt('armor_type'))
+      : 'BA_STANDARD';
     const compoundCode = bb.exists('armor_tech') ? bb.getFirstInt('armor_tech') : null;
     const techBase: EquipmentTechBase = compoundCode != null
       ? decodeBlkCompoundTechBase(compoundCode, entity.techBase())
       : entity.techBase();
     const armor = resolveArmorEquipment(type, techBase === 'Clan', ctx.equipmentRegistry);
+    if (type !== 'PATCHWORK' && !armor) {
+      ctx.error('armor_type', `Invalid armor type ${type} for ${techBase} technology`);
+    }
     const technology = compoundCode == null
       ? createCompoundTechLevel(componentTechLevelFromRulesLevel(entity.rulesLevel()), techBase)
       : decodeBlkCompoundTechLevel(compoundCode);
     if (type !== 'PATCHWORK') {
-      entity.mountedArmor.set(createMountedArmor({
-        type,
+      entity.setUniformArmor(new MountedArmor({
         techBase,
-        armor,
+        armor: armor ?? requireArmorEquipment(
+          'BA_STANDARD',
+          techBase === 'Clan',
+          ctx.equipmentRegistry,
+        ),
         technology,
       }));
     }

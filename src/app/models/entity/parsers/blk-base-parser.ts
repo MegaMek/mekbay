@@ -34,13 +34,14 @@
 import { BaseEntity } from '../base-entity';
 import {
   MountedEngine,
-  createMountedArmor,
-  createPatchworkArmor,
-  createPatchworkMountedArmor,
+  MountedArmor,
+  MountedStructure,
+  STANDARD_STRUCTURE_EQUIPMENT,
   getStructureByTypeId,
 } from '../components';
 import { AeroEntity } from '../entities/aero/aero-entity';
 import { MekEntity } from '../entities/mek/mek-entity';
+import type { SupportVehicle } from '../entities/support-vehicle';
 import { VehicleEntity } from '../entities/vehicle/vehicle-entity';
 import {
   ArmorType,
@@ -53,6 +54,7 @@ import {
   VALID_TECH_BASE_STRINGS,
   locationArmor,
   normalizeSystemManufacturerKey,
+  requireArmorEquipment,
   resolveArmorEquipment,
 } from '../types';
 import {
@@ -144,9 +146,7 @@ export function parseBaseBlk(
   // ── Internal structure type ──
   if (bb.exists('internal_type')) {
     const structureCode = bb.getFirstInt('internal_type');
-    if (structureCode < 0) {
-      entity.mountedStructure.set(null);
-    } else if (!resolveBlkStructure(entity, structureCode, ctx)) {
+    if (structureCode >= 0 && !resolveBlkStructure(entity, structureCode, ctx)) {
       ctx.error('internal_type', `Invalid structure type ${structureCode} for ${entity.techBase()} technology`);
     }
   }
@@ -276,7 +276,12 @@ export function resolveBlkStructure(
   ctx: ParseContext,
 ): boolean {
   const structure = getStructureByTypeId(typeId, entity.techBase(), ctx.equipmentDb);
-  entity.mountedStructure.set(structure);
+  const fallback = getStructureByTypeId(0, entity.techBase(), ctx.equipmentDb)
+    ?? STANDARD_STRUCTURE_EQUIPMENT;
+  entity.setUniformStructure(new MountedStructure({
+    tonnage: entity.tonnage(),
+    structure: structure ?? fallback,
+  }));
   return structure !== null;
 }
 
@@ -493,12 +498,18 @@ export function parseBlkArmor(
   bb: BuildingBlock,
   entity: BaseEntity,
   ctx: ParseContext,
-  opts?: { patchworkLocs?: readonly string[] },
+  opts?: {
+    patchworkLocs?: readonly string[];
+    remapStandardTo?: Extract<ArmorType, 'AEROSPACE' | 'STANDARD_PROTOMEK'>;
+  },
 ): void {
   // ── Armor type ──
-  const type: ArmorType = bb.exists('armor_type')
+  const decodedType: ArmorType = bb.exists('armor_type')
     ? decodeBlkArmorType(bb.getFirstInt('armor_type'))
     : 'STANDARD';
+  const type: ArmorType = decodedType === 'STANDARD' && opts?.remapStandardTo
+    ? opts.remapStandardTo
+    : decodedType;
 
   // ── Armor-specific tech base ──
   const compoundCode = bb.exists('armor_tech_level')
@@ -510,35 +521,16 @@ export function parseBlkArmor(
     ? entity.techBase()
     : decodeBlkCompoundTechBase(compoundCode, entity.techBase());
 
-  // ── Patchwork per-location data ──
-  let patchwork = null;
-  if (type === 'PATCHWORK' && opts?.patchworkLocs) {
-    const armors = new Map<string, ReturnType<typeof createMountedArmor>>();
-    for (const loc of opts.patchworkLocs) {
-      if (!bb.exists(`${loc}_armor_type`)) continue;
-      const code = bb.getFirstInt(`${loc}_armor_type`);
-      if (code < 0) continue;
-      const locationTech = bb.getFirstString(`${loc}_armor_tech`).toLowerCase();
-      const explicitClan = locationTech.includes('clan');
-      const explicitIs = locationTech.includes('inner sphere');
-      const isClan = explicitClan || (!explicitIs && entity.techBase() === 'Clan');
-      const locationArmor = resolveArmorEquipment(
-        decodeBlkArmorType(code),
-        isClan,
-        ctx.equipmentRegistry,
-      );
-      if (locationArmor) armors.set(loc, createMountedArmor({
-        type: locationArmor.armorType as Exclude<ArmorType, 'PATCHWORK'>,
-        armor: locationArmor,
-        techBase: explicitClan ? 'Clan' : explicitIs ? 'IS' : 'All',
-      }));
-    }
-    patchwork = createPatchworkArmor(armors);
+  // ── Resolve common/default armor ──
+  const resolvedArmor = resolveArmorEquipment(type, techBase === 'Clan', ctx.equipmentRegistry);
+  if (type !== 'PATCHWORK' && !resolvedArmor) {
+    ctx.error('armor_type', `Invalid armor type ${type} for ${techBase} technology`);
   }
-
-  // ── Tech rating override ──
-  // ── Resolve armor from DB ──
-  const armor = resolveArmorEquipment(type, techBase === 'Clan', ctx.equipmentRegistry);
+  const armor = resolvedArmor ?? requireArmorEquipment(
+    'STANDARD',
+    techBase === 'Clan',
+    ctx.equipmentRegistry,
+  );
   const technology = compoundCode == null
     ? createCompoundTechLevel(componentTechLevelFromRulesLevel(entity.rulesLevel()), techBase)
     : decodeBlkCompoundTechLevel(compoundCode);
@@ -546,15 +538,134 @@ export function parseBlkArmor(
     ? decodeBlkTechRating(bb.getFirstInt('armor_tech_rating'))
     : null;
 
-  entity.mountedArmor.set(type === 'PATCHWORK'
-    ? createPatchworkMountedArmor(patchwork ?? undefined)
-    : createMountedArmor({
-      type,
+  if (type !== 'PATCHWORK') {
+    entity.setUniformArmor(new MountedArmor({
       techBase,
       armor,
       technology,
       techRating,
     }));
+    return;
+  }
+
+  // Patchwork is a wire-format marker. Domain state is effective armor at
+  // every real armor location; pseudo-locations remain codec-only sentinels.
+  entity.setUniformArmor(new MountedArmor({
+    armor: requireArmorEquipment(
+      'STANDARD',
+      entity.techBase() === 'Clan',
+      ctx.equipmentRegistry,
+    ),
+    techBase: entity.techBase(),
+  }));
+  if (type === 'PATCHWORK' && opts?.patchworkLocs) {
+    for (const loc of opts.patchworkLocs) {
+      if (!entity.armorLocations.includes(loc)) continue;
+      if (!bb.exists(`${loc}_armor_type`)) continue;
+      const code = bb.getFirstInt(`${loc}_armor_type`);
+      if (code < 0) continue;
+      const locationTech = bb.getFirstString(`${loc}_armor_tech`).toLowerCase();
+      const explicitClan = locationTech.includes('clan');
+      const explicitIs = locationTech.includes('inner sphere');
+      const isClan = explicitClan || (!explicitIs && entity.techBase() === 'Clan');
+      const locationType = decodeBlkArmorType(code);
+      if (locationType === 'PATCHWORK') continue;
+      const locationArmor = resolveArmorEquipment(
+        locationType,
+        isClan,
+        ctx.equipmentRegistry,
+      );
+      if (!locationArmor) {
+        ctx.error(`${loc}_armor_type`, `Invalid armor type ${locationType} for ${isClan ? 'Clan' : 'IS'} technology`);
+      }
+      entity.setArmorAt(loc, new MountedArmor({
+        armor: locationArmor ?? requireArmorEquipment(
+          'STANDARD',
+          isClan,
+          ctx.equipmentRegistry,
+        ),
+        techBase: explicitClan ? 'Clan' : explicitIs ? 'IS' : 'All',
+        techRating: bb.exists(`${loc}_armor_tech_rating`)
+          ? decodeBlkTechRating(bb.getFirstInt(`${loc}_armor_tech_rating`))
+          : null,
+      }));
+    }
+  }
+}
+
+/**
+ * Parse the uniform support-vehicle armor policy from Java's `loadSVArmor()`.
+ *
+ * A BAR block supplies the armor material only when `armor_type` is absent;
+ * an explicit armor type always wins. Location-specific support patchwork
+ * requires location-specific BAR state and is rejected until that state is
+ * represented by the entity model.
+ */
+export function parseBlkSupportArmor(
+  bb: BuildingBlock,
+  entity: BaseEntity & SupportVehicle,
+  ctx: ParseContext,
+): void {
+  const hasArmorType = bb.exists('armor_type');
+  const hasBarRating = bb.exists('barrating');
+
+  if (hasArmorType && bb.getFirstInt('armor_type') === 7) {
+    ctx.error('armor_type', 'Support-vehicle patchwork armor is not yet supported');
+    return;
+  }
+  if (!hasArmorType && !hasBarRating) {
+    ctx.error('armor_type', 'Could not find armor_type or barrating block');
+    return;
+  }
+
+  let barType: ArmorType | null = null;
+  let barRating = 0;
+  if (hasBarRating) {
+    barRating = bb.getFirstInt('barrating');
+    if (!Number.isInteger(barRating) || barRating < 2 || barRating > 10) {
+      ctx.error('barrating', `Invalid support-vehicle BAR rating ${barRating}`);
+      return;
+    }
+    barType = `SV_BAR_${barRating}` as ArmorType;
+  }
+
+  const type = hasArmorType ? decodeBlkArmorType(bb.getFirstInt('armor_type')) : barType!;
+  const compoundCode = bb.exists('armor_tech_level')
+    ? bb.getFirstInt('armor_tech_level')
+    : null;
+  const techBase = compoundCode == null
+    ? entity.techBase()
+    : decodeBlkCompoundTechBase(compoundCode, entity.techBase());
+  const armor = resolveArmorEquipment(type, techBase === 'Clan', ctx.equipmentRegistry);
+  if (!armor) {
+    ctx.error('armor_type', `Invalid armor type ${type} for ${techBase} technology`);
+    return;
+  }
+
+  const technologySource = barType == null
+    ? null
+    : resolveArmorEquipment(barType, false, ctx.equipmentRegistry);
+  if (barType != null && !technologySource) {
+    ctx.error('barrating', `Could not resolve support-vehicle BAR ${barRating} armor`);
+    return;
+  }
+
+  const technology = compoundCode == null
+    ? technologySource == null
+      ? createCompoundTechLevel(componentTechLevelFromRulesLevel(entity.rulesLevel()), techBase)
+      : createCompoundTechLevel(technologySource.level, techBase)
+    : decodeBlkCompoundTechLevel(compoundCode);
+  const techRating = bb.exists('armor_tech_rating')
+    ? decodeBlkTechRating(bb.getFirstInt('armor_tech_rating'))
+    : null;
+
+  entity.setUniformArmor(new MountedArmor({
+    armor,
+    techBase,
+    technology,
+    techRating,
+  }));
+  entity.barRating.set(hasBarRating ? barRating : 0);
 }
 
 // ============================================================================

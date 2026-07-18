@@ -571,7 +571,7 @@ export class WeaponEquipment extends Equipment {
         return this.weapon.ranges.every(r => r === 0);
     }
 
-    isInfantryWeapon(): boolean {
+    isInfantryWeapon(): this is this & { readonly infantry: InfantryData } {
         return this.hasFlag('F_INFANTRY') && this.infantry !== undefined;
     }
 
@@ -641,6 +641,9 @@ export class WeaponEquipment extends Equipment {
         return { kind: 'fixed', damage, maximum: damage * multiplier, perShot };
     }
 }
+
+/** A weapon definition validated as a conventional infantry weapon. */
+export type InfantryWeaponEquipment = WeaponEquipment & { readonly infantry: InfantryData };
 
 const DOUBLE_DAMAGE_AMMO_TYPES = new Set<AmmoType>([
     'SRM', 'SRM_TORPEDO', 'SRM_STREAK', 'SRM_ADVANCED', 'SRM_IMP', 'MML',

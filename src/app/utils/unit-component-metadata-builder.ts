@@ -49,11 +49,17 @@ export function buildUnitComponentMetadata(entity: BaseEntity): UnitComponent[] 
 }
 
 function addMekSystems(components: Map<string, ExportComponent>, entity: MekEntity): void {
-  const structure = entity.mountedStructure();
-  if (structure) addSyntheticStructural(components, entity, structure);
+  const structures = new Map<string, Equipment>();
+  for (const mountedStructure of entity.structureByLocation().values()) {
+    structures.set(mountedStructure.structure.id, mountedStructure.structure);
+  }
+  for (const structure of structures.values()) addSyntheticStructural(components, entity, structure);
 
-  const armor = entity.mountedArmor().armor;
-  if (armor) addSyntheticStructural(components, entity, armor);
+  const armors = new Map<string, Equipment>();
+  for (const mountedArmor of entity.armorByLocation().values()) {
+    armors.set(mountedArmor.armor.id, mountedArmor.armor);
+  }
+  for (const armor of armors.values()) addSyntheticStructural(components, entity, armor);
 
   if (entity instanceof MekWithArmsEntity) {
     const hands = entity.hasHandActuator();

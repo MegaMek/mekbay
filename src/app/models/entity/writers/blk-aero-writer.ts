@@ -36,7 +36,9 @@ import { ConvFighterEntity } from '../entities/aero/conv-fighter-entity';
 import { FixedWingSupportEntity } from '../entities/aero/fixed-wing-support-entity';
 import {
   AERO_EQUIP_LOCATIONS,
+  requireArmorEquipment,
 } from '../types';
+import { MountedArmor } from '../components';
 import { encodeBlkAeroCockpitType, encodeBlkHeatSinkType } from '../parsers/blk-codec';
 import {
   BuildingBlockWriter,
@@ -49,6 +51,7 @@ import {
   writeManualBV,
   writeOmni,
   writeSource,
+  writeSupportVehicleBarRating,
   writeTonnage,
   writeTransporters,
 } from './building-block-writer';
@@ -66,6 +69,16 @@ import { FIGHTER_EQUIP_TAGS, FWS_EQUIP_TAGS } from '../parsers/blk-constants';
  */
 export function writeBlkAero(entity: AeroEntity): string {
   const w = new BuildingBlockWriter();
+  const virtualPatchworkArmor = entity.hasPatchworkArmor()
+    ? new Map([
+      ['Wings', new MountedArmor({
+        armor: requireArmorEquipment('STANDARD', false, entity.getEquipmentRegistry()),
+        techBase: 'IS',
+        techRating: 'D',
+      })],
+      ['Fuselage', null],
+    ] as const)
+    : undefined;
 
   // ── UnitType ──
   let unitType = 'AeroSpaceFighter';
@@ -96,7 +109,7 @@ export function writeBlkAero(entity: AeroEntity): string {
   writeEngine(w, entity);
 
   // 9. Armor: armor_type, armor_tech_rating, armor_tech_level (or patchwork per-location)
-  writeArmorBlocks(w, entity, AERO_EQUIP_LOCATIONS);
+  writeArmorBlocks(w, entity, AERO_EQUIP_LOCATIONS, virtualPatchworkArmor);
 
   // 10. internal_type
   writeInternalType(w, entity);
@@ -116,7 +129,7 @@ export function writeBlkAero(entity: AeroEntity): string {
 
   // 14. BAR / support tech ratings
   if (entity instanceof FixedWingSupportEntity) {
-    w.addBlock('barrating', entity.barRating());
+    writeSupportVehicleBarRating(w, entity);
     if (entity.structuralTechRating()) w.addBlock('structural_tech_rating', entity.structuralTechRating());
     if (entity.engineTechRating())     w.addBlock('engine_tech_rating', entity.engineTechRating());
   }

@@ -80,8 +80,8 @@ export function getNumCriticalSlots(entity: BaseEntity, eq: Equipment, size: num
 
     // ── Ferro-Fibrous / Reactive ────────────────────────────────────
     if (eq.hasFlag('F_FERRO_FIBROUS') || eq.hasFlag('F_REACTIVE')) {
-        const mountedArmor = entity.mountedArmor();
-        if (mountedArmor.type === 'PATCHWORK') {
+        const mountedArmor = entity.uniformArmor();
+        if (!mountedArmor) {
             return getPatchworkArmorSlots(
                 entity,
                 ['FERRO_FIBROUS', 'REACTIVE'],
@@ -95,8 +95,8 @@ export function getNumCriticalSlots(entity: BaseEntity, eq: Equipment, size: num
 
     // ── Reflective ──────────────────────────────────────────────────
     if (eq.hasFlag('F_REFLECTIVE')) {
-        const mountedArmor = entity.mountedArmor();
-        if (mountedArmor.type === 'PATCHWORK') {
+        const mountedArmor = entity.uniformArmor();
+        if (!mountedArmor) {
             return getPatchworkArmorSlots(
                 entity,
                 ['REFLECTIVE'],
@@ -217,12 +217,11 @@ function getPatchworkArmorSlots(
     armorTypes: readonly ArmorType[],
     slotsPerLocation: (techBase: 'IS' | 'Clan' | 'All') => number,
 ): number | undefined {
-    const mountedArmor = entity.mountedArmor();
-    if (mountedArmor.type !== 'PATCHWORK') return undefined;
+    if (!entity.hasPatchworkArmor()) return undefined;
 
-    const slots = entity.locationOrder.reduce((total, location) => {
-        const locationArmor = mountedArmor.patchwork.get(location);
-        if (!locationArmor || !armorTypes.includes(locationArmor.type)) return total;
+    const slots = entity.armorLocations.reduce((total, location) => {
+        const locationArmor = entity.armorAt(location);
+        if (!armorTypes.includes(locationArmor.type)) return total;
         return total + slotsPerLocation(locationArmor.techBase);
     }, 0);
 

@@ -33,6 +33,12 @@
 
 import { InfantryEntity } from '../entities/infantry/infantry-entity';
 import {
+  Equipment,
+  InfantryWeaponEquipment,
+  MiscEquipment,
+  WeaponEquipment,
+} from '../../equipment.model';
+import {
   INFANTRY_SPECIALIZATION_FROM_BIT,
   InfantryMount,
   InfantrySpecialization,
@@ -40,8 +46,7 @@ import {
 } from '../types';
 import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
-import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
-import { parseEquipmentLine } from './equipment-resolver';
+import { parseBaseBlk, parseBlkEquipment } from './blk-base-parser';
 import { ParseContext } from './parse-context';
 import { decodeMotiveType } from './motive-type-codec';
 
@@ -160,11 +165,10 @@ function parseInfantryMotionType(raw: string, entity: InfantryEntity, ctx: Parse
  */
 export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): InfantryEntity {
   resetMountIdCounter();
-  const entity = new InfantryEntity();
+  const entity = new InfantryEntity(ctx.equipmentRegistry);
 
   // ── Base parsing ──
   parseBaseBlk(bb, entity, ctx);
-  const techBase = getBlkTechBase(bb);
 
   // ── Motive type ──
   if (bb.exists('motion_type')) {
@@ -172,55 +176,11 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
     setInfantryMovementDefaults(entity);
   }
 
-  // ── Troopers Equipment (armor kits, etc. - stored in 'Infantry' location) ──
-  if (bb.exists('Troopers Equipment')) {
-    const lines = bb.getDataAsString('Troopers Equipment');
-    for (const raw of lines) {
-      const line = raw.trim();
-      if (!line) continue;
-
-      const parsed = parseEquipmentLine(line);
-      const resolved = ctx.resolveEquipment(parsed.name, 'Troopers Equipment');
-
-      entity.addEquipment({
-        mountId: generateMountId(),
-        equipmentId: parsed.name,
-        equipment: resolved ?? undefined,
-        allocation: { kind: 'location', location: 'Infantry' },
-        rearMounted: false,
-        turretMounted: false,
-        omniPodMounted: false,
-        armored: false,
-        size: parsed.size,
-        shotsCount: parsed.shots,
-      });
-    }
-  }
-
-  // ── Field Guns ──
-  if (bb.exists('Field Guns Equipment')) {
-    const lines = bb.getDataAsString('Field Guns Equipment');
-    for (const raw of lines) {
-      const line = raw.trim();
-      if (!line) continue;
-
-      const parsed = parseEquipmentLine(line);
-      const resolved = ctx.resolveEquipment(parsed.name, 'Field Guns Equipment');
-
-      entity.addEquipment({
-        mountId: generateMountId(),
-        equipmentId: parsed.name,
-        equipment: resolved ?? undefined,
-        allocation: { kind: 'location', location: 'Field Guns' },
-        rearMounted: false,
-        turretMounted: false,
-        omniPodMounted: false,
-        armored: false,
-        size: parsed.size,
-        shotsCount: parsed.shots,
-      });
-    }
-  }
+  parseBlkEquipment(bb, entity, ctx, [
+    ['Troopers Equipment', 'Infantry'],
+    ['Field Guns Equipment', 'Field Guns'],
+    ['slotless_equipment', 'None'],
+  ]);
 
   // ── Squad configuration ──
   if (bb.exists('squad_size')) entity.squadSize.set(bb.getFirstInt('squad_size'));
@@ -228,16 +188,19 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
 
   // ── Weapons ──
   if (bb.exists('Primary')) {
-    const primaryWeapon = bb.getFirstString('Primary');
-    entity.primaryWeapon.set(primaryWeapon);
-    entity.primaryWeaponEquipment.set(ctx.resolveEquipment(primaryWeapon, 'Primary'));
+    entity.primaryWeapon.set(resolveInfantryWeapon(bb.getFirstString('Primary'), 'Primary', entity, ctx));
+  } else {
+    ctx.error('Primary', 'Could not find primary weapon');
   }
   if (bb.exists('Secondary')) {
-    const secondaryWeapon = bb.getFirstString('Secondary');
-    entity.secondaryWeapon.set(secondaryWeapon);
-    entity.secondaryWeaponEquipment.set(ctx.resolveEquipment(secondaryWeapon, 'Secondary'));
+    entity.secondaryWeapon.set(resolveInfantryWeapon(bb.getFirstString('Secondary'), 'Secondary', entity, ctx));
+    if (entity.secondaryWeapon() && bb.exists('secondn')) {
+      const secondaryCount = bb.getFirstInt('secondn');
+      if (ctx.validateNonNegativeInt('secondn', secondaryCount)) {
+        entity.secondaryCount.set(secondaryCount);
+      }
+    }
   }
-  if (bb.exists('secondn'))      entity.secondaryCount.set(bb.getFirstInt('secondn'));
 
   // ── Armor ──
   // lowercase 'armordivisor' matches Java BLKFile output
@@ -245,9 +208,7 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
   // legacy uppercase form
   else if (bb.exists('armorDivisor')) entity.armorDivisor.set(bb.getFirstDouble('armorDivisor'));
   if (bb.exists('armorKit')) {
-    const armorKit = bb.getFirstString('armorKit');
-    entity.armorKit.set(armorKit);
-    entity.armorKitEquipment.set(ctx.resolveEquipment(armorKit, 'armorKit'));
+    mountLegacyArmorKit(bb.getFirstString('armorKit'), entity, ctx);
   }
 
   // ── Infantry-specific boolean fields (Java uses existence check, value is "true") ──
@@ -263,7 +224,7 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
     entity.addEquipment({
       mountId: generateMountId(),
       equipmentId: 'AntiMekGear',
-      equipment: ctx.resolveEquipment('AntiMekGear', 'antimek') ?? undefined,
+      equipment: ctx.resolveEquipment('AntiMekGear', 'antimek', entity.techBase()) ?? undefined,
       allocation: { kind: 'location', location: 'Infantry' },
       rearMounted: false,
       turretMounted: false,
@@ -317,6 +278,52 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
   }
 
   return entity;
+}
+
+function resolveInfantryWeapon(
+  equipmentId: string,
+  field: 'Primary' | 'Secondary',
+  entity: InfantryEntity,
+  ctx: ParseContext,
+): InfantryWeaponEquipment | null {
+  const equipment = ctx.resolveEquipment(equipmentId, field, entity.techBase());
+  if (!equipment) return null;
+  if (!(equipment instanceof WeaponEquipment) || !equipment.isInfantryWeapon()) {
+    ctx.error(field, `${field.toLowerCase()} weapon is not an infantry weapon: "${equipmentId}"`);
+    return null;
+  }
+  return equipment;
+}
+
+function mountLegacyArmorKit(equipmentId: string, entity: InfantryEntity, ctx: ParseContext): void {
+  const equipment = ctx.resolveEquipment(equipmentId, 'armorKit', entity.techBase());
+  if (!isInfantryArmorKit(equipment)) {
+    if (equipment) ctx.error('armorKit', `Equipment is not an infantry armor kit: "${equipmentId}"`);
+    return;
+  }
+
+  const mountedKit = entity.armorKit();
+  if (mountedKit) {
+    if (mountedKit !== equipment) {
+      ctx.warn('armorKit', `Ignored legacy armor kit "${equipmentId}" because "${mountedKit.id}" is already mounted`);
+    }
+    return;
+  }
+
+  entity.addEquipment({
+    mountId: generateMountId(),
+    equipmentId: equipment.id,
+    equipment,
+    allocation: { kind: 'location', location: 'Infantry' },
+    rearMounted: false,
+    turretMounted: false,
+    omniPodMounted: false,
+    armored: false,
+  });
+}
+
+function isInfantryArmorKit(equipment: Equipment | null): equipment is MiscEquipment {
+  return equipment instanceof MiscEquipment && equipment.isArmorKit;
 }
 
 function setInfantryMovementDefaults(entity: InfantryEntity): void {

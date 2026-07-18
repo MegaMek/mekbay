@@ -1,16 +1,18 @@
 import { MiscEquipment, WeaponEquipment } from '../../equipment.model';
-import { BattleArmorEntity } from '../entities/infantry/battle-armor-entity';
-import { BipedMekEntity } from '../entities/mek/biped-mek-entity';
-import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
-import { ProtoMekEntity } from '../entities/protomek/protomek-entity';
-import { SupportTankEntity } from '../entities/vehicle/support-tank-entity';
-import { SupportVtolEntity } from '../entities/vehicle/support-vtol-entity';
-import { TankEntity } from '../entities/vehicle/tank-entity';
-import { DropShipEntity } from '../entities/aero/dropship-entity';
-import { JumpShipEntity } from '../entities/largecraft/jumpship-entity';
-import { WarShipEntity } from '../entities/largecraft/warship-entity';
+import {
+    TestBattleArmorEntity as BattleArmorEntity,
+    TestBipedMekEntity as BipedMekEntity,
+    TestDropShipEntity as DropShipEntity,
+    TestJumpShipEntity as JumpShipEntity,
+    TestProtoMekEntity as ProtoMekEntity,
+    TestQuadMekEntity as QuadMekEntity,
+    TestSupportTankEntity as SupportTankEntity,
+    TestSupportVtolEntity as SupportVtolEntity,
+    TestTankEntity as TankEntity,
+    TestWarShipEntity as WarShipEntity,
+} from '../testing/test-entities';
 import { EntityMountedEquipment } from '../types';
-import { MountedEngine } from '../components';
+import { MountedEngine, MountedStructure, STANDARD_STRUCTURE_EQUIPMENT } from '../components';
 
 describe('EntityMountedEquipment.getTonnage', () => {
     const entity = new BipedMekEntity();
@@ -236,15 +238,16 @@ describe('EntityMountedEquipment.getTonnage', () => {
     });
 
     it('uses FrankenMek location tonnage capped by the center torso', () => {
-        const frankenMek = new BipedMekEntity();
-        frankenMek.setTonnage(100);
-        frankenMek.isFrankenMek.set(true);
-        frankenMek.frankenMekLocations.set(new Map([
-            ['CT', { tonnage: 60 }],
-            ['RA', { tonnage: 40 }],
-        ]));
+        const hybridMek = new BipedMekEntity();
+        hybridMek.setTonnage(100);
+        hybridMek.setStructureAt('CT', new MountedStructure({
+            tonnage: 60, structure: STANDARD_STRUCTURE_EQUIPMENT,
+        }));
+        hybridMek.setStructureAt('RA', new MountedStructure({
+            tonnage: 40, structure: STANDARD_STRUCTURE_EQUIPMENT,
+        }));
 
-        expect(mount(variableEquipment('jump jet', ['F_JUMP_JET'])).getTonnage(frankenMek)).toBe(0.5);
+        expect(mount(variableEquipment('jump jet', ['F_JUMP_JET'])).getTonnage(hybridMek)).toBe(0.5);
     });
 
     it('resolves IS and Clan MASC tonnage', () => {

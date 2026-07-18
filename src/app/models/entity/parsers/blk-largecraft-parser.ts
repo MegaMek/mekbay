@@ -94,7 +94,7 @@ export function parseBlkLargeCraft(bb: BuildingBlock, ctx: ParseContext): JumpSh
   }
 
   // ── Armor ──
-  parseBlkArmor(bb, entity, ctx);
+  parseBlkArmor(bb, entity, ctx, { remapStandardTo: 'AEROSPACE' });
   parseBlkArmorValues(bb, entity, LARGE_CRAFT_LOCATIONS);
 
   // ── Equipment per location ──

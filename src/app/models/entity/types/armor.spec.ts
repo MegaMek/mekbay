@@ -1,6 +1,6 @@
 import { EquipmentRegistry } from '../../equipment-lookup';
 import { createEquipment, type EquipmentMap } from '../../equipment.model';
-import { resolveArmorEquipment } from './armor';
+import { requireArmorEquipment, resolveArmorEquipment } from './armor';
 import { resolveMtfArmorEquipment } from '../parsers/mtf-codec';
 
 describe('MTF armor equipment resolution', () => {
@@ -58,5 +58,12 @@ describe('MTF armor equipment resolution', () => {
     expect(resolveArmorEquipment('REACTIVE', false, refreshedRegistry)?.id)
       .toBe('Custom Reactive Armor');
     expect(resolveArmorEquipment('REACTIVE', false, registry)).toBeNull();
+  });
+
+  it('requires mandatory armor from the equipment database', () => {
+    expect(requireArmorEquipment('STANDARD', false, registry).id).toBe('Standard Armor');
+    expect(() => requireArmorEquipment('BA_STANDARD', false, registry)).toThrowError(
+      'Required Inner Sphere BA_STANDARD armor is missing from the equipment database',
+    );
   });
 });

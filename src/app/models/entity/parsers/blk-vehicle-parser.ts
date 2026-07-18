@@ -57,7 +57,7 @@ import {
   VEHICLE_EQUIP_TAGS,
   VTOL_ARMOR_LOCS,
 } from './blk-constants';
-import { parseBaseBlk, parseBlkArmor, parseBlkEngine, parseBlkEquipment, resolveBlkStructure } from './blk-base-parser';
+import { parseBaseBlk, parseBlkArmor, parseBlkEngine, parseBlkEquipment, parseBlkSupportArmor, resolveBlkStructure } from './blk-base-parser';
 import { ParseContext } from './parse-context';
 
 // ============================================================================
@@ -173,7 +173,8 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
   }
 
   // ── Armor ──
-  parseBlkArmor(bb, entity, ctx);
+  if (entity.isSupportVehicle()) parseBlkSupportArmor(bb, entity, ctx);
+  else parseBlkArmor(bb, entity, ctx);
 
   if (bb.exists('armor')) {
     const ints = bb.getDataAsInt('armor');
@@ -222,11 +223,6 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
     }
 
     entity.armorValues.set(armorMap);
-  }
-
-  // ── Support vehicle BAR rating ──
-  if (entity.isSupportVehicle() && bb.exists('barrating')) {
-    entity.barRating.set(bb.getFirstInt('barrating'));
   }
 
   // ── Support vehicle tech ratings and fuel ──
