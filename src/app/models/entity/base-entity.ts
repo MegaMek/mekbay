@@ -48,7 +48,7 @@ import {
   withLocationComponent,
   withUniformLocationComponent,
 } from './components';
-import { ArmorEquipment, Equipment, WeaponEquipment } from '../equipment.model';
+import { AmmoEquipment, ArmorEquipment, Equipment, MiscEquipment, WeaponEquipment } from '../equipment.model';
 import { SourcebookReference } from '../sourcebook.model';
 import {
   ArmorFace,
@@ -300,16 +300,17 @@ export abstract class BaseEntity implements EntityTechnology {
     return sources;
   }
 
-  /**
-   * Approximate CompositeTechLevel's blank IS-progression early return without
-   * suppressing universal-tech and infantry sources assembled differently by MegaMek.
-   */
+  /** Mirror CompositeTechLevel's blank-progression early return. */
   private mountedEquipmentContributesTech(equipment: Equipment): boolean {
     if (this.mixedTech() || this.techBase() !== 'IS' || equipment.techBase !== 'Clan'
       || equipment.type === 'ammo') return true;
     const dates = equipment.tech.advancement;
     if (!dates || !('is' in dates || 'clan' in dates)) return true;
-    return dates.is != null;
+    if (dates.is != null) return true;
+    const clanCommon = dates.clan?.common;
+    if (clanCommon == null) return false;
+    const commonYear = Number.parseInt(String(clanCommon).replace(/\D/g, ''), 10);
+    return Number.isFinite(commonYear) && commonYear <= this.year();
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -447,9 +448,9 @@ export abstract class BaseEntity implements EntityTechnology {
   }
   /** Composite technology rating and four-era availability code. */
   readonly obsoleteYears = computed<readonly number[]>(() => {
-    const obsolete = this.quirks().find(quirk => quirk.name.toLowerCase().startsWith('obsolete:'));
+    const obsolete = this.quirks().find(quirk => quirk.quirk.key === 'obsolete');
     if (!obsolete) return [];
-    const value = obsolete.name.slice(obsolete.name.indexOf(':') + 1).trim();
+    const value = obsolete.value?.trim() ?? '';
     if (!value || value.toLowerCase() === 'unknown') return [];
     return value.split(',')
       .map(part => Number.parseInt(part.trim(), 10))
@@ -692,6 +693,72 @@ export abstract class BaseEntity implements EntityTechnology {
   readonly umuMP = computed(() => this.equipment().some(
     mount => mount.equipment?.hasFlag('S_SHIELD_LARGE'),
   ) ? 0 : this.installedUmuMP());
+
+  /** Whether this construction uses the heat scale. */
+  tracksHeat(): boolean {
+    return false;
+  }
+
+  /** Maximum static equipment heat, independent of combat state. */
+  readonly heatGeneration = computed(() => this.tracksHeat() ? this.computeHeatGeneration() : -1);
+
+  protected computeHeatGeneration(): number {
+    let heat = 0;
+    for (const mount of this.equipment()) {
+      if (mount.equipment instanceof WeaponEquipment) {
+        const multiplier = mount.equipment.ammoType === 'AC_ROTARY'
+          ? 6
+          : mount.equipment.ammoType === 'AC_ULTRA' || mount.equipment.ammoType === 'AC_ULTRA_THB'
+            ? 2
+            : 1;
+        heat += mount.equipment.heat * multiplier;
+      } else if (mount.equipment instanceof MiscEquipment) {
+        heat += mount.equipment.operatingHeat;
+        if (mount.equipment.hasFlag('F_PPC_CAPACITOR')) heat += 5;
+        if (mount.equipment.hasFlag('F_LASER_INSULATOR')) heat -= 1;
+      }
+    }
+    const armor = this.uniformArmor()?.armor;
+    if (!this.hasPatchworkArmor() && armor?.armorType === 'STEALTH') heat += 10;
+    return heat;
+  }
+
+  /** Normal undamaged heat dissipation. */
+  readonly heatDissipation = computed(() => this.tracksHeat() ? this.computeHeatDissipation(true) : -1);
+
+  /** Normal and one-turn maximum dissipation, absent on non-heat units. */
+  readonly heatDissipationRange = computed<readonly [number, number] | undefined>(() => {
+    if (!this.tracksHeat()) return undefined;
+    const normal = this.computeHeatDissipation(false);
+    return [normal, this.computeMaximumHeatDissipation(normal)];
+  });
+
+  protected computeHeatDissipation(_includeRadical: boolean): number {
+    return 0;
+  }
+
+  protected computeMaximumHeatDissipation(normal: number): number {
+    return normal;
+  }
+
+  /** Exporter's historical engine-sink count. */
+  readonly engineHeatSinks = computed(() => 0);
+
+  /** Canonical heat-sink equipment name, or null for non-heat units. */
+  readonly engineHeatSinkType = computed<string | null>(() => null);
+
+  /** Number of independently tracked crew positions, not physical complement. */
+  readonly crewSlotCount = computed<number>(() => this.entityType === 'HandheldWeapon' ? 0 : 1);
+
+  protected hasEquipmentFlag(flag: string): boolean {
+    return this.equipment().some(mount => mount.equipment?.hasFlag(flag));
+  }
+
+  protected hasCoolantPod(): boolean {
+    return this.equipment().some(mount =>
+      mount.equipment instanceof AmmoEquipment && mount.equipment.ammoType === 'COOLANT_POD'
+    );
+  }
 
   computeWalkMP(_options: MovementCalculationOptions): number {
     return this.originalWalkMP();

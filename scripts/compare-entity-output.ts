@@ -60,6 +60,7 @@ import { writeEntity } from '../src/app/models/entity/write-entity';
 import { resetMountIdCounter } from '../src/app/models/entity/utils/signal-helpers';
 import { MekEntity } from '../src/app/models/entity/entities/mek/mek-entity';
 import { BaseEntity } from '../src/app/models/entity/base-entity';
+import { loadQuirkResolver } from './quirk-fixture';
 
 /**
  * UnitTypes explicitly skipped - these entity types are not yet supported.
@@ -96,6 +97,7 @@ const NAME_TOKENS = NAME_FILTER
   : [];
 const FAIL_FAST = hasFlag('fail-fast');
 const VERBOSE = hasFlag('verbose');
+const quirkResolver = loadQuirkResolver();
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Equipment database loading
@@ -336,7 +338,7 @@ function processFile(
   let entity;
   try {
     resetMountIdCounter();
-    entity = parseEntity(content, fileName, equipmentRegistry).entity;
+    entity = parseEntity(content, fileName, equipmentRegistry, { quirkResolver }).entity;
   } catch (e: any) {
     return { file: filePath, status: 'parse-error', error: `Parse: ${e.message}` };
   }

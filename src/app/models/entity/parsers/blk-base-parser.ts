@@ -158,7 +158,8 @@ export function parseBaseBlk(
     for (const line of quirkLines) {
       const trimmed = line.trim();
       if (trimmed) {
-        quirks.push({ name: trimmed });
+        const quirk = ctx.resolveQuirk(trimmed);
+        if (quirk) quirks.push(quirk);
       }
     }
     entity.quirks.set(quirks);

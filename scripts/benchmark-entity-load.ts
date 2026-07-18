@@ -51,6 +51,7 @@ import * as path from 'path';
 import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
 import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
+import { loadQuirkResolver } from './quirk-fixture';
 import { resetMountIdCounter } from '../src/app/models/entity/utils/signal-helpers';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -123,6 +124,8 @@ function loadEquipmentDb(): EquipmentLoadResult {
 
   return { equipmentRegistry, loaded, failed, lookupKeys: equipmentRegistry.lookupKeyCount, timeMs };
 }
+
+const quirkResolver = loadQuirkResolver();
 
 // ═══════════════════════════════════════════════════════════════════════════
 // File discovery
@@ -209,7 +212,7 @@ function loadFile(
   const t0 = performance.now();
   try {
     resetMountIdCounter();
-    const { entity } = parseEntity(content, fileName, equipmentRegistry);
+    const { entity } = parseEntity(content, fileName, equipmentRegistry, { quirkResolver });
     const timeMs = performance.now() - t0;
     return { file: filePath, status: 'ok', entityType: entity.entityType, timeMs };
   } catch (e: any) {

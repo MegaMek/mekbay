@@ -118,6 +118,43 @@ export abstract class AeroEntity extends BaseEntity {
     ));
   }
 
+  override tracksHeat(): boolean {
+    return this.entityType === 'Aero' || this.entityType === 'SmallCraft';
+  }
+
+  protected override computeHeatDissipation(includeRadical: boolean): number {
+    const sinks = this.heatSinkCount();
+    let capacity = sinks * (this.heatSinkType() === 'Double' ? 2 : 1);
+    if (includeRadical && this.hasEquipmentFlag('F_RADICAL_HEATSINK')) {
+      capacity += Math.ceil(sinks * 0.4);
+    }
+    return capacity;
+  }
+
+  protected override computeMaximumHeatDissipation(normal: number): number {
+    const sinks = this.heatSinkCount();
+    let maximum = normal;
+    if (this.hasEquipmentFlag('F_RADICAL_HEATSINK')) maximum += sinks;
+    if (this.hasCoolantPod()) maximum += sinks;
+    maximum += this.equipment().filter(
+      mount => mount.equipment?.hasFlag('F_EMERGENCY_COOLANT_SYSTEM'),
+    ).length * 6;
+    return maximum;
+  }
+
+  override readonly engineHeatSinks = computed(() =>
+    this.tracksHeat() ? this.heatSinkCount() : 0
+  );
+
+  override readonly engineHeatSinkType = computed<string | null>(() => {
+    if (!this.tracksHeat()) return null;
+    return this.heatSinkType() === 'Double' ? 'ISDoubleHeatSink' : 'Heat Sink';
+  });
+
+  override readonly crewSlotCount = computed<number>(() =>
+    this.cockpitType() === 'Command Console' ? 2 : 1
+  );
+
   protected override computeWeightClass(): WeightClass {
     return resolveWeightClass(this.tonnage(), ASF_WEIGHT_LIMITS);
   }

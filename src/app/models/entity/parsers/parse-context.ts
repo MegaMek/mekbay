@@ -34,7 +34,8 @@
 import { EquipmentRegistry } from '../../equipment-lookup';
 import { Equipment, EquipmentMap } from '../../equipment.model';
 import { Sourcebook, SourcebookReference } from '../../sourcebook.model';
-import { EntityTechBase } from '../types';
+import type { Quirk } from '../../quirks.model';
+import { EntityQuirk, EntityTechBase } from '../types';
 
 // Re-export validation sets so parsers can import from parse-context OR types
 export {
@@ -83,10 +84,12 @@ export type EquipmentFallbackFn = (
 ) => Equipment | null;
 
 export type SourcebookResolverFn = (abbrev: string) => Sourcebook | undefined;
+export type QuirkResolverFn = (key: string) => Quirk | undefined;
 
 export interface ParseContextOptions {
   equipmentFallback?: EquipmentFallbackFn | null;
   sourcebookResolver?: SourcebookResolverFn | null;
+  quirkResolver?: QuirkResolverFn | null;
 }
 
 // ============================================================================
@@ -118,6 +121,8 @@ export class ParseContext {
 
   readonly sourcebookResolver: SourcebookResolverFn | null;
 
+  readonly quirkResolver: QuirkResolverFn | null;
+
   /** Accumulated diagnostics */
   readonly diagnostics: ParseDiagnostic[] = [];
 
@@ -131,10 +136,26 @@ export class ParseContext {
     this.equipmentDb = equipmentRegistry.equipment;
     this.equipmentFallback = options.equipmentFallback ?? null;
     this.sourcebookResolver = options.sourcebookResolver ?? null;
+    this.quirkResolver = options.quirkResolver ?? null;
   }
 
   resolveSourcebook(abbrev: string): SourcebookReference {
     return this.sourcebookResolver?.(abbrev) ?? { abbrev, canon: false, unresolved: true };
+  }
+
+  resolveQuirk(rawKey: string, field = 'quirks'): EntityQuirk | null {
+    const separator = rawKey.indexOf(':');
+    const key = separator >= 0 ? rawKey.slice(0, separator) : rawKey;
+    const value = separator >= 0 ? rawKey.slice(separator + 1) : undefined;
+    const quirk = this.quirkResolver?.(key);
+    if (!quirk) {
+      this.error(field, `Unknown quirk key: "${key}"`);
+      return null;
+    }
+    return {
+      quirk,
+      ...(value === undefined ? {} : { value }),
+    };
   }
 
   // ── Diagnostic helpers ──

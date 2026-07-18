@@ -55,7 +55,7 @@ import {
   resolveWeightClass,
 } from '../../types';
 import type { UnitSubtype, UnitType } from '../../types';
-import type { Equipment } from '../../../equipment.model';
+import { WeaponEquipment, type Equipment } from '../../../equipment.model';
 
 // ============================================================================
 // VehicleEntity - abstract base for all combat-vehicle entities
@@ -103,6 +103,27 @@ export abstract class VehicleEntity extends BaseEntity {
   baseChassisSponsonPintleWeight = signal<number>(-1);
   fuelType = signal<string>('');
   isTrailer = signal<boolean>(false);
+  /** Java treats a support-vehicle trailer chassis modification as trailer state. */
+  readonly effectiveIsTrailer = computed<boolean>(() => this.isTrailer()
+    || (this.isSupportVehicle() && this.equipment().some(
+      mount => mount.equipment?.hasFlag('F_TRAILER_MODIFICATION'),
+    )));
+  override readonly crewSlotCount = computed<number>(() => {
+    const hasWeapons = this.equipment().some(mount => mount.equipment instanceof WeaponEquipment);
+    const hasAdditionalCrew = this.extraSeats() > 0 || this.equipment().some(
+      mount => mount.equipment?.hasAnyFlag([
+        'F_COMMUNICATIONS',
+        'F_MASH',
+        'F_MOBILE_FIELD_BASE',
+        'F_FIELD_KITCHEN',
+      ]),
+    );
+    const isUncrewedTrailer = this.effectiveIsTrailer()
+      && !hasWeapons
+      && this.mountedEngine().type() === 'None'
+      && !hasAdditionalCrew;
+    return isUncrewedTrailer ? 0 : 1;
+  });
   hasNoControlSystems = signal<boolean>(false);
   extraSeats = signal<number>(0);
 

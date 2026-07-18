@@ -36,33 +36,10 @@
  */
 import type { Equipment } from "./equipment.model";
 import type { Era } from "./eras.model";
-import type { UnitSubtype, UnitType } from "./entity/types";
+import type { MoveType, UnitSubtype, UnitType } from "./entity/types";
 import { TechBase } from "./tech.model";
 
-export type { UnitSubtype, UnitType } from "./entity/types";
-
-export type MoveType =
-    | 'Aerodyne'
-    | 'Biped'
-    | 'Hover'
-    | 'Hydrofoil'
-    | 'Jump'
-    | 'Leg'
-    | 'Microcopter'
-    | 'Motorized'
-    | 'Motorized SCUBA'
-    | 'Naval'
-    | 'None'
-    | 'Quad'
-    | 'Rail'
-    | 'Spheroid'
-    | 'Submarine'
-    | 'Tracked'
-    | 'Tripod'
-    | 'UMU'
-    | 'VTOL'
-    | 'Wheeled'
-    | 'WiGE';
+export type { MoveType, UnitSubtype, UnitType } from "./entity/types";
 
 export const CBT_WEIGHT_CLASSES = [
     'Ultra Light/PA(L)/Exoskeleton',
@@ -187,7 +164,7 @@ export interface Unit {
     engine: string;
     engineRating: number;
     engineHS: number; // Number of HeatSinks on the engine
-    engineHSType: string; // Type of HeatSinks on the engine: "Heat Sink", "Double Heat Sink", "Laser Heat Sink", etc...
+    engineHSType: string | null; // Type of HeatSinks on the engine: "Heat Sink", "Double Heat Sink", "Laser Heat Sink", etc...
     source: string[]; // Sourcebook abbreviations exported from units.json.
     published: string[]; // Record sheet source(s), e.g. "RS:AS".
     canon: boolean; // True if the unit is canon, false if is not (e.g. alt-universe or april fools units)

@@ -74,7 +74,8 @@ export function getConventionalInfantryConstructionTech(
   const dismounted = motiveType === 'Leg'
     || motiveType === 'Motorized'
     || motiveType === 'Jump'
-    || motiveType === 'UMU';
+    || motiveType === 'UMU'
+    || motiveType === 'Beast';
   return dismounted && !hasFieldEquipment && !hasEncumberingArmor
     ? CONVENTIONAL_INFANTRY_PLATOON_TECH
     : CONVENTIONAL_INFANTRY_CONSTRUCTION_TECH;

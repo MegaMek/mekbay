@@ -279,6 +279,57 @@ export abstract class MekEntity extends BaseEntity {
     return equipment ? { count, equipment } : null;
   });
 
+  override tracksHeat(): boolean {
+    return true;
+  }
+
+  protected override computeHeatDissipation(includeRadical: boolean): number {
+    let capacity = this.equipment().reduce((total, mount) => {
+      if (!(mount.equipment instanceof MiscEquipment) || !mount.equipment.isHeatSink) return total;
+      const multiplier = mount.equipment.isCompactHeatSink
+        || mount.equipment.hasFlag('F_HEAT_SINK') ? 1 : 2;
+      return total + mount.equipment.heatSinkUnitsPerMount * multiplier;
+    }, 0);
+    if (this.hasEquipmentFlag('F_PARTIAL_WING')) capacity += 3;
+    if (includeRadical && this.hasEquipmentFlag('F_RADICAL_HEATSINK')) {
+      capacity += Math.ceil(this.totalHeatSinks() * 0.4);
+    }
+    return capacity;
+  }
+
+  protected override computeMaximumHeatDissipation(normal: number): number {
+    const sinks = this.totalHeatSinks();
+    let maximum = normal;
+    if (this.hasEquipmentFlag('F_RADICAL_HEATSINK')) maximum += sinks;
+    if (this.hasCoolantPod()) maximum += sinks;
+    maximum += this.equipment().filter(
+      mount => mount.equipment?.hasFlag('F_EMERGENCY_COOLANT_SYSTEM'),
+    ).length * 6;
+    return maximum;
+  }
+
+  override readonly engineHeatSinkType = computed<string>(() => {
+    const prototype = this.equipment().find(mount =>
+      mount.equipment?.hasFlag('F_IS_DOUBLE_HEAT_SINK_PROTOTYPE')
+    )?.equipment;
+    if (prototype) return prototype.internalName;
+    const equipment = this.heatSinkEquipment();
+    if (!equipment) return 'Heat Sink';
+    if (equipment.isCompactHeatSink) return '1 Compact Heat Sink';
+    return equipment.internalName;
+  });
+
+  override readonly crewSlotCount = computed<number>(() => {
+    switch (this.mountedCockpit().crewType) {
+      case 'Superheavy Tripod': return 3;
+      case 'Dual':
+      case 'Command Console':
+      case 'Tripod':
+      case 'QuadVee': return 2;
+      default: return 1;
+    }
+  });
+
   /** Replace the Mek engine and rebalance its engine-allocated heat-sink mounts. */
   configureEngine(engine: MountedEngine): void {
     const equipment = this.heatSinkEquipment();

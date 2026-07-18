@@ -65,10 +65,8 @@ export class InfantryEntity extends InfantryBaseEntity {
   override readonly entityType: EntityType = 'Infantry';
 
   override unitSubtype(): UnitSubtype {
-    const infantryMotive = this.motiveType() === 'Beast'
-      ? this.mount()?.movementMode
-      : this.motiveType();
-    const qualifier = infantryMotive && MECHANIZED_INFANTRY_MOTIVE_TYPES.has(infantryMotive) ? 'Mechanized '
+    const qualifier = this.motiveType() !== 'Beast'
+      && MECHANIZED_INFANTRY_MOTIVE_TYPES.has(this.motiveType()) ? 'Mechanized '
       : this.motiveType() === 'Motorized' ? 'Motorized '
       : '';
     return this.withOmniSubtype(`${qualifier}Conventional Infantry`);

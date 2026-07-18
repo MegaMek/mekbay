@@ -38,7 +38,7 @@ import { InfantryEntity } from '../models/entity/entities/infantry/infantry-enti
 import { JumpShipEntity } from '../models/entity/entities/largecraft/jumpship-entity';
 import { MekEntity } from '../models/entity/entities/mek/mek-entity';
 import { ASUnitTypeCode, Unit } from '../models/units.model';
-import { EntityType } from '../models/entity/types';
+import { EntityType, MoveType } from '../models/entity/types';
 import { buildUnitCargoMetadata } from './unit-cargo-metadata-builder';
 import { buildUnitComponentMetadata } from './unit-component-metadata-builder';
 
@@ -99,7 +99,6 @@ export class UnitMetadataBuilder {
       subtype: entity.unitSubtype(),
       techRating: entity.techRating(),
 
-      // ── Phase 1: Movement (implement on entity first) ──────────────
       walk: entity.walkMP(),
       walk2: entity.maxWalkMP(),
       run: entity.runMP(),
@@ -108,7 +107,16 @@ export class UnitMetadataBuilder {
       jump2: entity.maxJumpMP(),
       umu: entity.umuMP(),
       squads: this.buildSquadCount(entity),
-      squadSize: this.buildSquadSize(entity),
+      squadSize: this.buildSquadSize(entity),      
+      
+      heat: entity.heatGeneration(),
+      dissipation: entity.heatDissipation(),
+      diss: entity.heatDissipationRange() ? [...entity.heatDissipationRange()!] : undefined,
+      engineHS: entity.engineHeatSinks(),
+      engineHSType: entity.engineHeatSinkType(),
+      moveType: this.buildMoveType(entity),
+      quirks: entity.quirks().map(({ quirk }) => quirk.name),
+      crewSize: entity.crewSlotCount(),
     };
   }
 
@@ -139,6 +147,35 @@ export class UnitMetadataBuilder {
   // ═══════════════════════════════════════════════════════════════════════
   // Private field helpers
   // ═══════════════════════════════════════════════════════════════════════
+
+  /** Translate canonical entity movement into MegaMek's exported movement name. */
+  private buildMoveType(entity: BaseEntity): MoveType {
+    if (entity instanceof InfantryEntity) {
+      const mount = entity.mount();
+      if (mount) return mount.movementMode as MoveType;
+      if (entity.motiveType() === 'VTOL') {
+        return entity.isMicrolite() ? 'Microlite' : 'Microcopter';
+      }
+      if (entity.motiveType() === 'UMU') {
+        return entity.isMotorizedScuba() ? 'Motorized SCUBA' : 'SCUBA';
+      }
+    }
+
+    switch (entity.motiveType()) {
+      case 'Track':
+      case 'Wheel':
+        return 'Quad';
+      case 'Station Keeping':
+        return 'Station-Keeping';
+      case 'Aerospace':
+        return 'Aerodyne';
+      case 'Beast':
+      case 'Airship':
+        return 'ERROR';
+      default:
+        return entity.motiveType() as MoveType;
+    }
+  }
 
   /**
    * Returns the Alpha Strike unit type prefix code for name generation.

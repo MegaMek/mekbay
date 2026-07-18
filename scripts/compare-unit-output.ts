@@ -64,6 +64,7 @@ import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { resetMountIdCounter } from '../src/app/models/entity/utils/signal-helpers';
 import { UnitMetadataBuilder } from '../src/app/utils/unit-metadata-builder';
 import type { Sourcebook } from '../src/app/models/sourcebook.model';
+import type { Quirk } from '../src/app/models/quirks.model';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types
@@ -144,23 +145,23 @@ const CHECKED_FIELDS: FieldCheck[] = [
   { field: 'capital',        compare: 'exact', parity: 'verified' },
   { field: 'cargo',          compare: 'exact', parity: 'verified' },
   { field: 'comp',           compare: 'componentSet', parity: 'partial' },
-  { field: 'cost',           compare: 'numeric', tolerance: 1, parity: 'missing' },
-  { field: 'crewSize',       compare: 'exact', parity: 'missing' },
-  { field: 'diss',           compare: 'exact', parity: 'missing' },
-  { field: 'dissipation',    compare: 'numeric', tolerance: 1, parity: 'missing' },
+  { field: 'cost',           compare: 'numeric', tolerance: 1, parity: 'verified' },
+  { field: 'crewSize',       compare: 'exact', parity: 'verified' },
+  { field: 'diss',           compare: 'exact', parity: 'verified' },
+  { field: 'dissipation',    compare: 'numeric', tolerance: 1, parity: 'verified' },
   { field: 'dpt',            compare: 'numeric', tolerance: 0.5, parity: 'missing' },
-  { field: 'engineHS',       compare: 'exact', parity: 'missing' },
-  { field: 'engineHSType',   compare: 'exact', parity: 'missing' },
-  { field: 'features',       compare: 'exact', parity: 'missing' },
+  { field: 'engineHS',       compare: 'exact', parity: 'verified' },
+  { field: 'engineHSType',   compare: 'exact', parity: 'verified' },
+  { field: 'features',       compare: 'exact', parity: 'verified' },
   { field: 'fluff',          compare: 'exact', parity: 'missing' },
-  { field: 'heat',           compare: 'numeric', tolerance: 1, parity: 'missing' },
+  { field: 'heat',           compare: 'numeric', tolerance: 1, parity: 'verified' },
   { field: 'icon',           compare: 'exact', parity: 'missing' },
   { field: 'internal',       compare: 'exact', parity: 'verified' },
   { field: 'level',          compare: 'exact', parity: 'missing' },
-  { field: 'moveType',       compare: 'exact', parity: 'missing' },
+  { field: 'moveType',       compare: 'exact', parity: 'verified' },
   { field: 'offSpeedFactor', compare: 'exact', parity: 'missing' },
   { field: 'pv',             compare: 'exact', parity: 'missing' },
-  { field: 'quirks',         compare: 'exact', parity: 'missing' },
+  { field: 'quirks',         compare: 'setCompare', parity: 'verified' },
   { field: 'sheets',         compare: 'exact', parity: 'missing' },
   { field: 'squadSize',      compare: 'exact', parity: 'verified' },
   { field: 'squads',         compare: 'exact', parity: 'verified' },
@@ -281,6 +282,12 @@ function loadSourcebooks(): ReadonlyMap<string, Sourcebook> {
   const sourcebooksPath = path.join(__dirname, '..', 'public', 'assets', 'sourcebooks.json');
   const sourcebooks: Sourcebook[] = JSON.parse(fs.readFileSync(sourcebooksPath, 'utf-8'));
   return new Map(sourcebooks.map(sourcebook => [sourcebook.abbrev, sourcebook]));
+}
+
+function loadQuirks(): ReadonlyMap<string, Quirk> {
+  const quirksPath = path.join(__dirname, 'fixtures', 'quirks.json');
+  const data = JSON.parse(fs.readFileSync(quirksPath, 'utf-8')) as { quirks: Quirk[] };
+  return new Map(data.quirks.map(quirk => [quirk.key, quirk]));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -720,6 +727,7 @@ function processUnit(
   equipmentRegistry: EquipmentRegistry,
   builder: UnitMetadataBuilder,
   sourcebooks: ReadonlyMap<string, Sourcebook>,
+  quirks: ReadonlyMap<string, Quirk>,
 ): CompareResult {
   const unitName = `${oracle.chassis} ${oracle.model}`.trim();
 
@@ -737,6 +745,7 @@ function processUnit(
     resetMountIdCounter();
     const parsed = parseEntity(content, fileName, equipmentRegistry, {
       sourcebookResolver: source => sourcebooks.get(source),
+      quirkResolver: key => quirks.get(key),
     });
     entity = parsed.entity;
     const errors = parsed.diagnostics.filter(diagnostic => diagnostic.severity === 'error');
@@ -940,6 +949,7 @@ function main() {
   // Load dependencies
   const equipmentRegistry = loadEquipmentRegistry();
   const sourcebooks = loadSourcebooks();
+  const quirks = loadQuirks();
   const builder = new UnitMetadataBuilder();
   const selectedChecks = getActiveChecks();
   const comparedChecks = selectedChecks.filter(check => check.parity !== 'missing');
@@ -965,7 +975,7 @@ function main() {
   let processed = 0;
 
   for (const entry of entries) {
-    const result = processUnit(entry, comparedChecks, equipmentRegistry, builder, sourcebooks);
+    const result = processUnit(entry, comparedChecks, equipmentRegistry, builder, sourcebooks, quirks);
     results.push(result);
     processed++;
 

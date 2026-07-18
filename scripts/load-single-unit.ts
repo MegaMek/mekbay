@@ -18,6 +18,7 @@ import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../sr
 import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { resetMountIdCounter } from '../src/app/models/entity/utils/signal-helpers';
 import { MekEntity } from '../src/app/models/entity/entities/mek/mek-entity';
+import { loadQuirkResolver } from './quirk-fixture';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CLI argument parsing
@@ -32,6 +33,7 @@ function getArg(name: string, defaultValue: string): string {
 const INPUT_FILE = path.resolve(
   getArg('input', String.raw`C:\Projects\megamek\sourceUnits\meks\3039u\King Crab KGC-0000.mtf`)
 );
+const quirkResolver = loadQuirkResolver();
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Equipment database loading
@@ -82,15 +84,16 @@ function main() {
   const content = fs.readFileSync(INPUT_FILE, 'utf-8');
 
   resetMountIdCounter();
-  const { entity } = parseEntity(content, fileName, equipmentRegistry);
+  const { entity } = parseEntity(content, fileName, equipmentRegistry, { quirkResolver });
   if (entity instanceof MekEntity) {
     console.log(`\nParsed Mek: ${entity.displayName()}`);
     console.log(`Weight Class: ${entity.weightClass()}`);
     console.log(`\nEquipment:`);
     for (const m of entity.equipment()) {
       const locs = m.placements?.map(p => `${p.location}:${p.slotIndex}`) ?? [m.location];
+      const criticalSlots = m.equipment?.getNumCriticalSlots(entity, m.size ?? 0);
       console.log(`  ${m.equipmentId}`);
-      console.log(`    locations: [${locs.join(', ')}]  crits: ${m.criticalSlots ?? '-'}`);
+      console.log(`    locations: [${locs.join(', ')}]  crits: ${criticalSlots ?? '-'}`);
       if (m.rearMounted) console.log(`    rear-mounted`);
       if (m.omniPodMounted) console.log(`    omnipod`);
       if (m.armored) console.log(`    armored`);

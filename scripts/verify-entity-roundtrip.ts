@@ -60,6 +60,7 @@ import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { writeEntity } from '../src/app/models/entity/write-entity';
 import { resetMountIdCounter } from '../src/app/models/entity/utils/signal-helpers';
 import { MekEntity } from '../src/app/models/entity/entities/mek/mek-entity';
+import { loadQuirkResolver } from './quirk-fixture';
 
 /**
  * UnitTypes explicitly skipped - these entity types are not yet supported.
@@ -94,6 +95,7 @@ const FAIL_FAST = hasFlag('fail-fast');
 const PROFILE = hasFlag('profile');
 const VERBOSE = hasFlag('verbose');
 const READ_BATCH_SIZE = 16;
+const quirkResolver = loadQuirkResolver();
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Equipment database loading
@@ -245,7 +247,7 @@ function verifyFile(filePath: string, content: string, equipmentRegistry: Equipm
   try {
     phaseStart = performance.now();
     resetMountIdCounter();
-    entity1 = parseEntity(content, fileName, equipmentRegistry).entity;
+    entity1 = parseEntity(content, fileName, equipmentRegistry, { quirkResolver }).entity;
     timings.parse1 = performance.now() - phaseStart;
   } catch (e: any) {
     return { file: filePath, status: 'parse-error', error: `Pass1 parse: ${e.message}`, timings };
@@ -271,7 +273,7 @@ function verifyFile(filePath: string, content: string, equipmentRegistry: Equipm
     phaseStart = performance.now();
     resetMountIdCounter();
     const pass2Name = isMtf && entity1 instanceof MekEntity ? fileName : fileName.replace(/\.mtf$/i, '.blk');
-    entity2 = parseEntity(written1, pass2Name, equipmentRegistry).entity;
+    entity2 = parseEntity(written1, pass2Name, equipmentRegistry, { quirkResolver }).entity;
     timings.parse2 = performance.now() - phaseStart;
   } catch (e: any) {
     return {

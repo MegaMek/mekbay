@@ -486,7 +486,7 @@ export class Equipment {
     get techBase(): EquipmentTechBase { return this.tech.base; }
     get level(): ComponentTechLevel { return this.tech.level; }
     get rating(): string { return this.tech.rating; }
-    get availability(): String { return [this.tech.availability.sl??'X', this.tech.availability.sw??'X', this.tech.availability.clan??'X', this.tech.availability.da??'X'].join('-'); }
+    get availability(): String { return [this.tech.availability.sl ?? 'X', this.tech.availability.sw ?? 'X', this.tech.availability.clan ?? 'X', this.tech.availability.da ?? 'X'].join('-'); }
     getTechLevel(year: number, techBase: EntityTechBase, faction?: string): ComponentTechLevel {
         return calculateTechLevel(
             { level: this.level, dates: this.tech.advancement },
@@ -528,6 +528,10 @@ export class Equipment {
     hasMode(mode: string): boolean { return this.modes.includes(mode); }
     getNumCriticalSlots(entity: BaseEntity, size: number = 1): number | undefined {
         return getNumCriticalSlots(entity, this, size);
+    }
+
+    canSplit() {
+        return this.hasFlag('F_CAN_BE_SPlIT_ACROSS_CRITICAL_SLOTS');
     }
 
 }
@@ -575,8 +579,8 @@ export class WeaponEquipment extends Equipment {
         return this.hasFlag('F_INFANTRY') && this.infantry !== undefined;
     }
 
-    canSplit(): boolean {
-        return typeof this.stats.criticalSlots === 'number' && this.stats.criticalSlots >= 8;
+    override canSplit(): boolean {
+        return (typeof this.stats.criticalSlots === 'number' && this.stats.criticalSlots >= 8) || super.canSplit();
     }
 
     get oneShotCount(): 1 | 2 | undefined {
@@ -709,6 +713,22 @@ export class MiscEquipment extends Equipment {
     get baseDamageAbsorptionRate(): number { return this.misc.baseDamageAbsorptionRate; }
     get baseDamageCapacity(): number { return this.misc.baseDamageCapacity; }
     get industrial(): boolean { return this.misc.industrial; }
+    /** Heat generated while operating, equivalent to MegaMek's MiscType.getHeat(). */
+    get operatingHeat(): number {
+        if (this.hasAnyFlag(['F_NULL_SIG', 'F_VOID_SIG'])) return 10;
+        if (this.hasFlag('F_MOBILE_HPG')) return this.hasFlag('F_MEK_EQUIPMENT') ? 20 : 40;
+        if (this.hasFlag('F_CHAMELEON_SHIELD')) return 6;
+        if (this.hasAnyFlag(['F_VIRAL_JAMMER_DECOY', 'F_VIRAL_JAMMER_HOMING'])) return 12;
+        if (this.hasFlag('F_RISC_LASER_PULSE_MODULE')
+            || this.hasFlag('F_NOVA')
+            || this.hasAllFlags(['F_CLUB', 'S_SPOT_WELDER'])) return 2;
+        if (this.hasFlag('F_CLUB')) {
+            if (this.hasFlag('S_VIBRO_SMALL')) return 3;
+            if (this.hasFlag('S_VIBRO_MEDIUM')) return 5;
+            if (this.hasFlag('S_VIBRO_LARGE')) return 7;
+        }
+        return 0;
+    }
     get isArmorKit(): boolean { return this.hasFlag('F_ARMOR_KIT'); }
     get isHeatSink(): boolean {
         return this.hasAnyFlag(['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE']);

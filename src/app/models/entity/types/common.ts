@@ -31,12 +31,14 @@
  * affiliated with Microsoft.
  */
 
-// ============================================================================
-// Quirks
-// ============================================================================
+import type { Quirk } from '../../quirks.model';
 
+/** A catalog quirk assigned to an entity, with optional unit-specific data. */
 export interface EntityQuirk {
-  name: string;
+  /** Shared invariant catalog record. */
+  readonly quirk: Quirk;
+  /** Unit-specific option value, such as the year in `obsolete:2520`. */
+  readonly value?: string;
 }
 
 export interface EntityWeaponQuirk {

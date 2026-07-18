@@ -360,7 +360,7 @@ function writeCriticals(
 
 function writeQuirks(entity: MekEntity, lines: string[]): void {
   for (const q of entity.quirks()) {
-    lines.push(`quirk:${q.name}`);
+    lines.push(`quirk:${q.quirk.key}${q.value === undefined ? '' : `:${q.value}`}`);
   }
   for (const wq of entity.weaponQuirks()) {
     lines.push(`weaponquirk:${wq.name}:${wq.location}:${wq.slot}:${wq.weaponName}`);

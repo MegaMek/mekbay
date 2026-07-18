@@ -479,13 +479,12 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
         }
       }
 
-      // Cross-location split: weapons with 8+ crit slots may be split between
-      // two adjacent locations (e.g. AC/20: 8 crits in LA + 2 in LT).
+      // Cross-location split: weapons with 8+ crit slots and explicitly
+      // splittable miscellaneous equipment may span adjacent locations.
       if (!addedToExisting) {
         const incompleteIndex = mountedEquipment.findIndex(m => {
           if (m.equipmentId !== parsed.name) return false;
-          if (!(m.equipment instanceof WeaponEquipment) || !m.equipment.canSplit()) return false;
-          // Weapons always have fixed (numeric) critSlots
+          if (!m.equipment?.canSplit()) return false;
           const criticalSlots = m.equipment.getNumCriticalSlots(entity);
           if (criticalSlots == null) return false;
           return (m.placements?.length ?? 0) < criticalSlots
@@ -836,7 +835,11 @@ function parseHeader(lines: string[], ctx: ParseContext): MtfHeader {
       }
 
       // Quirks
-      case 'quirk':       h.quirks.push({ name: value }); break;
+      case 'quirk': {
+        const quirk = ctx.resolveQuirk(value, 'quirk');
+        if (quirk) h.quirks.push(quirk);
+        break;
+      }
       case 'weaponquirk': {
         const parts = value.split(':');
         if (parts.length >= 4) {

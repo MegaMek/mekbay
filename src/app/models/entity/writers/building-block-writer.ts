@@ -147,7 +147,9 @@ export function writeYearTechMeta(w: BuildingBlockWriter, entity: BaseEntity): v
   // ── Quirks ──
   const quirks = entity.quirks();
   if (quirks.length > 0) {
-    w.addBlock('quirks', ...quirks.map(q => q.name));
+    w.addBlock('quirks', ...quirks.map(q =>
+      q.value === undefined ? q.quirk.key : `${q.quirk.key}:${q.value}`
+    ));
   }
   const wqs = entity.weaponQuirks();
   if (wqs.length > 0) {
