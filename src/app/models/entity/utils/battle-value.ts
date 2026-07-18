@@ -32,7 +32,6 @@
  */
 
 import type { BaseEntity } from '../base-entity';
-import type { MekEntity } from '../entities/mek/mek-entity';
 import { BV_MOVEMENT_CALCULATION } from '../types';
 import { isMekEntity } from './entity-type-guards';
 
