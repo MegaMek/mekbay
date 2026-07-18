@@ -73,7 +73,7 @@ function addSyntheticStructural(
   entity: MekEntity,
   equipment: Equipment,
 ): void {
-  const key = `${equipment.shortName}__S`;
+  const key = `${equipment.id}__S`;
   const existing = components.get(key);
   if (existing) {
     existing.q++;
@@ -102,7 +102,7 @@ function addWeapon(
   if (equipment.isInternalRepresentation) return;
 
   const location = mountLocations(mount);
-  const key = `${equipment.shortName}_${location}${mount.rearMounted ? '_rear' : ''}`;
+  const key = `${equipment.id}_${location}${mount.rearMounted ? '_rear' : ''}`;
   const existing = components.get(key);
   if (existing) {
     existing.q++;
@@ -132,7 +132,7 @@ function addAmmo(
 ): void {
   const name = `${equipment.shortName.replace('Ammo', '').trim()} Ammo`;
   const location = mountLocations(mount);
-  const key = `${name}_${location}`;
+  const key = `${equipment.id}_${location}`;
   const shots = mount.getAmmoShots() ?? 0;
   const existing = components.get(key);
   if (existing) {
@@ -159,7 +159,7 @@ function addMisc(
   const location = mountLocations(mount);
   const structural = equipment.isArmorKit;
   const type = structural ? 'S' : 'C';
-  const key = `${equipment.shortName}_${location}_${type}`;
+  const key = `${equipment.id}_${location}_${type}`;
   const existing = components.get(key);
   if (existing) {
     existing.q++;
