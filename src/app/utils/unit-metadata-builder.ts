@@ -64,7 +64,7 @@ export class UnitMetadataBuilder {
    * Returns only the fields that are currently implemented.
    * Use the compare-unit-output script to validate against units.json.
    */
-  build(entity: BaseEntity): Partial<Unit> {
+  build(entity: BaseEntity, unitFile?: string): Partial<Unit> {
     const me = entity.mountedEngine();
     return {
       // ── Phase 0: Identity ──────────────────────────────────────────
@@ -80,6 +80,7 @@ export class UnitMetadataBuilder {
       type: entity.unitType(),
       id: entity.mulId(),
       canon: entity.canon(),
+      unitFile: unitFile,
 
       // ── Phase 0: Direct signals ────────────────────────────────────
       techBase: this.buildTechBase(entity),

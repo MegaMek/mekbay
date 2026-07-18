@@ -157,7 +157,7 @@ const CHECKED_FIELDS: FieldCheck[] = [
   { field: 'heat',           compare: 'numeric', tolerance: 1, parity: 'verified' },
   { field: 'icon',           compare: 'exact', parity: 'missing' },
   { field: 'internal',       compare: 'exact', parity: 'verified' },
-  { field: 'level',          compare: 'exact', parity: 'missing' },
+  { field: 'level',          compare: 'exact', parity: 'verified' },
   { field: 'moveType',       compare: 'exact', parity: 'verified' },
   { field: 'offSpeedFactor', compare: 'exact', parity: 'missing' },
   { field: 'pv',             compare: 'exact', parity: 'missing' },
@@ -170,7 +170,7 @@ const CHECKED_FIELDS: FieldCheck[] = [
   { field: 'techRating',     compare: 'exact', parity: 'verified' },
   { field: 'umu',            compare: 'exact', parity: 'verified' },
   { field: 'weightClass',    compare: 'exact', parity: 'verified' },
-  { field: 'unitFile',       compare: 'exact', parity: 'missing' },
+  { field: 'unitFile',       compare: 'exact', parity: 'verified' },
 
   // ── Phase 2: Alpha Strike ──────────────────────────────────────────
   { field: 'as.Arm',       compare: 'exact', parity: 'missing' },
@@ -768,7 +768,7 @@ function processUnit(
 
   try {
     // Build metadata
-    const metadata = builder.build(entity);
+    const metadata = builder.build(entity, oracle.unitFile);
 
     // Compare fields
     const issues: FieldIssue[] = [];
