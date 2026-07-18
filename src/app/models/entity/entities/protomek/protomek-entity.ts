@@ -91,10 +91,6 @@ export class ProtoMekEntity extends BaseEntity {
   readonly installedJumpJetMP = computed(() => this.equipment().filter(
     mount => mount.equipment?.hasFlag('F_JUMP_JET'),
   ).length);
-  readonly installedUmuMP = computed(() => this.equipment().filter(
-    mount => mount.equipment?.hasFlag('F_UMU'),
-  ).length);
-  readonly umuMP = computed(() => this.installedUmuMP());
 
   override computeJumpMP(options: MovementCalculationOptions): number {
     const partialWingBonus = !options.ignoreWeather && this.equipment().some(

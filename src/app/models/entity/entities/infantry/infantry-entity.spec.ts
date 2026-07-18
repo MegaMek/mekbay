@@ -27,6 +27,37 @@ describe('InfantryEntity movement', () => {
     expect(infantry.walkMP()).toBe(1);
     expect(infantry.jumpMP()).toBe(3);
   });
+
+  it('derives UMU movement from aquatic infantry motive configurations', () => {
+    const infantry = new InfantryEntity();
+    infantry.motiveType.set('UMU');
+    expect(infantry.umuMP()).toBe(1);
+
+    infantry.isMotorizedScuba.set(true);
+    expect(infantry.umuMP()).toBe(2);
+
+    infantry.motiveType.set('Submarine');
+    expect(infantry.umuMP()).toBe(3);
+
+    infantry.motiveType.set('Beast');
+    infantry.mount.set({
+      name: 'Aquatic Test Mount',
+      size: 'Very Large',
+      weight: 1,
+      movementPoints: 5,
+      movementMode: 'Submarine',
+      burstDamage: 0,
+      vehicleDamage: 0,
+      damageDivisor: 1,
+      maxWaterDepth: -1,
+      secondaryGroundMP: 0,
+      uwEndurance: 1,
+    });
+    expect(infantry.umuMP()).toBe(5);
+
+    infantry.mount.update(mount => mount && { ...mount, movementMode: 'Leg' });
+    expect(infantry.umuMP()).toBe(0);
+  });
 });
 
 function infantryWeapon(id: string, extraFlags: string[] = []): InfantryWeaponEquipment {

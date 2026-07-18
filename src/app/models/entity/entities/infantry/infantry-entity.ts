@@ -203,6 +203,15 @@ export class InfantryEntity extends InfantryBaseEntity {
     return jumpMP;
   }
 
+  /** Conventional infantry store underwater movement in the motive configuration, not UMU mounts. */
+  override readonly umuMP = computed(() => {
+    const mount = this.mount();
+    if (mount?.movementMode === 'Submarine') return mount.movementPoints;
+    if (this.motiveType() === 'UMU') return this.isMotorizedScuba() ? 2 : 1;
+    if (this.motiveType() !== 'Submarine') return 0;
+    return 3;
+  });
+
   private hasSupportWeaponPenalty(): boolean {
     return this.secondaryCount() > 1
       && !this.augmentations().some(augmentation => augmentation === 'tsm_implant' || augmentation === 'dermal_armor')

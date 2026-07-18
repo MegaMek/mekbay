@@ -206,6 +206,10 @@ describe('MekEntity jumpMP', () => {
     expect(entity.jumpMP()).toBe(0);
     expect(entity.installedUmuMP()).toBe(4);
     expect(entity.umuMP()).toBe(4);
+
+    entity.equipment.update(equipment => [...equipment, mountWithFlag('S_SHIELD_LARGE')]);
+    expect(entity.installedUmuMP()).toBe(4);
+    expect(entity.umuMP()).toBe(0);
   });
 
   it('uses the smaller partial-wing bonus for heavy Meks', () => {

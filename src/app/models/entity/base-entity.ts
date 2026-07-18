@@ -683,6 +683,16 @@ export abstract class BaseEntity implements EntityTechnology {
   maxRunMP = computed(() => this.computeRunMP(BV_MOVEMENT_CALCULATION));
   maxJumpMP = computed(() => this.computeJumpMP(BV_MOVEMENT_CALCULATION));
 
+  /** Installed underwater maneuvering units, derived from canonical equipment mounts. */
+  readonly installedUmuMP = computed(() => this.equipment().filter(
+    mount => mount.equipment?.hasFlag('F_UMU'),
+  ).length);
+
+  /** Usable UMU movement; large shields prevent mounted UMUs from functioning. */
+  readonly umuMP = computed(() => this.equipment().some(
+    mount => mount.equipment?.hasFlag('S_SHIELD_LARGE'),
+  ) ? 0 : this.installedUmuMP());
+
   computeWalkMP(_options: MovementCalculationOptions): number {
     return this.originalWalkMP();
   }

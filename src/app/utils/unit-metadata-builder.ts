@@ -106,6 +106,7 @@ export class UnitMetadataBuilder {
       run2: entity.maxRunMP(),
       jump: entity.jumpMP(),
       jump2: entity.maxJumpMP(),
+      umu: entity.umuMP(),
       squads: this.buildSquadCount(entity),
       squadSize: this.buildSquadSize(entity),
     };

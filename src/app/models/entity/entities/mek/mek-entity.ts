@@ -555,11 +555,6 @@ export abstract class MekEntity extends BaseEntity {
     return Math.min(Math.floor(movement), movementCap);
   });
 
-  readonly installedUmuMP = computed(() => this.equipment().filter(
-    mount => mount.equipment?.hasFlag('F_UMU'),
-  ).length);
-  readonly umuMP = computed(() => this.installedUmuMP());
-
   override computeJumpMP(options: MovementCalculationOptions): number {
     const equipment = this.equipment();
     const jumpJets = this.installedJumpJetMP();

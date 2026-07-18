@@ -94,7 +94,7 @@ export class BattleArmorEntity extends InfantryBaseEntity {
   squadEquipmentTag = signal<'Squad' | 'Point'>('Squad');
 
   readonly baseJumpMP = computed(() => this.motiveType() === 'UMU' ? 0 : this.propulsionMP());
-  readonly umuMP = computed(() => this.motiveType() === 'UMU' ? this.propulsionMP() : 0);
+  override readonly umuMP = computed(() => this.motiveType() === 'UMU' ? this.propulsionMP() : 0);
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  OVERRIDES - BA uses canonical motive values (no compound infantry strings)
