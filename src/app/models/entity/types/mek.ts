@@ -44,7 +44,7 @@ export type MekSystemType =
   | 'Engine' | 'Gyro' | 'Sensors' | 'Life Support' | 'Cockpit'
   | 'Shoulder' | 'Upper Arm Actuator' | 'Lower Arm Actuator' | 'Hand Actuator'
   | 'Hip' | 'Upper Leg Actuator' | 'Lower Leg Actuator' | 'Foot Actuator'
-  | 'Landing Gear' | 'Avionics';
+  | 'Landing Gear' | 'Avionics' | 'Conversion Gear';
 
 /** Number of critical slots per location for all Mek types (including superheavy). */
 export const MEK_SLOTS_PER_LOCATION = 12;

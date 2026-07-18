@@ -169,6 +169,7 @@ const SYSTEM_NAMES: Record<string, MekSystemType> = {
   'Gyro':                  'Gyro',
   'Landing Gear':          'Landing Gear',
   'Avionics':              'Avionics',
+  'Conversion Gear':       'Conversion Gear',
 };
 
 const ENGINE_SLOT_NAMES = [

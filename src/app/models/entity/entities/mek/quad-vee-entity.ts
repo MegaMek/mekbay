@@ -32,9 +32,19 @@
  */
 
 import { signal } from '@angular/core';
-import { MekConfig, MotiveType, type TechRatingSource } from '../../types';
+import {
+  type CriticalSlotView,
+  MekConfig,
+  type MekSystemType,
+  MotiveType,
+  type TechRatingSource,
+} from '../../types';
 import { getQuadVeeConstructionTech } from '../../components';
 import { QuadMekEntity } from './quad-mek-entity';
+
+function systemSlot(systemType: MekSystemType): CriticalSlotView {
+  return { type: 'system', systemType, armored: false, omniPod: false };
+}
 
 /** QuadVee - a Quad Mek with a vehicle motive type (Track or Wheel). */
 export class QuadVeeEntity extends QuadMekEntity {
@@ -47,5 +57,13 @@ export class QuadVeeEntity extends QuadMekEntity {
 
   override get chassisConfig(): MekConfig {
     return 'QuadVee';
+  }
+
+  protected override getSystemSlotsForLocation(location: string): CriticalSlotView[] {
+    const slots = super.getSystemSlotsForLocation(location);
+    if (location === 'FLL' || location === 'FRL' || location === 'RLL' || location === 'RRL') {
+      slots[4] = systemSlot('Conversion Gear');
+    }
+    return slots;
   }
 }
