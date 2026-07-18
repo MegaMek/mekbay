@@ -152,7 +152,7 @@ const CHECKED_FIELDS: FieldCheck[] = [
   { field: 'dpt',            compare: 'numeric', tolerance: 0.5, parity: 'missing' },
   { field: 'engineHS',       compare: 'exact', parity: 'verified' },
   { field: 'engineHSType',   compare: 'exact', parity: 'verified' },
-  { field: 'features',       compare: 'exact', parity: 'verified' },
+  { field: 'features',       compare: 'setCompare', parity: 'verified' },
   { field: 'fluff',          compare: 'exact', parity: 'missing' },
   { field: 'heat',           compare: 'numeric', tolerance: 1, parity: 'verified' },
   { field: 'icon',           compare: 'exact', parity: 'missing' },
