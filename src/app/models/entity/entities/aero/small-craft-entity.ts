@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -40,7 +40,7 @@ import {
   SmallCraftCrew,
   WeightClass,
 } from '../../types';
-import { AeroEntity } from './aero-entity';
+import { LargeAeroEntity } from './large-aero-entity';
 import type { UnitSubtype } from '../../types';
 import type { TechRatingSource } from '../../types';
 import { getSmallCraftConstructionTech } from '../../components';
@@ -52,7 +52,7 @@ import type { Equipment } from '../../../equipment.model';
  * Uses different location names than fighters: Left Side / Right Side / Hull
  * instead of Left Wing / Right Wing / Fuselage.
  */
-export class SmallCraftEntity extends AeroEntity {
+export class SmallCraftEntity extends LargeAeroEntity {
   override readonly entityType: EntityType = 'SmallCraft';
 
   protected unitSubtypeKind(): 'Small Craft' | 'DropShip' {

@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import { CriticalSlotView, MekConfig, type TechRatingSource } from '../../types';
 import { getLamConstructionTech } from '../../components';
 import { BipedMekEntity } from './biped-mek-entity';
@@ -48,6 +48,17 @@ export class LamEntity extends BipedMekEntity {
 
   override get chassisConfig(): MekConfig {
     return 'LAM';
+  }
+
+  override isLandAirMek(): boolean {
+    return this.lamType().toLowerCase() !== 'bimodal';
+  }
+
+  /** Mirrors LandAirMek.getAirMekFlankMP(BV_CALCULATION). */
+  readonly bvAirMekFlankMP = computed(() => Math.ceil(this.maxJumpMP() * 3 * 1.5));
+
+  override airMekFlankMP(): number {
+    return this.bvAirMekFlankMP();
   }
 
   protected override constructionTechAdvancement(): TechRatingSource {

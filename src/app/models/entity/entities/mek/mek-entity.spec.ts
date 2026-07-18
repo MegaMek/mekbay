@@ -5,7 +5,7 @@ import {
   MountedStructure,
   STANDARD_STRUCTURE_EQUIPMENT,
 } from '../../components';
-import { EntityMountedEquipment } from '../../types';
+import { BV_MOVEMENT_CALCULATION, EntityMountedEquipment } from '../../types';
 import {
   TestBipedMekEntity as BipedMekEntity,
   TestLamEntity as LamEntity,
@@ -324,7 +324,21 @@ describe('MekEntity jumpMP', () => {
     ]);
 
     expect(entity.jumpMP()).toBe(0);
-    expect(entity.maxJumpMP()).toBe(1);
+    expect(entity.maxJumpMP()).toBe(0);
+    expect(entity.computeJumpMP(BV_MOVEMENT_CALCULATION)).toBe(1);
+  });
+
+  it('includes mechanical jump boosters in the maximum jump distance', () => {
+    const entity = new BipedMekEntity();
+    const jumpBooster = new MiscEquipment({
+      id: 'Jump Booster', name: 'Jump Booster', type: 'misc', flags: ['F_JUMP_BOOSTER'],
+    });
+    const boosterMount = mounted(jumpBooster);
+    boosterMount.size = 4;
+    entity.equipment.set([boosterMount]);
+
+    expect(entity.jumpMP()).toBe(0);
+    expect(entity.maxJumpMP()).toBe(4);
   });
 
   it('reduces run MP by one for hardened armor', () => {

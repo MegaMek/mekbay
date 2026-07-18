@@ -32,8 +32,12 @@
  */
 
 import { Signal, computed, signal } from '@angular/core';
-import { BaseEntity, MovementCalculationOptions } from '../../base-entity';
+import { BaseEntity } from '../../base-entity';
 import {
+  type UnitType,
+  type UnitSubtype,
+  type MovementCalculationOptions,
+  type TechRatingSource,
   EntityType,
   EntityValidationMessage,
   IntrinsicWeapon,
@@ -44,10 +48,8 @@ import {
   resolveWeightClass,
   WeightClass,
 } from '../../types';
-import type { UnitSubtype, UnitType } from '../../types';
 import { getProtoMekConstructionTech, getProtoMekInterfaceCockpitTech } from '../../components';
 import type { Equipment } from '../../../equipment.model';
-import type { TechRatingSource } from '../../types';
 
 // ============================================================================
 // ProtoMekEntity - ProtoMech units (2-15 tons)

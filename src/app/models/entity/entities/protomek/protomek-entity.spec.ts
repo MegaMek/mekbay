@@ -1,5 +1,5 @@
 import { Equipment } from '../../../equipment.model';
-import { EntityMountedEquipment } from '../../types';
+import { BV_MOVEMENT_CALCULATION, EntityMountedEquipment } from '../../types';
 import { TestProtoMekEntity as ProtoMekEntity } from '../../testing/test-entities';
 
 describe('ProtoMekEntity jumpMP', () => {
@@ -11,7 +11,8 @@ describe('ProtoMekEntity jumpMP', () => {
 
     entity.equipment.update(equipment => [...equipment, mountWithFlag('F_PARTIAL_WING')]);
     expect(entity.jumpMP()).toBe(7);
-    expect(entity.maxJumpMP()).toBe(5);
+    expect(entity.maxJumpMP()).toBe(7);
+    expect(entity.computeJumpMP(BV_MOVEMENT_CALCULATION)).toBe(5);
 
     entity.equipment.set([]);
     expect(entity.jumpMP()).toBe(0);

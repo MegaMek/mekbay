@@ -159,7 +159,7 @@ const CHECKED_FIELDS: FieldCheck[] = [
   { field: 'internal',       compare: 'exact', parity: 'verified' },
   { field: 'level',          compare: 'exact', parity: 'verified' },
   { field: 'moveType',       compare: 'exact', parity: 'verified' },
-  { field: 'offSpeedFactor', compare: 'exact', parity: 'missing' },
+  { field: 'offSpeedFactor', compare: 'exact', parity: 'verified' },
   { field: 'pv',             compare: 'exact', parity: 'missing' },
   { field: 'quirks',         compare: 'setCompare', parity: 'verified' },
   { field: 'sheets',         compare: 'exact', parity: 'missing' },

@@ -3,14 +3,59 @@ import { MountedEngine } from '../components';
 import {
     TestBattleArmorEntity as BattleArmorEntity,
     TestBipedMekEntity as BipedMekEntity,
+    TestDropShipEntity as DropShipEntity,
+    TestJumpShipEntity as JumpShipEntity,
     TestProtoMekEntity as ProtoMekEntity,
     TestQuadMekEntity as QuadMekEntity,
+    TestSmallCraftEntity as SmallCraftEntity,
+    TestSpaceStationEntity as SpaceStationEntity,
     TestSupportTankEntity as SupportTankEntity,
+    TestWarShipEntity as WarShipEntity,
 } from '../testing/test-entities';
 import { EntityMountedEquipment } from '../types';
 import { TestBipedMekEntity, TestHandheldWeaponEntity } from '../testing/test-entities';
+import { calculateMountedEquipmentCost } from './cost';
 
 describe('entity cost', () => {
+    it('classifies all large aerospace families through their common entity hierarchy', () => {
+        const entities = [
+            new SmallCraftEntity(),
+            new DropShipEntity(),
+            new JumpShipEntity(),
+            new WarShipEntity(),
+            new SpaceStationEntity(),
+        ];
+
+        expect(entities.every(entity => entity.isLargeCraft())).toBeTrue();
+    });
+
+    it('derives Space Station KF-adapter and modular classifications from tonnage', () => {
+        const entity = new SpaceStationEntity();
+        entity.modularOrKFAdapter.set(true);
+
+        entity.setTonnage(100000);
+        expect(entity.hasKFAdapter()).toBeTrue();
+        expect(entity.isModular()).toBeFalse();
+
+        entity.setTonnage(100001);
+        expect(entity.hasKFAdapter()).toBeFalse();
+        expect(entity.isModular()).toBeTrue();
+    });
+
+    it('applies Space Station ordinary, KF-adapter, and modular cost multipliers', () => {
+        const entity = new SpaceStationEntity();
+        entity.setTonnage(100000);
+        const ordinaryAdapterWeightCost = entity.cost();
+        entity.modularOrKFAdapter.set(true);
+        expect(entity.cost()).toBe(ordinaryAdapterWeightCost * 4);
+
+        entity.modularOrKFAdapter.set(false);
+        entity.setTonnage(100001);
+        const ordinaryModularWeightCost = entity.cost();
+        entity.modularOrKFAdapter.set(true);
+        expect(entity.cost()).toBe(ordinaryModularWeightCost * 10);
+    });
+
   it('uses fixed prices from the equipment database', () => {
     const entity = new TestBipedMekEntity();
     entity.equipment.set([mount(new MiscEquipment({
@@ -20,7 +65,7 @@ describe('entity cost', () => {
       stats: { cost: 100000 },
     }))]);
 
-    expect(entity.cost()).toBe(100000);
+    expect(calculateMountedEquipmentCost(entity)).toBe(100000);
   });
 
   it('prices handheld equipment as structure and payload', () => {

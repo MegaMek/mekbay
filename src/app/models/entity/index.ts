@@ -91,6 +91,7 @@ export { writeBlkMek } from './writers/blk-mek-writer';
 
 // ── Aero Entities ──
 export { AeroEntity } from './entities/aero/aero-entity';
+export { LargeAeroEntity } from './entities/aero/large-aero-entity';
 export { AeroSpaceFighterEntity } from './entities/aero/aero-space-fighter-entity';
 export { ConvFighterEntity } from './entities/aero/conv-fighter-entity';
 export { FixedWingSupportEntity } from './entities/aero/fixed-wing-support-entity';

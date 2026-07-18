@@ -1,7 +1,7 @@
 import { BaseEntity } from '../models/entity/base-entity';
 import { MountedEngine, MountedStructure, STANDARD_STRUCTURE_EQUIPMENT } from '../models/entity/components';
 import { EntityMountedEquipment } from '../models/entity/types/equipment';
-import { locationArmor } from '../models/entity/types';
+import { BV_MOVEMENT_CALCULATION, locationArmor } from '../models/entity/types';
 import {
   TestAeroSpaceFighterEntity as AeroSpaceFighterEntity,
   TestBattleArmorEntity as BattleArmorEntity,
@@ -27,11 +27,49 @@ import {
 } from '../models/entity/testing/test-entities';
 import { Equipment, EquipmentRawData, MiscEquipment, StructureEquipment, WeaponEquipment } from '../models/equipment.model';
 import { UnitMetadataBuilder } from './unit-metadata-builder';
+import { getOffensiveSpeedFactor, offensiveSpeedFactor } from '../models/entity/utils/battle-value';
 import type { Sourcebook } from '../models/sourcebook.model';
 import type { UnitSubtype } from '../models/entity/types';
 
 describe('UnitMetadataBuilder', () => {
   const builder = new UnitMetadataBuilder();
+
+  it('exports the Java offensive speed factor from BV movement', () => {
+    const entity = new BipedMekEntity();
+    entity.originalWalkMP.set(4);
+
+    expect(offensiveSpeedFactor(6)).toBe(1.12);
+    expect(getOffensiveSpeedFactor(entity)).toBe(1.12);
+    expect(builder.build(entity).offSpeedFactor).toBe(1.12);
+  });
+
+  it('uses BV jump conditions for TSM Meks with modular armor', () => {
+    const entity = new BipedMekEntity();
+    entity.originalWalkMP.set(5);
+    entity.equipment.set([
+      miscMount('tsm', ['F_TSM']),
+      miscMount('modular-armor', ['F_MODULAR_ARMOR']),
+      ...Array.from({ length: 5 }, (_, index) => miscMount(`jump-jet-${index}`, ['F_JUMP_JET'])),
+    ]);
+
+    expect(entity.maxRunMP()).toBe(9);
+    expect(entity.maxJumpMP()).toBe(4);
+    expect(entity.computeJumpMP(BV_MOVEMENT_CALCULATION)).toBe(5);
+    expect(builder.build(entity).offSpeedFactor).toBe(1.89);
+  });
+
+  it('excludes the atmospheric ProtoMek partial-wing bonus from BV speed', () => {
+    const entity = new ProtoMekEntity();
+    entity.originalWalkMP.set(3);
+    entity.equipment.set([
+      miscMount('partial-wing', ['F_PARTIAL_WING']),
+      ...Array.from({ length: 5 }, (_, index) => miscMount(`jump-jet-${index}`, ['F_JUMP_JET'])),
+    ]);
+
+    expect(entity.maxJumpMP()).toBe(7);
+    expect(entity.computeJumpMP(BV_MOVEMENT_CALCULATION)).toBe(5);
+    expect(builder.build(entity).offSpeedFactor).toBe(1.37);
+  });
 
   it('classifies support naval vehicles without changing their canonical entity type', () => {
     const entity = new SupportNavalEntity();
@@ -432,6 +470,19 @@ describe('UnitMetadataBuilder', () => {
 
 function sourcebook(abbrev: string, canon = true): Sourcebook {
   return { id: 0, sku: '', abbrev, title: abbrev, canon };
+}
+
+function miscMount(id: string, flags: readonly string[]): EntityMountedEquipment {
+  return new EntityMountedEquipment({
+    mountId: id,
+    equipmentId: id,
+    equipment: new MiscEquipment({ id, name: id, type: 'misc', flags: [...flags] }),
+    allocation: { kind: 'location', location: 'Torso' },
+    rearMounted: false,
+    turretMounted: false,
+    omniPodMounted: false,
+    armored: false,
+  });
 }
 
 function viableWeaponMount(id: string): EntityMountedEquipment {

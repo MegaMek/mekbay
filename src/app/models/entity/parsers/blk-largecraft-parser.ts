@@ -88,6 +88,9 @@ export function parseBlkLargeCraft(bb: BuildingBlock, ctx: ParseContext): JumpSh
   if (bb.exists('lithium-fusion')) entity.lithiumFusion.set(bb.getFirstInt('lithium-fusion') === 1);
   if (bb.exists('hpg'))           entity.hpg.set(bb.getFirstInt('hpg') === 1);
   if (bb.exists('jump_range'))    entity.jumpRange.set(bb.getFirstInt('jump_range'));
+  if (entity instanceof SpaceStationEntity && bb.exists('modular')) {
+    entity.modularOrKFAdapter.set(bb.getFirstInt('modular') === 1);
+  }
 
   if (bb.exists('grav_decks')) {
     entity.gravDecks.set(bb.getDataAsInt('grav_decks'));

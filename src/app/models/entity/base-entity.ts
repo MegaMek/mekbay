@@ -51,6 +51,10 @@ import {
 import { AmmoEquipment, ArmorEquipment, Equipment, MiscEquipment, WeaponEquipment } from '../equipment.model';
 import { SourcebookReference } from '../sourcebook.model';
 import {
+  STANDARD_MOVEMENT_CALCULATION,
+  RUN_WITHOUT_MASC_CALCULATION,
+  ANY_TYPE_JUMP_MOVEMENT_CALCULATION,
+  BV_MOVEMENT_CALCULATION,
   ArmorFace,
   calculateCompositeStaticTechLevel,
   calculateCompositeTechRating,
@@ -59,6 +63,7 @@ import {
   FactionCode,
   MEK_WEIGHT_LIMITS,
   MotiveType,
+  type MovementCalculationOptions,
   resolveWeightClass,
   WeightClass,
   EntityFluff,
@@ -89,7 +94,8 @@ import type { SupportVehicle } from './entities/support-vehicle';
 import type { UnitSubtype, UnitType } from './types';
 import { EquipmentRegistry } from '../equipment-lookup';
 import { CLAN_EXCEPTIONAL_BAY_IDS, weaponBayEquipmentId } from './utils/implicit-equipment';
-import { calculateEntityCost } from './utils/cost';
+import { calculateEntityCost } from './utils/cost/entity-cost';
+import { getOffensiveSpeedFactor } from './utils/battle-value';
 
 /**
  * Set to `true` to make `computeMixedTech` collect ALL mixed-tech reasons
@@ -103,80 +109,6 @@ export interface MixedTechResult {
   /** Human-readable reasons explaining why mixed tech was detected. */
   readonly reasons: readonly string[];
 }
-
-export interface MovementCalculationOptions {
-  readonly ignoreGravity: boolean;
-  readonly ignoreHeat: boolean;
-  readonly ignoreModularArmor: boolean;
-  readonly ignoreChainDrape: boolean;
-  readonly ignoreMASC: boolean;
-  readonly ignoreMyomerBooster: boolean;
-  readonly ignoreDWP: boolean;
-  readonly ignoreBurden: boolean;
-  readonly ignoreCargo: boolean;
-  readonly ignoreWeather: boolean;
-  readonly singleMASC: boolean;
-  readonly ignoreSubmergedJumpJets: boolean;
-  readonly ignoreGrounded: boolean;
-  readonly ignoreOptionalRules: boolean;
-  readonly ignoreConversion: boolean;
-  readonly forceTSM: boolean;
-}
-
-export const STANDARD_MOVEMENT_CALCULATION: MovementCalculationOptions = {
-  ignoreGravity: false,
-  ignoreHeat: false,
-  ignoreModularArmor: false,
-  ignoreChainDrape: false,
-  ignoreMASC: false,
-  ignoreMyomerBooster: false,
-  ignoreDWP: false,
-  ignoreBurden: false,
-  ignoreCargo: false,
-  ignoreWeather: false,
-  singleMASC: false,
-  ignoreSubmergedJumpJets: true,
-  ignoreGrounded: false,
-  ignoreOptionalRules: false,
-  ignoreConversion: false,
-  forceTSM: false,
-};
-
-export const RUN_WITHOUT_MASC_CALCULATION: MovementCalculationOptions = {
-  ...STANDARD_MOVEMENT_CALCULATION,
-  ignoreMASC: true,
-};
-
-export const BV_MOVEMENT_CALCULATION: MovementCalculationOptions = {
-  ...STANDARD_MOVEMENT_CALCULATION,
-  ignoreGravity: true,
-  ignoreHeat: true,
-  ignoreModularArmor: true,
-  ignoreDWP: true,
-  ignoreBurden: true,
-  ignoreCargo: true,
-  ignoreWeather: true,
-  ignoreGrounded: true,
-  ignoreOptionalRules: true,
-  ignoreConversion: true,
-  forceTSM: true,
-};
-
-export const AS_MOVEMENT_CALCULATION: MovementCalculationOptions = {
-  ...STANDARD_MOVEMENT_CALCULATION,
-  ignoreGravity: true,
-  ignoreHeat: true,
-  ignoreModularArmor: true,
-  ignoreChainDrape: true,
-  ignoreMyomerBooster: true,
-  ignoreDWP: true,
-  ignoreBurden: true,
-  ignoreCargo: true,
-  ignoreWeather: true,
-  ignoreGrounded: true,
-  ignoreOptionalRules: true,
-  ignoreConversion: true,
-};
 
 /**
  * Abstract base class for all entity types.
@@ -222,6 +154,11 @@ export abstract class BaseEntity implements EntityTechnology {
   abstract unitSubtype(): UnitSubtype;
 
   isSupportVehicle(): this is this & SupportVehicle {
+    return false;
+  }
+
+  /** Large aerospace craft price transport bays in their family calculator. */
+  isLargeCraft(): boolean {
     return false;
   }
 
@@ -724,7 +661,10 @@ export abstract class BaseEntity implements EntityTechnology {
 
   maxWalkMP = computed(() => this.computeWalkMP(BV_MOVEMENT_CALCULATION));
   maxRunMP = computed(() => this.computeRunMP(BV_MOVEMENT_CALCULATION));
-  maxJumpMP = computed(() => this.computeJumpMP(BV_MOVEMENT_CALCULATION));
+  maxJumpMP = computed(() => this.computeJumpMP(ANY_TYPE_JUMP_MOVEMENT_CALCULATION));
+
+  /** TM p.316 offensive speed factor used by the BV calculator and export. */
+  readonly offensiveSpeedFactor = computed(() => getOffensiveSpeedFactor(this));
 
   /** Installed underwater maneuvering units, derived from canonical equipment mounts. */
   readonly installedUmuMP = computed(() => this.equipment().filter(

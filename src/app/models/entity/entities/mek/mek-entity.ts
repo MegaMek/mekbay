@@ -34,11 +34,11 @@
 import { Signal, computed, signal } from '@angular/core';
 import { EquipmentRegistry } from '../../../equipment-lookup';
 import { MiscEquipment } from '../../../equipment.model';
+
 import {
   BaseEntity,
   COLLECT_ALL_MIXED_TECH_REASONS,
   MixedTechResult,
-  MovementCalculationOptions,
 } from '../../base-entity';
 import {
   buildCTSystemLayout,
@@ -56,6 +56,10 @@ import {
   STANDARD_STRUCTURE_EQUIPMENT,
 } from '../../components';
 import {
+  type UnitType,
+  type UnitSubtype,
+  type MovementCalculationOptions,
+  BV_MOVEMENT_CALCULATION,
   CockpitType,
   CriticalSlotView,
   EngineFlag,
@@ -79,7 +83,6 @@ import {
   TechRatingSource,
 } from '../../types';
 import { generateMountId } from '../../utils/signal-helpers';
-import type { UnitSubtype, UnitType } from '../../types';
 import { COCKPIT_DATA, CockpitTypeDescriptor } from '../../components/cockpit-data';
 
 // ============================================================================
@@ -616,21 +619,57 @@ export abstract class MekEntity extends BaseEntity {
     return Math.min(Math.floor(movement), movementCap);
   });
 
-  override computeJumpMP(options: MovementCalculationOptions): number {
-    const equipment = this.equipment();
-    const jumpJets = this.installedJumpJetMP();
-    if (jumpJets === 0 || equipment.some(mount => mount.equipment?.hasFlag('S_SHIELD_LARGE'))) {
-      return 0;
-    }
+  /** Whether this Mek uses the Land-Air Mek BV movement exception. */
+  isLandAirMek(): boolean {
+    return false;
+  }
 
-    const partialWingBonus = equipment.some(mount => mount.equipment?.hasFlag('F_PARTIAL_WING'))
-      ? (this.weightClass() === 'Ultra Light' || this.weightClass() === 'Light' || this.weightClass() === 'Medium' ? 2 : 1)
-      : 0;
-    const mediumShields = equipment.filter(mount => mount.equipment?.hasFlag('S_SHIELD_MEDIUM')).length;
-    const modularArmorPenalty = equipment.some(
-      mount => mount.equipment?.hasFlag('F_MODULAR_ARMOR'),
-    ) && !options.ignoreModularArmor ? 1 : 0;
-    return Math.max(0, jumpJets + partialWingBonus - mediumShields - modularArmorPenalty);
+  /** Land-Air Mek AirMek flank MP for BV; zero for ordinary Meks. */
+  airMekFlankMP(): number {
+    return 0;
+  }
+
+  override computeJumpMP(options: MovementCalculationOptions): number {
+    if (this.hasLargeShield()) return 0;
+
+    const conventionalJumpMP = this.computeConventionalJumpMP(options);
+    if (!options.includeAlternateJumpSystems) return conventionalJumpMP;
+
+    return Math.max(conventionalJumpMP, this.mechanicalJumpBoosterMP());
+  }
+
+  /** Jump-jet movement after equipment bonuses and penalties. */
+  private computeConventionalJumpMP(options: MovementCalculationOptions): number {
+    const jumpJets = this.installedJumpJetMP();
+    if (jumpJets === 0) return 0;
+
+    const equipment = this.equipment();
+    const partialWingBonus = this.partialWingJumpBonus(equipment);
+    const mediumShieldPenalty = equipment.filter(mount =>
+      mount.equipment?.hasFlag('S_SHIELD_MEDIUM')
+    ).length;
+    const modularArmorPenalty = !options.ignoreModularArmor && equipment.some(mount =>
+      mount.equipment?.hasFlag('F_MODULAR_ARMOR')
+    ) ? 1 : 0;
+
+    return Math.max(0, jumpJets + partialWingBonus - mediumShieldPenalty - modularArmorPenalty);
+  }
+
+  private partialWingJumpBonus(equipment: readonly EntityMountedEquipment[]): number {
+    if (!equipment.some(mount => mount.equipment?.hasFlag('F_PARTIAL_WING'))) return 0;
+    return this.weightClass() === 'Ultra Light'
+      || this.weightClass() === 'Light'
+      || this.weightClass() === 'Medium' ? 2 : 1;
+  }
+
+  /** Mechanical jump boosters provide an alternative, not an additive, jump value. */
+  private mechanicalJumpBoosterMP(): number {
+    const booster = this.equipment().find(mount => mount.equipment?.hasFlag('F_JUMP_BOOSTER'));
+    return booster ? Math.round(booster.size ?? 0) : 0;
+  }
+
+  private hasLargeShield(): boolean {
+    return this.equipment().some(mount => mount.equipment?.hasFlag('S_SHIELD_LARGE'));
   }
 
   private hasMPReducingHardenedArmor(): boolean {

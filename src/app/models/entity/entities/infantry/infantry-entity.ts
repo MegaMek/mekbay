@@ -39,6 +39,9 @@ import {
   WeaponEquipment,
 } from '../../../equipment.model';
 import {
+  type UnitSubtype,
+  type MovementCalculationOptions,
+  type TechRatingSource,
   EntityType,
   EntityValidationMessage,
   InfantryMount,
@@ -46,11 +49,8 @@ import {
   MotiveType,
   WeightClass,
 } from '../../types';
-import { MovementCalculationOptions } from '../../base-entity';
 import { InfantryBaseEntity } from './infantry-base-entity';
 import { getInfantryTonnage } from '../../utils/infantry-tonnage';
-import type { UnitSubtype } from '../../types';
-import type { TechRatingSource } from '../../types';
 import {
   getConventionalInfantryConstructionTech,
   getInfantryMotiveTech,

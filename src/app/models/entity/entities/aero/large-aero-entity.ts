@@ -31,34 +31,11 @@
  * affiliated with Microsoft.
  */
 
-import { signal } from '@angular/core';
-import { BaseEntity } from '../../base-entity';
-import { EquipmentRegistry } from '../../../equipment-lookup';
-import type { MovementCalculationOptions, UnitSubtype, UnitType } from '../../types';
+import { AeroEntity } from './aero-entity';
 
-export abstract class InfantryBaseEntity extends BaseEntity {
-  constructor(equipmentRegistry: EquipmentRegistry) {
-    super(equipmentRegistry);
-    this.clearArmorMaterial();
-  }
-
-  override unitType(): UnitType {
-    return 'Infantry';
-  }
-
-  abstract override unitSubtype(): UnitSubtype;
-  readonly squadSize = signal<number>(1);
-  readonly squadCount = signal<number>(1);
-
-  override computeRunMP(options: MovementCalculationOptions): number {
-    return this.computeWalkMP(options);
-  }
-
-  override hasRearArmor(_loc: string): boolean {
-    return false;
-  }
-
-  protected override computeExpectedEngineRating(): number | null {
-    return null;
+/** Shared domain root for aerospace units MegaMek classifies as large craft. */
+export abstract class LargeAeroEntity extends AeroEntity {
+  override isLargeCraft(): boolean {
+    return true;
   }
 }

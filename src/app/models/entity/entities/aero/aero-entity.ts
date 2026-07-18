@@ -32,9 +32,13 @@
  */
 
 import { Signal, computed, signal } from '@angular/core';
-import { BaseEntity, MovementCalculationOptions } from '../../base-entity';
+import { BaseEntity } from '../../base-entity';
 import { AERO_COCKPIT_TECH } from '../../components';
 import {
+  type UnitType,
+  type UnitSubtype,
+  type MovementCalculationOptions,
+  type TechRatingSource,
   AeroCockpitType,
   ASF_WEIGHT_LIMITS,
   EntityType,
@@ -44,8 +48,6 @@ import {
   resolveWeightClass,
   WeightClass,
 } from '../../types';
-import type { UnitSubtype, UnitType } from '../../types';
-import type { TechRatingSource } from '../../types';
 
 // ============================================================================
 // AeroEntity - abstract base for all aero-type entities

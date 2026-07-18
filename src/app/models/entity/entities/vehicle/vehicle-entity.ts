@@ -32,12 +32,15 @@
  */
 
 import { Signal, computed, signal } from '@angular/core';
-import { BaseEntity, MovementCalculationOptions } from '../../base-entity';
+import { BaseEntity } from '../../base-entity';
 import {
   getDualTurretTech,
   OMNI_VEHICLE_TECH,
 } from '../../components';
 import {
+  type UnitType,
+  type UnitSubtype,
+  type MovementCalculationOptions,
   EngineFlag,
   EngineType,
   EntityValidationMessage,
@@ -54,7 +57,6 @@ import {
   TechRatingSource,
   resolveWeightClass,
 } from '../../types';
-import type { UnitSubtype, UnitType } from '../../types';
 import { WeaponEquipment, type Equipment } from '../../../equipment.model';
 
 // ============================================================================

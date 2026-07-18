@@ -133,6 +133,9 @@ export function writeBlkLargeCraft(entity: JumpShipEntity): string {
   if (entity.lithiumFusion()) w.addBlock('lithium-fusion', 1);
   if (entity.jumpRange() !== 30) w.addBlock('jump_range', entity.jumpRange());
   w.addBlock('sail', entity.sail() ? 1 : 0);
+  if (entity instanceof SpaceStationEntity && entity.modularOrKFAdapter()) {
+    w.addBlock('modular', 1);
+  }
   const gravDecks = entity.gravDecks();
   if (gravDecks.length > 0) {
     w.addBlock('grav_decks', ...gravDecks);

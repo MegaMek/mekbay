@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -32,7 +32,7 @@
  */
 
 import { Signal, computed, signal } from '@angular/core';
-import { AeroEntity } from '../aero/aero-entity';
+import { LargeAeroEntity } from '../aero/large-aero-entity';
 import {
   AeroDesignType,
   CAPITAL_SHIP_WEIGHT_LIMITS,
@@ -59,7 +59,7 @@ const JUMPSHIP_EQUIP_LOCS = [
 // JumpShipEntity - KF-drive capital ships
 // ============================================================================
 
-export class JumpShipEntity extends AeroEntity {
+export class JumpShipEntity extends LargeAeroEntity {
   override readonly entityType: EntityType = 'JumpShip';
 
   override unitSubtype(): UnitSubtype {

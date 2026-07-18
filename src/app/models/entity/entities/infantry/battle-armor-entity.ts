@@ -33,19 +33,19 @@
 
 import { Signal, computed, signal } from '@angular/core';
 import {
+  type MovementCalculationOptions,
+  type UnitSubtype,
   EntityType,
   EntityValidationMessage,
   requireArmorEquipment,
   TechRatingSource,
   WeightClass,
 } from '../../types';
-import { MovementCalculationOptions } from '../../base-entity';
 import {
   getBattleArmorConstructionTech,
   MountedArmor,
 } from '../../components';
 import { InfantryBaseEntity } from './infantry-base-entity';
-import type { UnitSubtype } from '../../types';
 import { EquipmentRegistry } from '../../../equipment-lookup';
 
 // ============================================================================

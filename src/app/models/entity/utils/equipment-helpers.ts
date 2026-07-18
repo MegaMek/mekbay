@@ -1,7 +1,9 @@
 
 import type { Equipment } from "../../equipment.model";
 import type { BaseEntity } from "../base-entity";
-import { type ArmorType, isQuadMekConfig, weightClassCode } from "../types";
+import type { ArmorType } from "../types/armor";
+import { isQuadMekConfig } from "../types/mek";
+import { weightClassCode } from "../types/weight";
 import { isAeroEntity, isMekEntity, isVehicleEntity } from "./entity-type-guards";
 import { getTargetingComputerRelevantWeight } from "./targeting-computer";
 
