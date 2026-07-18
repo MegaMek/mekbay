@@ -167,7 +167,7 @@ const CHECKED_FIELDS: FieldCheck[] = [
   { field: 'su',             compare: 'exact', parity: 'verified' },
   { field: 'subtype',        compare: 'exact', parity: 'verified' },
   { field: 'techRating',     compare: 'exact', parity: 'verified' },
-  { field: 'umu',            compare: 'exact', parity: 'missing' },
+  { field: 'umu',            compare: 'exact', parity: 'verified' },
   { field: 'weightClass',    compare: 'exact', parity: 'verified' },
   { field: 'unitFile',       compare: 'exact', parity: 'missing' },
 
@@ -303,7 +303,7 @@ interface OracleDocument {
 
 type PlainObject = Record<string, unknown>;
 
-const OPTIONAL_NON_AS_FIELDS = new Set(['capital', 'cargo', 'diss', 'fluff']);
+const OPTIONAL_FIELDS = new Set(['capital', 'cargo', 'diss', 'fluff', 'umu']);
 const STRING_FIELDS = new Set([
   'armorType', 'c3', 'chassis', 'icon', 'level', 'model', 'moveType', 'name',
   'role', 'subtype', 'techBase', 'techRating', 'type', 'unitFile', 'weightClass',
@@ -492,7 +492,7 @@ function validateOracleDocument(value: unknown): OracleDocument {
   if (errors.length > 0) throw new Error(`Invalid oracle document: ${errors.join('; ')}`);
 
   const units = value['units'] as unknown[];
-  const nonAsFields = CHECKED_FIELDS.filter(check => !check.field.startsWith('as.'));
+  const fieldsToCheck = CHECKED_FIELDS.filter(check => !check.field.startsWith('as.'));
   for (let index = 0; index < units.length; index++) {
     const unit = units[index];
     if (!isPlainObject(unit)) {
@@ -500,9 +500,9 @@ function validateOracleDocument(value: unknown): OracleDocument {
       continue;
     }
 
-    for (const check of nonAsFields) {
+    for (const check of fieldsToCheck) {
       if (!hasOwn(unit, check.field)) {
-        if (!OPTIONAL_NON_AS_FIELDS.has(check.field)) {
+        if (!OPTIONAL_FIELDS.has(check.field)) {
           errors.push(`units[${index}].${check.field} is required`);
         }
         continue;
