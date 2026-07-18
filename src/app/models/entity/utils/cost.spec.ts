@@ -34,6 +34,34 @@ describe('entity cost', () => {
 
     expect(entity.cost()).toBe(2500);
   });
+
+    it('prices support-vehicle chassis and motive systems', () => {
+        const entity = new SupportTankEntity();
+        entity.setTonnage(10);
+        entity.motiveType.set('Tracked');
+        entity.structuralTechRating.set(3);
+
+        expect(entity.cost()).toBe(5156);
+    });
+
+    it('includes seating and transport bay door costs', () => {
+        const entity = new SupportTankEntity();
+        entity.setTonnage(10);
+        entity.motiveType.set('Tracked');
+        entity.structuralTechRating.set(3);
+        entity.transporters.set([
+            {
+                id: 'seats', kind: 'bay', configuration: { type: 'standard-seats' },
+                capacity: 5, doors: 0, bayNumber: -1, omni: false,
+            },
+            {
+                id: 'cargo', kind: 'bay', configuration: { type: 'cargo' },
+                capacity: 2, doors: 1, bayNumber: 1, omni: false,
+            },
+        ]);
+
+        expect(entity.cost()).toBe(6806);
+    });
 });
 
 function mount(equipment: MiscEquipment, armored = false, size?: number): EntityMountedEquipment {

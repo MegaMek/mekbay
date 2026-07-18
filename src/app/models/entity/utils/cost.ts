@@ -34,8 +34,11 @@
 import { AmmoEquipment, ArmorEquipment } from '../../equipment.model';
 import type { BaseEntity } from '../base-entity';
 import type { ProtoMekEntity } from '../entities/protomek/protomek-entity';
+import type { SupportVehicle } from '../entities/support-vehicle';
+import type { VehicleEntity } from '../entities/vehicle/vehicle-entity';
 import type { EntityMountedEquipment } from '../types/equipment';
 import { getEquipmentEngineWeight } from './equipment-engine-weight';
+import { isVehicleEntity } from './entity-type-guards';
 import { getFireControlWeaponCost } from './fire-control';
 import { getTargetingComputerRelevantWeight } from './targeting-computer';
 
@@ -77,6 +80,7 @@ export function calculateEntityCost(
   if (entity.entityType === 'ProtoMek') {
     return calculateProtoMekCost(entity as ProtoMekEntity, equipmentCost);
   }
+  if (isVehicleEntity(entity)) return calculateVehicleCost(entity, equipmentCost);
 
   // Family system calculators are layered on this shared equipment total.
   // Until a family contributes construction systems, this remains a useful
@@ -139,7 +143,56 @@ export function calculateMountedEquipmentCost(
     total += Math.trunc(cost);
   }
 
+  if (!isLargeCraft(entity)) total += calculateTransporterCost(entity);
+
   return total;
+}
+
+function calculateTransporterCost(entity: BaseEntity): number {
+  let total = 0;
+  for (const transporter of entity.transporters()) {
+    if (transporter.kind !== 'bay') continue;
+    const type = transporter.configuration.type;
+    const capacity = Math.trunc(transporter.capacity);
+    switch (type) {
+      case 'standard-seats': total += 100 * capacity; break;
+      case 'pillion-seats': total += 10 * capacity; break;
+      case 'ejection-seats': total += 25000 * capacity; break;
+      case 'crew-quarters':
+      case 'second-class-quarters': total += 15000 * capacity; break;
+      case 'steerage-quarters': total += 5000 * capacity; break;
+      case 'first-class-quarters': total += 30000 * capacity; break;
+      case 'mek': total += 20000 * capacity; break;
+      case 'fighter': total += (20000 * capacity) + (transporter.configuration.arts ? 1000000 : 0); break;
+      case 'small-craft': total += 20000 * capacity; break;
+      case 'light-vehicle':
+      case 'heavy-vehicle': total += 10000 * capacity; break;
+      case 'super-heavy-vehicle': total += 20000 * capacity; break;
+      case 'protomek': total += 10000 * Math.ceil(transporter.capacity); break;
+      case 'infantry': total += 15000 * Math.ceil(transporter.capacity); break;
+      case 'battle-armor': {
+        const squadSize = transporter.configuration.techBase === 'Clan'
+          ? 5 : transporter.configuration.comStar ? 6 : 4;
+        total += 15000 * Math.ceil(transporter.capacity * 2 * squadSize);
+        break;
+      }
+      case 'liquid-cargo': total += 100 * Math.ceil(transporter.constructionWeight ?? transporter.capacity); break;
+      case 'insulated-cargo': total += 250 * Math.ceil(transporter.constructionWeight ?? transporter.capacity); break;
+      case 'refrigerated-cargo': total += 200 * Math.ceil(transporter.constructionWeight ?? transporter.capacity); break;
+      case 'livestock-cargo': total += 2500 * Math.ceil(transporter.constructionWeight ?? transporter.capacity); break;
+    }
+    const isSeatsOrQuarters = type === 'standard-seats' || type === 'pillion-seats'
+      || type === 'ejection-seats' || type === 'crew-quarters' || type === 'steerage-quarters'
+      || type === 'second-class-quarters' || type === 'first-class-quarters';
+    if (!isSeatsOrQuarters) total += 1000 * transporter.doors;
+  }
+  return total;
+}
+
+function isLargeCraft(entity: BaseEntity): boolean {
+  return entity.entityType === 'SmallCraft' || entity.entityType === 'DropShip'
+    || entity.entityType === 'JumpShip' || entity.entityType === 'WarShip'
+    || entity.entityType === 'SpaceStation';
 }
 
 /** Resolves one mount's database-backed fixed or entity-dependent variable cost. */
@@ -283,4 +336,183 @@ export function getEquipmentCost(
 
 function nextHalfTon(tonnage: number): number {
   return Math.ceil(tonnage * 2) / 2;
+}
+
+/** Mirrors MegaMek's CombatVehicleCostCalculator for support and combat vehicles. */
+function calculateVehicleCost(entity: VehicleEntity, equipmentCost: number): number {
+  const tonnage = entity.tonnage();
+  const supportVehicle = entity.isSupportVehicle();
+  const engine = entity.mountedEngine();
+  const engineCost = !engine.installed ? 0 : supportVehicle
+    ? 5000 * getEquipmentEngineWeight(entity) * engine.descriptor().svCostMultiplier
+    : (engine.baseCost * engine.rating * tonnage) / 75;
+  const armorCost = calculateVehicleArmorCost(entity);
+
+  let cost: number;
+  if (entity.isSupportVehicle()) {
+    const chassisCost = 2500 * getSupportVehicleStructureWeight(entity)
+      * getSupportVehicleChassisCostMultiplier(entity);
+    const structuralTechMultiplier = 0.5 + (entity.structuralTechRating() * 0.25);
+    cost = (chassisCost + engineCost + armorCost) * structuralTechMultiplier;
+  } else {
+    const structureDivisor = entity.isSuperHeavy()
+      && entity.motiveType() !== 'Naval'
+      && entity.motiveType() !== 'Submarine' ? 5 : 10;
+    const structureCost = nextHalfTon(tonnage / structureDivisor) * 10000;
+    const controlCost = entity.hasNoControlSystems() ? 0 : nextHalfTon(tonnage * 0.05) * 10000;
+    cost = engineCost + armorCost + structureCost + controlCost;
+  }
+
+  cost += calculatePowerAmplifierWeight(entity) * 20000;
+  cost += Math.max(0, calculateVehicleHeatSinkRequirement(entity) - engine.weightFreeHeatSinks) * 2000;
+  cost += calculateVehicleTurretWeight(entity) * 5000;
+  cost += equipmentCost + (entity.extraSeats() * 100);
+
+  if (!supportVehicle) {
+    const liftTonnage = ['Hover', 'Hydrofoil', 'VTOL', 'Submarine', 'WiGE'].includes(entity.motiveType())
+      ? Math.ceil(tonnage / 5) / 2 : 0;
+    cost += liftTonnage * (entity.motiveType() === 'VTOL' ? 40000 : 20000);
+  }
+
+  if (entity.omni()) cost *= 1.25;
+  cost *= getVehicleTonnageMultiplier(entity);
+  if (!supportVehicle) {
+    if (hasAnyEquipmentFlag(entity, ['F_FLOTATION_HULL', 'F_ENVIRONMENTAL_SEALING'])) cost *= 1.25;
+    if (hasAnyEquipmentFlag(entity, ['F_OFF_ROAD'])) cost *= 1.2;
+  }
+  return Math.round(cost);
+}
+
+function calculateVehicleArmorCost(entity: VehicleEntity): number {
+  let total = 0;
+  for (const [location, mountedArmor] of entity.armorByLocation()) {
+    const points = entity.armorValues().get(location);
+    const armorPoints = (points?.front ?? 0) + (points?.rear ?? 0);
+    if (armorPoints <= 0) continue;
+    const armor = mountedArmor.armor;
+    if (armor.hasFlag('F_SUPPORT_VEE_BAR_ARMOR')) {
+      const cost = armor.cost;
+      if (cost === 'variable') throw new Error(`Unable to calculate armor cost for ${armor.id}`);
+      total += armorPoints * cost;
+    } else {
+      const cost = armor.cost;
+      if (cost === 'variable') throw new Error(`Unable to calculate armor cost for ${armor.id}`);
+      const armorWeight = standardRound(armorPoints / (16 * armor.pptMultiplier), entity);
+      total += armorWeight * cost;
+    }
+  }
+  return total;
+}
+
+const SUPPORT_VEHICLE_STRUCTURE_COST_MODIFIERS: ReadonlyArray<readonly [string, number]> = [
+  ['F_AMPHIBIOUS', 1.75], ['F_ARMORED_CHASSIS', 1.5], ['F_BICYCLE', 0.75],
+  ['F_CONVERTIBLE', 1.1], ['F_DUNE_BUGGY', 1.5], ['F_ENVIRONMENTAL_SEALING', 2],
+  ['F_EXTERNAL_POWER_PICKUP', 1.1], ['F_HYDROFOIL', 1.7], ['F_MONOCYCLE', 0.5],
+  ['F_OFF_ROAD', 1.5], ['F_PROP', 1.2], ['F_SNOWMOBILE', 1.75],
+  ['F_STOL_CHASSIS', 1.5], ['F_SUBMERSIBLE', 1.8], ['F_TRACTOR_MODIFICATION', 1.2],
+  ['F_TRAILER_MODIFICATION', 0.8], ['F_ULTRA_LIGHT', 0.5], ['F_VSTOL_CHASSIS', 2],
+];
+
+function getSupportVehicleStructureWeight(entity: VehicleEntity & SupportVehicle): number {
+  const ratingMultipliers = [1.6, 1.3, 1.15, 1, 0.85, 0.66];
+  let modifier = 1;
+  for (const [flag, multiplier] of SUPPORT_VEHICLE_STRUCTURE_COST_MODIFIERS) {
+    if (hasAnyEquipmentFlag(entity, [flag])) modifier *= multiplier;
+  }
+  const raw = getSupportVehicleBaseChassisValue(entity) * (ratingMultipliers[entity.structuralTechRating()] ?? 1)
+    * modifier * entity.tonnage();
+  return entity.tonnage() < 5 ? Math.floor(raw * 1000) / 1000 : Math.floor(raw * 2) / 2;
+}
+
+function getSupportVehicleBaseChassisValue(entity: VehicleEntity): number {
+  const tonnage = entity.tonnage();
+  const superHeavy = entity.isSuperHeavy();
+  if (entity.entityType === 'SupportVTOL') return tonnage < 5 ? 0.2 : superHeavy ? 0.3 : 0.25;
+  switch (entity.motiveType()) {
+    case 'Hover': return tonnage < 5 ? 0.2 : superHeavy ? 0.3 : 0.25;
+    case 'Naval':
+    case 'Hydrofoil':
+    case 'Submarine': return tonnage < 5 ? 0.12 : 0.15;
+    case 'Tracked': return tonnage < 5 ? 0.13 : superHeavy ? 0.25 : 0.15;
+    case 'Wheeled': return tonnage < 5 ? 0.12 : superHeavy ? 0.18 : 0.15;
+    case 'WiGE': return tonnage < 5 ? 0.12 : superHeavy ? 0.17 : 0.15;
+    default: return 0;
+  }
+}
+
+const SUPPORT_VEHICLE_CHASSIS_COST_MODIFIERS: ReadonlyArray<readonly [string, number]> = [
+  ['F_AMPHIBIOUS', 1.25], ['F_ARMORED_CHASSIS', 2], ['F_BICYCLE', 0.75],
+  ['F_CONVERTIBLE', 1.1], ['F_DUNE_BUGGY', 1.25], ['F_ENVIRONMENTAL_SEALING', 1.75],
+  ['F_EXTERNAL_POWER_PICKUP', 1.1], ['F_HYDROFOIL', 1.1], ['F_MONOCYCLE', 1.3],
+  ['F_OFF_ROAD', 1.2], ['F_PROP', 0.75], ['F_SNOWMOBILE', 1.3],
+  ['F_STOL_CHASSIS', 1.5], ['F_SUBMERSIBLE', 3.5], ['F_TRACTOR_MODIFICATION', 1.1],
+  ['F_TRAILER_MODIFICATION', 0.75], ['F_ULTRA_LIGHT', 1.5], ['F_VSTOL_CHASSIS', 2],
+];
+
+function getSupportVehicleChassisCostMultiplier(entity: VehicleEntity & SupportVehicle): number {
+  let multiplier = 1;
+  for (const [flag, value] of SUPPORT_VEHICLE_CHASSIS_COST_MODIFIERS) if (hasAnyEquipmentFlag(entity, [flag])) multiplier *= value;
+  return multiplier;
+}
+
+function getVehicleTonnageMultiplier(entity: VehicleEntity): number {
+  const tonnage = entity.tonnage();
+  if (entity.isSupportVehicle() && ['Naval', 'Hydrofoil', 'Submarine'].includes(entity.motiveType())) {
+    return 1 + tonnage / 100000;
+  }
+  switch (entity.motiveType()) {
+    case 'Hover':
+    case 'Submarine': return 1 + tonnage / 50;
+    case 'Hydrofoil': return 1 + tonnage / 75;
+    case 'Naval':
+    case 'Wheeled': return 1 + tonnage / 200;
+    case 'Tracked': return 1 + tonnage / 100;
+    case 'VTOL': return 1 + tonnage / 30;
+    case 'WiGE': return 1 + tonnage / 25;
+    case 'Rail':
+    case 'MagLev': return 1 + tonnage / 250;
+    default: return 1;
+  }
+}
+
+function calculatePowerAmplifierWeight(entity: VehicleEntity): number {
+  const engine = entity.mountedEngine();
+  if (engine.isFusion || engine.isFission || entity.weightClass() === 'Small Support') return 0;
+  const tonnage = entity.mountedWeapons().reduce((total, mount) => {
+    const weapon = mount.equipment;
+    const requiresPower = (weapon.hasFlag('F_LASER') && weapon.ammoType === 'NA')
+      || weapon.hasAnyFlag(['F_PPC', 'F_PLASMA', 'F_PLASMA_MFUK'])
+      || (weapon.hasFlag('F_FLAMER') && weapon.ammoType === 'NA');
+    return total + (requiresPower ? mount.getTonnage(entity) ?? 0 : 0);
+  }, 0);
+  return nextHalfTon(tonnage / 10);
+}
+
+function calculateVehicleHeatSinkRequirement(entity: VehicleEntity): number {
+  let heat = entity.mountedWeapons().reduce((total, mount) => {
+    const weapon = mount.equipment;
+    const producesHeat = (weapon.hasFlag('F_LASER') && weapon.ammoType === 'NA')
+      || weapon.hasAnyFlag(['F_PPC', 'F_PLASMA', 'F_PLASMA_MFUK'])
+      || (weapon.hasFlag('F_FLAMER') && weapon.ammoType === 'NA');
+    return total + (producesHeat ? weapon.heat : 0);
+  }, 0);
+  return heat;
+}
+
+function calculateVehicleTurretWeight(entity: VehicleEntity): number {
+  const tonnage = entity.mountedWeapons().reduce((total, mount) => {
+    const inTurret = mount.location === 'Turret' || mount.location === 'Rear Turret';
+    return total + (inTurret ? (mount.getTonnage(entity) ?? 0) / 10 : 0);
+  }, 0);
+  return standardRound(tonnage, entity);
+}
+
+function hasAnyEquipmentFlag(entity: BaseEntity, flags: readonly string[]): boolean {
+  return entity.equipment().some(mount => mount.equipment?.hasAnyFlag([...flags]));
+}
+
+function standardRound(value: number, entity: BaseEntity): number {
+  return entity.weightClass() === 'Small Support'
+    ? Math.ceil(value * 1000) / 1000
+    : nextHalfTon(value);
 }
