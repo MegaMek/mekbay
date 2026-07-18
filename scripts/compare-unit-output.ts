@@ -303,7 +303,7 @@ interface OracleDocument {
 
 type PlainObject = Record<string, unknown>;
 
-const OPTIONAL_FIELDS = new Set(['capital', 'cargo', 'diss', 'fluff', 'umu']);
+const OPTIONAL_FIELDS = new Set(['capital', 'cargo', 'diss', 'fluff']);
 const STRING_FIELDS = new Set([
   'armorType', 'c3', 'chassis', 'icon', 'level', 'model', 'moveType', 'name',
   'role', 'subtype', 'techBase', 'techRating', 'type', 'unitFile', 'weightClass',
