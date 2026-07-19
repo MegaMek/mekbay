@@ -16,7 +16,6 @@ import * as path from 'path';
 import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
 import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
-import { resetMountIdCounter } from '../src/app/models/entity/utils/signal-helpers';
 import { MekEntity } from '../src/app/models/entity/entities/mek/mek-entity';
 import { loadQuirkResolver } from './quirk-fixture';
 
@@ -83,7 +82,6 @@ function main() {
   const fileName = path.basename(INPUT_FILE);
   const content = fs.readFileSync(INPUT_FILE, 'utf-8');
 
-  resetMountIdCounter();
   const { entity } = parseEntity(content, fileName, equipmentRegistry, { quirkResolver });
   if (entity instanceof MekEntity) {
     console.log(`\nParsed Mek: ${entity.displayName()}`);

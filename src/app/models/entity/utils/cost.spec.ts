@@ -58,7 +58,7 @@ describe('entity cost', () => {
 
   it('uses fixed prices from the equipment database', () => {
     const entity = new TestBipedMekEntity();
-    entity.equipment.set([mount(new MiscEquipment({
+        entity.setEquipment([mount(new MiscEquipment({
       id: 'ISMediumShield',
       name: 'Shield (Medium)',
       type: 'misc',
@@ -70,7 +70,7 @@ describe('entity cost', () => {
 
   it('prices handheld equipment as structure and payload', () => {
     const entity = new TestHandheldWeaponEntity();
-    entity.equipment.set([mount(new MiscEquipment({
+        entity.setEquipment([mount(new MiscEquipment({
       id: 'test-equipment',
       name: 'Test Equipment',
       type: 'misc',
@@ -211,7 +211,7 @@ describe('EntityMountedEquipment.getCost', () => {
     it('resolves basic and advanced fire-control cost from all weapons', () => {
         const basic = mount(variableEquipment('basic fire control', ['F_BASIC_FIRE_CONTROL']));
         const advanced = mount(variableEquipment('advanced fire control', ['F_ADVANCED_FIRE_CONTROL']));
-        entity.equipment.set([
+        entity.setEquipment([
             weaponMount('weapon', 10, [], 100000),
             weaponMount('AMS', 5, ['F_AMS'], 50000),
             weaponMount('light infantry', 1, ['F_INFANTRY'], 10000),
@@ -242,7 +242,7 @@ describe('EntityMountedEquipment.getCost', () => {
         const battleArmor = new BattleArmorEntity();
         battleArmor.originalWalkMP.set(5);
         const booster = mount(variableEquipment('CLBAMyomerBooster', ['F_MASC', 'F_BA_EQUIPMENT']));
-        battleArmor.equipment.set([booster]);
+        battleArmor.setEquipment([booster]);
 
         expect(booster.getCost(battleArmor)).toBe(525000);
     });
@@ -312,7 +312,7 @@ describe('EntityMountedEquipment.getCost', () => {
             'renamed IS targeting computer', ['F_TARGETING_COMPUTER'], 'IS'));
         const clanTargetingComputer = mount(variableEquipment(
             'renamed Clan targeting computer', ['F_TARGETING_COMPUTER'], 'Clan'));
-        entity.equipment.set([
+        entity.setEquipment([
             weaponMount('direct fire', 10, ['F_DIRECT_FIRE']),
             weaponMount('taser', 6, ['F_DIRECT_FIRE', 'F_TASER']),
             isTargetingComputer,

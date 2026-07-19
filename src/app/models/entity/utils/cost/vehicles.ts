@@ -138,8 +138,15 @@ function calculateVehicleHeatSinkRequirement(entity: VehicleEntity): number {
 
 function calculateVehicleTurretWeight(entity: VehicleEntity): number {
   const tonnage = entity.mountedWeapons().reduce((total, mount) => {
-    const inTurret = mount.location === 'Turret' || mount.location === 'Rear Turret';
-    return total + (inTurret ? (mount.getTonnage(entity) ?? 0) / 10 : 0);
+    const inTurret = mount.location === 'Turret'
+      || mount.location === 'Front Turret'
+      || mount.location === 'Rear Turret';
+    if (!inTurret) return total;
+    const enhancement = entity.getLinkingMount(mount);
+    const capacitorTonnage = enhancement?.equipment?.hasFlag('F_PPC_CAPACITOR')
+      ? enhancement.getTonnage(entity) ?? 0
+      : 0;
+    return total + ((mount.getTonnage(entity) ?? 0) + capacitorTonnage) / 10;
   }, 0);
   return standardRound(tonnage, entity);
 }

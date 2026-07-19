@@ -86,7 +86,8 @@ export class LamEntity extends BipedMekEntity {
       // Find where engine side-torso slots end, then add Landing Gear + Avionics
       let insertAt = 0;
       for (let i = 0; i < base.length; i++) {
-        if (base[i].type === 'system' && base[i].systemType === 'Engine') {
+        const slot = base[i];
+        if (slot.type === 'system' && slot.systemType === 'Engine') {
           insertAt = i + 1;
         } else {
           break;

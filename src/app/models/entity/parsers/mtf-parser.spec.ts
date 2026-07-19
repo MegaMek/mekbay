@@ -266,7 +266,7 @@ describe('MTF parser identity', () => {
     expect(entity.equipment().filter(mount => mount.equipment === clanCase)).toHaveSize(0);
   });
 
-  it('adds implicit Clan CASE to a Clan location containing explosive ammo', () => {
+  it('derives implicit Clan CASE for a Clan location containing explosive ammo', () => {
     const clanCase = new MiscEquipment({
       id: 'Clan CASE', name: 'CASE', type: 'misc', flags: ['F_CASE'],
     });
@@ -279,11 +279,11 @@ describe('MTF parser identity', () => {
       new ParseContext('explosive-ammo.mtf', registry),
     );
 
-    expect(entity.equipment().filter(mount => mount.equipment === clanCase).map(mount => mount.location))
-      .toEqual(['RT']);
+    expect(entity.equipment().filter(mount => mount.equipment === clanCase)).toHaveSize(0);
+    expect([...entity.implicitClanCaseLocations()]).toEqual(['RT']);
   });
 
-  it('does not add implicit Clan CASE for explosive non-ammunition equipment', () => {
+  it('derives implicit Clan CASE for explosive non-ammunition equipment', () => {
     const clanCase = new MiscEquipment({
       id: 'Clan CASE', name: 'CASE', type: 'misc', flags: ['F_CASE'],
     });
@@ -303,11 +303,8 @@ describe('MTF parser identity', () => {
       new ParseContext('split-explosive.mtf', registry),
     );
 
-    const caseLocations = entity.equipment()
-      .filter(mount => mount.equipment === clanCase)
-      .map(mount => mount.location)
-      .sort();
-    expect(caseLocations).toEqual([]);
+    expect(entity.equipment().filter(mount => mount.equipment === clanCase)).toHaveSize(0);
+    expect([...entity.implicitClanCaseLocations()].sort()).toEqual(['RA', 'RT']);
   });
 
   it('does not propagate implicit Clan CASE on an Inner Sphere unit with explicit Clan CASE', () => {

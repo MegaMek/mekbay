@@ -61,7 +61,6 @@ import * as path from 'path';
 import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
 import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
-import { resetMountIdCounter } from '../src/app/models/entity/utils/signal-helpers';
 import { UnitMetadataBuilder } from '../src/app/utils/unit-metadata-builder';
 import type { Sourcebook } from '../src/app/models/sourcebook.model';
 import type { Quirk } from '../src/app/models/quirks.model';
@@ -139,7 +138,7 @@ const CHECKED_FIELDS: FieldCheck[] = [
 
   // ── Remaining non-Alpha Strike fields ──────────────────────────────
   { field: 'armorPer',       compare: 'exact', parity: 'verified' },
-  { field: 'bv',             compare: 'numeric', tolerance: 0, parity: 'missing' },
+  { field: 'bv',             compare: 'numeric', tolerance: 0, parity: 'partial' },
   { field: 'c3',             compare: 'exact', parity: 'verified' },
   { field: 'canon',          compare: 'exact', parity: 'verified' },
   { field: 'capital',        compare: 'exact', parity: 'verified' },
@@ -742,7 +741,6 @@ function processUnit(
   try {
     const content = fs.readFileSync(unitFilePath, 'utf-8');
     const fileName = path.basename(unitFilePath);
-    resetMountIdCounter();
     const parsed = parseEntity(content, fileName, equipmentRegistry, {
       sourcebookResolver: source => sourcebooks.get(source),
       quirkResolver: key => quirks.get(key),

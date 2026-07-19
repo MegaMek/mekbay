@@ -66,6 +66,17 @@ describe('transporter codec', () => {
     expect(parse(serializeTransporterLines(original))).toEqual(original);
   });
 
+  it('round trips specialized cargo capacity without reapplying weight conversion', () => {
+    const original = parse([
+      'LiquidCargoBay:26.296703296703296:1:1',
+      'insulatedcargobay:5:1:2',
+      'refrigeratedcargobay:6:1:3',
+      'livestockcargobay:7:1:4',
+    ]);
+
+    expect(parse(serializeTransporterLines(original))).toEqual(original);
+  });
+
   it('normalizes compact repair-bay facing syntax', () => {
     const line = 'navalrepairpressurized:5000:1:5:f4';
     expect(serializeTransporterLines(parse([line]))).toEqual([

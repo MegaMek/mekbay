@@ -39,7 +39,6 @@ import {
   AERO_EQUIP_LOCATIONS,
   AERO_LOCATIONS,
 } from '../types';
-import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { FIGHTER_EQUIP_TAGS, FWS_EQUIP_TAGS } from './blk-constants';
 import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkEquipment, parseBlkSupportArmor, resolveBlkStructure } from './blk-base-parser';
@@ -58,7 +57,6 @@ import { decodeBlkAeroCockpitType } from './blk-codec';
  * Dispatches on `<UnitType>`: `Aero`, `ConvFighter`, `FixedWingSupport`.
  */
 export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
-  resetMountIdCounter();
 
   // ── Determine entity type ──
   const unitType = bb.getFirstString('UnitType').trim();

@@ -112,7 +112,7 @@ describe('EntityMountedEquipment.getTonnage', () => {
     it('resolves fire-control weight with weapon exclusions and chassis override', () => {
         const basic = mount(variableEquipment('basic fire control', ['F_BASIC_FIRE_CONTROL']));
         const advanced = mount(variableEquipment('advanced fire control', ['F_ADVANCED_FIRE_CONTROL']));
-        entity.equipment.set([
+        entity.setEquipment([
             weaponMount('weapon', 10, []),
             weaponMount('AMS', 5, ['F_AMS']),
             weaponMount('light infantry', 1, ['F_INFANTRY']),
@@ -131,7 +131,7 @@ describe('EntityMountedEquipment.getTonnage', () => {
 
     it('resolves Mek turret weight from turret-mounted equipment', () => {
         const headTurret = mount(variableEquipment('head turret', ['F_HEAD_TURRET']));
-        entity.equipment.set([
+        entity.setEquipment([
             headTurret,
             weaponMount('head weapon', 10, []).clone({
                 allocation: { kind: 'location', location: 'HD' }, turretMounted: true,
@@ -148,7 +148,7 @@ describe('EntityMountedEquipment.getTonnage', () => {
         const tank = new TankEntity();
         const rightTurret = mount(variableEquipment('right sponson', ['F_SPONSON_TURRET']));
         const leftTurret = mount(variableEquipment('left sponson', ['F_SPONSON_TURRET']));
-        tank.equipment.set([
+        tank.setEquipment([
             rightTurret,
             leftTurret,
             weaponMount('right weapon', 5, []).clone({ turretType: 'sponson' }),
@@ -166,7 +166,7 @@ describe('EntityMountedEquipment.getTonnage', () => {
         const supportTank = new SupportTankEntity();
         supportTank.setTonnage(75);
         const pintle = mount(variableEquipment('pintle', ['F_PINTLE_TURRET']));
-        supportTank.equipment.set([
+        supportTank.setEquipment([
             pintle,
             weaponMount('pintle weapon', 5, []).clone({
                 allocation: { kind: 'location', location: 'RA' }, turretType: 'pintle',
@@ -352,7 +352,7 @@ describe('EntityMountedEquipment.getTonnage', () => {
             'ISTargeting Computer', ['F_TARGETING_COMPUTER'], 'IS'));
         const clanTargetingComputer = mount(variableEquipment(
             'CLTargeting Computer', ['F_TARGETING_COMPUTER'], 'Clan'));
-        entity.equipment.set([directFireWeapon, taser, pulseModule, isTargetingComputer]);
+        entity.setEquipment([directFireWeapon, taser, pulseModule, isTargetingComputer]);
 
         expect(isTargetingComputer.getTonnage(entity)).toBe(3);
         expect(isTargetingComputer.equipment?.getNumCriticalSlots(entity)).toBe(3);

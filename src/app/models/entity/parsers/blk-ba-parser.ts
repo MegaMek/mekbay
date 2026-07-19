@@ -53,7 +53,6 @@ import { createCompoundTechLevel } from '../types/tech';
 import {
   MountedArmor,
 } from '../components';
-import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
 import { parseEquipmentLine } from './equipment-resolver';
@@ -72,7 +71,6 @@ import { ParseContext } from './parse-context';
  *   - Equipment lines may have `:Body`, `:LA`, `:RA`, `:TU` suffixes for BA mount location
  */
 export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEntity {
-  resetMountIdCounter();
   const entity = new BattleArmorEntity(ctx.equipmentRegistry);
 
   // ── Base parsing ──
@@ -162,7 +160,6 @@ function addMissingMovementEquipment(entity: BattleArmorEntity, ctx: ParseContex
   if (alreadyPresent) return;
 
   entity.addEquipment({
-    mountId: generateMountId(),
     equipmentId,
     equipment: resolved ?? undefined,
     allocation: { kind: 'location', location: 'None' },
@@ -221,7 +218,6 @@ function parseLocationEquipment(
     const resolved = ctx.resolveEquipment(parsed.name, blkTag);
 
     entity.addEquipment({
-      mountId: generateMountId(),
       equipmentId: parsed.name,
       equipment: resolved ?? undefined,
       allocation: { kind: 'location', location },

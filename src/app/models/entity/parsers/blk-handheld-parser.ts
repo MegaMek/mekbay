@@ -32,7 +32,6 @@
  */
 
 import { HandheldWeaponEntity } from '../entities/misc/handheld-weapon-entity';
-import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { parseBaseBlk } from './blk-base-parser';
 import { parseEquipmentLine } from './equipment-resolver';
@@ -50,7 +49,6 @@ import { locationArmor } from '../types';
  * Equipment is listed under `Gun Equipment`.
  */
 export function parseBlkHandheld(bb: BuildingBlock, ctx: ParseContext): HandheldWeaponEntity {
-  resetMountIdCounter();
   const entity = new HandheldWeaponEntity(ctx.equipmentRegistry);
 
   // ── Base parsing ──
@@ -78,7 +76,6 @@ export function parseBlkHandheld(bb: BuildingBlock, ctx: ParseContext): Handheld
       const resolved = ctx.resolveEquipment(parsed.name, 'Gun Equipment');
 
       entity.addEquipment({
-        mountId: generateMountId(),
         equipmentId: parsed.name,
         equipment: resolved ?? undefined,
         allocation: { kind: 'location', location: 'Gun' },

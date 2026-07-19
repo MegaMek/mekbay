@@ -2,6 +2,7 @@ import { createEquipment, WeaponEquipment } from '../../../equipment.model';
 import { EntityMountedEquipment } from '../../types';
 import { JumpShipEntity } from './jumpship-entity';
 import { createTestEquipmentRegistry } from '../../testing/test-equipment-registry';
+import { addTestEquipment } from '../../testing/test-mounted-equipment';
 
 describe('JumpShipEntity implicit equipment', () => {
   it('derives and deduplicates weapon-bay systems from bay-leading weapons', () => {
@@ -15,22 +16,11 @@ describe('JumpShipEntity implicit equipment', () => {
       [laser.id]: laser,
     }));
 
-    entity.equipment.set([bayMount(laser, 'first'), bayMount(laser, 'second')]);
+    const firstBay = addTestEquipment(entity, laser, { location: 'Nose' });
+    const secondBay = addTestEquipment(entity, laser, { location: 'Nose' });
+    entity.addEquipmentBay('weapon-bay', { mounts: [firstBay] });
+    entity.addEquipmentBay('weapon-bay', { mounts: [secondBay] });
 
     expect(entity.implicitSystemEquipment()).toEqual([laserBay]);
   });
 });
-
-function bayMount(equipment: WeaponEquipment, mountId: string): EntityMountedEquipment {
-  return new EntityMountedEquipment({
-    mountId,
-    equipmentId: equipment.id,
-    equipment,
-    allocation: { kind: 'location', location: 'Nose' },
-    rearMounted: false,
-    turretMounted: false,
-    omniPodMounted: false,
-    armored: false,
-    isNewBay: true,
-  });
-}

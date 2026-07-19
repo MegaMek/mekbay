@@ -85,7 +85,7 @@ export function offensiveSpeedFactorMP(entity: BaseEntity): number {
     case 'LargeSupportTank': {
       // BV uses cruise MP for trains and treats a zero-MP trailer as MP 1.
       const vehicleRun = entity.originalWalkMP() === 0 ? 1
-        : entity.motiveType() === 'Rail' ? entity.maxWalkMP()
+        : entity.motiveType() === 'Rail' || entity.motiveType() === 'MagLev' ? entity.maxWalkMP()
           : run;
       return vehicleRun + Math.round(jump / 2);
     }
@@ -102,3 +102,20 @@ export function offensiveSpeedFactorMP(entity: BaseEntity): number {
 export function getOffensiveSpeedFactor(entity: BaseEntity): number {
   return offensiveSpeedFactor(offensiveSpeedFactorMP(entity));
 }
+
+export { calculateBattleValue, getBVCalculator } from './battle-value/factory';
+export type { BattleValueBreakdown, BattleValueContext } from './battle-value/bv-calculator';
+export {
+  BVCalculator,
+} from './battle-value/bv-calculator';
+export {
+  AeroBVCalculator,
+  BattleArmorBVCalculator,
+  CombatVehicleBVCalculator,
+  HandheldWeaponBVCalculator,
+  HeatTrackingBVCalculator,
+  InfantryBVCalculator,
+  LargeAeroBVCalculator,
+  MekBVCalculator,
+  ProtoMekBVCalculator,
+} from './battle-value/family-calculators';

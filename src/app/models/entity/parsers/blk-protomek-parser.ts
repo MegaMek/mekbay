@@ -36,7 +36,6 @@ import {
   LocationArmor,
   locationArmor,
 } from '../types';
-import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { PROTO_EQUIP_TAGS } from './blk-constants';
 import { getBlkTechBase, parseBaseBlk, parseBlkArmor, parseBlkEngine, parseBlkEquipment } from './blk-base-parser';
@@ -51,7 +50,6 @@ import { decodeMotiveType } from './motive-type-codec';
  * Parse a BLK file for a ProtoMek entity.
  */
 export function parseBlkProtoMek(bb: BuildingBlock, ctx: ParseContext): ProtoMekEntity {
-  resetMountIdCounter();
   const entity = new ProtoMekEntity(ctx.equipmentRegistry);
 
   // ── Base parsing ──

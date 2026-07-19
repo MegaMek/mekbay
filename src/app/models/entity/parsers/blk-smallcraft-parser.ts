@@ -36,7 +36,6 @@ import {
   SMALL_CRAFT_ARMOR_LOCATIONS,
 } from '../types';
 import { decodeBlkAeroDesignType } from './blk-codec';
-import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { SC_EQUIP_TAGS } from './blk-constants';
 import { parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkCrew, parseBlkEquipment, resolveBlkStructure } from './blk-base-parser';
@@ -54,7 +53,6 @@ import { decodeMotiveType } from './motive-type-codec';
  * Left Side / Right Side / Hull instead of Left Wing / Right Wing / Fuselage.
  */
 export function parseBlkSmallCraft(bb: BuildingBlock, ctx: ParseContext): SmallCraftEntity {
-  resetMountIdCounter();
   const entity = new SmallCraftEntity(ctx.equipmentRegistry);
 
   // ── Base parsing ──

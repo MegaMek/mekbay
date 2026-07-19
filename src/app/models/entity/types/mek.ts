@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -32,6 +32,7 @@
  */
 
 import type { MekLocation } from './locations';
+import type { EntityMountedEquipment } from './equipment';
 
 // ============================================================================
 // Mek Configuration
@@ -220,14 +221,24 @@ export function getTopologyFor(
 // Writers and UI read this view; mutations go through the equipment list.
 // ============================================================================
 
-export interface CriticalSlotView {
-  readonly type: 'system' | 'equipment' | 'empty';
-  readonly systemType?: MekSystemType;
-  /** References EntityMountedEquipment.mountId - not an array index */
-  readonly mountId?: string;
-  readonly armored: boolean;
-  readonly omniPod: boolean;
-}
+export type CriticalSlotView =
+  | {
+    readonly type: 'system';
+    readonly systemType: MekSystemType;
+    readonly armored: boolean;
+    readonly omniPod: false;
+  }
+  | {
+    readonly type: 'equipment';
+    readonly mount: EntityMountedEquipment;
+    readonly armored: boolean;
+    readonly omniPod: boolean;
+  }
+  | {
+    readonly type: 'empty';
+    readonly armored: false;
+    readonly omniPod: false;
+  };
 
 // ============================================================================
 // Internal Structure Lookup Tables

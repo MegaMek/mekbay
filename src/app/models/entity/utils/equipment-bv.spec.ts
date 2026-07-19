@@ -31,14 +31,14 @@ describe('getEquipmentBV', () => {
     }
 
     it('uses installed TSM', () => {
-        entity.equipment.set([mount('tsm', 'CT', fixedEquipment('tsm', ['F_TSM']))]);
+        entity.setEquipment([mount('tsm', 'CT', fixedEquipment('tsm', ['F_TSM']))]);
 
         expect(mount('hatchet', 'RA', variableEquipment('hatchet', ['F_CLUB', 'S_HATCHET'])).getBV(entity)).toBe(45);
     });
 
     it('counts distinct torso locations containing spikes for ram plate damage', () => {
         const spikes = fixedEquipment('spikes', ['F_SPIKES']);
-        entity.equipment.set([
+        entity.setEquipment([
             mount('left-spikes', 'LT', spikes),
             mount('left-spikes-duplicate', 'LT', spikes),
             mount('right-spikes', 'RT', spikes),
@@ -56,7 +56,7 @@ describe('getEquipmentBV', () => {
         const vtol = new VtolEntity();
         const mastMount = mount('mast', 'Rotor', fixedEquipment('mast', ['F_MAST_MOUNT']));
         const ecm = mount('ecm', 'Rotor', fixedEquipment('ecm', ['F_ECM'], 20));
-        vtol.equipment.set([mastMount, ecm]);
+        vtol.setEquipment([mastMount, ecm]);
 
         expect(ecm.getBV(vtol)).toBe(30);
         expect(ecm.clone({ allocation: { kind: 'location', location: 'Body' } }).getBV(vtol)).toBe(20);

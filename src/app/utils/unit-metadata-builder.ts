@@ -126,6 +126,7 @@ export class UnitMetadataBuilder {
       crewSize: entity.crewSlotCount(),
       features: this.buildFeatures(entity),
       cost: Math.round(entity.cost()),
+      bv: entity.battleValue(),
       offSpeedFactor: entity.offensiveSpeedFactor(),
     };
   }

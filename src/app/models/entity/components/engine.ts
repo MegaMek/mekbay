@@ -152,7 +152,7 @@ export class MountedEngine {
   // ========================================================================
 
   /** Base cost per engine rating point (large engines double this). */
-  get baseCost(): number { return this.descriptor().baseCost; }
+  get baseCost(): number { return this.descriptor().baseCost * (this.isLarge ? 2 : 1); }
 
   // ========================================================================
   //  Classification (delegated to descriptor)

@@ -25,7 +25,7 @@ export function getNumCriticalSlots(entity: BaseEntity, eq: Equipment, size: num
         return eq.stats.svSlots;
     }
     if (eq.stats.tankSlots !== undefined && eq.stats.tankSlots >= 0
-        && isVehicleEntity(entity)) {
+        && isVehicleEntity(entity) && !entity.isSupportVehicle()) {
         return eq.stats.tankSlots;
     }
     

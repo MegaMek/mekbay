@@ -44,7 +44,6 @@ import {
   InfantrySpecialization,
   MotiveType,
 } from '../types';
-import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { parseBaseBlk, parseBlkEquipment } from './blk-base-parser';
 import { ParseContext } from './parse-context';
@@ -164,7 +163,6 @@ function parseInfantryMotionType(raw: string, entity: InfantryEntity, ctx: Parse
  * Parse a BLK file for a conventional Infantry platoon.
  */
 export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): InfantryEntity {
-  resetMountIdCounter();
   const entity = new InfantryEntity(ctx.equipmentRegistry);
 
   // ── Base parsing ──
@@ -222,7 +220,6 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
   // ── Anti-mek ──
   if (bb.exists('antimek') && bb.getFirstInt('antimek') !== 8 && !entity.hasAntiMekGear()) {
     entity.addEquipment({
-      mountId: generateMountId(),
       equipmentId: 'AntiMekGear',
       equipment: ctx.resolveEquipment('AntiMekGear', 'antimek', entity.techBase()) ?? undefined,
       allocation: { kind: 'location', location: 'Infantry' },
@@ -311,7 +308,6 @@ function mountLegacyArmorKit(equipmentId: string, entity: InfantryEntity, ctx: P
   }
 
   entity.addEquipment({
-    mountId: generateMountId(),
     equipmentId: equipment.id,
     equipment,
     allocation: { kind: 'location', location: 'Infantry' },

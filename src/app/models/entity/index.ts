@@ -47,14 +47,6 @@ export { BuildingBlockWriter } from './writers/building-block-writer';
 export { encodeEquipmentLine } from './writers/equipment-encoder';
 
 // ── Utils ──
-export {
-  generateMountId,
-  resetMountIdCounter,
-  updateMap,
-  updateArray,
-  upsertMount,
-  removeMountById,
-} from './utils/signal-helpers';
 export { parseBlkTechLevel, encodeBlkTechLevel } from './parsers/blk-codec';
 export type { BlkTechLevel } from './parsers/blk-codec';
 export {

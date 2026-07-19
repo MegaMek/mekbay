@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -50,6 +50,7 @@ import {
 } from './components';
 import { AmmoEquipment, ArmorEquipment, Equipment, MiscEquipment, WeaponEquipment } from '../equipment.model';
 import { SourcebookReference } from '../sourcebook.model';
+import { EquipmentRelationships, type EquipmentBayInput } from './equipment-relationships';
 import {
   STANDARD_MOVEMENT_CALCULATION,
   RUN_WITHOUT_MASC_CALCULATION,
@@ -67,9 +68,12 @@ import {
   resolveWeightClass,
   WeightClass,
   EntityFluff,
+  EquipmentBay,
+  EquipmentBayKind,
   EntityMountedEquipment,
-  EntityMountedEquipmentInit,
+  EntityMountedEquipmentInput,
   EntityMountedWeapon,
+  EntityLocationMetadata,
   EntityWeapon,
   EntityQuirk,
   EntityTechBase,
@@ -84,18 +88,29 @@ import {
   isEntityMountedWeapon,
   LocationArmor,
   locationArmor,
+  createMountId,
+  MountId,
   MountPlacement,
   requireArmorEquipment,
   TechRatingSource,
 } from './types';
-import { generateMountId, removeMountById, updateMap } from './utils/signal-helpers';
 import { uuidv7 } from '../../utils/uuid.util';
 import type { SupportVehicle } from './entities/support-vehicle';
 import type { UnitSubtype, UnitType } from './types';
 import { EquipmentRegistry } from '../equipment-lookup';
 import { CLAN_EXCEPTIONAL_BAY_IDS, weaponBayEquipmentId } from './utils/implicit-equipment';
 import { calculateEntityCost } from './utils/cost/entity-cost';
-import { getOffensiveSpeedFactor } from './utils/battle-value';
+import {
+  calculateBattleValue,
+  getOffensiveSpeedFactor,
+} from './utils/battle-value';
+import { reconcileEquipmentRelationships } from './utils/equipment-relationship-rules';
+import { canLinkEquipment as isCompatibleEquipmentLink } from './utils/equipment-link-rules';
+
+export interface AddEquipmentOptions {
+  /** Enhancement target. The newly installed enhancement becomes the link source. */
+  readonly linkedTo?: EntityMountedEquipment;
+}
 
 /**
  * Set to `true` to make `computeMixedTech` collect ALL mixed-tech reasons
@@ -123,9 +138,8 @@ export interface MixedTechResult {
  *    of truth for installed gear.  Mek crit grids and location inventories
  *    are DERIVED views.
  *
- * 2. **Immutable snapshots**: Every signal write creates a fresh Array or Map.
- *    Helpers in `signal-helpers.ts` enforce this; in-place mutation is never
- *    performed on signal payloads.
+ * 2. **Immutable snapshots**: Entity mutation methods replace Arrays and Maps;
+ *    signal payloads are never mutated in place.
  *
  * 3. **Tiered validation**: Validation is split into independent computed
  *    slices (`engineValidation`, `armorValidation`, `equipmentValidation`,
@@ -296,6 +310,14 @@ export abstract class BaseEntity implements EntityTechnology {
   // ── Tech ──
   readonly year = signal<number>(3145);
   readonly originalBuildYear = signal<number>(-1);
+
+  effectiveOriginalBuildYear(): number {
+    if (this.originalBuildYear() > 0) {
+      return Math.min(this.originalBuildYear(), this.year());
+    }
+    return Math.max(this.originalBuildYear(), this.year());
+  }
+
   readonly techBase = signal<EntityTechBase>('IS');
   /** Whether the entity uses mixed technology. */
   readonly mixedTech = signal<boolean>(false);
@@ -394,17 +416,98 @@ export abstract class BaseEntity implements EntityTechnology {
     return [...new Map(equipment.map(item => [item.id, item])).values()];
   });
 
+  readonly #locationMetadata = signal<ReadonlyMap<string, EntityLocationMetadata>>(new Map());
+  readonly locationMetadata = this.#locationMetadata.asReadonly();
+
+  readonly clanCaseOptOutLocations = computed<ReadonlySet<string>>(() => new Set(
+    [...this.#locationMetadata()]
+      .filter(([, metadata]) => metadata.clanCaseOptOut)
+      .map(([location]) => location),
+  ));
+
+  protected readonly allowsImplicitClanCase = computed<boolean>(()=>{
+    return this.techBase() === 'Clan';
+  });
+
+  static readonly #NO_IMPLICIT_CLAN_CASE = new Set<string>();
+
+  readonly implicitClanCaseLocations = computed<ReadonlySet<string>>(() => {
+    if (!this.allowsImplicitClanCase()) {
+      return BaseEntity.#NO_IMPLICIT_CLAN_CASE;
+    }
+    const locations = new Set<string>();
+    const optedOut = this.clanCaseOptOutLocations();
+    for (const mount of this.equipment()) {
+      const equipment = mount.equipment;
+      if (!equipment || equipment.hasFlag('F_CASE')) continue;
+      if (!equipment.stats.explosive && mount.secondEquipment?.stats.explosive !== true) continue;
+      for (const location of mount.getOccupiedLocations()) {
+        if (location !== 'Unallocated' && !optedOut.has(location)) locations.add(location);
+      }
+    }
+    return locations;
+  });
+
   // ── Equipment - SINGLE SOURCE OF TRUTH ──
-  equipment = signal<EntityMountedEquipment[]>([]);
+  readonly #equipment = signal<EntityMountedEquipment[]>([]);
+  readonly equipment = this.#equipment.asReadonly();
+  #nextMountSequence = 1;
+  readonly #equipmentById = computed(() => new Map(
+    this.#equipment().map(mount => [mount.mountId, mount]),
+  ));
+  readonly #equipmentRelationships = signal(new EquipmentRelationships());
+
+  /** Resolved aggregates whose members are canonical mounts from `equipment`. */
+  readonly equipmentBays = computed<readonly EquipmentBay[]>(() =>
+    this.#equipmentRelationships().resolveBays(this.#equipmentById()));
 
   /** Construction cost, including ammunition, derived from entity state. */
   readonly cost = computed(() => calculateEntityCost(this, { ignoreAmmo: false }));
 
+  /** Pristine-entity BV, equivalent to Java calculateBV(false, true). */
+  readonly battleValue = computed(() => calculateBattleValue(this));
+
+  setLocationMetadata(location: string, metadata: EntityLocationMetadata): void {
+    if (!this.locationOrder.includes(location)) {
+      throw new Error(`Unknown location "${location}"`);
+    }
+    const next = new Map(this.#locationMetadata());
+    if (Object.values(metadata).every(value => value === undefined || value === false)) next.delete(location);
+    else next.set(location, { ...metadata });
+    this.#locationMetadata.set(next);
+  }
+
+  setClanCaseOptOutLocations(locations: ReadonlySet<string>): void {
+    const next = new Map(this.#locationMetadata());
+    for (const [location, metadata] of next) {
+      const updated = { ...metadata, clanCaseOptOut: undefined };
+      if (Object.values(updated).every(value => value === undefined || value === false)) next.delete(location);
+      else next.set(location, updated);
+    }
+    for (const location of locations) {
+      if (!this.locationOrder.includes(location)) throw new Error(`Unknown location "${location}"`);
+      next.set(location, { ...next.get(location), clanCaseOptOut: true });
+    }
+    this.#locationMetadata.set(next);
+  }
+
+  locationHasCaseProtection(location: string): boolean {
+    return this.implicitClanCaseLocations().has(location)
+      || this.equipment().some(mount => mount.getOccupiedLocations().includes(location)
+        && mount.equipment?.hasFlag('F_CASE'));
+  }
+
+  reconcileEquipmentRelationships(): void {
+    reconcileEquipmentRelationships(this);
+  }
+
   protected computeImplicitSystemEquipment(): readonly Equipment[] {
     const implicit: Equipment[] = [];
     if (!this.supportsWeaponBays()) return implicit;
-    for (const mount of this.equipment()) {
-      if (!mount.isNewBay || !(mount.equipment instanceof WeaponEquipment)) continue;
+    for (const equipmentBay of this.equipmentBays()) {
+      if (equipmentBay.kind !== 'weapon-bay') continue;
+      const mount = equipmentBay.weapons[0];
+      if (!mount || !(mount.equipment instanceof WeaponEquipment)) continue;
       const bayId = weaponBayEquipmentId(mount.equipment);
       if (this.techBase() === 'Clan' && CLAN_EXCEPTIONAL_BAY_IDS.has(bayId)) continue;
       const bay = this.equipmentRegistry.findForTechBase(bayId, this.techBase());
@@ -708,6 +811,11 @@ export abstract class BaseEntity implements EntityTechnology {
   /** Normal undamaged heat dissipation. */
   readonly heatDissipation = computed(() => this.tracksHeat() ? this.computeHeatDissipation(true) : -1);
 
+  /** Canonical undamaged heat capacity, including systems such as radical heat sinks. */
+  heatCapacity(includeRadical = true): number {
+    return this.computeHeatDissipation(includeRadical);
+  }
+
   /** Normal and one-turn maximum dissipation, absent on non-heat units. */
   readonly heatDissipationRange = computed<readonly [number, number] | undefined>(() => {
     if (!this.tracksHeat()) return undefined;
@@ -948,43 +1056,165 @@ export abstract class BaseEntity implements EntityTechnology {
     return this.mountsByLocation().get(loc) ?? [];
   }
 
-  /** Find a mount by its stable ID */
-  getMountById(mountId: string): EntityMountedEquipment | undefined {
-    return this.equipment().find(m => m.mountId === mountId);
+  /** Resolve the mount targeted by a source mount. */
+  getLinkedMount(source: EntityMountedEquipment): EntityMountedEquipment | undefined {
+    return this.#equipmentRelationships().linkedMount(source, this.#equipmentById());
   }
 
-  /** Append a new equipment mount (auto-generates mountId if missing) */
-  addEquipment(equip: EntityMountedEquipment | EntityMountedEquipmentInit): void {
-    const mount = EntityMountedEquipment.from(equip.mountId
-      ? equip
-      : { ...equip, mountId: generateMountId() });
-    this.equipment.update(list => [...list, mount]);
+  /** Resolve the mount that targets this mount. */
+  getLinkingMount(target: EntityMountedEquipment): EntityMountedEquipment | undefined {
+    return this.#equipmentRelationships().linkingMount(target, this.#equipmentById());
   }
 
-  /** Remove equipment by mountId */
-  removeEquipment(mountId: string): void {
-    removeMountById(this.equipment, mountId);
+  /** Whether an installed enhancement can target an installed weapon. */
+  canLinkEquipment(source: EntityMountedEquipment, target: EntityMountedEquipment): boolean {
+    const currentSource = this.findCurrentMount(source);
+    const currentTarget = this.findCurrentMount(target);
+    if (!currentSource || !currentTarget
+      || !isCompatibleEquipmentLink(currentSource, currentTarget, { year: this.year() })) return false;
+    const existingSource = this.getLinkingMount(currentTarget);
+    return !existingSource || existingSource.mountId === currentSource.mountId;
+  }
+
+  /** Compatible, currently available targets for an installed enhancement. */
+  getCompatibleLinkTargets(source: EntityMountedEquipment): readonly EntityMountedEquipment[] {
+    const currentSource = this.requireCurrentMount(source);
+    return this.equipment().filter(target => this.canLinkEquipment(currentSource, target));
+  }
+
+  /** Create or replace an enhancement-to-weapon link after validating domain rules. */
+  linkEquipment(source: EntityMountedEquipment, target: EntityMountedEquipment): void {
+    const currentSource = this.requireCurrentMount(source);
+    const currentTarget = this.requireCurrentMount(target);
+    if (!this.canLinkEquipment(currentSource, currentTarget)) {
+      throw new Error('Equipment link must connect a compatible weapon enhancement to a weapon in the same location');
+    }
+    this.#equipmentRelationships.update(relationships => relationships.withLink(currentSource, currentTarget));
+  }
+
+  unlinkEquipment(source: EntityMountedEquipment): void {
+    const currentSource = this.requireCurrentMount(source);
+    this.#equipmentRelationships.update(relationships => relationships.withoutLink(currentSource));
+  }
+
+  addEquipmentBay(kind: EquipmentBayKind, input: EquipmentBayInput): void {
+    this.requireBayMounts(input);
+    this.#equipmentRelationships.update(relationships => relationships.withBay(kind, input));
+  }
+
+  replaceEquipmentBays(kind: EquipmentBayKind, inputs: readonly EquipmentBayInput[]): void {
+    for (const input of inputs) this.requireBayMounts(input);
+    this.#equipmentRelationships.update(relationships => relationships.withBays(kind, inputs));
+  }
+
+  /** Install equipment, optionally linking a new enhancement to an existing weapon. */
+  addEquipment(
+    input: EntityMountedEquipmentInput,
+    options: AddEquipmentOptions = {},
+  ): EntityMountedEquipment {
+    const mount = this.createEquipmentMount(input);
+
+    let relationships = this.#equipmentRelationships();
+    if (options.linkedTo) {
+      const target = this.requireCurrentMount(options.linkedTo);
+      if (!isCompatibleEquipmentLink(mount, target, { year: this.year() })) {
+        throw new Error('Equipment link must connect a compatible weapon enhancement to a weapon in the same location');
+      }
+      relationships = relationships.withLink(mount, target);
+    }
+
+    this.#equipment.set([...this.#equipment(), mount]);
+    this.#equipmentRelationships.set(relationships);
+    return mount;
+  }
+
+  /** Create an identified mount for an atomic subclass batch update without installing it yet. */
+  protected createEquipmentMount(input: EntityMountedEquipmentInput): EntityMountedEquipment {
+    return new EntityMountedEquipment({ ...input, mountId: this.allocateMountId() });
+  }
+
+  /** Replace all mounts and discard relationships to identities no longer present. */
+  setEquipment(equipment: readonly EntityMountedEquipment[]): void {
+    const mounts = [...equipment];
+    const mountIds = mounts.map(mount => mount.mountId);
+    if (new Set(mountIds).size !== mountIds.length) {
+      throw new Error('Equipment mount IDs must be unique within an entity');
+    }
+    this.#equipmentRelationships.update(relationships => relationships.withMounts(mounts));
+    this.#equipment.set(mounts);
+  }
+
+  updateEquipment(
+    update: (equipment: readonly EntityMountedEquipment[]) => readonly EntityMountedEquipment[],
+  ): void {
+    this.setEquipment(update(this.#equipment()));
+  }
+
+  /** Structurally remove equipment and its relationships. Runtime destruction must retain the mount. */
+  removeEquipment(mount: EntityMountedEquipment): void {
+    const removed = this.findCurrentMount(mount);
+    if (!removed) return;
+    this.#equipment.update(equipment => equipment.filter(candidate => candidate.mountId !== removed.mountId));
+    this.#equipmentRelationships.update(relationships => relationships.withoutMount(removed));
   }
 
   /** Move equipment to a new location, optionally with new placements */
-  moveEquipment(mountId: string, newLocation: string, newPlacements?: readonly MountPlacement[]): void {
-    this.equipment.update(list => list.map(m => {
-      if (m.mountId !== mountId) return m;
-      return m.clone({
+  moveEquipment(
+    mount: EntityMountedEquipment,
+    newLocation: string,
+    newPlacements?: readonly MountPlacement[],
+  ): EntityMountedEquipment {
+    const previous = this.requireCurrentMount(mount);
+    const replacement = previous.clone({
         allocation: {
           kind: 'location',
           location: newLocation,
-          placements: newPlacements ?? m.placements,
+          placements: newPlacements ?? previous.placements,
         },
       });
-    }));
+    let relationships = this.#equipmentRelationships();
+    const linked = relationships.linkedMount(previous, this.#equipmentById());
+    const linking = relationships.linkingMount(previous, this.#equipmentById());
+    const linkContext = { year: this.year() };
+    if ((linked && !isCompatibleEquipmentLink(replacement, linked, linkContext))
+      || (linking && !isCompatibleEquipmentLink(linking, replacement, linkContext))) {
+      relationships = relationships.withoutLinksFor(previous);
+    }
+    this.#equipment.set(this.#equipment().map(mount => mount === previous ? replacement : mount));
+    this.#equipmentRelationships.set(relationships);
+    return replacement;
+  }
+
+  private findCurrentMount(mount: EntityMountedEquipment): EntityMountedEquipment | undefined {
+    return this.#equipmentById().get(mount.mountId);
+  }
+
+  private allocateMountId(): MountId {
+    let id: MountId;
+    do {
+      id = createMountId(`m${this.#nextMountSequence++}`);
+    } while (this.#equipmentById().has(id));
+    return id;
+  }
+
+  private requireCurrentMount(mount: EntityMountedEquipment): EntityMountedEquipment {
+    const current = this.findCurrentMount(mount);
+    if (!current) throw new Error(`Equipment mount "${mount.mountId}" does not belong to this entity`);
+    return current;
+  }
+
+  private requireBayMounts(input: EquipmentBayInput): void {
+    if (input.controller) this.requireCurrentMount(input.controller);
+    for (const mount of input.mounts) this.requireCurrentMount(mount);
   }
 
   /** Set armor for a specific location and face, always creating new Map */
   setArmorValue(loc: string, face: ArmorFace, value: number): void {
-    updateMap(this.armorValues, draft => {
-      const prev = draft.get(loc) ?? locationArmor(0);
-      draft.set(loc, { ...prev, [face]: value });
+    this.armorValues.update(armorValues => {
+      const updated = new Map(armorValues);
+      const previous = updated.get(loc) ?? locationArmor(0);
+      updated.set(loc, { ...previous, [face]: value });
+      return updated;
     });
   }
 

@@ -52,7 +52,6 @@ import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
 import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { loadQuirkResolver } from './quirk-fixture';
-import { resetMountIdCounter } from '../src/app/models/entity/utils/signal-helpers';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Unsupported UnitTypes - skipped without counting as failures
@@ -211,7 +210,6 @@ function loadFile(
 
   const t0 = performance.now();
   try {
-    resetMountIdCounter();
     const { entity } = parseEntity(content, fileName, equipmentRegistry, { quirkResolver });
     const timeMs = performance.now() - t0;
     return { file: filePath, status: 'ok', entityType: entity.entityType, timeMs };

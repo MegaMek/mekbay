@@ -186,6 +186,10 @@ export class ProtoMekEntity extends BaseEntity {
     return resolveWeightClass(this.tonnage(), PROTOMEK_WEIGHT_LIMITS);
   }
 
+  protected override readonly allowsImplicitClanCase = computed<boolean>(()=>{
+    return false;
+  });
+
   // ═══════════════════════════════════════════════════════════════════════════
   //  ABSTRACT IMPLEMENTATIONS
   // ═══════════════════════════════════════════════════════════════════════════

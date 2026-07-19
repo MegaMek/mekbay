@@ -44,7 +44,7 @@ import {
   STANDARD_STRUCTURE_EQUIPMENT,
   getStructureByName,
 } from '../components';
-import { AmmoEquipment, ArmorEquipment, MiscEquipment, WeaponEquipment } from '../../equipment.model';
+import { ArmorEquipment, MiscEquipment, WeaponEquipment } from '../../equipment.model';
 import {
   ArmorType,
   EntityFluff,
@@ -64,7 +64,6 @@ import {
   requireArmorEquipment,
 } from '../types';
 import { EquipmentRegistry } from '../../equipment-lookup';
-import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { ParseContext } from './parse-context';
 import { componentTechLevelFromRulesLevel } from './blk-codec';
 import {
@@ -197,7 +196,6 @@ const ENGINE_SLOT_NAMES = [
  * computed derives the full grid from these placements + system template.
  */
 export function parseMtf(content: string, ctx: ParseContext): MekEntity {
-  resetMountIdCounter();
   const lines = content.split(/\r?\n/);
   const header = parseHeader(lines, ctx);
   const entity = createMekEntity(header.config, ctx.equipmentRegistry);
@@ -393,7 +391,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       const trimmed = loc.trim();
       if (trimmed) optOutLocs.add(trimmed);
     }
-    if (optOutLocs.size > 0) entity.clanCaseOptOutLocations.set(optOutLocs);
+    if (optOutLocs.size > 0) entity.setClanCaseOptOutLocations(optOutLocs);
   }
 
   // ── Quirks ──
@@ -451,6 +449,30 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
             });
             addedToExisting = true;
           }
+        }
+      }
+
+      // MegaMek loads targeting computers like spreadable equipment even
+      // though the equipment definition itself is not spreadable: one mount
+      // per targeting-computer type owns every critical across all locations.
+      if (!addedToExisting) {
+        const targetingComputerIndex = mountedEquipment.findIndex(mount =>
+          mount.equipmentId === parsed.name
+          && mount.equipment?.hasFlag('F_TARGETING_COMPUTER')
+        );
+        if (targetingComputerIndex >= 0) {
+          const targetingComputer = mountedEquipment[targetingComputerIndex];
+          mountedEquipment[targetingComputerIndex] = targetingComputer.clone({
+            allocation: {
+              kind: 'location',
+              location: targetingComputer.location,
+              placements: [
+                ...(targetingComputer.placements ?? []),
+                { location: locCode, slotIndex: slotIdx },
+              ],
+            },
+          });
+          addedToExisting = true;
         }
       }
 
@@ -515,11 +537,9 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
 
       if (!addedToExisting) {
         // New mount
-        const mountId = generateMountId();
         const resolved = ctx.resolveEquipment(parsed.name, locCode, entity.techBase());
 
-        const mount = new EntityMountedEquipment({
-          mountId,
+        const mount = entity.addEquipment({
           equipmentId: parsed.name,
           equipment: resolved ?? undefined,
           allocation: {
@@ -541,54 +561,18 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
         });
 
         mountedEquipment.push(mount);
-        multiCritMap.set(dedupKey, mountId);
+        multiCritMap.set(dedupKey, mount.mountId);
       }
     }
   }
 
-  entity.equipment.set(mountedEquipment);
+  entity.setEquipment(mountedEquipment);
   if (armoredSystemSlots.size > 0) entity.armoredSystemSlots.set(armoredSystemSlots);
-
-  // Clan CASE is integral and therefore absent from MTF critical-slot lines.
-  // Materialize it only for Clan units, in locations containing explosive ammo.
-  if (entity.techBase() === 'Clan') {
-    const caseEquipment = ctx.resolveEquipment('Clan CASE', 'Clan CASE', 'Clan');
-    if (!caseEquipment) return entity;
-
-    const optedOut = entity.clanCaseOptOutLocations();
-    const protectedLocations = new Set(
-      mountedEquipment
-        .filter(mount => mount.equipment?.hasAnyFlag(['F_CASE', 'F_CASE_II']))
-        .flatMap(mount => mount.getOccupiedLocations()),
-    );
-    const caseLocations = new Set(
-      mountedEquipment
-        .filter(mount =>
-          (mount.equipment instanceof AmmoEquipment && mount.equipment.stats.explosive)
-          || (mount.secondEquipment instanceof AmmoEquipment && mount.secondEquipment.stats.explosive)
-        )
-        .flatMap(mount => mount.getOccupiedLocations())
-        .filter(location => !optedOut.has(location) && !protectedLocations.has(location)),
-    );
-    for (const location of caseLocations) {
-      entity.addEquipment({
-        mountId: generateMountId(),
-        equipmentId: caseEquipment.id,
-        equipment: caseEquipment,
-        allocation: { kind: 'location', location },
-        rearMounted: false,
-        turretMounted: false,
-        omniPodMounted: false,
-        armored: false,
-      });
-    }
-  }
 
   // ── Nocrit equipment ──
   for (const nocrit of header.nocritEquipment) {
     const resolved = ctx.resolveEquipment(nocrit.name, 'nocrit');
     entity.addEquipment({
-      mountId: generateMountId(),
       equipmentId: nocrit.name,
       equipment: resolved ?? undefined,
       allocation: { kind: 'location', location: nocrit.location },

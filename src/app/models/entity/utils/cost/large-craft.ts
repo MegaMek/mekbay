@@ -94,7 +94,7 @@ function smallCraftSystemCosts(entity: DropShipEntity, equipmentCost: number): n
   const primitive = entity.uniformArmor()?.type === 'PRIMITIVE_AERO';
   const engineMultiplier = entity.techBase() === 'Clan'
     ? 0.061
-    : dropshipEngineMultiplier(primitive ? entity.originalBuildYear() : 2500);
+    : dropshipEngineMultiplier(primitive ? entity.effectiveOriginalBuildYear() : 2500);
   const engineWeight = nextHalfTon(tonnage * entity.originalWalkMP() * engineMultiplier);
   const fuelPointsPerTon = dropshipFuelPointsPerTon(entity);
   const fuelWeight = nextHalfTon((entity.fuel() / fuelPointsPerTon) * 1.02);
@@ -170,7 +170,7 @@ function capitalFuelPerTon(tonnage: number): number {
 
 function calculateGravDeckCost(entity: CapitalCraft): number {
   return entity.gravDecks().reduce((cost, diameter) => cost
-    + (diameter > 250 ? 40000000 : diameter > 100 ? 10000000 : 5000000), 0);
+    + (diameter > 250 ? 40000000 : diameter >= 100 ? 10000000 : 5000000), 0);
 }
 
 function calculateLargeCraftBayAndDoorCost(entity: CapitalCraft | DropShipEntity): number {
@@ -260,7 +260,9 @@ function dropshipFuelPointsPerTon(entity: DropShipEntity): number {
   let points = tonnage < 400 ? 80 : tonnage < 800 ? 70 : tonnage < 1200 ? 60
     : tonnage < 1900 ? 50 : tonnage < 3000 ? 40 : tonnage < 20000 ? 30
       : tonnage < 40000 ? 20 : 10;
-  if (entity.uniformArmor()?.type === 'PRIMITIVE_AERO') points /= dropshipPrimitiveFuelFactor(entity.originalBuildYear());
+  if (entity.uniformArmor()?.type === 'PRIMITIVE_AERO') {
+    points /= dropshipPrimitiveFuelFactor(entity.effectiveOriginalBuildYear());
+  }
   return points;
 }
 

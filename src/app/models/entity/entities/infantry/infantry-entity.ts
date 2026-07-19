@@ -193,7 +193,7 @@ export class InfantryEntity extends InfantryBaseEntity {
     if (mount) return mount.movementMode === 'VTOL' ? mount.movementPoints : 0;
     if (this.motiveType() === 'UMU' || this.motiveType() === 'Submarine') return 0;
 
-    let jumpMP = this.motiveType() === 'Jump'
+    let jumpMP = this.augmentations().includes('pl_flight') ? 2 : this.motiveType() === 'Jump'
       ? 3
       : this.motiveType() === 'VTOL' ? (this.isMicrolite() ? 6 : 5) : 0;
     if (this.hasSupportWeaponPenalty()) jumpMP = Math.max(jumpMP - 1, 0);

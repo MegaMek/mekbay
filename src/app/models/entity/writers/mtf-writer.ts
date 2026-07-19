@@ -39,7 +39,6 @@ import { QuadVeeEntity } from '../entities/mek/quad-vee-entity';
 import { LamEntity } from '../entities/mek/lam-entity';
 import {
   CriticalSlotView,
-  EntityMountedEquipment,
   MEK_SLOTS_PER_LOCATION,
   MekLocation,
 
@@ -137,12 +136,6 @@ export function writeMtf(entity: MekEntity): string {
   const isQuad = entity instanceof QuadMekEntity;
   const isTripod = entity instanceof TripodMekEntity;
 
-  // Build a mount lookup for crit slot output
-  const mountMap = new Map<string, EntityMountedEquipment>();
-  for (const m of entity.equipment()) {
-    mountMap.set(m.mountId, m);
-  }
-
   writeIdentity(entity, lines);
   writeConfig(entity, lines);
   writeQuirks(entity, lines);
@@ -150,7 +143,7 @@ export function writeMtf(entity: MekEntity): string {
   writeMovement(entity, lines);
   writeArmor(entity, lines, isQuad, isTripod);
   writeWeapons(entity, lines);
-  writeCriticals(entity, lines, mountMap, isQuad, isTripod);
+  writeCriticals(entity, lines, isQuad, isTripod);
   writeFluff(entity, lines);
 
   return lines.join('\n');
@@ -324,7 +317,6 @@ function writeWeapons(entity: MekEntity, lines: string[]): void {
 
 function writeCriticals(
   entity: MekEntity, lines: string[],
-  mountMap: Map<string, EntityMountedEquipment>,
   isQuad: boolean, isTripod: boolean,
 ): void {
   const critOrder = isTripod ? CRIT_ORDER_TRIPOD : isQuad ? CRIT_ORDER_QUAD : CRIT_ORDER_BIPED;
@@ -345,8 +337,7 @@ function writeCriticals(
         const name = slot.systemType === 'Engine' ? 'Fusion Engine' : slot.systemType!;
         lines.push(slot.armored ? `${name} (ARMORED)` : name);
       } else {
-        // Equipment - look up mount for name and modifiers
-        lines.push(formatEquipmentSlot(slot, mountMap));
+        lines.push(formatEquipmentSlot(slot));
       }
     }
     const donor = entity.hasHybridStructure() ? entity.structureDonorAt(loc) : null;
@@ -404,11 +395,9 @@ function writeFluff(entity: MekEntity, lines: string[]): void {
 // ============================================================================
 
 function formatEquipmentSlot(
-  slot: CriticalSlotView,
-  mountMap: Map<string, EntityMountedEquipment>,
+  slot: Extract<CriticalSlotView, { type: 'equipment' }>,
 ): string {
-  const mount = slot.mountId ? mountMap.get(slot.mountId) : undefined;
-  if (!mount) return '-Empty-';
+  const mount = slot.mount;
 
   let name = mount.equipmentId;
   if (mount.rearMounted) name += ' (R)';

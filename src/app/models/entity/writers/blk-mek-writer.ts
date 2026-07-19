@@ -35,8 +35,6 @@ import { MekEntity } from '../entities/mek/mek-entity';
 import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import {
   CriticalSlotView,
-  EntityMountedEquipment,
-  EngineType,
 } from '../types';
 import {
   encodeBlkCockpitType,
@@ -69,12 +67,6 @@ export function writeBlkMek(entity: MekEntity): string {
   }
   const w = new BuildingBlockWriter();
   const isQuad = entity instanceof QuadMekEntity;
-
-  // Build mount lookup for crit output
-  const mountMap = new Map<string, EntityMountedEquipment>();
-  for (const m of entity.equipment()) {
-    mountMap.set(m.mountId, m);
-  }
 
   // ── Identity ──
   w.addBlock('Name', entity.chassis());
@@ -127,7 +119,7 @@ export function writeBlkMek(entity: MekEntity): string {
     const slotLines: string[] = [];
 
     for (const slot of slots) {
-      slotLines.push(slotToBlkString(slot, mountMap, entity));
+      slotLines.push(slotToBlkString(slot, entity));
     }
 
     w.addBlock(`${blkTag} criticalSlots`, ...slotLines);
@@ -142,7 +134,6 @@ export function writeBlkMek(entity: MekEntity): string {
 
 function slotToBlkString(
   slot: CriticalSlotView,
-  mountMap: Map<string, EntityMountedEquipment>,
   entity: MekEntity,
 ): string {
   switch (slot.type) {
@@ -152,10 +143,8 @@ function slotToBlkString(
       return slot.systemType === 'Engine'
         ? getBlkEngineName(entity.mountedEngine()?.type())
         : slot.systemType ?? '-1';
-    case 'equipment': {
-      const mount = slot.mountId ? mountMap.get(slot.mountId) : undefined;
-      return mount ? encodeEquipmentLine(mount) : '-1';
-    }
+    case 'equipment':
+      return encodeEquipmentLine(slot.mount);
   }
 }
 

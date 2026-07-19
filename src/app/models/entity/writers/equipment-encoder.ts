@@ -45,6 +45,9 @@ export interface EncodeEquipmentOptions {
 
   /** Entity-specific syntax for an explicit ammo quantity. */
   shotsFormat?: 'none' | 'ba-handheld' | 'large-craft' | 'protomek';
+
+  /** Marks this mount as the first member of a serialized weapon bay. */
+  startsWeaponBay?: boolean;
 }
 
 /**
@@ -63,7 +66,7 @@ export function encodeEquipmentLine(mount: EntityMountedEquipment, options?: Enc
   const blk = options?.blkMode ?? false;
 
   // Weapon bay marker
-  if (mount.isNewBay) {
+  if (options?.startsWeaponBay) {
     name = '(B) ' + name;
   }
 

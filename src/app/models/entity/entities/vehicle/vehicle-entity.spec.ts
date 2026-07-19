@@ -1,12 +1,12 @@
-import { createEquipment, Equipment } from '../../../equipment.model';
+import { createEquipment } from '../../../equipment.model';
 import { EquipmentRegistry } from '../../../equipment-lookup';
-import { EntityMountedEquipment } from '../../types';
 import {
   TestLargeSupportTankEntity as LargeSupportTankEntity,
   TestSupportTankEntity as SupportTankEntity,
   TestTankEntity as TankEntity,
 } from '../../testing/test-entities';
 import { createTestEquipmentRegistry } from '../../testing/test-equipment-registry';
+import { addTestEquipmentWithFlags } from '../../testing/test-mounted-equipment';
 
 describe('VehicleEntity movement', () => {
   it('applies hydrofoil, modular armor, and dune buggy modifiers', () => {
@@ -15,14 +15,16 @@ describe('VehicleEntity movement', () => {
 
     expect(entity.walkMP()).toBe(6);
 
-    entity.equipment.set([mountWithFlag('F_HYDROFOIL')]);
+    addTestEquipmentWithFlags(entity, 'F_HYDROFOIL');
     expect(entity.walkMP()).toBe(8);
 
-    entity.equipment.set([mountWithFlag('F_MODULAR_ARMOR')]);
+    entity.setEquipment([]);
+    addTestEquipmentWithFlags(entity, 'F_MODULAR_ARMOR');
     expect(entity.walkMP()).toBe(5);
     expect(entity.maxWalkMP()).toBe(6);
 
-    entity.equipment.set([mountWithFlag('F_DUNE_BUGGY')]);
+    entity.setEquipment([]);
+    addTestEquipmentWithFlags(entity, 'F_DUNE_BUGGY');
     expect(entity.walkMP()).toBe(5);
   });
 
@@ -51,26 +53,10 @@ describe('VehicleEntity movement', () => {
       id: 'SponsonTurret', name: 'Sponson Turret', type: 'misc', flags: ['F_SPONSON_TURRET'],
     });
     const entity = new TankEntity(createTestEquipmentRegistry({ SponsonTurret: sponsonTurret }));
-    const sponsonMount = mountWithFlag('F_ENERGY');
-    sponsonMount.turretType = 'sponson';
-
-    entity.equipment.set([sponsonMount]);
+    addTestEquipmentWithFlags(entity, 'F_ENERGY', { turretType: 'sponson' });
     expect(entity.implicitSystemEquipment()).toEqual([sponsonTurret]);
 
-    entity.equipment.set([]);
+    entity.setEquipment([]);
     expect(entity.implicitSystemEquipment()).toEqual([]);
   });
 });
-
-function mountWithFlag(flag: string): EntityMountedEquipment {
-  return new EntityMountedEquipment({
-    mountId: flag,
-    equipmentId: flag,
-    equipment: { hasFlag: (candidate: string) => candidate === flag } as Equipment,
-    allocation: { kind: 'location', location: 'Body' },
-    rearMounted: false,
-    turretMounted: false,
-    omniPodMounted: false,
-    armored: false,
-  });
-}

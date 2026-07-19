@@ -1,4 +1,5 @@
 import type { BaseEntity } from '../../base-entity';
+import { WeaponEquipment } from '../../../equipment.model';
 import type { EntityMountedEquipment } from '../../types/equipment';
 import { getEquipmentEngineWeight } from '../equipment-engine-weight';
 import { getFireControlWeaponCost } from '../fire-control';
@@ -24,7 +25,13 @@ export function getEquipmentCost(
 ): number | undefined {
   const equipment = mount.equipment;
   if (!equipment) return undefined;
-  if (equipment.cost !== 'variable') return equipment.cost;
+  if (equipment.cost !== 'variable') {
+    if (!(equipment instanceof WeaponEquipment) || !mount.armored) return equipment.cost;
+    const criticalSlots = equipment.getNumCriticalSlots(entity, mount.size ?? 1);
+    return criticalSlots === undefined
+      ? undefined
+      : equipment.cost + (150000 * criticalSlots);
+  }
 
   const tonnage = entity.tonnage();
   let cost: number | undefined;

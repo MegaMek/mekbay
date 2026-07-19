@@ -43,7 +43,6 @@ import {
   LocationArmor,
   locationArmor,
 } from '../types';
-import { generateMountId, resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { decodeBlkCockpitType, decodeBlkGyroType, getBlkMekHeatSinkEquipmentId } from './blk-codec';
 import {
@@ -67,8 +66,6 @@ import { ParseContext } from './parse-context';
  * stored as `placements` on each mount.
  */
 export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
-  resetMountIdCounter();
-
   // Determine chassis type
   const chassisType = bb.getFirstString('chassis_type').toLowerCase();
   let entity: MekEntity;
@@ -173,8 +170,7 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
       }
 
       const idx = equipmentList.length;
-      equipmentList.push(new EntityMountedEquipment({
-        mountId: generateMountId(),
+      equipmentList.push(entity.addEquipment({
         equipmentId: parsed.name,
         equipment: resolved ?? undefined,
         allocation: {
@@ -194,7 +190,7 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
     }
   }
 
-  entity.equipment.set(equipmentList);
+  entity.setEquipment(equipmentList);
   const totalHeatSinks = bb.exists('heatsinks') ? bb.getFirstInt('heatsinks') : 10;
   entity.initializeParsedHeatSinkMounts(totalHeatSinks);
   return entity;

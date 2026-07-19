@@ -32,6 +32,7 @@
  */
 
 import { BaseEntity } from '../base-entity';
+import { AmmoEquipment, WeaponEquipment } from '../../equipment.model';
 import {
   MountedEngine,
   MountedArmor,
@@ -46,6 +47,7 @@ import { VehicleEntity } from '../entities/vehicle/vehicle-entity';
 import {
   ArmorType,
   EntityFluff,
+  EntityMountedEquipment,
   EntityQuirk,
   EntityTechBase,
   EntityWeaponQuirk,
@@ -68,7 +70,6 @@ import {
   parseBlkTechLevel,
 } from './blk-codec';
 import { createCompoundTechLevel } from '../types/tech';
-import { generateMountId } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { parseEquipmentLine, type EquipmentLineProfile } from './equipment-resolver';
 import { parseTransporterLines } from './transporter-codec';
@@ -321,8 +322,16 @@ export function parseBlkEquipment(
     equipmentLineProfile?: EquipmentLineProfile;
   },
 ): void {
+  const createsWeaponBays = opts?.equipmentLineProfile === 'large-craft'
+    || opts?.equipmentLineProfile === 'dropship';
   for (const [blkTag, locCode] of equipTags) {
     if (!bb.exists(blkTag)) continue;
+    let currentBay: EntityMountedEquipment[] = [];
+    const finishBay = (): void => {
+      if (currentBay.length === 0) return;
+      entity.addEquipmentBay('weapon-bay', { mounts: currentBay });
+      currentBay = [];
+    };
     const lines = bb.getDataAsString(blkTag);
     for (const raw of lines) {
       const line = raw.trim();
@@ -336,8 +345,7 @@ export function parseBlkEquipment(
         ? resolved?.type === 'ammo' ? parsed.shots : undefined
         : parsed.shots;
 
-      entity.addEquipment({
-        mountId: generateMountId(),
+      const mount = entity.addEquipment({
         equipmentId: parsed.name,
         equipment: resolved ?? undefined,
         allocation: { kind: 'location', location: locCode },
@@ -345,13 +353,21 @@ export function parseBlkEquipment(
         turretMounted: opts?.computeTurretMounted?.(locCode) ?? false,
         turretType: opts?.includeTurretType ? parsed.turretType : undefined,
         omniPodMounted: parsed.omniPod,
-        isNewBay: parsed.isNewBay,
         armored: false,
         size: parsed.size,
         facing: parsed.facing,
         shotsCount,
       });
+      if (createsWeaponBays) {
+        if (resolved instanceof WeaponEquipment) {
+          if (parsed.isNewBay) finishBay();
+          currentBay.push(mount);
+        } else if (resolved instanceof AmmoEquipment && currentBay.length > 0) {
+          currentBay.push(mount);
+        }
+      }
     }
+    if (createsWeaponBays) finishBay();
   }
 }
 
@@ -743,11 +759,17 @@ export interface CrewEntity extends BaseEntity {
  * `otherpassenger` is only read if the entity has that signal
  * (SmallCraft/DropShip do, JumpShip does not).
  */
-export function parseBlkCrew(bb: BuildingBlock, entity: CrewEntity): void {
+export function parseBlkCrew(
+  bb: BuildingBlock,
+  entity: CrewEntity,
+  options: { parsePassengers?: boolean } = {},
+): void {
   if (bb.exists('crew'))            entity.crew.set(bb.getFirstInt('crew'));
   if (bb.exists('officers'))        entity.officers.set(bb.getFirstInt('officers'));
   if (bb.exists('gunners'))         entity.gunners.set(bb.getFirstInt('gunners'));
-  if (bb.exists('passengers'))      entity.passengers.set(bb.getFirstInt('passengers'));
+  if (options.parsePassengers !== false && bb.exists('passengers')) {
+    entity.passengers.set(bb.getFirstInt('passengers'));
+  }
   if (bb.exists('marines'))         entity.marines.set(bb.getFirstInt('marines'));
   if (bb.exists('battlearmor'))     entity.battleArmor.set(bb.getFirstInt('battlearmor'));
   if (entity.otherPassenger && bb.exists('otherpassenger')) {

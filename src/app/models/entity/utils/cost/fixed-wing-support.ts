@@ -71,7 +71,7 @@ export function calculateFixedWingSupportCost(
 
   let cost = structuralCost
     + 20000 * amplifierWeight
-    + 2000 * Math.max(0, requiredHeatSinks - (engine.installed ? engine.weightFreeHeatSinks : 0))
+    + 2000 * requiredHeatSinks
     + equipmentCost;
   if (entity.omni()) cost *= 1.25;
   cost *= fixedWingPriceMultiplier(entity.motiveType(), tonnage);

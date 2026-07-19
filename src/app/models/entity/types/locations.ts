@@ -102,3 +102,8 @@ export const LARGE_CRAFT_LOCATIONS = ['Nose', 'FLS', 'FRS', 'ALS', 'ARS', 'Aft']
 export const SMALL_CRAFT_EQUIP_LOCATIONS = ['Nose', 'Left Side', 'Right Side', 'Aft', 'Hull'] as const;
 export const SMALL_CRAFT_ARMOR_LOCATIONS = ['Nose', 'Left Side', 'Right Side', 'Aft'] as const;
 export const DROPSHIP_LOCATIONS = ['Nose', 'LF', 'RF', 'LBS', 'RBS', 'Aft'] as const;
+
+/** Properties attached to a canonical entity location. */
+export interface EntityLocationMetadata {
+  readonly clanCaseOptOut?: boolean;
+}

@@ -1,7 +1,8 @@
 import type { BaseEntity } from '../../base-entity';
 
 export function nextHalfTon(tonnage: number): number {
-  return Math.ceil(tonnage * 2) / 2;
+  const truncated = Math.round(tonnage * 1000000) / 1000000;
+  return Math.ceil(truncated * 2) / 2;
 }
 
 export function standardRound(value: number, entity: BaseEntity): number {
@@ -11,6 +12,17 @@ export function standardRound(value: number, entity: BaseEntity): number {
 }
 
 export function calculateArmorCost(entity: BaseEntity): number {
+  const uniformArmor = entity.uniformArmor();
+  if (uniformArmor && !uniformArmor.armor.hasFlag('F_SUPPORT_VEE_BAR_ARMOR')) {
+    const armor = uniformArmor.armor;
+    if (armor.cost === 'variable') throw new Error(`Unable to calculate armor cost for ${armor.id}`);
+    const armorWeight = standardRound(
+      entity.totalArmorPoints() / (16 * armor.pptMultiplier),
+      entity,
+    );
+    return armorWeight * armor.cost;
+  }
+
   let total = 0;
   for (const [location, mountedArmor] of entity.armorByLocation()) {
     const points = entity.armorValues().get(location);
@@ -21,7 +33,7 @@ export function calculateArmorCost(entity: BaseEntity): number {
     if (armor.hasFlag('F_SUPPORT_VEE_BAR_ARMOR')) {
       total += armorPoints * armor.cost;
     } else {
-      const armorWeight = standardRound(armorPoints / (16 * armor.pptMultiplier), entity);
+      const armorWeight = armorPoints / (16 * armor.pptMultiplier);
       total += armorWeight * armor.cost;
     }
   }
@@ -42,13 +54,23 @@ export function calculatePowerAmplifierWeight(entity: BaseEntity): number {
 }
 
 export function calculateHeatNeutralRequirement(entity: BaseEntity): number {
-  return entity.mountedWeapons().reduce((total, mount) => {
+  const weaponHeat = entity.mountedWeapons().reduce((total, mount) => {
     const weapon = mount.equipment;
     const producesHeat = (weapon.hasFlag('F_LASER') && weapon.ammoType === 'NA')
       || weapon.hasAnyFlag(['F_PPC', 'F_PLASMA', 'F_PLASMA_MFUK'])
       || (weapon.hasFlag('F_FLAMER') && weapon.ammoType === 'NA');
-    return total + (producesHeat ? weapon.heat : 0);
+    if (!producesHeat) return total;
+    const enhancement = entity.getLinkingMount(mount)?.equipment;
+    let heat = weapon.heat;
+    if (weapon.hasFlag('F_LASER') && enhancement?.hasFlag('F_LASER_INSULATOR')) {
+      heat = Math.max(1, heat - 1);
+    }
+    if (weapon.hasFlag('F_PPC') && enhancement?.hasFlag('F_PPC_CAPACITOR')) heat += 5;
+    return total + heat;
   }, 0);
+  const hasStealth = [...entity.armorByLocation().values()]
+    .some(mounted => ['STEALTH', 'STEALTH_VEHICLE'].includes(mounted.armor.armorType));
+  return weaponHeat + (hasStealth ? 10 : 0);
 }
 
 export function hasAnyEquipmentFlag(entity: BaseEntity, flags: readonly string[]): boolean {

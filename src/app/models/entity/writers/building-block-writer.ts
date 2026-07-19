@@ -289,10 +289,16 @@ export function writeEquipmentByLocation(
   encodeOptions: EncodeEquipmentOptions = { blkMode: true },
 ): Map<string, string[]> {
   const mountsByLoc = new Map<string, string[]>();
+  const weaponBayStarts = new Set(entity.equipmentBays()
+    .filter(bay => bay.kind === 'weapon-bay')
+    .flatMap(bay => bay.mounts.length > 0 ? [bay.mounts[0].mountId] : []));
   for (const m of entity.equipment()) {
     let lines = mountsByLoc.get(m.location);
     if (!lines) { lines = []; mountsByLoc.set(m.location, lines); }
-    lines.push(encodeLineFn(m, encodeOptions));
+    lines.push(encodeLineFn(m, {
+      ...encodeOptions,
+      startsWeaponBay: weaponBayStarts.has(m.mountId),
+    }));
   }
 
   for (const [blkTag, locCode] of equipTags) {

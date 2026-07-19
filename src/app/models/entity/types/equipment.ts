@@ -77,9 +77,20 @@ export interface MountedWeaponCharacteristics extends WeaponCharacteristics {
 // from this list; they are never independently editable.
 // ============================================================================
 
+declare const mountIdBrand: unique symbol;
+
+/** Entity-local identity for an installed mount. Not an equipment database ID. */
+export type MountId = string & { readonly [mountIdBrand]: true };
+
+/** Create a mount identity at an entity hydration boundary. */
+export function createMountId(value: string): MountId {
+  if (!value) throw new Error('Equipment mount IDs cannot be empty');
+  return value as MountId;
+}
+
 export interface EntityMountedEquipmentInit {
   /** Stable unique identifier within this entity */
-  readonly mountId: string;
+  readonly mountId: MountId | string;
 
   /** Internal name - lookup key into the equipment DB */
   equipmentId: string;
@@ -129,22 +140,16 @@ export interface EntityMountedEquipmentInit {
   /** Ammo: shot count */
   shotsCount?: number;
 
-  /** Weapon bay members (large craft) */
-  bayWeapons?: number[];
-
-  /** Weapon bay ammo (large craft) */
-  bayAmmo?: number[];
-
-  /** Starts a new weapon bay (large craft) */
-  isNewBay?: boolean;
-
   /** Combined slot - second equipment in same slot (superheavy Mek) */
   secondEquipmentId?: string;
   secondEquipment?: Equipment;
 }
 
+/** Input accepted when installing equipment; entity ownership supplies identity. */
+export type EntityMountedEquipmentInput = Omit<EntityMountedEquipmentInit, 'mountId'>;
+
 export class EntityMountedEquipment implements EntityMountedEquipmentInit {
-  readonly mountId: string;
+  readonly mountId: MountId;
   equipmentId: string;
   equipment?: Equipment;
   allocation: EquipmentAllocation;
@@ -161,15 +166,12 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
   isSSWM?: boolean;
   isAPM?: boolean;
   shotsCount?: number;
-  bayWeapons?: number[];
-  bayAmmo?: number[];
-  isNewBay?: boolean;
   secondEquipmentId?: string;
   secondEquipment?: Equipment;
 
   constructor(data: EntityMountedEquipmentInit) {
     Object.assign(this, data);
-    this.mountId = data.mountId;
+    this.mountId = createMountId(data.mountId);
     this.equipmentId = data.equipmentId;
     this.allocation = data.allocation;
     this.rearMounted = data.rearMounted;
@@ -242,4 +244,31 @@ export type EntityMountedWeapon = EntityMountedEquipment & { readonly equipment:
 
 export function isEntityMountedWeapon(mount: EntityMountedEquipment): mount is EntityMountedWeapon {
   return mount.equipment instanceof WeaponEquipment;
+}
+
+export type EquipmentBayKind = 'weapon-bay' | 'machine-gun-array';
+
+/** A mounted-equipment aggregate with one canonical member list. */
+export class EquipmentBay {
+  readonly kind: EquipmentBayKind;
+  readonly controller?: EntityMountedEquipment;
+  readonly mounts: readonly EntityMountedEquipment[];
+
+  constructor(
+    kind: EquipmentBayKind,
+    mounts: readonly EntityMountedEquipment[],
+    controller?: EntityMountedEquipment,
+  ) {
+    this.kind = kind;
+    this.mounts = [...mounts];
+    this.controller = controller;
+  }
+
+  get weapons(): readonly EntityMountedWeapon[] {
+    return this.mounts.filter(isEntityMountedWeapon);
+  }
+
+  get ammo(): readonly EntityMountedEquipment[] {
+    return this.mounts.filter(mount => mount.equipment instanceof AmmoEquipment);
+  }
 }

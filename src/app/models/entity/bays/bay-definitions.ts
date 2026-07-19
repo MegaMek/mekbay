@@ -53,6 +53,15 @@ export function decodeBaySize(
     return { capacity: sourceSize * INFANTRY_TRANSPORT_WEIGHTS[configuration.infantryType] };
   }
   if (configuration.type === 'drop-shuttle') return { capacity: 2 };
+  if (configuration.type === 'liquid-cargo') {
+    return { capacity: sourceSize, constructionWeight: sourceSize / 0.91 };
+  }
+  if (configuration.type === 'insulated-cargo' || configuration.type === 'refrigerated-cargo') {
+    return { capacity: sourceSize, constructionWeight: sourceSize / 0.87 };
+  }
+  if (configuration.type === 'livestock-cargo') {
+    return { capacity: sourceSize, constructionWeight: sourceSize / 0.83 };
+  }
 
   const definition = STANDARD_BAY_DEFINITIONS[configuration.type as StandardTransportBayType];
   if (definition?.tonsPerPerson) {
@@ -64,6 +73,10 @@ export function decodeBaySize(
 export function encodeBaySize(bay: EntityTransportBay): number {
   if (bay.configuration.type === 'infantry') {
     return bay.capacity / INFANTRY_TRANSPORT_WEIGHTS[bay.configuration.infantryType];
+  }
+  if (['liquid-cargo', 'insulated-cargo', 'refrigerated-cargo', 'livestock-cargo']
+    .includes(bay.configuration.type)) {
+    return bay.capacity;
   }
   const definition = STANDARD_BAY_DEFINITIONS[bay.configuration.type as StandardTransportBayType];
   if (definition?.tonsPerPerson) {

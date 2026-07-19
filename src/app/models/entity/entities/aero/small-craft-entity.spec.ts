@@ -1,7 +1,7 @@
-import { createEquipment, Equipment, WeaponEquipment } from '../../../equipment.model';
-import { EntityMountedEquipment } from '../../types';
+import { createEquipment, WeaponEquipment } from '../../../equipment.model';
 import { SmallCraftEntity } from './small-craft-entity';
 import { createTestEquipmentRegistry } from '../../testing/test-equipment-registry';
+import { addTestEquipment } from '../../testing/test-mounted-equipment';
 
 describe('SmallCraftEntity implicit equipment', () => {
   it('derives its automatic ECM from entity state', () => {
@@ -16,10 +16,10 @@ describe('SmallCraftEntity implicit equipment', () => {
 
     expect(entity.implicitSystemEquipment()).toEqual([]);
 
-    entity.equipment.set([mount(weapon)]);
+    addTestEquipment(entity, weapon, { location: 'Nose' });
     expect(entity.implicitSystemEquipment()).toEqual([automaticEcm]);
 
-    entity.equipment.set([]);
+    entity.setEquipment([]);
     expect(entity.implicitSystemEquipment()).toEqual([]);
   });
 
@@ -30,7 +30,8 @@ describe('SmallCraftEntity implicit equipment', () => {
     const weapon = createWeapon('Large Laser', ['F_ENERGY']);
     const entity = new SmallCraftEntity(createTestEquipmentRegistry({ [automaticEcm.id]: automaticEcm }));
 
-    entity.equipment.set([mount(weapon), mount(automaticEcm, 'ecm')]);
+    addTestEquipment(entity, weapon, { location: 'Nose' });
+    addTestEquipment(entity, automaticEcm, { location: 'Nose' });
 
     expect(entity.implicitSystemEquipment()).toEqual([]);
   });
@@ -41,17 +42,4 @@ function createWeapon(id: string, flags: string[] = []): WeaponEquipment {
     id, name: id, type: 'weapon', flags,
     weapon: { damage: 10, ranges: [5, 10, 15, 20] },
   }) as WeaponEquipment;
-}
-
-function mount(equipment: Equipment, mountId = equipment.id): EntityMountedEquipment {
-  return new EntityMountedEquipment({
-    mountId,
-    equipmentId: equipment.id,
-    equipment,
-    allocation: { kind: 'location', location: 'Nose' },
-    rearMounted: false,
-    turretMounted: false,
-    omniPodMounted: false,
-    armored: false,
-  });
 }

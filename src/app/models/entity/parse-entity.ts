@@ -89,6 +89,7 @@ export function parseEntity(
     throw new Error(`Unsupported file format: ${fileName}`);
   }
 
+  entity.reconcileEquipmentRelationships();
   return { entity, diagnostics: ctx.diagnostics };
 }
 

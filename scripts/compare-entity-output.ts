@@ -57,7 +57,6 @@ import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
 import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { writeEntity } from '../src/app/models/entity/write-entity';
-import { resetMountIdCounter } from '../src/app/models/entity/utils/signal-helpers';
 import { MekEntity } from '../src/app/models/entity/entities/mek/mek-entity';
 import { BaseEntity } from '../src/app/models/entity/base-entity';
 import { loadQuirkResolver } from './quirk-fixture';
@@ -337,7 +336,6 @@ function processFile(
   // ── Parse ──
   let entity;
   try {
-    resetMountIdCounter();
     entity = parseEntity(content, fileName, equipmentRegistry, { quirkResolver }).entity;
   } catch (e: any) {
     return { file: filePath, status: 'parse-error', error: `Parse: ${e.message}` };

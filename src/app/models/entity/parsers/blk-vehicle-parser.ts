@@ -47,7 +47,6 @@ import {
 } from '../types';
 import { decodeBlkEngineType, ENGINE_TYPE_FROM_BLK_CODE } from './blk-codec';
 import { decodeMotiveType } from './motive-type-codec';
-import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import {
   LST_EXTRA_EQUIP_TAGS,
@@ -69,7 +68,6 @@ import { ParseContext } from './parse-context';
  * or LargeSupportTank entity.
  */
 export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEntity {
-  resetMountIdCounter();
 
   // ── Determine entity type ──
   // MegaMek stores naval vehicles as UnitType=Tank; we promote them based on motion_type.

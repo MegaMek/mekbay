@@ -58,7 +58,6 @@ import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
 import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { writeEntity } from '../src/app/models/entity/write-entity';
-import { resetMountIdCounter } from '../src/app/models/entity/utils/signal-helpers';
 import { MekEntity } from '../src/app/models/entity/entities/mek/mek-entity';
 import { loadQuirkResolver } from './quirk-fixture';
 
@@ -246,7 +245,6 @@ function verifyFile(filePath: string, content: string, equipmentRegistry: Equipm
   let entity1;
   try {
     phaseStart = performance.now();
-    resetMountIdCounter();
     entity1 = parseEntity(content, fileName, equipmentRegistry, { quirkResolver }).entity;
     timings.parse1 = performance.now() - phaseStart;
   } catch (e: any) {
@@ -271,7 +269,6 @@ function verifyFile(filePath: string, content: string, equipmentRegistry: Equipm
   let entity2;
   try {
     phaseStart = performance.now();
-    resetMountIdCounter();
     const pass2Name = isMtf && entity1 instanceof MekEntity ? fileName : fileName.replace(/\.mtf$/i, '.blk');
     entity2 = parseEntity(written1, pass2Name, equipmentRegistry, { quirkResolver }).entity;
     timings.parse2 = performance.now() - phaseStart;

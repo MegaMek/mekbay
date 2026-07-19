@@ -363,7 +363,7 @@ const STATS_DEFAULTS: Record<EquipmentType, EquipmentStats> = {
     },
     ammo: {
         tonnage: 1.0, cost: 0, bv: 0, criticalSlots: 1, tankSlots: 0, svSlots: -1,
-        hittable: true, spreadable: false, explosive: true, omniFixedOnly: false,
+        hittable: true, spreadable: false, explosive: false, omniFixedOnly: false,
         instantModeSwitch: false, toHitModifier: 0
     },
     misc: {
@@ -605,9 +605,9 @@ export class WeaponEquipment extends Equipment {
     getWeaponCategory(): WeaponCategory {
         const ammoCategory = getAmmoCategory(this.ammoType);
         if (this.hasFlag('F_ENERGY') || ammoCategory === 'Energy') return 'energy';
-        if (this.hasFlag('F_MISSILE') || ammoCategory === 'Missile') return 'missile';
-        if (this.hasFlag('F_BALLISTIC') || ammoCategory === 'Ballistic') return 'ballistic';
         if (this.hasFlag('F_ARTILLERY') || ammoCategory === 'Artillery') return 'artillery';
+        if (this.hasFlag('F_BALLISTIC') || ammoCategory === 'Ballistic') return 'ballistic';
+        if (this.hasFlag('F_MISSILE') || ammoCategory === 'Missile') return 'missile';
         return 'other';
     }
 

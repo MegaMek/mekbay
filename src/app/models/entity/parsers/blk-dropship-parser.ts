@@ -33,7 +33,6 @@
 
 import { DropShipEntity } from '../entities/aero/dropship-entity';
 import { decodeMotiveType } from './motive-type-codec';
-import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { decodeBlkAeroDesignType, decodeBlkDropShipCollarType } from './blk-codec';
 import { DS_ARMOR_LOCS, DS_EQUIP_TAGS } from './blk-constants';
@@ -48,7 +47,6 @@ import { ParseContext } from './parse-context';
  * Parse a BLK file for a DropShip entity.
  */
 export function parseBlkDropShip(bb: BuildingBlock, ctx: ParseContext): DropShipEntity {
-  resetMountIdCounter();
   const entity = new DropShipEntity(ctx.equipmentRegistry);
 
   // ── Base parsing ──

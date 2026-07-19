@@ -1,26 +1,27 @@
-import { Equipment } from '../../../equipment.model';
-import { BV_MOVEMENT_CALCULATION, EntityMountedEquipment } from '../../types';
+import { AmmoEquipment } from '../../../equipment.model';
+import { BV_MOVEMENT_CALCULATION } from '../../types';
 import { TestProtoMekEntity as ProtoMekEntity } from '../../testing/test-entities';
+import { addTestEquipment, addTestEquipmentWithFlags } from '../../testing/test-mounted-equipment';
 
 describe('ProtoMekEntity jumpMP', () => {
   it('adds the standard-atmosphere partial-wing bonus', () => {
     const entity = new ProtoMekEntity();
-    entity.equipment.set(Array.from({ length: 5 }, () => mountWithFlag('F_JUMP_JET')));
+    for (let count = 0; count < 5; count++) addTestEquipmentWithFlags(entity, 'F_JUMP_JET', { location: 'Torso' });
 
     expect(entity.jumpMP()).toBe(5);
 
-    entity.equipment.update(equipment => [...equipment, mountWithFlag('F_PARTIAL_WING')]);
+    addTestEquipmentWithFlags(entity, 'F_PARTIAL_WING', { location: 'Torso' });
     expect(entity.jumpMP()).toBe(7);
     expect(entity.maxJumpMP()).toBe(7);
     expect(entity.computeJumpMP(BV_MOVEMENT_CALCULATION)).toBe(5);
 
-    entity.equipment.set([]);
+    entity.setEquipment([]);
     expect(entity.jumpMP()).toBe(0);
   });
 
   it('keeps UMU movement separate from jump movement', () => {
     const entity = new ProtoMekEntity();
-    entity.equipment.set(Array.from({ length: 3 }, () => mountWithFlag('F_UMU')));
+    for (let count = 0; count < 3; count++) addTestEquipmentWithFlags(entity, 'F_UMU', { location: 'Torso' });
 
     expect(entity.jumpMP()).toBe(0);
     expect(entity.installedUmuMP()).toBe(3);
@@ -37,12 +38,13 @@ describe('ProtoMekEntity intrinsic weapons', () => {
       kind: 'physical-fixed', primary: { damage: 3 },
     });
 
-    entity.equipment.set([mountWithFlags(['F_PROTOMEK_MELEE'])]);
+    addTestEquipmentWithFlags(entity, ['F_PROTOMEK_MELEE'], { location: 'Torso' });
     expect(entity.intrinsicWeapons()[0].damage).toEqual({
       kind: 'physical-fixed', primary: { damage: 5 },
     });
 
-    entity.equipment.set([mountWithFlags(['F_PROTOMEK_MELEE', 'S_PROTO_QMS'])]);
+    entity.setEquipment([]);
+    addTestEquipmentWithFlags(entity, ['F_PROTOMEK_MELEE', 'S_PROTO_QMS'], { location: 'Torso' });
     expect(entity.intrinsicWeapons()[0].damage).toEqual({
       kind: 'physical-fixed', primary: { damage: 7 },
     });
@@ -56,25 +58,25 @@ describe('ProtoMekEntity runMP', () => {
 
     expect(entity.runMP()).toBe(9);
 
-    entity.equipment.set([mountWithFlag('F_MASC')]);
+    addTestEquipmentWithFlags(entity, 'F_MASC', { location: 'Torso' });
     expect(entity.runMP()).toBe(12);
   });
 });
 
-function mountWithFlag(flag: string): EntityMountedEquipment {
-  return mountWithFlags([flag]);
-}
+describe('ProtoMekEntity CASE', () => {
+  it('does not derive implicit CASE for Clan ProtoMeks with explosive ammunition', () => {
+    const entity = new ProtoMekEntity();
+    entity.techBase.set('Clan');
+    const ammo = new AmmoEquipment({
+      id: 'Clan Test Ammo',
+      name: 'Test Ammo',
+      type: 'ammo',
+      stats: { explosive: true },
+    });
 
-function mountWithFlags(flags: readonly string[]): EntityMountedEquipment {
-  const flagSet = new Set(flags);
-  return new EntityMountedEquipment({
-    mountId: flags.join(':'),
-    equipmentId: flags.join(':'),
-    equipment: { hasFlag: (candidate: string) => flagSet.has(candidate) } as Equipment,
-    allocation: { kind: 'location', location: 'Torso' },
-    rearMounted: false,
-    turretMounted: false,
-    omniPodMounted: false,
-    armored: false,
+    addTestEquipment(entity, ammo, { location: 'Torso' });
+
+    expect(entity.implicitClanCaseLocations()).toEqual(new Set());
+    expect(entity.locationHasCaseProtection('Torso')).toBeFalse();
   });
-}
+});

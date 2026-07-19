@@ -1,5 +1,6 @@
-import { AmmoEquipment, ArmorEquipment } from '../../../equipment.model';
+import { AmmoEquipment, ArmorEquipment, WeaponEquipment } from '../../../equipment.model';
 import type { BaseEntity } from '../../base-entity';
+import { getEquipmentCost } from './equipment-pricing';
 
 /** Mirrors CostCalculator.getWeaponsAndEquipmentCost's mounted-item rules. */
 export function calculateMountedEquipmentCost(entity: BaseEntity, ignoreAmmo = false): number {
@@ -14,9 +15,45 @@ export function calculateMountedEquipmentCost(entity: BaseEntity, ignoreAmmo = f
     const cost = mount.getCost(entity);
     if (cost === undefined) throw new Error(`Unable to calculate variable cost for ${equipment.id}`);
     total += Math.trunc(cost);
+    if (mount.secondEquipment && !(mount.secondEquipment instanceof ArmorEquipment)
+      && !(ignoreAmmo && mount.secondEquipment instanceof AmmoEquipment
+        && mount.secondEquipment.ammoType !== 'COOLANT_POD')) {
+      const secondMount = mount.clone({
+        equipmentId: mount.secondEquipmentId ?? mount.secondEquipment.id,
+        equipment: mount.secondEquipment,
+        secondEquipmentId: undefined,
+        secondEquipment: undefined,
+      });
+      const secondCost = getEquipmentCost(entity, secondMount);
+      if (secondCost === undefined) {
+        throw new Error(`Unable to calculate variable cost for ${mount.secondEquipment.id}`);
+      }
+      total += Math.trunc(secondCost);
+    }
+    if (!ignoreAmmo && entity.isSupportVehicle() && (mount.size ?? 1) > 1
+      && equipment instanceof WeaponEquipment && equipment.isInfantryWeapon()) {
+      total += Math.trunc(((mount.size ?? 1) - 1) * equipment.infantry.ammoCost);
+    }
   }
-  if (!entity.isLargeCraft()) total += calculateTransporterCost(entity);
+  total += calculateImplicitClanCaseCost(entity);
+  const hasSeparateLargeCraftBayCost = ['DropShip', 'JumpShip', 'WarShip', 'SpaceStation']
+    .includes(entity.entityType);
+  if (!hasSeparateLargeCraftBayCost) total += calculateTransporterCost(entity);
   return total;
+}
+
+function calculateImplicitClanCaseCost(entity: BaseEntity): number {
+  const family = entity.entityType;
+  const isMek = family === 'Mek';
+  const isVehicle = family === 'Tank' || family === 'Naval' || family === 'VTOL'
+    || family === 'SupportTank' || family === 'SupportNaval' || family === 'SupportVTOL'
+    || family === 'LargeSupportTank';
+  if (!isMek && !isVehicle) return 0;
+  const hasClanCase = entity.equipment().some(mount =>
+    mount.equipment?.hasFlag('F_CASE') && mount.equipment.id.toLowerCase().includes('clan'));
+  if (entity.techBase() !== 'Clan' && !hasClanCase) return 0;
+  const explicitCase = entity.equipment().filter(mount => mount.equipment?.hasFlag('F_CASE')).length;
+  return Math.max(0, entity.implicitClanCaseLocations().size - explicitCase) * 50000;
 }
 
 /** Prices transporter systems. Large-craft family calculators invoke this directly. */

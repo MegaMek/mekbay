@@ -1,9 +1,31 @@
 import type { BaseEntity } from '../base-entity';
 import type { EntityMountedEquipment } from '../types/equipment';
 
+const PPC_CAPACITOR_BV: Readonly<Record<string, number>> = {
+    'Light PPC': 44,
+    PPC: 88,
+    'Heavy PPC': 53,
+    ISSNPPC: 87,
+    ISERPPC: 114,
+    CLERPPC: 136,
+};
+
+/** Context-sensitive BV of a capacitor linked to an eligible PPC. */
+export function getPpcCapacitorBV(linkedPpc: EntityMountedEquipment): number {
+    return PPC_CAPACITOR_BV[linkedPpc.equipmentId] ?? 0;
+}
+
 export function getEquipmentBV(entity: BaseEntity, mount: EntityMountedEquipment): number {
     const equipment = mount.equipment;
     if (!equipment) return 0;
+
+    // MiscType calculates ProtoMek melee BV by identity before consulting its
+    // nominal database BV (which is zero for the Quad Melee System).
+    if (equipment.hasFlag('F_PROTOMEK_MELEE')) {
+        const base = Math.ceil(entity.tonnage() * 0.2);
+        return base * (equipment.hasFlag('S_PROTO_QMS') ? 2.5 : 1.25);
+    }
+
     if (equipment.bv !== 'variable') {
         const hasRotorMastMount = entity.equipment().some(candidate =>
             candidate.location === 'Rotor' && candidate.equipment?.hasFlag('F_MAST_MOUNT'));

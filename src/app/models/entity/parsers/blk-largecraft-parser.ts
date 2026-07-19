@@ -37,7 +37,6 @@ import { SpaceStationEntity } from '../entities/largecraft/space-station-entity'
 import {
   LARGE_CRAFT_LOCATIONS,
 } from '../types';
-import { resetMountIdCounter } from '../utils/signal-helpers';
 import { BuildingBlock } from './building-block';
 import { decodeBlkAeroDesignType, decodeBlkDriveCoreType } from './blk-codec';
 import { JUMPSHIP_EQUIP_TAGS, WARSHIP_EXTRA_EQUIP_TAGS } from './blk-constants';
@@ -52,7 +51,6 @@ import { ParseContext } from './parse-context';
  * Parse a BLK file for a JumpShip, WarShip, or SpaceStation entity.
  */
 export function parseBlkLargeCraft(bb: BuildingBlock, ctx: ParseContext): JumpShipEntity {
-  resetMountIdCounter();
 
   // ── Determine entity type ──
   const unitType = bb.getFirstString('UnitType').trim();

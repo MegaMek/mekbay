@@ -25,7 +25,8 @@ import {
   TestTripodMekEntity as TripodMekEntity,
   TestWarShipEntity as WarShipEntity,
 } from '../models/entity/testing/test-entities';
-import { Equipment, EquipmentRawData, MiscEquipment, StructureEquipment, WeaponEquipment } from '../models/equipment.model';
+import { addTestEquipmentWithFlags } from '../models/entity/testing/test-mounted-equipment';
+import { MiscEquipment, StructureEquipment, WeaponEquipment } from '../models/equipment.model';
 import { UnitMetadataBuilder } from './unit-metadata-builder';
 import { getOffensiveSpeedFactor, offensiveSpeedFactor } from '../models/entity/utils/battle-value';
 import type { Sourcebook } from '../models/sourcebook.model';
@@ -46,7 +47,7 @@ describe('UnitMetadataBuilder', () => {
   it('uses BV jump conditions for TSM Meks with modular armor', () => {
     const entity = new BipedMekEntity();
     entity.originalWalkMP.set(5);
-    entity.equipment.set([
+    entity.setEquipment([
       miscMount('tsm', ['F_TSM']),
       miscMount('modular-armor', ['F_MODULAR_ARMOR']),
       ...Array.from({ length: 5 }, (_, index) => miscMount(`jump-jet-${index}`, ['F_JUMP_JET'])),
@@ -61,7 +62,7 @@ describe('UnitMetadataBuilder', () => {
   it('excludes the atmospheric ProtoMek partial-wing bonus from BV speed', () => {
     const entity = new ProtoMekEntity();
     entity.originalWalkMP.set(3);
-    entity.equipment.set([
+    entity.setEquipment([
       miscMount('partial-wing', ['F_PARTIAL_WING']),
       ...Array.from({ length: 5 }, (_, index) => miscMount(`jump-jet-${index}`, ['F_JUMP_JET'])),
     ]);
@@ -263,14 +264,7 @@ describe('UnitMetadataBuilder', () => {
     expect(builder.build(entity).squads).toBe(4);
 
     entity.specializations.set(new Set(['bridge-engineers', 'paramedics']));
-    entity.addEquipment({
-      mountId: 'anti-mek-gear', equipmentId: 'AntiMekGear',
-      allocation: { kind: 'location', location: 'Infantry' },
-      rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false,
-      equipment: new Equipment({
-        id: 'AntiMekGear', name: 'Anti-Mek Gear', type: 'misc', flags: ['F_ANTI_MEK_GEAR'],
-      } as EquipmentRawData),
-    });
+    addTestEquipmentWithFlags(entity, 'F_ANTI_MEK_GEAR', { location: 'Infantry' });
     expect(builder.build(entity).tons).toBe(7);
   });
 
@@ -314,13 +308,13 @@ describe('UnitMetadataBuilder', () => {
 
     const spheroidSmallCraft = new SmallCraftEntity();
     spheroidSmallCraft.motiveType.set('Spheroid');
-    spheroidSmallCraft.equipment.set([viableWeaponMount('small craft laser')]);
+    spheroidSmallCraft.setEquipment([viableWeaponMount('small craft laser')]);
 
     const militaryStation = new SpaceStationEntity();
-    militaryStation.equipment.set([viableWeaponMount('station laser')]);
+    militaryStation.setEquipment([viableWeaponMount('station laser')]);
 
     const militaryDropShip = new DropShipEntity();
-    militaryDropShip.equipment.set([viableWeaponMount('dropship laser')]);
+    militaryDropShip.setEquipment([viableWeaponMount('dropship laser')]);
 
     const mechanizedInfantry = new InfantryEntity();
     mechanizedInfantry.motiveType.set('Tracked');

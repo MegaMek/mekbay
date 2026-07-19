@@ -82,7 +82,6 @@ import {
   MekSystemType,
   TechRatingSource,
 } from '../../types';
-import { generateMountId } from '../../utils/signal-helpers';
 import { COCKPIT_DATA, CockpitTypeDescriptor } from '../../components/cockpit-data';
 
 // ============================================================================
@@ -186,13 +185,6 @@ export abstract class MekEntity extends BaseEntity {
    * this set because they are not part of the equipment list.
    */
   armoredSystemSlots = signal<Set<string>>(new Set());
-
-  /**
-   * Locations where Clan CASE has been explicitly opted out.
-   * Stores canonical location IDs (e.g. "LA", "RT").
-   * When auto-adding Clan CASE to explosive locations, opted-out locations are skipped.
-   */
-  clanCaseOptOutLocations = signal<Set<string>>(new Set());
 
   /** Equipment definition selected for this Mek's heat-sink technology. */
   heatSinkEquipment = signal<MiscEquipment | null>(null);
@@ -437,7 +429,7 @@ export abstract class MekEntity extends BaseEntity {
       { length: integralCount },
       () => this.createHeatSinkMount(equipment, 'engine'),
     );
-    this.equipment.set([...nonHeatSinks, ...externalMounts, ...integralMounts]);
+    this.setEquipment([...nonHeatSinks, ...externalMounts, ...integralMounts]);
   }
 
   private integralHeatSinkCapacity(equipment: MiscEquipment): number {
@@ -449,8 +441,7 @@ export abstract class MekEntity extends BaseEntity {
     equipment: MiscEquipment,
     allocationKind: 'engine' | 'unallocated',
   ): EntityMountedEquipment {
-    return new EntityMountedEquipment({
-      mountId: generateMountId(),
+    return this.createEquipmentMount({
       equipmentId: equipment.id,
       equipment,
       allocation: { kind: allocationKind },
@@ -809,7 +800,7 @@ export abstract class MekEntity extends BaseEntity {
         if (slots && p.slotIndex >= 0 && p.slotIndex < MEK_SLOTS_PER_LOCATION) {
           slots[p.slotIndex] = {
             type: 'equipment',
-            mountId: mount.mountId,
+            mount,
             armored: mount.armored,
             omniPod: mount.omniPodMounted,
           };

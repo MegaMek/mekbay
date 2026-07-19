@@ -99,9 +99,8 @@ describe('parseEquipmentLine', () => {
       rearMounted: true,
       turretMounted: false,
       omniPodMounted: false,
-      isNewBay: true,
       armored: false,
-    }), { blkMode: true });
+    }), { blkMode: true, startsWeaponBay: true });
 
     expect(line).toBe('(R) (B) ISGaussRifle');
     expect(parseEquipmentLine(line, { profile: 'dropship' })).toEqual(

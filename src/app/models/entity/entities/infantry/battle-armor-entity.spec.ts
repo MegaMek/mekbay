@@ -1,6 +1,5 @@
-import type { Equipment } from '../../../equipment.model';
-import { EntityMountedEquipment } from '../../types';
 import { TestBattleArmorEntity as BattleArmorEntity } from '../../testing/test-entities';
+import { addTestEquipmentWithFlags } from '../../testing/test-mounted-equipment';
 
 describe('BattleArmorEntity movement', () => {
   it('uses one canonical signal for squad size and trooper count', () => {
@@ -18,7 +17,7 @@ describe('BattleArmorEntity movement', () => {
     entity.originalWalkMP.set(1);
     entity.propulsionMP.set(3);
     entity.motiveType.set('Jump');
-    entity.equipment.set([mountWithFlag('F_JUMP_JET')]);
+    addTestEquipmentWithFlags(entity, 'F_JUMP_JET', { location: 'None' });
 
     expect(entity.walkMP()).toBe(1);
     expect(entity.runMP()).toBe(1);
@@ -29,7 +28,8 @@ describe('BattleArmorEntity movement', () => {
 
     entity.motiveType.set('UMU');
     entity.propulsionMP.set(2);
-    entity.equipment.set([mountWithFlag('F_UMU')]);
+    entity.setEquipment([]);
+    addTestEquipmentWithFlags(entity, 'F_UMU', { location: 'None' });
     expect(entity.jumpMP()).toBe(0);
     expect(entity.umuMP()).toBe(2);
   });
@@ -38,27 +38,15 @@ describe('BattleArmorEntity movement', () => {
     const entity = new BattleArmorEntity();
     entity.originalWalkMP.set(5);
     entity.declaredWeightClass.set('Light');
-    entity.equipment.set([mountWithFlag('F_MASC')]);
+    addTestEquipmentWithFlags(entity, 'F_MASC', { location: 'None' });
 
     expect(entity.walkMP()).toBe(7);
     expect(entity.runMP()).toBe(7);
     expect(entity.originalWalkMP()).toBe(5);
 
     entity.motiveType.set('UMU');
-    entity.equipment.set([mountWithFlag('F_MECHANICAL_JUMP_BOOSTER')]);
+    entity.setEquipment([]);
+    addTestEquipmentWithFlags(entity, 'F_MECHANICAL_JUMP_BOOSTER', { location: 'None' });
     expect(entity.jumpMP()).toBe(1);
   });
 });
-
-function mountWithFlag(flag: string): EntityMountedEquipment {
-  return new EntityMountedEquipment({
-    mountId: flag,
-    equipmentId: flag,
-    equipment: { hasFlag: (candidate: string) => candidate === flag } as Equipment,
-    allocation: { kind: 'location', location: 'None' },
-    rearMounted: false,
-    turretMounted: false,
-    omniPodMounted: false,
-    armored: false,
-  });
-}
