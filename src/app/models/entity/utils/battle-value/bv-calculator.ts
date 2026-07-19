@@ -5,18 +5,10 @@ import { getOffensiveSpeedFactor } from '../battle-value';
 import { getPpcCapacitorBV } from '../equipment-bv';
 import { ammoKey, armorBVMultiplier, targetMovementModifier } from './rules';
 
-export interface BattleValueContext {
-  /** Pristine exports have no force/game context; C3, TAG and external stores therefore add zero. */
-  readonly ignoreC3?: boolean;
-  /** Pristine entities have no assigned crew. Neutral 4/5 skill is therefore the clean default. */
-  readonly ignoreSkill?: boolean;
-}
-
 export interface BattleValueBreakdown {
   readonly defensive: number;
   readonly offensive: number;
   readonly base: number;
-  readonly adjusted: number;
 }
 
 /**
@@ -35,10 +27,6 @@ export class BVCalculator {
 
   constructor(readonly entity: BaseEntity) {}
 
-  calculateBV(_context: BattleValueContext = {}): number {
-    return this.calculate().adjusted;
-  }
-
   calculateBaseBV(): number {
     return this.calculate().base;
   }
@@ -47,10 +35,8 @@ export class BVCalculator {
     this.prepare();
     this.processDefensiveValue();
     this.processOffensiveValue();
-    const base = this.summarize(this.defensiveValue + this.offensiveValue);
-    // Java rounds base before context adjustments. Pristine export has none.
-    const adjusted = Math.round(base);
-    return { defensive: this.defensiveValue, offensive: this.offensiveValue, base: Math.round(base), adjusted };
+    const base = Math.round(this.summarize(this.defensiveValue + this.offensiveValue));
+    return { defensive: this.defensiveValue, offensive: this.offensiveValue, base: base };
   }
 
   protected prepare(): void {
