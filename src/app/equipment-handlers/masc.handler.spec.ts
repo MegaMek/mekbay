@@ -1,5 +1,6 @@
 import { MiscEquipment } from '../models/equipment.model';
 import { MountedEquipment } from '../models/force-serialization';
+import { CORE_2026_RULES_DATA } from '../models/rules/cbt-rules-data';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import {
     canUseMascHandler,
@@ -11,21 +12,33 @@ import {
     setMascSequenceState,
 } from './masc.handler';
 
-function owner(airborne: boolean | null = null, turnStateOverrides: Record<string, unknown> = {}) {
+function owner(
+    airborne: boolean | null = null,
+    turnStateOverrides: Record<string, unknown> = {},
+    rulesData?: typeof CORE_2026_RULES_DATA
+) {
     const turnState = {
         airborne: () => airborne,
         ...turnStateOverrides,
     };
     return {
-        rules: { computeEntryState: (entry: MountedEquipment) => ({ isDamaged: entry.committedDestroyed(), isDisabled: false, hitMod: 0 }) },
+        rules: {
+            computeEntryState: (entry: MountedEquipment) => ({ isDamaged: entry.committedDestroyed(), isDisabled: false, hitMod: 0 }),
+            rulesData,
+        },
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
         turnState: () => turnState,
     } as never;
 }
 
-function mascEntry(flags: string[] = ['F_MASC'], airborne: boolean | null = null, turnStateOverrides: Record<string, unknown> = {}): MountedEquipment {
+function mascEntry(
+    flags: string[] = ['F_MASC'],
+    airborne: boolean | null = null,
+    turnStateOverrides: Record<string, unknown> = {},
+    rulesData?: typeof CORE_2026_RULES_DATA
+): MountedEquipment {
     return new MountedEquipment({
-        owner: owner(airborne, turnStateOverrides),
+        owner: owner(airborne, turnStateOverrides, rulesData),
         id: 'masc',
         name: 'MASC',
         equipment: new MiscEquipment({ id: 'masc', name: 'MASC', type: 'misc', flags })
@@ -51,6 +64,13 @@ describe('MascHandler', () => {
             { label: '11+', disabled: true, active: false, displayType: 'toggle' },
             { label: '!!', disabled: true, active: false, displayType: 'toggle' },
         ]);
+    });
+
+    it('uses the Core2026 sequence progression for Core2026 units', () => {
+        const choices = handler.getChoices(mascEntry(['F_MASC'], null, {}, CORE_2026_RULES_DATA), context());
+
+        expect(choices.map(choice => choice.label)).toEqual(['3+', '5+', '7+', '10+', '11+']);
+        expect(choices[4].colors).toEqual(jasmine.objectContaining({ selected: 'var(--bt-yellow)' }));
     });
 
     it('advances one step at a time and unlocks the next button', () => {

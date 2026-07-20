@@ -20,10 +20,14 @@ const MASC_FAILURE_CHOICE_COLORS = {
     mutedSelected: '#800',
 };
 
+export function getMascSequenceLabels(equipment: MountedEquipment): readonly string[] {
+    return equipment.owner?.rules.rulesData?.mascSequenceLabels ?? MASC_SEQUENCE_LABELS;
+}
+
 export function getMascSequenceState(equipment: MountedEquipment): number {
     const rawState = Number(equipment.states.get(MASC_SEQUENCE_STATE_KEY) ?? 0);
     if (!Number.isFinite(rawState)) return 0;
-    return Math.max(0, Math.min(MASC_SEQUENCE_LABELS.length, Math.trunc(rawState)));
+    return Math.max(0, Math.min(getMascSequenceLabels(equipment).length, Math.trunc(rawState)));
 }
 
 export function isMascSequenceButtonOn(equipment: MountedEquipment, index: number): boolean {
@@ -54,12 +58,12 @@ export function setMascActive(equipment: MountedEquipment, active: boolean): boo
 }
 
 export function isMascSequenceButtonClickable(equipment: MountedEquipment, index: number): boolean {
-    return canUseMascHandler(equipment) && !equipment.isUnavailable() && index >= 0 && index < MASC_SEQUENCE_LABELS.length
+    return canUseMascHandler(equipment) && !equipment.isUnavailable() && index >= 0 && index < getMascSequenceLabels(equipment).length
         && index <= getMascSequenceState(equipment);
 }
 
 export function setMascSequenceState(equipment: MountedEquipment, state: number): boolean {
-    const nextState = Math.max(0, Math.min(MASC_SEQUENCE_LABELS.length, Math.trunc(state)));
+    const nextState = Math.max(0, Math.min(getMascSequenceLabels(equipment).length, Math.trunc(state)));
     return nextState === 0
         ? equipment.deleteState(MASC_SEQUENCE_STATE_KEY)
         : equipment.setState(MASC_SEQUENCE_STATE_KEY, String(nextState));
@@ -97,7 +101,7 @@ export class MascHandler extends EquipmentInteractionHandler {
         if (!canUseMascHandler(equipment)) return [];
         const state = getMascSequenceState(equipment);
         const active = isMascActive(equipment);
-        return MASC_SEQUENCE_LABELS.map((label, index) => ({
+        return getMascSequenceLabels(equipment).map((label, index) => ({
             label,
             shortLabel: label,
             value: index,
