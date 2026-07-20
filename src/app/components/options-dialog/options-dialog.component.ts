@@ -454,11 +454,6 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('automaticallyConvertFiltersToSemantic', value);
     }
 
-    onQuickActionsChange(event: Event) {
-        const value = (event.target as HTMLSelectElement).value as 'enabled' | 'disabled';
-        this.optionsService.setOption('quickActions', value);
-    }
-
     onunitSearchExpandedViewLayoutChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'panel-list-filters' | 'filters-list-panel';
         this.optionsService.setOption('unitSearchExpandedViewLayout', value);

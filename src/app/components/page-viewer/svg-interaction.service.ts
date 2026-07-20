@@ -1038,26 +1038,6 @@ export class SvgInteractionService {
             this.addSvgTapHandler(svgEl, (event: Event, primaryAction: boolean) => {
                 if (this.state.clickTarget !== svgEl) return;
                 this.removePicker();
-                if (primaryAction && (this.optionsService.options().quickActions === 'enabled')) {
-                    let critSlot = unit.getCritSlot(loc, slot);
-                    if (!critSlot) return;
-                    if (critSlot.consumed !== undefined) {
-                        //Is ammo, default is -1
-                        if ((critSlot.consumed ?? 0) < totalAmmo) {
-                            critSlot.consumed = (critSlot.consumed ?? 0) + 1;
-                            unit.setCritSlot(critSlot);
-                            showAmmoToast(critSlot, -1);
-                            return;
-                        }
-                    } else {
-                        // default is damage
-                        if (!critSlot.destroyed) {
-                            unit.applyHitToCritSlot(critSlot, 1, this.consolidateImmediately);
-                            this.toastService.showToast(`Critical Hit on ${labelText}`, 'error');
-                            return;
-                        }
-                    }
-                }
                 createAndShowPicker(event);
             }, signal);
         });

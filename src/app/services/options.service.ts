@@ -60,7 +60,6 @@ const DEFAULT_OPTIONS: Options = {
     // Classic
     sheetsColor: 'normal',
     pickerStyle: 'default',
-    quickActions: 'disabled',
     swipeToNextSheet: 'horizontal',
     recordSheetCenterPanelContent: 'clusterTable',
     recordSheetDoubleTapZoomReset: 'contextual',
@@ -126,7 +125,6 @@ export class OptionsService {
     public options = signal<Options>({
         sheetsColor: DEFAULT_OPTIONS.sheetsColor,
         pickerStyle: DEFAULT_OPTIONS.pickerStyle,
-        quickActions: DEFAULT_OPTIONS.quickActions,
         canvasInput: DEFAULT_OPTIONS.canvasInput,
         swipeToNextSheet: DEFAULT_OPTIONS.swipeToNextSheet,
         syncZoomBetweenSheets: DEFAULT_OPTIONS.syncZoomBetweenSheets,
@@ -182,7 +180,6 @@ export class OptionsService {
         this.options.set({
             sheetsColor: saved?.sheetsColor ?? DEFAULT_OPTIONS.sheetsColor,
             pickerStyle: saved?.pickerStyle ?? DEFAULT_OPTIONS.pickerStyle,
-            quickActions: saved?.quickActions ?? DEFAULT_OPTIONS.quickActions,
             canvasInput: saved?.canvasInput ?? DEFAULT_OPTIONS.canvasInput,
             swipeToNextSheet: saved?.swipeToNextSheet ?? DEFAULT_OPTIONS.swipeToNextSheet,
             syncZoomBetweenSheets: saved?.syncZoomBetweenSheets ?? DEFAULT_OPTIONS.syncZoomBetweenSheets,
