@@ -88,7 +88,7 @@ function getArg(name: string, defaultValue: string): string {
 const hasFlag = (name: string) => args.includes(`--${name}`);
 
 const INPUT_DIR = path.resolve(getArg('input', String.raw`..\..\mm-data\data\mekfiles`));
-const OUTPUT_DIR = path.resolve(getArg('output', String.raw`..\..\mm-data\data\mekfiles`));
+const OUTPUT_DIR = path.resolve(getArg('output', String.raw`..\..\resavedUnits`));
 const TYPE_FILTER = getArg('type', '');
 const NAME_FILTER = getArg('name', '');
 const NAME_TOKENS = NAME_FILTER
