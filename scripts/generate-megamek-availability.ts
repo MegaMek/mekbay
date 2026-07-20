@@ -227,6 +227,8 @@ const MIN_CLAN_DIFFERENCE = 2.5;
 const WEIGHT_DISTRIBUTION_BUCKET_INDEX = [0, 0, 1, 2, 3, 3] as const;
 const EXPAND_RATING_ADJUSTMENTS = true;
 const GENERAL_FACTION_KEY = 'General';
+const LOGGED_MISSING_UNIVERSE_FACTION_KEYS = new Set<string>();
+const LOGGED_MISSING_MUL_MAPPING_KEYS = new Set<string>();
 
 const COMPILED_UNIT_TYPE_BY_XML_UNIT_TYPE: Record<string, UnitType> = {
     Mek: 'Mek',
@@ -1387,7 +1389,18 @@ function mergeCompactAvailabilityValue(
     if (hasRatingSpecificAvailability(current) && hasRatingSpecificAvailability(incoming)) {
         return mergeCompactAvailabilityByRating(current, incoming);
     }
-    throw new Error(`Cannot merge incompatible availability values: ${current} vs ${incoming}`);
+
+    if (!hasRatingSpecificAvailability(current) && !hasRatingSpecificAvailability(incoming)) {
+        return Math.max(Number.parseInt(String(current), 10), Number.parseInt(String(incoming), 10));
+    }
+
+    console.warn(
+        `[MegaMek] merging mixed availability values ${JSON.stringify(current)} and ${JSON.stringify(incoming)} by rating`,
+    );
+    return mergeCompactAvailabilityByRating(
+        expandAvailabilityValueToByRating(current),
+        expandAvailabilityValueToByRating(incoming),
+    );
 }
 
 function expandAvailabilityValueToByRating(value: CompactAvailabilityValue): CompactAvailabilityByRating {
@@ -2912,15 +2925,20 @@ function resolveFactionMulIds(
 function remapWeightedEraAvailabilityToMulIds(
     eraAvailability: CompactWeightedEraAvailability,
     factions: Record<string, UniverseFactionRecord>,
+    factionMulIds: ReadonlyMap<string, number[]>,
     skippedFactions: ReadonlySet<string>,
 ): CompactWeightedEraAvailability {
     const mulizedAvailability: CompactWeightedEraAvailability = {};
 
     for (const [factionKey, value] of Object.entries(eraAvailability)) {
         const faction = factions[factionKey];
-        if (factionKey !== GENERAL_FACTION_KEY && !faction) {
-            console.log(`[MegaMek] skipping MUL remap for unknown faction ${factionKey}`);
-            continue;
+        if (
+            factionKey !== GENERAL_FACTION_KEY
+            && !faction
+            && !LOGGED_MISSING_UNIVERSE_FACTION_KEYS.has(factionKey)
+        ) {
+            console.warn(`[MegaMek] missing Universe faction entry for ${factionKey}; using direct CSV MUL mapping`);
+            LOGGED_MISSING_UNIVERSE_FACTION_KEYS.add(factionKey);
         }
 
         if (factionKey !== GENERAL_FACTION_KEY && skippedFactions.has(factionKey)) {
@@ -2928,9 +2946,14 @@ function remapWeightedEraAvailabilityToMulIds(
             continue;
         }
 
-        const resolvedMulIds = resolveFactionMulIds(factions, factionKey, skippedFactions);
-        if (resolvedMulIds.length === 0) {
+        const resolvedMulIds = !faction && factionKey !== GENERAL_FACTION_KEY
+            ? [...(factionMulIds.get(factionKey) ?? [])]
+            : resolveFactionMulIds(factions, factionKey, skippedFactions);
+        if (resolvedMulIds.length === 0 && !LOGGED_MISSING_MUL_MAPPING_KEYS.has(factionKey)) {
             console.log(`[MegaMek] skipping MUL remap for faction ${factionKey} due to missing CSV mapping`);
+            LOGGED_MISSING_MUL_MAPPING_KEYS.add(factionKey);
+        }
+        if (resolvedMulIds.length === 0) {
             continue;
         }
 
@@ -2949,6 +2972,7 @@ function remapWeightedEraAvailabilityToMulIds(
 function mulizeCompactWeightedRecords(
     records: Record<string, CompactWeightedModelRecord>,
     factions: Record<string, UniverseFactionRecord>,
+    factionMulIds: ReadonlyMap<string, number[]>,
     skippedFactions: ReadonlySet<string>,
 ): Record<string, CompactWeightedModelRecord> {
     return Object.fromEntries(
@@ -2960,7 +2984,12 @@ function mulizeCompactWeightedRecords(
                     Object.entries(record.e)
                         .map(([eraKey, eraAvailability]) => [
                             eraKey,
-                            remapWeightedEraAvailabilityToMulIds(eraAvailability, factions, skippedFactions),
+                            remapWeightedEraAvailabilityToMulIds(
+                                eraAvailability,
+                                factions,
+                                factionMulIds,
+                                skippedFactions,
+                            ),
                         ])
                         .filter(([, eraAvailability]) => Object.keys(eraAvailability).length > 0),
                 ),
@@ -2999,6 +3028,7 @@ function run(): void {
     const mulizedWeightedAvailability = mulizeCompactWeightedRecords(
         weightedAvailability,
         factions,
+        factionMulIdConfig.mappedIds,
         factionMulIdConfig.skippedFactions,
     );
 
