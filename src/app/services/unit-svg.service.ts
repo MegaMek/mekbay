@@ -41,12 +41,12 @@ import { LINKED_LOCATIONS } from "../models/rules/mek-rules";
 import { LoggerService } from './logger.service';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { getEntryBaseHitModifier, resolveHitModifier } from '../models/rules/hit-modifier.util';
-import { formatGunneryDisplay, formatPilotingDisplay, UNIT_CONDITION_DEFINITIONS, unitConditionSortIndex, type UnitHeatSource } from '../models/rules/unit-type-rules';
+import { formatGunneryDisplay, formatPilotingDisplay, UNIT_CONDITION_DEFINITIONS, unitConditionSortIndex, type ChargeDamage, type UnitHeatSource } from '../models/rules/unit-type-rules';
 import type { HeatDissipationState } from '../models/rules/heat-management';
 import { AmmoEquipment } from '../models/equipment.model';
 import { formatAmmoName } from '../utils/ammo-interaction.util';
 import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection, readInventoryTargetDisplay } from '../utils/inventory-target-number.util';
-import { getInventoryControlModeAmmoSummary, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE, resolveInventoryControlRangeDamageText, resolveInventoryControlSelectedAmmoOption, type InventoryControlAmmoOption } from '../utils/inventory-control.util';
+import { getInventoryControlModeAmmoSummary, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE, INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, resolveInventoryControlRangeDamageText, resolveInventoryControlSelectedAmmoOption, type InventoryControlAmmoOption } from '../utils/inventory-control.util';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 import { isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, selectedRiscLaserMode } from '../equipment-handlers/risc-laser-pulse-module.handler';
 
@@ -952,7 +952,8 @@ export class UnitSvgService {
             range,
             this.inventoryTargetSelectedAmmo(entry),
             (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo),
-            (candidate, candidateRange?: InventoryControlRuntimeRangeKey | null) => this.unit.getInventoryControlBaseHitModifier(candidate, candidateRange)
+            (candidate, candidateRange?: InventoryControlRuntimeRangeKey | null) => this.unit.getInventoryControlBaseHitModifier(candidate, candidateRange),
+            this.unit.rules.rulesData
         );
     }
 
@@ -983,7 +984,8 @@ export class UnitSvgService {
             missingMovementModifier,
             attackModifierBreakdown: this.unit.turnState().getAttackModifierBreakdown(),
             hitModifier: this.getInventoryTargetHitModifier(entry, hitModifierRange),
-            heatFireModifier: this.inventoryTargetHeatFireModifier(entry)
+            heatFireModifier: this.inventoryTargetHeatFireModifier(entry),
+            rulesData: this.unit.rules.rulesData
         });
         return text || null;
     }
@@ -1168,7 +1170,9 @@ export class UnitSvgService {
             entry,
             category: inventoryTargetCategory(entry),
             display: readInventoryTargetDisplay(entry),
-            target: this.inventoryControlTargetForRangeSelection(target, useC3Distance)
+            target: this.inventoryControlTargetForRangeSelection(target, useC3Distance),
+            selectedAmmo: this.inventoryTargetSelectedAmmo(entry),
+            rulesData: this.unit.rules.rulesData
         })?.range ?? null;
     }
 
@@ -1223,6 +1227,11 @@ export class UnitSvgService {
         if (!svg) return;
         this.unit.getInventory().forEach(entry => {
             if (!entry.el) return;
+            if (entry.physical) {
+                if (entry.name === 'charge') {
+                    this.renderChargeDamage(entry, this.unit.rules.chargeDamage());
+                }
+            }
             // Inventory state
             if (entry.isDestroyed()) {
                 entry.el.classList.add('damagedInventory');
@@ -1239,6 +1248,27 @@ export class UnitSvgService {
             this.renderInventoryControlHeatEntry(entry, null);
         });
         this.renderInventoryControlSelection();
+    }
+
+    protected renderChargeDamage(entry: MountedEquipment, chargeDamage: ChargeDamage): void {
+        const damageEl = entry.el?.querySelector(':scope > .damage > text');
+        if (!damageEl) return;
+        let originalText = damageEl.getAttribute(INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE);
+        if (originalText === null) {
+            originalText = damageEl.textContent || '';
+            damageEl.setAttribute(INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, originalText);
+        }
+        if (!originalText) return;
+        if (chargeDamage.damage === null || chargeDamage.maxDamage === null) {
+            damageEl.textContent = chargeDamage.bonusDamage > 0
+                ? `${originalText}+${chargeDamage.bonusDamage}`
+                : originalText;
+        } else {
+            damageEl.textContent = chargeDamage.damage !== chargeDamage.maxDamage
+                ? `${chargeDamage.damage} [${chargeDamage.maxDamage}]`
+                : `${chargeDamage.damage}`;
+        }
+        damageEl.classList.toggle('damaged', chargeDamage.bonusDamage < chargeDamage.maxBonusDamage);
     }
 
     protected updateTurnState() {

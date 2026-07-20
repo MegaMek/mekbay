@@ -125,7 +125,7 @@ interface SidebarMemberVm {
     baseBv?: number;
     /** Tag BV for this unit */
     tagBv?: number;
-    /** C3 BV for this unit */
+    /** C³ BV for this unit */
     c3Bv?: number;
     /** External Stores BV for this unit */
     externalStoresBv?: number;
@@ -595,7 +595,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             const unit = cbtUnit.getUnit();
             const baseBv = cbtUnit.getBaseBv();
             const tagBv = cbtUnit.tagBV();
-            const c3Bv = C3NetworkUtil.calculateUnitC3Tax(cbtUnit, networks, allUnits);
+            const c3Bv = cbtUnit.rules.calculateC3Tax(networks, allUnits);
             const externalStoresBv = cbtUnit.externalStoresBv();
             const preSkillAdjustedBv = baseBv + tagBv + c3Bv + externalStoresBv;
             const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, preSkillAdjustedBv, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());
@@ -729,7 +729,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             const unit = cbtUnit.getUnit();
             const baseBv = cbtUnit.getBaseBv();
             const tagBv = cbtUnit.tagBV();
-            const c3Bv = C3NetworkUtil.calculateUnitC3Tax(cbtUnit, networks, allUnits);
+            const c3Bv = cbtUnit.rules.calculateC3Tax(networks, allUnits);
             const externalStoresBv = cbtUnit.externalStoresBv();
             const preSkillAdjustedBv = baseBv + tagBv + c3Bv + externalStoresBv;
             const finalBv = BVCalculatorUtil.calculateAdjustedBV(unit, preSkillAdjustedBv, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());

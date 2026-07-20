@@ -1,6 +1,7 @@
 import { MountedEquipment } from '../force-serialization';
 import { MiscEquipment, WeaponEquipment, type AmmoEquipment, type Equipment } from '../equipment.model';
 import { resolveHitModifier } from './hit-modifier.util';
+import { TW_RULES_DATA } from './cbt-rules-data';
 
 let entryId = 0;
 
@@ -92,7 +93,7 @@ describe('hit modifier utilities', () => {
         expect(resolveHitModifier(weapon, 0, null, null, undefined, () => 0)).toBe(0);
     });
 
-    it('resolves base physical attack modifiers without SVG data', () => {
+    it('resolves core2026 base physical attack modifiers without SVG data', () => {
         const physical = (name: string) => new MountedEquipment({
             owner: owner(),
             id: name,
@@ -100,14 +101,26 @@ describe('hit modifier utilities', () => {
             physical: true,
         });
 
-        expect(resolveHitModifier(physical('punch'), 0)).toBe(0);
-        expect(resolveHitModifier(physical('Punch'), 0)).toBe(0);
-        expect(resolveHitModifier(physical('kick'), 0)).toBe(-2);
+        expect(resolveHitModifier(physical('punch'), 0)).toBe(-1);
+        expect(resolveHitModifier(physical('Punch'), 0)).toBe(-1);
+        expect(resolveHitModifier(physical('kick'), 0)).toBe(-1);
         expect(resolveHitModifier(physical('club'), 0)).toBe(-1);
         expect(resolveHitModifier(physical('push'), 0)).toBe(-1);
         expect(resolveHitModifier(physical('charge'), 0)).toBe('Vs');
         expect(resolveHitModifier(physical('death from above'), 0)).toBe('Vs');
         expect(resolveHitModifier(physical('frenzy'), 0)).toBe(0);
+    });
+
+    it('overrides changed physical attack modifiers for TW', () => {
+        const physical = (name: string) => new MountedEquipment({
+            owner: owner(),
+            id: name,
+            name,
+            physical: true,
+        });
+
+        expect(resolveHitModifier(physical('punch'), 0, null, null, undefined, undefined, TW_RULES_DATA)).toBe(0);
+        expect(resolveHitModifier(physical('kick'), 0, null, null, undefined, undefined, TW_RULES_DATA)).toBe(-2);
     });
 
     it('uses equipment data for mounted physical weapon modifiers', () => {

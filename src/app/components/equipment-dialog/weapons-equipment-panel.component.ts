@@ -137,7 +137,7 @@ export class WeaponsEquipmentPanelComponent {
         return getInventoryControlGroups(
             this.unit(),
             this.context().dataService.getEquipments(),
-            this.context().registry.inventoryControlRules(this.context())
+            this.unit().getInventoryControlRules()
         );
     });
     readonly targets = computed(() => {
@@ -370,14 +370,15 @@ export class WeaponsEquipmentPanelComponent {
         if (!hasTarget) return row.display.hit;
 
         const selectedAmmo = this.resolvedSelectedAmmoOption(row)?.ammo ?? null;
-        const rules = this.context().registry.inventoryControlRules(this.context());
+        const rules = this.unit().getInventoryControlRules();
         const hitModifier = resolveHitModifier(
             row.entry,
             row.additionalHitModifier,
             range,
             selectedAmmo,
             rules.resolveLinkedHitModifier,
-            rules.resolveBaseHitModifier
+            rules.resolveBaseHitModifier,
+            this.unit().rules.rulesData
         );
         if (hitModifier === null) return row.display.hit;
         if (hitModifier === 'Vs' || hitModifier === '*') return hitModifier;
@@ -421,7 +422,8 @@ export class WeaponsEquipmentPanelComponent {
             missingMovementModifier,
             attackModifierBreakdown: this.unit().turnState().getAttackModifierBreakdown(),
             hitModifier: hitModifier - heatFireModifier,
-            heatFireModifier
+            heatFireModifier,
+            rulesData: this.unit().rules.rulesData
         };
     }
 
@@ -432,17 +434,23 @@ export class WeaponsEquipmentPanelComponent {
 
     private createTargetState(row: InventoryControlRow, target: InventoryControlRuntimeTarget | null): TargetRowState {
         const calculationTarget = this.targetForTargetNumber(target);
+        const selectedAmmo = this.resolvedSelectedAmmoOption(row)?.ammo ?? null;
+        const rulesData = this.unit().rules.rulesData;
         const rangeSelection = inventoryTargetRangeSelection({
             entry: row.entry,
             category: row.category,
             display: row.display,
-            target: calculationTarget
+            target: calculationTarget,
+            selectedAmmo,
+            rulesData
         });
         const weaponRuleRangeSelection = inventoryTargetRangeSelection({
             entry: row.entry,
             category: row.category,
             display: row.display,
-            target: this.targetForWeaponRange(target)
+            target: this.targetForWeaponRange(target),
+            selectedAmmo,
+            rulesData
         });
         const weaponRuleRange = weaponRuleRangeSelection?.range ?? this.unit().getInventoryControlEntryRange(row.id) ?? null;
         const hitText = this.hitTextForRange(row, weaponRuleRange, !!target);

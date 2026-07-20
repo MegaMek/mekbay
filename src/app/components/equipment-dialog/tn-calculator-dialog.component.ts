@@ -53,6 +53,8 @@ import {
     type TnTargetUnitType,
     type TnSpotterMoveMode,
 } from '../../models/target-number-calculator.model';
+import { OptionsService } from '../../services/options.service';
+import { resolveCBTRulesData } from '../../models/rules/cbt-rules-data';
 
 export interface TnCalculatorDialogData {
     target: InventoryControlRuntimeTarget;
@@ -86,9 +88,15 @@ export interface TnCalculatorDialogResult {
                             <button type="button" class="bt-button move-button" [class.selected]="secondaryTarget()" [attr.aria-pressed]="secondaryTarget()" (click)="toggleSecondaryTarget()">
                                 <span>Secondary Target</span><span class="modifier-badge">+1</span>
                             </button>
-                            <button type="button" class="bt-button move-button" [class.selected]="secondaryTargetSideBack()" [attr.aria-pressed]="secondaryTargetSideBack()" (click)="toggleSecondaryTargetSideBack()">
-                                <span>Secondary (Side/Back)</span><span class="modifier-badge">+2</span>
-                            </button>
+                            @if (rulesData().targeting.secondaryTargetSideBack) {
+                                <button type="button" class="bt-button move-button" [class.selected]="secondaryTargetSideBack()" [attr.aria-pressed]="secondaryTargetSideBack()" (click)="toggleSecondaryTargetSideBack()">
+                                    <span>Secondary (Side/Back)</span><span class="modifier-badge">+2</span>
+                                </button>
+                            } @else if (rulesData().targeting.largeTarget) {
+                                <button type="button" class="bt-button move-button" [class.selected]="largeTarget()" [attr.aria-pressed]="largeTarget()" (click)="toggleLargeTarget()">
+                                    <span>Large Target</span><span class="modifier-badge">-1</span>
+                                </button>
+                            }
                         </div>
                         <div class="button-row">
                             <button type="button" class="bt-button move-button" [class.selected]="indirectFire()" [attr.aria-pressed]="indirectFire()" (click)="toggleIndirectFire()">
@@ -137,7 +145,9 @@ export interface TnCalculatorDialogResult {
                         </div>
                         <div class="button-row">
                             <button type="button" class="bt-button move-button" [class.selected]="isAirborne()" [attr.aria-pressed]="isAirborne()" (click)="toggleAirborne()"><span>Jumped / Airborne</span><span class="modifier-badge">+1</span></button>
-                            <button type="button" class="bt-button move-button" [class.selected]="skidding()" [attr.aria-pressed]="skidding()" (click)="toggleSkidding()"><span>Skidding</span><span class="modifier-badge">+2</span></button>
+                            @if (rulesData().targeting.skidding) {
+                                <button type="button" class="bt-button move-button" [class.selected]="skidding()" [attr.aria-pressed]="skidding()" (click)="toggleSkidding()"><span>Skidding</span><span class="modifier-badge">+2</span></button>
+                            }
                         </div>
                         <div class="button-row" role="group" aria-label="Target stance">
                             <button type="button" class="bt-button move-button" [class.selected]="stance() === 'prone'" [attr.aria-pressed]="stance() === 'prone'" (click)="selectStance('prone')"><span>{{ proneLabel() }}</span><span class="modifier-badge">{{ proneModifierLabel() }}</span></button>
@@ -727,10 +737,12 @@ export class TnCalculatorDialogComponent {
     readonly RANGE_MAX = 25;
     private readonly dialogRef = inject(DialogRef<TnCalculatorDialogResult | null>);
     private readonly data = inject<TnCalculatorDialogData>(DIALOG_DATA);
+    private readonly optionsService = inject(OptionsService);
     private readonly initialCalculator = this.data.target.tnCalculator;
     private readonly initialUnitType = this.data.target.unitType ?? 'mek-biped';
 
     readonly target = this.data.target;
+    readonly rulesData = computed(() => resolveCBTRulesData(this.optionsService.options().CBTRules));
     readonly showC3Distance = signal<boolean>(this.data.showC3Distance ?? false);
     readonly indirectFireBaseModifier = this.data.indirectFireBaseModifier ?? 1;
     readonly unitTypeOptions = TN_TARGET_UNIT_TYPE_OPTIONS;
@@ -759,6 +771,7 @@ export class TnCalculatorDialogComponent {
     readonly indirectFire = signal<boolean>(this.initialCalculator?.indirectFire ?? false);
     readonly secondaryTarget = signal<boolean>(this.initialCalculator?.secondaryTarget ?? false);
     readonly secondaryTargetSideBack = signal<boolean>((this.initialCalculator?.secondaryTargetSideBack ?? false) && !(this.initialCalculator?.secondaryTarget ?? false));
+    readonly largeTarget = signal<boolean>(this.initialCalculator?.largeTarget ?? false);
     readonly spotterMoveMode = signal<TnSpotterMoveMode>(this.initialCalculator?.spotterMoveMode ?? 'stationary');
     readonly spotterDeclaredAttacks = signal<boolean>(this.initialCalculator?.spotterDeclaredAttacks ?? false);
     readonly renderReady = signal(false);
@@ -791,10 +804,11 @@ export class TnCalculatorDialogComponent {
         indirectFire: this.indirectFire(),
         secondaryTarget: this.secondaryTarget(),
         secondaryTargetSideBack: this.secondaryTargetSideBack(),
+        largeTarget: this.largeTarget(),
         spotterMoveMode: this.spotterMoveMode(),
         spotterDeclaredAttacks: this.spotterDeclaredAttacks(),
         indirectFireBaseModifier: this.indirectFireBaseModifier,
-    }));
+    }, this.rulesData()));
     readonly signedTotal = computed(() => this.totalModifier() >= 0 ? `+${this.totalModifier()}` : `${this.totalModifier()}`);
     readonly woodsCaption = computed(() => {
         switch (this.interveningWoods()) {
@@ -917,6 +931,10 @@ export class TnCalculatorDialogComponent {
         }
     }
 
+    toggleLargeTarget(): void {
+        this.largeTarget.set(!this.largeTarget());
+    }
+
     selectSpotterMove(mode: TnSpotterMoveMode): void {
         this.spotterMoveMode.set(mode);
     }
@@ -948,6 +966,7 @@ export class TnCalculatorDialogComponent {
             indirectFire: this.indirectFire(),
             secondaryTarget: this.secondaryTarget(),
             secondaryTargetSideBack: this.secondaryTargetSideBack(),
+            largeTarget: this.largeTarget(),
             spotterMoveMode: this.indirectFire() ? this.spotterMoveMode() : 'stationary',
             spotterDeclaredAttacks: this.indirectFire() && this.spotterDeclaredAttacks(),
         };

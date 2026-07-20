@@ -40,6 +40,7 @@ import { resolveHitModifier } from "../models/rules/hit-modifier.util";
 import type { InventoryControlRuntimeRangeKey } from "../models/inventory-control-runtime-state.model";
 import { getCriticalSlotAmmoProfileKey } from "../utils/ammo-interaction.util";
 import type { MountedEquipmentRuleState } from "../models/rules/unit-type-rules";
+import { INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE } from "../utils/inventory-control.util";
 
 /*
  * Author: Drake
@@ -230,7 +231,7 @@ export class UnitSvgMekService extends UnitSvgService {
                 if (entry.physical) {
                     switch (entry.name) {
                         case 'charge':
-                            this.renderChargeSpikeBonus(entry, physical.spikeBonus);
+                            this.renderChargeDamage(entry, physical.chargeDamage);
                             break;
                         case 'punch':
                             this.renderMeleeDamage(entry, 'punch', Array.from(entry.locations)[0]);
@@ -268,7 +269,8 @@ export class UnitSvgMekService extends UnitSvgService {
             range,
             this.inventoryTargetSelectedAmmo(entry),
             (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo),
-            (candidate, candidateRange?: InventoryControlRuntimeRangeKey | null) => this.unit.getInventoryControlBaseHitModifier(candidate, candidateRange)
+            (candidate, candidateRange?: InventoryControlRuntimeRangeKey | null) => this.unit.getInventoryControlBaseHitModifier(candidate, candidateRange),
+            this.unit.rules.rulesData
         );
     }
 
@@ -322,19 +324,24 @@ export class UnitSvgMekService extends UnitSvgService {
         if (!reason) {
             warningEl.setAttribute('display', 'none');
             warningEl.style.display = 'none';
-            warningEl.classList.remove('currentMoveMode', 'unusedMoveMode');
+            warningEl.classList.remove('currentMoveMode', 'unusedMoveMode', 'noPsrCheck');
             return;
         }
 
         warningEl.removeAttribute('display');
         warningEl.style.display = 'block';
+        const warningMoveMode = moveElementId === 'mpRun' ? 'run' : 'jump';
+        const isCurrentMoveMode = currentMoveMode === warningMoveMode;
+        const moveDistance = this.unit.turnState().moveDistance();
+        const triggersPsr = moveDistance !== null && (warningMoveMode === 'jump' || moveDistance > 0);
+        warningEl.classList.toggle('noPsrCheck', !isCurrentMoveMode || !triggersPsr);
 
         if (!selectedMoveElementId) {
             warningEl.classList.remove('currentMoveMode', 'unusedMoveMode');
             return;
         }
 
-        const isUnused = selectedMoveElementId !== moveElementId || currentMoveMode === 'stationary';
+        const isUnused = !isCurrentMoveMode;
         warningEl.classList.toggle('unusedMoveMode', isUnused);
         warningEl.classList.toggle('currentMoveMode', !isUnused);
     }
@@ -343,28 +350,16 @@ export class UnitSvgMekService extends UnitSvgService {
     private renderMeleeDamage(entry: MountedEquipment, attackType: 'punch' | 'kick' | 'club' | 'physWeapon', loc?: string, ignoreMyomer?: boolean) {
         const damageEl = entry.el!.querySelector(`:scope > .damage > text`);
         if (!damageEl) return;
-        let originalText = damageEl.getAttribute('originalText');
+        let originalText = damageEl.getAttribute(INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE);
         if (originalText === undefined || originalText === null) {
             originalText = damageEl.textContent || '';
-            damageEl.setAttribute('originalText', originalText);
+            damageEl.setAttribute(INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, originalText);
         }
         if (!originalText) return;
         const baseDamage = parseInt(originalText);
         const { damage, maxDamage } = this.mekRules.computeMeleeDamage(baseDamage, attackType, loc, ignoreMyomer);
         damageEl.textContent = (damage !== maxDamage) ? `${damage} [${maxDamage}]` : `${damage}`;
         damageEl.classList.toggle('damaged', damage < baseDamage);
-    }
-
-    /** Render spike bonus on charge damage text. */
-    private renderChargeSpikeBonus(entry: MountedEquipment, spikeBonus: { total: number; working: number } | null) {
-        if (!spikeBonus) return;
-        const damageEl = entry.el!.querySelector(`:scope > .damage > text`);
-        if (!damageEl) return;
-        let originalText = damageEl.textContent || '';
-        originalText = originalText.replace(/\+\d+$/, ''); // Remove any previous spike bonus
-        if (!originalText) return;
-        damageEl.textContent = `${originalText}+${spikeBonus.working * 2}`;
-        damageEl.classList.toggle('damaged', spikeBonus.total > spikeBonus.working);
     }
 
     protected override updateHeatSinkPips() {

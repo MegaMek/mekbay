@@ -501,6 +501,17 @@ export class Equipment {
 // ============================================================================
 // Weapon Equipment Class
 // ============================================================================
+const AUTOCANNON_AMMO_TYPES = new Set<AmmoType>([
+    'AC',
+    'AC_LBX',
+    'AC_ULTRA',
+    'AC_ULTRA_THB',
+    'AC_ROTARY',
+    'AC_PRIMITIVE',
+    'PAC',
+    'NAC',
+    'LAC',
+]);
 
 export class WeaponEquipment extends Equipment {
     readonly weapon: WeaponData;
@@ -538,6 +549,11 @@ export class WeaponEquipment extends Equipment {
 
     isInfantryWeapon(): boolean {
         return this.hasFlag('F_INFANTRY') && this.infantry !== undefined;
+    }
+
+    isAutocannon() {
+        return this.hasAllFlags(['F_BALLISTIC', 'F_DIRECT_FIRE']) 
+            && AUTOCANNON_AMMO_TYPES.has(this.ammoType);
     }
 }
 

@@ -90,6 +90,7 @@ function createUnit(id: string, entries: MountedEquipment[] = []): CBTForceUnit 
         hasDirectInventory: () => true,
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
         setCritSlot: jasmine.createSpy('setCritSlot'),
+        getInventoryControlRules: () => ({}),
         rules: {
             computeAllEntryStates: () => new Map<MountedEquipment, { isDamaged: boolean; isDisabled: boolean; hitMod: number }>(),
             computeEntryState: (entry: MountedEquipment) => ({ isDamaged: entry.committedDestroyed(), isDisabled: false, hitMod: 0 }),

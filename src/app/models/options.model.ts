@@ -54,7 +54,6 @@ export interface ForceBudgetOptimizerLastSkills {
 export interface Options {
     sheetsColor: 'normal' | 'night';
     pickerStyle: 'default' | 'radial' | 'linear';
-    quickActions: 'enabled' | 'disabled';
     canvasInput: 'all' | 'touch' | 'pen';
     swipeToNextSheet: 'vertical' | 'horizontal' | 'disabled';
     syncZoomBetweenSheets: boolean;
@@ -70,6 +69,7 @@ export interface Options {
     },
     sidebarLipPosition?: string;
     useAutomations: boolean;
+    CBTRules: 'tw' | `core2026`;
     ASUseHex: boolean;
     ASCardStyle: 'colored' | 'monochrome';
     ASPrintPageBreakOnGroups: boolean;
