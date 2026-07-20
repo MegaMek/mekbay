@@ -66,7 +66,7 @@ const DEFAULT_OPTIONS: Options = {
     syncZoomBetweenSheets: true,
     useAutomations: true,
     allowMultipleActiveSheets: false,
-    CBTRules: 'core2026',
+    CBTRules: 'tw',
     
     // Alpha Strike
     ASUseHex: false,
