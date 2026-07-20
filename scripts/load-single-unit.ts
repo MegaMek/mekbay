@@ -8,7 +8,7 @@
  *   npx tsx scripts/load-single-unit.ts [--input PATH]
  *
  * Options:
- *   --input  PATH   Path to the unit file (default: C:\Projects\megamek\sourceUnits\meks\3039u\King Crab KGC-0000.mtf)
+ *   --input  PATH   Path to the unit file (default: ..\..\mm-data\data\mekfiles\meks\3039u\King Crab KGC-0000.mtf)
  */
 
 import * as fs from 'fs';
@@ -30,7 +30,7 @@ function getArg(name: string, defaultValue: string): string {
 }
 
 const INPUT_FILE = path.resolve(
-  getArg('input', String.raw`C:\Projects\megamek\sourceUnits\meks\3039u\King Crab KGC-0000.mtf`)
+  getArg('input', String.raw`..\..\mm-data\data\mekfiles\meks\3039u\King Crab KGC-0000.mtf`)
 );
 const quirkResolver = loadQuirkResolver();
 
