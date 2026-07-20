@@ -5,7 +5,7 @@ import { EquipmentInteractionHandler, type HandlerContext } from '../services/eq
 
 export const MASC_SEQUENCE_STATE_KEY = 'masc';
 export const MASC_ACTIVE_STATE_KEY = 'mascActive';
-export const MASC_SEQUENCE_LABELS = ['3+', '5+', '7+', '11+', '!!'] as const;
+export const MASC_SEQUENCE_LABELS = ['3+', '5+', '7+', '10+', '11+'] as const;
 const MASC_CHOICE_COLORS = {
     selected: 'var(--bt-yellow)',
     selectedText: '#000',
