@@ -405,6 +405,7 @@ export class OptionsDialogComponent {
     onCBTRulesChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'core2026' | 'tw';
         this.optionsService.setOption('CBTRules', value);
+        window.location.reload();
     }
 
     onRecordSheetCenterPanelContentChange(event: Event) {
