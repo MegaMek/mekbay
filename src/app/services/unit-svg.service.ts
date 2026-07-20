@@ -939,10 +939,88 @@ export class UnitSvgService {
             ammoProfile.set(key, (ammoProfile.get(key) ?? 0) + (this.unit.isEquipmentUnavailable(entry) ? 0 : remainingAmmo));
         });
 
-        const ammoList = Array.from(ammoProfile.entries())
-            .map(([key, value]) => `${key} ${value}`)
-            .join(', ');
-        ammoProfileEl.textContent = ammoList ? `Ammo: ${ammoList}` : 'Ammo:';
+        this.renderAmmoProfile(ammoProfile);
+    }
+
+    protected renderAmmoProfile(ammoProfile: ReadonlyMap<string, number>): void {
+        const svg = this.unit.svg();
+        const profile = svg?.getElementById('ammoProfile') as SVGElement | null;
+        if (!profile) return;
+
+        const lines = Array.from(profile.querySelectorAll<SVGTextElement>(':scope > text'));
+        if (lines.length === 0) return;
+
+        const entries = Array.from(ammoProfile.entries()).map(([key, value]) => `${key} ${value}`);
+        const widths = lines.map(line => this.ammoProfileLineWidth(profile, line));
+        const fits = (line: SVGTextElement, width: number | null, text: string): boolean => {
+            line.textContent = text;
+            return width === null || this.svgTextWidth(line) <= width;
+        };
+
+        lines.forEach(line => line.textContent = '');
+        let entryIndex = 0;
+
+        for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+            const line = lines[lineIndex];
+            const width = widths[lineIndex];
+            let text = lineIndex === 0 ? 'Ammo:' : '';
+
+            while (entryIndex < entries.length) {
+                const separator = text.length === 0 ? '' : text === 'Ammo:' || text.endsWith(',') ? ' ' : ', ';
+                const suffix = entryIndex < entries.length - 1 ? ',' : '';
+                const candidate = `${text}${separator}${entries[entryIndex]}${suffix}`;
+                if (!fits(line, width, candidate)) break;
+                text = candidate;
+                entryIndex++;
+            }
+
+            if (entryIndex < entries.length && lineIndex === lines.length - 1) {
+                const truncatedText = text.length === 0 ? '...' : text === 'Ammo:' ? 'Ammo: ...' : `${text}${text.endsWith(',') ? '' : ','} ...`;
+                text = this.truncateAmmoProfileLine(line, width, text, truncatedText);
+            }
+
+            line.textContent = text;
+            if (entryIndex >= entries.length) break;
+        }
+    }
+
+    private ammoProfileLineWidth(profile: SVGElement, line: SVGTextElement): number | null {
+        const textLength = Number(line.getAttribute('textLength'));
+        if (Number.isFinite(textLength) && textLength > 0) return textLength;
+
+        const profileButton = profile.querySelector<SVGRectElement>(':scope > .ammoProfileButton');
+        const buttonX = Number.parseFloat(profileButton?.getAttribute('x') ?? '');
+        const buttonWidth = Number.parseFloat(profileButton?.getAttribute('width') ?? '');
+        const textX = Number.parseFloat(line.getAttribute('x') ?? '');
+        if (Number.isFinite(buttonX) && Number.isFinite(buttonWidth) && Number.isFinite(textX)) {
+            return Math.max(0, buttonX + buttonWidth - textX - 1);
+        }
+
+        return null;
+    }
+
+    private truncateAmmoProfileLine(line: SVGTextElement, width: number | null, text: string, preferredText: string): string {
+        if (width === null || this.svgTextWidth(line, preferredText) <= width) return preferredText;
+
+        let truncated = text;
+        while (truncated.length > 0 && this.svgTextWidth(line, `${truncated}...`) > width) {
+            truncated = truncated.slice(0, -1).trimEnd();
+        }
+        return truncated.length > 0 ? `${truncated}...` : '...';
+    }
+
+    private svgTextWidth(line: SVGTextElement, text?: string): number {
+        if (text !== undefined) line.textContent = text;
+        try {
+            const computedWidth = line.getComputedTextLength();
+            if (computedWidth > 0) return computedWidth;
+            const boundingBoxWidth = line.getBBox().width;
+            if (boundingBoxWidth > 0) return boundingBoxWidth;
+        } catch {
+            // Fall through to a conservative estimate for SVGs without a layout box.
+        }
+        const fontSize = Number.parseFloat(line.getAttribute('font-size') ?? '') || 8;
+        return (line.textContent?.length ?? 0) * fontSize * 0.7;
     }
 
     protected resolveInventoryControlHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {

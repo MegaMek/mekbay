@@ -167,14 +167,7 @@ export class UnitSvgMekService extends UnitSvgService {
                 }
             }
         });
-        // Update ammo profile
-        const ammoProfileEl = svg.querySelector('#ammoProfile > text');
-        if (ammoProfileEl) {
-            const ammoList = Array.from(ammoProfile.entries())
-                .map(([key, value]) => `${key} ${value}`)
-                .join(', ');
-            ammoProfileEl.textContent = ammoList ? `Ammo: ${ammoList}` : 'Ammo:';
-        }
+        this.renderAmmoProfile(ammoProfile);
     }
 
     protected override updateInventory() {
