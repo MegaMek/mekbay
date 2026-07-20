@@ -56,6 +56,7 @@ interface UniverseFactionRecord {
     yearsActive: DateRange[];
     ratingLevels: string[];
     fallBackFactions: string[];
+    aliases: string[];
     tags: string[];
     nameChanges: YearKeyedChange[];
     capital?: string;
@@ -729,6 +730,15 @@ function parseEraMods(raw: unknown): number[] | undefined {
     return arr.map((v) => Number(v));
 }
 
+function parseFactionAliases(raw: unknown): string[] {
+    if (!raw || typeof raw !== 'object') {
+        return normalizeTextList(raw);
+    }
+
+    return Object.values(raw as Record<string, unknown>)
+        .flatMap((value) => normalizeTextList(value));
+}
+
 function loadFactionMulIdMap(filePath: string): FactionMulIdConfig {
     const mappedIds = new Map<string, number[]>();
     const skippedFactions = new Set<string>();
@@ -779,6 +789,13 @@ function loadUniverseFactions(
         const filePath = path.join(dirPath, fileName);
         const raw = readYamlFile(filePath);
         const id = String(raw.key);
+        const existingFaction = result[id];
+        if (existingFaction) {
+            console.warn(
+                `[MegaMek] duplicate faction key ${id} in ${fileName}; already defined by ${existingFaction.filename}`,
+            );
+            continue;
+        }
         const logo = getFactionLogoFilename(id);
         result[id] = {
             id,
@@ -789,6 +806,7 @@ function loadUniverseFactions(
             yearsActive: parseYearsActive(raw.yearsActive),
             ratingLevels: normalizeTextList(raw.ratingLevels),
             fallBackFactions: normalizeTextList(raw.fallBackFactions),
+            aliases: parseFactionAliases(raw.aliases),
             tags: normalizeTextList(raw.tags),
             nameChanges: parseYearKeyedChanges(raw.nameChanges),
             capital: raw.capital ? String(raw.capital) : undefined,
@@ -809,6 +827,76 @@ function loadUniverseFactions(
     }
 
     return result;
+}
+
+function mergeUniverseFactionRecords(
+    ...factionGroups: Array<Record<string, UniverseFactionRecord>>
+): Record<string, UniverseFactionRecord> {
+    const factions: Record<string, UniverseFactionRecord> = {};
+
+    for (const factionGroup of factionGroups) {
+        for (const [factionKey, faction] of Object.entries(factionGroup)) {
+            const existingFaction = factions[factionKey];
+            if (existingFaction) {
+                console.warn(
+                    `[MegaMek] duplicate faction key ${factionKey} in ${faction.filename}; already defined by ${existingFaction.filename}`,
+                );
+                continue;
+            }
+            factions[factionKey] = faction;
+        }
+    }
+
+    return factions;
+}
+
+function buildFactionAliasMap(factions: Record<string, UniverseFactionRecord>): Map<string, string> {
+    const aliases = new Map<string, string>();
+
+    for (const faction of Object.values(factions)) {
+        aliases.set(faction.id, faction.id);
+    }
+
+    for (const faction of Object.values(factions)) {
+        for (const alias of faction.aliases) {
+            if (alias !== faction.id && Object.prototype.hasOwnProperty.call(factions, alias)) {
+                console.warn(`[MegaMek] faction alias ${alias} for ${faction.id} collides with faction key ${alias}`);
+                continue;
+            }
+
+            const existingCanonical = aliases.get(alias);
+            if (existingCanonical && existingCanonical !== faction.id) {
+                console.warn(`[MegaMek] faction alias ${alias} is used by both ${existingCanonical} and ${faction.id}`);
+                continue;
+            }
+            aliases.set(alias, faction.id);
+        }
+    }
+
+    return aliases;
+}
+
+function normalizeFactionAliases(
+    factions: Record<string, UniverseFactionRecord>,
+    factionAliases: ReadonlyMap<string, string>,
+    factionMulIds: ReadonlyMap<string, number[]>,
+): void {
+    for (const faction of Object.values(factions)) {
+        faction.fallBackFactions = [...new Set(
+            faction.fallBackFactions.map((factionKey) => factionAliases.get(factionKey) ?? factionKey),
+        )];
+
+        const mulIds = new Set<number>();
+        for (const [factionKey, canonicalFactionKey] of factionAliases) {
+            if (canonicalFactionKey !== faction.id) {
+                continue;
+            }
+            for (const mulId of factionMulIds.get(factionKey) ?? []) {
+                mulIds.add(mulId);
+            }
+        }
+        faction.mulId = [...mulIds];
+    }
 }
 
 function buildAncestry(factions: Record<string, UniverseFactionRecord>, factionKey: string): string[] {
@@ -875,10 +963,14 @@ function loadMegaMekEras(filePath: string): MegaMekEra[] {
     return eras;
 }
 
-function parseAvailability(rawCode: string, eraYear: number): ParsedAvailability {
+function parseAvailability(
+    rawCode: string,
+    eraYear: number,
+    factionAliases: ReadonlyMap<string, string>,
+): ParsedAvailability {
     const trimmed = rawCode.trim();
     if (trimmed.includes('!')) {
-        const [factionKey, ...ratingParts] = trimmed.split('!');
+        const [rawFactionKey, ...ratingParts] = trimmed.split('!');
         const byRating: Record<string, number> = {};
         for (const ratingPart of ratingParts) {
             const [rating, value] = ratingPart.split(':');
@@ -888,7 +980,7 @@ function parseAvailability(rawCode: string, eraYear: number): ParsedAvailability
         }
 
         return {
-            factionKey,
+            factionKey: factionAliases.get(rawFactionKey) ?? rawFactionKey,
             fileYear: eraYear,
             ratingAdjustment: 0,
             baseAvailability: Object.values(byRating).reduce((highest, value) => Math.max(highest, value), 0),
@@ -912,7 +1004,7 @@ function parseAvailability(rawCode: string, eraYear: number): ParsedAvailability
     }
 
     return {
-        factionKey: parts[0],
+        factionKey: factionAliases.get(parts[0]) ?? parts[0],
         fileYear: eraYear,
         entryYear: parts[2] ? Number.parseInt(parts[2], 10) : undefined,
         baseAvailability: Number.parseInt(availabilityToken, 10),
@@ -920,7 +1012,11 @@ function parseAvailability(rawCode: string, eraYear: number): ParsedAvailability
     };
 }
 
-function parseAvailabilityList(raw: unknown, eraYear: number): ParsedAvailability[] {
+function parseAvailabilityList(
+    raw: unknown,
+    eraYear: number,
+    factionAliases: ReadonlyMap<string, string>,
+): ParsedAvailability[] {
     if (typeof raw !== 'string') {
         return [];
     }
@@ -928,7 +1024,7 @@ function parseAvailabilityList(raw: unknown, eraYear: number): ParsedAvailabilit
     return raw.split(',')
         .map((entry) => entry.trim())
         .filter(Boolean)
-        .map((entry) => parseAvailability(entry, eraYear));
+        .map((entry) => parseAvailability(entry, eraYear, factionAliases));
 }
 
 function warnOnInvalidXmlUnitType(unitType: string, sourceLabel: string): void {
@@ -966,7 +1062,10 @@ function parseWeightDistributionNode(node: Record<string, unknown>): { unitType:
     };
 }
 
-function parseSalvage(node: Record<string, unknown>): EraFactionStats['salvage'] | undefined {
+function parseSalvage(
+    node: Record<string, unknown>,
+    factionAliases: ReadonlyMap<string, string>,
+): EraFactionStats['salvage'] | undefined {
     if (!node.pct) {
         return undefined;
     }
@@ -976,7 +1075,8 @@ function parseSalvage(node: Record<string, unknown>): EraFactionStats['salvage']
     for (const entry of raw.split(',').map((part) => part.trim()).filter(Boolean)) {
         const [factionKey, value] = entry.split(':');
         if (factionKey && value) {
-            weights[factionKey] = Number.parseInt(value, 10);
+            const canonicalFactionKey = factionAliases.get(factionKey) ?? factionKey;
+            weights[canonicalFactionKey] = Number.parseInt(value, 10);
         }
     }
 
@@ -2571,6 +2671,7 @@ function loadForceGeneratorData(
     dirPath: string,
     eras: MegaMekEra[],
     factions: Record<string, UniverseFactionRecord>,
+    factionAliases: ReadonlyMap<string, string>,
 ): {
     factionEraData: Record<string, Record<string, EraFactionStats>>;
     chassis: Record<string, CompactChassisRecord>;
@@ -2596,7 +2697,8 @@ function loadForceGeneratorData(
         };
 
         for (const factionNode of ensureArray(parsed.ratgen?.factions?.faction)) {
-            const factionKey = String(factionNode.key);
+            const rawFactionKey = String(factionNode.key);
+            const factionKey = factionAliases.get(rawFactionKey) ?? rawFactionKey;
             const stats: EraFactionStats = {};
 
             for (const key of ['pctOmni', 'pctClan', 'pctSL'] as const) {
@@ -2640,7 +2742,7 @@ function loadForceGeneratorData(
 
             const salvageNode = factionNode.salvage as Record<string, unknown> | undefined;
             if (salvageNode) {
-                stats.salvage = parseSalvage(salvageNode);
+                stats.salvage = parseSalvage(salvageNode, factionAliases);
             }
 
             const distributions = ensureArray(factionNode.weightDistribution)
@@ -2676,7 +2778,11 @@ function loadForceGeneratorData(
             };
             chassis[chassisKey] = chassisRecord;
 
-            const chassisAvailability = parseAvailabilityList(getNodeText(chassisNode.availability), year);
+            const chassisAvailability = parseAvailabilityList(
+                getNodeText(chassisNode.availability),
+                year,
+                factionAliases,
+            );
             addCompactAvailability(
                 chassisRecord.e,
                 eras,
@@ -2702,7 +2808,7 @@ function loadForceGeneratorData(
                     modelRecord.e,
                     eras,
                     factions,
-                    parseAvailabilityList(getNodeText(modelNode.availability), year),
+                    parseAvailabilityList(getNodeText(modelNode.availability), year, factionAliases),
                     `model ${modelKey} (chassis ${chassisKey}) in ${sourceFileName}`,
                 );
             }
@@ -3008,13 +3114,15 @@ function run(): void {
     }
 
     const factionMulIdConfig = loadFactionMulIdMap(FACTIONS_MM_TO_MUL_PATH);
-    const factions = {
-        ...loadUniverseFactions(universeFactionsDir, false, factionMulIdConfig.mappedIds),
-        ...loadUniverseFactions(universeCommandsDir, true, factionMulIdConfig.mappedIds),
-    };
+    const factions = mergeUniverseFactionRecords(
+        loadUniverseFactions(universeFactionsDir, false, factionMulIdConfig.mappedIds),
+        loadUniverseFactions(universeCommandsDir, true, factionMulIdConfig.mappedIds),
+    );
+    const factionAliases = buildFactionAliasMap(factions);
+    normalizeFactionAliases(factions, factionAliases, factionMulIdConfig.mappedIds);
     const lightFactions = buildLightFactionRecords(factions);
     const eras = loadMegaMekEras(universeErasPath);
-    const forceGeneratorData = loadForceGeneratorData(FORCEGEN_ROOT, eras, factions);
+    const forceGeneratorData = loadForceGeneratorData(FORCEGEN_ROOT, eras, factions, factionAliases);
     const unitMetadataIndex = loadUnitMetadataIndex(UNIT_FILES_ROOT, NAME_CHANGES_FILE_PATH);
     const compiledChassis = compileCompactAvailabilityRecords(forceGeneratorData.chassis, 'chassis');
     const compiledModels = compileCompactAvailabilityRecords(forceGeneratorData.models, 'models');
