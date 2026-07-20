@@ -422,23 +422,6 @@
             </div>
             <div class="option-col">
                 <div class="option-row">
-                    <label for="quickActions">Quick actions:</label>
-                    <select id="quickActions" class="bt-select" [value]="optionsService.options().quickActions"
-                        (change)="onQuickActionsChange($event)">
-                        <option value="enabled">Enabled</option>
-                        <option value="disabled">Disabled (default)</option>
-                    </select>
-                </div>
-                <div class="description">
-                    <p>Quick actions let you trigger the picker's default action with a single tap or click, without
-                        opening
-                        the picker.</p>
-                    <p>Examples: in the Critical Table, clicking an ammo slot reduces ammo by 1; clicking other critical
-                        slots applies a critical hit.</p>
-                </div>
-            </div>
-            <div class="option-col">
-                <div class="option-row">
                     <label for="useAutomations">Use automations:</label>
                     <select id="useAutomations" class="bt-select" [value]="optionsService.options().useAutomations"
                         (change)="onUseAutomationsChange($event)">
