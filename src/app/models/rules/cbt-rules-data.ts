@@ -17,6 +17,9 @@ export interface CBTRulesData {
         readonly largeTarget: boolean;
         readonly artilleryFlatRangeModifier: number | null;
     };
+    readonly weapons: {
+        readonly UACJamming: boolean,
+    }
 }
 
 export const CORE_2026_RULES_DATA: CBTRulesData = {
@@ -39,6 +42,9 @@ export const CORE_2026_RULES_DATA: CBTRulesData = {
         largeTarget: true,
         artilleryFlatRangeModifier: 4
     },
+    weapons: {
+        UACJamming: false,
+    }
 };
 
 export const TW_RULES_DATA: CBTRulesData = {
@@ -55,6 +61,9 @@ export const TW_RULES_DATA: CBTRulesData = {
         largeTarget: false,
         artilleryFlatRangeModifier: null
     },
+    weapons: {
+        UACJamming: true
+    }
 };
 
 export function resolveCBTRulesData(rulesId: CBTRulesId): CBTRulesData {

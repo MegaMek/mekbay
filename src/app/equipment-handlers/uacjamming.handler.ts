@@ -49,7 +49,10 @@ export class UACJammingHandler extends DisabledStateToggleHandler {
     override applicableTo = (equipment: MountedEquipment): boolean => {
         if (equipment.equipment instanceof WeaponEquipment) {
             const ammoType = equipment.equipment.ammoType;
-            return ammoType == 'AC_ULTRA' || ammoType == 'AC_ULTRA_THB' || ammoType == 'AC_ROTARY';
+            if (ammoType == 'AC_ROTARY') return true;
+            if (equipment.owner?.rules?.rulesData.weapons.UACJamming) {
+                return ammoType == 'AC_ULTRA' || ammoType == 'AC_ULTRA_THB';
+            }
         }
         return false;
     }
