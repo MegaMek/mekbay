@@ -131,9 +131,23 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
         return true;
     }
 
-    override onEndTurn(equipment: MountedEquipment, _context: HandlerContext): void {
-        if (this.setActive(equipment, false)) {
+    override onEndTurn(equipment: MountedEquipment, context: HandlerContext): void {
+        if (this.isActive(equipment)) {
+            const changed = this.setActive(equipment, false);
+            if (changed) {
+                equipment.owner.setInventoryEntry(equipment);
+            }
+            return;
+        }
+
+        const currentState = this.getSequenceState(equipment);
+        const changed = this.setSequenceState(equipment, currentState - 1);
+        if (changed) {
             equipment.owner.setInventoryEntry(equipment);
+            context.toastService.showToast(
+                `${equipment.owner.getNotificationDisplayName()}: ${equipment.equipment?.name || equipment.name} sequence reduced to ${this.getSequenceState(equipment)}`,
+                'info'
+            );
         }
     }
 }

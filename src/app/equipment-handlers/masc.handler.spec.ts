@@ -22,6 +22,7 @@ function owner(
             computeEntryState: (entry: MountedEquipment) => ({ isDamaged: entry.committedDestroyed(), isDisabled: false, hitMod: 0 }),
             rulesData,
         },
+        getNotificationDisplayName: () => 'Atlas AS7-D (Natasha Kerensky)',
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
         turnState: () => turnState,
     } as never;
@@ -184,6 +185,31 @@ describe('MascHandler', () => {
         expect(MascHandler.getSequenceState(entry)).toBe(2);
         expect(handler.isActive(entry)).toBeFalse();
         expect(entry.states.has(MASC_SEQUENCE_STATE_KEY)).toBeTrue();
+    });
+
+    it('reduces the sequence at end turn when it was not active', () => {
+        const entry = mascEntry();
+        MascHandler.setSequenceState(entry, 2);
+        const handlerContext = context();
+
+        handler.onEndTurn(entry, handlerContext);
+
+        expect(MascHandler.getSequenceState(entry)).toBe(1);
+        expect(handler.isActive(entry)).toBeFalse();
+        expect(entry.owner.setInventoryEntry).toHaveBeenCalledWith(entry);
+        expect(handlerContext.toastService.showToast).toHaveBeenCalledWith(
+            'Atlas AS7-D (Natasha Kerensky): MASC sequence reduced to 1',
+            'info'
+        );
+    });
+
+    it('does not reduce the sequence below zero at end turn', () => {
+        const entry = mascEntry();
+
+        handler.onEndTurn(entry, context());
+
+        expect(MascHandler.getSequenceState(entry)).toBe(0);
+        expect(entry.owner.setInventoryEntry).not.toHaveBeenCalled();
     });
 
     it('ignores locked buttons', () => {
