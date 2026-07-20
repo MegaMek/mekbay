@@ -70,6 +70,7 @@ export interface Options {
     },
     sidebarLipPosition?: string;
     useAutomations: boolean;
+    CBTRules: 'tw' | `core2026`;
     ASUseHex: boolean;
     ASCardStyle: 'colored' | 'monochrome';
     ASPrintPageBreakOnGroups: boolean;

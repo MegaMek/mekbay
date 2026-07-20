@@ -407,6 +407,14 @@
                     <option value="night">Night mode</option>
                 </select>
             </div>
+            <div class="option-row">
+                <label for="CBTRules">Rules:</label>
+                <select id="CBTRules" class="bt-select" [value]="optionsService.options().CBTRules"
+                    (change)="onCBTRulesChange($event)">
+                    <option value="core2026">Core 2026 (default)</option>
+                    <option value="tw">Total Warfare</option>
+                </select>
+            </div>
             <div class="option-col">
                 <div class="option-row">
                     <label for="quickActions">Quick actions:</label>

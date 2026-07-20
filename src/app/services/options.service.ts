@@ -67,6 +67,7 @@ const DEFAULT_OPTIONS: Options = {
     syncZoomBetweenSheets: true,
     useAutomations: true,
     allowMultipleActiveSheets: false,
+    CBTRules: 'core2026',
     
     // Alpha Strike
     ASUseHex: false,
@@ -136,6 +137,7 @@ export class OptionsService {
         recordSheetCenterPanelContent: DEFAULT_OPTIONS.recordSheetCenterPanelContent,
         recordSheetDoubleTapZoomReset: DEFAULT_OPTIONS.recordSheetDoubleTapZoomReset,
         useAutomations: DEFAULT_OPTIONS.useAutomations,
+        CBTRules: DEFAULT_OPTIONS.CBTRules,
         ASUseHex: DEFAULT_OPTIONS.ASUseHex,
         ASCardStyle: DEFAULT_OPTIONS.ASCardStyle,
         ASPrintPageBreakOnGroups: DEFAULT_OPTIONS.ASPrintPageBreakOnGroups,
@@ -193,6 +195,7 @@ export class OptionsService {
             lastCanvasState: saved?.lastCanvasState,
             sidebarLipPosition: saved?.sidebarLipPosition,
             useAutomations: saved?.useAutomations ?? DEFAULT_OPTIONS.useAutomations,
+            CBTRules: saved?.CBTRules ?? DEFAULT_OPTIONS.CBTRules,
             ASUseHex: saved?.ASUseHex ?? DEFAULT_OPTIONS.ASUseHex,
             ASCardStyle: saved?.ASCardStyle ?? DEFAULT_OPTIONS.ASCardStyle,
             ASPrintPageBreakOnGroups: saved?.ASPrintPageBreakOnGroups ?? DEFAULT_OPTIONS.ASPrintPageBreakOnGroups,

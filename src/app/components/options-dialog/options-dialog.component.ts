@@ -402,6 +402,11 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('sheetsColor', value);
     }
 
+    onCBTRulesChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as 'core2026' | 'tw';
+        this.optionsService.setOption('CBTRules', value);
+    }
+
     onRecordSheetCenterPanelContentChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'fluffImage' | 'clusterTable';
         this.optionsService.setOption('recordSheetCenterPanelContent', value);
