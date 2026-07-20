@@ -32,6 +32,7 @@
  */
 
 import type { MotiveModes } from './motiveModes.model';
+import { CORE_2026_RULES_DATA, type CBTRulesData } from './rules/cbt-rules-data';
 
 export const TN_SKIDDING_MODIFIER = 2;
 export const TN_BATTLE_ARMOR_MODIFIER = 1;
@@ -39,6 +40,7 @@ export const TN_AIRBORNE_MOVE_TYPE_MODIFIER = 1;
 export const TN_PARTIAL_COVER_MODIFIER = 1;
 export const TN_SECONDARY_TARGET_MODIFIER = 1;
 export const TN_SECONDARY_TARGET_SIDE_BACK_MODIFIER = 2;
+export const TN_LARGE_TARGET_MODIFIER = -1;
 export const TN_PRONE_ADJACENT = -2;
 export const TN_PRONE = 1;
 export const TN_IMMOBILE = -4;
@@ -114,6 +116,7 @@ export interface TnTargetNumberCalculatorState {
     indirectFire?: boolean;
     secondaryTarget?: boolean;
     secondaryTargetSideBack?: boolean;
+    largeTarget?: boolean;
     spotterMoveMode?: TnSpotterMoveMode;
     spotterDeclaredAttacks?: boolean;
 }
@@ -174,7 +177,10 @@ export function getIndirectFireModifier(indirectFire: boolean | null | undefined
         + (spotterDeclaredAttacks ? 1 : 0);
 }
 
-export function calculateTargetTnModifier(input: TnTargetNumberCalculationInput): number {
+export function calculateTargetTnModifier(
+    input: TnTargetNumberCalculationInput,
+    rulesData: CBTRulesData = CORE_2026_RULES_DATA
+): number {
     const range = Math.max(0, input.range ?? 0);
     const stance = input.stance ?? 'normal';
     let total = 0;
@@ -183,14 +189,16 @@ export function calculateTargetTnModifier(input: TnTargetNumberCalculationInput)
     if (stance === 'normal') {
         total += getTargetAirborneModifier(input.isAirborne);
         total += getTargetMovementBracketModifier(input.targetMovementBracket);
-        total += input.skidding ? TN_SKIDDING_MODIFIER : 0;
+        total += rulesData.targeting.skidding && input.skidding ? TN_SKIDDING_MODIFIER : 0;
     }
     total += getTargetStanceModifier(stance, range);
     total += getInterveningWoodsModifier(input.interveningWoods);
     total += getTargetHexCoverModifier(input.targetHexCover);
     total += input.partialCover && range > ADJACENT_RANGE && stance !== 'prone' ? TN_PARTIAL_COVER_MODIFIER : 0;
     total += input.secondaryTarget ? TN_SECONDARY_TARGET_MODIFIER : 0;
-    total += !input.secondaryTarget && input.secondaryTargetSideBack ? TN_SECONDARY_TARGET_SIDE_BACK_MODIFIER : 0;
+    total += rulesData.targeting.secondaryTargetSideBack && !input.secondaryTarget && input.secondaryTargetSideBack
+        ? TN_SECONDARY_TARGET_SIDE_BACK_MODIFIER : 0;
+    total += rulesData.targeting.largeTarget && input.largeTarget ? TN_LARGE_TARGET_MODIFIER : 0;
     total += getIndirectFireModifier(input.indirectFire, input.spotterMoveMode, input.spotterDeclaredAttacks, input.indirectFireBaseModifier);
 
     return total;

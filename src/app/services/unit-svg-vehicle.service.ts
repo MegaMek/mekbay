@@ -163,7 +163,11 @@ export class UnitSvgVehicleService extends UnitSvgService {
         try {
             this.unit.getInventory().forEach(entry => {
                 if (!entry.el) return;
-
+                if (entry.physical) {
+                    if (entry.name === 'charge') {
+                        this.renderChargeDamage(entry, this.vehicleRules.chargeDamage());
+                    }
+                }
                 const state = entryStates.get(entry);
                 if (!state) return;
 
@@ -187,7 +191,8 @@ export class UnitSvgVehicleService extends UnitSvgService {
             range,
             this.inventoryTargetSelectedAmmo(entry),
             (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo),
-            (candidate, candidateRange?: InventoryControlRuntimeRangeKey | null) => this.unit.getInventoryControlBaseHitModifier(candidate, candidateRange)
+            (candidate, candidateRange?: InventoryControlRuntimeRangeKey | null) => this.unit.getInventoryControlBaseHitModifier(candidate, candidateRange),
+            this.unit.rules.rulesData
         );
     }
 

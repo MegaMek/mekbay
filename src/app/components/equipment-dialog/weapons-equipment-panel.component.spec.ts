@@ -1,4 +1,5 @@
 import { CdkDragDrop, CdkDragStart } from '@angular/cdk/drag-drop';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment, WeaponEquipment, MiscEquipment, type EquipmentMap } from '../../models/equipment.model';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
@@ -187,6 +188,7 @@ interface CreateComponentOptions {
     attackMovementCanAffectTargetNumbers?: boolean;
     hasLinkedC3Network?: boolean;
     handlers?: EquipmentInteractionHandler[];
+    applyUnitDisplayEffects?: (entry: MountedEquipment, display: InventoryControlDisplayData) => InventoryControlDisplayData;
 }
 
 function createComponent(
@@ -248,7 +250,9 @@ function createComponent(
         getTargetNumberGunnerySkill: () => options.gunnerySkill ?? 4,
         getTargetNumberPilotingSkill: () => options.pilotingSkill ?? 5,
         getTargetNumberGunneryModifierBreakdown: () => [],
-        getTargetNumberPilotingModifierBreakdown: () => []
+        getTargetNumberPilotingModifierBreakdown: () => [],
+        applyInventoryControlDisplayEffects: (entry: MountedEquipment, display: InventoryControlDisplayData) =>
+            options.applyUnitDisplayEffects?.(entry, display) ?? display
     };
     const turnState = {
         moveMode: () => options.moveMode ?? null,
@@ -287,7 +291,17 @@ function createComponent(
                 .reduce((sum, handler) => sum + (handler.getLinkedEquipmentHitModifier?.(linked, entry, selectedAmmo) ?? 0), 0);
             return total + modifier;
         }, 0) ?? 0,
-        rules
+        rules,
+        getInventoryControlRules: () => {
+            const equipmentRules = context.registry.inventoryControlRules(context);
+            return {
+                ...equipmentRules,
+                applyDisplayEffects: (entry: MountedEquipment, display: InventoryControlDisplayData, displayOptions: InventoryControlDisplayEffectOptions) => {
+                    const equipmentDisplay = equipmentRules.applyDisplayEffects?.(entry, display, displayOptions) ?? display;
+                    return rules.applyInventoryControlDisplayEffects(entry, equipmentDisplay);
+                }
+            };
+        }
     } as unknown as CBTForceUnit;
     addRuntimeSelection(unit);
     (unit.setInventoryEntry as jasmine.Spy).and.callFake((entry: MountedEquipment) => {
@@ -383,6 +397,22 @@ function createComponent(
 }
 
 describe('WeaponsEquipmentPanelComponent', () => {
+    it('updates inventory display fields directly from reactive unit rules', () => {
+        const ruleDamage = signal('5');
+        const charge = entry({ id: 'Charge', physical: true });
+        const { fixture } = createComponent([charge], {}, [], new Map(), {
+            applyUnitDisplayEffects: (_entry, display) => ({ ...display, damage: ruleDamage() })
+        });
+        const damageCell = () => fixture.nativeElement.querySelector('.damage-cell') as HTMLElement;
+
+        expect(damageCell().textContent?.trim()).toBe('5');
+
+        ruleDamage.set('8 [12]');
+        fixture.detectChanges();
+
+        expect(damageCell().textContent?.trim()).toBe('8 [12]');
+    });
+
     it('groups ranged, physical, equipment, and destroyed entries', () => {
         const laser = entry({ id: 'laser', equipment: weapon('laser'), el: svgEntry('<g><g class="name"><text>Laser</text></g></g>') });
         const punch = entry({ id: 'punch', physical: true, el: svgEntry('<g><g class="name"><text>Punch</text></g></g>') });
@@ -1362,12 +1392,13 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const targetState = component.targetState(row);
         expect(targetState.rangeSelection?.outOfLongRange).toBeFalse();
         expect(targetState.rangeSelection?.outOfExtremeRange).toBeFalse();
-        expect(targetState.targetNumberText).toBe('7');
+        expect(targetState.targetNumberText).toBe('6');
         expect(targetState.breakdown?.lines).toEqual([
             { label: 'Piloting', value: '6' },
             { label: 'Target (A)', value: '+1' },
+            { label: 'Hit Modifier', value: '-1' },
             { isBreak: true },
-            { label: 'Total', value: '7', isHeader: true },
+            { label: 'Total', value: '6', isHeader: true },
         ]);
     });
 

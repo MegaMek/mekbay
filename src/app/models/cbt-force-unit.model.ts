@@ -67,6 +67,8 @@ import type { UnitHeatSource } from './rules/unit-type-rules';
 import type { InventoryControlDisplayData, InventoryControlDisplayEffectOptions, InventoryControlRules } from '../utils/inventory-control.util';
 import { ToastService } from '../services/toast.service';
 import { DialogsService } from '../services/dialogs.service';
+import { OptionsService } from '../services/options.service';
+import { TWAeroRules, TWInfantryRules, TWMekRules, TWProtoMekRules, TWVehicleRules } from './rules/tw-rules';
 
 export class CBTForceUnit extends ForceUnit {
     override get force(): CBTForce { return super.force as CBTForce; }
@@ -111,7 +113,8 @@ export class CBTForceUnit extends ForceUnit {
             crew[i] = new CrewMember(i, this);
         }
         this.state.crew.set(crew);
-        this._rules = this.createRules();
+        const rulesId = this.injector.get(OptionsService).options().CBTRules;
+        this._rules = this.createRules(rulesId);
     }
 
     /** Unit-type-specific game rules (destruction, PSR, systems status for Meks). */
@@ -140,9 +143,17 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     getInventoryControlRules(): InventoryControlRules {
-        return this.injector.get(EquipmentInteractionRegistryService)
+        const equipmentRules = this.injector.get(EquipmentInteractionRegistryService)
             .getRegistry()
             .inventoryControlRules(this.getHandlerContext());
+        return {
+            ...equipmentRules,
+            rulesData: this.rules.rulesData,
+            applyDisplayEffects: (entry, display, options) => {
+                const equipmentDisplay = equipmentRules.applyDisplayEffects?.(entry, display, options) ?? display;
+                return this.rules.applyInventoryControlDisplayEffects(entry, equipmentDisplay);
+            },
+        };
     }
 
     private getHandlerContext() {
@@ -186,7 +197,16 @@ export class CBTForceUnit extends ForceUnit {
         this.inventoryControl.markInventoryViewChanged();
     }
 
-    private createRules(): UnitTypeRules {
+    private createRules(rulesId: 'core2026' | 'tw'): UnitTypeRules {
+        if (rulesId === 'tw') {
+            switch (this.unit.type) {
+                case 'Mek': return new TWMekRules(this);
+                case 'Aero': return new TWAeroRules(this);
+                case 'Infantry': return new TWInfantryRules(this);
+                case 'ProtoMek': return new TWProtoMekRules(this);
+                default: return new TWVehicleRules(this);
+            }
+        }
         switch (this.unit.type) {
             case 'Mek': return new MekRules(this);
             case 'Aero': return new AeroRules(this);
@@ -968,10 +988,9 @@ export class CBTForceUnit extends ForceUnit {
 
     public c3Tax = computed<number>(() => {
         const c3Networks = this.force.c3Networks();
-        const c3Tax = C3NetworkUtil.calculateUnitC3Tax(
-            this,
+        const c3Tax = this.rules.calculateC3Tax(
             c3Networks,
-            this.force.units()
+            this.force.units(),
         );
         return c3Tax;
     });

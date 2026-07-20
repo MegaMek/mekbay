@@ -871,7 +871,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(previewLockKeys.every((lockKey) => !!lockKey)).toBeTrue();
         expect(previewLockKeys).toHaveSize(2);
         expect(new Set(previewLockKeys).size).toBe(2);
-        expect(previewLockKeys.every((lockKey) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(lockKey!))).toBeTrue();
+        expect(previewLockKeys.every((lockKey) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(lockKey!))).toBeTrue();
         expect(previewLockKeys.every((lockKey) => component.lockedUnitKeys().has(lockKey!))).toBeTrue();
         expect(preview.units.map((unit) => unit.unit.name)).toEqual([atlas.name, locust.name]);
         expect(preview.explanationLines).toContain('Imported current force into preview. Press REROLL to generate a new result for the current settings.');

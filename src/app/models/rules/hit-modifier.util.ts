@@ -34,6 +34,7 @@
 import type { MountedEquipment } from '../force-serialization';
 import { WeaponEquipment, type AmmoEquipment } from '../equipment.model';
 import type { InventoryControlRuntimeRangeKey } from '../inventory-control-runtime-state.model';
+import { CORE_2026_RULES_DATA, type CBTRulesData } from './cbt-rules-data';
 
 /**
  * Pure game-rules utilities for hit modifier calculation.
@@ -48,24 +49,12 @@ export type LinkedEquipmentHitModifierResolver = (entry: MountedEquipment, selec
 export type EntryBaseHitModifierResolver = (entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null) => number | null;
 export type HitModifier = number | 'Vs' | '*' | null;
 
-const PHYSICAL_BASE_HIT_MODIFIERS: Readonly<Record<string, number | 'Vs'>> = {
-    punch: 0,
-    kick: -2,
-    'kick [talons]': -2,
-    club: -1,
-    push: -1,
-    frenzy: 0,
-    charge: 'Vs',
-    'death from above': 'Vs',
-    'dfa [talons]': 'Vs',
-    'airmech ram': 'Vs',
-};
-
 export function getEntryBaseHitModifier(
     entry: MountedEquipment,
-    range?: InventoryControlRuntimeRangeKey | null
+    range?: InventoryControlRuntimeRangeKey | null,
+    rulesData: CBTRulesData = CORE_2026_RULES_DATA
 ): HitModifier {
-    if (entry.physical) return PHYSICAL_BASE_HIT_MODIFIERS[entry.name.toLowerCase()] ?? null;
+    if (entry.physical) return rulesData.physicalBaseHitModifiers[entry.name.toLowerCase()] ?? null;
     const equipment = entry.equipment;
     if (!equipment) return null;
     const supportsHitModifier = equipment instanceof WeaponEquipment
@@ -91,11 +80,12 @@ export function resolveHitModifier(
     range?: InventoryControlRuntimeRangeKey | null,
     selectedAmmo?: AmmoEquipment | null,
     resolveLinkedModifiers?: LinkedEquipmentHitModifierResolver,
-    resolveBaseModifier?: EntryBaseHitModifierResolver
+    resolveBaseModifier?: EntryBaseHitModifierResolver,
+    rulesData: CBTRulesData = CORE_2026_RULES_DATA
 ): HitModifier {
     const linkedModifiers = resolveLinkedModifiers?.(entry, selectedAmmo) ?? 0;
     const resolvedBaseModifier = resolveBaseModifier?.(entry, range);
-    const baseModifier = resolvedBaseModifier ?? getEntryBaseHitModifier(entry, range);
+    const baseModifier = resolvedBaseModifier ?? getEntryBaseHitModifier(entry, range, rulesData);
     if (baseModifier === 'Vs' || baseModifier === '*') return baseModifier;
     if (!entry.equipment && !entry.physical) {
         return null;

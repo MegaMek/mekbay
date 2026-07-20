@@ -1,6 +1,7 @@
 import type { MountedEquipment } from '../models/force-serialization';
 import { WeaponEquipment, type AmmoEquipment } from '../models/equipment.model';
 import type { InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
+import { CORE_2026_RULES_DATA, type CBTRulesData } from '../models/rules/cbt-rules-data';
 import type { UnitModifierBreakdownEntry } from '../models/rules/unit-type-rules';
 import type { InventoryControlDisplayData, InventoryControlGroupId, InventoryRangeKey } from './inventory-control.util';
 import type { TooltipLine } from '../components/tooltip/tooltip.component';
@@ -42,6 +43,7 @@ export interface InventoryTargetNumberInput {
     attackModifierBreakdown: readonly UnitModifierBreakdownEntry[];
     hitModifier: number;
     heatFireModifier?: number;
+    rulesData?: CBTRulesData;
 }
 
 export type InventoryTargetDisplay = Pick<InventoryControlDisplayData, InventoryRangeKey | 'min'>;
@@ -68,12 +70,17 @@ export function readInventoryTargetText(entry: MountedEquipment, className: stri
     return entry.el ? directInventoryTargetSvgText(entry.el, `.${className}`) : '';
 }
 
-export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberInput, 'entry' | 'category' | 'display' | 'target'>): InventoryTargetRangeSelection | null {
+export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberInput, 'entry' | 'category' | 'display' | 'target' | 'selectedAmmo' | 'rulesData'>): InventoryTargetRangeSelection | null {
     const target = input.target;
     if (!target) return null;
     const c3Distance = target.useC3 === true ? target.c3Distance ?? null : null;
     const rangeDistance = c3Distance === null ? target.distance : Math.min(target.distance, c3Distance);
     if (isPhysicalInventoryTargetNumberEntry(input.entry, input.category)) return { range: 'short', outOfLongRange: false, outOfExtremeRange: false, minimumRangeModifier: 0, distance: target.distance, c3Distance };
+
+    const artilleryMinimumDistance = input.selectedAmmo?.category === 'Artillery' ? 7 : null;
+    if (artilleryMinimumDistance !== null && target.distance <= artilleryMinimumDistance) {
+        return { range: 'short', outOfLongRange: true, outOfExtremeRange: false, minimumRangeModifier: 0, distance: target.distance, c3Distance };
+    }
 
     const minimumRangeModifier = inventoryTargetMinimumRangeModifier(input.display.min, target.distance);
 
@@ -136,7 +143,10 @@ export function inventoryTargetNumberBreakdown(
     const skillLabel = physical ? 'Piloting' : 'Gunnery';
     const skill = physical ? input.pilotingSkill : input.gunnerySkill;
     const skillModifierBreakdown = physical ? input.pilotingModifierBreakdown ?? [] : input.gunneryModifierBreakdown ?? [];
-    const rangeModifier = inventoryTargetRangeModifier(rangeSelection.range);
+    const rulesData = input.rulesData ?? CORE_2026_RULES_DATA;
+    const artilleryRangeModifier = input.selectedAmmo?.category === 'Artillery'
+        ? rulesData.targeting.artilleryFlatRangeModifier : null;
+    const rangeModifier = artilleryRangeModifier ?? inventoryTargetRangeModifier(rangeSelection.range);
     const minimumRangeModifier = rangeSelection.minimumRangeModifier;
     const ammoToHitModifier = physical ? 0 : (input.selectedAmmo?.getToHitModifier(rangeSelection.range) ?? 0);
     const heatFireModifier = physical ? 0 : input.heatFireModifier ?? 0;
@@ -159,7 +169,10 @@ export function inventoryTargetNumberBreakdown(
     }
 
     if (!physical) {
-        terms.push({ label: `Range (${inventoryTargetRangeDisplayName(rangeSelection.range)})`, value: formatInventoryTargetSignedModifier(rangeModifier) });
+        terms.push({
+            label: artilleryRangeModifier === null ? `Range (${inventoryTargetRangeDisplayName(rangeSelection.range)})` : 'Artillery',
+            value: formatInventoryTargetSignedModifier(rangeModifier)
+        });
         if (rangeSelection.c3Distance !== null) {
             terms.push({ label: 'C³ Distance', value: `${rangeSelection.c3Distance} (actual ${rangeSelection.distance})` });
         }
