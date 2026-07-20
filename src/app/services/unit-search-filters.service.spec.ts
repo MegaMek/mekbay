@@ -238,7 +238,7 @@ function createTestUnit(overrides: TestUnitOverrides = {}): Unit {
         bv: 1000,
         pv: 35,
         cost: 1000000,
-        level: 2,
+        level: 'Standard',
         engineRating: 250,
         engineHS: 10,
         source: ['SRC-A'],

@@ -72,8 +72,7 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
      * from any user-supplied additional unit servers. The primary source always wins on
      * name collisions; additional servers may only contribute new-named units.
      */
-    public override async initialize(): Promise<void> {
-        await super.initialize();
+    protected override async afterInitialize(): Promise<void> {
         await this.loadCustomServers();
     }
 

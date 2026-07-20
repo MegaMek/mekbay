@@ -1,0 +1,146 @@
+import { EMPTY_EQUIPMENT_REGISTRY } from '../../equipment-lookup';
+import { ParseContext } from './parse-context';
+import { parseTransporterLines, serializeTransporterLines } from './transporter-codec';
+import type { EntityTechBase } from '../types';
+import { projectRecordSheetBays } from '../bays/record-sheet-bay-projection';
+
+function parse(lines: string[], techBase: EntityTechBase = 'IS') {
+  return parseTransporterLines(lines, techBase, new ParseContext('test.blk', EMPTY_EQUIPMENT_REGISTRY));
+}
+
+describe('transporter codec', () => {
+  it('normalizes BLK aliases and specialized bay configuration', () => {
+    expect(parse([
+      'mechbay:2:1:4',
+      'artsasfbay:6:2:5',
+      'battlearmorbay:3:1:6::-1:3',
+      'dropshuttlebay:1:1:7::2:0',
+    ], 'Clan')).toEqual([
+      { id: 'transporter-1', kind: 'bay', configuration: { type: 'mek' }, capacity: 2, doors: 1, bayNumber: 4, omni: false },
+      { id: 'transporter-2', kind: 'bay', configuration: { type: 'fighter', arts: true }, capacity: 6, doors: 2, bayNumber: 5, omni: false },
+      { id: 'transporter-3', kind: 'bay', configuration: { type: 'battle-armor', techBase: 'Clan', comStar: true }, capacity: 3, doors: 1, bayNumber: 6, omni: false },
+      { id: 'transporter-4', kind: 'bay', configuration: { type: 'drop-shuttle', facing: 2 }, capacity: 2, doors: 1, bayNumber: 7, omni: false },
+    ]);
+  });
+
+  it('stores infantry as total physical space while projecting platoon capacity', () => {
+    const transporters = parse(['infantrybay:4:1:2:Motorized']);
+    expect(transporters[0]).toEqual({
+      id: 'transporter-1', kind: 'bay', configuration: { type: 'infantry', infantryType: 'Motorized' },
+      capacity: 28, doors: 1, bayNumber: 2, omni: false,
+    });
+    expect(projectRecordSheetBays(transporters)[0].members[0].capacity).toBe(4);
+  });
+
+  it('keeps physical bays distinct while grouping record-sheet rows', () => {
+    const groups = projectRecordSheetBays([
+      { id: 'cargo', kind: 'bay', configuration: { type: 'cargo' }, capacity: 2, doors: 1, bayNumber: 3, omni: false },
+      { id: 'ba', kind: 'bay', configuration: { type: 'battle-armor', techBase: 'IS', comStar: false }, capacity: 1, doors: 2, bayNumber: 3, omni: false },
+      { id: 'quarters', kind: 'bay', configuration: { type: 'crew-quarters' }, capacity: 5, constructionWeight: 35, doors: 0, bayNumber: 4, omni: false },
+    ]);
+    expect(groups.length).toBe(1);
+    expect(groups[0].members.map(member => member.typeName)).toEqual(['Battle Armor', 'Cargo']);
+    expect(groups[0].doors).toBe(2);
+  });
+
+  it('allocates unique numbers and reports unsupported lines', () => {
+    const context = new ParseContext('test.blk', EMPTY_EQUIPMENT_REGISTRY);
+    const transporters = parseTransporterLines([
+      'cargobay:1:1:2',
+      'mekbay:1:1:2',
+      'futuretransport:7:1',
+      'dockingcollar',
+    ], 'IS', context);
+    expect(transporters.map(transporter => transporter.kind === 'bay' ? transporter.bayNumber : transporter.kind === 'docking-collar' ? transporter.collarNumber : undefined)).toEqual([2, 1, 3]);
+    expect(context.warnings.length).toBe(1);
+  });
+
+  it('round trips canonical construction data through BLK lines', () => {
+    const original = parse([
+      'infantrybay:4:1:2:Jump:-1:0:omni',
+      'artsnavalrepairpressurized:500:2:3::4:0',
+      'battlearmorbay:2:1:5::-1:3',
+      'troopspace:1.5',
+      'dockingcollar',
+    ]);
+    expect(parse(serializeTransporterLines(original))).toEqual(original);
+  });
+
+  it('round trips specialized cargo capacity without reapplying weight conversion', () => {
+    const original = parse([
+      'LiquidCargoBay:26.296703296703296:1:1',
+      'insulatedcargobay:5:1:2',
+      'refrigeratedcargobay:6:1:3',
+      'livestockcargobay:7:1:4',
+    ]);
+
+    expect(parse(serializeTransporterLines(original))).toEqual(original);
+  });
+
+  it('normalizes compact repair-bay facing syntax', () => {
+    const line = 'navalrepairpressurized:5000:1:5:f4';
+    expect(serializeTransporterLines(parse([line]))).toEqual([
+      'navalrepairpressurized:5000.0:1:5:f4',
+    ]);
+  });
+
+  it('matches MegaMek legacy five-field normalization', () => {
+    expect(serializeTransporterLines(parse([
+      'navalrepairpressurized:500:1:5:f4:0',
+    ]))).toEqual([
+      'navalrepairpressurized:500.0:1:5:f-1',
+    ]);
+  });
+
+  it('preserves quarter construction weight while exposing person capacity', () => {
+    const original = parse(['steeragequarters:26:0']);
+    expect(original[0]).toEqual({
+      id: 'transporter-1', kind: 'bay', configuration: { type: 'steerage-quarters' },
+      capacity: 5, constructionWeight: 26, doors: 0, bayNumber: 0, omni: false,
+    });
+    expect(parse(serializeTransporterLines(original))).toEqual(original);
+  });
+
+  it('keeps MegaMek runtime bay numbers separate from serialized bay numbers', () => {
+    const transporters = parse([
+      'smallcraftbay:1:1:1',
+      'mekbay:1:1:-1',
+      'crewquarters:14:2:-1',
+      'standardseats:3:9:-1',
+      'cargobay:1:1:-1',
+    ]);
+
+    expect(transporters.map(transporter => transporter.kind === 'bay' ? [transporter.bayNumber, transporter.doors] : undefined)).toEqual([
+      [1, 1], [2, 1], [0, 2], [0, 0], [5, 1],
+    ]);
+    expect(serializeTransporterLines(transporters)).toEqual([
+      'smallcraftbay:1.0:1:1::-1:0',
+      'mekbay:1.0:1:-1::-1:0',
+      'crewquarters:14.0:2:-1::-1:0',
+      'standardseats:3.0:0:-1::-1:0',
+      'cargobay:1.0:1:5::-1:0',
+    ]);
+  });
+
+  it('does not register docking collars as Omni pods', () => {
+    const transporters = parse(['dockingcollar:omni']);
+    expect(transporters).toEqual([
+      { id: 'transporter-1', kind: 'docking-collar', collarNumber: 1, omni: false },
+    ]);
+    expect(serializeTransporterLines(transporters)).toEqual(['dockingcollar']);
+  });
+
+  it('ignores serialized BattleArmorHandles state', () => {
+    const context = new ParseContext('test.blk', EMPTY_EQUIPMENT_REGISTRY);
+    const transporters = parseTransporterLines([
+      'BattleArmorHandles - troopers:3:omni',
+      'BattleArmorHandles - troopers:not-a-number',
+      'cargobay:1:1:2',
+    ], 'IS', context);
+
+    expect(transporters).toEqual([
+      { id: 'transporter-1', kind: 'bay', configuration: { type: 'cargo' }, capacity: 1, doors: 1, bayNumber: 2, omni: false },
+    ]);
+    expect(context.warnings).toEqual([]);
+  });
+});

@@ -34,6 +34,7 @@
 import { Injectable, inject } from '@angular/core';
 
 import { REMOTE_HOST } from '../../models/common.model';
+import { EMPTY_EQUIPMENT_REGISTRY, EquipmentRegistry } from '../../models/equipment-lookup';
 import { type Equipment, type EquipmentMap, type RawEquipmentData, createEquipment } from '../../models/equipment.model';
 import { DbService } from '../db.service';
 import { LoggerService } from '../logger.service';
@@ -46,7 +47,7 @@ export class EquipmentCatalogService extends CatalogBaseService<RawEquipmentData
     private readonly dbService = inject(DbService);
     private readonly catalogLogger = inject(LoggerService);
 
-    private equipment: EquipmentMap = {};
+    private equipmentRegistry = EMPTY_EQUIPMENT_REGISTRY;
 
     protected override get catalogKey(): string {
         return 'equipment';
@@ -57,15 +58,23 @@ export class EquipmentCatalogService extends CatalogBaseService<RawEquipmentData
     }
 
     public getEquipments(): EquipmentMap {
-        return this.equipment;
+        return this.equipmentRegistry.equipment;
+    }
+
+    public getEquipmentRegistry(): EquipmentRegistry {
+        return this.equipmentRegistry;
     }
 
     public getEquipmentByName(internalName: string): Equipment | undefined {
-        return this.equipment[internalName];
+        return this.equipmentRegistry.equipment[internalName];
+    }
+
+    public findEquipment(name: string): Equipment | undefined {
+        return this.equipmentRegistry.find(name) ?? undefined;
     }
 
     protected override hasHydratedData(): boolean {
-        return Object.keys(this.equipment).length > 0;
+        return this.equipmentRegistry.size > 0;
     }
 
     protected override async loadFromCache(): Promise<RawEquipmentData | undefined> {
@@ -87,7 +96,7 @@ export class EquipmentCatalogService extends CatalogBaseService<RawEquipmentData
             }
         }
 
-        this.equipment = normalizedEquipment;
+        this.equipmentRegistry = new EquipmentRegistry(normalizedEquipment);
         this.etag = data.etag || '';
     }
 

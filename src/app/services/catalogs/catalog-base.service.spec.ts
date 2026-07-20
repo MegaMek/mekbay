@@ -163,6 +163,39 @@ describe('CatalogBaseService', () => {
         expect(downloadTracker.isDownloading()).toBeFalse();
     });
 
+    it('shares concurrent initialization and memoizes success', async () => {
+        service.cachedData = { etag: 'etag-1', items: [1, 2, 3, 4, 5, 6] };
+
+        const firstInitialization = service.initialize();
+        const secondInitialization = service.initialize();
+        expect(secondInitialization).toBe(firstInitialization);
+        await settleMicrotasks();
+
+        const headRequest = httpMock.expectOne('/test-catalog.json');
+        headRequest.flush('', { headers: new HttpHeaders({ ETag: 'etag-1' }) });
+        await Promise.all([firstInitialization, secondInitialization]);
+
+        await service.initialize();
+        httpMock.expectNone('/test-catalog.json');
+    });
+
+    it('allows initialization to retry after failure', async () => {
+        const failedInitialization = service.initialize();
+        await settleMicrotasks();
+
+        httpMock.expectOne('/test-catalog.json').flush('offline', { status: 503, statusText: 'Unavailable' });
+        await settleMicrotasks();
+        httpMock.expectOne('/test-catalog.json').flush('offline', { status: 503, statusText: 'Unavailable' });
+        await expectAsync(failedInitialization).toBeRejected();
+
+        const retry = service.initialize();
+        await settleMicrotasks();
+        httpMock.expectOne('/test-catalog.json').flush('offline', { status: 503, statusText: 'Unavailable' });
+        await settleMicrotasks();
+        httpMock.expectOne('/test-catalog.json').flush({ items: [1, 2, 3, 4, 5, 6] });
+        await retry;
+    });
+
     it('keeps reporting downloading until all tracked catalog fetches finish', async () => {
         let finishFirstDownload!: () => void;
         let finishSecondDownload!: () => void;

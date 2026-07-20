@@ -198,4 +198,13 @@ export class MountedEquipment {
         this.destroyingState.set(undefined);
         return true;
     }
+
+    getBV(): number {
+        const baseBV = this.equipment?.bv;
+        if (!baseBV) return 0;
+        if (baseBV === "variable") {
+            return -1;
+        }
+        return baseBV;
+    }
 }

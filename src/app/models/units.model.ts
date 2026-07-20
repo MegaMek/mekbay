@@ -36,40 +36,10 @@
  */
 import type { Equipment } from "./equipment.model";
 import type { Era } from "./eras.model";
+import type { ComponentTechLevel, MoveType, UnitSubtype, UnitType } from "./entity/types";
 import { TechBase } from "./tech.model";
 
-export type UnitType =
-    | 'Aero'
-    | 'Handheld Weapon'
-    | 'Infantry'
-    | 'Mek'
-    | 'Naval'
-    | 'ProtoMek'
-    | 'Tank'
-    | 'VTOL';
-
-export type MoveType =
-    | 'Aerodyne'
-    | 'Biped'
-    | 'Hover'
-    | 'Hydrofoil'
-    | 'Jump'
-    | 'Leg'
-    | 'Microcopter'
-    | 'Motorized'
-    | 'Motorized SCUBA'
-    | 'Naval'
-    | 'None'
-    | 'Quad'
-    | 'Rail'
-    | 'Spheroid'
-    | 'Submarine'
-    | 'Tracked'
-    | 'Tripod'
-    | 'UMU'
-    | 'VTOL'
-    | 'Wheeled'
-    | 'WiGE';
+export type { MoveType, UnitSubtype, UnitType } from "./entity/types";
 
 export const CBT_WEIGHT_CLASSES = [
     'Ultra Light/PA(L)/Exoskeleton',
@@ -87,6 +57,7 @@ export const CBT_WEIGHT_CLASSES = [
     'Medium Dropship',
     'Medium Support Vehicle',
     'Large Dropship',
+    'Large Jumpship',
     'Large Space Station',
     'Large Support Vehicle',
     'Large Warship',
@@ -97,51 +68,6 @@ export type WeightClass = typeof CBT_WEIGHT_CLASSES[number];
 export const CBT_WEIGHT_CLASS_ORDINALS = new Map<WeightClass, number>(
     CBT_WEIGHT_CLASSES.map((weightClass, index) => [weightClass, index] as const)
 );
-
-export type UnitSubtype =
-    | 'Aerodyne DropShip'
-    | 'Aerodyne Small Craft'
-    | 'Aerospace Fighter'
-    | 'Aerospace Fighter Omni'
-    | 'Battle Armor'
-    | 'BattleMek'
-    | 'BattleMek Omni'
-    | 'Civilian Aerodyne DropShip'
-    | 'Civilian Aerodyne Small Craft'
-    | 'Civilian Space Station'
-    | 'Civilian Spheroid DropShip'
-    | 'Combat Vehicle'
-    | 'Combat Vehicle Omni'
-    | 'Conventional Fighter'
-    | 'Conventional Infantry'
-    | 'Fixed Wing Support Vehicle'
-    | 'Fixed Wing Support Vehicle Omni'
-    | 'Handheld Weapon'
-    | 'Hovercraft'
-    | 'Hovercraft Omni'
-    | 'Industrial Mek'
-    | 'JumpShip'
-    | 'Land-Air BattleMek'
-    | 'Mechanized Conventional Infantry'
-    | 'Military Space Station'
-    | 'Motorized Conventional Infantry'
-    | 'Naval Vessel'
-    | 'ProtoMek'
-    | 'Quad BattleMek'
-    | 'Quad BattleMek Omni'
-    | 'Quad Industrial Mek'
-    | 'Quad ProtoMek'
-    | 'QuadVee BattleMek'
-    | 'QuadVee BattleMek Omni'
-    | 'Spheroid DropShip'
-    | 'Spheroid Small Craft'
-    | 'Submarine'
-    | 'Support Vehicle'
-    | 'Support Vehicle Omni'
-    | 'Tripod BattleMek'
-    | 'Tripod BattleMek Omni'
-    | 'WarShip'
-    | 'WiGE';
 
 // Weapon/component info for comp.w
 export interface UnitComponent {
@@ -229,7 +155,7 @@ export interface Unit {
     bv: number;
     pv: number;
     cost: number;
-    level: number;
+    level: ComponentTechLevel;
     techBase: TechBase;
     techRating: string;
     type: UnitType;
@@ -238,13 +164,13 @@ export interface Unit {
     engine: string;
     engineRating: number;
     engineHS: number; // Number of HeatSinks on the engine
-    engineHSType: string; // Type of HeatSinks on the engine: "Heat Sink", "Double Heat Sink", "Laser Heat Sink", etc...
+    engineHSType: string | null; // Type of HeatSinks on the engine: "Heat Sink", "Double Heat Sink", "Laser Heat Sink", etc...
     source: string[]; // Sourcebook abbreviations exported from units.json.
     published: string[]; // Record sheet source(s), e.g. "RS:AS".
     canon: boolean; // True if the unit is canon, false if is not (e.g. alt-universe or april fools units)
     role: string;
     armorType: string;
-    structureType: string;
+    structureType: string | null;
     armor: number;
     armorPer: number; // Armor %
     internal: number;
@@ -259,6 +185,7 @@ export interface Unit {
     run: number; // Without MASC systems
     run2: number; // Max possible
     jump: number;
+    jump2: number; // Max possible
     umu: number; // UMU movement points
     c3: string;
     dpt: number; // Damage per Turn, weighted on heat

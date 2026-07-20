@@ -491,7 +491,7 @@ export class CBTPrintUtil {
                 <td class="col-bv is-numeric is-bold">${this.formatNumber(forceUnit.getBv())}</td>
                 <td class="col-tons is-numeric">${this.formatNumber(unit.tons)}</td>
                 <td class="col-year">${this.createYearValue(unit)}</td>
-                <td class="col-rules">${this.escapeHtml(this.formatTechBase(unit.techBase))}<br/>${this.escapeHtml(this.formatNumber(unit.level))}</td>
+                <td class="col-rules">${this.escapeHtml(this.formatTechBase(unit.techBase))}<br/>${this.escapeHtml(unit.level)}</td>
                 <td class="col-move">${this.escapeHtml(this.formatMovement(unit))}</td>
                 <td class="col-as is-numeric">${this.escapeHtml(this.formatArmorStructure(unit))}</td>
                 <td class="col-firepower is-numeric">${this.escapeHtml(this.formatNumber(unit._mdSumNoPhysical) || '—')}<br/>(${this.escapeHtml(this.formatNumber(unit.dpt) || '—')})</td>

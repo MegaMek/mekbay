@@ -16,7 +16,7 @@ function createUnit(name: string): Unit {
         bv: 1000,
         pv: 35,
         cost: 1000000,
-        level: 2,
+        level: 'Standard',
         techBase: 'Clan',
         techRating: 'F',
         subtype: 'BattleMek Omni',

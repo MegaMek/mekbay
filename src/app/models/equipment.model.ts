@@ -31,7 +31,22 @@
  * affiliated with Microsoft.
  */
 
-import { TechBaseAvailability } from './tech.model';
+import type { BaseEntity } from './entity/base-entity';
+import {
+    ComponentTechLevel,
+    CompoundTechLevel,
+    EntityTechBase,
+    EquipmentTechBase,
+    TechData,
+    calculateCompoundTechLevel,
+    calculateTechLevel,
+    isTechnologyAvailable,
+} from './entity/types/tech';
+import {
+    decodeEquipmentTechData,
+    type WireEquipmentTechData,
+} from './equipment-tech-codec';
+import { getNumCriticalSlots } from './entity/utils/equipment-helpers';
 import type { MountedEquipment } from './mounted-equipment.model';
 import type { Unit } from './units.model';
 import { AmmoValidityUtil } from '../utils/ammo-validity.util';
@@ -44,9 +59,29 @@ import { AmmoValidityUtil } from '../utils/ammo-validity.util';
 // Type Definitions
 // ============================================================================
 
-export type EquipmentType = 'weapon' | 'ammo' | 'misc' | 'armor';
-export type TechLevel = 'Introductory' | 'Standard' | 'Advanced' | 'Experimental' | 'Unofficial';
+export type EquipmentType = 'weapon' | 'ammo' | 'misc' | 'armor' | 'structure';
 export type RangeBrackets = 'short' | 'medium' | 'long' | 'extreme';
+export type WeaponCategory = 'energy' | 'missile' | 'ballistic' | 'artillery' | 'other';
+
+export type WeaponDamageProfile =
+    | { kind: 'fixed'; damage: number; maximum: number; perShot: boolean }
+    | { kind: 'missile-cluster'; damagePerMissile: number; maximum: number }
+    | { kind: 'cluster'; damage: number | 'Cluster' | 'Special'; maximum: number }
+    | { kind: 'artillery'; damage: number; maximum: number }
+    | { kind: 'range'; damage: readonly number[]; maximum: number }
+    | { kind: 'variable'; maximum: number }
+    | { kind: 'special'; maximum: 0 };
+
+export interface WeaponCharacteristics {
+    readonly name: string;
+    readonly heat: number;
+    readonly category: WeaponCategory;
+    readonly ranges: readonly number[];
+    readonly minimumRange: number;
+    readonly damage: WeaponDamageProfile;
+    readonly hitModifiers: readonly number[];
+    readonly oneShotCount?: 1 | 2;
+}
 
 // ============================================================================
 // Ammo Types
@@ -201,39 +236,11 @@ export function getAmmoCategory(type: AmmoType): AmmoCategory {
 // Interfaces
 // ============================================================================
 
-export interface TechAvailability {
-    sl?: string;      // Star League
-    sw?: string;      // Succession Wars
-    clan?: string;    // Clan Invasion
-    da?: string;      // Dark Age
-}
-
-export interface TechAdvancementDates {
-    prototype?: string;
-    production?: string;
-    common?: string;
-    extinct?: string;
-    reintroduced?: string;
-}
-
-export interface TechAdvancement {
-    is?: TechAdvancementDates;
-    clan?: TechAdvancementDates;
-}
-
-export interface TechData {
-    base: TechBaseAvailability;
-    rating: string;
-    level: TechLevel;
-    availability: TechAvailability;
-    advancement: TechAdvancement;
-}
-
 export interface EquipmentStats {
-    tonnage: number;
-    cost: number;
-    bv: number;
-    criticalSlots: number;
+    tonnage: number | "variable";
+    cost: number | "variable";
+    bv: number | "variable";
+    criticalSlots: number | "variable";
     tankSlots: number;
     svSlots: number; // if 
     hittable: boolean;
@@ -291,6 +298,10 @@ export interface MiscData {
     industrial: boolean;
 }
 
+export interface StructureData {
+    typeId: number;
+}
+
 export interface ArmorData {
     type: string;
     typeId?: number;
@@ -315,7 +326,7 @@ export interface EquipmentRawData {
     rulesRefs?: string;
     aliases?: string[];
     stats?: Partial<EquipmentStats>;
-    tech?: Partial<TechData>;
+    tech?: Partial<WireEquipmentTechData>;
     type: EquipmentType;
     flags?: string[];
     modes?: string[];
@@ -323,6 +334,7 @@ export interface EquipmentRawData {
     infantry?: Partial<InfantryData>;
     ammo?: Partial<AmmoData>;
     misc?: Partial<MiscData>;
+    structure?: Partial<StructureData>;
     armor?: Partial<ArmorData>;
 }
 
@@ -331,13 +343,6 @@ export type EquipmentMap = Record<string, Equipment>;
 
 /** Raw equipment indexed by internal name */
 export type RawEquipmentMap = Record<string, EquipmentRawData>;
-
-/** Equipment data structure (matches JSON format) */
-export interface EquipmentData {
-    version: string;
-    etag?: string;
-    equipment: EquipmentMap;
-}
 
 /** Raw equipment data from JSON file */
 export interface RawEquipmentData {
@@ -358,10 +363,15 @@ const STATS_DEFAULTS: Record<EquipmentType, EquipmentStats> = {
     },
     ammo: {
         tonnage: 1.0, cost: 0, bv: 0, criticalSlots: 1, tankSlots: 0, svSlots: -1,
-        hittable: true, spreadable: false, explosive: true, omniFixedOnly: false,
+        hittable: true, spreadable: false, explosive: false, omniFixedOnly: false,
         instantModeSwitch: false, toHitModifier: 0
     },
     misc: {
+        tonnage: 0, cost: 0, bv: 0, criticalSlots: 0, tankSlots: 1, svSlots: -1,
+        hittable: true, spreadable: false, explosive: false, omniFixedOnly: false,
+        instantModeSwitch: true, toHitModifier: 0
+    },
+    structure: {
         tonnage: 0, cost: 0, bv: 0, criticalSlots: 0, tankSlots: 1, svSlots: -1,
         hittable: true, spreadable: false, explosive: false, omniFixedOnly: false,
         instantModeSwitch: true, toHitModifier: 0
@@ -398,7 +408,7 @@ const ARMOR_DEFAULTS: ArmorData = {
     weightPerPointSV: {}
 };
 
-const TECH_DEFAULTS: TechData = {
+const WIRE_TECH_DEFAULTS: WireEquipmentTechData = {
     base: 'IS', rating: 'C', level: 'Standard', availability: {}, advancement: {}
 };
 
@@ -461,22 +471,42 @@ export class Equipment {
         this.type = data.type;
         this.modes = data.modes ?? [];
         this.stats = merge(STATS_DEFAULTS[data.type], data.stats);
-        this.tech = merge(TECH_DEFAULTS, data.tech);
+        this.tech = decodeEquipmentTechData(merge(WIRE_TECH_DEFAULTS, data.tech));
         this.flags = new Set(data.flags ?? []);
     }
 
     // Convenience accessors for common stats
     get internalName(): string { return this.id; }
-    get tonnage(): number { return this.stats.tonnage; }
-    get cost(): number { return this.stats.cost; }
-    get bv(): number { return this.stats.bv; }
-    get critSlots(): number { return this.stats.criticalSlots; }
+    get tonnage(): number | "variable" { return this.stats.tonnage; }
+    get cost(): number | "variable" { return this.stats.cost; }
+    get bv(): number | "variable" { return this.stats.bv; }
+    get critSlots(): number | "variable" { return this.stats.criticalSlots; }
     get svSlots(): number { return this.stats.svSlots; }
     get tankSlots(): number { return this.stats.tankSlots; }
-    get techBase(): TechBaseAvailability { return this.tech.base; }
-    get level(): TechLevel { return this.tech.level; }
+    get techBase(): EquipmentTechBase { return this.tech.base; }
+    get level(): ComponentTechLevel { return this.tech.level; }
     get rating(): string { return this.tech.rating; }
-    get availability(): String { return [this.tech.availability.sl??'X', this.tech.availability.sw??'X', this.tech.availability.clan??'X', this.tech.availability.da??'X'].join('-'); }
+    get availability(): String { return [this.tech.availability.sl ?? 'X', this.tech.availability.sw ?? 'X', this.tech.availability.clan ?? 'X', this.tech.availability.da ?? 'X'].join('-'); }
+    getTechLevel(year: number, techBase: EntityTechBase, faction?: string): ComponentTechLevel {
+        return calculateTechLevel(
+            { level: this.level, dates: this.tech.advancement },
+            { year, techBase, faction },
+        );
+    }
+    getCompoundTechLevel(year: number, techBase: EntityTechBase, faction?: string): CompoundTechLevel {
+        return calculateCompoundTechLevel(
+            { level: this.level, dates: this.tech.advancement },
+            { year, techBase, faction },
+        );
+    }
+    isAvailableIn(year: number, techBase: EntityTechBase, faction?: string): boolean {
+        return isTechnologyAvailable(
+            { level: this.level, dates: this.tech.advancement },
+            { year, techBase, faction },
+        );
+    }
+    get isSpreadable(): boolean { return this.stats.spreadable; }
+    get isInternalRepresentation(): boolean { return this.hasFlag('INTERNAL_REPRESENTATION'); }
 
     getToHitModifier(range?: RangeBrackets | null): number {
         const modifier = this.stats.toHitModifier;
@@ -496,6 +526,14 @@ export class Equipment {
     hasAnyFlag(flags: string[]): boolean { return flags.some(f => this.flags.has(f)); }
     hasAllFlags(flags: string[]): boolean { return flags.every(f => this.flags.has(f)); }
     hasMode(mode: string): boolean { return this.modes.includes(mode); }
+    getNumCriticalSlots(entity: BaseEntity, size: number = 1): number | undefined {
+        return getNumCriticalSlots(entity, this, size);
+    }
+
+    canSplit() {
+        return this.hasFlag('F_CAN_BE_SPlIT_ACROSS_CRITICAL_SLOTS');
+    }
+
 }
 
 // ============================================================================
@@ -528,6 +566,7 @@ export class WeaponEquipment extends Equipment {
     get ammoType(): AmmoType { return this.weapon.ammoType; }
     get ranges(): number[] { return this.weapon.ranges; }
     get minRange(): number { return this.weapon.minRange; }
+    get minimumRange(): number { return Math.max(0, this.weapon.minRange); }
     get maxRangeBracket(): RangeBrackets { return this.weapon.maxRangeBracket; }
     get capital(): boolean { return this.weapon.capital; }
     get subCapital(): boolean { return this.weapon.subCapital; }
@@ -536,10 +575,83 @@ export class WeaponEquipment extends Equipment {
         return this.weapon.ranges.every(r => r === 0);
     }
 
-    isInfantryWeapon(): boolean {
+    isInfantryWeapon(): this is this & { readonly infantry: InfantryData } {
         return this.hasFlag('F_INFANTRY') && this.infantry !== undefined;
     }
+
+    override canSplit(): boolean {
+        return (typeof this.stats.criticalSlots === 'number' && this.stats.criticalSlots >= 8) || super.canSplit();
+    }
+
+    get oneShotCount(): 1 | 2 | undefined {
+        if (this.hasFlag('F_DOUBLE_ONE_SHOT')) return 2;
+        if (this.hasFlag('F_ONE_SHOT')) return 1;
+        return undefined;
+    }
+
+    get characteristics(): WeaponCharacteristics {
+        return {
+            name: this.shortName,
+            heat: this.heat,
+            category: this.getWeaponCategory(),
+            ranges: this.ranges,
+            minimumRange: this.minimumRange,
+            damage: this.getDamageProfile(),
+            hitModifiers: this.getToHitModifiers(),
+            oneShotCount: this.oneShotCount,
+        };
+    }
+
+    getWeaponCategory(): WeaponCategory {
+        const ammoCategory = getAmmoCategory(this.ammoType);
+        if (this.hasFlag('F_ENERGY') || ammoCategory === 'Energy') return 'energy';
+        if (this.hasFlag('F_ARTILLERY') || ammoCategory === 'Artillery') return 'artillery';
+        if (this.hasFlag('F_BALLISTIC') || ammoCategory === 'Ballistic') return 'ballistic';
+        if (this.hasFlag('F_MISSILE') || ammoCategory === 'Missile') return 'missile';
+        return 'other';
+    }
+
+    getDamageProfile(): WeaponDamageProfile {
+        const damage = this.damage;
+        if (damage === 'cluster') {
+            if (this.ammoType === 'HAG') {
+                return { kind: 'cluster', damage: this.rackSize, maximum: this.rackSize };
+            }
+            if (this.ammoType === 'MEK_MORTAR') {
+                return { kind: 'cluster', damage: 'Special', maximum: this.rackSize };
+            }
+            const damagePerMissile = DOUBLE_DAMAGE_AMMO_TYPES.has(this.ammoType) ? 2 : 1;
+            return {
+                kind: 'missile-cluster',
+                damagePerMissile,
+                maximum: this.rackSize * damagePerMissile,
+            };
+        }
+        if (damage === 'artillery') {
+            return { kind: 'artillery', damage: this.rackSize, maximum: this.rackSize };
+        }
+        if (damage === 'variable') {
+            return { kind: 'variable', maximum: 0 };
+        }
+        if (Array.isArray(damage)) {
+            return { kind: 'range', damage, maximum: Math.max(0, ...damage) };
+        }
+        if (typeof damage !== 'number' || damage < 0) {
+            return { kind: 'special', maximum: 0 };
+        }
+
+        const perShot = this.ammoType === 'AC_ULTRA' || this.ammoType === 'AC_ULTRA_THB';
+        const multiplier = this.ammoType === 'AC_ROTARY' ? 6 : perShot ? 2 : 1;
+        return { kind: 'fixed', damage, maximum: damage * multiplier, perShot };
+    }
 }
+
+/** A weapon definition validated as a conventional infantry weapon. */
+export type InfantryWeaponEquipment = WeaponEquipment & { readonly infantry: InfantryData };
+
+const DOUBLE_DAMAGE_AMMO_TYPES = new Set<AmmoType>([
+    'SRM', 'SRM_TORPEDO', 'SRM_STREAK', 'SRM_ADVANCED', 'SRM_IMP', 'MML',
+]);
 
 // ============================================================================
 // Ammo Equipment Class
@@ -592,8 +704,8 @@ export class AmmoEquipment extends Equipment {
 export class MiscEquipment extends Equipment {
     readonly misc: MiscData;
 
-    constructor(data: EquipmentRawData) {
-        super({ ...data, type: 'misc' });
+    constructor(data: EquipmentRawData, equipmentType: 'misc' | 'structure' = 'misc') {
+        super({ ...data, type: equipmentType });
         this.misc = merge(MISC_DEFAULTS, data.misc);
     }
 
@@ -601,6 +713,40 @@ export class MiscEquipment extends Equipment {
     get baseDamageAbsorptionRate(): number { return this.misc.baseDamageAbsorptionRate; }
     get baseDamageCapacity(): number { return this.misc.baseDamageCapacity; }
     get industrial(): boolean { return this.misc.industrial; }
+    /** Heat generated while operating, equivalent to MegaMek's MiscType.getHeat(). */
+    get operatingHeat(): number {
+        if (this.hasAnyFlag(['F_NULL_SIG', 'F_VOID_SIG'])) return 10;
+        if (this.hasFlag('F_MOBILE_HPG')) return this.hasFlag('F_MEK_EQUIPMENT') ? 20 : 40;
+        if (this.hasFlag('F_CHAMELEON_SHIELD')) return 6;
+        if (this.hasAnyFlag(['F_VIRAL_JAMMER_DECOY', 'F_VIRAL_JAMMER_HOMING'])) return 12;
+        if (this.hasFlag('F_RISC_LASER_PULSE_MODULE')
+            || this.hasFlag('F_NOVA')
+            || this.hasAllFlags(['F_CLUB', 'S_SPOT_WELDER'])) return 2;
+        if (this.hasFlag('F_CLUB')) {
+            if (this.hasFlag('S_VIBRO_SMALL')) return 3;
+            if (this.hasFlag('S_VIBRO_MEDIUM')) return 5;
+            if (this.hasFlag('S_VIBRO_LARGE')) return 7;
+        }
+        return 0;
+    }
+    get isArmorKit(): boolean { return this.hasFlag('F_ARMOR_KIT'); }
+    get isHeatSink(): boolean {
+        return this.hasAnyFlag(['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE']);
+    }
+    get isCompactHeatSink(): boolean { return this.hasFlag('F_COMPACT_HEAT_SINK'); }
+    get heatSinkUnitsPerMount(): number {
+        if (!this.isHeatSink) return 0;
+        return this.isCompactHeatSink && this.hasFlag('F_DOUBLE_HEAT_SINK') ? 2 : 1;
+    }
+}
+
+export class StructureEquipment extends MiscEquipment {
+    readonly structureTypeId: number;
+
+    constructor(data: EquipmentRawData) {
+        super(data, 'structure');
+        this.structureTypeId = data.structure?.typeId ?? -1;
+    }
 }
 
 // ============================================================================
@@ -626,6 +772,10 @@ export class ArmorEquipment extends Equipment {
     get pptDropship(): number[] { return this.armor.pptDropship; }
     get pptCapital(): number[] { return this.armor.pptCapital; }
     get weightPerPointSV(): Record<string, number> { return this.armor.weightPerPointSV; }
+
+    override get isSpreadable(): boolean {
+        return true;
+    }
 }
 
 // ============================================================================
@@ -636,26 +786,12 @@ const EQUIPMENT_CONSTRUCTORS: Record<EquipmentType, new (data: EquipmentRawData)
     weapon: WeaponEquipment,
     ammo: AmmoEquipment,
     misc: MiscEquipment,
-    armor: ArmorEquipment
+    armor: ArmorEquipment,
+    structure: StructureEquipment
 };
 
 /** Creates the appropriate Equipment subclass based on type */
 export function createEquipment(data: EquipmentRawData): Equipment {
     const Constructor = EQUIPMENT_CONSTRUCTORS[data.type] ?? Equipment;
     return new Constructor(data);
-}
-
-/** Parse raw equipment JSON data into EquipmentData with instantiated classes */
-export function parseEquipmentData(rawData: RawEquipmentData): EquipmentData {
-    const result: EquipmentData = {
-        version: rawData.version,
-        etag: rawData.etag,
-        equipment: {}
-    };
-    for (const [unitType, equipmentForType] of Object.entries(rawData.equipment)) {
-        for (const [id, raw] of Object.entries(equipmentForType)) {
-            result.equipment[id] = createEquipment(raw);
-        }
-    }
-    return result;
 }

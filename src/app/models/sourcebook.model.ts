@@ -45,6 +45,14 @@ export interface Sourcebook {
     canon: boolean;
 }
 
+export interface UnknownSourcebookReference {
+    readonly abbrev: string;
+    readonly canon: false;
+    readonly unresolved: true;
+}
+
+export type SourcebookReference = Sourcebook | UnknownSourcebookReference;
+
 export interface Sourcebooks {
     etag: string;
     sourcebooks: Sourcebook[];
