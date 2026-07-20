@@ -54,7 +54,7 @@ describe('battle value family dispatch', () => {
       weapon: { ammoType: 'NA', heat: 0 }, flags: ['F_ENERGY'],
     });
     entity.setEquipment([mount(laser)]);
-    const bv = getBVCalculator(entity).calculateBV();
+    const bv = getBVCalculator(entity).calculateBaseBV();
     expect(bv).toBeGreaterThan(0);
     expect(bv).not.toBe(9999);
   });

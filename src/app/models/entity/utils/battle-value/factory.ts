@@ -34,5 +34,5 @@ export function getBVCalculator(entity: BaseEntity): BVCalculator {
 }
 
 export function calculateBattleValue(entity: BaseEntity): number {
-  return getBVCalculator(entity).calculateBV({ ignoreC3: false, ignoreSkill: true });
+  return getBVCalculator(entity).calculateBaseBV();
 }

@@ -104,7 +104,7 @@ export function getOffensiveSpeedFactor(entity: BaseEntity): number {
 }
 
 export { calculateBattleValue, getBVCalculator } from './battle-value/factory';
-export type { BattleValueBreakdown, BattleValueContext } from './battle-value/bv-calculator';
+export type { BattleValueBreakdown } from './battle-value/bv-calculator';
 export {
   BVCalculator,
 } from './battle-value/bv-calculator';
