@@ -338,9 +338,15 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     protected readonly baseCrewStateControls: readonly CrewStateControlDefinition[] = [];
     readonly locationConditionControls: readonly LocationConditionControl[] = [];
     protected readonly crewStateDisplayDefinitions: readonly CrewStateDefinition[] = [];
-    protected readonly abandoned: Signal<boolean> = signal(false);
-    protected readonly immobile: Signal<boolean> = signal(false);
-    protected readonly crippled: Signal<boolean> = signal(false);
+    protected readonly abandoned = computed<boolean>(() => {
+        return false;
+    });
+    protected readonly crippled = computed<boolean>(() => {
+        return false;
+    });
+    protected readonly immobile = computed<boolean>(() => {
+        return false;
+    });
 
     get conditionControls(): readonly UnitConditionControl[] {
         if (!this.hasDroneOperatingSystem()) return this.baseConditionControls;
