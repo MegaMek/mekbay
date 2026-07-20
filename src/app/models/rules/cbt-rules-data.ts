@@ -10,7 +10,7 @@ export type CBTRulesId = Options['CBTRules'];
 
 export interface CBTRulesData {
     readonly physicalBaseHitModifiers: Readonly<Record<string, number | 'Vs'>>;
-    readonly mascSequenceLabels: readonly string[];
+    readonly escalatingFailureLabels: readonly string[];
     readonly targeting: {
         readonly skidding: boolean;
         readonly secondaryTargetSideBack: boolean;
@@ -32,7 +32,7 @@ export const CORE_2026_RULES_DATA: CBTRulesData = {
         'dfa [talons]': 'Vs',
         'airmech ram': 'Vs',
     },
-    mascSequenceLabels: ['3+', '5+', '7+', '10+', '11+'],
+    escalatingFailureLabels: ['3+', '5+', '7+', '10+', '11+'],
     targeting: {
         skidding: false,
         secondaryTargetSideBack: false,
@@ -48,7 +48,7 @@ export const TW_RULES_DATA: CBTRulesData = {
         kick: -2,
         'kick [talons]': -2,
     },
-    mascSequenceLabels: ['3+', '5+', '7+', '11+', '!!'],
+    escalatingFailureLabels: ['3+', '5+', '7+', '11+', '!!'],
     targeting: {
         skidding: true,
         secondaryTargetSideBack: true,

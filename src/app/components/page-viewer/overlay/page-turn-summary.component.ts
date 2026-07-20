@@ -55,7 +55,7 @@ import { ToastService } from '../../../services/toast.service';
 import { DialogsService } from '../../../services/dialogs.service';
 import { DataService } from '../../../services/data.service';
 import type { MountedEquipment } from '../../../models/force-serialization';
-import { isMascActive } from '../../../equipment-handlers/masc.handler';
+import { MascHandler } from '../../../equipment-handlers/masc.handler';
 
 interface MascControlRow {
     entry: MountedEquipment;
@@ -225,7 +225,7 @@ export class PageTurnSummaryPanelComponent {
         return unit.getInventory()
             .filter(entry => entry.equipment?.flags?.has('F_MASC'))
             .map(entry => {
-                const active = isMascActive(entry);
+                const active = MascHandler.isActive(entry);
                 const damaged = entry.resolvedDestroyed();
                 return {
                     entry,

@@ -3,13 +3,9 @@ import { MountedEquipment } from '../models/force-serialization';
 import { CORE_2026_RULES_DATA } from '../models/rules/cbt-rules-data';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import {
-    canUseMascHandler,
-    isMascActive,
     MASC_ACTIVE_STATE_KEY,
-    getMascSequenceState,
     MASC_SEQUENCE_STATE_KEY,
     MascHandler,
-    setMascSequenceState,
 } from './masc.handler';
 
 function owner(
@@ -61,8 +57,8 @@ describe('MascHandler', () => {
             { label: '3+', disabled: false, active: false, displayType: 'toggle' },
             { label: '5+', disabled: true, active: false, displayType: 'toggle' },
             { label: '7+', disabled: true, active: false, displayType: 'toggle' },
+            { label: '10+', disabled: true, active: false, displayType: 'toggle' },
             { label: '11+', disabled: true, active: false, displayType: 'toggle' },
-            { label: '!!', disabled: true, active: false, displayType: 'toggle' },
         ]);
     });
 
@@ -78,8 +74,8 @@ describe('MascHandler', () => {
 
         handler.handleSelection(entry, handler.getChoices(entry, context())[0], context());
 
-        expect(getMascSequenceState(entry)).toBe(1);
-        expect(isMascActive(entry)).toBeTrue();
+        expect(MascHandler.getSequenceState(entry)).toBe(1);
+        expect(handler.isActive(entry)).toBeTrue();
         expect(handler.getChoices(entry, context()).map(choice => ({ disabled: choice.disabled, active: choice.active }))).toEqual([
             { disabled: false, active: true },
             { disabled: false, active: false },
@@ -92,7 +88,7 @@ describe('MascHandler', () => {
 
     it('uses muted tone for previous buttons and inactive current button', () => {
         const entry = mascEntry();
-        setMascSequenceState(entry, 3);
+        MascHandler.setSequenceState(entry, 3);
 
         expect(handler.getChoices(entry, context()).map(choice => ({ active: choice.active, tone: choice.selectionTone }))).toEqual([
             { active: true, tone: 'muted' },
@@ -115,37 +111,37 @@ describe('MascHandler', () => {
 
     it('turns off active state when the current sequence button is clicked again', () => {
         const entry = mascEntry();
-        setMascSequenceState(entry, 3);
+        MascHandler.setSequenceState(entry, 3);
         entry.setState(MASC_ACTIVE_STATE_KEY, 'true');
 
         handler.handleSelection(entry, handler.getChoices(entry, context())[2], context());
 
-        expect(getMascSequenceState(entry)).toBe(3);
-        expect(isMascActive(entry)).toBeFalse();
+        expect(MascHandler.getSequenceState(entry)).toBe(3);
+        expect(handler.isActive(entry)).toBeFalse();
     });
 
     it('truncates the sequence and clears active state when a previous button is clicked', () => {
         const entry = mascEntry();
-        setMascSequenceState(entry, 3);
+        MascHandler.setSequenceState(entry, 3);
         entry.setState(MASC_ACTIVE_STATE_KEY, 'true');
 
         handler.handleSelection(entry, handler.getChoices(entry, context())[0], context());
 
-        expect(getMascSequenceState(entry)).toBe(1);
-        expect(isMascActive(entry)).toBeFalse();
+        expect(MascHandler.getSequenceState(entry)).toBe(1);
+        expect(handler.isActive(entry)).toBeFalse();
     });
 
     it('hides Jet Booster choices when the unit is not airborne', () => {
         const entry = mascEntry(['F_MASC', 'F_JET_BOOSTER'], false);
 
-        expect(canUseMascHandler(entry)).toBeFalse();
+        expect(MascHandler.canUseHandler(entry)).toBeFalse();
         expect(handler.getChoices(entry, context())).toEqual([]);
     });
 
     it('allows Jet Booster choices when the unit is airborne', () => {
         const entry = mascEntry(['F_MASC', 'F_JET_BOOSTER'], true);
 
-        expect(canUseMascHandler(entry)).toBeTrue();
+        expect(MascHandler.canUseHandler(entry)).toBeTrue();
         expect(handler.getChoices(entry, context()).length).toBe(5);
     });
 
@@ -154,8 +150,8 @@ describe('MascHandler', () => {
 
         handler.handleSelection(entry, { label: '3+', value: 0, displayType: 'toggle' }, context());
 
-        expect(getMascSequenceState(entry)).toBe(0);
-        expect(isMascActive(entry)).toBeFalse();
+        expect(MascHandler.getSequenceState(entry)).toBe(0);
+        expect(handler.isActive(entry)).toBeFalse();
     });
 
     it('adds a run movement multiplier bonus while active', () => {
@@ -180,13 +176,13 @@ describe('MascHandler', () => {
 
     it('resets active state at end turn without changing sequence state', () => {
         const entry = mascEntry();
-        setMascSequenceState(entry, 2);
+        MascHandler.setSequenceState(entry, 2);
         entry.setState(MASC_ACTIVE_STATE_KEY, 'true');
 
         handler.onEndTurn(entry, context());
 
-        expect(getMascSequenceState(entry)).toBe(2);
-        expect(isMascActive(entry)).toBeFalse();
+        expect(MascHandler.getSequenceState(entry)).toBe(2);
+        expect(handler.isActive(entry)).toBeFalse();
         expect(entry.states.has(MASC_SEQUENCE_STATE_KEY)).toBeTrue();
     });
 
@@ -195,7 +191,7 @@ describe('MascHandler', () => {
 
         handler.handleSelection(entry, handler.getChoices(entry, context())[2], context());
 
-        expect(getMascSequenceState(entry)).toBe(0);
+        expect(MascHandler.getSequenceState(entry)).toBe(0);
     });
 
     it('disables every button when the equipment is unavailable', () => {
