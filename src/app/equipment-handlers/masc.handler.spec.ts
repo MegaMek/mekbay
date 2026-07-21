@@ -1,6 +1,7 @@
 import { MiscEquipment } from '../models/equipment.model';
 import { MountedEquipment } from '../models/force-serialization';
 import { CORE_2026_RULES_DATA } from '../models/rules/cbt-rules-data';
+import { ENTRY_DISABLED_STATE_KEY } from '../models/rules/unit-type-rules';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import {
     MASC_ACTIVE_STATE_KEY,
@@ -42,9 +43,10 @@ function mascEntry(
     });
 }
 
-function context(): HandlerContext {
+function context(choiceSurface: HandlerContext['choiceSurface'] = 'turn-summary'): HandlerContext {
     return {
         toastService: { showToast: jasmine.createSpy('showToast') },
+        choiceSurface,
     } as unknown as HandlerContext;
 }
 
@@ -54,19 +56,20 @@ describe('MascHandler', () => {
     it('starts with only the first sequence button clickable', () => {
         const choices = handler.getChoices(mascEntry(), context());
 
-        expect(choices.map(choice => ({ label: choice.label, disabled: choice.disabled, active: choice.active, displayType: choice.displayType }))).toEqual([
+        expect(choices.slice(0, 5).map(choice => ({ label: choice.label, disabled: choice.disabled, active: choice.active, displayType: choice.displayType }))).toEqual([
             { label: '3+', disabled: false, active: false, displayType: 'toggle' },
             { label: '5+', disabled: true, active: false, displayType: 'toggle' },
             { label: '7+', disabled: true, active: false, displayType: 'toggle' },
             { label: '10+', disabled: true, active: false, displayType: 'toggle' },
             { label: '11+', disabled: true, active: false, displayType: 'toggle' },
         ]);
+        expect(choices[5]).toEqual(jasmine.objectContaining({ label: '✖', shortLabel: '✖' }));
     });
 
     it('uses the Core2026 sequence progression for Core2026 units', () => {
         const choices = handler.getChoices(mascEntry(['F_MASC'], null, {}, CORE_2026_RULES_DATA), context());
 
-        expect(choices.map(choice => choice.label)).toEqual(['3+', '5+', '7+', '10+', '11+']);
+        expect(choices.slice(0, 5).map(choice => choice.label)).toEqual(['3+', '5+', '7+', '10+', '11+']);
         expect(choices[4].colors).toEqual(jasmine.objectContaining({ selected: 'var(--bt-yellow)' }));
     });
 
@@ -77,21 +80,21 @@ describe('MascHandler', () => {
 
         expect(MascHandler.getSequenceState(entry)).toBe(1);
         expect(handler.isActive(entry)).toBeTrue();
-        expect(handler.getChoices(entry, context()).map(choice => ({ disabled: choice.disabled, active: choice.active }))).toEqual([
+        expect(handler.getChoices(entry, context()).slice(0, 5).map(choice => ({ disabled: choice.disabled, active: choice.active }))).toEqual([
             { disabled: false, active: true },
             { disabled: false, active: false },
             { disabled: true, active: false },
             { disabled: true, active: false },
             { disabled: true, active: false },
         ]);
-        expect(handler.getChoices(entry, context()).map(choice => choice.selectionTone)).toEqual(['selected', 'muted', 'muted', 'muted', 'muted']);
+        expect(handler.getChoices(entry, context()).slice(0, 5).map(choice => choice.selectionTone)).toEqual(['selected', 'muted', 'muted', 'muted', 'muted']);
     });
 
     it('uses muted tone for previous buttons and inactive current button', () => {
         const entry = mascEntry();
         MascHandler.setSequenceState(entry, 3);
 
-        expect(handler.getChoices(entry, context()).map(choice => ({ active: choice.active, tone: choice.selectionTone }))).toEqual([
+        expect(handler.getChoices(entry, context()).slice(0, 5).map(choice => ({ active: choice.active, tone: choice.selectionTone }))).toEqual([
             { active: true, tone: 'muted' },
             { active: true, tone: 'muted' },
             { active: true, tone: 'muted' },
@@ -101,7 +104,7 @@ describe('MascHandler', () => {
 
         entry.setState(MASC_ACTIVE_STATE_KEY, 'true');
 
-        expect(handler.getChoices(entry, context()).map(choice => ({ active: choice.active, tone: choice.selectionTone }))).toEqual([
+        expect(handler.getChoices(entry, context()).slice(0, 5).map(choice => ({ active: choice.active, tone: choice.selectionTone }))).toEqual([
             { active: true, tone: 'muted' },
             { active: true, tone: 'muted' },
             { active: true, tone: 'selected' },
@@ -143,7 +146,7 @@ describe('MascHandler', () => {
         const entry = mascEntry(['F_MASC', 'F_JET_BOOSTER'], true);
 
         expect(MascHandler.canUseHandler(entry)).toBeTrue();
-        expect(handler.getChoices(entry, context()).length).toBe(5);
+        expect(handler.getChoices(entry, context()).length).toBe(6);
     });
 
     it('ignores Jet Booster selections when the unit is not airborne', () => {
@@ -173,6 +176,14 @@ describe('MascHandler', () => {
 
         expect(handler.getRunMovementMultiplierBonus(groundedEntry, groundedEntry.owner.turnState())).toBe(0);
         expect(handler.getRunMovementMultiplierBonus(airborneEntry, airborneEntry.owner.turnState())).toBe(0.5);
+    });
+
+    it('does not add a movement bonus while disabled', () => {
+        const entry = mascEntry();
+        entry.setState(MASC_ACTIVE_STATE_KEY, 'true');
+        entry.setState(ENTRY_DISABLED_STATE_KEY, 'true');
+
+        expect(handler.getRunMovementMultiplierBonus(entry, entry.owner.turnState())).toBe(0);
     });
 
     it('resets active state at end turn without changing sequence state', () => {
@@ -210,6 +221,54 @@ describe('MascHandler', () => {
 
         expect(MascHandler.getSequenceState(entry)).toBe(0);
         expect(entry.owner.setInventoryEntry).not.toHaveBeenCalled();
+    });
+
+    it('uses text labels normally and an icon in the turn summary', () => {
+        const entry = mascEntry();
+
+        expect(handler.getChoices(entry, context('inventory')).at(-1)).toEqual(jasmine.objectContaining({
+            label: 'Operational',
+            value: 'escalating-failure-disabled',
+        }));
+        expect(handler.getChoices(entry, context('turn-summary'))).toHaveSize(6);
+        expect(handler.getChoices(entry, context('turn-summary')).at(-1)).toEqual(jasmine.objectContaining({
+            label: '✖',
+            value: 'escalating-failure-disabled',
+        }));
+
+        entry.setState(ENTRY_DISABLED_STATE_KEY, 'true');
+
+        expect(handler.getChoices(entry, context('turn-summary')).at(-1)?.colors).toEqual(
+            jasmine.objectContaining({ selectedText: '#fff' })
+        );
+    });
+
+    it('prevents state changes and end-turn decay while disabled', () => {
+        const entry = mascEntry();
+        MascHandler.setSequenceState(entry, 2);
+        entry.setState(ENTRY_DISABLED_STATE_KEY, 'true');
+
+        handler.handleSelection(entry, { label: '5+', value: 1, displayType: 'toggle' }, context());
+        handler.onEndTurn(entry, context());
+
+        expect(MascHandler.getSequenceState(entry)).toBe(2);
+        expect(handler.isActive(entry)).toBeFalse();
+    });
+
+    it('disables and re-enables escalating failure equipment', () => {
+        const entry = mascEntry();
+        const handlerContext = context('inventory');
+        entry.setState(MASC_ACTIVE_STATE_KEY, 'true');
+        const disableChoice = handler.getChoices(entry, handlerContext).at(-1)!;
+
+        handler.handleSelection(entry, disableChoice, handlerContext);
+
+        expect(entry.states.get(ENTRY_DISABLED_STATE_KEY)).toBe('true');
+        expect(handler.isActive(entry)).toBeFalse();
+
+        handler.handleSelection(entry, handler.getChoices(entry, handlerContext).at(-1)!, handlerContext);
+
+        expect(entry.states.has(ENTRY_DISABLED_STATE_KEY)).toBeFalse();
     });
 
     it('ignores locked buttons', () => {

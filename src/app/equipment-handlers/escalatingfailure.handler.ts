@@ -1,10 +1,13 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
 import type { MountedEquipment } from '../models/force-serialization';
+import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from '../models/rules/unit-type-rules';
 import type { TurnState } from '../models/turn-state.model';
 import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
+import { isEquipmentDisabledByFailure } from './disabled-equipment.handler';
 
 export const ESCALATING_FAILURE_STATE_KEY = 'escalatingFailure';
 export const ESCALATING_FAILURE_ACTIVE_STATE_KEY = 'escalatingFailureActive';
+const ESCALATING_FAILURE_DISABLED_CHOICE_VALUE = 'escalating-failure-disabled';
 export const DEFAULT_ESCALATING_FAILURE_SEQUENCE_LABELS = ['3+', '5+', '7+', '10+', '11+'] as const;
 const ESCALATING_FAILURE_CHOICE_COLORS = {
     selected: 'var(--bt-yellow)',
@@ -72,7 +75,8 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
     }
 
     protected isSequenceButtonClickable(equipment: MountedEquipment, index: number): boolean {
-        return this.canUseHandler(equipment) && !equipment.isUnavailable() && index >= 0 && index < this.getSequenceLabels(equipment).length
+        return this.canUseHandler(equipment) && !isEquipmentDisabledByFailure(equipment) && !equipment.isUnavailable()
+            && index >= 0 && index < this.getSequenceLabels(equipment).length
             && index <= this.getSequenceState(equipment);
     }
 
@@ -104,7 +108,7 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
         if (!this.canUseHandler(equipment)) return [];
         const state = this.getSequenceState(equipment);
         const active = this.isActive(equipment);
-        return this.getSequenceLabels(equipment).map((label, index) => ({
+        const sequenceChoices: PickerChoice[] = this.getSequenceLabels(equipment).map((label, index) => ({
             label,
             shortLabel: label,
             value: index,
@@ -115,10 +119,41 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
             colors: label === '!!' ? ESCALATING_FAILURE_FAILURE_CHOICE_COLORS : ESCALATING_FAILURE_CHOICE_COLORS,
             keepOpen: true,
         }));
+        const disabled = isEquipmentDisabledByFailure(equipment);
+        const toggleLabel = _context.choiceSurface === 'turn-summary'
+            ? '✖'
+            : disabled ? 'Malfunctioning' : 'Operational';
+        return [...sequenceChoices, {
+            label: toggleLabel,
+            shortLabel: toggleLabel,
+            value: ESCALATING_FAILURE_DISABLED_CHOICE_VALUE,
+            displayType: 'toggle',
+            disabled: equipment.isDestroyed(),
+            active: disabled,
+            colors: disabled ? ESCALATING_FAILURE_FAILURE_CHOICE_COLORS : undefined,
+            tooltipType: disabled ? 'error' : undefined,
+        }];
     }
 
     handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerContext): boolean {
         if (!this.canUseHandler(equipment)) return true;
+        if (choice.value === ESCALATING_FAILURE_DISABLED_CHOICE_VALUE) {
+            const disabled = isEquipmentDisabledByFailure(equipment);
+            const changed = disabled
+                ? equipment.deleteState(ENTRY_DISABLED_STATE_KEY)
+                : equipment.setState(ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE);
+            if (!disabled) this.setActive(equipment, false);
+            if (!changed) return true;
+
+            equipment.owner.setInventoryEntry(equipment);
+            context.toastService.showToast(
+                `${equipment.equipment?.name || equipment.name} ${disabled ? 'is operational' : 'has failed'}`,
+                disabled ? 'info' : 'error'
+            );
+            return true;
+        }
+        if (isEquipmentDisabledByFailure(equipment)) return true;
+
         const changed = this.toggleSequenceButton(equipment, Number(choice.value));
         if (!changed) return true;
 
@@ -132,6 +167,7 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
     }
 
     override onEndTurn(equipment: MountedEquipment, context: HandlerContext): void {
+        if (isEquipmentDisabledByFailure(equipment)) return;
         if (this.isActive(equipment)) {
             const changed = this.setActive(equipment, false);
             if (changed) {

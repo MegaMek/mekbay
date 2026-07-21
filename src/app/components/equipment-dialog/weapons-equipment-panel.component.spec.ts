@@ -492,7 +492,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(probe.states?.get('state')).toBe('enabled');
         expect(choice.label).toBe('Active Probe is ON');
         expect(choice.value).toBe('disabled');
-        expect(toastService.showToast).toHaveBeenCalledWith('Bloodhound Active Probe Active Probe is ON', 'info');
+        expect(toastService.showToast).toHaveBeenCalledWith('Bloodhound Active Probe is enabled', 'info');
     });
 
     it('splits Battle Armor trooper weapons and locks ammo to the same trooper', () => {

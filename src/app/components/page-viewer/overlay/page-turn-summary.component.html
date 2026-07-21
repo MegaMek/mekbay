@@ -59,7 +59,7 @@
             <div class="row masc-control-row" [class.damaged]="mascRow.damaged">
                 <span class="caption">{{ mascRow.label }}</span>
                 <span class="masc-controls">
-                    @for (choice of mascRow.choices; track choice.value) {
+                    @for (choice of mascRow.sequenceChoices; track choice.value) {
                     <button type="button" class="bt-button move-button masc-button"
                         [class.selected]="choice.active && choice.selectionTone !== 'muted'"
                         [class.muted-selected]="choice.active && choice.selectionTone === 'muted'"
@@ -75,6 +75,23 @@
                         (click)="handleMascChoice(mascRow, choice)">{{ choice.shortLabel || choice.label }}</button>
                     }
                 </span>
+                @if (mascRow.statusChoice; as choice) {
+                <span class="masc-status-control" [class.failed]="choice.active">
+                    <button type="button" class="bt-button move-button masc-button"
+                        [class.selected]="choice.active && choice.selectionTone !== 'muted'"
+                        [class.muted-selected]="choice.active && choice.selectionTone === 'muted'"
+                        [style.--picker-choice-normal-color]="choice.colors?.normal"
+                        [style.--picker-choice-normal-text-color]="choice.colors?.normalText"
+                        [style.--picker-choice-selected-color]="choice.colors?.selected"
+                        [style.--picker-choice-selected-text-color]="choice.colors?.selectedText"
+                        [style.--picker-choice-muted-selected-color]="choice.colors?.mutedSelected"
+                        [style.--picker-choice-muted-selected-text-color]="choice.colors?.mutedSelectedText"
+                        [style.--picker-choice-disabled-color]="choice.colors?.disabled"
+                        [style.--picker-choice-disabled-text-color]="choice.colors?.disabledText"
+                        [disabled]="choice.disabled && !choice.active" [attr.aria-pressed]="choice.active"
+                        (click)="handleMascChoice(mascRow, choice)">{{ choice.shortLabel || choice.label }}</button>
+                </span>
+                }
             </div>
             }
             }

@@ -38,6 +38,6 @@ export class StealthHandler extends ToggleHandler {
     override readonly flags = ['F_STEALTH'];
     override readonly priority = 10;
     
-    protected override readonly enabledLabel = 'Enable Stealth';
-    protected override readonly disabledLabel = 'Disable Stealth';
+    protected override readonly enabledLabel = 'Stealth Activated';
+    protected override readonly disabledLabel = 'Stealth Deactivated';
 };

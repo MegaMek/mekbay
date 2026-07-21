@@ -50,6 +50,7 @@ export interface HandlerContext {
     toastService: ToastService;
     dialogsService: DialogsService;
     dataService: DataService;
+    choiceSurface?: 'critical' | 'inventory' | 'turn-summary';
 }
 
 /**

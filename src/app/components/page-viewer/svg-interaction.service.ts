@@ -910,7 +910,8 @@ export class SvgInteractionService {
             const handlerContext = {
                 toastService: this.toastService,
                 dialogsService: this.dialogsService,
-                dataService: this.dataService
+                dataService: this.dataService,
+                choiceSurface: 'critical' as const,
             };
             let labelText = svgEl.textContent || '';
             if (svgEl.classList.contains('ammoSlot')) {

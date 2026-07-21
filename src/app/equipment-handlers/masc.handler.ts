@@ -1,6 +1,7 @@
 import type { MountedEquipment } from '../models/force-serialization';
 import type { TurnState } from '../models/turn-state.model';
-import { EscalatingFailureHandler, DEFAULT_ESCALATING_FAILURE_SEQUENCE_LABELS } from './escalatingfailure.handler';
+import { isEquipmentDisabledByFailure } from './disabled-equipment.handler';
+import { EscalatingFailureHandler } from './escalatingfailure.handler';
 
 export const MASC_SEQUENCE_STATE_KEY = 'masc';
 export const MASC_ACTIVE_STATE_KEY = 'mascActive';
@@ -42,6 +43,6 @@ export class MascHandler extends EscalatingFailureHandler {
     }
 
     override getRunMovementMultiplierBonus(equipment: MountedEquipment, turnState: TurnState): number {
-        return this.isActive(equipment) && canUseMascMovementBonus(equipment, turnState) ? 0.5 : 0;
+        return this.isActive(equipment) && !isEquipmentDisabledByFailure(equipment) && canUseMascMovementBonus(equipment, turnState) ? 0.5 : 0;
     }
 }
