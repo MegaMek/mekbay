@@ -933,10 +933,11 @@ export class CBTForceUnit extends ForceUnit {
     Any unit in the battle force equipped with TAG, Light TAG or a
     C3 Master Computer (flag F_TAG)
     adds BV equal to the BV of each ton of semi-
-    guided (flag M_SEMIGUIDED) LRM ammunition carried in the force (use the ammo BV
+    guided (flag M_SEMIGUIDED or M_HOMING) LRM ammunition carried in the force (use the ammo BV
     for the appropriate-size LRM launcher). Units whose only such
     piece of equipment is rear-mounted add half the BV instead. */
     public tagBV = computed<number>(() => {
+        if (!this.rules.rulesData.bv.tagTax) return 0;
         const components = this.getUnit().comp;
         const hasTag = components.some(c => c.eq?.hasFlag('F_TAG'));
         if (!hasTag) return 0; // No TAG, no BV
