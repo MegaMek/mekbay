@@ -42,8 +42,8 @@ export abstract class ToggleHandler extends EquipmentInteractionHandler {
     protected readonly stateKey: string = 'state';
     protected readonly enabledLabel: string = 'Enable';
     protected readonly disabledLabel: string = 'Disable';
-    protected readonly enabledToast: string = 'is enabled';
-    protected readonly disabledToast: string = 'is disabled';
+    protected readonly enabledToastVerb: string = 'enabled';
+    protected readonly disabledToastVerb: string = 'disabled';
     
     getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {
         const currentState = equipment.states?.get(this.stateKey) || 'disabled';
@@ -64,7 +64,7 @@ export abstract class ToggleHandler extends EquipmentInteractionHandler {
         equipment.states?.set(this.stateKey, newState);
         equipment.owner.setInventoryEntry(equipment);
         context.toastService.showToast(
-            `${equipment.equipment?.name||equipment.name} ${newState === 'enabled' ? this.enabledToast : this.disabledToast}`,
+            `${equipment.equipment?.name||equipment.name} is ${newState === 'enabled' ? this.enabledToastVerb : this.disabledToastVerb}`,
             'info'
         );
         return true;
