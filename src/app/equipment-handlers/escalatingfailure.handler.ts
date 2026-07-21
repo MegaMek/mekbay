@@ -1,10 +1,10 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
 import type { MountedEquipment } from '../models/force-serialization';
 import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from '../models/rules/unit-type-rules';
-import type { TurnState } from '../models/turn-state.model';
 import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
 import { isEquipmentDisabledByFailure } from './disabled-equipment.handler';
 
+export const ESCALATING_FAILURE_HANDLER_ID = 'escalating-failure-handler';
 export const ESCALATING_FAILURE_STATE_KEY = 'escalatingFailure';
 export const ESCALATING_FAILURE_ACTIVE_STATE_KEY = 'escalatingFailureActive';
 const ESCALATING_FAILURE_DISABLED_CHOICE_VALUE = 'escalating-failure-disabled';
@@ -24,7 +24,7 @@ const ESCALATING_FAILURE_FAILURE_CHOICE_COLORS = {
 };
 
 export class EscalatingFailureHandler extends EquipmentInteractionHandler {
-    readonly id: string = 'escalating-failure-handler';
+    readonly id: string = ESCALATING_FAILURE_HANDLER_ID;
     override readonly flags = ['F_ESCALATING_FAILURE'];
     override readonly priority = 10;
 

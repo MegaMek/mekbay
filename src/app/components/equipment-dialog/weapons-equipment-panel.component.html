@@ -197,7 +197,10 @@
                                                         <span class="control-label control-button">{{ choice.label }}</span>
                                                     }
                                                     @case ('toggle') {
-                                                        <button class="bt-button tiny control-button" type="button" [class.active]="choice.active" [class.muted-active]="choice.active && choice.selectionTone === 'muted'"
+                                                        <button class="bt-button tiny control-button" type="button" 
+                                                            [class.active]="choice.active" 
+                                                            [class.muted-active]="choice.active && choice.selectionTone === 'muted'" 
+                                                            [class.escalating-failure-sequence-control]="isEscalatingFailureSequenceChoice(choice)" 
                                                             [style.--picker-choice-normal-color]="choice.colors?.normal"
                                                             [style.--picker-choice-normal-text-color]="choice.colors?.normalText"
                                                             [style.--picker-choice-selected-color]="choice.colors?.selected"
@@ -209,7 +212,10 @@
                                                             [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.label }}</button>
                                                     }
                                                     @default {
-                                                        <button class="bt-button tiny control-button" type="button" [class.active]="choice.active" [class.muted-active]="choice.active && choice.selectionTone === 'muted'"
+                                                        <button class="bt-button tiny control-button" type="button" 
+                                                            [class.active]="choice.active" 
+                                                            [class.muted-active]="choice.active && choice.selectionTone === 'muted'" 
+                                                            [class.escalating-failure-sequence-control]="isEscalatingFailureSequenceChoice(choice)" 
                                                             [style.--picker-choice-normal-color]="choice.colors?.normal"
                                                             [style.--picker-choice-normal-text-color]="choice.colors?.normalText"
                                                             [style.--picker-choice-selected-color]="choice.colors?.selected"

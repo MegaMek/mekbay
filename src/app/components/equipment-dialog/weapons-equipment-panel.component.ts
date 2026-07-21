@@ -35,6 +35,8 @@ import {
     type InventoryControlRow,
     type InventoryRangeKey
 } from '../../utils/inventory-control.util';
+import { MASC_HANDLER_ID } from '../../equipment-handlers/masc.handler';
+import { ESCALATING_FAILURE_HANDLER_ID } from '../../equipment-handlers/escalatingfailure.handler';
 
 const RANGE_LABELS: Record<InventoryRangeKey, string> = {
     short: 'Sht',
@@ -899,6 +901,11 @@ export class WeaponsEquipmentPanelComponent {
     handlerChoices(row: InventoryControlRow): HandlerChoice[] {
         return this.getHandlerChoices(row)
             .filter(choice => !this.isModeChoice(choice));
+    }
+
+    isEscalatingFailureSequenceChoice(choice: HandlerChoice): boolean {
+        return (choice._handler?.id === ESCALATING_FAILURE_HANDLER_ID 
+                || choice._handler?.id === MASC_HANDLER_ID ) && typeof choice.value === 'number';
     }
 
     modeChoice(row: InventoryControlRow): HandlerChoice | undefined {

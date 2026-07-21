@@ -599,6 +599,17 @@
     }
 }
 
+.control-button.escalating-failure-sequence-control {
+    width: 32px;
+    min-width: 32px;
+    justify-content: center;
+    padding-inline: 0;
+}
+
+.control-button.escalating-failure-sequence-control + .control-button.escalating-failure-sequence-control {
+    margin-left: -4px;
+}
+
 @container (max-width: 760px) {
     .grid-fill,
     .weapon-equipment-header {
