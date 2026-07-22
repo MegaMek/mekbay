@@ -32,15 +32,26 @@
  */
 
 import { inject, Injectable, Injector } from '@angular/core';
-import { MountedEquipment, type CriticalSlot } from '../models/force-serialization';
+import { MountedAmmo, MountedEquipment } from '../models/mounted-equipment.model';
+import { type CriticalSlot } from '../models/force-serialization';
 import { DataService } from './data.service';
-import { AmmoEquipment, WeaponEquipment, type Equipment } from '../models/equipment.model';
+import { AmmoEquipment, ArmorEquipment, StructureEquipment, WeaponEquipment, type Equipment } from '../models/equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 
 /*
  * Author: Drake
  */
 export const CRITICAL_ONLY_INVENTORY_EXCLUDED_EQUIPMENT = new Set<string>();
+
+const CRITICAL_ONLY_INVENTORY_EXCLUDED_FLAGS = new Set([
+    // These are tracked through their critical slots, movement, and heat rules.
+    'F_HEAT_SINK',
+    'F_DOUBLE_HEAT_SINK',
+    'F_LASER_HEAT_SINK',
+    'F_JUMP_JET',
+    'F_CASE',
+    'F_CASE_II'
+]);
 
 @Injectable({
     providedIn: 'root'
@@ -392,7 +403,7 @@ export class UnitInitializerService {
             if (!(equipment instanceof AmmoEquipment)) return;
 
             const binCount = Math.max(1, component.q || 1);
-            const totalAmmo = component.q2 || (equipment.shots * binCount) || 0;
+            const totalAmmo = component.q2 || (equipment.getShots(unit.gameRules) * binCount) || 0;
             const baseBinAmmo = Math.floor(totalAmmo / binCount);
             const extraBinAmmo = totalAmmo % binCount;
             const locations = component.l && component.l !== '—'
@@ -403,7 +414,7 @@ export class UnitInitializerService {
                 const originalTotalAmmo = baseBinAmmo + (binIndex < extraBinAmmo ? 1 : 0);
                 const existingEntry = currentInventory.find(item => item.id === id);
 
-                inventoryEntries.push(new MountedEquipment({
+                inventoryEntries.push(new MountedAmmo({
                     owner: unit,
                     id,
                     name: component.id,
@@ -489,6 +500,8 @@ export class UnitInitializerService {
 
     private isCriticalOnlyInventoryExcluded(critSlot: CriticalSlot): boolean {
         const equipment = critSlot.eq;
+        if (equipment instanceof ArmorEquipment || equipment instanceof StructureEquipment) return true;
+        if (equipment && Array.from(equipment.flags).some(flag => CRITICAL_ONLY_INVENTORY_EXCLUDED_FLAGS.has(flag))) return true;
         return [critSlot.id, critSlot.name, equipment?.internalName, equipment?.name]
             .some(value => !!value && CRITICAL_ONLY_INVENTORY_EXCLUDED_EQUIPMENT.has(value));
     }

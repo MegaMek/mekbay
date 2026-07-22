@@ -1195,23 +1195,33 @@ export class C3NetworkUtil {
 
     // ==================== Tax Calculation ====================
 
-    public static calculateUnitC3Tax(
+    public static calculateCore2026UnitC3Tax(
         unit: CBTForceUnit,
         networks: SerializedC3NetworkGroup[],
         allUnits: CBTForceUnit[]
     ): number {
-        const c3Comps = this.getC3Components(unit.getUnit());
-        if (c3Comps.some(c => c.networkType === C3NetworkType.NOVA)) {
-            const unitsCountWithNovaCews = allUnits.filter(u => 
-                this.getC3Components(u.getUnit()).some(c => c.networkType === C3NetworkType.NOVA)
-            ).length;
-            if (unitsCountWithNovaCews < 2) return 0; // No tax if less than 2 units with Nova C3
-            const baseForceBV = allUnits.reduce((sum, u) => sum + u.getBaseBv() + u.tagBV(), 0);
-            let taxRate = unitsCountWithNovaCews * C3_TAX_RATE;
-            if (taxRate > NOVA_MAX_TAX_RATE) taxRate = NOVA_MAX_TAX_RATE;
-            // We tax the entire force base BV based on the number of Nova CEWS, to a max of 35% tax.
-            return Math.round((baseForceBV * taxRate) / unitsCountWithNovaCews); // Tax is distributed among all Nova-connected units for UI purpose.
-        }
+        const novaTax = this.calculateNovaC3Tax(unit, allUnits);
+        if (novaTax !== null) return novaTax;
+
+        const participatingNets = this.findNetworksContainingUnit(unit.id, networks);
+        if (participatingNets.length === 0) return 0;
+        const rootNet = this.getRootNetwork(participatingNets[0], networks);
+        const networkedUnits = this.getNetworkTreeUnits(rootNet, networks, allUnits);
+        if (networkedUnits.length < 2) return 0;
+
+        const networkTaxRate = Math.min(0.4, networkedUnits.length * C3_TAX_RATE);
+        const hasBoosted = this.getC3Components(unit.getUnit()).some(component => component.boosted);
+        const unitTaxRate = networkTaxRate + (hasBoosted ? C3_TAX_RATE : 0);
+        return Math.round((unit.getBaseBv() + unit.tagBV()) * unitTaxRate);
+    }
+
+    public static calculateTWUnitC3Tax(
+        unit: CBTForceUnit,
+        networks: SerializedC3NetworkGroup[],
+        allUnits: CBTForceUnit[]
+    ): number {
+        const novaTax = this.calculateNovaC3Tax(unit, allUnits);
+        if (novaTax !== null) return novaTax;
 
         const participatingNets = this.findNetworksContainingUnit(unit.id, networks);
         if (participatingNets.length === 0) return 0;
@@ -1223,6 +1233,19 @@ export class C3NetworkUtil {
         const taxRate = hasBoosted ? C3_BOOSTED_TAX_RATE : C3_TAX_RATE;
         const networkTotalBv = networkedUnits.reduce((sum, u) => sum + u.getBaseBv() + u.tagBV(), 0);
         return Math.round(networkTotalBv * taxRate);
+    }
+
+    private static calculateNovaC3Tax(unit: CBTForceUnit, allUnits: CBTForceUnit[]): number | null {
+        const c3Comps = this.getC3Components(unit.getUnit());
+        if (!c3Comps.some(component => component.networkType === C3NetworkType.NOVA)) return null;
+
+        const unitsCountWithNovaCews = allUnits.filter(candidate =>
+            this.getC3Components(candidate.getUnit()).some(component => component.networkType === C3NetworkType.NOVA)
+        ).length;
+        if (unitsCountWithNovaCews < 2) return 0;
+        const baseForceBV = allUnits.reduce((sum, candidate) => sum + candidate.getBaseBv() + candidate.tagBV(), 0);
+        const taxRate = Math.min(unitsCountWithNovaCews * C3_TAX_RATE, NOVA_MAX_TAX_RATE);
+        return Math.round((baseForceBV * taxRate) / unitsCountWithNovaCews);
     }
 
     /** Get all unique units in a network tree (including sub-networks) */

@@ -60,13 +60,13 @@ const DEFAULT_OPTIONS: Options = {
     // Classic
     sheetsColor: 'normal',
     pickerStyle: 'default',
-    quickActions: 'disabled',
     swipeToNextSheet: 'horizontal',
     recordSheetCenterPanelContent: 'clusterTable',
     recordSheetDoubleTapZoomReset: 'contextual',
     syncZoomBetweenSheets: true,
     useAutomations: true,
     allowMultipleActiveSheets: false,
+    CBTRules: 'tw',
     
     // Alpha Strike
     ASUseHex: false,
@@ -125,7 +125,6 @@ export class OptionsService {
     public options = signal<Options>({
         sheetsColor: DEFAULT_OPTIONS.sheetsColor,
         pickerStyle: DEFAULT_OPTIONS.pickerStyle,
-        quickActions: DEFAULT_OPTIONS.quickActions,
         canvasInput: DEFAULT_OPTIONS.canvasInput,
         swipeToNextSheet: DEFAULT_OPTIONS.swipeToNextSheet,
         syncZoomBetweenSheets: DEFAULT_OPTIONS.syncZoomBetweenSheets,
@@ -136,6 +135,7 @@ export class OptionsService {
         recordSheetCenterPanelContent: DEFAULT_OPTIONS.recordSheetCenterPanelContent,
         recordSheetDoubleTapZoomReset: DEFAULT_OPTIONS.recordSheetDoubleTapZoomReset,
         useAutomations: DEFAULT_OPTIONS.useAutomations,
+        CBTRules: DEFAULT_OPTIONS.CBTRules,
         ASUseHex: DEFAULT_OPTIONS.ASUseHex,
         ASCardStyle: DEFAULT_OPTIONS.ASCardStyle,
         ASPrintPageBreakOnGroups: DEFAULT_OPTIONS.ASPrintPageBreakOnGroups,
@@ -180,7 +180,6 @@ export class OptionsService {
         this.options.set({
             sheetsColor: saved?.sheetsColor ?? DEFAULT_OPTIONS.sheetsColor,
             pickerStyle: saved?.pickerStyle ?? DEFAULT_OPTIONS.pickerStyle,
-            quickActions: saved?.quickActions ?? DEFAULT_OPTIONS.quickActions,
             canvasInput: saved?.canvasInput ?? DEFAULT_OPTIONS.canvasInput,
             swipeToNextSheet: saved?.swipeToNextSheet ?? DEFAULT_OPTIONS.swipeToNextSheet,
             syncZoomBetweenSheets: saved?.syncZoomBetweenSheets ?? DEFAULT_OPTIONS.syncZoomBetweenSheets,
@@ -193,6 +192,7 @@ export class OptionsService {
             lastCanvasState: saved?.lastCanvasState,
             sidebarLipPosition: saved?.sidebarLipPosition,
             useAutomations: saved?.useAutomations ?? DEFAULT_OPTIONS.useAutomations,
+            CBTRules: saved?.CBTRules ?? DEFAULT_OPTIONS.CBTRules,
             ASUseHex: saved?.ASUseHex ?? DEFAULT_OPTIONS.ASUseHex,
             ASCardStyle: saved?.ASCardStyle ?? DEFAULT_OPTIONS.ASCardStyle,
             ASPrintPageBreakOnGroups: saved?.ASPrintPageBreakOnGroups ?? DEFAULT_OPTIONS.ASPrintPageBreakOnGroups,

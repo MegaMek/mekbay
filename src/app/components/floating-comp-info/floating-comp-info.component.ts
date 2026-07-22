@@ -40,6 +40,9 @@ import { AmmoEquipment, type Equipment, WeaponEquipment } from '../../models/equ
 import { TechDate, TechAdvancementDates, techDateYear, formatTechDate } from '../../models/entity';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
 import { parseTechDate } from '../../models/entity/types/tech';
+import { CBTGameRulesService } from '../../services/cbt-game-rules.service';
+import { resolveWeaponDamageText } from '../../utils/inventory-control-damage.util';
+import { formatInventoryControlHeat } from '../../utils/inventory-control-heat.util';
 
 /*
  * Author: Drake
@@ -58,6 +61,7 @@ import { parseTechDate } from '../../models/entity/types/tech';
 })
 export class FloatingCompInfoComponent {
     private dataService = inject(DataService);
+    private rulesService = inject(CBTGameRulesService);
     unit = input.required<Unit>();
     comp = input<UnitComponent | null>(null);
 
@@ -96,7 +100,7 @@ export class FloatingCompInfoComponent {
         if (currentComp?.t === 'X') {
             const equipment = this.equipment() ?? currentComp.eq;
             if (equipment instanceof AmmoEquipment) {
-                const labels = [equipment.category, ...(equipment.stats.explosive ? ['Explosive'] : [])];
+                const labels = [equipment.category, ...(equipment.isExplosive() ? ['Explosive'] : [])];
                 return `Ammo (${labels.join(', ')})`;
             }
 
@@ -110,7 +114,7 @@ export class FloatingCompInfoComponent {
         const equipment = this.equipment() ?? this.comp()?.eq;
         if (!equipment) return null;
 
-        const modifierValues = equipment.getToHitModifiers();
+        const modifierValues = this.rulesService.gameRules().resolveToHit({ subject: equipment }).profile;
         if (modifierValues.every(value => value === 0)) return null;
         return modifierValues.map(value => this.formatToHitModifier(value)).join('/');
     }
@@ -148,24 +152,27 @@ export class FloatingCompInfoComponent {
 
     get damage(): string | null {
         const currentComp = this.comp();
-        if (currentComp?.d && currentComp.md && Number(currentComp.md) !== Number(currentComp.d)) {
-            return currentComp.d + (currentComp.md ? ` (${currentComp.md})` : '');
-        }
-        if (currentComp?.d) {
-            const eq = this.equipment();
-            if (eq instanceof WeaponEquipment) {
-                return String(eq.damage);
-            }
+        const eq = this.equipment();
+        if (currentComp?.d && eq instanceof WeaponEquipment) {
+            const damage = resolveWeaponDamageText(eq);
+            return currentComp.md && Number(currentComp.md) !== Number(currentComp.d)
+                ? `${damage} (${currentComp.md})`
+                : damage;
         }
         return null;
     }
 
-    get heat(): number | null {
+    get heat(): string | null {
         const eq = this.equipment();
         if (eq instanceof WeaponEquipment) {
-            return eq.heat;
+            return formatInventoryControlHeat(eq.heat, '', eq.getRapidFireCount());
         }
         return null;
+    }
+
+    get hasHeat(): boolean {
+        const eq = this.equipment();
+        return eq instanceof WeaponEquipment && eq.heat > 0;
     }
 
     computeEquipmentDisplay(): Array<{ group: string, items: Array<{ label: string, value: any }> }> {
@@ -259,10 +266,10 @@ export class FloatingCompInfoComponent {
             {
                 group: 'General',
                 items: [
-                    { label: 'BV', value: eq.stats.bv },
-                    { label: 'Cost', value: eq.stats.cost },
-                    { label: 'Tonnage', value: eq.stats.tonnage },
-                    { label: 'Criticals', value: eq.stats.criticalSlots },
+                    { label: 'BV', value: eq.bv },
+                    { label: 'Cost', value: eq.cost },
+                    { label: 'Tonnage', value: eq.tonnage },
+                    { label: 'Criticals', value: eq.critSlots },
                     { label: 'Reference', value: eq.rulesRefs }
                 ]
             },

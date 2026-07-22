@@ -1,4 +1,4 @@
-import { MountedEquipment } from '../models/force-serialization';
+import { MountedEquipment } from '../models/mounted-equipment.model';
 import type { AmmoEquipment, Equipment } from '../models/equipment.model';
 import { ArtemisVHandler } from './artemis-v.handler';
 
@@ -20,18 +20,18 @@ describe('ArtemisVHandler', () => {
     const handler = new ArtemisVHandler();
 
     it('does not offset intact Artemis V when Artemis V-capable ammo is selected', () => {
-        expect(handler.getLinkedEquipmentHitModifier(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']), entry(), ammo(['M_ARTEMIS_V_CAPABLE']))).toBe(0);
+        expect(handler.getToHitAdjustments(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']), { parent: entry(), selectedAmmo: ammo(['M_ARTEMIS_V_CAPABLE']) })).toEqual([{ kind: 'add', value: 0 }]);
     });
 
     it('offsets Artemis V when selected ammo is not Artemis V-capable', () => {
-        expect(handler.getLinkedEquipmentHitModifier(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']), entry(), ammo(['M_ARTEMIS_CAPABLE']))).toBe(1);
-        expect(handler.getLinkedEquipmentHitModifier(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']), entry(), null)).toBe(1);
+        expect(handler.getToHitAdjustments(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']), { parent: entry(), selectedAmmo: ammo(['M_ARTEMIS_CAPABLE']) })).toEqual([{ kind: 'add', value: 1 }]);
+        expect(handler.getToHitAdjustments(entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']), { parent: entry(), selectedAmmo: null })).toEqual([{ kind: 'add', value: 1 }]);
     });
 
     it('offsets Artemis V when the linked enhancement is unavailable', () => {
         const artemis = entry(['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V']);
         artemis.owner = owner(artemis);
 
-        expect(handler.getLinkedEquipmentHitModifier(artemis, entry(), ammo(['M_ARTEMIS_V_CAPABLE']))).toBe(1);
+        expect(handler.getToHitAdjustments(artemis, { parent: entry(), selectedAmmo: ammo(['M_ARTEMIS_V_CAPABLE']) })).toEqual([{ kind: 'add', value: 1 }]);
     });
 });

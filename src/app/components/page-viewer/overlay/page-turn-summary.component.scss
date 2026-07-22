@@ -199,6 +199,8 @@
     }
 
     .masc-control-row {
+        gap: 2px;
+
         .caption {
             flex: 1 1 auto;
             min-width: 0;
@@ -226,6 +228,17 @@
         border: 2px solid #666;
     }
 
+    .masc-status-control {
+        display: inline-flex;
+        align-items: center;
+        flex: 0 0 auto;
+        border: 2px solid #666;
+
+        &.failed {
+            border-color: #800;
+        }
+    }
+
     .masc-button {
         min-width: 32px;
         border-radius: 0;
@@ -233,6 +246,7 @@
         background-image: none;
         background-color: var(--picker-choice-normal-color);
         color: var(--picker-choice-normal-text-color);
+        border-color: transparent;
 
         &.selected {
             background-color: var(--picker-choice-selected-color, var(--bt-yellow-background-bright));

@@ -1,5 +1,5 @@
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
-import { MountedEquipment } from '../models/force-serialization';
+import { MountedEquipment } from '../models/mounted-equipment.model';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import { AtmHandler } from './atm.handler';
 
@@ -17,7 +17,7 @@ function svgEntry(html: string): SVGElement {
     return wrapper.firstElementChild as SVGElement;
 }
 
-function weaponWithSvgMode(mode: string): MountedEquipment {
+function weaponWithSvgMode(mode: string, persist = false): MountedEquipment {
     const entry = weapon();
     entry.el = svgEntry(`
         <g class="inventoryEntry">
@@ -26,7 +26,9 @@ function weaponWithSvgMode(mode: string): MountedEquipment {
             <g class="alternativeMode${mode === 'Extended Range' ? ' selected' : ''}" mode="Extended Range"><g class="name"><text>Extended Range</text></g><g class="damage"><text>1/Msl</text></g></g>
         </g>
     `);
-    entry.states.set('inventory_control_mode', mode);
+    if (persist) {
+        entry.states.set('inventory_control_mode', mode);
+    }
     return entry;
 }
 
@@ -50,8 +52,15 @@ describe('AtmHandler', () => {
         expect(handler.matchesInventoryAmmo(atm, ammo('er', 'M_EXTENDED_RANGE'), 'Extended Range', context)).toBeTrue();
     });
 
-    it('uses the selected SVG mode when no mode is supplied', () => {
+    it('defaults to Standard and ignores the selected SVG mode', () => {
         const atm = weaponWithSvgMode('High Explosive');
+
+        expect(handler.matchesInventoryAmmo(atm, ammo('std', 'M_STANDARD'), null, context)).toBeTrue();
+        expect(handler.matchesInventoryAmmo(atm, ammo('he', 'M_HIGH_EXPLOSIVE'), null, context)).toBeFalse();
+    });
+
+    it('uses a valid persisted mode when no mode is supplied', () => {
+        const atm = weaponWithSvgMode('High Explosive', true);
 
         expect(handler.matchesInventoryAmmo(atm, ammo('he', 'M_HIGH_EXPLOSIVE'), null, context)).toBeTrue();
         expect(handler.matchesInventoryAmmo(atm, ammo('std', 'M_STANDARD'), null, context)).toBeFalse();

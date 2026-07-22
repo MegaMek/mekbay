@@ -20,20 +20,20 @@ import { getTargetingComputerRelevantWeight } from "./targeting-computer";
  * Java's `MiscType.getNumCriticalSlots(Entity, double)`.
  */
 export function getNumCriticalSlots(entity: BaseEntity, eq: Equipment, size: number = 1): number | undefined {
-    if (eq.stats.svSlots !== undefined && eq.stats.svSlots >= 0
+    if (eq.svSlots !== undefined && eq.svSlots >= 0
         && entity.isSupportVehicle()) {
-        return eq.stats.svSlots;
+        return eq.svSlots;
     }
-    if (eq.stats.tankSlots !== undefined && eq.stats.tankSlots >= 0
+    if (eq.tankSlots !== undefined && eq.tankSlots >= 0
         && isVehicleEntity(entity) && !entity.isSupportVehicle()) {
-        return eq.stats.tankSlots;
+        return eq.tankSlots;
     }
     
     const isSuperHeavyMek = isMekEntity(entity) && entity.isSuperHeavy();
     const isSuperHeavyEntity = isSuperHeavyMek
         || (isVehicleEntity(entity) && entity.isSuperHeavy());
-    if (eq.stats.criticalSlots !== "variable") {
-        const fixedSlots = eq.stats.criticalSlots;
+    if (eq.critSlots !== "variable") {
+        const fixedSlots = eq.critSlots;
         if (isSuperHeavyEntity) {
             return Math.ceil(fixedSlots / 2);
         }

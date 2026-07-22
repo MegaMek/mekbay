@@ -100,6 +100,12 @@ export abstract class ForceUnit {
         return (this.unit.chassis + ' ' + this.unit.model).trim();
     }
 
+    getNotificationDisplayName() {
+        const pilotName = this.alias()?.trim();
+        const unitName = this.getDisplayName();
+        return pilotName ? `${unitName} (${pilotName})` : unitName;
+    }
+
     get modified(): boolean {
         return this.state.modified();
     }

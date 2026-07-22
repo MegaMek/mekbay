@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MekBay.
  *
@@ -37,7 +37,6 @@ import { BAPHandler } from './bap.handler';
 import { StealthHandler } from './stealth.handler';
 import { UACJammingHandler } from './uacjamming.handler';
 import { C3Handler } from './c3.handler';
-import { WeaponAmmoHandler } from './weapon-ammo.handler';
 import { InventoryModeHandler } from './inventory-mode.handler';
 import { PpcCapacitorHandler } from './ppc-capacitor.handler';
 import { MmlHandler } from './mml.handler';
@@ -46,6 +45,7 @@ import { ArtemisVHandler } from './artemis-v.handler';
 import { ApolloHandler } from './apollo.handler';
 import { LaserInsulatorHandler } from './laser-insulator.handler';
 import { RiscLaserPulseModuleHandler } from './risc-laser-pulse-module.handler';
+import { HagHandler } from './hag.handler';
 import { MascHandler } from './masc.handler';
 import { DisabledEquipmentHandler } from './disabled-equipment.handler';
 
@@ -67,6 +67,7 @@ export function registerAllHandlers(registryService: EquipmentInteractionRegistr
     registry.register(new ApolloHandler());
     registry.register(new LaserInsulatorHandler());
     registry.register(new RiscLaserPulseModuleHandler());
+    registry.register(new HagHandler());
     registry.register(new MascHandler());
     registry.register(new DisabledEquipmentHandler());
     registry.register(new PpcCapacitorHandler());

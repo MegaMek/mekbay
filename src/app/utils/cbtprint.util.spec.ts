@@ -1,4 +1,5 @@
 import { CBTPrintUtil } from './cbtprint.util';
+import { WeaponEquipment } from '../models/equipment.model';
 import { INVENTORY_CONTROL_MODE_STATE } from './inventory-control.util';
 
 describe('CBTPrintUtil', () => {
@@ -68,6 +69,12 @@ describe('CBTPrintUtil', () => {
             states: new Map([[INVENTORY_CONTROL_MODE_STATE, 'Pulse']]),
             el: entryEl,
             owner: {},
+            equipment: new WeaponEquipment({
+                id: 'ATM6',
+                name: 'ATM 6',
+                type: 'weapon',
+                weapon: { ammoType: 'ATM', rackSize: 6 }
+            }),
             deleteState(name: string): boolean {
                 if (!this.states.has(name)) return false;
                 this.states = new Map(this.states);
@@ -77,6 +84,7 @@ describe('CBTPrintUtil', () => {
         };
         const printUnit = {
             getInventory: () => [entry],
+            getInventoryControlRules: () => ({}),
             setInventoryEntry: jasmine.createSpy('setInventoryEntry')
         };
 

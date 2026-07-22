@@ -149,7 +149,7 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
   protected override processExplosiveEquipment(): void {
     for (const mount of this.entity.equipment()) {
       const equipment = mount.equipment;
-      if (!equipment?.stats.explosive || mount.location === 'Unallocated'
+      if (!equipment?.isExplosive() || mount.location === 'Unallocated'
         || equipment.hasFlag('F_BLUE_SHIELD')
         || !mount.getOccupiedLocations().some(location => this.hasExplosivePenalty(location))) continue;
       if (equipment instanceof AmmoEquipment && (mount.getAmmoShots() ?? 0) <= 0) continue;
@@ -313,7 +313,7 @@ export class AeroBVCalculator extends HeatTrackingBVCalculator {
       let otherExplosives = 0;
       for (const mount of this.entity.equipment()) {
         const equipment = mount.equipment;
-        if (!equipment?.stats.explosive || mount.location === 'Unallocated') continue;
+        if (!equipment?.isExplosive() || mount.location === 'Unallocated') continue;
         if (equipment instanceof AmmoEquipment) {
           if ((mount.getAmmoShots() ?? 0) > 0) ammoTypes.add(equipment.id);
         } else if (!(equipment instanceof WeaponEquipment)

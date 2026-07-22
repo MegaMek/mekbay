@@ -1,12 +1,15 @@
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { CrewMemberState } from '../crew-member.model';
-import { MountedEquipment, type CriticalSlot } from '../force-serialization';
+import { MountedEquipment, MountedWeapon } from '../mounted-equipment.model';
+import { type CriticalSlot } from '../force-serialization';
 import type { MotiveModes } from '../motiveModes.model';
 import type { TurnState } from '../turn-state.model';
-import { Equipment, WeaponEquipment } from '../equipment.model';
+import { AmmoEquipment, Equipment, WeaponEquipment } from '../equipment.model';
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { VehicleRules } from './vehicle-rules';
 import { MascHandler, MASC_ACTIVE_STATE_KEY } from '../../equipment-handlers/masc.handler';
+import { TWVehicleRules } from './tw-rules';
+import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './game-rules';
 
 const mascHandler = new MascHandler();
 
@@ -69,6 +72,10 @@ function createRulesHarness(options: {
     run2?: number;
     crewStates?: CrewMemberState[];
     shutdown?: boolean;
+    rulesId?: 'core2026' | 'tw';
+    tons?: number;
+    moveDistance?: number;
+    selectedAmmo?: AmmoEquipment | null;
 } = {}): VehicleRules {
     const baseUnit = createEmptyUnit({
         type: options.type ?? 'Tank',
@@ -77,12 +84,18 @@ function createRulesHarness(options: {
         walk2: options.walk2 ?? options.walk ?? 8,
         run: options.run ?? 12,
         run2: options.run2 ?? options.run ?? 12,
+        tons: options.tons ?? 40,
     });
     const crewStates = options.crewStates ?? ['healthy'];
     let rules: VehicleRules;
     const unit = {
+        gameRules: options.rulesId === 'tw' ? TW_GAME_RULES : CORE_2026_GAME_RULES,
         getCritSlots: () => options.crits ?? [],
         getInventory: () => options.inventory ?? [],
+        getAvailableEquipment: () => Object.fromEntries((options.inventory ?? [])
+            .flatMap(entry => entry.equipment ? [[entry.equipment.internalName, entry.equipment]] : [])),
+        getInventoryControlSelectedAmmo: () => options.selectedAmmo ?? null,
+        getInventoryControlRules: () => ({}),
         getUnit: () => baseUnit,
         getCondition: (state: string) => {
             if (state === 'shutdown') return options.shutdown ?? false;
@@ -96,6 +109,7 @@ function createRulesHarness(options: {
         pilotingSkill: () => 5,
         turnState: () => ({
             moveMode: () => options.moveMode ?? null,
+            moveDistance: () => options.moveDistance ?? 0,
             getAttackMovementModifier: () => rules.getAttackMovementModifier(options.moveMode ?? null),
         }),
         locations: { internal: new Map() },
@@ -104,7 +118,7 @@ function createRulesHarness(options: {
     } as unknown as CBTForceUnit;
 
     options.inventory?.forEach(entry => entry.owner = unit);
-    rules = new VehicleRules(unit);
+    rules = options.rulesId === 'tw' ? new TWVehicleRules(unit) : new VehicleRules(unit);
     return rules;
 }
 
@@ -119,13 +133,23 @@ describe('VehicleRules', () => {
     });
 
     it('applies a mounted targeting computer to eligible direct-fire weapons', () => {
-        const directFire = entry({ equipment: weapon('DirectFire', ['F_DIRECT_FIRE']) });
+        const directFire = new MountedWeapon({
+            owner: undefined as unknown as CBTForceUnit,
+            id: 'DirectFire',
+            name: 'DirectFire',
+            equipment: weapon('DirectFire', ['F_BALLISTIC', 'F_DIRECT_FIRE']),
+        });
         const targetingComputer = entry({ equipment: equipment('TargetingComputer', ['F_TARGETING_COMPUTER']) });
         const activeRules = createRulesHarness({ inventory: [directFire, targetingComputer] });
 
         expect(activeRules.computeEntryState(directFire)).toEqual(jasmine.objectContaining({ hitMod: -1, weakenedHitMod: false }));
 
-        const destroyedDirectFire = entry({ equipment: weapon('DestroyedDirectFire', ['F_DIRECT_FIRE']) });
+        const destroyedDirectFire = new MountedWeapon({
+            owner: undefined as unknown as CBTForceUnit,
+            id: 'DestroyedDirectFire',
+            name: 'DestroyedDirectFire',
+            equipment: weapon('DestroyedDirectFire', ['F_BALLISTIC', 'F_DIRECT_FIRE']),
+        });
         const destroyedTargetingComputer = entry({
             equipment: equipment('DestroyedTargetingComputer', ['F_TARGETING_COMPUTER']),
             destroyed: true,
@@ -133,6 +157,36 @@ describe('VehicleRules', () => {
         const destroyedRules = createRulesHarness({ inventory: [destroyedDirectFire, destroyedTargetingComputer] });
 
         expect(destroyedRules.computeEntryState(destroyedDirectFire)).toEqual(jasmine.objectContaining({ hitMod: 0, weakenedHitMod: true }));
+    });
+
+    it('does not apply a targeting computer when selected ammo removes direct-fire damage types', () => {
+        const autocannon = new WeaponEquipment({
+            id: 'LBX',
+            name: 'LBX',
+            type: 'weapon',
+            flags: ['F_BALLISTIC', 'F_DIRECT_FIRE'],
+            weapon: { ammoType: 'AC_LBX', ranges: [1, 2, 3, 4] },
+        });
+        const flechetteAmmo = new AmmoEquipment({
+            id: 'LBX Ammo',
+            name: 'LBX Ammo',
+            type: 'ammo',
+            ammo: { type: 'AC_LBX', munitionType: ['M_CLUSTER'] },
+        });
+        const mountedAutocannon = new MountedWeapon({
+            owner: undefined as unknown as CBTForceUnit,
+            id: autocannon.id,
+            name: autocannon.name,
+            equipment: autocannon,
+            ammo: flechetteAmmo.internalName,
+        });
+        const targetingComputer = entry({ equipment: equipment('TargetingComputer', ['F_TARGETING_COMPUTER']) });
+        const rules = createRulesHarness({
+            inventory: [mountedAutocannon, entry({ equipment: flechetteAmmo }), targetingComputer],
+            selectedAmmo: flechetteAmmo
+        });
+
+        expect(rules.computeEntryState(mountedAutocannon)).toEqual(jasmine.objectContaining({ hitMod: 0, weakenedHitMod: false }));
     });
 
     it('applies ordered motive movement damage by timestamp', () => {
@@ -436,7 +490,7 @@ describe('VehicleRules', () => {
         expect(rules.PSRModifiers().modifiers.map(modifier => modifier.reason)).toContain('Drone operating system');
     });
 
-    it('disconnects drone vehicles after a commander hit and ignores crew-seat hits', () => {
+    it('makes drone vehicles Immobile after a commander hit disconnects them', () => {
         const rules = createRulesHarness({
             crits: [
                 crit('commander_hit', 10),
@@ -455,7 +509,7 @@ describe('VehicleRules', () => {
         expect(rules.PSRModifiers().modifier).toBe(1);
     });
 
-    it('disconnects and immobilizes vehicles when the drone operating system is destroyed', () => {
+    it('makes disconnected drone vehicles Immobile under every rules system', () => {
         const rules = createRulesHarness({
             inventory: [entry({ equipment: equipment('ISDroneOperatingSystem', ['F_DRONE_OPERATING_SYSTEM']), destroyed: true })],
         });
@@ -463,6 +517,12 @@ describe('VehicleRules', () => {
         expect(rules.hasComputedCondition('disconnected')).toBeTrue();
         expect(rules.hasComputedCondition('immobile')).toBeTrue();
         expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 0, run: 0, moveImpaired: true }));
+
+        const twRules = createRulesHarness({
+            inventory: [entry({ equipment: equipment('ISDroneOperatingSystem', ['F_DRONE_OPERATING_SYSTEM']), destroyed: true })],
+            rulesId: 'tw',
+        });
+        expect(twRules.hasComputedCondition('immobile')).toBeTrue();
     });
 
     it('disables energy equipment after an engine hit', () => {
@@ -487,6 +547,24 @@ describe('VehicleRules', () => {
 
         expect(rules.computeEntryState(weaponEntry).isDisabled).toBeTrue();
         expect(rules.computeEntryState(chargeEntry).isDisabled).toBeFalse();
+    });
+
+    it('calculates charge damage for core2026 vehicles and preserves TW sheet damage', () => {
+        const rules = createRulesHarness({ tons: 60, moveDistance: 5 });
+        expect(rules.chargeDamage()).toEqual({
+            damage: 36,
+            maxDamage: 60,
+            bonusDamage: 0,
+            maxBonusDamage: 0,
+        });
+
+        const twRules = createRulesHarness({ tons: 60, moveDistance: 5, rulesId: 'tw' });
+        expect(twRules.chargeDamage()).toEqual({
+            damage: null,
+            maxDamage: null,
+            bonusDamage: 0,
+            maxBonusDamage: 0,
+        });
     });
 
     it('adds the movement hit modifier again for weapons in damaged stabilizer locations', () => {

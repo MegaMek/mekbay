@@ -36,7 +36,8 @@ import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { CrewStateControlDefinition, CrewStateDefinition, UnitConditionControl, MountedEquipmentRuleState, UnitSkillModifier } from './unit-type-rules';
 import { crewStateDefinitions, unitConditionControls, UnitTypeRulesBase } from './unit-type-rules';
 import type { PSRCheck, TurnState } from '../turn-state.model';
-import type { CriticalSlot, MountedEquipment } from '../force-serialization';
+import type { MountedEquipment } from '../mounted-equipment.model';
+import type { CriticalSlot } from '../force-serialization';
 import { WeaponEquipment } from '../equipment.model';
 import { getDefaultAttackerMovementModifier } from '../target-number-calculator.model';
 import type { MotiveModes } from '../motiveModes.model';
@@ -348,7 +349,7 @@ export class VehicleRules extends UnitTypeRulesBase {
         if (!isPhysical) {
             const targetingComputer = this.getMountedTargetingComputerModifier(entry);
             hitMod += targetingComputer.modifier;
-            weakenedHitMod = targetingComputer.weakened;
+            weakenedHitMod ||= targetingComputer.weakened;
             if (status.engineHit && entry.equipment?.flags.has('F_ENERGY')) {
                 isDisabled = true;
             }

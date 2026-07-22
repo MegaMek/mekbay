@@ -38,7 +38,7 @@ import type { Unit, UnitComponent } from '../models/units.model';
 import type { DataService } from '../services/data.service';
 import type { UnitInitializerService } from '../services/unit-initializer.service';
 import type { Injector } from '@angular/core';
-import { getInventoryControlModes, INVENTORY_CONTROL_MODE_STATE, syncSvgMode } from './inventory-control.util';
+import { getSelectedInventoryControlMode, INVENTORY_CONTROL_MODE_STATE, syncSvgMode } from './inventory-control.util';
 
 export interface CBTPrintServices {
     dataService: DataService;
@@ -184,7 +184,12 @@ export class CBTPrintUtil {
             if (entry.deleteState(INVENTORY_CONTROL_MODE_STATE)) {
                 printUnit.setInventoryEntry(entry);
             }
-            syncSvgMode(entry, getInventoryControlModes(entry)[0]?.mode ?? null, false);
+            const defaultMode = getSelectedInventoryControlMode(
+                entry,
+                {},
+                printUnit.getInventoryControlRules()
+            );
+            syncSvgMode(entry, defaultMode, false);
         }
     }
 

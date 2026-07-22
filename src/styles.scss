@@ -1807,6 +1807,9 @@ hr.divider {
     .critGroup.flooded,
     .critGroup.detached,
     .critGroup.disabledLocation,
+    .critGroup.flooded .locationConditionControl,
+    .critGroup.detached .locationConditionControl,
+    .critGroup.disabledLocation .locationConditionControl,
     .critGroup.flooded .locationConditionButton,
     .critGroup.detached .locationConditionButton,
     .critGroup.disabledLocation .locationConditionButton,
@@ -2046,13 +2049,18 @@ hr.divider {
             }
         }
         
-        .locConditionButton {
+        .locConditionButton,
+        .locationConditionControl {
             cursor: pointer;
 
             text {
                 pointer-events: none;
             }
 
+        }
+
+        .locationConditionHitArea {
+            pointer-events: all;
         }
 
         .unitConditionBanner {
@@ -2202,6 +2210,10 @@ hr.divider {
     
         .locationConditionText {
             text-decoration: underline dotted;
+        }
+
+        .locationConditionControl:hover .locationConditionText {
+            text-decoration-style: solid;
         }
 
         .hot {
@@ -2377,6 +2389,10 @@ hr.divider {
             font-size: 7px;
             font-weight: 700;
             pointer-events: none;
+
+            &.noPsrCheck {
+                fill: #000;
+            }
         }
     }
 }
@@ -2390,6 +2406,10 @@ hr.divider {
         background-color: var(--svg-bg-color);
         color: var(--svg-fg-color);
         fill: var(--svg-fg-color);
+
+        .movePsrWarning.noPsrCheck {
+            fill: var(--svg-fg-color);
+        }
 
         :where(:not(mask):not(mask *):not(.no-autocolor):not(.no-autocolor *)) {
             &[fill="#000000" i],

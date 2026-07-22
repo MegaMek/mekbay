@@ -1,3 +1,4 @@
+import type { Injector, ProviderToken } from '@angular/core';
 import { GameSystem } from '../models/common.model';
 import type { CBTForce } from '../models/cbt-force.model';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
@@ -6,6 +7,25 @@ import type { CriticalSlot } from '../models/force-serialization';
 import type { Unit } from '../models/units.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { parseMulForce, sanitizeMulFilename, serializeForceToMul } from './mul-file.util';
+import { OptionsService } from '../services/options.service';
+import { CBTGameRulesService } from '../services/cbt-game-rules.service';
+import { CORE_2026_GAME_RULES } from '../models/rules/game-rules';
+import { MekRules } from '../models/rules/mek-rules';
+
+const fakeInjector = {
+    get<T>(token: ProviderToken<T>): T {
+        if (token === OptionsService) {
+            return { options: () => ({ CBTRules: 'core2026' }) } as T;
+        }
+        if (token === CBTGameRulesService) {
+            return {
+                gameRules: () => CORE_2026_GAME_RULES,
+                createUnitRules: (unit: CBTForceUnit) => new MekRules(unit)
+            } as T;
+        }
+        throw new Error(`Unexpected injection token: ${String(token)}`);
+    },
+} as Injector;
 
 function createSerializedAmmoUnit() {
     return createEmptyUnit({
@@ -188,7 +208,7 @@ describe('MUL file utilities', () => {
     </entity>
 </unit>`;
 
-        const { force, issues } = await parseMulForce(xml, 'Imported Atlas', createFakeDataService([atlas]), {} as any, {} as any);
+        const { force, issues } = await parseMulForce(xml, 'Imported Atlas', createFakeDataService([atlas]), {} as any, fakeInjector);
         const unit = force.units()[0];
         const crit = unit.getCritSlot('RT', 4);
 
@@ -234,7 +254,7 @@ describe('MUL file utilities', () => {
     </entity>
 </unit>`;
 
-        const { force } = await parseMulForce(xml, 'Destroyed LT', createFakeDataService([atlas]), {} as any, {} as any);
+        const { force } = await parseMulForce(xml, 'Destroyed LT', createFakeDataService([atlas]), {} as any, fakeInjector);
         const locations = force.units()[0].getLocations();
 
         expect(locations['LT'].armor).toBe(40);
@@ -281,7 +301,7 @@ describe('MUL file utilities', () => {
     </salvage>
 </record>`;
 
-        const { force, issues } = await parseMulForce(xml, 'Record Import', createFakeDataService([grasshopper, atlas]), {} as any, {} as any);
+        const { force, issues } = await parseMulForce(xml, 'Record Import', createFakeDataService([grasshopper, atlas]), {} as any, fakeInjector);
 
         expect(issues).toEqual([]);
         expect(force.units().map(unit => unit.getUnit().chassis)).toEqual(['Grasshopper', 'Atlas']);
@@ -315,7 +335,7 @@ describe('MUL file utilities', () => {
     </entity>
 </unit>`;
 
-        await expectAsync(parseMulForce(xml, 'Unknown', createFakeDataService([]), {} as any, {} as any)).toBeRejectedWithError(/not found/);
+        await expectAsync(parseMulForce(xml, 'Unknown', createFakeDataService([]), {} as any, fakeInjector)).toBeRejectedWithError(/not found/);
     });
 
     it('applies repeated MUL ammo slots by exact location slot', async () => {
@@ -338,7 +358,7 @@ describe('MUL file utilities', () => {
     </entity>
 </unit>`;
 
-        const { force } = await parseMulForce(xml, 'Round Robin', createFakeDataService([unit]), {} as any, {} as any);
+        const { force } = await parseMulForce(xml, 'Round Robin', createFakeDataService([unit]), {} as any, fakeInjector);
         const crits = force.units()[0].getCritSlots();
 
         expect(crits.map(crit => crit.totalAmmo)).toEqual([5, 10, 5]);

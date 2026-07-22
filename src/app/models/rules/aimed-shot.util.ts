@@ -1,5 +1,5 @@
 import { AmmoEquipment, type AmmoType, WeaponEquipment } from '../equipment.model';
-import type { MountedEquipment } from '../force-serialization';
+import type { MountedEquipment } from '../mounted-equipment.model';
 import type { TnTargetNumberCalculatorState } from '../target-number-calculator.model';
 
 export type AimingMode = 'none' | 'immobile' | 'targeting-computer';

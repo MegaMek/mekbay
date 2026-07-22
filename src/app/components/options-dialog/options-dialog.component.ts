@@ -59,7 +59,7 @@ import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { naturalCompare } from '../../utils/sort.util';
 import { AppUpdateService } from '../../services/app-update.service';
 
-type OptionsSectionId = 'General' | 'Account' | 'Tags' | 'Sheets' | 'Alpha Strike' | 'Advanced' | 'Logs';
+type OptionsSectionId = 'General' | 'Account' | 'Tags' | 'Classic BattleTech' | 'Alpha Strike' | 'Advanced' | 'Logs';
 type OptionsViewId = OptionsSectionId;
 
 interface OptionsViewDefinition {
@@ -88,9 +88,9 @@ const OPTIONS_VIEW_DEFINITIONS: readonly OptionsViewDefinition[] = [
         description: 'Share your tags, copy public links, and manage subscriptions.'
     },
     {
-        id: 'Sheets',
-        title: 'Record Sheets',
-        description: 'Record sheet appearance, quick actions, automation, and navigation.'
+        id: 'Classic BattleTech',
+        title: 'Classic BattleTech',
+        description: 'Rules, Record sheet appearance, automation, and navigation.'
     },
     {
         id: 'Alpha Strike',
@@ -402,6 +402,23 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('sheetsColor', value);
     }
 
+    async onCBTRulesChange(event: Event) {
+        const select = event.target as HTMLSelectElement;
+        const value = select.value as 'core2026' | 'tw';
+        const currentValue = this.optionsService.options().CBTRules;
+        const confirmed = await this.dialogsService.requestConfirmation(
+            'Changing the rules system will reload the application. Any uncommitted changes may be lost.',
+            'Change Rules System?',
+            'warning'
+        );
+        if (!confirmed) {
+            select.value = currentValue;
+            return;
+        }
+        await this.optionsService.setOption('CBTRules', value);
+        window.location.reload();
+    }
+
     onRecordSheetCenterPanelContentChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'fluffImage' | 'clusterTable';
         this.optionsService.setOption('recordSheetCenterPanelContent', value);
@@ -435,11 +452,6 @@ export class OptionsDialogComponent {
     onAutoConvertFiltersChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value === 'true';
         this.optionsService.setOption('automaticallyConvertFiltersToSemantic', value);
-    }
-
-    onQuickActionsChange(event: Event) {
-        const value = (event.target as HTMLSelectElement).value as 'enabled' | 'disabled';
-        this.optionsService.setOption('quickActions', value);
     }
 
     onunitSearchExpandedViewLayoutChange(event: Event) {

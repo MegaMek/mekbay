@@ -440,7 +440,7 @@ export abstract class BaseEntity implements EntityTechnology {
     for (const mount of this.equipment()) {
       const equipment = mount.equipment;
       if (!equipment || equipment.hasFlag('F_CASE')) continue;
-      if (!equipment.stats.explosive && mount.secondEquipment?.stats.explosive !== true) continue;
+      if (!equipment.isExplosive() && mount.secondEquipment?.isExplosive() !== true) continue;
       for (const location of mount.getOccupiedLocations()) {
         if (location !== 'Unallocated' && !optedOut.has(location)) locations.add(location);
       }

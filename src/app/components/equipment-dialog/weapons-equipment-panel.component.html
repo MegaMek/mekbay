@@ -89,7 +89,7 @@
                                         }
                                     </div>
                                     @if (hasTargets()) {
-                                        <span class="tn-cell" [class.out-of-range]="rowTarget.rangeSelection?.outOfLongRange ?? false" [tooltip]="rowTarget.rangeSelection?.outOfLongRange ? outOfRangeTooltip : rowTarget.breakdown?.lines ?? null">
+                                        <span class="tn-cell" [class.out-of-range]="rowTarget.invalidTarget" [tooltip]="rowTarget.invalidTargetReason === 'type' ? invalidTargetTypeTooltip : rowTarget.invalidTargetReason === 'out-of-range' ? outOfRangeTooltip : rowTarget.breakdown?.lines ?? null">
                                             @if (rowTarget.targetNumberText; as tnText) {
                                                 <span class="tn-value">{{ tnText }}</span>
                                             }
@@ -118,9 +118,9 @@
                                     </div>
                                 </span>
                                 <span class="grouped-cells group-stats">
-                                    <span class="centered-cell hit-cell meta-cell" data-label="Hit">{{ rowTarget.hitText }}</span>
+                                    <span class="centered-cell hit-cell meta-cell" data-label="Hit" [class.weakened]="rowTarget.hitModifierWeakened">{{ rowTarget.hitText }}</span>
                                     <span class="centered-cell location-cell meta-cell" data-label="Loc">{{ row.display.location }}</span>
-                                    <span class="centered-cell heat-cell meta-cell" data-label="Ht" [class.damaged]="row.display.heat !== row.base.heat">{{ row.display.heat }}</span>
+                                    <span class="centered-cell heat-cell meta-cell" data-label="Ht" [class.damaged]="row.heatWeakened">{{ row.display.heat }}</span>
                                     <span class="centered-cell damage-cell meta-cell" data-label="Dmg">{{ rowTarget.damageText }}</span>
                                 </span>
                                 <span class="grouped-cells group-ranges">
@@ -139,8 +139,8 @@
                                                     [class.range-long]="range === 'long'"
                                                     [disabled]="!canSelectRange(row, range, rowTarget)"
                                                     [class.selected-range]="isRangeSelected(row, range, rowTarget)"
-                                                    [class.out-of-range]="rowTarget.rangeSelection?.outOfLongRange ?? false"
-                                                    [style.--range-selection-color]="rowTarget.rangeSelection?.outOfLongRange ? null : rowTarget.target?.color ?? null"
+                                                    [class.out-of-range]="rowTarget.invalidTarget"
+                                                    [style.--range-selection-color]="rowTarget.invalidTarget ? null : rowTarget.target?.color ?? null"
                                                     (click)="selectRange(row, range)">
                                                     {{ rangeValue(row, range) }}
                                                 </button>
@@ -197,7 +197,10 @@
                                                         <span class="control-label control-button">{{ choice.label }}</span>
                                                     }
                                                     @case ('toggle') {
-                                                        <button class="bt-button tiny control-button" type="button" [class.active]="choice.active" [class.muted-active]="choice.active && choice.selectionTone === 'muted'"
+                                                        <button class="bt-button tiny control-button" type="button" 
+                                                            [class.active]="choice.active" 
+                                                            [class.muted-active]="choice.active && choice.selectionTone === 'muted'" 
+                                                            [class.escalating-failure-sequence-control]="isEscalatingFailureSequenceChoice(choice)" 
                                                             [style.--picker-choice-normal-color]="choice.colors?.normal"
                                                             [style.--picker-choice-normal-text-color]="choice.colors?.normalText"
                                                             [style.--picker-choice-selected-color]="choice.colors?.selected"
@@ -209,7 +212,10 @@
                                                             [disabled]="choice.disabled || readOnly()" (click)="handleChoice(row, choice)">{{ choice.label }}</button>
                                                     }
                                                     @default {
-                                                        <button class="bt-button tiny control-button" type="button" [class.active]="choice.active" [class.muted-active]="choice.active && choice.selectionTone === 'muted'"
+                                                        <button class="bt-button tiny control-button" type="button" 
+                                                            [class.active]="choice.active" 
+                                                            [class.muted-active]="choice.active && choice.selectionTone === 'muted'" 
+                                                            [class.escalating-failure-sequence-control]="isEscalatingFailureSequenceChoice(choice)" 
                                                             [style.--picker-choice-normal-color]="choice.colors?.normal"
                                                             [style.--picker-choice-normal-text-color]="choice.colors?.normalText"
                                                             [style.--picker-choice-selected-color]="choice.colors?.selected"

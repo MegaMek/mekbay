@@ -32,12 +32,14 @@
  */
 
 import { computed, signal, type Signal } from '@angular/core';
-import type { CriticalSlot, MountedEquipment } from '../force-serialization';
+import { MountedWeapon, type MountedEquipment } from '../mounted-equipment.model';
+import type { CriticalSlot, SerializedC3NetworkGroup } from '../force-serialization';
 import { getMotiveModeLabel, type MotiveModes } from '../motiveModes.model';
 import type { TurnState } from '../turn-state.model';
 import type { CrewMemberState } from '../crew-member.model';
 import {
     getTargetMovementBracketForDistance,
+    getTargetMovementDistanceModifier,
     TN_AIRBORNE_MOVE_TYPE_MODIFIER,
     TN_IMMOBILE,
     TN_SKIDDING_ATTACKER,
@@ -45,6 +47,8 @@ import {
 } from '../target-number-calculator.model';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { HeatDissipationState } from './heat-management';
+import type { InventoryControlDisplayData } from '../../utils/inventory-control.util';
+import { C3NetworkUtil } from '../../utils/c3-network.util';
 
 export interface PSRCheck {
     fallCheck?: number;
@@ -64,6 +68,13 @@ export interface UnitHeatSource {
     id: string;
     label: string;
     value: number;
+    /** 
+     * Inventory entry whose selected firing heat replaces this passive source.
+     * It goes in priority order (handlers) so the highest priority that replaces will
+     * prevent other handlers to replace it 
+     * TODO: find a solution more elegant...
+     */
+    replacedByFiringEntryId?: string;
 }
 
 export interface MountedEquipmentRuleState {
@@ -71,6 +82,13 @@ export interface MountedEquipmentRuleState {
     isDisabled: boolean;
     hitMod: number;
     weakenedHitMod: boolean;
+}
+
+export interface ChargeDamage {
+    damage: number | null;
+    maxDamage: number | null;
+    bonusDamage: number;
+    maxBonusDamage: number;
 }
 
 export const ENTRY_DISABLED_STATE_KEY = 'disabled';
@@ -196,6 +214,9 @@ export interface UnitTypeRules {
     /** Evaluate whether the unit should be marked destroyed based on current state. Idempotent. */
     evaluateDestroyed(): void;
 
+    /** BV cost allocated to this unit for its active C3 network. */
+    calculateC3Tax(networks: SerializedC3NetworkGroup[], allUnits: CBTForceUnit[]): number;
+
     /** Short label for required control rolls (PSR, DSR, etc.). */
     readonly controlRollShortLabel: string;
 
@@ -272,7 +293,7 @@ export interface UnitTypeRules {
     getPSRChecks(turnState: TurnState): PSRCheck[];
 
     /** Movement-mode warning roll caused by committed damage. */
-    getCommittedDamageMovementModePSRCheck(moveMode: MotiveModes | null): PSRCheck | null;
+    getCommittedDamageMovementModePSRCheck(moveMode: MotiveModes | null, moveDistance?: number | null): PSRCheck | null;
 
     /** Evaluate whether internal damage creates unit-type-specific control-roll checks. */
     evaluateLegDestroyed(location: string, hits: number): void;
@@ -321,6 +342,12 @@ export interface UnitTypeRules {
 
     /** Target movement modifier breakdown for turn summary UI. */
     getDefenseModifierBreakdown(turnState: TurnState): UnitModifierBreakdownEntry[];
+
+    /** Charge damage for the current movement, including unit-specific bonuses. */
+    chargeDamage(): ChargeDamage;
+
+    /** Apply unit-rule-derived values to inventory display data. */
+    applyInventoryControlDisplayEffects(entry: MountedEquipment, display: InventoryControlDisplayData): InventoryControlDisplayData;
 }
 
 export abstract class UnitTypeRulesBase implements UnitTypeRules {
@@ -338,14 +365,23 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     protected readonly baseCrewStateControls: readonly CrewStateControlDefinition[] = [];
     readonly locationConditionControls: readonly LocationConditionControl[] = [];
     protected readonly crewStateDisplayDefinitions: readonly CrewStateDefinition[] = [];
-    protected readonly abandoned: Signal<boolean> = signal(false);
-    protected readonly immobile: Signal<boolean> = signal(false);
-    protected readonly crippled: Signal<boolean> = signal(false);
+    protected readonly abandoned = computed<boolean>(() => {
+        return false;
+    });
+    protected readonly crippled = computed<boolean>(() => {
+        return false;
+    });
+    protected readonly immobile = computed<boolean>(() => {
+        return false;
+    });
 
     get conditionControls(): readonly UnitConditionControl[] {
-        if (!this.hasDroneOperatingSystem()) return this.baseConditionControls;
-        if (this.baseConditionControls.some(control => control.key === 'disconnected')) return this.baseConditionControls;
-        return [...this.baseConditionControls, unitConditionControls(['disconnected'])[0]];
+        const controls = this.unit.gameRules.supportsSkidding
+            ? this.baseConditionControls
+            : this.baseConditionControls.filter(control => control.key !== 'skidding');
+        if (!this.hasDroneOperatingSystem()) return controls;
+        if (controls.some(control => control.key === 'disconnected')) return controls;
+        return [...controls, unitConditionControls(['disconnected'])[0]];
     }
 
     get crewStateControls(): readonly CrewStateControlDefinition[] {
@@ -375,6 +411,10 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         this.controlRollFullLabel = controlRollFullLabel;
     }
 
+    calculateC3Tax(networks: SerializedC3NetworkGroup[], allUnits: CBTForceUnit[]): number {
+        return C3NetworkUtil.calculateCore2026UnitC3Tax(this.unit, networks, allUnits);
+    }
+
     isComputedCondition(condition: string): boolean {
         return condition === 'abandoned' || condition === 'immobile' || condition === 'crippled';
     }
@@ -383,7 +423,10 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         if (condition === 'abandoned' && this.hasDroneOperatingSystem()) return false;
         if (condition === 'disconnected') return this.isDroneOperatingSystemUnavailable();
         if (condition === 'abandoned') return this.abandoned();
-        if (condition === 'immobile') return this.immobile() || (this.hasDroneOperatingSystem() && this.unit.getCondition('disconnected'));
+        if (condition === 'immobile') {
+            const disconnectedDroneImmobile = this.hasDroneOperatingSystem() && this.unit.getCondition('disconnected');
+            return this.immobile() || disconnectedDroneImmobile;
+        }
         if (condition === 'crippled') return this.crippled();
         return false;
     }
@@ -411,8 +454,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     }
 
     protected getMountedTargetingComputerModifier(entry: MountedEquipment): { modifier: number; weakened: boolean } {
-        const equipment = entry.parent?.equipment ?? entry.equipment;
-        if (!this.isTargetingComputerEligible(equipment)) {
+        if (!this.isTargetingComputerEligible(entry)) {
             return { modifier: 0, weakened: false };
         }
 
@@ -430,10 +472,14 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
             : { modifier: 0, weakened: true };
     }
 
-    protected isTargetingComputerEligible(equipment: MountedEquipment['equipment']): boolean {
-        return equipment?.flags.has('F_DIRECT_FIRE') === true
-            && !equipment.flags.has('F_CWS')
-            && !equipment.flags.has('F_TASER');
+    protected isTargetingComputerEligible(entry: MountedEquipment): boolean {
+        if (!(entry instanceof MountedWeapon)) return false;
+        const selectedAmmo = this.unit.getInventoryControlSelectedAmmo?.(entry) ?? null;
+        const baseTypes = new Set(entry.getWeaponTypes(selectedAmmo));
+        const effectiveTypes = this.unit.getInventoryControlRules().applyWeaponTypes?.(entry, baseTypes) ?? baseTypes;
+        return entry.equipment.hasFlag('F_DIRECT_FIRE') === true
+            && !entry.equipment.hasAnyFlag(['F_TASER', 'F_FLAMER', 'F_MG', 'F_MGA'])
+            && (effectiveTypes.has('DB') || effectiveTypes.has('DE'));
     }
 
     protected isEntryStateDisabled(entry: MountedEquipment): boolean {
@@ -494,7 +540,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         return [];
     }
 
-    getCommittedDamageMovementModePSRCheck(_moveMode: MotiveModes | null): PSRCheck | null {
+    getCommittedDamageMovementModePSRCheck(_moveMode: MotiveModes | null, _moveDistance?: number | null): PSRCheck | null {
         return null;
     }
 
@@ -568,7 +614,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         if (movementModifier !== 0 && moveMode !== null) {
             entries.push({ label: getMotiveModeLabel(moveMode, this.unit.getUnit(), turnState.airborne() ?? false), modifier: movementModifier });
         }
-        if (turnState.unitState.hasCondition('skidding')) {
+        if (this.unit.gameRules.supportsSkidding && turnState.unitState.hasCondition('skidding')) {
             entries.push({ label: 'Skidding', modifier: TN_SKIDDING_ATTACKER });
         }
         const spottingModifier = turnState.spotting() ? this.getSpottingModifier() : 0;
@@ -583,7 +629,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         if (turnState.unitState.hasCondition('immobile')) {
             entries.push({ label: 'Immobile', modifier: TN_IMMOBILE });
         }
-        if (turnState.unitState.hasCondition('skidding')) {
+        if (this.unit.gameRules.supportsSkidding && turnState.unitState.hasCondition('skidding')) {
             entries.push({ label: 'Skidding', modifier: TN_SKIDDING_MODIFIER });
         }
         const moveMode = turnState.moveMode();
@@ -602,6 +648,41 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         }
         entries.push(...this.getTargetUnitTypeModifierBreakdown(turnState));
         return entries;
+    }
+
+    chargeDamage(): ChargeDamage {
+        return this.computeChargeDamage();
+    }
+
+    applyInventoryControlDisplayEffects(entry: MountedEquipment, display: InventoryControlDisplayData): InventoryControlDisplayData {
+        if (!entry.physical || entry.name.toLowerCase() !== 'charge') return display;
+        const chargeDamage = this.chargeDamage();
+        if (chargeDamage.damage === null || chargeDamage.maxDamage === null) {
+            return chargeDamage.bonusDamage > 0
+                ? { ...display, damage: `${display.damage}+${chargeDamage.bonusDamage}` }
+                : display;
+        }
+        return {
+            ...display,
+            damage: chargeDamage.damage === chargeDamage.maxDamage
+                ? `${chargeDamage.damage}`
+                : `${chargeDamage.damage} [${chargeDamage.maxDamage}]`,
+        };
+    }
+
+    protected computeChargeDamage(bonusDamage = 0, maxBonusDamage = bonusDamage): ChargeDamage {
+        const damagePerTMM = this.unit.getUnit().tons / 5;
+        const baseDamage = damagePerTMM
+            * (getTargetMovementDistanceModifier(this.unit.turnState().moveDistance()) + 1);
+        const maxRunDistance = this.unit.getUnit().run;
+        const maxBaseDamage = damagePerTMM
+            * (getTargetMovementDistanceModifier(maxRunDistance) + 1);
+        return {
+            damage: baseDamage + bonusDamage,
+            maxDamage: maxBaseDamage + maxBonusDamage,
+            bonusDamage,
+            maxBonusDamage,
+        };
     }
 
     protected getTargetUnitTypeModifierBreakdown(_turnState: TurnState): UnitModifierBreakdownEntry[] {

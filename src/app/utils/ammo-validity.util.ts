@@ -1,7 +1,7 @@
 import { effectiveTechDateYear, TechAdvancementDates } from '../models/entity/types/tech';
 import type { AmmoEquipment, AmmoType, WeaponEquipment } from '../models/equipment.model';
 import type { Era } from '../models/eras.model';
-import type { MountedEquipment } from '../models/force-serialization';
+import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { Unit, UnitType } from '../models/units.model';
 
 export interface AmmoValidityContext {

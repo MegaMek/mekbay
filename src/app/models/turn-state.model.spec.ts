@@ -1,6 +1,7 @@
 import { computed, signal } from '@angular/core';
 import type { CBTForceUnitState } from './cbt-force-unit-state.model';
-import { MountedEquipment, type CriticalSlot, type HeatProfile } from './force-serialization';
+import { MountedEquipment } from './mounted-equipment.model';
+import { type CriticalSlot, type HeatProfile } from './force-serialization';
 import { AeroRules } from './rules/aero-rules';
 import { InfantryRules } from './rules/infantry-rules';
 import { MekRules } from './rules/mek-rules';
@@ -9,6 +10,8 @@ import type { Unit } from './units.model';
 import { TurnState } from './turn-state.model';
 import { Equipment } from './equipment.model';
 import { PpcCapacitorHandler, PPC_CAPACITOR_STATE_KEY } from '../equipment-handlers/ppc-capacitor.handler';
+import { TWAeroRules, TWInfantryRules, TWMekRules } from './rules/tw-rules';
+import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './rules/game-rules';
 
 interface TurnStateHarnessOptions {
     critSlots?: CriticalSlot[];
@@ -19,6 +22,7 @@ interface TurnStateHarnessOptions {
     prone?: boolean;
     skidding?: boolean;
     rulesType?: 'mek' | 'infantry' | 'aero';
+    rulesId?: 'core2026' | 'tw';
 }
 
 interface TurnStateHarness {
@@ -71,6 +75,7 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
     let turnState: TurnState;
 
     const unit = {
+        gameRules: options.rulesId === 'tw' ? TW_GAME_RULES : CORE_2026_GAME_RULES,
         locations: { internal: internalLocations },
         isLoaded: () => true,
         shutdown: false,
@@ -104,11 +109,17 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
     } as unknown as CBTForceUnitState;
 
     turnState = new TurnState(unitState);
-    const rules = options.rulesType === 'infantry'
-        ? new InfantryRules(unit as any)
-        : options.rulesType === 'aero'
-            ? new AeroRules(unit as any)
-            : new MekRules(unit as any);
+    const rules = options.rulesId === 'tw'
+        ? options.rulesType === 'infantry'
+            ? new TWInfantryRules(unit as any)
+            : options.rulesType === 'aero'
+                ? new TWAeroRules(unit as any)
+                : new TWMekRules(unit as any)
+        : options.rulesType === 'infantry'
+            ? new InfantryRules(unit as any)
+            : options.rulesType === 'aero'
+                ? new AeroRules(unit as any)
+                : new MekRules(unit as any);
     (unit as any).rules = rules;
 
     return {
@@ -225,6 +236,7 @@ describe('TurnState', () => {
                 critSlots: [createCritSlot('Gyro', 'CT', { destroyed: 1 })],
             });
             turnState.moveMode.set('run');
+            turnState.moveDistance.set(1);
             turnState.applyMovePSR.set(true);
 
             expect(getReasons(turnState)).toContain('Running with damaged gyro');
@@ -294,6 +306,7 @@ describe('TurnState', () => {
             const { turnState } = createTurnStateHarness({
                 skidding: true,
                 rulesType: 'infantry',
+                rulesId: 'tw',
                 unit: { type: 'Infantry', subtype: 'Battle Armor', moveType: 'VTOL' },
             });
             turnState.moveMode.set('jump');
@@ -323,6 +336,7 @@ describe('TurnState', () => {
             const { turnState } = createTurnStateHarness({
                 prone: true,
                 skidding: true,
+                rulesId: 'tw',
             });
             turnState.moveMode.set('walk');
             turnState.moveDistance.set(3);

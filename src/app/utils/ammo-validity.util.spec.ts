@@ -1,7 +1,7 @@
 import { AmmoEquipment, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
 import type { WireSplitTechDates } from '../models/equipment-tech-codec';
 import type { Era } from '../models/eras.model';
-import type { MountedEquipment } from '../models/force-serialization';
+import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { AmmoValidityUtil } from './ammo-validity.util';
 
 function createEra(from: number | undefined, to: number | undefined): Era {

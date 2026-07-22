@@ -33,7 +33,7 @@
 
 import { UnitSvgService } from "./unit-svg.service";
 import { AeroRules } from "../models/rules/aero-rules";
-import { MountedEquipment } from "../models/force-serialization";
+import { MountedEquipment } from "../models/mounted-equipment.model";
 import type { InventoryControlRuntimeRangeKey } from "../models/inventory-control-runtime-state.model";
 
 /*
@@ -118,9 +118,17 @@ export class UnitSvgAeroService extends UnitSvgService {
 
     // ── Hit Modifiers ────────────────────────────────────────────────────────
 
-    protected override resolveInventoryControlHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {
-        const hitModifier = super.resolveInventoryControlHitModifier(entry, range);
-        return typeof hitModifier === 'number' ? hitModifier + this.inventoryTargetHeatFireModifier(entry) : hitModifier;
+    protected override resolveInventoryControlToHit(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null) {
+        const heatModifier = this.inventoryTargetHeatFireModifier(entry);
+        const state = this.unit.rules.computeEntryState(entry);
+        const selectedAmmo = this.inventoryTargetSelectedAmmo(entry);
+        return this.unit.gameRules.resolveToHit({
+            subject: entry,
+            range,
+            stateModifier: state.hitMod + heatModifier,
+            stateWeakened: state.weakenedHitMod,
+            adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)
+        });
     }
  
     override inventoryTargetHeatFireModifier(entry: MountedEquipment): number {

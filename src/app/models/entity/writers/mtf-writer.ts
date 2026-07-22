@@ -238,7 +238,7 @@ function writeMovement(entity: MekEntity, lines: string[]): void {
     const eq = m.equipment;
     if (!eq) return false;
     if (eq.type !== 'misc') return false;
-    if (eq.stats.criticalSlots !== 0) return false;
+    if (eq.critSlots !== 0) return false;
     if (eq.hasFlag('F_CASE')) return false;
     if (eq.hasFlag('F_ARMOR')) return false;
     if (eq.hasFlag('F_STRUCTURE')) return false;

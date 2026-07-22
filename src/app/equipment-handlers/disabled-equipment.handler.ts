@@ -1,5 +1,5 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
-import type { MountedEquipment } from '../models/force-serialization';
+import type { MountedEquipment } from '../models/mounted-equipment.model';
 import {
     ENTRY_DISABLED_STATE_KEY,
     ENTRY_DISABLED_STATE_VALUE,
@@ -44,7 +44,7 @@ export abstract class DisabledStateToggleHandler extends EquipmentInteractionHan
 
         equipment.owner.setInventoryEntry(equipment);
         context.toastService.showToast(
-            `${equipment.equipment?.name || equipment.name} ${disabled ? this.disabledToastVerb : this.enabledToastVerb}`,
+            `${equipment.equipment?.name || equipment.name} is ${disabled ? this.disabledToastVerb : this.enabledToastVerb}`,
             disabled ? 'info' : 'error'
         );
         return true;

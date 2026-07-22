@@ -32,7 +32,7 @@
  */
 
 import { EquipmentInteractionHandler, type HandlerContext } from '../../services/equipment-interaction-registry.service';
-import type { MountedEquipment } from '../../models/force-serialization';
+import type { MountedEquipment } from '../../models/mounted-equipment.model';
 import type { PickerChoice, PickerValue } from '../../components/picker/picker.interface';
 
 /**
@@ -42,6 +42,8 @@ export abstract class ToggleHandler extends EquipmentInteractionHandler {
     protected readonly stateKey: string = 'state';
     protected readonly enabledLabel: string = 'Enable';
     protected readonly disabledLabel: string = 'Disable';
+    protected readonly enabledToastVerb: string = 'enabled';
+    protected readonly disabledToastVerb: string = 'disabled';
     
     getChoices(equipment: MountedEquipment, context: HandlerContext): PickerChoice[] {
         const currentState = equipment.states?.get(this.stateKey) || 'disabled';
@@ -62,7 +64,7 @@ export abstract class ToggleHandler extends EquipmentInteractionHandler {
         equipment.states?.set(this.stateKey, newState);
         equipment.owner.setInventoryEntry(equipment);
         context.toastService.showToast(
-            `${equipment.equipment?.name||equipment.name} ${newState === 'enabled' ? this.enabledLabel : this.disabledLabel}`,
+            `${equipment.equipment?.name||equipment.name} is ${newState === 'enabled' ? this.enabledToastVerb : this.disabledToastVerb}`,
             'info'
         );
         return true;
