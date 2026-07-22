@@ -85,7 +85,7 @@ export interface WeaponCharacteristics {
     readonly hitModifiers: readonly number[];
     readonly oneShotCount?: 1 | 2;
 }
-export const WEAPON_TYPES = ['AE', 'AI', 'C', 'DB', 'DE', 'E', 'F', 'H', 'M', 'OS', 'P', 'PB', 'R', 'S', 'V', 'X'] as const;
+export const WEAPON_TYPES = ['A', 'AE', 'AI', 'B', 'C', 'DB', 'DE', 'E', 'F', 'H', 'M', 'N', 'OS', 'P', 'PB', 'R', 'S', 'V', 'X'] as const;
 export type WeaponType = typeof WEAPON_TYPES[number];
 
 // ============================================================================

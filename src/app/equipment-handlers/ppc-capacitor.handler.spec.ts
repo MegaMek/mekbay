@@ -2,7 +2,7 @@ import type { PickerChoice } from '../components/picker/picker.interface';
 import { MiscEquipment, WeaponEquipment } from '../models/equipment.model';
 import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
-import type { HandlerContext } from '../services/equipment-interaction-registry.service';
+import { EquipmentInteractionRegistry, type HandlerContext } from '../services/equipment-interaction-registry.service';
 import { resolveInventoryControlDamageText } from '../utils/inventory-control-damage.util';
 import {
     PPC_CAPACITOR_CHARGING_STATE,
@@ -92,6 +92,24 @@ describe('PpcCapacitorHandler', () => {
             applyDamageEffects: (entry, value, damageContext) =>
                 handler.applyInventoryControlDamageEffects(entry, value, damageContext, context)
         })).toBe('5 [DE]');
+    });
+
+    it('adds X to the parent PPC weapon types only while its capacitor is charged and usable', () => {
+        const registry = new EquipmentInteractionRegistry();
+        registry.register(handler);
+        const baseTypes = new Set(['DE'] as const);
+        const charged = setup();
+        charged.capacitor.states.set(PPC_CAPACITOR_STATE_KEY, PPC_CAPACITOR_CHARGED_STATE);
+
+        expect(Array.from(registry.applyWeaponTypes(charged.weapon, baseTypes, context))).toEqual(['DE', 'X']);
+        expect(Array.from(baseTypes)).toEqual(['DE']);
+
+        const discharged = setup();
+        expect(registry.applyWeaponTypes(discharged.weapon, baseTypes, context)).toBe(baseTypes);
+
+        const unavailable = setup(true);
+        unavailable.capacitor.states.set(PPC_CAPACITOR_STATE_KEY, PPC_CAPACITOR_CHARGED_STATE);
+        expect(registry.applyWeaponTypes(unavailable.weapon, baseTypes, context)).toBe(baseTypes);
     });
 
     it('adds five firing heat and exposes replaceable passive heat while charged', () => {

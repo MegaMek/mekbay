@@ -688,7 +688,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         expect(capacitor.states.get(PPC_CAPACITOR_STATE_KEY)).toBe('charged');
         expect(row.display.heat).toBe('10');
-        expect(row.display.damage).toBe('10 [DE]');
+        expect(row.display.damage).toBe('10 [DE,X]');
         expect(component.handlerChoices(row)[0]).toEqual(jasmine.objectContaining({
             shortLabel: 'Charged!',
             active: true,
