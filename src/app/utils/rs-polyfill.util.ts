@@ -1687,20 +1687,37 @@ export class RsPolyfillUtil {
         svg.querySelectorAll<SVGElement>('.critGroup').forEach(critGroup => {
             const loc = critGroup.getAttribute('loc');
             if (!loc) return;
-            if (critGroup.querySelector('.locationConditionButton')) return;
+            if (critGroup.querySelector('.locationConditionControl')) return;
             const textEl = Array.from(critGroup.children).find(child => child.tagName.toLowerCase() === 'text') as SVGGraphicsElement | undefined;
             if (!textEl) return;
             textEl.classList.add('locationConditionText');
             textEl.setAttribute('loc', loc);
-            textEl.style.pointerEvents = 'all';
             const textCoords = textEl.getBBox();
+
+            const control = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            control.setAttribute('class', 'locationConditionControl');
+            control.setAttribute('loc', loc);
+            control.setAttribute('pointer-events', 'all');
+
+            const labelBaseline = Number.parseFloat(textEl.getAttribute('y') ?? '');
+            const rectHeight = textCoords.height + 6;
+            const rectBaseline = Number.isFinite(labelBaseline) ? labelBaseline : textCoords.y + textCoords.height;
+            const hitArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            hitArea.setAttribute('class', 'locationConditionHitArea');
+            hitArea.setAttribute('x', (textCoords.x - 2).toString());
+            hitArea.setAttribute('y', (rectBaseline - rectHeight).toString());
+            hitArea.setAttribute('width', (Math.max(30, textCoords.width + 12)).toString());
+            hitArea.setAttribute('height', rectHeight.toString());
+            hitArea.setAttribute('fill', 'transparent');
+            hitArea.setAttribute('pointer-events', 'all');
+
+            critGroup.insertBefore(control, textEl);
+            control.append(hitArea, textEl);
 
             const narcBanner = document.createElementNS('http://www.w3.org/2000/svg', 'g');
             narcBanner.setAttribute('class', 'locationNarcBanner screen-only');
             narcBanner.setAttribute('loc', loc);
             narcBanner.setAttribute('display', 'none');
-            const critGroupTransform = critGroup.getAttribute('transform');
-            if (critGroupTransform) narcBanner.setAttribute('transform', critGroupTransform);
 
             const narcRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
             narcRect.setAttribute('x', textCoords.x.toString());
@@ -1725,11 +1742,7 @@ export class RsPolyfillUtil {
 
             narcBanner.appendChild(narcRect);
             narcBanner.appendChild(narcText);
-            if (critGroup.parentNode) {
-                critGroup.parentNode.insertBefore(narcBanner, critGroup.nextSibling);
-            } else {
-                critGroup.insertBefore(narcBanner, textEl);
-            }
+            control.appendChild(narcBanner);
         });
 
     }

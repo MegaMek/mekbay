@@ -35,7 +35,8 @@ import { ChangeDetectionStrategy, Component, computed, type ElementRef, inject, 
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import type { AmmoEquipment } from '../../models/equipment.model';
 import type { Era } from '../../models/eras.model';
-import type { MountedEquipment } from '../../models/force-serialization';
+import type { MountedEquipment } from '../../models/mounted-equipment.model';
+import { CORE_2026_GAME_RULES, type CBTGameRules } from '../../models/rules/game-rules';
 import type { UnitType } from '../../models/units.model';
 import { DialogsService } from '../../services/dialogs.service';
 import { AmmoValidityUtil } from '../../utils/ammo-validity.util';
@@ -55,6 +56,7 @@ export interface SetAmmoDialogData {
     unitType?: UnitType;
     era?: Era | null;
     inventory?: readonly MountedEquipment[];
+    gameRules?: CBTGameRules;
 }
 
 @Component({
@@ -80,6 +82,7 @@ export interface SetAmmoDialogData {
                         [value]="selectedAmmoName()"
                         [currentAmmo]="data.currentAmmo"
                         [originalAmmo]="data.originalAmmo"
+                        [gameRules]="data.gameRules ?? defaultGameRules"
                         (valueChange)="setSelectedAmmo($event)"
                     />
                     @let issues = selectedAmmoSelectionIssues();
@@ -279,8 +282,9 @@ export interface SetAmmoDialogData {
 export class SetAmmoDialogComponent {
     private dialogsService = inject(DialogsService)
     inputQuantityRef = viewChild.required<ElementRef<HTMLInputElement>>('inputQuantityRef');
-    public dialogRef: DialogRef<{name: string; quantity: number, totalAmmo: number} | null, SetAmmoDialogComponent> = inject(DialogRef);
+    public dialogRef = inject<DialogRef<{name: string; quantity: number, totalAmmo: number} | null, SetAmmoDialogComponent>>(DialogRef);
     readonly data: SetAmmoDialogData = inject(DIALOG_DATA);
+    readonly defaultGameRules = CORE_2026_GAME_RULES;
     public totalKgAvailable: number;
     
     selectedAmmoName = signal(this.data.currentAmmo.internalName);
@@ -289,16 +293,16 @@ export class SetAmmoDialogComponent {
     selectedAmmo = computed(() => this.ammoOptions().find(
         ammo => ammo.internalName === this.selectedAmmoName()
     ) ?? this.data.currentAmmo);
-    selectedAmmoInfoItems = computed(() => getAmmoInfoItems(this.selectedAmmo()));
+    selectedAmmoInfoItems = computed(() => getAmmoInfoItems(this.selectedAmmo(), this.data.gameRules));
     selectedAmmoSelectionIssues = computed(() => this.ammoSelectionStatus()[this.selectedAmmo().internalName]?.issues ?? []);
     advancement = computed<EquipmentAdvancementTimeline>(() => getEquipmentAdvancementTimeline(this.selectedAmmo()));
     
     public currentMaxQuantity = computed(() => {
-        return Math.floor(this.totalKgAvailable / this.selectedAmmo().kgPerShot);
+        return Math.floor(this.totalKgAvailable / this.selectedAmmo().getEffectiveKgPerShot(this.data.gameRules ?? this.defaultGameRules));
     });
 
     constructor() {
-        this.totalKgAvailable = this.data.originalAmmo.kgPerShot * this.data.originalTotalAmmo;
+        this.totalKgAvailable = this.data.originalAmmo.getEffectiveKgPerShot(this.data.gameRules ?? this.defaultGameRules) * this.data.originalTotalAmmo;
     }
 
     setSelectedAmmo(internalName: string) {

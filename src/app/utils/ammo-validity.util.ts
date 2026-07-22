@@ -1,6 +1,6 @@
 import type { AmmoEquipment, AmmoType, TechAdvancementDates, WeaponEquipment } from '../models/equipment.model';
 import type { Era } from '../models/eras.model';
-import type { MountedEquipment } from '../models/force-serialization';
+import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { Unit, UnitType } from '../models/units.model';
 import { getEffectiveAdvancementYear } from './tech-advancement-date.util';
 

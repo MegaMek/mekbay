@@ -1,7 +1,7 @@
 import { MiscEquipment, WeaponEquipment } from '../models/equipment.model';
-import { MountedEquipment } from '../models/force-serialization';
+import { MountedEquipment } from '../models/mounted-equipment.model';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
-import { INVENTORY_CONTROL_MODE_STATE, type InventoryControlDisplayData } from '../utils/inventory-control.util';
+import { INVENTORY_CONTROL_MODE_STATE } from '../utils/inventory-control.util';
 import { RISC_LASER_PULSE_MODE, RISC_LASER_STANDARD_MODE, RiscLaserPulseModuleHandler } from './risc-laser-pulse-module.handler';
 
 function owner() {
@@ -34,8 +34,6 @@ function module(destroyed = false): MountedEquipment {
 describe('RiscLaserPulseModuleHandler', () => {
     const handler = new RiscLaserPulseModuleHandler();
     const context = {} as HandlerContext;
-    const display: InventoryControlDisplayData = { name: 'Medium Laser', location: 'RA', heat: '3', damage: '5', hit: '+0', min: '-', short: '3', medium: '6', long: '9' };
-
     it('offers STD and PULSE modes from the linked laser row', () => {
         const linked = module();
         const entry = laser(linked);
@@ -54,12 +52,14 @@ describe('RiscLaserPulseModuleHandler', () => {
         const linked = module();
         const entry = laser(linked, new Map([[INVENTORY_CONTROL_MODE_STATE, RISC_LASER_PULSE_MODE]]));
 
-        expect(handler.applyInventoryControlDisplayEffects(entry, display, { selectedRange: null, additionalHitModifier: 0 }, context).heat).toBe('5');
-        expect(handler.getLinkedEquipmentHitModifier(linked, entry)).toBe(-2);
+        expect(handler.applyInventoryControlHeatEffects(entry, { value: 3, weakened: false }, context))
+            .toEqual({ value: 5, weakened: false });
+        expect(handler.getToHitAdjustments(linked, { parent: entry })).toEqual([{ kind: 'add', value: -2 }]);
 
         entry.states.set(INVENTORY_CONTROL_MODE_STATE, RISC_LASER_STANDARD_MODE);
-        expect(handler.applyInventoryControlDisplayEffects(entry, display, { selectedRange: null, additionalHitModifier: 0 }, context).heat).toBe('3');
-        expect(handler.getLinkedEquipmentHitModifier(linked, entry)).toBe(0);
+        expect(handler.applyInventoryControlHeatEffects(entry, { value: 3, weakened: false }, context))
+            .toEqual({ value: 3, weakened: false });
+        expect(handler.getToHitAdjustments(linked, { parent: entry })).toEqual([{ kind: 'add', value: 0 }]);
     });
 
     it('falls back to STD and allows aimed shots when the module is unavailable', () => {
@@ -67,8 +67,9 @@ describe('RiscLaserPulseModuleHandler', () => {
         const entry = laser(linked, new Map([[INVENTORY_CONTROL_MODE_STATE, RISC_LASER_PULSE_MODE]]));
 
         expect(handler.getChoices(entry, context)).toEqual([]);
-        expect(handler.applyInventoryControlDisplayEffects(entry, display, { selectedRange: null, additionalHitModifier: 0 }, context).heat).toBe('3');
-        expect(handler.getLinkedEquipmentHitModifier(linked, entry)).toBe(0);
+        expect(handler.applyInventoryControlHeatEffects(entry, { value: 3, weakened: false }, context))
+            .toEqual({ value: 3, weakened: false });
+        expect(handler.getToHitAdjustments(linked, { parent: entry })).toEqual([{ kind: 'add', value: 0 }]);
         expect(handler.canPerformAimedShot(entry, context)).toBeNull();
     });
 

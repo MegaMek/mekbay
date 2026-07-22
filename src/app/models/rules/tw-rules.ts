@@ -9,7 +9,6 @@ import { computed } from '@angular/core';
 import { InfantryRules } from './infantry-rules';
 import { MekRules, type MekLegDamageState, type MekLegMovementResult } from './mek-rules';
 import { ProtoMekRules } from './protomek-rules';
-import { TW_RULES_DATA } from './cbt-rules-data';
 import { VehicleRules } from './vehicle-rules';
 import type { ChargeDamage, PSRCheck } from './unit-type-rules';
 import type { SerializedC3NetworkGroup } from '../force-serialization';
@@ -25,8 +24,6 @@ function calculateTWC3Tax(
 }
 
 export class TWMekRules extends MekRules {
-    override readonly rulesData = TW_RULES_DATA;
-
     override calculateC3Tax(networks: SerializedC3NetworkGroup[], allUnits: CBTForceUnit[]): number {
         return calculateTWC3Tax(this.unit, networks, allUnits);
     }
@@ -171,32 +168,24 @@ export class TWMekRules extends MekRules {
 }
 
 export class TWAeroRules extends AeroRules {
-    override readonly rulesData = TW_RULES_DATA;
-
     override calculateC3Tax(networks: SerializedC3NetworkGroup[], allUnits: CBTForceUnit[]): number {
         return calculateTWC3Tax(this.unit, networks, allUnits);
     }
 }
 
 export class TWInfantryRules extends InfantryRules {
-    override readonly rulesData = TW_RULES_DATA;
-
     override calculateC3Tax(networks: SerializedC3NetworkGroup[], allUnits: CBTForceUnit[]): number {
         return calculateTWC3Tax(this.unit, networks, allUnits);
     }
 }
 
 export class TWProtoMekRules extends ProtoMekRules {
-    override readonly rulesData = TW_RULES_DATA;
-
     override calculateC3Tax(networks: SerializedC3NetworkGroup[], allUnits: CBTForceUnit[]): number {
         return calculateTWC3Tax(this.unit, networks, allUnits);
     }
 }
 
 export class TWVehicleRules extends VehicleRules {
-    override readonly rulesData = TW_RULES_DATA;
-
     override calculateC3Tax(networks: SerializedC3NetworkGroup[], allUnits: CBTForceUnit[]): number {
         return calculateTWC3Tax(this.unit, networks, allUnits);
     }

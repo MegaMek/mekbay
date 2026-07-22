@@ -212,6 +212,23 @@ describe('ASForceUnit ability effects', () => {
         expect(forceUnit.effectiveTmm()).toEqual({ '': 0 });
     });
 
+    it('halves non-vehicle TMM for each MP critical hit', () => {
+        const forceUnit = createForceUnit(createTestUnit({ as: { MVm: { '': 35 } } }));
+
+        forceUnit.getState().crits.set([{ key: 'mp', timestamp: 1 }]);
+        expect(forceUnit.effectiveTmm()).toEqual({ '': 2 });
+
+        forceUnit.getState().crits.set([{ key: 'mp', timestamp: 1 }, { key: 'mp', timestamp: 2 }]);
+        expect(forceUnit.effectiveTmm()).toEqual({ '': 1 });
+
+        forceUnit.getState().crits.set([
+            { key: 'mp', timestamp: 1 },
+            { key: 'mp', timestamp: 2 },
+            { key: 'mp', timestamp: 3 },
+        ]);
+        expect(forceUnit.effectiveTmm()).toEqual({ '': 0 });
+    });
+
     it('applies Evasive Maneuver to fast combat vehicle motive damage rolls', () => {
         const forceUnit = createForceUnit(createTestUnit({
             type: 'Tank',

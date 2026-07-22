@@ -1,8 +1,10 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
 import { WeaponEquipment } from '../models/equipment.model';
-import type { MountedEquipment } from '../models/force-serialization';
-import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
-import { INVENTORY_CONTROL_MODE_STATE, setInventoryControlMode, type InventoryControlDisplayData, type InventoryControlDisplayEffectOptions } from '../utils/inventory-control.util';
+import type { MountedEquipment } from '../models/mounted-equipment.model';
+import type { ToHitAdjustment } from '../models/rules/game-rules';
+import { EquipmentInteractionHandler, type HandlerContext, type ToHitAdjustmentContext } from '../services/equipment-interaction-registry.service';
+import { INVENTORY_CONTROL_MODE_STATE, setInventoryControlMode } from '../utils/inventory-control.util';
+import type { InventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
 
 export const RISC_LASER_STANDARD_MODE = 'Standard';
 export const RISC_LASER_PULSE_MODE = 'Pulse';
@@ -37,26 +39,19 @@ export class RiscLaserPulseModuleHandler extends EquipmentInteractionHandler {
         return true;
     }
 
-    override applyInventoryControlDisplayEffects(
-        equipment: MountedEquipment,
-        display: InventoryControlDisplayData,
-        _options: InventoryControlDisplayEffectOptions,
-        _context: HandlerContext
-    ): InventoryControlDisplayData {
+    override applyInventoryControlHeatEffects(equipment: MountedEquipment, effect: InventoryControlHeatEffect, _context: HandlerContext): InventoryControlHeatEffect {
         const module = this.linkedRiscLaserPulseModule(equipment);
-        if (!module || !this.isModuleUsable(equipment, module) || this.selectedMode(equipment) !== RISC_LASER_PULSE_MODE) return display;
-        const heat = addNumericBonus(display.heat, 2);
-        return heat === null ? display : { ...display, heat };
+        return module && this.isModuleUsable(equipment, module) && this.selectedMode(equipment) === RISC_LASER_PULSE_MODE
+            ? { ...effect, value: effect.value + 2 }
+            : effect;
     }
 
-    override getInventoryControlBaseHitModifier(equipment: MountedEquipment): number | null {
-        return isRiscLaserPulseModule(equipment) ? -2 : null;
-    }
-
-    override getLinkedEquipmentHitModifier(equipment: MountedEquipment, parent: MountedEquipment): number | null {
-        if (!isRiscLaserPulseModule(equipment) || !this.isLaserWithRiscModule(parent)) return null;
-        if (!this.isModuleUsable(parent, equipment) || this.selectedMode(parent) !== RISC_LASER_PULSE_MODE) return 0;
-        return -2;
+    override getToHitAdjustments(equipment: MountedEquipment, context: ToHitAdjustmentContext): readonly ToHitAdjustment[] {
+        const parent = context.parent;
+        if (!parent) return isRiscLaserPulseModule(equipment) ? [{ kind: 'replace-base', value: -2 }] : [];
+        if (!isRiscLaserPulseModule(equipment) || !this.isLaserWithRiscModule(parent)) return [];
+        const active = this.isModuleUsable(parent, equipment) && this.selectedMode(parent) === RISC_LASER_PULSE_MODE;
+        return [{ kind: 'add', value: active ? -2 : 0 }];
     }
 
     override canPerformAimedShot(equipment: MountedEquipment, _context: HandlerContext): boolean | null {
@@ -102,13 +97,4 @@ export function linkedRiscLaserPulseModule(equipment: MountedEquipment): Mounted
 export function selectedRiscLaserMode(equipment: MountedEquipment): string {
     const persisted = equipment.states.get(INVENTORY_CONTROL_MODE_STATE);
     return persisted === RISC_LASER_PULSE_MODE ? RISC_LASER_PULSE_MODE : RISC_LASER_STANDARD_MODE;
-}
-
-function addNumericBonus(value: string, bonus: number): string | null {
-    const match = value.trim().match(/^([+-]?\d+(?:\.\d+)?)(.*)$/);
-    if (!match) return null;
-    const next = Number.parseFloat(match[1]) + bonus;
-    if (!Number.isFinite(next)) return null;
-    const nextText = Number.isInteger(next) ? next.toString() : next.toFixed(1).replace(/\.0$/, '');
-    return `${nextText}${match[2]}`;
 }

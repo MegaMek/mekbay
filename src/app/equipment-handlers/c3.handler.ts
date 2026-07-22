@@ -32,7 +32,7 @@
  */
 
 import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
-import type { MountedEquipment } from '../models/force-serialization';
+import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { PickerChoice } from '../components/picker/picker.interface';
 import type { ALL_C3_FLAGS } from '../models/c3-network.model';
 import { firstValueFrom } from 'rxjs';

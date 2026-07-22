@@ -1,15 +1,46 @@
-import type { MountedEquipment } from '../models/force-serialization';
+/*
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
+ *
+ * This file is part of MekBay.
+ *
+ * MekBay is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MekBay is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
+ */
+
+import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { WeaponEquipment, type AmmoEquipment } from '../models/equipment.model';
 import type { InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
-import { CORE_2026_RULES_DATA, type CBTRulesData } from '../models/rules/cbt-rules-data';
+import { CORE_2026_GAME_RULES, type CBTGameRules, type HitModifier } from '../models/rules/game-rules';
 import type { UnitModifierBreakdownEntry } from '../models/rules/unit-type-rules';
 import type { InventoryControlDisplayData, InventoryControlGroupId, InventoryRangeKey } from './inventory-control.util';
 import type { TooltipLine } from '../components/tooltip/tooltip.component';
 
-export type InventoryTargetRangeKey = InventoryControlRuntimeRangeKey;
-
 export interface InventoryTargetRangeSelection {
-    range: InventoryTargetRangeKey;
+    range: InventoryControlRuntimeRangeKey;
     outOfLongRange: boolean;
     outOfExtremeRange: boolean;
     minimumRangeModifier: number;
@@ -33,6 +64,7 @@ export interface InventoryTargetNumberInput {
     entry: MountedEquipment;
     category: InventoryControlGroupId;
     display: Pick<InventoryControlDisplayData, InventoryRangeKey | 'min'>;
+    extremeRange?: number | null;
     selectedAmmo?: AmmoEquipment | null;
     target: InventoryControlRuntimeTarget | null;
     gunnerySkill: number;
@@ -41,9 +73,9 @@ export interface InventoryTargetNumberInput {
     pilotingModifierBreakdown?: readonly UnitModifierBreakdownEntry[];
     missingMovementModifier?: boolean;
     attackModifierBreakdown: readonly UnitModifierBreakdownEntry[];
-    hitModifier: number;
+    hitModifier: HitModifier;
     heatFireModifier?: number;
-    rulesData?: CBTRulesData;
+    gameRules?: CBTGameRules;
 }
 
 export type InventoryTargetDisplay = Pick<InventoryControlDisplayData, InventoryRangeKey | 'min'>;
@@ -54,23 +86,7 @@ export function inventoryTargetCategory(entry: MountedEquipment): InventoryContr
     return 'equipment';
 }
 
-export function readInventoryTargetDisplay(entry: MountedEquipment): InventoryTargetDisplay {
-    return {
-        min: readInventoryTargetText(entry, 'range_min'),
-        short: readInventoryTargetText(entry, 'range_short'),
-        medium: readInventoryTargetText(entry, 'range_medium'),
-        long: readInventoryTargetText(entry, 'range_long')
-    };
-}
-
-export function readInventoryTargetText(entry: MountedEquipment, className: string): string {
-    const selectedMode = entry.el?.querySelector(':scope > .alternativeMode.selected');
-    const modeValue = selectedMode ? directInventoryTargetSvgText(selectedMode, `.${className}`) : '';
-    if (modeValue && modeValue !== '—') return modeValue;
-    return entry.el ? directInventoryTargetSvgText(entry.el, `.${className}`) : '';
-}
-
-export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberInput, 'entry' | 'category' | 'display' | 'target' | 'selectedAmmo' | 'rulesData'>): InventoryTargetRangeSelection | null {
+export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberInput, 'entry' | 'category' | 'display' | 'extremeRange' | 'target' | 'selectedAmmo'>): InventoryTargetRangeSelection | null {
     const target = input.target;
     if (!target) return null;
     const c3Distance = target.useC3 === true ? target.c3Distance ?? null : null;
@@ -90,7 +106,7 @@ export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberI
     if (thresholds.length === 0) return null;
     const longRange = thresholds.find(threshold => threshold.range === 'long')?.value ?? null;
     const outOfLongRange = longRange !== null && target.distance > longRange;
-    const extremeRange = inventoryTargetExtremeRange(input.entry);
+    const extremeRange = input.extremeRange ?? null;
     const actualOutOfExtremeRange = outOfLongRange && extremeRange !== null && target.distance > extremeRange;
 
     for (const threshold of thresholds) {
@@ -115,6 +131,10 @@ export function inventoryTargetNumberState(
 ): InventoryTargetNumberState {
     if (!rangeSelection) return { text: '', breakdown: null, rangeSelection };
     if (rangeSelection.outOfLongRange) return { text: 'X', breakdown: null, rangeSelection };
+    if (input.hitModifier === 'Vs' || input.hitModifier === '*') {
+        return { text: input.hitModifier, breakdown: null, rangeSelection };
+    }
+    if (input.hitModifier === null) return { text: '', breakdown: null, rangeSelection };
     const breakdown = inventoryTargetNumberBreakdown(input, rangeSelection);
     if (input.missingMovementModifier) return { text: 'M?', breakdown, rangeSelection };
     return { text: breakdown === null ? '' : breakdown.total.toString(), breakdown, rangeSelection };
@@ -131,6 +151,7 @@ export function inventoryTargetNumberBreakdown(
     const target = input.target;
     if (!target) return null;
     if (!rangeSelection) return null;
+    if (typeof input.hitModifier !== 'number') return null;
     if (input.missingMovementModifier) {
         return {
             total: 0,
@@ -143,12 +164,15 @@ export function inventoryTargetNumberBreakdown(
     const skillLabel = physical ? 'Piloting' : 'Gunnery';
     const skill = physical ? input.pilotingSkill : input.gunnerySkill;
     const skillModifierBreakdown = physical ? input.pilotingModifierBreakdown ?? [] : input.gunneryModifierBreakdown ?? [];
-    const rulesData = input.rulesData ?? CORE_2026_RULES_DATA;
+    const gameRules = input.gameRules ?? CORE_2026_GAME_RULES;
     const artilleryRangeModifier = input.selectedAmmo?.category === 'Artillery'
-        ? rulesData.targeting.artilleryFlatRangeModifier : null;
+        ? gameRules.artilleryFlatRangeModifier : null;
     const rangeModifier = artilleryRangeModifier ?? inventoryTargetRangeModifier(rangeSelection.range);
     const minimumRangeModifier = rangeSelection.minimumRangeModifier;
-    const ammoToHitModifier = physical ? 0 : (input.selectedAmmo?.getToHitModifier(rangeSelection.range) ?? 0);
+    const ammoToHitModifier = physical || !input.selectedAmmo
+        ? 0
+        : gameRules.resolveToHit({ subject: input.selectedAmmo, range: rangeSelection.range }).value;
+    const numericAmmoToHitModifier = typeof ammoToHitModifier === 'number' ? ammoToHitModifier : 0;
     const heatFireModifier = physical ? 0 : input.heatFireModifier ?? 0;
     const terms: TooltipLine[] = [
         { label: skillLabel, value: skill.toString() }
@@ -183,8 +207,8 @@ export function inventoryTargetNumberBreakdown(
     if (input.hitModifier !== 0) {
         terms.push({ label: 'Hit Modifier', value: formatInventoryTargetSignedModifier(input.hitModifier) });
     }
-    if (ammoToHitModifier !== 0 && input.selectedAmmo) {
-        terms.push({ label: `Ammo (${input.selectedAmmo.shortName})`, value: formatInventoryTargetSignedModifier(ammoToHitModifier) });
+    if (numericAmmoToHitModifier !== 0 && input.selectedAmmo) {
+        terms.push({ label: `Ammo (${input.selectedAmmo.shortName})`, value: formatInventoryTargetSignedModifier(numericAmmoToHitModifier) });
     }
     if (heatFireModifier !== 0) {
         terms.push({ label: 'Heat - Fire Modifier', value: formatInventoryTargetSignedModifier(heatFireModifier) });
@@ -192,7 +216,7 @@ export function inventoryTargetNumberBreakdown(
 
     const attackModifier = input.attackModifierBreakdown.reduce((total, entry) => total + entry.modifier, 0);
     const skillModifier = skillModifierBreakdown.reduce((total, entry) => total + entry.modifier, 0);
-    const total = skill + skillModifier + attackModifier + target.tnModifier + rangeModifier + minimumRangeModifier + input.hitModifier + ammoToHitModifier + heatFireModifier;
+    const total = skill + skillModifier + attackModifier + target.tnModifier + rangeModifier + minimumRangeModifier + input.hitModifier + numericAmmoToHitModifier + heatFireModifier;
     terms.push({ isBreak: true });
     terms.push({ label: 'Total', value: total.toString(), isHeader: true });
 
@@ -217,20 +241,13 @@ export function formatInventoryTargetSignedModifier(value: number): string {
     return value >= 0 ? `+${value}` : value.toString();
 }
 
-function inventoryTargetExtremeRange(entry: MountedEquipment): number | null {
-    const equipment = entry.equipment;
-    if (!(equipment instanceof WeaponEquipment)) return null;
-    const extremeRange = equipment.ranges[3];
-    return Number.isFinite(extremeRange) && extremeRange > 0 ? extremeRange : null;
-}
-
 function inventoryTargetMinimumRangeModifier(minimumRangeText: string, distance: number): number {
     const min = parseInventoryTargetNumberCell(minimumRangeText);
     if (min === null || min <= 0 || distance > min) return 0;
     return (min - distance) + 1;
 }
 
-function inventoryTargetRangeModifier(range: InventoryTargetRangeKey): number {
+function inventoryTargetRangeModifier(range: InventoryControlRuntimeRangeKey): number {
     switch (range) {
         case 'medium': return 2;
         case 'long': return 4;
@@ -239,7 +256,7 @@ function inventoryTargetRangeModifier(range: InventoryTargetRangeKey): number {
     }
 }
 
-function inventoryTargetRangeDisplayName(range: InventoryTargetRangeKey): string {
+function inventoryTargetRangeDisplayName(range: InventoryControlRuntimeRangeKey): string {
     switch (range) {
         case 'short': return 'Short';
         case 'medium': return 'Medium';
@@ -248,6 +265,3 @@ function inventoryTargetRangeDisplayName(range: InventoryTargetRangeKey): string
     }
 }
 
-function directInventoryTargetSvgText(parent: Element, selector: string): string {
-    return (parent.querySelector(`:scope > ${selector}`)?.textContent ?? '').trim();
-}

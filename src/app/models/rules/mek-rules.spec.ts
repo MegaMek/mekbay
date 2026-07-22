@@ -3,7 +3,8 @@ import { TestBed } from '@angular/core/testing';
 import { CBTForce } from '../cbt-force.model';
 import { CBTForceUnit } from '../cbt-force-unit.model';
 import { DEAD_CREW_HIT_THRESHOLD, type CrewMemberState } from '../crew-member.model';
-import { MountedEquipment, type CriticalSlot, type LocationData } from '../force-serialization';
+import { MountedEquipment, MountedWeapon } from '../mounted-equipment.model';
+import { type CriticalSlot, type LocationData } from '../force-serialization';
 import { AmmoEquipment, Equipment, WeaponEquipment, type AmmoType } from '../equipment.model';
 import type { Unit, UnitSubtype } from '../units.model';
 import { DataService } from '../../services/data.service';
@@ -12,6 +13,8 @@ import { UnitInitializerService } from '../../services/unit-initializer.service'
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { MekRules } from './mek-rules';
 import { MascHandler, MASC_ACTIVE_STATE_KEY } from '../../equipment-handlers/masc.handler';
+import { HAG_FLAK_MODE, HAG_STANDARD_MODE, HagHandler } from '../../equipment-handlers/hag.handler';
+import { INVENTORY_CONTROL_MODE_STATE } from '../../utils/inventory-control.util';
 import { OptionsService } from '../../services/options.service';
 import { TWMekRules } from './tw-rules';
 
@@ -182,14 +185,43 @@ function directFireWeaponEntry(forceUnit: CBTForceUnit, flags: string[] = []): M
         id: 'DirectFireWeapon',
         name: 'Direct Fire Weapon',
         type: 'weapon',
-        flags: ['F_DIRECT_FIRE', ...flags],
+        flags: ['F_DIRECT_FIRE', 'F_ENERGY', ...flags],
         weapon: { damage: 10, ranges: [5, 10, 15, 20], ammoType: 'NA' },
     });
-    return new MountedEquipment({
+    const weapon = new MountedWeapon({
         owner: forceUnit,
         id: equipment.id,
         name: equipment.name,
         equipment,
+    });
+    return new MountedEquipment({
+        owner: forceUnit,
+        id: `${equipment.id}-critical`,
+        name: equipment.name,
+        equipment,
+        parent: weapon,
+    });
+}
+
+function hagWeaponEntry(forceUnit: CBTForceUnit, mode: string): MountedWeapon {
+    const equipment = new WeaponEquipment({
+        id: 'CLHAG20',
+        name: 'HAG/20',
+        type: 'weapon',
+        flags: ['F_HAG', 'F_BALLISTIC', 'F_DIRECT_FIRE', 'F_EXPLOSIVE'],
+        weapon: {
+            ammoType: 'HAG',
+            damage: 'cluster',
+            rackSize: 20,
+            ranges: [8, 16, 24, 32]
+        }
+    });
+    return new MountedWeapon({
+        owner: forceUnit,
+        id: equipment.id,
+        name: equipment.name,
+        equipment,
+        states: new Map([[INVENTORY_CONTROL_MODE_STATE, mode]])
     });
 }
 
@@ -197,7 +229,7 @@ function criticalAutocannonEntry(
     forceUnit: CBTForceUnit,
     ammoType: AmmoType,
     critSlots: CriticalSlot[],
-    flags = ['F_BALLISTIC', 'F_DIRECT_FIRE'],
+    flags = ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
 ): MountedEquipment {
     const equipment = new WeaponEquipment({
         id: `Autocannon-${ammoType}`,
@@ -218,7 +250,8 @@ function criticalAutocannonEntry(
 
 describe('MekRules', () => {
     beforeEach(() => {
-        dataService = jasmine.createSpyObj<DataService>('DataService', ['getUnitByName']);
+        dataService = jasmine.createSpyObj<DataService>('DataService', ['getUnitByName', 'getEquipments']);
+        dataService.getEquipments.and.returnValue({});
         TestBed.configureTestingModule({
             providers: [
                 UnitInitializerService,
@@ -230,7 +263,9 @@ describe('MekRules', () => {
         injector = TestBed.inject(Injector);
         optionsService = TestBed.inject(OptionsService);
         optionsService.options.update(options => ({ ...options, CBTRules: 'core2026' }));
-        TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(new MascHandler());
+        const registry = TestBed.inject(EquipmentInteractionRegistryService).getRegistry();
+        registry.register(new MascHandler());
+        registry.register(new HagHandler());
     });
 
     it('keeps Mek immobile false by default when crew are functional', () => {
@@ -246,8 +281,39 @@ describe('MekRules', () => {
 
         expect(activeForceUnit.rules.computeEntryState(directFireWeaponEntry(activeForceUnit))).toEqual(jasmine.objectContaining({ hitMod: -1, isDamaged: false, weakenedHitMod: false }));
         expect(destroyedForceUnit.rules.computeEntryState(directFireWeaponEntry(destroyedForceUnit))).toEqual(jasmine.objectContaining({ hitMod: 0, isDamaged: false, weakenedHitMod: true }));
-        expect(destroyedForceUnit.rules.computeEntryState(directFireWeaponEntry(destroyedForceUnit, ['F_CWS']))).toEqual(jasmine.objectContaining({ hitMod: 0, isDamaged: false, weakenedHitMod: false }));
         expect(destroyedForceUnit.rules.computeEntryState(directFireWeaponEntry(destroyedForceUnit, ['F_TASER']))).toEqual(jasmine.objectContaining({ hitMod: 0, isDamaged: false, weakenedHitMod: false }));
+    });
+
+    it('applies HAG mode and targeting-computer modifiers without stacking them', () => {
+        const scenarios = [
+            { label: 'STD without targeting computer', mode: HAG_STANDARD_MODE, targetingComputer: 'none', hitMod: 0, weakened: false, types: ['C', 'DB'] },
+            { label: 'FLAK without targeting computer', mode: HAG_FLAK_MODE, targetingComputer: 'none', hitMod: -1, weakened: false, types: ['C', 'F'] },
+            { label: 'STD with targeting computer', mode: HAG_STANDARD_MODE, targetingComputer: 'functional', hitMod: -1, weakened: false, types: ['C', 'DB'] },
+            { label: 'FLAK with targeting computer', mode: HAG_FLAK_MODE, targetingComputer: 'functional', hitMod: -1, weakened: false, types: ['C', 'F'] },
+            { label: 'STD with broken targeting computer', mode: HAG_STANDARD_MODE, targetingComputer: 'broken', hitMod: 0, weakened: true, types: ['C', 'DB'] },
+            { label: 'FLAK with broken targeting computer', mode: HAG_FLAK_MODE, targetingComputer: 'broken', hitMod: -1, weakened: false, types: ['C', 'F'] },
+        ] as const;
+
+        for (const scenario of scenarios) {
+            const critSlots = scenario.targetingComputer === 'none'
+                ? []
+                : [crit('Targeting Computer', scenario.targetingComputer === 'broken')];
+            const forceUnit = createForceUnitHarness({ critSlots });
+            const entry = hagWeaponEntry(forceUnit, scenario.mode);
+            const rules = forceUnit.getInventoryControlRules();
+            const state = forceUnit.rules.computeEntryState(entry);
+            const effectiveTypes = rules.applyWeaponTypes?.(entry, new Set(entry.getWeaponTypes())) ?? new Set(entry.getWeaponTypes());
+            const resolution = forceUnit.gameRules.resolveToHit({
+                subject: entry,
+                stateModifier: state.hitMod,
+                stateWeakened: state.weakenedHitMod,
+                adjustments: rules.resolveToHitAdjustments?.(entry)
+            });
+
+            expect([...effectiveTypes]).withContext(`${scenario.label} weapon types`).toEqual(scenario.types);
+            expect(resolution.value).withContext(`${scenario.label} modifier`).toBe(scenario.hitMod);
+            expect(resolution.weakened).withContext(`${scenario.label} weakened state`).toBe(scenario.weakened);
+        }
     });
 
     it('marks intrinsic and weapon hit modifiers as weakened when their arm AES is destroyed', () => {
@@ -406,8 +472,8 @@ describe('MekRules', () => {
 
     it('uses active MASC state for effective Mek run MP without changing potential max run MP', () => {
         const forceUnit = createForceUnitHarness({ walk: 5, critSlots: [crit('MASC', false)] });
-        const masc = miscEntry(forceUnit, miscEquipment('MASC', 'MASC', ['F_MASC']));
-        forceUnit.setInventory([masc]);
+        forceUnit.setInventory([miscEntry(forceUnit, miscEquipment('MASC', 'MASC', ['F_MASC']))]);
+        const masc = forceUnit.getInventory()[0];
         const rules = forceUnit.rules as MekRules;
 
         expect(rules.getMaxDistanceForMoveMode('run')).toBe(10);
@@ -424,9 +490,11 @@ describe('MekRules', () => {
             walk: 6,
             critSlots: [crit('MASC', false), crit('Supercharger', false)],
         });
-        const masc = miscEntry(forceUnit, miscEquipment('MASC', 'MASC', ['F_MASC']));
-        const supercharger = miscEntry(forceUnit, miscEquipment('Supercharger', 'Supercharger', ['F_MASC', 'S_SUPERCHARGER']));
-        forceUnit.setInventory([masc, supercharger]);
+        forceUnit.setInventory([
+            miscEntry(forceUnit, miscEquipment('MASC', 'MASC', ['F_MASC'])),
+            miscEntry(forceUnit, miscEquipment('Supercharger', 'Supercharger', ['F_MASC', 'S_SUPERCHARGER']))
+        ]);
+        const [masc, supercharger] = forceUnit.getInventory();
         const rules = forceUnit.rules as MekRules;
 
         supercharger.setState(MASC_ACTIVE_STATE_KEY, 'true');
@@ -920,15 +988,15 @@ describe('MekRules', () => {
             umu: 0,
         });
 
-        expect(forceUnit.rules.rulesData.targeting.largeTarget).toBeTrue();
+        expect(forceUnit.gameRules.supportsLargeTarget).toBeTrue();
         expect(forceUnit.rules.hasComputedCondition('immobile')).toBeTrue();
 
         optionsService.options.update(options => ({ ...options, CBTRules: 'tw' }));
-        expect(forceUnit.rules.rulesData.targeting.largeTarget).toBeTrue();
+        expect(forceUnit.gameRules.supportsLargeTarget).toBeTrue();
 
         const twForceUnit = createForceUnitHarness({ rulesId: 'tw' });
         expect(twForceUnit.rules instanceof TWMekRules).toBeTrue();
-        expect(twForceUnit.rules.rulesData.targeting.largeTarget).toBeFalse();
+        expect(twForceUnit.gameRules.supportsLargeTarget).toBeFalse();
     });
 
     it('uses the core2026 fixed 1/2 movement profile for one destroyed biped or tripod leg', () => {

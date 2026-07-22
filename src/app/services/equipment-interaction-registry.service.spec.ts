@@ -1,8 +1,10 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
+import { ApolloHandler } from '../equipment-handlers/apollo.handler';
 import { AtmHandler } from '../equipment-handlers/atm.handler';
 import { InventoryModeHandler, INVENTORY_MODE_HANDLER_ID } from '../equipment-handlers/inventory-mode.handler';
-import { WeaponEquipment } from '../models/equipment.model';
-import { MountedEquipment } from '../models/force-serialization';
+import { type Equipment, WeaponEquipment } from '../models/equipment.model';
+import { MountedEquipment } from '../models/mounted-equipment.model';
+import { TW_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
 import { EquipmentInteractionHandler, EquipmentInteractionRegistryService, type HandlerContext } from './equipment-interaction-registry.service';
 
 function svgEntry(html: string): SVGElement {
@@ -11,8 +13,9 @@ function svgEntry(html: string): SVGElement {
     return wrapper.firstElementChild as SVGElement;
 }
 
-function owner(): never {
+function owner(gameRules?: CBTGameRules): never {
     return {
+        gameRules,
         rules: { computeEntryState: () => ({ isDamaged: false, isDisabled: false, hitMod: 0 }) },
     } as never;
 }
@@ -106,5 +109,62 @@ describe('EquipmentInteractionRegistryService', () => {
         const choice = registry.getChoices(entry, context())[0];
 
         expect(registry.handleSelection(entry, choice, context())).toBeTrue();
+    });
+
+    it('aggregates the TW Apollo bonus for a linked MRM launcher', () => {
+        const registry = new EquipmentInteractionRegistryService().getRegistry();
+        registry.register(new ApolloHandler());
+        const apollo = new MountedEquipment({
+            owner: owner(TW_GAME_RULES),
+            id: 'apollo',
+            name: 'Apollo',
+            equipment: { flags: new Set(['F_WEAPON_ENHANCEMENT', 'F_APOLLO']) } as Equipment
+        });
+        const mrm = new MountedEquipment({
+            owner: owner(TW_GAME_RULES),
+            id: 'mrm',
+            name: 'MRM 10',
+            equipment: new WeaponEquipment({
+                id: 'MRM10', name: 'MRM 10', type: 'weapon',
+                flags: ['F_MRM'],
+                stats: { toHitModifier: 1 },
+                weapon: { ammoType: 'MRM', rackSize: 10, ranges: [3, 8, 15, 22] }
+            }),
+            linkedWith: [apollo]
+        });
+
+        const adjustments = registry.getToHitAdjustments(mrm, context());
+        expect(adjustments).toEqual([{ kind: 'add', value: -1, weakened: false }]);
+        expect(TW_GAME_RULES.resolveToHit({ subject: mrm, adjustments }).value).toBe(0);
+    });
+
+    it('reports a damaged TW Apollo bonus as weakened', () => {
+        const registry = new EquipmentInteractionRegistryService().getRegistry();
+        registry.register(new ApolloHandler());
+        const apollo = new MountedEquipment({
+            owner: owner(TW_GAME_RULES),
+            id: 'apollo',
+            name: 'Apollo',
+            equipment: { flags: new Set(['F_WEAPON_ENHANCEMENT', 'F_APOLLO']) } as Equipment
+        });
+        apollo.owner = {
+            ...apollo.owner,
+            rules: { computeEntryState: (candidate: MountedEquipment) => ({ isDamaged: candidate === apollo, isDisabled: false, hitMod: 0 }) }
+        } as never;
+        const mrm = new MountedEquipment({
+            owner: owner(TW_GAME_RULES),
+            id: 'mrm',
+            name: 'MRM 10',
+            equipment: new WeaponEquipment({
+                id: 'MRM10', name: 'MRM 10', type: 'weapon',
+                flags: ['F_MRM'],
+                weapon: { ammoType: 'MRM', rackSize: 10, ranges: [3, 8, 15, 22] }
+            }),
+            linkedWith: [apollo]
+        });
+
+        const adjustments = registry.getToHitAdjustments(mrm, context());
+        expect(adjustments).toEqual([{ kind: 'add', value: 0, weakened: true }]);
+        expect(TW_GAME_RULES.resolveToHit({ subject: mrm, adjustments }).weakened).toBeTrue();
     });
 });

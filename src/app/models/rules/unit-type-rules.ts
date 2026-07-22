@@ -32,7 +32,8 @@
  */
 
 import { computed, signal, type Signal } from '@angular/core';
-import type { CriticalSlot, MountedEquipment, SerializedC3NetworkGroup } from '../force-serialization';
+import { MountedWeapon, type MountedEquipment } from '../mounted-equipment.model';
+import type { CriticalSlot, SerializedC3NetworkGroup } from '../force-serialization';
 import { getMotiveModeLabel, type MotiveModes } from '../motiveModes.model';
 import type { TurnState } from '../turn-state.model';
 import type { CrewMemberState } from '../crew-member.model';
@@ -44,7 +45,6 @@ import {
     TN_SKIDDING_ATTACKER,
     TN_SKIDDING_MODIFIER,
 } from '../target-number-calculator.model';
-import { CORE_2026_RULES_DATA, type CBTRulesData } from './cbt-rules-data';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { HeatDissipationState } from './heat-management';
 import type { InventoryControlDisplayData } from '../../utils/inventory-control.util';
@@ -68,6 +68,13 @@ export interface UnitHeatSource {
     id: string;
     label: string;
     value: number;
+    /** 
+     * Inventory entry whose selected firing heat replaces this passive source.
+     * It goes in priority order (handlers) so the highest priority that replaces will
+     * prevent other handlers to replace it 
+     * TODO: find a solution more elegant...
+     */
+    replacedByFiringEntryId?: string;
 }
 
 export interface MountedEquipmentRuleState {
@@ -204,9 +211,6 @@ export function crewStateDefinitions(keys: readonly CrewMemberState[]): readonly
  * Each CBTForceUnit holds a `rules` instance matching its unit type.
  */
 export interface UnitTypeRules {
-    /** Immutable data consumed by rules-neutral calculators and renderers. */
-    readonly rulesData: CBTRulesData;
-
     /** Evaluate whether the unit should be marked destroyed based on current state. Idempotent. */
     evaluateDestroyed(): void;
 
@@ -347,7 +351,6 @@ export interface UnitTypeRules {
 }
 
 export abstract class UnitTypeRulesBase implements UnitTypeRules {
-    readonly rulesData: CBTRulesData = CORE_2026_RULES_DATA;
     readonly controlRollShortLabel: string;
     readonly controlRollFullLabel: string;
     readonly PSRModifiers: Signal<{ modifier: number; modifiers: PSRCheck[] }> = signal({ modifier: 0, modifiers: [] });
@@ -373,7 +376,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     });
 
     get conditionControls(): readonly UnitConditionControl[] {
-        const controls = this.rulesData.targeting.skidding
+        const controls = this.unit.gameRules.supportsSkidding
             ? this.baseConditionControls
             : this.baseConditionControls.filter(control => control.key !== 'skidding');
         if (!this.hasDroneOperatingSystem()) return controls;
@@ -451,8 +454,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     }
 
     protected getMountedTargetingComputerModifier(entry: MountedEquipment): { modifier: number; weakened: boolean } {
-        const equipment = entry.parent?.equipment ?? entry.equipment;
-        if (!this.isTargetingComputerEligible(equipment)) {
+        if (!this.isTargetingComputerEligible(entry)) {
             return { modifier: 0, weakened: false };
         }
 
@@ -470,10 +472,14 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
             : { modifier: 0, weakened: true };
     }
 
-    protected isTargetingComputerEligible(equipment: MountedEquipment['equipment']): boolean {
-        return equipment?.flags.has('F_DIRECT_FIRE') === true
-            && !equipment.flags.has('F_CWS')
-            && !equipment.flags.has('F_TASER');
+    protected isTargetingComputerEligible(entry: MountedEquipment): boolean {
+        if (!(entry instanceof MountedWeapon)) return false;
+        const selectedAmmo = this.unit.getInventoryControlSelectedAmmo?.(entry) ?? null;
+        const baseTypes = new Set(entry.getWeaponTypes(selectedAmmo));
+        const effectiveTypes = this.unit.getInventoryControlRules().applyWeaponTypes?.(entry, baseTypes) ?? baseTypes;
+        return entry.equipment.hasFlag('F_DIRECT_FIRE') === true
+            && !entry.equipment.hasAnyFlag(['F_TASER', 'F_FLAMER', 'F_MG', 'F_MGA'])
+            && (effectiveTypes.has('DB') || effectiveTypes.has('DE'));
     }
 
     protected isEntryStateDisabled(entry: MountedEquipment): boolean {
@@ -608,7 +614,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         if (movementModifier !== 0 && moveMode !== null) {
             entries.push({ label: getMotiveModeLabel(moveMode, this.unit.getUnit(), turnState.airborne() ?? false), modifier: movementModifier });
         }
-        if (this.rulesData.targeting.skidding && turnState.unitState.hasCondition('skidding')) {
+        if (this.unit.gameRules.supportsSkidding && turnState.unitState.hasCondition('skidding')) {
             entries.push({ label: 'Skidding', modifier: TN_SKIDDING_ATTACKER });
         }
         const spottingModifier = turnState.spotting() ? this.getSpottingModifier() : 0;
@@ -623,7 +629,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
         if (turnState.unitState.hasCondition('immobile')) {
             entries.push({ label: 'Immobile', modifier: TN_IMMOBILE });
         }
-        if (this.rulesData.targeting.skidding && turnState.unitState.hasCondition('skidding')) {
+        if (this.unit.gameRules.supportsSkidding && turnState.unitState.hasCondition('skidding')) {
             entries.push({ label: 'Skidding', modifier: TN_SKIDDING_MODIFIER });
         }
         const moveMode = turnState.moveMode();

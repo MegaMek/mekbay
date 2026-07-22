@@ -1084,6 +1084,12 @@ export class PageViewerComponent implements AfterViewInit {
 
         if (svg.parentElement !== wrapper) {
             wrapper.insertBefore(svg, wrapper.firstChild);
+            requestAnimationFrame(() => {
+                const attachedUnit = this.forceUnits().find(unit => unit.svg() === svg);
+                if (svg.parentElement === wrapper) {
+                    attachedUnit?.svgService?.refreshLayoutDependentDisplays();
+                }
+            });
         }
 
         this.setPageWrapperContentState(wrapper, true);

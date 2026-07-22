@@ -1,6 +1,7 @@
 import { computed, signal } from '@angular/core';
 import type { CBTForceUnitState } from './cbt-force-unit-state.model';
-import { MountedEquipment, type CriticalSlot, type HeatProfile } from './force-serialization';
+import { MountedEquipment } from './mounted-equipment.model';
+import { type CriticalSlot, type HeatProfile } from './force-serialization';
 import { AeroRules } from './rules/aero-rules';
 import { InfantryRules } from './rules/infantry-rules';
 import { MekRules } from './rules/mek-rules';
@@ -10,6 +11,7 @@ import { TurnState } from './turn-state.model';
 import { Equipment } from './equipment.model';
 import { PpcCapacitorHandler, PPC_CAPACITOR_STATE_KEY } from '../equipment-handlers/ppc-capacitor.handler';
 import { TWAeroRules, TWInfantryRules, TWMekRules } from './rules/tw-rules';
+import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './rules/game-rules';
 
 interface TurnStateHarnessOptions {
     critSlots?: CriticalSlot[];
@@ -73,6 +75,7 @@ function createTurnStateHarness(options: TurnStateHarnessOptions = {}): TurnStat
     let turnState: TurnState;
 
     const unit = {
+        gameRules: options.rulesId === 'tw' ? TW_GAME_RULES : CORE_2026_GAME_RULES,
         locations: { internal: internalLocations },
         isLoaded: () => true,
         shutdown: false,

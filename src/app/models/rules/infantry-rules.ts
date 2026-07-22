@@ -33,7 +33,7 @@
 
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import { WeaponEquipment } from '../equipment.model';
-import type { MountedEquipment } from '../force-serialization';
+import type { MountedEquipment } from '../mounted-equipment.model';
 import type { MotiveModes } from '../motiveModes.model';
 import { getTargetUnitTypeModifier } from '../target-number-calculator.model';
 import type { TurnState } from '../turn-state.model';

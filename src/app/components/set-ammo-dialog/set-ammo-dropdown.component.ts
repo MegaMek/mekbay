@@ -34,6 +34,7 @@
 import { ChangeDetectionStrategy, Component, computed, type ComponentRef, ElementRef, inject, Injector, input, type OnDestroy, output, signal, viewChild } from '@angular/core';
 import { ComponentPortal } from '@angular/cdk/portal';
 import type { AmmoEquipment } from '../../models/equipment.model';
+import type { CBTGameRules } from '../../models/rules/game-rules';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import type { AmmoSelectionStatus } from '../../utils/ammo-validity.util';
 import { DropdownPointerActivationGuard, nextDropdownTarget, nextDropdownTargetInCurrentLane, scrollActiveOptionIntoView } from '../../utils/dropdown-interaction.utils';
@@ -624,6 +625,7 @@ export class SetAmmoDropdownComponent implements OnDestroy {
     readonly currentAmmo = input.required<AmmoEquipment>();
     readonly originalAmmo = input.required<AmmoEquipment>();
     readonly ammoSelectionStatus = input<Record<string, AmmoSelectionStatus>>({});
+    readonly gameRules = input<CBTGameRules | null>(null);
 
     readonly valueChange = output<string>();
 
@@ -638,7 +640,7 @@ export class SetAmmoDropdownComponent implements OnDestroy {
             ammo,
             label: displayName,
             _searchText: `${searchText} ${searchText.replace(/[^a-zA-Z0-9]/g, "")}`,
-            infoItems: getAmmoInfoItems(ammo),
+            infoItems: getAmmoInfoItems(ammo, this.gameRules() ?? undefined),
             advancement: getEquipmentAdvancementTimeline(ammo),
             selectionStatus,
             selectionIssueText: selectionStatus.issues.map(issue => issue.message).join('\n'),
@@ -888,7 +890,7 @@ function ammoOptionHasDetails(option: AmmoDropdownOption): boolean {
     return option.infoItems.length > 0 || option.selectionStatus.issues.length > 0 || option.advancement.timelines.length > 0;
 }
 
-export function getAmmoInfoItems(ammo: AmmoEquipment): AmmoInfoItem[] {
+export function getAmmoInfoItems(ammo: AmmoEquipment, gameRules?: CBTGameRules): AmmoInfoItem[] {
     const items: AmmoInfoItem[] = [
         { label: 'Damage', value: getAmmoDamageDisplay(ammo) },
     ];
@@ -898,7 +900,7 @@ export function getAmmoInfoItems(ammo: AmmoEquipment): AmmoInfoItem[] {
     }
 
     items.push(
-        { label: 'Ammo/Ton', value: ammo.shots },
+        { label: 'Ammo/Ton', value: gameRules ? ammo.getShots(gameRules) : ammo.shots },
         { label: 'Tech', value: `${ammo.techBase} | ${ammo.rating}/${ammo.availability}` },
         { label: 'Rules', value: ammo.level },
     );

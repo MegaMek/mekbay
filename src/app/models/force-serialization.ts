@@ -33,14 +33,11 @@
 
 import type { Equipment } from './equipment.model';
 import { Sanitizer } from '../utils/sanitizer.util';
-import type { ForceUnit } from './force-unit.model';
 import type { GameSystem } from './common.model';
 import type { ASCustomPilotAbility } from './pilot-abilities.model';
 import type { C3NetworkType } from './c3-network.model';
 import type { MotiveModes } from './motiveModes.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './crew-member.model';
-export { MountedEquipment } from './mounted-equipment.model';
-export type { MountedEquipmentInit } from './mounted-equipment.model';
 
 export const FORCE_NOTE_MAX_LENGTH = 2000;
 export const FORCE_TAG_MAX_LENGTH = 48;

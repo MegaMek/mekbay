@@ -1,7 +1,7 @@
 import { RsPolyfillUtil } from './rs-polyfill.util';
 
 describe('RsPolyfillUtil', () => {
-    it('adds location NARC banners outside critical location groups', () => {
+    it('adds location NARC banners inside location condition controls', () => {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         const parent = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         const critGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -17,10 +17,10 @@ describe('RsPolyfillUtil', () => {
         (RsPolyfillUtil as unknown as { addCriticalSectionsButtons: (unit: { type: string }, svg: SVGSVGElement) => void }).addCriticalSectionsButtons({ type: 'Mek' }, svg);
 
         const narcBanner = svg.querySelector('.locationNarcBanner') as SVGGElement;
+        const control = critGroup.querySelector('.locationConditionControl') as SVGGElement;
         expect(narcBanner).not.toBeNull();
-        expect(critGroup.querySelector('.locationNarcBanner')).toBeNull();
-        expect(narcBanner.parentNode).toBe(parent);
-        expect(narcBanner.getAttribute('transform')).toBe('translate(4 6)');
+        expect(narcBanner.parentNode).toBe(control);
+        expect(narcBanner.getAttribute('transform')).toBeNull();
     });
 
     it('adds unit condition banners when the sheet has no unit data panel', () => {

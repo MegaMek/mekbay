@@ -11,13 +11,14 @@ import { PickerFactoryService } from '../../services/picker-factory.service';
 import { ToastService } from '../../services/toast.service';
 import { MiscEquipment, WeaponEquipment } from '../../models/equipment.model';
 import { EquipmentDialogComponent } from '../equipment-dialog/equipment-dialog.component';
-import { MountedEquipment } from '../../models/force-serialization';
+import { MountedEquipment } from '../../models/mounted-equipment.model';
 import { InventoryControlRuntimeState, type InventoryControlRuntimeRangeKey } from '../../models/inventory-control-runtime-state.model';
 import { INVENTORY_CONTROL_MODE_STATE } from '../../utils/inventory-control.util';
 import { RISC_LASER_PULSE_MODE, RISC_LASER_STANDARD_MODE } from '../../equipment-handlers/risc-laser-pulse-module.handler';
 import { SvgInteractionService } from './svg-interaction.service';
 import type { ZoomPanServiceInterface } from './zoom-pan.interface';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
+import { CORE_2026_GAME_RULES } from '../../models/rules/game-rules';
 
 type SvgInteractionServicePrivate = {
     addSvgTapHandler(
@@ -31,6 +32,7 @@ type SvgInteractionServicePrivate = {
     getHeatDiffMarkerData(): { el: SVGElement | null; heat: number; baselineHeat: number; containerRect: DOMRect } | null;
     updateHeatHighlight(heatValue: number): void;
     locationConditionDropdownChoices(unit: any, loc: string): Array<{ key: string }>;
+    setupLocationConditionInteractions(svg: SVGSVGElement, signal: AbortSignal): void;
 };
 
 const NO_CONDITION_RULES = {
@@ -174,6 +176,50 @@ describe('SvgInteractionService', () => {
         expect(service.locationConditionDropdownChoices(unit, 'LA').map(choice => choice.key)).toEqual(['flooded', 'blown-off']);
     });
 
+    it('binds location condition interactions to enlarged controls rather than label text', () => {
+        const unit = createSvgInteractionUnit({
+            rules: {
+                ...NO_CONDITION_RULES,
+                locationConditionControls: [{ key: 'flooded', label: 'Flooded', color: '#66f' }],
+            },
+        });
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const control = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        control.setAttribute('class', 'locationConditionControl');
+        control.setAttribute('loc', 'LA');
+        label.setAttribute('class', 'locationConditionText');
+        control.appendChild(label);
+        svg.appendChild(control);
+        service.updateUnit(unit);
+        const addTapHandler = spyOn(service, 'addSvgTapHandler');
+
+        service.setupLocationConditionInteractions(svg, new AbortController().signal);
+
+        expect(addTapHandler).toHaveBeenCalledTimes(1);
+        expect(addTapHandler).toHaveBeenCalledWith(control, jasmine.any(Function), jasmine.any(AbortSignal));
+        expect(addTapHandler).not.toHaveBeenCalledWith(label, jasmine.any(Function), jasmine.any(AbortSignal));
+    });
+
+    it('skips location condition controls without a location identifier', () => {
+        const unit = createSvgInteractionUnit({
+            rules: {
+                ...NO_CONDITION_RULES,
+                locationConditionControls: [{ key: 'flooded', label: 'Flooded', color: '#66f' }],
+            },
+        });
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const control = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        control.setAttribute('class', 'locationConditionControl');
+        svg.appendChild(control);
+        service.updateUnit(unit);
+        const addTapHandler = spyOn(service, 'addSvgTapHandler');
+
+        service.setupLocationConditionInteractions(svg, new AbortController().signal);
+
+        expect(addTapHandler).not.toHaveBeenCalled();
+    });
+
     it('selects inventory entries from alternative mode buttons', () => {
         const { svg, entry, unit } = createInventoryInteractionUnit(`
             <g class="inventoryEntry">
@@ -185,7 +231,7 @@ describe('SvgInteractionService', () => {
                     <rect class="alternativeModeButton inventoryEntryButton"></rect>
                 </g>
             </g>
-        `);
+        `, 'MML');
         pageViewerState.setForceUnits([unit]);
         service.updateUnit(unit);
         service.setupInteractions(svg);
@@ -212,7 +258,7 @@ describe('SvgInteractionService', () => {
                     <rect class="alternativeModeButton inventoryEntryButton"></rect>
                 </g>
             </g>
-        `);
+        `, 'ATM');
         pageViewerState.setForceUnits([unit]);
         service.updateUnit(unit);
         service.setupInteractions(svg);
@@ -240,7 +286,7 @@ describe('SvgInteractionService', () => {
                     <rect class="alternativeModeButton inventoryEntryButton"></rect>
                 </g>
             </g>
-        `);
+        `, 'ATM');
         pageViewerState.setForceUnits([unit]);
         service.updateUnit(unit);
         service.setupInteractions(svg);
@@ -660,6 +706,32 @@ describe('SvgInteractionService', () => {
         expect(unit.getInventoryControlEntryTargetId(entry.id)).toBe('B');
     });
 
+    it('uses typed hit modifiers instead of rendered SVG hit text in the target picker fallback', () => {
+        const { svg, entry, unit } = createInventoryInteractionUnit(`
+            <g class="inventoryEntry">
+                <rect class="mainButton inventoryEntryButton"></rect>
+                <rect class="shrButton inventoryEntryButton"></rect>
+                <g class="name"><text>Laser</text></g>
+                <text class="hit">99</text>
+                <text class="range_short">3</text>
+                <text class="range_medium">6</text>
+                <text class="range_long">9</text>
+            </g>
+        `);
+        spyOnProperty(entry.equipment!, 'toHitModifier', 'get').and.returnValue(2);
+        unit.createInventoryControlTarget();
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 2 });
+        unit.updateInventoryControlTarget('B', { distance: 5 });
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        (entry.el!.querySelector('.shrButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        const choices = Array.from(document.body.querySelectorAll('.weapon-target-choice-menu .target-choice:not(.empty-choice)')) as HTMLButtonElement[];
+        expect(choices.map(choice => choice.querySelector('.target-choice-tn')?.textContent?.trim())).toEqual(['6', '8']);
+    });
+
     it('uses C3 distance for sheet target picker target numbers', () => {
         const { svg, entry, unit } = createInventoryInteractionUnit(`
             <g class="inventoryEntry">
@@ -672,6 +744,8 @@ describe('SvgInteractionService', () => {
                 <text class="range_long">27</text>
             </g>
         `);
+        (entry.equipment as WeaponEquipment).weapon.minRange = 6;
+        (entry.equipment as WeaponEquipment).weapon.ranges = [7, 14, 27, 36];
         unit.hasLinkedC3Network = () => true;
         unit.createInventoryControlTarget();
         unit.createInventoryControlTarget();
@@ -698,6 +772,7 @@ describe('SvgInteractionService', () => {
                 <text class="range_long">6</text>
             </g>
         `);
+        (entry.equipment as WeaponEquipment).weapon.ranges = [2, 4, 6, 8];
         unit.hasLinkedC3Network = () => true;
         unit.createInventoryControlTarget();
         unit.createInventoryControlTarget();
@@ -722,6 +797,7 @@ describe('SvgInteractionService', () => {
             </g>
         `);
         entry.physical = true;
+        entry.name = 'punch';
         unit.createInventoryControlTarget();
         unit.createInventoryControlTarget();
         unit.updateInventoryControlTarget('A', { distance: 4 });
@@ -732,7 +808,7 @@ describe('SvgInteractionService', () => {
         (entry.el!.querySelector('.shrButton') as SVGElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 
         const choices = Array.from(document.body.querySelectorAll('.weapon-target-choice-menu .target-choice:not(.empty-choice)')) as HTMLButtonElement[];
-        expect(choices.map(choice => choice.querySelector('.target-choice-tn')?.textContent?.trim())).toEqual(['5', '6']);
+        expect(choices.map(choice => choice.querySelector('.target-choice-tn')?.textContent?.trim())).toEqual(['4', '5']);
     });
 
     it('switches to a valid alternative mode before selecting its sheet range button', () => {
@@ -753,7 +829,8 @@ describe('SvgInteractionService', () => {
                     <rect class="medButton inventoryEntryButton"></rect>
                 </g>
             </g>
-        `);
+        `, 'MML');
+        entry.states.set(INVENTORY_CONTROL_MODE_STATE, 'LRM');
         service.updateUnit(unit);
         service.setupInteractions(svg);
         const invalidModeRange = entry.el!.querySelector('.alternativeMode[mode="w/Artemis IV"] .medButton') as SVGElement;
@@ -1023,15 +1100,16 @@ function createInventoryInteractionUnit(html = `
         <text class="range_medium">6</text>
         <text class="range_long">9</text>
     </g>
-`): { svg: SVGSVGElement; entry: MountedEquipment; unit: any } {
+`, weaponType: 'Laser' | 'ATM' | 'MML' = 'Laser'): { svg: SVGSVGElement; entry: MountedEquipment; unit: any } {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.innerHTML = html;
     const entryEl = svg.querySelector('.inventoryEntry') as SVGElement;
     const equipment = new WeaponEquipment({
-        id: 'Laser',
-        name: 'Laser',
+        id: weaponType,
+        name: weaponType,
         type: 'weapon',
-        weapon: { ammoType: 'NA', ranges: [3, 6, 9, 12] }
+        flags: weaponType === 'ATM' ? ['F_MISSILE', 'F_ATM'] : weaponType === 'MML' ? ['F_MISSILE', 'F_MML'] : [],
+        weapon: { ammoType: weaponType === 'Laser' ? 'NA' : weaponType, rackSize: 6, ranges: [3, 6, 9, 12] }
     });
     const entry = new MountedEquipment({
         owner: undefined as any,
@@ -1070,6 +1148,9 @@ function createInventoryInteractionUnit(html = `
         getInventoryControlEntryTargetId: (entryId: string) => runtime.getEntryTargetId(entryId),
         isInventoryControlEntrySelected: (entryId: string) => runtime.isEntrySelected(entryId),
         getInventoryControlEntryRange: (entryId: string) => runtime.getEntryRange(entryId),
+        getInventoryControlEntryAmmoOption: () => undefined,
+        getInventoryControlRules: () => ({}),
+        gameRules: CORE_2026_GAME_RULES,
         setInventoryControlEntrySelected: (selectedEntry: MountedEquipment, selected: boolean) => runtime.setEntrySelected(selectedEntry, selected),
         setInventoryControlEntryRange: (selectedEntry: MountedEquipment, range: InventoryControlRuntimeRangeKey | null) => runtime.setEntryRange(selectedEntry, range),
         toggleInventoryControlEntryRange: (selectedEntry: MountedEquipment, range: InventoryControlRuntimeRangeKey, forceSelected = false) => runtime.toggleEntryRange(selectedEntry, range, forceSelected),

@@ -1,5 +1,6 @@
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
-import { MountedEquipment, type CriticalSlot } from '../models/force-serialization';
+import { MountedEquipment } from '../models/mounted-equipment.model';
+import { type CriticalSlot } from '../models/force-serialization';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import { changeAmmoEntryRemaining, changeAmmoGroupRemaining, getAmmoControlEntriesForUnitWeapons, getAmmoControlGroups, getAmmoEntryRemaining, getAmmoGroupRemaining, type AmmoControlEntry } from './ammo-interaction.util';

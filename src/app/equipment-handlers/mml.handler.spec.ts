@@ -1,5 +1,5 @@
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
-import { MountedEquipment } from '../models/force-serialization';
+import { MountedEquipment } from '../models/mounted-equipment.model';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import { MmlHandler } from './mml.handler';
 
@@ -17,7 +17,7 @@ function svgEntry(html: string): SVGElement {
     return wrapper.firstElementChild as SVGElement;
 }
 
-function weaponWithSvgMode(mode: string): MountedEquipment {
+function weaponWithSvgMode(mode: string, persist = false): MountedEquipment {
     const entry = weapon();
     entry.el = svgEntry(`
         <g class="inventoryEntry">
@@ -25,12 +25,14 @@ function weaponWithSvgMode(mode: string): MountedEquipment {
             <g class="alternativeMode${mode === 'SRM' ? ' selected' : ''}" mode="SRM"><g class="name"><text>SRM</text></g><g class="damage"><text>2/Msl</text></g></g>
         </g>
     `);
-    entry.states.set('inventory_control_mode', mode);
+    if (persist) {
+        entry.states.set('inventory_control_mode', mode);
+    }
     return entry;
 }
 
-function ammo(id: string, name: string): AmmoEquipment {
-    return new AmmoEquipment({ id, name, shortName: name, type: 'ammo', ammo: { type: 'MML', rackSize: 9, shots: 10 } });
+function ammo(id: string, name: string, flags: string[] = []): AmmoEquipment {
+    return new AmmoEquipment({ id, name, shortName: name, type: 'ammo', flags, ammo: { type: 'MML', rackSize: 9, shots: 10 } });
 }
 
 describe('MmlHandler', () => {
@@ -49,10 +51,38 @@ describe('MmlHandler', () => {
         expect(handler.matchesInventoryAmmo(mml, ammo('srm', 'MML 9 SRM Ammo'), 'SRM', context)).toBeTrue();
     });
 
-    it('uses the selected SVG mode when no mode is supplied', () => {
-        const mml = weaponWithSvgMode('SRM');
+    it('defaults to SRM and ignores the selected SVG mode', () => {
+        const mml = weaponWithSvgMode('LRM');
 
         expect(handler.matchesInventoryAmmo(mml, ammo('srm', 'MML 9 SRM Ammo'), null, context)).toBeTrue();
         expect(handler.matchesInventoryAmmo(mml, ammo('lrm', 'MML 9 LRM Ammo'), null, context)).toBeFalse();
+    });
+
+    it('uses a valid persisted mode when no mode is supplied', () => {
+        const mml = weaponWithSvgMode('LRM', true);
+
+        expect(handler.matchesInventoryAmmo(mml, ammo('lrm', 'MML 9 LRM Ammo'), null, context)).toBeTrue();
+        expect(handler.matchesInventoryAmmo(mml, ammo('srm', 'MML 9 SRM Ammo'), null, context)).toBeFalse();
+    });
+
+    it('uses explicit ammunition flags before misleading names', () => {
+        const mml = weapon();
+
+        expect(handler.matchesInventoryAmmo(mml, ammo('lrm', 'MML 9 SRM Ammo', ['F_MML_LRM']), 'LRM', context)).toBeTrue();
+        expect(handler.matchesInventoryAmmo(mml, ammo('srm', 'MML 9 LRM Ammo', ['F_MML_SRM']), 'LRM', context)).toBeFalse();
+    });
+
+    it('rejects unclassified and rack-mismatched MML ammunition', () => {
+        const mml = weapon();
+        const wrongRack = new AmmoEquipment({
+            id: 'wrong-rack',
+            name: 'MML 5 LRM Ammo',
+            type: 'ammo',
+            flags: ['F_MML_LRM'],
+            ammo: { type: 'MML', rackSize: 5, shots: 10 }
+        });
+
+        expect(handler.matchesInventoryAmmo(mml, ammo('unknown', 'MML 9 Ammo'), 'LRM', context)).toBeFalse();
+        expect(handler.matchesInventoryAmmo(mml, wrongRack, 'LRM', context)).toBeFalse();
     });
 });

@@ -34,7 +34,7 @@
 import { computed, signal, type Signal } from '@angular/core';
 
 import type { CBTForceUnit } from './cbt-force-unit.model';
-import type { Equipment } from './equipment.model';
+import { AmmoEquipment, MiscEquipment, WEAPON_TYPES, WeaponEquipment, type Equipment, type WeaponType } from './equipment.model';
 import type { CriticalSlot } from './force-serialization';
 import type { MountedEquipmentRuleState } from './rules/unit-type-rules';
 
@@ -56,6 +56,18 @@ export interface MountedEquipmentInit {
     ammo?: string;
     totalAmmo?: number;
     consumed?: number;
+}
+
+export interface MountedAmmoInit extends MountedEquipmentInit {
+    equipment: AmmoEquipment;
+}
+
+export interface MountedWeaponInit extends MountedEquipmentInit {
+    equipment: WeaponEquipment;
+}
+
+export interface MountedMiscInit extends MountedEquipmentInit {
+    equipment: MiscEquipment;
 }
 
 export class MountedEquipment {
@@ -115,17 +127,47 @@ export class MountedEquipment {
     }
 
     static from(entry: MountedEquipment | MountedEquipmentInit): MountedEquipment {
-        return entry instanceof MountedEquipment ? entry : new MountedEquipment(entry);
+        if (entry instanceof MountedAmmo || entry instanceof MountedWeapon || entry instanceof MountedMisc) return entry;
+        return createMountedEquipment(entry instanceof MountedEquipment ? entry.cloneData() : entry);
+    }
+
+    static fromAll(entries: readonly MountedEquipment[]): MountedEquipment[] {
+        const mountedEntries = entries.map(entry => MountedEquipment.from(entry));
+        const replacements = new Map(entries.map((entry, index) => [entry, mountedEntries[index]]));
+
+        for (const entry of mountedEntries) {
+            entry.linkedWith = entry.linkedWith?.map(linked => replacements.get(linked) ?? linked);
+            entry.parent = entry.parent ? replacements.get(entry.parent) ?? entry.parent : entry.parent;
+        }
+
+        return mountedEntries;
     }
 
     clone(overrides: Partial<MountedEquipmentInit> = {}): MountedEquipment {
-        return new MountedEquipment({
-            ...this,
+        return new MountedEquipment(this.cloneData(overrides));
+    }
+
+    protected cloneData(overrides: Partial<MountedEquipmentInit> = {}): MountedEquipmentInit {
+        return {
+            owner: this.owner,
+            id: this.id,
+            name: this.name,
+            locations: this.locations,
+            equipment: this.equipment,
+            hitModVariation: this.hitModVariation,
+            physical: this.physical,
+            linkedWith: this.linkedWith,
+            parent: this.parent,
             destroyed: this.committedDestroyedState(),
             destroying: this.pendingDestroyed(),
+            critSlots: this.critSlots,
             states: new Map(this.states),
+            el: this.el,
+            ammo: this.ammo,
+            totalAmmo: this.totalAmmo,
+            consumed: this.consumed,
             ...overrides,
-        });
+        };
     }
 
     isDestroyed(): boolean {
@@ -198,4 +240,67 @@ export class MountedEquipment {
         this.destroyingState.set(undefined);
         return true;
     }
+}
+
+export class MountedAmmo extends MountedEquipment {
+    declare equipment: AmmoEquipment;
+
+    constructor(data: MountedAmmoInit) {
+        super(data);
+    }
+
+    getMaxShots(): number {
+        return this.equipment.getShots(this.owner.gameRules);
+    }
+
+    override clone(overrides: Partial<MountedEquipmentInit> = {}): MountedEquipment {
+        const data = this.cloneData(overrides);
+        return data.equipment instanceof AmmoEquipment
+            ? new MountedAmmo({ ...data, equipment: data.equipment })
+            : createMountedEquipment(data);
+    }
+}
+
+export class MountedWeapon extends MountedEquipment {
+    declare equipment: WeaponEquipment;
+
+    constructor(data: MountedWeaponInit) {
+        super(data);
+    }
+
+    getWeaponTypes(ammo: AmmoEquipment | null = null): WeaponType[] {
+        const types = new Set(this.equipment.getWeaponTypes());
+        ammo?.getRemovedDamageTypes().forEach(type => types.delete(type));
+        ammo?.getWeaponTypes().forEach(type => types.add(type));
+        return WEAPON_TYPES.filter(type => types.has(type));
+    }
+
+    override clone(overrides: Partial<MountedEquipmentInit> = {}): MountedEquipment {
+        const data = this.cloneData(overrides);
+        return data.equipment instanceof WeaponEquipment
+            ? new MountedWeapon({ ...data, equipment: data.equipment })
+            : createMountedEquipment(data);
+    }
+}
+
+export class MountedMisc extends MountedEquipment {
+    declare equipment: MiscEquipment;
+
+    constructor(data: MountedMiscInit) {
+        super(data);
+    }
+
+    override clone(overrides: Partial<MountedEquipmentInit> = {}): MountedEquipment {
+        const data = this.cloneData(overrides);
+        return data.equipment instanceof MiscEquipment
+            ? new MountedMisc({ ...data, equipment: data.equipment })
+            : createMountedEquipment(data);
+    }
+}
+
+function createMountedEquipment(data: MountedEquipmentInit): MountedEquipment {
+    if (data.equipment instanceof AmmoEquipment) return new MountedAmmo({ ...data, equipment: data.equipment });
+    if (data.equipment instanceof WeaponEquipment) return new MountedWeapon({ ...data, equipment: data.equipment });
+    if (data.equipment instanceof MiscEquipment) return new MountedMisc({ ...data, equipment: data.equipment });
+    return new MountedEquipment(data);
 }

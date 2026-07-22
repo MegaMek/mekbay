@@ -39,7 +39,8 @@ import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-inter
 import { DialogsService } from '../../services/dialogs.service';
 import { firstValueFrom } from 'rxjs';
 import type { SkillType } from '../../models/crew-member.model';
-import type { CriticalSlot, MountedEquipment } from '../../models/force-serialization';
+import type { MountedEquipment } from '../../models/mounted-equipment.model';
+import type { CriticalSlot } from '../../models/force-serialization';
 import { OptionsService } from '../../services/options.service';
 import { InputDialogComponent, type InputDialogData } from '../input-dialog/input-dialog.component';
 import type { ZoomPanServiceInterface } from './zoom-pan.interface';
@@ -58,9 +59,10 @@ import { canAntiMech } from '../../utils/infantry.util';
 import { EquipmentDialogComponent } from '../equipment-dialog/equipment-dialog.component';
 import type { EquipmentDialogContext, EquipmentDialogData, EquipmentDialogTab } from '../equipment-dialog/equipment-dialog.model';
 import { WeaponTargetChoiceMenuComponent } from '../../components/equipment-dialog/weapon-target-choice-menu.component';
-import { getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_MODE_STATE, selectInventoryControlEntry, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
+import { getInventoryControlGroups, getInventoryControlModeAmmoSummary, getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_MODE_STATE, resolveInventoryControlSelectedAmmoOption, selectInventoryControlEntry, setInventoryControlMode, syncSvgMode, type InventoryRangeKey } from '../../utils/inventory-control.util';
 import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
-import { inventoryTargetCategory, inventoryTargetNumberText, parseInventoryTargetNumberCell, readInventoryTargetDisplay, readInventoryTargetText } from '../../utils/inventory-target-number.util';
+import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection } from '../../utils/inventory-target-number.util';
+import { CORE_2026_GAME_RULES } from '../../models/rules/game-rules';
 import { PageViewerStateService } from './internal/page-viewer-state.service';
 import { committedCriticalHitCount, isRepeatableMotiveHitId, motiveHitLevelFromId, MOTIVE_HIT_PIP_COUNT, pendingCriticalHitTimestamps } from '../../models/rules/vehicle-motive-hit.util';
 import { UnitStateDropdownComponent, type UnitStateDropdownChoice } from './unit-state-dropdown.component';
@@ -1059,7 +1061,10 @@ export class SvgInteractionService {
         this.unit()?.getInventory().forEach(entry => {
             const el = entry.el;
             if (!el) return;
-            syncSvgMode(entry, getSelectedInventoryControlMode(entry));
+            const unit = this.unit();
+            const rules = unit?.getInventoryControlRules?.()
+                ?? this.equipmentRegistryService.getRegistry().inventoryControlRules(this.equipmentDialogContext());
+            syncSvgMode(entry, getSelectedInventoryControlMode(entry, this.dataService.getEquipments(), rules));
 
             const selectEntry = (button: SVGElement) => {
                 const unit = this.unit();
@@ -1176,7 +1181,11 @@ export class SvgInteractionService {
     }
 
     private selectedInventoryControlMode(entry: MountedEquipment): string | null {
-        return entry.states.get(INVENTORY_CONTROL_MODE_STATE) ?? getSelectedInventoryControlMode(entry);
+        const unit = this.unit();
+        const rules = unit?.getInventoryControlRules?.()
+            ?? this.equipmentRegistryService.getRegistry().inventoryControlRules(this.equipmentDialogContext());
+        return entry.states.get(INVENTORY_CONTROL_MODE_STATE)
+            ?? getSelectedInventoryControlMode(entry, this.dataService.getEquipments(), rules);
     }
 
     private toggleRiscLaserPulseMode(module: MountedEquipment): void {
@@ -1242,25 +1251,47 @@ export class SvgInteractionService {
     private inventoryTargetNumberText(entry: MountedEquipment, target: InventoryControlRuntimeTarget): string {
         const unit = this.unit();
         if (!unit) return '';
-        const svgText = unit.svgService?.inventoryTargetNumberText(entry, target);
-        if (svgText) return svgText;
+        if (unit.svgService) return unit.svgService.inventoryTargetNumberText(entry, target) ?? '';
 
+        const gameRules = unit.gameRules ?? CORE_2026_GAME_RULES;
+        const rules = unit.getInventoryControlRules?.()
+            ?? this.equipmentRegistryService.getRegistry().inventoryControlRules(this.equipmentDialogContext());
+        const ammoSummary = getInventoryControlModeAmmoSummary(entry, this.dataService.getEquipments(), rules);
+        const selectedAmmo = resolveInventoryControlSelectedAmmoOption(
+            ammoSummary.options,
+            unit.getInventoryControlEntryAmmoOption?.(entry.id)
+        )?.ammo ?? null;
+        const row = getInventoryControlGroups(unit, this.dataService.getEquipments(), rules)
+            .flatMap(group => group.rows)
+            .find(candidate => candidate.entry.id === entry.id);
+        if (!row) return '';
+        const effectiveTarget = this.inventoryTargetForTargetNumber(unit, target);
+        const category = inventoryTargetCategory(entry);
+        const rangeSelection = inventoryTargetRangeSelection({ entry, category, display: row.display, extremeRange: row.extremeRange, selectedAmmo, target: effectiveTarget });
+        const state = unit.rules.computeEntryState(entry);
+        const hitResolution = gameRules.resolveToHit({
+            subject: entry,
+            stateModifier: state.hitMod,
+            stateWeakened: state.weakenedHitMod ?? false,
+            range: rangeSelection?.range ?? null,
+            adjustments: rules.resolveToHitAdjustments?.(entry, selectedAmmo)
+        });
         const missingMovementModifier = unit.turnState().missingAttackMovementModifier();
-        const heatFireModifier = unit.svgService?.inventoryTargetHeatFireModifier(entry) ?? 0;
-        const hitModifier = parseInventoryTargetNumberCell(readInventoryTargetText(entry, 'hit')) ?? 0;
         return inventoryTargetNumberText({
             entry,
-            category: inventoryTargetCategory(entry),
-            display: readInventoryTargetDisplay(entry),
-            target: this.inventoryTargetForTargetNumber(unit, target),
+            category,
+            display: row.display,
+            extremeRange: row.extremeRange,
+            selectedAmmo,
+            target: effectiveTarget,
             gunnerySkill: unit.rules.getTargetNumberGunnerySkill(),
             pilotingSkill: unit.rules.getTargetNumberPilotingSkill(),
             gunneryModifierBreakdown: unit.rules.getTargetNumberGunneryModifierBreakdown(),
             pilotingModifierBreakdown: unit.rules.getTargetNumberPilotingModifierBreakdown(),
             missingMovementModifier,
             attackModifierBreakdown: unit.turnState().getAttackModifierBreakdown(),
-            hitModifier: hitModifier - heatFireModifier,
-            heatFireModifier
+            hitModifier: hitResolution.value,
+            gameRules
         });
     }
 
@@ -1366,7 +1397,7 @@ export class SvgInteractionService {
         const unit = this.unit();
         if (!unit || unit.rules.locationConditionControls.length === 0) return;
 
-        svg.querySelectorAll<SVGElement>('.locationConditionText').forEach(el => {
+        svg.querySelectorAll<SVGElement>('.locationConditionControl').forEach(el => {
             const loc = el.getAttribute('loc');
             if (!loc) return;
             this.addSvgTapHandler(el, (event: PointerEvent) => {
