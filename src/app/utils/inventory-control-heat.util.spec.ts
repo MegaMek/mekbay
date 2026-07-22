@@ -48,8 +48,8 @@ describe('inventory-control heat resolution', () => {
         expect(formatInventoryControlHeat(5)).toBe('5');
         expect(formatInventoryControlHeat(2.5)).toBe('2.5');
         expect(formatInventoryControlHeat(2, '*')).toBe('2*');
-        expect(formatInventoryControlHeat(1, '', 6)).toBe('1');
-        expect(formatInventoryControlHeat(2, '*', 2)).toBe('2*');
+        expect(formatInventoryControlHeat(1, '', 6)).toBe('1/s');
+        expect(formatInventoryControlHeat(2, '*', 2)).toBe('2*/s');
     });
 });
 
