@@ -97,7 +97,7 @@ export function formatInventoryControlDamage(
     fallbackAmmoProfile?: AmmoWeaponProfile | null
 ): string {
     const damageValue = formatDamageValue(damage);
-    const baseDamage = weapon.getRapidFireCount() > 0 ? `${damageValue}/s` : damageValue;
+    const baseDamage = weapon.getRapidFireCount() > 0 ? `${damageValue}/Sht` : damageValue;
     const typeSet = new Set(damageTypes);
     const orderedTypes = WEAPON_TYPES.filter(type => typeSet.has(type));
     const typeLabels = orderedTypes.map(type => formatWeaponTypeLabel(type, weapon, selectedAmmo, fallbackAmmoProfile));

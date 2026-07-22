@@ -192,8 +192,8 @@ describe('inventory-control damage resolution', () => {
             weapon: { ammoType, damage: 5 }
         });
 
-        expect(resolveWeaponDamageText(autocannon('AC_ULTRA'))).toBe('5/s [DB,R2]');
-        expect(resolveWeaponDamageText(autocannon('AC_ROTARY'))).toBe('5/s [DB,R6,S]');
+        expect(resolveWeaponDamageText(autocannon('AC_ULTRA'))).toBe('5/Sht [DB,R2]');
+        expect(resolveWeaponDamageText(autocannon('AC_ROTARY'))).toBe('5/Sht [DB,R6,S]');
     });
 
     it('keeps C unquantified when the weapon has no corresponding cluster count', () => {

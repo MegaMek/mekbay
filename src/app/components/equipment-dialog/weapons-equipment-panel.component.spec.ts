@@ -486,7 +486,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
         expect(row.display.heat).toBe('1/s');
-        expect(row.display.damage).toBe('2/s [DB,R6,S]');
+        expect(row.display.damage).toBe('2/Sht [DB,R6,S]');
     });
 
     it('shows linked weapon enhancements as modifiers and standalone equipment rows', () => {
