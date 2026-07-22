@@ -54,7 +54,7 @@ import { EquipmentInteractionRegistryService, type HandlerChoice, type HandlerCo
 import { ToastService } from '../../../services/toast.service';
 import { DialogsService } from '../../../services/dialogs.service';
 import { DataService } from '../../../services/data.service';
-import type { MountedEquipment } from '../../../models/force-serialization';
+import type { MountedEquipment } from '../../../models/mounted-equipment.model';
 import { MascHandler } from '../../../equipment-handlers/masc.handler';
 
 interface MascControlRow {

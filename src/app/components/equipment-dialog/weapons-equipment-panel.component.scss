@@ -280,6 +280,10 @@
     grid-column: 5;
 }
 
+.hit-cell.weakened {
+    color: var(--damage-color);
+}
+
 .location-cell {
     grid-column: 6;
 }

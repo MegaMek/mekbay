@@ -2,8 +2,10 @@ import { firstValueFrom } from 'rxjs';
 import { SetAmmoDialogComponent, type SetAmmoDialogData } from '../components/set-ammo-dialog/set-ammo.dialog.component';
 import { AmmoEquipment, WeaponEquipment, type EquipmentMap } from '../models/equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
-import type { CriticalSlot, LocationData, MountedEquipment } from '../models/force-serialization';
+import { MountedAmmo, MountedEquipment  } from '../models/mounted-equipment.model';
+import { type CriticalSlot, type LocationData } from '../models/force-serialization';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
+import type { CBTGameRules } from '../models/rules/game-rules';
 
 export interface AmmoControlEntry {
     id: string;
@@ -133,7 +135,10 @@ function getInventoryOriginalTotalAmmo(entry: MountedEquipment): number {
     const component = componentRef === null ? undefined : entry.owner.getUnit().comp[componentRef.componentIndex];
     const originalAmmo = entry.equipment instanceof AmmoEquipment ? entry.equipment : null;
     const binCount = Math.max(1, component?.q ?? 1);
-    const totalAmmo = component?.q2 || (originalAmmo ? originalAmmo.shots * binCount : 0) || entry.totalAmmo || 0;
+    const mountedMaxShots = entry instanceof MountedAmmo
+        ? entry.getMaxShots()
+        : originalAmmo ? (entry.owner.gameRules ? originalAmmo.getShots(entry.owner.gameRules) : originalAmmo.shots) : 0;
+    const totalAmmo = component?.q2 || (mountedMaxShots * binCount) || entry.totalAmmo || 0;
     if (componentRef?.binIndex === null) return totalAmmo;
     const baseBinAmmo = Math.floor(totalAmmo / binCount);
     const extraBinAmmo = totalAmmo % binCount;
@@ -454,9 +459,10 @@ function sortCompatibleAmmo(ammoOptions: AmmoEquipment[]): AmmoEquipment[] {
     });
 }
 
-function getTotalAmmoForAmmoType(originalAmmo: AmmoEquipment, originalTotalAmmo: number, selectedAmmo: AmmoEquipment): number {
-    if (selectedAmmo.kgPerShot <= 0) return originalTotalAmmo;
-    return Math.floor((originalAmmo.kgPerShot * originalTotalAmmo) / selectedAmmo.kgPerShot);
+function getTotalAmmoForAmmoType(originalAmmo: AmmoEquipment, originalTotalAmmo: number, selectedAmmo: AmmoEquipment, gameRules: CBTGameRules): number {
+    const selectedKgPerShot = selectedAmmo.getEffectiveKgPerShot(gameRules);
+    if (selectedKgPerShot <= 0) return originalTotalAmmo;
+    return Math.floor((originalAmmo.getEffectiveKgPerShot(gameRules) * originalTotalAmmo) / selectedKgPerShot);
 }
 
 export async function setAmmoEntry(entry: AmmoControlEntry, context: HandlerContext): Promise<boolean> {
@@ -480,6 +486,7 @@ export async function setAmmoEntry(entry: AmmoControlEntry, context: HandlerCont
             unitType: unitBlueprint.type,
             era: entry.owner.force.era(),
             inventory,
+            gameRules: entry.owner.gameRules,
         } as SetAmmoDialogData
     });
 
@@ -489,7 +496,7 @@ export async function setAmmoEntry(entry: AmmoControlEntry, context: HandlerCont
     const selectedAmmo = equipmentMap[newAmmoValue.name] instanceof AmmoEquipment
         ? equipmentMap[newAmmoValue.name] as AmmoEquipment
         : entry.currentAmmo;
-    const newTotalAmmo = getTotalAmmoForAmmoType(entry.originalAmmo, entry.originalTotalAmmo, selectedAmmo);
+    const newTotalAmmo = getTotalAmmoForAmmoType(entry.originalAmmo, entry.originalTotalAmmo, selectedAmmo, entry.owner.gameRules);
     const newQuantity = clamp(newAmmoValue.quantity, 0, newTotalAmmo);
 
     if (entry.sourceType === 'inventory') {
@@ -547,6 +554,7 @@ export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerCont
             unitType: unitBlueprint.type,
             era: firstEntry.owner.force.era(),
             inventory,
+            gameRules: firstEntry.owner.gameRules,
         } as SetAmmoDialogData
     });
 
@@ -556,10 +564,10 @@ export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerCont
     const selectedAmmo = equipmentMap[newAmmoValue.name] instanceof AmmoEquipment
         ? equipmentMap[newAmmoValue.name] as AmmoEquipment
         : firstEntry.currentAmmo;
-    let remainingToAllocate = clamp(newAmmoValue.quantity, 0, getTotalAmmoForAmmoType(firstEntry.originalAmmo, originalTotalAmmo, selectedAmmo));
+    let remainingToAllocate = clamp(newAmmoValue.quantity, 0, getTotalAmmoForAmmoType(firstEntry.originalAmmo, originalTotalAmmo, selectedAmmo, firstEntry.owner.gameRules));
 
     for (const entry of group.entries.sort(compareAmmoControlEntryOrder)) {
-        const newTotalAmmo = getTotalAmmoForAmmoType(entry.originalAmmo, entry.originalTotalAmmo, selectedAmmo);
+        const newTotalAmmo = getTotalAmmoForAmmoType(entry.originalAmmo, entry.originalTotalAmmo, selectedAmmo, entry.owner.gameRules);
         const newRemaining = Math.min(newTotalAmmo, remainingToAllocate);
         remainingToAllocate -= newRemaining;
 

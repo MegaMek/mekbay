@@ -34,7 +34,8 @@
 import { computed } from '@angular/core';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { CrewMember, SkillType } from '../crew-member.model';
-import type { CriticalSlot, MountedEquipment } from '../force-serialization';
+import type { MountedEquipment } from '../mounted-equipment.model';
+import type { CriticalSlot } from '../force-serialization';
 import { CrewStateControlDefinition, CrewStateDefinition, crewStateDefinitions, UnitConditionControl, unitConditionControls, UnitTypeRulesBase, type ChargeDamage, type LocationConditionControl, type PSRCheck, type MountedEquipmentRuleState, type UnitHeatSource, type UnitModifierBreakdownEntry } from './unit-type-rules';
 import type { TurnState } from '../turn-state.model';
 import { type HeatScaleEntry, HeatManagement, getHeatEffects } from './heat-management';
@@ -1604,7 +1605,7 @@ export class MekRules extends UnitTypeRulesBase {
 
     protected criticalDamageDestructionThreshold(entry: MountedEquipment): number {
         const equipment = entry.equipment;
-        const isAutocannon = equipment instanceof WeaponEquipment && equipment.isAutocannon();
+        const isAutocannon = equipment instanceof WeaponEquipment && equipment.hasFlag('F_AC');
         return isAutocannon ? 2 : 1;
     }
 
@@ -1673,8 +1674,8 @@ export class MekRules extends UnitTypeRulesBase {
             entry.locations?.forEach(loc => {
                 if (loc in fire.fireMod) hitMod += fire.fireMod[loc as ArmLocation];
             });
-            const equipment = entry.parent?.equipment ?? entry.equipment;
-            if (systemsStatus.hasTargetingComputer && this.isTargetingComputerEligible(equipment)) {
+            const tarcompWeapon = entry.parent ?? entry;
+            if (systemsStatus.hasTargetingComputer && this.isTargetingComputerEligible(tarcompWeapon)) {
                 if (systemsStatus.destroyedTargetingComputers === 0) {
                     hitMod--;
                 } else {

@@ -5,7 +5,8 @@ import { CBTForce } from './cbt-force.model';
 import { CBTForceUnit } from './cbt-force-unit.model';
 import { DEAD_CREW_HIT_THRESHOLD } from './crew-member.model';
 import { INVENTORY_CONTROL_TARGET_MAX_COUNT } from './inventory-control-runtime-state.model';
-import { MountedEquipment, type CBTSerializedUnit, type CriticalSlot } from './force-serialization';
+import { MountedAmmo, MountedEquipment, MountedMisc, MountedWeapon } from './mounted-equipment.model';
+import { type CBTSerializedUnit, type CriticalSlot } from './force-serialization';
 import { DataService } from '../services/data.service';
 import { UnitInitializerService } from '../services/unit-initializer.service';
 import { UnitSvgService } from '../services/unit-svg.service';
@@ -17,7 +18,11 @@ import { LaserInsulatorHandler } from '../equipment-handlers/laser-insulator.han
 import { RISC_LASER_PULSE_MODE, RiscLaserPulseModuleHandler } from '../equipment-handlers/risc-laser-pulse-module.handler';
 import { DialogsService } from '../services/dialogs.service';
 import { ToastService } from '../services/toast.service';
-import { getInventoryControlGroups } from '../utils/inventory-control.util';
+import { getInventoryControlGroups, INVENTORY_CONTROL_MODE_STATE } from '../utils/inventory-control.util';
+import { resolveWeaponDamage } from '../utils/inventory-control-damage.util';
+import { AtmHandler } from '../equipment-handlers/atm.handler';
+import { MmlHandler } from '../equipment-handlers/mml.handler';
+import { ATM_EXTENDED_RANGE_PROFILE, ATM_HIGH_EXPLOSIVE_PROFILE, ATM_STANDARD_PROFILE } from './ammo-weapon-profile.model';
 
 function createEquipment(): EquipmentMap {
     const ultraAc20 = new WeaponEquipment({
@@ -50,7 +55,48 @@ function createEquipment(): EquipmentMap {
         id: 'ISMML9',
         name: 'MML 9',
         type: 'weapon',
+        flags: ['F_MISSILE', 'F_MML'],
         weapon: { ammoType: 'MML', rackSize: 9, heat: 5, damage: 'cluster', ranges: [0, 0, 0, 0] }
+    });
+    const mml9LrmAmmo = new AmmoEquipment({
+        id: 'ISMML9LRMAmmo',
+        name: 'MML 9 LRM Ammo',
+        type: 'ammo',
+        flags: ['F_MML_LRM'],
+        ammo: { type: 'MML', rackSize: 9, shots: 12, damagePerShot: 7 }
+    });
+    const mml9SrmAmmo = new AmmoEquipment({
+        id: 'ISMML9SRMAmmo',
+        name: 'MML 9 SRM Ammo',
+        type: 'ammo',
+        flags: ['F_MML_SRM'],
+        ammo: { type: 'MML', rackSize: 9, shots: 12, damagePerShot: 8 }
+    });
+    const atm6 = new WeaponEquipment({
+        id: 'ISATM6',
+        name: 'ATM 6',
+        type: 'weapon',
+        flags: ['F_MISSILE'],
+        weapon: { ammoType: 'ATM', rackSize: 6, heat: 4, damage: 'cluster', ranges: [0, 0, 0, 0] }
+    });
+    const iatm6 = new WeaponEquipment({
+        id: 'ISIATM6',
+        name: 'IATM 6',
+        type: 'weapon',
+        flags: ['F_MISSILE'],
+        weapon: { ammoType: 'IATM', rackSize: 6, heat: 4, damage: 'cluster', ranges: [0, 0, 0, 0] }
+    });
+    const atm6ErAmmo = new AmmoEquipment({
+        id: 'ISATM6ERAmmo',
+        name: 'ATM 6 ER Ammo',
+        type: 'ammo',
+        ammo: { type: 'ATM', rackSize: 6, shots: 10, damagePerShot: 7, munitionType: ['M_EXTENDED_RANGE'] }
+    });
+    const atm6HeAmmo = new AmmoEquipment({
+        id: 'ISATM6HEAmmo',
+        name: 'ATM 6 HE Ammo',
+        type: 'ammo',
+        ammo: { type: 'ATM', rackSize: 6, shots: 10, damagePerShot: 8, munitionType: ['M_HIGH_EXPLOSIVE'] }
     });
     const mediumLaser = new WeaponEquipment({
         id: 'ISMediumLaser',
@@ -84,6 +130,12 @@ function createEquipment(): EquipmentMap {
         [ultraAc20PrecisionAmmo.internalName]: ultraAc20PrecisionAmmo,
         [variableDamageLaser.internalName]: variableDamageLaser,
         [mml9.internalName]: mml9,
+        [mml9LrmAmmo.internalName]: mml9LrmAmmo,
+        [mml9SrmAmmo.internalName]: mml9SrmAmmo,
+        [atm6.internalName]: atm6,
+        [iatm6.internalName]: iatm6,
+        [atm6ErAmmo.internalName]: atm6ErAmmo,
+        [atm6HeAmmo.internalName]: atm6HeAmmo,
         [mediumLaser.internalName]: mediumLaser,
         [laserInsulator.internalName]: laserInsulator,
         [riscLaserPulseModule.internalName]: riscLaserPulseModule,
@@ -183,7 +235,7 @@ function createVariableDamageSvg(): SVGSVGElement {
         <svg xmlns="http://www.w3.org/2000/svg">
             <g class="inventoryEntry" id="VariableDamageLaser@FR#0" hitMod="-4">
                 <g class="name"><text>Variable Damage Laser</text></g>
-                <g class="damage"><text>9/7/5 [Variable]</text></g>
+                <g class="damage"><text>9/7/5 [V]</text></g>
                 <text class="location">FR</text>
                 <text class="range_short">2</text>
                 <text class="range_medium">5</text>
@@ -289,6 +341,8 @@ function createMmlUnit(equipment: EquipmentMap): Unit {
         dissipation: -1,
         comp: [
             { id: 'ISMML9', q: 1, q2: 0, n: 'MML 9', t: 'M', p: 1, l: 'LT', r: '', m: '0', d: '[M,C,S]', md: '0.0', c: '1', os: 0, eq: equipment['ISMML9'] },
+            { id: 'ISMML9LRMAmmo', q: 1, q2: 12, n: 'MML 9 LRM Ammo', t: 'X', p: 0, l: 'BD', c: '0', os: 0, eq: equipment['ISMML9LRMAmmo'] },
+            { id: 'ISMML9SRMAmmo', q: 1, q2: 12, n: 'MML 9 SRM Ammo', t: 'X', p: 0, l: 'BD', c: '0', os: 0, eq: equipment['ISMML9SRMAmmo'] },
         ],
         sheets: ['vehicle/mml-test.svg'],
     });
@@ -309,6 +363,18 @@ function createMmlSvg(): SVGSVGElement {
                 <text class="range_short"></text>
                 <text class="range_medium"></text>
                 <text class="range_long"></text>
+                <g class="alternativeMode" mode="LRM">
+                    <rect class="shrButton inventoryEntryButton"></rect>
+                    <rect class="medButton inventoryEntryButton"></rect>
+                    <rect class="lngButton inventoryEntryButton"></rect>
+                    <rect class="alternativeModeButton inventoryEntryButton"></rect>
+                    <g class="name"><text>LRM</text></g>
+                    <g class="damage"><text>1/Msl</text></g>
+                    <text class="range_min">6</text>
+                    <text class="range_short">7</text>
+                    <text class="range_medium">14</text>
+                    <text class="range_long">21</text>
+                </g>
                 <g class="alternativeMode selected" mode="SRM">
                     <rect class="shrButton inventoryEntryButton"></rect>
                     <rect class="medButton inventoryEntryButton"></rect>
@@ -316,6 +382,54 @@ function createMmlSvg(): SVGSVGElement {
                     <rect class="alternativeModeButton inventoryEntryButton"></rect>
                     <g class="name"><text>SRM</text></g>
                     <g class="damage"><text>2/Msl</text></g>
+                    <text class="range_min">—</text>
+                    <text class="range_short">3</text>
+                    <text class="range_medium">6</text>
+                    <text class="range_long">9</text>
+                </g>
+                <rect class="hitMod-rect" display="none"></rect>
+                <text class="hitMod-text" display="none"></text>
+                <rect class="targetTn-rect" display="none"></rect>
+                <text class="targetTn-text" display="none"></text>
+            </g>
+        </svg>
+    `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+}
+
+function createAtmSvg(): SVGSVGElement {
+    const parser = new DOMParser();
+    return parser.parseFromString(`
+        <svg xmlns="http://www.w3.org/2000/svg">
+            <g class="inventoryEntry" id="ISATM6@LT#0" hitMod="0">
+                <rect class="shrButton inventoryEntryButton"></rect>
+                <rect class="medButton inventoryEntryButton"></rect>
+                <rect class="lngButton inventoryEntryButton"></rect>
+                <g class="name"><text>ATM 6</text></g>
+                <g class="damage"><text>legacy</text></g>
+                <text class="location">LT</text>
+                <text class="range_min"></text>
+                <text class="range_short"></text>
+                <text class="range_medium"></text>
+                <text class="range_long"></text>
+                <g class="alternativeMode" mode="Extended Range">
+                    <rect class="shrButton inventoryEntryButton"></rect>
+                    <rect class="medButton inventoryEntryButton"></rect>
+                    <rect class="lngButton inventoryEntryButton"></rect>
+                    <rect class="alternativeModeButton inventoryEntryButton"></rect>
+                    <g class="name"><text>ER</text></g>
+                    <g class="damage"><text></text></g>
+                    <text class="range_min">6</text>
+                    <text class="range_short">7</text>
+                    <text class="range_medium">12</text>
+                    <text class="range_long">18</text>
+                </g>
+                <g class="alternativeMode selected" mode="High Explosive">
+                    <rect class="shrButton inventoryEntryButton"></rect>
+                    <rect class="medButton inventoryEntryButton"></rect>
+                    <rect class="lngButton inventoryEntryButton"></rect>
+                    <rect class="alternativeModeButton inventoryEntryButton"></rect>
+                    <g class="name"><text>HE</text></g>
+                    <g class="damage"><text></text></g>
                     <text class="range_min">—</text>
                     <text class="range_short">3</text>
                     <text class="range_medium">6</text>
@@ -365,11 +479,22 @@ class ExposedUnitSvgService extends UnitSvgService {
     }
 
     renderHitModifier(entry: MountedEquipment, hitModifier: number, forceWeakened = false): void {
-        this.renderHitModEntry(entry, hitModifier, undefined, forceWeakened);
+        const baseResolution = this.unit.gameRules.resolveToHit({ subject: entry });
+        const baseValue = typeof baseResolution.value === 'number' ? baseResolution.value : 0;
+        const resolution = this.unit.gameRules.resolveToHit({
+            subject: entry,
+            stateModifier: hitModifier - baseValue,
+            stateWeakened: forceWeakened
+        });
+        this.renderHitModEntry(entry, resolution, forceWeakened);
     }
 
     refreshArmor(): void {
         this.updateArmorDisplay();
+    }
+
+    renderProfile(profile: ReadonlyMap<string, number>): void {
+        this.renderAmmoProfile(profile);
     }
 }
 
@@ -462,6 +587,89 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         unit.isLoaded.set(true);
     }
 
+    function createAmmoProfileSvg(lineCount: number, availableWidth: number): SVGSVGElement {
+        const lines = Array.from({ length: lineCount }, (_, index) => `<text x="0" y="${index * 10}"></text>`).join('');
+        return new DOMParser().parseFromString(`
+            <svg xmlns="http://www.w3.org/2000/svg">
+                <g id="ammoProfile">
+                    ${lines}
+                    <rect class="ammoProfileButton" x="0" width="${availableWidth + 1}"></rect>
+                </g>
+            </svg>
+        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+    }
+
+    function useFixedAmmoProfileCharacterWidth(svg: SVGSVGElement, characterWidth = 5): void {
+        svg.querySelectorAll<SVGTextElement>('#ammoProfile > text').forEach(line => {
+            spyOn(line, 'getComputedTextLength').and.callFake(() => (line.textContent?.length ?? 0) * characterWidth);
+        });
+    }
+
+    it('wraps complete ammo profile entries before compressing text', () => {
+        const forceUnit = createForceUnit();
+        const svg = createAmmoProfileSvg(2, 65);
+        initialize(forceUnit, svg);
+        useFixedAmmoProfileCharacterWidth(svg);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.renderProfile(new Map([['(A)', 1], ['(B)', 2]]));
+
+        const lines = svg.querySelectorAll<SVGTextElement>('#ammoProfile > text');
+        expect(lines[0].textContent).toBe('Ammo: (A) 1,');
+        expect(lines[1].textContent).toBe('(B) 2');
+        expect(lines[0].hasAttribute('textLength')).toBeFalse();
+        expect(lines[1].hasAttribute('textLength')).toBeFalse();
+    });
+
+    it('compresses an overflowing ammo profile only to the configured readability limit', () => {
+        const forceUnit = createForceUnit();
+        const svg = createAmmoProfileSvg(1, 82);
+        initialize(forceUnit, svg);
+        useFixedAmmoProfileCharacterWidth(svg);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.renderProfile(new Map([['(A)', 1], ['(B)', 2]]));
+
+        const line = svg.querySelector<SVGTextElement>('#ammoProfile > text')!;
+        expect(line.textContent).toBe('Ammo: (A) 1, (B) 2');
+        expect(line.getAttribute('textLength')).toBe('82');
+        expect(line.getAttribute('lengthAdjust')).toBe('spacingAndGlyphs');
+    });
+
+    it('uses an ellipsis when complete text would exceed the compression limit', () => {
+        const forceUnit = createForceUnit();
+        const svg = createAmmoProfileSvg(1, 73);
+        initialize(forceUnit, svg);
+        useFixedAmmoProfileCharacterWidth(svg);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.renderProfile(new Map([['(A)', 1], ['(B)', 2]]));
+
+        const line = svg.querySelector<SVGTextElement>('#ammoProfile > text')!;
+        expect(line.textContent).toBe('Ammo: (A) 1, ...');
+        expect(line.textContent).not.toContain('(B) 2');
+        expect(line.getAttribute('lengthAdjust')).toBe('spacingAndGlyphs');
+    });
+
+    it('recalculates a cached ammo profile after its visible layout becomes available', () => {
+        const forceUnit = createForceUnit();
+        const svg = createAmmoProfileSvg(1, 0);
+        initialize(forceUnit, svg);
+        useFixedAmmoProfileCharacterWidth(svg);
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+        const profile = new Map([['(A)', 1], ['(B)', 2]]);
+
+        svgService.renderProfile(profile);
+        expect(svg.querySelector('#ammoProfile > text')?.textContent).toBe('Ammo: (A) 1, (B) 2');
+
+        svg.querySelector('.ammoProfileButton')?.setAttribute('width', '83');
+        svgService.refreshLayoutDependentDisplays();
+
+        const line = svg.querySelector<SVGTextElement>('#ammoProfile > text')!;
+        expect(line.textContent).toBe('Ammo: (A) 1, (B) 2');
+        expect(line.getAttribute('textLength')).toBe('82');
+    });
+
     it('calls equipment handler end-turn hooks when ending turn', () => {
         const handler = new EndTurnTestHandler();
         TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(handler);
@@ -515,6 +723,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         const ammoEntries = forceUnit.getInventory().filter(entry => entry.equipment instanceof AmmoEquipment);
         expect(ammoEntries.length).toBe(6);
+        expect(ammoEntries.every(entry => entry instanceof MountedAmmo)).toBeTrue();
         expect(ammoEntries.map(entry => entry.id)).toEqual([
             'Clan Ultra AC/20 Ammo@BD#1.0',
             'Clan Ultra AC/20 Ammo@BD#1.1',
@@ -525,6 +734,36 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         ]);
         expect(ammoEntries.map(entry => entry.totalAmmo)).toEqual([5, 5, 5, 5, 5, 5]);
         expect(ammoEntries.map(entry => entry.consumed)).toEqual([0, 0, 0, 0, 0, 0]);
+    });
+
+    it('creates and clones mounted equipment using the equipment subtype', () => {
+        const forceUnit = createForceUnit(createVehicleUnit(equipment));
+        const ammo = MountedEquipment.from(new MountedEquipment({
+            owner: forceUnit,
+            id: 'ammo',
+            name: 'Ammo',
+            equipment: equipment['Clan Ultra AC/20 Ammo'],
+        }));
+        const weapon = MountedEquipment.from(new MountedEquipment({
+            owner: forceUnit,
+            id: 'weapon',
+            name: 'Weapon',
+            equipment: equipment['ISMediumLaser'],
+        }));
+        const misc = MountedEquipment.from(new MountedEquipment({
+            owner: forceUnit,
+            id: 'misc',
+            name: 'Misc',
+            equipment: equipment['ISLaserInsulator'],
+        }));
+
+        expect(ammo).toBeInstanceOf(MountedAmmo);
+        expect(weapon).toBeInstanceOf(MountedWeapon);
+        expect(misc).toBeInstanceOf(MountedMisc);
+        expect(ammo.clone()).toBeInstanceOf(MountedAmmo);
+        expect(weapon.clone()).toBeInstanceOf(MountedWeapon);
+        expect(misc.clone()).toBeInstanceOf(MountedMisc);
+        expect(ammo.clone({ equipment: equipment['ISMediumLaser'] })).toBeInstanceOf(MountedWeapon);
     });
 
     it('commits pending direct inventory hit and repair state at phase end', () => {
@@ -967,17 +1206,17 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         forceUnit.setInventoryControlEntryRange(weaponEntry, 'short');
         svgService.refreshInventory();
-        expect(damageText.textContent).toBe('9 [Variable]');
+        expect(damageText.textContent).toBe('9 [V]');
         expect(hitModText.textContent).toBe('-4');
 
         forceUnit.setInventoryControlEntryRange(weaponEntry, 'medium');
         svgService.refreshInventory();
-        expect(damageText.textContent).toBe('7 [Variable]');
+        expect(damageText.textContent).toBe('7 [V]');
         expect(hitModText.textContent).toBe('-4');
 
         forceUnit.setInventoryControlEntryRange(weaponEntry, 'long');
         svgService.refreshInventory();
-        expect(damageText.textContent).toBe('5 [Variable]');
+        expect(damageText.textContent).toBe('5 [V]');
         expect(hitModText.textContent).toBe('-4');
 
         spyOn(forceUnit, 'hasLinkedC3Network').and.returnValue(true);
@@ -985,16 +1224,32 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         forceUnit.updateInventoryControlTarget('A', { distance: 8, c3Distance: 1, useC3: true });
         forceUnit.setInventoryControlEntryTarget(weaponEntry, 'A');
         svgService.refreshInventory();
-        expect(damageText.textContent).toBe('5 [Variable]');
+        expect(damageText.textContent).toBe('5 [V]');
         expect(hitModText.textContent).toBe('-4');
 
         forceUnit.setInventoryControlEntryRange(weaponEntry, null);
         svgService.refreshInventory();
-        expect(damageText.textContent).toBe('9/7/5 [Variable]');
+        expect(damageText.textContent).toBe('9/7/5 [V]');
         expect(hitModText.textContent).toBe('-4');
     });
 
-    it('renders Laser Insulator heat restoration on the SVG inventory entry', () => {
+    it('renders effective weapon types on selected-range SVG damage', () => {
+        const forceUnit = createForceUnit(createVariableDamageUnit(equipment));
+        initialize(forceUnit, createVariableDamageSvg());
+        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
+        const damageText = weaponEntry.el!.querySelector(':scope > .damage > text') as SVGTextElement;
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+        spyOn(forceUnit, 'getInventoryControlRules').and.returnValue({
+            applyWeaponTypes: (_entry, types) => new Set([...types, 'AE'])
+        });
+
+        forceUnit.setInventoryControlEntryRange(weaponEntry, 'medium');
+        svgService.refreshInventory();
+
+        expect(damageText.textContent).toBe('7 [AE,V]');
+    });
+
+    it('resolves Laser Insulator heat from equipment instead of the SVG', () => {
         TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(new LaserInsulatorHandler());
         const forceUnit = createForceUnit(createLaserInsulatorUnit(equipment));
         initialize(forceUnit, createLaserInsulatorSvg());
@@ -1004,22 +1259,28 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
 
         svgService.refreshInventory();
-        expect(heatText.textContent).toBe('3*');
+        expect(heatText.textContent).toBe('2*');
 
         insulator.setCommittedDestroyed(true);
         svgService.refreshInventory();
-        expect(heatText.textContent).toBe('4');
+        expect(heatText.textContent).toBe('3');
         expect(heatText.classList.contains('damaged')).toBeTrue();
 
-        const row = getInventoryControlGroups(forceUnit, equipment, {
-            applyDisplayEffects: (entry, display, options) => forceUnit.applyInventoryControlDisplayEffects(entry, display, options)
-        }).find(group => group.id === 'ranged')!.rows[0];
-        expect(row.display.heat).toBe('4');
+        const row = getInventoryControlGroups(forceUnit, equipment, forceUnit.getInventoryControlRules())
+            .find(group => group.id === 'ranged')!.rows[0];
+        expect(row.base.heat).toBe('3');
+        expect(row.firingHeat).toBe(3);
+        expect(row.display.heat).toBe('3');
 
         insulator.setCommittedDestroyed(false);
         svgService.refreshInventory();
-        expect(heatText.textContent).toBe('3*');
+        expect(heatText.textContent).toBe('2*');
         expect(heatText.classList.contains('damaged')).toBeFalse();
+
+        const repairedRow = getInventoryControlGroups(forceUnit, equipment, forceUnit.getInventoryControlRules())
+            .find(group => group.id === 'ranged')!.rows[0];
+        expect(repairedRow.firingHeat).toBe(2);
+        expect(repairedRow.display.heat).toBe('2*');
     });
 
     it('renders RISC laser pulse split hit modifiers and linked row highlight on the SVG', () => {
@@ -1291,7 +1552,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(linkedCritGroup.classList.contains('locationDestroyed')).toBeTrue();
     });
 
-    it('renders target range classes from the selected SVG alternative mode', () => {
+    it('renders target range classes from the ammo-aware typed MML mode', () => {
         const forceUnit = createForceUnit(createMmlUnit(equipment));
         initialize(forceUnit, createMmlSvg());
         const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
@@ -1303,10 +1564,86 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         svgService.refreshInventory();
 
         expect(weaponEntry.el!.classList.contains('selected-alternative-mode')).toBeTrue();
-        expect(weaponEntry.el!.classList.contains('selected-range-short')).toBeFalse();
+        expect(weaponEntry.el!.querySelector(':scope > .alternativeMode.selected')?.getAttribute('mode')).toBe('LRM');
+        expect(weaponEntry.el!.classList.contains('selected-range-short')).toBeTrue();
         expect(weaponEntry.el!.classList.contains('selected-range-medium')).toBeFalse();
-        expect(weaponEntry.el!.classList.contains('selected-range-long')).toBeTrue();
+        expect(weaponEntry.el!.classList.contains('selected-range-long')).toBeFalse();
         expect(weaponEntry.el!.classList.contains('selected-range-extreme')).toBeFalse();
+    });
+
+    it('renders mode-specific MML cluster tags on both SVG mode rows', () => {
+        TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(new MmlHandler());
+        const forceUnit = createForceUnit(createMmlUnit(equipment));
+        initialize(forceUnit, createMmlSvg());
+        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshInventory();
+
+        expect(weaponEntry.el!.querySelector(':scope > .alternativeMode[mode="LRM"] > .damage > text')?.textContent)
+            .toBe('7/Msl [C5,M,S]');
+        expect(weaponEntry.el!.querySelector(':scope > .alternativeMode[mode="SRM"] > .damage > text')?.textContent)
+            .toBe('8/Msl [C2,M,S]');
+        expect(weaponEntry.el!.querySelector(':scope > .damage > text')?.textContent)
+            .toBe('');
+
+        svgService.refreshInventory();
+        expect(weaponEntry.el!.querySelector(':scope > .alternativeMode[mode="SRM"] > .damage > text')?.textContent)
+            .toBe('8/Msl [C2,M,S]');
+    });
+
+    it('renders ATM damage only on alternative rows and leaves the main SVG damage blank', () => {
+        TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(new AtmHandler());
+        const forceUnit = createForceUnit(createEmptyUnit({
+            name: 'ATM Test Unit',
+            chassis: 'ATM Test',
+            model: 'T1',
+            type: 'Tank',
+            subtype: 'Hovercraft',
+            heat: -1,
+            dissipation: -1,
+            comp: [
+                { id: 'ISATM6', q: 1, q2: 0, n: 'ATM 6', t: 'M', p: 1, l: 'LT', r: '', m: '0', d: '[M,S,H]', md: '0.0', c: '1', os: 0, eq: equipment['ISATM6'] },
+                { id: 'ISATM6ERAmmo', q: 1, q2: 10, n: 'ATM 6 ER Ammo', t: 'X', p: 0, l: 'BD', c: '0', os: 0, eq: equipment['ISATM6ERAmmo'] },
+                { id: 'ISATM6HEAmmo', q: 1, q2: 10, n: 'ATM 6 HE Ammo', t: 'X', p: 0, l: 'BD', c: '0', os: 0, eq: equipment['ISATM6HEAmmo'] },
+            ],
+            sheets: ['vehicle/atm-test.svg'],
+        }));
+        initialize(forceUnit, createAtmSvg());
+        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshInventory();
+
+        expect(weaponEntry.el!.querySelector(':scope > .damage > text')?.textContent).toBe('');
+        expect(weaponEntry.el!.querySelector(':scope > .alternativeMode[mode="Extended Range"] > .damage > text')?.textContent)
+            .toContain('7/Msl');
+        expect(weaponEntry.el!.querySelector(':scope > .alternativeMode[mode="High Explosive"] > .damage > text')?.textContent)
+            .toContain('8/Msl');
+    });
+
+    it('uses ammunition profiles only as fallback when incorporated ATM ammo is unavailable', () => {
+        const atmWeapon = new WeaponEquipment({
+            id: 'ISATM6',
+            name: 'ATM 6',
+            type: 'weapon',
+            flags: ['F_MISSILE'],
+            weapon: { ammoType: 'ATM', rackSize: 6, heat: 4, damage: 'cluster', ranges: [0, 0, 0, 0] }
+        });
+        const iatmWeapon = new WeaponEquipment({
+            id: 'ISIATM6',
+            name: 'IATM 6',
+            type: 'weapon',
+            flags: ['F_MISSILE'],
+            weapon: { ammoType: 'IATM', rackSize: 6, heat: 4, damage: 'cluster', ranges: [0, 0, 0, 0] }
+        });
+
+        expect(resolveWeaponDamage(atmWeapon, { selectedRange: null, selectedAmmo: null, fallbackAmmoProfile: ATM_EXTENDED_RANGE_PROFILE }))
+            .toEqual({ kind: 'per-missile', value: 1 });
+        expect(resolveWeaponDamage(atmWeapon, { selectedRange: null, selectedAmmo: null, fallbackAmmoProfile: ATM_HIGH_EXPLOSIVE_PROFILE }))
+            .toEqual({ kind: 'per-missile', value: 3 });
+        expect(resolveWeaponDamage(iatmWeapon, { selectedRange: null, selectedAmmo: null, fallbackAmmoProfile: ATM_STANDARD_PROFILE }))
+            .toEqual({ kind: 'per-missile', value: 2 });
     });
 
     it('renders vehicle stabilizer hit modifiers without using the range wildcard', () => {

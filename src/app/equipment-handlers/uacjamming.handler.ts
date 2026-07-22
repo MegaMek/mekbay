@@ -32,12 +32,12 @@
  */
 
 import { WeaponEquipment } from '../models/equipment.model';
-import type { MountedEquipment } from '../models/force-serialization';
+import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { DisabledStateToggleHandler } from './disabled-equipment.handler';
 
 export class UACJammingHandler extends DisabledStateToggleHandler {
     readonly id = 'uac-jamming-handler';
-    override readonly flags = ['F_BALLISTIC', 'F_DIRECT_FIRE'];
+    override readonly flags = ['F_AC']; // We then filter by ammo type
     override readonly priority = 10;
     protected override readonly enabledLabel = 'Jam';
     protected override readonly disabledLabel = 'Jammed';
@@ -50,7 +50,7 @@ export class UACJammingHandler extends DisabledStateToggleHandler {
         if (equipment.equipment instanceof WeaponEquipment) {
             const ammoType = equipment.equipment.ammoType;
             if (ammoType == 'AC_ROTARY') return true;
-            if (equipment.owner?.rules?.rulesData.weapons.UACJamming) {
+            if (equipment.owner?.gameRules.usesUacJamming) {
                 return ammoType == 'AC_ULTRA' || ammoType == 'AC_ULTRA_THB';
             }
         }

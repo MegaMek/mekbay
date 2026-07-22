@@ -32,7 +32,8 @@
  */
 
 import { signal, computed } from '@angular/core';
-import { MountedEquipment, type LocationData, type HeatProfile, type SerializedInventory, type CriticalSlot, type SerializedState, type CBTSerializedState, C3_POSITION_SCHEMA, type SerializedCondition, committedConditionData, conditionsForSerialization, conditionsMapFromSerialization } from './force-serialization';
+import { MountedEquipment } from './mounted-equipment.model';
+import { type LocationData, type HeatProfile, type SerializedInventory, type CriticalSlot, type SerializedState, type CBTSerializedState, C3_POSITION_SCHEMA, type SerializedCondition, committedConditionData, conditionsForSerialization, conditionsMapFromSerialization } from './force-serialization';
 import { CrewMember } from './crew-member.model';
 import { ForceUnitState } from './force-unit-state.model';
 import { TurnState } from './turn-state.model';

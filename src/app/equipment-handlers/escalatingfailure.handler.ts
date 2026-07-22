@@ -1,5 +1,5 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
-import type { MountedEquipment } from '../models/force-serialization';
+import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from '../models/rules/unit-type-rules';
 import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
 import { isEquipmentDisabledByFailure } from './disabled-equipment.handler';
@@ -44,7 +44,7 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
     }
 
     protected static getSequenceLabels(equipment: MountedEquipment): readonly string[] {
-        return equipment.owner?.rules.rulesData?.escalatingFailureLabels ?? DEFAULT_ESCALATING_FAILURE_SEQUENCE_LABELS;
+        return equipment.owner?.gameRules.escalatingFailureLabels ?? DEFAULT_ESCALATING_FAILURE_SEQUENCE_LABELS;
     }
 
     protected readonly sequenceStateKey: string = ESCALATING_FAILURE_STATE_KEY;

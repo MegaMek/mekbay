@@ -42,6 +42,8 @@ import {
     getIndirectFireModifier,
     getTargetMovementBracketModifier,
     getTargetUnitTypeModifier,
+    isStaticTargetType,
+    isTerrainTargetType,
     TN_TARGET_MOVEMENT_BRACKETS,
     TN_TARGET_UNIT_TYPE_OPTIONS,
     ADJACENT_RANGE,
@@ -53,8 +55,7 @@ import {
     type TnTargetUnitType,
     type TnSpotterMoveMode,
 } from '../../models/target-number-calculator.model';
-import { OptionsService } from '../../services/options.service';
-import { resolveCBTRulesData } from '../../models/rules/cbt-rules-data';
+import { CBTGameRulesService } from '../../services/cbt-game-rules.service';
 
 export interface TnCalculatorDialogData {
     target: InventoryControlRuntimeTarget;
@@ -88,11 +89,11 @@ export interface TnCalculatorDialogResult {
                             <button type="button" class="bt-button move-button" [class.selected]="secondaryTarget()" [attr.aria-pressed]="secondaryTarget()" (click)="toggleSecondaryTarget()">
                                 <span>Secondary Target</span><span class="modifier-badge">+1</span>
                             </button>
-                            @if (rulesData().targeting.secondaryTargetSideBack) {
+                            @if (gameRules().supportsSecondaryTargetSideBack) {
                                 <button type="button" class="bt-button move-button" [class.selected]="secondaryTargetSideBack()" [attr.aria-pressed]="secondaryTargetSideBack()" (click)="toggleSecondaryTargetSideBack()">
                                     <span>Secondary (Side/Back)</span><span class="modifier-badge">+2</span>
                                 </button>
-                            } @else if (rulesData().targeting.largeTarget) {
+                            } @else if (gameRules().supportsLargeTarget) {
                                 <button type="button" class="bt-button move-button" [class.selected]="largeTarget()" [attr.aria-pressed]="largeTarget()" (click)="toggleLargeTarget()">
                                     <span>Large Target</span><span class="modifier-badge">-1</span>
                                 </button>
@@ -127,7 +128,7 @@ export interface TnCalculatorDialogResult {
 
                     <section class="tn-section target-movement-section">
                         <div class="section-title">Target Movement</div>
-                        <div class="row">
+                        <div class="row" [class.static-target-disabled]="staticTarget()">
                             <hex-slider
                                 class="tn-slider"
                                 [min]="MOVEMENT_MIN"
@@ -144,14 +145,14 @@ export interface TnCalculatorDialogResult {
                                 (valueChange)="setTargetMovementBracketIndex($event)"></hex-slider>
                         </div>
                         <div class="button-row">
-                            <button type="button" class="bt-button move-button" [class.selected]="isAirborne()" [attr.aria-pressed]="isAirborne()" (click)="toggleAirborne()"><span>Jumped / Airborne</span><span class="modifier-badge">+1</span></button>
-                            @if (rulesData().targeting.skidding) {
-                                <button type="button" class="bt-button move-button" [class.selected]="skidding()" [attr.aria-pressed]="skidding()" (click)="toggleSkidding()"><span>Skidding</span><span class="modifier-badge">+2</span></button>
+                            <button type="button" class="bt-button move-button" [class.selected]="isAirborne()" [attr.aria-pressed]="isAirborne()" [disabled]="staticTarget()" (click)="toggleAirborne()"><span>Jumped / Airborne</span><span class="modifier-badge">+1</span></button>
+                            @if (gameRules().supportsSkidding) {
+                                <button type="button" class="bt-button move-button" [class.selected]="skidding()" [attr.aria-pressed]="skidding()" [disabled]="staticTarget()" (click)="toggleSkidding()"><span>Skidding</span><span class="modifier-badge">+2</span></button>
                             }
                         </div>
                         <div class="button-row" role="group" aria-label="Target stance">
-                            <button type="button" class="bt-button move-button" [class.selected]="stance() === 'prone'" [attr.aria-pressed]="stance() === 'prone'" (click)="selectStance('prone')"><span>{{ proneLabel() }}</span><span class="modifier-badge">{{ proneModifierLabel() }}</span></button>
-                            <button type="button" class="bt-button move-button" [class.selected]="stance() === 'immobile'" [attr.aria-pressed]="stance() === 'immobile'" (click)="selectStance('immobile')"><span>Immobile</span><span class="modifier-badge">-4</span></button>
+                            <button type="button" class="bt-button move-button" [class.selected]="stance() === 'prone'" [attr.aria-pressed]="stance() === 'prone'" [disabled]="staticTarget()" (click)="selectStance('prone')"><span>{{ proneLabel() }}</span><span class="modifier-badge">{{ proneModifierLabel() }}</span></button>
+                            <button type="button" class="bt-button move-button" [class.selected]="stance() === 'immobile'" [attr.aria-pressed]="stance() === 'immobile'" [disabled]="staticTarget()" (click)="selectStance('immobile')"><span>Immobile</span><span class="modifier-badge">-4</span></button>
                         </div>
                     </section>
 
@@ -198,12 +199,12 @@ export interface TnCalculatorDialogResult {
                     <section class="tn-section target-identity-section">
                         <div class="section-title">Target Identity</div>
                         <div class="field-row">
-                            <label for="tnTargetUnitType">Unit Type</label>
+                            <label for="tnTargetUnitType">Target Type</label>
                             <multiline-dropdown
                                 class="bt-button identity-choice"
                                 [class.selected]="unitTypeSelectedHasModifier()"
                                 controlId="tnTargetUnitType"
-                                [label]="'Unit Type'"
+                                [label]="'Target Type'"
                                 [options]="unitTypeDropdownOptions()"
                                 [value]="unitType()"
                                 (valueChange)="selectUnitType($event)" />
@@ -215,11 +216,11 @@ export interface TnCalculatorDialogResult {
                         <div class="choice-line">
                             <span class="choice-label"><span>Cover</span>@if (targetHexCoverModifierLabel(); as modifierLabel) { <span class="modifier-badge">{{ modifierLabel }}</span> }</span>
                             <div class="icon-choice-row" role="group" aria-label="Target hex cover">
-                                <button type="button" class="bt-button icon-choice none-choice" [class.selected]="targetHexCover() === 'none'" [attr.aria-pressed]="targetHexCover() === 'none'" (click)="selectTargetHexCover('none')">X</button>
-                                <button type="button" class="bt-button icon-choice" [class.selected]="targetHexCover() === 'light'" [attr.aria-pressed]="targetHexCover() === 'light'" (click)="selectTargetHexCover('light')">
+                                <button type="button" class="bt-button icon-choice none-choice" [class.selected]="targetHexCover() === 'none'" [attr.aria-pressed]="targetHexCover() === 'none'" [disabled]="terrainTarget()" (click)="selectTargetHexCover('none')">X</button>
+                                <button type="button" class="bt-button icon-choice" [class.selected]="targetHexCover() === 'light'" [attr.aria-pressed]="targetHexCover() === 'light'" [disabled]="terrainTarget()" (click)="selectTargetHexCover('light')">
                                     <svg viewBox="0 0 512 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
                                 </button>
-                                <button type="button" class="bt-button icon-choice double-tree" [class.selected]="targetHexCover() === 'heavy'" [attr.aria-pressed]="targetHexCover() === 'heavy'" (click)="selectTargetHexCover('heavy')">
+                                <button type="button" class="bt-button icon-choice double-tree" [class.selected]="targetHexCover() === 'heavy'" [attr.aria-pressed]="targetHexCover() === 'heavy'" [disabled]="terrainTarget()" (click)="selectTargetHexCover('heavy')">
                                         <svg viewBox="0 0 724 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/><path transform="translate(212 0)" d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
                                 </button>
                             </div>
@@ -444,6 +445,11 @@ export interface TnCalculatorDialogResult {
         .disabled-field,
         .c3-distance-disabled {
             opacity: 0.45;
+        }
+
+        .static-target-disabled {
+            opacity: 0.45;
+            pointer-events: none;
         }
 
         .c3-distance-disabled hex-slider {
@@ -737,12 +743,12 @@ export class TnCalculatorDialogComponent {
     readonly RANGE_MAX = 25;
     private readonly dialogRef = inject(DialogRef<TnCalculatorDialogResult | null>);
     private readonly data = inject<TnCalculatorDialogData>(DIALOG_DATA);
-    private readonly optionsService = inject(OptionsService);
+    private readonly gameRulesService = inject(CBTGameRulesService);
     private readonly initialCalculator = this.data.target.tnCalculator;
     private readonly initialUnitType = this.data.target.unitType ?? 'mek-biped';
 
     readonly target = this.data.target;
-    readonly rulesData = computed(() => resolveCBTRulesData(this.optionsService.options().CBTRules));
+    readonly gameRules = this.gameRulesService.gameRules;
     readonly showC3Distance = signal<boolean>(this.data.showC3Distance ?? false);
     readonly indirectFireBaseModifier = this.data.indirectFireBaseModifier ?? 1;
     readonly unitTypeOptions = TN_TARGET_UNIT_TYPE_OPTIONS;
@@ -777,7 +783,9 @@ export class TnCalculatorDialogComponent {
     readonly renderReady = signal(false);
     readonly unitTypeSelectedHasModifier = computed(() => this.unitTypeDropdownOptions().some(option => option.value === this.unitType() && !!option.modifierLabel));
 
-    readonly partialCoverDisabled = computed(() => this.range() <= ADJACENT_RANGE);
+    readonly staticTarget = computed(() => isStaticTargetType(this.unitType()));
+    readonly terrainTarget = computed(() => isTerrainTargetType(this.unitType()));
+    readonly partialCoverDisabled = computed(() => this.staticTarget() || this.range() <= ADJACENT_RANGE);
     readonly proneLabel = computed(() => this.range() <= ADJACENT_RANGE ? 'Prone (Adjacent)' : 'Prone');
     readonly proneModifierLabel = computed(() => this.range() <= ADJACENT_RANGE ? '-2' : '+1');
     readonly targetMovementBracket = computed(() => this.movementBrackets[this.targetMovementBracketIndex()] ?? this.movementBrackets[0]);
@@ -808,7 +816,7 @@ export class TnCalculatorDialogComponent {
         spotterMoveMode: this.spotterMoveMode(),
         spotterDeclaredAttacks: this.spotterDeclaredAttacks(),
         indirectFireBaseModifier: this.indirectFireBaseModifier,
-    }, this.rulesData()));
+    }, this.gameRules()));
     readonly signedTotal = computed(() => this.totalModifier() >= 0 ? `+${this.totalModifier()}` : `${this.totalModifier()}`);
     readonly woodsCaption = computed(() => {
         switch (this.interveningWoods()) {
@@ -846,10 +854,12 @@ export class TnCalculatorDialogComponent {
             this.clearAirborne();
             this.skidding.set(false);
         }
+        this.clearStaticTargetModifiers();
     }
 
     selectUnitType(value: string): void {
         this.unitType.set(value as TnTargetUnitType);
+        this.clearStaticTargetModifiers();
     }
 
     private normalizeInterveningWoods(value: TnInterveningWoods | 'heavy1' | null | undefined): TnInterveningWoods {
@@ -857,21 +867,25 @@ export class TnCalculatorDialogComponent {
     }
 
     setTargetMovementBracketIndex(value: number): void {
+        if (this.staticTarget()) return;
         this.targetMovementBracketIndex.set(this.alignToStep(value, this.MOVEMENT_MIN, this.MOVEMENT_MAX));
         this.clearStanceForMovement();
     }
 
     toggleAirborne(): void {
+        if (this.staticTarget()) return;
         this.isAirborne.set(!this.isAirborne());
         this.clearStanceForMovement();
     }
 
     toggleSkidding(): void {
+        if (this.staticTarget()) return;
         this.skidding.set(!this.skidding());
         this.clearStanceForMovement();
     }
 
     selectStance(stance: TnTargetStance): void {
+        if (this.staticTarget()) return;
         const next = this.stance() === stance ? 'normal' : stance;
         this.stance.set(next);
         if (next !== 'normal') {
@@ -888,6 +902,7 @@ export class TnCalculatorDialogComponent {
     }
 
     selectTargetHexCover(cover: TnTargetHexCover): void {
+        if (this.terrainTarget()) return;
         this.targetHexCover.set(cover);
     }
 
@@ -955,12 +970,12 @@ export class TnCalculatorDialogComponent {
 
     apply(): void {
         const state: TnTargetNumberCalculatorState = {
-            isAirborne: this.isAirborne(),
-            targetMovementBracket: this.stance() === 'normal' ? this.targetMovementBracket().id : null,
-            skidding: this.skidding(),
-            stance: this.stance(),
+            isAirborne: this.staticTarget() ? false : this.isAirborne(),
+            targetMovementBracket: !this.staticTarget() && this.stance() === 'normal' ? this.targetMovementBracket().id : null,
+            skidding: this.staticTarget() ? false : this.skidding(),
+            stance: this.staticTarget() ? 'immobile' : this.stance(),
             interveningWoods: this.interveningWoods(),
-            targetHexCover: this.targetHexCover(),
+            targetHexCover: this.terrainTarget() ? 'none' : this.targetHexCover(),
             partialCover: this.partialCover() && !this.partialCoverDisabled(),
             attackDirection: this.attackDirection(),
             indirectFire: this.indirectFire(),
@@ -1003,6 +1018,16 @@ export class TnCalculatorDialogComponent {
         if (this.stance() !== 'normal') {
             this.stance.set('normal');
         }
+    }
+
+    private clearStaticTargetModifiers(): void {
+        if (!this.staticTarget()) return;
+        this.targetMovementBracketIndex.set(0);
+        this.clearAirborne();
+        this.skidding.set(false);
+        this.stance.set('immobile');
+        this.partialCover.set(false);
+        if (this.terrainTarget()) this.targetHexCover.set('none');
     }
 
     private clearAirborne(): void {

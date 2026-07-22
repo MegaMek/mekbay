@@ -32,11 +32,11 @@
  */
 
 import { uidTranslations } from "../models/common.model";
-import type { CriticalSlot, MountedEquipment } from "../models/force-serialization";
+import { MountedEquipment  } from '../models/mounted-equipment.model';
+import type { CriticalSlot } from "../models/force-serialization";
 import { UnitSvgService } from "./unit-svg.service";
 import { AmmoEquipment } from "../models/equipment.model";
 import { MekRules } from "../models/rules/mek-rules";
-import { resolveHitModifier } from "../models/rules/hit-modifier.util";
 import type { InventoryControlRuntimeRangeKey } from "../models/inventory-control-runtime-state.model";
 import { getCriticalSlotAmmoProfileKey } from "../utils/ammo-interaction.util";
 import type { MountedEquipmentRuleState } from "../models/rules/unit-type-rules";
@@ -246,7 +246,7 @@ export class UnitSvgMekService extends UnitSvgService {
                 if (state.isDamaged || state.isDisabled) entry.el.classList.remove('selected');
 
                 // Hit modifier badge
-                this.renderHitModEntry(entry, this.resolveInventoryControlHitModifier(entry));
+                this.renderHitModEntry(entry, this.resolveInventoryControlToHit(entry));
             });
             this.renderInventoryControlSelection();
         } finally {
@@ -254,26 +254,24 @@ export class UnitSvgMekService extends UnitSvgService {
         }
     }
 
-    protected override resolveInventoryControlHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {
+    protected override resolveInventoryControlToHit(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null) {
         const state = this.currentEntryStates?.get(entry) ?? this.mekRules.computeEntryState(entry);
-        return resolveHitModifier(
-            entry,
-            state.hitMod,
+        const selectedAmmo = this.inventoryTargetSelectedAmmo(entry);
+        return this.unit.gameRules.resolveToHit({
+            subject: entry,
+            stateModifier: state.hitMod,
+            stateWeakened: state.weakenedHitMod,
             range,
-            this.inventoryTargetSelectedAmmo(entry),
-            (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo),
-            (candidate, candidateRange?: InventoryControlRuntimeRangeKey | null) => this.unit.getInventoryControlBaseHitModifier(candidate, candidateRange),
-            this.unit.rules.rulesData
-        );
+            adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)
+        });
     }
 
     protected override renderHitModEntry(
         entry: MountedEquipment,
-        hitModifier: number | 'Vs' | '*' | null,
-        range?: InventoryControlRuntimeRangeKey | null
+        resolution: ReturnType<UnitSvgMekService['resolveInventoryControlToHit']>
     ) {
         const state = this.currentEntryStates?.get(entry) ?? this.mekRules.computeEntryState(entry);
-        super.renderHitModEntry(entry, hitModifier, range, !!state.weakenedHitMod);
+        super.renderHitModEntry(entry, resolution, !!state.weakenedHitMod);
     }
 
     override inventoryTargetHeatFireModifier(entry: MountedEquipment): number {

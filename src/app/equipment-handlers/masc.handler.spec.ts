@@ -1,6 +1,6 @@
 import { MiscEquipment } from '../models/equipment.model';
-import { MountedEquipment } from '../models/force-serialization';
-import { CORE_2026_RULES_DATA } from '../models/rules/cbt-rules-data';
+import { MountedEquipment } from '../models/mounted-equipment.model';
+import { CORE_2026_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
 import { ENTRY_DISABLED_STATE_KEY } from '../models/rules/unit-type-rules';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import {
@@ -12,7 +12,7 @@ import {
 function owner(
     airborne: boolean | null = null,
     turnStateOverrides: Record<string, unknown> = {},
-    rulesData?: typeof CORE_2026_RULES_DATA
+    gameRules: CBTGameRules = CORE_2026_GAME_RULES
 ) {
     const turnState = {
         airborne: () => airborne,
@@ -21,8 +21,8 @@ function owner(
     return {
         rules: {
             computeEntryState: (entry: MountedEquipment) => ({ isDamaged: entry.committedDestroyed(), isDisabled: false, hitMod: 0 }),
-            rulesData,
         },
+        gameRules,
         getNotificationDisplayName: () => 'Atlas AS7-D (Natasha Kerensky)',
         setInventoryEntry: jasmine.createSpy('setInventoryEntry'),
         turnState: () => turnState,
@@ -33,10 +33,10 @@ function mascEntry(
     flags: string[] = ['F_MASC'],
     airborne: boolean | null = null,
     turnStateOverrides: Record<string, unknown> = {},
-    rulesData?: typeof CORE_2026_RULES_DATA
+    gameRules: CBTGameRules = CORE_2026_GAME_RULES
 ): MountedEquipment {
     return new MountedEquipment({
-        owner: owner(airborne, turnStateOverrides, rulesData),
+        owner: owner(airborne, turnStateOverrides, gameRules),
         id: 'masc',
         name: 'MASC',
         equipment: new MiscEquipment({ id: 'masc', name: 'MASC', type: 'misc', flags })
@@ -67,7 +67,7 @@ describe('MascHandler', () => {
     });
 
     it('uses the Core2026 sequence progression for Core2026 units', () => {
-        const choices = handler.getChoices(mascEntry(['F_MASC'], null, {}, CORE_2026_RULES_DATA), context());
+        const choices = handler.getChoices(mascEntry(['F_MASC'], null, {}, CORE_2026_GAME_RULES), context());
 
         expect(choices.slice(0, 5).map(choice => choice.label)).toEqual(['3+', '5+', '7+', '10+', '11+']);
         expect(choices[4].colors).toEqual(jasmine.objectContaining({ selected: 'var(--bt-yellow)' }));

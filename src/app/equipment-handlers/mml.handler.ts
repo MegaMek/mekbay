@@ -1,8 +1,9 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
-import type { MountedEquipment } from '../models/force-serialization';
+import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
-import { getSelectedInventoryControlMode } from '../utils/inventory-control.util';
+import { INVENTORY_CONTROL_MODE_STATE } from '../utils/inventory-control.util';
+import { resolveAmmoWeaponProfile } from '../models/ammo-weapon-profile.model';
 
 export class MmlHandler extends EquipmentInteractionHandler {
     readonly id = 'mml-handler';
@@ -24,10 +25,9 @@ export class MmlHandler extends EquipmentInteractionHandler {
         if (!(equipment.equipment instanceof WeaponEquipment) || equipment.equipment.ammoType !== 'MML') return null;
         if (ammo.ammoType !== 'MML') return false;
         if (equipment.equipment.rackSize > 0 && ammo.rackSize !== equipment.equipment.rackSize) return false;
-        const normalizedMode = (mode ?? getSelectedInventoryControlMode(equipment) ?? 'LRM').toLocaleLowerCase();
-        const ammoName = `${ammo.shortName} ${ammo.name}`.toLocaleLowerCase();
-        if (normalizedMode.includes('lrm')) return ammo.hasFlag('F_MML_LRM') || ammoName.includes('lrm');
-        if (normalizedMode.includes('srm')) return ammo.hasFlag('F_MML_SRM') || ammoName.includes('srm');
-        return true;
+        const ammoProfile = resolveAmmoWeaponProfile(ammo);
+        if (!ammoProfile) return false;
+        const persistedMode = equipment.states.get(INVENTORY_CONTROL_MODE_STATE);
+        return ammoProfile.displayName === (mode ?? persistedMode ?? 'SRM');
     }
 }

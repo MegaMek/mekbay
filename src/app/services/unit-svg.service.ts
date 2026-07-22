@@ -33,25 +33,31 @@
 
 import { Injectable, effect, signal, inject, DestroyRef } from '@angular/core';
 import { type CrewMember, type CrewMemberState, DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, type SkillType } from '../models/crew-member.model';
-import type { CriticalSlot, HeatProfile, MountedEquipment } from '../models/force-serialization';
+import { MountedAmmo, type MountedEquipment  } from '../models/mounted-equipment.model';
+import { type CriticalSlot, type HeatProfile } from '../models/force-serialization';
 import { SheetService } from './sheet.service';
+import { DataService } from './data.service';
 import { UnitInitializerService } from './unit-initializer.service';
 import { RsPolyfillUtil } from '../utils/rs-polyfill.util';
 import { LINKED_LOCATIONS } from "../models/rules/mek-rules";
 import { LoggerService } from './logger.service';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
-import { getEntryBaseHitModifier, resolveHitModifier } from '../models/rules/hit-modifier.util';
 import { formatGunneryDisplay, formatPilotingDisplay, UNIT_CONDITION_DEFINITIONS, unitConditionSortIndex, type ChargeDamage, type UnitHeatSource } from '../models/rules/unit-type-rules';
 import type { HeatDissipationState } from '../models/rules/heat-management';
-import { AmmoEquipment } from '../models/equipment.model';
+import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import { formatAmmoName } from '../utils/ammo-interaction.util';
-import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection, readInventoryTargetDisplay } from '../utils/inventory-target-number.util';
-import { getInventoryControlModeAmmoSummary, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE, INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, resolveInventoryControlRangeDamageText, resolveInventoryControlSelectedAmmoOption, type InventoryControlAmmoOption } from '../utils/inventory-control.util';
+import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection } from '../utils/inventory-target-number.util';
+import { getInventoryControlGroups, getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, type InventoryControlAmmoOption, type InventoryControlRow } from '../utils/inventory-control.util';
+import { resolveInventoryControlDamageText, resolveWeaponDamageText } from '../utils/inventory-control-damage.util';
+import { formatInventoryControlHeat, resolveInventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
+import type { ToHitResolution } from '../models/rules/game-rules';
 import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey, InventoryControlRuntimeTarget } from '../models/inventory-control-runtime-state.model';
 import { isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, selectedRiscLaserMode } from '../equipment-handlers/risc-laser-pulse-module.handler';
 
 const INVENTORY_CONTROL_SELECTION_COLOR_PROPERTY = '--inventory-control-selection-color';
 const HEAT_PROJECTION_ORIGINAL_OVERFLOW_STROKE = 'data-heat-projection-original-stroke';
+const AMMO_PROFILE_MIN_TEXT_SCALE = 0.82;
+const AMMO_PROFILE_COMPRESSED_ATTRIBUTE = 'data-ammo-profile-compressed';
 
 const INVENTORY_CONTROL_RANGE_CLASS_NAMES: Record<InventoryControlRuntimeRangeKey, string> = {
     short: 'selected-range-short',
@@ -73,7 +79,9 @@ type HeatDissipationWithWings = HeatDissipationState & { totalDissipationWithWin
 export class UnitSvgService {
     protected logger = inject(LoggerService);
     private sheetService = inject(SheetService);
+    private dataService = inject(DataService);
     private svgDimensions = { width: 0, height: 0 };
+    private latestAmmoProfile: ReadonlyMap<string, number> | null = null;
     public version = signal(0);
 
     constructor(
@@ -111,6 +119,13 @@ export class UnitSvgService {
 
     public forceRepaint() {
         this.version.update(v => v + 1); // Increment version to trigger repaint
+    }
+
+    /** Re-renders displays whose measurements depend on the SVG's visible layout. */
+    public refreshLayoutDependentDisplays(): void {
+        if (this.latestAmmoProfile) {
+            this.renderAmmoProfile(this.latestAmmoProfile);
+        }
     }
 
     public async loadAndInitialize(): Promise<void> {
@@ -905,15 +920,14 @@ export class UnitSvgService {
         // No-op for non-heat units (vehicles, etc.)
     }
 
-    private getInventoryOriginalTotalAmmo(entry: MountedEquipment): number {
+    private getInventoryOriginalTotalAmmo(entry: MountedAmmo): number {
         const componentIndexText = entry.id.split('#').pop();
         const [componentIndexRaw, binIndexRaw] = (componentIndexText ?? '').split('.');
         const componentIndex = Number(componentIndexRaw);
         const binIndex = Number(binIndexRaw ?? 0);
         const component = Number.isInteger(componentIndex) ? this.unit.getUnit().comp[componentIndex] : undefined;
-        const ammo = entry.equipment instanceof AmmoEquipment ? entry.equipment : undefined;
         const binCount = Math.max(1, component?.q ?? 1);
-        const originalTotalAmmo = component?.q2 || (ammo ? ammo.shots * binCount : 0) || entry.totalAmmo || 0;
+        const originalTotalAmmo = component?.q2 || (entry.getMaxShots() * binCount) || entry.totalAmmo || 0;
         const baseBinAmmo = Math.floor(originalTotalAmmo / binCount);
         const extraBinAmmo = originalTotalAmmo % binCount;
         return baseBinAmmo + (binIndex < extraBinAmmo ? 1 : 0);
@@ -929,7 +943,7 @@ export class UnitSvgService {
         const equipmentList = this.unit.getAvailableEquipment();
         const ammoProfile = new Map<string, number>();
         this.unit.getInventory().forEach(entry => {
-            if (!(entry.equipment instanceof AmmoEquipment)) return;
+            if (!(entry instanceof MountedAmmo)) return;
             const currentAmmo = entry.ammo && equipmentList[entry.ammo] instanceof AmmoEquipment
                 ? equipmentList[entry.ammo] as AmmoEquipment
                 : entry.equipment;
@@ -947,17 +961,14 @@ export class UnitSvgService {
         const profile = svg?.getElementById('ammoProfile') as SVGElement | null;
         if (!profile) return;
 
+        this.latestAmmoProfile = new Map(ammoProfile);
+
         const lines = Array.from(profile.querySelectorAll<SVGTextElement>(':scope > text'));
         if (lines.length === 0) return;
 
         const entries = Array.from(ammoProfile.entries()).map(([key, value]) => `${key} ${value}`);
         const widths = lines.map(line => this.ammoProfileLineWidth(profile, line));
-        const fits = (line: SVGTextElement, width: number | null, text: string): boolean => {
-            line.textContent = text;
-            return width === null || this.svgTextWidth(line) <= width;
-        };
-
-        lines.forEach(line => line.textContent = '');
+        lines.forEach(line => this.resetAmmoProfileLine(line));
         let entryIndex = 0;
 
         for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
@@ -966,46 +977,96 @@ export class UnitSvgService {
             let text = lineIndex === 0 ? 'Ammo:' : '';
 
             while (entryIndex < entries.length) {
-                const separator = text.length === 0 ? '' : text === 'Ammo:' || text.endsWith(',') ? ' ' : ', ';
-                const suffix = entryIndex < entries.length - 1 ? ',' : '';
-                const candidate = `${text}${separator}${entries[entryIndex]}${suffix}`;
-                if (!fits(line, width, candidate)) break;
+                const candidate = this.appendAmmoProfileEntry(text, entries[entryIndex], entryIndex < entries.length - 1);
+                if (!this.ammoProfileTextFits(line, width, candidate)) break;
                 text = candidate;
                 entryIndex++;
             }
 
-            if (entryIndex < entries.length && lineIndex === lines.length - 1) {
-                const truncatedText = text.length === 0 ? '...' : text === 'Ammo:' ? 'Ammo: ...' : `${text}${text.endsWith(',') ? '' : ','} ...`;
-                text = this.truncateAmmoProfileLine(line, width, text, truncatedText);
+            const isLastLine = lineIndex === lines.length - 1;
+            if (entryIndex < entries.length && (isLastLine || text.length === 0)) {
+                while (entryIndex < entries.length) {
+                    const candidate = this.appendAmmoProfileEntry(text, entries[entryIndex], entryIndex < entries.length - 1);
+                    if (!this.ammoProfileTextFits(line, width, candidate, AMMO_PROFILE_MIN_TEXT_SCALE)) break;
+                    text = candidate;
+                    entryIndex++;
+                }
+            }
+
+            if (entryIndex < entries.length && isLastLine) {
+                const preferredText = text.length === 0 ? '...' : text === 'Ammo:' ? 'Ammo: ...' : `${text}${text.endsWith(',') ? '' : ','} ...`;
+                text = this.truncateAmmoProfileLine(line, width, text, preferredText);
             }
 
             line.textContent = text;
+            this.compressAmmoProfileLine(line, width);
             if (entryIndex >= entries.length) break;
         }
     }
 
+    private appendAmmoProfileEntry(text: string, entry: string, hasFollowingEntry: boolean): string {
+        const separator = text.length === 0 ? '' : text === 'Ammo:' || text.endsWith(',') ? ' ' : ', ';
+        return `${text}${separator}${entry}${hasFollowingEntry ? ',' : ''}`;
+    }
+
+    private resetAmmoProfileLine(line: SVGTextElement): void {
+        line.textContent = '';
+        line.removeAttribute('textLength');
+        line.removeAttribute('lengthAdjust');
+        line.removeAttribute(AMMO_PROFILE_COMPRESSED_ATTRIBUTE);
+    }
+
+    private ammoProfileTextFits(line: SVGTextElement, width: number | null, text: string, minScale = 1): boolean {
+        return width === null || this.svgTextWidth(line, text) * minScale <= width;
+    }
+
+    private compressAmmoProfileLine(line: SVGTextElement, width: number | null): void {
+        if (width === null || !line.textContent) return;
+        const naturalWidth = this.svgTextWidth(line);
+        if (naturalWidth <= width || naturalWidth * AMMO_PROFILE_MIN_TEXT_SCALE > width) return;
+        line.setAttribute('textLength', this.formatSvgLength(width));
+        line.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+        line.setAttribute(AMMO_PROFILE_COMPRESSED_ATTRIBUTE, 'true');
+    }
+
+    private formatSvgLength(value: number): string {
+        return Number.isInteger(value) ? value.toString() : value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+    }
+
     private ammoProfileLineWidth(profile: SVGElement, line: SVGTextElement): number | null {
         const textLength = Number(line.getAttribute('textLength'));
-        if (Number.isFinite(textLength) && textLength > 0) return textLength;
+        const rendererCompressed = line.hasAttribute(AMMO_PROFILE_COMPRESSED_ATTRIBUTE);
+        if (!rendererCompressed && Number.isFinite(textLength) && textLength > 0) return textLength;
 
         const profileButton = profile.querySelector<SVGRectElement>(':scope > .ammoProfileButton');
         const buttonX = Number.parseFloat(profileButton?.getAttribute('x') ?? '');
         const buttonWidth = Number.parseFloat(profileButton?.getAttribute('width') ?? '');
         const textX = Number.parseFloat(line.getAttribute('x') ?? '');
-        if (Number.isFinite(buttonX) && Number.isFinite(buttonWidth) && Number.isFinite(textX)) {
-            return Math.max(0, buttonX + buttonWidth - textX - 1);
+        if (Number.isFinite(buttonX) && Number.isFinite(buttonWidth) && buttonWidth > 0 && Number.isFinite(textX)) {
+            const availableWidth = buttonX + buttonWidth - textX - 1;
+            return availableWidth > 0 ? availableWidth : null;
         }
 
         return null;
     }
 
     private truncateAmmoProfileLine(line: SVGTextElement, width: number | null, text: string, preferredText: string): string {
-        if (width === null || this.svgTextWidth(line, preferredText) <= width) return preferredText;
-
-        let truncated = text;
-        while (truncated.length > 0 && this.svgTextWidth(line, `${truncated}...`) > width) {
-            truncated = truncated.slice(0, -1).trimEnd();
+        if (width === null || this.ammoProfileTextFits(line, width, preferredText, AMMO_PROFILE_MIN_TEXT_SCALE)) {
+            return preferredText;
         }
+
+        let low = 0;
+        let high = text.length;
+        while (low < high) {
+            const midpoint = Math.ceil((low + high) / 2);
+            const candidate = `${text.slice(0, midpoint).trimEnd()}...`;
+            if (this.ammoProfileTextFits(line, width, candidate, AMMO_PROFILE_MIN_TEXT_SCALE)) {
+                low = midpoint;
+            } else {
+                high = midpoint - 1;
+            }
+        }
+        const truncated = text.slice(0, low).trimEnd();
         return truncated.length > 0 ? `${truncated}...` : '...';
     }
 
@@ -1023,22 +1084,23 @@ export class UnitSvgService {
         return (line.textContent?.length ?? 0) * fontSize * 0.7;
     }
 
-    protected resolveInventoryControlHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {
-        return resolveHitModifier(
-            entry,
-            0,
+    protected resolveInventoryControlToHit(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): ToHitResolution {
+        const selectedAmmo = this.inventoryTargetSelectedAmmo(entry);
+        return this.unit.gameRules.resolveToHit({
+            subject: entry,
             range,
-            this.inventoryTargetSelectedAmmo(entry),
-            (candidate, selectedAmmo) => this.unit.getLinkedEquipmentHitModifier(candidate, selectedAmmo),
-            (candidate, candidateRange?: InventoryControlRuntimeRangeKey | null) => this.unit.getInventoryControlBaseHitModifier(candidate, candidateRange),
-            this.unit.rules.rulesData
-        );
+            adjustments: this.unit.getInventoryControlRules().resolveToHitAdjustments?.(entry, selectedAmmo)
+        });
+    }
+
+    protected resolveInventoryControlHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {
+        return this.resolveInventoryControlToHit(entry, range).value;
     }
 
     /** Override to inject entry-specific effective hit modifiers. */
-    protected getInventoryTargetHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number {
+    protected getInventoryTargetHitModifier(entry: MountedEquipment, range?: InventoryControlRuntimeRangeKey | null): number | 'Vs' | '*' | null {
         const hitModifier = this.resolveInventoryControlHitModifier(entry, range);
-        return typeof hitModifier === 'number' ? hitModifier - this.inventoryTargetHeatFireModifier(entry) : 0;
+        return typeof hitModifier === 'number' ? hitModifier - this.inventoryTargetHeatFireModifier(entry) : hitModifier;
     }
 
     inventoryTargetHeatFireModifier(entry: MountedEquipment): number {
@@ -1047,12 +1109,14 @@ export class UnitSvgService {
 
     inventoryTargetNumberText(entry: MountedEquipment, target: InventoryControlRuntimeTarget): string | null {
         const missingMovementModifier = this.unit.turnState().missingAttackMovementModifier();
-        const display = readInventoryTargetDisplay(entry);
+        const row = this.inventoryControlRow(entry);
+        if (!row) return null;
         const hitModifierRange = this.inventoryControlRangeForTarget(entry, target, false);
         const text = inventoryTargetNumberText({
             entry,
             category: inventoryTargetCategory(entry),
-            display,
+            display: row.display,
+            extremeRange: row.extremeRange,
             selectedAmmo: this.inventoryTargetSelectedAmmo(entry),
             target: this.inventoryControlTargetForRangeSelection(target, true),
             gunnerySkill: this.unit.rules.getTargetNumberGunnerySkill(),
@@ -1063,15 +1127,34 @@ export class UnitSvgService {
             attackModifierBreakdown: this.unit.turnState().getAttackModifierBreakdown(),
             hitModifier: this.getInventoryTargetHitModifier(entry, hitModifierRange),
             heatFireModifier: this.inventoryTargetHeatFireModifier(entry),
-            rulesData: this.unit.rules.rulesData
+            gameRules: this.unit.gameRules
         });
         return text || null;
     }
 
+    private inventoryControlRangeForTarget(entry: MountedEquipment, target: InventoryControlRuntimeTarget, useC3Distance: boolean): InventoryControlRuntimeRangeKey | null {
+        const row = this.inventoryControlRow(entry);
+        if (!row) return null;
+        return inventoryTargetRangeSelection({
+            entry,
+            category: inventoryTargetCategory(entry),
+            display: row.display,
+            extremeRange: row.extremeRange,
+            target: this.inventoryControlTargetForRangeSelection(target, useC3Distance),
+            selectedAmmo: this.inventoryTargetSelectedAmmo(entry),
+        })?.range ?? null;
+    }
+
+    private inventoryControlRow(entry: MountedEquipment): InventoryControlRow | null {
+        return getInventoryControlGroups(
+            this.unit,
+            this.dataService.getEquipments(),
+            this.unit.getInventoryControlRules()
+        ).flatMap(group => group.rows).find(row => row.entry.id === entry.id) ?? null;
+    }
+
     protected inventoryTargetSelectedAmmo(entry: MountedEquipment): AmmoEquipment | null {
-        const summary = getInventoryControlModeAmmoSummary(entry, this.unit.getAvailableEquipment(), this.unit.getInventoryControlRules());
-        const resolvedOption = resolveInventoryControlSelectedAmmoOption(summary.options, this.unit.getInventoryControlEntryAmmoOption(entry.id));
-        return resolvedOption?.ammo ?? null;
+        return this.unit.getInventoryControlSelectedAmmo(entry);
     }
 
     protected renderInventoryControlSelection(): void {
@@ -1094,7 +1177,7 @@ export class UnitSvgService {
             this.renderInventoryControlHeatEntry(entry, weaponRuleRange);
             this.renderInventoryControlRangeDamageEntry(entry, weaponRuleRange);
             if (!entry.isDestroyed()) {
-                this.renderHitModEntry(entry, this.resolveInventoryControlHitModifier(entry, weaponRuleRange), weaponRuleRange);
+                this.renderHitModEntry(entry, this.resolveInventoryControlToHit(entry, weaponRuleRange));
             }
             entry.el.classList.toggle('selected', selected);
             entry.el.classList.toggle('selected-alternative-mode', selected && hasSelectedMode);
@@ -1152,35 +1235,14 @@ export class UnitSvgService {
         const text = inventoryControlDirectText(entry.el, '.heat');
         if (!text) return;
 
-        const originalHeat = text.getAttribute(INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE) ?? text.textContent ?? '';
-        const display = this.unit.applyInventoryControlDisplayEffects(entry, {
-            name: '',
-            location: '',
-            heat: originalHeat,
-            damage: '',
-            hit: '',
-            min: '',
-            short: '',
-            medium: '',
-            long: ''
-        }, {
-            selectedRange,
-            additionalHitModifier: 0,
-            selectedAmmo: this.inventoryTargetSelectedAmmo(entry)
-        });
-
-        if (display.heat === originalHeat) {
-            text.textContent = originalHeat;
-            text.removeAttribute(INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE);
-            text.classList.remove('damaged');
-            return;
+        const heatResolution = resolveInventoryControlHeatEffect(entry, this.unit.getInventoryControlRules());
+        if (heatResolution !== null) {
+            const rapidFireCount = entry.equipment instanceof WeaponEquipment
+                ? entry.equipment.getRapidFireCount()
+                : 0;
+            text.textContent = formatInventoryControlHeat(heatResolution.value, heatResolution.suffix, rapidFireCount);
         }
-
-        if (!text.hasAttribute(INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE)) {
-            text.setAttribute(INVENTORY_CONTROL_ORIGINAL_HEAT_TEXT_ATTRIBUTE, originalHeat);
-        }
-        text.textContent = display.heat;
-        text.classList.add('damaged');
+        text.classList.toggle('damaged', heatResolution?.weakened ?? false);
     }
 
     // TODO: need to implement the aimed shot
@@ -1207,22 +1269,40 @@ export class UnitSvgService {
 
     private renderInventoryControlRangeDamageEntry(entry: MountedEquipment, range: InventoryControlRuntimeRangeKey | null): void {
         const text = entry.el?.querySelector<SVGElement>(':scope > .damage > text');
-        if (!text) return;
-
-        const originalDamage = text.getAttribute(INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE);
-        const damage = resolveInventoryControlRangeDamageText(entry, range, originalDamage ?? text.textContent);
-        if (damage === null) {
-            if (originalDamage !== null) {
-                text.textContent = originalDamage;
+        const weapon = entry.equipment;
+        if (weapon instanceof WeaponEquipment && ['MML', 'ATM', 'IATM'].includes(weapon.ammoType)) {
+            if (text) {
+                text.textContent = '';
                 text.removeAttribute(INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE);
             }
+            entry.el?.querySelectorAll<SVGElement>(':scope > .alternativeMode').forEach(modeElement => {
+                const mode = modeElement.getAttribute('mode');
+                const modeDamageText = modeElement.querySelector<SVGElement>(':scope > .damage > text');
+                if (!mode || !modeDamageText) return;
+                const selectedAmmo = this.unit.getInventoryControlSelectedAmmo(entry, mode);
+                const fallbackAmmoProfile = getInventoryControlModes(entry)
+                    .find(option => option.mode === mode)?.ammoProfile ?? null;
+                const modeDamage = resolveWeaponDamageText(weapon, {
+                    selectedRange: null,
+                    selectedAmmo,
+                    fallbackAmmoProfile: selectedAmmo ? null : fallbackAmmoProfile
+                });
+                if (modeDamage !== null) modeDamageText.textContent = modeDamage;
+            });
             return;
         }
 
-        if (originalDamage === null) {
-            text.setAttribute(INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, text.textContent ?? '');
+        const selectedAmmo = this.inventoryTargetSelectedAmmo(entry);
+        const selectedRange = range === 'short' || range === 'medium' || range === 'long' ? range : null;
+        if (text) {
+            const damage = resolveInventoryControlDamageText(
+                entry,
+                { selectedRange, selectedAmmo },
+                this.unit.getInventoryControlRules()
+            );
+            if (damage !== null) text.textContent = damage;
+            text.removeAttribute(INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE);
         }
-        text.textContent = damage;
     }
 
     private inventoryControlSelectedRange(
@@ -1243,17 +1323,6 @@ export class UnitSvgService {
         return entryState?.range ?? null;
     }
 
-    private inventoryControlRangeForTarget(entry: MountedEquipment, target: InventoryControlRuntimeTarget, useC3Distance: boolean): InventoryControlRuntimeRangeKey | null {
-        return inventoryTargetRangeSelection({
-            entry,
-            category: inventoryTargetCategory(entry),
-            display: readInventoryTargetDisplay(entry),
-            target: this.inventoryControlTargetForRangeSelection(target, useC3Distance),
-            selectedAmmo: this.inventoryTargetSelectedAmmo(entry),
-            rulesData: this.unit.rules.rulesData
-        })?.range ?? null;
-    }
-
     private inventoryControlTargetForRangeSelection(target: InventoryControlRuntimeTarget, useC3Distance: boolean): InventoryControlRuntimeTarget {
         if (useC3Distance && this.unit.hasLinkedC3Network?.() === true) return target;
         if (target.c3Distance === undefined) return target;
@@ -1263,10 +1332,10 @@ export class UnitSvgService {
     /** Render hit modifier badge for a single inventory entry. Pure presentation. */
     protected renderHitModEntry(
         entry: MountedEquipment,
-        hitModifier: number | 'Vs' | '*' | null,
-        range?: InventoryControlRuntimeRangeKey | null,
+        resolution: ToHitResolution,
         forceWeakened = false
     ) {
+        const hitModifier = resolution.value;
         if (!entry.el) return;
         const hitModRect = entry.el.querySelector(`:scope > .hitMod-rect`);
         const hitModText = entry.el.querySelector(`:scope > .hitMod-text`);
@@ -1278,6 +1347,7 @@ export class UnitSvgService {
             entry.el.classList.remove('weakenedHitMod');
             return;
         }
+        forceWeakened ||= resolution.weakened;
         if (hitModifier === 'Vs' || hitModifier === '*') {
             hitModRect.setAttribute('display', 'block');
             hitModText.setAttribute('display', 'block');
@@ -1286,10 +1356,8 @@ export class UnitSvgService {
             return;
         }
 
-        const resolvedBaseHitModifier = getEntryBaseHitModifier(entry, range);
-        const baseHitModifier = typeof resolvedBaseHitModifier === 'number' ? resolvedBaseHitModifier : 0;
-        const weakenedHitMod = forceWeakened || hitModifier > baseHitModifier;
-        if (hitModifier !== 0 || baseHitModifier !== 0 || forceWeakened) {
+        const weakenedHitMod = forceWeakened;
+        if (hitModifier !== 0 || resolution.changed || forceWeakened) {
             hitModRect.setAttribute('display', 'block');
             hitModText.setAttribute('display', 'block');
             hitModText.textContent = (hitModifier >= 0 ? '+' : '') + hitModifier.toString();
@@ -1319,9 +1387,13 @@ export class UnitSvgService {
             }
             // Hit modifier badge
             if (entry.isDestroyed()) {
-                this.renderHitModEntry(entry, null);
+                this.renderHitModEntry(entry, { profile: [], value: null, changed: false, weakened: false });
             } else {
-                this.renderHitModEntry(entry, this.resolveInventoryControlHitModifier(entry));
+                this.renderHitModEntry(
+                    entry,
+                    this.resolveInventoryControlToHit(entry),
+                    this.unit.rules.computeEntryState(entry).weakenedHitMod
+                );
             }
             this.renderInventoryControlHeatEntry(entry, null);
         });

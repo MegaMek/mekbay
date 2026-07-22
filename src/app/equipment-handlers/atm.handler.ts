@@ -1,8 +1,8 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
-import type { MountedEquipment } from '../models/force-serialization';
+import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
-import { getSelectedInventoryControlMode } from '../utils/inventory-control.util';
+import { INVENTORY_CONTROL_MODE_STATE } from '../utils/inventory-control.util';
 
 const ATM_MUNITION_BY_MODE = new Map<string, string>([
     ['Standard', 'M_STANDARD'],
@@ -31,7 +31,8 @@ export class AtmHandler extends EquipmentInteractionHandler {
         if (!(equipment.equipment instanceof WeaponEquipment) || (equipment.equipment.ammoType !== 'ATM' && equipment.equipment.ammoType !== 'IATM')) return null;
         if (ammo.ammoType !== equipment.equipment.ammoType) return false;
         if (equipment.equipment.rackSize > 0 && ammo.rackSize !== equipment.equipment.rackSize) return false;
-        const selectedMode = mode ?? getSelectedInventoryControlMode(equipment) ?? 'Standard';
+        const persistedMode = equipment.states.get(INVENTORY_CONTROL_MODE_STATE);
+        const selectedMode = mode ?? (persistedMode && ATM_MUNITION_BY_MODE.has(persistedMode) ? persistedMode : 'Standard');
         const munitionType = ATM_MUNITION_BY_MODE.get(selectedMode) ?? ATM_MUNITION_BY_MODE.get('Standard')!;
         return ammo.hasMunitionType(munitionType);
     }

@@ -1,10 +1,10 @@
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
-import { MountedEquipment } from '../models/force-serialization';
-import { CORE_2026_RULES_DATA, TW_RULES_DATA } from '../models/rules/cbt-rules-data';
+import { MountedEquipment } from '../models/mounted-equipment.model';
+import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
 import type { InventoryTargetNumberInput } from './inventory-target-number.util';
 import { inventoryTargetNumberState } from './inventory-target-number.util';
 
-function artilleryInput(distance: number, rulesData = CORE_2026_RULES_DATA): InventoryTargetNumberInput {
+function artilleryInput(distance: number, gameRules: CBTGameRules = CORE_2026_GAME_RULES): InventoryTargetNumberInput {
     const owner = { rules: { computeEntryState: () => ({ isDamaged: false, isDisabled: false, hitMod: 0 }) } } as never;
     const equipment = new WeaponEquipment({
         id: 'ArrowIV',
@@ -30,7 +30,7 @@ function artilleryInput(distance: number, rulesData = CORE_2026_RULES_DATA): Inv
         pilotingSkill: 5,
         attackModifierBreakdown: [],
         hitModifier: 0,
-        rulesData,
+        gameRules,
     };
 }
 
@@ -50,7 +50,17 @@ describe('inventory target number rules profiles', () => {
     });
 
     it('keeps normal range rules for TW artillery', () => {
-        expect(inventoryTargetNumberState(artilleryInput(7, TW_RULES_DATA)).text).toBe('X');
-        expect(inventoryTargetNumberState(artilleryInput(15, TW_RULES_DATA)).text).toBe('6');
+        expect(inventoryTargetNumberState(artilleryInput(7, TW_GAME_RULES)).text).toBe('X');
+        expect(inventoryTargetNumberState(artilleryInput(15, TW_GAME_RULES)).text).toBe('6');
+    });
+
+    it('preserves typed nonnumeric hit outcomes', () => {
+        expect(inventoryTargetNumberState({ ...artilleryInput(8), hitModifier: 'Vs' }).text).toBe('Vs');
+        expect(inventoryTargetNumberState({ ...artilleryInput(8), hitModifier: '*' }).text).toBe('*');
+        expect(inventoryTargetNumberState({ ...artilleryInput(8), hitModifier: null }).text).toBe('');
+    });
+
+    it('keeps targets beyond long range out of range before resolving hit state', () => {
+        expect(inventoryTargetNumberState({ ...artilleryInput(31), hitModifier: 'Vs' }).text).toBe('X');
     });
 });

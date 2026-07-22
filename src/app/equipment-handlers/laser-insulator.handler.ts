@@ -1,7 +1,7 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
-import type { MountedEquipment } from '../models/force-serialization';
+import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
-import type { InventoryControlDisplayData, InventoryControlDisplayEffectOptions } from '../utils/inventory-control.util';
+import type { InventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
 
 export class LaserInsulatorHandler extends EquipmentInteractionHandler {
     readonly id = 'laser-insulator-handler';
@@ -15,30 +15,20 @@ export class LaserInsulatorHandler extends EquipmentInteractionHandler {
         return false;
     }
 
-    override applyLinkedInventoryControlDisplayEffects(
+    override applyLinkedInventoryControlHeatEffects(
         equipment: MountedEquipment,
         parent: MountedEquipment,
-        display: InventoryControlDisplayData,
-        _options: InventoryControlDisplayEffectOptions,
+        effect: InventoryControlHeatEffect,
         _context: HandlerContext
-    ): InventoryControlDisplayData {
-        if (!this.isLaser(parent) || !equipment.isUnavailable()) return display;
-        const heat = addNumericBonus(display.heat, 1);
-        if (heat === null) return display;
-        return { ...display, heat };
+    ): InventoryControlHeatEffect {
+        if (!this.isLaser(parent)) return effect;
+        return equipment.isUnavailable()
+            ? { ...effect, weakened: true }
+            : { ...effect, value: Math.max(1, effect.value - 1), suffix: '*' };
     }
 
     private isLaser(equipment: MountedEquipment): boolean {
         return equipment.equipment?.hasFlag('F_ENERGY') === true
             && equipment.equipment.hasFlag('F_LASER');
     }
-}
-
-function addNumericBonus(value: string, bonus: number): string | null {
-    const match = value.trim().match(/^([+-]?\d+(?:\.\d+)?)(\s*\*)?(.*)$/);
-    if (!match) return null;
-    const next = Number.parseFloat(match[1]) + bonus;
-    if (!Number.isFinite(next)) return null;
-    const nextText = Number.isInteger(next) ? next.toString() : next.toFixed(1).replace(/\.0$/, '');
-    return `${nextText}${match[3]}`;
 }

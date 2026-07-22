@@ -1,6 +1,7 @@
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import { WeaponEquipment } from '../equipment.model';
-import { MountedEquipment, type LocationData } from '../force-serialization';
+import { MountedEquipment } from '../mounted-equipment.model';
+import { type LocationData } from '../force-serialization';
 import type { UnitComponent } from '../units.model';
 import { InfantryRules } from './infantry-rules';
 

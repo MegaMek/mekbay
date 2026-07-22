@@ -1,7 +1,8 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
 import type { AmmoEquipment } from '../models/equipment.model';
-import type { MountedEquipment } from '../models/force-serialization';
-import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
+import type { MountedEquipment } from '../models/mounted-equipment.model';
+import type { ToHitAdjustment } from '../models/rules/game-rules';
+import { EquipmentInteractionHandler, type HandlerContext, type ToHitAdjustmentContext } from '../services/equipment-interaction-registry.service';
 
 export class ArtemisVHandler extends EquipmentInteractionHandler {
     readonly id = 'artemis-v-handler';
@@ -15,9 +16,11 @@ export class ArtemisVHandler extends EquipmentInteractionHandler {
         return false;
     }
 
-    override getLinkedEquipmentHitModifier(equipment: MountedEquipment, _parent: MountedEquipment, selectedAmmo?: AmmoEquipment | null): number {
-        if (equipment.isUnavailable()) return 1;
-        if (selectedAmmo !== undefined && !selectedAmmo?.hasMunitionType('M_ARTEMIS_V_CAPABLE')) return 1;
-        return 0;
+    override getToHitAdjustments(equipment: MountedEquipment, context: ToHitAdjustmentContext): readonly ToHitAdjustment[] {
+        if (!context.parent) return [];
+        const selectedAmmo = context.selectedAmmo;
+        const offset = equipment.isUnavailable()
+            || (selectedAmmo !== undefined && !selectedAmmo?.hasMunitionType('M_ARTEMIS_V_CAPABLE'));
+        return [{ kind: 'add', value: offset ? 1 : 0 }];
     }
 }

@@ -882,11 +882,9 @@ export class ASForceUnit extends ForceUnit {
         }
 
         // Calculate TMM penalty from crits
-        let tmmPenalty: number;
+        let vehicleTmmPenalty = 0;
         if (this.isVehicle()) {
-            tmmPenalty = this.calculateVehicleTmmPenaltyWithCrits(orderedCrits);
-        } else {
-            tmmPenalty = mpHits;
+            vehicleTmmPenalty = this.calculateVehicleTmmPenaltyWithCrits(orderedCrits);
         }
         
         // Calculate TMM for each movement mode
@@ -896,11 +894,14 @@ export class ASForceUnit extends ForceUnit {
             if (typeof inches !== 'number' || inches <= 0) continue;
 
             const baseTmm = this.calculateBaseTMMFromInches(inches);
+            const critAdjustedTmm = this.isVehicle()
+                ? baseTmm - vehicleTmmPenalty
+                : this.applyMpHitsTmmReduction(baseTmm, mpHits);
 
             // Apply heat TMM penalty: -1 at heat level 2+ (only for ground movement)
             const heatPenalty = mode === '' ? (heat >= 2 ? 1 : 0) : 0;
 
-            const effectiveTmm = Math.max(0, baseTmm - tmmPenalty - heatPenalty);
+            const effectiveTmm = Math.max(0, critAdjustedTmm - heatPenalty);
             tmmByMode[mode] = effectiveTmm;
         }
 
@@ -959,6 +960,20 @@ export class ASForceUnit extends ForceUnit {
         for (let i = 0; i < mpHits && current > 0; i++) {
             const halved = Math.floor(current / 2);
             const reduction = Math.max(2, current - halved);
+            current = Math.max(0, current - reduction);
+        }
+        return current;
+    }
+
+    /**
+     * Applies MP critical hits to TMM. Each hit halves the current TMM, rounded
+     * down, and minimum reduces by 1.
+     */
+    private applyMpHitsTmmReduction(tmm: number, mpHits: number): number {
+        let current = tmm;
+        for (let i = 0; i < mpHits && current > 0; i++) {
+            const halved = Math.floor(current / 2);
+            const reduction = Math.max(1, current - halved);
             current = Math.max(0, current - reduction);
         }
         return current;

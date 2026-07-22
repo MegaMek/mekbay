@@ -1,4 +1,4 @@
-import type { MountedEquipment } from '../models/force-serialization';
+import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { TurnState } from '../models/turn-state.model';
 import { isEquipmentDisabledByFailure } from './disabled-equipment.handler';
 import { EscalatingFailureHandler } from './escalatingfailure.handler';

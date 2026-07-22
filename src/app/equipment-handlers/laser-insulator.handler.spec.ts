@@ -1,7 +1,6 @@
 import { MiscEquipment, WeaponEquipment } from '../models/equipment.model';
-import { MountedEquipment } from '../models/force-serialization';
+import { MountedEquipment } from '../models/mounted-equipment.model';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
-import type { InventoryControlDisplayData } from '../utils/inventory-control.util';
 import { LaserInsulatorHandler } from './laser-insulator.handler';
 
 function owner(unavailableEntry?: MountedEquipment) {
@@ -11,7 +10,7 @@ function owner(unavailableEntry?: MountedEquipment) {
 }
 
 function laser(insulator: MountedEquipment): MountedEquipment {
-    return new MountedEquipment({ owner: owner(), id: 'laser', name: 'Laser', equipment: new WeaponEquipment({ id: 'laser', name: 'Laser', type: 'weapon', flags: ['F_ENERGY', 'F_LASER'], weapon: { ammoType: 'NA', heat: 4 } }), linkedWith: [insulator] });
+    return new MountedEquipment({ owner: owner(), id: 'laser', name: 'Laser', equipment: new WeaponEquipment({ id: 'laser', name: 'Laser', type: 'weapon', flags: ['F_ENERGY', 'F_LASER'], weapon: { ammoType: 'NA', heat: 3 } }), linkedWith: [insulator] });
 }
 
 function insulator(): MountedEquipment {
@@ -21,18 +20,35 @@ function insulator(): MountedEquipment {
 describe('LaserInsulatorHandler', () => {
     const handler = new LaserInsulatorHandler();
     const context = {} as HandlerContext;
-    const display: InventoryControlDisplayData = { name: 'Laser', location: 'RA', heat: '3*', damage: '5', hit: '+0', min: '—', short: '3', medium: '6', long: '9' };
 
-    it('keeps precomputed heat while the insulator is available', () => {
+    it('reduces model heat while the insulator is available', () => {
         const linked = insulator();
 
-        expect(handler.applyLinkedInventoryControlDisplayEffects(linked, laser(linked), display, { selectedRange: null, additionalHitModifier: 0 }, context).heat).toBe('3*');
+        expect(handler.applyLinkedInventoryControlHeatEffects(linked, laser(linked), { value: 3, weakened: false }, context))
+            .toEqual({ value: 2, weakened: false, suffix: '*' });
     });
 
-    it('adds heat back when the linked insulator is unavailable', () => {
+    it('does not reduce heat when the linked insulator is unavailable', () => {
         const linked = insulator();
         linked.owner = owner(linked);
 
-        expect(handler.applyLinkedInventoryControlDisplayEffects(linked, laser(linked), display, { selectedRange: null, additionalHitModifier: 0 }, context).heat).toBe('4');
+        expect(handler.applyLinkedInventoryControlHeatEffects(linked, laser(linked), { value: 3, weakened: false }, context))
+            .toEqual({ value: 3, weakened: true });
+    });
+
+    it('does not reduce heat below one', () => {
+        const linked = insulator();
+
+        expect(handler.applyLinkedInventoryControlHeatEffects(linked, laser(linked), { value: 1, weakened: false }, context))
+            .toEqual({ value: 1, weakened: false, suffix: '*' });
+    });
+
+    it('does not affect non-laser weapons', () => {
+        const linked = insulator();
+        const weapon = laser(linked);
+        weapon.equipment!.flags.delete('F_LASER');
+
+        expect(handler.applyLinkedInventoryControlHeatEffects(linked, weapon, { value: 3, weakened: false }, context))
+            .toEqual({ value: 3, weakened: false });
     });
 });

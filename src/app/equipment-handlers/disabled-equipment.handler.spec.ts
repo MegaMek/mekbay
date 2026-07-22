@@ -1,5 +1,5 @@
 import type { Equipment } from '../models/equipment.model';
-import { MountedEquipment } from '../models/force-serialization';
+import { MountedEquipment } from '../models/mounted-equipment.model';
 import { ENTRY_DISABLED_STATE_KEY } from '../models/rules/unit-type-rules';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import { DisabledEquipmentHandler, isEquipmentDisabledByFailure } from './disabled-equipment.handler';
