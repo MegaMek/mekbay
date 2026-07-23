@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { AmmoEquipment, WeaponEquipment, type EquipmentMap, type WeaponType } from '../models/equipment.model';
+import { AmmoEquipment, findIntrinsicAmmoForWeapon, WeaponEquipment, type EquipmentMap, type WeaponType } from '../models/equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { MountedAmmo, MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import { type CriticalSlot } from '../models/force-serialization';
@@ -208,7 +208,7 @@ export function getInventoryControlGroups(
     const entryStates = getEntryStates(unit);
     const ammoSources = getAmmoSources(unit, equipmentMap);
     const rows = unit.getInventory()
-        .flatMap((entry, index) => buildInventoryControlRows(entry, index, entryStates, ammoSources, rules))
+        .flatMap((entry, index) => buildInventoryControlRows(entry, index, entryStates, ammoSources, rules, equipmentMap))
         .filter((row): row is InventoryControlRow => row !== null);
 
     const groups: InventoryControlGroup[] = [
@@ -281,7 +281,7 @@ export function getInventoryControlModeAmmoSummary(
     rules: InventoryControlRules = {},
     mode: string | null = getSelectedInventoryControlMode(entry, equipmentMap, rules)
 ): InventoryControlAmmoSummary {
-    return getInventoryControlAmmoSummary(entry, getAmmoSources(entry.owner, equipmentMap), mode, rules.matchesAmmo);
+    return getInventoryControlAmmoSummary(entry, getAmmoSources(entry.owner, equipmentMap), mode, rules.matchesAmmo, undefined, equipmentMap);
 }
 
 function getInventoryControlAmmoSummary(
@@ -289,7 +289,8 @@ function getInventoryControlAmmoSummary(
     ammoSources: AmmoSource[],
     mode: string | null,
     matchesAmmo?: (entry: MountedEquipment, ammo: AmmoEquipment, mode: string | null) => boolean | null,
-    locationLock?: string
+    locationLock?: string,
+    equipmentMap: EquipmentMap = {}
 ): InventoryControlAmmoSummary {
     if (!(entry.equipment instanceof WeaponEquipment)) {
         return { tracksAmmo: false, remaining: 0, total: 0, options: [] };
@@ -297,7 +298,7 @@ function getInventoryControlAmmoSummary(
 
     const builtInShotCapacity = getBuiltInOneShotCapacity(entry);
     if (builtInShotCapacity > 0) {
-        return getBuiltInOneShotAmmoSummary(entry, builtInShotCapacity);
+        return getBuiltInOneShotAmmoSummary(entry, builtInShotCapacity, equipmentMap);
     }
 
     if (entry.equipment.ammoType === 'NA') {
@@ -376,9 +377,16 @@ export function isBuiltInOneShotAmmoOption(optionId: string): boolean {
     return optionId === BUILT_IN_ONE_SHOT_AMMO_OPTION_ID;
 }
 
-function getBuiltInOneShotAmmoSummary(entry: MountedEquipment, capacity: number): InventoryControlAmmoSummary {
+function getBuiltInOneShotAmmoSummary(
+    entry: MountedEquipment,
+    capacity: number,
+    equipmentMap: EquipmentMap
+): InventoryControlAmmoSummary {
     const consumed = getBuiltInOneShotConsumed(entry);
     const remaining = Math.max(0, capacity - consumed);
+    const intrinsicAmmo = entry.equipment instanceof WeaponEquipment
+        ? findIntrinsicAmmoForWeapon(entry.equipment, equipmentMap)
+        : null;
     return {
         tracksAmmo: true,
         remaining,
@@ -386,6 +394,7 @@ function getBuiltInOneShotAmmoSummary(entry: MountedEquipment, capacity: number)
         options: [{
             id: BUILT_IN_ONE_SHOT_AMMO_OPTION_ID,
             label: `Built-in (${remaining}/${capacity})`,
+            ammo: intrinsicAmmo ?? undefined,
             remaining,
             total: capacity,
             destroyed: false,
@@ -485,6 +494,7 @@ function buildInventoryControlRow(
     entryStates: Map<MountedEquipment, MountedEquipmentRuleState>,
     ammoSources: AmmoSource[],
     rules: InventoryControlRules,
+    equipmentMap: EquipmentMap,
     options: InventoryControlRowOptions = {}
 ): InventoryControlRow | null {
     const unitRules = entry.owner.rules;
@@ -502,7 +512,7 @@ function buildInventoryControlRow(
     const selectedMode = getSelectedMode(entry, modes, ammoSources, rules.matchesAmmo, options.locationLock);
     syncSvgMode(entry, selectedMode, disabled);
     const rowEntry = createInventoryControlRowEntry(entry, options);
-    const ammo = getInventoryControlAmmoSummary(rowEntry, ammoSources, selectedMode, rules.matchesAmmo, options.locationLock);
+    const ammo = getInventoryControlAmmoSummary(rowEntry, ammoSources, selectedMode, rules.matchesAmmo, options.locationLock, equipmentMap);
     const selectedAmmoOption = resolveInventoryControlSelectedAmmoOption(ammo.options, rowEntry.owner.getInventoryControlEntryAmmoOption?.(rowEntry.id));
     const selectedAmmo = selectedAmmoOption?.ammo ?? null;
     const additionalHitModifier = state?.hitMod ?? 0;
@@ -602,14 +612,15 @@ function buildInventoryControlRows(
     originalIndex: number,
     entryStates: Map<MountedEquipment, MountedEquipmentRuleState>,
     ammoSources: AmmoSource[],
-    rules: InventoryControlRules
+    rules: InventoryControlRules,
+    equipmentMap: EquipmentMap
 ): Array<InventoryControlRow | null> {
     const trooperLocations = getBattleArmorWeaponTrooperLocations(entry);
     if (trooperLocations.length === 0) {
-        return [buildInventoryControlRow(entry, originalIndex, entryStates, ammoSources, rules)];
+        return [buildInventoryControlRow(entry, originalIndex, entryStates, ammoSources, rules, equipmentMap)];
     }
 
-    return trooperLocations.map((location, locationIndex) => buildInventoryControlRow(entry, originalIndex + (locationIndex / 100), entryStates, ammoSources, rules, {
+    return trooperLocations.map((location, locationIndex) => buildInventoryControlRow(entry, originalIndex + (locationIndex / 100), entryStates, ammoSources, rules, equipmentMap, {
         rowId: `${entry.id}:${location}`,
         locationLock: location,
         destroyed: entry.owner.isEquipmentUnavailable(entry, location)

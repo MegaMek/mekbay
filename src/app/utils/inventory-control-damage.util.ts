@@ -165,6 +165,10 @@ function damageAmount(
     fallbackAmmoProfile?: AmmoWeaponProfile | null
 ): InventoryControlDamage {
     if (typeof value === 'number') return { kind: 'simple', value };
+    if (value === 'special' && weapon.oneShotCount && selectedAmmo) {
+        const profile = weapon.getDamageProfile(selectedAmmo);
+        if (profile.kind === 'fixed') return { kind: 'simple', value: profile.damage };
+    }
     if (value !== 'cluster') return { kind: 'special', value };
 
     const damagePerMissile = selectedAmmo?.damagePerShot
@@ -180,7 +184,7 @@ function defaultDamagePerMissile(weapon: WeaponEquipment): number {
 
 function formatDamageValue(damage: InventoryControlDamage): string {
     switch (damage.kind) {
-        case 'simple': return formatNumber(damage.value);
+        case 'simple': return damage.value === 0 ? '' : formatNumber(damage.value);
         case 'per-missile': return `${formatNumber(damage.value)}/Msl`;
         case 'special': return damage.value;
         case 'profile': return damage.values.map(formatDamageValue).join('/');

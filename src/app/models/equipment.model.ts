@@ -728,8 +728,11 @@ export class WeaponEquipment extends Equipment {
         return 'other';
     }
 
-    getDamageProfile(): WeaponDamageProfile {
+    getDamageProfile(ammo?: AmmoEquipment | null): WeaponDamageProfile {
         const damage = this.damage;
+        if (damage === 'special' && this.oneShotCount && ammoMatchesWeapon(this, ammo)) {
+            return { kind: 'fixed', damage: ammo.damagePerShot, maximum: ammo.damagePerShot, perShot: false };
+        }
         if (damage === 'cluster') {
             if (this.ammoType === 'HAG') {
                 return { kind: 'cluster', damage: this.rackSize, maximum: this.rackSize };
@@ -761,6 +764,27 @@ export class WeaponEquipment extends Equipment {
         const multiplier = this.ammoType === 'AC_ROTARY' ? 6 : perShot ? 2 : 1;
         return { kind: 'fixed', damage, maximum: damage * multiplier, perShot };
     }
+}
+
+/** Finds the standard ammunition definition carried intrinsically by a one-shot weapon. */
+export function findIntrinsicAmmoForWeapon(
+    weapon: WeaponEquipment,
+    equipmentMap: EquipmentMap,
+): AmmoEquipment | null {
+    if (!weapon.oneShotCount || weapon.ammoType === 'NA') return null;
+
+    const compatibleAmmo = Object.values(equipmentMap)
+        .filter((equipment): equipment is AmmoEquipment =>
+            equipment instanceof AmmoEquipment && ammoMatchesWeapon(weapon, equipment));
+    return compatibleAmmo.find(ammo => ammo.hasMunitionType('M_STANDARD'))
+        ?? compatibleAmmo.find(ammo => ammo.munitionType.size === 0)
+        ?? compatibleAmmo[0]
+        ?? null;
+}
+
+function ammoMatchesWeapon(weapon: WeaponEquipment, ammo?: AmmoEquipment | null): ammo is AmmoEquipment {
+    if (!ammo || ammo.ammoType !== weapon.ammoType) return false;
+    return weapon.rackSize <= 0 || ammo.rackSize === weapon.rackSize;
 }
 
 /** A weapon definition validated as a conventional infantry weapon. */

@@ -3,7 +3,9 @@ import type { CBTForceUnit } from './cbt-force-unit.model';
 import { MML_LRM_PROFILE } from './ammo-weapon-profile.model';
 import {
     AmmoEquipment,
+    type AmmoType,
     EquipmentMap,
+    findIntrinsicAmmoForWeapon,
     MiscEquipment,
     StructureEquipment,
     WeaponEquipment,
@@ -92,6 +94,36 @@ describe('equipment model', () => {
         expect(doubleOneShot.oneShotCount).toBe(2);
     });
 
+    it('resolves standard intrinsic ammo for one-shot weapons and derives special damage', () => {
+        const mineLauncher = weapon('mine-launcher', 'Pop-up Mine', 'MINE', 'special', 1, ['F_ONE_SHOT']);
+        const wrongRack = new AmmoEquipment({
+            id: 'wrong-rack', name: 'Wrong Rack', type: 'ammo',
+            ammo: { type: 'MINE', rackSize: 2, damagePerShot: 9, munitionType: ['M_STANDARD'] },
+        });
+        const alternate = new AmmoEquipment({
+            id: 'alternate', name: 'Alternate', type: 'ammo',
+            ammo: { type: 'MINE', rackSize: 1, damagePerShot: 7, munitionType: ['M_INFERNO'] },
+        });
+        const standard = new AmmoEquipment({
+            id: 'standard', name: 'Standard', type: 'ammo',
+            ammo: { type: 'MINE', rackSize: 1, damagePerShot: 4, munitionType: ['M_STANDARD'] },
+        });
+
+        expect(findIntrinsicAmmoForWeapon(mineLauncher, { wrongRack, alternate, standard })).toBe(standard);
+        expect(mineLauncher.getDamageProfile(standard)).toEqual({
+            kind: 'fixed', damage: 4, maximum: 4, perShot: false,
+        });
+        expect(mineLauncher.getDamageProfile()).toEqual({ kind: 'special', maximum: 0 });
+
+        const repeating = weapon('repeating', 'Repeating', 'MINE', 'special', 1, []);
+        expect(findIntrinsicAmmoForWeapon(repeating, { standard })).toBeNull();
+        expect(repeating.getDamageProfile(standard)).toEqual({ kind: 'special', maximum: 0 });
+
+        const noAmmo = weapon('no-ammo', 'No Ammo', 'NA', 'special', 0, ['F_ONE_SHOT']);
+        expect(findIntrinsicAmmoForWeapon(noAmmo, { standard })).toBeNull();
+        expect(noAmmo.getDamageProfile(standard)).toEqual({ kind: 'special', maximum: 0 });
+    });
+
     it('exposes intrinsic equipment classifications', () => {
         const compactHeatSinks = new MiscEquipment({
             id: '2 Compact Heat Sinks', name: '2 Compact Heat Sinks', type: 'misc',
@@ -115,7 +147,7 @@ describe('equipment model', () => {
 function weapon(
     id: string,
     name: string,
-    ammoType: 'SRM' | 'AC_ULTRA' | 'NA',
+    ammoType: AmmoType,
     damage: string | number | number[],
     rackSize: number,
     flags: string[],
