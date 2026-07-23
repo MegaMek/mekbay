@@ -92,6 +92,9 @@ export class InfantryRules extends UnitTypeRulesBase {
         }
         const t1Destroyed = this.unit.isArmorLocDestroyed('T1');
         for (const entry of this.unit.getInventory()) {
+            // These mounts are derived runtime ammo records. Their parent weapon
+            // owns availability and is evaluated separately by ammo controls.
+            if (entry.intrinsicOneShotAmmo) continue;
             if (!entry.equipment) continue;
             entry.setCommittedDestroyed(allSquadsDestroyed);
             if (allSquadsDestroyed) continue;

@@ -1,5 +1,5 @@
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
-import { MountedWeapon } from '../models/mounted-equipment.model';
+import { MountedAmmo, MountedWeapon } from '../models/mounted-equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { getInventoryControlModeAmmoSummary, resolveInventoryControlSelectedAmmoOption, type InventoryControlAmmoOption } from './inventory-control.util';
 
@@ -55,6 +55,52 @@ describe('inventory-control ammo selection', () => {
 
         expect(summary).toEqual(jasmine.objectContaining({ tracksAmmo: true, remaining: 1, total: 1 }));
         expect(summary.options[0].ammo).toBe(ammo);
+    });
+
+    it('uses a materialized intrinsic round as a normal ammo option', () => {
+        const weapon = new WeaponEquipment({
+            id: 'ISBALRM5OS', name: 'LRM 5 (OS)', type: 'weapon', flags: ['F_ONE_SHOT', 'F_BA_WEAPON'],
+            weapon: { ammoType: 'LRM', rackSize: 5, damage: 'cluster' },
+        });
+        const standard = new AmmoEquipment({
+            id: 'IS BA Ammo LRM-5', name: 'BA LRM 5 Ammo', type: 'ammo', flags: ['F_BATTLEARMOR'],
+            ammo: { type: 'LRM', rackSize: 5, shots: 1, munitionType: ['M_STANDARD'] },
+        });
+        const incendiary = new AmmoEquipment({
+            id: 'IS BA Ammo LRM-5 w/ Incendiary', name: 'BA LRM 5 Incendiary Ammo', type: 'ammo', flags: ['F_BATTLEARMOR'],
+            ammo: { type: 'LRM', rackSize: 5, shots: 1, munitionType: ['M_STANDARD', 'M_INCENDIARY_LRM'] },
+        });
+        const inventory: Array<MountedWeapon | MountedAmmo> = [];
+        const owner = {
+            getInventory: () => inventory,
+            getCritSlots: () => [],
+            isEquipmentUnavailable: () => false,
+        } as unknown as CBTForceUnit;
+        const mountedWeapon = new MountedWeapon({ owner, id: 'lrm-os', name: weapon.internalName, equipment: weapon });
+        const intrinsicAmmo = new MountedAmmo({
+            owner,
+            id: 'lrm-os:intrinsic-one-shot-ammo',
+            name: standard.internalName,
+            equipment: standard,
+            parent: mountedWeapon,
+            totalAmmo: 1,
+            intrinsicOneShotAmmo: true,
+        });
+        intrinsicAmmo.ammo = incendiary.internalName;
+        mountedWeapon.linkedWith = [intrinsicAmmo];
+        inventory.push(mountedWeapon, intrinsicAmmo);
+
+        const summary = getInventoryControlModeAmmoSummary(mountedWeapon, {
+            [standard.internalName]: standard,
+            [incendiary.internalName]: incendiary,
+        });
+
+        expect(summary).toEqual(jasmine.objectContaining({ tracksAmmo: true, remaining: 1, total: 1 }));
+        expect(summary.options).toEqual([jasmine.objectContaining({
+            id: `${incendiary.internalName}:Ammo`,
+            ammo: incendiary,
+            total: 1,
+        })]);
     });
 });
 

@@ -179,7 +179,8 @@ export class MountedEngine {
 
   /**
    * Compute the actual engine weight in tons, applying type multiplier,
-   * minimum weight, large-engine doubling, and optional tank multiplier.
+    * minimum weight and optional tank multiplier. Large engines use the
+    * ordinary rating table; their increased size affects slots and cost only.
    * Rounds up to the nearest half-ton.
    *
    * Mirrors MegaMek `Engine.getEngineWeight()` / `getEngineTankWeight()`.
@@ -188,7 +189,6 @@ export class MountedEngine {
     const desc = this.descriptor();
     let weight = this.baseWeight * desc.weightMultiplier;
     weight = Math.max(weight, desc.minWeight);
-    if (this.isLarge) weight *= 2;
     weight = Math.ceil(weight * 2) / 2; // round up to nearest half-ton
     if (flags?.tank) {
       weight *= desc.tankWeightMultiplier;

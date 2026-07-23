@@ -1,8 +1,17 @@
 import type { MekEntity, MekWithArmsEntity } from '../../entities/mek/mek-entity';
 import { calculateArmorCost } from './common';
+import { amount, buildCostReport, multiplier } from './cost-report';
+import type { EntityCostEntry, EntityCostReport } from './cost-report';
 
 /** Mirrors MegaMek's MekCostCalculator for common Mek construction systems. */
 export function calculateMekCost(entity: MekEntity, equipmentCost: number): number {
+  return calculateMekCostReport(entity, [amount('Equipment', equipmentCost)]).total;
+}
+
+export function calculateMekCostReport(
+  entity: MekEntity,
+  equipmentEntries: readonly EntityCostEntry[],
+): EntityCostReport {
   const tonnage = entity.tonnage();
   const engine = entity.mountedEngine();
   const structureCostPerTon = getMekStructureCostPerTon(entity);
@@ -12,7 +21,9 @@ export function calculateMekCost(entity: MekEntity, equipmentCost: number): numb
   const myomerCost = getMekMyomerCost(entity) * tonnage;
   const jumpJets = entity.installedJumpJetMP();
   const improvedJumpJets = entity.equipment().some(mount =>
-    mount.equipment?.hasFlag('F_JUMP_JET') && mount.equipment.hasFlag('S_IMPROVED'));
+    mount.equipment?.hasFlag('F_JUMP_JET')
+    && mount.equipment.hasFlag('S_IMPROVED')
+    && !mount.equipment.hasFlag('S_PROTOTYPE'));
   const primaryJumpMP = entity.installedUmuMP() > 0 ? entity.installedUmuMP() : jumpJets;
   const mechanicalJumpBoosterMP = Math.round(entity.equipment().find(
     mount => mount.equipment?.hasAnyFlag(['F_JUMP_BOOSTER', 'F_MECHANICAL_JUMP_BOOSTER']),
@@ -21,38 +32,43 @@ export function calculateMekCost(entity: MekEntity, equipmentCost: number): numb
     + mechanicalJumpBoosterMP ** 2 * tonnage * 150;
   const heatSinkCost = (entity.heatSinkType() === 'Single' ? 2000 : 6000)
     * (entity.totalHeatSinks() - (entity.heatSinkType() === 'Single' ? 10 : 0));
-  let additiveCost = [
-    entity.mountedCockpit().cost,
-    50000,
-    tonnage * 2000,
-    myomerCost,
-    structureCost,
-    calculateMekActuatorCost(entity),
-    engine.installed ? (engine.baseCost * engine.rating * tonnage) / 75 : 0,
-    gyro.baseCost * gyroTonnage * gyro.costMultiplier,
-    jumpCost,
-    heatSinkCost,
-    entity.hasFullHeadEjectionSystem() ? 1725000 : 0,
-    entity.armoredSystemSlots().size * 150000,
-    calculateArmorCost(entity),
-    equipmentCost,
-  ].reduce((total, cost) => total + cost, 0);
+  const equipmentCost = equipmentEntries.reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
+  const entries: EntityCostEntry[] = [
+    amount('Cockpit', entity.mountedCockpit().cost),
+    amount('Life Support', 50000),
+    amount('Sensors', tonnage * 2000),
+    amount('Myomer', myomerCost),
+    amount('Structure', structureCost),
+    amount('Actuators', calculateMekActuatorCost(entity)),
+    amount('Engine', engine.installed ? (engine.baseCost * engine.rating * tonnage) / 75 : 0),
+    amount('Gyro', gyro.baseCost * gyroTonnage * gyro.costMultiplier),
+    amount('Jump Jets', jumpCost),
+    amount('Heatsinks', heatSinkCost),
+    amount('Full Head Ejection System', entity.hasFullHeadEjectionSystem() ? 1725000 : 0),
+    amount('Armored System Components', entity.armoredSystemSlots().size * 150000),
+    amount('Armor', calculateArmorCost(entity)),
+    ...equipmentEntries,
+  ];
+  let conversionCost = 0;
   if (entity.chassisConfig === 'LAM') {
     const lamType = 'lamType' in entity
       ? (entity as MekEntity & { lamType(): string }).lamType().toLowerCase()
       : 'standard';
-    additiveCost += (structureCost + equipmentCost)
-      * (lamType === 'bimodal' ? 0.65 : 0.75);
+    conversionCost = (structureCost + equipmentCost) * (lamType === 'bimodal' ? 0.65 : 0.75);
   } else if (entity.chassisConfig === 'QuadVee') {
-    additiveCost += (structureCost + equipmentCost) * 0.5;
+    conversionCost = (structureCost + equipmentCost) * 0.5;
   }
+  entries.push(amount('Conversion Equipment', conversionCost));
   const quirks = new Set(entity.quirks().map(({ quirk }) => quirk.key));
   const quirkMultiplier = quirks.has('good_rep_1')
     ? Math.fround(1.1)
     : quirks.has('good_rep_2') ? Math.fround(1.25) : 1;
   const omniMultiplier = entity.omni() ? 1.25 : 1;
   const weightMultiplier = 1 + tonnage / (entity.isIndustrial() ? 400 : 100);
-  return Math.round(additiveCost * quirkMultiplier * omniMultiplier * weightMultiplier);
+  entries.push(multiplier('Quirk Multiplier', quirkMultiplier, quirkMultiplier !== 1));
+  entries.push(multiplier('Omni Multiplier', omniMultiplier, entity.omni()));
+  entries.push(multiplier('Weight Multiplier', weightMultiplier));
+  return buildCostReport(entries, true);
 }
 
 function getMekStructureCostPerTon(entity: MekEntity): number {

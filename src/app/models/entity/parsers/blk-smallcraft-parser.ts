@@ -41,6 +41,7 @@ import { SC_EQUIP_TAGS } from './blk-constants';
 import { parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkCrew, parseBlkEquipment, resolveBlkStructure } from './blk-base-parser';
 import { ParseContext } from './parse-context';
 import { decodeMotiveType } from './motive-type-codec';
+import { normalizeLoadedSmallCraft } from './normalize-loaded-small-craft';
 
 // ============================================================================
 // Public API
@@ -86,6 +87,10 @@ export function parseBlkSmallCraft(bb: BuildingBlock, ctx: ParseContext): SmallC
 
   // ── Crew ──
   parseBlkCrew(bb, entity);
+
+  // MegaMekLab normalizes loaded aerospace crew and accommodations before
+  // calculating fixture metadata and reports.
+  normalizeLoadedSmallCraft(entity);
 
   return entity;
 }

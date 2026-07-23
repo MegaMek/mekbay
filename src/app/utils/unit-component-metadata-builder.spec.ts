@@ -5,6 +5,7 @@ import {
   TestInfantryEntity as InfantryEntity,
   TestTankEntity as TankEntity,
 } from '../models/entity/testing/test-entities';
+import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
 import { EntityMountedEquipment } from '../models/entity/types/equipment';
 import { buildUnitComponentMetadata } from './unit-component-metadata-builder';
 
@@ -40,6 +41,32 @@ describe('buildUnitComponentMetadata', () => {
 
     expect(buildUnitComponentMetadata(entity)!.find(component => component.id === laser.id))
       .toEqual(jasmine.objectContaining({ l: 'NOS', p: 0, r: 'Medium', m: '-', d: '8/6', md: '8.0' }));
+  });
+
+  it('exports intrinsic ammo damage for a special one-shot weapon', () => {
+    const ammo = new AmmoEquipment({
+      id: 'mine-ammo', name: 'Pop-up Mine Ammo', type: 'ammo',
+      ammo: { type: 'MINE', rackSize: 1, damagePerShot: 4, munitionType: ['M_STANDARD'] },
+    });
+    const entity = new TankEntity(createTestEquipmentRegistry({ [ammo.id]: ammo }));
+    const launcher = weapon('mine-launcher', {
+      damage: 'special', ranges: [1, 0, 0, 0], flags: ['F_ONE_SHOT'], ammoType: 'MINE', rackSize: 1,
+    });
+    entity.setEquipment([mount(launcher, 'Front')]);
+
+    expect(buildUnitComponentMetadata(entity)!.find(component => component.id === launcher.id))
+      .toEqual(jasmine.objectContaining({ d: '4', md: '4.0', os: 1 }));
+  });
+
+  it('exports no numeric damage for a zero-damage weapon', () => {
+    const entity = new TankEntity();
+    const launcher = weapon('grenade-launcher', {
+      damage: 0, ranges: [1, 1, 1, 1], flags: ['F_BALLISTIC', 'F_ONE_SHOT'],
+    });
+    entity.setEquipment([mount(launcher, 'Front')]);
+
+    expect(buildUnitComponentMetadata(entity)!.find(component => component.id === launcher.id))
+      .toEqual(jasmine.objectContaining({ d: '', md: '0.0', os: 1 }));
   });
 
   it('exports conventional infantry synthetic weapons with the Java primary damage cap', () => {
@@ -98,9 +125,11 @@ describe('buildUnitComponentMetadata', () => {
 function weapon(
   id: string,
   options: {
-    damage: number;
+    damage: number | string;
     ranges: number[];
     flags: string[];
+    ammoType?: 'MINE';
+    rackSize?: number;
     av?: number[];
     maxRangeBracket?: 'short' | 'medium' | 'long' | 'extreme';
     infantry?: { damage: number; range: number };
@@ -110,6 +139,7 @@ function weapon(
     id, name: id, type: 'weapon', flags: options.flags,
     weapon: {
       damage: options.damage, ranges: options.ranges, av: options.av,
+      ammoType: options.ammoType, rackSize: options.rackSize,
       maxRangeBracket: options.maxRangeBracket ?? 'long',
     },
     infantry: options.infantry,

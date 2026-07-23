@@ -501,6 +501,7 @@ export class CBTForceUnitState extends ForceUnitState {
         const inventory = this.inventory();
         const serializedData: SerializedInventory[] = [];
         for (const item of inventory) {
+            if (item.intrinsicOneShotAmmo) continue;
             const hasStates = item.states !== undefined && item.states.size > 0 
                 && Array.from(item.states.values()).some(v => v !== '');
             const hasCustomAmmo = item.ammo !== undefined && item.ammo !== item.name;

@@ -354,7 +354,7 @@ export class UnitSvgMekService extends UnitSvgService {
             additionalHitModifier: 0,
             selectedAmmo: null,
         });
-        damageEl.textContent = display.damage;
+        this.renderInventoryDamageText(damageEl, display.damage);
         damageEl.classList.toggle('damaged', weakened);
     }
 

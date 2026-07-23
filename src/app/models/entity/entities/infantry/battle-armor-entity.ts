@@ -90,6 +90,8 @@ export class BattleArmorEntity extends InfantryBaseEntity {
   turretConfig = signal<string>('');
   /** Whether this unit is an exoskeleton */
   isExoskeleton = signal<boolean>(false);
+  /** Clan exoskeleton compatibility mode that uses the lighter IS chassis table. */
+  clanExoWithoutHarJel = signal<boolean>(false);
   /** Squad equipment tag: 'Squad' (modern) or 'Point' (legacy) for BLK round-trip */
   squadEquipmentTag = signal<'Squad' | 'Point'>('Squad');
 

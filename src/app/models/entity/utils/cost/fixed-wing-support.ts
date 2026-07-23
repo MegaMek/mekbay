@@ -1,6 +1,7 @@
 import type { FixedWingSupportEntity } from '../../entities/aero/fixed-wing-support-entity';
 import { getEquipmentEngineWeight } from '../equipment-engine-weight';
 import { hasAnyEquipmentFlag, nextHalfTon, standardRound } from './common';
+import { amount, buildCostReport, multiplier, type EntityCostEntry, type EntityCostReport } from './cost-report';
 
 const STRUCTURE_MODIFIERS: ReadonlyArray<readonly [string, number]> = [
   ['F_AMPHIBIOUS', 1.75],
@@ -38,6 +39,13 @@ export function calculateFixedWingSupportCost(
   entity: FixedWingSupportEntity,
   equipmentCost: number,
 ): number {
+  return calculateFixedWingSupportCostReport(entity, [amount('Equipment', equipmentCost)]).total;
+}
+
+export function calculateFixedWingSupportCostReport(
+  entity: FixedWingSupportEntity,
+  equipment: readonly EntityCostEntry[],
+): EntityCostReport {
   const tonnage = entity.tonnage();
   const engine = entity.mountedEngine();
   const structureWeight = floorSupportWeight(
@@ -52,8 +60,8 @@ export function calculateFixedWingSupportCost(
   const engineCost = engine.installed
     ? 5000 * getEquipmentEngineWeight(entity) * engine.descriptor().svCostMultiplier
     : 0;
-  const structuralCost = (chassisCost + engineCost + calculateFixedWingArmorCost(entity))
-    * (0.5 + entity.structuralTechRating() * 0.25);
+  const armorCost = calculateFixedWingArmorCost(entity);
+  const structuralTechMultiplier = 0.5 + entity.structuralTechRating() * 0.25;
 
   // This family deliberately considers only laser and PPC flags. Unlike other
   // support vehicles, plasma weapons and flamers do not enter either sum.
@@ -69,13 +77,13 @@ export function calculateFixedWingSupportCost(
     ? 0
     : nextHalfTon(amplifierWeaponTonnage / 10);
 
-  let cost = structuralCost
-    + 20000 * amplifierWeight
-    + 2000 * requiredHeatSinks
-    + equipmentCost;
-  if (entity.omni()) cost *= 1.25;
-  cost *= fixedWingPriceMultiplier(entity.motiveType(), tonnage);
-  return Math.round(cost);
+  return buildCostReport([
+    amount('Chassis', chassisCost), amount('Engine', engineCost), amount('Armor', armorCost),
+    multiplier('Structural Tech Rating', structuralTechMultiplier),
+    amount('Power Amplifiers', 20000 * amplifierWeight), amount('Heatsinks', 2000 * requiredHeatSinks),
+    ...equipment, multiplier('Omni Multiplier', 1.25, entity.omni()),
+    multiplier('Weight Multiplier', fixedWingPriceMultiplier(entity.motiveType(), tonnage)),
+  ], true);
 }
 
 function fixedWingBaseChassisValue(tonnage: number): number {

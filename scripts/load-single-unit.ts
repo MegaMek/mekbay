@@ -16,8 +16,18 @@ import * as path from 'path';
 import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
 import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
+import { AeroEntity } from '../src/app/models/entity/entities/aero/aero-entity';
+import { SmallCraftEntity } from '../src/app/models/entity/entities/aero/small-craft-entity';
 import { MekEntity } from '../src/app/models/entity/entities/mek/mek-entity';
 import { loadQuirkResolver } from './quirk-fixture';
+import { formatBattleValueDetails, formatCostReport, formatDiagnosticNumber } from './unit-diagnostics';
+import { calculateMekWeightBreakdown } from '../src/app/models/entity/utils/weight/mek-weight';
+import { ProtoMekEntity } from '../src/app/models/entity/entities/protomek/protomek-entity';
+import { calculateProtoMekWeightBreakdown } from '../src/app/models/entity/utils/weight/protomek-weight';
+import { VehicleEntity } from '../src/app/models/entity/entities/vehicle/vehicle-entity';
+import { calculateVehicleWeightBreakdown } from '../src/app/models/entity/utils/weight/vehicle-weight';
+import { calculateSupportVehicleWeightBreakdown } from '../src/app/models/entity/utils/weight/support-vehicle-weight';
+import { calculateFighterWeightBreakdown } from '../src/app/models/entity/utils/weight/fighter-weight';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CLI argument parsing
@@ -83,6 +93,118 @@ function main() {
   const content = fs.readFileSync(INPUT_FILE, 'utf-8');
 
   const { entity } = parseEntity(content, fileName, equipmentRegistry, { quirkResolver });
+  const displayName = [entity.chassis(), entity.model()].filter(Boolean).join(' ');
+
+  console.log(`\n${'═'.repeat(104)}`);
+  console.log(`  UNIT SUMMARY: ${displayName}`);
+  console.log('═'.repeat(104));
+  console.log(`  Entity type:       ${entity.entityType}`);
+  console.log(`  Unit type:         ${entity.unitType()}`);
+  console.log(`  Unit subtype:      ${entity.unitSubtype()}`);
+  console.log(`  UUID:              ${entity.uuid()}`);
+  console.log(`  MUL ID:            ${entity.mulId()}`);
+  console.log(`  Year:              ${entity.year()} (original: ${entity.originalBuildYear()})`);
+  console.log(`  Tech:              ${entity.techBase()}${entity.mixedTech() ? ' mixed' : ''}, rules level ${entity.rulesLevel()}`);
+  console.log(`  Tech rating:       ${entity.techRating()}`);
+  console.log(`  Tonnage:           ${formatDiagnosticNumber(entity.tonnage())}`);
+  console.log(`  Motive type:       ${entity.motiveType()}`);
+  console.log(`  Movement:          walk ${entity.originalWalkMP()}, run ${entity.maxRunMP()}, jump ${entity.jumpMP()}, UMU ${entity.umuMP()}`);
+  console.log(`  Engine:            ${entity.mountedEngine().type()}, rating ${entity.mountedEngine().rating}, ${entity.mountedEngine().techBase}`);
+  console.log(`  Armor points:      ${entity.totalArmorPoints()}`);
+  console.log(`  Internal points:   ${entity.totalInternalPoints()}`);
+  console.log(`  Military:          ${entity.isMilitary()}`);
+  console.log(`  Source:            ${entity.source().map(source => source.abbrev).join(', ') || '<none>'}`);
+  console.log(`  Implicit systems:  ${entity.implicitSystemEquipment().map(equipment => equipment.name).join(', ') || '<none>'}`);
+  console.log(`  Auto Clan CASE:    ${[...entity.automaticClanCaseLocations()].join(', ') || '<none>'}`);
+  console.log(`  Implicit CASE cost:${[...entity.implicitClanCaseLocations()].join(', ') || ' <none>'}`);
+
+  if (entity instanceof AeroEntity) {
+    console.log('\n  Aerospace construction:');
+    console.log(`    fuel=${entity.fuel()} heatSinks=${entity.heatSinkCount()} sinkType=${entity.heatSinkType()}`);
+    console.log(`    SI=${entity.structuralIntegrity()} cockpit=${entity.cockpitType()}`);
+    if (entity.entityType === 'Aero' || entity.entityType === 'ConvFighter') {
+      const weight = calculateFighterWeightBreakdown(entity);
+      for (const [category, value] of Object.entries(weight)) {
+        console.log(`    ${category.padEnd(20)} ${formatDiagnosticNumber(value)}`);
+      }
+    }
+  }
+  if (entity instanceof SmallCraftEntity) {
+    console.log(`    design=${entity.designType()}`);
+    console.log(`    crew=${entity.crew()} officers=${entity.officers()} gunners=${entity.gunners()} passengers=${entity.passengers()}`);
+    console.log(`    marines=${entity.marines()} battleArmor=${entity.battleArmor()} otherPassengers=${entity.otherPassenger()}`);
+    console.log(`    lifeBoats=${entity.lifeboats()} escapePods=${entity.escapePods()}`);
+  }
+  if (entity instanceof MekEntity) {
+    const weight = calculateMekWeightBreakdown(entity);
+    console.log('\n  Construction weight:');
+    for (const [category, value] of Object.entries(weight)) {
+      console.log(`    ${category.padEnd(20)} ${formatDiagnosticNumber(value)}`);
+    }
+  }
+  if (entity instanceof ProtoMekEntity) {
+    const weight = calculateProtoMekWeightBreakdown(entity);
+    console.log('\n  Construction weight:');
+    for (const [category, value] of Object.entries(weight)) {
+      console.log(`    ${category.padEnd(20)} ${formatDiagnosticNumber(value)}`);
+    }
+  }
+  if (entity instanceof VehicleEntity) {
+    const weight = entity.isSupportVehicle()
+      ? calculateSupportVehicleWeightBreakdown(entity)
+      : calculateVehicleWeightBreakdown(entity);
+    console.log('\n  Vehicle construction weight:');
+    for (const [category, value] of Object.entries(weight)) {
+      console.log(`    ${category.padEnd(20)} ${formatDiagnosticNumber(value)}`);
+    }
+  }
+
+  console.log('\n  Armor by location:');
+  for (const [location, armor] of entity.armorValues()) {
+    const mountedArmor = entity.armorByLocation().get(location);
+    console.log(`    ${location.padEnd(12)} front=${armor.front} rear=${armor.rear} type=${mountedArmor?.armor.id ?? '<none>'}`);
+  }
+
+  console.log('\n  Structure by location:');
+  for (const [location, structure] of entity.structureByLocation()) {
+    console.log(`    ${location.padEnd(12)} type=${structure.structure.id} tonnage=${formatDiagnosticNumber(structure.tonnage)}`);
+  }
+
+  console.log(`\n${'═'.repeat(104)}`);
+  console.log(`  MOUNTED EQUIPMENT (${entity.equipment().length})`);
+  console.log('═'.repeat(104));
+  for (const mount of entity.equipment()) {
+    const locations = mount.getOccupiedLocations().join(', ') || mount.location || 'Unallocated';
+    const cost = mount.getCost(entity);
+    const bv = mount.getBV(entity);
+    const tonnage = mount.getTonnage(entity);
+    const linked = entity.getLinkedMount(mount)?.mountId;
+    const linking = entity.getLinkingMount(mount)?.mountId;
+    console.log(`  ${mount.mountId}: ${mount.equipment?.name ?? mount.equipmentId}`);
+    console.log(`    location=${locations} size=${mount.size ?? 1} tonnage=${tonnage === undefined ? '<unresolved>' : formatDiagnosticNumber(tonnage)} rear=${mount.rearMounted} omni=${mount.omniPodMounted}`);
+    console.log(`    cost=${cost === undefined ? '<variable/unresolved>' : formatDiagnosticNumber(cost)} BV=${formatDiagnosticNumber(bv)}`);
+    if (linked || linking) console.log(`    linked=${linked ?? '-'} linking=${linking ?? '-'}`);
+    if (mount.secondEquipment) console.log(`    paired=${mount.secondEquipment.name}`);
+  }
+
+  console.log(`\n${'═'.repeat(104)}`);
+  console.log(`  TRANSPORTERS (${entity.transporters().length})`);
+  console.log('═'.repeat(104));
+  if (entity.transporters().length === 0) console.log('  <none>');
+  for (const transporter of entity.transporters()) {
+    console.log(`  ${JSON.stringify(transporter)}`);
+  }
+
+  console.log(`\n${'═'.repeat(104)}`);
+  console.log('  COST DETAILS');
+  console.log('═'.repeat(104));
+  for (const line of formatCostReport(entity.costDetails())) console.log(`  ${line}`);
+
+  console.log(`\n${'═'.repeat(104)}`);
+  console.log(`  BV DETAILS — ${formatDiagnosticNumber(entity.battleValue())}`);
+  console.log('═'.repeat(104));
+  for (const line of formatBattleValueDetails(entity.battleValueDetails())) console.log(`  ${line}`);
+
   if (entity instanceof MekEntity) {
     console.log(`\nParsed Mek: ${entity.displayName()}`);
     console.log(`Weight Class: ${entity.weightClass()}`);
@@ -100,9 +222,6 @@ function main() {
     }
     // ── Critical Slot Grid (3-column layout) ──
     const grid = entity.criticalSlotGrid();
-    const equip = entity.equipment();
-    const mountIndex = new Map(equip.map(m => [m.mountId, m]));
-
     const LOC_NAMES: Record<string, string> = {
       HD: 'Head', LA: 'Left Arm', RA: 'Right Arm',
       LT: 'Left Torso', CT: 'Center Torso', RT: 'Right Torso',
@@ -136,8 +255,7 @@ function main() {
       if (s.type === 'empty') label = '-Empty-';
       else if (s.type === 'system') label = s.systemType ?? 'System';
       else {
-        const mount = mountIndex.get(s.mountId!);
-        label = mount?.equipmentId ?? `[${s.mountId}]`;
+        label = s.mount.equipmentId;
       }
       const flags = [s.armored ? '(A)' : '', s.omniPod ? '(O)' : ''].filter(Boolean).join('');
       return `${String(i + 1).padStart(2)}. ${label}${flags ? ' ' + flags : ''}`;

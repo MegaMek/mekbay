@@ -145,6 +145,16 @@ export class CBTForceUnit extends ForceUnit {
 
     getInventoryControlSelectedAmmo(entry: MountedEquipment, mode?: string | null): AmmoEquipmentType | null {
         if (!(entry.equipment instanceof WeaponEquipment) || entry.equipment.ammoType === 'NA') return null;
+        const intrinsicAmmo = entry.linkedWith?.find(linked => linked instanceof MountedAmmo && linked.intrinsicOneShotAmmo);
+        if (intrinsicAmmo) {
+            // Rule evaluation needs only the selected profile. Going through the
+            // ammo summary also evaluates the source's availability, which checks
+            // this parent weapon's rule state and causes a reactive self-cycle.
+            const selectedAmmo = intrinsicAmmo.ammo
+                ? this.getAvailableEquipment()[intrinsicAmmo.ammo]
+                : intrinsicAmmo.equipment;
+            return selectedAmmo instanceof AmmoEquipment ? selectedAmmo : null;
+        }
         const summary = getInventoryControlModeAmmoSummary(entry, this.getAvailableEquipment(), this.getInventoryControlRules(), mode);
         return resolveInventoryControlSelectedAmmoOption(
             summary.options,
@@ -1008,16 +1018,20 @@ export class CBTForceUnit extends ForceUnit {
             }
             if (item instanceof MountedAmmo) {
                 item.ammo = undefined;
-                const componentIndexText = item.id.split('#').pop();
-                const [componentIndexRaw, binIndexRaw] = (componentIndexText ?? '').split('.');
-                const componentIndex = Number(componentIndexRaw);
-                const binIndex = Number(binIndexRaw ?? 0);
-                const component = Number.isInteger(componentIndex) ? this.unit.comp[componentIndex] : undefined;
-                const binCount = Math.max(1, component?.q ?? 1);
-                const originalTotalAmmo = component?.q2 || (item.getMaxShots() * binCount) || 0;
-                const baseBinAmmo = Math.floor(originalTotalAmmo / binCount);
-                const extraBinAmmo = originalTotalAmmo % binCount;
-                item.totalAmmo = baseBinAmmo + (binIndex < extraBinAmmo ? 1 : 0) || undefined;
+                if (item.intrinsicOneShotAmmo && item.parent?.equipment instanceof WeaponEquipment) {
+                    item.totalAmmo = item.parent.equipment.oneShotCount;
+                } else {
+                    const componentIndexText = item.id.split('#').pop();
+                    const [componentIndexRaw, binIndexRaw] = (componentIndexText ?? '').split('.');
+                    const componentIndex = Number(componentIndexRaw);
+                    const binIndex = Number(binIndexRaw ?? 0);
+                    const component = Number.isInteger(componentIndex) ? this.unit.comp[componentIndex] : undefined;
+                    const binCount = Math.max(1, component?.q ?? 1);
+                    const originalTotalAmmo = component?.q2 || (item.getMaxShots() * binCount) || 0;
+                    const baseBinAmmo = Math.floor(originalTotalAmmo / binCount);
+                    const extraBinAmmo = originalTotalAmmo % binCount;
+                    item.totalAmmo = baseBinAmmo + (binIndex < extraBinAmmo ? 1 : 0) || undefined;
+                }
             }
             if (item.states && item.states.size > 0) {
                 item.states.forEach((value, key) => {

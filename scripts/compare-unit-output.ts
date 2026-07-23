@@ -64,6 +64,14 @@ import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { UnitMetadataBuilder } from '../src/app/utils/unit-metadata-builder';
 import type { Sourcebook } from '../src/app/models/sourcebook.model';
 import type { Quirk } from '../src/app/models/quirks.model';
+import {
+  findReport,
+  indexReportDirectory,
+  parseAlphaStrikeReport,
+  parseTechLevelReport,
+  type ReportIndex,
+} from './unit-report-oracles';
+import { getOracleFieldName, isCalculableLoadoutTons } from './loadout-tonnage-oracle';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types
@@ -71,7 +79,14 @@ import type { Quirk } from '../src/app/models/quirks.model';
 
 type CompareType = 'exact' | 'numeric' | 'setCompare' | 'componentSet' | 'skip';
 type ParityStatus = 'verified' | 'partial' | 'missing';
-type IssueKind = 'value-mismatch' | 'missing-output' | 'output-schema';
+type IssueKind =
+  | 'value-mismatch'
+  | 'missing-output'
+  | 'output-schema'
+  | 'oracle-conflict'
+  | 'oracle-report-invalid'
+  | 'oracle-report-missing';
+type OracleSource = 'units-json' | 'tech-level-report' | 'alpha-strike-report';
 
 interface FieldCheck {
   field: string;
@@ -92,7 +107,19 @@ interface FieldIssue {
   field: string;
   expected: unknown;
   actual: unknown;
+  source?: OracleSource;
   message?: string;
+}
+
+interface ReportOracles {
+  techLevel: ReportIndex;
+  alphaStrike: ReportIndex;
+}
+
+interface OracleExpectation {
+  field: string;
+  expected: unknown;
+  source: OracleSource;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -115,6 +142,7 @@ const CHECKED_FIELDS: FieldCheck[] = [
   { field: 'model',         compare: 'exact', parity: 'verified' },
   { field: 'year',          compare: 'exact', parity: 'verified' },
   { field: 'tons',          compare: 'exact', parity: 'verified' },
+  { field: 'effectiveTonnage', compare: 'numeric', tolerance: 0, parity: 'partial' },
   { field: 'omni',          compare: 'exact', parity: 'verified' },
   { field: 'role',          compare: 'exact', parity: 'verified' },
   { field: 'source',        compare: 'setCompare', parity: 'verified' },
@@ -203,14 +231,17 @@ const CHECKED_FIELDS: FieldCheck[] = [
 // ═══════════════════════════════════════════════════════════════════════════
 
 const args = process.argv.slice(2);
+const PROJECT_ROOT = path.resolve(__dirname, '..');
+const WORKSPACE_ROOT = path.resolve(PROJECT_ROOT, '..');
 function getArg(name: string, defaultValue: string): string {
   const idx = args.indexOf(`--${name}`);
   return idx >= 0 && idx + 1 < args.length ? args[idx + 1] : defaultValue;
 }
 const hasFlag = (name: string) => args.includes(`--${name}`);
 
-const UNITS_JSON_PATH = path.resolve(getArg('oracle', String.raw`..\..\svgexport\units.json`));
-const UNIT_FILES_DIR = path.resolve(getArg('unitfiles', String.raw`..\..\mm-data\data\mekfiles`));
+const UNITS_JSON_PATH = path.resolve(getArg('oracle', path.join(WORKSPACE_ROOT, 'svgexport', 'units.json')));
+const UNIT_FILES_DIR = path.resolve(getArg('unitfiles', path.join(WORKSPACE_ROOT, 'mm-data', 'data', 'mekfiles')));
+const REPORT_ROOT = path.resolve(getArg('report-root', path.join(WORKSPACE_ROOT, 'svgexport')));
 const TYPE_FILTER = getArg('type', '');
 const UNIT_FILTER = getArg('unit', '');
 const FIELDS_FILTER = getArg('fields', '');
@@ -218,10 +249,13 @@ const EXCLUDE_FIELDS = getArg('exclude-fields', '');
 const VERBOSE = hasFlag('verbose');
 const FAIL_ON_MISMATCH = hasFlag('fail-on-mismatch');
 const ALL_NON_AS = hasFlag('all-non-as');
+const USE_REPORT_ORACLES = !hasFlag('no-report-oracles');
 const STRICT = FAIL_ON_MISMATCH || ALL_NON_AS;
 
-const VALUE_OPTIONS = new Set(['oracle', 'unitfiles', 'type', 'unit', 'fields', 'exclude-fields']);
-const FLAG_OPTIONS = new Set(['verbose', 'fail-on-mismatch', 'all-non-as']);
+const VALUE_OPTIONS = new Set([
+  'oracle', 'unitfiles', 'report-root', 'type', 'unit', 'fields', 'exclude-fields',
+]);
+const FLAG_OPTIONS = new Set(['verbose', 'fail-on-mismatch', 'all-non-as', 'no-report-oracles']);
 
 function validateArguments(): void {
   for (let index = 0; index < args.length; index++) {
@@ -318,7 +352,7 @@ const NULLABLE_STRING_FIELDS = new Set(['engine', 'engineHSType', 'structureType
 const NUMBER_FIELDS = new Set([
   'armor', 'armorPer', 'bv', 'cost', 'crewSize', 'dissipation', 'dpt', 'engineHS',
   'engineRating', 'heat', 'id', 'internal', 'jump', 'jump2', 'offSpeedFactor', 'omni',
-  'pv', 'run', 'run2', 'squadSize', 'squads', 'su', 'tons', 'umu', 'walk', 'walk2', 'year',
+  'loadoutTons', 'pv', 'run', 'run2', 'squadSize', 'squads', 'su', 'tons', 'umu', 'walk', 'walk2', 'year',
 ]);
 const STRING_ARRAY_FIELDS = new Set(['features', 'published', 'quirks', 'sheets', 'source']);
 const COMPONENT_REQUIRED_FIELDS = new Set(['id', 'n', 'p', 'q', 't']);
@@ -498,7 +532,8 @@ function validateOracleDocument(value: unknown): OracleDocument {
   if (errors.length > 0) throw new Error(`Invalid oracle document: ${errors.join('; ')}`);
 
   const units = value['units'] as unknown[];
-  const fieldsToCheck = CHECKED_FIELDS.filter(check => !check.field.startsWith('as.'));
+  const fieldsToCheck = CHECKED_FIELDS.filter(check =>
+    !check.field.startsWith('as.'));
   for (let index = 0; index < units.length; index++) {
     const unit = units[index];
     if (!isPlainObject(unit)) {
@@ -507,14 +542,15 @@ function validateOracleDocument(value: unknown): OracleDocument {
     }
 
     for (const check of fieldsToCheck) {
-      if (!hasOwn(unit, check.field)) {
-        if (!OPTIONAL_FIELDS.has(check.field)) {
-          errors.push(`units[${index}].${check.field} is required`);
+      const oracleField = getOracleFieldName(check.field);
+      if (!hasOwn(unit, oracleField)) {
+        if (!OPTIONAL_FIELDS.has(oracleField)) {
+          errors.push(`units[${index}].${oracleField} is required`);
         }
         continue;
       }
-      const error = validateNonAsField(check.field, unit[check.field]);
-      if (error) errors.push(`units[${index}].${check.field}: ${error}`);
+      const error = validateNonAsField(oracleField, unit[oracleField]);
+      if (error) errors.push(`units[${index}].${oracleField}: ${error}`);
     }
 
     if (!hasOwn(unit, 'as') || !isPlainObject(unit['as'])) {
@@ -609,7 +645,11 @@ function validateRegistry(entries: OracleEntry[]): void {
   const oracleAsFields = new Set(entries.flatMap(entry => Object.keys(entry.as ?? {})));
   const registryFields = new Set(CHECKED_FIELDS.map(check => check.field));
   const coveredTopLevel = new Set(
-    CHECKED_FIELDS.map(check => check.field.startsWith('as.') ? 'as' : check.field),
+    CHECKED_FIELDS
+      .map(check => {
+        if (check.field.startsWith('as.')) return 'as';
+        return getOracleFieldName(check.field);
+      }),
   );
 
   const missingTopLevel = [...oracleFields].filter(field => !coveredTopLevel.has(field));
@@ -716,6 +756,87 @@ function validateOutputField(check: FieldCheck, value: unknown): string | null {
   return check.field.startsWith('as.') ? null : validateNonAsField(check.field, value);
 }
 
+function readReport(index: ReportIndex, unitName: string): string {
+  const reportPath = findReport(index, unitName);
+  if (!reportPath) throw new Error(`Report not found in ${index.directory}`);
+  return fs.readFileSync(reportPath, 'utf-8');
+}
+
+function getReportExpectations(
+  oracle: OracleEntry,
+  checks: readonly FieldCheck[],
+  reports: ReportOracles | undefined,
+): { expectations: OracleExpectation[]; issues: FieldIssue[] } {
+  if (!reports) return { expectations: [], issues: [] };
+
+  const activeFields = new Set(checks.map(check => check.field));
+  const expectations: OracleExpectation[] = [];
+  const issues: FieldIssue[] = [];
+  const add = (source: OracleSource, field: string, expected: unknown): void => {
+    if (activeFields.has(field) && expected !== undefined) expectations.push({ source, field, expected });
+  };
+  const parse = <T>(source: OracleSource, index: ReportIndex, parser: (text: string) => T): T | undefined => {
+    try {
+      return parser(readReport(index, oracle.name));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      issues.push({
+        kind: message.startsWith('Report not found') ? 'oracle-report-missing' : 'oracle-report-invalid',
+        field: source,
+        expected: oracle.name,
+        actual: undefined,
+        source,
+        message,
+      });
+      return undefined;
+    }
+  };
+
+  if (['level', 'techBase', 'year'].some(field => activeFields.has(field))) {
+    const report = parse('tech-level-report', reports.techLevel, parseTechLevelReport);
+    if (report) {
+      add('tech-level-report', 'level', report.staticLevel);
+      add('tech-level-report', 'techBase', report.techBase);
+      add('tech-level-report', 'year', report.introductionYear);
+    }
+  }
+
+  if ([...activeFields].some(field => field === 'pv' || field.startsWith('as.'))) {
+    const report = parse('alpha-strike-report', reports.alphaStrike, parseAlphaStrikeReport);
+    if (report) {
+      add('alpha-strike-report', 'pv', report.pointValue);
+      add('alpha-strike-report', 'as.PV', report.pointValue);
+      add('alpha-strike-report', 'as.TP', report.typeCode);
+      add('alpha-strike-report', 'as.SZ', report.size);
+      add('alpha-strike-report', 'as.TMM', report.tmm);
+      add('alpha-strike-report', 'as.Arm', report.armor);
+      add('alpha-strike-report', 'as.Str', report.structure);
+      add('alpha-strike-report', 'as.Th', report.threshold ?? -1);
+      add('alpha-strike-report', 'as.OV', report.overheat);
+      add('alpha-strike-report', 'as.dmg', report.damage);
+      add('alpha-strike-report', 'as.usesArcs', report.usesArcs);
+      add('alpha-strike-report', 'as.usesTh', report.threshold !== undefined);
+    }
+  }
+
+  for (const expectation of expectations) {
+    if (hasOwnPath(oracle, expectation.field)) {
+      const jsonExpected = getFieldValue(oracle, expectation.field);
+      if (!deepEqual(jsonExpected, expectation.expected)) {
+        issues.push({
+          kind: 'oracle-conflict',
+          field: expectation.field,
+          expected: jsonExpected,
+          actual: expectation.expected,
+          source: expectation.source,
+          message: 'units.json and report oracle disagree',
+        });
+      }
+    }
+  }
+  return { expectations, issues };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Single-unit processing
 // ═══════════════════════════════════════════════════════════════════════════
@@ -727,6 +848,7 @@ function processUnit(
   builder: UnitMetadataBuilder,
   sourcebooks: ReadonlyMap<string, Sourcebook>,
   quirks: ReadonlyMap<string, Quirk>,
+  reports?: ReportOracles,
 ): CompareResult {
   const unitName = `${oracle.chassis} ${oracle.model}`.trim();
 
@@ -769,8 +891,24 @@ function processUnit(
     const metadata = builder.build(entity, oracle.unitFile);
 
     // Compare fields
-    const issues: FieldIssue[] = [];
+    const reportOracle = getReportExpectations(oracle, checks, reports);
+    const issues: FieldIssue[] = [...reportOracle.issues];
     for (const check of checks) {
+      if (check.field === 'effectiveTonnage') {
+        const expected = oracle.loadoutTons;
+        if (!isCalculableLoadoutTons(expected)) continue;
+        const actual = entity.effectiveTonnage();
+        if (!compareField(check, expected, actual)) {
+          issues.push({
+            kind: 'value-mismatch',
+            field: check.field,
+            expected,
+            actual,
+            source: 'units-json',
+          });
+        }
+        continue;
+      }
       const expected = getFieldValue(oracle, check.field);
       const actual = getFieldValue(metadata, check.field);
 
@@ -780,6 +918,7 @@ function processUnit(
           field: check.field,
           expected,
           actual,
+          source: 'units-json',
           message: 'required oracle field is absent from generated metadata',
         });
         continue;
@@ -793,6 +932,7 @@ function processUnit(
             field: check.field,
             expected,
             actual,
+            source: 'units-json',
             message: schemaError,
           });
           continue;
@@ -800,7 +940,34 @@ function processUnit(
       }
 
       if (!compareField(check, expected, actual)) {
-        issues.push({ kind: 'value-mismatch', field: check.field, expected, actual });
+        issues.push({ kind: 'value-mismatch', field: check.field, expected, actual, source: 'units-json' });
+      }
+    }
+
+    for (const expectation of reportOracle.expectations) {
+      const check = checks.find(candidate => candidate.field === expectation.field)!;
+      const actual = expectation.field === 'effectiveTonnage'
+        ? entity.effectiveTonnage()
+        : getFieldValue(metadata, expectation.field);
+      const hasActual = expectation.field === 'effectiveTonnage'
+        || hasOwnPath(metadata, expectation.field);
+      if (!hasActual || actual === undefined) {
+        issues.push({
+          kind: 'missing-output',
+          field: expectation.field,
+          expected: expectation.expected,
+          actual,
+          source: expectation.source,
+          message: 'required report-oracle field is absent from generated metadata',
+        });
+      } else if (!compareField(check, expectation.expected, actual)) {
+        issues.push({
+          kind: 'value-mismatch',
+          field: expectation.field,
+          expected: expectation.expected,
+          actual,
+          source: expectation.source,
+        });
       }
     }
 
@@ -863,8 +1030,9 @@ function printResults(
         console.log(`  ${r.unitName}:`);
         for (const issue of r.issues) {
           const message = issue.message ? ` (${issue.message})` : '';
+          const source = issue.source ? ` [${issue.source}]` : '';
           console.log(
-            `    ${issue.kind}:${issue.field}${message}: `
+            `    ${issue.kind}:${issue.field}${source}${message}: `
             + `expected=${JSON.stringify(issue.expected)} actual=${JSON.stringify(issue.actual)}`,
           );
         }
@@ -875,8 +1043,9 @@ function printResults(
         console.log(`  ${r.unitName}:`);
         for (const issue of r.issues) {
           const message = issue.message ? ` (${issue.message})` : '';
+          const source = issue.source ? ` [${issue.source}]` : '';
           console.log(
-            `    ${issue.kind}:${issue.field}${message}: `
+            `    ${issue.kind}:${issue.field}${source}${message}: `
             + `expected=${JSON.stringify(issue.expected)} actual=${JSON.stringify(issue.actual)}`,
           );
         }
@@ -948,6 +1117,11 @@ function main() {
   const equipmentRegistry = loadEquipmentRegistry();
   const sourcebooks = loadSourcebooks();
   const quirks = loadQuirks();
+  const reports: ReportOracles | undefined = USE_REPORT_ORACLES ? {
+    alphaStrike: indexReportDirectory(path.join(REPORT_ROOT, 'alpha-strike')),
+    techLevel: indexReportDirectory(path.join(REPORT_ROOT, 'tech-level')),
+  } : undefined;
+  if (reports) console.log(`Report oracles: ${REPORT_ROOT}`);
   const builder = new UnitMetadataBuilder();
   const selectedChecks = getActiveChecks();
   const comparedChecks = selectedChecks.filter(check => check.parity !== 'missing');
@@ -973,7 +1147,7 @@ function main() {
   let processed = 0;
 
   for (const entry of entries) {
-    const result = processUnit(entry, comparedChecks, equipmentRegistry, builder, sourcebooks, quirks);
+    const result = processUnit(entry, comparedChecks, equipmentRegistry, builder, sourcebooks, quirks, reports);
     results.push(result);
     processed++;
 

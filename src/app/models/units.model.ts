@@ -151,6 +151,7 @@ export interface Unit {
     year: number;
     weightClass: WeightClass;
     tons: number;
+    loadoutTons: number;
     offSpeedFactor: number;
     bv: number;
     pv: number;

@@ -12,20 +12,22 @@ import type { WarShipEntity } from '../../entities/largecraft/warship-entity';
 import type { MekEntity } from '../../entities/mek/mek-entity';
 import type { ProtoMekEntity } from '../../entities/protomek/protomek-entity';
 import { isVehicleEntity } from '../entity-type-guards';
-import { calculateAeroFighterCost, calculateConventionalFighterCost } from './aerospace';
-import { calculateMountedEquipmentCost } from './equipment-total';
-import { calculateFixedWingSupportCost } from './fixed-wing-support';
-import { calculateBattleArmorCost, calculateInfantryCost } from './infantry';
+import { calculateAeroFighterCostReport, calculateConventionalFighterCostReport } from './aerospace';
+import { calculateMountedEquipmentCostBreakdown } from './equipment-total';
+import { amount, buildCostReport } from './cost-report';
+import type { EntityCostReport } from './cost-report';
+import { calculateFixedWingSupportCostReport } from './fixed-wing-support';
+import { calculateBattleArmorCostReport, calculateInfantryCostReport } from './infantry';
 import {
-  calculateDropShipCost,
-  calculateJumpShipCost,
-  calculateSpaceStationCost,
-  calculateWarShipCost,
+  calculateDropShipCostReport,
+  calculateJumpShipCostReport,
+  calculateSpaceStationCostReport,
+  calculateWarShipCostReport,
 } from './large-craft';
-import { calculateMekCost } from './meks';
-import { calculateProtoMekCost } from './protomeks';
-import { calculateSmallCraftCost } from './small-craft';
-import { calculateVehicleCost } from './vehicles';
+import { calculateMekCostReport } from './meks';
+import { calculateProtoMekCostReport } from './protomeks';
+import { calculateSmallCraftCostReport } from './small-craft';
+import { calculateVehicleCostReport } from './vehicles';
 
 export interface EntityCostOptions {
   /** Excludes ammunition other than coolant pods. MegaMek's exported cost uses false. */
@@ -44,43 +46,54 @@ export function calculateEntityCost(
   entity: BaseEntity,
   options: EntityCostOptions = {},
 ): number {
+  return calculateEntityCostDetails(entity, options).total;
+}
+
+/** Returns the canonical calculation report used by `calculateEntityCost`. */
+export function calculateEntityCostDetails(
+  entity: BaseEntity,
+  options: EntityCostOptions = {},
+): EntityCostReport {
   const ignoreAmmo = options.ignoreAmmo ?? false;
-  const equipmentCost = calculateMountedEquipmentCost(entity, ignoreAmmo);
+  const equipment = calculateMountedEquipmentCostBreakdown(entity, ignoreAmmo);
+  const equipmentCost = equipment.total;
 
   // MegaMek prices a handheld weapon's equipment once as its structure and
   // once as its equipment payload.
-  if (entity.entityType === 'HandheldWeapon') return equipmentCost * 2;
-  if (entity.entityType === 'ProtoMek') {
-    return calculateProtoMekCost(entity as ProtoMekEntity, equipmentCost);
+  if (entity.entityType === 'HandheldWeapon') {
+    return buildCostReport([amount('Structure', equipmentCost), ...equipment.entries]);
   }
-  if (isVehicleEntity(entity)) return calculateVehicleCost(entity, equipmentCost);
-  if (entity.entityType === 'Aero') return calculateAeroFighterCost(entity as AeroEntity, equipmentCost);
+  if (entity.entityType === 'ProtoMek') {
+    return calculateProtoMekCostReport(entity as ProtoMekEntity, equipment.entries);
+  }
+  if (isVehicleEntity(entity)) return calculateVehicleCostReport(entity, equipment.entries);
+  if (entity.entityType === 'Aero') return calculateAeroFighterCostReport(entity as AeroEntity, equipment.entries);
   if (entity.entityType === 'ConvFighter') {
-    return calculateConventionalFighterCost(entity as ConvFighterEntity, equipmentCost);
+    return calculateConventionalFighterCostReport(entity as ConvFighterEntity, equipment.entries);
   }
   if (entity.entityType === 'BattleArmor') {
-    return calculateBattleArmorCost(entity as BattleArmorEntity, equipmentCost);
+    return calculateBattleArmorCostReport(entity as BattleArmorEntity, equipment.entries);
   }
-  if (entity.entityType === 'Infantry') return calculateInfantryCost(entity as InfantryEntity);
-  if (entity.entityType === 'Mek') return calculateMekCost(entity as MekEntity, equipmentCost);
+  if (entity.entityType === 'Infantry') return calculateInfantryCostReport(entity as InfantryEntity);
+  if (entity.entityType === 'Mek') return calculateMekCostReport(entity as MekEntity, equipment.entries);
   if (entity.entityType === 'SmallCraft') {
-    return calculateSmallCraftCost(entity as SmallCraftEntity, equipmentCost);
+    return calculateSmallCraftCostReport(entity as SmallCraftEntity, equipment.entries);
   }
   if (entity.entityType === 'FixedWingSupport') {
-    return calculateFixedWingSupportCost(entity as FixedWingSupportEntity, equipmentCost);
+    return calculateFixedWingSupportCostReport(entity as FixedWingSupportEntity, equipment.entries);
   }
   if (entity.entityType === 'DropShip') {
-    return calculateDropShipCost(entity as DropShipEntity, equipmentCost);
+    return calculateDropShipCostReport(entity as DropShipEntity, equipment.entries);
   }
   if (entity.entityType === 'JumpShip') {
-    return calculateJumpShipCost(entity as JumpShipEntity, equipmentCost);
+    return calculateJumpShipCostReport(entity as JumpShipEntity, equipment.entries);
   }
   if (entity.entityType === 'WarShip') {
-    return calculateWarShipCost(entity as WarShipEntity, equipmentCost);
+    return calculateWarShipCostReport(entity as WarShipEntity, equipment.entries);
   }
   if (entity.entityType === 'SpaceStation') {
-    return calculateSpaceStationCost(entity as SpaceStationEntity, equipmentCost);
+    return calculateSpaceStationCostReport(entity as SpaceStationEntity, equipment.entries);
   }
 
-  return equipmentCost;
+  return buildCostReport([amount('Equipment', equipmentCost)]);
 }

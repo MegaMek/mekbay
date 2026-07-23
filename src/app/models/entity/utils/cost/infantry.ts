@@ -2,9 +2,16 @@ import type { BattleArmorEntity } from '../../entities/infantry/battle-armor-ent
 import type { InfantryEntity } from '../../entities/infantry/infantry-entity';
 import { WeaponEquipment } from '../../../equipment.model';
 import { getEquipmentCost } from './equipment-pricing';
+import { amount, buildCostReport, multiplier, type EntityCostEntry, type EntityCostReport } from './cost-report';
 
 /** Mirrors MegaMek's BattleArmorCostCalculator, including training costs. */
 export function calculateBattleArmorCost(entity: BattleArmorEntity, equipmentCost: number): number {
+  return calculateBattleArmorCostReport(entity, [amount('Equipment', equipmentCost)]).total;
+}
+
+export function calculateBattleArmorCostReport(
+  entity: BattleArmorEntity, equipment: readonly EntityCostEntry[],
+): EntityCostReport {
   const weightClass = entity.weightClass();
   const propulsionMP = entity.propulsionMP();
   const troopers = entity.trooperCount();
@@ -34,21 +41,24 @@ export function calculateBattleArmorCost(entity: BattleArmorEntity, equipmentCos
   const armor = entity.uniformArmor()?.armor;
   if (armor?.cost === 'variable') throw new Error(`Unable to calculate armor cost for ${armor.id}`);
   const armorPerTrooper = entity.armorValues().get('Squad')?.front ?? 0;
-  const structureCost = [
-    chassisCost,
-    propulsionCost,
-    25000 * (entity.originalWalkMP() - 1),
-    manipulatorCost,
-    (typeof armor?.cost === 'number' ? armor.cost : 0) * armorPerTrooper,
-  ].reduce((total, cost) => total + Math.max(0, cost), 0);
   const clanMultiplier = entity.techBase() === 'Clan' ? 1.1 : 1;
   const trainingCost = entity.techBase() === 'Clan' ? 200000 : 150000;
-  return (structureCost * clanMultiplier + trainingCost + Math.max(0, equipmentCost))
-    * troopers;
+  return buildCostReport([
+    amount('Chassis', chassisCost), amount('Propulsion', propulsionCost),
+    amount('Ground Movement', 25000 * (entity.originalWalkMP() - 1)),
+    amount('Manipulators', manipulatorCost),
+    amount('Armor', (typeof armor?.cost === 'number' ? armor.cost : 0) * armorPerTrooper),
+    multiplier('Clan Multiplier', clanMultiplier, clanMultiplier !== 1),
+    amount('Training', trainingCost), ...equipment, multiplier('Trooper Multiplier', troopers),
+  ]);
 }
 
 /** Mirrors MegaMek's InfantryCostCalculator. */
 export function calculateInfantryCost(entity: InfantryEntity): number {
+  return calculateInfantryCostReport(entity).total;
+}
+
+export function calculateInfantryCostReport(entity: InfantryEntity): EntityCostReport {
   const troopers = entity.squadSize() * entity.squadCount();
   const primaryCount = (entity.squadSize() - entity.secondaryCount()) * entity.squadCount();
   const secondaryCount = troopers - primaryCount;
@@ -74,14 +84,17 @@ export function calculateInfantryCost(entity: InfantryEntity): number {
     total + (mount.location === 'Field Guns' && mount.equipment instanceof WeaponEquipment
       ? Math.max(0, getEquipmentCost(entity, mount) ?? 0)
       : 0), 0);
-  const platoonCost = (Math.max(0, weaponsCost) + Math.max(0, armorCost * troopers))
-    * calculateInfantryPriceMultiplier(entity);
+  const priceMultiplier = calculateInfantryPriceMultiplier(entity);
   const augmentationCost = entity.augmentations().reduce(
     (total, augmentation) => total + (MD_AUGMENTATION_COSTS[augmentation] ?? 0),
     0,
   ) * troopers;
-  return platoonCost + Math.max(0, fieldGunCost)
-    + (entity.mount() ? 5000 * entity.tonnage() : 0) + augmentationCost;
+  return buildCostReport([
+    amount('Weapons', weaponsCost), amount('Armor', armorCost * troopers),
+    multiplier('Platoon Multiplier', priceMultiplier), amount('Field Guns', fieldGunCost),
+    amount('Mount', entity.mount() ? 5000 * entity.tonnage() : 0),
+    amount('Augmentations', augmentationCost),
+  ]);
 }
 
 function calculateInfantryPriceMultiplier(entity: InfantryEntity): number {

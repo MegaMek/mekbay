@@ -1,5 +1,5 @@
 import type { BaseEntity } from '../../base-entity';
-import { BVCalculator } from './bv-calculator';
+import { BVCalculator, type BattleValueBreakdown } from './bv-calculator';
 import {
   AeroBVCalculator,
   BattleArmorBVCalculator,
@@ -35,4 +35,9 @@ export function getBVCalculator(entity: BaseEntity): BVCalculator {
 
 export function calculateBattleValue(entity: BaseEntity): number {
   return getBVCalculator(entity).calculateBaseBV();
+}
+
+/** Calculates the numeric BV and its structured report in one traversal. */
+export function calculateBattleValueDetails(entity: BaseEntity): BattleValueBreakdown {
+  return getBVCalculator(entity).calculate();
 }

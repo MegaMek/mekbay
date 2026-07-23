@@ -1,11 +1,14 @@
 import { firstValueFrom } from 'rxjs';
 import { SetAmmoDialogComponent, type SetAmmoDialogData } from '../components/set-ammo-dialog/set-ammo.dialog.component';
-import { AmmoEquipment, WeaponEquipment, type EquipmentMap } from '../models/equipment.model';
+import { AmmoEquipment, findIntrinsicAmmoForWeapon, WeaponEquipment, type EquipmentMap } from '../models/equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
-import { MountedAmmo, MountedEquipment  } from '../models/mounted-equipment.model';
+import { MountedAmmo, MountedEquipment } from '../models/mounted-equipment.model';
 import { type CriticalSlot, type LocationData } from '../models/force-serialization';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import type { CBTGameRules } from '../models/rules/game-rules';
+import type { Unit } from '../models/units.model';
+
+export const INTRINSIC_ONE_SHOT_AMMO_STATE = 'intrinsic_one_shot_ammo';
 
 export interface AmmoControlEntry {
     id: string;
@@ -131,6 +134,7 @@ function getInventoryComponentRef(entry: MountedEquipment): { componentIndex: nu
 }
 
 function getInventoryOriginalTotalAmmo(entry: MountedEquipment): number {
+    if (isIntrinsicOneShotAmmoMount(entry)) return entry.totalAmmo ?? 0;
     const componentRef = getInventoryComponentRef(entry);
     const component = componentRef === null ? undefined : entry.owner.getUnit().comp[componentRef.componentIndex];
     const originalAmmo = entry.equipment instanceof AmmoEquipment ? entry.equipment : null;
@@ -158,8 +162,12 @@ function createInventoryAmmoControlEntry(unit: CBTForceUnit, inventoryEntry: Mou
 
     const originalTotalAmmo = getInventoryOriginalTotalAmmo(inventoryEntry);
     const totalAmmo = inventoryEntry.totalAmmo ?? originalTotalAmmo;
+    const consumed = inventoryEntry.consumed ?? 0;
     const locationLabel = Array.from(inventoryEntry.locations ?? []).join('/') || 'Ammo';
-    const destroyed = unit.isEquipmentUnavailable(inventoryEntry);
+    const destroyed = unit.isEquipmentUnavailable(inventoryEntry)
+        || (isIntrinsicOneShotAmmoMount(inventoryEntry)
+            && !!inventoryEntry.parent
+            && unit.isEquipmentUnavailable(inventoryEntry.parent));
     return {
         id: `inventory:${inventoryEntry.id}`,
         owner: unit,
@@ -172,7 +180,7 @@ function createInventoryAmmoControlEntry(unit: CBTForceUnit, inventoryEntry: Mou
         originalAmmo: inventoryEntry.equipment,
         originalTotalAmmo,
         totalAmmo,
-        consumed: inventoryEntry.consumed ?? 0,
+        consumed,
         destroyed
     };
 }
@@ -181,6 +189,165 @@ function ammoMatchesWeapon(weapon: WeaponEquipment, ammo: AmmoEquipment): boolea
     if (weapon.ammoType === 'NA') return false;
     if (weapon.rackSize <= 0) return ammo.ammoType === weapon.ammoType;
     return ammo.ammoType === weapon.ammoType && ammo.rackSize === weapon.rackSize;
+}
+
+export function isIntrinsicOneShotAmmoMount(entry: MountedEquipment): entry is MountedAmmo {
+    return entry instanceof MountedAmmo && entry.intrinsicOneShotAmmo === true;
+}
+
+export function getIntrinsicOneShotAmmoMount(weaponEntry: MountedEquipment): MountedAmmo | null {
+    return weaponEntry.linkedWith?.find(isIntrinsicOneShotAmmoMount) ?? null;
+}
+
+/**
+ * Returns compatible catalog ammunition in the same stable order used by the
+ * ammo loadout dialog.
+ */
+export function getCompatibleCatalogAmmo(
+    originalAmmo: AmmoEquipment,
+    equipmentMap: EquipmentMap,
+    unit: Unit,
+    inventory: readonly MountedEquipment[],
+): AmmoEquipment[] {
+    return sortCompatibleAmmo(Object.values(equipmentMap)
+        .filter((equipment): equipment is AmmoEquipment =>
+            equipment instanceof AmmoEquipment
+            && originalAmmo.compatibleAmmo(equipment, unit, inventory)));
+}
+
+/**
+ * Materializes the intrinsic round for switchable one-shot weapons during unit
+ * initialization. The derived mount is the canonical runtime ammo record and is
+ * linked to its weapon solely to preserve the unit's source representation.
+ */
+export function materializeIntrinsicOneShotAmmoForInventory(
+    inventory: readonly MountedEquipment[],
+    equipmentMap: EquipmentMap,
+): MountedAmmo[] {
+    return inventory
+        .map(weaponEntry => materializeIntrinsicOneShotAmmo(weaponEntry, equipmentMap, inventory))
+        .filter((entry): entry is MountedAmmo => entry !== null);
+}
+
+function materializeIntrinsicOneShotAmmo(
+    weaponEntry: MountedEquipment,
+    equipmentMap: EquipmentMap,
+    inventory: readonly MountedEquipment[],
+): MountedAmmo | null {
+    if (!(weaponEntry.equipment instanceof WeaponEquipment)
+        || !weaponEntry.equipment.oneShotCount
+        || !weaponEntry.equipment.supportsSwitchableAmmo) {
+        return null;
+    }
+
+    const originalAmmo = findIntrinsicAmmoForWeapon(weaponEntry.equipment, equipmentMap);
+    if (!originalAmmo) return null;
+
+    const compatibleAmmo = getCompatibleCatalogAmmo(
+        originalAmmo,
+        equipmentMap,
+        weaponEntry.owner.getUnit(),
+        inventory,
+    );
+    const selectedAmmoId = weaponEntry.states.get(INTRINSIC_ONE_SHOT_AMMO_STATE);
+    const selectedAmmo = compatibleAmmo.find(ammo => ammo.internalName === selectedAmmoId) ?? originalAmmo;
+    const capacity = weaponEntry.equipment.oneShotCount;
+    const consumed = getIntrinsicOneShotConsumed(weaponEntry, capacity);
+    const existing = weaponEntry.linkedWith?.find(isIntrinsicOneShotAmmoMount);
+    const mount = existing ?? new MountedAmmo({
+        owner: weaponEntry.owner,
+        id: `${weaponEntry.id}:intrinsic-one-shot-ammo`,
+        name: originalAmmo.internalName,
+        locations: weaponEntry.locations,
+        equipment: originalAmmo,
+        parent: weaponEntry,
+        totalAmmo: capacity,
+        intrinsicOneShotAmmo: true,
+    });
+
+    mount.parent = weaponEntry;
+    mount.locations = weaponEntry.locations;
+    mount.ammo = selectedAmmo.internalName === originalAmmo.internalName ? undefined : selectedAmmo.internalName;
+    mount.totalAmmo = capacity;
+    mount.consumed = consumed || undefined;
+    mount.intrinsicOneShotAmmo = true;
+    weaponEntry.linkedWith = [
+        ...(weaponEntry.linkedWith ?? []).filter(linked => linked !== existing),
+        mount,
+    ];
+    return mount;
+}
+
+function getIntrinsicOneShotConsumed(weaponEntry: MountedEquipment, capacity: number): number {
+    const consumed = weaponEntry.critSlots?.[0]?.consumed ?? weaponEntry.consumed ?? 0;
+    return Math.max(0, Math.min(capacity, consumed));
+}
+
+function persistIntrinsicOneShotAmmo(
+    entry: AmmoControlEntry,
+    source: MountedAmmo,
+): void {
+    const parent = source.parent;
+    if (parent?.equipment instanceof WeaponEquipment) {
+        if (!source.ammo) {
+            parent.deleteState(INTRINSIC_ONE_SHOT_AMMO_STATE);
+        } else {
+            parent.setState(INTRINSIC_ONE_SHOT_AMMO_STATE, source.ammo);
+        }
+
+        if (parent.critSlots?.length) {
+            parent.critSlots[0].consumed = source.consumed || undefined;
+            parent.owner.setCritSlot(parent.critSlots[0]);
+        } else {
+            parent.consumed = source.consumed || undefined;
+        }
+        parent.owner.setInventoryEntry(parent);
+    }
+}
+
+/** Updates an ammo entry and persists it through its actual storage owner. */
+export function setAmmoEntryValue(
+    entry: AmmoControlEntry,
+    selectedAmmo: AmmoEquipment,
+    totalAmmo: number,
+    remaining: number,
+): void {
+    if (entry.sourceType === 'inventory') {
+        const source = entry.source as MountedEquipment;
+        const intrinsicCapacity = isIntrinsicOneShotAmmoMount(source)
+            && source.parent?.equipment instanceof WeaponEquipment
+            ? source.parent.equipment.oneShotCount
+            : undefined;
+        const nextTotalAmmo = intrinsicCapacity ?? Math.max(0, totalAmmo);
+        const nextConsumed = nextTotalAmmo - clamp(remaining, 0, nextTotalAmmo);
+        source.ammo = selectedAmmo.internalName === source.equipment?.internalName
+            ? undefined
+            : selectedAmmo.internalName;
+        source.totalAmmo = nextTotalAmmo;
+        source.consumed = nextConsumed;
+        if (isIntrinsicOneShotAmmoMount(source)) {
+            persistIntrinsicOneShotAmmo(entry, source);
+        } else {
+            entry.owner.setInventoryEntry(source);
+        }
+        return;
+    }
+
+    const source = entry.source as CriticalSlot;
+    const nextTotalAmmo = Math.max(0, totalAmmo);
+    const nextConsumed = nextTotalAmmo - clamp(remaining, 0, nextTotalAmmo);
+    if (selectedAmmo.internalName !== source.name) {
+        if (!source.originalName) {
+            source.originalName = source.name;
+        } else if (selectedAmmo.internalName === source.originalName) {
+            delete source.originalName;
+        }
+        source.name = selectedAmmo.internalName;
+        source.eq = selectedAmmo;
+    }
+    source.totalAmmo = nextTotalAmmo;
+    source.consumed = nextConsumed;
+    entry.owner.setCritSlot(source);
 }
 
 function getAmmoCompatibilityKey(equipment: WeaponEquipment | AmmoEquipment): string {
@@ -212,16 +379,24 @@ function compareAmmoControlEntryOrder(a: AmmoControlEntry, b: AmmoControlEntry):
 export function getAmmoControlEntriesForWeapon(equipment: MountedEquipment, context: HandlerContext): AmmoControlEntry[] {
     if (!(equipment.equipment instanceof WeaponEquipment)) return [];
     const equipmentMap = context.dataService.getEquipments();
+    const intrinsicAmmo = getIntrinsicOneShotAmmoMount(equipment);
+    if (equipment.equipment.oneShotCount) {
+        const intrinsicAmmoEntry = intrinsicAmmo
+            ? createInventoryAmmoControlEntry(equipment.owner, intrinsicAmmo, equipmentMap)
+            : null;
+        return intrinsicAmmoEntry ? [intrinsicAmmoEntry] : [];
+    }
 
     const critEntries = equipment.owner.getCritSlots()
         .filter(criticalSlot => criticalSlot.eq instanceof AmmoEquipment && ammoMatchesWeapon(equipment.equipment as WeaponEquipment, criticalSlot.eq))
         .map(criticalSlot => getAmmoControlEntryForCriticalSlot(equipment.owner, criticalSlot, equipmentMap))
         .filter((entry): entry is AmmoControlEntry => !!entry);
     const inventoryEntries = equipment.owner.getInventory()
-        .filter(entry => entry.equipment instanceof AmmoEquipment && ammoMatchesWeapon(equipment.equipment as WeaponEquipment, getInventoryCurrentAmmo(entry, equipmentMap) ?? entry.equipment))
+        .filter(entry => !isIntrinsicOneShotAmmoMount(entry)
+            && entry.equipment instanceof AmmoEquipment
+            && ammoMatchesWeapon(equipment.equipment as WeaponEquipment, getInventoryCurrentAmmo(entry, equipmentMap) ?? entry.equipment))
         .map(entry => createInventoryAmmoControlEntry(equipment.owner, entry, equipmentMap))
         .filter((entry): entry is AmmoControlEntry => !!entry);
-
     return sortAmmoControlEntries([...critEntries, ...inventoryEntries]);
 }
 
@@ -229,11 +404,12 @@ export function getAmmoControlEntriesForUnitWeapons(unit: CBTForceUnit, equipmen
     const weaponAmmoKeys = new Set(
         unit.getInventory()
             .map(entry => entry.equipment)
-            .filter((equipment): equipment is WeaponEquipment => equipment instanceof WeaponEquipment && equipment.ammoType !== 'NA')
+            .filter((equipment): equipment is WeaponEquipment =>
+                equipment instanceof WeaponEquipment
+                && equipment.ammoType !== 'NA'
+                && !equipment.oneShotCount)
             .map(weapon => getAmmoCompatibilityKey(weapon))
     );
-
-    if (weaponAmmoKeys.size === 0) return [];
 
     const critEntries = unit.getCritSlots()
         .filter(criticalSlot => criticalSlot.eq instanceof AmmoEquipment && weaponAmmoKeys.has(getAmmoCompatibilityKey(criticalSlot.eq)))
@@ -241,13 +417,19 @@ export function getAmmoControlEntriesForUnitWeapons(unit: CBTForceUnit, equipmen
         .filter((entry): entry is AmmoControlEntry => !!entry);
     const inventoryEntries = unit.getInventory()
         .filter(entry => {
+            if (isIntrinsicOneShotAmmoMount(entry)) return false;
             const ammo = getInventoryCurrentAmmo(entry, equipmentMap);
             return ammo && weaponAmmoKeys.has(getAmmoCompatibilityKey(ammo));
         })
         .map(entry => createInventoryAmmoControlEntry(unit, entry, equipmentMap))
         .filter((entry): entry is AmmoControlEntry => !!entry);
+    const intrinsicEntries = unit.getInventory()
+        .map(entry => getIntrinsicOneShotAmmoMount(entry))
+        .filter((entry): entry is MountedAmmo => entry !== null)
+        .map(entry => createInventoryAmmoControlEntry(unit, entry, equipmentMap))
+        .filter((entry): entry is AmmoControlEntry => !!entry);
 
-    return sortAmmoControlEntries([...critEntries, ...inventoryEntries]);
+    return sortAmmoControlEntries([...critEntries, ...inventoryEntries, ...intrinsicEntries]);
 }
 
 export function getAmmoEntryRemaining(entry: AmmoControlEntry): number {
@@ -260,7 +442,11 @@ export function getAmmoControlGroups(entries: AmmoControlEntry[]): AmmoControlGr
     const keyedGroups = new Map<string, AmmoControlGroup>();
 
     for (const entry of entries) {
-        const key = `${entry.sourceType}:${entry.currentAmmo.internalName}`;
+        const intrinsicAmmo = entry.sourceType === 'inventory'
+            && isIntrinsicOneShotAmmoMount(entry.source as MountedEquipment);
+        const key = intrinsicAmmo
+            ? `${entry.sourceType}:intrinsic:${entry.id}`
+            : `${entry.sourceType}:${entry.currentAmmo.internalName}`;
         const existingGroup = keyedGroups.get(key);
         if (existingGroup) {
             existingGroup.entries.push(entry);
@@ -362,7 +548,10 @@ function syncEntryFromSource(entry: AmmoControlEntry, equipmentMap: EquipmentMap
         entry.originalTotalAmmo = getInventoryOriginalTotalAmmo(source);
         entry.totalAmmo = source.totalAmmo ?? entry.originalTotalAmmo;
         entry.consumed = source.consumed ?? 0;
-        entry.destroyed = entry.owner.isEquipmentUnavailable(source);
+        entry.destroyed = entry.owner.isEquipmentUnavailable(source)
+            || (isIntrinsicOneShotAmmoMount(source)
+                && !!source.parent
+                && entry.owner.isEquipmentUnavailable(source.parent));
         return;
     }
 
@@ -404,12 +593,7 @@ export function changeAmmoEntryRemaining(entry: AmmoControlEntry, deltaRemaining
     const appliedDelta = nextRemaining - currentRemaining;
     if (appliedDelta === 0) return false;
 
-    entry.source.consumed = entry.totalAmmo - nextRemaining;
-    if (entry.sourceType === 'inventory') {
-        entry.owner.setInventoryEntry(entry.source as MountedEquipment);
-    } else {
-        entry.owner.setCritSlot(entry.source as CriticalSlot);
-    }
+    setAmmoEntryValue(entry, entry.currentAmmo, entry.totalAmmo, nextRemaining);
     syncEntryFromSource(entry, context.dataService.getEquipments());
     showAmmoToast(entry, appliedDelta, context);
     return true;
@@ -471,8 +655,7 @@ export async function setAmmoEntry(entry: AmmoControlEntry, context: HandlerCont
     const equipmentMap = context.dataService.getEquipments();
     const unitBlueprint = entry.owner.getUnit();
     const inventory = entry.owner.getInventory();
-    const compatibleAmmo = sortCompatibleAmmo(Object.values(equipmentMap)
-        .filter((equipment): equipment is AmmoEquipment => (equipment instanceof AmmoEquipment) && entry.originalAmmo.compatibleAmmo(equipment, unitBlueprint, inventory)));
+    const compatibleAmmo = getCompatibleCatalogAmmo(entry.originalAmmo, equipmentMap, unitBlueprint, inventory);
 
     const previousRemaining = getAmmoEntryRemaining(entry);
     const ref = context.dialogsService.createDialog<{ name: string; quantity: number, totalAmmo: number } | null>(SetAmmoDialogComponent, {
@@ -496,31 +679,11 @@ export async function setAmmoEntry(entry: AmmoControlEntry, context: HandlerCont
     const selectedAmmo = equipmentMap[newAmmoValue.name] instanceof AmmoEquipment
         ? equipmentMap[newAmmoValue.name] as AmmoEquipment
         : entry.currentAmmo;
-    const newTotalAmmo = getTotalAmmoForAmmoType(entry.originalAmmo, entry.originalTotalAmmo, selectedAmmo, entry.owner.gameRules);
-    const newQuantity = clamp(newAmmoValue.quantity, 0, newTotalAmmo);
-
-    if (entry.sourceType === 'inventory') {
-        const source = entry.source as MountedEquipment;
-        source.ammo = selectedAmmo.internalName === source.name ? undefined : selectedAmmo.internalName;
-        source.totalAmmo = newTotalAmmo;
-        source.consumed = newTotalAmmo - newQuantity;
-        entry.owner.setInventoryEntry(source);
-    } else {
-        const source = entry.source as CriticalSlot;
-        if (selectedAmmo.internalName !== source.name) {
-            if (!source.originalName) {
-                source.originalName = source.name;
-            } else if (selectedAmmo.internalName === source.originalName) {
-                delete source.originalName;
-            }
-            source.name = selectedAmmo.internalName;
-            source.eq = selectedAmmo;
-        }
-
-        source.totalAmmo = newTotalAmmo;
-        source.consumed = newTotalAmmo - newQuantity;
-        entry.owner.setCritSlot(source);
-    }
+    const intrinsic = isIntrinsicOneShotAmmoMount(entry.source as MountedEquipment);
+    const newTotalAmmo = intrinsic
+        ? entry.totalAmmo
+        : getTotalAmmoForAmmoType(entry.originalAmmo, entry.originalTotalAmmo, selectedAmmo, entry.owner.gameRules);
+    setAmmoEntryValue(entry, selectedAmmo, newTotalAmmo, newAmmoValue.quantity);
     syncEntryFromSource(entry, equipmentMap);
 
     const appliedDelta = getAmmoEntryRemaining(entry) - previousRemaining;
@@ -567,31 +730,12 @@ export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerCont
     let remainingToAllocate = clamp(newAmmoValue.quantity, 0, getTotalAmmoForAmmoType(firstEntry.originalAmmo, originalTotalAmmo, selectedAmmo, firstEntry.owner.gameRules));
 
     for (const entry of group.entries.sort(compareAmmoControlEntryOrder)) {
-        const newTotalAmmo = getTotalAmmoForAmmoType(entry.originalAmmo, entry.originalTotalAmmo, selectedAmmo, entry.owner.gameRules);
+        const newTotalAmmo = isIntrinsicOneShotAmmoMount(entry.source as MountedEquipment)
+            ? entry.totalAmmo
+            : getTotalAmmoForAmmoType(entry.originalAmmo, entry.originalTotalAmmo, selectedAmmo, entry.owner.gameRules);
         const newRemaining = Math.min(newTotalAmmo, remainingToAllocate);
         remainingToAllocate -= newRemaining;
-
-        if (entry.sourceType === 'inventory') {
-            const source = entry.source as MountedEquipment;
-            source.ammo = selectedAmmo.internalName === source.name ? undefined : selectedAmmo.internalName;
-            source.totalAmmo = newTotalAmmo;
-            source.consumed = newTotalAmmo - newRemaining;
-            entry.owner.setInventoryEntry(source);
-        } else {
-            const source = entry.source as CriticalSlot;
-            if (selectedAmmo.internalName !== source.name) {
-                if (!source.originalName) {
-                    source.originalName = source.name;
-                } else if (selectedAmmo.internalName === source.originalName) {
-                    delete source.originalName;
-                }
-                source.name = selectedAmmo.internalName;
-                source.eq = selectedAmmo;
-            }
-            source.totalAmmo = newTotalAmmo;
-            source.consumed = newTotalAmmo - newRemaining;
-            entry.owner.setCritSlot(source);
-        }
+        setAmmoEntryValue(entry, selectedAmmo, newTotalAmmo, newRemaining);
         syncEntryFromSource(entry, equipmentMap);
     }
 

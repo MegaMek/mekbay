@@ -250,6 +250,7 @@ describe('UnitMetadataBuilder', () => {
 
     expect(entity.tonnage()).toBe(5);
     expect(builder.build(entity).tons).toBe(5);
+    expect(builder.build(entity).loadoutTons).toBe(entity.effectiveTonnage());
     expect(entity.totalArmorPoints()).toBe(35);
     expect(builder.build(entity).armor).toBe(35);
   });
@@ -260,12 +261,17 @@ describe('UnitMetadataBuilder', () => {
     entity.squadCount.set(4);
 
     expect(builder.build(entity).tons).toBe(2.5);
+    expect(builder.build(entity).loadoutTons).toBe(2.5);
     expect(builder.build(entity).squadSize).toBe(7);
     expect(builder.build(entity).squads).toBe(4);
 
     entity.specializations.set(new Set(['bridge-engineers', 'paramedics']));
     addTestEquipmentWithFlags(entity, 'F_ANTI_MEK_GEAR', { location: 'Infantry' });
     expect(builder.build(entity).tons).toBe(7);
+  });
+
+  it('exports zero loadout tonnage for an unimplemented family', () => {
+    expect(builder.build(new TankEntity()).loadoutTons).toBe(0);
   });
 
   it('exports Battle Armor as one squad with one member per trooper', () => {

@@ -620,6 +620,10 @@ export class WeaponEquipment extends Equipment {
         return 0;
     }
 
+    get supportsSwitchableAmmo(): boolean {
+        return SWITCHABLE_AMMO.has(this.ammoType);
+    }
+
     getWeaponTypes(): WeaponType[] {
         const types = new Set<WeaponType>();
 
@@ -683,7 +687,7 @@ export class WeaponEquipment extends Equipment {
         if (['AC_ULTRA', 'AC_ULTRA_THB', 'AC_ROTARY'].includes(this.ammoType)) types.add('R');
 
         // S: Switchable Ammo
-        if (SWITCHABLE_AMMO.has(this.ammoType)) types.add('S');
+        if (this.supportsSwitchableAmmo) types.add('S');
         
         // V: Variable Damage
         if (Array.isArray(this.damage) || this.hasAnyFlag(['F_BOMBAST_LASER','F_M_POD'])) types.add('V');
@@ -775,8 +779,11 @@ export function findIntrinsicAmmoForWeapon(
 
     const compatibleAmmo = Object.values(equipmentMap)
         .filter((equipment): equipment is AmmoEquipment =>
-            equipment instanceof AmmoEquipment && ammoMatchesWeapon(weapon, equipment));
-    return compatibleAmmo.find(ammo => ammo.hasMunitionType('M_STANDARD'))
+            equipment instanceof AmmoEquipment
+            && ammoMatchesWeapon(weapon, equipment)
+            && weapon.hasFlag('F_BA_WEAPON') === equipment.hasFlag('F_BATTLEARMOR'));
+    return compatibleAmmo.find(ammo => ammo.munitionType.size === 1 && ammo.hasMunitionType('M_STANDARD'))
+        ?? compatibleAmmo.find(ammo => ammo.hasMunitionType('M_STANDARD'))
         ?? compatibleAmmo.find(ammo => ammo.munitionType.size === 0)
         ?? compatibleAmmo[0]
         ?? null;

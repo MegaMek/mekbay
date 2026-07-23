@@ -1,22 +1,41 @@
 import { AmmoEquipment, MiscEquipment, WeaponEquipment } from '../../../equipment.model';
 import {
+  TestAeroSpaceFighterEntity,
+  TestBattleArmorEntity,
   TestBipedMekEntity,
+  TestDropShipEntity,
+  TestHandheldWeaponEntity,
   TestInfantryEntity,
+  TestJumpShipEntity,
   TestProtoMekEntity,
+  TestSpaceStationEntity,
   TestTankEntity,
+  TestWarShipEntity,
 } from '../../testing/test-entities';
 import { EntityMountedEquipment } from '../../types';
-import { getBVCalculator } from './factory';
+import { calculateBattleValue, calculateBattleValueDetails, getBVCalculator } from './factory';
+import type { BattleValueDetail } from './bv-calculator';
 import { infantryDamageDivisor } from './infantry-rules';
 import { offensiveSpeedFactor, targetMovementModifier, vehicleTypeModifier } from './rules';
 import { CombatVehicleBVCalculator, MekBVCalculator, ProtoMekBVCalculator } from './family-calculators';
 
+let mountSequence = 0;
+
 function mount(equipment: WeaponEquipment | AmmoEquipment, location = 'Front'): EntityMountedEquipment {
   return new EntityMountedEquipment({
-    mountId: equipment.id, equipmentId: equipment.id, equipment,
+    mountId: `${equipment.id}-${++mountSequence}`, equipmentId: equipment.id, equipment,
     allocation: { kind: 'location', location }, rearMounted: false,
     turretMounted: false, omniPodMounted: false, armored: false,
   });
+}
+
+function findDetail(details: readonly BattleValueDetail[], type: string): BattleValueDetail | undefined {
+  for (const detail of details) {
+    if (detail.type === type) return detail;
+    const nested = detail.details && findDetail(detail.details, type);
+    if (nested) return nested;
+  }
+  return undefined;
 }
 
 describe('battle value pure rules', () => {
@@ -75,5 +94,89 @@ describe('battle value family dispatch', () => {
     entity.augmentations.set(['tsm_implant', 'dermal_armor']);
     entity.mount.set({ damageDivisor: 2 } as never);
     expect(infantryDamageDivisor(entity)).toBe(3);
+  });
+});
+
+describe('structured battle value details', () => {
+  it('shares one state calculation while preserving the numeric API', () => {
+    const entity = new TestTankEntity();
+    entity.setTonnage(20);
+    entity.originalWalkMP.set(4);
+    const laser = new WeaponEquipment({
+      id: 'test-laser', name: 'Test Laser', shortName: 'Test Laser', type: 'weapon', stats: { bv: 100 },
+      weapon: { ammoType: 'NA', heat: 0 }, flags: ['F_ENERGY'],
+    });
+    entity.setEquipment([mount(laser)]);
+
+    const result = calculateBattleValueDetails(entity);
+    expect(result.base).toBe(calculateBattleValue(entity));
+    expect(result.details.map(detail => detail.type)).toEqual([
+      'Effective MP', 'Defensive Battle Rating', 'Offensive Battle Rating', 'Battle Value',
+    ]);
+    expect(findDetail(result.details, 'Weapons')?.details?.[0].type).toBe('Test Laser (Front)');
+    expect(findDetail(result.details, 'Speed Factor')?.total).toBeCloseTo(result.offensive, 3);
+    expect(findDetail(result.details, 'Base Unit BV')?.total).toBe(result.base);
+    expect(JSON.parse(JSON.stringify(result.details))).toEqual(result.details);
+  });
+
+  it('emits zero-safe shared sections and finite totals for an empty entity', () => {
+    const result = calculateBattleValueDetails(new TestTankEntity());
+    expect(findDetail(result.details, 'Armor')?.delta).toBe(0);
+    expect(findDetail(result.details, 'Weapons')?.delta).toBe(0);
+    expect(findDetail(result.details, 'Base Unit BV')?.total).toBe(result.base);
+    expect(result.details.every(detail => detail.type.length > 0)).toBeTrue();
+    expect(Number.isFinite(result.base)).toBeTrue();
+  });
+
+  it('reports the Mek labels, formulas, heat sequence, overheat, weight, and speed used by Hellion P', () => {
+    const entity = new TestBipedMekEntity();
+    entity.setTonnage(30);
+    entity.originalWalkMP.set(12);
+    const hotLaser = new WeaponEquipment({
+      id: 'hot-laser', name: 'Imp. Heavy Medium Laser', shortName: 'Imp. Heavy Medium Laser',
+      type: 'weapon', stats: { bv: 93 }, weapon: { ammoType: 'NA', heat: 100 }, flags: ['F_ENERGY'],
+    });
+    entity.setEquipment([mount(hotLaser, 'LT'), mount(hotLaser, 'LT')]);
+
+    const result = calculateBattleValueDetails(entity);
+    expect(result.details[0]).toEqual({ type: 'Effective MP', calculation: 'R: 18, J: 0, U: 0' });
+    expect(findDetail(result.details, 'Defensive Battle Rating')).toBeDefined();
+    expect(findDetail(result.details, 'Internal Structure')?.calculation).toContain('x 1.5');
+    expect(findDetail(result.details, 'Gyro')?.calculation).toContain('+ 30 x');
+    expect(findDetail(result.details, 'Heat Efficiency')?.calculation).toContain('6 +');
+    const weapons = findDetail(result.details, 'Weapons')?.details ?? [];
+    expect(weapons.filter(detail => detail.type === 'Imp. Heavy Medium Laser (LT)').length).toBe(2);
+    expect(weapons.some(detail => detail.calculation?.includes('(Overheat)'))).toBeTrue();
+    expect(findDetail(result.details, 'Weight')?.calculation).toContain('+ 30');
+    expect(findDetail(result.details, 'Speed Factor')?.calculation).toContain('x 2.72');
+    expect(findDetail(result.details, 'Base Unit BV')?.calculation).toContain(', rn');
+  });
+
+  it('exposes reactive BaseEntity value and details computed from current state', () => {
+    const entity = new TestTankEntity();
+    entity.setTonnage(10);
+    const initial = entity.battleValue();
+    expect(entity.battleValueDetails()).toBe(entity.battleValueDetails());
+
+    entity.setTonnage(30);
+    expect(entity.battleValue()).not.toBe(initial);
+    expect(findDetail(entity.battleValueDetails(), 'Weight')?.calculation).toContain('+ 30');
+  });
+
+  it('returns a coherent hierarchy for every calculator family', () => {
+    const entities = [
+      new TestBipedMekEntity(), new TestTankEntity(), new TestProtoMekEntity(),
+      new TestInfantryEntity(), new TestBattleArmorEntity(), new TestAeroSpaceFighterEntity(),
+      new TestDropShipEntity(), new TestJumpShipEntity(), new TestSpaceStationEntity(),
+      new TestWarShipEntity(), new TestHandheldWeaponEntity(),
+    ];
+    for (const entity of entities) {
+      const result = calculateBattleValueDetails(entity);
+      expect(result.details.map(detail => detail.type)).withContext(entity.entityType).toEqual([
+        'Effective MP', 'Defensive Battle Rating', 'Offensive Battle Rating', 'Battle Value',
+      ]);
+      expect(findDetail(result.details, 'Base Unit BV')?.total).withContext(entity.entityType).toBe(result.base);
+      expect(Number.isFinite(result.base)).withContext(entity.entityType).toBeTrue();
+    }
   });
 });

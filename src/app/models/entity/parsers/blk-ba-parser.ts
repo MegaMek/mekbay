@@ -86,6 +86,9 @@ export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEnt
   if (bb.exists('chassis'))        entity.chassisType.set(bb.getFirstString('chassis'));
   if (bb.exists('turret'))         entity.turretConfig.set(bb.getFirstString('turret'));
   if (bb.exists('exoskeleton'))    entity.isExoskeleton.set(bb.getFirstString('exoskeleton') === 'true');
+  if (bb.exists('clan_exo_without_harjel')) {
+    entity.clanExoWithoutHarJel.set(bb.getFirstString('clan_exo_without_harjel') === 'true');
+  }
   if (bb.exists('jumpingMP'))      entity.propulsionMP.set(bb.getFirstInt('jumpingMP'));
   if (bb.exists('motion_type'))    entity.motiveType.set(decodeMotiveType(bb.getFirstString('motion_type')));
 

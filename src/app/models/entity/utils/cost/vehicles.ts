@@ -9,9 +9,17 @@ import {
   nextHalfTon,
   standardRound,
 } from './common';
+import { amount, buildCostReport, multiplier, type EntityCostEntry, type EntityCostReport } from './cost-report';
 
 /** Mirrors MegaMek's CombatVehicleCostCalculator for support and combat vehicles. */
 export function calculateVehicleCost(entity: VehicleEntity, equipmentCost: number): number {
+  return calculateVehicleCostReport(entity, [amount('Equipment', equipmentCost)]).total;
+}
+
+export function calculateVehicleCostReport(
+  entity: VehicleEntity,
+  equipment: readonly EntityCostEntry[],
+): EntityCostReport {
   const tonnage = entity.tonnage();
   const supportVehicle = entity.isSupportVehicle();
   const engine = entity.mountedEngine();
@@ -20,39 +28,46 @@ export function calculateVehicleCost(entity: VehicleEntity, equipmentCost: numbe
     : (engine.baseCost * engine.rating * tonnage) / 75;
   const armorCost = calculateVehicleArmorCost(entity);
 
-  let cost: number;
+  const entries: EntityCostEntry[] = [];
   if (entity.isSupportVehicle()) {
     const chassisCost = 2500 * getSupportVehicleStructureWeight(entity)
       * getSupportVehicleChassisCostMultiplier(entity);
     const structuralTechMultiplier = 0.5 + (entity.structuralTechRating() * 0.25);
-    cost = (chassisCost + engineCost + armorCost) * structuralTechMultiplier;
+    entries.push(amount('Chassis', chassisCost), amount('Engine', engineCost), amount('Armor', armorCost));
+    entries.push(multiplier('Structural Tech Rating', structuralTechMultiplier));
   } else {
     const structureDivisor = entity.isSuperHeavy()
       && entity.motiveType() !== 'Naval'
       && entity.motiveType() !== 'Submarine' ? 5 : 10;
     const structureCost = nextHalfTon(tonnage / structureDivisor) * 10000;
     const controlCost = entity.hasNoControlSystems() ? 0 : nextHalfTon(tonnage * 0.05) * 10000;
-    cost = engineCost + armorCost + structureCost + controlCost;
+    entries.push(amount('Structure', structureCost), amount('Engine', engineCost),
+      amount('Controls', controlCost), amount('Armor', armorCost));
   }
 
-  cost += calculatePowerAmplifierWeight(entity) * 20000;
-  cost += Math.max(0, calculateVehicleHeatSinkRequirement(entity) - engine.weightFreeHeatSinks) * 2000;
-  cost += calculateVehicleTurretWeight(entity) * 5000;
-  cost += equipmentCost + (entity.extraSeats() * 100);
+  entries.push(amount('Power Amplifiers', calculatePowerAmplifierWeight(entity) * 20000));
+  // MegaMek Engine.getWeightFreeEngineHeatSinks(): support-vehicle engines
+  // never provide weight-free heat sinks, regardless of power source.
+  const freeHeatSinks = supportVehicle ? 0 : engine.weightFreeHeatSinks;
+  entries.push(amount('Heatsinks', Math.max(0,
+    calculateVehicleHeatSinkRequirement(entity) - freeHeatSinks) * 2000));
+  entries.push(amount('Turrets', calculateVehicleTurretWeight(entity) * 5000));
+  entries.push(...equipment, amount('Extra Seats', entity.extraSeats() * 100));
 
   if (!supportVehicle) {
     const liftTonnage = ['Hover', 'Hydrofoil', 'VTOL', 'Submarine', 'WiGE'].includes(entity.motiveType())
       ? Math.ceil(tonnage / 5) / 2 : 0;
-    cost += liftTonnage * (entity.motiveType() === 'VTOL' ? 40000 : 20000);
+    entries.push(amount('Lift Equipment', liftTonnage * (entity.motiveType() === 'VTOL' ? 40000 : 20000)));
   }
 
-  if (entity.omni()) cost *= 1.25;
-  cost *= getVehicleTonnageMultiplier(entity);
+  entries.push(multiplier('Omni Multiplier', 1.25, entity.omni()));
+  entries.push(multiplier('Weight Multiplier', getVehicleTonnageMultiplier(entity)));
   if (!supportVehicle) {
-    if (hasAnyEquipmentFlag(entity, ['F_FLOTATION_HULL', 'F_ENVIRONMENTAL_SEALING'])) cost *= 1.25;
-    if (hasAnyEquipmentFlag(entity, ['F_OFF_ROAD'])) cost *= 1.2;
+    entries.push(multiplier('Flotation/Sealing Multiplier', 1.25,
+      hasAnyEquipmentFlag(entity, ['F_FLOTATION_HULL', 'F_ENVIRONMENTAL_SEALING'])));
+    entries.push(multiplier('Off-Road Multiplier', 1.2, hasAnyEquipmentFlag(entity, ['F_OFF_ROAD'])));
   }
-  return Math.round(cost);
+  return buildCostReport(entries, true);
 }
 
 function calculateVehicleArmorCost(entity: VehicleEntity): number {

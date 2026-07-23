@@ -31,7 +31,7 @@
  * affiliated with Microsoft.
  */
 
-import { computed, signal, type Signal } from '@angular/core';
+import { computed, signal, type Signal, type WritableSignal } from '@angular/core';
 
 import type { CBTForceUnit } from './cbt-force-unit.model';
 import { AmmoEquipment, MiscEquipment, WEAPON_TYPES, WeaponEquipment, type Equipment, type WeaponType } from './equipment.model';
@@ -56,6 +56,7 @@ export interface MountedEquipmentInit {
     ammo?: string;
     totalAmmo?: number;
     consumed?: number;
+    intrinsicOneShotAmmo?: boolean;
 }
 
 export interface MountedAmmoInit extends MountedEquipmentInit {
@@ -71,8 +72,8 @@ export interface MountedMiscInit extends MountedEquipmentInit {
 }
 
 export class MountedEquipment {
-    private readonly destroyedState = signal<boolean | undefined>(undefined);
-    private readonly destroyingState = signal<boolean | undefined>(undefined);
+    private readonly destroyedState: WritableSignal<boolean | undefined>;
+    private readonly destroyingState: WritableSignal<boolean | undefined>;
 
     owner: CBTForceUnit;
     id: string;
@@ -89,6 +90,7 @@ export class MountedEquipment {
     ammo?: string;
     totalAmmo?: number;
     consumed?: number;
+    intrinsicOneShotAmmo?: boolean;
     readonly ruleState: Signal<MountedEquipmentRuleState>;
 
     setState(name: string, value: string): boolean {
@@ -106,6 +108,11 @@ export class MountedEquipment {
     }
 
     constructor(data: MountedEquipmentInit) {
+        // A mount may be cloned while an Angular computed builds virtual rows.
+        // Initialize the signals with their values; calling `.set()` here would
+        // constitute an illegal signal write from that computed.
+        this.destroyedState = signal(data.destroyed);
+        this.destroyingState = signal(data.destroying);
         this.owner = data.owner;
         this.id = data.id;
         this.name = data.name;
@@ -115,14 +122,13 @@ export class MountedEquipment {
         this.physical = data.physical;
         this.linkedWith = data.linkedWith;
         this.parent = data.parent;
-        this.destroyedState.set(data.destroyed);
-        this.destroyingState.set(data.destroying);
         this.critSlots = data.critSlots;
         this.states = data.states ?? new Map<string, string>();
         this.el = data.el;
         this.ammo = data.ammo;
         this.totalAmmo = data.totalAmmo;
         this.consumed = data.consumed;
+        this.intrinsicOneShotAmmo = data.intrinsicOneShotAmmo;
         this.ruleState = computed(() => this.owner.rules.computeEntryState(this));
     }
 
@@ -166,6 +172,7 @@ export class MountedEquipment {
             ammo: this.ammo,
             totalAmmo: this.totalAmmo,
             consumed: this.consumed,
+            intrinsicOneShotAmmo: this.intrinsicOneShotAmmo,
             ...overrides,
         };
     }

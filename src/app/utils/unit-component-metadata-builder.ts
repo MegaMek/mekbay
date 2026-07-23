@@ -2,6 +2,7 @@ import {
   AmmoEquipment,
   ArmorEquipment,
   Equipment,
+  findIntrinsicAmmoForWeapon,
   MiscEquipment,
   WeaponDamageProfile,
   WeaponEquipment,
@@ -188,6 +189,8 @@ function weaponComponent(
   position: number, location: string | undefined, rear: boolean, criticalSlots: string,
 ): ExportComponent {
   const aero = entity instanceof AeroEntity;
+  const intrinsicAmmo = findIntrinsicAmmoForWeapon(equipment, entity.getEquipmentRegistry().equipment);
+  const damageProfile = equipment.getDamageProfile(intrinsicAmmo);
   const entry = baseComponent(
     equipment, quantity, position, location, weaponCategory(equipment), criticalSlots,
   );
@@ -195,8 +198,8 @@ function weaponComponent(
   entry.r = aero ? aeroRange(equipment) : equipment.isInfantryWeapon()
     ? String(equipment.infantry.range) : equipment.ranges.slice(0, 3).join('/');
   entry.m = aero ? '-' : String(equipment.minimumRange);
-  entry.d = aero ? aeroDamage(equipment) : formatWeaponDamage(equipment.getDamageProfile());
-  entry.md = formatDecimal(aero ? maximumAeroDamage(equipment) : equipment.getDamageProfile().maximum);
+  entry.d = aero ? aeroDamage(equipment) : formatWeaponDamage(damageProfile);
+  entry.md = formatDecimal(aero ? maximumAeroDamage(equipment) : damageProfile.maximum);
   entry.os = equipment.oneShotCount ?? 0;
   return entry;
 }
@@ -429,7 +432,7 @@ function activeAeroValues(equipment: WeaponEquipment): number[] {
 
 function formatWeaponDamage(profile: WeaponDamageProfile): string {
   switch (profile.kind) {
-    case 'fixed': return `${profile.damage}${profile.perShot ? '/Shot' : ''}`;
+    case 'fixed': return profile.damage === 0 ? '' : `${profile.damage}${profile.perShot ? '/Shot' : ''}`;
     case 'missile-cluster': return `${profile.damagePerMissile}/msl`;
     case 'cluster': return String(profile.damage);
     case 'artillery': return `${profile.damage}A`;

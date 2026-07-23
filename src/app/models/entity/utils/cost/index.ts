@@ -1,3 +1,4 @@
-export { calculateEntityCost, type EntityCostOptions } from './entity-cost';
+export { calculateEntityCost, calculateEntityCostDetails, type EntityCostOptions } from './entity-cost';
 export { getEquipmentCost } from './equipment-pricing';
-export { calculateMountedEquipmentCost } from './equipment-total';
+export { calculateMountedEquipmentCost, calculateMountedEquipmentCostBreakdown } from './equipment-total';
+export type { EntityCostAmountStep, EntityCostEntry, EntityCostFactorStep, EntityCostReport, EntityCostStep } from './cost-report';

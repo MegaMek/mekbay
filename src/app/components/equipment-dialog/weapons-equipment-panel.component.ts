@@ -4,12 +4,10 @@ import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
-import { MountedEquipment } from '../../models/mounted-equipment.model';
-import type { CriticalSlot } from '../../models/force-serialization';
 import type { HandlerChoice } from '../../services/equipment-interaction-registry.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { INVENTORY_MODE_CHOICE_LABEL, INVENTORY_MODE_HANDLER_ID } from '../../equipment-handlers/inventory-mode.handler';
-import { changeAmmoEntriesRemaining, getAmmoControlEntriesForWeapon, getAmmoEntryRemaining } from '../../utils/ammo-interaction.util';
+import { changeAmmoEntriesRemaining, getAmmoControlEntriesForWeapon, getAmmoEntryRemaining, setAmmoEntryValue } from '../../utils/ammo-interaction.util';
 import type { HeatDissipationState } from '../../models/rules/heat-management';
 import { LayoutService } from '../../services/layout.service';
 import { MultilineDropdownComponent, type MultilineDropdownOption } from '../multiline-dropdown/multiline-dropdown.component';
@@ -582,11 +580,7 @@ export class WeaponsEquipmentPanelComponent {
     private canAdjustResolvedAmmo(row: InventoryControlRow, option: InventoryControlAmmoOption | undefined, delta: number, hasUsableAmmo: boolean): boolean {
         if (this.readOnly() || !row.tracksAmmo || delta === 0) return false;
         if (!option || option.destroyed) return false;
-        if (isBuiltInOneShotAmmoOption(option.id)) {
-            if (delta > 0) return option.remaining > 0;
-            return option.remaining < option.total;
-        }
-        if (!hasUsableAmmo) return false;
+        if (!hasUsableAmmo && !isBuiltInOneShotAmmoOption(option.id)) return false;
         if (delta > 0) return option.remaining > 0;
         return option.remaining < option.total;
     }
@@ -598,13 +592,10 @@ export class WeaponsEquipmentPanelComponent {
         if (delta === 0) return;
         const option = state.selectedOption;
         if (!option) return;
-        if (isBuiltInOneShotAmmoOption(option.id)) {
-            if (this.adjustBuiltInOneShotAmmo(row, delta)) {
-                this.inventoryControl().markInventoryViewChanged();
-            }
-            return;
-        }
-        if (changeAmmoEntriesRemaining(this.getAmmoEntriesForOption(row, option.id), -delta, this.context())) {
+        const changed = isBuiltInOneShotAmmoOption(option.id)
+            ? this.adjustBuiltInOneShotAmmo(row, delta)
+            : changeAmmoEntriesRemaining(this.getAmmoEntriesForOption(row, option.id), -delta, this.context());
+        if (changed) {
             this.inventoryControl().markInventoryViewChanged();
         }
     }
@@ -687,12 +678,12 @@ export class WeaponsEquipmentPanelComponent {
         for (const entry of entries) {
             if (remainingToConsume <= 0) return;
             const consumedFromEntry = Math.min(getAmmoEntryRemaining(entry), remainingToConsume);
-            entry.source.consumed = (entry.source.consumed ?? 0) + consumedFromEntry;
-            if (entry.sourceType === 'inventory') {
-                entry.owner.setInventoryEntry(entry.source as MountedEquipment);
-            } else {
-                entry.owner.setCritSlot(entry.source as CriticalSlot);
-            }
+            setAmmoEntryValue(
+                entry,
+                entry.currentAmmo,
+                entry.totalAmmo,
+                getAmmoEntryRemaining(entry) - consumedFromEntry,
+            );
             remainingToConsume -= consumedFromEntry;
         }
     }

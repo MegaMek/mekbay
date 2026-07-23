@@ -124,6 +124,24 @@ describe('equipment model', () => {
         expect(noAmmo.getDamageProfile(standard)).toEqual({ kind: 'special', maximum: 0 });
     });
 
+    it('prefers plain standard intrinsic ammo over modified standard ammunition', () => {
+        const launcher = weapon('launcher', 'Launcher', 'LRM', 'cluster', 5, ['F_ONE_SHOT', 'F_BA_WEAPON']);
+        const conventionalStandard = new AmmoEquipment({
+            id: 'conventional-standard', name: 'Conventional Standard', type: 'ammo',
+            ammo: { type: 'LRM', rackSize: 5, munitionType: ['M_STANDARD'] },
+        });
+        const incendiary = new AmmoEquipment({
+            id: 'incendiary', name: 'Incendiary', type: 'ammo', flags: ['F_BATTLEARMOR'],
+            ammo: { type: 'LRM', rackSize: 5, munitionType: ['M_STANDARD', 'M_INCENDIARY_LRM'] },
+        });
+        const standard = new AmmoEquipment({
+            id: 'standard', name: 'Standard', type: 'ammo', flags: ['F_BATTLEARMOR'],
+            ammo: { type: 'LRM', rackSize: 5, munitionType: ['M_STANDARD'] },
+        });
+
+        expect(findIntrinsicAmmoForWeapon(launcher, { conventionalStandard, incendiary, standard })).toBe(standard);
+    });
+
     it('exposes intrinsic equipment classifications', () => {
         const compactHeatSinks = new MiscEquipment({
             id: '2 Compact Heat Sinks', name: '2 Compact Heat Sinks', type: 'misc',
@@ -180,6 +198,22 @@ describe('equipment damage types', () => {
         });
 
         expect(weapon.getWeaponTypes()).toEqual(['C', 'M', 'S']);
+        expect(weapon.supportsSwitchableAmmo).toBeTrue();
+    });
+
+    it('identifies switchable ammo independently from one-shot status', () => {
+        const oneShotLrm = new WeaponEquipment({
+            id: 'ISBALRM5OS', name: 'LRM 5 (OS)', type: 'weapon', flags: ['F_ONE_SHOT'],
+            weapon: { ammoType: 'LRM', rackSize: 5, damage: 'cluster' },
+        });
+        const mineLauncher = new WeaponEquipment({
+            id: 'BAMineLauncher', name: 'Pop-up Mine', type: 'weapon', flags: ['F_ONE_SHOT'],
+            weapon: { ammoType: 'MINE', rackSize: 1, damage: 'special' },
+        });
+
+        expect(oneShotLrm.supportsSwitchableAmmo).toBeTrue();
+        expect(oneShotLrm.getWeaponTypes()).toEqual(['C', 'M', 'OS', 'S']);
+        expect(mineLauncher.supportsSwitchableAmmo).toBeFalse();
     });
 
     it('caps cluster size at the weapon rack size', () => {

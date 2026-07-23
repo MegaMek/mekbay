@@ -75,6 +75,9 @@ export interface GyroTypeDescriptor {
   /** Number of critical slots the gyro occupies in the Center Torso. */
   readonly criticalSlots: number;
 
+  /** Construction-weight multiplier applied to ceil(engine rating / 100). */
+  readonly weightMultiplier: number;
+
   // ── Cost ──
 
   /**
@@ -141,6 +144,7 @@ export const GYRO_DATA: Readonly<Record<GyroType, GyroTypeDescriptor>> = {
     fullName: 'Standard Gyro',
     shortName: 'Standard',
     criticalSlots: 4,
+    weightMultiplier: 1,
     baseCost: 300_000,
     costMultiplier: 1.0,
     bvMultiplier: 0.5,
@@ -159,6 +163,7 @@ export const GYRO_DATA: Readonly<Record<GyroType, GyroTypeDescriptor>> = {
     fullName: 'XL Gyro',
     shortName: 'XL',
     criticalSlots: 6,
+    weightMultiplier: 0.5,
     baseCost: 750_000,
     costMultiplier: 0.5,
     bvMultiplier: 0.5,
@@ -177,6 +182,7 @@ export const GYRO_DATA: Readonly<Record<GyroType, GyroTypeDescriptor>> = {
     fullName: 'Compact Gyro',
     shortName: 'Compact',
     criticalSlots: 2,
+    weightMultiplier: 1.5,
     baseCost: 400_000,
     costMultiplier: 1.5,
     bvMultiplier: 0.5,
@@ -195,6 +201,7 @@ export const GYRO_DATA: Readonly<Record<GyroType, GyroTypeDescriptor>> = {
     fullName: 'Heavy Duty Gyro',
     shortName: 'Heavy Duty',
     criticalSlots: 4,
+    weightMultiplier: 2,
     baseCost: 500_000,
     costMultiplier: 2.0,
     bvMultiplier: 1.0,
@@ -213,6 +220,7 @@ export const GYRO_DATA: Readonly<Record<GyroType, GyroTypeDescriptor>> = {
     fullName: 'None',
     shortName: 'None',
     criticalSlots: 0,
+    weightMultiplier: 0,
     baseCost: 0,
     costMultiplier: 0,
     bvMultiplier: 0.0, //This is 0, but if paired with an Interface cockpit it provides a BV multiplier of 0.5 (must be handled at calc time)
@@ -231,6 +239,7 @@ export const GYRO_DATA: Readonly<Record<GyroType, GyroTypeDescriptor>> = {
     fullName: 'Superheavy Gyro',
     shortName: 'Superheavy',
     criticalSlots: 4,
+    weightMultiplier: 2,
     baseCost: 500_000,
     costMultiplier: 2.0,
     bvMultiplier: 0.5,

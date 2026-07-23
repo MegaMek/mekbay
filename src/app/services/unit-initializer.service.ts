@@ -37,6 +37,7 @@ import { type CriticalSlot } from '../models/force-serialization';
 import { DataService } from './data.service';
 import { AmmoEquipment, ArmorEquipment, StructureEquipment, WeaponEquipment, type Equipment } from '../models/equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
+import { materializeIntrinsicOneShotAmmoForInventory } from '../utils/ammo-interaction.util';
 
 /*
  * Author: Drake
@@ -525,6 +526,10 @@ export class UnitInitializerService {
             inventoryData.push(...this.getInfantryFieldGunInventoryEntries(unit, unit.getInventory()));
             inventoryData.push(...this.getDirectAmmoInventoryEntries(unit, unit.getInventory()));
         }
+        inventoryData.push(...materializeIntrinsicOneShotAmmoForInventory(
+            inventoryData,
+            this.getDataService().getEquipments(),
+        ));
         unit.setInventory(inventoryData, true);
     }
 

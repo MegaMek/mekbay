@@ -1,4 +1,4 @@
-import { MiscEquipment, WeaponEquipment } from '../../equipment.model';
+import { Equipment, MiscEquipment, WeaponEquipment } from '../../equipment.model';
 import {
     TestBattleArmorEntity as BattleArmorEntity,
     TestBipedMekEntity as BipedMekEntity,
@@ -34,6 +34,23 @@ describe('EntityMountedEquipment.getTonnage', () => {
             expect(mount(variableEquipment(name, flags)).getTonnage(entity)).toBe(expectedTonnage);
         });
     }
+
+    it('uses rack-based ProtoMek missile launcher mass instead of nominal mass', () => {
+        const protoMek = new ProtoMekEntity();
+        const standardSrm = new WeaponEquipment({
+            id: 'Proto SRM 3', name: 'Proto SRM 3', type: 'weapon',
+            stats: { tonnage: 0 }, flags: ['F_SRM'],
+            weapon: { rackSize: 3, ammoType: 'SRM' },
+        });
+        const streakLrm = new WeaponEquipment({
+            id: 'Proto Streak LRM 5', name: 'Proto Streak LRM 5', type: 'weapon',
+            stats: { tonnage: 99 }, flags: ['F_LRM'],
+            weapon: { rackSize: 5, ammoType: 'LRM_STREAK' },
+        });
+
+        expect(mount(standardSrm).getTonnage(protoMek)).toBe(0.75);
+        expect(mount(streakLrm).getTonnage(protoMek)).toBe(2);
+    });
 
     it('passes through fixed tonnage', () => {
         const equipment = new MiscEquipment({
@@ -371,7 +388,7 @@ function variableEquipment(name: string, flags: string[], techBase: 'IS' | 'Clan
     });
 }
 
-function mount(equipment: MiscEquipment, size?: number): EntityMountedEquipment {
+function mount(equipment: Equipment, size?: number): EntityMountedEquipment {
     return new EntityMountedEquipment({
         mountId: equipment.id,
         equipmentId: equipment.id,

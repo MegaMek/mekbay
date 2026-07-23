@@ -1,4 +1,5 @@
 import type { BaseEntity } from '../../base-entity';
+import { MiscEquipment } from '../../../equipment.model';
 
 export function nextHalfTon(tonnage: number): number {
   const truncated = Math.round(tonnage * 1000000) / 1000000;
@@ -65,12 +66,23 @@ export function calculateHeatNeutralRequirement(entity: BaseEntity): number {
     if (weapon.hasFlag('F_LASER') && enhancement?.hasFlag('F_LASER_INSULATOR')) {
       heat = Math.max(1, heat - 1);
     }
-    if (weapon.hasFlag('F_PPC') && enhancement?.hasFlag('F_PPC_CAPACITOR')) heat += 5;
     return total + heat;
+  }, 0);
+  const capacitorHeat = entity.equipment().reduce((total, mount) => {
+    const equipment = mount.equipment;
+    return total + (equipment?.hasFlag('F_PPC_CAPACITOR') ? 5 : 0);
   }, 0);
   const hasStealth = [...entity.armorByLocation().values()]
     .some(mounted => ['STEALTH', 'STEALTH_VEHICLE'].includes(mounted.armor.armorType));
-  return weaponHeat + (hasStealth ? 10 : 0);
+  const powerSource = entity.mountedEngine().descriptor().powerSource;
+  const miscHeat = entity.equipment().reduce((total, mount) => {
+    const equipment = mount.equipment;
+    if (!(equipment instanceof MiscEquipment)) return total;
+    const isSpotWelder = equipment.hasAllFlags(['F_CLUB', 'S_SPOT_WELDER']);
+    if (isSpotWelder && ['fusion', 'fission'].includes(powerSource)) return total;
+    return total + equipment.operatingHeat;
+  }, 0);
+  return weaponHeat + capacitorHeat + miscHeat + (hasStealth ? 10 : 0);
 }
 
 export function hasAnyEquipmentFlag(entity: BaseEntity, flags: readonly string[]): boolean {

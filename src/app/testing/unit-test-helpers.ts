@@ -65,6 +65,7 @@ export function createEmptyUnit(overrides: TestUnitOverrides = {}): Unit {
         year: 3151,
         weightClass: 'Medium',
         tons: 50,
+        loadoutTons: 50,
         offSpeedFactor: 0,
         bv: 0,
         pv: 0,

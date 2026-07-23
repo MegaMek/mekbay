@@ -24,7 +24,9 @@ export class HeatTrackingBVCalculator extends BVCalculator {
   protected heatEfficiency(): number { return Number.MAX_SAFE_INTEGER; }
 
   protected override processExplosiveEquipment(): void {
+    const before = this.defensiveValue;
     this.defensiveValue = Math.max(1, this.defensiveValue);
+    if (this.defensiveValue !== before) this.addValueLine('Minimum Defensive Value', undefined, before);
   }
 
   protected weaponHeat(mount: EntityMountedEquipment): number {
@@ -45,20 +47,31 @@ export class HeatTrackingBVCalculator extends BVCalculator {
   }
 
   protected override processWeapons(): void {
+    const before = this.offensiveValue;
     const records = this.entity.equipment()
       .filter(mount => this.countsAsOffensiveWeapon(mount))
       .map(mount => ({ mount, bv: this.weaponBV(mount, false), heat: this.weaponHeat(mount) }))
       .sort((a, b) => a.heat === 0 ? -1 : b.heat === 0 ? 1 : b.bv - a.bv || a.heat - b.heat);
-    let heat = 0;
-    let exceeded = this.heatEfficiency() <= 0;
-    for (const record of records) {
-      let value = this.weaponBV(record.mount, true);
-      if (exceeded) value *= 0.5;
-      this.offensiveValue += value;
-      heat += record.heat;
-      if (heat >= this.heatEfficiency()) exceeded = true;
-    }
+    const details = this.captureDetails(() => {
+      const efficiency = this.heatEfficiency();
+      this.addReportLine('Heat Efficiency', this.heatEfficiencyCalculation(efficiency));
+      let heat = 0;
+      let exceeded = efficiency <= 0;
+      for (const record of records) {
+        let value = this.weaponBV(record.mount, true);
+        const calculation = `+ ${this.format(value)}${exceeded ? ' x 0.5 (Overheat)' : ''}`;
+        if (exceeded) value *= 0.5;
+        const itemBefore = this.offensiveValue;
+        this.offensiveValue += value;
+        heat += record.heat;
+        this.addValueLine(this.equipmentDescriptor(record.mount), `${calculation}${exceeded ? '' : ` (Heat: ${this.format(heat)})`}`, itemBefore);
+        if (heat >= efficiency) exceeded = true;
+      }
+    });
+    this.addValueLine('Weapons', undefined, before, details);
   }
+
+  protected heatEfficiencyCalculation(efficiency: number): string { return `= ${this.format(efficiency)}`; }
 }
 
 export class MekBVCalculator extends HeatTrackingBVCalculator {
@@ -66,15 +79,20 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
 
   protected override processArmor(): void {
     super.processArmor();
+    const before = this.defensiveValue;
     if (this.entity.mountedCockpit().addsDefensiveBVForCTArmor) {
       const ct = this.entity.armorValues().get('CT');
       const armor = this.entity.armorByLocation().get('CT')?.armor;
       if (ct) this.defensiveValue += (ct.front + ct.rear) * 2.5
         * (armor?.armorType === 'HARDENED' ? 2 : 1);
     }
+    if (this.defensiveValue !== before) {
+      this.addValueLine('Torso-Mounted Cockpit Armor', `+ ${this.format(this.defensiveValue - before)}`, before);
+    }
   }
 
   protected override processStructure(): void {
+    const before = this.defensiveValue;
     let multiplier = 1;
     const structures = [...this.entity.structureByLocation().values()];
     if (structures.length > 0 && structures.every(s => s.structure.hasAnyFlag([
@@ -91,14 +109,22 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
         : sideTorsoEngineCriticals === 2 ? 0.75
           : sideTorsoEngineCriticals === 1 ? 0.825 : 1;
     this.defensiveValue += this.entity.totalInternalPoints() * 1.5 * multiplier * engineMultiplier;
+    const structureTotal = this.defensiveValue;
+    const typeModifier = multiplier === 1 ? '' : ` x ${this.format(multiplier)}`;
+    const engineModifier = engineMultiplier === 1 ? '' : ` x ${this.format(engineMultiplier)}`;
+    const engine = this.entity.mountedEngine();
+    const engineLabel = engineMultiplier === 1 ? '' : ` (${engine.rating} ${engine.type()})`;
+    this.addValueLine('Internal Structure', `+ ${this.entity.totalInternalPoints()} x 1.5${typeModifier}${engineModifier}${engineLabel}`, before);
 
     let gyro = this.entity.mountedGyro().bvMultiplier;
     if (gyro === 0 && this.entity.cockpitType() === 'Interface') gyro = 0.5;
     this.defensiveValue += this.entity.tonnage() * gyro;
+    this.addValueLine('Gyro', `+ ${this.format(this.entity.tonnage())} x ${this.format(gyro)}`, structureTotal);
   }
 
   protected override processDefensiveEquipment(): void {
     super.processDefensiveEquipment();
+    const before = this.defensiveValue;
     let armoredBV = 0;
     for (const mount of this.entity.equipment()) {
       const equipment = mount.equipment;
@@ -125,6 +151,7 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
       }
     }
     this.defensiveValue += armoredBV;
+    if (armoredBV > 0) this.addValueLine('Armored Components', `+ ${this.format(armoredBV)}`, before);
   }
 
   private locationHas(location: string, flag: string): boolean {
@@ -147,6 +174,8 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
   }
 
   protected override processExplosiveEquipment(): void {
+    const before = this.defensiveValue;
+    const details = this.captureDetails(() => {
     for (const mount of this.entity.equipment()) {
       const equipment = mount.equipment;
       if (!equipment?.isExplosive() || mount.location === 'Unallocated'
@@ -168,8 +197,13 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
       const requiredSlots = mount.getCriticalSlotRequirement(this.entity);
       const slots = placedSlots && placedSlots > 0 ? placedSlots
         : typeof requiredSlots === 'number' ? requiredSlots : 1;
-      this.defensiveValue -= (reduced ? 1 : 15) * Math.max(1, slots);
+      const itemBefore = this.defensiveValue;
+      const penalty = (reduced ? 1 : 15) * Math.max(1, slots);
+      this.defensiveValue -= penalty;
+      this.addValueLine(this.equipmentDescriptor(mount), `- ${this.format(penalty)}`, itemBefore);
     }
+    });
+    if (details.length > 0) this.addValueLine('Explosive Equipment', undefined, before, details);
     super.processExplosiveEquipment();
   }
 
@@ -232,7 +266,15 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
     return efficiency;
   }
 
+  protected override heatEfficiencyCalculation(efficiency: number): string {
+    const capacity = Math.max(0, this.entity.heatDissipation());
+    const runHeat = this.has('F_SCM') ? 0 : this.entity.mountedEngine().descriptor().movementHeat.run;
+    const jumpHeat = this.jumpMP > 0 ? Math.max(3, this.jumpMP) : 0;
+    return `6 + ${capacity} - ${Math.max(jumpHeat, runHeat)} (${jumpHeat > runHeat ? 'Jump' : 'Run'}) = ${this.format(efficiency)}`;
+  }
+
   protected override processWeight(): void {
+    const before = this.offensiveValue;
     let aesMultiplier = 1;
     if (this.hasAesAt('LA')) aesMultiplier += 0.1;
     if (this.hasAesAt('RA')) aesMultiplier += 0.1;
@@ -241,11 +283,15 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
     if (this.has('F_TSM')) myomerMultiplier = 1.5;
     else if (this.has('F_INDUSTRIAL_TSM')) myomerMultiplier = 1.15;
     this.offensiveValue += this.entity.tonnage() * aesMultiplier * myomerMultiplier;
+    const modifiers = `${aesMultiplier === 1 ? '' : ` x ${this.format(aesMultiplier)}`}${myomerMultiplier === 1 ? '' : ` x ${this.format(myomerMultiplier)}`}`;
+    this.addValueLine('Weight', `+ ${this.format(this.entity.tonnage())}${modifiers}`, before);
   }
 
   protected override processOffensiveTypeModifier(): void {
     if (this.entity.mountedCockpit().isIndustrial && !this.has('F_ADVANCED_FIRE_CONTROL')) {
+      const before = this.offensiveValue;
       this.offensiveValue *= 0.9;
+      this.addValueLine('Fire Control Modifier', `${this.format(before)} x 0.9`, before);
     }
   }
 
@@ -258,6 +304,7 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
 
 export class CombatVehicleBVCalculator extends BVCalculator {
   protected override processTypeModifier(): void {
+    const before = this.defensiveValue;
     let modifier = vehicleTypeModifier(this.entity.motiveType());
     if (!this.entity.isSupportVehicle()) {
       for (const mount of this.entity.equipment()) {
@@ -271,6 +318,7 @@ export class CombatVehicleBVCalculator extends BVCalculator {
       }
     }
     this.defensiveValue *= modifier;
+    this.addValueLine('Type Modifier', `${this.format(before)} x ${this.format(modifier)}`, before);
   }
 
   protected override processDefensiveFactor(): void {
@@ -282,7 +330,11 @@ export class CombatVehicleBVCalculator extends BVCalculator {
       && [...this.entity.armorByLocation().values()]
         .some(value => ['STEALTH', 'STEALTH_VEHICLE'].includes(value.armor.armorType));
     if (stealth) { running += 2; jumping += 2; }
-    this.defensiveValue *= 1 + Math.max(running, jumping) / 10;
+    this.addReportLine('TMMs', `${running} (R), ${jumping} (J), 0 (U)`);
+    const before = this.defensiveValue;
+    const factor = 1 + Math.max(running, jumping) / 10;
+    this.defensiveValue *= factor;
+    this.addValueLine('Defensive Factor', `${this.format(before)} x ${this.format(factor)}`, before);
   }
 
   protected override frontWeapon(mount: EntityMountedEquipment): boolean { return mount.location === 'Front'; }
@@ -291,7 +343,11 @@ export class CombatVehicleBVCalculator extends BVCalculator {
     return !['Turret', 'Front Turret', 'Rear Turret'].includes(mount.location)
       && super.isNominalRear(mount);
   }
-  protected override processWeight(): void { this.offensiveValue += this.entity.tonnage() / 2; }
+  protected override processWeight(): void {
+    const before = this.offensiveValue;
+    this.offensiveValue += this.entity.tonnage() / 2;
+    this.addValueLine('Weight', `+ ${this.format(this.entity.tonnage())} / 2`, before);
+  }
 }
 
 export class AeroBVCalculator extends HeatTrackingBVCalculator {
@@ -517,7 +573,13 @@ export class ProtoMekBVCalculator extends BVCalculator {
   declare readonly entity: ProtoMekEntity;
   protected override processDefensiveFactor(): void {
     const run = targetMovementModifier(this.runMP) + (this.entity.isGlider() ? 1 : 0);
-    this.defensiveValue *= 1.1 + Math.max(run, targetMovementModifier(this.jumpMP, true), targetMovementModifier(this.umuMP)) / 10;
+    const jump = targetMovementModifier(this.jumpMP, true);
+    const umu = targetMovementModifier(this.umuMP);
+    this.addReportLine('TMMs', `${run} (R), ${jump} (J), ${umu} (U)`);
+    const before = this.defensiveValue;
+    const factor = 1.1 + Math.max(run, jump, umu) / 10;
+    this.defensiveValue *= factor;
+    this.addValueLine('Defensive Factor', `${this.format(before)} x ${this.format(factor)}`, before);
   }
   protected override ammoBV(mount: EntityMountedEquipment): number {
     const ammo = mount.equipment;
@@ -603,7 +665,26 @@ export class BattleArmorBVCalculator extends BVCalculator {
       sum += this.defensiveValue + this.offensiveValue;
     }
     const base = sum / count * ((0.9 + 0.1 * count) * count);
-    return { defensive: 0, offensive: 0, base: Math.round(base), adjusted: Math.round(base) };
+    const rounded = Math.round(base);
+    return {
+      defensive: 0,
+      offensive: 0,
+      base: rounded,
+      details: [
+        { type: 'Effective MP', calculation: `R: ${this.runMP}, J: ${this.jumpMP}, U: ${this.umuMP}` },
+        { type: 'Defensive Battle Rating', details: [] },
+        { type: 'Offensive Battle Rating', details: [] },
+        {
+          type: 'Battle Value',
+          details: [{
+            type: 'Base Unit BV',
+            calculation: `${this.format(sum)} / ${count} x ${this.format((0.9 + 0.1 * count) * count)}, rn`,
+            total: rounded,
+            delta: rounded,
+          }],
+        },
+      ],
+    };
   }
   protected override processArmor(): void {
     const points = this.entity.armorValues().get('Squad')?.front ?? 0;

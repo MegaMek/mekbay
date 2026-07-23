@@ -13,6 +13,8 @@ import {
   TestQuadMekEntity as QuadMekEntity,
 } from '../../testing/test-entities';
 import { addTestEquipment, addTestEquipmentWithFlags } from '../../testing/test-mounted-equipment';
+import { EquipmentRegistry } from '../../../equipment-lookup';
+import { TEST_EQUIPMENT_REGISTRY } from '../../testing/test-equipment-registry';
 
 const TEST_IS_ENDO_STRUCTURE = new StructureEquipment({
   id: 'IS Endo Steel',
@@ -57,6 +59,49 @@ describe('MekEntity optional systems', () => {
 });
 
 describe('MekEntity technology', () => {
+  it('includes automatically generated Clan CASE in its composite technology rating', () => {
+    const clanCase = new MiscEquipment({
+      id: 'CLCASE', name: 'CASE', type: 'misc', tech: {
+        base: 'Clan', rating: 'F', availability: { sl: 'X', sw: 'F', clan: 'D', da: 'C' },
+      }, flags: ['F_CASE'],
+    });
+    const ammo = new MiscEquipment({
+      id: 'explosive-ammo', name: 'Explosive Ammo', type: 'misc',
+      tech: { base: 'All', rating: 'A', availability: { sl: 'A', sw: 'A', clan: 'A', da: 'A' } },
+      stats: { explosive: true },
+    });
+    const entity = new BipedMekEntity(new EquipmentRegistry({
+      ...TEST_EQUIPMENT_REGISTRY.equipment, CLCASE: clanCase, [ammo.id]: ammo,
+    }));
+    entity.techBase.set('Clan');
+    entity.year.set(2850);
+    addTestEquipment(entity, ammo, { location: 'RT' });
+
+    expect(entity.automaticClanCaseLocations()).toEqual(new Set(['RT']));
+    expect(entity.techRating()).toBe('F/X-F-E-E');
+  });
+
+  it('does not generate Clan CASE technology for an explicitly protected location', () => {
+    const clanCase = new MiscEquipment({
+      id: 'CLCASE', name: 'CASE', type: 'misc', tech: {
+        base: 'Clan', rating: 'F', availability: { sl: 'X', sw: 'F', clan: 'D', da: 'C' },
+      }, flags: ['F_CASE'],
+    });
+    const ammo = new MiscEquipment({
+      id: 'explosive-ammo', name: 'Explosive Ammo', type: 'misc',
+      tech: { base: 'All', rating: 'A', availability: { sl: 'A', sw: 'A', clan: 'A', da: 'A' } },
+      stats: { explosive: true },
+    });
+    const entity = new BipedMekEntity(new EquipmentRegistry({
+      ...TEST_EQUIPMENT_REGISTRY.equipment, CLCASE: clanCase, [ammo.id]: ammo,
+    }));
+    entity.techBase.set('Clan');
+    addTestEquipment(entity, clanCase, { location: 'RT' });
+    addTestEquipment(entity, ammo, { location: 'RT' });
+
+    expect(entity.automaticClanCaseLocations()).toEqual(new Set());
+  });
+
   it('includes mounted equipment in its composite technology rating', () => {
     const entity = new BipedMekEntity();
     addRatedWeaponMount(entity, 'experimental laser');

@@ -99,13 +99,14 @@ import type { SupportVehicle } from './entities/support-vehicle';
 import type { UnitSubtype, UnitType } from './types';
 import { EquipmentRegistry } from '../equipment-lookup';
 import { CLAN_EXCEPTIONAL_BAY_IDS, weaponBayEquipmentId } from './utils/implicit-equipment';
-import { calculateEntityCost } from './utils/cost/entity-cost';
+import { calculateEntityCostDetails } from './utils/cost/entity-cost';
 import {
-  calculateBattleValue,
+  calculateBattleValueDetails,
   getOffensiveSpeedFactor,
 } from './utils/battle-value';
 import { reconcileEquipmentRelationships } from './utils/equipment-relationship-rules';
 import { canLinkEquipment as isCompatibleEquipmentLink } from './utils/equipment-link-rules';
+import { calculateEntityEffectiveTonnage } from './utils/weight/entity-weight';
 
 export interface AddEquipmentOptions {
   /** Enhancement target. The newly installed enhancement becomes the link source. */
@@ -272,6 +273,10 @@ export abstract class BaseEntity implements EntityTechnology {
     const sources: TechRatingSource[] = this.equipment()
       .flatMap(mount => mount.equipment ? [mount.equipment.tech] : []);
     sources.push(...this.implicitSystemEquipment().map(equipment => equipment.tech));
+    if (this.entityType === 'Mek' && this.automaticClanCaseLocations().size > 0) {
+      const clanCase = this.equipmentRegistry.findForTechBase('CLCASE', 'Clan');
+      if (clanCase) sources.push(clanCase.tech);
+    }
     sources.push(...this.baseSystemTechAdvancements());
     sources.push(...this.entityTechAdvancements());
     return sources.filter(source => {
@@ -334,7 +339,10 @@ export abstract class BaseEntity implements EntityTechnology {
 
   // ── Weight ──
   private readonly storedTonnage = signal<number>(0);
+  /** User-selected chassis capacity. This is not installed construction mass. */
   readonly tonnage = computed(() => this.computeTonnage());
+  /** Installed construction mass calculated from systems and equipment. */
+  readonly effectiveTonnage = computed(() => calculateEntityEffectiveTonnage(this));
   baseChassisFireConWeight = signal<number>(0);
 
   // ── Movement ──
@@ -431,6 +439,31 @@ export abstract class BaseEntity implements EntityTechnology {
 
   static readonly #NO_IMPLICIT_CLAN_CASE = new Set<string>();
 
+  /** Locations where MegaMek's load-time Mek.addClanCase() installs generated Clan CASE. */
+  readonly automaticClanCaseLocations = computed<ReadonlySet<string>>(() => {
+    if (!this.allowsImplicitClanCase()) return BaseEntity.#NO_IMPLICIT_CLAN_CASE;
+
+    const protectedLocations = new Set(this.equipment()
+      .filter(mount => mount.equipment?.hasFlag('F_CASE') || mount.equipment?.hasFlag('F_CASE_II'))
+      .flatMap(mount => mount.getOccupiedLocations()));
+    const optedOut = this.clanCaseOptOutLocations();
+    const locations = new Set<string>();
+    for (const mount of this.equipment()) {
+      const equipment = mount.equipment;
+      if (!equipment || equipment.hasFlag('F_CASE') || equipment.hasFlag('F_CASE_II')) continue;
+      // addClanCase() ignores capacitor charge state, but unjammed RACs remain non-explosive.
+      if (equipment instanceof WeaponEquipment && equipment.ammoType === 'AC_ROTARY') continue;
+      if (equipment.hasFlag('F_PPC_CAPACITOR') && !this.getLinkedMount(mount)) continue;
+      if (!equipment.isExplosive() && mount.secondEquipment?.isExplosive() !== true) continue;
+      for (const location of mount.getOccupiedLocations()) {
+        if (location !== 'Unallocated' && !protectedLocations.has(location) && !optedOut.has(location)) {
+          locations.add(location);
+        }
+      }
+    }
+    return locations;
+  });
+
   readonly implicitClanCaseLocations = computed<ReadonlySet<string>>(() => {
     if (!this.allowsImplicitClanCase()) {
       return BaseEntity.#NO_IMPLICIT_CLAN_CASE;
@@ -440,6 +473,10 @@ export abstract class BaseEntity implements EntityTechnology {
     for (const mount of this.equipment()) {
       const equipment = mount.equipment;
       if (!equipment || equipment.hasFlag('F_CASE')) continue;
+      // RACs are only explosive when jammed. Capacitors load in Charge mode and
+      // therefore contribute to pristine construction cost when marked explosive.
+      if (equipment instanceof WeaponEquipment && equipment.ammoType === 'AC_ROTARY') continue;
+      if (equipment.hasFlag('F_PPC_CAPACITOR') && !this.getLinkedMount(mount)) continue;
       if (!equipment.isExplosive() && mount.secondEquipment?.isExplosive() !== true) continue;
       for (const location of mount.getOccupiedLocations()) {
         if (location !== 'Unallocated' && !optedOut.has(location)) locations.add(location);
@@ -461,11 +498,18 @@ export abstract class BaseEntity implements EntityTechnology {
   readonly equipmentBays = computed<readonly EquipmentBay[]>(() =>
     this.#equipmentRelationships().resolveBays(this.#equipmentById()));
 
-  /** Construction cost, including ammunition, derived from entity state. */
-  readonly cost = computed(() => calculateEntityCost(this, { ignoreAmmo: false }));
+  /** Full construction-cost calculation, derived only from canonical entity state. */
+  readonly costDetails = computed(() => calculateEntityCostDetails(this, { ignoreAmmo: false }));
 
+  /** Construction cost, sourced from the same calculation as `costDetails`. */
+  readonly cost = computed(() => this.costDetails().total);
+
+  /** One reactive traversal supplies both pristine BV and its structured report. */
+  readonly #battleValueCalculation = computed(() => calculateBattleValueDetails(this));
   /** Pristine-entity BV, equivalent to Java calculateBV(false, true). */
-  readonly battleValue = computed(() => calculateBattleValue(this));
+  readonly battleValue = computed(() => this.#battleValueCalculation().base);
+  /** Structured, Java-export-shaped details computed from canonical entity state. */
+  readonly battleValueDetails = computed(() => this.#battleValueCalculation().details);
 
   setLocationMetadata(location: string, metadata: EntityLocationMetadata): void {
     if (!this.locationOrder.includes(location)) {

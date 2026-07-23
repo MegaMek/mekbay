@@ -1,5 +1,6 @@
 import type { BaseEntity } from '../base-entity';
 import type { EntityMountedEquipment } from '../types/equipment';
+import { WeaponEquipment } from '../../equipment.model';
 import { getEquipmentEngineWeight } from './equipment-engine-weight';
 import { isMekEntity } from './entity-type-guards';
 import { getFireControlWeaponWeight } from './fire-control';
@@ -13,6 +14,14 @@ export function getEquipmentTonnage(
 ): number | undefined {
     const equipment = mount.equipment;
     if (!equipment) return undefined;
+    if (entity.entityType === 'ProtoMek' && equipment instanceof WeaponEquipment) {
+        if (equipment.hasFlag('F_SRM')) {
+            return equipment.rackSize * (equipment.ammoType === 'SRM_STREAK' ? 0.5 : 0.25);
+        }
+        if (equipment.hasFlag('F_LRM')) {
+            return equipment.rackSize * (equipment.ammoType === 'LRM_STREAK' ? 0.4 : 0.2);
+        }
+    }
     if (equipment.tonnage !== 'variable') return equipment.tonnage;
 
     const tonnage = entity.tonnage();
@@ -153,7 +162,17 @@ export function getEquipmentTonnage(
         return nearestKg((mount.size ?? 1) / 1000);
     } else if (equipment.hasFlag('F_RAM_PLATE')) {
         return Math.ceil(tonnage / 10);
-    } else if (equipment.hasFlag('F_POWER_GENERATOR') || equipment.hasFlag('F_DUMPER')) {
+    } else if (equipment.hasFlag('F_DUMPER')) {
+        const linkedCargo = entity.getLinkedMount(mount);
+        const cargoCapacity = linkedCargo?.equipment?.hasAnyFlag(['F_CARGO', 'F_LIQUID_CARGO'])
+            ? (linkedCargo.size ?? 1)
+            : entity.equipment().reduce((total, candidate) => {
+                if (candidate.location !== mount.location
+                    || !candidate.equipment?.hasAnyFlag(['F_CARGO', 'F_LIQUID_CARGO'])) return total;
+                return total + (candidate.size ?? 1);
+            }, 0);
+        return standardRound(cargoCapacity * 0.05, entity);
+    } else if (equipment.hasFlag('F_POWER_GENERATOR')) {
         return 1;
     }
 
@@ -161,7 +180,7 @@ export function getEquipmentTonnage(
 }
 
 function nextHalfTon(tonnage: number): number {
-    return Math.ceil(tonnage * 2) / 2;
+    return Math.ceil(Math.round(tonnage * 1000) / 500) / 2;
 }
 
 function nextKg(tonnage: number): number {

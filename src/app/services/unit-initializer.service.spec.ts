@@ -3,7 +3,8 @@ import { TestBed } from '@angular/core/testing';
 import { CBTForce } from '../models/cbt-force.model';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment, type EquipmentMap } from '../models/equipment.model';
-import { MountedEquipment } from '../models/mounted-equipment.model';
+import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
+import { isIntrinsicOneShotAmmoMount } from '../utils/ammo-interaction.util';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { DataService } from './data.service';
 import { CRITICAL_ONLY_INVENTORY_EXCLUDED_EQUIPMENT, UnitInitializerService } from './unit-initializer.service';
@@ -165,5 +166,46 @@ describe('UnitInitializerService', () => {
 
         expect(forceUnit.getCritSlots().filter(entry => entry.id === 'CLUltraAC20Ammo@LT#7').length).toBe(1);
         expect(forceUnit.getInventory().some(entry => entry.id === 'CLUltraAC20Ammo@LT#7')).toBeFalse();
+    });
+
+    it('materializes compatible intrinsic one-shot ammo while initializing weapon mounts', () => {
+        const equipment = createEquipment();
+        const weapon = new WeaponEquipment({
+            id: 'ISBALRM5OS', name: 'LRM 5 (OS)', type: 'weapon', flags: ['F_ONE_SHOT', 'F_MISSILE', 'F_LRM', 'F_BA_WEAPON'],
+            weapon: { ammoType: 'LRM', rackSize: 5, damage: 'cluster' },
+        });
+        const standard = new AmmoEquipment({
+            id: 'IS BA Ammo LRM-5', name: 'BA LRM 5 Ammo', type: 'ammo', flags: ['F_BATTLEARMOR'],
+            ammo: { type: 'LRM', rackSize: 5, munitionType: ['M_STANDARD'] },
+        });
+        const incendiary = new AmmoEquipment({
+            id: 'IS BA Ammo LRM-5 w/ Incendiary', name: 'BA LRM 5 Incendiary Ammo', type: 'ammo', flags: ['F_BATTLEARMOR'],
+            ammo: { type: 'LRM', rackSize: 5, munitionType: ['M_STANDARD', 'M_INCENDIARY_LRM'] },
+        });
+        dataService.getEquipments.and.returnValue({
+            ...equipment,
+            [weapon.internalName]: weapon,
+            [standard.internalName]: standard,
+            [incendiary.internalName]: incendiary,
+        });
+        const forceUnit = createForceUnit();
+        const svg = createSvg(`
+            <g class="inventoryEntry" id="ISBALRM5OS@RA#0">
+                <g class="location"><text>RA</text></g>
+            </g>
+        `);
+
+        service.initializeUnitIfNeeded(forceUnit, svg);
+
+        const mountedWeapon = forceUnit.getInventory()
+            .find(entry => entry.id === 'ISBALRM5OS@RA#0');
+        const intrinsicAmmo = forceUnit.getInventory()
+            .find(isIntrinsicOneShotAmmoMount);
+
+        expect(mountedWeapon).toBeInstanceOf(MountedWeapon);
+        expect(intrinsicAmmo).toBeDefined();
+        expect(intrinsicAmmo?.parent).toBe(mountedWeapon);
+        expect(mountedWeapon?.linkedWith).toEqual([intrinsicAmmo!]);
+        expect(intrinsicAmmo?.totalAmmo).toBe(1);
     });
 });

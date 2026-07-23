@@ -73,6 +73,7 @@ export class UnitMetadataBuilder {
       model: entity.model(),
       year: entity.year(),
       tons: entity.tonnage(),
+      loadoutTons: this.buildLoadoutTons(entity),
       omni: entity.omni() ? 1 : 0,
       role: entity.role() || 'None',
       source: entity.source().map(source => source.abbrev),
@@ -129,6 +130,17 @@ export class UnitMetadataBuilder {
       bv: entity.battleValue(),
       offSpeedFactor: entity.offensiveSpeedFactor(),
     };
+  }
+
+  private buildLoadoutTons(entity: BaseEntity): number {
+    try {
+      return entity.effectiveTonnage();
+    } catch (error: unknown) {
+      if (error instanceof Error && error.message.startsWith('Effective tonnage is not implemented for ')) {
+        return 0;
+      }
+      throw error;
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════

@@ -40,7 +40,12 @@ import type { InventoryControlRuntimeEntryState, InventoryControlRuntimeRangeKey
 import type { ToHitAdjustment, ToHitResolution } from '../models/rules/game-rules';
 import { FIELD_GUN_LOCATION, InfantryRules } from '../models/rules/infantry-rules';
 import type { MountedEquipmentRuleState } from '../models/rules/unit-type-rules';
-import { formatBattleArmorTrooperLocation, getBattleArmorTrooperNumber } from './ammo-interaction.util';
+import {
+    formatBattleArmorTrooperLocation,
+    getBattleArmorTrooperNumber,
+    getIntrinsicOneShotAmmoMount,
+    isIntrinsicOneShotAmmoMount,
+} from './ammo-interaction.util';
 import { resolveInventoryControlWeaponDamage, type InventoryControlDamage, type InventoryControlDamageRules } from './inventory-control-damage.util';
 import { formatInventoryControlHeat, resolveInventoryControlHeatEffect, type InventoryControlHeatRules } from './inventory-control-heat.util';
 import type { InventoryControlPhysicalDamageEffect } from './inventory-control-physical-damage.util';
@@ -296,6 +301,12 @@ function getInventoryControlAmmoSummary(
         return { tracksAmmo: false, remaining: 0, total: 0, options: [] };
     }
 
+    const intrinsicAmmo = getIntrinsicOneShotAmmoMount(entry);
+    if (intrinsicAmmo) {
+        const source = createInventoryAmmoSource(intrinsicAmmo, equipmentMap);
+        return createAmmoSummary(source ? [source] : []);
+    }
+
     const builtInShotCapacity = getBuiltInOneShotCapacity(entry);
     if (builtInShotCapacity > 0) {
         return getBuiltInOneShotAmmoSummary(entry, builtInShotCapacity, equipmentMap);
@@ -308,6 +319,10 @@ function getInventoryControlAmmoSummary(
     const matchingAmmo = ammoSources
         .filter(source => ammoMatchesWeaponMode(entry, source.ammo, mode, matchesAmmo))
         .filter(source => !locationLock || source.locationLabel === locationLock);
+    return createAmmoSummary(matchingAmmo);
+}
+
+function createAmmoSummary(matchingAmmo: AmmoSource[]): InventoryControlAmmoSummary {
     const groupedAmmo = groupAmmoSources(matchingAmmo);
     const availableAmmo = groupedAmmo.filter(source => !source.destroyed);
 
@@ -821,6 +836,7 @@ function getAmmoSources(unit: CBTForceUnit, equipmentMap: EquipmentMap): AmmoSou
         .map(criticalSlot => createCriticalSlotAmmoSource(unit, criticalSlot))
         .filter((source): source is AmmoSource => !!source);
     const inventorySources = unit.getInventory()
+        .filter(entry => !isIntrinsicOneShotAmmoMount(entry))
         .map(entry => createInventoryAmmoSource(entry, equipmentMap))
         .filter((source): source is AmmoSource => !!source);
 
@@ -858,6 +874,9 @@ function createInventoryAmmoSource(entry: MountedEquipment, equipmentMap: Equipm
         total,
         consumed: entry.consumed ?? 0,
         destroyed: entry.owner.isEquipmentUnavailable(entry)
+            || (isIntrinsicOneShotAmmoMount(entry)
+                && !!entry.parent
+                && entry.owner.isEquipmentUnavailable(entry.parent))
     };
 }
 

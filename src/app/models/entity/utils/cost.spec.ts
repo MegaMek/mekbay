@@ -1,7 +1,8 @@
-import { MiscEquipment, WeaponEquipment } from '../../equipment.model';
-import { MountedEngine } from '../components';
+import { ArmorEquipment, Equipment, MiscEquipment, WeaponEquipment } from '../../equipment.model';
+import { MountedArmor, MountedEngine } from '../components';
 import {
     TestBattleArmorEntity as BattleArmorEntity,
+    TestAeroSpaceFighterEntity as AeroSpaceFighterEntity,
     TestBipedMekEntity as BipedMekEntity,
     TestDropShipEntity as DropShipEntity,
     TestJumpShipEntity as JumpShipEntity,
@@ -10,13 +11,184 @@ import {
     TestSmallCraftEntity as SmallCraftEntity,
     TestSpaceStationEntity as SpaceStationEntity,
     TestSupportTankEntity as SupportTankEntity,
+    TestTankEntity as TankEntity,
     TestWarShipEntity as WarShipEntity,
 } from '../testing/test-entities';
 import { EntityMountedEquipment } from '../types';
 import { TestBipedMekEntity, TestHandheldWeaponEntity } from '../testing/test-entities';
 import { calculateMountedEquipmentCost } from './cost';
+import { calculateEntityCost, calculateEntityCostDetails } from './cost/entity-cost';
+import { amount, buildCostReport, multiplier } from './cost/cost-report';
 
 describe('entity cost', () => {
+    it('applies additive and multiplier steps with running subtotals', () => {
+        expect(buildCostReport([
+            { type: 'Structure', amount: 100 },
+            { type: 'Equipment', amount: 50 },
+            { type: 'Weight Multiplier', factor: 1.5 },
+        ])).toEqual({
+            steps: [
+                { type: 'Structure', amount: 100, subtotal: 100 },
+                { type: 'Equipment', amount: 50, subtotal: 150 },
+                { type: 'Weight Multiplier', factor: 1.5, subtotal: 225 },
+            ],
+            total: 225,
+        });
+    });
+
+    it('preserves negative additive adjustments in report subtotals', () => {
+        expect(buildCostReport([
+            amount('Base', 10000),
+            amount('Adjustment', -2000),
+            multiplier('Multiplier', 1.5),
+        ])).toEqual({
+            steps: [
+                { type: 'Base', amount: 10000, subtotal: 10000 },
+                { type: 'Adjustment', amount: -2000, subtotal: 8000 },
+                { type: 'Multiplier', factor: 1.5, subtotal: 12000 },
+            ],
+            total: 12000,
+        });
+    });
+
+    it('keeps the numeric API and report total identical for every modeled family', () => {
+        const entities = [
+            new BipedMekEntity(), new SupportTankEntity(), new SmallCraftEntity(),
+            new DropShipEntity(), new JumpShipEntity(), new WarShipEntity(),
+            new SpaceStationEntity(), new ProtoMekEntity(), new BattleArmorEntity(),
+            new TestHandheldWeaponEntity(),
+        ];
+
+        for (const entity of entities) {
+            expect(calculateEntityCost(entity)).withContext(entity.entityType)
+                .toBe(calculateEntityCostDetails(entity).total);
+            expect(entity.cost()).withContext(entity.entityType).toBe(entity.costDetails().total);
+        }
+    });
+
+    it('aggregates mounted equipment using MegaMek report labels', () => {
+        const entity = new BipedMekEntity();
+        entity.setEquipment([
+            mount(new MiscEquipment({ id: 'laser-a', name: 'Test Laser', type: 'misc', stats: { cost: 1250 } })),
+            mount(new MiscEquipment({ id: 'laser-b', name: 'Test Laser', type: 'misc', stats: { cost: 1750 } })),
+        ]);
+
+        const step = entity.costDetails().steps.find(candidate => candidate.type === '2 Test Laser');
+        expect(step).toEqual(jasmine.objectContaining({ amount: 3000 }));
+    });
+
+    it('reports seating and bays separately', () => {
+        const entity = new SupportTankEntity();
+        entity.transporters.set([
+            { id: 'seats', kind: 'bay', configuration: { type: 'standard-seats' },
+                capacity: 5, doors: 0, bayNumber: -1, omni: false },
+            { id: 'cargo', kind: 'bay', configuration: { type: 'cargo' },
+                capacity: 2, doors: 1, bayNumber: 1, omni: false },
+        ]);
+
+        expect(entity.costDetails().steps).toContain(jasmine.objectContaining({ type: 'Seating', amount: 500 }));
+        expect(entity.costDetails().steps).toContain(jasmine.objectContaining({ type: 'Bays', amount: 1000 }));
+    });
+
+    it('charges DropShip seats as bay equipment but excludes structural troop accommodations', () => {
+        const entity = new DropShipEntity();
+        entity.transporters.set([
+            { id: 'seats', kind: 'bay', configuration: { type: 'standard-seats' },
+                capacity: 5, doors: 1, bayNumber: 1, omni: false },
+            { id: 'infantry', kind: 'bay', configuration: { type: 'infantry', infantryType: 'Motorized' },
+                capacity: 2, doors: 1, bayNumber: 2, omni: false },
+            { id: 'quarters', kind: 'bay', configuration: { type: 'crew-quarters' },
+                capacity: 3, doors: 0, bayNumber: -1, omni: false },
+        ]);
+
+        expect(entity.costDetails().steps.find(step => step.type === 'Bays'))
+            .toEqual(jasmine.objectContaining({ amount: 2500 }));
+    });
+
+    it('uses original build year for pre-2500 Inner Sphere DropShip engines', () => {
+        const entity = new DropShipEntity();
+        entity.setTonnage(1000);
+        entity.originalWalkMP.set(2);
+        entity.originalBuildYear.set(2400);
+        entity.techBase.set('IS');
+
+        expect(entity.costDetails().steps.find(step => step.type === 'Engine'))
+            .toEqual(jasmine.objectContaining({ amount: 143000 }));
+    });
+
+    it('uses original build year for pre-2500 Inner Sphere Small Craft engines', () => {
+        const entity = new SmallCraftEntity();
+        entity.setTonnage(150);
+        entity.originalWalkMP.set(5);
+        entity.originalBuildYear.set(2478);
+        entity.techBase.set('IS');
+
+        expect(entity.costDetails().steps.find(step => step.type === 'Engine'))
+            .toEqual(jasmine.objectContaining({ amount: 58500 }));
+    });
+
+    it('subtracts four locations of free SI armor from DropShip armor cost', () => {
+        const entity = new DropShipEntity();
+        const armor = new ArmorEquipment({
+            id: 'Standard Aerospace', name: 'Standard Aerospace', type: 'armor',
+            stats: { cost: 10000 },
+            armor: { type: 'AEROSPACE', pptMultiplier: 1, pptDropship: [20, 17, 14, 12, 10, 7] },
+        });
+        entity.setTonnage(1000);
+        entity.structuralIntegrity.set(10);
+        entity.setUniformArmor(new MountedArmor({ armor, techBase: 'IS' }));
+        entity.setArmorValue('Nose', 'front', 100);
+
+        expect(entity.costDetails().steps.find(step => step.type === 'Armor'))
+            .toEqual(jasmine.objectContaining({ amount: 30000 }));
+    });
+
+    it('prices an unspecified DropShip docking collar as standard', () => {
+        const entity = new DropShipEntity();
+
+        expect(entity.collarType()).toBe('Unspecified');
+        expect(entity.costDetails().steps.find(step => step.type === 'Docking Collar'))
+            .toEqual(jasmine.objectContaining({ amount: 10000 }));
+    });
+
+    it('uses tonnage-dependent aerospace armor coverage for Small Craft', () => {
+        const entity = new SmallCraftEntity();
+        const armor = new ArmorEquipment({
+            id: 'Clan Standard Aerospace', name: 'Standard Aerospace', type: 'armor',
+            stats: { cost: 10000 },
+            armor: { type: 'AEROSPACE', pptMultiplier: 1, pptDropship: [20, 17, 14, 12, 10, 7] },
+        });
+        entity.setTonnage(1000);
+        entity.structuralIntegrity.set(6);
+        entity.setUniformArmor(new MountedArmor({ armor, techBase: 'Clan' }));
+        entity.setArmorValue('Nose', 'front', 404);
+
+        expect(entity.costDetails().steps.find(step => step.type === 'Armor'))
+            .toEqual(jasmine.objectContaining({ amount: 190000 }));
+
+        entity.setTonnage(6000);
+        expect(entity.costDetails().steps.find(step => step.type === 'Armor'))
+            .toEqual(jasmine.objectContaining({ amount: 225000 }));
+    });
+
+    it('combines aerospace Omni and tonnage price adjustments before applying them', () => {
+        const entity = new AeroSpaceFighterEntity();
+        entity.setTonnage(75);
+        entity.omni.set(true);
+
+        const factors = entity.costDetails().steps.filter(step => 'factor' in step);
+        expect(factors).toEqual([
+            jasmine.objectContaining({ type: 'Weight Multiplier', factor: 1.71875 }),
+        ]);
+    });
+
+    it('throws instead of silently reporting an unresolved variable equipment cost', () => {
+        const entity = new BipedMekEntity();
+        entity.setEquipment([mount(variableEquipment('unknown', []))]);
+
+        expect(() => calculateEntityCostDetails(entity)).toThrowError(/Unable to calculate variable cost/);
+    });
+
     it('classifies all large aerospace families through their common entity hierarchy', () => {
         const entities = [
             new SmallCraftEntity(),
@@ -68,6 +240,28 @@ describe('entity cost', () => {
     expect(calculateMountedEquipmentCost(entity)).toBe(100000);
   });
 
+    it('excludes unlinked capacitors and unjammed rotary ACs from implicit Clan CASE', () => {
+        const entity = new TestBipedMekEntity();
+        entity.techBase.set('Clan');
+        entity.setEquipment([
+            mount(new MiscEquipment({
+                id: 'capacitor', name: 'PPC Capacitor', type: 'misc',
+                flags: ['F_PPC_CAPACITOR'], stats: { explosive: true },
+            })),
+            mount(new WeaponEquipment({
+                id: 'rac', name: 'Rotary AC', type: 'weapon', weapon: { ammoType: 'AC_ROTARY' },
+                stats: { explosive: true },
+            })),
+            mount(new MiscEquipment({
+                id: 'ammo', name: 'Explosive Ammo', type: 'misc', stats: { explosive: true },
+            })),
+        ]);
+
+        expect(entity.implicitClanCaseLocations()).toEqual(new Set(['RA']));
+        expect(calculateMountedEquipmentCost(entity)).toBe(50000);
+    });
+
+
   it('prices handheld equipment as structure and payload', () => {
     const entity = new TestHandheldWeaponEntity();
         entity.setEquipment([mount(new MiscEquipment({
@@ -89,6 +283,72 @@ describe('entity cost', () => {
         expect(entity.cost()).toBe(5156);
     });
 
+    it('does not grant support vehicles weight-free engine heat sinks', () => {
+        const mediumLaser = new WeaponEquipment({
+            id: 'medium-laser', name: 'Medium Laser', type: 'weapon',
+            flags: ['F_LASER'], stats: { cost: 40000 },
+            weapon: { heat: 3, ammoType: 'NA' },
+        });
+        const supportVehicle = new SupportTankEntity();
+        supportVehicle.mountedEngine.set(new MountedEngine({
+            type: 'Fusion', rating: 100, techBase: 'IS',
+        }));
+        supportVehicle.setEquipment([
+            mount(mediumLaser, false, undefined, 'laser-1'),
+            mount(mediumLaser, false, undefined, 'laser-2'),
+        ]);
+
+        expect(supportVehicle.costDetails().steps.find(step => step.type === 'Heatsinks'))
+            .toEqual(jasmine.objectContaining({ amount: 12000 }));
+
+        const combatVehicle = new TankEntity();
+        combatVehicle.mountedEngine.set(new MountedEngine({
+            type: 'Fusion', rating: 100, techBase: 'IS',
+        }));
+        combatVehicle.setEquipment([
+            mount(mediumLaser, false, undefined, 'laser-1'),
+            mount(mediumLaser, false, undefined, 'laser-2'),
+        ]);
+
+        expect(combatVehicle.costDetails().steps.find(step => step.type === 'Heatsinks'))
+            .toEqual(jasmine.objectContaining({ amount: 0 }));
+    });
+
+    it('includes operating misc heat after applying engine heat-sink allowances', () => {
+        const entity = new TankEntity();
+        entity.mountedEngine.set(new MountedEngine({
+            type: 'Fusion', rating: 100, techBase: 'IS',
+        }));
+        entity.setEquipment([mount(new MiscEquipment({
+            id: 'mobile-hpg', name: 'Ground-Mobile HPG', type: 'misc',
+            flags: ['F_MOBILE_HPG', 'F_MEK_EQUIPMENT'], stats: { cost: 0 },
+        }))]);
+
+        expect(entity.costDetails().steps.find(step => step.type === 'Heatsinks'))
+            .toEqual(jasmine.objectContaining({ amount: 20000 }));
+    });
+
+    it('does not add spot-welder heat with fusion or fission engines', () => {
+        const spotWelder = new MiscEquipment({
+            id: 'spot-welder', name: 'Spot Welder', type: 'misc',
+            flags: ['F_CLUB', 'S_SPOT_WELDER'], stats: { cost: 0 },
+        });
+        const entity = new TankEntity();
+        entity.mountedEngine.set(new MountedEngine({
+            type: 'Fusion', rating: 100, techBase: 'IS',
+        }));
+        entity.setEquipment([mount(spotWelder)]);
+
+        expect(entity.costDetails().steps.find(step => step.type === 'Heatsinks'))
+            .toEqual(jasmine.objectContaining({ amount: 0 }));
+
+        entity.mountedEngine.set(new MountedEngine({
+            type: 'ICE', rating: 100, techBase: 'IS',
+        }));
+        expect(entity.costDetails().steps.find(step => step.type === 'Heatsinks'))
+            .toEqual(jasmine.objectContaining({ amount: 4000 }));
+    });
+
     it('includes seating and transport bay door costs', () => {
         const entity = new SupportTankEntity();
         entity.setTonnage(10);
@@ -107,11 +367,38 @@ describe('entity cost', () => {
 
         expect(entity.cost()).toBe(6806);
     });
+
+    it('does not charge legacy troop-space transporters', () => {
+        const entity = new SupportTankEntity();
+        entity.setTonnage(10);
+        entity.motiveType.set('Tracked');
+        entity.structuralTechRating.set(3);
+        entity.transporters.set([
+            { id: 'troops', kind: 'troop-space', totalSpace: 5, omni: false },
+        ]);
+
+        expect(entity.cost()).toBe(5156);
+    });
+
+    it('uses standard jump-system cost for prototype improved jump jets', () => {
+        const entity = new BipedMekEntity();
+        entity.setTonnage(60);
+        const prototypeImprovedJumpJet = new MiscEquipment({
+            id: 'prototype-improved-jump-jet', name: 'Prototype Improved Jump Jet', type: 'misc',
+            flags: ['F_JUMP_JET', 'S_IMPROVED', 'S_PROTOTYPE'], stats: { cost: 0 },
+        });
+        entity.setEquipment(Array.from({ length: 6 }, (_, index) =>
+            mount(prototypeImprovedJumpJet, false, undefined, `prototype-jump-jet-${index}`)));
+
+        expect(entity.costDetails().steps.find(step => step.type === 'Jump Jets'))
+            .toEqual(jasmine.objectContaining({ amount: 432000 }));
+    });
+
 });
 
-function mount(equipment: MiscEquipment, armored = false, size?: number): EntityMountedEquipment {
+function mount(equipment: Equipment, armored = false, size?: number, mountId = equipment.id): EntityMountedEquipment {
     return new EntityMountedEquipment({
-        mountId: equipment.id,
+        mountId,
         equipmentId: equipment.id,
         equipment,
         allocation: { kind: 'location', location: 'RA' },
@@ -224,6 +511,18 @@ describe('EntityMountedEquipment.getCost', () => {
         expect(advanced.getCost(entity)).toBe(18000);
     });
 
+    it('truncates support infantry weapon and ammunition cost only after summing them', () => {
+        const supportTank = new SupportTankEntity();
+        const infantryWeapon = new WeaponEquipment({
+            id: 'fractional-infantry-weapon', name: 'Fractional Infantry Weapon', type: 'weapon',
+            flags: ['F_INFANTRY'], stats: { cost: 80.75 },
+            infantry: { ammoCost: 0.75 },
+        });
+        supportTank.setEquipment([mount(infantryWeapon, false, 3)]);
+
+        expect(calculateMountedEquipmentCost(supportTank)).toBe(82);
+    });
+
     it('resolves IS and Clan MASC cost', () => {
         expect(mount(variableEquipment('renamed IS MASC', ['F_MASC'], 'IS')).getCost(entity)).toBe(1200000);
         expect(mount(variableEquipment('renamed Clan MASC', ['F_MASC'], 'Clan')).getCost(entity)).toBe(900000);
@@ -280,6 +579,11 @@ describe('EntityMountedEquipment.getCost', () => {
 
     it('resolves turret and power-generator costs', () => {
         expect(mount(variableCostEquipment('head turret', ['F_HEAD_TURRET'], 2)).getCost(entity)).toBe(20000);
+        const armoredHeadTurret = new MiscEquipment({
+            id: 'armored head turret', name: 'armored head turret', type: 'misc',
+            flags: ['F_HEAD_TURRET'], stats: { cost: 'variable', tonnage: 2, criticalSlots: 1 },
+        });
+        expect(mount(armoredHeadTurret, true).getCost(entity)).toBe(170000);
         expect(mount(variableCostEquipment('sponson turret', ['F_SPONSON_TURRET'], 2)).getCost(entity)).toBe(8000);
         expect(mount(variableCostEquipment('pintle turret', ['F_PINTLE_TURRET'], 2)).getCost(entity)).toBe(2000);
         expect(mount(variableEquipment('FUSION PowerGenerator', ['F_POWER_GENERATOR']), false, 3).getCost(entity))
@@ -335,7 +639,12 @@ function variableEquipment(name: string, flags: string[], techBase: 'IS' | 'Clan
     });
 }
 
-function weaponMount(name: string, tonnage: number, flags: string[], cost = 0): EntityMountedEquipment {
+function weaponMount(
+    name: string,
+    tonnage: number,
+    flags: string[],
+    cost = 0,
+): EntityMountedEquipment {
     return new EntityMountedEquipment({
         mountId: name,
         equipmentId: name,

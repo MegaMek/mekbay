@@ -4,6 +4,7 @@ import type { SpaceStationEntity } from '../../entities/largecraft/space-station
 import type { WarShipEntity } from '../../entities/largecraft/warship-entity';
 import type { EntityTransportBay } from '../../types';
 import { nextHalfTon } from './common';
+import { amount, buildCostReport, multiplier, type EntityCostEntry, type EntityCostReport } from './cost-report';
 
 const SPHEROID_DROPSHIP_THRESHOLDS = [12500, 20000, 35000, 50000, 65000] as const;
 const AERODYNE_DROPSHIP_THRESHOLDS = [6000, 9500, 12500, 17500, 25000] as const;
@@ -13,118 +14,113 @@ type CapitalCraft = JumpShipEntity | WarShipEntity | SpaceStationEntity;
 
 /** Mirrors MegaMek's DropShipCostCalculator. */
 export function calculateDropShipCost(entity: DropShipEntity, equipmentCost: number): number {
+  return calculateDropShipCostReport(entity, [amount('Equipment', equipmentCost)]).total;
+}
+
+export function calculateDropShipCostReport(
+  entity: DropShipEntity, equipment: readonly EntityCostEntry[],
+): EntityCostReport {
   const tonnage = entity.tonnage();
-  const baseCosts = smallCraftSystemCosts(entity, equipmentCost);
-  const collarCost = entity.collarType() === 'Standard' ? 10000
+  const collarCost = ['Unspecified', 'Standard'].includes(entity.collarType()) ? 10000
     : entity.collarType() === 'Prototype' ? 1010000 : 0;
-  const additiveCost = baseCosts + collarCost + calculateLargeCraftBayAndDoorCost(entity)
-    + 5000 * (entity.lifeboats() + entity.escapePods());
-  return Math.round(additiveCost * (entity.motiveType() === 'Spheroid' ? 28 : 36));
+  return buildCostReport([
+    ...smallCraftSystemEntries(entity), ...equipment, amount('Docking Collar', collarCost),
+    amount('Bays', calculateLargeCraftBayAndDoorCost(entity)),
+    amount('Life Boats and Escape Pods', 5000 * (entity.lifeboats() + entity.escapePods())),
+    multiplier('Weight Multiplier', entity.motiveType() === 'Spheroid' ? 28 : 36),
+  ], true);
 }
 
 /** Mirrors MegaMek's JumpShipCostCalculator. */
 export function calculateJumpShipCost(entity: JumpShipEntity, equipmentCost: number): number {
-  const tonnage = entity.tonnage();
-  const cost = sharedCapitalSystemSum(entity)
-    + 1000 * tonnage * 0.012
-    + 1000
-    + calculateKfDriveCost(entity, 7500, 1)
-    + 10000000 * (tonnage / 10000)
-    + 25000
-    + 100000 * dockingCount(entity, false)
-    + calculateCapitalFuelTankCost(entity)
-    + calculateLargeCraftArmorCost(entity)
-    + heatSinkCost(entity)
-    + escapeCraftCost(entity)
-    + calculateGravDeckCost(entity)
-    + calculateLargeCraftBayAndDoorCost(entity)
-    + (entity.hpg() ? 1000000000 : 0)
-    + equipmentCost;
-  return Math.round(cost * 1.25);
+  return calculateJumpShipCostReport(entity, [amount('Equipment', equipmentCost)]).total;
+}
+
+export function calculateJumpShipCostReport(
+  entity: JumpShipEntity, equipment: readonly EntityCostEntry[],
+): EntityCostReport {
+  return buildCostReport([
+    ...capitalSystemEntries(entity), amount('Attitude Thrusters', 1000 * entity.tonnage() * 0.012),
+    amount('Landing Gear', 1000), amount('K-F Drive', calculateKfDriveCost(entity, 7500, 1)),
+    amount('Lithium-Fusion Battery', 10000000 * (entity.tonnage() / 10000)),
+    ...capitalCommonEntries(entity), ...equipment, multiplier('Weight Multiplier', 1.25),
+  ], true);
 }
 
 /** Mirrors MegaMek's WarShipCostCalculator. */
 export function calculateWarShipCost(entity: WarShipEntity, equipmentCost: number): number {
-  const tonnage = entity.tonnage();
+  return calculateWarShipCostReport(entity, [amount('Equipment', equipmentCost)]).total;
+}
+
+export function calculateWarShipCostReport(
+  entity: WarShipEntity, equipment: readonly EntityCostEntry[],
+): EntityCostReport {
   const thrust = entity.originalWalkMP();
-  const cost = sharedCapitalSystemSum(entity)
-    + 500 * thrust * (tonnage / 100)
-    + 1000 * thrust * tonnage * 0.06
-    + 1000
-    + calculateKfDriveCost(entity, 20000, 5)
-    + 20000000 * (50 + tonnage / 10000)
-    + 25000
-    + 100000 * dockingCount(entity, false)
-    + calculateCapitalFuelTankCost(entity)
-    + calculateLargeCraftArmorCost(entity)
-    + heatSinkCost(entity)
-    + escapeCraftCost(entity)
-    + calculateGravDeckCost(entity)
-    + calculateLargeCraftBayAndDoorCost(entity)
-    + (entity.hpg() ? 1000000000 : 0)
-    + equipmentCost;
-  return Math.round(cost * 2);
+  return buildCostReport([
+    ...capitalSystemEntries(entity), amount('Engine', 500 * thrust * (entity.tonnage() / 100)),
+    amount('Drive Unit', 1000 * thrust * entity.tonnage() * 0.06), amount('Landing Gear', 1000),
+    amount('K-F Drive', calculateKfDriveCost(entity, 20000, 5)),
+    amount('Lithium-Fusion Battery', 20000000 * (50 + entity.tonnage() / 10000)),
+    ...capitalCommonEntries(entity), ...equipment, multiplier('Weight Multiplier', 2),
+  ], true);
 }
 
 /** Mirrors MegaMek's SpaceStationCostCalculator. */
 export function calculateSpaceStationCost(entity: SpaceStationEntity, equipmentCost: number): number {
+  return calculateSpaceStationCostReport(entity, [amount('Equipment', equipmentCost)]).total;
+}
+
+export function calculateSpaceStationCostReport(
+  entity: SpaceStationEntity, equipment: readonly EntityCostEntry[],
+): EntityCostReport {
   const tonnage = entity.tonnage();
-  const cost = sharedCapitalSystemSum(entity)
-    + 1000 * tonnage * 0.012
-    + 1000
-    + 25000
-    + 100000 * dockingCount(entity, false)
-    + calculateCapitalFuelTankCost(entity)
-    + calculateLargeCraftArmorCost(entity)
-    + heatSinkCost(entity)
-    + escapeCraftCost(entity)
-    + calculateGravDeckCost(entity)
-    + calculateLargeCraftBayAndDoorCost(entity)
-    + (entity.hpg() ? 1000000000 : 0)
-    + equipmentCost;
   const multiplier = entity.modularOrKFAdapter()
     ? (tonnage > 100000 ? 50 : 20)
     : 5;
-  return Math.round(cost * multiplier);
+  return buildCostReport([
+    ...capitalSystemEntries(entity), amount('Attitude Thrusters', 1000 * tonnage * 0.012),
+    amount('Landing Gear', 1000), ...capitalCommonEntries(entity), ...equipment,
+    { type: 'Weight Multiplier', factor: multiplier },
+  ], true);
 }
 
-function smallCraftSystemCosts(entity: DropShipEntity, equipmentCost: number): number {
+function capitalSystemEntries(entity: CapitalCraft): EntityCostEntry[] {
+  return [
+    amount('Bridge', 200000 + 10 * entity.tonnage()), amount('Computer', 200000),
+    amount('Life Support', 5000 * crewAndPassengerCount(entity)), amount('Sensors', 80000),
+    amount('Fire Control Computer', 100000), amount('Gunnery Control Systems', 10000 * arcsWithGuns(entity)),
+    amount('Structure', 100000 * entity.structuralIntegrity()),
+  ];
+}
+
+function capitalCommonEntries(entity: CapitalCraft): EntityCostEntry[] {
+  return [
+    amount('Sail', 25000), amount('Docking Collars', 100000 * dockingCount(entity, false)),
+    amount('Fuel Tanks', calculateCapitalFuelTankCost(entity)), amount('Armor', calculateLargeCraftArmorCost(entity)),
+    amount('Heatsinks', heatSinkCost(entity)), amount('Life Boats and Escape Pods', escapeCraftCost(entity)),
+    amount('Grav Decks', calculateGravDeckCost(entity)), amount('Bays', calculateLargeCraftBayAndDoorCost(entity)),
+    amount('HPG', entity.hpg() ? 1000000000 : 0),
+  ];
+}
+
+function smallCraftSystemEntries(entity: DropShipEntity): EntityCostEntry[] {
   const tonnage = entity.tonnage();
   const crewAndPassengers = crewAndPassengerCount(entity);
-  const primitive = entity.uniformArmor()?.type === 'PRIMITIVE_AERO';
   const engineMultiplier = entity.techBase() === 'Clan'
     ? 0.061
-    : dropshipEngineMultiplier(primitive ? entity.effectiveOriginalBuildYear() : 2500);
+    : dropshipEngineMultiplier(entity.effectiveOriginalBuildYear());
   const engineWeight = nextHalfTon(tonnage * entity.originalWalkMP() * engineMultiplier);
   const fuelPointsPerTon = dropshipFuelPointsPerTon(entity);
   const fuelWeight = nextHalfTon((entity.fuel() / fuelPointsPerTon) * 1.02);
   return [
-    200000 + 10 * tonnage,
-    200000,
-    5000 * crewAndPassengers,
-    80000,
-    100000,
-    10000 * arcsWithGuns(entity),
-    100000 * entity.structuralIntegrity(),
-    25000,
-    10 * tonnage,
-    1000 * engineWeight,
-    500 * entity.originalWalkMP() * tonnage / 100,
-    200 * fuelWeight,
-    calculateLargeCraftArmorCost(entity),
-    heatSinkCost(entity),
-    equipmentCost,
-  ].reduce((sum, value) => sum + Math.max(0, value), 0);
-}
-
-function sharedCapitalSystemSum(entity: CapitalCraft): number {
-  return 200000 + 10 * entity.tonnage()
-    + 200000
-    + 5000 * crewAndPassengerCount(entity)
-    + 80000
-    + 100000
-    + 10000 * arcsWithGuns(entity)
-    + 100000 * entity.structuralIntegrity();
+    amount('Bridge', 200000 + 10 * tonnage), amount('Computer', 200000),
+    amount('Life Support', 5000 * crewAndPassengers), amount('Sensors', 80000),
+    amount('Fire Control Computer', 100000), amount('Gunnery Control Systems', 10000 * arcsWithGuns(entity)),
+    amount('Structure', 100000 * entity.structuralIntegrity()), amount('Attitude Thrusters', 25000),
+    amount('Landing Gear', 10 * tonnage), amount('Engine', 1000 * engineWeight),
+    amount('Drive Unit', 500 * entity.originalWalkMP() * tonnage / 100), amount('Fuel Tanks', 200 * fuelWeight),
+    amount('Armor', calculateLargeCraftArmorCost(entity)), amount('Heatsinks', heatSinkCost(entity)),
+  ];
 }
 
 function crewAndPassengerCount(entity: CapitalCraft | DropShipEntity): number {
@@ -185,13 +181,16 @@ function calculateLargeCraftBayAndDoorCost(entity: CapitalCraft | DropShipEntity
 
 function isStructuralBay(bay: EntityTransportBay): boolean {
   return ['crew-quarters', 'steerage-quarters', 'second-class-quarters', 'first-class-quarters',
-    'standard-seats', 'pillion-seats', 'ejection-seats', 'infantry', 'battle-armor']
+    'infantry', 'battle-armor']
     .includes(bay.configuration.type);
 }
 
 function bayCost(bay: EntityTransportBay): number {
   const capacity = Math.trunc(bay.capacity);
   switch (bay.configuration.type) {
+    case 'standard-seats': return 100 * capacity;
+    case 'pillion-seats': return 10 * capacity;
+    case 'ejection-seats': return 25000 * capacity;
     case 'mek': return 20000 * capacity;
     case 'fighter': return 20000 * capacity + (bay.configuration.arts ? 1000000 : 0);
     case 'small-craft': return 20000 * capacity;
@@ -223,7 +222,7 @@ function calculateLargeCraftArmorCost(entity: CapitalCraft | DropShipEntity): nu
     : mountedArmor.type === 'PRIMITIVE_AERO';
   if (primitive) rawArmor = Math.ceil(rawArmor / 0.66);
   const siBonus = entity.entityType === 'DropShip'
-    ? 6 * entity.structuralIntegrity()
+    ? 4 * entity.structuralIntegrity()
     : 6 * Math.round(entity.structuralIntegrity() / 10);
   const pointsPerTon = resolveLargeCraftPointsPerTon(entity, armor.pptMultiplier,
     armor.pptDropship, armor.pptCapital);

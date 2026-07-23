@@ -9,6 +9,16 @@ export interface BattleValueBreakdown {
   readonly defensive: number;
   readonly offensive: number;
   readonly base: number;
+  readonly details: readonly BattleValueDetail[];
+}
+
+/** A JSON-safe line in the same hierarchical shape as MegaMek's BV export. */
+export interface BattleValueDetail {
+  readonly type: string;
+  readonly calculation?: string;
+  readonly total?: number;
+  readonly delta?: number;
+  readonly details?: readonly BattleValueDetail[];
 }
 
 /**
@@ -24,6 +34,8 @@ export class BVCalculator {
   protected umuMP = 0;
   protected frontDecided = false;
   protected switchRearAndFront = false;
+  private report: BattleValueDetail[] = [];
+  private reportTarget: 'defensive' | 'offensive' = 'defensive';
 
   constructor(readonly entity: BaseEntity) {}
 
@@ -33,10 +45,25 @@ export class BVCalculator {
 
   calculate(): BattleValueBreakdown {
     this.prepare();
-    this.processDefensiveValue();
-    this.processOffensiveValue();
-    const base = Math.round(this.summarize(this.defensiveValue + this.offensiveValue));
-    return { defensive: this.defensiveValue, offensive: this.offensiveValue, base: base };
+    this.addReportLine('Effective MP', `R: ${this.runMP}, J: ${this.jumpMP}, U: ${this.umuMP}`);
+    this.reportTarget = 'defensive';
+    const defensiveDetails = this.captureDetails(() => this.processDefensiveValue());
+    this.report.push({ type: 'Defensive Battle Rating', details: defensiveDetails });
+    this.reportTarget = 'offensive';
+    const offensiveDetails = this.captureDetails(() => this.processOffensiveValue());
+    this.report.push({ type: 'Offensive Battle Rating', details: offensiveDetails });
+    const unrounded = this.summarize(this.defensiveValue + this.offensiveValue);
+    const base = Math.round(unrounded);
+    this.report.push({
+      type: 'Battle Value',
+      details: [{
+        type: 'Base Unit BV',
+        calculation: `${this.format(this.defensiveValue)} + ${this.format(this.offensiveValue)}, rn`,
+        total: base,
+        delta: base,
+      }],
+    });
+    return { defensive: this.defensiveValue, offensive: this.offensiveValue, base, details: this.report };
   }
 
   protected prepare(): void {
@@ -44,6 +71,7 @@ export class BVCalculator {
     this.offensiveValue = 0;
     this.frontDecided = false;
     this.switchRearAndFront = false;
+    this.report = [];
     this.runMP = this.entity.maxRunMP();
     this.jumpMP = this.entity.computeJumpMP(BV_MOVEMENT_CALCULATION);
     this.umuMP = this.entity.umuMP();
@@ -64,11 +92,12 @@ export class BVCalculator {
     this.processAmmo();
     this.processOffensiveEquipment();
     this.processWeight();
-    this.offensiveValue *= getOffensiveSpeedFactor(this.entity);
+    this.processSpeedFactor();
     this.processOffensiveTypeModifier();
   }
 
   protected processArmor(): void {
+    const before = this.defensiveValue;
     let armorBV = 0;
     for (const [location, value] of this.entity.armorValues()) {
       const armor = this.entity.armorByLocation().get(location)?.armor;
@@ -80,11 +109,13 @@ export class BVCalculator {
       armorBV += Math.max(0, value.front + value.rear + modularArmor) * armorBVMultiplier(armor) * bar;
     }
     this.defensiveValue += armorBV * this.armorFactor();
+    this.addValueLine('Armor', `${this.format(armorBV)} x ${this.format(this.armorFactor())}`, before);
   }
 
   protected armorFactor(): number { return 2.5; }
 
   protected processStructure(): void {
+    const before = this.defensiveValue;
     let multiplier = 1;
     const structures = [...this.entity.structureByLocation().values()];
     if (structures.length > 0 && structures.every(s => s.structure.hasAnyFlag([
@@ -93,9 +124,17 @@ export class BVCalculator {
     else if (structures.length > 0 && structures.every(s => s.structure.hasFlag('F_REINFORCED_STRUCTURE'))) multiplier = 2;
     if (this.has('F_BLUE_SHIELD')) multiplier += 0.2;
     this.defensiveValue += this.entity.totalInternalPoints() * 1.5 * multiplier;
+    const modifier = multiplier === 1 ? '' : ` x ${this.format(multiplier)}`;
+    this.addValueLine('Internal Structure', `+ ${this.entity.totalInternalPoints()} x 1.5${modifier}`, before);
   }
 
   protected processDefensiveEquipment(): void {
+    const before = this.defensiveValue;
+    const details = this.captureDetails(() => this.processDefensiveEquipmentItems());
+    if (details.length > 0) this.addValueLine('Defensive Equipment', undefined, before, details);
+  }
+
+  private processDefensiveEquipmentItems(): void {
     let amsWeapons = 0;
     let amsAmmo = 0;
     let screenWeapons = 0;
@@ -111,12 +150,25 @@ export class BVCalculator {
       }
       if (!this.countsAsDefensiveEquipment(mount)) continue;
       const value = mount.getBV(this.entity);
+      const before = this.defensiveValue;
       this.defensiveValue += value;
+      this.addValueLine(this.equipmentDescriptor(mount), `${value >= 0 ? '+' : '-'} ${this.format(Math.abs(value))}`, before);
       if (equipment instanceof WeaponEquipment && equipment.hasFlag('F_AMS')
         && ['AMS', 'APDS'].includes(equipment.ammoType)) amsWeapons += value;
       if (equipment instanceof WeaponEquipment && equipment.ammoType === 'SCREEN_LAUNCHER') screenWeapons += value;
     }
-    this.defensiveValue += Math.min(amsWeapons, amsAmmo) + Math.min(screenWeapons, screenAmmo);
+    const ams = Math.min(amsWeapons, amsAmmo);
+    if (ams > 0) {
+      const before = this.defensiveValue;
+      this.defensiveValue += ams;
+      this.addValueLine('AMS Ammo', `+ ${this.format(ams)}`, before);
+    }
+    const screen = Math.min(screenWeapons, screenAmmo);
+    if (screen > 0) {
+      const before = this.defensiveValue;
+      this.defensiveValue += screen;
+      this.addValueLine('Screen Launcher Ammo', `+ ${this.format(screen)}`, before);
+    }
   }
 
   protected countsAsDefensiveEquipment(mount: EntityMountedEquipment): boolean {
@@ -136,11 +188,14 @@ export class BVCalculator {
   protected processExplosiveEquipment(): void {}
 
   protected processDefensiveFactor(): void {
-    this.defensiveValue *= this.tmmFactor(
-      targetMovementModifier(this.runMP),
-      targetMovementModifier(this.jumpMP, true),
-      targetMovementModifier(this.umuMP),
-    );
+    const running = targetMovementModifier(this.runMP);
+    const jumping = targetMovementModifier(this.jumpMP, true);
+    const umu = targetMovementModifier(this.umuMP);
+    this.addReportLine('TMMs', `${running} (R), ${jumping} (J), ${umu} (U)`);
+    const factor = this.tmmFactor(running, jumping, umu);
+    const before = this.defensiveValue;
+    this.defensiveValue *= factor;
+    this.addValueLine('Defensive Factor', `${this.format(before)} x ${this.format(factor)}`, before);
   }
 
   protected tmmFactor(running: number, jumping: number, umu: number): number {
@@ -151,6 +206,7 @@ export class BVCalculator {
     const front = this.weaponSectionBV(m => this.frontWeapon(m));
     const rear = this.weaponSectionBV(m => this.rearWeapon(m));
     this.switchRearAndFront = front < rear;
+    if (this.switchRearAndFront) this.addReportLine('Front BV < Rear BV', 'Switching Front and Rear');
     this.frontDecided = true;
   }
 
@@ -167,9 +223,17 @@ export class BVCalculator {
   }
 
   protected processWeapons(): void {
+    const before = this.offensiveValue;
+    const details = this.captureDetails(() => {
     for (const mount of this.entity.equipment()) {
-      if (this.countsAsOffensiveWeapon(mount)) this.offensiveValue += this.weaponBV(mount, true);
+      if (!this.countsAsOffensiveWeapon(mount)) continue;
+      const itemBefore = this.offensiveValue;
+      const value = this.weaponBV(mount, true);
+      this.offensiveValue += value;
+      this.addValueLine(this.equipmentDescriptor(mount), `+ ${this.format(value)}`, itemBefore);
     }
+    });
+    this.addValueLine('Weapons', undefined, before, details);
   }
 
   protected countsAsOffensiveWeapon(mount: EntityMountedEquipment): boolean {
@@ -217,6 +281,8 @@ export class BVCalculator {
   protected weaponMountModifier(_mount: EntityMountedEquipment): number { return 1; }
 
   protected processAmmo(): void {
+    const before = this.offensiveValue;
+    const details = this.captureDetails(() => {
     const weaponBV = new Map<string, number>();
     const ammoBV = new Map<string, number>();
     for (const mount of this.entity.equipment()) {
@@ -231,9 +297,16 @@ export class BVCalculator {
     }
     for (const [key, ammo] of ammoBV) {
       const weapons = weaponBV.get(key);
-      if (weapons !== undefined) this.offensiveValue += Math.min(ammo, weapons) * this.fireControlModifier();
-      else if (key === ammoKey('COOLANT_POD', 1)) this.offensiveValue += ammo;
+      const value = weapons !== undefined ? Math.min(ammo, weapons) * this.fireControlModifier()
+        : key === ammoKey('COOLANT_POD', 1) ? ammo : 0;
+      if (value > 0) {
+        const itemBefore = this.offensiveValue;
+        this.offensiveValue += value;
+        this.addValueLine(`${key} Ammo`, `+ ${this.format(value)}`, itemBefore);
+      }
     }
+    });
+    if (details.length > 0) this.addValueLine('Ammo', undefined, before, details);
   }
 
   protected weaponUsesAmmo(weapon: WeaponEquipment): boolean {
@@ -256,6 +329,8 @@ export class BVCalculator {
   }
 
   protected processOffensiveEquipment(): void {
+    const before = this.offensiveValue;
+    const details = this.captureDetails(() => {
     const excluded = [
       'F_AP_POD', 'F_VIRAL_JAMMER_DECOY', 'F_VIRAL_JAMMER_HOMING',
       'F_LIGHT_BRIDGE_LAYER', 'F_MEDIUM_BRIDGE_LAYER', 'F_HEAVY_BRIDGE_LAYER',
@@ -273,8 +348,12 @@ export class BVCalculator {
         || this.countsAsOffensiveWeapon(mount)) continue;
       let value = mount.getBV(this.entity);
       if (equipment.hasFlag('F_WATCHDOG')) value = 7;
+      const itemBefore = this.offensiveValue;
       this.offensiveValue += value;
+      this.addValueLine(this.equipmentDescriptor(mount), `+ ${this.format(value)}`, itemBefore);
     }
+    });
+    if (details.length > 0) this.addValueLine('Offensive Equipment', undefined, before, details);
   }
 
   protected fireControlModifier(): number {
@@ -292,6 +371,63 @@ export class BVCalculator {
 
   protected has(flag: string): boolean {
     return this.entity.equipment().some(mount => mount.equipment?.hasFlag(flag));
+  }
+
+  protected processSpeedFactor(): void {
+    const before = this.offensiveValue;
+    const factor = getOffensiveSpeedFactor(this.entity);
+    this.offensiveValue *= factor;
+    this.addValueLine('Speed Factor', `${this.format(before)} x ${this.format(factor)}`, before);
+  }
+
+  protected addReportLine(type: string, calculation?: string): void {
+    this.report.push({ type, ...(calculation === undefined ? {} : { calculation }) });
+  }
+
+  protected addValueLine(
+    type: string,
+    calculation: string | undefined,
+    before: number,
+    details?: readonly BattleValueDetail[],
+  ): void {
+    const total = this.currentValue();
+    this.report.push({
+      type,
+      ...(calculation === undefined ? {} : { calculation }),
+      total: this.roundReport(total),
+      delta: this.roundReport(total - before),
+      ...(details && details.length > 0 ? { details } : {}),
+    });
+  }
+
+  protected captureDetails(action: () => void): BattleValueDetail[] {
+    const parent = this.report;
+    const details: BattleValueDetail[] = [];
+    this.report = details;
+    try { action(); } finally { this.report = parent; }
+    return details;
+  }
+
+  protected format(value: number): string {
+    return this.roundReport(value).toString();
+  }
+
+  protected equipmentDescriptor(mount: EntityMountedEquipment): string {
+    const equipment = mount.equipment;
+    if (!equipment) return mount.equipmentId;
+    if (equipment instanceof AmmoEquipment) return `${equipment.shortName}${equipment.shortName.includes('Ammo') ? '' : ' Ammo'}`;
+    if (equipment instanceof WeaponEquipment) {
+      return `${equipment.shortName}${mount.location === 'Unallocated' ? '' : ` (${mount.location})`}`;
+    }
+    return equipment.shortName;
+  }
+
+  private currentValue(): number {
+    return this.reportTarget === 'defensive' ? this.defensiveValue : this.offensiveValue;
+  }
+
+  private roundReport(value: number): number {
+    return Math.round((value + Number.EPSILON) * 1000) / 1000;
   }
 
 }
