@@ -1,5 +1,5 @@
 import { BaseEntity } from '../models/entity/base-entity';
-import { MountedEngine, MountedStructure, STANDARD_STRUCTURE_EQUIPMENT } from '../models/entity/components';
+import { MountedArmor, MountedEngine, MountedStructure, STANDARD_STRUCTURE_EQUIPMENT } from '../models/entity/components';
 import { EntityMountedEquipment } from '../models/entity/types/equipment';
 import { BV_MOVEMENT_CALCULATION, locationArmor } from '../models/entity/types';
 import {
@@ -26,7 +26,7 @@ import {
   TestWarShipEntity as WarShipEntity,
 } from '../models/entity/testing/test-entities';
 import { addTestEquipmentWithFlags } from '../models/entity/testing/test-mounted-equipment';
-import { MiscEquipment, StructureEquipment, WeaponEquipment } from '../models/equipment.model';
+import { ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../models/equipment.model';
 import { UnitMetadataBuilder } from './unit-metadata-builder';
 import { getOffensiveSpeedFactor, offensiveSpeedFactor } from '../models/entity/utils/battle-value';
 import type { Sourcebook } from '../models/sourcebook.model';
@@ -346,6 +346,21 @@ describe('UnitMetadataBuilder', () => {
       expect(entity.unitSubtype()).withContext(entity.constructor.name).toBe(expected);
       expect(builder.build(entity).subtype).withContext(`${entity.constructor.name} metadata`).toBe(expected);
     }
+  });
+
+  it('exports the canonical Industrial armor display name without formatting whitespace', () => {
+    const entity = new BipedMekEntity();
+    entity.setUniformArmor(new MountedArmor({
+      armor: new ArmorEquipment({
+        id: 'Industrial Armor',
+        name: 'Industrial Armor',
+        type: 'armor',
+        armor: { type: 'INDUSTRIAL' },
+      }),
+      techBase: 'IS',
+    }));
+
+    expect(builder.build(entity).armorType).toBe('Industrial');
   });
 
   it('lets entities report their exported unit type directly', () => {

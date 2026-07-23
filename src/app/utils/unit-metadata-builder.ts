@@ -408,7 +408,7 @@ const ARMOR_TYPE_DISPLAY_NAME: Partial<Record<string, string>> = {
   'STEALTH': 'Stealth',
   'FERRO_FIBROUS_PROTO': 'Ferro-Fibrous Prototype',
   'COMMERCIAL': 'Commercial, BAR: 5',
-  'INDUSTRIAL': 'Industrial ',
+  'INDUSTRIAL': 'Industrial',
   'HEAVY_INDUSTRIAL': 'Heavy Industrial',
   'FERRO_LAMELLOR': 'Ferro-Lamellor',
   'PRIMITIVE': 'Primitive',
