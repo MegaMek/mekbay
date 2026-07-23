@@ -169,12 +169,14 @@ function damageAmount(
         const profile = weapon.getDamageProfile(selectedAmmo);
         if (profile.kind === 'fixed') return { kind: 'simple', value: profile.damage };
     }
-    if (value !== 'cluster') return { kind: 'special', value };
-
-    const damagePerMissile = selectedAmmo?.damagePerShot
-        ?? fallbackAmmoProfile?.fallbackDamagePerShot
-        ?? defaultDamagePerMissile(weapon);
-    return { kind: 'per-missile', value: damagePerMissile };
+    if (value === 'artillery') return { kind: 'simple', value: weapon.rackSize };
+    if (value === 'cluster') {
+        const damagePerMissile = selectedAmmo?.damagePerShot
+            ?? fallbackAmmoProfile?.fallbackDamagePerShot
+            ?? defaultDamagePerMissile(weapon);
+        return { kind: 'per-missile', value: damagePerMissile };
+    }
+    return { kind: 'special', value };
 }
 
 function defaultDamagePerMissile(weapon: WeaponEquipment): number {
