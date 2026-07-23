@@ -248,7 +248,12 @@ export class BVCalculator {
       && mount.getBV(this.entity) > 0;
   }
 
-  protected weaponBV(mount: EntityMountedEquipment, applyRear: boolean): number {
+  protected weaponBV(
+    mount: EntityMountedEquipment,
+    applyRear: boolean,
+    weaponCount = 1,
+    weaponFactor = 1,
+  ): number {
     const equipment = mount.equipment;
     if (!equipment) return 0;
     let value = mount.getBV(this.entity);
@@ -257,7 +262,8 @@ export class BVCalculator {
         .find(candidate => candidate.kind === 'machine-gun-array' && candidate.controller === mount);
       if (bay) value = bay.mounts.reduce((sum, member) => sum + member.getBV(this.entity), 0) * 0.67;
     }
-    value *= this.weaponMountModifier(mount);
+    value *= weaponCount;
+    value *= this.weaponMountModifier(mount) * weaponFactor;
     if (applyRear && this.frontDecided && this.isNominalRear(mount)) value *= 0.5;
     if (this.has('F_DRONE_OPERATING_SYSTEM')) value *= 0.8;
     if (equipment instanceof WeaponEquipment) {

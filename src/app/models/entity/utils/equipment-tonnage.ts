@@ -1,6 +1,6 @@
 import type { BaseEntity } from '../base-entity';
 import type { EntityMountedEquipment } from '../types/equipment';
-import { WeaponEquipment } from '../../equipment.model';
+import { AmmoEquipment, WeaponEquipment } from '../../equipment.model';
 import { getEquipmentEngineWeight } from './equipment-engine-weight';
 import { isMekEntity } from './entity-type-guards';
 import { getFireControlWeaponWeight } from './fire-control';
@@ -14,6 +14,11 @@ export function getEquipmentTonnage(
 ): number | undefined {
     const equipment = mount.equipment;
     if (!equipment) return undefined;
+    if (entity.entityType === 'HandheldWeapon' && equipment instanceof AmmoEquipment) {
+        const mountedShots = mount.getAmmoShots() ?? 0;
+        const capacity = mountedShots > 0 ? mountedShots : equipment.shots;
+        return equipment.kgPerShot * capacity / 1000;
+    }
     if (entity.entityType === 'ProtoMek' && equipment instanceof WeaponEquipment) {
         if (equipment.hasFlag('F_SRM')) {
             return equipment.rackSize * (equipment.ammoType === 'SRM_STREAK' ? 0.5 : 0.25);

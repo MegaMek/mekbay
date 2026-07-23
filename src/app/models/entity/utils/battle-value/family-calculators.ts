@@ -7,9 +7,11 @@ import { InfantryEntity } from '../../entities/infantry/infantry-entity';
 import { MekEntity } from '../../entities/mek/mek-entity';
 import { ProtoMekEntity } from '../../entities/protomek/protomek-entity';
 import { getMekLegLocations, isQuadMekConfig } from '../../types/mek';
+import { BV_MOVEMENT_CALCULATION } from '../../types';
 import { getPpcCapacitorBV } from '../equipment-bv';
 import { vehicleTypeModifier, targetMovementModifier } from './rules';
 import { BVCalculator } from './bv-calculator';
+
 import {
   canMakeAntiMekAttacks,
   hasDermalCamoStealth,
@@ -22,6 +24,10 @@ import {
 /** Shared Java HeatTrackingBVCalculator behavior for pristine mounts. */
 export class HeatTrackingBVCalculator extends BVCalculator {
   protected heatEfficiency(): number { return Number.MAX_SAFE_INTEGER; }
+
+  protected processWeaponsWithoutHeat(): void {
+    super.processWeapons();
+  }
 
   protected override processExplosiveEquipment(): void {
     const before = this.defensiveValue;
@@ -195,7 +201,7 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
         'F_PPC', 'F_PPC_CAPACITOR', 'F_RISC_LASER_PULSE_MODULE',
         'F_EMERGENCY_COOLANT_SYSTEM', 'F_JUMP_JET', 'F_B_POD', 'F_M_POD', 'F_TASER',
       ]) || (equipment instanceof AmmoEquipment && equipment.ammoType === 'COOLANT_POD')
-        || (equipment instanceof WeaponEquipment && equipment.ammoType.includes('GAUSS'));
+        || (equipment instanceof WeaponEquipment && equipment.hasFlag('F_GAUSS'));
       const placedSlots = mount.placements?.length;
       const requiredSlots = mount.getCriticalSlotRequirement(this.entity);
       const slots = placedSlots && placedSlots > 0 ? placedSlots
@@ -263,9 +269,7 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
     if (standardLam) {
       moveHeat = Math.round(this.entity.airMekFlankMP() / 3);
     } else {
-      const jumpHeat = this.jumpMP > 0 ? Math.max(3, this.jumpMP) : 0;
-      const runHeat = this.has('F_SCM') ? 0 : this.entity.mountedEngine().descriptor().movementHeat.run;
-      moveHeat = Math.max(jumpHeat, runHeat);
+      moveHeat = this.movementHeat().heat;
     }
     efficiency -= moveHeat;
     const stealth = [...this.entity.armorByLocation().values()].some(a => a.armor.armorType === 'STEALTH');
@@ -278,9 +282,35 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
 
   protected override heatEfficiencyCalculation(efficiency: number): string {
     const capacity = Math.max(0, this.entity.heatDissipation());
+    const movement = this.movementHeat();
+    return `6 + ${capacity} - ${movement.heat} (${movement.type}) = ${this.format(efficiency)}`;
+  }
+
+  private movementHeat(): { heat: number; type: 'Jump' | 'Run' } {
     const runHeat = this.has('F_SCM') ? 0 : this.entity.mountedEngine().descriptor().movementHeat.run;
-    const jumpHeat = this.jumpMP > 0 ? Math.max(3, this.jumpMP) : 0;
-    return `6 + ${capacity} - ${Math.max(jumpHeat, runHeat)} (${jumpHeat > runHeat ? 'Jump' : 'Run'}) = ${this.format(efficiency)}`;
+    const jumpMP = this.entity.computeJumpMP({
+      ...BV_MOVEMENT_CALCULATION,
+      includeAlternateJumpSystems: false,
+    });
+    if (jumpMP <= 0) return { heat: runHeat, type: 'Run' };
+
+    const partialWingBonus = this.has('F_PARTIAL_WING')
+      ? ['Ultra Light', 'Light', 'Medium'].includes(this.entity.weightClass()) ? 2 : 1
+      : 0;
+    const movedMP = Math.max(0, jumpMP - partialWingBonus);
+    const firstJumpJet = this.entity.equipment()
+      .find(mount => mount.equipment?.hasFlag('F_JUMP_JET'))?.equipment;
+    const improved = firstJumpJet?.hasFlag('S_IMPROVED') ?? false;
+    const prototype = firstJumpJet?.hasFlag('S_PROTOTYPE') ?? false;
+    const adjustedMP = improved
+      ? prototype ? movedMP * 2 : Math.ceil(movedMP / 2)
+      : movedMP;
+    const engineHeat = this.entity.mountedEngine().descriptor().movementHeat;
+    let jumpHeat = Math.max(engineHeat.jumpMin, adjustedMP * engineHeat.jumpPerMP);
+    if (improved && prototype) jumpHeat = Math.max(6, jumpHeat);
+    return jumpHeat > runHeat
+      ? { heat: jumpHeat, type: 'Jump' }
+      : { heat: runHeat, type: 'Run' };
   }
 
   protected override processWeight(): void {
@@ -363,15 +393,25 @@ export class CombatVehicleBVCalculator extends BVCalculator {
 export class AeroBVCalculator extends HeatTrackingBVCalculator {
   declare readonly entity: AeroEntity;
   protected override processStructure(): void {
-    this.defensiveValue += this.entity.structuralIntegrity() * 2 * (this.has('F_BLUE_SHIELD') ? 1.2 : 1);
+    const before = this.defensiveValue;
+    const blueShieldMultiplier = this.has('F_BLUE_SHIELD') ? 1.2 : 1;
+    this.defensiveValue += this.entity.structuralIntegrity() * 2 * blueShieldMultiplier;
+    const modifier = blueShieldMultiplier === 1 ? '' : ' x 1.2 (Blue Shield)';
+    this.addValueLine(
+      'Structural Integrity',
+      `+ ${this.entity.structuralIntegrity()} x 2${modifier}`,
+      before,
+    );
   }
   protected override processTypeModifier(): void {
+    const before = this.defensiveValue;
     let modifier = this.entity.isSupportVehicle() || this.entity.entityType === 'SmallCraft' ? 1
       : this.entity.entityType === 'ConvFighter' ? 1.1 : 1.2;
     const stealth = !this.entity.hasPatchworkArmor() && [...this.entity.armorByLocation().values()]
       .some(a => ['STEALTH', 'STEALTH_VEHICLE'].includes(a.armor.armorType));
     if (stealth) modifier += 0.3;
     this.defensiveValue *= modifier;
+    this.addValueLine('Type Modifier', `${this.format(before)} x ${this.format(modifier)}`, before);
   }
   protected override processExplosiveEquipment(): void {
     if (this.entity.techBase() !== 'Clan' && !this.has('F_CASE') && !this.has('F_CASE_II')) {
@@ -401,10 +441,10 @@ export class AeroBVCalculator extends HeatTrackingBVCalculator {
   }
   protected override heatEfficiency(): number { return 6 + Math.max(0, this.entity.heatCapacity()); }
   protected override processWeapons(): void {
-    if (this.entity.entityType === 'ConvFighter') {
-      for (const mount of this.entity.equipment()) {
-        if (this.countsAsOffensiveWeapon(mount)) this.offensiveValue += this.weaponBV(mount, true);
-      }
+    // MegaMek FixedWingSupport extends ConvFighter, so both families bypass
+    // HeatTrackingBVCalculator and count every weapon at full BV.
+    if (this.entity.entityType === 'ConvFighter' || this.entity.entityType === 'FixedWingSupport') {
+      this.processWeaponsWithoutHeat();
       return;
     }
     super.processWeapons();
@@ -475,13 +515,20 @@ export class LargeAeroBVCalculator extends AeroBVCalculator {
   protected processArc(arc: number, heatExceeded: boolean): number {
     const factor = this.arcFactor(arc, heatExceeded);
     let heat = 0;
+    const weaponGroups = new Map<string, { mount: EntityMountedEquipment; count: number }>();
     const weaponCaps = new Map<string, number>();
     const ammoTotals = new Map<string, number>();
     for (const mount of this.entity.equipment()) {
       if (this.arc(mount) !== arc) continue;
       const equipment = mount.equipment;
       if (this.countsAsOffensiveWeapon(mount)) {
-        this.offensiveValue += this.weaponBV(mount, false) * factor;
+        const enhancementId = this.entity.getLinkingMount(mount)?.equipment?.id ?? '';
+        const key = equipment instanceof WeaponEquipment
+          ? JSON.stringify([equipment.id, mount.location, mount.rearMounted, enhancementId])
+          : mount.mountId;
+        const group = weaponGroups.get(key);
+        if (group) group.count++;
+        else weaponGroups.set(key, { mount, count: 1 });
         heat += this.weaponHeat(mount);
       }
       if (equipment instanceof WeaponEquipment && this.weaponUsesAmmo(equipment)) {
@@ -491,6 +538,9 @@ export class LargeAeroBVCalculator extends AeroBVCalculator {
         const key = `${equipment.ammoType}:${equipment.rackSize}`;
         ammoTotals.set(key, (ammoTotals.get(key) ?? 0) + this.ammoBV(mount));
       }
+    }
+    for (const group of weaponGroups.values()) {
+      this.offensiveValue += this.weaponBV(group.mount, false, group.count, factor);
     }
     for (const [key, ammo] of ammoTotals) {
       const cap = weaponCaps.get(key);

@@ -6,8 +6,9 @@ describe('equipment link rules', () => {
   it('links weapon enhancements toward only their compatible weapons', () => {
     const lrm = weapon('lrm', { ammoType: 'LRM' }, ['F_ARTEMIS_COMPATIBLE']);
     const mrm = weapon('mrm', { ammoType: 'MRM' });
-    const isPpc = weapon('ISPPC', {}, ['F_PPC']);
-    const clanErPpc = weapon('CLERPPC', {}, ['F_PPC'], 'Clan');
+    const isPpc = weapon('PPC', {}, ['F_PPC','F_PPC_CAPACITOR_COMPATIBLE']);
+    const heavyPpc = weapon('Heavy PPC', {}, ['F_PPC','F_PPC_CAPACITOR_COMPATIBLE']);
+    const clanErPpc = weapon('CLERPPC', {}, ['F_PPC','F_PPC_CAPACITOR_COMPATIBLE'], 'Clan');
     const laser = weapon('laser', {}, ['F_LASER']);
     const pulseLaser = weapon('pulse', {}, ['F_LASER', 'F_PULSE']);
     const clanLaser = weapon('clan-laser', {}, ['F_LASER'], 'Clan');
@@ -24,6 +25,7 @@ describe('equipment link rules', () => {
     expect(canLinkEquipment(apollo, mrm, { year: 3145 })).toBeTrue();
     expect(canLinkEquipment(apollo, lrm, { year: 3145 })).toBeFalse();
     expect(canLinkEquipment(capacitor, isPpc, { year: 3145 })).toBeTrue();
+    expect(canLinkEquipment(capacitor, heavyPpc, { year: 3145 })).toBeTrue();
     expect(canLinkEquipment(capacitor, clanErPpc, { year: 3100 })).toBeFalse();
     expect(canLinkEquipment(capacitor, clanErPpc, { year: 3101 })).toBeTrue();
     expect(canLinkEquipment(pulseModule, laser, { year: 3145 })).toBeTrue();

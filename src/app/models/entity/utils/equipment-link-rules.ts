@@ -42,13 +42,6 @@ const WEAPON_ENHANCEMENT_FLAGS = [
   'F_PPC_CAPACITOR',
   ...LASER_MODULE_FLAGS,
 ];
-const IS_CAPACITOR_PPC_IDS = new Set([
-  'ISPPC',
-  'ISLightPPC',
-  'ISHeavyPPC',
-  'ISERPPC',
-  'ISSnubNosePPC',
-]);
 
 export interface EquipmentLinkContext {
   readonly year: number;
@@ -76,8 +69,8 @@ export function canLinkEquipment(
   if (enhancement.hasAnyFlag(ARTEMIS_FLAGS)) return weapon.hasFlag('F_ARTEMIS_COMPATIBLE');
   if (enhancement.hasFlag('F_APOLLO')) return weapon.ammoType === 'MRM';
   if (enhancement.hasFlag('F_PPC_CAPACITOR')) {
-    return weapon.hasFlag('F_PPC') && (IS_CAPACITOR_PPC_IDS.has(weapon.id)
-      || (weapon.id === 'CLERPPC' && context.year >= 3101));
+    return weapon.hasFlag('F_PPC') && weapon.hasFlag('F_PPC_CAPACITOR_COMPATIBLE')
+      && !(weapon.id === 'CLERPPC' && context.year < 3101);
   }
   if (enhancement.hasFlag('F_RISC_LASER_PULSE_MODULE')) {
     return weapon.hasFlag('F_LASER') && !weapon.hasFlag('F_PULSE') && weapon.techBase !== 'Clan';

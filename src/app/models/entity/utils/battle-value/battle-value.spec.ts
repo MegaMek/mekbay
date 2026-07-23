@@ -4,6 +4,7 @@ import {
   TestBattleArmorEntity,
   TestBipedMekEntity,
   TestDropShipEntity,
+  TestFixedWingSupportEntity,
   TestHandheldWeaponEntity,
   TestInfantryEntity,
   TestJumpShipEntity,
@@ -13,16 +14,21 @@ import {
   TestTankEntity,
   TestWarShipEntity,
 } from '../../testing/test-entities';
-import { EntityMountedEquipment } from '../../types';
+import { BV_MOVEMENT_CALCULATION, EntityMountedEquipment } from '../../types';
 import { calculateBattleValue, calculateBattleValueDetails, getBVCalculator } from './factory';
 import type { BattleValueDetail } from './bv-calculator';
 import { infantryDamageDivisor } from './infantry-rules';
 import { offensiveSpeedFactor, targetMovementModifier, vehicleTypeModifier } from './rules';
-import { CombatVehicleBVCalculator, MekBVCalculator, ProtoMekBVCalculator } from './family-calculators';
+import {
+  CombatVehicleBVCalculator,
+  DropShipBVCalculator,
+  MekBVCalculator,
+  ProtoMekBVCalculator,
+} from './family-calculators';
 
 let mountSequence = 0;
 
-function mount(equipment: WeaponEquipment | AmmoEquipment, location = 'Front'): EntityMountedEquipment {
+function mount(equipment: WeaponEquipment | AmmoEquipment | MiscEquipment, location = 'Front'): EntityMountedEquipment {
   return new EntityMountedEquipment({
     mountId: `${equipment.id}-${++mountSequence}`, equipmentId: equipment.id, equipment,
     allocation: { kind: 'location', location }, rearMounted: false,
@@ -65,6 +71,7 @@ describe('battle value family dispatch', () => {
     const entity = new TestBipedMekEntity();
     const prototype = new WeaponEquipment({ id: 'ISERLargeLaserPrototype',
       name: 'Prototype ER Large Laser', type: 'weapon', weapon: { heat: 12 }, stats: { bv: 136 } });
+    prototype.weapon.heatAdjustmentForBvCalculation = 3;
     expect(new ExposedMekCalculator(entity).heatOf(mount(prototype, 'RA'))).toBe(15);
   });
 
@@ -122,6 +129,29 @@ describe('battle value family dispatch', () => {
 });
 
 describe('structured battle value details', () => {
+  it('counts fixed-wing support weapons at full BV without heat tracking', () => {
+    const entity = new TestFixedWingSupportEntity();
+    entity.structuralIntegrity.set(5);
+    entity.armorValues.set(new Map([['Nose', { front: 55, rear: 0 }]]));
+    const hotLaser = new WeaponEquipment({
+      id: 'hot-laser', name: 'Hot Laser', type: 'weapon', stats: { bv: 100 },
+      weapon: { heat: 20 }, flags: ['F_ENERGY'],
+    });
+    const advancedFireControl = new MiscEquipment({
+      id: 'advanced-fire-control', name: 'Advanced Fire Control', type: 'misc',
+      flags: ['F_ADVANCED_FIRE_CONTROL'],
+    });
+    entity.setEquipment([
+      mount(hotLaser, 'Nose'), mount(hotLaser, 'Nose'), mount(advancedFireControl, 'Body'),
+    ]);
+
+    const details = calculateBattleValueDetails(entity).details;
+    expect(findDetail(details, 'Heat Efficiency')).toBeUndefined();
+    expect(findDetail(details, 'Weapons')?.delta).toBe(200);
+    expect(findDetail(details, 'Structural Integrity')?.delta).toBe(10);
+    expect(findDetail(details, 'Type Modifier')?.calculation).toContain('x 1');
+  });
+
   it('uses the support vehicle BAR signal rather than armor material defaults', () => {
     const entity = new TestSupportTankEntity();
     entity.armorValues.set(new Map([['Front', { front: 10, rear: 0 }]]));
@@ -193,6 +223,75 @@ describe('structured battle value details', () => {
     expect(findDetail(result.details, 'Weight')?.calculation).toContain('+ 30');
     expect(findDetail(result.details, 'Speed Factor')?.calculation).toContain('x 2.72');
     expect(findDetail(result.details, 'Base Unit BV')?.calculation).toContain(', rn');
+  });
+
+  it('uses improved jump-jet heat for Mek BV heat efficiency', () => {
+    const entity = new TestBipedMekEntity();
+    entity.setTonnage(80);
+    entity.originalWalkMP.set(4);
+    entity.mountedEngine().type.set('Fusion');
+    const improvedJumpJet = new MiscEquipment({
+      id: 'improved-jump-jet', name: 'Improved Jump Jet', type: 'misc',
+      stats: { tonnage: 2 }, flags: ['F_JUMP_JET', 'S_IMPROVED'],
+    });
+    entity.setEquipment(Array.from({ length: 6 }, () => mount(improvedJumpJet, 'LT')));
+
+    const heatEfficiency = findDetail(calculateBattleValueDetails(entity).details, 'Heat Efficiency');
+    expect(entity.computeJumpMP({
+      ...BV_MOVEMENT_CALCULATION,
+      includeAlternateJumpSystems: false,
+    })).toBe(6);
+    expect(heatEfficiency?.calculation).toContain('- 3 (Jump)');
+  });
+
+  it('uses the reduced explosive penalty for Magshot Gauss rifles', () => {
+    const entity = new TestBipedMekEntity();
+    const magshot = new WeaponEquipment({
+      id: 'ISMagshotGR', name: 'Magshot Gauss Rifle', type: 'weapon',
+      stats: { bv: 15, explosive: true, criticalSlots: 2 },
+      weapon: { ammoType: 'MAGSHOT', explosionDamage: 3 },
+      flags: ['F_GAUSS'],
+    });
+    entity.setEquipment([mount(magshot, 'LT')]);
+
+    const explosive = findDetail(calculateBattleValueDetails(entity).details, 'Explosive Equipment');
+    expect(explosive?.delta).toBe(-2);
+  });
+
+  it('groups equivalent large-aero PPCs and applies arc factors before capacitor BV', () => {
+    class ExposedDropShipCalculator extends DropShipBVCalculator {
+      factor = 1;
+      protected override arcFactor(): number { return this.factor; }
+      arcValue(): number {
+        this.offensiveValue = 0;
+        this.processArc(0, false);
+        return this.offensiveValue;
+      }
+    }
+    const entity = new TestDropShipEntity();
+    const ppc = new WeaponEquipment({
+      id: 'ISERPPC', name: 'ER PPC', type: 'weapon', stats: { bv: 229 },
+      weapon: { heat: 15 }, flags: ['F_PPC'],
+    });
+    const capacitor = new MiscEquipment({
+      id: 'PPC Capacitor', name: 'PPC Capacitor', type: 'misc',
+      stats: { bv: 0 }, flags: ['F_PPC_CAPACITOR'],
+    });
+    const ppc1 = mount(ppc, 'Nose');
+    const capacitor1 = mount(capacitor, 'Nose');
+    const ppc2 = mount(ppc, 'Nose');
+    const capacitor2 = mount(capacitor, 'Nose');
+    entity.setEquipment([ppc1, capacitor1, ppc2, capacitor2]);
+    entity.linkEquipment(capacitor1, ppc1);
+    entity.linkEquipment(capacitor2, ppc2);
+    const calculator = new ExposedDropShipCalculator(entity);
+
+    calculator.factor = 1;
+    expect(calculator.arcValue()).toBe(572);
+    calculator.factor = 0.5;
+    expect(calculator.arcValue()).toBe(343);
+    calculator.factor = 0.25;
+    expect(calculator.arcValue()).toBe(228.5);
   });
 
   it('exposes reactive BaseEntity value and details computed from current state', () => {

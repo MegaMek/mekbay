@@ -61,6 +61,26 @@ describe('reconcileEquipmentRelationships', () => {
     expect(entity.getLinkedMount(insulatorMount)).toBe(entity.equipment().find(m => m.mountId === 'w2'));
   });
 
+  it('links canonical Heavy PPC mounts to capacitors one-to-one', () => {
+    const entity = new TestTankEntity();
+    const heavyPpc = new WeaponEquipment({
+      id: 'Heavy PPC', name: 'Heavy PPC', type: 'weapon', stats: { bv: 317 },
+      weapon: { heat: 15 }, flags: ['F_PPC', 'F_PPC_CAPACITOR_COMPATIBLE'],
+    });
+    const capacitor = new MiscEquipment({
+      id: 'PPC Capacitor', name: 'PPC Capacitor', type: 'misc', flags: ['F_PPC_CAPACITOR'],
+    });
+    entity.setEquipment([
+      mount(heavyPpc, 'w1'), mount(capacitor, 'c1'),
+      mount(heavyPpc, 'w2'), mount(capacitor, 'c2'),
+    ]);
+
+    reconcileEquipmentRelationships(entity);
+
+    expect(entity.getLinkedMount(entity.equipment()[1])).toBe(entity.equipment()[0]);
+    expect(entity.getLinkedMount(entity.equipment()[3])).toBe(entity.equipment()[2]);
+  });
+
   it('groups machine guns in an explicit bay owned by their array', () => {
     const entity = new TestTankEntity();
     const machineGun = new WeaponEquipment({

@@ -143,7 +143,7 @@ const CHECKED_FIELDS: FieldCheck[] = [
   { field: 'model',         compare: 'exact', parity: 'verified' },
   { field: 'year',          compare: 'exact', parity: 'verified' },
   { field: 'tons',          compare: 'exact', parity: 'verified' },
-  { field: 'loadoutTonnage', compare: 'numeric', tolerance: 0, parity: 'partial' },
+  { field: 'loadoutTonnage', compare: 'numeric', tolerance: 0, parity: 'verified' },
   { field: 'omni',          compare: 'exact', parity: 'verified' },
   { field: 'role',          compare: 'exact', parity: 'verified' },
   { field: 'source',        compare: 'setCompare', parity: 'verified' },
@@ -167,7 +167,7 @@ const CHECKED_FIELDS: FieldCheck[] = [
 
   // ── Remaining non-Alpha Strike fields ──────────────────────────────
   { field: 'armorPer',       compare: 'exact', parity: 'verified' },
-  { field: 'bv',             compare: 'numeric', tolerance: 0, parity: 'partial' },
+  { field: 'bv',             compare: 'numeric', tolerance: 0, parity: 'verified' },
   { field: 'c3',             compare: 'exact', parity: 'verified' },
   { field: 'canon',          compare: 'exact', parity: 'verified' },
   { field: 'capital',        compare: 'exact', parity: 'verified' },

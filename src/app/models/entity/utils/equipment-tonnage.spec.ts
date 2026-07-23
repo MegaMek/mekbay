@@ -1,8 +1,9 @@
-import { Equipment, MiscEquipment, WeaponEquipment } from '../../equipment.model';
+import { AmmoEquipment, Equipment, MiscEquipment, WeaponEquipment } from '../../equipment.model';
 import {
     TestBattleArmorEntity as BattleArmorEntity,
     TestBipedMekEntity as BipedMekEntity,
     TestDropShipEntity as DropShipEntity,
+    TestHandheldWeaponEntity as HandheldWeaponEntity,
     TestJumpShipEntity as JumpShipEntity,
     TestProtoMekEntity as ProtoMekEntity,
     TestQuadMekEntity as QuadMekEntity,
@@ -61,6 +62,19 @@ describe('EntityMountedEquipment.getTonnage', () => {
         });
 
         expect(mount(equipment).getTonnage(entity)).toBe(2.5);
+    });
+
+    it('derives handheld ammo tonnage from installed shot capacity', () => {
+        const handheld = new HandheldWeaponEntity();
+        const ammo = new AmmoEquipment({
+            id: 'test-ammo', name: 'Test Ammo', type: 'ammo',
+            stats: { tonnage: 1 }, ammo: { shots: 20, kgPerShot: 50 },
+        });
+
+        expect(ammoMount(ammo, 10).getTonnage(handheld)).toBe(0.5);
+        expect(ammoMount(ammo, 40).getTonnage(handheld)).toBe(2);
+        expect(ammoMount(ammo, 0).getTonnage(handheld)).toBe(1);
+        expect(ammoMount(ammo, 40).getTonnage(entity)).toBe(1);
     });
 
     const chassisCases: Array<[string, string[], number]> = [
@@ -418,5 +432,19 @@ function weaponMount(name: string, tonnage: number, flags: string[]): EntityMoun
         turretMounted: false,
         omniPodMounted: false,
         armored: false,
+    });
+}
+
+function ammoMount(equipment: AmmoEquipment, shotsCount: number): EntityMountedEquipment {
+    return new EntityMountedEquipment({
+        mountId: equipment.id,
+        equipmentId: equipment.id,
+        equipment,
+        allocation: { kind: 'location', location: 'Gun' },
+        rearMounted: false,
+        turretMounted: false,
+        omniPodMounted: false,
+        armored: false,
+        shotsCount,
     });
 }
