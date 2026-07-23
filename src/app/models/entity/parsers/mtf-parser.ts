@@ -271,7 +271,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       const parsed = structureInfo.hybrid && !locationData?.structureName
         ? undefined
         : locationData;
-      const effectiveTonnage = Math.max(10, parsed?.tonnage ?? defaultStructureTonnage);
+      const loadoutTonnage = Math.max(10, parsed?.tonnage ?? defaultStructureTonnage);
       let mounted = globalStructure;
       if (parsed?.structureName) {
         const localInfo = decodeMtfStructure(parsed.structureName);
@@ -281,14 +281,14 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
           ctx.error(`${location} Structure`, `Invalid structure ${localTechBase} ${localInfo.name}`);
         }
         mounted = new MountedStructure({
-          tonnage: effectiveTonnage,
+          tonnage: loadoutTonnage,
           structure: localStructure ?? resolvedGlobalStructure,
           techBase: localInfo.techBase
             ?? localStructure?.techBase
             ?? globalStructure.techBase,
         });
       }
-      entity.setStructureAt(location, mounted.withTonnage(effectiveTonnage));
+      entity.setStructureAt(location, mounted.withTonnage(loadoutTonnage));
     }
     if (entity.hasHybridStructure()) {
       for (const [location, parsed] of header.frankenMekLocations) {

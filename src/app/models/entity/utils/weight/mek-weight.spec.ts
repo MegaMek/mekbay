@@ -50,12 +50,12 @@ describe('Mek construction weight', () => {
   it('reacts to installed armor without changing declared tonnage', () => {
     const entity = new TestBipedMekEntity();
     entity.setTonnage(50);
-    const before = entity.effectiveTonnage();
+    const before = entity.loadoutTonnage();
 
     entity.setArmorValue('CT', 'front', 16);
 
     expect(entity.tonnage()).toBe(50);
-    expect(entity.effectiveTonnage()).toBe(before + 1);
+    expect(entity.loadoutTonnage()).toBe(before + 1);
   });
 
   it('does not double the construction mass of an engine rated above 400', () => {

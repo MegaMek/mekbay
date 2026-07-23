@@ -4,5 +4,5 @@ export function isCalculableLoadoutTons(value: unknown): value is number {
 }
 
 export function getOracleFieldName(calculatedField: string): string {
-  return calculatedField === 'effectiveTonnage' ? 'loadoutTons' : calculatedField;
+  return calculatedField === 'loadoutTonnage' ? 'loadoutTons' : calculatedField;
 }

@@ -258,6 +258,7 @@ export interface EquipmentStats {
 
 export interface WeaponData {
     heat: number;
+    heatAdjustmentForBvCalculation?: number;
     damage: string | number | Array<number>;
     explosionDamage: number;
     rackSize: number;

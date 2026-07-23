@@ -134,7 +134,7 @@ export class UnitMetadataBuilder {
 
   private buildLoadoutTons(entity: BaseEntity): number {
     try {
-      return entity.effectiveTonnage();
+      return entity.loadoutTonnage();
     } catch (error: unknown) {
       if (error instanceof Error && error.message.startsWith('Effective tonnage is not implemented for ')) {
         return 0;

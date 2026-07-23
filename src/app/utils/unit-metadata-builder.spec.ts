@@ -250,7 +250,7 @@ describe('UnitMetadataBuilder', () => {
 
     expect(entity.tonnage()).toBe(5);
     expect(builder.build(entity).tons).toBe(5);
-    expect(builder.build(entity).loadoutTons).toBe(entity.effectiveTonnage());
+    expect(builder.build(entity).loadoutTons).toBe(entity.loadoutTonnage());
     expect(entity.totalArmorPoints()).toBe(35);
     expect(builder.build(entity).armor).toBe(35);
   });

@@ -33,13 +33,9 @@ export class HeatTrackingBVCalculator extends BVCalculator {
     const weapon = mount.equipment;
     if (!(weapon instanceof WeaponEquipment)) return 0;
     let heat = weapon.heat;
-    const prototypeBonus = new Map<string, number>([
-      ['ISERLargeLaserPrototype', 3],
-      ['ISLargePulseLaserPrototype', 3],
-      ['ISMediumPulseLaserPrototype', 3],
-      ['ISSmallPulseLaserPrototype', 2],
-    ]).get(weapon.id) ?? 0;
-    heat += prototypeBonus;
+    if (weapon.weapon.heatAdjustmentForBvCalculation) {
+      heat += weapon.weapon.heatAdjustmentForBvCalculation;
+    }
     if (weapon.oneShotCount) heat /= 4;
     if (weapon.ammoType === 'AC_ULTRA' || weapon.ammoType === 'AC_ULTRA_THB') heat *= 2;
     else if (weapon.ammoType === 'AC_ROTARY') heat *= 6;

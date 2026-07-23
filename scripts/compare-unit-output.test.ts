@@ -7,7 +7,7 @@ assert.equal(isCalculableLoadoutTons(0), false);
 assert.equal(isCalculableLoadoutTons(-1), false);
 assert.equal(isCalculableLoadoutTons(Number.NaN), false);
 assert.equal(isCalculableLoadoutTons(undefined), false);
-assert.equal(getOracleFieldName('effectiveTonnage'), 'loadoutTons');
+assert.equal(getOracleFieldName('loadoutTonnage'), 'loadoutTons');
 assert.equal(getOracleFieldName('tons'), 'tons');
 
 console.log('compare-unit-output tests passed');

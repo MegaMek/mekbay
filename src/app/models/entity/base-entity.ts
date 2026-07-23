@@ -342,7 +342,7 @@ export abstract class BaseEntity implements EntityTechnology {
   /** User-selected chassis capacity. This is not installed construction mass. */
   readonly tonnage = computed(() => this.computeTonnage());
   /** Installed construction mass calculated from systems and equipment. */
-  readonly effectiveTonnage = computed(() => calculateEntityEffectiveTonnage(this));
+  readonly loadoutTonnage = computed(() => calculateEntityEffectiveTonnage(this));
   baseChassisFireConWeight = signal<number>(0);
 
   // ── Movement ──

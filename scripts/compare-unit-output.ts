@@ -143,7 +143,7 @@ const CHECKED_FIELDS: FieldCheck[] = [
   { field: 'model',         compare: 'exact', parity: 'verified' },
   { field: 'year',          compare: 'exact', parity: 'verified' },
   { field: 'tons',          compare: 'exact', parity: 'verified' },
-  { field: 'effectiveTonnage', compare: 'numeric', tolerance: 0, parity: 'partial' },
+  { field: 'loadoutTonnage', compare: 'numeric', tolerance: 0, parity: 'partial' },
   { field: 'omni',          compare: 'exact', parity: 'verified' },
   { field: 'role',          compare: 'exact', parity: 'verified' },
   { field: 'source',        compare: 'setCompare', parity: 'verified' },
@@ -895,10 +895,10 @@ function processUnit(
     const reportOracle = getReportExpectations(oracle, checks, reports);
     const issues: FieldIssue[] = [...reportOracle.issues];
     for (const check of checks) {
-      if (check.field === 'effectiveTonnage') {
+      if (check.field === 'loadoutTonnage') {
         const expected = oracle.loadoutTons;
         if (!isCalculableLoadoutTons(expected)) continue;
-        const actual = entity.effectiveTonnage();
+        const actual = entity.loadoutTonnage();
         if (!compareField(check, expected, actual)) {
           issues.push({
             kind: 'value-mismatch',
@@ -947,10 +947,10 @@ function processUnit(
 
     for (const expectation of reportOracle.expectations) {
       const check = checks.find(candidate => candidate.field === expectation.field)!;
-      const actual = expectation.field === 'effectiveTonnage'
-        ? entity.effectiveTonnage()
+      const actual = expectation.field === 'loadoutTonnage'
+        ? entity.loadoutTonnage()
         : getFieldValue(metadata, expectation.field);
-      const hasActual = expectation.field === 'effectiveTonnage'
+      const hasActual = expectation.field === 'loadoutTonnage'
         || hasOwnPath(metadata, expectation.field);
       if (!hasActual || actual === undefined) {
         issues.push({
