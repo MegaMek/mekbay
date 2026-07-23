@@ -26,6 +26,12 @@ export interface TechLevelReportOracle {
   extinct?: string;
 }
 
+/** Converts CompositeTechLevelReport wording to Entity.getTechBaseDescription wording. */
+export function normalizeTechBaseDescription(value: string): string {
+  if (value === 'Mixed (Inner Sphere base)' || value === 'Mixed (Clan base)') return 'Mixed';
+  return value;
+}
+
 export interface AlphaStrikeDamageReport {
   dmgS: string;
   dmgM: string;

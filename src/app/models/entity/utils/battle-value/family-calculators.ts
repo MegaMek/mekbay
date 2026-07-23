@@ -33,6 +33,13 @@ export class HeatTrackingBVCalculator extends BVCalculator {
     const weapon = mount.equipment;
     if (!(weapon instanceof WeaponEquipment)) return 0;
     let heat = weapon.heat;
+    const prototypeBonus = new Map<string, number>([
+      ['ISERLargeLaserPrototype', 3],
+      ['ISLargePulseLaserPrototype', 3],
+      ['ISMediumPulseLaserPrototype', 3],
+      ['ISSmallPulseLaserPrototype', 2],
+    ]).get(weapon.id) ?? 0;
+    heat += prototypeBonus;
     if (weapon.oneShotCount) heat /= 4;
     if (weapon.ammoType === 'AC_ULTRA' || weapon.ammoType === 'AC_ULTRA_THB') heat *= 2;
     else if (weapon.ammoType === 'AC_ROTARY') heat *= 6;
@@ -50,7 +57,7 @@ export class HeatTrackingBVCalculator extends BVCalculator {
     const before = this.offensiveValue;
     const records = this.entity.equipment()
       .filter(mount => this.countsAsOffensiveWeapon(mount))
-      .map(mount => ({ mount, bv: this.weaponBV(mount, false), heat: this.weaponHeat(mount) }))
+      .map(mount => ({ mount, bv: this.weaponBV(mount, true), heat: this.weaponHeat(mount) }))
       .sort((a, b) => a.heat === 0 ? -1 : b.heat === 0 ? 1 : b.bv - a.bv || a.heat - b.heat);
     const details = this.captureDetails(() => {
       const efficiency = this.heatEfficiency();
@@ -228,7 +235,7 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
     return !['LA', 'RA'].includes(mount.location) && !mount.turretMounted && super.isNominalRear(mount);
   }
 
-  private hasAesAt(location: string): boolean {
+  protected hasAesAt(location: string): boolean {
     return this.entity.equipment().some(mount => mount.location === location
       && mount.equipment?.hasFlag('F_ACTUATOR_ENHANCEMENT_SYSTEM'));
   }
@@ -240,6 +247,13 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
 
   protected override weaponMountModifier(mount: EntityMountedEquipment): number {
     return ['LA', 'RA'].includes(mount.location) && this.hasAesAt(mount.location) ? 1.25 : 1;
+  }
+
+  protected override offensiveEquipmentModifier(mount: EntityMountedEquipment): number {
+    const equipment = mount.equipment;
+    return equipment instanceof MiscEquipment
+      && equipment.hasAnyFlag(['F_CLUB', 'F_HAND_WEAPON'])
+      && ['LA', 'RA'].includes(mount.location) && this.hasAesAt(mount.location) ? 1.25 : 1;
   }
 
   protected override heatEfficiency(): number {

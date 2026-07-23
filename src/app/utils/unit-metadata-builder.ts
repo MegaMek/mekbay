@@ -307,7 +307,7 @@ export class UnitMetadataBuilder {
     return ENTITY_TO_AS_PREFIX[entity.entityType] ?? '';
   }
 
-  /** TechBase: 'Inner Sphere', 'Clan', or 'Mixed'. */
+  /** Unit metadata tech-base description. */
   private buildTechBase(entity: BaseEntity): any {
     if (entity.mixedTech()) return 'Mixed';
     return entity.techBase() === 'IS' ? 'Inner Sphere' : 'Clan';

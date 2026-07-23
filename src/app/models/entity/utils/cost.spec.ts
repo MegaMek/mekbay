@@ -240,7 +240,7 @@ describe('entity cost', () => {
     expect(calculateMountedEquipmentCost(entity)).toBe(100000);
   });
 
-    it('excludes unlinked capacitors and unjammed rotary ACs from implicit Clan CASE', () => {
+    it('includes explosive capacitors and rotary ACs in implicit Clan CASE', () => {
         const entity = new TestBipedMekEntity();
         entity.techBase.set('Clan');
         entity.setEquipment([
@@ -259,6 +259,24 @@ describe('entity cost', () => {
 
         expect(entity.implicitClanCaseLocations()).toEqual(new Set(['RA']));
         expect(calculateMountedEquipmentCost(entity)).toBe(50000);
+    });
+
+    it('charges generated Clan CASE only for locations without explicit protection', () => {
+        const entity = new TestBipedMekEntity();
+        entity.techBase.set('Clan');
+        const explosive = mount(new MiscEquipment({
+            id: 'explosive', name: 'Explosive Equipment', type: 'misc', stats: { explosive: true },
+        }));
+        const protectedExplosive = mount(new MiscEquipment({
+            id: 'protected-explosive', name: 'Protected Explosive', type: 'misc', stats: { explosive: true },
+        })).clone({ allocation: { kind: 'location', location: 'LA' } });
+        const explicitCase = mount(new MiscEquipment({
+            id: 'CLCASE', name: 'Clan CASE', type: 'misc', flags: ['F_CASE'], stats: { cost: 50000 },
+        })).clone({ allocation: { kind: 'location', location: 'LA' } });
+        entity.setEquipment([explosive, protectedExplosive, explicitCase]);
+
+        expect(entity.automaticClanCaseLocations()).toEqual(new Set(['RA']));
+        expect(calculateMountedEquipmentCost(entity)).toBe(100000);
     });
 
 

@@ -9,6 +9,7 @@ import {
   TestJumpShipEntity,
   TestProtoMekEntity,
   TestSpaceStationEntity,
+  TestSupportTankEntity,
   TestTankEntity,
   TestWarShipEntity,
 } from '../../testing/test-entities';
@@ -57,6 +58,29 @@ describe('battle value pure rules', () => {
 });
 
 describe('battle value family dispatch', () => {
+  it('adds MegaMek prototype laser heat bonuses', () => {
+    class ExposedMekCalculator extends MekBVCalculator {
+      heatOf(item: EntityMountedEquipment): number { return this.weaponHeat(item); }
+    }
+    const entity = new TestBipedMekEntity();
+    const prototype = new WeaponEquipment({ id: 'ISERLargeLaserPrototype',
+      name: 'Prototype ER Large Laser', type: 'weapon', weapon: { heat: 12 }, stats: { bv: 136 } });
+    expect(new ExposedMekCalculator(entity).heatOf(mount(prototype, 'RA'))).toBe(15);
+  });
+
+  it('applies arm AES to offensive club equipment', () => {
+    class ExposedMekCalculator extends MekBVCalculator {
+      modifier(item: EntityMountedEquipment): number { return this.offensiveEquipmentModifier(item); }
+    }
+    const entity = new TestBipedMekEntity();
+    const aes = new MiscEquipment({ id: 'aes', name: 'AES', type: 'misc',
+      flags: ['F_ACTUATOR_ENHANCEMENT_SYSTEM'] });
+    const club = new MiscEquipment({ id: 'club', name: 'Club', type: 'misc', flags: ['F_CLUB'] });
+    const clubMount = mount(club as never, 'RA');
+    entity.setEquipment([mount(aes as never, 'RA'), clubMount]);
+    expect(new ExposedMekCalculator(entity).modifier(clubMount)).toBe(1.25);
+  });
+
   it('dispatches modeled families like MegaMek', () => {
     expect(getBVCalculator(new TestBipedMekEntity())).toBeInstanceOf(MekBVCalculator);
     expect(getBVCalculator(new TestTankEntity())).toBeInstanceOf(CombatVehicleBVCalculator);
@@ -98,6 +122,25 @@ describe('battle value family dispatch', () => {
 });
 
 describe('structured battle value details', () => {
+  it('uses the support vehicle BAR signal rather than armor material defaults', () => {
+    const entity = new TestSupportTankEntity();
+    entity.armorValues.set(new Map([['Front', { front: 10, rear: 0 }]]));
+    entity.barRating.set(0);
+    expect(findDetail(calculateBattleValueDetails(entity).details, 'Armor')?.delta).toBe(0);
+    entity.barRating.set(6);
+    expect(findDetail(calculateBattleValueDetails(entity).details, 'Armor')?.delta).toBe(15);
+  });
+
+  it('counts HarJel II and III as defensive equipment', () => {
+    const entity = new TestBipedMekEntity();
+    const harjel2 = new MiscEquipment({ id: 'harjel-2', name: 'HarJel II', type: 'misc',
+      flags: ['F_HARJEL_II'], stats: { bv: -1 } });
+    const harjel3 = new MiscEquipment({ id: 'harjel-3', name: 'HarJel III', type: 'misc',
+      flags: ['F_HARJEL_III'], stats: { bv: -2 } });
+    entity.setEquipment([mount(harjel2 as never, 'CT'), mount(harjel3 as never, 'CT')]);
+    expect(findDetail(calculateBattleValueDetails(entity).details, 'Defensive Equipment')?.delta).toBe(-3);
+  });
+
   it('shares one state calculation while preserving the numeric API', () => {
     const entity = new TestTankEntity();
     entity.setTonnage(20);

@@ -101,7 +101,7 @@ export class BVCalculator {
     let armorBV = 0;
     for (const [location, value] of this.entity.armorValues()) {
       const armor = this.entity.armorByLocation().get(location)?.armor;
-      const bar = armor?.hasFlag('F_SUPPORT_VEE_BAR_ARMOR') ? armor.bar / 10 : 1;
+      const bar = this.entity.isSupportVehicle() ? this.entity.barRating() / 10 : 1;
       const modularArmor = this.entity.equipment()
         .filter(mount => mount.location === location && mount.equipment instanceof MiscEquipment
           && mount.equipment.hasFlag('F_MODULAR_ARMOR'))
@@ -180,7 +180,7 @@ export class BVCalculator {
       'F_ECM', 'F_BAP', 'F_VIRAL_JAMMER_DECOY', 'F_VIRAL_JAMMER_HOMING', 'F_AP_POD',
       'F_MASS', 'F_HEAVY_BRIDGE_LAYER', 'F_MEDIUM_BRIDGE_LAYER', 'F_LIGHT_BRIDGE_LAYER',
       'F_BULLDOZER', 'F_CHAFF_POD', 'F_SPIKES',
-      'F_MINESWEEPER', 'F_SHIELD',
+      'F_HARJEL_II', 'F_HARJEL_III', 'F_MINESWEEPER', 'F_SHIELD',
     ]);
   }
 
@@ -348,6 +348,7 @@ export class BVCalculator {
         || this.countsAsOffensiveWeapon(mount)) continue;
       let value = mount.getBV(this.entity);
       if (equipment.hasFlag('F_WATCHDOG')) value = 7;
+      value *= this.offensiveEquipmentModifier(mount);
       const itemBefore = this.offensiveValue;
       this.offensiveValue += value;
       this.addValueLine(this.equipmentDescriptor(mount), `+ ${this.format(value)}`, itemBefore);
@@ -355,6 +356,8 @@ export class BVCalculator {
     });
     if (details.length > 0) this.addValueLine('Offensive Equipment', undefined, before, details);
   }
+
+  protected offensiveEquipmentModifier(_mount: EntityMountedEquipment): number { return 1; }
 
   protected fireControlModifier(): number {
     if (!this.entity.isSupportVehicle()) return 1;

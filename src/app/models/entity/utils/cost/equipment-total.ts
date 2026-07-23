@@ -115,11 +115,8 @@ function calculateImplicitClanCaseCost(entity: BaseEntity): number {
     || family === 'SupportTank' || family === 'SupportNaval' || family === 'SupportVTOL'
     || family === 'LargeSupportTank';
   if (!isMek && !isVehicle) return 0;
-  const hasClanCase = entity.equipment().some(mount =>
-    mount.equipment?.hasFlag('F_CASE') && mount.equipment.id.toLowerCase().includes('clan'));
-  if (entity.techBase() !== 'Clan' && !hasClanCase) return 0;
-  const explicitCase = entity.equipment().filter(mount => mount.equipment?.hasFlag('F_CASE')).length;
-  return Math.max(0, entity.implicitClanCaseLocations().size - explicitCase) * 50000;
+  if (entity.techBase() !== 'Clan') return 0;
+  return entity.automaticClanCaseLocations().size * 50000;
 }
 
 /** Prices transporter systems. Large-craft family calculators invoke this directly. */

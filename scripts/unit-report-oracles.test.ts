@@ -8,12 +8,17 @@ import {
   indexReportDirectory,
   parseAlphaStrikeReport,
   parseTechLevelReport,
+  normalizeTechBaseDescription,
   parseWeightReport,
 } from './unit-report-oracles';
 
 function assertThrowsMessage(action: () => unknown, expected: RegExp): void {
   assert.throws(action, error => error instanceof Error && expected.test(error.message));
 }
+
+assert.equal(normalizeTechBaseDescription('Mixed (Inner Sphere base)'), 'Mixed');
+assert.equal(normalizeTechBaseDescription('Mixed (Clan base)'), 'Mixed');
+assert.equal(normalizeTechBaseDescription('Clan'), 'Clan');
 
 function main(): void {
   assert.deepEqual(parseWeightReport('Weight: 100.0 (99.5)'), {

@@ -470,10 +470,6 @@ export abstract class BaseEntity implements EntityTechnology {
     for (const mount of this.equipment()) {
       const equipment = mount.equipment;
       if (!equipment || equipment.hasFlag('F_CASE')) continue;
-      // RACs are only explosive when jammed. Capacitors load in Charge mode and
-      // therefore contribute to pristine construction cost when marked explosive.
-      if (equipment instanceof WeaponEquipment && equipment.ammoType === 'AC_ROTARY') continue;
-      if (equipment.hasFlag('F_PPC_CAPACITOR') && !this.getLinkedMount(mount)) continue;
       if (!equipment.isExplosive() && mount.secondEquipment?.isExplosive() !== true) continue;
       for (const location of mount.getOccupiedLocations()) {
         if (location !== 'Unallocated' && !optedOut.has(location)) locations.add(location);

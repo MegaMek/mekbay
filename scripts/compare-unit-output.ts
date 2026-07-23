@@ -69,6 +69,7 @@ import {
   indexReportDirectory,
   parseAlphaStrikeReport,
   parseTechLevelReport,
+  normalizeTechBaseDescription,
   type ReportIndex,
 } from './unit-report-oracles';
 import { getOracleFieldName, isCalculableLoadoutTons } from './loadout-tonnage-oracle';
@@ -796,7 +797,7 @@ function getReportExpectations(
     const report = parse('tech-level-report', reports.techLevel, parseTechLevelReport);
     if (report) {
       add('tech-level-report', 'level', report.staticLevel);
-      add('tech-level-report', 'techBase', report.techBase);
+      add('tech-level-report', 'techBase', normalizeTechBaseDescription(report.techBase));
       add('tech-level-report', 'year', report.introductionYear);
     }
   }

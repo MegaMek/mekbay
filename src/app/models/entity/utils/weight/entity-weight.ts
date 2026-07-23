@@ -8,6 +8,7 @@ import type { AeroEntity } from '../../entities/aero/aero-entity';
 import type { HandheldWeaponEntity } from '../../entities/misc/handheld-weapon-entity';
 import type { FixedWingSupportEntity } from '../../entities/aero/fixed-wing-support-entity';
 import type { SmallCraftEntity } from '../../entities/aero/small-craft-entity';
+import type { JumpShipEntity } from '../../entities/largecraft/jumpship-entity';
 import { getInfantryTonnage } from '../infantry-tonnage';
 import { calculateMekEffectiveTonnage } from './mek-weight';
 import { calculateBattleArmorEffectiveTonnage } from './battle-armor-weight';
@@ -18,6 +19,7 @@ import { calculateFighterEffectiveTonnage } from './fighter-weight';
 import { calculateHandheldWeaponEffectiveTonnage } from './handheld-weapon-weight';
 import { calculateFixedWingSupportEffectiveTonnage } from './fixed-wing-support-weight';
 import { calculateSmallCraftEffectiveTonnage } from './small-craft-weight';
+import { calculateAdvancedAerospaceEffectiveTonnage } from './advanced-aerospace-weight';
 
 /**
  * Calculate installed construction mass independently of declared chassis
@@ -29,6 +31,10 @@ import { calculateSmallCraftEffectiveTonnage } from './small-craft-weight';
  */
 export function calculateEntityEffectiveTonnage(entity: BaseEntity): number {
   switch (entity.entityType) {
+    case 'JumpShip':
+    case 'WarShip':
+    case 'SpaceStation':
+      return calculateAdvancedAerospaceEffectiveTonnage(entity as JumpShipEntity);
     case 'SmallCraft':
     case 'DropShip':
       return calculateSmallCraftEffectiveTonnage(entity as SmallCraftEntity);
