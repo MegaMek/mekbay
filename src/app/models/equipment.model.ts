@@ -693,7 +693,7 @@ export class WeaponEquipment extends Equipment {
         if (Array.isArray(this.damage) || this.hasAnyFlag(['F_BOMBAST_LASER','F_M_POD'])) types.add('V');
 
         // X: Explosive
-        // Note: had to put AC and PPC in the filter because they have explosive==true due to the ppc capacitor
+        // Note: had to put AC and PPC in the filter because they have explosive==true and that's an optional rule (they still get clan case thou!)
         if (this.stats.explosive && !this.hasAnyFlag(['F_AC', 'F_PPC', 'F_B_POD', 'F_M_POD'])) types.add('X');
 
         return orderedWeaponTypes(types);
