@@ -168,7 +168,7 @@ describe('equipment damage types', () => {
             weapon: { ammoType: 'SNIPER_CANNON', damage: 10 }
         });
 
-        expect(weapon.getWeaponTypes()).toEqual(['DB','S']);
+        expect(weapon.getWeaponTypes()).toEqual(['DB', 'F']);
     });
 
     it('derives missile, cluster, and switchable types from an MML weapon', () => {
@@ -336,7 +336,7 @@ describe('equipment damage types', () => {
         });
         const mounted = new MountedWeapon({ owner: {} as CBTForceUnit, id: weapon.id, name: weapon.name, equipment: weapon });
 
-        expect(mounted.getWeaponTypes(flak)).toEqual(['AE', 'DB', 'F', 'S']);
+        expect(mounted.getWeaponTypes(flak)).toEqual(['AE', 'DB', 'F']);
     });
 
     it('does not infer mounted weapon types from hidden persisted ammo state', () => {
@@ -359,8 +359,8 @@ describe('equipment damage types', () => {
         } as unknown as CBTForceUnit;
         const mounted = new MountedWeapon({ owner, id: weapon.id, name: weapon.name, equipment: weapon });
 
-        expect(mounted.getWeaponTypes()).toEqual(['DB', 'S']);
-        expect(mounted.getWeaponTypes(flak)).toEqual(['AE', 'DB', 'F', 'S']);
+        expect(mounted.getWeaponTypes()).toEqual(['DB', 'F']);
+        expect(mounted.getWeaponTypes(flak)).toEqual(['AE', 'DB', 'F']);
     });
 
 });

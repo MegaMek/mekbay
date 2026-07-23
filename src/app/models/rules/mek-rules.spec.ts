@@ -492,10 +492,19 @@ describe('MekRules', () => {
             min: '—', short: '—', medium: '—', long: '—',
         };
 
-        expect(forceUnit.rules.applyInventoryControlDisplayEffects(vibroblade, display).damage).toBe('14 [7]');
+        expect(forceUnit.rules.applyInventoryControlDisplayEffects(vibroblade, display).damage).toBe('14');
+        expect(forceUnit.applyInventoryControlDisplayEffects(vibroblade, display, {
+            selectedRange: null,
+            additionalHitModifier: 0,
+            selectedAmmo: null,
+        }).damage).toBe('14 [7]');
 
         vibroblade.states.set(VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE);
-        expect(forceUnit.rules.applyInventoryControlDisplayEffects(vibroblade, display).damage).toBe('7');
+        expect(forceUnit.applyInventoryControlDisplayEffects(vibroblade, display, {
+            selectedRange: null,
+            additionalHitModifier: 0,
+            selectedAmmo: null,
+        }).damage).toBe('7');
     });
 
     it('shows active vibroblade damage beside inactive damage', () => {
@@ -513,7 +522,12 @@ describe('MekRules', () => {
             min: '—', short: '—', medium: '—', long: '—',
         };
 
-        expect(forceUnit.rules.applyInventoryControlDisplayEffects(vibroblade, display).damage).toBe('5 [10]');
+        expect(forceUnit.rules.applyInventoryControlDisplayEffects(vibroblade, display).damage).toBe('5');
+        expect(forceUnit.applyInventoryControlDisplayEffects(vibroblade, display, {
+            selectedRange: null,
+            additionalHitModifier: 0,
+            selectedAmmo: null,
+        }).damage).toBe('5 [10]');
     });
 
     it('uses active MASC state for effective Mek run MP without changing potential max run MP', () => {
