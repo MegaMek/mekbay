@@ -101,12 +101,19 @@ export class BVCalculator {
     let armorBV = 0;
     for (const [location, value] of this.entity.armorValues()) {
       const armor = this.entity.armorByLocation().get(location)?.armor;
-      const bar = this.entity.isSupportVehicle() ? this.entity.barRating() / 10 : 1;
+      const bar = this.entity.isSupportVehicle()
+        ? this.entity.barRating() / 10
+        : this.entity.entityType === 'Mek' && armor?.armorType === 'COMMERCIAL' ? 0.5 : 1;
       const modularArmor = this.entity.equipment()
         .filter(mount => mount.location === location && mount.equipment instanceof MiscEquipment
           && mount.equipment.hasFlag('F_MODULAR_ARMOR'))
         .reduce((sum, mount) => sum + (mount.equipment as MiscEquipment).baseDamageCapacity, 0);
-      armorBV += Math.max(0, value.front + value.rear + modularArmor) * armorBVMultiplier(armor) * bar;
+      const mountsAtLocation = this.entity.equipment()
+        .filter(mount => mount.getOccupiedLocations().includes(location));
+      const harjelMultiplier = (mountsAtLocation.some(mount => mount.equipment?.hasFlag('F_HARJEL_II')) ? 1.1 : 1)
+        * (mountsAtLocation.some(mount => mount.equipment?.hasFlag('F_HARJEL_III')) ? 1.2 : 1);
+      armorBV += Math.max(0, value.front + value.rear + modularArmor)
+        * armorBVMultiplier(armor) * bar * harjelMultiplier;
     }
     this.defensiveValue += armorBV * this.armorFactor();
     this.addValueLine('Armor', `${this.format(armorBV)} x ${this.format(this.armorFactor())}`, before);
@@ -121,7 +128,7 @@ export class BVCalculator {
     if (structures.length > 0 && structures.every(s => s.structure.hasAnyFlag([
       'F_INDUSTRIAL_STRUCTURE', 'F_COMPOSITE', 'F_COMPOSITE_STRUCTURE',
     ]))) multiplier = 0.5;
-    else if (structures.length > 0 && structures.every(s => s.structure.hasFlag('F_REINFORCED_STRUCTURE'))) multiplier = 2;
+    else if (structures.length > 0 && structures.every(s => s.structure.hasFlag('F_REINFORCED'))) multiplier = 2;
     if (this.has('F_BLUE_SHIELD')) multiplier += 0.2;
     this.defensiveValue += this.entity.totalInternalPoints() * 1.5 * multiplier;
     const modifier = multiplier === 1 ? '' : ` x ${this.format(multiplier)}`;

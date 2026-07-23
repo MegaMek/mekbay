@@ -107,7 +107,7 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
     if (structures.length > 0 && structures.every(s => s.structure.hasAnyFlag([
       'F_INDUSTRIAL_STRUCTURE', 'F_COMPOSITE', 'F_COMPOSITE_STRUCTURE',
     ]))) multiplier = 0.5;
-    else if (structures.length > 0 && structures.every(s => s.structure.hasFlag('F_REINFORCED_STRUCTURE'))) {
+    else if (structures.length > 0 && structures.every(s => s.structure.hasFlag('F_REINFORCED'))) {
       multiplier = 2;
     }
     if (this.has('F_BLUE_SHIELD')) multiplier += 0.2;

@@ -240,9 +240,10 @@ function getArg(name: string, defaultValue: string): string {
 }
 const hasFlag = (name: string) => args.includes(`--${name}`);
 
-const UNITS_JSON_PATH = path.resolve(getArg('oracle', path.join(WORKSPACE_ROOT, 'svgexport', 'units.json')));
+const FIXTURE_ROOT = path.join(PROJECT_ROOT, 'scripts', 'fixtures');
+const UNITS_JSON_PATH = path.resolve(getArg('oracle', path.join(FIXTURE_ROOT, 'units.json')));
 const UNIT_FILES_DIR = path.resolve(getArg('unitfiles', path.join(WORKSPACE_ROOT, 'mm-data', 'data', 'mekfiles')));
-const REPORT_ROOT = path.resolve(getArg('report-root', path.join(WORKSPACE_ROOT, 'svgexport')));
+const REPORT_ROOT = path.resolve(getArg('report-root', FIXTURE_ROOT));
 const TYPE_FILTER = getArg('type', '');
 const UNIT_FILTER = getArg('unit', '');
 const FIELDS_FILTER = getArg('fields', '');

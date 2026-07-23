@@ -1,4 +1,12 @@
-import { AmmoEquipment, MiscEquipment, WeaponEquipment } from '../../../equipment.model';
+import {
+  AmmoEquipment,
+  ArmorEquipment,
+  MiscEquipment,
+  StructureEquipment,
+  WeaponEquipment,
+} from '../../../equipment.model';
+import { MountedArmor } from '../../components/armor';
+import { MountedStructure } from '../../components/structure';
 import {
   TestAeroSpaceFighterEntity,
   TestBattleArmorEntity,
@@ -161,14 +169,63 @@ describe('structured battle value details', () => {
     expect(findDetail(calculateBattleValueDetails(entity).details, 'Armor')?.delta).toBe(15);
   });
 
-  it('counts HarJel II and III as defensive equipment', () => {
+  it('applies BAR 5 only to Commercial armor on Meks', () => {
     const entity = new TestBipedMekEntity();
+    entity.armorValues.set(new Map([['CT', { front: 84, rear: 0 }]]));
+    const commercial = new ArmorEquipment({
+      id: 'Commercial Armor', name: 'Commercial Armor', type: 'armor',
+      armor: { type: 'COMMERCIAL', bar: 5 },
+    });
+    const standard = new ArmorEquipment({
+      id: 'Standard Armor', name: 'Standard Armor', type: 'armor',
+      armor: { type: 'STANDARD', bar: 10 },
+    });
+
+    entity.setUniformArmor(new MountedArmor({ armor: commercial, techBase: 'IS' }));
+    expect(findDetail(calculateBattleValueDetails(entity).details, 'Armor')?.delta).toBe(105);
+
+    entity.setUniformArmor(new MountedArmor({ armor: standard, techBase: 'IS' }));
+    expect(findDetail(calculateBattleValueDetails(entity).details, 'Armor')?.delta).toBe(210);
+  });
+
+  it('applies reinforced structure BV before the XXL engine modifier', () => {
+    const entity = new TestBipedMekEntity();
+    entity.setTonnage(60);
+    entity.mountedEngine().type.set('XXL');
+    entity.setUniformStructure(new MountedStructure({
+      structure: new StructureEquipment({
+        id: 'Reinforced', name: 'Reinforced Structure', type: 'structure',
+        flags: ['F_REINFORCED'],
+      }),
+      techBase: 'IS',
+      tonnage: 12,
+    }));
+
+    const structure = findDetail(calculateBattleValueDetails(entity).details, 'Internal Structure');
+    const internalPoints = entity.totalInternalPoints();
+    expect(internalPoints).toBeGreaterThan(0);
+    expect(structure?.delta).toBe(internalPoints * 1.5 * 2 * 0.25);
+    expect(structure?.calculation).toContain(`${internalPoints} x 1.5 x 2 x 0.25`);
+  });
+
+  it('counts HarJel defensively and modifies armor once in each occupied location', () => {
+    const entity = new TestBipedMekEntity();
+    entity.armorValues.set(new Map([
+      ['CT', { front: 6, rear: 4 }],
+      ['LT', { front: 8, rear: 2 }],
+      ['RT', { front: 10, rear: 0 }],
+    ]));
     const harjel2 = new MiscEquipment({ id: 'harjel-2', name: 'HarJel II', type: 'misc',
       flags: ['F_HARJEL_II'], stats: { bv: -1 } });
     const harjel3 = new MiscEquipment({ id: 'harjel-3', name: 'HarJel III', type: 'misc',
       flags: ['F_HARJEL_III'], stats: { bv: -2 } });
-    entity.setEquipment([mount(harjel2 as never, 'CT'), mount(harjel3 as never, 'CT')]);
-    expect(findDetail(calculateBattleValueDetails(entity).details, 'Defensive Equipment')?.delta).toBe(-3);
+    entity.setEquipment([
+      mount(harjel2, 'CT'), mount(harjel3, 'LT'), mount(harjel3, 'LT'),
+    ]);
+    const details = calculateBattleValueDetails(entity).details;
+
+    expect(findDetail(details, 'Armor')?.delta).toBe(82.5);
+    expect(findDetail(details, 'Defensive Equipment')?.delta).toBe(-5);
   });
 
   it('shares one state calculation while preserving the numeric API', () => {
@@ -271,7 +328,7 @@ describe('structured battle value details', () => {
     const entity = new TestDropShipEntity();
     const ppc = new WeaponEquipment({
       id: 'ISERPPC', name: 'ER PPC', type: 'weapon', stats: { bv: 229 },
-      weapon: { heat: 15 }, flags: ['F_PPC'],
+      weapon: { heat: 15 }, flags: ['F_PPC', 'F_PPC_CAPACITOR_COMPATIBLE'],
     });
     const capacitor = new MiscEquipment({
       id: 'PPC Capacitor', name: 'PPC Capacitor', type: 'misc',
