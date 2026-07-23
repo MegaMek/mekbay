@@ -631,7 +631,7 @@ export class WeaponEquipment extends Equipment {
 
         // C: Cluster
         // note: SBGauss has no damage==cluster but the ammo does have M_CLUSTER
-        if (this.weapon.damage === 'cluster' || this.hasAnyFlag(['F_HAG', 'F_M_POD'])) {
+        if ((this.weapon.damage === 'cluster' && !this.hasFlag('F_LARGE_MISSILE')) || this.hasAnyFlag(['F_HAG', 'F_M_POD'])) {
             types.add('C');
         }
 
