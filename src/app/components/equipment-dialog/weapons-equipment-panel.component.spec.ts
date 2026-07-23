@@ -23,6 +23,7 @@ import type { MotiveModes } from '../../models/motiveModes.model';
 import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from '../../models/rules/unit-type-rules';
 import { TW_GAME_RULES, type CBTGameRules } from '../../models/rules/game-rules';
 import { createCBTForceUnitTestHarness, type CBTForceUnitTestEntryState, type TestUnitOverrides } from '../../testing/unit-test-helpers';
+import { getVibrobladeMode, VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE, VibrobladeHandler } from '../../equipment-handlers/vibroblade.handler';
 
 function weapon(id: string, ammoType: Extract<AmmoType, 'NA' | 'AC' | 'ATM' | 'MML' | 'MRM' | 'AC_ULTRA' | 'NARC'> = 'NA', rackSize = 0, ranges: number[] = [1, 2, 3, 4], toHitModifier = 0, heat = 0): WeaponEquipment {
     const flags = ammoType === 'MRM'
@@ -190,8 +191,8 @@ function createComponent(
         .setInventoryControlRules({
             ...equipmentRules,
             applyDisplayEffects: (entry, display, displayOptions) => {
-                const equipmentDisplay = equipmentRules.applyDisplayEffects?.(entry, display, displayOptions) ?? display;
-                return unit.rules.applyInventoryControlDisplayEffects(entry, equipmentDisplay);
+                const unitDisplay = unit.rules.applyInventoryControlDisplayEffects(entry, display);
+                return equipmentRules.applyDisplayEffects?.(entry, unitDisplay, displayOptions) ?? unitDisplay;
             }
         });
 
@@ -232,6 +233,42 @@ describe('WeaponsEquipmentPanelComponent', () => {
         fixture.detectChanges();
 
         expect(damageCell().textContent?.trim()).toBe('8 [12]');
+    });
+
+    it('shows vibroblade OFF and ON heat and damage', () => {
+        const vibroblade = misc('Vibroblade (Medium)', ['F_CLUB', 'S_VIBRO_MEDIUM']);
+        const vibrobladeEntry = entry({
+            id: 'vibroblade',
+            equipment: vibroblade,
+            locations: new Set(['RA']),
+            el: svgEntry('<g><g class="name"><text>Vibroblade (Medium)</text></g><g class="damage"><text>10</text></g><text class="location">RA</text></g>')
+        });
+        const { fixture, unitHarness } = createComponent(
+            [vibrobladeEntry],
+            { [vibroblade.internalName]: vibroblade },
+            [],
+            new Map(),
+            {
+                unit: { tons: 40 },
+                handlers: [new VibrobladeHandler()],
+                applyUnitDisplayEffects: (candidate, display) => ({
+                    ...display,
+                    damage: getVibrobladeMode(candidate) === VIBROBLADE_ON_MODE ? '10' : '5'
+                })
+            }
+        );
+        const heatCell = () => fixture.nativeElement.querySelector('.heat-cell') as HTMLElement;
+        const damageCell = () => fixture.nativeElement.querySelector('.damage-cell') as HTMLElement;
+
+        fixture.detectChanges();
+        expect(heatCell().textContent?.trim()).toBe('[5]');
+        expect(damageCell().textContent?.trim()).toBe('5 [10]');
+
+        vibrobladeEntry.setState(VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE);
+        vibrobladeEntry.owner.inventoryControl.markInventoryViewChanged();
+        fixture.detectChanges();
+        expect(heatCell().textContent?.trim()).toBe('5');
+        expect(damageCell().textContent?.trim()).toBe('10');
     });
 
     it('groups ranged, physical, equipment, and destroyed entries', () => {

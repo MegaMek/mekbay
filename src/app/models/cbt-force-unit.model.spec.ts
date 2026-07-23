@@ -11,6 +11,7 @@ import { DataService } from '../services/data.service';
 import { UnitInitializerService } from '../services/unit-initializer.service';
 import { UnitSvgService } from '../services/unit-svg.service';
 import { UnitSvgVehicleService } from '../services/unit-svg-vehicle.service';
+import { UnitSvgMekService } from '../services/unit-svg-mek.service';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import type { Unit } from './units.model';
 import { EquipmentInteractionHandler, EquipmentInteractionRegistryService, type HandlerContext } from '../services/equipment-interaction-registry.service';
@@ -23,6 +24,7 @@ import { resolveWeaponDamage } from '../utils/inventory-control-damage.util';
 import { AtmHandler } from '../equipment-handlers/atm.handler';
 import { MmlHandler } from '../equipment-handlers/mml.handler';
 import { ATM_EXTENDED_RANGE_PROFILE, ATM_HIGH_EXPLOSIVE_PROFILE, ATM_STANDARD_PROFILE } from './ammo-weapon-profile.model';
+import { VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE, VibrobladeHandler } from '../equipment-handlers/vibroblade.handler';
 
 function createEquipment(): EquipmentMap {
     const ultraAc20 = new WeaponEquipment({
@@ -505,6 +507,12 @@ class ExposedUnitSvgVehicleService extends UnitSvgVehicleService {
 
     refreshCritLocs(critLocs = this.unit.getCritSlots()): void {
         this.updateCritLocDisplay(critLocs);
+    }
+}
+
+class ExposedUnitSvgMekService extends UnitSvgMekService {
+    refreshInventory(): void {
+        this.updateInventory();
     }
 }
 
@@ -1231,6 +1239,64 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         svgService.refreshInventory();
         expect(damageText.textContent).toBe('9/7/5 [V]');
         expect(hitModText.textContent).toBe('-4');
+    });
+
+    it('renders vibroblade OFF and ON damage on the Mek SVG', () => {
+        const vibroblade = new MiscEquipment({
+            id: 'ISMediumVibroblade',
+            name: 'Vibroblade (Medium)',
+            type: 'misc',
+            flags: ['F_CLUB', 'S_VIBRO_MEDIUM'],
+        });
+        equipment[vibroblade.internalName] = vibroblade;
+        dataService.getEquipments.and.returnValue(equipment);
+        TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(new VibrobladeHandler());
+        const unit = createMekUnit();
+        unit.tons = 40;
+        unit.comp = [{
+            id: vibroblade.internalName, q: 1, q2: 0, n: vibroblade.name, t: 'P', p: 1,
+            l: 'RA', m: '-2', d: '10', md: '10', c: '2', os: 0, eq: vibroblade,
+        }];
+        const svg = new DOMParser().parseFromString(`
+            <svg xmlns="http://www.w3.org/2000/svg">
+                <g class="unitLocation armor" loc="RA"></g>
+                <g class="unitLocation structure" loc="RA"></g>
+                <g class="inventoryEntry" id="ISMediumVibroblade@RA#0" hitMod="-2">
+                    <g class="name"><text>Vibroblade (Medium)</text></g>
+                    <g class="heat"><text>5</text></g>
+                    <g class="damage"><text>10</text></g>
+                    <text class="location">RA</text>
+                    <rect class="hitMod-rect" display="block"></rect>
+                    <text class="hitMod-text" display="block">-2</text>
+                </g>
+            </svg>
+        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+        const forceUnit = createForceUnit(unit);
+        initialize(forceUnit, svg);
+        const entry = forceUnit.getInventory().find(candidate => candidate.equipment === vibroblade)!;
+        const heatText = entry.el!.querySelector(':scope > .heat > text') as SVGTextElement;
+        const damageText = entry.el!.querySelector(':scope > .damage > text') as SVGTextElement;
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgMekService(forceUnit, unitInitializer));
+
+        svgService.refreshInventory();
+        expect(heatText.textContent).toBe('[5]');
+        expect(damageText.textContent).toBe('5 [10]');
+        expect(damageText.classList.contains('damaged')).toBeFalse();
+        expect(entry.el!.classList.contains('damagedInventory')).toBeFalse();
+
+        entry.setState(VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE);
+        svgService.refreshInventory();
+        expect(heatText.textContent).toBe('5');
+        expect(damageText.textContent).toBe('10');
+        expect(damageText.classList.contains('damaged')).toBeFalse();
+
+        entry.deleteState(VIBROBLADE_MODE_STATE);
+        svgService.refreshInventory();
+        expect(heatText.textContent).toBe('[5]');
+        expect(damageText.textContent).toBe('5 [10]');
+        expect(damageText.classList.contains('damaged')).toBeFalse();
+        expect(entry.el!.classList.contains('damagedInventory')).toBeFalse();
+        expect(damageText.getAttribute('data-mekbay-physical-base-damage-text')).toBe('10');
     });
 
     it('renders effective weapon types on selected-range SVG damage', () => {

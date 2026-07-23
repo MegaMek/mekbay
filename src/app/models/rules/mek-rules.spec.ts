@@ -17,6 +17,7 @@ import { HAG_FLAK_MODE, HAG_STANDARD_MODE, HagHandler } from '../../equipment-ha
 import { INVENTORY_CONTROL_MODE_STATE } from '../../utils/inventory-control.util';
 import { OptionsService } from '../../services/options.service';
 import { TWMekRules } from './tw-rules';
+import { VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE, VibrobladeHandler } from '../../equipment-handlers/vibroblade.handler';
 
 class TestCBTForce extends CBTForce {
     override emitChanged(): void {
@@ -266,6 +267,7 @@ describe('MekRules', () => {
         const registry = TestBed.inject(EquipmentInteractionRegistryService).getRegistry();
         registry.register(new MascHandler());
         registry.register(new HagHandler());
+        registry.register(new VibrobladeHandler());
     });
 
     it('keeps Mek immobile false by default when crew are functional', () => {
@@ -468,6 +470,50 @@ describe('MekRules', () => {
 
         const twForceUnit = createForceUnitHarness({ rulesId: 'tw' });
         expect((twForceUnit.rules as MekRules).physicalCombat()?.chargeDamage.damage).toBeNull();
+    });
+
+    it('applies TSM to capped inactive vibroblade damage but not fixed active damage', () => {
+        const tsm = miscEquipment('TSM', 'Triple Strength Myomer', ['F_TSM']);
+        const forceUnit = createForceUnitHarness({
+            internalLocations: ['RA'],
+            critSlots: [{ ...crit('Triple Strength Myomer', false), loc: 'RA', eq: tsm }],
+        });
+        forceUnit.getUnit().tons = 100;
+        forceUnit.setHeatData({ current: 9, previous: 9 });
+        const vibroblade = new MountedEquipment({
+            owner: forceUnit,
+            id: 'ISSmallVibroblade',
+            name: 'Vibroblade (Small)',
+            equipment: miscEquipment('ISSmallVibroblade', 'Vibroblade (Small)', ['F_CLUB', 'S_VIBRO_SMALL']),
+            locations: new Set(['RA']),
+        });
+        const display = {
+            name: 'Vibroblade (Small)', location: 'RA', heat: '—', damage: '7', hit: '-2',
+            min: '—', short: '—', medium: '—', long: '—',
+        };
+
+        expect(forceUnit.rules.applyInventoryControlDisplayEffects(vibroblade, display).damage).toBe('14 [7]');
+
+        vibroblade.states.set(VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE);
+        expect(forceUnit.rules.applyInventoryControlDisplayEffects(vibroblade, display).damage).toBe('7');
+    });
+
+    it('shows active vibroblade damage beside inactive damage', () => {
+        const forceUnit = createForceUnitHarness({ internalLocations: ['RA'] });
+        forceUnit.getUnit().tons = 40;
+        const vibroblade = new MountedEquipment({
+            owner: forceUnit,
+            id: 'ISMediumVibroblade',
+            name: 'Vibroblade (Medium)',
+            equipment: miscEquipment('ISMediumVibroblade', 'Vibroblade (Medium)', ['F_CLUB', 'S_VIBRO_MEDIUM']),
+            locations: new Set(['RA']),
+        });
+        const display = {
+            name: 'Vibroblade (Medium)', location: 'RA', heat: '—', damage: '10', hit: '-2',
+            min: '—', short: '—', medium: '—', long: '—',
+        };
+
+        expect(forceUnit.rules.applyInventoryControlDisplayEffects(vibroblade, display).damage).toBe('5 [10]');
     });
 
     it('uses active MASC state for effective Mek run MP without changing potential max run MP', () => {

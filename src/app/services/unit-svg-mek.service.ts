@@ -40,7 +40,7 @@ import { MekRules } from "../models/rules/mek-rules";
 import type { InventoryControlRuntimeRangeKey } from "../models/inventory-control-runtime-state.model";
 import { getCriticalSlotAmmoProfileKey } from "../utils/ammo-interaction.util";
 import type { MountedEquipmentRuleState } from "../models/rules/unit-type-rules";
-import { INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE } from "../utils/inventory-control.util";
+import { INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, readInventoryControlDisplayData } from "../utils/inventory-control.util";
 
 /*
  * Author: Drake
@@ -348,9 +348,14 @@ export class UnitSvgMekService extends UnitSvgService {
         }
         if (!originalText) return;
         const baseDamage = parseInt(originalText);
-        const { damage, maxDamage } = this.mekRules.computeMeleeDamage(baseDamage, attackType, loc, ignoreMyomer);
-        damageEl.textContent = (damage !== maxDamage) ? `${damage} [${maxDamage}]` : `${damage}`;
-        damageEl.classList.toggle('damaged', damage < baseDamage);
+        const { weakened } = this.mekRules.resolveMeleeDamageDisplay(entry, baseDamage, attackType, loc, ignoreMyomer);
+        const display = this.unit.applyInventoryControlDisplayEffects(entry, readInventoryControlDisplayData(entry), {
+            selectedRange: null,
+            additionalHitModifier: 0,
+            selectedAmmo: null,
+        });
+        damageEl.textContent = display.damage;
+        damageEl.classList.toggle('damaged', weakened);
     }
 
     protected override updateHeatSinkPips() {

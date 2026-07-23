@@ -1521,8 +1521,31 @@ export class MekRules extends UnitTypeRulesBase {
         }
         const baseDamage = Number.parseInt(display.damage, 10);
         if (!attackType || !Number.isFinite(baseDamage)) return display;
-        const { damage, maxDamage } = this.computeMeleeDamage(baseDamage, attackType, location, ignoreMyomer);
-        return { ...display, damage: damage === maxDamage ? `${damage}` : `${damage} [${maxDamage}]` };
+        return { ...display, damage: this.resolveMeleeDamageDisplay(entry, baseDamage, attackType, location, ignoreMyomer).text };
+    }
+
+    resolveMeleeDamageDisplay(
+        entry: MountedEquipment,
+        baseDamage: number,
+        attackType: 'punch' | 'kick' | 'club' | 'physWeapon',
+        location?: string,
+        ignoreMyomer = false,
+    ): { damage: number; text: string; weakened: boolean } {
+        const effect = this.unit.getInventoryControlRules().applyPhysicalDamageEffects?.(entry, {
+            baseDamage,
+            ignoreMyomer,
+        }) ?? { baseDamage, ignoreMyomer };
+        const { damage, maxDamage } = this.computeMeleeDamage(
+            effect.baseDamage,
+            attackType,
+            location,
+            effect.ignoreMyomer,
+        );
+        return {
+            damage,
+            text: damage === maxDamage ? `${damage}` : `${damage} [${maxDamage}]`,
+            weakened: damage < effect.baseDamage,
+        };
     }
 
     // ── Fire Control State ───────────────────────────────────────────────────

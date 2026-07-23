@@ -44,6 +44,7 @@ import type { TurnState } from '../models/turn-state.model';
 import type { UnitHeatSource } from '../models/rules/unit-type-rules';
 import type { ToHitAdjustment } from '../models/rules/game-rules';
 import type { InventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
+import type { InventoryControlPhysicalDamageEffect } from '../utils/inventory-control-physical-damage.util';
 
 /**
  * Context passed to handlers containing additional information
@@ -138,6 +139,13 @@ export abstract class EquipmentInteractionHandler {
         damageContext: InventoryControlDamageContext,
         context: HandlerContext
     ): InventoryControlDamage;
+
+    /** Applies equipment mode/state to a physical weapon's base damage policy. */
+    applyInventoryControlPhysicalDamageEffects?(
+        equipment: MountedEquipment,
+        effect: InventoryControlPhysicalDamageEffect,
+        context: HandlerContext
+    ): InventoryControlPhysicalDamageEffect;
 
     /** Applies equipment-state modifiers to typed weapon firing heat. */
     applyInventoryControlHeatEffects?(equipment: MountedEquipment, effect: InventoryControlHeatEffect, context: HandlerContext): InventoryControlHeatEffect;
@@ -369,6 +377,18 @@ export class EquipmentInteractionRegistry {
         return nextDamage;
     }
 
+    applyInventoryControlPhysicalDamageEffects(
+        equipment: MountedEquipment,
+        effect: InventoryControlPhysicalDamageEffect,
+        context: HandlerContext
+    ): InventoryControlPhysicalDamageEffect {
+        let nextEffect = effect;
+        for (const handler of this.getHandlers(equipment)) {
+            nextEffect = handler.applyInventoryControlPhysicalDamageEffects?.(equipment, nextEffect, context) ?? nextEffect;
+        }
+        return nextEffect;
+    }
+
     applyInventoryControlHeatEffects(equipment: MountedEquipment, effect: InventoryControlHeatEffect, context: HandlerContext): InventoryControlHeatEffect {
         let nextEffect = effect;
         for (const handler of this.getHandlers(equipment)) {
@@ -419,6 +439,7 @@ export class EquipmentInteractionRegistry {
         return {
             applyDisplayEffects: (equipment, display, options) => this.applyInventoryControlDisplayEffects(equipment, display, options, context),
             applyDamageEffects: (equipment, damage, options) => this.applyInventoryControlDamageEffects(equipment, damage, options, context),
+            applyPhysicalDamageEffects: (equipment, effect) => this.applyInventoryControlPhysicalDamageEffects(equipment, effect, context),
             applyHeatEffects: (equipment, heat) => this.applyInventoryControlHeatEffects(equipment, heat, context),
             applyWeaponTypes: (equipment, types) => this.applyWeaponTypes(equipment, types, context),
             matchesAmmo: (equipment, ammo, mode) => this.matchesInventoryAmmo(equipment, ammo, mode, context),

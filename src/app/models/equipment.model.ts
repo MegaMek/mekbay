@@ -554,7 +554,7 @@ function orderedWeaponTypes(types: Iterable<WeaponType>): WeaponType[] {
     return WEAPON_TYPES.filter(type => typeSet.has(type));
 }
 
-const NON_DAMAGING_WEAPON_FLAGS = ['F_TAG', 'F_AMS'] as const;
+const NON_DAMAGING_WEAPON_FLAGS = ['F_TAG', 'F_AMS', 'F_NARC'] as const;
 
 export class WeaponEquipment extends Equipment {
     readonly weapon: WeaponData;
@@ -627,11 +627,12 @@ export class WeaponEquipment extends Equipment {
         if ((this.hasFlag('F_ARTILLERY') && !this.hasFlag('F_DIRECT_FIRE')) || this.hasFlag('F_VGL')) types.add('AE');
 
         // AI: Anti-Infantry
-        if (this.hasAnyFlag(['F_VSP', 'F_BURST_FIRE', 'F_FLAMER', 'F_MG', 'F_MGA', 'F_B_POD'])) types.add('AI');
+        if (this.hasAnyFlag(['F_VSP', 'F_BURST_FIRE', 'F_FLAMER', 'F_MG', 'F_MGA'])) types.add('AI');
 
         // C: Cluster
         // note: SBGauss has no damage==cluster but the ammo does have M_CLUSTER
-        if ((this.weapon.damage === 'cluster' && !this.hasFlag('F_LARGE_MISSILE')) || this.hasAnyFlag(['F_HAG', 'F_M_POD'])) {
+        if ((this.weapon.damage === 'cluster' && !this.hasAnyFlag(['F_LARGE_MISSILE', 'F_NARC'])) 
+            || this.hasAnyFlag(['F_HAG', 'F_M_POD'])) {
             types.add('C');
         }
 
@@ -685,11 +686,11 @@ export class WeaponEquipment extends Equipment {
         if (SWITCHABLE_AMMO.has(this.ammoType)) types.add('S');
         
         // V: Variable Damage
-        if (Array.isArray(this.damage) || this.hasFlag('F_BOMBAST_LASER')) types.add('V');
+        if (Array.isArray(this.damage) || this.hasAnyFlag(['F_BOMBAST_LASER','F_M_POD'])) types.add('V');
 
         // X: Explosive
         // Note: had to put AC and PPC in the filter because they have explosive==true due to the ppc capacitor
-        if (this.stats.explosive && !this.hasAnyFlag(['F_AC', 'F_PPC'])) types.add('X');
+        if (this.stats.explosive && !this.hasAnyFlag(['F_AC', 'F_PPC', 'F_B_POD', 'F_M_POD'])) types.add('X');
 
         return orderedWeaponTypes(types);
     }

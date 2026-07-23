@@ -137,8 +137,8 @@ export class CBTForceUnit extends ForceUnit {
         return {
             ...equipmentRules,
             applyDisplayEffects: (entry, display, options) => {
-                const equipmentDisplay = equipmentRules.applyDisplayEffects?.(entry, display, options) ?? display;
-                return this.rules.applyInventoryControlDisplayEffects(entry, equipmentDisplay);
+                const unitDisplay = this.rules.applyInventoryControlDisplayEffects(entry, display);
+                return equipmentRules.applyDisplayEffects?.(entry, unitDisplay, options) ?? unitDisplay;
             },
         };
     }

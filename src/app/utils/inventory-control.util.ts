@@ -43,6 +43,7 @@ import type { MountedEquipmentRuleState } from '../models/rules/unit-type-rules'
 import { formatBattleArmorTrooperLocation, getBattleArmorTrooperNumber } from './ammo-interaction.util';
 import { resolveInventoryControlWeaponDamage, type InventoryControlDamage, type InventoryControlDamageRules } from './inventory-control-damage.util';
 import { formatInventoryControlHeat, resolveInventoryControlHeatEffect, type InventoryControlHeatRules } from './inventory-control-heat.util';
+import type { InventoryControlPhysicalDamageEffect } from './inventory-control-physical-damage.util';
 import { ATM_AMMO_PROFILES, MML_AMMO_PROFILES, resolveAmmoWeaponProfile, type AmmoWeaponProfile } from '../models/ammo-weapon-profile.model';
 
 export const INVENTORY_CONTROL_MODE_STATE = 'inventory_control_mode';
@@ -165,6 +166,10 @@ export interface InventoryControlRules extends InventoryControlDamageRules, Inve
     matchesAmmo?: (entry: MountedEquipment, ammo: AmmoEquipment, mode: string | null) => boolean | null;
     resolveToHitAdjustments?: (entry: MountedEquipment, selectedAmmo?: AmmoEquipment | null) => readonly ToHitAdjustment[];
     isSelectable?: (entry: MountedEquipment) => boolean;
+    applyPhysicalDamageEffects?: (
+        entry: MountedEquipment,
+        effect: InventoryControlPhysicalDamageEffect
+    ) => InventoryControlPhysicalDamageEffect;
 }
 
 const GROUP_TITLES: Record<InventoryControlGroupId, string> = {
@@ -701,17 +706,28 @@ function readEntryDisplayData(el: SVGElement, hit: string): InventoryControlDisp
 function readTypedEquipmentDisplayData(entry: MountedEquipment, hit: string): InventoryControlDisplayData {
     const equipment = entry.equipment;
     const weapon = equipment instanceof WeaponEquipment ? equipment : null;
+    const physicalDamage = !weapon && entry.el
+        && (equipment?.flags.has('F_CLUB') || equipment?.flags.has('F_HAND_WEAPON'))
+        ? normalizeCell(readDamageText(entry.el))
+        : '—';
     return {
         name: equipment?.name ?? entry.name,
         location: normalizeCell(Array.from(entry.locations ?? []).join('/')),
         heat: weapon ? formatInventoryControlHeat(weapon.heat) : '—',
-        damage: weapon ? formatModelValue(weapon.damage) : '—',
+        damage: weapon ? formatModelValue(weapon.damage) : physicalDamage,
         hit,
         min: weapon ? formatInventoryRange(weapon.minRange) : '—',
         short: weapon ? formatInventoryRange(weapon.ranges[0]) : '—',
         medium: weapon ? formatInventoryRange(weapon.ranges[1]) : '—',
         long: weapon ? formatInventoryRange(weapon.ranges[2]) : '—',
     };
+}
+
+/** Resolves an entry's base display data from its typed model and SVG metadata. */
+export function readInventoryControlDisplayData(entry: MountedEquipment, hit = '—'): InventoryControlDisplayData {
+    if (entry.equipment) return readTypedEquipmentDisplayData(entry, hit);
+    if (entry.el) return readEntryDisplayData(entry.el, hit);
+    return readModelDisplayData(entry, hit);
 }
 
 function readModelDisplayData(entry: MountedEquipment, hit: string): InventoryControlDisplayData {

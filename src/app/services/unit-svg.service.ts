@@ -47,7 +47,7 @@ import type { HeatDissipationState } from '../models/rules/heat-management';
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import { formatAmmoName } from '../utils/ammo-interaction.util';
 import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection } from '../utils/inventory-target-number.util';
-import { getInventoryControlGroups, getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, type InventoryControlAmmoOption, type InventoryControlRow } from '../utils/inventory-control.util';
+import { getInventoryControlGroups, getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, readInventoryControlDisplayData, type InventoryControlAmmoOption, type InventoryControlRow } from '../utils/inventory-control.util';
 import { resolveInventoryControlDamageText, resolveWeaponDamageText } from '../utils/inventory-control-damage.util';
 import { formatInventoryControlHeat, resolveInventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
 import type { ToHitResolution } from '../models/rules/game-rules';
@@ -1241,6 +1241,13 @@ export class UnitSvgService {
                 ? entry.equipment.getRapidFireCount()
                 : 0;
             text.textContent = formatInventoryControlHeat(heatResolution.value, heatResolution.suffix, rapidFireCount);
+        } else {
+            const display = this.unit.applyInventoryControlDisplayEffects(entry, readInventoryControlDisplayData(entry), {
+                selectedRange,
+                additionalHitModifier: 0,
+                selectedAmmo: null,
+            });
+            text.textContent = display.heat;
         }
         text.classList.toggle('damaged', heatResolution?.weakened ?? false);
     }
