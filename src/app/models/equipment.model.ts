@@ -543,9 +543,9 @@ const SWITCHABLE_AMMO = new Set<AmmoType>([
     'MEK_MORTAR',
     'BA_TUBE',
     'ARROW_IV', 'ARROWIV_PROTO', 'ARROW_IV_BOMB',
-    'THUMPER', 'THUMPER_CANNON',
-    'SNIPER', 'SNIPER_CANNON',
-    'LONG_TOM', 'LONG_TOM_PRIM', 'LONG_TOM_CANNON',
+    'THUMPER',
+    'SNIPER',
+    'LONG_TOM', 'LONG_TOM_PRIM',
 ]);
 
 
@@ -636,7 +636,10 @@ export class WeaponEquipment extends Equipment {
         }
 
         // DB: Direct-Fire Ballistic
-        if (this.ammoType === 'SBGAUSS'
+        if (this.ammoType === 'SBGAUSS' 
+            || this.ammoType === 'SNIPER_CANNON'
+            || this.ammoType === 'THUMPER_CANNON'
+            || this.ammoType === 'LONG_TOM_CANNON'
             || (this.hasAllFlags(['F_BALLISTIC', 'F_DIRECT_FIRE']) && !this.hasAnyFlag(['F_M_POD', 'F_PLASMA']))
             || this.hasAnyFlag(['F_MG','F_MGA'])) {
             types.add('DB');
@@ -653,7 +656,10 @@ export class WeaponEquipment extends Equipment {
 
         // F: Flak
         if ((this.hasFlag('F_ARTILLERY') && !this.hasFlag('F_DIRECT_FIRE'))
-            || (this.ammoType === 'SBGAUSS')) {
+            || this.ammoType === 'SBGAUSS'
+            || this.ammoType === 'SNIPER_CANNON'
+            || this.ammoType === 'THUMPER_CANNON'
+            || this.ammoType === 'LONG_TOM_CANNON') {
             types.add('F');
         }
 
