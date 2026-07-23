@@ -2,11 +2,13 @@ import { firstValueFrom } from 'rxjs';
 import { SetAmmoDialogComponent, type SetAmmoDialogData } from '../components/set-ammo-dialog/set-ammo.dialog.component';
 import { AmmoEquipment, findIntrinsicAmmoForWeapon, WeaponEquipment, type EquipmentMap } from '../models/equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
-import { MountedAmmo, MountedEquipment } from '../models/mounted-equipment.model';
+import { getMountedOneShotConsumed, MountedAmmo, MountedEquipment } from '../models/mounted-equipment.model';
+import { parseInventoryComponentReference } from '../models/inventory-component-reference.model';
 import { type CriticalSlot, type LocationData } from '../models/force-serialization';
 import type { HandlerContext } from '../services/equipment-interaction-registry.service';
 import type { CBTGameRules } from '../models/rules/game-rules';
 import type { Unit } from '../models/units.model';
+import { normalizeBattleArmorTrooperLocation } from '../models/battle-armor-location.model';
 
 export const INTRINSIC_ONE_SHOT_AMMO_STATE = 'intrinsic_one_shot_ammo';
 
@@ -55,16 +57,8 @@ function getAmmoControlDisplayName(ammo: AmmoEquipment): string {
     return ammo.name.endsWith(' Ammo') ? ammo.name.slice(0, -5) : ammo.name;
 }
 
-export function getBattleArmorTrooperNumber(locationLabel: string): number | null {
-    const match = locationLabel.trim().match(/^(?:Trooper\s+|T)(\d+)$/i);
-    if (!match) return null;
-    const trooperNumber = Number(match[1]);
-    return Number.isInteger(trooperNumber) && trooperNumber > 0 ? trooperNumber : null;
-}
-
 export function formatBattleArmorTrooperLocation(locationLabel: string): string {
-    const trooperNumber = getBattleArmorTrooperNumber(locationLabel);
-    return trooperNumber === null ? locationLabel : `T${trooperNumber}`;
+    return normalizeBattleArmorTrooperLocation(locationLabel);
 }
 
 function formatAmmoBinName(index: number): string {
@@ -122,20 +116,9 @@ export function getAmmoControlEntryForCriticalSlot(unit: CBTForceUnit, criticalS
     };
 }
 
-function getInventoryComponentRef(entry: MountedEquipment): { componentIndex: number; binIndex: number | null } | null {
-    const indexText = entry.id.split('#').pop();
-    if (!indexText) return null;
-    const [componentIndexText, binIndexText] = indexText.split('.');
-    const componentIndex = Number(componentIndexText);
-    const binIndex = binIndexText === undefined ? null : Number(binIndexText);
-    if (!Number.isInteger(componentIndex)) return null;
-    if (binIndex !== null && !Number.isInteger(binIndex)) return null;
-    return { componentIndex, binIndex };
-}
-
 function getInventoryOriginalTotalAmmo(entry: MountedEquipment): number {
     if (isIntrinsicOneShotAmmoMount(entry)) return entry.totalAmmo ?? 0;
-    const componentRef = getInventoryComponentRef(entry);
+    const componentRef = parseInventoryComponentReference(entry.id);
     const component = componentRef === null ? undefined : entry.owner.getUnit().comp[componentRef.componentIndex];
     const originalAmmo = entry.equipment instanceof AmmoEquipment ? entry.equipment : null;
     const binCount = Math.max(1, component?.q ?? 1);
@@ -216,7 +199,7 @@ export function getCompatibleCatalogAmmo(
 }
 
 /**
- * Materializes the intrinsic round for switchable one-shot weapons during unit
+ * Materializes the intrinsic round for one-shot weapons during unit
  * initialization. The derived mount is the canonical runtime ammo record and is
  * linked to its weapon solely to preserve the unit's source representation.
  */
@@ -235,8 +218,7 @@ function materializeIntrinsicOneShotAmmo(
     inventory: readonly MountedEquipment[],
 ): MountedAmmo | null {
     if (!(weaponEntry.equipment instanceof WeaponEquipment)
-        || !weaponEntry.equipment.oneShotCount
-        || !weaponEntry.equipment.supportsSwitchableAmmo) {
+        || !weaponEntry.equipment.oneShotCount) {
         return null;
     }
 
@@ -252,7 +234,7 @@ function materializeIntrinsicOneShotAmmo(
     const selectedAmmoId = weaponEntry.states.get(INTRINSIC_ONE_SHOT_AMMO_STATE);
     const selectedAmmo = compatibleAmmo.find(ammo => ammo.internalName === selectedAmmoId) ?? originalAmmo;
     const capacity = weaponEntry.equipment.oneShotCount;
-    const consumed = getIntrinsicOneShotConsumed(weaponEntry, capacity);
+    const consumed = getMountedOneShotConsumed(weaponEntry);
     const existing = weaponEntry.linkedWith?.find(isIntrinsicOneShotAmmoMount);
     const mount = existing ?? new MountedAmmo({
         owner: weaponEntry.owner,
@@ -276,11 +258,6 @@ function materializeIntrinsicOneShotAmmo(
         mount,
     ];
     return mount;
-}
-
-function getIntrinsicOneShotConsumed(weaponEntry: MountedEquipment, capacity: number): number {
-    const consumed = weaponEntry.critSlots?.[0]?.consumed ?? weaponEntry.consumed ?? 0;
-    return Math.max(0, Math.min(capacity, consumed));
 }
 
 function persistIntrinsicOneShotAmmo(

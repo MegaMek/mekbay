@@ -5,6 +5,31 @@ import type {
   TransportBayConfiguration,
 } from '../types/transport';
 
+/** Returns the verifier construction mass represented by a canonical transport bay. */
+export function getBayConstructionWeight(bay: EntityTransportBay): number {
+  if (bay.constructionWeight !== undefined) return bay.constructionWeight;
+  const capacity = bay.capacity;
+  switch (bay.configuration.type) {
+    case 'mek': return capacity * 150;
+    case 'protomek':
+    case 'light-vehicle': return capacity * 50;
+    case 'heavy-vehicle': return capacity * 100;
+    case 'super-heavy-vehicle': return capacity * 200;
+    case 'fighter': return capacity * (bay.configuration.arts ? 187.5 : 150);
+    case 'small-craft': return capacity * (bay.configuration.arts ? 250 : 200);
+    case 'battle-armor': return capacity * (bay.configuration.techBase === 'Clan'
+      ? 10 : bay.configuration.comStar ? 12 : 8);
+    case 'drop-shuttle': return 11_000;
+    case 'naval-repair': {
+      const factor = (bay.configuration.pressurized ? 0.075 : 0.025)
+        * (bay.configuration.arts ? 1.25 : 1);
+      return Math.ceil(capacity * factor * 2) / 2;
+    }
+    case 'reinforced-repair': return Math.ceil(capacity * 0.1 * 2) / 2;
+    default: return capacity;
+  }
+}
+
 interface StandardBayDefinition {
   blkType: string;
   aliases?: readonly string[];

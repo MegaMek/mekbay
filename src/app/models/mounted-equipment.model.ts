@@ -108,7 +108,7 @@ export class MountedEquipment {
     }
 
     constructor(data: MountedEquipmentInit) {
-        // A mount may be cloned while an Angular computed builds virtual rows.
+        // A mount may be constructed from an Angular computed context.
         // Initialize the signals with their values; calling `.set()` here would
         // constitute an illegal signal write from that computed.
         this.destroyedState = signal(data.destroyed);
@@ -256,6 +256,14 @@ export class MountedEquipment {
         }
         return baseBV;
     }
+}
+
+/** Returns clamped consumed rounds for a mounted one-shot weapon. */
+export function getMountedOneShotConsumed(entry: MountedEquipment): number {
+    const capacity = entry.equipment instanceof WeaponEquipment ? entry.equipment.oneShotCount ?? 0 : 0;
+    if (capacity === 0) return 0;
+    const consumed = entry.critSlots?.[0]?.consumed ?? entry.consumed ?? 0;
+    return Math.max(0, Math.min(capacity, consumed));
 }
 
 export class MountedAmmo extends MountedEquipment {

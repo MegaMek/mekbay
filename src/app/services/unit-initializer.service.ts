@@ -37,6 +37,7 @@ import { type CriticalSlot } from '../models/force-serialization';
 import { DataService } from './data.service';
 import { AmmoEquipment, ArmorEquipment, StructureEquipment, WeaponEquipment, type Equipment } from '../models/equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
+import { getBattleArmorTrooperNumber, normalizeBattleArmorTrooperLocation } from '../models/battle-armor-location.model';
 import { materializeIntrinsicOneShotAmmoForInventory } from '../utils/ammo-interaction.util';
 
 /*
@@ -470,6 +471,62 @@ export class UnitInitializerService {
         return inventoryEntries;
     }
 
+    /**
+     * Expands an aggregate Battle Armor weapon entry into one mounted weapon per
+     * trooper. SVG inventory entries represent the whole squad, while gameplay
+     * and inventory controls need independently addressable trooper equipment.
+     */
+    private materializeBattleArmorWeaponMounts(
+        unit: CBTForceUnit,
+        inventory: readonly MountedEquipment[],
+        currentInventory: readonly MountedEquipment[],
+    ): MountedEquipment[] {
+        if (unit.getUnit().subtype !== 'Battle Armor') return [...inventory];
+
+        return inventory.flatMap(entry => {
+            const trooperLocations = this.getBattleArmorWeaponTrooperLocations(unit, entry);
+            if (trooperLocations.length === 0) return [entry];
+
+            return trooperLocations.map(location => {
+                const canonicalLocation = normalizeBattleArmorTrooperLocation(location);
+                const id = `${entry.id}:${canonicalLocation}`;
+                const persistedEntry = currentInventory.find(candidate => candidate.id === id);
+                const states = new Map(persistedEntry?.states ?? entry.states);
+                // Compatibility cleanup for rows created by the previous UI-only model.
+                states.delete('inventory_control_virtual_trooper_row');
+                return MountedEquipment.from(entry).clone({
+                    id,
+                    locations: new Set([canonicalLocation]),
+                    linkedWith: null,
+                    parent: null,
+                    el: undefined,
+                    destroyed: persistedEntry?.committedDestroyedState() ?? entry.committedDestroyedState(),
+                    destroying: persistedEntry?.pendingDestroyed() ?? entry.pendingDestroyed(),
+                    ammo: persistedEntry?.ammo ?? entry.ammo,
+                    totalAmmo: persistedEntry?.totalAmmo ?? entry.totalAmmo,
+                    consumed: persistedEntry?.consumed ?? entry.consumed,
+                    states,
+                });
+            });
+        });
+    }
+
+    private getBattleArmorWeaponTrooperLocations(unit: CBTForceUnit, entry: MountedEquipment): string[] {
+        if (!(entry.equipment instanceof WeaponEquipment)
+            || !entry.equipment.hasFlag('F_BA_WEAPON')) return [];
+
+        const componentLocations = unit.getUnit().comp
+            .filter(component => component.id === entry.equipment?.internalName || component.id === entry.name || component.eq === entry.equipment)
+            .flatMap(component => Array.from({ length: Math.max(1, component.q ?? 1) }, () => component.l ?? ''))
+            .filter(location => getBattleArmorTrooperNumber(location) !== null);
+        const locations = componentLocations.length > 0
+            ? componentLocations
+            : Array.from(entry.locations ?? []).filter(location => getBattleArmorTrooperNumber(location) !== null);
+
+        return Array.from(new Set(locations.map(normalizeBattleArmorTrooperLocation))).sort((left, right) =>
+            (getBattleArmorTrooperNumber(left) ?? 0) - (getBattleArmorTrooperNumber(right) ?? 0));
+    }
+
     private getCriticalOnlyInventoryEntries(unit: CBTForceUnit, existingIds: Set<string>, currentInventory: MountedEquipment[]): MountedEquipment[] {
         const critSlotsById = new Map<string, CriticalSlot[]>();
         for (const critSlot of unit.getCritSlots()) {
@@ -526,11 +583,12 @@ export class UnitInitializerService {
             inventoryData.push(...this.getInfantryFieldGunInventoryEntries(unit, unit.getInventory()));
             inventoryData.push(...this.getDirectAmmoInventoryEntries(unit, unit.getInventory()));
         }
-        inventoryData.push(...materializeIntrinsicOneShotAmmoForInventory(
-            inventoryData,
+        const materializedInventory = this.materializeBattleArmorWeaponMounts(unit, inventoryData, unit.getInventory());
+        materializedInventory.push(...materializeIntrinsicOneShotAmmoForInventory(
+            materializedInventory,
             this.getDataService().getEquipments(),
         ));
-        unit.setInventory(inventoryData, true);
+        unit.setInventory(materializedInventory, true);
     }
 
 }

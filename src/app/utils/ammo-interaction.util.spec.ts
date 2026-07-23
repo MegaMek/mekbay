@@ -512,7 +512,7 @@ describe('intrinsic one-shot ammo mounts', () => {
         expect(groups.map(group => group.totalAmmo).sort((a, b) => a - b)).toEqual([1, 10]);
     });
 
-    it('does not materialize a fixed-profile one-shot weapon', () => {
+    it('materializes a fixed-profile one-shot weapon', () => {
         const mine = new AmmoEquipment({
             id: 'mine-ammo', name: 'Mine Ammo', type: 'ammo',
             ammo: { type: 'MINE', rackSize: 1, munitionType: ['M_STANDARD'] },
@@ -524,6 +524,10 @@ describe('intrinsic one-shot ammo mounts', () => {
         const owner = { getInventory: () => [], getUnit: () => ({ techBase: 'IS', type: 'Battle Armor', comp: [] }) } as unknown as CBTForceUnit;
         const mounted = new MountedWeapon({ owner, id: 'mine-launcher@T1#0', name: weapon.internalName, equipment: weapon });
 
-        expect(materializeIntrinsicOneShotAmmoForInventory([mounted], { [mine.internalName]: mine })).toEqual([]);
+        const [intrinsic] = materializeIntrinsicOneShotAmmoForInventory([mounted], { [mine.internalName]: mine });
+
+        expect(intrinsic.equipment).toBe(mine);
+        expect(intrinsic.parent).toBe(mounted);
+        expect(mounted.linkedWith).toEqual([intrinsic]);
     });
 });

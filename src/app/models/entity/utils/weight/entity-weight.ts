@@ -5,6 +5,9 @@ import type { MekEntity } from '../../entities/mek/mek-entity';
 import type { ProtoMekEntity } from '../../entities/protomek/protomek-entity';
 import type { VehicleEntity } from '../../entities/vehicle/vehicle-entity';
 import type { AeroEntity } from '../../entities/aero/aero-entity';
+import type { HandheldWeaponEntity } from '../../entities/misc/handheld-weapon-entity';
+import type { FixedWingSupportEntity } from '../../entities/aero/fixed-wing-support-entity';
+import type { SmallCraftEntity } from '../../entities/aero/small-craft-entity';
 import { getInfantryTonnage } from '../infantry-tonnage';
 import { calculateMekEffectiveTonnage } from './mek-weight';
 import { calculateBattleArmorEffectiveTonnage } from './battle-armor-weight';
@@ -12,6 +15,9 @@ import { calculateProtoMekEffectiveTonnage } from './protomek-weight';
 import { calculateVehicleEffectiveTonnage } from './vehicle-weight';
 import { calculateSupportVehicleEffectiveTonnage } from './support-vehicle-weight';
 import { calculateFighterEffectiveTonnage } from './fighter-weight';
+import { calculateHandheldWeaponEffectiveTonnage } from './handheld-weapon-weight';
+import { calculateFixedWingSupportEffectiveTonnage } from './fixed-wing-support-weight';
+import { calculateSmallCraftEffectiveTonnage } from './small-craft-weight';
 
 /**
  * Calculate installed construction mass independently of declared chassis
@@ -23,6 +29,13 @@ import { calculateFighterEffectiveTonnage } from './fighter-weight';
  */
 export function calculateEntityEffectiveTonnage(entity: BaseEntity): number {
   switch (entity.entityType) {
+    case 'SmallCraft':
+    case 'DropShip':
+      return calculateSmallCraftEffectiveTonnage(entity as SmallCraftEntity);
+    case 'FixedWingSupport':
+      return calculateFixedWingSupportEffectiveTonnage(entity as FixedWingSupportEntity);
+    case 'HandheldWeapon':
+      return calculateHandheldWeaponEffectiveTonnage(entity as HandheldWeaponEntity);
     case 'Aero':
     case 'ConvFighter':
       return calculateFighterEffectiveTonnage(entity as AeroEntity);

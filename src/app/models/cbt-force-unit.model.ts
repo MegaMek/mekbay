@@ -63,6 +63,8 @@ import type { UnitHeatSource } from './rules/unit-type-rules';
 import { getInventoryControlModeAmmoSummary, resolveInventoryControlSelectedAmmoOption, type InventoryControlDisplayData, type InventoryControlDisplayEffectOptions, type InventoryControlRules } from '../utils/inventory-control.util';
 import { ToastService } from '../services/toast.service';
 import { DialogsService } from '../services/dialogs.service';
+import { getBattleArmorTrooperNumber, normalizeBattleArmorTrooperLocation } from './battle-armor-location.model';
+import { parseInventoryComponentReference } from './inventory-component-reference.model';
 import { CBTGameRulesService } from '../services/cbt-game-rules.service';
 import type { CBTGameRules } from './rules/game-rules';
 
@@ -740,10 +742,9 @@ export class CBTForceUnit extends ForceUnit {
 
     private battleArmorTrooperLocation(loc: string): string | null {
         if (this.getUnit().subtype !== 'Battle Armor') return null;
-        const match = loc.trim().match(/^(?:Trooper\s+|T)(\d+)$/i);
-        if (!match) return null;
-        const trooperNumber = Number(match[1]);
-        return Number.isInteger(trooperNumber) && trooperNumber > 0 ? `T${trooperNumber}` : null;
+        return getBattleArmorTrooperNumber(loc) === null
+            ? null
+            : normalizeBattleArmorTrooperLocation(loc);
     }
 
     private isLocationDestroyedByCondition(loc: string): boolean {
@@ -1021,11 +1022,9 @@ export class CBTForceUnit extends ForceUnit {
                 if (item.intrinsicOneShotAmmo && item.parent?.equipment instanceof WeaponEquipment) {
                     item.totalAmmo = item.parent.equipment.oneShotCount;
                 } else {
-                    const componentIndexText = item.id.split('#').pop();
-                    const [componentIndexRaw, binIndexRaw] = (componentIndexText ?? '').split('.');
-                    const componentIndex = Number(componentIndexRaw);
-                    const binIndex = Number(binIndexRaw ?? 0);
-                    const component = Number.isInteger(componentIndex) ? this.unit.comp[componentIndex] : undefined;
+                    const componentRef = parseInventoryComponentReference(item.id);
+                    const component = componentRef ? this.unit.comp[componentRef.componentIndex] : undefined;
+                    const binIndex = componentRef?.binIndex ?? 0;
                     const binCount = Math.max(1, component?.q ?? 1);
                     const originalTotalAmmo = component?.q2 || (item.getMaxShots() * binCount) || 0;
                     const baseBinAmmo = Math.floor(originalTotalAmmo / binCount);

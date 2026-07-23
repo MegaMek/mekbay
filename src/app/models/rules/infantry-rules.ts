@@ -34,6 +34,7 @@
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import { WeaponEquipment } from '../equipment.model';
 import type { MountedEquipment } from '../mounted-equipment.model';
+import { parseInventoryComponentReference } from '../inventory-component-reference.model';
 import type { MotiveModes } from '../motiveModes.model';
 import { getTargetUnitTypeModifier } from '../target-number-calculator.model';
 import type { TurnState } from '../turn-state.model';
@@ -126,7 +127,7 @@ export class InfantryRules extends UnitTypeRulesBase {
     }
 
     isInfantryFieldGunEntryDisabled(entry: MountedEquipment): boolean {
-        const componentRef = this.getInventoryComponentRef(entry);
+        const componentRef = parseInventoryComponentReference(entry.id);
         const component = this.getFieldGunComponent(entry);
         if (!component || componentRef === null || componentRef.binIndex === null) return false;
         return componentRef.binIndex >= this.getFieldGunFunctionalCount(component);
@@ -149,21 +150,10 @@ export class InfantryRules extends UnitTypeRulesBase {
     getFieldGunComponent(entry: MountedEquipment): UnitComponent | null {
         if (this.unit.getUnit().type !== 'Infantry' || this.unit.getUnit().subtype === 'Battle Armor') return null;
         if (!(entry.equipment instanceof WeaponEquipment)) return null;
-        const componentRef = this.getInventoryComponentRef(entry);
+        const componentRef = parseInventoryComponentReference(entry.id);
         const component = componentRef === null ? undefined : this.unit.getUnit().comp[componentRef.componentIndex];
         if (!component || component.l !== FIELD_GUN_LOCATION || component.t === 'X') return null;
         return component;
-    }
-
-    private getInventoryComponentRef(entry: MountedEquipment): { componentIndex: number; binIndex: number | null } | null {
-        const indexText = entry.id.split('#').pop();
-        if (!indexText) return null;
-        const [componentIndexText, binIndexText] = indexText.split('.');
-        const componentIndex = Number(componentIndexText);
-        const binIndex = binIndexText === undefined ? null : Number(binIndexText);
-        if (!Number.isInteger(componentIndex)) return null;
-        if (binIndex !== null && !Number.isInteger(binIndex)) return null;
-        return { componentIndex, binIndex };
     }
 
 }

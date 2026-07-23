@@ -35,7 +35,7 @@ describe('inventory-control ammo selection', () => {
         expect(resolveInventoryControlSelectedAmmoOption([destroyed], destroyed.id)).toBe(destroyed);
     });
 
-    it('attaches catalog ammo to a built-in one-shot option without mounted ammo', () => {
+    it('does not synthesize ammo for an unmaterialized one-shot weapon', () => {
         const weapon = new WeaponEquipment({
             id: 'BAMineLauncher', name: 'Pop-up Mine', type: 'weapon', flags: ['F_ONE_SHOT'],
             weapon: { ammoType: 'MINE', rackSize: 1, damage: 'special' }
@@ -53,8 +53,7 @@ describe('inventory-control ammo selection', () => {
 
         const summary = getInventoryControlModeAmmoSummary(mounted, { [ammo.id]: ammo }, {}, null);
 
-        expect(summary).toEqual(jasmine.objectContaining({ tracksAmmo: true, remaining: 1, total: 1 }));
-        expect(summary.options[0].ammo).toBe(ammo);
+        expect(summary).toEqual({ tracksAmmo: true, remaining: 0, total: 0, options: [] });
     });
 
     it('uses a materialized intrinsic round as a normal ammo option', () => {
@@ -97,7 +96,7 @@ describe('inventory-control ammo selection', () => {
 
         expect(summary).toEqual(jasmine.objectContaining({ tracksAmmo: true, remaining: 1, total: 1 }));
         expect(summary.options).toEqual([jasmine.objectContaining({
-            id: `${incendiary.internalName}:Ammo`,
+            id: `inventory:${intrinsicAmmo.id}`,
             ammo: incendiary,
             total: 1,
         })]);

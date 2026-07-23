@@ -5,10 +5,26 @@ import {
   getBayRecordSheetName,
   getBayTransporterType,
   isQuartersBay,
+  getBayConstructionWeight,
   resolveStandardBayType,
 } from './bay-definitions';
 
 describe('bay definitions', () => {
+  it('calculates construction mass for unit bays', () => {
+    const fighterBay = { id: 'fighters', kind: 'bay' as const,
+      configuration: { type: 'fighter' as const, arts: false }, capacity: 6,
+      doors: 1, bayNumber: 1, omni: false };
+    expect(getBayConstructionWeight(fighterBay)).toBe(900);
+    expect(getBayConstructionWeight({ ...fighterBay,
+      configuration: { type: 'fighter', arts: true } })).toBe(1125);
+  });
+
+  it('uses fixed DropShuttle bay construction mass', () => {
+    expect(getBayConstructionWeight({ id: 'shuttle', kind: 'bay',
+      configuration: { type: 'drop-shuttle', facing: 0 }, capacity: 2,
+      doors: 1, bayNumber: 1, omni: false })).toBe(11_000);
+  });
+
   it('resolves canonical BLK types and aliases', () => {
     expect(resolveStandardBayType('mekbay')).toBe('mek');
     expect(resolveStandardBayType('MechBay')).toBe('mek');

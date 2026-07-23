@@ -20,11 +20,7 @@ import type { HitModifier, ToHitResolution } from '../../models/rules/game-rules
 import type { EquipmentDialogContext } from './equipment-dialog.model';
 import {
     formatInventoryControlModeName,
-    getBuiltInOneShotCapacity,
-    getBuiltInOneShotConsumed,
     getInventoryControlGroups,
-    isBuiltInOneShotAmmoOption,
-    INVENTORY_CONTROL_VIRTUAL_TROOPER_ROW_STATE,
     isInventoryControlSelectableEntry,
     resolveInventoryControlSelectedAmmoOption,
     selectInventoryControlEntry,
@@ -525,7 +521,7 @@ export class WeaponsEquipmentPanelComponent {
 
     ammoState(row: InventoryControlRow): AmmoRowState {
         const hasUsableAmmo = this.hasUsableAmmoOption(row);
-        const hasAmmo = row.tracksAmmo && (hasUsableAmmo || this.hasBuiltInOneShotAmmoOption(row));
+        const hasAmmo = row.tracksAmmo && hasUsableAmmo;
         const selectedOption = this.resolvedSelectedAmmoOption(row, hasUsableAmmo);
         const selectedOptionId = selectedOption?.id ?? '';
         const text = this.ammoStateText(row, hasAmmo, selectedOption);
@@ -580,7 +576,7 @@ export class WeaponsEquipmentPanelComponent {
     private canAdjustResolvedAmmo(row: InventoryControlRow, option: InventoryControlAmmoOption | undefined, delta: number, hasUsableAmmo: boolean): boolean {
         if (this.readOnly() || !row.tracksAmmo || delta === 0) return false;
         if (!option || option.destroyed) return false;
-        if (!hasUsableAmmo && !isBuiltInOneShotAmmoOption(option.id)) return false;
+        if (!hasUsableAmmo) return false;
         if (delta > 0) return option.remaining > 0;
         return option.remaining < option.total;
     }
@@ -592,9 +588,7 @@ export class WeaponsEquipmentPanelComponent {
         if (delta === 0) return;
         const option = state.selectedOption;
         if (!option) return;
-        const changed = isBuiltInOneShotAmmoOption(option.id)
-            ? this.adjustBuiltInOneShotAmmo(row, delta)
-            : changeAmmoEntriesRemaining(this.getAmmoEntriesForOption(row, option.id), -delta, this.context());
+        const changed = changeAmmoEntriesRemaining(this.getAmmoEntriesForOption(row, option.id), -delta, this.context());
         if (changed) {
             this.inventoryControl().markInventoryViewChanged();
         }
@@ -618,7 +612,7 @@ export class WeaponsEquipmentPanelComponent {
                 await this.context().dialogsService.showError(`${row.display.name} has no available ammo.`, 'No Ammo');
                 return;
             }
-            const requestKey = isBuiltInOneShotAmmoOption(option.id) ? `${row.id}:${option.id}` : option.id;
+            const requestKey = option.id;
             const request = requests.get(requestKey);
             if (request) {
                 request.count += 1;
@@ -628,10 +622,8 @@ export class WeaponsEquipmentPanelComponent {
         }
 
         for (const request of requests.values()) {
-            const remaining = isBuiltInOneShotAmmoOption(request.option.id)
-                ? request.option.remaining
-                : this.getAmmoEntriesForOption(request.row, request.option.id)
-                    .reduce((total, entry) => total + getAmmoEntryRemaining(entry), 0);
+            const remaining = this.getAmmoEntriesForOption(request.row, request.option.id)
+                .reduce((total, entry) => total + getAmmoEntryRemaining(entry), 0);
             if (remaining < request.count) {
                 await this.context().dialogsService.showError(`${request.option.label} does not have enough ammo for the selected weapons.`, 'Not Enough Ammo');
                 return;
@@ -663,14 +655,11 @@ export class WeaponsEquipmentPanelComponent {
 
     private getAmmoEntriesForOption(row: InventoryControlRow, optionId: string) {
         return getAmmoControlEntriesForWeapon(row.entry, this.context())
-            .filter(entry => `${entry.currentAmmo.internalName}:${entry.locationLabel}` === optionId);
+            .filter(entry => entry.id === optionId
+                || `${entry.currentAmmo.internalName}:${entry.locationLabel}` === optionId);
     }
 
     private consumeAmmoFromOption(row: InventoryControlRow, optionId: string, count: number): void {
-        if (isBuiltInOneShotAmmoOption(optionId)) {
-            this.adjustBuiltInOneShotAmmo(row, count);
-            return;
-        }
         let remainingToConsume = count;
         const entries = this.getAmmoEntriesForOption(row, optionId)
             .filter(entry => getAmmoEntryRemaining(entry) > 0)
@@ -722,31 +711,8 @@ export class WeaponsEquipmentPanelComponent {
         }[character] ?? character));
     }
 
-    private adjustBuiltInOneShotAmmo(row: InventoryControlRow, deltaConsumed: number): boolean {
-        const capacity = getBuiltInOneShotCapacity(row.entry);
-        if (capacity <= 0 || deltaConsumed === 0) return false;
-
-        const consumed = getBuiltInOneShotConsumed(row.entry);
-        const nextConsumed = Math.max(0, Math.min(capacity, consumed + deltaConsumed));
-        if (nextConsumed === consumed) return false;
-
-        if (row.entry.critSlots?.length) {
-            const slot = row.entry.critSlots[0];
-            slot.consumed = nextConsumed || undefined;
-            row.entry.owner.setCritSlot(slot);
-        } else {
-            row.entry.consumed = nextConsumed || undefined;
-            row.entry.owner.setInventoryEntry(row.entry);
-        }
-        return true;
-    }
-
     private hasUsableAmmoOption(row: InventoryControlRow): boolean {
         return row.ammo.options.some((option: InventoryControlAmmoOption) => this.isUsableAmmoOption(option));
-    }
-
-    private hasBuiltInOneShotAmmoOption(row: InventoryControlRow): boolean {
-        return row.ammo.options.some((option: InventoryControlAmmoOption) => isBuiltInOneShotAmmoOption(option.id));
     }
 
     private isUsableAmmoOption(option: InventoryControlAmmoOption): boolean {
@@ -946,7 +912,6 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     private getHandlerChoices(row: InventoryControlRow): HandlerChoice[] {
-        if (this.isVirtualTrooperRow(row)) return [];
         if (this.rowEffectivelyDestroyed(row)) return [];
         return this.context().registry.getChoices(row.entry, this.context());
     }
@@ -957,7 +922,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     canMarkDestroyed(row: InventoryControlRow): boolean {
-        return !this.isVirtualTrooperRow(row) && !this.readOnly() && this.unit().hasDirectInventory() && !this.rowEffectivelyDestroyed(row);
+        return !this.readOnly() && this.unit().hasDirectInventory() && !this.rowEffectivelyDestroyed(row);
     }
 
     markDestroyed(row: InventoryControlRow): void {
@@ -969,7 +934,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     canRepair(row: InventoryControlRow): boolean {
-        return !this.isVirtualTrooperRow(row) && !this.readOnly() && this.unit().hasDirectInventory() && this.rowEffectivelyDestroyed(row);
+        return !this.readOnly() && this.unit().hasDirectInventory() && this.rowEffectivelyDestroyed(row);
     }
 
     rowEffectivelyDestroyed(row: InventoryControlRow): boolean {
@@ -986,10 +951,6 @@ export class WeaponsEquipmentPanelComponent {
 
     rowCommittedDestroyed(row: InventoryControlRow): boolean {
         return row.entry.resolvedCommittedDestroyed(row.destroyed);
-    }
-
-    private isVirtualTrooperRow(row: InventoryControlRow): boolean {
-        return row.entry.states.has(INVENTORY_CONTROL_VIRTUAL_TROOPER_ROW_STATE);
     }
 
     repair(row: InventoryControlRow): void {
