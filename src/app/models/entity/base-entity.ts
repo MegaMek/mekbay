@@ -451,8 +451,8 @@ export abstract class BaseEntity implements EntityTechnology {
     for (const mount of this.equipment()) {
       const equipment = mount.equipment;
       if (!equipment || equipment.hasFlag('F_CASE') || equipment.hasFlag('F_CASE_II')) continue;
-      // addClanCase() ignores capacitor charge state, but unjammed RACs remain non-explosive.
-      if (equipment instanceof WeaponEquipment && equipment.ammoType === 'AC_ROTARY') continue;
+      if (equipment.hasFlag('F_AC')) continue; // They have explosive==true but they aren't
+      // addClanCase() ignores capacitor charge state
       if (equipment.hasFlag('F_PPC_CAPACITOR') && !this.getLinkedMount(mount)) continue;
       if (!equipment.isExplosive() && mount.secondEquipment?.isExplosive() !== true) continue;
       for (const location of mount.getOccupiedLocations()) {
