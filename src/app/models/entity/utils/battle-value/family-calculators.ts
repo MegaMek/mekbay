@@ -63,7 +63,7 @@ export class HeatTrackingBVCalculator extends BVCalculator {
 
   protected override processWeapons(): void {
     const before = this.offensiveValue;
-    const records = this.equipmentMounts()
+    const records = this.entity.equipment()
       .filter(mount => this.countsAsOffensiveWeapon(mount))
       .map(mount => ({ mount, bv: this.weaponBV(mount, true), heat: this.weaponHeat(mount) }))
       .sort((a, b) => a.heat === 0 ? -1 : b.heat === 0 ? 1 : b.bv - a.bv || a.heat - b.heat);
@@ -145,9 +145,9 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
     for (const mount of this.entity.equipment()) {
       const equipment = mount.equipment;
       if (!mount.armored || !equipment || equipment.hasFlag('F_PPC_CAPACITOR')) continue;
-      const placedSlots = mount.placements?.length;
+      const placedSlots = mount.placedCriticalSlotCount;
       const requiredSlots = mount.getCriticalSlotRequirement(this.entity);
-      let slots = placedSlots && placedSlots > 0 ? placedSlots
+      let slots = placedSlots > 0 ? placedSlots
         : typeof requiredSlots === 'number' ? requiredSlots : 0;
       let value = mount.getBV(this.entity);
       if (equipment instanceof WeaponEquipment && equipment.hasFlag('F_PPC')) {
@@ -241,12 +241,12 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
       ]);
       const reducedAmmo = equipment instanceof AmmoEquipment && equipment.ammoType === 'COOLANT_POD';
       const reduced = reducedWeapon || reducedMisc || reducedAmmo;
-      const placedSlots = mount.placements?.length;
+      const placedSlots = mount.placedCriticalSlotCount;
       const requiredSlots = mount.getCriticalSlotRequirement(this.entity);
       const slots = equipment instanceof WeaponEquipment && equipment.hasFlag('F_HVAC')
-        && !mount.isSplit && !this.entity.isSuperHeavy()
+        && !mount.isSplitAcrossLocations && !this.entity.isSuperHeavy()
         ? 1
-        : placedSlots && placedSlots > 0 ? placedSlots
+        : placedSlots > 0 ? placedSlots
           : typeof requiredSlots === 'number' ? requiredSlots : 1;
       const itemBefore = this.defensiveValue;
       const penalty = (reduced ? 1 : 15) * Math.max(1, slots);

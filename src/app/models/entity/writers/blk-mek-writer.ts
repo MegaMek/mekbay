@@ -35,6 +35,7 @@ import { MekEntity } from '../entities/mek/mek-entity';
 import { QuadMekEntity } from '../entities/mek/quad-mek-entity';
 import {
   CriticalSlotView,
+  formatCriticalSlotEquipment,
 } from '../types';
 import {
   encodeBlkCockpitType,
@@ -144,7 +145,8 @@ function slotToBlkString(
         ? getBlkEngineName(entity.mountedEngine()?.type())
         : slot.systemType ?? '-1';
     case 'equipment':
-      return encodeEquipmentLine(slot.mount);
+      return formatCriticalSlotEquipment(slot, (mount, isLast) =>
+        encodeEquipmentLine(mount, { includeOmniPod: isLast && slot.omniPod }));
   }
 }
 

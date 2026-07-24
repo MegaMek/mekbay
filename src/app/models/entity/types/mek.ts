@@ -230,7 +230,9 @@ export type CriticalSlotView =
   }
   | {
     readonly type: 'equipment';
-    readonly mount: EntityMountedEquipment;
+    /** One mount normally; up to two canonical mounts share a superheavy slot. */
+    readonly mounts: readonly [EntityMountedEquipment, ...EntityMountedEquipment[]];
+    /** Slot-wide state; shared equipment cannot be partially armored or OmniPod-mounted. */
     readonly armored: boolean;
     readonly omniPod: boolean;
   }
@@ -239,6 +241,15 @@ export type CriticalSlotView =
     readonly armored: false;
     readonly omniPod: false;
   };
+
+/** Serializes one or two canonical mounts occupying a physical critical slot. */
+export function formatCriticalSlotEquipment(
+  slot: Extract<CriticalSlotView, { type: 'equipment' }>,
+  formatMount: (mount: EntityMountedEquipment, isLast: boolean) => string,
+): string {
+  const lastIndex = slot.mounts.length - 1;
+  return slot.mounts.map((mount, index) => formatMount(mount, index === lastIndex)).join('|');
+}
 
 // ============================================================================
 // Internal Structure Lookup Tables

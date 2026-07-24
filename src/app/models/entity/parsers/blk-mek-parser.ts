@@ -147,46 +147,46 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
       // Skip system slots (they're derived from config)
       if (isSystemSlotName(raw)) continue;
 
-      const parsed = parseEquipmentLine(raw);
-      const resolved = ctx.resolveEquipment(parsed.name, critTag);
+      const parsedMembers = raw.split('|').map(member => parseEquipmentLine(member));
+      const omniPod = parsedMembers.some(member => member.omniPod);
 
-      // Spreadable equipment merges all crits into one mount while incomplete
-      if (resolved?.isSpreadable) {
-        const existingIdx = spreadableMap.get(parsed.name);
-        if (existingIdx !== undefined) {
-          const existing = equipmentList[existingIdx];
-          const expectedCrits = existing.equipment?.getNumCriticalSlots(entity, existing.size ?? 0) ?? Infinity;
-          if ((existing.placements?.length ?? 0) < expectedCrits) {
-            equipmentList[existingIdx] = existing.clone({
-              allocation: {
-                kind: 'location',
-                location: existing.location,
-                placements: [...(existing.placements ?? []), { location: locCode, slotIndex: slotIdx }],
-              },
-            });
-            continue;
+      for (const parsedMember of parsedMembers) {
+        const parsed = { ...parsedMember, omniPod };
+        const resolved = ctx.resolveEquipment(parsed.name, critTag);
+
+        // Spreadable equipment merges all crits into one mount while incomplete
+        if (resolved?.isSpreadable) {
+          const existingIdx = spreadableMap.get(parsed.name);
+          if (existingIdx !== undefined) {
+            const existing = equipmentList[existingIdx];
+            const requirement = existing.getCriticalSlotRequirement(entity);
+            const expectedCrits = typeof requirement === 'number' ? requirement : Infinity;
+            if (existing.placedCriticalSlotCount < expectedCrits) {
+              equipmentList[existingIdx] = existing.withAddedPlacement({ location: locCode, slotIndex: slotIdx });
+              continue;
+            }
           }
         }
+
+        const idx = equipmentList.length;
+        equipmentList.push(entity.addEquipment({
+          equipmentId: parsed.name,
+          equipment: resolved ?? undefined,
+          allocation: {
+            kind: 'location',
+            location: locCode,
+            placements: [{ location: locCode, slotIndex: slotIdx }],
+          },
+          rearMounted: parsed.rearMounted,
+          turretMounted: false,
+          omniPodMounted: parsed.omniPod,
+          armored: false,
+          size: parsed.size,
+          facing: parsed.facing,
+        }));
+
+        if (resolved?.isSpreadable) spreadableMap.set(parsed.name, idx);
       }
-
-      const idx = equipmentList.length;
-      equipmentList.push(entity.addEquipment({
-        equipmentId: parsed.name,
-        equipment: resolved ?? undefined,
-        allocation: {
-          kind: 'location',
-          location: locCode,
-          placements: [{ location: locCode, slotIndex: slotIdx }],
-        },
-        rearMounted: parsed.rearMounted,
-        turretMounted: false,
-        omniPodMounted: parsed.omniPod,
-        armored: false,
-        size: parsed.size,
-        facing: parsed.facing,
-      }));
-
-      if (resolved?.isSpreadable) spreadableMap.set(parsed.name, idx);
     }
   }
 

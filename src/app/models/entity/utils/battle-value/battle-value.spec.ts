@@ -189,9 +189,6 @@ describe('battle value family dispatch', () => {
   });
 
   it('counts both equipment items in a superheavy combined critical slot', () => {
-    class ExposedMekCalculator extends MekBVCalculator {
-      mountedItems(): EntityMountedEquipment[] { return this.equipmentMounts(); }
-    }
     const primary = new AmmoEquipment({
       id: 'primary-ammo', name: 'Primary Ammo', type: 'ammo', stats: { bv: 10 },
       ammo: { type: 'AC', rackSize: 10, shots: 10 },
@@ -200,16 +197,13 @@ describe('battle value family dispatch', () => {
       id: 'secondary-ammo', name: 'Secondary Ammo', type: 'ammo', stats: { bv: 20 },
       ammo: { type: 'GAUSS', rackSize: 15, shots: 8 },
     });
-    const combined = mount(primary, 'RT');
-    combined.secondEquipmentId = secondary.id;
-    combined.secondEquipment = secondary;
     const entity = new TestBipedMekEntity();
-    entity.setEquipment([combined]);
+    entity.setTonnage(150);
+    entity.setEquipment([mount(primary, 'RT'), mount(secondary, 'RT')]);
 
-    const items = new ExposedMekCalculator(entity).mountedItems();
+    const items = entity.equipment();
     expect(items.map(item => item.equipment?.id)).toEqual([primary.id, secondary.id]);
     expect(items[1].location).toBe('RT');
-    expect(items[1].secondEquipment).toBeUndefined();
   });
 
   it('treats a PPC as explosive only when linked to a capacitor', () => {
@@ -683,8 +677,11 @@ describe('structured battle value details', () => {
       id: 'split-hvac', name: 'Split HVAC', type: 'weapon',
       stats: { explosive: true, criticalSlots: 4 }, flags: ['F_HVAC'],
     });
-    const splitMount = mount(hvac, 'LT');
-    splitMount.isSplit = true;
+    const splitMount = mount(hvac, 'LT')
+      .withAddedPlacement({ location: 'LT', slotIndex: 0 })
+      .withAddedPlacement({ location: 'LT', slotIndex: 1 })
+      .withAddedPlacement({ location: 'RT', slotIndex: 0 })
+      .withAddedPlacement({ location: 'RT', slotIndex: 1 });
     entity.setEquipment([splitMount]);
 
     const explosive = findDetail(calculateBattleValueDetails(entity).details, 'Explosive Equipment');

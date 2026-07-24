@@ -132,16 +132,7 @@ function calculateMekEquipmentWeight(entity: MekEntity): number {
     if (equipment instanceof ArmorEquipment || equipment instanceof StructureEquipment) return total;
     if (equipment instanceof MiscEquipment && equipment.hasAnyFlag([...SYSTEM_MISC_FLAGS])) return total;
     if (equipment instanceof AmmoEquipment && mount.allocation.kind === 'unallocated') return total;
-    let mountWeight = requireMountTonnage(entity, mount);
-    if (mount.secondEquipment) {
-      mountWeight += requireMountTonnage(entity, mount.clone({
-        equipmentId: mount.secondEquipmentId ?? mount.secondEquipment.id,
-        equipment: mount.secondEquipment,
-        secondEquipmentId: undefined,
-        secondEquipment: undefined,
-      }));
-    }
-    return total + mountWeight;
+    return total + requireMountTonnage(entity, mount);
   }, 0);
 }
 

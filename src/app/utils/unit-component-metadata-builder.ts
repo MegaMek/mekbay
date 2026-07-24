@@ -103,7 +103,8 @@ function skipMisc(entity: BaseEntity, mount: EntityMountedEquipment, equipment: 
 
 function skipUnallocatedBattleArmorEquipment(entity: BaseEntity, mount: EntityMountedEquipment): boolean {
   if (!(entity instanceof BattleArmorEntity) || mount.isDWP) return false;
-  const slots = mount.equipment?.getNumCriticalSlots(entity, mount.size ?? 1) ?? 0;
+  const requirement = mount.getCriticalSlotRequirement(entity);
+  const slots = typeof requirement === 'number' ? requirement : 0;
   return slots > 0 && !mount.baMountLocation;
 }
 
