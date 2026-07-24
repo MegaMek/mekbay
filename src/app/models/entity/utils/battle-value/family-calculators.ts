@@ -91,18 +91,19 @@ export class HeatTrackingBVCalculator extends BVCalculator {
 export class MekBVCalculator extends HeatTrackingBVCalculator {
   declare readonly entity: MekEntity;
 
-  protected override processArmor(): void {
-    super.processArmor();
-    const before = this.defensiveValue;
-    if (this.entity.mountedCockpit().addsDefensiveBVForCTArmor) {
-      const ct = this.entity.armorValues().get('CT');
-      const armor = this.entity.armorByLocation().get('CT')?.armor;
-      if (ct) this.defensiveValue += (ct.front + ct.rear) * 2.5
-        * (armor?.armorType === 'HARDENED' ? 2 : 1);
-    }
-    if (this.defensiveValue !== before) {
-      this.addValueLine('Torso-Mounted Cockpit Armor', `+ ${this.format(this.defensiveValue - before)}`, before);
-    }
+  protected override runningTmm(): number {
+    if (!this.entity.isLandAirMek()) return super.runningTmm();
+    const airMekFlankMP = this.entity.airMekFlankMP();
+    return airMekFlankMP === 0 ? 0 : targetMovementModifier(airMekFlankMP, false, true);
+  }
+
+  protected override supplementalArmorAt(
+    location: string,
+    armor: Readonly<{ front: number; rear: number }>,
+  ): number {
+    return location === 'CT' && this.entity.mountedCockpit().addsDefensiveBVForCTArmor
+      ? armor.front + armor.rear
+      : 0;
   }
 
   protected override processStructure(): void {
@@ -187,9 +188,34 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
     return true;
   }
 
+  protected blueShieldUnprotectedLocations(): number {
+    if (!this.has('F_BLUE_SHIELD')) return 0;
+    const locations = ['CT', 'RT', 'LT', 'RA', 'LA', 'RL', 'LL'];
+    const sideEngineSlots = this.entity.mountedEngine().getSideTorsoSlots().length;
+    return locations.filter(location => {
+      if (this.locationHas(location, 'F_CASE_II')) return false;
+      if (this.entity.techBase() === 'Clan') {
+        if (['CT', 'RL', 'LL'].includes(location)) return true;
+        return ['RT', 'LT'].includes(location) && sideEngineSlots > 2;
+      }
+      if (sideEngineSlots <= 2) {
+        if (['RT', 'LT'].includes(location) && this.locationHas(location, 'F_CASE')) return false;
+        if (location === 'LA' && (this.locationHas('LA', 'F_CASE') || this.locationHas('LT', 'F_CASE'))) return false;
+        if (location === 'RA' && (this.locationHas('RA', 'F_CASE') || this.locationHas('RT', 'F_CASE'))) return false;
+      }
+      return true;
+    }).length;
+  }
+
   protected override processExplosiveEquipment(): void {
     const before = this.defensiveValue;
     const details = this.captureDetails(() => {
+    const blueShieldPenalty = this.blueShieldUnprotectedLocations();
+    if (blueShieldPenalty > 0) {
+      const itemBefore = this.defensiveValue;
+      this.defensiveValue -= blueShieldPenalty;
+      this.addValueLine('Blue Shield', `- ${blueShieldPenalty}`, itemBefore);
+    }
     for (const mount of this.entity.equipment()) {
       const equipment = mount.equipment;
       if (!equipment?.isExplosive() || mount.location === 'Unallocated'
@@ -621,7 +647,10 @@ export class WarShipBVCalculator extends JumpShipBVCalculator {
   private weakerAdjacentArc = 5;
 
   protected override arc(mount: EntityMountedEquipment): number {
-    const arcs = ['Nose', 'FLS', 'ALS', 'Aft', 'ARS', 'FRS', 'LBS', 'RBS'];
+    const arcs = [
+      'Nose', 'FLS', 'ALS', 'Aft', 'ARS', 'FRS',
+      'Left Broadside', 'Right Broadside',
+    ];
     const result = arcs.indexOf(mount.location);
     return result >= 0 ? result : 7;
   }

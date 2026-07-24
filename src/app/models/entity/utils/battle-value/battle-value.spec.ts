@@ -32,6 +32,7 @@ import {
   DropShipBVCalculator,
   MekBVCalculator,
   ProtoMekBVCalculator,
+  WarShipBVCalculator,
 } from './family-calculators';
 import { EquipmentFlag } from '../../../equipment-flags.type';
 
@@ -72,6 +73,30 @@ describe('battle value pure rules', () => {
   });
 });
 
+describe('WarShip BV arcs', () => {
+  class ExposedWarShipCalculator extends WarShipBVCalculator {
+    arcFor(item: EntityMountedEquipment): number { return this.arc(item); }
+  }
+
+  const weapon = new WeaponEquipment({
+    id: 'capital-laser', name: 'Capital Laser', type: 'weapon',
+    weapon: { damage: 1 },
+  });
+
+  it('maps canonical broadside locations to separate Java BV arcs', () => {
+    const calculator = new ExposedWarShipCalculator(new TestWarShipEntity());
+
+    expect(calculator.arcFor(mount(weapon, 'Left Broadside'))).toBe(6);
+    expect(calculator.arcFor(mount(weapon, 'Right Broadside'))).toBe(7);
+  });
+
+  it('uses the Java right-broadside fallback for an unknown location', () => {
+    const calculator = new ExposedWarShipCalculator(new TestWarShipEntity());
+
+    expect(calculator.arcFor(mount(weapon, 'Unknown'))).toBe(7);
+  });
+});
+
 describe('battle value family dispatch', () => {
   it('adds MegaMek prototype laser heat bonuses', () => {
     class ExposedMekCalculator extends MekBVCalculator {
@@ -108,6 +133,36 @@ describe('battle value family dispatch', () => {
     const twoArmCalculator = new ExposedMekCalculator(twoArmEntity);
     expect(twoArmCalculator.heatOf(leftBlade)).toBe(5);
     expect(twoArmCalculator.heatOf(rightBlade)).toBe(7);
+  });
+
+  it('uses airborne AirMek flank movement for standard LAM defensive TMM', () => {
+    class ExposedMekCalculator extends MekBVCalculator {
+      runningModifier(): number {
+        this.prepare();
+        return this.runningTmm();
+      }
+    }
+    class StandardLamHarness extends TestBipedMekEntity {
+      override isLandAirMek(): boolean { return true; }
+      override airMekFlankMP(): number { return 10; }
+    }
+    const groundMek = new TestBipedMekEntity();
+    groundMek.originalWalkMP.set(3);
+
+    expect(new ExposedMekCalculator(new StandardLamHarness()).runningModifier()).toBe(5);
+    expect(new ExposedMekCalculator(groundMek).runningModifier()).toBe(2);
+  });
+
+  it('keeps zero AirMek flank movement at zero TMM', () => {
+    class ExposedMekCalculator extends MekBVCalculator {
+      runningModifier(): number { return this.runningTmm(); }
+    }
+    class ImmobileLamHarness extends TestBipedMekEntity {
+      override isLandAirMek(): boolean { return true; }
+      override airMekFlankMP(): number { return 0; }
+    }
+
+    expect(new ExposedMekCalculator(new ImmobileLamHarness()).runningModifier()).toBe(0);
   });
 
   it('applies arm AES to offensive club equipment', () => {
@@ -240,6 +295,51 @@ describe('structured battle value details', () => {
 
     entity.setUniformArmor(new MountedArmor({ armor: standard, techBase: 'IS' }));
     expect(findDetail(calculateBattleValueDetails(entity).details, 'Armor')?.delta).toBe(210);
+  });
+
+  it('applies CT armor material modifiers to torso-mounted cockpit armor', () => {
+    const entity = new TestBipedMekEntity();
+    entity.armorValues.set(new Map([['CT', { front: 8, rear: 2 }]]));
+    const reflective = new ArmorEquipment({
+      id: 'Reflective Armor', name: 'Reflective Armor', type: 'armor',
+      armor: { type: 'REFLECTIVE' },
+    });
+    entity.setUniformArmor(new MountedArmor({ armor: reflective, techBase: 'IS' }));
+
+    expect(findDetail(calculateBattleValueDetails(entity).details, 'Armor')?.delta).toBe(37.5);
+
+    entity.cockpitType.set('Torso-Mounted');
+    expect(findDetail(calculateBattleValueDetails(entity).details, 'Armor')?.delta).toBe(75);
+  });
+
+  it('adds the Blue Shield armor modifier to the material modifier', () => {
+    const entity = new TestBipedMekEntity();
+    entity.armorValues.set(new Map([['CT', { front: 10, rear: 0 }]]));
+    entity.setUniformArmor(new MountedArmor({
+      armor: new ArmorEquipment({
+        id: 'Reflective Armor', name: 'Reflective Armor', type: 'armor',
+        armor: { type: 'REFLECTIVE' },
+      }),
+      techBase: 'IS',
+    }));
+    entity.setEquipment([mount(new MiscEquipment({
+      id: 'Blue Shield', name: 'Blue Shield', type: 'misc', flags: ['F_BLUE_SHIELD'],
+    }), 'CT')]);
+
+    expect(findDetail(calculateBattleValueDetails(entity).details, 'Armor')?.delta).toBe(42.5);
+  });
+
+  it('penalizes each unprotected Inner Sphere Mek location for Blue Shield', () => {
+    class ExposedMekCalculator extends MekBVCalculator {
+      blueShieldPenalty(): number { return -this.blueShieldUnprotectedLocations(); }
+    }
+    const entity = new TestBipedMekEntity();
+    entity.techBase.set('IS');
+    entity.setEquipment([mount(new MiscEquipment({
+      id: 'Blue Shield', name: 'Blue Shield', type: 'misc', flags: ['F_BLUE_SHIELD'],
+    }), 'CT')]);
+
+    expect(new ExposedMekCalculator(entity).blueShieldPenalty()).toBe(-7);
   });
 
   it('applies reinforced structure BV before the XXL engine modifier', () => {

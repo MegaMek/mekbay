@@ -113,12 +113,19 @@ export class BVCalculator {
         .filter(mount => mount.getOccupiedLocations().includes(location));
       const harjelMultiplier = (mountsAtLocation.some(mount => mount.equipment?.hasFlag('F_HARJEL_II')) ? 1.1 : 1)
         * (mountsAtLocation.some(mount => mount.equipment?.hasFlag('F_HARJEL_III')) ? 1.2 : 1);
-      armorBV += Math.max(0, value.front + value.rear + modularArmor)
-        * armorBVMultiplier(armor) * bar * harjelMultiplier;
+      const supplementalArmor = this.supplementalArmorAt(location, value);
+      armorBV += Math.max(0, value.front + value.rear + modularArmor + supplementalArmor)
+        * (armorBVMultiplier(armor) + (this.has('F_BLUE_SHIELD') ? 0.2 : 0))
+        * bar * harjelMultiplier;
     }
     this.defensiveValue += armorBV * this.armorFactor();
     this.addValueLine('Armor', `${this.format(armorBV)} x ${this.format(this.armorFactor())}`, before);
   }
+
+  protected supplementalArmorAt(
+    _location: string,
+    _armor: Readonly<{ front: number; rear: number }>,
+  ): number { return 0; }
 
   protected armorFactor(): number { return 2.5; }
 
@@ -196,7 +203,7 @@ export class BVCalculator {
   protected processExplosiveEquipment(): void {}
 
   protected processDefensiveFactor(): void {
-    const running = targetMovementModifier(this.runMP);
+    const running = this.runningTmm();
     const jumping = targetMovementModifier(this.jumpMP, true);
     const umu = targetMovementModifier(this.umuMP);
     this.addReportLine('TMMs', `${running} (R), ${jumping} (J), ${umu} (U)`);
@@ -205,6 +212,8 @@ export class BVCalculator {
     this.defensiveValue *= factor;
     this.addValueLine('Defensive Factor', `${this.format(before)} x ${this.format(factor)}`, before);
   }
+
+  protected runningTmm(): number { return targetMovementModifier(this.runMP); }
 
   protected tmmFactor(running: number, jumping: number, umu: number): number {
     return 1 + Math.max(running, jumping, umu) / 10;
