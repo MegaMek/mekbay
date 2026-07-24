@@ -236,7 +236,6 @@ function createTestUnit(overrides: TestUnitOverrides = {}): Unit {
         model: 'Prime',
         year: 3050,
         bv: 1000,
-        pv: 35,
         cost: 1000000,
         level: 'Standard',
         engineRating: 250,

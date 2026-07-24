@@ -363,10 +363,10 @@ describe('UnitSearchComponent card virtualization', () => {
         const component = fixture.componentInstance;
 
         filteredUnitsSignal.set([
-            createUnit('Atlas AS7-D', { chassis: 'Atlas', omni: 0, as: { TP: 'BM', PV: 42 }, bv: 1800, pv: 42 }),
-            createUnit('Atlas AS7-K', { chassis: 'Atlas', omni: 0, as: { TP: 'BM', PV: 44 }, bv: 1900, pv: 44 }),
-            createUnit('Atlas Omni', { chassis: 'Atlas', omni: 1, as: { TP: 'BM', PV: 46 }, bv: 2000, pv: 46 }),
-            createUnit('Atlas Industrial', { chassis: 'Atlas', omni: 0, as: { TP: 'IM', PV: 28 }, bv: 1200, pv: 28 }),
+            createUnit('Atlas AS7-D', { chassis: 'Atlas', omni: 0, as: { TP: 'BM', PV: 42 }, bv: 1800 }),
+            createUnit('Atlas AS7-K', { chassis: 'Atlas', omni: 0, as: { TP: 'BM', PV: 44 }, bv: 1900 }),
+            createUnit('Atlas Omni', { chassis: 'Atlas', omni: 1, as: { TP: 'BM', PV: 46 }, bv: 2000 }),
+            createUnit('Atlas Industrial', { chassis: 'Atlas', omni: 0, as: { TP: 'IM', PV: 28 }, bv: 1200 }),
         ]);
         fixture.detectChanges();
 

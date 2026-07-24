@@ -2052,7 +2052,7 @@ export class SearchForceGeneratorDialogComponent {
                     commander: unitEntry.commander ?? false,
                     group: null,
                     unitTypeCode: unit.as.TP,
-                    basePv: unit.pv,
+                    basePv: unit.as.PV,
                 },
             },
         );

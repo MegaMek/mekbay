@@ -3012,7 +3012,7 @@ export class ForceBuilderService {
                     commander: unit.commander(),
                     group,
                     unitTypeCode: unit.getUnit().as?.TP,
-                    basePv: unit.getUnit().pv,
+                    basePv: unit.getUnit().as?.PV,
                 }
             }
         );

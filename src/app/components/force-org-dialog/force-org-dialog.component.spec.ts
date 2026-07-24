@@ -116,7 +116,6 @@ describe('ForceOrgDialogComponent', () => {
             chassis: `Chassis ${name}`,
             model: `Model ${name}`,
             bv: 1000,
-            pv: 25,
             as: {
                 PV: 25,
             },

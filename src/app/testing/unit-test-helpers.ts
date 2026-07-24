@@ -68,7 +68,6 @@ export function createEmptyUnit(overrides: TestUnitOverrides = {}): Unit {
         loadoutTons: 50,
         offSpeedFactor: 0,
         bv: 0,
-        pv: 0,
         cost: 0,
         level: 'Introductory',
         techBase: 'Inner Sphere',

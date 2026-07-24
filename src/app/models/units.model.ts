@@ -154,7 +154,6 @@ export interface Unit {
     loadoutTons: number;
     offSpeedFactor: number;
     bv: number;
-    pv: number;
     cost: number;
     level: ComponentTechLevel;
     techBase: TechBase;
