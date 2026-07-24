@@ -81,6 +81,21 @@ describe('SmallCraftEntity implicit equipment', () => {
     expect(() => calculateMountedEquipmentCost(entity))
       .toThrowError(/Unable to calculate variable cost for ISSingle-Hex ECM/);
   });
+
+  it('materializes and dematerializes auto-filled crew across the tonnage threshold', () => {
+    const entity = new SmallCraftEntity(createTestEquipmentRegistry());
+    entity.crew.set(1);
+    entity.transporters.set([cargoBay()]);
+
+    entity.setTonnage(5);
+    expect(crewAndQuarters(entity)).toEqual({ crew: 1, officers: 0, gunners: 0, quarters: 0 });
+
+    entity.setTonnage(30);
+    expect(crewAndQuarters(entity)).toEqual({ crew: 3, officers: 1, gunners: 0, quarters: 3 });
+
+    entity.setTonnage(5);
+    expect(crewAndQuarters(entity)).toEqual({ crew: 1, officers: 0, gunners: 0, quarters: 0 });
+  });
 });
 
 function createWeapon(id: string, flags: EquipmentFlag[] = []): WeaponEquipment {
@@ -88,4 +103,22 @@ function createWeapon(id: string, flags: EquipmentFlag[] = []): WeaponEquipment 
     id, name: id, type: 'weapon', flags,
     weapon: { damage: 10, ranges: [5, 10, 15, 20] },
   }) as WeaponEquipment;
+}
+
+function cargoBay() {
+  return {
+    id: 'transporter-1', kind: 'bay' as const, configuration: { type: 'cargo' as const },
+    capacity: 0.48, doors: 0, bayNumber: 0, omni: false,
+  };
+}
+
+function crewAndQuarters(entity: SmallCraftEntity) {
+  return {
+    crew: entity.crew(),
+    officers: entity.officers(),
+    gunners: entity.gunners(),
+    quarters: entity.transporters().filter(transporter => transporter.kind === 'bay'
+      && ['first-class-quarters', 'second-class-quarters', 'crew-quarters', 'steerage-quarters']
+        .includes(transporter.configuration.type)).length,
+  };
 }
