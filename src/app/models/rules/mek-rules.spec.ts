@@ -205,6 +205,30 @@ function directFireWeaponEntry(forceUnit: CBTForceUnit, flags: EquipmentFlag[] =
     });
 }
 
+function mediumVspLaserEntry(forceUnit: CBTForceUnit): MountedEquipment {
+    const equipment = new WeaponEquipment({
+        id: 'ISMediumVSPLaser',
+        name: 'Medium VSP Laser',
+        type: 'weapon',
+        flags: ['F_DIRECT_FIRE', 'F_ENERGY', 'F_LASER', 'F_PULSE', 'F_VSP'],
+        stats: { toHitModifier: [-3, -2, -1] },
+        weapon: { damage: [9, 7, 5], ranges: [2, 5, 9, 13], ammoType: 'NA' },
+    });
+    const weapon = new MountedWeapon({
+        owner: forceUnit,
+        id: equipment.id,
+        name: equipment.name,
+        equipment,
+    });
+    return new MountedEquipment({
+        owner: forceUnit,
+        id: `${equipment.id}-critical`,
+        name: equipment.name,
+        equipment,
+        parent: weapon,
+    });
+}
+
 function hagWeaponEntry(forceUnit: CBTForceUnit, mode: string): MountedWeapon {
     const equipment = new WeaponEquipment({
         id: 'CLHAG20',
@@ -288,6 +312,42 @@ describe('MekRules', () => {
         expect(activeForceUnit.rules.computeEntryState(directFireWeaponEntry(activeForceUnit))).toEqual(jasmine.objectContaining({ hitMod: -1, isDamaged: false, weakenedHitMod: false }));
         expect(destroyedForceUnit.rules.computeEntryState(directFireWeaponEntry(destroyedForceUnit))).toEqual(jasmine.objectContaining({ hitMod: 0, isDamaged: false, weakenedHitMod: true }));
         expect(destroyedForceUnit.rules.computeEntryState(directFireWeaponEntry(destroyedForceUnit, ['F_TASER']))).toEqual(jasmine.objectContaining({ hitMod: 0, isDamaged: false, weakenedHitMod: false }));
+    });
+
+    it('stacks a targeting computer with each range-specific VSP laser modifier', () => {
+        const activeForceUnit = createForceUnitHarness({ critSlots: [crit('Targeting Computer', false)] });
+        const destroyedForceUnit = createForceUnitHarness({ critSlots: [crit('Targeting Computer')] });
+        const ranges = [
+            { range: 'short' as const, value: -4 },
+            { range: 'medium' as const, value: -3 },
+            { range: 'long' as const, value: -2 },
+        ];
+
+        const activeEntry = mediumVspLaserEntry(activeForceUnit);
+        const activeState = activeForceUnit.rules.computeEntryState(activeEntry);
+        expect(activeEntry.parent).toBeInstanceOf(MountedWeapon);
+        expect((activeEntry.parent as MountedWeapon).getWeaponTypes()).toContain('P');
+        expect(activeState).toEqual(jasmine.objectContaining({ hitMod: -1, weakenedHitMod: false }));
+        for (const expected of ranges) {
+            expect(activeForceUnit.gameRules.resolveToHit({
+                subject: activeEntry,
+                range: expected.range,
+                stateModifier: activeState.hitMod,
+                stateWeakened: activeState.weakenedHitMod,
+            }).value).withContext(`functional targeting computer at ${expected.range} range`).toBe(expected.value);
+        }
+
+        const destroyedEntry = mediumVspLaserEntry(destroyedForceUnit);
+        const destroyedState = destroyedForceUnit.rules.computeEntryState(destroyedEntry);
+        expect(destroyedState).toEqual(jasmine.objectContaining({ hitMod: 0, weakenedHitMod: true }));
+        const destroyedResolution = destroyedForceUnit.gameRules.resolveToHit({
+            subject: destroyedEntry,
+            range: 'short',
+            stateModifier: destroyedState.hitMod,
+            stateWeakened: destroyedState.weakenedHitMod,
+        });
+        expect(destroyedResolution.value).toBe(-3);
+        expect(destroyedResolution.weakened).toBeTrue();
     });
 
     it('applies HAG mode and targeting-computer modifiers without stacking them', () => {
