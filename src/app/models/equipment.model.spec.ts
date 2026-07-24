@@ -102,7 +102,7 @@ describe('equipment model', () => {
         });
         expect(ultra.getWeaponCategory()).toBe('ballistic');
         expect(ultra.getDamageProfile()).toEqual({
-            kind: 'fixed', damage: 10, maximum: 20, perShot: true,
+            kind: 'simple', damage: 10, maximum: 20, perShot: true,
         });
         expect(variable.getWeaponCategory()).toBe('energy');
         expect(variable.getDamageProfile()).toEqual({
@@ -133,7 +133,7 @@ describe('equipment model', () => {
 
         expect(findIntrinsicAmmoForWeapon(thunderbolt, { [ammo.id]: ammo })).toBe(ammo);
         expect(thunderbolt.getDamageProfile(ammo)).toEqual({
-            kind: 'fixed', damage: 5, maximum: 5, perShot: false,
+            kind: 'simple', damage: 5, maximum: 5, perShot: false,
         });
     });
 
@@ -154,7 +154,7 @@ describe('equipment model', () => {
 
         expect(findIntrinsicAmmoForWeapon(mineLauncher, { wrongRack, alternate, standard })).toBe(standard);
         expect(mineLauncher.getDamageProfile(standard)).toEqual({
-            kind: 'fixed', damage: 4, maximum: 4, perShot: false,
+            kind: 'simple', damage: 4, maximum: 4, perShot: false,
         });
         expect(mineLauncher.getDamageProfile()).toEqual({ kind: 'special', maximum: 0 });
 

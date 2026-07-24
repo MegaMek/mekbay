@@ -62,6 +62,13 @@ import {
 // ============================================================================
 
 export class InfantryEntity extends InfantryBaseEntity {
+  override componentLocationOrder(): readonly string[] {
+    return ['Infantry', 'Field Guns'];
+  }
+
+  override componentLocationLabel(location: string): string {
+    return ({ Infantry: 'TPRS', 'Field Guns': 'FGUN' })[location] ?? super.componentLocationLabel(location);
+  }
   override readonly entityType: EntityType = 'Infantry';
 
   override unitSubtype(): UnitSubtype {

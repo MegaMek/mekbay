@@ -55,6 +55,15 @@ const WARSHIP_EQUIP_LOCS = [
 export class WarShipEntity extends JumpShipEntity {
   override readonly entityType: EntityType = 'WarShip';
 
+  override componentLocationOrder(): readonly string[] {
+    return [...super.componentLocationOrder(), 'Left Broadside', 'Right Broadside'];
+  }
+
+  override componentLocationLabel(location: string): string {
+    return ({ 'Left Broadside': 'LBS', 'Right Broadside': 'RBS' })[location]
+      ?? super.componentLocationLabel(location);
+  }
+
   override unitSubtype(): UnitSubtype {
     return this.withOmniSubtype('WarShip');
   }

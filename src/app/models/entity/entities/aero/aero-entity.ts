@@ -60,6 +60,16 @@ import {
 export abstract class AeroEntity extends BaseEntity {
   override readonly entityType: EntityType = 'Aero';
 
+  override componentLocationOrder(): readonly string[] {
+    return ['Nose', 'Left Wing', 'Right Wing', 'Aft', 'Wings', 'Fuselage'];
+  }
+
+  override componentLocationLabel(location: string): string {
+    return ({
+      Nose: 'NOS', 'Left Wing': 'LWG', 'Right Wing': 'RWG', Aft: 'AFT', Wings: 'WNG', Fuselage: 'FSLG',
+    })[location] ?? super.componentLocationLabel(location);
+  }
+
   override unitType(): UnitType {
     return 'Aero';
   }

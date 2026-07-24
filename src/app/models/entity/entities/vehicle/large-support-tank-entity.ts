@@ -46,6 +46,16 @@ import { SupportTankEntity } from './support-tank-entity';
 export class LargeSupportTankEntity extends SupportTankEntity {
   override readonly entityType: EntityType = 'LargeSupportTank';
 
+  override componentLocationOrder(): readonly string[] {
+    return ['Body', 'Front', 'Front Right', 'Front Left', 'Rear Right', 'Rear Left', 'Rear', 'Turret', 'Rear Turret', 'Front Turret'];
+  }
+
+  override componentLocationLabel(location: string): string {
+    return ({
+      'Front Right': 'FRR', 'Front Left': 'FRL', 'Rear Right': 'RRR', 'Rear Left': 'RRL',
+    })[location] ?? super.componentLocationLabel(location);
+  }
+
   protected override get minimumEngineRating(): number | null {
     return null;
   }

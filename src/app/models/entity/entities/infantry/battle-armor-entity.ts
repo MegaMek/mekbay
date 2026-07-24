@@ -53,6 +53,9 @@ import { EquipmentRegistry } from '../../../equipment-lookup';
 // ============================================================================
 
 export class BattleArmorEntity extends InfantryBaseEntity {
+  override componentLocationOrder(): readonly string[] {
+    return ['Squad'];
+  }
   override readonly entityType: EntityType = 'BattleArmor';
 
   override unitSubtype(): UnitSubtype {

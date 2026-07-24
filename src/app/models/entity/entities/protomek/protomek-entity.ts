@@ -56,6 +56,14 @@ import type { Equipment } from '../../../equipment.model';
 // ============================================================================
 
 export class ProtoMekEntity extends BaseEntity {
+  override componentLocationOrder(): readonly string[] {
+    return ['Body', 'Head', 'Torso', 'Right Arm', 'Left Arm', 'Legs', 'Main Gun'];
+  }
+
+  override componentLocationLabel(location: string): string {
+    return ({ Body: 'BD', Head: 'HD', Torso: 'T', 'Right Arm': 'RA', 'Left Arm': 'LA', Legs: 'L', 'Main Gun': 'MG' })[location]
+      ?? super.componentLocationLabel(location);
+  }
   override readonly entityType: EntityType = 'ProtoMek';
 
   override unitType(): UnitType {

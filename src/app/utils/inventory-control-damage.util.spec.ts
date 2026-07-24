@@ -1,7 +1,7 @@
 import { AmmoEquipment, StructureEquipment, WeaponEquipment } from '../models/equipment.model';
 import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
-import { resolveInventoryControlDamageText, resolveInventoryControlWeaponDamage, resolveWeaponDamageText, type InventoryControlDamage } from './inventory-control-damage.util';
+import { resolveInventoryControlDamageText, resolveInventoryControlWeaponDamage, resolveWeaponDamage, resolveWeaponDamageText, type InventoryControlDamage } from './inventory-control-damage.util';
 import { MML_LRM_PROFILE, MML_SRM_PROFILE } from '../models/ammo-weapon-profile.model';
 
 describe('inventory-control damage resolution', () => {
@@ -123,6 +123,40 @@ describe('inventory-control damage resolution', () => {
             selectedRange: null,
             selectedAmmo: ammo
         })).toBe('7/Msl [C6,M,S]');
+        expect(resolveWeaponDamage(weapon, { selectedRange: null, selectedAmmo: ammo })).toEqual({ kind: 'per-missile', value: 7 });
+    });
+
+    it('resolves matching large-missile ammunition as fixed damage', () => {
+        const weapon = new WeaponEquipment({
+            id: 'Thunderbolt15',
+            name: 'Thunderbolt 15',
+            type: 'weapon',
+            flags: ['F_MISSILE', 'F_LARGE_MISSILE'],
+            weapon: { ammoType: 'TBOLT_15', rackSize: 15, damage: 'cluster' }
+        });
+        const matchingAmmo = new AmmoEquipment({
+            id: 'Thunderbolt15Ammo',
+            name: 'Thunderbolt 15 Ammo',
+            type: 'ammo',
+            ammo: { type: 'TBOLT_15', rackSize: 15, damagePerShot: 15, munitionType: ['M_STANDARD'] }
+        });
+        const incompatibleAmmo = new AmmoEquipment({
+            id: 'Thunderbolt10Ammo',
+            name: 'Thunderbolt 10 Ammo',
+            type: 'ammo',
+            ammo: { type: 'TBOLT_15', rackSize: 10, damagePerShot: 10, munitionType: ['M_STANDARD'] }
+        });
+        const mounted = new MountedWeapon({ owner: {} as CBTForceUnit, id: weapon.id, name: weapon.name, equipment: weapon });
+
+        expect(resolveWeaponDamage(weapon, { selectedRange: null, selectedAmmo: matchingAmmo }))
+            .toEqual({ kind: 'simple', value: 15 });
+        expect(resolveWeaponDamageText(weapon, { selectedRange: null, selectedAmmo: matchingAmmo })).toBe('15 [M]');
+        expect(resolveInventoryControlDamageText(mounted, {
+            selectedRange: null,
+            selectedAmmo: matchingAmmo
+        })).toBe('15 [M]');
+        expect(resolveWeaponDamage(weapon, { selectedRange: null, selectedAmmo: incompatibleAmmo }))
+            .toEqual({ kind: 'per-missile', value: 10 });
     });
 
     it('uses catalog ammo damage for a built-in one-shot weapon', () => {

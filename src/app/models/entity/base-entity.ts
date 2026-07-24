@@ -1030,6 +1030,16 @@ export abstract class BaseEntity implements EntityTechnology {
   abstract get locationOrder(): readonly string[];
   abstract get validLocations(): ReadonlySet<string>;
 
+  /** Stable component-export order, including equipment-only locations where needed. */
+  componentLocationOrder(): readonly string[] {
+    return this.locationOrder;
+  }
+
+  /** Component-export location label; an empty value suppresses the label. */
+  componentLocationLabel(location: string): string {
+    return location === 'None' ? '' : location;
+  }
+
   /** Locations that carry armor material. Override when locationOrder contains non-armor locations. */
   get armorLocations(): readonly string[] {
     return this.locationOrder;

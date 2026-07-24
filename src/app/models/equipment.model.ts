@@ -69,7 +69,7 @@ export type RangeBrackets = 'short' | 'medium' | 'long' | 'extreme';
 export type WeaponCategory = 'energy' | 'missile' | 'ballistic' | 'artillery' | 'other';
 
 export type WeaponDamageProfile =
-    | { kind: 'fixed'; damage: number; maximum: number; perShot: boolean }
+    | { kind: 'simple'; damage: number; maximum: number; perShot: boolean }
     | { kind: 'missile-cluster'; damagePerMissile: number; maximum: number }
     | { kind: 'cluster'; damage: number | 'Cluster' | 'Special'; maximum: number }
     | { kind: 'artillery'; damage: number; maximum: number }
@@ -744,10 +744,10 @@ export class WeaponEquipment extends Equipment {
     getDamageProfile(ammo?: AmmoEquipment | null): WeaponDamageProfile {
         const damage = this.damage;
         if (damage === 'special' && this.oneShotCount && ammoMatchesWeapon(this, ammo)) {
-            return { kind: 'fixed', damage: ammo.damagePerShot, maximum: ammo.damagePerShot, perShot: false };
+            return { kind: 'simple', damage: ammo.damagePerShot, maximum: ammo.damagePerShot, perShot: false };
         }
         if (damage === 'cluster' && this.hasFlag('F_LARGE_MISSILE') && ammoMatchesWeapon(this, ammo)) {
-            return { kind: 'fixed', damage: ammo.damagePerShot, maximum: ammo.damagePerShot, perShot: false };
+            return { kind: 'simple', damage: ammo.damagePerShot, maximum: ammo.damagePerShot, perShot: false };
         }
         if (damage === 'cluster') {
             if (this.ammoType === 'HAG') {
@@ -778,7 +778,7 @@ export class WeaponEquipment extends Equipment {
 
         const perShot = this.ammoType === 'AC_ULTRA' || this.ammoType === 'AC_ULTRA_THB';
         const multiplier = this.ammoType === 'AC_ROTARY' ? 6 : perShot ? 2 : 1;
-        return { kind: 'fixed', damage, maximum: damage * multiplier, perShot };
+        return { kind: 'simple', damage, maximum: damage * multiplier, perShot };
     }
 }
 

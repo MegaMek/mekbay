@@ -100,6 +100,12 @@ function jumpJetTonnage(unitTonnage: number): number {
 }
 
 export abstract class MekEntity extends BaseEntity {
+  override componentLocationOrder(): readonly string[] {
+    if (this.chassisConfig === 'Quad') return ['HD', 'CT', 'RT', 'LT', 'FRL', 'FLL', 'RRL', 'RLL'];
+    if (this.chassisConfig === 'Tripod') return ['HD', 'CT', 'RT', 'LT', 'RA', 'LA', 'RL', 'LL', 'CL'];
+    return ['HD', 'CT', 'RT', 'LT', 'RA', 'LA', 'RL', 'LL'];
+  }
+
   constructor(equipmentRegistry: EquipmentRegistry) {
     super(equipmentRegistry);
     super.setUniformStructure(new MountedStructure({

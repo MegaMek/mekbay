@@ -23,41 +23,6 @@ type ExportComponent = Omit<UnitComponent, 'l' | 'bay'> & {
 };
 type ComponentType = ExportComponent['t'];
 
-const LOCATION_DATA: Readonly<Partial<Record<BaseEntity['entityType'], readonly string[]>>> = {
-  Mek: ['HD', 'CT', 'RT', 'LT', 'RA', 'LA', 'RL', 'LL', 'CL', 'FRL', 'FLL', 'RRL', 'RLL'],
-  Tank: ['Body', 'Front', 'Right', 'Left', 'Rear', 'Turret', 'Front Turret', 'Rear Turret'],
-  SupportTank: ['Body', 'Front', 'Right', 'Left', 'Rear', 'Turret', 'Front Turret', 'Rear Turret'],
-  LargeSupportTank: ['Body', 'Front', 'Front Right', 'Front Left', 'Rear Right', 'Rear Left', 'Rear', 'Turret', 'Rear Turret', 'Front Turret'],
-  Naval: ['Body', 'Front', 'Right', 'Left', 'Rear', 'Turret', 'Front Turret', 'Rear Turret'],
-  SupportNaval: ['Body', 'Front', 'Right', 'Left', 'Rear', 'Turret', 'Front Turret', 'Rear Turret'],
-  VTOL: ['Body', 'Front', 'Right', 'Left', 'Rear', 'Turret', 'Rotor'],
-  SupportVTOL: ['Body', 'Front', 'Right', 'Left', 'Rear', 'Turret', 'Rotor'],
-  Aero: ['Nose', 'Left Wing', 'Right Wing', 'Aft', 'Wings', 'Fuselage'],
-  ConvFighter: ['Nose', 'Left Wing', 'Right Wing', 'Aft', 'Wings', 'Fuselage'],
-  FixedWingSupport: ['Nose', 'Left Wing', 'Right Wing', 'Aft', 'Wings', 'Body'],
-  SmallCraft: ['Nose', 'Left Side', 'Right Side', 'Aft', 'Hull'],
-  DropShip: ['Nose', 'Left Side', 'Right Side', 'Aft', 'Hull'],
-  JumpShip: ['Nose', 'FLS', 'FRS', 'Aft', 'ALS', 'ARS', 'Hull'],
-  WarShip: ['Nose', 'FLS', 'FRS', 'Aft', 'ALS', 'ARS', 'Hull', 'Left Broadside', 'Right Broadside'],
-  SpaceStation: ['Nose', 'FLS', 'FRS', 'Aft', 'ALS', 'ARS', 'Hull'],
-  ProtoMek: ['Body', 'Head', 'Torso', 'Right Arm', 'Left Arm', 'Legs', 'Main Gun'],
-  Infantry: ['Infantry', 'Field Guns'],
-  BattleArmor: ['Squad'],
-  HandheldWeapon: ['Gun'],
-};
-
-const LOCATION_ABBREVIATIONS: Readonly<Record<string, string>> = {
-  Body: 'BD', Front: 'FR', Right: 'RS', Left: 'LS', Rear: 'RR', Turret: 'TU',
-  'Front Turret': 'FT', 'Rear Turret': 'RT', Rotor: 'RO',
-  'Front Right': 'FRR', 'Front Left': 'FRL', 'Rear Right': 'RRR', 'Rear Left': 'RRL',
-  Nose: 'NOS', 'Left Wing': 'LW', 'Right Wing': 'RW', Aft: 'AFT', Wings: 'WNG',
-  Fuselage: 'FSLG', Hull: 'HULL', 'Left Side': 'LS', 'Right Side': 'RS',
-  FLS: 'FLS', FRS: 'FRS', ALS: 'ALS', ARS: 'ARS',
-  'Left Broadside': 'LBS', 'Right Broadside': 'RBS',
-  Head: 'HD', Torso: 'T', 'Right Arm': 'RA', 'Left Arm': 'LA', Legs: 'L',
-  'Main Gun': 'MG', Infantry: 'TPRS', 'Field Guns': 'FGUN', Gun: 'GUN', Squad: 'Squad',
-};
-
 /** Mirrors SVGMassPrinter.Components while using only canonical parser state. */
 export function buildUnitComponentMetadata(entity: BaseEntity): UnitComponent[] | undefined {
   const components = new Map<string, ExportComponent>();
@@ -361,7 +326,7 @@ function componentLocation(entity: BaseEntity, mount: EntityMountedEquipment): {
   const locations = primaryFirstLocations(mount);
   return {
     id: locationId(entity, mount.location),
-    name: locations.map(location => locationAbbreviation(entity, location)).join('/'),
+    name: locations.map(location => locationAbbreviation(entity, location)).filter(Boolean).join('/'),
   };
 }
 
@@ -373,17 +338,11 @@ function primaryFirstLocations(mount: EntityMountedEquipment): readonly string[]
 }
 
 function locationId(entity: BaseEntity, location: string): number {
-  const locations = entity instanceof MekEntity && entity.chassisConfig === 'Quad'
-    ? ['HD', 'CT', 'RT', 'LT', 'FRL', 'FLL', 'RRL', 'RLL']
-    : entity instanceof MekEntity && entity.chassisConfig === 'Tripod'
-      ? ['HD', 'CT', 'RT', 'LT', 'RA', 'LA', 'RL', 'LL', 'CL']
-      : LOCATION_DATA[entity.entityType] ?? entity.locationOrder;
-  return locations.indexOf(location);
+  return entity.componentLocationOrder().indexOf(location);
 }
 
 function locationAbbreviation(entity: BaseEntity, location: string): string {
-  if (entity.entityType === 'FixedWingSupport' && location === 'Body') return 'BOD';
-  return LOCATION_ABBREVIATIONS[location] ?? location;
+  return entity.componentLocationLabel(location);
 }
 
 function criticals(
@@ -470,8 +429,8 @@ function activeAeroValues(equipment: WeaponEquipment): number[] {
 
 function formatWeaponDamage(profile: WeaponDamageProfile): string {
   switch (profile.kind) {
-    case 'fixed': return profile.damage === 0 ? '' : `${profile.damage}${profile.perShot ? '/Shot' : ''}`;
-    case 'missile-cluster': return `${profile.damagePerMissile}/msl`;
+    case 'simple': return profile.damage === 0 ? '' : `${profile.damage}${profile.perShot ? '/Shot' : ''}`;
+    case 'missile-cluster': return `${profile.damagePerMissile}/Msl`;
     case 'cluster': return String(profile.damage);
     case 'artillery': return `${profile.damage}A`;
     case 'range': return profile.damage.join('/');

@@ -43,6 +43,14 @@ import { getFixedWingSupportConstructionTech } from '../../components';
 export class FixedWingSupportEntity extends AeroEntity implements SupportVehicle {
   override readonly entityType: EntityType = 'FixedWingSupport';
 
+  override componentLocationOrder(): readonly string[] {
+    return ['Nose', 'Left Wing', 'Right Wing', 'Aft', 'Wings', 'Body'];
+  }
+
+  override componentLocationLabel(location: string): string {
+    return location === 'Body' ? 'BOD' : super.componentLocationLabel(location);
+  }
+
   override unitSubtype(): UnitSubtype {
     return this.withOmniSubtype('Fixed Wing Support Vehicle');
   }
