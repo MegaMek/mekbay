@@ -5,6 +5,15 @@ import { MountedEngine } from '../../components';
 import { calculateFixedWingSupportWeightBreakdown } from './fixed-wing-support-weight';
 
 describe('fixed-wing support construction mass', () => {
+  it('includes exported Omni base-chassis fire-control mass', () => {
+    const entity = new TestFixedWingSupportEntity();
+    entity.baseChassisFireConWeight.set(5.5);
+
+    const result = calculateFixedWingSupportWeightBreakdown(entity);
+    expect(result.fireControl).toBe(5.5);
+    expect(result.exact).toBeGreaterThanOrEqual(5.5);
+  });
+
   it('uses the small fixed-wing chassis factor and kilogram rounding', () => {
     const entity = new TestFixedWingSupportEntity();
     entity.setTonnage(4);

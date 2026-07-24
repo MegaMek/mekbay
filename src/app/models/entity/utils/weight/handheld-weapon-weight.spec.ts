@@ -4,6 +4,15 @@ import { addTestEquipment } from '../../testing/test-mounted-equipment';
 import { calculateHandheldWeaponWeightBreakdown } from './handheld-weapon-weight';
 
 describe('handheld weapon construction mass', () => {
+  it('includes armor rounded up to the next half ton', () => {
+    const entity = new TestHandheldWeaponEntity();
+    entity.armorValues.set(new Map([['Gun', { front: 8, rear: 0 }]]));
+
+    const result = calculateHandheldWeaponWeightBreakdown(entity);
+    expect(result.armor).toBe(0.5);
+    expect(result.rounded).toBe(0.5);
+  });
+
   it('adds one ton of sinks per heat-neutral requirement', () => {
     const entity = new TestHandheldWeaponEntity();
     addTestEquipment(entity, createEquipment({

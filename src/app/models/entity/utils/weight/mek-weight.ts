@@ -1,6 +1,6 @@
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
 import type { MekEntity } from '../../entities/mek/mek-entity';
-import { isQuartersBay } from '../../bays/bay-definitions';
+import { getBayConstructionWeight, isQuartersBay } from '../../bays/bay-definitions';
 import { ceilToHalfTon, ceilToWholeTon } from './weight-rounding';
 
 export interface MekWeightBreakdown {
@@ -165,7 +165,7 @@ function calculateMekCarryingSpaceWeight(entity: MekEntity): number {
   return entity.transporters().reduce((total, transporter) => {
     if (transporter.kind === 'troop-space') return total + transporter.totalSpace;
     if (transporter.kind !== 'bay' || isQuartersBay(transporter)) return total;
-    return total + (transporter.constructionWeight ?? transporter.capacity);
+    return total + getBayConstructionWeight(transporter);
   }, 0);
 }
 

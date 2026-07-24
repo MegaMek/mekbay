@@ -1,6 +1,6 @@
 import { EquipmentFlag } from '../../../equipment-flags.type';
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
-import { isQuartersBay } from '../../bays/bay-definitions';
+import { getBayConstructionWeight, isQuartersBay } from '../../bays/bay-definitions';
 import type { SupportVehicle } from '../../entities/support-vehicle';
 import type { VehicleEntity } from '../../entities/vehicle/vehicle-entity';
 import type { TechRating } from '../../types';
@@ -83,7 +83,7 @@ export function calculateSupportVehicleWeightBreakdown(entity: SupportVehicleEnt
   const carryingSpace = entity.transporters().reduce((total, transporter) => {
     if (transporter.kind === 'troop-space') return total + transporter.totalSpace;
     if (transporter.kind !== 'bay' || isQuartersBay(transporter)) return total;
-    return total + (transporter.constructionWeight ?? transporter.capacity);
+    return total + getBayConstructionWeight(transporter);
   }, 0);
   const exact = engine + structure + controls + heatSinks + armor + turret + dualTurret
     + miscellaneous + weapons + ammo + powerAmplifiers + carryingSpace + fuel;

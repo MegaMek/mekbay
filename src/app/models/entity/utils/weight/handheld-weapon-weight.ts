@@ -4,6 +4,7 @@ import { calculateHeatNeutralRequirement } from '../cost/common';
 import { ceilToHalfTon } from './weight-rounding';
 
 export interface HandheldWeaponWeightBreakdown {
+  readonly armor: number;
   readonly heatSinks: number;
   readonly miscellaneous: number;
   readonly weapons: number;
@@ -17,6 +18,7 @@ export function calculateHandheldWeaponEffectiveTonnage(entity: HandheldWeaponEn
 }
 
 export function calculateHandheldWeaponWeightBreakdown(entity: HandheldWeaponEntity): HandheldWeaponWeightBreakdown {
+  const armor = ceilToHalfTon(entity.totalArmorPoints() / 16);
   const heatSinks = calculateHeatNeutralRequirement(entity);
   let miscellaneous = 0;
   let weapons = 0;
@@ -30,6 +32,6 @@ export function calculateHandheldWeaponWeightBreakdown(entity: HandheldWeaponEnt
     else if (equipment instanceof WeaponEquipment) weapons += tonnage;
     else if (equipment instanceof MiscEquipment) miscellaneous += tonnage;
   }
-  const exact = heatSinks + miscellaneous + weapons + ammo;
-  return { heatSinks, miscellaneous, weapons, ammo, exact, rounded: ceilToHalfTon(exact) };
+  const exact = armor + heatSinks + miscellaneous + weapons + ammo;
+  return { armor, heatSinks, miscellaneous, weapons, ammo, exact, rounded: ceilToHalfTon(exact) };
 }
