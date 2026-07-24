@@ -1,6 +1,7 @@
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import type { AmmoEquipment, Equipment } from '../models/equipment.model';
 import { ArtemisVHandler } from './artemis-v.handler';
+import { EquipmentFlag } from '../models/equipment-flags.type';
 
 function owner(unavailableEntry?: MountedEquipment) {
     return {
@@ -8,11 +9,11 @@ function owner(unavailableEntry?: MountedEquipment) {
     } as never;
 }
 
-function entry(flags: string[] = [], destroyed = false): MountedEquipment {
+function entry(flags: EquipmentFlag[] = [], destroyed = false): MountedEquipment {
     return new MountedEquipment({ owner: owner(), id: flags.join('-') || 'entry', name: 'Entry', equipment: { flags: new Set(flags) } as Equipment, destroyed });
 }
 
-function ammo(munitionTypes: string[] = []): AmmoEquipment {
+function ammo(munitionTypes: EquipmentFlag[] = []): AmmoEquipment {
     return { hasMunitionType: (munitionType: string) => munitionTypes.includes(munitionType) } as AmmoEquipment;
 }
 

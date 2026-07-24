@@ -1,9 +1,10 @@
 import { C3_FLAGS, C3NetworkType } from '../models/c3-network.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
+import { EquipmentFlag } from '../models/equipment-flags.type';
 import type { SerializedC3NetworkGroup } from '../models/force-serialization';
 import { C3NetworkUtil } from './c3-network.util';
 
-function c3Unit(id: string, baseBv: number, flag: string, tagBv = 0): CBTForceUnit {
+function c3Unit(id: string, baseBv: number, flag: EquipmentFlag, tagBv = 0): CBTForceUnit {
     return {
         id,
         getBaseBv: () => baseBv,

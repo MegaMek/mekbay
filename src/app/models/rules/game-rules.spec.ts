@@ -1,3 +1,4 @@
+import { EquipmentFlag } from '../equipment-flags.type';
 import { AmmoEquipment, MiscEquipment, WeaponEquipment, type Equipment } from '../equipment.model';
 import { MountedEquipment } from '../mounted-equipment.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './game-rules';
@@ -14,7 +15,7 @@ function owner() {
     } as never;
 }
 
-function mountedEntry(flags: string[] = []): MountedEquipment {
+function mountedEntry(flags: EquipmentFlag[] = []): MountedEquipment {
     return new MountedEquipment({
         owner: owner(),
         id: `entry-${entryId++}`,
