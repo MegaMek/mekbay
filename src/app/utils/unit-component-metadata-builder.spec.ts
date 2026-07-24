@@ -1,4 +1,4 @@
-import { AmmoEquipment, ArmorEquipment, Equipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../models/equipment.model';
+import { AmmoEquipment, ArmorEquipment, type AmmoType, Equipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../models/equipment.model';
 import { MountedArmor, MountedStructure } from '../models/entity/components';
 import {
   TestAeroSpaceFighterEntity as AeroSpaceFighterEntity,
@@ -95,6 +95,22 @@ describe('buildUnitComponentMetadata', () => {
       .toEqual(jasmine.objectContaining({ d: '', md: '0.0', os: 1 }));
   });
 
+  it('exports large-missile damage from its matching ammunition', () => {
+    const ammo = new AmmoEquipment({
+      id: 'thunderbolt-ammo', name: 'Thunderbolt 5 Ammo', type: 'ammo',
+      ammo: { type: 'TBOLT_5', rackSize: 1, damagePerShot: 5, munitionType: ['M_STANDARD'] },
+    });
+    const entity = new TankEntity(createTestEquipmentRegistry({ [ammo.id]: ammo }));
+    const thunderbolt = weapon('thunderbolt-5', {
+      damage: 'cluster', ranges: [6, 12, 18, 24], flags: ['F_MISSILE', 'F_LARGE_MISSILE'],
+      ammoType: 'TBOLT_5', rackSize: 1,
+    });
+    entity.setEquipment([mount(thunderbolt, 'Front')]);
+
+    expect(buildUnitComponentMetadata(entity)!.find(component => component.id === thunderbolt.id))
+      .toEqual(jasmine.objectContaining({ d: '5', md: '5.0' }));
+  });
+
   it('exports conventional infantry synthetic weapons with the Java primary damage cap', () => {
     const entity = new InfantryEntity();
     const primary = weapon('rifle', {
@@ -169,7 +185,7 @@ function weapon(
     damage: number | string;
     ranges: number[];
     flags: EquipmentFlag[];
-    ammoType?: 'MINE';
+    ammoType?: AmmoType;
     rackSize?: number;
     av?: number[];
     maxRangeBracket?: 'short' | 'medium' | 'long' | 'extreme';

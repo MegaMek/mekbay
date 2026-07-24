@@ -123,6 +123,20 @@ describe('equipment model', () => {
         expect(doubleOneShot.oneShotCount).toBe(2);
     });
 
+    it('uses standard ammunition damage for large-missile launchers', () => {
+        const thunderbolt = weapon('thunderbolt-5', 'Thunderbolt 5', 'TBOLT_5', 'cluster', 1,
+            ['F_MISSILE', 'F_LARGE_MISSILE']);
+        const ammo = new AmmoEquipment({
+            id: 'thunderbolt-5-ammo', name: 'Thunderbolt 5 Ammo', type: 'ammo',
+            ammo: { type: 'TBOLT_5', rackSize: 1, damagePerShot: 5, munitionType: ['M_STANDARD'] },
+        });
+
+        expect(findIntrinsicAmmoForWeapon(thunderbolt, { [ammo.id]: ammo })).toBe(ammo);
+        expect(thunderbolt.getDamageProfile(ammo)).toEqual({
+            kind: 'fixed', damage: 5, maximum: 5, perShot: false,
+        });
+    });
+
     it('resolves standard intrinsic ammo for one-shot weapons and derives special damage', () => {
         const mineLauncher = weapon('mine-launcher', 'Pop-up Mine', 'MINE', 'special', 1, ['F_ONE_SHOT']);
         const wrongRack = new AmmoEquipment({

@@ -746,6 +746,9 @@ export class WeaponEquipment extends Equipment {
         if (damage === 'special' && this.oneShotCount && ammoMatchesWeapon(this, ammo)) {
             return { kind: 'fixed', damage: ammo.damagePerShot, maximum: ammo.damagePerShot, perShot: false };
         }
+        if (damage === 'cluster' && this.hasFlag('F_LARGE_MISSILE') && ammoMatchesWeapon(this, ammo)) {
+            return { kind: 'fixed', damage: ammo.damagePerShot, maximum: ammo.damagePerShot, perShot: false };
+        }
         if (damage === 'cluster') {
             if (this.ammoType === 'HAG') {
                 return { kind: 'cluster', damage: this.rackSize, maximum: this.rackSize };
@@ -784,7 +787,7 @@ export function findIntrinsicAmmoForWeapon(
     weapon: WeaponEquipment,
     equipmentMap: EquipmentMap,
 ): AmmoEquipment | null {
-    if (!weapon.oneShotCount || weapon.ammoType === 'NA') return null;
+    if ((!weapon.oneShotCount && !weapon.hasFlag('F_LARGE_MISSILE')) || weapon.ammoType === 'NA') return null;
 
     const compatibleAmmo = Object.values(equipmentMap)
         .filter((equipment): equipment is AmmoEquipment =>
