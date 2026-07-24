@@ -1,0 +1,135 @@
+/*
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
+ *
+ * This file is part of MekBay.
+ *
+ * MekBay is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MekBay is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
+ */
+
+import { signal } from '@angular/core';
+import {
+  AeroDesignType,
+  EntityType,
+  SMALL_CRAFT_ARMOR_LOCATIONS,
+  SMALL_CRAFT_EQUIP_LOCATIONS,
+  SmallCraftCrew,
+  WeightClass,
+} from '../../types';
+import { LargeAeroEntity } from './large-aero-entity';
+import type { UnitSubtype } from '../../types';
+import type { TechRatingSource } from '../../types';
+import { getSmallCraftConstructionTech } from '../../components';
+import type { Equipment } from '../../../equipment.model';
+
+/**
+ * SmallCraft entity (100-200 tons).
+ *
+ * Uses different location names than fighters: Left Side / Right Side / Hull
+ * instead of Left Wing / Right Wing / Fuselage.
+ */
+export class SmallCraftEntity extends LargeAeroEntity {
+  override readonly entityType: EntityType = 'SmallCraft';
+
+  protected unitSubtypeKind(): 'Small Craft' | 'DropShip' {
+    return 'Small Craft';
+  }
+
+  override unitSubtype(): UnitSubtype {
+    const civilian = this.isMilitary() ? '' : 'Civilian ';
+    const form = this.motiveType() === 'Spheroid' ? 'Spheroid' : 'Aerodyne';
+    return this.withOmniSubtype(`${civilian}${form} ${this.unitSubtypeKind()}`);
+  }
+
+  override entityTechAdvancements(): readonly TechRatingSource[] {
+    return [getSmallCraftConstructionTech(this.uniformArmor()?.type === 'PRIMITIVE_AERO')];
+  }
+
+  protected override computeImplicitSystemEquipment(): readonly Equipment[] {
+    const implicit = [...super.computeImplicitSystemEquipment()];
+    if (this.entityType !== 'SmallCraft'
+      || !this.isMilitary()
+      || this.equipment().some(mount => mount.equipment?.hasFlag('F_ECM'))) {
+      return implicit;
+    }
+
+    const ecmId = this.techBase() === 'Clan' ? 'CLSingle-Hex ECM' : 'ISSingle-Hex ECM';
+    const automaticEcm = this.equipmentRegistry.findForTechBase(ecmId, this.techBase());
+    if (automaticEcm) implicit.push(automaticEcm);
+    return implicit;
+  }
+
+  // ── SmallCraft-specific signals ──
+
+  designType = signal<AeroDesignType>('Civilian');
+
+  /** Crew configuration */
+  crew = signal<number>(0);
+  officers = signal<number>(0);
+  gunners = signal<number>(0);
+  passengers = signal<number>(0);
+  marines = signal<number>(0);
+  battleArmor = signal<number>(0);
+  otherPassenger = signal<number>(0);
+  lifeboats = signal<number>(0);
+  escapePods = signal<number>(0);
+
+  /** Structured crew data (alternative to individual signals) */
+  crewConfig = signal<SmallCraftCrew>({});
+
+  protected override computeMaximumArmorPoints(): number {
+    const mountedArmor = this.uniformArmor();
+    const isSpheroid = this.motiveType() === 'Spheroid';
+    const pointsPerTon = 16 * (mountedArmor?.armor.pptMultiplier ?? 1);
+    const armorWeightFactor = isSpheroid ? 3.6 : 4.5;
+    const maximumArmorWeight = Math.floor(this.structuralIntegrity() * armorWeightFactor * 2) / 2;
+    const siBonus = 4 * this.structuralIntegrity();
+    const baseArmor = Math.floor(pointsPerTon * maximumArmorWeight + siBonus);
+    return mountedArmor?.type === 'PRIMITIVE_AERO'
+      ? Math.floor(baseArmor * 0.66)
+      : baseArmor;
+  }
+
+  /** Small Craft has a single weight class. */
+  protected override computeWeightClass(): WeightClass {
+    return 'Small Craft';
+  }
+
+  // ── Location overrides ──
+
+  get locationOrder(): readonly string[] {
+    return SMALL_CRAFT_ARMOR_LOCATIONS;
+  }
+
+  get equipLocations(): readonly string[] {
+    return [...SMALL_CRAFT_EQUIP_LOCATIONS];
+  }
+
+  get validLocations(): ReadonlySet<string> {
+    return new Set([...SMALL_CRAFT_EQUIP_LOCATIONS]);
+  }
+}

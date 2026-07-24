@@ -17,6 +17,8 @@ import { HAG_FLAK_MODE, HAG_STANDARD_MODE, HagHandler } from '../../equipment-ha
 import { INVENTORY_CONTROL_MODE_STATE } from '../../utils/inventory-control.util';
 import { OptionsService } from '../../services/options.service';
 import { TWMekRules } from './tw-rules';
+import { VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE, VibrobladeHandler } from '../../equipment-handlers/vibroblade.handler';
+import { EquipmentFlag } from '../equipment-flags.type';
 
 class TestCBTForce extends CBTForce {
     override emitChanged(): void {
@@ -162,7 +164,7 @@ function droneOperatingSystemEntry(forceUnit: CBTForceUnit, destroyed = false): 
     });
 }
 
-function miscEquipment(id: string, name: string, flags: string[]): Equipment {
+function miscEquipment(id: string, name: string, flags: EquipmentFlag[]): Equipment {
     return new Equipment({
         id,
         name,
@@ -180,7 +182,7 @@ function miscEntry(forceUnit: CBTForceUnit, equipment: Equipment): MountedEquipm
     });
 }
 
-function directFireWeaponEntry(forceUnit: CBTForceUnit, flags: string[] = []): MountedEquipment {
+function directFireWeaponEntry(forceUnit: CBTForceUnit, flags: EquipmentFlag[] = []): MountedEquipment {
     const equipment = new WeaponEquipment({
         id: 'DirectFireWeapon',
         name: 'Direct Fire Weapon',
@@ -203,12 +205,39 @@ function directFireWeaponEntry(forceUnit: CBTForceUnit, flags: string[] = []): M
     });
 }
 
+function mediumVspLaserEntry(forceUnit: CBTForceUnit): MountedEquipment {
+    const equipment = new WeaponEquipment({
+        id: 'ISMediumVSPLaser',
+        name: 'Medium VSP Laser',
+        type: 'weapon',
+        flags: ['F_DIRECT_FIRE', 'F_ENERGY', 'F_LASER', 'F_PULSE', 'F_VSP'],
+        stats: { toHitModifier: [-3, -2, -1] },
+        weapon: { damage: [9, 7, 5], ranges: [2, 5, 9, 13], ammoType: 'NA' },
+    });
+    const weapon = new MountedWeapon({
+        owner: forceUnit,
+        id: equipment.id,
+        name: equipment.name,
+        equipment,
+    });
+    return new MountedEquipment({
+        owner: forceUnit,
+        id: `${equipment.id}-critical`,
+        name: equipment.name,
+        equipment,
+        parent: weapon,
+    });
+}
+
 function hagWeaponEntry(forceUnit: CBTForceUnit, mode: string): MountedWeapon {
     const equipment = new WeaponEquipment({
         id: 'CLHAG20',
         name: 'HAG/20',
         type: 'weapon',
-        flags: ['F_HAG', 'F_BALLISTIC', 'F_DIRECT_FIRE', 'F_EXPLOSIVE'],
+        flags: ['F_HAG', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+        stats: {
+            explosive: true
+        },
         weapon: {
             ammoType: 'HAG',
             damage: 'cluster',
@@ -229,7 +258,7 @@ function criticalAutocannonEntry(
     forceUnit: CBTForceUnit,
     ammoType: AmmoType,
     critSlots: CriticalSlot[],
-    flags = ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+    flags: EquipmentFlag[] = ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
 ): MountedEquipment {
     const equipment = new WeaponEquipment({
         id: `Autocannon-${ammoType}`,
@@ -266,6 +295,7 @@ describe('MekRules', () => {
         const registry = TestBed.inject(EquipmentInteractionRegistryService).getRegistry();
         registry.register(new MascHandler());
         registry.register(new HagHandler());
+        registry.register(new VibrobladeHandler());
     });
 
     it('keeps Mek immobile false by default when crew are functional', () => {
@@ -284,14 +314,50 @@ describe('MekRules', () => {
         expect(destroyedForceUnit.rules.computeEntryState(directFireWeaponEntry(destroyedForceUnit, ['F_TASER']))).toEqual(jasmine.objectContaining({ hitMod: 0, isDamaged: false, weakenedHitMod: false }));
     });
 
+    it('stacks a targeting computer with each range-specific VSP laser modifier', () => {
+        const activeForceUnit = createForceUnitHarness({ critSlots: [crit('Targeting Computer', false)] });
+        const destroyedForceUnit = createForceUnitHarness({ critSlots: [crit('Targeting Computer')] });
+        const ranges = [
+            { range: 'short' as const, value: -4 },
+            { range: 'medium' as const, value: -3 },
+            { range: 'long' as const, value: -2 },
+        ];
+
+        const activeEntry = mediumVspLaserEntry(activeForceUnit);
+        const activeState = activeForceUnit.rules.computeEntryState(activeEntry);
+        expect(activeEntry.parent).toBeInstanceOf(MountedWeapon);
+        expect((activeEntry.parent as MountedWeapon).getWeaponTypes()).toContain('P');
+        expect(activeState).toEqual(jasmine.objectContaining({ hitMod: -1, weakenedHitMod: false }));
+        for (const expected of ranges) {
+            expect(activeForceUnit.gameRules.resolveToHit({
+                subject: activeEntry,
+                range: expected.range,
+                stateModifier: activeState.hitMod,
+                stateWeakened: activeState.weakenedHitMod,
+            }).value).withContext(`functional targeting computer at ${expected.range} range`).toBe(expected.value);
+        }
+
+        const destroyedEntry = mediumVspLaserEntry(destroyedForceUnit);
+        const destroyedState = destroyedForceUnit.rules.computeEntryState(destroyedEntry);
+        expect(destroyedState).toEqual(jasmine.objectContaining({ hitMod: 0, weakenedHitMod: true }));
+        const destroyedResolution = destroyedForceUnit.gameRules.resolveToHit({
+            subject: destroyedEntry,
+            range: 'short',
+            stateModifier: destroyedState.hitMod,
+            stateWeakened: destroyedState.weakenedHitMod,
+        });
+        expect(destroyedResolution.value).toBe(-3);
+        expect(destroyedResolution.weakened).toBeTrue();
+    });
+
     it('applies HAG mode and targeting-computer modifiers without stacking them', () => {
         const scenarios = [
-            { label: 'STD without targeting computer', mode: HAG_STANDARD_MODE, targetingComputer: 'none', hitMod: 0, weakened: false, types: ['C', 'DB'] },
-            { label: 'FLAK without targeting computer', mode: HAG_FLAK_MODE, targetingComputer: 'none', hitMod: -1, weakened: false, types: ['C', 'F'] },
-            { label: 'STD with targeting computer', mode: HAG_STANDARD_MODE, targetingComputer: 'functional', hitMod: -1, weakened: false, types: ['C', 'DB'] },
-            { label: 'FLAK with targeting computer', mode: HAG_FLAK_MODE, targetingComputer: 'functional', hitMod: -1, weakened: false, types: ['C', 'F'] },
-            { label: 'STD with broken targeting computer', mode: HAG_STANDARD_MODE, targetingComputer: 'broken', hitMod: 0, weakened: true, types: ['C', 'DB'] },
-            { label: 'FLAK with broken targeting computer', mode: HAG_FLAK_MODE, targetingComputer: 'broken', hitMod: -1, weakened: false, types: ['C', 'F'] },
+            { label: 'STD without targeting computer', mode: HAG_STANDARD_MODE, targetingComputer: 'none', hitMod: 0, weakened: false, types: ['C', 'DB', 'X'] },
+            { label: 'FLAK without targeting computer', mode: HAG_FLAK_MODE, targetingComputer: 'none', hitMod: -1, weakened: false, types: ['C', 'X', 'F'] },
+            { label: 'STD with targeting computer', mode: HAG_STANDARD_MODE, targetingComputer: 'functional', hitMod: -1, weakened: false, types: ['C', 'DB', 'X'] },
+            { label: 'FLAK with targeting computer', mode: HAG_FLAK_MODE, targetingComputer: 'functional', hitMod: -1, weakened: false, types: ['C', 'X', 'F'] },
+            { label: 'STD with broken targeting computer', mode: HAG_STANDARD_MODE, targetingComputer: 'broken', hitMod: 0, weakened: true, types: ['C', 'DB', 'X'] },
+            { label: 'FLAK with broken targeting computer', mode: HAG_FLAK_MODE, targetingComputer: 'broken', hitMod: -1, weakened: false, types: ['C', 'X', 'F'] },
         ] as const;
 
         for (const scenario of scenarios) {
@@ -468,6 +534,64 @@ describe('MekRules', () => {
 
         const twForceUnit = createForceUnitHarness({ rulesId: 'tw' });
         expect((twForceUnit.rules as MekRules).physicalCombat()?.chargeDamage.damage).toBeNull();
+    });
+
+    it('applies TSM to capped inactive vibroblade damage but not fixed active damage', () => {
+        const tsm = miscEquipment('TSM', 'Triple Strength Myomer', ['F_TSM']);
+        const forceUnit = createForceUnitHarness({
+            internalLocations: ['RA'],
+            critSlots: [{ ...crit('Triple Strength Myomer', false), loc: 'RA', eq: tsm }],
+        });
+        forceUnit.getUnit().tons = 100;
+        forceUnit.setHeatData({ current: 9, previous: 9 });
+        const vibroblade = new MountedEquipment({
+            owner: forceUnit,
+            id: 'ISSmallVibroblade',
+            name: 'Vibroblade (Small)',
+            equipment: miscEquipment('ISSmallVibroblade', 'Vibroblade (Small)', ['F_CLUB', 'S_VIBRO_SMALL']),
+            locations: new Set(['RA']),
+        });
+        const display = {
+            name: 'Vibroblade (Small)', location: 'RA', heat: '—', damage: '7', hit: '-2',
+            min: '—', short: '—', medium: '—', long: '—',
+        };
+
+        expect(forceUnit.rules.applyInventoryControlDisplayEffects(vibroblade, display).damage).toBe('14');
+        expect(forceUnit.applyInventoryControlDisplayEffects(vibroblade, display, {
+            selectedRange: null,
+            additionalHitModifier: 0,
+            selectedAmmo: null,
+        }).damage).toBe('14 [7]');
+
+        vibroblade.states.set(VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE);
+        expect(forceUnit.applyInventoryControlDisplayEffects(vibroblade, display, {
+            selectedRange: null,
+            additionalHitModifier: 0,
+            selectedAmmo: null,
+        }).damage).toBe('7');
+    });
+
+    it('shows active vibroblade damage beside inactive damage', () => {
+        const forceUnit = createForceUnitHarness({ internalLocations: ['RA'] });
+        forceUnit.getUnit().tons = 40;
+        const vibroblade = new MountedEquipment({
+            owner: forceUnit,
+            id: 'ISMediumVibroblade',
+            name: 'Vibroblade (Medium)',
+            equipment: miscEquipment('ISMediumVibroblade', 'Vibroblade (Medium)', ['F_CLUB', 'S_VIBRO_MEDIUM']),
+            locations: new Set(['RA']),
+        });
+        const display = {
+            name: 'Vibroblade (Medium)', location: 'RA', heat: '—', damage: '10', hit: '-2',
+            min: '—', short: '—', medium: '—', long: '—',
+        };
+
+        expect(forceUnit.rules.applyInventoryControlDisplayEffects(vibroblade, display).damage).toBe('5');
+        expect(forceUnit.applyInventoryControlDisplayEffects(vibroblade, display, {
+            selectedRange: null,
+            additionalHitModifier: 0,
+            selectedAmmo: null,
+        }).damage).toBe('5 [10]');
     });
 
     it('uses active MASC state for effective Mek run MP without changing potential max run MP', () => {
@@ -867,7 +991,7 @@ describe('MekRules', () => {
     });
 
     it('uses the one-slot threshold when a Core2026 autocannon signature does not match', () => {
-        const cases: { ammoType: AmmoType; flags: string[]; description: string }[] = [
+        const cases: { ammoType: AmmoType; flags: EquipmentFlag[]; description: string }[] = [
             { ammoType: 'AC', flags: ['F_BALLISTIC'], description: 'missing direct-fire flag' },
             { ammoType: 'AC', flags: ['F_DIRECT_FIRE'], description: 'missing ballistic flag' },
             { ammoType: 'NA', flags: ['F_BALLISTIC', 'F_DIRECT_FIRE'], description: 'non-autocannon ammo type' },

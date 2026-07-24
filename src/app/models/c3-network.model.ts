@@ -31,6 +31,7 @@
  * affiliated with Microsoft.
  */
 
+import { EquipmentFlag } from './equipment-flags.type';
 import type { ForceUnit } from './force-unit.model';
 import type { UnitComponent } from './units.model';
 
@@ -134,7 +135,7 @@ export const C3_BOOSTED_FLAGS = [
 /**
  * Network compatibility groups - units can only link within the same group
  */
-export const C3_COMPATIBLE_NETWORKS: { type: C3NetworkType; flags: string[] }[] = [
+export const C3_COMPATIBLE_NETWORKS: { type: C3NetworkType; flags: EquipmentFlag[] }[] = [
     {
         type: C3NetworkType.C3,
         flags: [C3_FLAGS.C3S, C3_FLAGS.C3SBS, C3_FLAGS.C3EM, C3_FLAGS.C3M, C3_FLAGS.C3MBS]
@@ -252,7 +253,7 @@ export const C3_NETWORK_COLORS = [
  */
 export interface ASC3Info {
     /** C3 flag equivalent */
-    flag: string;
+    flag: EquipmentFlag;
     /** Network type */
     networkType: C3NetworkType;
     /** Role (master/slave/peer) */
@@ -267,7 +268,7 @@ export interface ASC3Info {
  * Mapping of Alpha Strike special ability patterns to C3 flags.
  * Pattern uses regex to match the ability string from as.specials.
  */
-const AS_C3_PATTERNS: { pattern: RegExp; flag: string; networkType: C3NetworkType; role: C3Role; boosted: boolean }[] = [
+const AS_C3_PATTERNS: { pattern: RegExp; flag: EquipmentFlag; networkType: C3NetworkType; role: C3Role; boosted: boolean }[] = [
     // C3BSS - Boosted Slave (no count)
     { pattern: /^C3BSS$/, flag: C3_FLAGS.C3SBS, networkType: C3NetworkType.C3, role: C3Role.SLAVE, boosted: true },
     // C3BSM# - Boosted Master with count

@@ -1,21 +1,221 @@
-import { AmmoEquipment, StructureEquipment, WeaponEquipment, createEquipment } from './equipment.model';
 import { MountedWeapon } from './mounted-equipment.model';
 import type { CBTForceUnit } from './cbt-force-unit.model';
 import { MML_LRM_PROFILE } from './ammo-weapon-profile.model';
+import {
+    AmmoEquipment,
+    type AmmoType,
+    Equipment,
+    EquipmentMap,
+    findIntrinsicAmmoForWeapon,
+    isBombEquipment,
+    MiscEquipment,
+    StructureEquipment,
+    WeaponEquipment,
+    createEquipment,
+} from './equipment.model';
+import { getStructureByName, getStructureByTypeId } from './entity/components';
+import { EquipmentFlag } from './equipment-flags.type';
 
-describe('equipment damage types', () => {
-    it('hydrates structure equipment with its structure type', () => {
+describe('equipment model', () => {
+    it('deserializes structure records as StructureEquipment', () => {
         const equipment = createEquipment({
-            id: 'ISEndoSteel',
-            name: 'Endo Steel',
+            id: 'IS Endo-Composite',
+            name: 'Endo-Composite',
             type: 'structure',
-            structure: { type: 'Endo Steel' }
+            structure: { typeId: 6 },
+            tech: { base: 'IS' },
         });
 
         expect(equipment).toBeInstanceOf(StructureEquipment);
-        expect((equipment as StructureEquipment).structure.type).toBe('Endo Steel');
-        expect((equipment as StructureEquipment).structureType).toBe('Endo Steel');
+        expect(equipment.type).toBe('structure');
+        expect((equipment as StructureEquipment).structureTypeId).toBe(6);
+        expect(equipment.techBase).toBe('IS');
     });
+
+    it('preserves exported structure type IDs without interpreting them', () => {
+        const equipment = createEquipment({
+            id: 'Unknown Structure',
+            name: 'Unknown Structure',
+            type: 'structure',
+            structure: { typeId: 99 },
+            tech: { base: 'All' },
+        });
+
+        expect((equipment as StructureEquipment).structureTypeId).toBe(99);
+    });
+
+    it('resolves structure equipment variants by ID or MTF name', () => {
+        const equipmentDb: EquipmentMap = {
+            'IS Endo Steel': createEquipment({
+                id: 'IS Endo Steel', name: 'Endo Steel', type: 'structure',
+                structure: { typeId: 2 }, tech: { base: 'IS' },
+            }),
+            'Clan Endo Steel': createEquipment({
+                id: 'Clan Endo Steel', name: 'Endo Steel', type: 'structure',
+                structure: { typeId: 2 }, tech: { base: 'Clan' },
+            }),
+            Standard: createEquipment({
+                id: 'Standard', name: 'Standard', type: 'structure',
+                structure: { typeId: 0 }, tech: { base: 'All' },
+            }),
+        };
+
+        expect(getStructureByTypeId(2, 'IS', equipmentDb)?.id).toBe('IS Endo Steel');
+        expect(getStructureByName('Endo Steel', 'Clan', equipmentDb)?.id).toBe('Clan Endo Steel');
+        expect(getStructureByTypeId(0, 'Clan', equipmentDb)?.id).toBe('Standard');
+    });
+
+    it('derives intrinsic weapon categories and damage profiles', () => {
+        const srm = weapon('srm-6', 'SRM 6', 'SRM', 'cluster', 6, ['F_MISSILE']);
+        const ultra = weapon('uac-10', 'Ultra AC/10', 'AC_ULTRA', 10, 10, ['F_BALLISTIC']);
+        const variable = weapon('variable', 'Variable Laser', 'NA', [10, 8, 5], 0, ['F_ENERGY']);
+
+        expect(srm.getWeaponCategory()).toBe('missile');
+        expect(srm.getDamageProfile()).toEqual({
+            kind: 'missile-cluster', damagePerMissile: 2, maximum: 12,
+        });
+        expect(ultra.getWeaponCategory()).toBe('ballistic');
+        expect(ultra.getDamageProfile()).toEqual({
+            kind: 'fixed', damage: 10, maximum: 20, perShot: true,
+        });
+        expect(variable.getWeaponCategory()).toBe('energy');
+        expect(variable.getDamageProfile()).toEqual({
+            kind: 'range', damage: [10, 8, 5], maximum: 10,
+        });
+    });
+
+    it('derives optional one-shot counts from weapon flags', () => {
+        const standard = weapon('standard', 'Standard', 'NA', 5, 0, []);
+        const oneShot = weapon('one-shot', 'One-Shot', 'SRM', 'cluster', 2, ['F_ONE_SHOT']);
+        const doubleOneShot = weapon(
+            'double-one-shot', 'Double One-Shot', 'SRM', 'cluster', 2,
+            ['F_ONE_SHOT', 'F_DOUBLE_ONE_SHOT'],
+        );
+
+        expect(standard.oneShotCount).toBeUndefined();
+        expect(oneShot.oneShotCount).toBe(1);
+        expect(doubleOneShot.oneShotCount).toBe(2);
+    });
+
+    it('resolves standard intrinsic ammo for one-shot weapons and derives special damage', () => {
+        const mineLauncher = weapon('mine-launcher', 'Pop-up Mine', 'MINE', 'special', 1, ['F_ONE_SHOT']);
+        const wrongRack = new AmmoEquipment({
+            id: 'wrong-rack', name: 'Wrong Rack', type: 'ammo',
+            ammo: { type: 'MINE', rackSize: 2, damagePerShot: 9, munitionType: ['M_STANDARD'] },
+        });
+        const alternate = new AmmoEquipment({
+            id: 'alternate', name: 'Alternate', type: 'ammo',
+            ammo: { type: 'MINE', rackSize: 1, damagePerShot: 7, munitionType: ['M_INFERNO'] },
+        });
+        const standard = new AmmoEquipment({
+            id: 'standard', name: 'Standard', type: 'ammo',
+            ammo: { type: 'MINE', rackSize: 1, damagePerShot: 4, munitionType: ['M_STANDARD'] },
+        });
+
+        expect(findIntrinsicAmmoForWeapon(mineLauncher, { wrongRack, alternate, standard })).toBe(standard);
+        expect(mineLauncher.getDamageProfile(standard)).toEqual({
+            kind: 'fixed', damage: 4, maximum: 4, perShot: false,
+        });
+        expect(mineLauncher.getDamageProfile()).toEqual({ kind: 'special', maximum: 0 });
+
+        const repeating = weapon('repeating', 'Repeating', 'MINE', 'special', 1, []);
+        expect(findIntrinsicAmmoForWeapon(repeating, { standard })).toBeNull();
+        expect(repeating.getDamageProfile(standard)).toEqual({ kind: 'special', maximum: 0 });
+
+        const noAmmo = weapon('no-ammo', 'No Ammo', 'NA', 'special', 0, ['F_ONE_SHOT']);
+        expect(findIntrinsicAmmoForWeapon(noAmmo, { standard })).toBeNull();
+        expect(noAmmo.getDamageProfile(standard)).toEqual({ kind: 'special', maximum: 0 });
+    });
+
+    it('prefers plain standard intrinsic ammo over modified standard ammunition', () => {
+        const launcher = weapon('launcher', 'Launcher', 'LRM', 'cluster', 5, ['F_ONE_SHOT', 'F_BA_WEAPON']);
+        const conventionalStandard = new AmmoEquipment({
+            id: 'conventional-standard', name: 'Conventional Standard', type: 'ammo',
+            ammo: { type: 'LRM', rackSize: 5, munitionType: ['M_STANDARD'] },
+        });
+        const incendiary = new AmmoEquipment({
+            id: 'incendiary', name: 'Incendiary', type: 'ammo', flags: ['F_BATTLEARMOR'],
+            ammo: { type: 'LRM', rackSize: 5, munitionType: ['M_STANDARD', 'M_INCENDIARY_LRM'] },
+        });
+        const standard = new AmmoEquipment({
+            id: 'standard', name: 'Standard', type: 'ammo', flags: ['F_BATTLEARMOR'],
+            ammo: { type: 'LRM', rackSize: 5, munitionType: ['M_STANDARD'] },
+        });
+
+        expect(findIntrinsicAmmoForWeapon(launcher, { conventionalStandard, incendiary, standard })).toBe(standard);
+    });
+
+    it('exposes intrinsic equipment classifications', () => {
+        const compactHeatSinks = new MiscEquipment({
+            id: '2 Compact Heat Sinks', name: '2 Compact Heat Sinks', type: 'misc',
+            flags: ['F_DOUBLE_HEAT_SINK', 'F_COMPACT_HEAT_SINK'],
+        });
+        const armorKit = new MiscEquipment({
+            id: 'armor-kit', name: 'Armor Kit', type: 'misc', flags: ['F_ARMOR_KIT'],
+        });
+        const internalWeapon = weapon(
+            'internal', 'Internal', 'NA', 0, 0, ['INTERNAL_REPRESENTATION'],
+        );
+
+        expect(compactHeatSinks.isHeatSink).toBeTrue();
+        expect(compactHeatSinks.isCompactHeatSink).toBeTrue();
+        expect(compactHeatSinks.heatSinkUnitsPerMount).toBe(2);
+        expect(armorKit.isArmorKit).toBeTrue();
+        expect(internalWeapon.isInternalRepresentation).toBeTrue();
+    });
+
+    it('identifies physical shields from club and shield-size semantics', () => {
+        const shield = new MiscEquipment({
+            id: 'shield', name: 'Shield', type: 'misc', flags: ['F_CLUB', 'S_SHIELD_MEDIUM'],
+        });
+        const club = new MiscEquipment({
+            id: 'club', name: 'Club', type: 'misc', flags: ['F_CLUB'],
+        });
+        const malformed = new MiscEquipment({
+            id: 'malformed-shield', name: 'Malformed Shield', type: 'misc', flags: ['S_SHIELD_MEDIUM'],
+        });
+
+        expect(shield.isShield).toBeTrue();
+        expect(club.isShield).toBeFalse();
+        expect(malformed.isShield).toBeFalse();
+    });
+
+    it('identifies bomb ammo and bomb weapons without misclassifying carriers or ordinary ordnance', () => {
+        for (const flag of ['F_ALT_BOMB', 'F_DIVE_BOMB', 'F_GROUND_BOMB', 'F_OTHER_BOMB', 'F_SPACE_BOMB'] as const) {
+            const bomb = new AmmoEquipment({
+                id: flag, name: flag, type: 'ammo', flags: [flag], ammo: { type: 'BOMB' },
+            });
+            expect(isBombEquipment(bomb)).withContext(flag).toBeTrue();
+        }
+        const bombWeapon = weapon('bomb-weapon', 'Bomb Weapon', 'BOMB', 10, 1, ['F_BOMB_WEAPON']);
+        const ordinaryAmmo = new AmmoEquipment({
+            id: 'ordinary-ammo', name: 'Ordinary Ammo', type: 'ammo', ammo: { type: 'LRM' },
+        });
+        const bombBay = new MiscEquipment({
+            id: 'bomb-bay', name: 'Bomb Bay', type: 'misc', flags: ['F_BOMB_BAY'],
+        });
+
+        expect(isBombEquipment(bombWeapon)).toBeTrue();
+        expect(isBombEquipment(ordinaryAmmo)).toBeFalse();
+        expect(isBombEquipment(bombBay)).toBeFalse();
+        expect(isBombEquipment(new Equipment({ id: 'plain', name: 'Plain', type: 'misc' }))).toBeFalse();
+    });
+});
+
+function weapon(
+    id: string,
+    name: string,
+    ammoType: AmmoType,
+    damage: string | number | number[],
+    rackSize: number,
+    flags: EquipmentFlag[],
+): WeaponEquipment {
+    return new WeaponEquipment({
+        id, name, type: 'weapon', flags,
+        weapon: { ammoType, damage, rackSize },
+    });
+}
+describe('equipment damage types', () => {
 
     it('derives weapon types from flags and weapon data', () => {
         const weapon = new WeaponEquipment({
@@ -26,7 +226,7 @@ describe('equipment damage types', () => {
             weapon: { ammoType: 'SNIPER_CANNON', damage: 10 }
         });
 
-        expect(weapon.getWeaponTypes()).toEqual(['DB','S']);
+        expect(weapon.getWeaponTypes()).toEqual(['DB', 'F']);
     });
 
     it('derives missile, cluster, and switchable types from an MML weapon', () => {
@@ -38,6 +238,22 @@ describe('equipment damage types', () => {
         });
 
         expect(weapon.getWeaponTypes()).toEqual(['C', 'M', 'S']);
+        expect(weapon.supportsSwitchableAmmo).toBeTrue();
+    });
+
+    it('identifies switchable ammo independently from one-shot status', () => {
+        const oneShotLrm = new WeaponEquipment({
+            id: 'ISBALRM5OS', name: 'LRM 5 (OS)', type: 'weapon', flags: ['F_ONE_SHOT'],
+            weapon: { ammoType: 'LRM', rackSize: 5, damage: 'cluster' },
+        });
+        const mineLauncher = new WeaponEquipment({
+            id: 'BAMineLauncher', name: 'Pop-up Mine', type: 'weapon', flags: ['F_ONE_SHOT'],
+            weapon: { ammoType: 'MINE', rackSize: 1, damage: 'special' },
+        });
+
+        expect(oneShotLrm.supportsSwitchableAmmo).toBeTrue();
+        expect(oneShotLrm.getWeaponTypes()).toEqual(['C', 'M', 'OS', 'S']);
+        expect(mineLauncher.supportsSwitchableAmmo).toBeFalse();
     });
 
     it('caps cluster size at the weapon rack size', () => {
@@ -194,7 +410,7 @@ describe('equipment damage types', () => {
         });
         const mounted = new MountedWeapon({ owner: {} as CBTForceUnit, id: weapon.id, name: weapon.name, equipment: weapon });
 
-        expect(mounted.getWeaponTypes(flak)).toEqual(['AE', 'DB', 'F', 'S']);
+        expect(mounted.getWeaponTypes(flak)).toEqual(['AE', 'DB', 'F']);
     });
 
     it('does not infer mounted weapon types from hidden persisted ammo state', () => {
@@ -217,8 +433,8 @@ describe('equipment damage types', () => {
         } as unknown as CBTForceUnit;
         const mounted = new MountedWeapon({ owner, id: weapon.id, name: weapon.name, equipment: weapon });
 
-        expect(mounted.getWeaponTypes()).toEqual(['DB', 'S']);
-        expect(mounted.getWeaponTypes(flak)).toEqual(['AE', 'DB', 'F', 'S']);
+        expect(mounted.getWeaponTypes()).toEqual(['DB', 'F']);
+        expect(mounted.getWeaponTypes(flak)).toEqual(['AE', 'DB', 'F']);
     });
 
 });

@@ -439,8 +439,8 @@ export class UnitSearchComponent {
             group.units.push(unit);
             if (unit.bv < group.minBV) group.minBV = unit.bv;
             if (unit.bv > group.maxBV) group.maxBV = unit.bv;
-            if (unit.pv < group.minPV) group.minPV = unit.pv;
-            if (unit.pv > group.maxPV) group.maxPV = unit.pv;
+            if (unit.as.PV < group.minPV) group.minPV = unit.as.PV;
+            if (unit.as.PV > group.maxPV) group.maxPV = unit.as.PV;
         }
 
         return Array.from(map.values());

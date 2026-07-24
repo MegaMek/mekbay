@@ -3,7 +3,8 @@ import { TestBed } from '@angular/core/testing';
 import { CBTForce } from '../models/cbt-force.model';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment, type EquipmentMap } from '../models/equipment.model';
-import { MountedEquipment } from '../models/mounted-equipment.model';
+import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
+import { isIntrinsicOneShotAmmoMount } from '../utils/ammo-interaction.util';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { DataService } from './data.service';
 import { CRITICAL_ONLY_INVENTORY_EXCLUDED_EQUIPMENT, UnitInitializerService } from './unit-initializer.service';
@@ -23,7 +24,7 @@ function createEquipment(): EquipmentMap {
     const masc = new MiscEquipment({ id: 'CLMASC', name: 'MASC', type: 'misc', flags: ['F_MASC'] });
     const supercharger = new MiscEquipment({ id: 'Supercharger', name: 'Supercharger', type: 'misc', flags: ['F_MASC', 'S_SUPERCHARGER'] });
     const caseII = new MiscEquipment({ id: 'CLCASEII', name: 'CASE II', type: 'misc', flags: ['F_CASE_II'] });
-    const endoSteel = new StructureEquipment({ id: 'ISEndoSteel', name: 'Endo Steel', type: 'structure', structure: { type: 'Endo Steel' } });
+    const endoSteel = new StructureEquipment({ id: 'ISEndoSteel', name: 'Endo Steel', type: 'structure', flags: ['F_ENDO_STEEL'], structure: { typeId: 2 } });
     const ferroFibrous = new ArmorEquipment({ id: 'ISFerroFibrous', name: 'Ferro-Fibrous', type: 'armor', armor: { type: 'Ferro-Fibrous' } });
     const hardenedArmor = new ArmorEquipment({ id: 'HardenedArmor', name: 'Hardened Armor', type: 'armor', armor: { type: 'Hardened' } });
     const doubleHeatSink = new MiscEquipment({ id: 'ISDoubleHeatSink', name: 'Double Heat Sink', type: 'misc', flags: ['F_DOUBLE_HEAT_SINK'] });
@@ -63,12 +64,11 @@ describe('UnitInitializerService', () => {
         CRITICAL_ONLY_INVENTORY_EXCLUDED_EQUIPMENT.clear();
     });
 
-    function createForceUnit(): CBTForceUnit {
-        const unit = createEmptyUnit({
+    function createForceUnit(unit = createEmptyUnit({
             name: 'BMTest_MASC-1',
             type: 'Mek',
             subtype: 'BattleMek',
-        });
+        })): CBTForceUnit {
         const force = new TestCBTForce('Test Force', dataService, service, injector);
         return new CBTForceUnit(unit, force, dataService, service, injector);
     }
@@ -165,5 +165,105 @@ describe('UnitInitializerService', () => {
 
         expect(forceUnit.getCritSlots().filter(entry => entry.id === 'CLUltraAC20Ammo@LT#7').length).toBe(1);
         expect(forceUnit.getInventory().some(entry => entry.id === 'CLUltraAC20Ammo@LT#7')).toBeFalse();
+    });
+
+    it('materializes compatible intrinsic one-shot ammo while initializing weapon mounts', () => {
+        const equipment = createEquipment();
+        const weapon = new WeaponEquipment({
+            id: 'ISBALRM5OS', name: 'LRM 5 (OS)', type: 'weapon', flags: ['F_ONE_SHOT', 'F_MISSILE', 'F_LRM', 'F_BA_WEAPON'],
+            weapon: { ammoType: 'LRM', rackSize: 5, damage: 'cluster' },
+        });
+        const standard = new AmmoEquipment({
+            id: 'IS BA Ammo LRM-5', name: 'BA LRM 5 Ammo', type: 'ammo', flags: ['F_BATTLEARMOR'],
+            ammo: { type: 'LRM', rackSize: 5, munitionType: ['M_STANDARD'] },
+        });
+        const incendiary = new AmmoEquipment({
+            id: 'IS BA Ammo LRM-5 w/ Incendiary', name: 'BA LRM 5 Incendiary Ammo', type: 'ammo', flags: ['F_BATTLEARMOR'],
+            ammo: { type: 'LRM', rackSize: 5, munitionType: ['M_STANDARD', 'M_INCENDIARY_LRM'] },
+        });
+        dataService.getEquipments.and.returnValue({
+            ...equipment,
+            [weapon.internalName]: weapon,
+            [standard.internalName]: standard,
+            [incendiary.internalName]: incendiary,
+        });
+        const forceUnit = createForceUnit();
+        const svg = createSvg(`
+            <g class="inventoryEntry" id="ISBALRM5OS@RA#0">
+                <g class="location"><text>RA</text></g>
+            </g>
+        `);
+
+        service.initializeUnitIfNeeded(forceUnit, svg);
+
+        const mountedWeapon = forceUnit.getInventory()
+            .find(entry => entry.id === 'ISBALRM5OS@RA#0');
+        const intrinsicAmmo = forceUnit.getInventory()
+            .find(isIntrinsicOneShotAmmoMount);
+
+        expect(mountedWeapon).toBeInstanceOf(MountedWeapon);
+        expect(intrinsicAmmo).toBeDefined();
+        expect(intrinsicAmmo?.parent).toBe(mountedWeapon);
+        expect(mountedWeapon?.linkedWith).toEqual([intrinsicAmmo!]);
+        expect(intrinsicAmmo?.totalAmmo).toBe(1);
+    });
+
+    it('materializes one Battle Armor weapon mount per trooper during initialization', () => {
+        const equipment = createEquipment();
+        const taser = new WeaponEquipment({
+            id: 'ISBATaser', name: 'BA Taser', type: 'weapon', flags: ['F_BA_WEAPON'],
+            weapon: { ammoType: 'TASER', damage: 1 },
+        });
+        dataService.getEquipments.and.returnValue({ ...equipment, [taser.internalName]: taser });
+        const forceUnit = createForceUnit(createEmptyUnit({
+            name: 'BATaserSquad', type: 'Infantry', subtype: 'Battle Armor',
+            comp: [
+                { id: taser.internalName, n: taser.name, t: 'E', q: 1, p: 1, l: 'T1' },
+                { id: taser.internalName, n: taser.name, t: 'E', q: 1, p: 2, l: 'T2' },
+                { id: taser.internalName, n: taser.name, t: 'E', q: 1, p: 3, l: 'T3' },
+            ],
+        }));
+        const svg = createSvg(`
+            <g class="inventoryEntry" id="ISBATaser@Squad#0">
+                <g class="location"><text>Squad</text></g>
+            </g>
+        `);
+
+        service.initializeUnitIfNeeded(forceUnit, svg);
+
+        const mounts = forceUnit.getInventory();
+        expect(mounts.map(entry => entry.id)).toEqual([
+            'ISBATaser@Squad#0:T1',
+            'ISBATaser@Squad#0:T2',
+            'ISBATaser@Squad#0:T3',
+        ]);
+        expect(mounts.every(entry => entry instanceof MountedWeapon)).toBeTrue();
+        expect(mounts.map(entry => Array.from(entry.locations ?? []))).toEqual([['T1'], ['T2'], ['T3']]);
+        expect(mounts.every(entry => entry.el === undefined)).toBeTrue();
+    });
+
+    it('materializes Battle Armor energy weapons per trooper with canonical locations', () => {
+        const equipment = createEquipment();
+        const laser = new WeaponEquipment({
+            id: 'CLBAERMicroLaser', name: 'BA ER Micro Laser', type: 'weapon', flags: ['F_BA_WEAPON', 'F_ENERGY'],
+            weapon: { ammoType: 'NA', damage: 1 },
+        });
+        dataService.getEquipments.and.returnValue({ ...equipment, [laser.internalName]: laser });
+        const forceUnit = createForceUnit(createEmptyUnit({
+            name: 'BALaserSquad', type: 'Infantry', subtype: 'Battle Armor',
+            comp: [
+                { id: laser.internalName, n: laser.name, t: 'E', q: 1, p: 1, l: 'Trooper 1' },
+                { id: laser.internalName, n: laser.name, t: 'E', q: 1, p: 2, l: 'T2' },
+            ],
+        }));
+        const svg = createSvg('<g class="inventoryEntry" id="CLBAERMicroLaser@Squad#0"><g class="location"><text>Squad</text></g></g>');
+
+        service.initializeUnitIfNeeded(forceUnit, svg);
+
+        expect(forceUnit.getInventory().map(entry => entry.id)).toEqual([
+            'CLBAERMicroLaser@Squad#0:T1',
+            'CLBAERMicroLaser@Squad#0:T2',
+        ]);
+        expect(forceUnit.getInventory().map(entry => Array.from(entry.locations ?? []))).toEqual([['T1'], ['T2']]);
     });
 });

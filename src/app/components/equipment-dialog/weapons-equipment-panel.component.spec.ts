@@ -4,7 +4,7 @@ import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment, WeaponEquipment, MiscEquipment, type AmmoType, type EquipmentMap } from '../../models/equipment.model';
 import { INVENTORY_CONTROL_TARGET_COLORS } from '../../models/inventory-control-runtime-state.model';
 import type { UnitModifierBreakdownEntry } from '../../models/rules/unit-type-rules';
-import { MountedEquipment } from '../../models/mounted-equipment.model';
+import { MountedAmmo, MountedEquipment } from '../../models/mounted-equipment.model';
 import { type CriticalSlot } from '../../models/force-serialization';
 import { InventoryModeHandler } from '../../equipment-handlers/inventory-mode.handler';
 import { BAPHandler } from '../../equipment-handlers/bap.handler';
@@ -23,9 +23,12 @@ import type { MotiveModes } from '../../models/motiveModes.model';
 import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from '../../models/rules/unit-type-rules';
 import { TW_GAME_RULES, type CBTGameRules } from '../../models/rules/game-rules';
 import { createCBTForceUnitTestHarness, type CBTForceUnitTestEntryState, type TestUnitOverrides } from '../../testing/unit-test-helpers';
+import { getVibrobladeMode, VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE, VibrobladeHandler } from '../../equipment-handlers/vibroblade.handler';
+import { EquipmentFlag } from '../../models/equipment-flags.type';
+import { AmmoMunitionFlag } from '../../models/ammo-munition-flags.type';
 
 function weapon(id: string, ammoType: Extract<AmmoType, 'NA' | 'AC' | 'ATM' | 'MML' | 'MRM' | 'AC_ULTRA' | 'NARC'> = 'NA', rackSize = 0, ranges: number[] = [1, 2, 3, 4], toHitModifier = 0, heat = 0): WeaponEquipment {
-    const flags = ammoType === 'MRM'
+    const flags: EquipmentFlag[] = ammoType === 'MRM'
         ? ['F_MRM']
         : ammoType === 'MML'
             ? ['F_MISSILE', 'F_MML']
@@ -42,7 +45,7 @@ function weapon(id: string, ammoType: Extract<AmmoType, 'NA' | 'AC' | 'ATM' | 'M
     });
 }
 
-function ammo(id: string, ammoType: 'AC' | 'ATM' | 'MML' | 'NARC', rackSize: number, munitionType: string[] = [], flags: string[] = [], toHitModifier = 0): AmmoEquipment {
+function ammo(id: string, ammoType: 'AC' | 'ATM' | 'MML' | 'NARC', rackSize: number, munitionType: AmmoMunitionFlag[] = [], flags: EquipmentFlag[] = [], toHitModifier = 0): AmmoEquipment {
     return new AmmoEquipment({
         id,
         name: id,
@@ -54,7 +57,7 @@ function ammo(id: string, ammoType: 'AC' | 'ATM' | 'MML' | 'NARC', rackSize: num
     });
 }
 
-function misc(id: string, flags: string[] = []): MiscEquipment {
+function misc(id: string, flags: EquipmentFlag[] = []): MiscEquipment {
     return new MiscEquipment({ id, name: id, type: 'misc', flags });
 }
 
@@ -190,8 +193,8 @@ function createComponent(
         .setInventoryControlRules({
             ...equipmentRules,
             applyDisplayEffects: (entry, display, displayOptions) => {
-                const equipmentDisplay = equipmentRules.applyDisplayEffects?.(entry, display, displayOptions) ?? display;
-                return unit.rules.applyInventoryControlDisplayEffects(entry, equipmentDisplay);
+                const unitDisplay = unit.rules.applyInventoryControlDisplayEffects(entry, display);
+                return equipmentRules.applyDisplayEffects?.(entry, unitDisplay, displayOptions) ?? unitDisplay;
             }
         });
 
@@ -232,6 +235,42 @@ describe('WeaponsEquipmentPanelComponent', () => {
         fixture.detectChanges();
 
         expect(damageCell().textContent?.trim()).toBe('8 [12]');
+    });
+
+    it('shows vibroblade OFF and ON heat and damage', () => {
+        const vibroblade = misc('Vibroblade (Medium)', ['F_CLUB', 'S_VIBRO_MEDIUM']);
+        const vibrobladeEntry = entry({
+            id: 'vibroblade',
+            equipment: vibroblade,
+            locations: new Set(['RA']),
+            el: svgEntry('<g><g class="name"><text>Vibroblade (Medium)</text></g><g class="damage"><text>10</text></g><text class="location">RA</text></g>')
+        });
+        const { fixture, unitHarness } = createComponent(
+            [vibrobladeEntry],
+            { [vibroblade.internalName]: vibroblade },
+            [],
+            new Map(),
+            {
+                unit: { tons: 40 },
+                handlers: [new VibrobladeHandler()],
+                applyUnitDisplayEffects: (candidate, display) => ({
+                    ...display,
+                    damage: getVibrobladeMode(candidate) === VIBROBLADE_ON_MODE ? '10' : '5'
+                })
+            }
+        );
+        const heatCell = () => fixture.nativeElement.querySelector('.heat-cell') as HTMLElement;
+        const damageCell = () => fixture.nativeElement.querySelector('.damage-cell') as HTMLElement;
+
+        fixture.detectChanges();
+        expect(heatCell().textContent?.trim()).toBe('[5]');
+        expect(damageCell().textContent?.trim()).toBe('5 [10]');
+
+        vibrobladeEntry.setState(VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE);
+        vibrobladeEntry.owner.inventoryControl.markInventoryViewChanged();
+        fixture.detectChanges();
+        expect(heatCell().textContent?.trim()).toBe('5');
+        expect(damageCell().textContent?.trim()).toBe('10');
     });
 
     it('groups ranged, physical, equipment, and destroyed entries', () => {
@@ -315,12 +354,12 @@ describe('WeaponsEquipmentPanelComponent', () => {
         narc.flags.add('F_BA_WEAPON');
         const narcAmmo = ammo('BA-Compact Narc Ammo', 'NARC', 4);
         const trooperLabels = [1, 2, 3, 4].map(trooper => `Trooper ${trooper}`);
-        const narcEntry = entry({
-            id: 'CLBACompactNarc@Squad#0',
+        const narcEntryId = 'CLBACompactNarc@Squad#0';
+        const narcEntries = trooperLabels.map(location => entry({
+            id: `${narcEntryId}:${location}`,
             equipment: narc,
-            locations: new Set(trooperLabels),
-            el: svgEntry('<g><g class="name"><text>Narc (Compact)</text></g><text class="location">Trooper 1/Trooper 2/Trooper 3/Trooper 4</text></g>')
-        });
+            locations: new Set([location]),
+        }));
         const ammoEntries = trooperLabels.map((location, index) => entry({
             id: `BA-Compact Narc Ammo@${location}#${index}.0`,
             equipment: narcAmmo,
@@ -329,7 +368,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
             consumed: 0,
         }));
         const { unit } = createCBTForceUnitTestHarness({
-            components: [narcEntry, ...ammoEntries],
+            components: [...narcEntries, ...ammoEntries],
             unit: {
                 subtype: 'Battle Armor',
                 squads: 1,
@@ -355,7 +394,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         const rangedRows = getInventoryControlGroups(unit, { [narcAmmo.internalName]: narcAmmo })
             .find(group => group.id === 'ranged')!.rows;
 
-        expect(rangedRows.map(row => row.id)).toEqual(trooperLabels.map(location => `${narcEntry.id}:${location}`));
+        expect(rangedRows.map(row => row.id)).toEqual(trooperLabels.map(location => `${narcEntryId}:${location}`));
         expect(rangedRows.map(row => row.display.location)).toEqual(['T1', 'T2', 'T3', 'T4']);
         expect(rangedRows.map(row => row.entry.id)).toEqual(rangedRows.map(row => row.id));
         expect(rangedRows.map(row => row.destroyed)).toEqual([true, false, false, false]);
@@ -688,7 +727,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         expect(capacitor.states.get(PPC_CAPACITOR_STATE_KEY)).toBe('charged');
         expect(row.display.heat).toBe('10');
-        expect(row.display.damage).toBe('10 [DE]');
+        expect(row.display.damage).toBe('10 [DE,X]');
         expect(component.handlerChoices(row)[0]).toEqual(jasmine.objectContaining({
             shortLabel: 'Charged!',
             active: true,
@@ -976,7 +1015,11 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(targetState.hitText).toBe('-4');
     });
 
-    it('tracks built-in one-shot weapon shots through consumed inventory state', async () => {
+    it('tracks materialized one-shot weapon ammo through the parent inventory state', async () => {
+        const rocketAmmo = new AmmoEquipment({
+            id: 'RL20 Ammo', name: 'Rocket Launcher 20 Ammo', type: 'ammo',
+            ammo: { type: 'ROCKET_LAUNCHER', rackSize: 20, shots: 1, munitionType: ['M_STANDARD'] },
+        });
         const rocket = entry({
             id: 'rocket',
             equipment: new WeaponEquipment({
@@ -988,7 +1031,18 @@ describe('WeaponsEquipmentPanelComponent', () => {
             }),
             el: svgEntry('<g><g class="name"><text>Rocket Launcher 20</text></g><text class="heat">5</text><text class="range_short">3</text><text class="range_medium">7</text><text class="range_long">12</text></g>')
         });
-        const { component, fixture } = createComponent([rocket]);
+        const { component, fixture, unit } = createComponent([rocket], { [rocketAmmo.internalName]: rocketAmmo });
+        const intrinsicAmmo = new MountedAmmo({
+            owner: unit,
+            id: `${rocket.id}:intrinsic-one-shot-ammo`,
+            name: rocketAmmo.internalName,
+            equipment: rocketAmmo,
+            parent: rocket,
+            totalAmmo: 1,
+            intrinsicOneShotAmmo: true,
+        });
+        rocket.linkedWith = [intrinsicAmmo];
+        unit.setInventoryEntry(intrinsicAmmo);
         let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
         expect(row.tracksAmmo).toBeTrue();
@@ -1000,26 +1054,23 @@ describe('WeaponsEquipmentPanelComponent', () => {
         await component.consumeSelectedHeatAndAmmo();
 
         expect(rocket.consumed).toBe(1);
+        expect(intrinsicAmmo.consumed).toBe(1);
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         expect(row.ammo.remaining).toBe(0);
-        expect(component.ammoState(row).hasAmmo).toBeTrue();
+        expect(component.ammoState(row).hasAmmo).toBeFalse();
         expect(component.ammoState(row).canDecrease).toBeFalse();
-        expect(component.ammoState(row).canIncrease).toBeTrue();
+        expect(component.ammoState(row).canIncrease).toBeFalse();
         fixture.detectChanges();
         const depletedButtons = Array.from(fixture.nativeElement.querySelectorAll('.ammo-stepper-button')) as HTMLButtonElement[];
-        expect(depletedButtons.length).toBe(2);
-        expect(depletedButtons[0].disabled).toBeTrue();
-        expect(depletedButtons[1].disabled).toBeFalse();
-
-        component.adjustAmmo(row, -1);
-
-        expect(rocket.consumed).toBeUndefined();
-        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
-        expect(row.ammo.remaining).toBe(1);
+        expect(depletedButtons).toHaveSize(0);
     });
 
-    it('stores built-in one-shot consumption on the owning critical slot when present', () => {
+    it('stores materialized one-shot consumption on the owning critical slot when present', () => {
         const critSlot: CriticalSlot = { id: 'RL20@RT#0', loc: 'RT', slot: 0 };
+        const rocketAmmo = new AmmoEquipment({
+            id: 'RL20 Ammo', name: 'Rocket Launcher 20 Ammo', type: 'ammo',
+            ammo: { type: 'ROCKET_LAUNCHER', rackSize: 20, shots: 1, munitionType: ['M_STANDARD'] },
+        });
         const rocket = entry({
             id: 'rocket',
             critSlots: [critSlot],
@@ -1032,12 +1083,24 @@ describe('WeaponsEquipmentPanelComponent', () => {
             }),
             el: svgEntry('<g><g class="name"><text>Rocket Launcher 20</text></g><text class="heat">5</text><text class="range_short">3</text><text class="range_medium">7</text><text class="range_long">12</text></g>')
         });
-        const { component, unit } = createComponent([rocket]);
+        const { component, unit } = createComponent([rocket], { [rocketAmmo.internalName]: rocketAmmo });
+        const intrinsicAmmo = new MountedAmmo({
+            owner: unit,
+            id: `${rocket.id}:intrinsic-one-shot-ammo`,
+            name: rocketAmmo.internalName,
+            equipment: rocketAmmo,
+            parent: rocket,
+            totalAmmo: 1,
+            intrinsicOneShotAmmo: true,
+        });
+        rocket.linkedWith = [intrinsicAmmo];
+        unit.setInventoryEntry(intrinsicAmmo);
         const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
 
         component.adjustAmmo(row, 1);
 
         expect(critSlot.consumed).toBe(1);
+        expect(intrinsicAmmo.consumed).toBe(1);
         expect(unit.setCritSlot).toHaveBeenCalledWith(critSlot);
         expect(rocket.consumed).toBeUndefined();
     });
@@ -1679,7 +1742,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
     it('keeps the implicit ammo bin selected during stepper adjustments and does not switch to a different ammo type when depleted', () => {
         const standardAmmo = ammo('LRM 15 Ammo', 'MML', 15);
-        const artemisAmmo = ammo('LRM 15 Artemis V Ammo', 'MML', 15, ['M_ARTEMIS_V']);
+        const artemisAmmo = ammo('LRM 15 Artemis V Ammo', 'MML', 15, ['M_ARTEMIS_V_CAPABLE']);
         const lrm = entry({
             id: 'lrm',
             equipment: weapon('LRM 15', 'MML', 15),

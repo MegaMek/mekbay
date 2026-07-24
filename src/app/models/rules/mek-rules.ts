@@ -41,6 +41,16 @@ import type { TurnState } from '../turn-state.model';
 import { type HeatScaleEntry, HeatManagement, getHeatEffects } from './heat-management';
 import type { MotiveModes } from '../motiveModes.model';
 import { getDefaultAttackerMovementModifier, TN_PRONE, TN_PRONE_ADJACENT, TN_PRONE_ATTACKER } from '../target-number-calculator.model';
+import {
+    getMekLegLocations,
+    getMekLimbLocations,
+    inferMekConfigFromLocations,
+    isMekLegLocation,
+    LEG_LOCATIONS,
+    QUAD_LEG_LOCATIONS,
+} from '../entity/types';
+
+export { LEG_LOCATIONS } from '../entity/types';
 import type { InventoryControlDisplayData } from '../../utils/inventory-control.util';
 import { WeaponEquipment } from '../equipment.model';
 
@@ -48,16 +58,11 @@ type ArmLocation = 'LA' | 'RA';
 
 const SIDE_TORSO_LOCATIONS = new Set(['LT', 'RT']);
 export const TORSO_LOCATIONS = new Set(['CT', 'LT', 'RT']);
-export const BIPED_LEGS = new Set(['LL', 'RL']);
-export const TRIPOD_LEGS = new Set(['LL', 'CL', 'RL']);
-export const QUAD_LEGS = new Set(['RLL', 'FLL', 'RRL', 'FRL']);
 const LIMB_LOCATIONS = new Set(['LA', 'RA', 'LL', 'RL', 'CL', 'RLL', 'FLL', 'RRL', 'FRL']);
 export const LINKED_LOCATIONS: { [key: string]: string[] } = {
     'RT': ['RA', 'FRL'],
     'LT': ['LA', 'FLL'],
 };
-export const LEG_LOCATIONS = new Set(['LL', 'RL', 'CL', 'FRL', 'FLL', 'RRL', 'RLL']);
-export const FOUR_LEGGED_LOCATIONS = new Set(['FRL', 'FLL', 'RRL', 'RLL']);
 
 export const MEK_UNIT_CONDITION_CONTROLS: readonly UnitConditionControl[] = unitConditionControls(['shutdown', 'prone', 'swarmed', 'tagged', 'skidding', 'jammed']);
 export const MEK_CREW_STATE_CONTROLS: readonly CrewStateControlDefinition[] = crewStateDefinitions(['unconscious', 'ejected']) as readonly CrewStateControlDefinition[];
@@ -176,18 +181,9 @@ export class MekRules extends UnitTypeRulesBase {
         const internalLocations = this.unit.locations?.internal;
         if (!internalLocations) return false;
 
-        const limbLocations = this.mekLimbsLocations(internalLocations);
+        const config = inferMekConfigFromLocations(internalLocations.keys());
+        const limbLocations = getMekLimbLocations(config);
         return limbLocations.every(loc => !internalLocations.has(loc) || this.unit.isInternalLocCommittedDestroyed(loc));
-    }
-
-    private mekLimbsLocations(internalLocations: Map<string, unknown>): readonly string[] {
-        if (Array.from(FOUR_LEGGED_LOCATIONS).some(loc => internalLocations.has(loc))) {
-            return ['RLL', 'FLL', 'RRL', 'FRL'];
-        }
-        if (internalLocations.has('CL')) {
-            return ['LL', 'RL', 'CL', 'LA', 'RA'];
-        }
-        return ['LL', 'RL', 'LA', 'RA'];
     }
 
     private allSensorsDestroyedOrDestroying(): boolean {
@@ -423,7 +419,7 @@ export class MekRules extends UnitTypeRulesBase {
         });
 
         const internalLocations = this.systemsStatus().internalLocations;
-        const isQuadruped = Array.from(FOUR_LEGGED_LOCATIONS).some(loc => internalLocations.has(loc));
+        const isQuadruped = QUAD_LEG_LOCATIONS.some(loc => internalLocations.has(loc));
         const destroyedLegsCount = this.systemsStatus().destroyedLegsCount;
         const damagedLegRequiresCheck = this.damagedLegRequiresMovementCheck(isQuadruped, destroyedLegsCount);
 
@@ -857,26 +853,24 @@ export class MekRules extends UnitTypeRulesBase {
         let preExisting = 0;
         const modifiers: PSRCheck[] = [];
 
-        let isFourLegged = false;
+        const internalLocations = this.unit.locations?.internal;
+        const config = inferMekConfigFromLocations(internalLocations?.keys() ?? []);
         let undamagedLegs = true;
         // Calculate pre-existing leg destruction modifiers. If a leg is gone, is gone.
-        this.unit.locations?.internal?.forEach((_value, loc) => {
-            if (!LEG_LOCATIONS.has(loc)) return; // Only consider leg locations
-            if (!isFourLegged && FOUR_LEGGED_LOCATIONS.has(loc)) {
-                isFourLegged = true;
-            }
+        for (const loc of getMekLegLocations(config)) {
+            if (!internalLocations?.has(loc)) continue;
             if (this.unit.isInternalLocDestroyed(loc)) {
                 undamagedLegs = false;
                 ignoreLeg.add(loc); // Track destroyed legs, we ignore further modifiers on that leg
-                const modifier = this.destroyedLegPSR(isFourLegged).pilotCheck;
+                const modifier = this.destroyedLegPSR(config === 'Quad').pilotCheck;
                 preExisting += modifier;
                 modifiers.push({
                     pilotCheck: modifier,
                     reason: 'Leg Destroyed'
                 });
             }
-        });
-        if (isFourLegged && undamagedLegs) {
+        }
+        if (config === 'Quad' && undamagedLegs) {
             preExisting -= 2; // Four-legged unit with all legs intact gets -2 modifier
             modifiers.push({
                 pilotCheck: -2,
@@ -1100,8 +1094,7 @@ export class MekRules extends UnitTypeRulesBase {
     }
 
     private isQuadrupedMek(): boolean {
-        return Array.from(FOUR_LEGGED_LOCATIONS)
-            .some(loc => this.unit.locations?.internal?.has(loc));
+        return QUAD_LEG_LOCATIONS.some(loc => this.unit.locations?.internal?.has(loc));
     }
 
     private canUseCommandConsole(): boolean {
@@ -1140,15 +1133,15 @@ export class MekRules extends UnitTypeRulesBase {
             const isTripod = subtype.startsWith('Tripod');
             const isQuad = subtype.startsWith('Quad');
             if (isTripod || isQuad) {
-                const legLocations = isTripod ? TRIPOD_LEGS : QUAD_LEGS;
+                const config = isTripod ? 'Tripod' : 'Quad';
                 let proneModifier = isTripod ? 1 : 0;
-                for (const loc of legLocations) {
+                for (const loc of getMekLegLocations(config)) {
                     if (!this.unit.locations?.internal?.has(loc) || this.unit.isInternalLocCommittedDestroyed(loc)) {
                         proneModifier = TN_PRONE_ATTACKER;
                     }
                 }
                 const hasCommittedHipHit = this.unit.getCritSlots().some(slot => {
-                    if (!slot.loc || !legLocations.has(slot.loc)) return false;
+                    if (!slot.loc || !isMekLegLocation(config, slot.loc)) return false;
                     if (!this.isNamedCrit(slot, 'Hip')) return false;
                     return this.isCritUnavailable(slot);
                 });
@@ -1528,8 +1521,31 @@ export class MekRules extends UnitTypeRulesBase {
         }
         const baseDamage = Number.parseInt(display.damage, 10);
         if (!attackType || !Number.isFinite(baseDamage)) return display;
-        const { damage, maxDamage } = this.computeMeleeDamage(baseDamage, attackType, location, ignoreMyomer);
-        return { ...display, damage: damage === maxDamage ? `${damage}` : `${damage} [${maxDamage}]` };
+        return { ...display, damage: this.resolveMeleeDamageDisplay(entry, baseDamage, attackType, location, ignoreMyomer).text };
+    }
+
+    resolveMeleeDamageDisplay(
+        entry: MountedEquipment,
+        baseDamage: number,
+        attackType: 'punch' | 'kick' | 'club' | 'physWeapon',
+        location?: string,
+        ignoreMyomer = false,
+    ): { damage: number; text: string; weakened: boolean } {
+        const effect = this.unit.getInventoryControlRules().applyPhysicalDamageEffects?.(entry, {
+            baseDamage,
+            ignoreMyomer,
+        }) ?? { baseDamage, ignoreMyomer };
+        const { damage, maxDamage } = this.computeMeleeDamage(
+            effect.baseDamage,
+            attackType,
+            location,
+            effect.ignoreMyomer,
+        );
+        return {
+            damage,
+            text: damage === maxDamage ? `${damage}` : `${damage} [${maxDamage}]`,
+            weakened: damage < effect.baseDamage,
+        };
     }
 
     // ── Fire Control State ───────────────────────────────────────────────────

@@ -1,3 +1,4 @@
+import { EquipmentFlag } from '../models/equipment-flags.type';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { TurnState } from '../models/turn-state.model';
 import { isEquipmentDisabledByFailure } from './disabled-equipment.handler';
@@ -18,7 +19,7 @@ function canUseMascMovementBonus(equipment: MountedEquipment, turnState: TurnSta
 
 export class MascHandler extends EscalatingFailureHandler {
     override readonly id = MASC_HANDLER_ID;
-    override readonly flags = ['F_MASC'];
+    override readonly flags: EquipmentFlag[] = ['F_MASC'];
     override readonly priority = 10;
 
     static isActive(equipment: MountedEquipment): boolean {

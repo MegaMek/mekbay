@@ -1,3 +1,6 @@
+import { AmmoMunitionFlag } from "./ammo-munition-flags.type";
+import { EquipmentFlag } from "./equipment-flags.type";
+
 export type AmmoWeaponProfileId =
     | 'mml-lrm'
     | 'mml-srm'
@@ -18,8 +21,8 @@ interface AmmoProfileSource {
     readonly ammoType: string;
     readonly name: string;
     readonly shortName: string;
-    hasFlag(flag: string): boolean;
-    hasMunitionType(type: string): boolean;
+    hasFlag(equipmentFlag: EquipmentFlag): boolean;
+    hasMunitionType(ammoMunitionFlag: AmmoMunitionFlag): boolean;
 }
 
 export const MML_LRM_PROFILE: AmmoWeaponProfile = {

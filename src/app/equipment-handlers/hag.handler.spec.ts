@@ -23,7 +23,8 @@ function hag(mode?: string): MountedWeapon {
             id: 'CLHAG20',
             name: 'HAG/20',
             type: 'weapon',
-            flags: ['F_HAG', 'F_BALLISTIC', 'F_DIRECT_FIRE', 'F_EXPLOSIVE'],
+            flags: ['F_HAG', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+            stats: { explosive: true },
             weapon: {
                 ammoType: 'HAG',
                 damage: 'cluster',

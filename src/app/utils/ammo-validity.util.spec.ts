@@ -1,7 +1,10 @@
 import { AmmoEquipment, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
+import type { WireSplitTechDates } from '../models/equipment-tech-codec';
 import type { Era } from '../models/eras.model';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { AmmoValidityUtil } from './ammo-validity.util';
+import { EquipmentFlag } from '../models/equipment-flags.type';
+import { AmmoMunitionFlag } from '../models/ammo-munition-flags.type';
 
 function createEra(from: number | undefined, to: number | undefined): Era {
     return {
@@ -13,7 +16,7 @@ function createEra(from: number | undefined, to: number | undefined): Era {
     };
 }
 
-function createAmmo(id: string, advancement: AmmoEquipment['tech']['advancement']): AmmoEquipment {
+function createAmmo(id: string, advancement: WireSplitTechDates): AmmoEquipment {
     return new AmmoEquipment({
         id,
         name: id,
@@ -26,7 +29,7 @@ function createAmmo(id: string, advancement: AmmoEquipment['tech']['advancement'
     });
 }
 
-function createSrmAmmo(id: string, munitionType: string[] = []): AmmoEquipment {
+function createSrmAmmo(id: string, munitionType: AmmoMunitionFlag[] = []): AmmoEquipment {
     return new AmmoEquipment({
         id,
         name: id,
@@ -36,7 +39,7 @@ function createSrmAmmo(id: string, munitionType: string[] = []): AmmoEquipment {
     });
 }
 
-function createSrmWeapon(flags: string[] = ['F_ARTEMIS_COMPATIBLE']): WeaponEquipment {
+function createSrmWeapon(flags: EquipmentFlag[] = ['F_ARTEMIS_COMPATIBLE']): WeaponEquipment {
     return new WeaponEquipment({
         id: 'ISSRM4',
         name: 'SRM 4',
@@ -46,7 +49,7 @@ function createSrmWeapon(flags: string[] = ['F_ARTEMIS_COMPATIBLE']): WeaponEqui
     });
 }
 
-function createArtemis(flags: string[] = ['F_ARTEMIS']): MiscEquipment {
+function createArtemis(flags: EquipmentFlag[] = ['F_ARTEMIS']): MiscEquipment {
     return new MiscEquipment({
         id: flags.includes('F_ARTEMIS_V') ? 'ISArtemisV' : 'ISArtemisIV',
         name: flags.includes('F_ARTEMIS_V') ? 'Artemis V FCS' : 'Artemis IV FCS',
@@ -86,7 +89,11 @@ describe('AmmoValidityUtil', () => {
 
     it('marks ammo with a selection issue while every advancement branch is extinct for the selected era', () => {
         const ammo = createAmmo('Extinct Ammo', {
-            is: { prototype: '~2375', production: '2377', common: '3058', extinct: '2790', reintroduced: '3054' },
+            is: { prototype: '~2375'
+                , production: '2377'
+                , common: '3058'
+                , extinct: '2790'
+                , reintroduced: '3054' },
         });
 
         expect(issueReasons(ammo, { era: createEra(3025, 3049) })).toEqual(['extinct-in-era']);

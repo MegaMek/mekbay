@@ -302,7 +302,7 @@ export function compileUnitFacts(unit: Unit, index?: number): UnitFacts {
         scalars: {
             id: unit.id,
             tons: unit.tons,
-            pv: unit.pv,
+            pv: unit.as.PV,
             bv: unit.bv,
             troopers: unit.internal || 0,
             omni: unit.omni === 1,

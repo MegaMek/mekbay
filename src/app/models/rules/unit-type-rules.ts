@@ -33,6 +33,7 @@
 
 import { computed, signal, type Signal } from '@angular/core';
 import { MountedWeapon, type MountedEquipment } from '../mounted-equipment.model';
+import type { WeaponType } from '../equipment.model';
 import type { CriticalSlot, SerializedC3NetworkGroup } from '../force-serialization';
 import { getMotiveModeLabel, type MotiveModes } from '../motiveModes.model';
 import type { TurnState } from '../turn-state.model';
@@ -472,14 +473,26 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
             : { modifier: 0, weakened: true };
     }
 
+    canMakeTargetingComputerAimedShot(entry: MountedEquipment, targetIsMobile: boolean): boolean {
+        const weapon = entry.parent instanceof MountedWeapon ? entry.parent : entry;
+        return weapon instanceof MountedWeapon
+            && !(targetIsMobile && weapon.equipment.hasFlag('F_PULSE'));
+    }
+
     protected isTargetingComputerEligible(entry: MountedEquipment): boolean {
         if (!(entry instanceof MountedWeapon)) return false;
-        const selectedAmmo = this.unit.getInventoryControlSelectedAmmo?.(entry) ?? null;
-        const baseTypes = new Set(entry.getWeaponTypes(selectedAmmo));
-        const effectiveTypes = this.unit.getInventoryControlRules().applyWeaponTypes?.(entry, baseTypes) ?? baseTypes;
+        const effectiveTypes = this.getEffectiveWeaponTypes(entry);
         return entry.equipment.hasFlag('F_DIRECT_FIRE') === true
             && !entry.equipment.hasAnyFlag(['F_TASER', 'F_FLAMER', 'F_MG', 'F_MGA'])
-            && (effectiveTypes.has('DB') || effectiveTypes.has('DE'));
+            && (effectiveTypes.has('DB') || effectiveTypes.has('DE') || effectiveTypes.has('P'))
+            && !effectiveTypes.has('F')
+            && (!effectiveTypes.has('C') || entry.equipment.hasFlag('F_HAG'));
+    }
+
+    private getEffectiveWeaponTypes(entry: MountedWeapon): ReadonlySet<WeaponType> {
+        const selectedAmmo = this.unit.getInventoryControlSelectedAmmo?.(entry) ?? null;
+        const baseTypes = new Set(entry.getWeaponTypes(selectedAmmo));
+        return this.unit.getInventoryControlRules().applyWeaponTypes?.(entry, baseTypes) ?? baseTypes;
     }
 
     protected isEntryStateDisabled(entry: MountedEquipment): boolean {

@@ -1,4 +1,4 @@
-import { Injector } from '@angular/core';
+import { computed, Injector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment, Equipment, MiscEquipment, WeaponEquipment, type EquipmentMap } from './equipment.model';
 import { CBTForce } from './cbt-force.model';
@@ -11,6 +11,7 @@ import { DataService } from '../services/data.service';
 import { UnitInitializerService } from '../services/unit-initializer.service';
 import { UnitSvgService } from '../services/unit-svg.service';
 import { UnitSvgVehicleService } from '../services/unit-svg-vehicle.service';
+import { UnitSvgMekService } from '../services/unit-svg-mek.service';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import type { Unit } from './units.model';
 import { EquipmentInteractionHandler, EquipmentInteractionRegistryService, type HandlerContext } from '../services/equipment-interaction-registry.service';
@@ -23,6 +24,8 @@ import { resolveWeaponDamage } from '../utils/inventory-control-damage.util';
 import { AtmHandler } from '../equipment-handlers/atm.handler';
 import { MmlHandler } from '../equipment-handlers/mml.handler';
 import { ATM_EXTENDED_RANGE_PROFILE, ATM_HIGH_EXPLOSIVE_PROFILE, ATM_STANDARD_PROFILE } from './ammo-weapon-profile.model';
+import { VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE, VibrobladeHandler } from '../equipment-handlers/vibroblade.handler';
+import { EquipmentFlag } from './equipment-flags.type';
 
 function createEquipment(): EquipmentMap {
     const ultraAc20 = new WeaponEquipment({
@@ -237,6 +240,30 @@ function createVariableDamageSvg(): SVGSVGElement {
                 <g class="name"><text>Variable Damage Laser</text></g>
                 <g class="damage"><text>9/7/5 [V]</text></g>
                 <text class="location">FR</text>
+                <text class="range_short">2</text>
+                <text class="range_medium">5</text>
+                <text class="range_long">9</text>
+                <rect class="hitMod-rect" display="block"></rect>
+                <text class="hitMod-text" display="block">-4</text>
+                <rect class="targetTn-rect" display="none"></rect>
+                <text class="targetTn-text" display="none"></text>
+            </g>
+        </svg>
+    `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+}
+
+function createMultiRowVariableDamageSvg(): SVGSVGElement {
+    const parser = new DOMParser();
+    return parser.parseFromString(`
+        <svg xmlns="http://www.w3.org/2000/svg">
+            <g class="inventoryEntry" id="VariableDamageLaser@FR#0" hitMod="-4">
+                <g class="name"><text>Variable Damage Laser</text></g>
+                <g class="damage">
+                    <text x="94" font-size="6.76">legacy first row</text>
+                    <text x="94" font-size="6.76">legacy second row</text>
+                </g>
+                <text class="location">FR</text>
+                <text class="range_min" x="125">—</text>
                 <text class="range_short">2</text>
                 <text class="range_medium">5</text>
                 <text class="range_long">9</text>
@@ -496,6 +523,10 @@ class ExposedUnitSvgService extends UnitSvgService {
     renderProfile(profile: ReadonlyMap<string, number>): void {
         this.renderAmmoProfile(profile);
     }
+
+    renderDamage(damageText: SVGElement, damage: string): void {
+        this.renderInventoryDamageText(damageText, damage);
+    }
 }
 
 class ExposedUnitSvgVehicleService extends UnitSvgVehicleService {
@@ -505,6 +536,12 @@ class ExposedUnitSvgVehicleService extends UnitSvgVehicleService {
 
     refreshCritLocs(critLocs = this.unit.getCritSlots()): void {
         this.updateCritLocDisplay(critLocs);
+    }
+}
+
+class ExposedUnitSvgMekService extends UnitSvgMekService {
+    refreshInventory(): void {
+        this.updateInventory();
     }
 }
 
@@ -518,8 +555,12 @@ class TestCBTForce extends CBTForce {
 
 class EndTurnTestHandler extends EquipmentInteractionHandler {
     readonly id = 'end-turn-test-handler';
-    override readonly flags = ['F_END_TURN_TEST'];
+    override readonly flags: EquipmentFlag[] = ['F_TEST_ONLY'];
     calls = 0;
+
+    override applicableTo(equipment: MountedEquipment): boolean {
+        return equipment.equipment?.id === 'end-turn-test';
+    }
 
     getChoices(): [] {
         return [];
@@ -536,7 +577,11 @@ class EndTurnTestHandler extends EquipmentInteractionHandler {
 
 class RunMovementBonusTestHandler extends EquipmentInteractionHandler {
     readonly id = 'run-movement-bonus-test-handler';
-    override readonly flags = ['F_RUN_MOVEMENT_BONUS_TEST'];
+    override readonly flags: EquipmentFlag[] = ['F_TEST_ONLY'];
+
+    override applicableTo(equipment: MountedEquipment): boolean {
+        return equipment.equipment?.id === 'run-movement-bonus-test';
+    }
 
     getChoices(): [] {
         return [];
@@ -604,6 +649,65 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             spyOn(line, 'getComputedTextLength').and.callFake(() => (line.textContent?.length ?? 0) * characterWidth);
         });
     }
+
+    it('resolves linked intrinsic ammo without recursively evaluating its parent weapon', () => {
+        const forceUnit = createForceUnit();
+        const oneShotWeapon = new WeaponEquipment({
+            id: 'OneShotAC2',
+            name: 'One-Shot AC/2',
+            type: 'weapon',
+            flags: ['F_BALLISTIC', 'F_DIRECT_FIRE', 'F_ONE_SHOT'],
+            weapon: { ammoType: 'AC', rackSize: 2, damage: 2, ranges: [8, 16, 24, 32] }
+        });
+        const intrinsicAmmo = new AmmoEquipment({
+            id: 'OneShotAC2Ammo',
+            name: 'One-Shot AC/2 Ammo',
+            type: 'ammo',
+            ammo: { type: 'AC', rackSize: 2, munitionType: ['M_STANDARD'] }
+        });
+        const weaponEntry = new MountedWeapon({
+            owner: forceUnit,
+            id: 'OneShotAC2@RA#0',
+            name: oneShotWeapon.internalName,
+            equipment: oneShotWeapon,
+            locations: new Set(['RA'])
+        });
+        const ammoEntry = new MountedAmmo({
+            owner: forceUnit,
+            id: 'OneShotAC2@RA#0:intrinsic-one-shot-ammo',
+            name: intrinsicAmmo.internalName,
+            equipment: intrinsicAmmo,
+            parent: weaponEntry,
+            totalAmmo: 1,
+            intrinsicOneShotAmmo: true
+        });
+        weaponEntry.linkedWith = [ammoEntry];
+        forceUnit.setInventory([weaponEntry, ammoEntry], true);
+
+        expect(forceUnit.getInventoryControlSelectedAmmo(weaponEntry)).toBe(intrinsicAmmo);
+        expect(() => weaponEntry.ruleState()).not.toThrow();
+    });
+
+    it('clones virtual inventory rows from a computed without writing signals', () => {
+        const forceUnit = createForceUnit();
+        const weapon = new WeaponEquipment({
+            id: 'VirtualRowWeapon',
+            name: 'Virtual Row Weapon',
+            type: 'weapon',
+            weapon: { ammoType: 'NA', damage: 1, ranges: [1, 2, 3, 4] }
+        });
+        const entry = new MountedWeapon({
+            owner: forceUnit,
+            id: 'VirtualRowWeapon@T1#0',
+            name: weapon.internalName,
+            equipment: weapon,
+            destroyed: true
+        });
+        const virtualRow = computed(() => entry.clone({ id: `${entry.id}:T1` }));
+
+        expect(() => virtualRow()).not.toThrow();
+        expect(virtualRow().committedDestroyed()).toBeTrue();
+    });
 
     it('wraps complete ammo profile entries before compressing text', () => {
         const forceUnit = createForceUnit();
@@ -678,7 +782,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             owner: forceUnit,
             id: 'end-turn-test@FR#0',
             name: 'End Turn Test',
-            equipment: new Equipment({ id: 'end-turn-test', name: 'End Turn Test', type: 'misc', flags: ['F_END_TURN_TEST'] }),
+            equipment: new Equipment({ id: 'end-turn-test', name: 'End Turn Test', type: 'misc', flags: ['F_TEST_ONLY'] }),
         })], true);
 
         forceUnit.endTurn();
@@ -702,7 +806,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             owner: forceUnit,
             id: 'run-movement-bonus-test@CT#0',
             name: 'Run Movement Bonus Test',
-            equipment: new Equipment({ id: 'run-movement-bonus-test', name: 'Run Movement Bonus Test', type: 'misc', flags: ['F_RUN_MOVEMENT_BONUS_TEST'] }),
+            equipment: new Equipment({ id: 'run-movement-bonus-test', name: 'Run Movement Bonus Test', type: 'misc', flags: ['F_TEST_ONLY'] }),
         });
         forceUnit.isLoaded.set(true);
         entry.setState('active', 'true');
@@ -1231,6 +1335,98 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         svgService.refreshInventory();
         expect(damageText.textContent).toBe('9/7/5 [V]');
         expect(hitModText.textContent).toBe('-4');
+    });
+
+    it('wraps inventory damage across available SVG rows and clears stale rows', () => {
+        const forceUnit = createForceUnit(createVariableDamageUnit(equipment));
+        initialize(forceUnit, createMultiRowVariableDamageSvg());
+        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
+        const damageLines = Array.from(weaponEntry.el!.querySelectorAll(':scope > .damage > text')) as SVGTextElement[];
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshInventory();
+
+        expect(damageLines.map(line => line.textContent)).toEqual(['9/7/5', '[V]']);
+
+        forceUnit.setInventoryControlEntryRange(weaponEntry, 'medium');
+        svgService.refreshInventory();
+
+        expect(damageLines.map(line => line.textContent)).toEqual(['7 [V]', '']);
+    });
+
+    it('keeps comma-separated damage-type tags together when rendering a multi-row SVG entry', () => {
+        const forceUnit = createForceUnit(createVariableDamageUnit(equipment));
+        initialize(forceUnit, createMultiRowVariableDamageSvg());
+        const weaponEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof WeaponEquipment)!;
+        const damageLines = Array.from(weaponEntry.el!.querySelectorAll(':scope > .damage > text')) as SVGTextElement[];
+        const rangeMin = weaponEntry.el!.querySelector(':scope > .range_min') as SVGTextElement;
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+        rangeMin.setAttribute('x', '142');
+
+        svgService.renderDamage(damageLines[0], '1/Msl [C5,H,M,OS,S]');
+
+        expect(damageLines.map(line => line.textContent)).toEqual(['1/Msl', '[C5,H,M,OS,S]']);
+
+        svgService.renderDamage(damageLines[0], '1/Msl [C5,H,M,OS,S]');
+        expect(damageLines.map(line => line.textContent)).toEqual(['1/Msl', '[C5,H,M,OS,S]']);
+    });
+
+    it('renders vibroblade OFF and ON damage on the Mek SVG', () => {
+        const vibroblade = new MiscEquipment({
+            id: 'ISMediumVibroblade',
+            name: 'Vibroblade (Medium)',
+            type: 'misc',
+            flags: ['F_CLUB', 'S_VIBRO_MEDIUM'],
+        });
+        equipment[vibroblade.internalName] = vibroblade;
+        dataService.getEquipments.and.returnValue(equipment);
+        TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(new VibrobladeHandler());
+        const unit = createMekUnit();
+        unit.tons = 40;
+        unit.comp = [{
+            id: vibroblade.internalName, q: 1, q2: 0, n: vibroblade.name, t: 'P', p: 1,
+            l: 'RA', m: '-2', d: '10', md: '10', c: '2', os: 0, eq: vibroblade,
+        }];
+        const svg = new DOMParser().parseFromString(`
+            <svg xmlns="http://www.w3.org/2000/svg">
+                <g class="unitLocation armor" loc="RA"></g>
+                <g class="unitLocation structure" loc="RA"></g>
+                <g class="inventoryEntry" id="ISMediumVibroblade@RA#0" hitMod="-2">
+                    <g class="name"><text>Vibroblade (Medium)</text></g>
+                    <g class="heat"><text>5</text></g>
+                    <g class="damage"><text>10</text></g>
+                    <text class="location">RA</text>
+                    <rect class="hitMod-rect" display="block"></rect>
+                    <text class="hitMod-text" display="block">-2</text>
+                </g>
+            </svg>
+        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+        const forceUnit = createForceUnit(unit);
+        initialize(forceUnit, svg);
+        const entry = forceUnit.getInventory().find(candidate => candidate.equipment === vibroblade)!;
+        const heatText = entry.el!.querySelector(':scope > .heat > text') as SVGTextElement;
+        const damageText = entry.el!.querySelector(':scope > .damage > text') as SVGTextElement;
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgMekService(forceUnit, unitInitializer));
+
+        svgService.refreshInventory();
+        expect(heatText.textContent).toBe('[5]');
+        expect(damageText.textContent).toBe('5 [10]');
+        expect(damageText.classList.contains('damaged')).toBeFalse();
+        expect(entry.el!.classList.contains('damagedInventory')).toBeFalse();
+
+        entry.setState(VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE);
+        svgService.refreshInventory();
+        expect(heatText.textContent).toBe('5');
+        expect(damageText.textContent).toBe('10');
+        expect(damageText.classList.contains('damaged')).toBeFalse();
+
+        entry.deleteState(VIBROBLADE_MODE_STATE);
+        svgService.refreshInventory();
+        expect(heatText.textContent).toBe('[5]');
+        expect(damageText.textContent).toBe('5 [10]');
+        expect(damageText.classList.contains('damaged')).toBeFalse();
+        expect(entry.el!.classList.contains('damagedInventory')).toBeFalse();
+        expect(damageText.getAttribute('data-mekbay-physical-base-damage-text')).toBe('10');
     });
 
     it('renders effective weapon types on selected-range SVG damage', () => {

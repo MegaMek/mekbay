@@ -1,3 +1,4 @@
+import { EquipmentFlag } from '../models/equipment-flags.type';
 import { MiscEquipment } from '../models/equipment.model';
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import { CORE_2026_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
@@ -30,7 +31,7 @@ function owner(
 }
 
 function mascEntry(
-    flags: string[] = ['F_MASC'],
+    flags: EquipmentFlag[] = ['F_MASC'],
     airborne: boolean | null = null,
     turnStateOverrides: Record<string, unknown> = {},
     gameRules: CBTGameRules = CORE_2026_GAME_RULES

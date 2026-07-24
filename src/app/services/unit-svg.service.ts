@@ -47,7 +47,7 @@ import type { HeatDissipationState } from '../models/rules/heat-management';
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import { formatAmmoName } from '../utils/ammo-interaction.util';
 import { inventoryTargetCategory, inventoryTargetNumberText, inventoryTargetRangeSelection } from '../utils/inventory-target-number.util';
-import { getInventoryControlGroups, getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, type InventoryControlAmmoOption, type InventoryControlRow } from '../utils/inventory-control.util';
+import { getInventoryControlGroups, getInventoryControlModes, getSelectedInventoryControlMode, INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE, INVENTORY_CONTROL_PHYSICAL_BASE_DAMAGE_TEXT_ATTRIBUTE, readInventoryControlDisplayData, type InventoryControlAmmoOption, type InventoryControlRow } from '../utils/inventory-control.util';
 import { resolveInventoryControlDamageText, resolveWeaponDamageText } from '../utils/inventory-control-damage.util';
 import { formatInventoryControlHeat, resolveInventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
 import type { ToHitResolution } from '../models/rules/game-rules';
@@ -1241,6 +1241,13 @@ export class UnitSvgService {
                 ? entry.equipment.getRapidFireCount()
                 : 0;
             text.textContent = formatInventoryControlHeat(heatResolution.value, heatResolution.suffix, rapidFireCount);
+        } else {
+            const display = this.unit.applyInventoryControlDisplayEffects(entry, readInventoryControlDisplayData(entry), {
+                selectedRange,
+                additionalHitModifier: 0,
+                selectedAmmo: null,
+            });
+            text.textContent = display.heat;
         }
         text.classList.toggle('damaged', heatResolution?.weakened ?? false);
     }
@@ -1272,7 +1279,7 @@ export class UnitSvgService {
         const weapon = entry.equipment;
         if (weapon instanceof WeaponEquipment && ['MML', 'ATM', 'IATM'].includes(weapon.ammoType)) {
             if (text) {
-                text.textContent = '';
+                this.renderInventoryDamageText(text, '');
                 text.removeAttribute(INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE);
             }
             entry.el?.querySelectorAll<SVGElement>(':scope > .alternativeMode').forEach(modeElement => {
@@ -1287,7 +1294,7 @@ export class UnitSvgService {
                     selectedAmmo,
                     fallbackAmmoProfile: selectedAmmo ? null : fallbackAmmoProfile
                 });
-                if (modeDamage !== null) modeDamageText.textContent = modeDamage;
+                if (modeDamage !== null) this.renderInventoryDamageText(modeDamageText, modeDamage);
             });
             return;
         }
@@ -1300,9 +1307,77 @@ export class UnitSvgService {
                 { selectedRange, selectedAmmo },
                 this.unit.getInventoryControlRules()
             );
-            if (damage !== null) text.textContent = damage;
+            if (damage !== null) this.renderInventoryDamageText(text, damage);
             text.removeAttribute(INVENTORY_CONTROL_ORIGINAL_DAMAGE_TEXT_ATTRIBUTE);
         }
+    }
+
+    /** Writes damage across the template's available rows without leaving stale text. */
+    protected renderInventoryDamageText(damageText: Element, damage: string): void {
+        const damageContainer = damageText.parentElement;
+        const lines = damageContainer
+            ? Array.from(damageContainer.querySelectorAll<SVGTextElement>(':scope > text'))
+            : damageText instanceof SVGTextElement ? [damageText] : [];
+        if (lines.length === 0) return;
+
+        const lineWidth = this.inventoryDamageLineWidth(damageContainer, lines[0]);
+        const wrappedLines = this.wrapInventoryDamageText(lines[0], damage, lineWidth, lines.length);
+        lines.forEach((line, index) => {
+            line.textContent = wrappedLines[index] ?? '';
+        });
+    }
+
+    private inventoryDamageLineWidth(damageContainer: Element | null, damageText: SVGTextElement): number | null {
+        const row = damageContainer?.parentElement;
+        const rangeMinText = row?.querySelector<SVGTextElement>(':scope > .range_min');
+        const damageX = Number.parseFloat(damageText.getAttribute('x') ?? '');
+        const rangeMinX = Number.parseFloat(rangeMinText?.getAttribute('x') ?? '');
+        if (!Number.isFinite(damageX) || !Number.isFinite(rangeMinX)) return null;
+
+        const width = rangeMinX - damageX - 1;
+        return width > 0 ? width : null;
+    }
+
+    private wrapInventoryDamageText(
+        line: SVGTextElement,
+        damage: string,
+        width: number | null,
+        lineCount: number
+    ): string[] {
+        if (!damage || width === null || lineCount === 1) return [damage];
+
+        const lines: string[] = [];
+        let remaining = damage.trim();
+        while (remaining && lines.length < lineCount) {
+            if (this.ammoProfileTextFits(line, width, remaining)) {
+                lines.push(remaining);
+                remaining = '';
+                break;
+            }
+
+            const lineText = this.inventoryDamageLineBreak(line, width, remaining);
+            lines.push(lineText);
+            remaining = remaining.slice(lineText.length).trimStart();
+        }
+
+        if (remaining) {
+            lines[lines.length - 1] += remaining;
+        }
+        return lines;
+    }
+
+    private inventoryDamageLineBreak(line: SVGTextElement, width: number, text: string): string {
+        let end = 0;
+        for (let index = 1; index <= text.length; index++) {
+            if (!this.ammoProfileTextFits(line, width, text.slice(0, index))) break;
+            end = index;
+        }
+        if (end === 0) return text[0];
+
+        // Damage-type tags (for example, "[C5,H,M,OS,S]") are one semantic value.
+        // Do not split them at commas when an inventory interaction re-renders the row.
+        const breakIndex = text.lastIndexOf(' ', end - 1);
+        return text.slice(0, breakIndex > 0 ? breakIndex : end).trimEnd();
     }
 
     private inventoryControlSelectedRange(
@@ -1410,13 +1485,13 @@ export class UnitSvgService {
         }
         if (!originalText) return;
         if (chargeDamage.damage === null || chargeDamage.maxDamage === null) {
-            damageEl.textContent = chargeDamage.bonusDamage > 0
+            this.renderInventoryDamageText(damageEl, chargeDamage.bonusDamage > 0
                 ? `${originalText}+${chargeDamage.bonusDamage}`
-                : originalText;
+                : originalText);
         } else {
-            damageEl.textContent = chargeDamage.damage !== chargeDamage.maxDamage
+            this.renderInventoryDamageText(damageEl, chargeDamage.damage !== chargeDamage.maxDamage
                 ? `${chargeDamage.damage} [${chargeDamage.maxDamage}]`
-                : `${chargeDamage.damage}`;
+                : `${chargeDamage.damage}`);
         }
         damageEl.classList.toggle('damaged', chargeDamage.bonusDamage < chargeDamage.maxBonusDamage);
     }

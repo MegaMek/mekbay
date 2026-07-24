@@ -31,13 +31,14 @@
  * affiliated with Microsoft.
  */
 
+import { EquipmentFlag } from '../models/equipment-flags.type';
 import { WeaponEquipment } from '../models/equipment.model';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { DisabledStateToggleHandler } from './disabled-equipment.handler';
 
 export class UACJammingHandler extends DisabledStateToggleHandler {
     readonly id = 'uac-jamming-handler';
-    override readonly flags = ['F_AC']; // We then filter by ammo type
+    override readonly flags: EquipmentFlag[] = ['F_AC']; // We then filter by ammo type
     override readonly priority = 10;
     protected override readonly enabledLabel = 'Jam';
     protected override readonly disabledLabel = 'Jammed';

@@ -236,6 +236,7 @@ export class TWGameRules extends CBTGameRules {
                             !c.rear
                         );
                         const multiplier = hasNonRearWeapon ? 1 : 0.5;
+                        if (crit.eq.bv === 'variable') continue;
                         totalSemiGuidedBV += Math.round(multiplier * crit.eq.bv);
                     }
                 }
@@ -245,7 +246,7 @@ export class TWGameRules extends CBTGameRules {
                 for (const item of inventory) {
                     if (item.equipment instanceof AmmoEquipment 
                     && (item.equipment.hasMunitionType('M_SEMIGUIDED') || item.equipment.hasMunitionType('M_HOMING'))) {
-                        totalSemiGuidedBV += item.equipment.bv;
+                        totalSemiGuidedBV += item.getBV();;
                     }
                 }
             }

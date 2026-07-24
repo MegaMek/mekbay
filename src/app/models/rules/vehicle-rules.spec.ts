@@ -10,6 +10,7 @@ import { VehicleRules } from './vehicle-rules';
 import { MascHandler, MASC_ACTIVE_STATE_KEY } from '../../equipment-handlers/masc.handler';
 import { TWVehicleRules } from './tw-rules';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './game-rules';
+import { EquipmentFlag } from '../equipment-flags.type';
 
 const mascHandler = new MascHandler();
 
@@ -17,7 +18,7 @@ function crit(id: string, destroyed: number): CriticalSlot {
     return { id, destroyed, destroying: destroyed };
 }
 
-function weapon(id: string, flags: string[] = []): WeaponEquipment {
+function weapon(id: string, flags: EquipmentFlag[] = []): WeaponEquipment {
     return new WeaponEquipment({
         id,
         name: id,
@@ -27,7 +28,7 @@ function weapon(id: string, flags: string[] = []): WeaponEquipment {
     });
 }
 
-function equipment(id: string, flags: string[] = []): Equipment {
+function equipment(id: string, flags: EquipmentFlag[] = []): Equipment {
     return new Equipment({
         id,
         name: id,
@@ -159,7 +160,7 @@ describe('VehicleRules', () => {
         expect(destroyedRules.computeEntryState(destroyedDirectFire)).toEqual(jasmine.objectContaining({ hitMod: 0, weakenedHitMod: true }));
     });
 
-    it('does not apply a targeting computer when selected ammo removes direct-fire damage types', () => {
+    it('does not apply a targeting computer when selected ammo creates a cluster flak attack', () => {
         const autocannon = new WeaponEquipment({
             id: 'LBX',
             name: 'LBX',
@@ -187,6 +188,66 @@ describe('VehicleRules', () => {
         });
 
         expect(rules.computeEntryState(mountedAutocannon)).toEqual(jasmine.objectContaining({ hitMod: 0, weakenedHitMod: false }));
+    });
+
+    it('excludes cluster and flak weapons from targeting computers except non-flak HAGs', () => {
+        const targetingComputer = entry({ equipment: equipment('TargetingComputer', ['F_TARGETING_COMPUTER']) });
+        const clusterWeapon = new MountedWeapon({
+            owner: undefined as unknown as CBTForceUnit,
+            id: 'ClusterWeapon',
+            name: 'ClusterWeapon',
+            equipment: new WeaponEquipment({
+                id: 'ClusterWeapon',
+                name: 'ClusterWeapon',
+                type: 'weapon',
+                flags: ['F_DIRECT_FIRE', 'F_BALLISTIC'],
+                weapon: { ammoType: 'NA', damage: 'cluster', ranges: [1, 2, 3, 4] },
+            }),
+        });
+        const flakWeapon = new MountedWeapon({
+            owner: undefined as unknown as CBTForceUnit,
+            id: 'FlakWeapon',
+            name: 'FlakWeapon',
+            equipment: new WeaponEquipment({
+                id: 'FlakWeapon',
+                name: 'FlakWeapon',
+                type: 'weapon',
+                flags: ['F_DIRECT_FIRE'],
+                weapon: { ammoType: 'SBGAUSS', ranges: [1, 2, 3, 4] },
+            }),
+        });
+        const hag = new MountedWeapon({
+            owner: undefined as unknown as CBTForceUnit,
+            id: 'HAG',
+            name: 'HAG',
+            equipment: weapon('HAG', ['F_DIRECT_FIRE', 'F_BALLISTIC', 'F_HAG']),
+        });
+        const rules = createRulesHarness({ inventory: [clusterWeapon, flakWeapon, hag, targetingComputer] });
+
+        expect(rules.computeEntryState(clusterWeapon)).toEqual(jasmine.objectContaining({ hitMod: 0, weakenedHitMod: false }));
+        expect(rules.computeEntryState(flakWeapon)).toEqual(jasmine.objectContaining({ hitMod: 0, weakenedHitMod: false }));
+        expect(rules.computeEntryState(hag)).toEqual(jasmine.objectContaining({ hitMod: -1, weakenedHitMod: false }));
+    });
+
+    it('does not allow pulse weapons to make aimed shots against mobile targets', () => {
+        const pulseWeapon = new MountedWeapon({
+            owner: undefined as unknown as CBTForceUnit,
+            id: 'PulseWeapon',
+            name: 'PulseWeapon',
+            equipment: weapon('PulseWeapon', ['F_DIRECT_FIRE', 'F_ENERGY', 'F_PULSE']),
+        });
+        const standardWeapon = new MountedWeapon({
+            owner: undefined as unknown as CBTForceUnit,
+            id: 'StandardWeapon',
+            name: 'StandardWeapon',
+            equipment: weapon('StandardWeapon', ['F_DIRECT_FIRE', 'F_ENERGY']),
+        });
+        const rules = createRulesHarness();
+
+        expect(rules.canMakeTargetingComputerAimedShot(pulseWeapon, true)).toBeFalse();
+        expect(rules.canMakeTargetingComputerAimedShot(pulseWeapon, false)).toBeTrue();
+        expect(rules.canMakeTargetingComputerAimedShot(standardWeapon, true)).toBeTrue();
+        expect(rules.canMakeTargetingComputerAimedShot(entry(), false)).toBeFalse();
     });
 
     it('applies ordered motive movement damage by timestamp', () => {

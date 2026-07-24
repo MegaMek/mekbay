@@ -48,6 +48,7 @@ import { RiscLaserPulseModuleHandler } from './risc-laser-pulse-module.handler';
 import { HagHandler } from './hag.handler';
 import { MascHandler } from './masc.handler';
 import { DisabledEquipmentHandler } from './disabled-equipment.handler';
+import { VibrobladeHandler } from './vibroblade.handler';
 
 /**
  * Register all equipment handlers.
@@ -65,6 +66,7 @@ export function registerAllHandlers(registryService: EquipmentInteractionRegistr
     registry.register(new AtmHandler());
     registry.register(new ArtemisVHandler());
     registry.register(new ApolloHandler());
+    registry.register(new VibrobladeHandler());
     registry.register(new LaserInsulatorHandler());
     registry.register(new RiscLaserPulseModuleHandler());
     registry.register(new HagHandler());

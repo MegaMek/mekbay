@@ -1,6 +1,6 @@
 import { computed, signal, type WritableSignal } from "@angular/core";
 import { canChangeAirborneGround, getMotiveModeMaxDistance, type MotiveModes } from "./motiveModes.model";
-import { FOUR_LEGGED_LOCATIONS, LEG_LOCATIONS } from "../models/rules/mek-rules";
+import { getMekLegLocations, inferMekConfigFromLocations } from "./entity/types";
 import type { CBTForceUnitState } from "./cbt-force-unit-state.model";
 import type { SerializedPSRChecks, SerializedTurnState } from "./force-serialization";
 import { calculateModifierTotal, type PSRCheck, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitModifierTotal } from "./rules/unit-type-rules";
@@ -72,22 +72,16 @@ export class TurnState {
     canRun = computed<boolean>(() => {
         const unit = this.unitState.unit;
         let damagedLegsCount = 0;
-        let isFourLegged = false;
+        const internalLocations = unit.locations?.internal;
+        const config = inferMekConfigFromLocations(internalLocations?.keys() ?? []);
         // Calculate pre-existing leg destruction modifiers. If a leg is gone, is gone.
-        unit.locations?.internal?.forEach((_value, loc) => {
-            if (!LEG_LOCATIONS.has(loc)) return; // Only consider leg locations
-            if (!isFourLegged && FOUR_LEGGED_LOCATIONS.has(loc)) {
-                isFourLegged = true;
-            }
+        for (const loc of getMekLegLocations(config)) {
+            if (!internalLocations?.has(loc)) continue;
             if (unit.isInternalLocCommittedDestroyed(loc)) {
                 damagedLegsCount++;
             }
-        });
-        if (isFourLegged) {
-            return damagedLegsCount < 2;
-        } else {
-            return damagedLegsCount < 1;
         }
+        return config === 'Quad' ? damagedLegsCount < 2 : damagedLegsCount < 1;
     });
 
     getSpottingModifier = computed<number>(() => {

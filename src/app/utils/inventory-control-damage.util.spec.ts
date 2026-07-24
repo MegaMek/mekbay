@@ -91,6 +91,18 @@ describe('inventory-control damage resolution', () => {
         })).toBe('[E]');
     });
 
+    it('omits numeric zero damage while preserving weapon types', () => {
+        const grenadeLauncher = new WeaponEquipment({
+            id: 'ISVehicularGrenadeLauncher',
+            name: 'Vehicular Grenade Launcher',
+            type: 'weapon',
+            flags: ['F_BALLISTIC', 'F_ONE_SHOT', 'F_VGL'],
+            weapon: { ammoType: 'VGL', rackSize: 1, damage: 0 }
+        });
+
+        expect(resolveWeaponDamageText(grenadeLauncher)).toBe('[AE,OS]');
+    });
+
     it('uses selected ammo damage for cluster weapons regardless of mode', () => {
         const weapon = new WeaponEquipment({
             id: 'ATM6',
@@ -111,6 +123,25 @@ describe('inventory-control damage resolution', () => {
             selectedRange: null,
             selectedAmmo: ammo
         })).toBe('7/Msl [C6,M,S]');
+    });
+
+    it('uses catalog ammo damage for a built-in one-shot weapon', () => {
+        const weapon = new WeaponEquipment({
+            id: 'BAMineLauncher',
+            name: 'Pop-up Mine',
+            type: 'weapon',
+            flags: ['F_ONE_SHOT'],
+            weapon: { ammoType: 'MINE', rackSize: 1, damage: 'special' }
+        });
+        const ammo = new AmmoEquipment({
+            id: 'BA-Mine Launcher Ammo',
+            name: 'Pop-up Mine Ammo',
+            type: 'ammo',
+            ammo: { type: 'MINE', rackSize: 1, damagePerShot: 4, munitionType: ['M_STANDARD'] }
+        });
+
+        expect(resolveWeaponDamageText(weapon, { selectedRange: null, selectedAmmo: ammo })).toBe('4 [OS]');
+        expect(resolveWeaponDamageText(weapon)).toBe('special [OS]');
     });
 
     it('renders quantified cluster types capped at rack size', () => {

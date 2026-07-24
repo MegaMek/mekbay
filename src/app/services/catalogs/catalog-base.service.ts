@@ -60,8 +60,30 @@ export abstract class CatalogBaseService<THydrateInput, TStored extends THydrate
     protected readonly logger = inject(LoggerService);
     private readonly downloadTracker = inject(CatalogDownloadTrackerService);
     protected etag = '';
+    private initialized = false;
+    private initializationPromise: Promise<void> | null = null;
 
-    public async initialize(): Promise<void> {
+    public initialize(): Promise<void> {
+        if (this.initialized) {
+            return Promise.resolve();
+        }
+        if (this.initializationPromise) {
+            return this.initializationPromise;
+        }
+
+        this.initializationPromise = this.performInitialization()
+            .then(() => {
+                this.initialized = true;
+            })
+            .finally(() => {
+                this.initializationPromise = null;
+            });
+        return this.initializationPromise;
+    }
+
+    protected async afterInitialize(): Promise<void> {}
+
+    private async performInitialization(): Promise<void> {
         const localData = await this.loadFromCache();
         const validLocalData = localData && this.tryHydrateData(localData, 'cache')
             ? localData
@@ -75,19 +97,16 @@ export abstract class CatalogBaseService<THydrateInput, TStored extends THydrate
         if (!remoteEtag) {
             if (this.hasHydratedData()) {
                 this.logger.info(`${this.catalogKey} loaded from cache (offline or remote unavailable).`);
-                return;
+            } else {
+                await this.fetchRemote();
             }
-
-            await this.fetchRemote();
-            return;
-        }
-
-        if (this.etag && this.etag === remoteEtag) {
+        } else if (this.etag && this.etag === remoteEtag) {
             this.logger.info(`${this.catalogKey} is up to date. (ETag: ${remoteEtag})`);
-            return;
+        } else {
+            await this.fetchRemote(validLocalData);
         }
 
-        await this.fetchRemote(validLocalData);
+        await this.afterInitialize();
     }
 
     protected abstract get catalogKey(): string;

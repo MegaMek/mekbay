@@ -1,3 +1,4 @@
+import { EquipmentFlag } from '../models/equipment-flags.type';
 import type { Equipment } from '../models/equipment.model';
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import { ENTRY_DISABLED_STATE_KEY } from '../models/rules/unit-type-rules';
@@ -11,7 +12,7 @@ function owner() {
     } as never;
 }
 
-function entry(flags: string[], states = new Map<string, string>(), destroyed = false): MountedEquipment {
+function entry(flags: EquipmentFlag[], states = new Map<string, string>(), destroyed = false): MountedEquipment {
     return new MountedEquipment({
         owner: owner(),
         id: flags.join('-') || 'entry',
@@ -34,8 +35,8 @@ describe('DisabledEquipmentHandler', () => {
 
     it('applies to equipment with any disableable failure flag', () => {
         expect(handler.applicableTo(entry(['F_RADICAL_HEATSINK']))).toBeTrue();
-        expect(handler.applicableTo(entry(['F_OTHER', 'F_RADICAL_HEATSINK']))).toBeTrue();
-        expect(handler.applicableTo(entry(['F_OTHER']))).toBeFalse();
+        expect(handler.applicableTo(entry(['F_TEST_ONLY', 'F_RADICAL_HEATSINK']))).toBeTrue();
+        expect(handler.applicableTo(entry(['F_TEST_ONLY']))).toBeFalse();
     });
 
     it('is transparent unless disabled is true', () => {

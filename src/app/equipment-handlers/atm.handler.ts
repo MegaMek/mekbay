@@ -1,10 +1,11 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
+import { AmmoMunitionFlag } from '../models/ammo-munition-flags.type';
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
 import { INVENTORY_CONTROL_MODE_STATE } from '../utils/inventory-control.util';
 
-const ATM_MUNITION_BY_MODE = new Map<string, string>([
+const ATM_MUNITION_BY_MODE = new Map<string, AmmoMunitionFlag>([
     ['Standard', 'M_STANDARD'],
     ['High Explosive', 'M_HIGH_EXPLOSIVE'],
     ['Extended Range', 'M_EXTENDED_RANGE']

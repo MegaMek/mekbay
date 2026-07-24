@@ -1,0 +1,180 @@
+{
+  "$comment": "Beast mount definitions for infantry units. See TO:AU&E p.106. Derived from MegaMek InfantryMount.java.",
+  "mounts": [
+    {
+      "name": "Donkey",
+      "size": "Large",
+      "weight": 0.15,
+      "movementPoints": 2,
+      "movementMode": "Leg",
+      "burstDamage": 0,
+      "vehicleDamage": 0,
+      "damageDivisor": 1.0,
+      "maxWaterDepth": 0,
+      "secondaryGroundMP": 0,
+      "uwEndurance": 0
+    },
+    {
+      "name": "Coventry Kangaroo",
+      "size": "Large",
+      "weight": 0.11,
+      "movementPoints": 3,
+      "movementMode": "Leg",
+      "burstDamage": 1,
+      "vehicleDamage": 1,
+      "damageDivisor": 1.0,
+      "maxWaterDepth": 0,
+      "secondaryGroundMP": 0,
+      "uwEndurance": 0
+    },
+    {
+      "name": "Horse",
+      "size": "Large",
+      "weight": 0.5,
+      "movementPoints": 3,
+      "movementMode": "Leg",
+      "burstDamage": 0,
+      "vehicleDamage": 0,
+      "damageDivisor": 1.0,
+      "maxWaterDepth": 0,
+      "secondaryGroundMP": 0,
+      "uwEndurance": 0
+    },
+    {
+      "name": "Camel",
+      "size": "Large",
+      "weight": 0.65,
+      "movementPoints": 2,
+      "movementMode": "Leg",
+      "burstDamage": 0,
+      "vehicleDamage": 0,
+      "damageDivisor": 1.0,
+      "maxWaterDepth": 0,
+      "secondaryGroundMP": 0,
+      "uwEndurance": 0
+    },
+    {
+      "name": "Branth",
+      "size": "Large",
+      "weight": 0.72,
+      "movementPoints": 6,
+      "movementMode": "VTOL",
+      "burstDamage": 2,
+      "vehicleDamage": 1,
+      "damageDivisor": 1.0,
+      "maxWaterDepth": 0,
+      "secondaryGroundMP": 0,
+      "uwEndurance": 0
+    },
+    {
+      "name": "Odessan Raxx",
+      "size": "Large",
+      "weight": 2.4,
+      "movementPoints": 2,
+      "movementMode": "Leg",
+      "burstDamage": 1,
+      "vehicleDamage": 1,
+      "damageDivisor": 1.0,
+      "maxWaterDepth": 0,
+      "secondaryGroundMP": 0,
+      "uwEndurance": 0
+    },
+    {
+      "name": "Tabiranth",
+      "size": "Large",
+      "weight": 0.25,
+      "movementPoints": 2,
+      "movementMode": "Leg",
+      "burstDamage": 1,
+      "vehicleDamage": 1,
+      "damageDivisor": 1.0,
+      "maxWaterDepth": 0,
+      "secondaryGroundMP": 0,
+      "uwEndurance": 0
+    },
+    {
+      "name": "Tariq",
+      "size": "Large",
+      "weight": 0.51,
+      "movementPoints": 5,
+      "movementMode": "Leg",
+      "burstDamage": 0,
+      "vehicleDamage": 0,
+      "damageDivisor": 1.0,
+      "maxWaterDepth": 0,
+      "secondaryGroundMP": 0,
+      "uwEndurance": 0
+    },
+    {
+      "name": "Elephant",
+      "size": "Very Large",
+      "weight": 6.0,
+      "movementPoints": 2,
+      "movementMode": "Leg",
+      "burstDamage": 1,
+      "vehicleDamage": 1,
+      "damageDivisor": 2.0,
+      "maxWaterDepth": 1,
+      "secondaryGroundMP": 0,
+      "uwEndurance": 0
+    },
+    {
+      "name": "Orca",
+      "size": "Very Large",
+      "weight": 7.2,
+      "movementPoints": 5,
+      "movementMode": "Submarine",
+      "burstDamage": 2,
+      "vehicleDamage": 1,
+      "damageDivisor": 2.0,
+      "maxWaterDepth": -1,
+      "secondaryGroundMP": 0,
+      "uwEndurance": 180
+    },
+    {
+      "name": "Hipposaur",
+      "size": "Monstrous",
+      "weight": 35.5,
+      "movementPoints": 2,
+      "movementMode": "Submarine",
+      "burstDamage": 10,
+      "vehicleDamage": 4,
+      "damageDivisor": 4.0,
+      "maxWaterDepth": -1,
+      "secondaryGroundMP": 1,
+      "uwEndurance": 2
+    }
+  ],
+  "sizes": {
+    "Large": {
+      "troopsPerCreature": 1,
+      "creaturesPerPlatoon": 21,
+      "toHitMod": 0,
+      "supportWeaponsPerCreature": 0,
+      "canMakeLegAttacks": true,
+      "canMakeSwarmAttacks": true,
+      "buildingMP": 0,
+      "height": 0
+    },
+    "Very Large": {
+      "troopsPerCreature": 2,
+      "creaturesPerPlatoon": 7,
+      "toHitMod": -1,
+      "supportWeaponsPerCreature": 2,
+      "canMakeLegAttacks": true,
+      "canMakeSwarmAttacks": false,
+      "buildingMP": 1,
+      "height": 1
+    },
+    "Monstrous": {
+      "troopsPerCreature": 4,
+      "creaturesPerPlatoon": 2,
+      "toHitMod": -2,
+      "supportWeaponsPerCreature": 3,
+      "canMakeLegAttacks": false,
+      "canMakeSwarmAttacks": false,
+      "buildingMP": 2,
+      "height": 1
+    }
+  }
+}

@@ -1,8 +1,10 @@
-import type { AmmoEquipment, AmmoType, TechAdvancementDates, WeaponEquipment } from '../models/equipment.model';
+import { AmmoMunitionFlag } from '../models/ammo-munition-flags.type';
+import { effectiveTechDateYear, TechAdvancementDates } from '../models/entity/types/tech';
+import { EquipmentFlag } from '../models/equipment-flags.type';
+import type { AmmoEquipment, AmmoType, WeaponEquipment } from '../models/equipment.model';
 import type { Era } from '../models/eras.model';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { Unit, UnitType } from '../models/units.model';
-import { getEffectiveAdvancementYear } from './tech-advancement-date.util';
 
 export interface AmmoValidityContext {
     unitType?: UnitType;
@@ -42,7 +44,7 @@ export class AmmoValidityUtil {
         if (!this.isAmmoValid(candidateAmmo, { unitType: unit?.type })) return false;
         if (originalAmmo.ammoType !== candidateAmmo.ammoType) return false;
         if (!this.hasCompatibleTechBase(originalAmmo, candidateAmmo, unit)) return false;
-        if (originalAmmo.hasFlag('M_CASELESS') !== candidateAmmo.hasFlag('M_CASELESS')) return false;
+        if (originalAmmo.hasMunitionType('M_CASELESS') !== candidateAmmo.hasMunitionType('M_CASELESS')) return false;
         if (originalAmmo.hasFlag('F_BATTLEARMOR') !== candidateAmmo.hasFlag('F_BATTLEARMOR')) return false;
 
         if (originalAmmo.ammoType === 'AR10') return true;
@@ -87,11 +89,11 @@ export class AmmoValidityUtil {
         return reasons;
     }
 
-    private static hasArtemisMunitionSupport(ammo: AmmoEquipment, inventory: readonly MountedEquipment[], artemisFlags: readonly string[]): boolean {
+    private static hasArtemisMunitionSupport(ammo: AmmoEquipment, inventory: readonly MountedEquipment[], artemisFlags: readonly EquipmentFlag[]): boolean {
         return inventory.some(entry => this.isArtemisSupportedWeaponEntry(entry, ammo, inventory, artemisFlags));
     }
 
-    private static isArtemisSupportedWeaponEntry(entry: MountedEquipment, ammo: AmmoEquipment, inventory: readonly MountedEquipment[], artemisFlags: readonly string[]): boolean {
+    private static isArtemisSupportedWeaponEntry(entry: MountedEquipment, ammo: AmmoEquipment, inventory: readonly MountedEquipment[], artemisFlags: readonly EquipmentFlag[]): boolean {
         const equipment = entry.equipment;
         return this.isWeaponEquipment(equipment)
             && equipment.hasFlag('F_ARTEMIS_COMPATIBLE')
@@ -111,7 +113,7 @@ export class AmmoValidityUtil {
         return weapon.ammoType === ammo.ammoType && weapon.rackSize === ammo.rackSize;
     }
 
-    private static hasArtemisEnhancementForWeapon(weaponEntry: MountedEquipment, inventory: readonly MountedEquipment[], artemisFlags: readonly string[]): boolean {
+    private static hasArtemisEnhancementForWeapon(weaponEntry: MountedEquipment, inventory: readonly MountedEquipment[], artemisFlags: readonly EquipmentFlag[]): boolean {
         if (weaponEntry.linkedWith?.some(entry => this.isArtemisEnhancement(entry, artemisFlags))) return true;
 
         const weaponLocations = this.getMountedLocations(weaponEntry);
@@ -124,7 +126,7 @@ export class AmmoValidityUtil {
         });
     }
 
-    private static isArtemisEnhancement(entry: MountedEquipment, artemisFlags: readonly string[]): boolean {
+    private static isArtemisEnhancement(entry: MountedEquipment, artemisFlags: readonly EquipmentFlag[]): boolean {
         return !!entry.equipment?.hasFlag('F_WEAPON_ENHANCEMENT')
             && artemisFlags.some(flag => entry.equipment?.hasFlag(flag));
     }
@@ -165,7 +167,7 @@ export class AmmoValidityUtil {
     }
 
     private static canAeroUseAlternateArtilleryMunition(ammo: AmmoEquipment): boolean {
-        const allowedMunitionsByAmmoType: Partial<Record<AmmoType, readonly string[]>> = {
+        const allowedMunitionsByAmmoType: Partial<Record<AmmoType, readonly AmmoMunitionFlag[]>> = {
             ARROW_IV: ['M_FLARE', 'M_CLUSTER', 'M_HOMING', 'M_INFERNO_IV', 'M_LASER_INHIB', 'M_SMOKE', 'M_FASCAM', 'M_DAVY_CROCKETT_M', 'M_VIBRABOMB_IV', 'M_STANDARD'],
             LONG_TOM: ['M_FLARE', 'M_CLUSTER', 'M_HOMING', 'M_FLECHETTE', 'M_SMOKE', 'M_FASCAM', 'M_DAVY_CROCKETT_M', 'M_STANDARD'],
             SNIPER: ['M_FLARE', 'M_CLUSTER', 'M_HOMING', 'M_FLECHETTE', 'M_SMOKE', 'M_FASCAM', 'M_STANDARD'],
@@ -180,7 +182,7 @@ export class AmmoValidityUtil {
         return ammo.munitionType.size === 0 || ammo.hasMunitionType('M_STANDARD');
     }
 
-    private static hasAnyMunition(ammo: AmmoEquipment, munitionTypes: readonly string[]): boolean {
+    private static hasAnyMunition(ammo: AmmoEquipment, munitionTypes: readonly AmmoMunitionFlag[]): boolean {
         return munitionTypes.some(munitionType => ammo.hasMunitionType(munitionType));
     }
 
@@ -199,15 +201,15 @@ export class AmmoValidityUtil {
         const eraStartYear = era.years.from ?? Number.NEGATIVE_INFINITY;
         const eraEndYear = era.years.to ?? Number.POSITIVE_INFINITY;
         const nonExtinctionYears = [dates.prototype, dates.production, dates.common, dates.reintroduced]
-            .map(value => getEffectiveAdvancementYear(value, 'availability'))
-            .filter((year): year is number => year !== null);
+            .map(value => effectiveTechDateYear(value))
+            .filter((year): year is number => year !== undefined);
 
         if (nonExtinctionYears.length > 0 && eraEndYear < Math.min(...nonExtinctionYears)) {
             return 'not-yet-existing-in-era';
         }
 
-        const extinctYear = getEffectiveAdvancementYear(dates.extinct, 'extinct');
-        if (extinctYear === null || eraStartYear < extinctYear) return null;
+        const extinctYear = effectiveTechDateYear(dates.extinct, true);
+        if (extinctYear === undefined || eraStartYear < extinctYear) return null;
 
         const nextAfterExtinction = nonExtinctionYears
             .filter(year => year > extinctYear)

@@ -5,6 +5,8 @@ import type { UnitHeatSource } from '../models/rules/unit-type-rules';
 import { EquipmentInteractionHandler, type HandlerContext } from '../services/equipment-interaction-registry.service';
 import type { InventoryControlDamage, InventoryControlDamageContext } from '../utils/inventory-control-damage.util';
 import type { InventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
+import type { WeaponType } from '../models/equipment.model';
+import { EquipmentFlag } from '../models/equipment-flags.type';
 
 export const PPC_CAPACITOR_STATE_KEY = 'ppc_capacitor_state';
 export const PPC_CAPACITOR_CHARGING_STATE = 'charging';
@@ -17,7 +19,7 @@ export const PPC_CAPACITOR_CHARGED_TEXT_COLOR = '#001829';
 
 export class PpcCapacitorHandler extends EquipmentInteractionHandler {
     readonly id = 'ppc-capacitor-handler';
-    override readonly flags = ['F_PPC'];
+    override readonly flags: EquipmentFlag[] = ['F_PPC'];
     override readonly priority = 20;
 
     override applicableTo(equipment: MountedEquipment): boolean {
@@ -33,7 +35,7 @@ export class PpcCapacitorHandler extends EquipmentInteractionHandler {
         return [{
             label: state === PPC_CAPACITOR_CHARGED_STATE
                 ? 'Capacitor Charged!'
-                : state === PPC_CAPACITOR_CHARGING_STATE ? 'Capacitor Charging' : 'Charge Capacitor',
+                : state === PPC_CAPACITOR_CHARGING_STATE ? 'Capacitor Charging..' : 'Charge Capacitor',
             shortLabel: state === PPC_CAPACITOR_CHARGED_STATE
                 ? 'Charged!'
                 : state === PPC_CAPACITOR_CHARGING_STATE ? 'Charging' : 'Charge',
@@ -101,6 +103,15 @@ export class PpcCapacitorHandler extends EquipmentInteractionHandler {
     ): InventoryControlDamage {
         if (!chargedLinkedPpcCapacitor(equipment)) return damage;
         return addDamageBonus(damage, PPC_CAPACITOR_DAMAGE_BONUS);
+    }
+
+    override applyInventoryControlWeaponTypes(
+        equipment: MountedEquipment,
+        types: ReadonlySet<WeaponType>,
+        _context: HandlerContext
+    ): ReadonlySet<WeaponType> {
+        if (!chargedLinkedPpcCapacitor(equipment)) return types;
+        return new Set([...types, 'X']);
     }
 
     override getInventoryHeatSources(equipment: MountedEquipment, _turnState: TurnState): UnitHeatSource[] {

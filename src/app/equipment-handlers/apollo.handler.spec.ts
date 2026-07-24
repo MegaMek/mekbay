@@ -3,6 +3,7 @@ import { WeaponEquipment, type AmmoType, type Equipment } from '../models/equipm
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
 import { APOLLO_MODE_STATE, APOLLO_SATURATION_MODE, APOLLO_STANDARD_MODE, ApolloHandler } from './apollo.handler';
 import { INVENTORY_CONTROL_MODE_STATE } from '../utils/inventory-control.util';
+import { EquipmentFlag } from '../models/equipment-flags.type';
 
 function owner(unavailableEntry?: MountedEquipment, gameRules: CBTGameRules = CORE_2026_GAME_RULES) {
     return {
@@ -12,14 +13,14 @@ function owner(unavailableEntry?: MountedEquipment, gameRules: CBTGameRules = CO
     } as never;
 }
 
-function entry(flags: string[] = [], destroyed = false): MountedEquipment {
+function entry(flags: EquipmentFlag[] = [], destroyed = false): MountedEquipment {
     return new MountedEquipment({ owner: owner(), id: flags.join('-') || 'entry', name: 'Entry', equipment: { flags: new Set(flags) } as Equipment, destroyed });
 }
 
 function weapon(
     ammoType: Extract<AmmoType, 'LRM' | 'MML' | 'MRM'>,
     gameRules: CBTGameRules = CORE_2026_GAME_RULES,
-    flags: string[] = ammoType === 'MRM' ? ['F_MRM'] : []
+    flags: EquipmentFlag[] = ammoType === 'MRM' ? ['F_MRM'] : []
 ): MountedEquipment {
     return new MountedEquipment({
         owner: owner(undefined, gameRules),

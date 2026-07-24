@@ -31,11 +31,12 @@
  * affiliated with Microsoft.
  */
 
+import { EquipmentFlag } from '../models/equipment-flags.type';
 import { ToggleHandler } from './base/toggle.handler';
 
 export class StealthHandler extends ToggleHandler {
     readonly id = 'stealth-handler';
-    override readonly flags = ['F_STEALTH'];
+    override readonly flags: EquipmentFlag[] = ['F_STEALTH'];
     override readonly priority = 10;
     
     protected override readonly enabledLabel = 'Stealth Active';
