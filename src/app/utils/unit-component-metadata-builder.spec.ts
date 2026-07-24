@@ -1,4 +1,5 @@
-import { AmmoEquipment, Equipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../models/equipment.model';
+import { AmmoEquipment, ArmorEquipment, Equipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../models/equipment.model';
+import { MountedArmor } from '../models/entity/components';
 import {
   TestAeroSpaceFighterEntity as AeroSpaceFighterEntity,
   TestBipedMekEntity as BipedMekEntity,
@@ -42,6 +43,27 @@ describe('buildUnitComponentMetadata', () => {
 
     expect(buildUnitComponentMetadata(entity)!.find(component => component.id === laser.id))
       .toEqual(jasmine.objectContaining({ l: 'NOS', p: 0, r: 'Medium', m: '-', d: '8/6', md: '8.0' }));
+  });
+
+  it('exports patchwork armor plus each distinct effective armor material without armor mounts', () => {
+    const entity = new BipedMekEntity();
+    const standard = new ArmorEquipment({
+      id: 'Standard Armor', name: 'Standard', type: 'armor', armor: { type: 'STANDARD' },
+    });
+    const reactive = new ArmorEquipment({
+      id: 'IS Reactive', name: 'Reactive', type: 'armor', armor: { type: 'REACTIVE' },
+    });
+    entity.setUniformArmor(new MountedArmor({ armor: standard, techBase: 'IS' }));
+    entity.setArmorEquipmentAt('LA', reactive);
+    entity.setEquipment([mount(reactive, 'LA', { placements: [{ location: 'LA', slotIndex: 0 }] })]);
+
+    const components = buildUnitComponentMetadata(entity)!;
+    expect(components.filter(component => component.id === 'Patchwork Armor')).toHaveSize(1);
+    expect(components.filter(component => component.id === 'Standard Armor')).toHaveSize(1);
+    expect(components.filter(component => component.id === 'IS Reactive')).toHaveSize(1);
+    expect(components.filter(component => [
+      'Patchwork Armor', 'Standard Armor', 'IS Reactive',
+    ].includes(component.id)).every(component => component.p === -1)).toBeTrue();
   });
 
   it('exports intrinsic ammo damage for a special one-shot weapon', () => {
@@ -95,7 +117,7 @@ describe('buildUnitComponentMetadata', () => {
     }));
   });
 
-  it('groups spreadable Mek equipment by placement count and keeps the primary split location first', () => {
+  it('omits structure critical slots and keeps other split equipment locations', () => {
     const entity = new BipedMekEntity();
     const endo = new StructureEquipment({
       id: 'endo', name: 'Endo Steel', type: 'structure',
@@ -115,10 +137,7 @@ describe('buildUnitComponentMetadata', () => {
     ]);
 
     const components = buildUnitComponentMetadata(entity)!;
-    expect(components.find(component => component.id === 'endo' && component.l === 'LA'))
-      .toEqual(jasmine.objectContaining({ q: 2, p: 5, c: 'V', t: 'S' }));
-    expect(components.find(component => component.id === 'endo' && component.l === 'LT'))
-      .toEqual(jasmine.objectContaining({ q: 1, p: 3, c: 'V', t: 'S' }));
+    expect(components.some(component => component.id === 'endo')).toBeFalse();
     expect(components.find(component => component.id === 'split-laser')?.l).toBe('LA/LT');
   });
 });

@@ -101,7 +101,7 @@ describe('UnitMetadataBuilder', () => {
     expect(builder.build(entity).structureType).toBe('Standard');
   });
 
-  it('exports every effective Mek structure material with the global mixed projection', () => {
+  it('exports an effective Mek structure as one synthetic component', () => {
     const entity = new BipedMekEntity();
     entity.setTonnage(60);
     const endo = new StructureEquipment({
@@ -119,10 +119,22 @@ describe('UnitMetadataBuilder', () => {
 
     const metadata = builder.build(entity);
     expect(metadata.structureType).toBe('Standard');
-    expect(metadata.comp?.filter(component => component.t === 'S').map(component => component.id))
-      .toContain(STANDARD_STRUCTURE_EQUIPMENT.id);
-    expect(metadata.comp?.filter(component => component.t === 'S').map(component => component.id))
-      .toContain(endo.id);
+    const componentIds = metadata.comp?.filter(component => component.t === 'S').map(component => component.id) ?? [];
+    expect(componentIds).toContain(STANDARD_STRUCTURE_EQUIPMENT.id);
+    expect(componentIds).not.toContain(endo.id);
+
+    entity.setEquipment([
+      new EntityMountedEquipment({
+        mountId: 'mounted-endo', equipmentId: endo.id, equipment: endo,
+        allocation: { kind: 'location', location: 'LA', placements: [{ location: 'LA', slotIndex: 0 }] },
+        rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false,
+      }),
+    ]);
+
+    const mountedComponentIds = builder.build(entity).comp
+      ?.filter(component => component.t === 'S').map(component => component.id) ?? [];
+    expect(mountedComponentIds).toContain(STANDARD_STRUCTURE_EQUIPMENT.id);
+    expect(mountedComponentIds).not.toContain(endo.id);
   });
 
   it('exports Java weight class display names without changing canonical categories', () => {

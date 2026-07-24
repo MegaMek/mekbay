@@ -62,6 +62,8 @@ const LOCATION_ABBREVIATIONS: Readonly<Record<string, string>> = {
 export function buildUnitComponentMetadata(entity: BaseEntity): UnitComponent[] | undefined {
   const components = new Map<string, ExportComponent>();
   addConventionalInfantryWeapons(components, entity);
+  addSyntheticStructure(components, entity);
+  addSyntheticArmor(components, entity);
   addMekSystems(components, entity);
 
   if (usesWeaponBays(entity)) addWeaponBays(components, entity);
@@ -76,8 +78,8 @@ function addOrdinaryEquipment(components: Map<string, ExportComponent>, entity: 
     if (mount.allocation.kind === 'engine' || !mount.equipment) continue;
     const equipment = mount.equipment;
 
-    if (equipment instanceof ArmorEquipment || equipment instanceof StructureEquipment) {
-      addStructuralMaterialMount(components, entity, mount, equipment);
+    if (equipment instanceof StructureEquipment || equipment instanceof ArmorEquipment) {
+      continue;
     } else if (equipment instanceof AmmoEquipment) {
       addAmmo(components, entity, mount, equipment);
     } else if (equipment instanceof WeaponEquipment) {
@@ -141,20 +143,48 @@ function addSyntheticInfantryWeapon(
 function addMekSystems(components: Map<string, ExportComponent>, entity: BaseEntity): void {
   if (!(entity instanceof MekEntity)) return;
 
-  const structures = new Map([...entity.structureByLocation().values()]
-    .map(mounted => [mounted.structure.id, mounted.structure]));
-  const armors = new Map([...entity.armorByLocation().values()]
-    .map(mounted => [mounted.armor.id, mounted.armor]));
-  for (const equipment of [...structures.values(), ...armors.values()]) {
-    if (entity.equipment().some(mount => mount.equipmentId === equipment.id && mount.placements?.length)) continue;
-    const entry = baseComponent(equipment, 1, -1, undefined, 'S', criticals(equipment, entity));
-    components.set(`${equipment.id}__S`, entry);
-  }
-
   if (entity instanceof MekWithArmsEntity) {
     const hands = entity.hasHandActuator();
     if (hands.left) addHand(components, entity, 'LA');
     if (hands.right) addHand(components, entity, 'RA');
+  }
+}
+
+/** Exports the entity-selected internal structure once, independently of critical-slot mounts. */
+function addSyntheticStructure(components: Map<string, ExportComponent>, entity: BaseEntity): void {
+  const structure = entity.uniformStructureMaterial()?.structure
+    ?? entity.structureByLocation().get(entity.locationOrder[0])?.structure;
+  if (!structure) return;
+
+  components.set(`${structure.id}__structure`, baseComponent(
+    structure, 1, -1, undefined, 'S', criticals(structure, entity),
+  ));
+}
+
+/** Exports effective armor once per material, retaining Patchwork as a configuration marker. */
+function addSyntheticArmor(components: Map<string, ExportComponent>, entity: BaseEntity): void {
+  const armorByLocation = entity.armorByLocation();
+  if (armorByLocation.size === 0) return;
+
+  if (entity.hasPatchworkArmor()) {
+    const patchwork = new ArmorEquipment({
+      id: 'Patchwork Armor', name: 'Patchwork', shortName: 'Patchwork', type: 'armor',
+      armor: { type: 'PATCHWORK' },
+    });
+    components.set(`${patchwork.id}__patchwork`, baseComponent(
+      patchwork, 1, -1, undefined, 'S', criticals(patchwork, entity),
+    ));
+  }
+
+  const materials = new Map<string, ArmorEquipment>();
+  for (const mountedArmor of armorByLocation.values()) {
+    const key = `${mountedArmor.armor.id}:${mountedArmor.techBase}`;
+    materials.set(key, mountedArmor.armor);
+  }
+  for (const [key, armor] of materials) {
+    components.set(`${armor.id}__armor_${key}`, baseComponent(
+      armor, 1, -1, undefined, 'S', criticals(armor, entity),
+    ));
   }
 }
 
@@ -445,27 +475,4 @@ function formatWeaponDamage(profile: WeaponDamageProfile): string {
 
 function formatDecimal(value: number): string {
   return Number.isInteger(value) ? value.toFixed(1) : String(value);
-}
-
-function addStructuralMaterialMount(
-  components: Map<string, ExportComponent>, entity: BaseEntity,
-  mount: EntityMountedEquipment, equipment: ArmorEquipment | StructureEquipment,
-): void {
-  const countByLocation = new Map<string, number>();
-  for (const placement of mount.placements ?? []) {
-    countByLocation.set(placement.location, (countByLocation.get(placement.location) ?? 0) + 1);
-  }
-  if (countByLocation.size === 0) {
-    countByLocation.set(mount.location, 1);
-  }
-  for (const [location, quantity] of countByLocation) {
-    const displayLocation = locationAbbreviation(entity, location);
-    const key = `${equipment.id}_${displayLocation}_S`;
-    const existing = components.get(key);
-    if (existing) existing.q += quantity;
-    else components.set(key, baseComponent(
-      equipment, quantity, locationId(entity, location), displayLocation, 'S',
-      criticals(equipment, entity, mount),
-    ));
-  }
 }
