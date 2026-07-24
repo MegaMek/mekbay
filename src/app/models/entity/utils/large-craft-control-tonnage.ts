@@ -47,6 +47,7 @@ export function getCasparIITonnage(entity: BaseEntity, improved: boolean): numbe
         : standardRound(weight);
 }
 
-function standardRound(tonnage: number): number {
-    return Math.ceil(tonnage * 2) / 2;
+export function standardRound(tonnage: number): number {
+    const kilogramRounded = Math.round(tonnage * 1000) / 1000;
+    return Math.ceil(kilogramRounded * 2) / 2;
 }
