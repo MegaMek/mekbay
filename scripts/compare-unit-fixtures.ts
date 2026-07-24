@@ -20,7 +20,7 @@
  *
  * Usage:
  *   npx tsx scripts/compare-unit-fixtures.ts
- *   npx tsx scripts/compare-unit-fixtures.ts --left fixtures/units.json --right fixtures/x/units.json
+ *   npx tsx scripts/compare-unit-fixtures.ts --left fixtures/x/units.json --right fixtures/units.json
  *   npx tsx scripts/compare-unit-fixtures.ts --fail-on-difference
  */
 
@@ -30,7 +30,7 @@ import * as path from 'node:path';
 export interface FixtureUnit {
   name: string;
   bv?: number;
-  pv?: number;
+  asPV?: number;
 }
 
 export interface FixtureDocument {
@@ -54,7 +54,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function validateValue(value: unknown, field: 'bv' | 'pv', unitName: string, filePath: string): number | undefined {
+function validateValue(value: unknown, field: string, unitName: string, filePath: string): number | undefined {
   if (value === undefined) {
     return undefined;
   }
@@ -90,10 +90,15 @@ export function parseFixture(contents: string, filePath: string): FixtureDocumen
     }
     names.add(value.name);
 
+    const alphaStrike = value.as;
+    if (alphaStrike !== undefined && !isRecord(alphaStrike)) {
+      throw new Error(`Invalid as value for unit "${value.name}" in ${filePath}: expected an object when present.`);
+    }
+
     return {
       name: value.name,
       bv: validateValue(value.bv, 'bv', value.name, filePath),
-      pv: validateValue(value.pv, 'pv', value.name, filePath),
+      asPV: validateValue(alphaStrike?.PV, 'as.PV', value.name, filePath),
     };
   });
 
@@ -115,8 +120,10 @@ export function compareFixtures(left: FixtureDocument, right: FixtureDocument): 
     }
 
     for (const field of ['bv', 'pv'] as const) {
-      if (leftUnit[field] !== rightUnit[field]) {
-        differences.push({ name, field, left: leftUnit[field], right: rightUnit[field] });
+      const leftValue = field === 'bv' ? leftUnit.bv : leftUnit.asPV;
+      const rightValue = field === 'bv' ? rightUnit.bv : rightUnit.asPV;
+      if (leftValue !== rightValue) {
+        differences.push({ name, field, left: leftValue, right: rightValue });
       }
     }
   }
@@ -156,8 +163,8 @@ function getOption(args: string[], name: string, defaultValue: string): string {
 
 export function runComparison(args: string[], projectRoot = path.resolve(__dirname, '..')): ComparisonResult {
   const fixturesRoot = path.join(projectRoot, 'scripts', 'fixtures');
-  const leftPath = path.resolve(getOption(args, 'left', path.join(fixturesRoot, 'units.json')));
-  const rightPath = path.resolve(getOption(args, 'right', path.join(fixturesRoot, 'x', 'units.json')));
+  const leftPath = path.resolve(getOption(args, 'left', path.join(fixturesRoot, 'x', 'units.json')));
+  const rightPath = path.resolve(getOption(args, 'right', path.join(fixturesRoot, 'units.json')));
   const result = compareFixtures(
     parseFixture(fs.readFileSync(leftPath, 'utf8'), leftPath),
     parseFixture(fs.readFileSync(rightPath, 'utf8'), rightPath),
