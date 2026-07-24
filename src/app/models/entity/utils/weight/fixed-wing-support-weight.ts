@@ -61,7 +61,12 @@ export function calculateFixedWingSupportWeightBreakdown(entity: FixedWingSuppor
   }, 0));
   const heatSinks = small ? 0 : calculateHeatNeutralRequirement(entity);
   const armor = calculateArmor(entity);
-  const fireControl = entity.baseChassisFireConWeight();
+  const fireControlMount = entity.equipment().find(mount => mount.equipment?.hasAnyFlag([
+    'F_BASIC_FIRE_CONTROL', 'F_ADVANCED_FIRE_CONTROL',
+  ]));
+  const fireControl = fireControlMount
+    ? requireTonnage(entity, fireControlMount)
+    : entity.baseChassisFireConWeight();
   let miscellaneous = 0, weapons = 0, ammo = 0;
   for (const mount of entity.equipment()) {
     const equipment = mount.equipment;

@@ -70,9 +70,12 @@ export function calculateSupportVehicleWeightBreakdown(entity: SupportVehicleEnt
     if (!equipment) throw new Error(`Unresolved equipment ${mount.equipmentId} on ${entity.displayName()}`);
     if (equipment instanceof ArmorEquipment || equipment instanceof StructureEquipment) continue;
     if (equipment instanceof AmmoEquipment) {
-      if (mount.location !== 'None') ammo += requireTonnage(entity, mount);
+      if (!small && mount.location !== 'None') ammo += requireTonnage(entity, mount);
     } else if (equipment instanceof WeaponEquipment) {
       weapons += requireTonnage(entity, mount);
+      if (small && equipment.isInfantryWeapon() && (mount.size ?? 1) > 1) {
+        ammo += ceilKg(((mount.size ?? 1) - 1) * equipment.infantry.ammoWeight);
+      }
     } else if (equipment instanceof MiscEquipment && !equipment.hasAnyFlag([...SYSTEM_MISC_FLAGS])) {
       miscellaneous += requireTonnage(entity, mount);
     }
