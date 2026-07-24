@@ -39,7 +39,6 @@ import type { Unit } from '../../models/units.model';
 import { AmmoEquipment, type Equipment, WeaponEquipment } from '../../models/equipment.model';
 import { TechDate, TechAdvancementDates, techDateYear, formatTechDate } from '../../models/entity';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
-import { parseTechDate } from '../../models/entity/types/tech';
 import { CBTGameRulesService } from '../../services/cbt-game-rules.service';
 import { resolveWeaponDamageText } from '../../utils/inventory-control-damage.util';
 import { formatInventoryControlHeat } from '../../utils/inventory-control-heat.util';
