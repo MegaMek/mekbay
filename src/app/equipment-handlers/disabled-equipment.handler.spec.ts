@@ -35,8 +35,8 @@ describe('DisabledEquipmentHandler', () => {
 
     it('applies to equipment with any disableable failure flag', () => {
         expect(handler.applicableTo(entry(['F_RADICAL_HEATSINK']))).toBeTrue();
-        expect(handler.applicableTo(entry(['F_OTHER', 'F_RADICAL_HEATSINK']))).toBeTrue();
-        expect(handler.applicableTo(entry(['F_OTHER']))).toBeFalse();
+        expect(handler.applicableTo(entry(['F_TEST_ONLY', 'F_RADICAL_HEATSINK']))).toBeTrue();
+        expect(handler.applicableTo(entry(['F_TEST_ONLY']))).toBeFalse();
     });
 
     it('is transparent unless disabled is true', () => {

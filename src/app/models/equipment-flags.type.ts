@@ -33,6 +33,7 @@
 
 export type EquipmentFlag =
     // Extra flags specific for MekBay
+    | "F_TEST_ONLY"
     | "F_ESCALATING_FAILURE"
 
     // MegaMek's Flags
