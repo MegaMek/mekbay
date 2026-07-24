@@ -238,6 +238,8 @@ export class SvgInteractionService {
         if (this.interactionAbortController) {
             this.interactionAbortController.abort();
         }
+        svg.classList.remove('read-only');
+        this.markEditOnlyControls(svg);
         this.interactionAbortController = new AbortController();
         const signal = this.interactionAbortController.signal;
         this.setupPipInteractions(svg, signal);
@@ -261,9 +263,15 @@ export class SvgInteractionService {
         if (this.interactionAbortController) {
             this.interactionAbortController.abort();
         }
+        svg.classList.add('read-only');
+        this.markEditOnlyControls(svg);
         this.interactionAbortController = new AbortController();
         const signal = this.interactionAbortController.signal;
         this.setupAmmoProfileInteractions(svg, signal);
+    }
+
+    private markEditOnlyControls(svg: SVGSVGElement): void {
+        svg.querySelectorAll('.unitConditionButton').forEach(control => control.classList.add('edit-only'));
     }
 
     private addSvgTapHandler(

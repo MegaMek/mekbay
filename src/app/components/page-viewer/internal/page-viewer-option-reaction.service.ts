@@ -37,7 +37,7 @@ export class PageViewerOptionReactionService {
             return false;
         }
 
-        const shouldRedisplay = this.previousReadOnly && !isReadOnly && viewInitialized && !isSwiping;
+        const shouldRedisplay = this.previousReadOnly !== isReadOnly && viewInitialized && !isSwiping;
         this.previousReadOnly = isReadOnly;
         return shouldRedisplay;
     }
