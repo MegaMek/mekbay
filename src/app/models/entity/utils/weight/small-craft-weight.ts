@@ -5,7 +5,7 @@ import type { SmallCraftEntity } from '../../entities/aero/small-craft-entity';
 import { ceilToHalfTon, ceilToWholeTon } from './weight-rounding';
 
 const SYSTEM_FLAGS: EquipmentFlag[] = [
-  'F_FERRO_ALUMINUM', 'F_FERRO_ALUMINUM_PROTO', 'F_LIGHT_FERRO', 'F_HEAVY_FERRO',
+  'F_LIGHT_FERRO', 'F_HEAVY_FERRO',
   'F_REACTIVE', 'F_REFLECTIVE', 'F_HARDENED_ARMOR', 'F_PRIMITIVE_ARMOR',
   'F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE',
 ] as const;

@@ -1,5 +1,5 @@
 import { EquipmentFlag } from '../../../equipment-flags.type';
-import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
+import { AmmoEquipment, ArmorEquipment, isBombEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
 import { isQuartersBay } from '../../bays/bay-definitions';
 import type { FixedWingSupportEntity } from '../../entities/aero/fixed-wing-support-entity';
 import type { TechRating } from '../../types';
@@ -66,9 +66,9 @@ export function calculateFixedWingSupportWeightBreakdown(entity: FixedWingSuppor
     if (!equipment) throw new Error(`Unresolved equipment ${mount.equipmentId} on ${entity.displayName()}`);
     if (equipment instanceof ArmorEquipment || equipment instanceof StructureEquipment) continue;
     if (equipment instanceof AmmoEquipment) {
-      if (!small && mount.location !== 'None' && !equipment.hasFlag('F_BOMB')) ammo += requireTonnage(entity, mount);
+      if (!small && mount.location !== 'None' && !isBombEquipment(equipment)) ammo += requireTonnage(entity, mount);
     } else if (equipment instanceof WeaponEquipment) {
-      if (!equipment.hasFlag('F_BOMB')) weapons += requireTonnage(entity, mount);
+      if (!isBombEquipment(equipment)) weapons += requireTonnage(entity, mount);
     } else if (equipment instanceof MiscEquipment && !equipment.hasAnyFlag([...SYSTEM_FLAGS])) {
       miscellaneous += requireTonnage(entity, mount);
     }

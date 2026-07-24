@@ -1,4 +1,4 @@
-import { createEquipment } from '../../../equipment.model';
+import { AmmoEquipment, createEquipment, WeaponEquipment } from '../../../equipment.model';
 import { TestFixedWingSupportEntity } from '../../testing/test-entities';
 import { addTestEquipment } from '../../testing/test-mounted-equipment';
 import { MountedEngine } from '../../components';
@@ -31,5 +31,29 @@ describe('fixed-wing support construction mass', () => {
       id: 'Prop', name: 'Prop', type: 'misc', flags: ['F_CHASSIS_MODIFICATION', 'F_PROP'],
     }), { location: 'Fuselage' });
     expect(calculateFixedWingSupportWeightBreakdown(entity).fuel).toBe(0);
+  });
+
+  it('excludes bomb payloads from non-small support aircraft construction mass', () => {
+    const entity = new TestFixedWingSupportEntity();
+    entity.setTonnage(20);
+    addTestEquipment(entity, new AmmoEquipment({
+      id: 'bomb-ammo', name: 'Bomb Ammo', type: 'ammo', stats: { tonnage: 1 },
+      flags: ['F_SPACE_BOMB'], ammo: { type: 'BOMB', shots: 1 },
+    }), { location: 'Body' });
+    addTestEquipment(entity, new AmmoEquipment({
+      id: 'ordinary-ammo', name: 'Ordinary Ammo', type: 'ammo', stats: { tonnage: 1 },
+      ammo: { type: 'LRM', shots: 1 },
+    }), { location: 'Body' });
+    addTestEquipment(entity, new WeaponEquipment({
+      id: 'bomb-weapon', name: 'Bomb Weapon', type: 'weapon', stats: { tonnage: 2 },
+      flags: ['F_BOMB_WEAPON'],
+    }), { location: 'Nose' });
+    addTestEquipment(entity, new WeaponEquipment({
+      id: 'ordinary-weapon', name: 'Ordinary Weapon', type: 'weapon', stats: { tonnage: 3 },
+    }), { location: 'Nose' });
+
+    const result = calculateFixedWingSupportWeightBreakdown(entity);
+    expect(result.ammo).toBe(1);
+    expect(result.weapons).toBe(3);
   });
 });

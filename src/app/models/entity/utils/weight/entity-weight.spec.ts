@@ -12,13 +12,11 @@ describe('entity effective tonnage', () => {
     expect(entity.loadoutTonnage()).toBe(3.5);
   });
 
-  it('does not substitute declared tonnage for an unimplemented family', () => {
+  it('calculates vehicle construction mass without substituting declared tonnage', () => {
     const entity = new TestTankEntity();
     entity.setTonnage(50);
 
     expect(entity.tonnage()).toBe(50);
-    expect(() => entity.loadoutTonnage()).toThrowError(
-      'Effective tonnage is not implemented for Tank',
-    );
+    expect(entity.loadoutTonnage()).not.toBe(entity.tonnage());
   });
 });

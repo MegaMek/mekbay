@@ -240,8 +240,6 @@ function writeMovement(entity: MekEntity, lines: string[]): void {
     if (eq.type !== 'misc') return false;
     if (eq.critSlots !== 0) return false;
     if (eq.hasFlag('F_CASE')) return false;
-    if (eq.hasFlag('F_ARMOR')) return false;
-    if (eq.hasFlag('F_STRUCTURE')) return false;
     return true;
   });
   for (const m of nocritMounts) {

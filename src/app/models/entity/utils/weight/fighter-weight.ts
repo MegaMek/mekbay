@@ -1,5 +1,5 @@
 import { EquipmentFlag } from '../../../equipment-flags.type';
-import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
+import { AmmoEquipment, ArmorEquipment, isBombEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
 import { isQuartersBay } from '../../bays/bay-definitions';
 import type { AeroEntity } from '../../entities/aero/aero-entity';
 import type { ConvFighterEntity } from '../../entities/aero/conv-fighter-entity';
@@ -8,7 +8,7 @@ import { getEquipmentEngineWeight } from '../equipment-engine-weight';
 import { ceilToHalfTon } from './weight-rounding';
 
 const SYSTEM_MISC_FLAGS: EquipmentFlag[] = [
-  'F_FERRO_ALUMINUM', 'F_FERRO_ALUMINUM_PROTO', 'F_LIGHT_FERRO', 'F_HEAVY_FERRO',
+  'F_LIGHT_FERRO', 'F_HEAVY_FERRO',
   'F_REACTIVE', 'F_REFLECTIVE', 'F_HARDENED_ARMOR', 'F_HEAT_SINK',
   'F_DOUBLE_HEAT_SINK', 'F_IS_DOUBLE_HEAT_SINK_PROTOTYPE',
 ] as const;
@@ -59,9 +59,9 @@ export function calculateFighterWeightBreakdown(entity: AeroEntity): FighterWeig
     if (!equipment) throw new Error(`Unresolved equipment ${mount.equipmentId} on ${entity.displayName()}`);
     if (equipment instanceof ArmorEquipment || equipment instanceof StructureEquipment) continue;
     if (equipment instanceof AmmoEquipment) {
-      if (mount.location !== 'None' && !equipment.hasFlag('F_BOMB')) ammo += requireTonnage(entity, mount);
+      if (mount.location !== 'None' && !isBombEquipment(equipment)) ammo += requireTonnage(entity, mount);
     } else if (equipment instanceof WeaponEquipment) {
-      if (!equipment.hasFlag('F_BOMB')) weapons += requireTonnage(entity, mount);
+      if (!isBombEquipment(equipment)) weapons += requireTonnage(entity, mount);
     } else if (equipment instanceof MiscEquipment && !equipment.hasAnyFlag([...SYSTEM_MISC_FLAGS])) {
       miscellaneous += requireTonnage(entity, mount);
     }

@@ -4,8 +4,10 @@ import { MML_LRM_PROFILE } from './ammo-weapon-profile.model';
 import {
     AmmoEquipment,
     type AmmoType,
+    Equipment,
     EquipmentMap,
     findIntrinsicAmmoForWeapon,
+    isBombEquipment,
     MiscEquipment,
     StructureEquipment,
     WeaponEquipment,
@@ -160,6 +162,43 @@ describe('equipment model', () => {
         expect(compactHeatSinks.heatSinkUnitsPerMount).toBe(2);
         expect(armorKit.isArmorKit).toBeTrue();
         expect(internalWeapon.isInternalRepresentation).toBeTrue();
+    });
+
+    it('identifies physical shields from club and shield-size semantics', () => {
+        const shield = new MiscEquipment({
+            id: 'shield', name: 'Shield', type: 'misc', flags: ['F_CLUB', 'S_SHIELD_MEDIUM'],
+        });
+        const club = new MiscEquipment({
+            id: 'club', name: 'Club', type: 'misc', flags: ['F_CLUB'],
+        });
+        const malformed = new MiscEquipment({
+            id: 'malformed-shield', name: 'Malformed Shield', type: 'misc', flags: ['S_SHIELD_MEDIUM'],
+        });
+
+        expect(shield.isShield).toBeTrue();
+        expect(club.isShield).toBeFalse();
+        expect(malformed.isShield).toBeFalse();
+    });
+
+    it('identifies bomb ammo and bomb weapons without misclassifying carriers or ordinary ordnance', () => {
+        for (const flag of ['F_ALT_BOMB', 'F_DIVE_BOMB', 'F_GROUND_BOMB', 'F_OTHER_BOMB', 'F_SPACE_BOMB'] as const) {
+            const bomb = new AmmoEquipment({
+                id: flag, name: flag, type: 'ammo', flags: [flag], ammo: { type: 'BOMB' },
+            });
+            expect(isBombEquipment(bomb)).withContext(flag).toBeTrue();
+        }
+        const bombWeapon = weapon('bomb-weapon', 'Bomb Weapon', 'BOMB', 10, 1, ['F_BOMB_WEAPON']);
+        const ordinaryAmmo = new AmmoEquipment({
+            id: 'ordinary-ammo', name: 'Ordinary Ammo', type: 'ammo', ammo: { type: 'LRM' },
+        });
+        const bombBay = new MiscEquipment({
+            id: 'bomb-bay', name: 'Bomb Bay', type: 'misc', flags: ['F_BOMB_BAY'],
+        });
+
+        expect(isBombEquipment(bombWeapon)).toBeTrue();
+        expect(isBombEquipment(ordinaryAmmo)).toBeFalse();
+        expect(isBombEquipment(bombBay)).toBeFalse();
+        expect(isBombEquipment(new Equipment({ id: 'plain', name: 'Plain', type: 'misc' }))).toBeFalse();
     });
 });
 

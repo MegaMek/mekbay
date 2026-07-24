@@ -555,8 +555,12 @@ class TestCBTForce extends CBTForce {
 
 class EndTurnTestHandler extends EquipmentInteractionHandler {
     readonly id = 'end-turn-test-handler';
-    override readonly flags: EquipmentFlag[] = ['F_END_TURN_TEST'];
+    override readonly flags: EquipmentFlag[] = ['F_TEST_ONLY'];
     calls = 0;
+
+    override applicableTo(equipment: MountedEquipment): boolean {
+        return equipment.equipment?.id === 'end-turn-test';
+    }
 
     getChoices(): [] {
         return [];
@@ -573,7 +577,11 @@ class EndTurnTestHandler extends EquipmentInteractionHandler {
 
 class RunMovementBonusTestHandler extends EquipmentInteractionHandler {
     readonly id = 'run-movement-bonus-test-handler';
-    override readonly flags: EquipmentFlag[] = ['F_RUN_MOVEMENT_BONUS_TEST'];
+    override readonly flags: EquipmentFlag[] = ['F_TEST_ONLY'];
+
+    override applicableTo(equipment: MountedEquipment): boolean {
+        return equipment.equipment?.id === 'run-movement-bonus-test';
+    }
 
     getChoices(): [] {
         return [];
@@ -774,7 +782,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             owner: forceUnit,
             id: 'end-turn-test@FR#0',
             name: 'End Turn Test',
-            equipment: new Equipment({ id: 'end-turn-test', name: 'End Turn Test', type: 'misc', flags: ['F_END_TURN_TEST'] }),
+            equipment: new Equipment({ id: 'end-turn-test', name: 'End Turn Test', type: 'misc', flags: ['F_TEST_ONLY'] }),
         })], true);
 
         forceUnit.endTurn();
@@ -798,7 +806,7 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             owner: forceUnit,
             id: 'run-movement-bonus-test@CT#0',
             name: 'Run Movement Bonus Test',
-            equipment: new Equipment({ id: 'run-movement-bonus-test', name: 'Run Movement Bonus Test', type: 'misc', flags: ['F_RUN_MOVEMENT_BONUS_TEST'] }),
+            equipment: new Equipment({ id: 'run-movement-bonus-test', name: 'Run Movement Bonus Test', type: 'misc', flags: ['F_TEST_ONLY'] }),
         });
         forceUnit.isLoaded.set(true);
         entry.setState('active', 'true');

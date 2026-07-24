@@ -534,8 +534,9 @@ function validateOracleDocument(value: unknown): OracleDocument {
   if (errors.length > 0) throw new Error(`Invalid oracle document: ${errors.join('; ')}`);
 
   const units = value['units'] as unknown[];
-  const fieldsToCheck = CHECKED_FIELDS.filter(check =>
-    !check.field.startsWith('as.'));
+  const activeChecks = getActiveChecks();
+  const fieldsToCheck = activeChecks.filter(check => !check.field.startsWith('as.'));
+  const requiresAlphaStrike = activeChecks.some(check => check.field.startsWith('as.'));
   for (let index = 0; index < units.length; index++) {
     const unit = units[index];
     if (!isPlainObject(unit)) {
@@ -555,7 +556,7 @@ function validateOracleDocument(value: unknown): OracleDocument {
       if (error) errors.push(`units[${index}].${oracleField}: ${error}`);
     }
 
-    if (!hasOwn(unit, 'as') || !isPlainObject(unit['as'])) {
+    if (requiresAlphaStrike && (!hasOwn(unit, 'as') || !isPlainObject(unit['as']))) {
       errors.push(`units[${index}].as must be an object`);
     }
     if (errors.length >= 20) break;

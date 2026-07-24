@@ -232,9 +232,9 @@ describe('EntityMountedEquipment.getTonnage', () => {
         expect(mount(variableEquipment('extended fuel tank', ['F_FUEL'])).getTonnage(entity)).toBe(2);
     });
 
-    it('matches Java variable-tonnage fallback for power generators and dumpers', () => {
+    it('matches Java variable-tonnage fallback for power generators and unlinked dumpers', () => {
         expect(mount(variableEquipment('power generator', ['F_POWER_GENERATOR'])).getTonnage(entity)).toBe(1);
-        expect(mount(variableEquipment('dumper', ['F_DUMPER'])).getTonnage(entity)).toBe(1);
+        expect(mount(variableEquipment('dumper', ['F_DUMPER'])).getTonnage(entity)).toBe(0);
     });
 
     it('uses kilogram rounding for ProtoMek partial wings', () => {

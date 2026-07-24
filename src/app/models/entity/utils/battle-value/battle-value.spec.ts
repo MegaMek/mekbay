@@ -123,6 +123,33 @@ describe('battle value family dispatch', () => {
     expect(new ExposedMekCalculator(entity).modifier(clubMount)).toBe(1.25);
   });
 
+  it('counts physical shields defensively and excludes them from offensive equipment', () => {
+    class ExposedMekCalculator extends MekBVCalculator {
+      isDefensive(item: EntityMountedEquipment): boolean { return this.countsAsDefensiveEquipment(item); }
+      offensiveEquipmentValue(): number {
+        this.offensiveValue = 0;
+        this.processOffensiveEquipment();
+        return this.offensiveValue;
+      }
+    }
+    const entity = new TestBipedMekEntity();
+    const shield = new MiscEquipment({
+      id: 'shield', name: 'Medium Shield', type: 'misc', stats: { bv: 20 },
+      flags: ['F_CLUB', 'S_SHIELD_MEDIUM'],
+    });
+    const shieldMount = mount(shield, 'LA');
+    entity.setEquipment([shieldMount]);
+    const calculator = new ExposedMekCalculator(entity);
+
+    expect(calculator.isDefensive(shieldMount)).toBeTrue();
+    expect(calculator.offensiveEquipmentValue()).toBe(0);
+
+    const clubOnly = mount(new MiscEquipment({
+      id: 'club', name: 'Club', type: 'misc', stats: { bv: 20 }, flags: ['F_CLUB'],
+    }), 'LA');
+    expect(calculator.isDefensive(clubOnly)).toBeFalse();
+  });
+
   it('dispatches modeled families like MegaMek', () => {
     expect(getBVCalculator(new TestBipedMekEntity())).toBeInstanceOf(MekBVCalculator);
     expect(getBVCalculator(new TestTankEntity())).toBeInstanceOf(CombatVehicleBVCalculator);

@@ -1742,7 +1742,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
     it('keeps the implicit ammo bin selected during stepper adjustments and does not switch to a different ammo type when depleted', () => {
         const standardAmmo = ammo('LRM 15 Ammo', 'MML', 15);
-        const artemisAmmo = ammo('LRM 15 Artemis V Ammo', 'MML', 15, ['M_ARTEMIS_V']);
+        const artemisAmmo = ammo('LRM 15 Artemis V Ammo', 'MML', 15, ['M_ARTEMIS_V_CAPABLE']);
         const lrm = entry({
             id: 'lrm',
             equipment: weapon('LRM 15', 'MML', 15),

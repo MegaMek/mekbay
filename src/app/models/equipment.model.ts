@@ -906,6 +906,11 @@ export class MiscEquipment extends Equipment {
     get baseDamageAbsorptionRate(): number { return this.misc.baseDamageAbsorptionRate; }
     get baseDamageCapacity(): number { return this.misc.baseDamageCapacity; }
     get industrial(): boolean { return this.misc.industrial; }
+    /** Whether this is a physical shield, equivalent to MegaMek's MiscType.isShield(). */
+    get isShield(): boolean {
+        return this.hasFlag('F_CLUB')
+            && this.hasAnyFlag(['S_SHIELD_SMALL', 'S_SHIELD_MEDIUM', 'S_SHIELD_LARGE']);
+    }
     /** Heat generated while operating, equivalent to MegaMek's MiscType.getHeat(). */
     get operatingHeat(): number {
         if (this.hasAnyFlag(['F_NULL_SIG', 'F_VOID_SIG'])) return 10;
@@ -975,6 +980,16 @@ export class StructureEquipment extends Equipment {
     }
 
     get structureTypeId(): number { return this.structure.typeId; }
+}
+
+const BOMB_AMMO_FLAGS: EquipmentFlag[] = [
+    'F_ALT_BOMB', 'F_DIVE_BOMB', 'F_GROUND_BOMB', 'F_OTHER_BOMB', 'F_SPACE_BOMB',
+];
+
+/** Whether equipment is a bomb payload excluded from aerospace construction mass. */
+export function isBombEquipment(equipment: Equipment): boolean {
+    if (equipment instanceof AmmoEquipment) return equipment.hasAnyFlag(BOMB_AMMO_FLAGS);
+    return equipment instanceof WeaponEquipment && equipment.hasFlag('F_BOMB_WEAPON');
 }
 
 // ============================================================================

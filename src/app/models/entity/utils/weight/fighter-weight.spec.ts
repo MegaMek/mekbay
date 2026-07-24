@@ -1,5 +1,7 @@
+import { AmmoEquipment, WeaponEquipment } from '../../../equipment.model';
 import { MountedEngine } from '../../components';
 import { TestAeroSpaceFighterEntity, TestConvFighterEntity } from '../../testing/test-entities';
+import { addTestEquipment } from '../../testing/test-mounted-equipment';
 import { calculateFighterWeightBreakdown } from './fighter-weight';
 
 describe('fighter construction mass', () => {
@@ -28,5 +30,28 @@ describe('fighter construction mass', () => {
     entity.setTonnage(50);
     entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 200, techBase: 'IS' }));
     expect(calculateFighterWeightBreakdown(entity).engine).toBe(13);
+  });
+
+  it('excludes bomb payloads while retaining ordinary weapons and ammunition', () => {
+    const entity = new TestAeroSpaceFighterEntity();
+    addTestEquipment(entity, new AmmoEquipment({
+      id: 'bomb-ammo', name: 'Bomb Ammo', type: 'ammo', stats: { tonnage: 1 },
+      flags: ['F_OTHER_BOMB'], ammo: { type: 'AAA_MISSILE', shots: 1 },
+    }), { location: 'Fuselage' });
+    addTestEquipment(entity, new AmmoEquipment({
+      id: 'ordinary-ammo', name: 'Ordinary Ammo', type: 'ammo', stats: { tonnage: 1 },
+      ammo: { type: 'LRM', shots: 1 },
+    }), { location: 'Fuselage' });
+    addTestEquipment(entity, new WeaponEquipment({
+      id: 'bomb-weapon', name: 'Bomb Weapon', type: 'weapon', stats: { tonnage: 2 },
+      flags: ['F_BOMB_WEAPON'],
+    }), { location: 'Nose' });
+    addTestEquipment(entity, new WeaponEquipment({
+      id: 'ordinary-weapon', name: 'Ordinary Weapon', type: 'weapon', stats: { tonnage: 3 },
+    }), { location: 'Nose' });
+
+    const result = calculateFighterWeightBreakdown(entity);
+    expect(result.ammo).toBe(1);
+    expect(result.weapons).toBe(3);
   });
 });
