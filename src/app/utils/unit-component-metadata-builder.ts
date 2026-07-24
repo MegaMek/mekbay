@@ -4,6 +4,7 @@ import {
   Equipment,
   findIntrinsicAmmoForWeapon,
   MiscEquipment,
+  StructureEquipment,
   WeaponDamageProfile,
   WeaponEquipment,
 } from '../models/equipment.model';
@@ -75,7 +76,7 @@ function addOrdinaryEquipment(components: Map<string, ExportComponent>, entity: 
     if (mount.allocation.kind === 'engine' || !mount.equipment) continue;
     const equipment = mount.equipment;
 
-    if (equipment instanceof ArmorEquipment) {
+    if (equipment instanceof ArmorEquipment || equipment instanceof StructureEquipment) {
       addStructuralMaterialMount(components, entity, mount, equipment);
     } else if (equipment instanceof AmmoEquipment) {
       addAmmo(components, entity, mount, equipment);
@@ -374,7 +375,7 @@ function bayCategory(id: string): ComponentType {
 }
 
 function isStructuralMisc(entity: BaseEntity, equipment: MiscEquipment): boolean {
-  if (equipment.isArmorKit || equipment.hasFlag('F_STRUCTURE')) return true;
+  if (equipment.isArmorKit) return true;
   if (!(entity instanceof BattleArmorEntity)) return false;
   return equipment.hasAnyFlag([
     'F_FIRE_RESISTANT', 'F_ARTEMIS', 'F_ARTEMIS_V', 'F_APOLLO', 'F_HARJEL', 'F_MASS',
@@ -448,7 +449,7 @@ function formatDecimal(value: number): string {
 
 function addStructuralMaterialMount(
   components: Map<string, ExportComponent>, entity: BaseEntity,
-  mount: EntityMountedEquipment, equipment: ArmorEquipment,
+  mount: EntityMountedEquipment, equipment: ArmorEquipment | StructureEquipment,
 ): void {
   const countByLocation = new Map<string, number>();
   for (const placement of mount.placements ?? []) {

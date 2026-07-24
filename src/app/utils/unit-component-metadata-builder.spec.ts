@@ -1,4 +1,4 @@
-import { AmmoEquipment, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
+import { AmmoEquipment, Equipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../models/equipment.model';
 import {
   TestAeroSpaceFighterEntity as AeroSpaceFighterEntity,
   TestBipedMekEntity as BipedMekEntity,
@@ -97,9 +97,9 @@ describe('buildUnitComponentMetadata', () => {
 
   it('groups spreadable Mek equipment by placement count and keeps the primary split location first', () => {
     const entity = new BipedMekEntity();
-    const endo = new MiscEquipment({
-      id: 'endo', name: 'Endo Steel', type: 'misc',
-      stats: { criticalSlots: 'variable', spreadable: true }, flags: ['F_STRUCTURE'],
+    const endo = new StructureEquipment({
+      id: 'endo', name: 'Endo Steel', type: 'structure',
+      stats: { criticalSlots: 'variable', spreadable: true }, flags: ['F_ENDO_STEEL'],
     });
     const laser = weapon('split-laser', {
       damage: 5, ranges: [3, 6, 9, 12], flags: ['F_ENERGY'],
@@ -148,7 +148,7 @@ function weapon(
 }
 
 function mount(
-  equipment: WeaponEquipment | AmmoEquipment | MiscEquipment,
+  equipment: Equipment,
   location: string,
   options: { shotsCount?: number; placements?: readonly { location: string; slotIndex: number }[] } = {},
 ): EntityMountedEquipment {
