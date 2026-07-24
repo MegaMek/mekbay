@@ -434,7 +434,7 @@ describe('EntityMountedEquipment.getCost', () => {
     entity.setTonnage(75);
     entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 300, techBase: 'IS' }));
 
-    const cases: Array<[string, string[], number]> = [
+    const cases: Array<[string, EquipmentFlag[], number]> = [
         ['hatchet', ['F_CLUB', 'S_HATCHET'], 25000],
         ['sword', ['F_CLUB', 'S_SWORD'], 40000],
         ['lance', ['F_CLUB', 'S_LANCE'], 11250],
@@ -468,7 +468,7 @@ describe('EntityMountedEquipment.getCost', () => {
         expect(mount(hatchet, true).getCost(entity)).toBe(775000);
     });
 
-    const chassisCases: Array<[string, string[], number]> = [
+    const chassisCases: Array<[string, EquipmentFlag[], number]> = [
         ['partial wing', ['F_PARTIAL_WING', 'F_MEK_EQUIPMENT'], 275000],
         ['limited amphibious', ['F_LIMITED_AMPHIBIOUS'], 30000],
         ['fully amphibious', ['F_FULLY_AMPHIBIOUS'], 75000],
@@ -585,7 +585,7 @@ describe('EntityMountedEquipment.getCost', () => {
     });
 
     it('resolves large-craft control-system costs', () => {
-        const cases: Array<[string, string[], number]> = [
+        const cases: Array<[string, EquipmentFlag[], number]> = [
             ['SRCS', ['F_SRCS'], 25000],
             ['shielded SRCS', ['F_SASRCS'], 31250],
             ['CASPAR', ['F_CASPAR'], 600000],
@@ -609,7 +609,7 @@ describe('EntityMountedEquipment.getCost', () => {
             .toBe(30000);
     });
 
-    const variableSizeCases: Array<[string, string[], number, number]> = [
+    const variableSizeCases: Array<[string, EquipmentFlag[], number, number]> = [
         ['drone carrier control', ['F_DRONE_CARRIER_CONTROL'], 4, 40000],
         ['MASH', ['F_MASH'], 4, 65000],
         ['communications', ['F_COMMUNICATIONS'], 2.2, 22000],

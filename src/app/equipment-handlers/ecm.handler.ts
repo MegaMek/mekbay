@@ -35,6 +35,7 @@ import { EquipmentInteractionHandler, type HandlerContext } from '../services/eq
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { PickerChoice, PickerValue } from '../components/picker/picker.interface';
 import { ECMMode } from '../models/common.model';
+import { EquipmentFlag } from '../models/equipment-flags.type';
 
 export class ECMHandler extends EquipmentInteractionHandler {
     readonly id = 'ecm-handler';

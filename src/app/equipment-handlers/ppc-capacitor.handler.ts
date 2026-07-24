@@ -6,6 +6,7 @@ import { EquipmentInteractionHandler, type HandlerContext } from '../services/eq
 import type { InventoryControlDamage, InventoryControlDamageContext } from '../utils/inventory-control-damage.util';
 import type { InventoryControlHeatEffect } from '../utils/inventory-control-heat.util';
 import type { WeaponType } from '../models/equipment.model';
+import { EquipmentFlag } from '../models/equipment-flags.type';
 
 export const PPC_CAPACITOR_STATE_KEY = 'ppc_capacitor_state';
 export const PPC_CAPACITOR_CHARGING_STATE = 'charging';

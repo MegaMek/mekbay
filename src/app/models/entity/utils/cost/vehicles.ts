@@ -1,3 +1,4 @@
+import { EquipmentFlag } from '../../../equipment-flags.type';
 import type { SupportVehicle } from '../../entities/support-vehicle';
 import type { VehicleEntity } from '../../entities/vehicle/vehicle-entity';
 import { getEquipmentEngineWeight } from '../equipment-engine-weight';
@@ -74,7 +75,7 @@ function calculateVehicleArmorCost(entity: VehicleEntity): number {
   return calculateArmorCost(entity);
 }
 
-const SUPPORT_VEHICLE_STRUCTURE_COST_MODIFIERS: ReadonlyArray<readonly [string, number]> = [
+const SUPPORT_VEHICLE_STRUCTURE_COST_MODIFIERS: ReadonlyArray<readonly [EquipmentFlag, number]> = [
   ['F_AMPHIBIOUS', 1.75], ['F_ARMORED_CHASSIS', 1.5], ['F_BICYCLE', 0.75],
   ['F_CONVERTIBLE', 1.1], ['F_DUNE_BUGGY', 1.5], ['F_ENVIRONMENTAL_SEALING', 2],
   ['F_EXTERNAL_POWER_PICKUP', 1.1], ['F_HYDROFOIL', 1.7], ['F_MONOCYCLE', 0.5],
@@ -110,7 +111,7 @@ function getSupportVehicleBaseChassisValue(entity: VehicleEntity): number {
   }
 }
 
-const SUPPORT_VEHICLE_CHASSIS_COST_MODIFIERS: ReadonlyArray<readonly [string, number]> = [
+const SUPPORT_VEHICLE_CHASSIS_COST_MODIFIERS: ReadonlyArray<readonly [EquipmentFlag, number]> = [
   ['F_AMPHIBIOUS', 1.25], ['F_ARMORED_CHASSIS', 2], ['F_BICYCLE', 0.75],
   ['F_CONVERTIBLE', 1.1], ['F_DUNE_BUGGY', 1.25], ['F_ENVIRONMENTAL_SEALING', 1.75],
   ['F_EXTERNAL_POWER_PICKUP', 1.1], ['F_HYDROFOIL', 1.1], ['F_MONOCYCLE', 1.3],

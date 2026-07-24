@@ -31,6 +31,7 @@
  * affiliated with Microsoft.
  */
 
+import { EquipmentFlag } from '../models/equipment-flags.type';
 import { ToggleHandler } from './base/toggle.handler';
 
 export class BAPHandler extends ToggleHandler {

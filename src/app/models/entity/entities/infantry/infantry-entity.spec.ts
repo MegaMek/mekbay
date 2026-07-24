@@ -1,3 +1,4 @@
+import { EquipmentFlag } from '../../../equipment-flags.type';
 import { InfantryWeaponEquipment, WeaponEquipment } from '../../../equipment.model';
 import { TestInfantryEntity as InfantryEntity } from '../../testing/test-entities';
 
@@ -60,7 +61,7 @@ describe('InfantryEntity movement', () => {
   });
 });
 
-function infantryWeapon(id: string, extraFlags: string[] = []): InfantryWeaponEquipment {
+function infantryWeapon(id: string, extraFlags: EquipmentFlag[] = []): InfantryWeaponEquipment {
   const weapon = new WeaponEquipment({
     id,
     name: id,

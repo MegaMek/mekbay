@@ -1,9 +1,10 @@
+import { EquipmentFlag } from '../../../equipment-flags.type';
 import type { FixedWingSupportEntity } from '../../entities/aero/fixed-wing-support-entity';
 import { getEquipmentEngineWeight } from '../equipment-engine-weight';
 import { hasAnyEquipmentFlag, nextHalfTon, standardRound } from './common';
 import { amount, buildCostReport, multiplier, type EntityCostEntry, type EntityCostReport } from './cost-report';
 
-const STRUCTURE_MODIFIERS: ReadonlyArray<readonly [string, number]> = [
+const STRUCTURE_MODIFIERS: ReadonlyArray<readonly [EquipmentFlag, number]> = [
   ['F_AMPHIBIOUS', 1.75],
   ['F_ARMORED_CHASSIS', 1.5],
   ['F_BICYCLE', 0.75],
@@ -24,7 +25,7 @@ const STRUCTURE_MODIFIERS: ReadonlyArray<readonly [string, number]> = [
   ['F_VSTOL_CHASSIS', 2],
 ];
 
-const CHASSIS_COST_MODIFIERS: ReadonlyArray<readonly [string, number]> = [
+const CHASSIS_COST_MODIFIERS: ReadonlyArray<readonly [EquipmentFlag, number]> = [
   ['F_AMPHIBIOUS', 1.25],
   ['F_ARMORED_CHASSIS', 2],
   ['F_ENVIRONMENTAL_SEALING', 1.75],
@@ -118,7 +119,7 @@ function techRatingStructureMultiplier(rating: number): number {
 
 function equipmentMultiplier(
   entity: FixedWingSupportEntity,
-  modifiers: ReadonlyArray<readonly [string, number]>,
+  modifiers: ReadonlyArray<readonly [EquipmentFlag, number]>,
 ): number {
   return modifiers.reduce((result, [flag, modifier]) =>
     hasAnyEquipmentFlag(entity, [flag]) ? result * modifier : result, 1);

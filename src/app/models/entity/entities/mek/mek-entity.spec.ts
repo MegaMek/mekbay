@@ -15,6 +15,7 @@ import {
 import { addTestEquipment, addTestEquipmentWithFlags } from '../../testing/test-mounted-equipment';
 import { EquipmentRegistry } from '../../../equipment-lookup';
 import { TEST_EQUIPMENT_REGISTRY } from '../../testing/test-equipment-registry';
+import { EquipmentFlag } from '../../../equipment-flags.type';
 
 const TEST_IS_ENDO_STRUCTURE = new StructureEquipment({
   id: 'IS Endo Steel',
@@ -689,7 +690,7 @@ describe('MekEntity integral heat sinks', () => {
   });
 });
 
-function addMountsWithFlag(entity: BaseEntity, flag: string, count: number): void {
+function addMountsWithFlag(entity: BaseEntity, flag: EquipmentFlag, count: number): void {
   for (let index = 0; index < count; index++) {
     addTestEquipmentWithFlags(entity, flag, { location: 'CT' });
   }

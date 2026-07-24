@@ -24,9 +24,11 @@ import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from '../../mode
 import { TW_GAME_RULES, type CBTGameRules } from '../../models/rules/game-rules';
 import { createCBTForceUnitTestHarness, type CBTForceUnitTestEntryState, type TestUnitOverrides } from '../../testing/unit-test-helpers';
 import { getVibrobladeMode, VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE, VibrobladeHandler } from '../../equipment-handlers/vibroblade.handler';
+import { EquipmentFlag } from '../../models/equipment-flags.type';
+import { AmmoMunitionFlag } from '../../models/ammo-munition-flags.type';
 
 function weapon(id: string, ammoType: Extract<AmmoType, 'NA' | 'AC' | 'ATM' | 'MML' | 'MRM' | 'AC_ULTRA' | 'NARC'> = 'NA', rackSize = 0, ranges: number[] = [1, 2, 3, 4], toHitModifier = 0, heat = 0): WeaponEquipment {
-    const flags = ammoType === 'MRM'
+    const flags: EquipmentFlag[] = ammoType === 'MRM'
         ? ['F_MRM']
         : ammoType === 'MML'
             ? ['F_MISSILE', 'F_MML']
@@ -43,7 +45,7 @@ function weapon(id: string, ammoType: Extract<AmmoType, 'NA' | 'AC' | 'ATM' | 'M
     });
 }
 
-function ammo(id: string, ammoType: 'AC' | 'ATM' | 'MML' | 'NARC', rackSize: number, munitionType: string[] = [], flags: string[] = [], toHitModifier = 0): AmmoEquipment {
+function ammo(id: string, ammoType: 'AC' | 'ATM' | 'MML' | 'NARC', rackSize: number, munitionType: AmmoMunitionFlag[] = [], flags: EquipmentFlag[] = [], toHitModifier = 0): AmmoEquipment {
     return new AmmoEquipment({
         id,
         name: id,
@@ -55,7 +57,7 @@ function ammo(id: string, ammoType: 'AC' | 'ATM' | 'MML' | 'NARC', rackSize: num
     });
 }
 
-function misc(id: string, flags: string[] = []): MiscEquipment {
+function misc(id: string, flags: EquipmentFlag[] = []): MiscEquipment {
     return new MiscEquipment({ id, name: id, type: 'misc', flags });
 }
 

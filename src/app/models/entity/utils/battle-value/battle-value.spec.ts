@@ -407,7 +407,8 @@ describe('structured battle value details', () => {
   });
 
   it('requires both laser and improved flags for the improved-heavy-laser penalty', () => {
-    for (const flags of [['F_LASER'], ['S_IMPROVED']]) {
+    const flagSets: EquipmentFlag[][] = [['F_LASER'], ['S_IMPROVED']];
+    for (const flags of flagSets) {
       const entity = new TestBipedMekEntity();
       const weapon = new WeaponEquipment({
         id: flags[0], name: flags[0], type: 'weapon',

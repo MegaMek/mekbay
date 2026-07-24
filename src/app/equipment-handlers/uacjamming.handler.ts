@@ -31,6 +31,7 @@
  * affiliated with Microsoft.
  */
 
+import { EquipmentFlag } from '../models/equipment-flags.type';
 import { WeaponEquipment } from '../models/equipment.model';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { DisabledStateToggleHandler } from './disabled-equipment.handler';

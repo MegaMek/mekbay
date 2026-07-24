@@ -61,6 +61,7 @@ import {
     type ComponentMatrixAreaView,
 } from './unit-details-component-matrix.util';
 import { naturalCompare } from '../../../utils/sort.util';
+import { EquipmentFlag } from '../../../models/equipment-flags.type';
 
 type SourceListEntry = Sourcebook & { sourceAnnotations: string[] };
 type ComponentDetailsDisplayStyle = 'normal' | 'additional';
@@ -74,9 +75,9 @@ type ComponentLayoutState = {
     showAdditionalSummary: boolean;
 };
 
-const ADDITIONAL_COMPONENT_FLAGS = ['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_JUMP_JET'];
-const CASE_COMPONENT_FLAGS = ['F_CASE', 'F_CASE_II'];
-const WEAPON_MODE_MISC_COMPONENT_FLAGS = ['F_CLUB', 'F_HAND_WEAPON'];
+const ADDITIONAL_COMPONENT_FLAGS: EquipmentFlag[] = ['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_JUMP_JET'];
+const CASE_COMPONENT_FLAGS: EquipmentFlag[] = ['F_CASE', 'F_CASE_II'];
+const WEAPON_MODE_MISC_COMPONENT_FLAGS: EquipmentFlag[] = ['F_CLUB', 'F_HAND_WEAPON'];
 
 @Component({
     selector: 'unit-details-general-tab',
@@ -204,7 +205,7 @@ export class UnitDetailsGeneralTabComponent {
 
     typeSummary = computed(() => {
         const u = this.unit();
-        const EXCLUDE_FLAGS = ['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_CASE', 'F_CASE_II', 'F_JUMP_JET'];
+        const EXCLUDE_FLAGS: EquipmentFlag[] = ['F_HEAT_SINK', 'F_DOUBLE_HEAT_SINK', 'F_CASE', 'F_CASE_II', 'F_JUMP_JET'];
         const counts: Record<string, number> = {};
         if (u?.comp) {
             for (const comp of u.comp) {

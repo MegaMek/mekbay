@@ -1,4 +1,5 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
+import { EquipmentFlag } from '../models/equipment-flags.type';
 import type { AmmoEquipment } from '../models/equipment.model';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import type { ToHitAdjustment } from '../models/rules/game-rules';

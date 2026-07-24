@@ -25,6 +25,7 @@ import { AtmHandler } from '../equipment-handlers/atm.handler';
 import { MmlHandler } from '../equipment-handlers/mml.handler';
 import { ATM_EXTENDED_RANGE_PROFILE, ATM_HIGH_EXPLOSIVE_PROFILE, ATM_STANDARD_PROFILE } from './ammo-weapon-profile.model';
 import { VIBROBLADE_MODE_STATE, VIBROBLADE_ON_MODE, VibrobladeHandler } from '../equipment-handlers/vibroblade.handler';
+import { EquipmentFlag } from './equipment-flags.type';
 
 function createEquipment(): EquipmentMap {
     const ultraAc20 = new WeaponEquipment({
