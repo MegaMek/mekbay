@@ -1,5 +1,5 @@
 import { AmmoEquipment, ArmorEquipment, Equipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../models/equipment.model';
-import { MountedArmor } from '../models/entity/components';
+import { MountedArmor, MountedStructure } from '../models/entity/components';
 import {
   TestAeroSpaceFighterEntity as AeroSpaceFighterEntity,
   TestBipedMekEntity as BipedMekEntity,
@@ -61,6 +61,9 @@ describe('buildUnitComponentMetadata', () => {
     expect(components.filter(component => component.id === 'Patchwork Armor')).toHaveSize(1);
     expect(components.filter(component => component.id === 'Standard Armor')).toHaveSize(1);
     expect(components.filter(component => component.id === 'IS Reactive')).toHaveSize(1);
+    expect(components.find(component => component.id === 'Patchwork Armor')?.n).toBe('Patchwork Armor');
+    expect(components.find(component => component.id === 'Standard Armor')?.n).toBe('Standard Armor');
+    expect(components.find(component => component.id === 'IS Reactive')?.n).toBe('Reactive Armor');
     expect(components.filter(component => [
       'Patchwork Armor', 'Standard Armor', 'IS Reactive',
     ].includes(component.id)).every(component => component.p === -1)).toBeTrue();
@@ -139,6 +142,24 @@ describe('buildUnitComponentMetadata', () => {
     const components = buildUnitComponentMetadata(entity)!;
     expect(components.some(component => component.id === 'endo')).toBeFalse();
     expect(components.find(component => component.id === 'split-laser')?.l).toBe('LA/LT');
+  });
+
+  it('labels synthetic structure materials without duplicating an existing suffix', () => {
+    const entity = new BipedMekEntity();
+    const standard = new StructureEquipment({
+      id: 'Standard', name: 'Standard', type: 'structure', structure: { typeId: 0 },
+    });
+    entity.setUniformStructure(new MountedStructure({ structure: standard, tonnage: entity.tonnage() }));
+
+    expect(buildUnitComponentMetadata(entity)!.find(component => component.id === 'Standard')?.n)
+      .toBe('Standard Structure');
+
+    const labeled = new StructureEquipment({
+      id: 'Endo Steel', name: 'Endo Steel Structure', type: 'structure', structure: { typeId: 1 },
+    });
+    entity.setUniformStructure(new MountedStructure({ structure: labeled, tonnage: entity.tonnage() }));
+    expect(buildUnitComponentMetadata(entity)!.find(component => component.id === 'Endo Steel')?.n)
+      .toBe('Endo Steel Structure');
   });
 });
 

@@ -156,9 +156,10 @@ function addSyntheticStructure(components: Map<string, ExportComponent>, entity:
     ?? entity.structureByLocation().get(entity.locationOrder[0])?.structure;
   if (!structure) return;
 
-  components.set(`${structure.id}__structure`, baseComponent(
-    structure, 1, -1, undefined, 'S', criticals(structure, entity),
-  ));
+  components.set(`${structure.id}__structure`, {
+    ...baseComponent(structure, 1, -1, undefined, 'S', criticals(structure, entity)),
+    n: withMaterialSuffix(structure.shortName, 'Structure'),
+  });
 }
 
 /** Exports effective armor once per material, retaining Patchwork as a configuration marker. */
@@ -171,9 +172,10 @@ function addSyntheticArmor(components: Map<string, ExportComponent>, entity: Bas
       id: 'Patchwork Armor', name: 'Patchwork', shortName: 'Patchwork', type: 'armor',
       armor: { type: 'PATCHWORK' },
     });
-    components.set(`${patchwork.id}__patchwork`, baseComponent(
-      patchwork, 1, -1, undefined, 'S', criticals(patchwork, entity),
-    ));
+    components.set(`${patchwork.id}__patchwork`, {
+      ...baseComponent(patchwork, 1, -1, undefined, 'S', criticals(patchwork, entity)),
+      n: withMaterialSuffix(patchwork.shortName, 'Armor'),
+    });
   }
 
   const materials = new Map<string, ArmorEquipment>();
@@ -182,10 +184,15 @@ function addSyntheticArmor(components: Map<string, ExportComponent>, entity: Bas
     materials.set(key, mountedArmor.armor);
   }
   for (const [key, armor] of materials) {
-    components.set(`${armor.id}__armor_${key}`, baseComponent(
-      armor, 1, -1, undefined, 'S', criticals(armor, entity),
-    ));
+    components.set(`${armor.id}__armor_${key}`, {
+      ...baseComponent(armor, 1, -1, undefined, 'S', criticals(armor, entity)),
+      n: withMaterialSuffix(armor.shortName, 'Armor'),
+    });
   }
+}
+
+function withMaterialSuffix(name: string, suffix: 'Armor' | 'Structure'): string {
+  return name.endsWith(suffix) ? name : `${name} ${suffix}`;
 }
 
 function addHand(components: Map<string, ExportComponent>, entity: BaseEntity, location: 'LA' | 'RA'): void {
