@@ -72,6 +72,12 @@ export function calculateSmallCraftWeightBreakdown(entity: SmallCraftEntity): Sm
       miscellaneous += requireTonnage(entity, mount);
     }
   }
+  for (const equipment of entity.implicitSystemEquipment()) {
+    if (!equipment.hasFixedTonnage()) {
+      throw new Error(`Unable to calculate implicit equipment tonnage for ${equipment.id} on ${entity.displayName()}`);
+    }
+    miscellaneous += equipment.tonnage;
+  }
   let carryingSpace = 0, quarters = 0;
   for (const transporter of entity.transporters()) {
     if (transporter.kind === 'troop-space') carryingSpace += transporter.totalSpace;

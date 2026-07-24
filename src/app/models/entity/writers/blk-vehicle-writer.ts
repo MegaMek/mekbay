@@ -125,13 +125,13 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
     }
     w.addBlock('armor', ...base);
   } else {
-    // Tank: Front, Right, Left, Rear[, Turret[, Rear Turret]]
+    // Tank: Front, Right, Left, Rear[, Turret] or Rear Turret, Front Turret
     const base: number[] = VEHICLE_ARMOR_LOCS.slice(0, 4).map(loc => armorMap.get(loc)?.front ?? 0);
-    if (entity.hasTurret()) {
-      base.push(armorMap.get('Turret')?.front ?? 0);
-    }
     if (entity.hasDualTurret()) {
       base.push(armorMap.get('Rear Turret')?.front ?? 0);
+      base.push(armorMap.get('Front Turret')?.front ?? 0);
+    } else if (entity.hasTurret()) {
+      base.push(armorMap.get('Turret')?.front ?? 0);
     }
     w.addBlock('armor', ...base);
   }

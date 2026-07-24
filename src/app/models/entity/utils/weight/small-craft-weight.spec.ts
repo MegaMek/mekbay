@@ -1,10 +1,36 @@
-import { ArmorEquipment, WeaponEquipment } from '../../../equipment.model';
+import { ArmorEquipment, createEquipment, WeaponEquipment } from '../../../equipment.model';
 import { MountedArmor } from '../../components';
+import { createTestEquipmentRegistry } from '../../testing/test-equipment-registry';
+import { addTestEquipment } from '../../testing/test-mounted-equipment';
 import { TestDropShipEntity, TestSmallCraftEntity } from '../../testing/test-entities';
 import { EntityMountedEquipment } from '../../types/equipment';
 import { calculateSmallCraftWeightBreakdown } from './small-craft-weight';
 
 describe('Small Craft and DropShip construction mass', () => {
+  it('includes automatic military Small Craft ECM exactly once', () => {
+    const automaticEcm = createEquipment({
+      id: 'ISSingle-Hex ECM', name: 'Single-Hex ECM', type: 'misc', flags: ['F_ECM'],
+      stats: { tonnage: 0.1 },
+    });
+    const weapon = new WeaponEquipment({
+      id: 'Laser', name: 'Laser', type: 'weapon', stats: { tonnage: 1 },
+      weapon: { damage: 10, ranges: [5, 10, 15, 20] },
+    });
+    const entity = new TestSmallCraftEntity(createTestEquipmentRegistry({
+      [automaticEcm.id]: automaticEcm,
+      [weapon.id]: weapon,
+    }));
+    entity.designType.set('Military');
+    addTestEquipment(entity, weapon, { location: 'Nose' });
+
+    expect(entity.implicitSystemEquipment()).toEqual([automaticEcm]);
+    expect(calculateSmallCraftWeightBreakdown(entity).miscellaneous).toBe(0.1);
+
+    addTestEquipment(entity, automaticEcm, { location: 'Nose' });
+    expect(entity.implicitSystemEquipment()).toEqual([]);
+    expect(calculateSmallCraftWeightBreakdown(entity).miscellaneous).toBe(0.1);
+  });
+
   it('uses Small Craft chassis engine and half-ton control formulas', () => {
     const entity = new TestSmallCraftEntity();
     entity.setTonnage(200);

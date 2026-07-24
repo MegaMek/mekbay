@@ -44,7 +44,12 @@ function getSupportVehicleEngineWeight(
 
     return entity.weightClass() === 'Small Support'
         ? Math.round(weight * 1000) / 1000
-        : Math.round(weight * 2) / 2;
+        : roundToNearestHalfTon(weight);
+}
+
+export function roundToNearestHalfTon(value: number): number {
+    const kilogramRounded = Math.round(value * 1000) / 1000;
+    return Math.round(kilogramRounded * 2) / 2;
 }
 
 function getBaseEngineValue(

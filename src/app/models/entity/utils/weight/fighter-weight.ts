@@ -1,6 +1,6 @@
 import { EquipmentFlag } from '../../../equipment-flags.type';
 import { AmmoEquipment, ArmorEquipment, isBombEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
-import { isQuartersBay } from '../../bays/bay-definitions';
+import { getBayConstructionWeight, isQuartersBay } from '../../bays/bay-definitions';
 import type { AeroEntity } from '../../entities/aero/aero-entity';
 import type { ConvFighterEntity } from '../../entities/aero/conv-fighter-entity';
 import { calculateHeatNeutralRequirement, calculatePowerAmplifierWeight } from '../cost/common';
@@ -70,7 +70,7 @@ export function calculateFighterWeightBreakdown(entity: AeroEntity): FighterWeig
   const carryingSpace = entity.transporters().reduce((total, transporter) => {
     if (transporter.kind === 'troop-space') return total + transporter.totalSpace;
     if (transporter.kind !== 'bay' || isQuartersBay(transporter)) return total;
-    return total + (transporter.constructionWeight ?? transporter.capacity);
+    return total + getBayConstructionWeight(transporter);
   }, 0);
   const exact = engine + controls + fuel + heatSinks + armor + vstol + miscellaneous
     + weapons + ammo + powerAmplifiers + carryingSpace;

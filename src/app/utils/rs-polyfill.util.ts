@@ -69,9 +69,6 @@ export class RsPolyfillUtil {
     private static readonly CREW_STATE_BANNER_WIDTH = 64;
     private static readonly CREW_STATE_BANNER_HEIGHT = 10;
     private static readonly CREW_STATE_BANNER_FONT_SIZE = 8;
-    private static readonly LOC_CONDITION_BUTTON_WIDTH = 8;
-    private static readonly LOC_CONDITION_BUTTON_HEIGHT = 8;
-    private static readonly LOC_CONDITION_BUTTON_GAP = 2;
     
     
     private static readonly CRITICAL_LOCATION_IDS = [

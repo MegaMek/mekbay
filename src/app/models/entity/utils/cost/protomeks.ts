@@ -11,10 +11,11 @@ export function calculateProtoMekCostReport(
 ): EntityCostReport {
   const tonnage = entity.tonnage();
   const engine = entity.mountedEngine();
-  const armorCostPerPoint = entity.uniformArmor()?.armor.cost;
-  if (armorCostPerPoint === undefined || armorCostPerPoint === 'variable') {
+  const armor = entity.uniformArmor()?.armor;
+  if (!armor?.hasFixedCost()) {
     throw new Error('Unable to calculate ProtoMek armor cost');
   }
+  const armorCostPerPoint = armor.cost;
   const energyWeaponHeat = entity.mountedWeapons()
     .filter(mount => mount.equipment.hasFlag('F_ENERGY'))
     .reduce((heat, mount) => heat + mount.equipment.heat, 0);

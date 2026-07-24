@@ -486,6 +486,12 @@ export class Equipment {
     get cost(): number | "variable" { return this.stats.cost; }
     get bv(): number | "variable" { return this.stats.bv; }
     get critSlots(): number | "variable" { return this.stats.criticalSlots; }
+    hasFixedTonnage(): this is this & { readonly tonnage: number } { return typeof this.tonnage === 'number'; }
+    hasFixedCost(): this is this & { readonly cost: number } { return typeof this.cost === 'number'; }
+    hasFixedBV(): this is this & { readonly bv: number } { return typeof this.bv === 'number'; }
+    hasFixedCriticalSlots(): this is this & { readonly critSlots: number } {
+        return typeof this.critSlots === 'number';
+    }
     get svSlots(): number { return this.stats.svSlots; }
     get tankSlots(): number { return this.stats.tankSlots; }
     get techBase(): EquipmentTechBase { return this.tech.base; }

@@ -95,7 +95,7 @@ function calculateFixedWingArmorCost(entity: FixedWingSupportEntity): number {
   const uniform = entity.uniformArmor();
   if (uniform) {
     const armor = uniform.armor;
-    if (armor.cost === 'variable') throw new Error(`Unable to calculate armor cost for ${armor.id}`);
+    if (!armor.hasFixedCost()) throw new Error(`Unable to calculate armor cost for ${armor.id}`);
     if (armor.hasFlag('F_SUPPORT_VEE_BAR_ARMOR')) return entity.totalArmorPoints() * armor.cost;
     return standardRound(entity.totalArmorPoints() / (16 * armor.pptMultiplier), entity) * armor.cost;
   }
@@ -103,7 +103,7 @@ function calculateFixedWingArmorCost(entity: FixedWingSupportEntity): number {
   let total = 0;
   for (const [location, mountedArmor] of entity.armorByLocation()) {
     const armor = mountedArmor.armor;
-    if (armor.cost === 'variable') throw new Error(`Unable to calculate armor cost for ${armor.id}`);
+    if (!armor.hasFixedCost()) throw new Error(`Unable to calculate armor cost for ${armor.id}`);
     const points = entity.armorValues().get(location);
     const armorPoints = (points?.front ?? 0) + (points?.rear ?? 0);
     total += armor.hasFlag('F_SUPPORT_VEE_BAR_ARMOR')

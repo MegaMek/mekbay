@@ -214,7 +214,7 @@ function calculateLargeCraftArmorCost(entity: CapitalCraft | DropShipEntity): nu
   const mountedArmor = entity.uniformArmor();
   if (!mountedArmor) return 0;
   const armor = mountedArmor.armor;
-  if (armor.cost === 'variable') throw new Error(`Unable to calculate armor cost for ${armor.id}`);
+  if (!armor.hasFixedCost()) throw new Error(`Unable to calculate armor cost for ${armor.id}`);
 
   let rawArmor = entity.totalArmorPoints();
   const primitive = 'driveCoreType' in entity

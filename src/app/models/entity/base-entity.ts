@@ -452,7 +452,7 @@ export abstract class BaseEntity implements EntityTechnology {
     for (const mount of this.equipment()) {
       const equipment = mount.equipment;
       if (!equipment || equipment.hasFlag('F_CASE') || equipment.hasFlag('F_CASE_II')) continue;
-      if (!equipment.isExplosive() && mount.secondEquipment?.isExplosive() !== true) continue;
+      if (!equipment.isExplosive()) continue;
       for (const location of mount.getOccupiedLocations()) {
         if (location !== 'Unallocated' && !protectedLocations.has(location) && !optedOut.has(location)) {
           locations.add(location);
@@ -471,7 +471,7 @@ export abstract class BaseEntity implements EntityTechnology {
     for (const mount of this.equipment()) {
       const equipment = mount.equipment;
       if (!equipment || equipment.hasFlag('F_CASE')) continue;
-      if (!equipment.isExplosive() && mount.secondEquipment?.isExplosive() !== true) continue;
+      if (!equipment.isExplosive()) continue;
       for (const location of mount.getOccupiedLocations()) {
         if (location !== 'Unallocated' && !optedOut.has(location)) locations.add(location);
       }

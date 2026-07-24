@@ -2048,6 +2048,10 @@ hr.divider {
                 fill: #fff !important;
             }
         }
+
+        &.read-only .edit-only {
+            display: none;
+        }
         
         .locConditionButton,
         .locationConditionControl {

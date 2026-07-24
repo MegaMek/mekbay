@@ -17,7 +17,7 @@ export function calculateArmorCost(entity: BaseEntity): number {
   const uniformArmor = entity.uniformArmor();
   if (uniformArmor && !uniformArmor.armor.hasFlag('F_SUPPORT_VEE_BAR_ARMOR')) {
     const armor = uniformArmor.armor;
-    if (armor.cost === 'variable') throw new Error(`Unable to calculate armor cost for ${armor.id}`);
+    if (!armor.hasFixedCost()) throw new Error(`Unable to calculate armor cost for ${armor.id}`);
     const armorWeight = standardRound(
       entity.totalArmorPoints() / (16 * armor.pptMultiplier),
       entity,
@@ -31,7 +31,7 @@ export function calculateArmorCost(entity: BaseEntity): number {
     const armorPoints = (points?.front ?? 0) + (points?.rear ?? 0);
     if (armorPoints <= 0) continue;
     const armor = mountedArmor.armor;
-    if (armor.cost === 'variable') throw new Error(`Unable to calculate armor cost for ${armor.id}`);
+    if (!armor.hasFixedCost()) throw new Error(`Unable to calculate armor cost for ${armor.id}`);
     if (armor.hasFlag('F_SUPPORT_VEE_BAR_ARMOR')) {
       total += armorPoints * armor.cost;
     } else {

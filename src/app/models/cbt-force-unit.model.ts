@@ -889,12 +889,10 @@ export class CBTForceUnit extends ForceUnit {
                 if (crit.eq instanceof AmmoEquipment && crit.originalName && crit.originalName !== crit.name) {
                     const originalAmmo = equipmentList[crit.originalName] as AmmoEquipment | undefined;
                     if (originalAmmo) {
-                        const originalBv = originalAmmo.bv;
-                        const currentBv = crit.eq.bv;
-                        if (originalBv === "variable" || currentBv === "variable") {
+                        if (!originalAmmo.hasFixedBV() || !crit.eq.hasFixedBV()) {
                             continue; // Skip variable BV. TODO: need to be handle when we have BaseEntity
                         }
-                        bvVariation += currentBv - originalBv;
+                        bvVariation += crit.eq.bv - originalAmmo.bv;
                     }
                 }
             }
@@ -904,12 +902,10 @@ export class CBTForceUnit extends ForceUnit {
                 if (item.equipment instanceof AmmoEquipment && item.ammo && item.ammo !== item.name) {
                     const customAmmo = equipmentList[item.ammo] as AmmoEquipment | undefined;
                     if (customAmmo) {
-                        const originalBv = item.equipment.bv;
-                        const currentBv = customAmmo.bv;
-                        if (originalBv === "variable" || currentBv === "variable") {
+                        if (!item.equipment.hasFixedBV() || !customAmmo.hasFixedBV()) {
                             continue; // Skip variable BV. TODO: need to be handle when we have BaseEntity
                         }
-                        bvVariation += currentBv - originalBv;
+                        bvVariation += customAmmo.bv - item.equipment.bv;
                     }
                 }
             }

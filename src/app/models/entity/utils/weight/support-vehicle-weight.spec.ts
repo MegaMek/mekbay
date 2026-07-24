@@ -45,4 +45,27 @@ describe('support vehicle construction mass', () => {
     expect(result.controls).toBe(0.075);
     expect(result.fuel).toBe(0.029);
   });
+
+  it('charges small-support infantry ammunition after the free first clip', () => {
+    const entity = new TestSupportTankEntity();
+    entity.setTonnage(4);
+    addTestEquipment(entity, createEquipment({
+      id: 'Infantry Rifle', name: 'Infantry Rifle', type: 'weapon', flags: ['F_INFANTRY'],
+      stats: { tonnage: 0.02 }, infantry: { ammoWeight: 0.004 },
+    }), { location: 'Front', size: 3.5 });
+
+    const result = calculateSupportVehicleWeightBreakdown(entity);
+    expect(result.ammo).toBe(0.01);
+  });
+
+  it('does not charge the free first infantry-ammo clip', () => {
+    const entity = new TestSupportTankEntity();
+    entity.setTonnage(4);
+    addTestEquipment(entity, createEquipment({
+      id: 'Infantry Rifle', name: 'Infantry Rifle', type: 'weapon', flags: ['F_INFANTRY'],
+      stats: { tonnage: 0.02 }, infantry: { ammoWeight: 0.004 },
+    }), { location: 'Front', size: 1 });
+
+    expect(calculateSupportVehicleWeightBreakdown(entity).ammo).toBe(0);
+  });
 });

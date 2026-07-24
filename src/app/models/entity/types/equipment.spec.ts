@@ -1,4 +1,4 @@
-import { AmmoEquipment, WeaponEquipment } from '../../equipment.model';
+import { AmmoEquipment, MiscEquipment, WeaponEquipment } from '../../equipment.model';
 import { TestBipedMekEntity as BipedMekEntity } from '../testing/test-entities';
 import { EntityMountedEquipment } from './equipment';
 
@@ -24,18 +24,9 @@ describe('EntityMountedEquipment characteristics', () => {
     });
 
     expect(mount.getOccupiedLocations()).toEqual(['RT', 'RA']);
-    expect(mount.getCriticalSlotRequirement(entity)).toBe(8);
-    expect(mount.getWeaponCharacteristics(entity)).toEqual({
-      name: 'Split Weapon',
-      heat: 0,
-      category: 'ballistic',
-      ranges: [5, 10, 15, 20],
-      minimumRange: 3,
-      damage: { kind: 'fixed', damage: 10, maximum: 10, perShot: false },
-      hitModifiers: [0],
-      criticalSlots: 8,
-      oneShotCount: undefined,
-    });
+    expect(mount.placedCriticalSlotCount).toBe(3);
+    expect(mount.isSplitAcrossLocations).toBeTrue();
+    expect(mount.getNumCriticalSlots(entity)).toBe(8);
   });
 
   it('uses mounted ammo shots when present and definition shots otherwise', () => {
@@ -47,6 +38,17 @@ describe('EntityMountedEquipment characteristics', () => {
     expect(mounted(ammo, { shotsCount: 7 }).getAmmoShots()).toBe(7);
   });
 
+  it('resolves variable critical slots from the mounted size', () => {
+    const cargo = new MiscEquipment({
+      id: 'cargo', name: 'Cargo', type: 'misc',
+      stats: { criticalSlots: 'variable', tonnage: 'variable' }, flags: ['F_CARGO'],
+    });
+    const entity = new BipedMekEntity();
+
+    expect(mounted(cargo, { size: 0.5 }).getNumCriticalSlots(entity)).toBe(1);
+    expect(mounted(cargo, { size: 3 }).getNumCriticalSlots(entity)).toBe(3);
+  });
+
   it('derives engine and unallocated locations from canonical allocation', () => {
     const equipment = new AmmoEquipment({
       id: 'ammo', name: 'Ammo', type: 'ammo', ammo: { type: 'AC', shots: 20 },
@@ -56,29 +58,46 @@ describe('EntityMountedEquipment characteristics', () => {
     expect(mounted(equipment, { allocation: { kind: 'unallocated' } }).location).toBe('Unallocated');
   });
 
-  it('replaces allocation without mutating the original mount', () => {
+  it('adds a placement without mutating the original mount', () => {
     const equipment = new AmmoEquipment({
       id: 'ammo', name: 'Ammo', type: 'ammo', ammo: { type: 'AC', shots: 20 },
     });
-    const integrated = mounted(equipment, { allocation: { kind: 'engine' } });
-
-    const allocated = integrated.withAllocation({
+    const original = mounted(equipment, { allocation: {
       kind: 'location',
       location: 'RT',
-      placements: [{ location: 'RT', slotIndex: 4 }],
-    });
+      placements: [{ location: 'RT', slotIndex: 3 }],
+    } });
 
-    expect(integrated.allocation).toEqual({ kind: 'engine' });
-    expect(allocated.allocation).toEqual({
-      kind: 'location',
-      location: 'RT',
-      placements: [{ location: 'RT', slotIndex: 4 }],
+    const updated = original.withAddedPlacement({ location: 'RT', slotIndex: 4 });
+
+    expect(original.placements).toEqual([{ location: 'RT', slotIndex: 3 }]);
+    expect(updated.placements).toEqual([
+      { location: 'RT', slotIndex: 3 },
+      { location: 'RT', slotIndex: 4 },
+    ]);
+  });
+
+  it('updates a split mount primary location and rejects non-location allocations', () => {
+    const equipment = new AmmoEquipment({
+      id: 'ammo', name: 'Ammo', type: 'ammo', ammo: { type: 'AC', shots: 20 },
     });
+    const split = mounted(equipment, { allocation: {
+      kind: 'location', location: 'RA', placements: [{ location: 'RA', slotIndex: 4 }],
+    } });
+
+    const relocated = split.withAddedPlacement({ location: 'RT', slotIndex: 0 }, 'RT');
+    expect(relocated.location).toBe('RT');
+    expect(relocated.placements).toEqual([
+      { location: 'RA', slotIndex: 4 }, { location: 'RT', slotIndex: 0 },
+    ]);
+    expect(() => mounted(equipment, { allocation: { kind: 'engine' } })
+      .withAddedPlacement({ location: 'CT', slotIndex: 0 }))
+      .toThrowError('Cannot add a critical placement to engine-allocated equipment');
   });
 });
 
 function mounted(
-  equipment: WeaponEquipment | AmmoEquipment,
+  equipment: WeaponEquipment | AmmoEquipment | MiscEquipment,
   overrides: Partial<ConstructorParameters<typeof EntityMountedEquipment>[0]> = {},
 ): EntityMountedEquipment {
   return new EntityMountedEquipment({

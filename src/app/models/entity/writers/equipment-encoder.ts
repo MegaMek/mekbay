@@ -48,6 +48,9 @@ export interface EncodeEquipmentOptions {
 
   /** Marks this mount as the first member of a serialized weapon bay. */
   startsWeaponBay?: boolean;
+
+  /** Emits the mount's OmniPod suffix. Defaults to true. */
+  includeOmniPod?: boolean;
 }
 
 /**
@@ -99,7 +102,7 @@ export function encodeEquipmentLine(mount: EntityMountedEquipment, options?: Enc
   }
 
   // OmniPod suffix
-  if (mount.omniPodMounted) {
+  if (mount.omniPodMounted && (options?.includeOmniPod ?? true)) {
     name += ':OMNI';
   }
 

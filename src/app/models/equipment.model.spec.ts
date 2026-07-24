@@ -17,6 +17,32 @@ import { getStructureByName, getStructureByTypeId } from './entity/components';
 import { EquipmentFlag } from './equipment-flags.type';
 
 describe('equipment model', () => {
+    it('identifies fixed and variable equipment stats in one place', () => {
+        const fixed = createEquipment({
+            id: 'fixed', name: 'Fixed', type: 'misc',
+            stats: { tonnage: 1, cost: 2, bv: 3, criticalSlots: 4 },
+        });
+        const variable = createEquipment({
+            id: 'variable', name: 'Variable', type: 'misc',
+            stats: {
+                tonnage: 'variable', cost: 'variable', bv: 'variable', criticalSlots: 'variable',
+            },
+        });
+
+        expect([
+            fixed.hasFixedTonnage(),
+            fixed.hasFixedCost(),
+            fixed.hasFixedBV(),
+            fixed.hasFixedCriticalSlots(),
+        ]).toEqual([true, true, true, true]);
+        expect([
+            variable.hasFixedTonnage(),
+            variable.hasFixedCost(),
+            variable.hasFixedBV(),
+            variable.hasFixedCriticalSlots(),
+        ]).toEqual([false, false, false, false]);
+    });
+
     it('deserializes structure records as StructureEquipment', () => {
         const equipment = createEquipment({
             id: 'IS Endo-Composite',

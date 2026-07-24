@@ -33,7 +33,7 @@
 
 import { Signal, computed, signal } from '@angular/core';
 import { EquipmentRegistry } from '../../../equipment-lookup';
-import { MiscEquipment } from '../../../equipment.model';
+import { AmmoEquipment, MiscEquipment } from '../../../equipment.model';
 
 import {
   BaseEntity,
@@ -596,7 +596,7 @@ export abstract class MekEntity extends BaseEntity {
     if (chassisTonnage <= 0) return 0;
 
     const movement = jumpJets.reduce((total, mount) => {
-      if (mount.equipment?.tonnage !== 'variable') return total + 1;
+      if (mount.equipment?.hasFixedTonnage()) return total + 1;
       const locationTonnage = Math.min(
         this.structureAt(mount.location).tonnage,
         chassisTonnage,
@@ -792,18 +792,17 @@ export abstract class MekEntity extends BaseEntity {
       grid.set(loc as string, slots);
     }
 
-    // Overlay equipment placements
+    // Overlay equipment placements. Superheavy Meks may share a physical slot
+    // between two canonical mounts (ammunition and eligible heat-sink loads).
     for (const mount of this.equipment()) {
       if (!mount.placements) continue;
       for (const p of mount.placements) {
         const slots = grid.get(p.location);
         if (slots && p.slotIndex >= 0 && p.slotIndex < MEK_SLOTS_PER_LOCATION) {
-          slots[p.slotIndex] = {
-            type: 'equipment',
-            mount,
-            armored: mount.armored,
-            omniPod: mount.omniPodMounted,
-          };
+          const existing = slots[p.slotIndex];
+          slots[p.slotIndex] = existing.type === 'equipment'
+            ? this.appendEquipmentToCriticalSlot(existing, mount) ?? this.equipmentCriticalSlot(mount)
+            : this.equipmentCriticalSlot(mount);
         }
       }
     }
@@ -869,22 +868,15 @@ export abstract class MekEntity extends BaseEntity {
       });
     }
 
-    // Crit slot overflow (derived grid vs slots-per-location)
-    for (const [loc, slots] of this.criticalSlotGrid()) {
-      const usedSlots = slots.filter(s => s.type !== 'empty').length;
-      if (usedSlots > MEK_SLOTS_PER_LOCATION) {
-        msgs.push({
-          severity: 'error', category: 'crit', code: 'CRIT_SLOTS_OVERFLOW',
-          message: `${loc} has ${usedSlots} crit slots but max is ${MEK_SLOTS_PER_LOCATION}`,
-          location: loc,
-        });
-      }
-    }
-
     // Equipment placed on system slots (placement conflict)
+    const placementsBySlot = new Map<string, EntityMountedEquipment[]>();
     for (const mount of this.equipment()) {
       if (!mount.placements) continue;
       for (const p of mount.placements) {
+        const slotKey = `${p.location}:${p.slotIndex}`;
+        const mounts = placementsBySlot.get(slotKey) ?? [];
+        mounts.push(mount);
+        placementsBySlot.set(slotKey, mounts);
         const systemSlots = this.getSystemSlotsForLocation(p.location);
         if (p.slotIndex < systemSlots.length && systemSlots[p.slotIndex].type === 'system') {
           msgs.push({
@@ -893,6 +885,24 @@ export abstract class MekEntity extends BaseEntity {
             location: p.location,
           });
         }
+      }
+    }
+
+    for (const [slotKey, mounts] of placementsBySlot) {
+      if (mounts.length < 2) continue;
+      let slot = this.equipmentCriticalSlot(mounts[0]);
+      for (const mount of mounts.slice(1)) {
+        const sharedSlot = this.appendEquipmentToCriticalSlot(slot, mount);
+        if (sharedSlot) {
+          slot = sharedSlot;
+          continue;
+        }
+        msgs.push({
+          severity: 'error', category: 'crit', code: 'CRIT_SLOT_SHARING_INVALID',
+          message: `Critical slot ${slotKey} cannot be shared by "${mounts.map(item => item.equipmentId).join('", "')}"`,
+          location: mounts[0].location,
+        });
+        break;
       }
     }
 
@@ -956,6 +966,41 @@ export abstract class MekEntity extends BaseEntity {
       default:
         return [];
     }
+  }
+
+  private equipmentCriticalSlot(
+    mount: EntityMountedEquipment,
+  ): Extract<CriticalSlotView, { type: 'equipment' }> {
+    return {
+      type: 'equipment', mounts: [mount],
+      armored: mount.armored,
+      omniPod: mount.omniPodMounted,
+    };
+  }
+
+  private appendEquipmentToCriticalSlot(
+    existing: Extract<CriticalSlotView, { type: 'equipment' }>,
+    incoming: EntityMountedEquipment,
+  ): Extract<CriticalSlotView, { type: 'equipment' }> | null {
+    if (!this.isSuperHeavy() || existing.mounts.length >= 2
+      || existing.armored !== incoming.armored
+      || existing.omniPod !== incoming.omniPodMounted
+      || existing.mounts.some(mount => mount.mountId === incoming.mountId)) return null;
+
+    const incomingEquipment = incoming.equipment;
+    if (!incomingEquipment) return null;
+    if (incomingEquipment instanceof AmmoEquipment) {
+      if (!existing.mounts.every(mount => mount.equipment instanceof AmmoEquipment)) return null;
+    } else {
+      if (!incomingEquipment.hasFlag('F_HEAT_SINK')
+        || !existing.mounts.every(mount => mount.equipment?.hasFlag('F_HEAT_SINK'))) return null;
+    }
+    const mounts = [...existing.mounts, incoming] as [EntityMountedEquipment, ...EntityMountedEquipment[]];
+    return {
+      type: 'equipment', mounts,
+      armored: mounts.some(mount => mount.armored),
+      omniPod: mounts.some(mount => mount.omniPodMounted),
+    };
   }
 
   private getArmSystemSlots(loc: string): CriticalSlotView[] {

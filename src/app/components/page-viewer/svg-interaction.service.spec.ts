@@ -379,6 +379,23 @@ describe('SvgInteractionService', () => {
         expect(pageViewerState.inventoryDialogOpen()).toBeFalse();
     });
 
+    it('marks read-only sheets to hide condition buttons and restores editable sheets', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = '<g class="unitConditionButton"></g>';
+        const unit = createSvgInteractionUnit({
+            id: 'unit-a',
+            getUnit: () => ({ type: 'Mek' }),
+        });
+
+        service.setupReadOnlyInteractions(svg);
+        expect(svg.classList.contains('read-only')).toBeTrue();
+        expect(svg.querySelector('.unitConditionButton')?.classList.contains('edit-only')).toBeTrue();
+
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+        expect(svg.classList.contains('read-only')).toBeFalse();
+    });
+
     it('shows equipment handler choices for mounted equipment crit slots', async () => {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.innerHTML = '<g class="critSlot" loc="CT" slot="0" uid="CLActiveProbe@CT#0" hittable="1"><text>Active Probe</text></g>';

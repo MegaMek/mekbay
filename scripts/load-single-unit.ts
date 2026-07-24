@@ -184,7 +184,6 @@ function main() {
     console.log(`    location=${locations} size=${mount.size ?? 1} tonnage=${tonnage === undefined ? '<unresolved>' : formatDiagnosticNumber(tonnage)} rear=${mount.rearMounted} omni=${mount.omniPodMounted}`);
     console.log(`    cost=${cost === undefined ? '<variable/unresolved>' : formatDiagnosticNumber(cost)} BV=${formatDiagnosticNumber(bv)}`);
     if (linked || linking) console.log(`    linked=${linked ?? '-'} linking=${linking ?? '-'}`);
-    if (mount.secondEquipment) console.log(`    paired=${mount.secondEquipment.name}`);
   }
 
   console.log(`\n${'═'.repeat(104)}`);
@@ -211,13 +210,13 @@ function main() {
     console.log(`\nEquipment:`);
     for (const m of entity.equipment()) {
       const locs = m.placements?.map(p => `${p.location}:${p.slotIndex}`) ?? [m.location];
-      const criticalSlots = m.equipment?.getNumCriticalSlots(entity, m.size ?? 0);
+      const criticalSlots = m.getCriticalSlotRequirement(entity);
       console.log(`  ${m.equipmentId}`);
       console.log(`    locations: [${locs.join(', ')}]  crits: ${criticalSlots ?? '-'}`);
       if (m.rearMounted) console.log(`    rear-mounted`);
       if (m.omniPodMounted) console.log(`    omnipod`);
       if (m.armored) console.log(`    armored`);
-      if (m.isSplit) console.log(`    split`);
+      if (m.isSplitAcrossLocations) console.log(`    split`);
       if (m.size != null) console.log(`    size: ${m.size}`);
     }
     // ── Critical Slot Grid (3-column layout) ──
@@ -255,7 +254,7 @@ function main() {
       if (s.type === 'empty') label = '-Empty-';
       else if (s.type === 'system') label = s.systemType ?? 'System';
       else {
-        label = s.mount.equipmentId;
+        label = s.mounts.map(mount => mount.equipmentId).join(' | ');
       }
       const flags = [s.armored ? '(A)' : '', s.omniPod ? '(O)' : ''].filter(Boolean).join('');
       return `${String(i + 1).padStart(2)}. ${label}${flags ? ' ' + flags : ''}`;

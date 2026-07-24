@@ -39,6 +39,8 @@ import { QuadVeeEntity } from '../entities/mek/quad-vee-entity';
 import { LamEntity } from '../entities/mek/lam-entity';
 import {
   CriticalSlotView,
+  EntityMountedEquipment,
+  formatCriticalSlotEquipment,
   MEK_SLOTS_PER_LOCATION,
   MekLocation,
 
@@ -395,13 +397,20 @@ function writeFluff(entity: MekEntity, lines: string[]): void {
 function formatEquipmentSlot(
   slot: Extract<CriticalSlotView, { type: 'equipment' }>,
 ): string {
-  const mount = slot.mount;
+  return formatCriticalSlotEquipment(slot, (mount, isLast) =>
+    formatMountedEquipmentSlot(mount, isLast && slot.armored, isLast && slot.omniPod));
+}
+
+function formatMountedEquipmentSlot(
+  mount: EntityMountedEquipment,
+  armored: boolean,
+  omniPod: boolean,
+): string {
 
   let name = mount.equipmentId;
   if (mount.rearMounted) name += ' (R)';
   if (mount.turretMounted) name += ' (T)';
-  // For split slots with secondEquipmentId, (OMNIPOD) goes on the second part
-  if (slot.omniPod && !mount.secondEquipmentId) name += ' (OMNIPOD)';
+  if (omniPod) name += ' (OMNIPOD)';
   if (mount.facing !== undefined) name += ` (${facingLabel(mount.facing)})`;
   if (mount.size !== undefined) {
     // Preserve decimal point: MegaMek writes SIZE:1.0, SIZE:2.0 etc.
@@ -409,12 +418,7 @@ function formatEquipmentSlot(
     name += `:SIZE:${sizeStr}`;
   }
   // ARMORED goes after SIZE (MegaMek: "name:SIZE:1.0 (ARMORED)")
-  if (slot.armored) name += ' (ARMORED)';
-  if (mount.secondEquipmentId) {
-    let second = mount.secondEquipmentId;
-    if (slot.omniPod) second += ' (OMNIPOD)';
-    name += `|${second}`;
-  }
+  if (armored) name += ' (ARMORED)';
   return name;
 }
 

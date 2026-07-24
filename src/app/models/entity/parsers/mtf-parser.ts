@@ -417,18 +417,19 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       const raw = slotLines[slotIdx];
       if (raw === '-Empty-') continue;
 
-      const parsed = parseCritSlotLine(raw);
+      const parsedSlots = parseCritSlotLine(raw);
+      for (const [memberIndex, parsed] of parsedSlots.entries()) {
+        // System slots are skipped - they're derived from configuration,
+        // but we still capture the ARMORED flag for round-trip fidelity.
+        if (SYSTEM_NAMES[parsed.name] || isEngineSlot(parsed.name)) {
+          if (parsed.armored) armoredSystemSlots.add(`${locCode}:${slotIdx}`);
+          continue;
+        }
 
-      // System slots are skipped - they're derived from configuration,
-      // but we still capture the ARMORED flag for round-trip fidelity.
-      if (SYSTEM_NAMES[parsed.name] || isEngineSlot(parsed.name)) {
-        if (parsed.armored) armoredSystemSlots.add(`${locCode}:${slotIdx}`);
-        continue;
-      }
-
-      // Equipment slot - find existing multi-crit mount or create new one
-      const dedupKey = `${parsed.name}@${locCode}`;
-      const existingId = parsed.isSplit ? undefined : multiCritMap.get(dedupKey);
+        // The pair position distinguishes two same-named mounts sharing a
+        // superheavy slot while still merging their later critical entries.
+        const dedupKey = `${parsed.name}@${locCode}@${memberIndex}`;
+        const existingId = parsed.isSplit ? undefined : multiCritMap.get(dedupKey);
 
       let addedToExisting = false;
       if (existingId) {
@@ -436,17 +437,11 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
         if (mountIndex >= 0) {
           const mount = mountedEquipment[mountIndex];
           // Resolve expected crit count via entity context
-          const criticalSlots = mount.equipment?.getNumCriticalSlots(entity, mount.size ?? 0) ?? Infinity;
+          const criticalSlots = numericCriticalSlotRequirement(mount, entity);
           const lastPlacement = mount.placements?.[mount.placements.length - 1];
           const isConsecutive = lastPlacement?.location === locCode && lastPlacement.slotIndex === slotIdx - 1;
-          if ((mount.placements?.length ?? 0) < criticalSlots && isConsecutive) {
-            mountedEquipment[mountIndex] = mount.clone({
-              allocation: {
-                kind: 'location',
-                location: mount.location,
-                placements: [...(mount.placements ?? []), { location: locCode, slotIndex: slotIdx }],
-              },
-            });
+          if (mount.placedCriticalSlotCount < criticalSlots && isConsecutive) {
+            mountedEquipment[mountIndex] = mount.withAddedPlacement({ location: locCode, slotIndex: slotIdx });
             addedToExisting = true;
           }
         }
@@ -462,15 +457,8 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
         );
         if (targetingComputerIndex >= 0) {
           const targetingComputer = mountedEquipment[targetingComputerIndex];
-          mountedEquipment[targetingComputerIndex] = targetingComputer.clone({
-            allocation: {
-              kind: 'location',
-              location: targetingComputer.location,
-              placements: [
-                ...(targetingComputer.placements ?? []),
-                { location: locCode, slotIndex: slotIdx },
-              ],
-            },
+          mountedEquipment[targetingComputerIndex] = targetingComputer.withAddedPlacement({
+            location: locCode, slotIndex: slotIdx,
           });
           addedToExisting = true;
         }
@@ -485,17 +473,13 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
           if (m.equipmentId !== parsed.name) return false;
           const eq = m.equipment;
           if (!eq?.isSpreadable) return false;
-          const expectedCrits = eq.getNumCriticalSlots(entity, m.size ?? 0) ?? Infinity;
-          return (m.placements?.length ?? 0) < expectedCrits;
+          const expectedCrits = numericCriticalSlotRequirement(m, entity);
+          return m.placedCriticalSlotCount < expectedCrits;
         });
         if (existingSpreadableIndex >= 0) {
           const existingSpreadable = mountedEquipment[existingSpreadableIndex];
-          mountedEquipment[existingSpreadableIndex] = existingSpreadable.clone({
-            allocation: {
-              kind: 'location',
-              location: existingSpreadable.location,
-              placements: [...(existingSpreadable.placements ?? []), { location: locCode, slotIndex: slotIdx }],
-            },
+          mountedEquipment[existingSpreadableIndex] = existingSpreadable.withAddedPlacement({
+            location: locCode, slotIndex: slotIdx,
           });
           addedToExisting = true;
         }
@@ -507,9 +491,8 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
         const incompleteIndex = mountedEquipment.findIndex(m => {
           if (m.equipmentId !== parsed.name) return false;
           if (!m.equipment?.canSplit()) return false;
-          const criticalSlots = m.equipment.getNumCriticalSlots(entity);
-          if (criticalSlots == null) return false;
-          return (m.placements?.length ?? 0) < criticalSlots
+          const criticalSlots = numericCriticalSlotRequirement(m, entity);
+          return m.placedCriticalSlotCount < criticalSlots
             && m.location !== locCode
             && areLocationsAdjacent(m.location, locCode);
         });
@@ -517,20 +500,15 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
           const incomplete = mountedEquipment[incompleteIndex];
           // Primary location is the more restrictive one (torso > arm)
           const primaryLocation = getSplitPrimaryLocation(incomplete.location, locCode);
-          const updated = incomplete.clone({
-            allocation: {
-              kind: 'location',
-              location: primaryLocation,
-              placements: [...(incomplete.placements ?? []), { location: locCode, slotIndex: slotIdx }],
-            },
-            isSplit: true,
-          });
+          const updated = incomplete.withAddedPlacement(
+            { location: locCode, slotIndex: slotIdx }, primaryLocation,
+          );
           mountedEquipment[incompleteIndex] = updated;
           // Update multiCritMap so further crits in the new primary location
           // can find this mount (e.g. AC/20 split RT+CT: after merging the
           // first CT crit the location becomes CT, subsequent CT crits must
           // still de-duplicate to the same mount).
-          multiCritMap.set(`${updated.equipmentId}@${updated.location}`, updated.mountId);
+          multiCritMap.set(`${updated.equipmentId}@${updated.location}@${memberIndex}`, updated.mountId);
           addedToExisting = true;
         }
       }
@@ -551,17 +529,13 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
           turretMounted: parsed.turretMounted,
           omniPodMounted: parsed.omniPod,
           armored: parsed.armored,
-          isSplit: parsed.isSplit || undefined,
           facing: parsed.facing,
           size: parsed.variableSize,
-          secondEquipmentId: parsed.secondEquipmentName,
-          secondEquipment: parsed.secondEquipmentName
-            ? ctx.resolveEquipment(parsed.secondEquipmentName, locCode, entity.techBase()) ?? undefined
-            : undefined,
         });
 
         mountedEquipment.push(mount);
         multiCritMap.set(dedupKey, mount.mountId);
+      }
       }
     }
   }
@@ -921,16 +895,23 @@ interface ParsedCritLine {
   isSplit: boolean;
   facing?: number;
   variableSize?: number;
-  secondEquipmentName?: string;
 }
 
-function parseCritSlotLine(raw: string): ParsedCritLine {
+function parseCritSlotLine(raw: string): ParsedCritLine[] {
+  const slots = raw.split('|').map(parseMountedCritSlot);
+  const armored = slots.some(slot => slot.armored);
+  const omniPod = slots.some(slot => slot.omniPod);
+  // Superheavy sharing applies to the physical slot.  Both canonical mounts
+  // carry that state so cost, BV, and serialization cannot observe a half-slot.
+  return slots.map(slot => ({ ...slot, armored, omniPod }));
+}
+
+function parseMountedCritSlot(raw: string): ParsedCritLine {
   let name = raw;
   let omniPod = false, armored = false, rearMounted = false;
   let turretMounted = false, isSplit = false;
   let facing: number | undefined;
   let variableSize: number | undefined;
-  let secondEquipmentName: string | undefined;
 
   // Parenthesised suffixes
   const suffixRe = /\s*\((omnipod|armored|r|t|split|fl|fr|rl|rr)\)/gi;
@@ -957,14 +938,7 @@ function parseCritSlotLine(raw: string): ParsedCritLine {
     name = name.substring(0, name.indexOf(':SIZE:'));
   }
 
-  // Combined slot name1|name2
-  if (name.includes('|')) {
-    const parts = name.split('|');
-    name = parts[0];
-    secondEquipmentName = parts[1];
-  }
-
-  return { name, omniPod, armored, rearMounted, turretMounted, isSplit, facing, variableSize, secondEquipmentName };
+  return { name, omniPod, armored, rearMounted, turretMounted, isSplit, facing, variableSize };
 }
 
 function isEngineSlot(name: string): boolean {
@@ -1024,4 +998,8 @@ function getSplitPrimaryLocation(locA: string, locB: string): string {
   if (locB === 'CT') return locB;
   // Fallback: keep first
   return locA;
+}
+
+function numericCriticalSlotRequirement(mount: EntityMountedEquipment, entity: MekEntity): number {
+  return mount.getNumCriticalSlots(entity) ?? Infinity;
 }

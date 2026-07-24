@@ -307,6 +307,95 @@ describe('MTF parser identity', () => {
     expect([...entity.implicitClanCaseLocations()].sort()).toEqual(['RA', 'RT']);
   });
 
+  it('materializes both sides of a superheavy combined ammo slot', () => {
+    const ammo = new AmmoEquipment({
+      id: 'Test Ammo', name: 'Test Ammo', type: 'ammo', stats: { criticalSlots: 1 },
+    });
+    const entity = parseMtf(
+      minimalMtf()
+        .replace('mass:20', 'mass:150')
+        + 'Right Arm:\nShoulder\nUpper Arm Actuator\nTest Ammo|Test Ammo (OMNIPOD)\n',
+      new ParseContext('superheavy-ammo.mtf', equipmentRegistry({ [ammo.id]: ammo })),
+    );
+
+    const mounts = entity.equipment().filter(mount => mount.equipmentId === ammo.id);
+    expect(mounts).toHaveSize(2);
+    expect(mounts.map(mount => mount.placements)).toEqual([
+      [{ location: 'RA', slotIndex: 2 }],
+      [{ location: 'RA', slotIndex: 2 }],
+    ]);
+    expect(mounts.map(mount => mount.omniPodMounted)).toEqual([true, true]);
+    expect(entity.criticalSlotGrid().get('RA')?.[2]).toEqual(jasmine.objectContaining({
+      type: 'equipment', mounts, omniPod: true,
+    }));
+    expect(writeMtf(entity)).toContain('\nTest Ammo|Test Ammo (OMNIPOD)\n');
+    expect(entity.validationResult().messages).not.toContain(jasmine.objectContaining({
+      code: 'CRIT_SLOT_SHARING_INVALID',
+    }));
+  });
+
+  it('materializes consecutive single-slot variable cargo as distinct mounts', () => {
+    const cargo = new MiscEquipment({
+      id: 'Cargo', name: 'Cargo', type: 'misc',
+      stats: { criticalSlots: 'variable', tonnage: 'variable' }, flags: ['F_CARGO'],
+    });
+    const entity = parseMtf(
+      minimalMtf() + 'Center Torso:\nCargo:SIZE:1.0\nCargo:SIZE:1.0\n',
+      new ParseContext('separate-cargo.mtf', equipmentRegistry({ [cargo.id]: cargo })),
+    );
+
+    const mounts = entity.equipment().filter(mount => mount.equipment === cargo);
+    expect(mounts).toHaveSize(2);
+    expect(mounts.map(mount => mount.size)).toEqual([1, 1]);
+    expect(mounts.map(mount => mount.placedCriticalSlotCount)).toEqual([1, 1]);
+  });
+
+  it('preserves distinct sizes for consecutive variable cargo mounts', () => {
+    const cargo = new MiscEquipment({
+      id: 'Cargo', name: 'Cargo', type: 'misc',
+      stats: { criticalSlots: 'variable', tonnage: 'variable' }, flags: ['F_CARGO'],
+    });
+    const entity = parseMtf(
+      minimalMtf() + 'Center Torso:\nCargo:SIZE:1.0\nCargo:SIZE:0.5\n',
+      new ParseContext('mixed-cargo.mtf', equipmentRegistry({ [cargo.id]: cargo })),
+    );
+
+    const mounts = entity.equipment().filter(mount => mount.equipment === cargo);
+    expect(mounts).toHaveSize(2);
+    expect(mounts.map(mount => mount.size)).toEqual([1, 0.5]);
+  });
+
+  it('merges consecutive critical rows until a variable mount reaches its requirement', () => {
+    const communications = new MiscEquipment({
+      id: 'Communications Equipment', name: 'Communications Equipment', type: 'misc',
+      stats: { criticalSlots: 'variable', tonnage: 'variable' }, flags: ['F_COMMUNICATIONS'],
+    });
+    const entity = parseMtf(
+      minimalMtf() + 'Center Torso:\n' +
+        Array.from({ length: 6 }, () => 'Communications Equipment:SIZE:3.0').join('\n') + '\n',
+      new ParseContext('communications.mtf', equipmentRegistry({ [communications.id]: communications })),
+    );
+
+    const mounts = entity.equipment().filter(mount => mount.equipment === communications);
+    expect(mounts).toHaveSize(2);
+    expect(mounts.map(mount => mount.placedCriticalSlotCount)).toEqual([3, 3]);
+    expect(mounts.map(mount => mount.size)).toEqual([3, 3]);
+  });
+
+  it('rejects combined equipment in a non-superheavy critical slot', () => {
+    const ammo = new AmmoEquipment({
+      id: 'Test Ammo', name: 'Test Ammo', type: 'ammo', stats: { criticalSlots: 1 },
+    });
+    const entity = parseMtf(
+      minimalMtf() + 'Right Arm:\nShoulder\nUpper Arm Actuator\nTest Ammo|Test Ammo\n',
+      new ParseContext('normal-combined-ammo.mtf', equipmentRegistry({ [ammo.id]: ammo })),
+    );
+
+    expect(entity.validationResult().messages).toContain(jasmine.objectContaining({
+      code: 'CRIT_SLOT_SHARING_INVALID', location: 'RA',
+    }));
+  });
+
   it('does not propagate implicit Clan CASE on an Inner Sphere unit with explicit Clan CASE', () => {
     const clanCase = new MiscEquipment({
       id: 'Clan CASE', name: 'CASE', type: 'misc', tech: { base: 'Clan' }, flags: ['F_CASE'],

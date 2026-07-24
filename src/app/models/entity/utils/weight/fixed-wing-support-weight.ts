@@ -1,6 +1,6 @@
 import { EquipmentFlag } from '../../../equipment-flags.type';
 import { AmmoEquipment, ArmorEquipment, isBombEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
-import { isQuartersBay } from '../../bays/bay-definitions';
+import { getBayConstructionWeight, isQuartersBay } from '../../bays/bay-definitions';
 import type { FixedWingSupportEntity } from '../../entities/aero/fixed-wing-support-entity';
 import type { TechRating } from '../../types';
 import { calculateHeatNeutralRequirement, calculatePowerAmplifierWeight } from '../cost/common';
@@ -30,6 +30,7 @@ const SYSTEM_FLAGS = [
 
 export interface FixedWingSupportWeightBreakdown {
   readonly engine: number; readonly structure: number; readonly controls: number;
+  readonly fireControl: number;
   readonly heatSinks: number; readonly armor: number; readonly miscellaneous: number;
   readonly weapons: number; readonly ammo: number; readonly powerAmplifiers: number;
   readonly carryingSpace: number; readonly fuel: number; readonly exact: number; readonly rounded: number;
@@ -60,6 +61,12 @@ export function calculateFixedWingSupportWeightBreakdown(entity: FixedWingSuppor
   }, 0));
   const heatSinks = small ? 0 : calculateHeatNeutralRequirement(entity);
   const armor = calculateArmor(entity);
+  const fireControlMount = entity.equipment().find(mount => mount.equipment?.hasAnyFlag([
+    'F_BASIC_FIRE_CONTROL', 'F_ADVANCED_FIRE_CONTROL',
+  ]));
+  const fireControl = fireControlMount
+    ? requireTonnage(entity, fireControlMount)
+    : entity.baseChassisFireConWeight();
   let miscellaneous = 0, weapons = 0, ammo = 0;
   for (const mount of entity.equipment()) {
     const equipment = mount.equipment;
@@ -77,7 +84,7 @@ export function calculateFixedWingSupportWeightBreakdown(entity: FixedWingSuppor
   const carryingSpace = entity.transporters().reduce((total, transporter) => {
     if (transporter.kind === 'troop-space') return total + transporter.totalSpace;
     if (transporter.kind !== 'bay' || isQuartersBay(transporter)) return total;
-    return total + (transporter.constructionWeight ?? transporter.capacity);
+    return total + getBayConstructionWeight(transporter);
   }, 0);
   const prop = entity.equipment().some(mount => mount.equipment?.hasFlag('F_PROP'));
   const fuelFree = (prop || entity.motiveType() === 'Airship')
@@ -88,9 +95,9 @@ export function calculateFixedWingSupportWeightBreakdown(entity: FixedWingSuppor
   if (kgPerFuelPoint && (prop || entity.motiveType() === 'Airship')) kgPerFuelPoint = Math.ceil(kgPerFuelPoint * 0.75);
   const fuelRaw = entity.fuel() * kgPerFuelPoint / 1000;
   const fuel = small ? ceilKg(fuelRaw) : ceilToHalfTon(fuelRaw);
-  const exact = engine + structure + controls + heatSinks + armor + miscellaneous + weapons + ammo
+  const exact = engine + structure + controls + heatSinks + armor + fireControl + miscellaneous + weapons + ammo
     + powerAmplifiers + carryingSpace + fuel;
-  return { engine, structure, controls, heatSinks, armor, miscellaneous, weapons, ammo,
+  return { engine, structure, controls, heatSinks, armor, fireControl, miscellaneous, weapons, ammo,
     powerAmplifiers, carryingSpace, fuel, exact, rounded: small ? ceilKg(exact) : ceilToHalfTon(exact) };
 }
 

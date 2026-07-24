@@ -1,6 +1,6 @@
 import { EquipmentFlag } from '../../../equipment-flags.type';
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
-import { isQuartersBay } from '../../bays/bay-definitions';
+import { getBayConstructionWeight, isQuartersBay } from '../../bays/bay-definitions';
 import type { SupportVehicle } from '../../entities/support-vehicle';
 import type { VehicleEntity } from '../../entities/vehicle/vehicle-entity';
 import type { TechRating } from '../../types';
@@ -70,9 +70,12 @@ export function calculateSupportVehicleWeightBreakdown(entity: SupportVehicleEnt
     if (!equipment) throw new Error(`Unresolved equipment ${mount.equipmentId} on ${entity.displayName()}`);
     if (equipment instanceof ArmorEquipment || equipment instanceof StructureEquipment) continue;
     if (equipment instanceof AmmoEquipment) {
-      if (mount.location !== 'None') ammo += requireTonnage(entity, mount);
+      if (!small && mount.location !== 'None') ammo += requireTonnage(entity, mount);
     } else if (equipment instanceof WeaponEquipment) {
       weapons += requireTonnage(entity, mount);
+      if (small && equipment.isInfantryWeapon() && (mount.size ?? 1) > 1) {
+        ammo += ceilKg(((mount.size ?? 1) - 1) * equipment.infantry.ammoWeight);
+      }
     } else if (equipment instanceof MiscEquipment && !equipment.hasAnyFlag([...SYSTEM_MISC_FLAGS])) {
       miscellaneous += requireTonnage(entity, mount);
     }
@@ -83,7 +86,7 @@ export function calculateSupportVehicleWeightBreakdown(entity: SupportVehicleEnt
   const carryingSpace = entity.transporters().reduce((total, transporter) => {
     if (transporter.kind === 'troop-space') return total + transporter.totalSpace;
     if (transporter.kind !== 'bay' || isQuartersBay(transporter)) return total;
-    return total + (transporter.constructionWeight ?? transporter.capacity);
+    return total + getBayConstructionWeight(transporter);
   }, 0);
   const exact = engine + structure + controls + heatSinks + armor + turret + dualTurret
     + miscellaneous + weapons + ammo + powerAmplifiers + carryingSpace + fuel;

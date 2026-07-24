@@ -5,6 +5,36 @@ import { MountedEngine } from '../../components';
 import { calculateFixedWingSupportWeightBreakdown } from './fixed-wing-support-weight';
 
 describe('fixed-wing support construction mass', () => {
+  it('includes exported Omni base-chassis fire-control mass', () => {
+    const entity = new TestFixedWingSupportEntity();
+    entity.baseChassisFireConWeight.set(5.5);
+    addTestEquipment(entity, createEquipment({
+      id: 'Advanced Fire Control', name: 'Advanced Fire Control', type: 'misc',
+      flags: ['F_ADVANCED_FIRE_CONTROL'], stats: { tonnage: 'variable' },
+    }), { location: 'Fuselage' });
+
+    const result = calculateFixedWingSupportWeightBreakdown(entity);
+    expect(result.fireControl).toBe(5.5);
+    expect(result.miscellaneous).toBe(0);
+    expect(result.exact).toBeGreaterThanOrEqual(5.5);
+  });
+
+  it('derives installed advanced fire-control mass from eligible weapons', () => {
+    const entity = new TestFixedWingSupportEntity();
+    entity.setTonnage(20);
+    addTestEquipment(entity, createEquipment({
+      id: 'Advanced Fire Control', name: 'Advanced Fire Control', type: 'misc',
+      flags: ['F_ADVANCED_FIRE_CONTROL'], stats: { tonnage: 'variable' },
+    }), { location: 'Fuselage' });
+    addTestEquipment(entity, new WeaponEquipment({
+      id: 'Weapon', name: 'Weapon', type: 'weapon', stats: { tonnage: 5 },
+    }), { location: 'Nose' });
+
+    const result = calculateFixedWingSupportWeightBreakdown(entity);
+    expect(result.fireControl).toBe(0.5);
+    expect(result.miscellaneous).toBe(0);
+  });
+
   it('uses the small fixed-wing chassis factor and kilogram rounding', () => {
     const entity = new TestFixedWingSupportEntity();
     entity.setTonnage(4);

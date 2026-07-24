@@ -26,7 +26,7 @@ export function getEquipmentBV(entity: BaseEntity, mount: EntityMountedEquipment
         return base * (equipment.hasFlag('S_PROTO_QMS') ? 2.5 : 1.25);
     }
 
-    if (equipment.bv !== 'variable') {
+    if (equipment.hasFixedBV()) {
         const hasRotorMastMount = entity.equipment().some(candidate =>
             candidate.location === 'Rotor' && candidate.equipment?.hasFlag('F_MAST_MOUNT'));
         const receivesMastMountBonus = (entity.entityType === 'VTOL' || entity.entityType === 'SupportVTOL')
@@ -60,7 +60,7 @@ export function getEquipmentBV(entity: BaseEntity, mount: EntityMountedEquipment
                 .map(mount => mount.location)
                 .filter(location => location === 'CT' || location === 'LT' || location === 'RT'),
         ).size;
-        const damage = Math.trunc(Math.trunc(tonnage * entity.runMP() * 0.1) / 2)
+        const damage = Math.trunc(Math.trunc(tonnage * entity.maxRunMP() * 0.1) / 2)
             + torsoSpikeLocations;
         bv = damage * 1.1;
     } else {

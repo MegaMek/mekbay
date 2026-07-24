@@ -34,7 +34,6 @@
 import {
   AmmoEquipment,
   Equipment,
-  type WeaponCharacteristics,
   WeaponEquipment,
 } from '../../equipment.model';
 import type { BaseEntity } from '../base-entity';
@@ -64,10 +63,6 @@ export type EquipmentAllocation =
     readonly location: string;
     readonly placements?: readonly MountPlacement[];
   };
-
-export interface MountedWeaponCharacteristics extends WeaponCharacteristics {
-  readonly criticalSlots: number | 'variable' | undefined;
-}
 
 // ============================================================================
 // Mounted Equipment - the single canonical equipment model
@@ -122,9 +117,6 @@ export interface EntityMountedEquipmentInit {
   /** Variable-size equipment size */
   size?: number;
 
-  /** Split weapon tracking (Mek: crits span multiple locations) */
-  isSplit?: boolean;
-
   /** BA mount location */
   baMountLocation?: 'Body' | 'LA' | 'RA' | 'Turret';
 
@@ -140,9 +132,6 @@ export interface EntityMountedEquipmentInit {
   /** Ammo: shot count */
   shotsCount?: number;
 
-  /** Combined slot - second equipment in same slot (superheavy Mek) */
-  secondEquipmentId?: string;
-  secondEquipment?: Equipment;
 }
 
 /** Input accepted when installing equipment; entity ownership supplies identity. */
@@ -160,15 +149,11 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
   armored: boolean;
   facing?: number;
   size?: number;
-  isSplit?: boolean;
   baMountLocation?: 'Body' | 'LA' | 'RA' | 'Turret';
   isDWP?: boolean;
   isSSWM?: boolean;
   isAPM?: boolean;
   shotsCount?: number;
-  secondEquipmentId?: string;
-  secondEquipment?: Equipment;
-
   constructor(data: EntityMountedEquipmentInit) {
     Object.assign(this, data);
     this.mountId = createMountId(data.mountId);
@@ -192,12 +177,20 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
     return this.allocation.kind === 'location' ? this.allocation.placements : undefined;
   }
 
-  withAllocation(allocation: EquipmentAllocation): EntityMountedEquipment {
-    return this.clone({ allocation });
+  get placedCriticalSlotCount(): number {
+    return this.placements?.length ?? 0;
   }
 
-  static from(mount: EntityMountedEquipment | EntityMountedEquipmentInit): EntityMountedEquipment {
-    return mount instanceof EntityMountedEquipment ? mount : new EntityMountedEquipment(mount);
+  withAddedPlacement(placement: MountPlacement, primaryLocation = this.location): EntityMountedEquipment {
+    if (this.allocation.kind !== 'location') {
+      throw new Error(`Cannot add a critical placement to ${this.allocation.kind}-allocated equipment`);
+    }
+    return this.clone({
+      allocation: {
+        kind: 'location', location: primaryLocation,
+        placements: [...(this.placements ?? []), placement],
+      },
+    });
   }
 
   clone(overrides: Partial<EntityMountedEquipmentInit> = {}): EntityMountedEquipment {
@@ -208,23 +201,19 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
     return [...new Set(this.placements?.map(placement => placement.location) ?? [this.location])];
   }
 
-  getCriticalSlotRequirement(entity: BaseEntity): number | 'variable' | undefined {
+  get isSplitAcrossLocations(): boolean {
+    return this.getOccupiedLocations().length > 1;
+  }
+
+  /** Resolves this mount's slot count using its entity context and size. */
+  getNumCriticalSlots(entity: BaseEntity): number | undefined {
     if (!this.equipment) return undefined;
-    if (this.equipment.critSlots === 'variable') return 'variable';
     return this.equipment.getNumCriticalSlots(entity, this.size ?? 1);
   }
 
   getAmmoShots(): number | undefined {
     if (!(this.equipment instanceof AmmoEquipment)) return undefined;
     return this.shotsCount ?? this.equipment.shots;
-  }
-
-  getWeaponCharacteristics(entity: BaseEntity): MountedWeaponCharacteristics | undefined {
-    if (!(this.equipment instanceof WeaponEquipment)) return undefined;
-    return {
-      ...this.equipment.characteristics,
-      criticalSlots: this.getCriticalSlotRequirement(entity),
-    };
   }
 
   getBV(entity: BaseEntity): number {

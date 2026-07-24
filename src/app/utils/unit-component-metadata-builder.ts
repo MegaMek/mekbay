@@ -103,7 +103,7 @@ function skipMisc(entity: BaseEntity, mount: EntityMountedEquipment, equipment: 
 
 function skipUnallocatedBattleArmorEquipment(entity: BaseEntity, mount: EntityMountedEquipment): boolean {
   if (!(entity instanceof BattleArmorEntity) || mount.isDWP) return false;
-  const slots = mount.equipment?.getNumCriticalSlots(entity, mount.size ?? 1) ?? 0;
+  const slots = mount.getNumCriticalSlots(entity) ?? 0;
   return slots > 0 && !mount.baMountLocation;
 }
 
@@ -352,7 +352,7 @@ function locationAbbreviation(entity: BaseEntity, location: string): string {
 function criticals(
   equipment: Equipment, entity: BaseEntity, mount?: EntityMountedEquipment,
 ): string {
-  if (equipment.critSlots === 'variable' && (entity instanceof MekEntity || entity.isSupportVehicle())) return 'V';
+  if (!equipment.hasFixedCriticalSlots() && (entity instanceof MekEntity || entity.isSupportVehicle())) return 'V';
   const slots = equipment.getNumCriticalSlots(entity, mount?.size ?? 1) ?? 0;
   if (entity.entityType === 'ProtoMek') return String(slots > 0 ? 1 : 0);
   return String(slots);

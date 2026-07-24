@@ -17,6 +17,10 @@ describe('bay definitions', () => {
     expect(getBayConstructionWeight(fighterBay)).toBe(900);
     expect(getBayConstructionWeight({ ...fighterBay,
       configuration: { type: 'fighter', arts: true } })).toBe(1125);
+    expect(getBayConstructionWeight({ ...fighterBay,
+      configuration: { type: 'light-vehicle' }, capacity: 1 })).toBe(50);
+    expect(getBayConstructionWeight({ ...fighterBay,
+      configuration: { type: 'battle-armor', techBase: 'IS', comStar: false }, capacity: 4.5 })).toBe(36);
   });
 
   it('uses fixed DropShuttle bay construction mass', () => {

@@ -40,6 +40,15 @@ export class BVCalculator {
 
   constructor(readonly entity: BaseEntity) {}
 
+  protected isExplosive(mount: EntityMountedEquipment): boolean {
+    const equipment = mount.equipment;
+    if (!equipment) return false;
+    if (equipment instanceof WeaponEquipment && equipment.hasFlag('F_PPC')) {
+      return this.entity.getLinkingMount(mount)?.equipment?.hasFlag('F_PPC_CAPACITOR') === true;
+    }
+    return equipment.isExplosive();
+  }
+
   calculateBaseBV(): number {
     return this.calculate().base;
   }

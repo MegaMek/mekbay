@@ -1,6 +1,5 @@
 import { AmmoEquipment, ArmorEquipment, WeaponEquipment } from '../../../equipment.model';
 import type { BaseEntity } from '../../base-entity';
-import { getEquipmentCost } from './equipment-pricing';
 import { amount } from './cost-report';
 import type { EntityCostEntry } from './cost-report';
 
@@ -48,25 +47,10 @@ export function calculateMountedEquipmentCostBreakdown(
     // Java casts the complete mounted-item price to long once, after adding
     // support-vehicle infantry ammunition.
     addGrouped(equipment.name, Math.trunc(itemCost));
-    if (mount.secondEquipment && !(mount.secondEquipment instanceof ArmorEquipment)
-      && !(ignoreAmmo && mount.secondEquipment instanceof AmmoEquipment
-        && mount.secondEquipment.ammoType !== 'COOLANT_POD')) {
-      const secondMount = mount.clone({
-        equipmentId: mount.secondEquipmentId ?? mount.secondEquipment.id,
-        equipment: mount.secondEquipment,
-        secondEquipmentId: undefined,
-        secondEquipment: undefined,
-      });
-      const secondCost = getEquipmentCost(entity, secondMount);
-      if (secondCost === undefined) {
-        throw new Error(`Unable to calculate variable cost for ${mount.secondEquipment.id}`);
-      }
-      addGrouped(mount.secondEquipment.name, Math.trunc(secondCost));
-    }
   }
   if (entity.entityType === 'SmallCraft') {
     for (const equipment of entity.implicitSystemEquipment().filter(item => item.hasFlag('F_ECM'))) {
-      if (equipment.cost === 'variable') {
+      if (!equipment.hasFixedCost()) {
         throw new Error(`Unable to calculate variable cost for ${equipment.id}`);
       }
       addGrouped(equipment.name, Math.trunc(equipment.cost));
