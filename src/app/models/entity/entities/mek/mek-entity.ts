@@ -596,7 +596,7 @@ export abstract class MekEntity extends BaseEntity {
     if (chassisTonnage <= 0) return 0;
 
     const movement = jumpJets.reduce((total, mount) => {
-      if (mount.equipment?.tonnage !== 'variable') return total + 1;
+      if (mount.equipment?.hasFixedTonnage()) return total + 1;
       const locationTonnage = Math.min(
         this.structureAt(mount.location).tonnage,
         chassisTonnage,

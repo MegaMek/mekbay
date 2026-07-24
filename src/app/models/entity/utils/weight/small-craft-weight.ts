@@ -73,11 +73,10 @@ export function calculateSmallCraftWeightBreakdown(entity: SmallCraftEntity): Sm
     }
   }
   for (const equipment of entity.implicitSystemEquipment()) {
-    const tonnage = equipment.tonnage;
-    if (tonnage === 'variable') {
+    if (!equipment.hasFixedTonnage()) {
       throw new Error(`Unable to calculate implicit equipment tonnage for ${equipment.id} on ${entity.displayName()}`);
     }
-    miscellaneous += tonnage;
+    miscellaneous += equipment.tonnage;
   }
   let carryingSpace = 0, quarters = 0;
   for (const transporter of entity.transporters()) {

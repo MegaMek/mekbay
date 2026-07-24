@@ -43,7 +43,7 @@ function calculateSmallCraftArmorCost(entity: SmallCraftEntity, primitive: boole
   const mountedArmor = entity.uniformArmor();
   if (!mountedArmor) return 0;
   const armor = mountedArmor.armor;
-  if (armor.cost === 'variable') throw new Error(`Unable to calculate armor cost for ${armor.id}`);
+  if (!armor.hasFixedCost()) throw new Error(`Unable to calculate armor cost for ${armor.id}`);
   let rawArmor = entity.totalArmorPoints();
   if (primitive) rawArmor = Math.ceil(rawArmor / 0.66);
   const thresholds = entity.motiveType() === 'Spheroid' ? SPHEROID_THRESHOLDS : AERODYNE_THRESHOLDS;

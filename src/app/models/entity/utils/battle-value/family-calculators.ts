@@ -146,7 +146,7 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
       const equipment = mount.equipment;
       if (!mount.armored || !equipment || equipment.hasFlag('F_PPC_CAPACITOR')) continue;
       const placedSlots = mount.placedCriticalSlotCount;
-      const requiredSlots = mount.getCriticalSlotRequirement(this.entity);
+      const requiredSlots = mount.getNumCriticalSlots(this.entity);
       let slots = placedSlots > 0 ? placedSlots
         : typeof requiredSlots === 'number' ? requiredSlots : 0;
       let value = mount.getBV(this.entity);
@@ -242,7 +242,7 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
       const reducedAmmo = equipment instanceof AmmoEquipment && equipment.ammoType === 'COOLANT_POD';
       const reduced = reducedWeapon || reducedMisc || reducedAmmo;
       const placedSlots = mount.placedCriticalSlotCount;
-      const requiredSlots = mount.getCriticalSlotRequirement(this.entity);
+      const requiredSlots = mount.getNumCriticalSlots(this.entity);
       const slots = equipment instanceof WeaponEquipment && equipment.hasFlag('F_HVAC')
         && !mount.isSplitAcrossLocations && !this.entity.isSuperHeavy()
         ? 1

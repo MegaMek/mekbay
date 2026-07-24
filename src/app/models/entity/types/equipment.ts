@@ -205,7 +205,8 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
     return this.getOccupiedLocations().length > 1;
   }
 
-  getCriticalSlotRequirement(entity: BaseEntity): number | undefined {
+  /** Resolves this mount's slot count using its entity context and size. */
+  getNumCriticalSlots(entity: BaseEntity): number | undefined {
     if (!this.equipment) return undefined;
     return this.equipment.getNumCriticalSlots(entity, this.size ?? 1);
   }

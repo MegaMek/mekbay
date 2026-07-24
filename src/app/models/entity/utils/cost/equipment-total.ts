@@ -50,7 +50,7 @@ export function calculateMountedEquipmentCostBreakdown(
   }
   if (entity.entityType === 'SmallCraft') {
     for (const equipment of entity.implicitSystemEquipment().filter(item => item.hasFlag('F_ECM'))) {
-      if (equipment.cost === 'variable') {
+      if (!equipment.hasFixedCost()) {
         throw new Error(`Unable to calculate variable cost for ${equipment.id}`);
       }
       addGrouped(equipment.name, Math.trunc(equipment.cost));

@@ -25,9 +25,9 @@ export function getEquipmentCost(
 ): number | undefined {
   const equipment = mount.equipment;
   if (!equipment) return undefined;
-  if (equipment.cost !== 'variable') {
+  if (equipment.hasFixedCost()) {
     if (!(equipment instanceof WeaponEquipment) || !mount.armored) return equipment.cost;
-    const criticalSlots = equipment.getNumCriticalSlots(entity, mount.size ?? 1);
+    const criticalSlots = mount.getNumCriticalSlots(entity);
     return criticalSlots === undefined
       ? undefined
       : equipment.cost + (150000 * criticalSlots);
@@ -159,6 +159,6 @@ export function getEquipmentCost(
   }
 
   if (cost === undefined || !mount.armored) return cost;
-  const criticalSlots = equipment.getNumCriticalSlots(entity, mount.size ?? 1);
+  const criticalSlots = mount.getNumCriticalSlots(entity);
   return criticalSlots === undefined ? undefined : cost + (150000 * criticalSlots);
 }

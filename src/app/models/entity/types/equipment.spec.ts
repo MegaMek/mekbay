@@ -26,7 +26,7 @@ describe('EntityMountedEquipment characteristics', () => {
     expect(mount.getOccupiedLocations()).toEqual(['RT', 'RA']);
     expect(mount.placedCriticalSlotCount).toBe(3);
     expect(mount.isSplitAcrossLocations).toBeTrue();
-    expect(mount.getCriticalSlotRequirement(entity)).toBe(8);
+    expect(mount.getNumCriticalSlots(entity)).toBe(8);
   });
 
   it('uses mounted ammo shots when present and definition shots otherwise', () => {
@@ -45,8 +45,8 @@ describe('EntityMountedEquipment characteristics', () => {
     });
     const entity = new BipedMekEntity();
 
-    expect(mounted(cargo, { size: 0.5 }).getCriticalSlotRequirement(entity)).toBe(1);
-    expect(mounted(cargo, { size: 3 }).getCriticalSlotRequirement(entity)).toBe(3);
+    expect(mounted(cargo, { size: 0.5 }).getNumCriticalSlots(entity)).toBe(1);
+    expect(mounted(cargo, { size: 3 }).getNumCriticalSlots(entity)).toBe(3);
   });
 
   it('derives engine and unallocated locations from canonical allocation', () => {

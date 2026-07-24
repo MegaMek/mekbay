@@ -236,7 +236,7 @@ export class TWGameRules extends CBTGameRules {
                             !c.rear
                         );
                         const multiplier = hasNonRearWeapon ? 1 : 0.5;
-                        if (crit.eq.bv === 'variable') continue;
+                        if (!crit.eq.hasFixedBV()) continue;
                         totalSemiGuidedBV += Math.round(multiplier * crit.eq.bv);
                     }
                 }

@@ -249,12 +249,9 @@ export class MountedEquipment {
     }
     
     getBV(): number {
-        const baseBV = this.equipment?.bv;
-        if (!baseBV) return 0;
-        if (baseBV === "variable") {
-            return -1;
-        }
-        return baseBV;
+        if (!this.equipment) return 0;
+        if (!this.equipment.hasFixedBV()) return -1;
+        return this.equipment.bv;
     }
 }
 

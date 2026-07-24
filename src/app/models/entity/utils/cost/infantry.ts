@@ -39,7 +39,7 @@ export function calculateBattleArmorCostReport(
       ? Math.trunc(getEquipmentCost(entity, mount) ?? 0)
       : 0), 0);
   const armor = entity.uniformArmor()?.armor;
-  if (armor?.cost === 'variable') throw new Error(`Unable to calculate armor cost for ${armor.id}`);
+  if (armor && !armor.hasFixedCost()) throw new Error(`Unable to calculate armor cost for ${armor.id}`);
   const armorPerTrooper = entity.armorValues().get('Squad')?.front ?? 0;
   const clanMultiplier = entity.techBase() === 'Clan' ? 1.1 : 1;
   const trainingCost = entity.techBase() === 'Clan' ? 200000 : 150000;

@@ -32,7 +32,7 @@ export function getNumCriticalSlots(entity: BaseEntity, eq: Equipment, size: num
     const isSuperHeavyMek = isMekEntity(entity) && entity.isSuperHeavy();
     const isSuperHeavyEntity = isSuperHeavyMek
         || (isVehicleEntity(entity) && entity.isSuperHeavy());
-    if (eq.critSlots !== "variable") {
+    if (eq.hasFixedCriticalSlots()) {
         const fixedSlots = eq.critSlots;
         if (isSuperHeavyEntity) {
             return Math.ceil(fixedSlots / 2);

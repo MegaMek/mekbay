@@ -27,7 +27,7 @@ export function getEquipmentTonnage(
             return equipment.rackSize * (equipment.ammoType === 'LRM_STREAK' ? 0.4 : 0.2);
         }
     }
-    if (equipment.tonnage !== 'variable') return equipment.tonnage;
+    if (equipment.hasFixedTonnage()) return equipment.tonnage;
 
     const tonnage = entity.tonnage();
     if (equipment.hasFlag('F_JUMP_JET') || equipment.hasFlag('F_UMU')) {

@@ -1001,6 +1001,5 @@ function getSplitPrimaryLocation(locA: string, locB: string): string {
 }
 
 function numericCriticalSlotRequirement(mount: EntityMountedEquipment, entity: MekEntity): number {
-  const requirement = mount.getCriticalSlotRequirement(entity);
-  return typeof requirement === 'number' ? requirement : Infinity;
+  return mount.getNumCriticalSlots(entity) ?? Infinity;
 }

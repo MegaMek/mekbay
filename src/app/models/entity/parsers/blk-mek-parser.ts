@@ -159,8 +159,7 @@ export function parseBlkMek(bb: BuildingBlock, ctx: ParseContext): MekEntity {
           const existingIdx = spreadableMap.get(parsed.name);
           if (existingIdx !== undefined) {
             const existing = equipmentList[existingIdx];
-            const requirement = existing.getCriticalSlotRequirement(entity);
-            const expectedCrits = typeof requirement === 'number' ? requirement : Infinity;
+            const expectedCrits = existing.getNumCriticalSlots(entity) ?? Infinity;
             if (existing.placedCriticalSlotCount < expectedCrits) {
               equipmentList[existingIdx] = existing.withAddedPlacement({ location: locCode, slotIndex: slotIdx });
               continue;
